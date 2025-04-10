@@ -102,7 +102,7 @@ export const hermesToolMiddleware: LanguageModelV1Middleware = {
         ? [
             {
               role: "system",
-              content: HermesPrompt + processedPrompt[0].content,
+              content: HermesPrompt + "\n\n" + processedPrompt[0].content,
             },
             ...processedPrompt.slice(1),
           ]

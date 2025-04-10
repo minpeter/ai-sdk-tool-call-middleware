@@ -1,5 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { generateText, wrapLanguageModel } from "ai";
+import { generateText, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
 import { hermesToolMiddleware } from "./hermes-middleware";
 
@@ -15,21 +15,8 @@ async function main() {
       model: openrouter("nousresearch/hermes-3-llama-3.1-70b"),
       middleware: hermesToolMiddleware,
     }),
-    // prompt: "What is the weather in New York?",
-    messages: [
-      {
-        role: "user",
-        content: "hello",
-      },
-      {
-        role: "assistant",
-        content: "Hi there! How can I help you today?",
-      },
-      {
-        role: "user",
-        content: "What is the weather in New York and Los Angeles?",
-      },
-    ],
+    system: "You are a helpful assistant.",
+    prompt: "What is the weather in New York and Los Angeles?",
     maxSteps: 10,
     tools: {
       get_weather: {
