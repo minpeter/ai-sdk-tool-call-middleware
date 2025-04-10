@@ -45,6 +45,25 @@ export const hermesToolMiddleware: LanguageModelV1Middleware = {
         : {};
 
     const processedPrompt = params.prompt.map((message) => {
+      if (message.role === "assistant") {
+        return {
+          role: "assistant",
+          content: message.content.map((content) => {
+            if (content.type === "tool-call") {
+              return {
+                type: "text",
+                text: `<tool_call>${JSON.stringify({
+                  arguments: content.args,
+                  name: content.toolName,
+                })}</tool_call>`,
+              };
+            }
+
+            return content;
+          }),
+        };
+      }
+
       if (message.role === "tool") {
         return {
           role: "user",
