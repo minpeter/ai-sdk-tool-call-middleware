@@ -1,15 +1,17 @@
-import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
 import { hermesToolMiddleware } from "./hermes-middleware";
 
-const openrouter = createOpenAI({
+const openrouter = createOpenAICompatible({
+  name: "openrouter",
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: "https://openrouter.ai/api/v1",
 });
 
 async function main() {
-  const {} = await generateText({
+  const result = streamText({
+    // model: openrouter("openai/gpt-4o"),
     model: wrapLanguageModel({
       // model: openrouter("google/gemma-3-27b-it"),
       model: openrouter("nousresearch/hermes-3-llama-3.1-70b"),
@@ -17,7 +19,7 @@ async function main() {
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
-    maxSteps: 10,
+    maxSteps: 1,
     tools: {
       get_weather: {
         description:
@@ -35,14 +37,11 @@ async function main() {
         },
       },
     },
-    onStepFinish: async ({ stepType, toolResults, text }) => {
-      console.log({
-        stepType,
-        text,
-        toolResults,
-      });
-    },
   });
+
+  for await (const part of result.fullStream) {
+    console.log(part);
+  }
 }
 
 main().catch(console.error);
