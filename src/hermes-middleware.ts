@@ -1,6 +1,7 @@
 import {
   generateId,
   LanguageModelV1Middleware,
+  LanguageModelV1Prompt,
   LanguageModelV1StreamPart,
 } from "ai";
 import * as RJSON from "relaxed-json";
@@ -170,7 +171,6 @@ export function hermesToolMiddleware({
       };
     },
 
-    // @ts-ignore
     transformParams: async ({ params }) => {
       const processedPrompt = params.prompt.map((message) => {
         if (message.role === "assistant") {
@@ -223,15 +223,16 @@ export function hermesToolMiddleware({
         `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools>` +
         tools +
         `</tools> Use the following pydantic model json schema for each tool call you will make: {'title': 'FunctionCall', 'type': 'object', 'properties': {'arguments': {'title': 'Arguments', 'type': 'object'}, 'name': {'title': 'Name', 'type': 'string'}}, 'required': ['arguments', 'name']} For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
-      <tool_call>
-      {'arguments': <args-dict>, 'name': <function-name>}
-      </tool_call>`;
+        <tool_call>
+        {'arguments': <args-dict>, 'name': <function-name>}
+        </tool_call>`;
 
       const HermesPrompt = HermesPromptFormat(
         JSON.stringify(Object.entries(originalToolDefinitions))
       );
 
-      const toolSystemPrompt =
+      // @ts-ignore
+      const toolSystemPrompt: LanguageModelV1Prompt =
         processedPrompt[0].role === "system"
           ? [
               {
@@ -251,10 +252,9 @@ export function hermesToolMiddleware({
       return {
         ...params,
         mode: {
-          // Here, set the mode back to regular and remove the default tools.
+          // set the mode back to regular and remove the default tools.
           type: "regular",
         },
-        //   stopSequences: ["</tool_call>", ...(params.stopSequences || [])],
         prompt: toolSystemPrompt,
       };
     },
