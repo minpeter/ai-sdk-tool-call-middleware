@@ -16,21 +16,19 @@ async function main() {
       model: openrouter("google/gemma-3-27b-it"),
       // model: openrouter("nousresearch/hermes-3-llama-3.1-70b"),
       middleware: hermesToolMiddleware({
-        toolCallTag: "```tool_call\n",
-        toolCallEndTag: "\n```",
-        toolResponseTag: "```tool_response\n",
-        toolResponseEndTag: "\n```",
         toolSystemPromptTemplate(tools) {
           return `You have access to functions. If you decide to invoke any of the function(s),
-you MUST put it in the format of
-\`\`\`tool_call
-{'name': <function-name>, 'arguments': <args-dict>}
-\`\`\`
-
-You SHOULD NOT include any other text in the response if you call a function
-
-${tools}`;
+        you MUST put it in the format of
+        \`\`\`tool_call
+        {'name': <function-name>, 'arguments': <args-dict>}
+        \`\`\`
+        You SHOULD NOT include any other text in the response if you call a function
+        ${tools}`;
         },
+        toolCallTag: "```tool_call\n",
+        toolCallEndTag: "```",
+        toolResponseTag: "```tool_response\n",
+        toolResponseEndTag: "\n```",
       }),
     }),
     system: "You are a helpful assistant.",
