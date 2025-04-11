@@ -211,7 +211,7 @@ export function hermesToolMiddleware({
         }
 
         return message;
-      });
+      }) as LanguageModelV1Prompt;
 
       // Appropriate fixes are needed as they are disappearing in LanguageModelV2
       const originalToolDefinitions =
@@ -231,7 +231,6 @@ export function hermesToolMiddleware({
         JSON.stringify(Object.entries(originalToolDefinitions))
       );
 
-      // @ts-ignore
       const toolSystemPrompt: LanguageModelV1Prompt =
         processedPrompt[0].role === "system"
           ? [
