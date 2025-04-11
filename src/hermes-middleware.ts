@@ -66,12 +66,11 @@ export function hermesToolMiddleware({
                     args: JSON.stringify(parsedToolCall.arguments),
                   });
                 } catch (e) {
-                  console.log("error while parsing tool call");
-                  console.log(toolCall);
+                  console.error(`Error parsing tool call: ${toolCall}`, e);
 
                   controller.enqueue({
                     type: "text-delta",
-                    textDelta: `ERROR ON PARSING TOOL CALL: ${toolCall}`,
+                    textDelta: `Failed to parse tool call: ${e.message}`,
                   });
                 }
               });
