@@ -18,18 +18,53 @@ export function hermesToolMiddleware({
     wrapStream: async ({ doStream }) => {
       const { stream, ...rest } = await doStream();
 
-      let isFirstToolCalling = true;
+      let isFirstToolCall = true;
       let isFirstText = true;
       let afterSwitch = false;
-      let isToolCalling = false;
+      let isToolCall = false;
       let buffer = "";
+
+      let toolCallIndex = -1;
+      let toolCallBuffer: string[] = [];
 
       const transformStream = new TransformStream<
         LanguageModelV1StreamPart,
         LanguageModelV1StreamPart
       >({
         transform(chunk, controller) {
-          if (chunk.type !== "text-delta") {
+          if (chunk.type === "finish") {
+            if (toolCallBuffer.length > 0) {
+              toolCallBuffer.forEach((toolCall) => {
+                try {
+                  const parsedToolCall = RJSON.parse(toolCall) as {
+                    name: string;
+                    arguments: string;
+                  };
+
+                  controller.enqueue({
+                    type: "tool-call",
+                    toolCallType: "function",
+                    toolCallId: generateId(),
+                    toolName: parsedToolCall.name,
+                    args: JSON.stringify(parsedToolCall.arguments),
+                  });
+                } catch (e) {
+                  console.log("error while parsing tool call");
+                  console.log(toolCall);
+
+                  controller.enqueue({
+                    type: "text-delta",
+                    textDelta: `ERROR ON PARSING TOOL CALL: ${toolCall}`,
+                  });
+                }
+              });
+            }
+
+            // stop token
+            controller.enqueue(chunk);
+
+            return;
+          } else if (chunk.type !== "text-delta") {
             controller.enqueue(chunk);
             return;
           }
@@ -39,19 +74,27 @@ export function hermesToolMiddleware({
           function publish(text: string) {
             if (text.length > 0) {
               const prefix =
-                afterSwitch &&
-                (isToolCalling ? !isFirstToolCalling : !isFirstText)
+                afterSwitch && (isToolCall ? !isFirstToolCall : !isFirstText)
                   ? "\n" // separator
                   : "";
 
-              controller.enqueue({
-                type: isToolCalling ? "reasoning" : "text-delta",
-                textDelta: prefix + text,
-              });
+              if (isToolCall) {
+                if (!toolCallBuffer[toolCallIndex]) {
+                  toolCallBuffer[toolCallIndex] = "";
+                }
+
+                toolCallBuffer[toolCallIndex] += text;
+              } else {
+                controller.enqueue({
+                  type: "text-delta",
+                  textDelta: prefix + text,
+                });
+              }
+
               afterSwitch = false;
 
-              if (isToolCalling) {
-                isFirstToolCalling = false;
+              if (isToolCall) {
+                isFirstToolCall = false;
               } else {
                 isFirstText = false;
               }
@@ -59,7 +102,7 @@ export function hermesToolMiddleware({
           }
 
           do {
-            const nextTag = isToolCalling ? closingTag : openingTag;
+            const nextTag = isToolCall ? closingTag : openingTag;
             const startIndex = getPotentialStartIndex(buffer, nextTag);
 
             // no opening or closing tag found, publish the buffer
@@ -76,7 +119,8 @@ export function hermesToolMiddleware({
 
             if (foundFullMatch) {
               buffer = buffer.slice(startIndex + nextTag.length);
-              isToolCalling = !isToolCalling;
+              toolCallIndex++;
+              isToolCall = !isToolCall;
               afterSwitch = true;
             } else {
               buffer = buffer.slice(startIndex);
