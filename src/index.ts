@@ -21,7 +21,7 @@ async function main() {
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
-    maxSteps: 1,
+    maxSteps: 4,
     tools: {
       get_weather: {
         description:
