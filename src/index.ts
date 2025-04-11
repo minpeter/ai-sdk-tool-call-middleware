@@ -16,7 +16,21 @@ async function main() {
       model: openrouter("google/gemma-3-27b-it"),
       // model: openrouter("nousresearch/hermes-3-llama-3.1-70b"),
       middleware: hermesToolMiddleware({
-        tagName: "tool_call",
+        toolCallTag: "<tool_call>",
+        toolCallEndTag: "</tool_call>",
+        toolResponseTag: "<tool_response>",
+        toolResponseEndTag: "</tool_response>",
+        toolSystemPromptTemplate(tools) {
+          return `You have access to functions. If you decide to invoke any of the function(s),
+you MUST put it in the format of
+<tool_call>
+{'name': <function-name>, 'arguments': <args-dict>}
+</tool_call>
+
+You SHOULD NOT include any other text in the response if you call a function
+
+${tools}`;
+        },
       }),
     }),
     system: "You are a helpful assistant.",
@@ -42,8 +56,14 @@ async function main() {
   });
 
   for await (const part of result.fullStream) {
-    console.log(part);
+    if (part.type === "text-delta") {
+      process.stdout.write(part.textDelta);
+    } else {
+      // console.log(part);
+    }
   }
+
+  console.log("\n\n[done]");
 }
 
 main().catch(console.error);

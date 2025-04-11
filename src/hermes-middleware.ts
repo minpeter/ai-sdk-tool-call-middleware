@@ -7,14 +7,29 @@ import {
 import * as RJSON from "relaxed-json";
 import { getPotentialStartIndex } from "./utils";
 
-export function hermesToolMiddleware({
-  tagName,
-}: {
-  tagName: string;
-}): LanguageModelV1Middleware {
-  const openingTag = `<${tagName}>`;
-  const closingTag = `<\/${tagName}>`;
+const defaultTemplate = (tools: string) =>
+  `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags.
+You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions.
+Here are the available tools: <tools>${tools}</tools>
+Use the following pydantic model json schema for each tool call you will make: {'title': 'FunctionCall', 'type': 'object', 'properties': {'arguments': {'title': 'Arguments', 'type': 'object'}, 'name': {'title': 'Name', 'type': 'string'}}, 'required': ['arguments', 'name']}
+For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
+<tool_call>
+{'arguments': <args-dict>, 'name': <function-name>}
+</tool_call>`;
 
+export function hermesToolMiddleware({
+  toolCallTag = "<tool_call>",
+  toolCallEndTag = "</tool_call>",
+  toolResponseTag = "<tool_response>",
+  toolResponseEndTag = "</tool_response>",
+  toolSystemPromptTemplate = defaultTemplate,
+}: {
+  toolCallTag?: string;
+  toolCallEndTag?: string;
+  toolResponseTag?: string;
+  toolResponseEndTag?: string;
+  toolSystemPromptTemplate?: (tools: string) => string;
+}): LanguageModelV1Middleware {
   return {
     middlewareVersion: "v1",
     wrapStream: async ({ doStream }) => {
@@ -104,7 +119,7 @@ export function hermesToolMiddleware({
           }
 
           do {
-            const nextTag = isToolCall ? closingTag : openingTag;
+            const nextTag = isToolCall ? toolCallEndTag : toolCallTag;
             const startIndex = getPotentialStartIndex(buffer, nextTag);
 
             // no opening or closing tag found, publish the buffer
@@ -140,11 +155,14 @@ export function hermesToolMiddleware({
     wrapGenerate: async ({ doGenerate }) => {
       const result = await doGenerate();
 
-      if (!result.text?.includes("<tool_call>")) {
+      if (!result.text?.includes(toolCallTag)) {
         return result;
       }
 
-      const toolCallRegex = /<tool_call>(.*?)<\/tool_call>|<tool_call>(.*)/gs;
+      const toolCallRegex = new RegExp(
+        `${toolCallTag}(.*?)(?:${toolCallEndTag}|$)`,
+        "gs"
+      );
       const matches = [...result.text.matchAll(toolCallRegex)];
       const function_call_tuples = matches.map((match) => match[1] || match[2]);
 
@@ -180,10 +198,10 @@ export function hermesToolMiddleware({
               if (content.type === "tool-call") {
                 return {
                   type: "text",
-                  text: `<tool_call>${JSON.stringify({
+                  text: `${toolCallTag}${JSON.stringify({
                     arguments: content.args,
                     name: content.toolName,
-                  })}</tool_call>`,
+                  })}${toolCallEndTag}`,
                 };
               }
 
@@ -199,10 +217,10 @@ export function hermesToolMiddleware({
                 text: message.content
                   .map(
                     (content) =>
-                      `<tool_response>${JSON.stringify({
+                      `${toolResponseTag}${JSON.stringify({
                         toolName: content.toolName,
                         result: content.result,
-                      })}</tool_response>`
+                      })}${toolResponseEndTag}`
                   )
                   .join("\n"),
               },
@@ -219,15 +237,7 @@ export function hermesToolMiddleware({
           ? params.mode.tools
           : {};
 
-      const HermesPromptFormat = (tools: string) =>
-        `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools>` +
-        tools +
-        `</tools> Use the following pydantic model json schema for each tool call you will make: {'title': 'FunctionCall', 'type': 'object', 'properties': {'arguments': {'title': 'Arguments', 'type': 'object'}, 'name': {'title': 'Name', 'type': 'string'}}, 'required': ['arguments', 'name']} For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
-        <tool_call>
-        {'arguments': <args-dict>, 'name': <function-name>}
-        </tool_call>`;
-
-      const HermesPrompt = HermesPromptFormat(
+      const HermesPrompt = toolSystemPromptTemplate(
         JSON.stringify(Object.entries(originalToolDefinitions))
       );
 
