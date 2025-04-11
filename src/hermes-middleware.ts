@@ -10,17 +10,79 @@ export function hermesToolMiddleware({
 }: {
   tagName: string;
 }): LanguageModelV1Middleware {
+  const openingTag = `<${tagName}>`;
+  const closingTag = `<\/${tagName}>`;
+
   return {
     middlewareVersion: "v1",
     wrapStream: async ({ doStream }) => {
       const { stream, ...rest } = await doStream();
+
+      let isFirstToolCalling = true;
+      let isFirstText = true;
+      let afterSwitch = false;
+      let isToolCalling = false;
+      let buffer = "";
 
       const transformStream = new TransformStream<
         LanguageModelV1StreamPart,
         LanguageModelV1StreamPart
       >({
         transform(chunk, controller) {
-          controller.enqueue(chunk);
+          if (chunk.type !== "text-delta") {
+            controller.enqueue(chunk);
+            return;
+          }
+
+          buffer += chunk.textDelta;
+
+          function publish(text: string) {
+            if (text.length > 0) {
+              const prefix =
+                afterSwitch &&
+                (isToolCalling ? !isFirstToolCalling : !isFirstText)
+                  ? "\n" // separator
+                  : "";
+
+              controller.enqueue({
+                type: isToolCalling ? "reasoning" : "text-delta",
+                textDelta: prefix + text,
+              });
+              afterSwitch = false;
+
+              if (isToolCalling) {
+                isFirstToolCalling = false;
+              } else {
+                isFirstText = false;
+              }
+            }
+          }
+
+          do {
+            const nextTag = isToolCalling ? closingTag : openingTag;
+            const startIndex = getPotentialStartIndex(buffer, nextTag);
+
+            // no opening or closing tag found, publish the buffer
+            if (startIndex == null) {
+              publish(buffer);
+              buffer = "";
+              break;
+            }
+
+            // publish text before the tag
+            publish(buffer.slice(0, startIndex));
+
+            const foundFullMatch = startIndex + nextTag.length <= buffer.length;
+
+            if (foundFullMatch) {
+              buffer = buffer.slice(startIndex + nextTag.length);
+              isToolCalling = !isToolCalling;
+              afterSwitch = true;
+            } else {
+              buffer = buffer.slice(startIndex);
+              break;
+            }
+          } while (true);
         },
       });
 
@@ -152,4 +214,36 @@ export function hermesToolMiddleware({
       };
     },
   };
+}
+
+/**
+ * Returns the index of the start of the searchedText in the text, or null if it
+ * is not found.
+ * ref: https://github.com/vercel/ai/blob/452bf12f0be9cb398d4af85a006bca13c8ce36d8/packages/ai/core/util/get-potential-start-index.ts
+ */
+export function getPotentialStartIndex(
+  text: string,
+  searchedText: string
+): number | null {
+  // Return null immediately if searchedText is empty.
+  if (searchedText.length === 0) {
+    return null;
+  }
+
+  // Check if the searchedText exists as a direct substring of text.
+  const directIndex = text.indexOf(searchedText);
+  if (directIndex !== -1) {
+    return directIndex;
+  }
+
+  // Otherwise, look for the largest suffix of "text" that matches
+  // a prefix of "searchedText". We go from the end of text inward.
+  for (let i = text.length - 1; i >= 0; i--) {
+    const suffix = text.substring(i);
+    if (searchedText.startsWith(suffix)) {
+      return i;
+    }
+  }
+
+  return null;
 }
