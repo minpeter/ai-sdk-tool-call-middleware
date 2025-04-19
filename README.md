@@ -35,7 +35,7 @@ See `examples/src/hermes-middleware-example.ts` for the full demo:
 // filepath: examples/src/hermes-middleware-example.ts
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { wrapLanguageModel, streamText } from 'ai';
-import { hermesToolMiddleware } from './hermes-middleware';
+import { hermesToolMiddleware } from '@ai-sdk-tool/parser';
 
 const openrouter = createOpenAICompatible({ /* ... */ });
 
