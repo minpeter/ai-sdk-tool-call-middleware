@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { createToolMiddleware } from "@ai-sdk-tool/parser";
+import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
 
 const openrouter = createOpenAICompatible({
   name: "openrouter",
@@ -15,21 +15,7 @@ async function main() {
     model: wrapLanguageModel({
       model: openrouter("google/gemma-3-27b-it"),
       // model: openrouter("nousresearch/hermes-3-llama-3.1-70b"),
-      middleware: createToolMiddleware({
-        toolSystemPromptTemplate(tools) {
-          return `You have access to functions. If you decide to invoke any of the function(s),
-        you MUST put it in the format of
-        \`\`\`tool_call
-        {'name': <function-name>, 'arguments': <args-dict>}
-        \`\`\`
-        You SHOULD NOT include any other text in the response if you call a function
-        ${tools}`;
-        },
-        toolCallTag: "```tool_call\n",
-        toolCallEndTag: "```",
-        toolResponseTag: "```tool_response\n",
-        toolResponseEndTag: "\n```",
-      }),
+      middleware: gemmaToolMiddleware,
     }),
     system: "You are a helpful assistant.",
     // prompt: "What is the weather in New York and Los Angeles?",

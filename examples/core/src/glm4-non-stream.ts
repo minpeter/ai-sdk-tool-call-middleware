@@ -13,7 +13,7 @@ async function main() {
   await generateText({
     model: wrapLanguageModel({
       model: openrouter("thudm/glm-4-32b:free"),
-      middleware: createToolMiddleware(),
+      middleware: createToolMiddleware({}),
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
