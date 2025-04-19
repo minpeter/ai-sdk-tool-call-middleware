@@ -16,4 +16,11 @@ const gemmaToolMiddleware = createToolMiddleware({
   toolResponseEndTag: "\n```",
 });
 
-export { defaultTemplate, gemmaToolMiddleware, createToolMiddleware };
+const hermesToolMiddleware = createToolMiddleware({});
+
+export {
+  defaultTemplate,
+  gemmaToolMiddleware,
+  hermesToolMiddleware,
+  createToolMiddleware,
+};

@@ -1,7 +1,7 @@
+import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
 
 const openrouter = createOpenAICompatible({
   name: "openrouter",
