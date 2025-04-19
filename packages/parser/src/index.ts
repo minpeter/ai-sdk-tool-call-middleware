@@ -1,3 +1,3 @@
-import { defaultTemplate, hermesToolMiddleware } from "./hermes";
+import { defaultTemplate, createToolMiddleware } from "./hermes";
 
-export { defaultTemplate, hermesToolMiddleware };
+export { defaultTemplate, createToolMiddleware };

@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
+import { createToolMiddleware } from "@ai-sdk-tool/parser";
 
 const openrouter = createOpenAICompatible({
   name: "openrouter",
@@ -15,7 +15,7 @@ async function main() {
     model: wrapLanguageModel({
       model: openrouter("google/gemma-3-27b-it"),
       // model: openrouter("nousresearch/hermes-3-llama-3.1-70b"),
-      middleware: hermesToolMiddleware({
+      middleware: createToolMiddleware({
         toolSystemPromptTemplate(tools) {
           return `You have access to functions. If you decide to invoke any of the function(s),
         you MUST put it in the format of

@@ -17,7 +17,7 @@ For each function call return a json object with function name and arguments wit
 {'arguments': <args-dict>, 'name': <function-name>}
 </tool_call>`;
 
-export function hermesToolMiddleware({
+export function createToolMiddleware({
   toolCallTag = "<tool_call>",
   toolCallEndTag = "</tool_call>",
   toolResponseTag = "<tool_response>",
