@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { hermesToolMiddleware } from "./hermes-middleware";
+import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 
 const openrouter = createOpenAICompatible({
   name: "openrouter",

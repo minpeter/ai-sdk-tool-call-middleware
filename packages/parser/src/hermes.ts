@@ -7,7 +7,7 @@ import {
 import * as RJSON from "relaxed-json";
 import { getPotentialStartIndex } from "./utils";
 
-const defaultTemplate = (tools: string) =>
+export const defaultTemplate = (tools: string) =>
   `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags.
 You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions.
 Here are the available tools: <tools>${tools}</tools>
@@ -70,7 +70,7 @@ export function hermesToolMiddleware({
 
                   controller.enqueue({
                     type: "text-delta",
-                    textDelta: `Failed to parse tool call: ${e.message}`,
+                    textDelta: `Failed to parse tool call: ${e}`,
                   });
                 }
               });

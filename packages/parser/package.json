@@ -1,0 +1,23 @@
+{
+  "name": "@ai-sdk-tool/parser",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@9.14.4+sha1.64b6e81e79630419b675c555ef3b65607cfd6315",
+  "dependencies": {
+    "ai": "^4.3.9",
+    "relaxed-json": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/relaxed-json": "^1.0.4",
+    "@types/node": "^22.14.1",
+    "tsup": "^8.4.0"
+  }
+}
