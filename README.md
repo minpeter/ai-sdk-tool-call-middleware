@@ -32,7 +32,7 @@ pnpm install @ai-sdk-tool/parser
 See `examples/src/hermes-middleware-example.ts` for the full demo:
 
 ```typescript
-// filepath: examples/src/hermes-middleware-example.ts
+// filepath: examples/src/gemma3-stream.ts
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { wrapLanguageModel, streamText } from 'ai';
 import { hermesToolMiddleware } from '@ai-sdk-tool/parser';
