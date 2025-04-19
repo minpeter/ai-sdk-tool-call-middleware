@@ -1,5 +1,5 @@
 {
-  "name": "ai-sdk-tool-call-middleware",
+  "name": "ai-sdk-tool",
   "private": true,
   "scripts": {
     "build": "turbo run build",
