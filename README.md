@@ -35,7 +35,7 @@ See `examples/src/hermes-middleware-example.ts` for the full demo:
 // filepath: examples/src/gemma3-stream.ts
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { wrapLanguageModel, streamText } from 'ai';
-import { hermesToolMiddleware } from '@ai-sdk-tool/parser';
+import { gemmaToolMiddleware } from '@ai-sdk-tool/parser';
 
 const openrouter = createOpenAICompatible({ /* ... */ });
 
@@ -43,7 +43,7 @@ async function main() {
   const result = streamText({
     model: wrapLanguageModel({
       model: openrouter('google/gemma-3-27b-it'),
-      middleware: hermesToolMiddleware,
+      middleware: gemmaToolMiddleware,
     }),
     system: 'You are a helpful assistant.',
     prompt: 'What is the weather in my city?',
