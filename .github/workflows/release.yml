@@ -29,6 +29,8 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
+        with:
+          version: 9.14.4
 
       - name: Setup Node.js 18.x
         uses: actions/setup-node@v4
@@ -47,5 +49,6 @@ jobs:
           version: pnpm ci:version
           publish: pnpm ci:release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # override default token so the action can create PRs
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
