@@ -1,84 +1,70 @@
-# Turborepo starter
+# 🚀 Custom Tool Parser for Open Source Models
 
-This Turborepo starter is maintained by the Turborepo core team.
+Make any Open‑Source LLM tool‑ready in your AI SDK projects—no matter which serving framework you use.
 
-## Using this example
+## 🌟 Why This Exists
 
-Run the following command:
+Many self‑hosted or third‑party model endpoints (vLLM, MLC‑LLM, Ollama, OpenRouter, etc.) don’t yet expose the OpenAI‑style `tools` parameter, forcing you to hack together tool parsing.  
+This project provides a flexible middleware that:
 
-```sh
-npx create-turbo@latest
+- Parses tool calls from streaming or batch responses  
+- Supports Hermes and Gemma formats  
+- Llama, Mistral, and JSON formats are coming soon  
+- Handles interleaved or “chatty” tool calls  
+- Corrects common issues in small models (extra markdown fences, semicolon separators)
+
+## 🔧 Installation
+
+```bash
+pnpm install @ai-sdk-tool/parser
 ```
 
-## What's inside?
+## 🎯 Quickstart
 
-This Turborepo includes the following packages/apps:
+1. Wrap your model with the provided middleware  
+2. Stream or generate text as usual  
+3. Intercept tool calls as `tool-result` events
 
-### Apps and Packages
+---
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+## 🔌 Example: Hermes‑Style Middleware
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+See `examples/src/hermes-middleware-example.ts` for the full demo:
 
-### Utilities
+```typescript
+// filepath: examples/src/hermes-middleware-example.ts
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { wrapLanguageModel, streamText } from 'ai';
+import { hermesToolMiddleware } from './hermes-middleware';
 
-This Turborepo has some additional tools already setup for you:
+const openrouter = createOpenAICompatible({ /* ... */ });
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+async function main() {
+  const result = streamText({
+    model: wrapLanguageModel({
+      model: openrouter('google/gemma-3-27b-it'),
+      middleware: hermesToolMiddleware,
+    }),
+    system: 'You are a helpful assistant.',
+    prompt: 'What is the weather in my city?',
+    maxSteps: 4,
+    tools: {
+      get_location: { /* ... */ },
+      get_weather: { /* ... */ },
+    },
+  });
 
-### Build
+  for await (const part of result.fullStream) {
+    // ...handling text-delta and tool-result...
+  }
+}
 
-To build all apps and packages, run the following command:
-
-```
-cd my-turborepo
-pnpm build
-```
-
-### Develop
-
-To develop all apps and packages, run the following command:
-
-```
-cd my-turborepo
-pnpm dev
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turbo.build/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-```
-cd my-turborepo
-npx turbo login
+main().catch(console.error);
 ```
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+---
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
+## 🤝 Contributing
 
-```
-npx turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turbo.build/docs/core-concepts/monorepos/running-tasks)
-- [Caching](https://turbo.build/docs/core-concepts/caching)
-- [Remote Caching](https://turbo.build/docs/core-concepts/remote-caching)
-- [Filtering](https://turbo.build/docs/core-concepts/monorepos/filtering)
-- [Configuration Options](https://turbo.build/docs/reference/configuration)
-- [CLI Usage](https://turbo.build/docs/reference/command-line-reference)
+• Feel free to open issues or PRs—especially for new model formats.  
+• See `CONTRIBUTING.md` for guidelines.
