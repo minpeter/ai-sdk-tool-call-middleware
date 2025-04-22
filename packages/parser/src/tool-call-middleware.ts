@@ -1,39 +1,28 @@
-import {
-  generateId,
-  LanguageModelV1Middleware,
-  LanguageModelV1Prompt,
-  LanguageModelV1StreamPart,
-} from "ai";
-import * as RJSON from "relaxed-json";
-import { getPotentialStartIndex } from "./utils";
-
-export const defaultTemplate = (tools: string) =>
-  `You are a function calling AI model.
-You are provided with function signatures within <tools></tools> XML tags.
-You may call one or more functions to assist with the user query.
-Don't make assumptions about what values to plug into functions.
-Here are the available tools: <tools>${tools}</tools>
-Use the following pydantic model json schema for each tool call you will make: {'title': 'FunctionCall', 'type': 'object', 'properties': {'arguments': {'title': 'Arguments', 'type': 'object'}, 'name': {'title': 'Name', 'type': 'string'}}, 'required': ['arguments', 'name']}
-For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
-<tool_call>
-{'arguments': <args-dict>, 'name': <function-name>}
-</tool_call>`;
+import type {
+  LanguageModelV2Prompt,
+  LanguageModelV2Middleware,
+  LanguageModelV2StreamPart,
+  LanguageModelV2ToolCall,
+} from "@ai-sdk/provider";
+import { generateId } from "@ai-sdk/provider-utils";
+import { getPotentialStartIndex } from "./utils/get-potential-start-index";
+import * as RJSON from "./utils/relaxed-json";
 
 export function createToolMiddleware({
-  toolCallTag = "<tool_call>",
-  toolCallEndTag = "</tool_call>",
-  toolResponseTag = "<tool_response>",
-  toolResponseEndTag = "</tool_response>",
-  toolSystemPromptTemplate = defaultTemplate,
+  toolCallTag,
+  toolCallEndTag,
+  toolResponseTag,
+  toolResponseEndTag,
+  toolSystemPromptTemplate,
 }: {
-  toolCallTag?: string;
-  toolCallEndTag?: string;
-  toolResponseTag?: string;
-  toolResponseEndTag?: string;
-  toolSystemPromptTemplate?: (tools: string) => string;
-}): LanguageModelV1Middleware {
+  toolCallTag: string;
+  toolCallEndTag: string;
+  toolResponseTag: string;
+  toolResponseEndTag: string;
+  toolSystemPromptTemplate: (tools: string) => string;
+}): LanguageModelV2Middleware {
   return {
-    middlewareVersion: "v1",
+    middlewareVersion: "v2",
     wrapStream: async ({ doStream }) => {
       const { stream, ...rest } = await doStream();
 
@@ -47,8 +36,8 @@ export function createToolMiddleware({
       let toolCallBuffer: string[] = [];
 
       const transformStream = new TransformStream<
-        LanguageModelV1StreamPart,
-        LanguageModelV1StreamPart
+        LanguageModelV2StreamPart,
+        LanguageModelV2StreamPart
       >({
         transform(chunk, controller) {
           if (chunk.type === "finish") {
@@ -71,8 +60,8 @@ export function createToolMiddleware({
                   console.error(`Error parsing tool call: ${toolCall}`, e);
 
                   controller.enqueue({
-                    type: "text-delta",
-                    textDelta: `Failed to parse tool call: ${e}`,
+                    type: "text",
+                    text: `Failed to parse tool call: ${e}`,
                   });
                 }
               });
@@ -82,12 +71,12 @@ export function createToolMiddleware({
             controller.enqueue(chunk);
 
             return;
-          } else if (chunk.type !== "text-delta") {
+          } else if (chunk.type !== "text") {
             controller.enqueue(chunk);
             return;
           }
 
-          buffer += chunk.textDelta;
+          buffer += chunk.text;
 
           function publish(text: string) {
             if (text.length > 0) {
@@ -104,8 +93,8 @@ export function createToolMiddleware({
                 toolCallBuffer[toolCallIndex] += text;
               } else {
                 controller.enqueue({
-                  type: "text-delta",
-                  textDelta: prefix + text,
+                  type: "text",
+                  text: prefix + text,
                 });
               }
 
@@ -156,7 +145,15 @@ export function createToolMiddleware({
     wrapGenerate: async ({ doGenerate }) => {
       const result = await doGenerate();
 
-      if (!result.text?.includes(toolCallTag)) {
+      // NOTE: Needs more proper handling
+      if (result.content.length !== 1) {
+        return result;
+      }
+
+      if (
+        result.content[0].type === "text" &&
+        !result.content[0].text.includes(toolCallTag)
+      ) {
         return result;
       }
 
@@ -164,14 +161,15 @@ export function createToolMiddleware({
         `${toolCallTag}(.*?)(?:${toolCallEndTag}|$)`,
         "gs"
       );
-      const matches = [...result.text.matchAll(toolCallRegex)];
+
+      const matches =
+        result.content[0].type === "text"
+          ? Array.from(result.content[0].text.matchAll(toolCallRegex))
+          : [];
       const function_call_tuples = matches.map((match) => match[1] || match[2]);
 
-      return {
-        ...result,
-        // TODO: Return the remaining value after extracting the tool call tag.
-        text: "",
-        toolCalls: function_call_tuples.map((toolCall) => {
+      const tool_calls: LanguageModelV2ToolCall[] = function_call_tuples.map(
+        (toolCall) => {
           const parsedToolCall = RJSON.parse(toolCall) as {
             name: string;
             arguments: string;
@@ -181,12 +179,19 @@ export function createToolMiddleware({
           const args = parsedToolCall.arguments;
 
           return {
+            type: "tool-call",
             toolCallType: "function",
             toolCallId: generateId(),
             toolName: toolName,
-            args: RJSON.stringify(args),
-          };
-        }),
+            args: JSON.stringify(args),
+          } as LanguageModelV2ToolCall;
+        }
+      );
+
+      return {
+        ...result,
+        // TODO: Return the remaining value after extracting the tool call tag.
+        content: [...tool_calls],
       };
     },
 
@@ -230,19 +235,13 @@ export function createToolMiddleware({
         }
 
         return message;
-      }) as LanguageModelV1Prompt;
-
-      // Appropriate fixes are needed as they are disappearing in LanguageModelV2
-      const originalToolDefinitions =
-        params.mode.type === "regular" && params.mode.tools
-          ? params.mode.tools
-          : {};
+      }) as LanguageModelV2Prompt;
 
       const HermesPrompt = toolSystemPromptTemplate(
-        JSON.stringify(Object.entries(originalToolDefinitions))
+        JSON.stringify(Object.entries(params.tools || {}))
       );
 
-      const toolSystemPrompt: LanguageModelV1Prompt =
+      const toolSystemPrompt: LanguageModelV2Prompt =
         processedPrompt[0].role === "system"
           ? [
               {
@@ -261,11 +260,11 @@ export function createToolMiddleware({
 
       return {
         ...params,
-        mode: {
-          // set the mode back to regular and remove the default tools.
-          type: "regular",
-        },
         prompt: toolSystemPrompt,
+
+        // set the mode back to regular and remove the default tools.
+        tools: [],
+        toolChoice: undefined,
       };
     },
   };

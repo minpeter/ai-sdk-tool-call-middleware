@@ -1,4 +1,4 @@
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
+import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText, wrapLanguageModel } from "ai";
 import { z } from "zod";
@@ -12,8 +12,8 @@ const openrouter = createOpenAICompatible({
 async function main() {
   await generateText({
     model: wrapLanguageModel({
-      model: openrouter("thudm/glm-4-32b:free"),
-      middleware: hermesToolMiddleware,
+      model: openrouter("google/gemma-3-27b-it"),
+      middleware: gemmaToolMiddleware,
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
