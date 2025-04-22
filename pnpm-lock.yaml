@@ -45,9 +45,15 @@ importers:
 
   packages/parser:
     dependencies:
+      '@ai-sdk/provider':
+        specifier: 2.0.0-canary.7
+        version: 2.0.0-canary.7
+      '@ai-sdk/provider-utils':
+        specifier: 3.0.0-canary.8
+        version: 3.0.0-canary.8(zod@3.24.3)
       ai:
-        specifier: ^4.3.9
-        version: 4.3.9(react@19.1.0)(zod@3.24.3)
+        specifier: 5.0.0-canary.10
+        version: 5.0.0-canary.10(zod@3.24.3)
       relaxed-json:
         specifier: ^1.0.3
         version: 1.0.3
@@ -76,8 +82,18 @@ packages:
     peerDependencies:
       zod: ^3.23.8
 
+  '@ai-sdk/provider-utils@3.0.0-canary.8':
+    resolution: {integrity: sha512-sgIp76MaOvP/FqiyM9i9RIdkA+S9aijZh+OqUBAXpz3cI4NZMHBid3HyGoyW4S5zJZv0tlFPbuXV54vF+LW3Uw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.23.8
+
   '@ai-sdk/provider@1.1.3':
     resolution: {integrity: sha512-qZMxYJ0qqX/RfnuIaab+zp8UAeJn/ygXXAffR5I4N0n1IrvA6qBsjc8hXLmBiMV2zoXlifkacF7sEFnYnjBcqg==}
+    engines: {node: '>=18'}
+
+  '@ai-sdk/provider@2.0.0-canary.7':
+    resolution: {integrity: sha512-HFzqa3pg8TZgjVzU5rNtRP0SRj9nSu8cJmxuRi1mwuRgpOAN+KZNKqGI3orjaVZjT5NvPEDsD5K2o0XBPT8Btg==}
     engines: {node: '>=18'}
 
   '@ai-sdk/react@1.2.9':
@@ -477,6 +493,12 @@ packages:
     peerDependenciesMeta:
       react:
         optional: true
+
+  ai@5.0.0-canary.10:
+    resolution: {integrity: sha512-I50SzUu+zjR5YJ62HRszgIenBJIUZd5+wkV0S0+7g5elF2/1/RlX40bWGUKzQWf3DKz3fUaRnb4opygQzwGGzg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.23.8
 
   ansi-colors@4.1.3:
     resolution: {integrity: sha512-/6w/C21Pm1A7aZitlI5Ni/2J6FFQN8i1Cvz3kHABAAbw93v/NlvKdVOqz7CCWz/3iv/JplRSEEZ83XION15ovw==}
@@ -1196,7 +1218,16 @@ snapshots:
       secure-json-parse: 2.7.0
       zod: 3.24.3
 
+  '@ai-sdk/provider-utils@3.0.0-canary.8(zod@3.24.3)':
+    dependencies:
+      '@ai-sdk/provider': 2.0.0-canary.7
+      zod: 3.24.3
+
   '@ai-sdk/provider@1.1.3':
+    dependencies:
+      json-schema: 0.4.0
+
+  '@ai-sdk/provider@2.0.0-canary.7':
     dependencies:
       json-schema: 0.4.0
 
@@ -1580,6 +1611,14 @@ snapshots:
       zod: 3.24.3
     optionalDependencies:
       react: 19.1.0
+
+  ai@5.0.0-canary.10(zod@3.24.3):
+    dependencies:
+      '@ai-sdk/provider': 2.0.0-canary.7
+      '@ai-sdk/provider-utils': 3.0.0-canary.8(zod@3.24.3)
+      '@opentelemetry/api': 1.9.0
+      zod: 3.24.3
+      zod-to-json-schema: 3.24.5(zod@3.24.3)
 
   ansi-colors@4.1.3: {}
 

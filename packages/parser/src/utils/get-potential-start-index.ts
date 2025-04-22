@@ -5,7 +5,7 @@
  */
 export function getPotentialStartIndex(
   text: string,
-  searchedText: string
+  searchedText: string,
 ): number | null {
   // Return null immediately if searchedText is empty.
   if (searchedText.length === 0) {
