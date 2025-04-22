@@ -20,7 +20,7 @@ pnpm install @ai-sdk-tool/parser
 
 ---
 
-## Example: Hermes‑Style Middleware
+## Example: Gemma3‑Style Middleware
 
 See `examples/core/src/stream-tool-call.ts` for the full demo:
 
