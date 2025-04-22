@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.0.2
+
+### Patch Changes
+
+- a5c0846: Remove unused dependency ai
+
 ## 2.0.1
 
 ### Patch Changes
