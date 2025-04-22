@@ -11,14 +11,11 @@ const openrouter = createOpenAICompatible({
 
 async function main() {
   const result = streamText({
-    // model: openrouter("openai/gpt-4o"),
     model: wrapLanguageModel({
       model: openrouter("google/gemma-3-27b-it"),
-      // model: openrouter("nousresearch/hermes-3-llama-3.1-70b"),
       middleware: gemmaToolMiddleware,
     }),
     system: "You are a helpful assistant.",
-    // prompt: "What is the weather in New York and Los Angeles?",
     prompt: "What is the weather in my city?",
     maxSteps: 4,
     tools: {
@@ -52,8 +49,8 @@ async function main() {
   });
 
   for await (const part of result.fullStream) {
-    if (part.type === "text-delta") {
-      process.stdout.write(part.textDelta);
+    if (part.type === "text") {
+      process.stdout.write(part.text);
     } else if (part.type === "tool-result") {
       console.log({
         name: part.toolName,
@@ -63,7 +60,7 @@ async function main() {
     }
   }
 
-  console.log("\n\n[done]");
+  console.log("\n\n<Complete>");
 }
 
 main().catch(console.error);

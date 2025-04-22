@@ -1,6 +1,6 @@
 {
   "name": "@ai-sdk-tool/parser",
-  "version": "1.0.2",
+  "version": "2.0.0",
   "description": "",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -22,12 +22,10 @@
   "dependencies": {
     "ai": "5.0.0-canary.10",
     "@ai-sdk/provider": "2.0.0-canary.7",
-    "@ai-sdk/provider-utils": "3.0.0-canary.8",
-    "relaxed-json": "^1.0.3"
+    "@ai-sdk/provider-utils": "3.0.0-canary.8"
   },
   "devDependencies": {
     "@types/node": "^22.14.1",
-    "@types/relaxed-json": "^1.0.4",
     "tsup": "^8.4.0"
   }
 }
