@@ -3,6 +3,7 @@ import type {
   LanguageModelV2Middleware,
   LanguageModelV2StreamPart,
   LanguageModelV2ToolCall,
+  LanguageModelV2Content,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 import { getPotentialStartIndex } from "./utils/get-potential-start-index";
@@ -145,15 +146,8 @@ export function createToolMiddleware({
     wrapGenerate: async ({ doGenerate }) => {
       const result = await doGenerate();
 
-      // NOTE: Needs more proper handling
-      if (result.content.length !== 1) {
-        return result;
-      }
-
-      if (
-        result.content[0].type === "text" &&
-        !result.content[0].text.includes(toolCallTag)
-      ) {
+      // Handle case: content is empty
+      if (result.content.length === 0) {
         return result;
       }
 
@@ -162,36 +156,123 @@ export function createToolMiddleware({
         "gs"
       );
 
-      const matches =
-        result.content[0].type === "text"
-          ? Array.from(result.content[0].text.matchAll(toolCallRegex))
-          : [];
-      const function_call_tuples = matches.map((match) => match[1] || match[2]);
+      // Process each content item using flatMap
+      const newContent = result.content.flatMap(
+        (contentItem): LanguageModelV2Content[] => {
+          // Keep non-text items or text items without the tool call tag as they are.
+          if (
+            contentItem.type !== "text" ||
+            !contentItem.text.includes(toolCallTag)
+          ) {
+            return [contentItem]; // Return as an array for flatMap
+          }
 
-      const tool_calls: LanguageModelV2ToolCall[] = function_call_tuples.map(
-        (toolCall) => {
-          const parsedToolCall = RJSON.parse(toolCall) as {
-            name: string;
-            arguments: string;
+          const text = contentItem.text;
+          const processedElements: LanguageModelV2Content[] = [];
+          let currentIndex = 0;
+          let match;
+
+          // --- Nested Tool Call Parsing Logic ---
+          const parseAndCreateToolCall = (
+            toolCallJson: string
+          ): LanguageModelV2ToolCall | null => {
+            try {
+              const parsedToolCall = RJSON.parse(toolCallJson) as {
+                name: string;
+                arguments: unknown; // Use unknown for initial parsing flexibility
+              };
+
+              if (
+                !parsedToolCall ||
+                typeof parsedToolCall.name !== "string" ||
+                typeof parsedToolCall.arguments === "undefined"
+              ) {
+                console.error(
+                  "Failed to parse tool call: Invalid structure",
+                  toolCallJson
+                );
+                return null;
+              }
+
+              return {
+                type: "tool-call",
+                toolCallType: "function",
+                toolCallId: generateId(),
+                toolName: parsedToolCall.name,
+                // Ensure args is always a JSON string
+                args:
+                  typeof parsedToolCall.arguments === "string"
+                    ? parsedToolCall.arguments
+                    : JSON.stringify(parsedToolCall.arguments),
+              };
+            } catch (error) {
+              console.error(
+                "Failed to parse tool call JSON:",
+                error,
+                "JSON:",
+                toolCallJson
+              );
+              return null; // Indicate failure
+            }
           };
+          // --- End of Nested Logic ---
 
-          const toolName = parsedToolCall.name;
-          const args = parsedToolCall.arguments;
+          // Use regex.exec in a loop to find all matches and indices
+          while ((match = toolCallRegex.exec(text)) !== null) {
+            const startIndex = match.index;
+            const endIndex = startIndex + match[0].length;
+            const toolCallJson = match[1]; // Captured group 1: the JSON content
 
-          return {
-            type: "tool-call",
-            toolCallType: "function",
-            toolCallId: generateId(),
-            toolName: toolName,
-            args: JSON.stringify(args),
-          } as LanguageModelV2ToolCall;
+            // 1. Add text segment *before* the match
+            if (startIndex > currentIndex) {
+              const textSegment = text.substring(currentIndex, startIndex);
+              // Add only if it contains non-whitespace characters
+              if (textSegment.trim()) {
+                processedElements.push({ type: "text", text: textSegment });
+              }
+            }
+
+            // 2. Parse and add the tool call
+            if (toolCallJson) {
+              const toolCallObject = parseAndCreateToolCall(toolCallJson);
+              if (toolCallObject) {
+                processedElements.push(toolCallObject);
+              } else {
+                // Handle parsing failure: Option 1: Log and add original match as text
+                console.warn(
+                  `Could not process tool call, keeping original text: ${match[0]}`
+                );
+                processedElements.push({ type: "text", text: match[0] });
+                // Option 2: Log and discard (do nothing here)
+                // Option 3: Create a specific error content part if supported
+              }
+            }
+
+            // 3. Update index for the next search
+            currentIndex = endIndex;
+
+            // Reset lastIndex if using exec with 'g' flag in a loop (though typically not needed if loop condition is `match !== null`)
+            // toolCallRegex.lastIndex = currentIndex;
+          }
+
+          // 4. Add any remaining text *after* the last match
+          if (currentIndex < text.length) {
+            const remainingText = text.substring(currentIndex);
+            // Add only if it contains non-whitespace characters
+            if (remainingText.trim()) {
+              processedElements.push({ type: "text", text: remainingText });
+            }
+          }
+
+          // Return the array of processed parts, replacing the original text item
+          return processedElements;
         }
       );
 
+      // Return the result with the potentially modified content array
       return {
         ...result,
-        // TODO: Return the remaining value after extracting the tool call tag.
-        content: [...tool_calls],
+        content: newContent,
       };
     },
 
