@@ -51,9 +51,6 @@ importers:
       '@ai-sdk/provider-utils':
         specifier: 3.0.0-canary.8
         version: 3.0.0-canary.8(zod@3.24.3)
-      ai:
-        specifier: 5.0.0-canary.10
-        version: 5.0.0-canary.10(zod@3.24.3)
     devDependencies:
       '@types/node':
         specifier: ^22.14.1
