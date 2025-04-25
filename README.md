@@ -1,5 +1,9 @@
 # Custom tool call parser for AI SDK
 
+> [!NOTE]
+> Depends on AI SDK v5 release, if you wish to use it on v4, please pin the package version to 1.0.0
+
+
 Allows tool calls to be used in the AI ​​SDK framework regardless of the model.
 
 ## Why This Exists
