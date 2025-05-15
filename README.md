@@ -1,5 +1,8 @@
 # Custom tool call parser for AI SDK
 
+[![npm](https://img.shields.io/npm/v/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
+[![npm](https://img.shields.io/npm/dt/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
+
 > [!NOTE]
 > Depends on AI SDK v5 release, if you wish to use it on v4, please pin the package version to 1.0.0
 
