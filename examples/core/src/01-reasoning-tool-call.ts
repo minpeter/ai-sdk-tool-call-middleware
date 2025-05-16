@@ -3,6 +3,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   extractReasoningMiddleware,
   generateText,
+  maxSteps,
   wrapLanguageModel,
 } from "ai";
 import { z } from "zod";
@@ -27,7 +28,7 @@ async function main() {
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
-    maxSteps: 4,
+    continueUntil: maxSteps(4),
     tools: {
       get_weather: {
         description:
