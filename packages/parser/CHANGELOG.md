@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.0.3
+
+### Patch Changes
+
+- 34d0e38: Bump to alpha.1
+
 ## 2.0.2
 
 ### Patch Changes
