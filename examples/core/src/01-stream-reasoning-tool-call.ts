@@ -1,6 +1,11 @@
 import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { extractReasoningMiddleware, streamText, wrapLanguageModel } from "ai";
+import {
+  extractReasoningMiddleware,
+  maxSteps,
+  streamText,
+  wrapLanguageModel,
+} from "ai";
 import { z } from "zod";
 
 const friendli = createOpenAICompatible({
@@ -23,7 +28,7 @@ async function main() {
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in my city?",
-    maxSteps: 4,
+    continueUntil: maxSteps(4),
     tools: {
       get_location: {
         description: "Get the User's location.",
