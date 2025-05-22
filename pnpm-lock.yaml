@@ -51,6 +51,12 @@ importers:
       '@ai-sdk/provider-utils':
         specifier: 3.0.0-alpha.3
         version: 3.0.0-alpha.3(zod@3.25.16)
+      '@huggingface/hub':
+        specifier: ^2.1.0
+        version: 2.1.0
+      '@huggingface/jinja':
+        specifier: ^0.5.0
+        version: 0.5.0
     devDependencies:
       '@types/node':
         specifier: ^22.15.21
@@ -285,6 +291,18 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@huggingface/hub@2.1.0':
+    resolution: {integrity: sha512-L+125tAXwCOwVd8n4qQlT20ZJP7I5sEXOLNrIzpgkUG6eMIsGlxT+9hmmiCH/LGmjbXjlcRHoPB8GGT3zCws4A==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  '@huggingface/jinja@0.5.0':
+    resolution: {integrity: sha512-Ptc03/jGRiYRoi0bUYKZ14MkDslsBRT24oxmsvUlfYrvQMldrxCevhPnT+hfX8awKTT8/f/0ZBBWldoeAcMHdQ==}
+    engines: {node: '>=18'}
+
+  '@huggingface/tasks@0.19.8':
+    resolution: {integrity: sha512-gR88OvYQQ2zu1Dt/tfFRVWJRfsKCdssxJBb8bz3tVd9fh3rneNE/pjkaGyG3oT1VlHv7wEmrqrnkmMcXy8O0rg==}
 
   '@isaacs/cliui@8.0.2':
     resolution: {integrity: sha512-O8jcjabXaleOG9DQ0+ARXWZBTfnP4WNAqzuiJK7ll44AmxGKv/J2M4TPjxjY3znBCfvBXFzucm1twdyFybFqEA==}
@@ -1339,6 +1357,14 @@ snapshots:
 
   '@esbuild/win32-x64@0.25.4':
     optional: true
+
+  '@huggingface/hub@2.1.0':
+    dependencies:
+      '@huggingface/tasks': 0.19.8
+
+  '@huggingface/jinja@0.5.0': {}
+
+  '@huggingface/tasks@0.19.8': {}
 
   '@isaacs/cliui@8.0.2':
     dependencies:
