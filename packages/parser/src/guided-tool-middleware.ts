@@ -13,7 +13,11 @@ export function createGuidedToolMiddleware({
   toolResponseTag,
   toolResponseEndTag,
   toolSystemPromptTemplate,
-  guidedGeneration: { completionModel, renderTemplateHfModel },
+  guidedGeneration: {
+    completionBaseUrl,
+    completionApiKey,
+    renderTemplateHfModel,
+  },
 }: {
   toolCallTag: string;
   toolCallEndTag: string;
@@ -21,7 +25,8 @@ export function createGuidedToolMiddleware({
   toolResponseEndTag: string;
   toolSystemPromptTemplate: (tools: string) => string;
   guidedGeneration: {
-    completionModel: LanguageModelV2; // The model to use for guided generation
+    completionBaseUrl: string; // The base url to use for guided generation
+    completionApiKey?: string; // The API key to use for guided generation
     renderTemplateHfModel: string; // The Hugging Face model ID for prefill chat template rendering
   };
 }): LanguageModelV2Middleware {
@@ -37,8 +42,6 @@ export function createGuidedToolMiddleware({
 
       // TODO: 멈춘 이유가 stop이라면
       // 가이드된 생성을 트리거함
-
-      console.log(params.prompt);
 
       const messages = convertToolPrompt({
         paramsPrompt: params.prompt,
@@ -69,6 +72,33 @@ export function createGuidedToolMiddleware({
       const prompt = tmpl.render({ messages: prefillMessages, prefill: true });
 
       console.log("prompt", prompt);
+
+      console.log("modelId", model.modelId);
+      console.log("completionBaseUrl", completionBaseUrl);
+
+      // fetch 요청 생성하기, post
+
+      const response = await fetch(completionBaseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${completionApiKey}`,
+        },
+        body: JSON.stringify({
+          model: model.modelId,
+          prompt: prompt,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Error in guided generation: ${response.status} ${response.statusText}`
+        );
+      }
+
+      const data = await response.json();
+
+      console.log("data", data);
 
       return {
         ...result,

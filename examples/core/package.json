@@ -13,6 +13,7 @@
     "@ai-sdk-tool/parser": "workspace:*",
     "@ai-sdk/openai-compatible": "1.0.0-alpha.3",
     "ai": "5.0.0-alpha.3",
+    "openai": "^4.102.0",
     "tsx": "^4.19.4",
     "zod": "^3.25.16"
   },

@@ -3,6 +3,8 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText, maxSteps, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
+import OpenAI from "openai";
+
 const openrouter = createOpenAICompatible({
   name: "openrouter",
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -28,9 +30,8 @@ For each function call return a json object with function name and arguments wit
   toolResponseEndTag: "</tool_response>",
   guidedGeneration: {
     renderTemplateHfModel: "meta-llama/Llama-3.1-8B-Instruct",
-    completionModel: openrouter.completionModel(
-      "meta-llama/Llama-3.1-8B-Instruct"
-    ),
+    completionBaseUrl: "https://openrouter.ai/api/v1/completions",
+    completionApiKey: process.env.OPENROUTER_API_KEY,
   },
 });
 
