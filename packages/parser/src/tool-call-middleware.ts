@@ -6,8 +6,7 @@ import type {
   LanguageModelV2Content,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import { getPotentialStartIndex } from "./utils/get-potential-start-index";
-import * as RJSON from "./utils/relaxed-json";
+import { getPotentialStartIndex, RJSON } from "./utils";
 
 export function createToolMiddleware({
   toolCallTag,
