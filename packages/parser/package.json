@@ -21,10 +21,7 @@
   "packageManager": "pnpm@9.14.4+sha1.64b6e81e79630419b675c555ef3b65607cfd6315",
   "dependencies": {
     "@ai-sdk/provider": "2.0.0-alpha.3",
-    "@ai-sdk/provider-utils": "3.0.0-alpha.3",
-    "@huggingface/hub": "^2.1.0",
-    "@huggingface/jinja": "^0.5.0",
-    "openai": "^4.102.0"
+    "@ai-sdk/provider-utils": "3.0.0-alpha.3"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",
