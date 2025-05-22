@@ -6,8 +6,8 @@ import type {
   LanguageModelV2Content,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import { getPotentialStartIndex } from "./utils/get-potential-start-index";
-import * as RJSON from "./utils/relaxed-json";
+import { getPotentialStartIndex, RJSON } from "./utils";
+import { convertToolPrompt } from "./utils/conv-tool-prompt";
 
 export function createToolMiddleware({
   toolCallTag,
@@ -277,67 +277,15 @@ export function createToolMiddleware({
     },
 
     transformParams: async ({ params }) => {
-      const processedPrompt = params.prompt.map((message) => {
-        if (message.role === "assistant") {
-          return {
-            role: "assistant",
-            content: message.content.map((content) => {
-              if (content.type === "tool-call") {
-                return {
-                  type: "text",
-                  text: `${toolCallTag}${JSON.stringify({
-                    arguments: content.args,
-                    name: content.toolName,
-                  })}${toolCallEndTag}`,
-                };
-              }
-
-              return content;
-            }),
-          };
-        } else if (message.role === "tool") {
-          return {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: message.content
-                  .map(
-                    (content) =>
-                      `${toolResponseTag}${JSON.stringify({
-                        toolName: content.toolName,
-                        result: content.result,
-                      })}${toolResponseEndTag}`
-                  )
-                  .join("\n"),
-              },
-            ],
-          };
-        }
-
-        return message;
-      }) as LanguageModelV2Prompt;
-
-      const HermesPrompt = toolSystemPromptTemplate(
-        JSON.stringify(Object.entries(params.tools || {}))
-      );
-
-      const toolSystemPrompt: LanguageModelV2Prompt =
-        processedPrompt[0].role === "system"
-          ? [
-              {
-                role: "system",
-                content: HermesPrompt + "\n\n" + processedPrompt[0].content,
-              },
-              ...processedPrompt.slice(1),
-            ]
-          : [
-              {
-                role: "system",
-                content: HermesPrompt,
-              },
-              ...processedPrompt,
-            ];
+      const toolSystemPrompt = convertToolPrompt({
+        paramsPrompt: params.prompt,
+        paramsTools: params.tools,
+        toolSystemPromptTemplate,
+        toolCallTag,
+        toolCallEndTag,
+        toolResponseTag,
+        toolResponseEndTag,
+      });
 
       return {
         ...params,
