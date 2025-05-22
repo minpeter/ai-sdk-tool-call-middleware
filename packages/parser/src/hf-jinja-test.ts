@@ -3,24 +3,24 @@ import { downloadFile } from "@huggingface/hub";
 
 /**
  * chatTemplate class: Initialize with model and (optionally) HuggingFace token, then render prompts with messages.
+ * This class is instantiated using the static factory method `create()`.
  */
 export class chatTemplate {
   private chatTemplateStr: string | undefined;
   private config: any;
 
   /**
-   * Initialize chatTemplate with model name and optional HuggingFace token.
-   * Downloads and parses the tokenizer_config.json and chat template.
+   * Private constructor. Use chatTemplate.create() for instantiation.
    */
-  constructor(
+  private constructor(
     private model: string,
     private hfToken?: string
   ) {}
 
   /**
-   * Loads the chat template and config from the model repo (must be called before render).
+   * Loads the chat template and config from the model repo.
    */
-  async init() {
+  private async init() {
     const modelConfig: any = await downloadFile({
       repo: this.model,
       path: "tokenizer_config.json",
@@ -42,6 +42,21 @@ export class chatTemplate {
       console.log(this.config.chat_template);
       throw new Error("chat_template is not a string");
     }
+  }
+
+  /**
+   * Creates and initializes a new chatTemplate instance.
+   * @param model The model name.
+   * @param hfToken Optional HuggingFace token.
+   * @returns A Promise that resolves to an initialized chatTemplate instance.
+   */
+  public static async create(
+    model: string,
+    hfToken?: string
+  ): Promise<chatTemplate> {
+    const instance = new chatTemplate(model, hfToken);
+    await instance.init();
+    return instance;
   }
 
   /**
@@ -108,8 +123,7 @@ async function main() {
   ];
   const model = "Qwen/Qwen2.5-7B";
 
-  const tmpl = new chatTemplate(model /*, hfToken */);
-  await tmpl.init();
+  const tmpl = await chatTemplate.create(model /*, hfToken */);
   const prompt = tmpl.render({ messages, prefill: true });
   console.log("\n===== Rendered Prompt =====\n");
   console.log(prompt);
