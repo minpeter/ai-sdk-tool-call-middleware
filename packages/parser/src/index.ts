@@ -1,3 +1,4 @@
+import { createGuidedToolMiddleware } from "./guided-tool-middleware";
 import { createToolMiddleware } from "./tool-call-middleware";
 
 const gemmaToolMiddleware = createToolMiddleware({
@@ -35,4 +36,9 @@ For each function call return a json object with function name and arguments wit
   toolResponseEndTag: "</tool_response>",
 });
 
-export { gemmaToolMiddleware, hermesToolMiddleware, createToolMiddleware };
+export {
+  gemmaToolMiddleware,
+  hermesToolMiddleware,
+  createToolMiddleware,
+  createGuidedToolMiddleware,
+};

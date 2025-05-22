@@ -1,5 +1,7 @@
 import { Template } from "@huggingface/jinja";
 import { downloadFile } from "@huggingface/hub";
+import { LanguageModelV2Prompt } from "@ai-sdk/provider";
+import { env } from "process";
 
 /**
  * chatTemplate class: Initialize with model and (optionally) HuggingFace token, then render prompts with messages.
@@ -50,11 +52,14 @@ export class chatTemplate {
    * @param hfToken Optional HuggingFace token.
    * @returns A Promise that resolves to an initialized chatTemplate instance.
    */
-  public static async create(
-    model: string,
-    hfToken?: string
-  ): Promise<chatTemplate> {
-    const instance = new chatTemplate(model, hfToken);
+  public static async create({
+    model,
+    hfToken,
+  }: {
+    model: string;
+    hfToken?: string;
+  }): Promise<chatTemplate> {
+    const instance = new chatTemplate(model, hfToken ?? env.HF_TOKEN);
     await instance.init();
     return instance;
   }
@@ -69,15 +74,52 @@ export class chatTemplate {
     messages,
     prefill = false,
   }: {
-    messages: Array<{ role: string; content: string }>;
+    messages: LanguageModelV2Prompt;
     prefill?: boolean;
   }): string {
     if (!this.chatTemplateStr || !this.config) {
-      throw new Error("chattemplate is not initialized. Call init() first.");
+      throw new Error("chatTemplate is not initialized. Call init() first.");
     }
+
+    // LanguageModelV2Prompt can have various roles such as system, user, assistant, etc.
+    // Since the chat_template may support the system role as well, do not restrict the role and only process the content correctly.
+    const processedMessages: Array<{
+      role: string;
+      content: string;
+    }> = messages.map((message) => {
+      // Pass the role as is (system, user, assistant, etc.)
+      return {
+        role: message.role,
+        content: Array.isArray(message.content)
+          ? message.content
+              .map((content: any) => {
+                if (typeof content === "string") {
+                  return content;
+                } else if (
+                  content.type === "text" &&
+                  typeof content.text === "string"
+                ) {
+                  return content.text;
+                } else {
+                  throw new Error(
+                    `Invalid content type: ${JSON.stringify(content)}`
+                  );
+                }
+              })
+              .join("")
+          : typeof message.content === "string"
+            ? message.content
+            : (() => {
+                throw new Error(
+                  `Invalid message.content type: ${JSON.stringify(message.content)}`
+                );
+              })(),
+      };
+    });
+
     const template = new Template(this.chatTemplateStr);
     const result = template.render({
-      messages,
+      messages: processedMessages,
       bos_token: this.config.bos_token,
       eos_token: this.config.eos_token,
       continue_final_message: prefill,
@@ -86,18 +128,41 @@ export class chatTemplate {
     let finalResult = result;
     if (prefill) {
       const finalMessage = messages[messages.length - 1].content;
-      if (typeof finalMessage === "string" && finalMessage.trim().length > 0) {
-        const idx = result.lastIndexOf(finalMessage.trim());
+      let finalMessageText = "";
+      if (typeof finalMessage === "string") {
+        finalMessageText = finalMessage;
+      } else if (Array.isArray(finalMessage)) {
+        finalMessageText = finalMessage
+          .map((content) => {
+            if (typeof content === "string") {
+              return content;
+            } else if (
+              content.type === "text" &&
+              typeof content.text === "string"
+            ) {
+              return content.text;
+            } else {
+              throw new Error(
+                `Invalid content type in last message: ${JSON.stringify(content)}`
+              );
+            }
+          })
+          .join("");
+      }
+      if (finalMessageText.trim().length > 0) {
+        const idx = result.lastIndexOf(finalMessageText.trim());
         if (idx === -1) {
           throw new Error(
             "continue_final_message is true but the last message does not appear in the rendered result!"
           );
         }
         // Preserve whitespace if possible
-        if (result.slice(idx, idx + finalMessage.length) === finalMessage) {
-          finalResult = result.slice(0, idx + finalMessage.length);
+        if (
+          result.slice(idx, idx + finalMessageText.length) === finalMessageText
+        ) {
+          finalResult = result.slice(0, idx + finalMessageText.length);
         } else {
-          finalResult = result.slice(0, idx + finalMessage.trim().length);
+          finalResult = result.slice(0, idx + finalMessageText.trim().length);
         }
       } else {
         throw new Error("Last message content is empty or not a string");
@@ -109,21 +174,35 @@ export class chatTemplate {
 
 // Example usage (main function)
 async function main() {
-  const messages = [
-    { role: "user", content: "Hello, how are you?" },
+  const messages: LanguageModelV2Prompt = [
+    { role: "user", content: [{ type: "text", text: "Hello, how are you?" }] },
     {
       role: "assistant",
-      content: "I'm doing great. How can I help you today?",
+      content: [
+        { type: "text", text: "I'm doing great. How can I help you today?" },
+      ],
     },
     {
       role: "user",
-      content: "I'd like to show off how chat templating works!",
+      content: [
+        {
+          type: "text",
+          text: "I'd like to show off how chat templating works!",
+        },
+      ],
     },
-    { role: "assistant", content: "PREFILLED:TESTING" },
+    {
+      role: "assistant",
+      content: [{ type: "text", text: "PREFILLED:TESTING" }],
+    },
   ];
   const model = "Qwen/Qwen2.5-7B";
 
-  const tmpl = await chatTemplate.create(model /*, hfToken */);
+  const tmpl = await chatTemplate.create({
+    model: model,
+    // hfToken: "FILL_IN_YOUR_HUGGINGFACE_TOKEN",
+  });
+
   const prompt = tmpl.render({ messages, prefill: true });
   console.log("\n===== Rendered Prompt =====\n");
   console.log(prompt);
