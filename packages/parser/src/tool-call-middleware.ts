@@ -29,12 +29,12 @@ export function createToolMiddleware({
 
       let isFirstToolCall = true;
       let isFirstText = true;
-      let afterSwitch = false;
-      let isToolCall = false;
-      let buffer = "";
+      let justSwitchedMode = false;
+      let parsingToolCall = false;
+      let textChunkBuffer = "";
 
       let toolCallIndex = -1;
-      let toolCallBuffer: string[] = [];
+      let bufferedToolCallParts: string[] = [];
 
       const transformStream = new TransformStream<
         LanguageModelV2StreamPart,
@@ -42,8 +42,8 @@ export function createToolMiddleware({
       >({
         transform(chunk, controller) {
           if (chunk.type === "finish") {
-            if (toolCallBuffer.length > 0) {
-              toolCallBuffer.forEach((toolCall) => {
+            if (bufferedToolCallParts.length > 0) {
+              bufferedToolCallParts.forEach((toolCall) => {
                 try {
                   const parsedToolCall = RJSON.parse(toolCall) as {
                     name: string;
@@ -57,12 +57,21 @@ export function createToolMiddleware({
                     toolName: parsedToolCall.name,
                     args: JSON.stringify(parsedToolCall.arguments),
                   });
-                } catch (e) {
-                  console.error(`Error parsing tool call: ${toolCall}`, e);
+                } catch (e: any) {
+                  // Log the original text that failed parsing
+                  console.error(
+                    `Error parsing tool call JSON: "${toolCall}"`,
+                    e
+                  );
 
                   controller.enqueue({
                     type: "text",
-                    text: `Failed to parse tool call: ${e}`,
+                    text: JSON.stringify({
+                      errorType: "tool-call-parsing-error",
+                      source: "tool-call-parsing",
+                      message: e.message || "Failed to parse tool call JSON",
+                      details: toolCall, // The string that failed to parse
+                    }),
                   });
                 }
               });
@@ -77,21 +86,21 @@ export function createToolMiddleware({
             return;
           }
 
-          buffer += chunk.text;
+          textChunkBuffer += chunk.text;
 
           function publish(text: string) {
             if (text.length > 0) {
               const prefix =
-                afterSwitch && (isToolCall ? !isFirstToolCall : !isFirstText)
+                justSwitchedMode && (parsingToolCall ? !isFirstToolCall : !isFirstText)
                   ? "\n" // separator
                   : "";
 
-              if (isToolCall) {
-                if (!toolCallBuffer[toolCallIndex]) {
-                  toolCallBuffer[toolCallIndex] = "";
+              if (parsingToolCall) {
+                if (!bufferedToolCallParts[toolCallIndex]) {
+                  bufferedToolCallParts[toolCallIndex] = "";
                 }
 
-                toolCallBuffer[toolCallIndex] += text;
+                bufferedToolCallParts[toolCallIndex] += text;
               } else {
                 controller.enqueue({
                   type: "text",
@@ -99,9 +108,9 @@ export function createToolMiddleware({
                 });
               }
 
-              afterSwitch = false;
+              justSwitchedMode = false;
 
-              if (isToolCall) {
+              if (parsingToolCall) {
                 isFirstToolCall = false;
               } else {
                 isFirstText = false;
@@ -110,28 +119,28 @@ export function createToolMiddleware({
           }
 
           do {
-            const nextTag = isToolCall ? toolCallEndTag : toolCallTag;
-            const startIndex = getPotentialStartIndex(buffer, nextTag);
+            const nextTag = parsingToolCall ? toolCallEndTag : toolCallTag;
+            const startIndex = getPotentialStartIndex(textChunkBuffer, nextTag);
 
             // no opening or closing tag found, publish the buffer
             if (startIndex == null) {
-              publish(buffer);
-              buffer = "";
+              publish(textChunkBuffer);
+              textChunkBuffer = "";
               break;
             }
 
             // publish text before the tag
-            publish(buffer.slice(0, startIndex));
+            publish(textChunkBuffer.slice(0, startIndex));
 
-            const foundFullMatch = startIndex + nextTag.length <= buffer.length;
+            const foundFullMatch = startIndex + nextTag.length <= textChunkBuffer.length;
 
             if (foundFullMatch) {
-              buffer = buffer.slice(startIndex + nextTag.length);
+              textChunkBuffer = textChunkBuffer.slice(startIndex + nextTag.length);
               toolCallIndex++;
-              isToolCall = !isToolCall;
-              afterSwitch = true;
+              parsingToolCall = !parsingToolCall;
+              justSwitchedMode = true;
             } else {
-              buffer = buffer.slice(startIndex);
+              textChunkBuffer = textChunkBuffer.slice(startIndex);
               break;
             }
           } while (true);
@@ -175,7 +184,8 @@ export function createToolMiddleware({
           // --- Nested Tool Call Parsing Logic ---
           const parseAndCreateToolCall = (
             toolCallJson: string
-          ): LanguageModelV2ToolCall | null => {
+          ): LanguageModelV2ToolCall | LanguageModelV2Content => {
+            // Changed return type
             try {
               const parsedToolCall = RJSON.parse(toolCallJson) as {
                 name: string;
@@ -191,7 +201,18 @@ export function createToolMiddleware({
                   "Failed to parse tool call: Invalid structure",
                   toolCallJson
                 );
-                return null;
+                // Return structured error as a text part
+                return {
+                  type: "text",
+                  text: JSON.stringify({
+                    errorType: "tool-call-parsing-error",
+                    originalText: toolCallJson,
+                    error: {
+                      message: "Invalid tool call structure",
+                      data: parsedToolCall, // Include what was parsed, if anything
+                    },
+                  }),
+                };
               }
 
               return {
@@ -212,7 +233,19 @@ export function createToolMiddleware({
                 "JSON:",
                 toolCallJson
               );
-              return null; // Indicate failure
+              // Return structured error as a text part
+              return {
+                type: "text",
+                text: JSON.stringify({
+                  errorType: "tool-call-parsing-error",
+                  originalText: toolCallJson,
+                  error: {
+                    message: (error as Error).message || "Failed to parse tool call JSON",
+                    // Avoid serializing the raw error object if it's complex or circular
+                    details: error.toString(), 
+                  },
+                }),
+              };
             }
           };
           // --- End of Nested Logic ---
@@ -234,17 +267,18 @@ export function createToolMiddleware({
 
             // 2. Parse and add the tool call
             if (toolCallJson) {
-              const toolCallObject = parseAndCreateToolCall(toolCallJson);
-              if (toolCallObject) {
-                processedElements.push(toolCallObject);
+              const parsedResult = parseAndCreateToolCall(toolCallJson);
+              // Check if the result is a tool call or a text (error) part
+              if (parsedResult.type === "tool-call") {
+                processedElements.push(parsedResult as LanguageModelV2ToolCall);
               } else {
-                // Handle parsing failure: Option 1: Log and add original match as text
+                // It's a text part representing an error
                 console.warn(
-                  `Could not process tool call, keeping original text: ${match[0]}`
+                  `Could not fully process tool call. Original text wrapped in error JSON: ${
+                    (parsedResult as { text: string }).text
+                  }`
                 );
-                processedElements.push({ type: "text", text: match[0] });
-                // Option 2: Log and discard (do nothing here)
-                // Option 3: Create a specific error content part if supported
+                processedElements.push(parsedResult); // Add the text error content part
               }
             }
 
