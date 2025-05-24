@@ -25,21 +25,44 @@ export function convertToolPrompt({
 }): LanguageModelV2Prompt {
   const processedPrompt = paramsPrompt.map((message) => {
     if (message.role === "assistant") {
-      return {
-        role: "assistant",
-        content: message.content.map((content) => {
-          if (content.type === "tool-call") {
-            return {
+      // Convert and merge tool-call and text type content while preserving order
+      const mergedContents: typeof message.content = [];
+      for (const content of message.content) {
+        if (content.type === "tool-call") {
+          mergedContents.push({
+            type: "text",
+            text: `${toolCallTag}${JSON.stringify({
+              arguments: content.args,
+              name: content.toolName,
+            })}${toolCallEndTag}`,
+          });
+        } else {
+          mergedContents.push(content);
+        }
+      }
+      // Merge consecutive text blocks into one
+      const finalContents: typeof message.content = [];
+      for (const item of mergedContents) {
+        if (
+          finalContents.length > 0 &&
+          item.type === "text" &&
+          finalContents[finalContents.length - 1].type === "text"
+        ) {
+          // Merge with the last text block
+          const last = finalContents[finalContents.length - 1];
+          if (last.type === "text" && item.type === "text") {
+            finalContents[finalContents.length - 1] = {
               type: "text",
-              text: `${toolCallTag}${JSON.stringify({
-                arguments: content.args,
-                name: content.toolName,
-              })}${toolCallEndTag}`,
+              text: last.text + "\n" + item.text,
             };
           }
-
-          return content;
-        }),
+        } else {
+          finalContents.push(item);
+        }
+      }
+      return {
+        role: "assistant",
+        content: finalContents,
       };
     } else if (message.role === "tool") {
       return {
