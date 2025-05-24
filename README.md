@@ -34,7 +34,7 @@ See `examples/core/src/00-stream-tool-call.ts` for the full demo:
 ```typescript
 // filepath: examples/core/src/00-stream-tool-call.ts
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { wrapLanguageModel, maxSteps, streamText } from 'ai';
+import { wrapLanguageModel, stepCountIs, streamText } from 'ai';
 import { gemmaToolMiddleware } from '@ai-sdk-tool/parser';
 
 const openrouter = createOpenAICompatible({ /* ... */ });
@@ -47,7 +47,7 @@ async function main() {
     }),
     system: 'You are a helpful assistant.',
     prompt: 'What is the weather in my city?',
-    continueUntil: maxSteps(4),
+    stopWhen: stepCountIs(4),
     tools: {
       get_location: { /* ... */ },
       get_weather: { /* ... */ },

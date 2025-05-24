@@ -11,8 +11,8 @@
   "license": "ISC",
   "dependencies": {
     "@ai-sdk-tool/parser": "workspace:*",
-    "@ai-sdk/openai-compatible": "1.0.0-alpha.3",
-    "ai": "5.0.0-alpha.3",
+    "@ai-sdk/openai-compatible": "1.0.0-alpha.4",
+    "ai": "5.0.0-alpha.4",
     "tsx": "^4.19.4",
     "zod": "^3.25.16"
   },
