@@ -25,7 +25,7 @@ export function convertToolPrompt({
 }): LanguageModelV2Prompt {
   const processedPrompt = paramsPrompt.map((message) => {
     if (message.role === "assistant") {
-      // tool-call과 text 타입의 content를 순서를 지켜 변환 및 머지
+      // Convert and merge tool-call and text type content while preserving order
       const mergedContents: typeof message.content = [];
       for (const content of message.content) {
         if (content.type === "tool-call") {
