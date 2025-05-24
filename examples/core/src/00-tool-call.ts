@@ -1,6 +1,6 @@
 import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { generateText, maxSteps, wrapLanguageModel } from "ai";
+import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
 const openrouter = createOpenAICompatible({
@@ -17,7 +17,7 @@ async function main() {
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
-    continueUntil: maxSteps(4),
+    stopWhen: stepCountIs(4),
     tools: {
       get_weather: {
         description:

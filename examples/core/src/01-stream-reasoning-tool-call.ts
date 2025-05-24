@@ -2,7 +2,7 @@ import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   extractReasoningMiddleware,
-  maxSteps,
+  stepCountIs,
   streamText,
   wrapLanguageModel,
 } from "ai";
@@ -28,7 +28,7 @@ async function main() {
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in my city?",
-    continueUntil: maxSteps(4),
+    stopWhen: stepCountIs(4),
     tools: {
       get_location: {
         description: "Get the User's location.",
