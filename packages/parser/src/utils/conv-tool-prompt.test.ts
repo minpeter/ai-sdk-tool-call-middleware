@@ -205,6 +205,10 @@ describe("convertToolPrompt", () => {
       ]);
     });
 
+    /**
+     * NOTE: This test covers a situation that does not commonly occur in real scenarios.
+     * It is added simply to test the safety and robustness of the code.
+     */
     test("interleaves text and tool-call messages, preserving order and formatting", () => {
       const testParamsPrompt: LanguageModelV2Prompt = [
         {
