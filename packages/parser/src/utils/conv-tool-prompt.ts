@@ -52,9 +52,9 @@ export function convertToolPrompt({
           finalContents[finalContents.length - 1] = {
             type: "text",
             text:
-              (finalContents[finalContents.length - 1] as any).text +
+              finalContents[finalContents.length - 1].text +
               "\n" +
-              (item as any).text,
+              item.text,
           };
         } else {
           finalContents.push(item);
