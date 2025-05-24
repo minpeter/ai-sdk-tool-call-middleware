@@ -156,5 +156,111 @@ describe("convertToolPrompt", () => {
         },
       ]);
     });
+
+    test("should convert multiple tool calls with text correctly", () => {
+      const testParamsPrompt: LanguageModelV2Prompt = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Calling tools to fetch weather information.",
+            },
+            {
+              type: "tool-call",
+              toolName: "get_weather",
+              toolCallId: "12345",
+              args: {
+                location: "San Francisco, CA",
+                unit: "celsius",
+              },
+            },
+            {
+              type: "tool-call",
+              toolName: "get_weather",
+              toolCallId: "67890",
+              args: {
+                location: "New York, NY",
+                unit: "fahrenheit",
+              },
+            },
+          ],
+        },
+      ];
+
+      const result = convertToolPrompt({
+        paramsPrompt: testParamsPrompt,
+        paramsTools: [],
+        toolSystemPromptTemplate: simpleToolSystemPromptTemplate,
+        ...TEST_TAGS,
+      });
+
+      expect(result[1].content).toEqual([
+        {
+          type: "text",
+          text: `Calling tools to fetch weather information.
+<TOOL_CALL>{"arguments":{"location":"San Francisco, CA","unit":"celsius"},"name":"get_weather"}</TOOL_CALL>
+<TOOL_CALL>{"arguments":{"location":"New York, NY","unit":"fahrenheit"},"name":"get_weather"}</TOOL_CALL>`,
+        },
+      ]);
+    });
+
+    test("should convert multiple tool calls with text correctly", () => {
+      const testParamsPrompt: LanguageModelV2Prompt = [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "First, I will check the weather in San Francisco.",
+            },
+            {
+              type: "tool-call",
+              toolName: "get_weather",
+              toolCallId: "12345",
+              args: {
+                location: "San Francisco, CA",
+                unit: "celsius",
+              },
+            },
+            {
+              type: "text",
+              text: "Next, I will check the weather in New York.",
+            },
+            {
+              type: "tool-call",
+              toolName: "get_weather",
+              toolCallId: "67890",
+              args: {
+                location: "New York, NY",
+                unit: "fahrenheit",
+              },
+            },
+            {
+              type: "text",
+              text: "Now, I will provide an answer based on the given information.",
+            },
+          ],
+        },
+      ];
+
+      const result = convertToolPrompt({
+        paramsPrompt: testParamsPrompt,
+        paramsTools: [],
+        toolSystemPromptTemplate: simpleToolSystemPromptTemplate,
+        ...TEST_TAGS,
+      });
+
+      expect(result[1].content).toEqual([
+        {
+          type: "text",
+          text: `First, I will check the weather in San Francisco.
+<TOOL_CALL>{"arguments":{"location":"San Francisco, CA","unit":"celsius"},"name":"get_weather"}</TOOL_CALL>
+Next, I will check the weather in New York.
+<TOOL_CALL>{"arguments":{"location":"New York, NY","unit":"fahrenheit"},"name":"get_weather"}</TOOL_CALL>
+Now, I will provide an answer based on the given information.`,
+        },
+      ]);
+    });
   });
 });

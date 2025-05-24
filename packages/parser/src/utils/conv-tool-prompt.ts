@@ -25,21 +25,44 @@ export function convertToolPrompt({
 }): LanguageModelV2Prompt {
   const processedPrompt = paramsPrompt.map((message) => {
     if (message.role === "assistant") {
+      // tool-call과 text 타입의 content를 순서를 지켜 변환 및 머지
+      const mergedContents: typeof message.content = [];
+      for (const content of message.content) {
+        if (content.type === "tool-call") {
+          mergedContents.push({
+            type: "text",
+            text: `${toolCallTag}${JSON.stringify({
+              arguments: content.args,
+              name: content.toolName,
+            })}${toolCallEndTag}`,
+          });
+        } else {
+          mergedContents.push(content);
+        }
+      }
+      // 연속된 text 블록을 하나로 합침
+      const finalContents: typeof message.content = [];
+      for (const item of mergedContents) {
+        if (
+          finalContents.length > 0 &&
+          item.type === "text" &&
+          finalContents[finalContents.length - 1].type === "text"
+        ) {
+          // 마지막 text와 합침
+          finalContents[finalContents.length - 1] = {
+            type: "text",
+            text:
+              (finalContents[finalContents.length - 1] as any).text +
+              "\n" +
+              (item as any).text,
+          };
+        } else {
+          finalContents.push(item);
+        }
+      }
       return {
         role: "assistant",
-        content: message.content.map((content) => {
-          if (content.type === "tool-call") {
-            return {
-              type: "text",
-              text: `${toolCallTag}${JSON.stringify({
-                arguments: content.args,
-                name: content.toolName,
-              })}${toolCallEndTag}`,
-            };
-          }
-
-          return content;
-        }),
+        content: finalContents,
       };
     } else if (message.role === "tool") {
       return {
