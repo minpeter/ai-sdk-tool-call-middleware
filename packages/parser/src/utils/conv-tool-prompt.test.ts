@@ -42,7 +42,7 @@ const simpleToolSystemPromptTemplate = (toolsString: string) =>
 describe("convertToolPrompt", () => {
   // 1. Basic Tool Prompt Generation
   describe("Basic Tool Prompt Generation", () => {
-    test("should generate prompt with tools for a string input prompt", () => {
+    test("generates a system prompt with tool definitions for a user text prompt", () => {
       const testParamsPrompt: LanguageModelV2Prompt = [
         {
           role: "user",
@@ -83,7 +83,7 @@ describe("convertToolPrompt", () => {
   });
 
   describe("Tool Call and Response Handling", () => {
-    test("should convert single tool call correctly", () => {
+    test("converts a single tool-call message to the expected tool call tag format", () => {
       const testParamsPrompt: LanguageModelV2Prompt = [
         {
           role: "assistant",
@@ -114,7 +114,7 @@ describe("convertToolPrompt", () => {
       });
     });
 
-    test("should convert multiple tool calls correctly", () => {
+    test("converts multiple tool-call messages into a single text block with tool call tags", () => {
       const testParamsPrompt: LanguageModelV2Prompt = [
         {
           role: "assistant",
@@ -157,7 +157,7 @@ describe("convertToolPrompt", () => {
       ]);
     });
 
-    test("should convert multiple tool calls with text correctly", () => {
+    test("combines text and multiple tool-call messages into a single text block with tool call tags", () => {
       const testParamsPrompt: LanguageModelV2Prompt = [
         {
           role: "assistant",
@@ -205,7 +205,7 @@ describe("convertToolPrompt", () => {
       ]);
     });
 
-    test("should convert multiple tool calls with text correctly", () => {
+    test("interleaves text and tool-call messages, preserving order and formatting", () => {
       const testParamsPrompt: LanguageModelV2Prompt = [
         {
           role: "assistant",
