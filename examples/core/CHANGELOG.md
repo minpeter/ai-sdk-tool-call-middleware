@@ -1,5 +1,12 @@
 # core
 
+## 1.0.7
+
+### Patch Changes
+
+- Updated dependencies [64d83bc]
+  - @ai-sdk-tool/parser@2.0.5
+
 ## 1.0.6
 
 ### Patch Changes

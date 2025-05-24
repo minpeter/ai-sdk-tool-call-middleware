@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.0.5
+
+### Patch Changes
+
+- 64d83bc: bump to ai package alpha-4
+
 ## 2.0.4
 
 ### Patch Changes
