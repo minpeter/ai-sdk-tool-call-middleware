@@ -40,7 +40,7 @@ export function convertToolPrompt({
           mergedContents.push(content);
         }
       }
-      // 연속된 text 블록을 하나로 합침
+      // Merge consecutive text blocks into one
       const finalContents: typeof message.content = [];
       for (const item of mergedContents) {
         if (
@@ -48,14 +48,14 @@ export function convertToolPrompt({
           item.type === "text" &&
           finalContents[finalContents.length - 1].type === "text"
         ) {
-          // 마지막 text와 합침
-          finalContents[finalContents.length - 1] = {
-            type: "text",
-            text:
-              finalContents[finalContents.length - 1].text +
-              "\n" +
-              item.text,
-          };
+          // Merge with the last text block
+          const last = finalContents[finalContents.length - 1];
+          if (last.type === "text" && item.type === "text") {
+            finalContents[finalContents.length - 1] = {
+              type: "text",
+              text: last.text + "\n" + item.text,
+            };
+          }
         } else {
           finalContents.push(item);
         }
