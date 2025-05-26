@@ -1,9 +1,12 @@
+import { JSONSchema7 } from "json-schema";
+
 import type {
-  LanguageModelV2Prompt,
   LanguageModelV2Middleware,
   LanguageModelV2StreamPart,
   LanguageModelV2ToolCall,
   LanguageModelV2Content,
+  LanguageModelV2FunctionTool,
+  LanguageModelV2ProviderDefinedTool,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 import { getPotentialStartIndex, RJSON } from "./utils";
@@ -143,12 +146,45 @@ export function createToolMiddleware({
         ...rest,
       };
     },
-    wrapGenerate: async ({ doGenerate }) => {
+    wrapGenerate: async ({ doGenerate, params }) => {
       const result = await doGenerate();
 
       // Handle case: content is empty
       if (result.content.length === 0) {
         return result;
+      }
+
+      // Handle case: set tool choice type "tool" and tool name
+      if (
+        typeof params.providerOptions === "object" &&
+        params.providerOptions !== null &&
+        typeof (params.providerOptions as any).toolCallMiddleware ===
+          "object" &&
+        (params.providerOptions as any).toolCallMiddleware?.toolChoice &&
+        typeof (params.providerOptions as any).toolCallMiddleware.toolChoice ===
+          "object" &&
+        ((params.providerOptions as any).toolCallMiddleware.toolChoice.type ===
+          "tool" ||
+          (params.providerOptions as any).toolCallMiddleware.toolChoice.type ===
+            "required")
+      ) {
+        const toolJson: any =
+          result.content[0].type === "text"
+            ? JSON.parse(result.content[0].text)
+            : {};
+
+        return {
+          ...result,
+          content: [
+            {
+              type: "tool-call",
+              toolCallType: "function",
+              toolCallId: generateId(),
+              toolName: toolJson.name,
+              args: JSON.stringify(toolJson.arguments || {}),
+            },
+          ],
+        };
       }
 
       const toolCallRegex = new RegExp(
@@ -287,14 +323,151 @@ export function createToolMiddleware({
         toolResponseEndTag,
       });
 
-      return {
+      const baseReturnParams = {
         ...params,
         prompt: toolSystemPrompt,
-
-        // set the mode back to regular and remove the default tools.
+        // Reset tools and toolChoice to default after prompt transformation
         tools: [],
         toolChoice: undefined,
       };
+
+      if (params.toolChoice?.type === "none") {
+        throw new Error(
+          "The 'none' toolChoice type is not supported by this middleware. Please use 'auto', 'required', or specify a tool name."
+        );
+      }
+
+      // Handle specific tool choice scenario
+      if (params.toolChoice?.type === "tool") {
+        const selectedToolName = params.toolChoice.toolName;
+        const selectedTool = params.tools?.find(
+          (tool) => tool.name === selectedToolName
+        );
+
+        if (!selectedTool) {
+          throw new Error(
+            `Tool with name '${selectedToolName}' not found in params.tools.`
+          );
+        }
+
+        if (selectedTool.type === "provider-defined") {
+          throw new Error(
+            "Provider-defined tools are not supported by this middleware. Please use custom tools."
+          );
+        }
+
+        return {
+          ...baseReturnParams,
+
+          responseFormat: {
+            type: "json",
+            schema: {
+              type: "object",
+              properties: {
+                name: {
+                  const: selectedTool.name,
+                },
+                arguments: selectedTool.parameters,
+              },
+              required: ["name", "arguments"],
+            },
+            name: selectedTool.name,
+            description: selectedTool.description,
+          },
+          providerOptions: {
+            toolCallMiddleware: {
+              toolChoice: params.toolChoice,
+            },
+          },
+        };
+      }
+
+      if (params.toolChoice?.type === "required") {
+        if (!params.tools || params.tools.length === 0) {
+          throw new Error(
+            "Tool choice type 'required' is set, but no tools are provided in params.tools."
+          );
+        }
+
+        return {
+          ...baseReturnParams,
+          responseFormat: {
+            type: "json",
+            schema: createDynamicIfThenElseSchema(params.tools),
+          },
+          providerOptions: {
+            toolCallMiddleware: {
+              toolChoice: { type: "required" },
+            },
+          },
+        };
+      }
+
+      return baseReturnParams;
     },
   };
 }
+
+const createDynamicIfThenElseSchema = (
+  tools: (LanguageModelV2FunctionTool | LanguageModelV2ProviderDefinedTool)[]
+): JSONSchema7 => {
+  // Explicitly specify the return type as JSONSchema7
+  let currentSchema: JSONSchema7 = {};
+  const toolNames: string[] = [];
+
+  for (let i = tools.length - 1; i >= 0; i--) {
+    const tool = tools[i];
+
+    if (tool.type === "provider-defined") {
+      throw new Error(
+        "Provider-defined tools are not supported by this middleware. Please use custom tools."
+      );
+    }
+
+    toolNames.unshift(tool.name);
+
+    const toolCondition: JSONSchema7 = {
+      if: {
+        properties: {
+          name: {
+            const: tool.name,
+          },
+        },
+        required: ["name"],
+      },
+      then: {
+        properties: {
+          name: {
+            const: tool.name,
+          },
+          // Cast tool.parameters to JSONSchema7 here.
+          arguments: tool.parameters as JSONSchema7,
+        },
+        required: ["name", "arguments"],
+      },
+    };
+
+    if (Object.keys(currentSchema).length > 0) {
+      toolCondition.else = currentSchema;
+    }
+
+    currentSchema = toolCondition;
+  }
+
+  return {
+    type: "object", // Explicitly specify type as "object"
+    properties: {
+      name: {
+        type: "string",
+        description: "Name of the tool to call",
+        enum: toolNames,
+      },
+      arguments: {
+        type: "object", // By default, arguments is also specified as object type
+        description: "Argument object to be passed to the tool",
+      },
+    },
+    required: ["name", "arguments"],
+    ...currentSchema,
+  };
+};
