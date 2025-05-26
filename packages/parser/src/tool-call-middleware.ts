@@ -8,6 +8,8 @@ import type {
   LanguageModelV2FunctionTool,
   LanguageModelV2ProviderDefinedTool,
   LanguageModelV2,
+  LanguageModelV2Usage,
+  LanguageModelV2FinishReason,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 import { getPotentialStartIndex, RJSON } from "./utils";
@@ -28,7 +30,7 @@ export function createToolMiddleware({
 }): LanguageModelV2Middleware {
   return {
     middlewareVersion: "v2",
-    wrapStream: async ({ doStream, params }) => {
+    wrapStream: async ({ doStream, doGenerate, params }) => {
       // Handle case: set tool choice type "tool" and tool name
       if (
         typeof params.providerOptions === "object" &&
@@ -44,13 +46,11 @@ export function createToolMiddleware({
             "required")
       ) {
         // TODO: Handle tool choice type "tool" or "required" in streaming
-        return normalStream({
-          doStream,
-          toolCallTag,
-          toolCallEndTag,
+        return toolChoiceStream({
+          doGenerate,
         });
       } else {
-        return normalStream({
+        return normalToolStream({
           doStream,
           toolCallTag,
           toolCallEndTag,
@@ -383,7 +383,48 @@ const createDynamicIfThenElseSchema = (
   };
 };
 
-async function normalStream({
+// TODO: Modify tool calls to be streamed
+async function toolChoiceStream({
+  doGenerate,
+}: {
+  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
+}) {
+  const result = await doGenerate();
+
+  // Assume result.content[0] contains tool-call information (JSON)
+  const toolJson: any =
+    result.content[0].type === "text" ? JSON.parse(result.content[0].text) : {};
+
+  const toolCallChunk: LanguageModelV2StreamPart = {
+    type: "tool-call",
+    toolCallType: "function",
+    toolCallId: generateId(),
+    toolName: toolJson.name,
+    args: JSON.stringify(toolJson.arguments || {}),
+  };
+
+  const finishChunk: LanguageModelV2StreamPart = {
+    type: "finish",
+    usage: result.usage as LanguageModelV2Usage,
+    finishReason: "tool-calls" as LanguageModelV2FinishReason,
+  };
+
+  const stream = new ReadableStream<LanguageModelV2StreamPart>({
+    start(controller) {
+      controller.enqueue(toolCallChunk);
+      controller.enqueue(finishChunk);
+      controller.close();
+    },
+  });
+
+  return {
+    request: result.request,
+    response: result.response,
+    stream,
+  };
+}
+
+async function normalToolStream({
   doStream,
   toolCallTag,
   toolCallEndTag,
