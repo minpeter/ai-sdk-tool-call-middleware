@@ -31,7 +31,6 @@ export function createToolMiddleware({
   return {
     middlewareVersion: "v2",
     wrapStream: async ({ doStream, doGenerate, params }) => {
-      // Handle case: set tool choice type "tool" and tool name
       if (
         typeof params.providerOptions === "object" &&
         params.providerOptions !== null &&
@@ -45,7 +44,7 @@ export function createToolMiddleware({
           (params.providerOptions as any).toolCallMiddleware.toolChoice.type ===
             "required")
       ) {
-        // TODO: Handle tool choice type "tool" or "required" in streaming
+        // Handle tool choice type "tool" or "required" in streaming
         return toolChoiceStream({
           doGenerate,
         });
