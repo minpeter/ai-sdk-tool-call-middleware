@@ -29,6 +29,9 @@ importers:
       '@ai-sdk-tool/parser':
         specifier: workspace:*
         version: link:../../packages/parser
+      '@ai-sdk/openai':
+        specifier: 2.0.0-alpha.4
+        version: 2.0.0-alpha.4(zod@3.25.16)
       '@ai-sdk/openai-compatible':
         specifier: 1.0.0-alpha.4
         version: 1.0.0-alpha.4(zod@3.25.16)
@@ -66,6 +69,12 @@ packages:
 
   '@ai-sdk/openai-compatible@1.0.0-alpha.4':
     resolution: {integrity: sha512-+2G5IPkTqr74cbJpx+NuMWgZ3yzcF16oTD8FHfdmfp3mnIQj4Bf1QLPOy9G7Bg8xfMYn5vtQCAtO6thnjLbBuw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.24.0
+
+  '@ai-sdk/openai@2.0.0-alpha.4':
+    resolution: {integrity: sha512-CCvgUxLrz+1I/+i5PchGAn4D5/XbQwQnDzzxFMnIKIvYhvwMIrxS2bbKXM0eWoZxNzpEOmlm4kKRaSfkNW5QAQ==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.24.0
@@ -1285,6 +1294,12 @@ packages:
 snapshots:
 
   '@ai-sdk/openai-compatible@1.0.0-alpha.4(zod@3.25.16)':
+    dependencies:
+      '@ai-sdk/provider': 2.0.0-alpha.4
+      '@ai-sdk/provider-utils': 3.0.0-alpha.4(zod@3.25.16)
+      zod: 3.25.16
+
+  '@ai-sdk/openai@2.0.0-alpha.4(zod@3.25.16)':
     dependencies:
       '@ai-sdk/provider': 2.0.0-alpha.4
       '@ai-sdk/provider-utils': 3.0.0-alpha.4(zod@3.25.16)
