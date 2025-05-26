@@ -1,13 +1,28 @@
 import type {
-  LanguageModelV2Prompt,
   LanguageModelV2Middleware,
-  LanguageModelV2StreamPart,
   LanguageModelV2ToolCall,
   LanguageModelV2Content,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import { getPotentialStartIndex, RJSON } from "./utils";
-import { convertToolPrompt } from "./utils/conv-tool-prompt";
+
+import {
+  RJSON,
+  convertToolPrompt,
+  createDynamicIfThenElseSchema,
+} from "./utils";
+import { normalToolStream, toolChoiceStream } from "./stream-handler";
+
+function isToolChoiceActive(params: any): boolean {
+  const toolChoice = params?.providerOptions?.toolCallMiddleware?.toolChoice;
+  return (
+    typeof params.providerOptions === "object" &&
+    params.providerOptions !== null &&
+    typeof params.providerOptions.toolCallMiddleware === "object" &&
+    toolChoice &&
+    typeof toolChoice === "object" &&
+    (toolChoice.type === "tool" || toolChoice.type === "required")
+  );
+}
 
 export function createToolMiddleware({
   toolCallTag,
@@ -24,131 +39,47 @@ export function createToolMiddleware({
 }): LanguageModelV2Middleware {
   return {
     middlewareVersion: "v2",
-    wrapStream: async ({ doStream }) => {
-      const { stream, ...rest } = await doStream();
-
-      let isFirstToolCall = true;
-      let isFirstText = true;
-      let afterSwitch = false;
-      let isToolCall = false;
-      let buffer = "";
-
-      let toolCallIndex = -1;
-      let toolCallBuffer: string[] = [];
-
-      const transformStream = new TransformStream<
-        LanguageModelV2StreamPart,
-        LanguageModelV2StreamPart
-      >({
-        transform(chunk, controller) {
-          if (chunk.type === "finish") {
-            if (toolCallBuffer.length > 0) {
-              toolCallBuffer.forEach((toolCall) => {
-                try {
-                  const parsedToolCall = RJSON.parse(toolCall) as {
-                    name: string;
-                    arguments: string;
-                  };
-
-                  controller.enqueue({
-                    type: "tool-call",
-                    toolCallType: "function",
-                    toolCallId: generateId(),
-                    toolName: parsedToolCall.name,
-                    args: JSON.stringify(parsedToolCall.arguments),
-                  });
-                } catch (e) {
-                  console.error(`Error parsing tool call: ${toolCall}`, e);
-
-                  controller.enqueue({
-                    type: "text",
-                    text: `Failed to parse tool call: ${e}`,
-                  });
-                }
-              });
-            }
-
-            // stop token
-            controller.enqueue(chunk);
-
-            return;
-          } else if (chunk.type !== "text") {
-            controller.enqueue(chunk);
-            return;
-          }
-
-          buffer += chunk.text;
-
-          function publish(text: string) {
-            if (text.length > 0) {
-              const prefix =
-                afterSwitch && (isToolCall ? !isFirstToolCall : !isFirstText)
-                  ? "\n" // separator
-                  : "";
-
-              if (isToolCall) {
-                if (!toolCallBuffer[toolCallIndex]) {
-                  toolCallBuffer[toolCallIndex] = "";
-                }
-
-                toolCallBuffer[toolCallIndex] += text;
-              } else {
-                controller.enqueue({
-                  type: "text",
-                  text: prefix + text,
-                });
-              }
-
-              afterSwitch = false;
-
-              if (isToolCall) {
-                isFirstToolCall = false;
-              } else {
-                isFirstText = false;
-              }
-            }
-          }
-
-          do {
-            const nextTag = isToolCall ? toolCallEndTag : toolCallTag;
-            const startIndex = getPotentialStartIndex(buffer, nextTag);
-
-            // no opening or closing tag found, publish the buffer
-            if (startIndex == null) {
-              publish(buffer);
-              buffer = "";
-              break;
-            }
-
-            // publish text before the tag
-            publish(buffer.slice(0, startIndex));
-
-            const foundFullMatch = startIndex + nextTag.length <= buffer.length;
-
-            if (foundFullMatch) {
-              buffer = buffer.slice(startIndex + nextTag.length);
-              toolCallIndex++;
-              isToolCall = !isToolCall;
-              afterSwitch = true;
-            } else {
-              buffer = buffer.slice(startIndex);
-              break;
-            }
-          } while (true);
-        },
-      });
-
-      return {
-        stream: stream.pipeThrough(transformStream),
-        ...rest,
-      };
+    wrapStream: async ({ doStream, doGenerate, params }) => {
+      if (isToolChoiceActive(params)) {
+        // Handle tool choice type "tool" or "required" in streaming
+        return toolChoiceStream({
+          doGenerate,
+        });
+      } else {
+        return normalToolStream({
+          doStream,
+          toolCallTag,
+          toolCallEndTag,
+        });
+      }
     },
-    wrapGenerate: async ({ doGenerate }) => {
+    wrapGenerate: async ({ doGenerate, params }) => {
       const result = await doGenerate();
 
       // Handle case: content is empty
       if (result.content.length === 0) {
         return result;
+      }
+
+      // Handle case: set tool choice type "tool" and tool name
+      if (isToolChoiceActive(params)) {
+        const toolJson: any =
+          result.content[0].type === "text"
+            ? JSON.parse(result.content[0].text)
+            : {};
+
+        return {
+          ...result,
+          content: [
+            {
+              type: "tool-call",
+              toolCallType: "function",
+              toolCallId: generateId(),
+              toolName: toolJson.name,
+              args: JSON.stringify(toolJson.arguments || {}),
+            },
+          ],
+        };
       }
 
       const toolCallRegex = new RegExp(
@@ -287,14 +218,87 @@ export function createToolMiddleware({
         toolResponseEndTag,
       });
 
-      return {
+      const baseReturnParams = {
         ...params,
         prompt: toolSystemPrompt,
-
-        // set the mode back to regular and remove the default tools.
+        // Reset tools and toolChoice to default after prompt transformation
         tools: [],
         toolChoice: undefined,
       };
+
+      if (params.toolChoice?.type === "none") {
+        throw new Error(
+          "The 'none' toolChoice type is not supported by this middleware. Please use 'auto', 'required', or specify a tool name."
+        );
+      }
+
+      // Handle specific tool choice scenario
+      if (params.toolChoice?.type === "tool") {
+        const selectedToolName = params.toolChoice.toolName;
+        const selectedTool = params.tools?.find(
+          (tool) => tool.name === selectedToolName
+        );
+
+        if (!selectedTool) {
+          throw new Error(
+            `Tool with name '${selectedToolName}' not found in params.tools.`
+          );
+        }
+
+        if (selectedTool.type === "provider-defined") {
+          throw new Error(
+            "Provider-defined tools are not supported by this middleware. Please use custom tools."
+          );
+        }
+
+        return {
+          ...baseReturnParams,
+
+          responseFormat: {
+            type: "json",
+            schema: {
+              type: "object",
+              properties: {
+                name: {
+                  const: selectedTool.name,
+                },
+                arguments: selectedTool.parameters,
+              },
+              required: ["name", "arguments"],
+            },
+            name: selectedTool.name,
+            description: selectedTool.description,
+          },
+          providerOptions: {
+            toolCallMiddleware: {
+              toolChoice: params.toolChoice,
+            },
+          },
+        };
+      }
+
+      if (params.toolChoice?.type === "required") {
+        if (!params.tools || params.tools.length === 0) {
+          throw new Error(
+            "Tool choice type 'required' is set, but no tools are provided in params.tools."
+          );
+        }
+
+        return {
+          ...baseReturnParams,
+          responseFormat: {
+            type: "json",
+            schema: createDynamicIfThenElseSchema(params.tools),
+          },
+          providerOptions: {
+            toolCallMiddleware: {
+              toolChoice: { type: "required" },
+            },
+          },
+        };
+      }
+
+      return baseReturnParams;
     },
   };
 }
