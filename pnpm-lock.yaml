@@ -58,9 +58,6 @@ importers:
         specifier: 3.0.0-alpha.4
         version: 3.0.0-alpha.4(zod@3.25.16)
     devDependencies:
-      '@types/json-schema':
-        specifier: ^7.0.15
-        version: 7.0.15
       '@types/node':
         specifier: ^22.15.21
         version: 22.15.21
@@ -454,9 +451,6 @@ packages:
 
   '@types/estree@1.0.7':
     resolution: {integrity: sha512-w28IoSUCJpidD/TGviZwwMJckNESJZXFu7NBZ5YJ4mEUnNraUn9Pm8HSZm/jDF1pDWYKspWE7oVphigUPRakIQ==}
-
-  '@types/json-schema@7.0.15':
-    resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
@@ -1663,8 +1657,6 @@ snapshots:
   '@standard-schema/spec@1.0.0': {}
 
   '@types/estree@1.0.7': {}
-
-  '@types/json-schema@7.0.15': {}
 
   '@types/node@12.20.55': {}
 
