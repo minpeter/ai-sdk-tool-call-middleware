@@ -28,18 +28,16 @@ export function createToolMiddleware({
   return {
     middlewareVersion: "v2",
     wrapStream: async ({ doStream, doGenerate, params }) => {
+      const toolChoice = (params.providerOptions as any)?.toolCallMiddleware
+        ?.toolChoice;
       if (
         typeof params.providerOptions === "object" &&
         params.providerOptions !== null &&
         typeof (params.providerOptions as any).toolCallMiddleware ===
           "object" &&
-        (params.providerOptions as any).toolCallMiddleware?.toolChoice &&
-        typeof (params.providerOptions as any).toolCallMiddleware.toolChoice ===
-          "object" &&
-        ((params.providerOptions as any).toolCallMiddleware.toolChoice.type ===
-          "tool" ||
-          (params.providerOptions as any).toolCallMiddleware.toolChoice.type ===
-            "required")
+        toolChoice &&
+        typeof toolChoice === "object" &&
+        (toolChoice.type === "tool" || toolChoice.type === "required")
       ) {
         // Handle tool choice type "tool" or "required" in streaming
         return toolChoiceStream({
@@ -62,18 +60,16 @@ export function createToolMiddleware({
       }
 
       // Handle case: set tool choice type "tool" and tool name
+      const toolChoice = (params.providerOptions as any)?.toolCallMiddleware
+        ?.toolChoice;
       if (
         typeof params.providerOptions === "object" &&
         params.providerOptions !== null &&
         typeof (params.providerOptions as any).toolCallMiddleware ===
           "object" &&
-        (params.providerOptions as any).toolCallMiddleware?.toolChoice &&
-        typeof (params.providerOptions as any).toolCallMiddleware.toolChoice ===
-          "object" &&
-        ((params.providerOptions as any).toolCallMiddleware.toolChoice.type ===
-          "tool" ||
-          (params.providerOptions as any).toolCallMiddleware.toolChoice.type ===
-            "required")
+        toolChoice &&
+        typeof toolChoice === "object" &&
+        (toolChoice.type === "tool" || toolChoice.type === "required")
       ) {
         const toolJson: any =
           result.content[0].type === "text"
