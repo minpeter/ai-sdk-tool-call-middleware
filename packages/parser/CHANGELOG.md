@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.0.7
+
+### Patch Changes
+
+- 2cd90ae: bump ai package alpha 7
+
 ## 2.0.6
 
 ### Patch Changes
