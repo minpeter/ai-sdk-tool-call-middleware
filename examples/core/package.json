@@ -11,13 +11,13 @@
   "license": "ISC",
   "dependencies": {
     "@ai-sdk-tool/parser": "workspace:*",
-    "@ai-sdk/openai": "2.0.0-alpha.7",
-    "@ai-sdk/openai-compatible": "1.0.0-alpha.7",
-    "ai": "5.0.0-alpha.7",
+    "@ai-sdk/openai": "2.0.0-alpha.8",
+    "@ai-sdk/openai-compatible": "1.0.0-alpha.8",
+    "ai": "5.0.0-alpha.8",
     "tsx": "^4.19.4",
-    "zod": "^3.25.36"
+    "zod": "^3.25.51"
   },
   "devDependencies": {
-    "@types/node": "^22.15.24"
+    "@types/node": "^22.15.29"
   }
 }
