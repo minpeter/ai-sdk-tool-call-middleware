@@ -39,10 +39,11 @@ async function main() {
       console.log({
         text: step.text,
         toolCalls: step.toolCalls.map(
-          (call) => `name: ${call.toolName}, args: ${JSON.stringify(call.args)}`
+          (call) =>
+            `name: ${call.toolName}, args: ${JSON.stringify(call.input)}`
         ),
         toolResults: step.toolResults.map((result) =>
-          JSON.stringify(result.result)
+          JSON.stringify(result.output)
         ),
       });
     },

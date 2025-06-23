@@ -54,8 +54,8 @@ async function main() {
     } else if (part.type === "tool-result") {
       console.log({
         name: part.toolName,
-        args: part.args,
-        result: part.result,
+        input: part.input,
+        output: part.output,
       });
     }
   }

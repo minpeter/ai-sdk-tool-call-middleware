@@ -46,7 +46,7 @@ export async function normalToolStream({
                 toolCallType: "function",
                 toolCallId: generateId(),
                 toolName: parsedToolCall.name,
-                args: JSON.stringify(parsedToolCall.arguments),
+                input: JSON.stringify(parsedToolCall.arguments),
               });
             } catch (e) {
               console.error(`Error parsing tool call: ${toolCall}`, e);
@@ -152,7 +152,7 @@ export async function toolChoiceStream({
     toolCallType: "function",
     toolCallId: generateId(),
     toolName: toolJson.name,
-    args: JSON.stringify(toolJson.arguments || {}),
+    input: JSON.stringify(toolJson.arguments || {}),
   };
 
   const finishChunk: LanguageModelV2StreamPart = {

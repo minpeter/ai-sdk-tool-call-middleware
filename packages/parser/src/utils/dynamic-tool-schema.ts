@@ -1,7 +1,8 @@
 import {
   JSONSchema7,
   LanguageModelV2FunctionTool,
-  LanguageModelV2ProviderDefinedTool,
+  LanguageModelV2ProviderDefinedClientTool,
+  LanguageModelV2ProviderDefinedServerTool,
 } from "@ai-sdk/provider";
 
 /**
@@ -18,7 +19,11 @@ import {
  * @throws Error if a 'provider-defined' tool is encountered, as they are not supported by this middleware.
  */
 export function createDynamicIfThenElseSchema(
-  tools: (LanguageModelV2FunctionTool | LanguageModelV2ProviderDefinedTool)[]
+  tools: (
+    | LanguageModelV2FunctionTool
+    | LanguageModelV2ProviderDefinedClientTool
+    | LanguageModelV2ProviderDefinedServerTool
+  )[]
 ): JSONSchema7 {
   // Explicitly specify the return type as JSONSchema7
   let currentSchema: JSONSchema7 = {};
@@ -27,7 +32,10 @@ export function createDynamicIfThenElseSchema(
   for (let i = tools.length - 1; i >= 0; i--) {
     const tool = tools[i];
 
-    if (tool.type === "provider-defined") {
+    if (
+      tool.type === "provider-defined-client" ||
+      tool.type === "provider-defined-server"
+    ) {
       throw new Error(
         "Provider-defined tools are not supported by this middleware. Please use custom tools."
       );
@@ -51,7 +59,7 @@ export function createDynamicIfThenElseSchema(
             const: tool.name,
           },
           // Cast tool.parameters to JSONSchema7 here.
-          arguments: tool.parameters as JSONSchema7,
+          arguments: tool.type,
         },
         required: ["name", "arguments"],
       },

@@ -1,7 +1,8 @@
 import {
   LanguageModelV2FunctionTool,
   LanguageModelV2Prompt,
-  LanguageModelV2ProviderDefinedTool,
+  LanguageModelV2ProviderDefinedClientTool,
+  LanguageModelV2ProviderDefinedServerTool,
 } from "@ai-sdk/provider";
 
 export function convertToolPrompt({
@@ -15,7 +16,9 @@ export function convertToolPrompt({
 }: {
   paramsPrompt: LanguageModelV2Prompt;
   paramsTools?: Array<
-    LanguageModelV2FunctionTool | LanguageModelV2ProviderDefinedTool
+    | LanguageModelV2FunctionTool
+    | LanguageModelV2ProviderDefinedClientTool
+    | LanguageModelV2ProviderDefinedServerTool
   >;
   toolSystemPromptTemplate: (tools: string) => string;
   toolCallTag: string;
@@ -32,7 +35,7 @@ export function convertToolPrompt({
           mergedContents.push({
             type: "text",
             text: `${toolCallTag}${JSON.stringify({
-              arguments: content.args,
+              arguments: content.input,
               name: content.toolName,
             })}${toolCallEndTag}`,
           });
@@ -75,7 +78,8 @@ export function convertToolPrompt({
                 (content) =>
                   `${toolResponseTag}${JSON.stringify({
                     toolName: content.toolName,
-                    result: content.result,
+                    // TODO: If the tool result part contains content, modify to respect and include it.
+                    result: content.output,
                   })}${toolResponseEndTag}`
               )
               .join("\n"),
