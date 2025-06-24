@@ -40,7 +40,7 @@ async function main() {
         text: step.text,
         toolCalls: step.toolCalls.map(
           (call) =>
-            `name: ${call.toolName}, args: ${JSON.stringify(call.input)}`
+            `name: ${call.toolName}, input: ${JSON.stringify(call.input)}`
         ),
         toolResults: step.toolResults.map((result) =>
           JSON.stringify(result.output)
