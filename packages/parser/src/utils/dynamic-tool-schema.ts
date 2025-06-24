@@ -58,8 +58,7 @@ export function createDynamicIfThenElseSchema(
           name: {
             const: tool.name,
           },
-          // Cast tool.parameters to JSONSchema7 here.
-          arguments: tool.type,
+          arguments: tool.inputSchema,
         },
         required: ["name", "arguments"],
       },

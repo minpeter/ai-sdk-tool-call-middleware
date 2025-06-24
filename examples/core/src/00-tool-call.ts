@@ -23,7 +23,7 @@ async function main() {
         description:
           "Get the weather for a given city. " +
           "Example cities: 'New York', 'Los Angeles', 'Paris'.",
-        parameters: z.object({ city: z.string() }),
+        inputSchema: z.object({ city: z.string() }),
         execute: async ({ city }) => {
           // Simulate a weather API call
           const temperature = Math.floor(Math.random() * 100);

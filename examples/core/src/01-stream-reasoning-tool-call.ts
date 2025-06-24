@@ -32,7 +32,7 @@ async function main() {
     tools: {
       get_location: {
         description: "Get the User's location.",
-        parameters: z.object({}),
+        inputSchema: z.object({}),
         execute: async () => {
           // Simulate a location API call
           return {
@@ -45,7 +45,7 @@ async function main() {
         description:
           "Get the weather for a given city. " +
           "Example cities: 'New York', 'Los Angeles', 'Paris'.",
-        parameters: z.object({ city: z.string() }),
+        inputSchema: z.object({ city: z.string() }),
         execute: async ({ city }) => {
           // Simulate a weather API call
           const temperature = Math.floor(Math.random() * 100);

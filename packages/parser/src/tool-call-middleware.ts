@@ -265,8 +265,7 @@ export function createToolMiddleware({
                 name: {
                   const: selectedTool.name,
                 },
-                arguments:
-                  selectedTool.type === "function" && selectedTool.inputSchema,
+                arguments: selectedTool.inputSchema,
               },
               required: ["name", "arguments"],
             },

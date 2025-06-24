@@ -9,20 +9,20 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 const friendli = createOpenAI({
   name: "friendli",
   apiKey: process.env.FRIENDLI_TOKEN,
-  baseURL: "https://api.friendli.ai/dedicated/v1",
+  baseURL: "https://api.friendli.ai/serverless/v1",
 });
 
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
       // NOTE: All models of friendli serverless are supported by the tool, but can be overridden via middleware.
-      model: friendli("depz4izlq15ku7r"),
+      model: friendli("meta-llama-3.1-8b-instruct"),
       middleware: hermesToolMiddleware,
     }),
     tools: {
       weather: {
         description: "Get the weather in a location",
-        parameters: z.object({
+        inputSchema: z.object({
           location: z.string().describe("The location to get the weather for"),
         }),
         execute: async ({ location }) => ({
