@@ -20,16 +20,16 @@ async function main() {
       middleware: hermesToolMiddleware,
     }),
     tools: {
-      weather: tool({
+      weather: {
         description: "Get the weather in a location",
-        parameters: z.object({
+        inputSchema: z.object({
           location: z.string().describe("The location to get the weather for"),
         }),
         execute: async ({ location }) => ({
           location,
           temperature: 72 + Math.floor(Math.random() * 21) - 10,
         }),
-      }),
+      },
     },
     toolChoice: { type: "tool", toolName: "weather" },
     prompt: "Tell me a joke about programming", // inrrelevant to the tool
@@ -41,8 +41,8 @@ async function main() {
     } else if (part.type === "tool-result") {
       console.log({
         name: part.toolName,
-        args: part.args,
-        result: part.result,
+        input: part.input,
+        output: part.output,
       });
     }
   }

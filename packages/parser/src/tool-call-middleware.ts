@@ -76,7 +76,7 @@ export function createToolMiddleware({
               toolCallType: "function",
               toolCallId: generateId(),
               toolName: toolJson.name,
-              args: JSON.stringify(toolJson.arguments || {}),
+              input: JSON.stringify(toolJson.arguments || {}),
             },
           ],
         };
@@ -131,7 +131,7 @@ export function createToolMiddleware({
                 toolCallId: generateId(),
                 toolName: parsedToolCall.name,
                 // Ensure args is always a JSON string
-                args:
+                input:
                   typeof parsedToolCall.arguments === "string"
                     ? parsedToolCall.arguments
                     : JSON.stringify(parsedToolCall.arguments),
@@ -245,7 +245,10 @@ export function createToolMiddleware({
           );
         }
 
-        if (selectedTool.type === "provider-defined") {
+        if (
+          selectedTool.type === "provider-defined-client" ||
+          selectedTool.type === "provider-defined-server"
+        ) {
           throw new Error(
             "Provider-defined tools are not supported by this middleware. Please use custom tools."
           );
@@ -262,12 +265,16 @@ export function createToolMiddleware({
                 name: {
                   const: selectedTool.name,
                 },
-                arguments: selectedTool.parameters,
+                arguments: selectedTool.inputSchema,
               },
               required: ["name", "arguments"],
             },
             name: selectedTool.name,
-            description: selectedTool.description,
+            description:
+              selectedTool.type === "function" &&
+              typeof selectedTool.description === "string"
+                ? selectedTool.description
+                : undefined,
           },
           providerOptions: {
             toolCallMiddleware: {

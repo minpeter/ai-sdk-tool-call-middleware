@@ -18,7 +18,7 @@ const TEST_TOOLS: LanguageModelV2FunctionTool[] = [
     type: "function",
     name: "get_weather",
     description: "Get the current weather in a given location",
-    parameters: {
+    inputSchema: {
       type: "object",
       properties: {
         location: {
@@ -62,7 +62,8 @@ describe("convertToolPrompt", () => {
         ...TEST_TAGS,
       });
 
-      const expectedSystemPrompt = `Tools available:\n[["0",{"type":"function","name":"get_weather","description":"Get the current weather in a given location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"The city and state, e.g. San Francisco, CA"},"unit":{"type":"string","enum":["celsius","fahrenheit"],"description":"Unit for temperature"}},"required":["location"]}}]]`;
+      // TODO: Support prettier schema rendering for better model comprehension
+      const expectedSystemPrompt = `Tools available:\n[["0",{"type":"function","name":"get_weather","description":"Get the current weather in a given location","inputSchema":{"type":"object","properties":{"location":{"type":"string","description":"The city and state, e.g. San Francisco, CA"},"unit":{"type":"string","enum":["celsius","fahrenheit"],"description":"Unit for temperature"}},"required":["location"]}}]]`;
 
       expect(result).toEqual([
         {
@@ -92,7 +93,7 @@ describe("convertToolPrompt", () => {
               type: "tool-call",
               toolName: "get_weather",
               toolCallId: "12345",
-              args: {
+              input: {
                 location: "San Francisco, CA",
                 unit: "celsius",
               },
@@ -123,7 +124,7 @@ describe("convertToolPrompt", () => {
               type: "tool-call",
               toolName: "get_weather",
               toolCallId: "12345",
-              args: {
+              input: {
                 location: "San Francisco, CA",
                 unit: "celsius",
               },
@@ -132,7 +133,7 @@ describe("convertToolPrompt", () => {
               type: "tool-call",
               toolName: "get_weather",
               toolCallId: "67890",
-              args: {
+              input: {
                 location: "New York, NY",
                 unit: "fahrenheit",
               },
@@ -170,7 +171,7 @@ describe("convertToolPrompt", () => {
               type: "tool-call",
               toolName: "get_weather",
               toolCallId: "12345",
-              args: {
+              input: {
                 location: "San Francisco, CA",
                 unit: "celsius",
               },
@@ -179,7 +180,7 @@ describe("convertToolPrompt", () => {
               type: "tool-call",
               toolName: "get_weather",
               toolCallId: "67890",
-              args: {
+              input: {
                 location: "New York, NY",
                 unit: "fahrenheit",
               },
@@ -222,7 +223,7 @@ describe("convertToolPrompt", () => {
               type: "tool-call",
               toolName: "get_weather",
               toolCallId: "12345",
-              args: {
+              input: {
                 location: "San Francisco, CA",
                 unit: "celsius",
               },
@@ -235,7 +236,7 @@ describe("convertToolPrompt", () => {
               type: "tool-call",
               toolName: "get_weather",
               toolCallId: "67890",
-              args: {
+              input: {
                 location: "New York, NY",
                 unit: "fahrenheit",
               },

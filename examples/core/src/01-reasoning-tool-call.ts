@@ -34,7 +34,7 @@ async function main() {
         description:
           "Get the weather for a given city. " +
           "Example cities: 'New York', 'Los Angeles', 'Paris'.",
-        parameters: z.object({ city: z.string() }),
+        inputSchema: z.object({ city: z.string() }),
         execute: async ({ city }) => {
           // Simulate a weather API call
           const temperature = Math.floor(Math.random() * 100);
@@ -51,10 +51,11 @@ async function main() {
         text: step.text,
         reasoning: step.reasoning,
         toolCalls: step.toolCalls.map(
-          (call) => `name: ${call.toolName}, args: ${JSON.stringify(call.args)}`
+          (call) =>
+            `name: ${call.toolName}, input: ${JSON.stringify(call.input)}`
         ),
         toolResults: step.toolResults.map((result) =>
-          JSON.stringify(result.result)
+          JSON.stringify(result.output)
         ),
       });
     },
