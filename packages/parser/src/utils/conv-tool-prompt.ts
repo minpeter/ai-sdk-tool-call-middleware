@@ -1,8 +1,7 @@
 import {
   LanguageModelV2FunctionTool,
+  LanguageModelV2ProviderDefinedTool,
   LanguageModelV2Prompt,
-  LanguageModelV2ProviderDefinedClientTool,
-  LanguageModelV2ProviderDefinedServerTool,
 } from "@ai-sdk/provider";
 
 export function convertToolPrompt({
@@ -16,9 +15,7 @@ export function convertToolPrompt({
 }: {
   paramsPrompt: LanguageModelV2Prompt;
   paramsTools?: Array<
-    | LanguageModelV2FunctionTool
-    | LanguageModelV2ProviderDefinedClientTool
-    | LanguageModelV2ProviderDefinedServerTool
+    LanguageModelV2FunctionTool | LanguageModelV2ProviderDefinedTool
   >;
   toolSystemPromptTemplate: (tools: string) => string;
   toolCallTag: string;

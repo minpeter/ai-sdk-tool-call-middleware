@@ -43,7 +43,6 @@ export async function normalToolStream({
 
               controller.enqueue({
                 type: "tool-call",
-                toolCallType: "function",
                 toolCallId: generateId(),
                 toolName: parsedToolCall.name,
                 input: JSON.stringify(parsedToolCall.arguments),
@@ -52,8 +51,9 @@ export async function normalToolStream({
               console.error(`Error parsing tool call: ${toolCall}`, e);
 
               controller.enqueue({
-                type: "text",
-                text: `Failed to parse tool call: ${e}`,
+                type: "text-delta",
+                id: generateId(),
+                delta: `Failed to parse tool call: ${e}`,
               });
             }
           });
@@ -63,12 +63,12 @@ export async function normalToolStream({
         controller.enqueue(chunk);
 
         return;
-      } else if (chunk.type !== "text") {
+      } else if (chunk.type !== "text-delta") {
         controller.enqueue(chunk);
         return;
       }
 
-      buffer += chunk.text;
+      buffer += chunk.delta;
 
       function publish(text: string) {
         if (text.length > 0) {
@@ -85,8 +85,9 @@ export async function normalToolStream({
             toolCallBuffer[toolCallIndex] += text;
           } else {
             controller.enqueue({
-              type: "text",
-              text: prefix + text,
+              type: "text-delta",
+              id: generateId(),
+              delta: prefix + text,
             });
           }
 
@@ -149,7 +150,6 @@ export async function toolChoiceStream({
 
   const toolCallChunk: LanguageModelV2StreamPart = {
     type: "tool-call",
-    toolCallType: "function",
     toolCallId: generateId(),
     toolName: toolJson.name,
     input: JSON.stringify(toolJson.arguments || {}),
