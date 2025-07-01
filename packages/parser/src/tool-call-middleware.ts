@@ -127,7 +127,6 @@ export function createToolMiddleware({
 
               return {
                 type: "tool-call",
-                toolCallType: "function",
                 toolCallId: generateId(),
                 toolName: parsedToolCall.name,
                 // Ensure args is always a JSON string
@@ -245,10 +244,7 @@ export function createToolMiddleware({
           );
         }
 
-        if (
-          selectedTool.type === "provider-defined-client" ||
-          selectedTool.type === "provider-defined-server"
-        ) {
+        if (selectedTool.type === "provider-defined") {
           throw new Error(
             "Provider-defined tools are not supported by this middleware. Please use custom tools."
           );
