@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.0.9
+
+### Patch Changes
+
+- 2afa6f2: sync deps beta.3
+
 ## 2.0.8
 
 ### Patch Changes
