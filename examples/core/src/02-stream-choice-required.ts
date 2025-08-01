@@ -16,7 +16,7 @@ async function main() {
   const result = streamText({
     model: wrapLanguageModel({
       // NOTE: All models of friendli serverless are supported by the tool, but can be overridden via middleware.
-      model: friendli.chat("meta-llama-3.1-8b-instruct"),
+      model: friendli.chat("meta-llama/Llama-3.1-8B-Instruct"),
       middleware: hermesToolMiddleware,
     }),
     tools: {

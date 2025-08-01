@@ -17,7 +17,7 @@ const friendli = createOpenAICompatible({
 async function main() {
   await generateText({
     model: wrapLanguageModel({
-      model: friendli("deepseek-r1"),
+      model: friendli("deepseek-ai/DeepSeek-R1-0528"),
 
       middleware: [
         // The order is important, extractReasoningMiddleware is called first and then hermesToolMiddleware,
