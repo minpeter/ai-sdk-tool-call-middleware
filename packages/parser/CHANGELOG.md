@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.0.10
+
+### Patch Changes
+
+- 6354bb8: bump to ai sdk v5
+
 ## 2.0.9
 
 ### Patch Changes
