@@ -59,17 +59,24 @@ describe("AI SDK v5 compatibility", () => {
       id: expect.any(String),
     });
 
+    // Extract the id from the text-start chunk in a type-safe way
+    const textStartId =
+      chunks[0].type === "text-start" && "id" in chunks[0]
+        ? chunks[0].id
+        : undefined;
+    expect(typeof textStartId).toBe("string");
+
     // 2. Followed by text-delta with same ID
     expect(chunks[1]).toMatchObject({
       type: "text-delta",
-      id: (chunks[0] as any).id, // Same ID as text-start
+      id: textStartId, // Same ID as text-start
 
       delta: "Hello world",
     });
 
     expect(chunks[2]).toMatchObject({
       type: "text-end",
-      id: (chunks[0] as any).id, // Same ID as text-start and text-delta
+      id: textStartId, // Same ID as text-start and text-delta
     });
 
     // 4. Finally the finish chunk
