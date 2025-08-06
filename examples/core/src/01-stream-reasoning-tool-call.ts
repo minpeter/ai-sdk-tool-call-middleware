@@ -60,9 +60,9 @@ async function main() {
   });
 
   for await (const part of result.fullStream) {
-    if (part.type === "text") {
+    if (part.type === "text-delta") {
       process.stdout.write(part.text);
-    } else if (part.type === "reasoning") {
+    } else if (part.type === "reasoning-delta") {
       // Print reasoning text in a different color (e.g., yellow)
       process.stdout.write(`\x1b[33m${part.text}\x1b[0m`);
     } else if (part.type === "tool-result") {

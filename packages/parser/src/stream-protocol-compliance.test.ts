@@ -7,7 +7,7 @@ describe("AI SDK v5 compatibility", () => {
     // This test demonstrates that our implementation now follows
     // the AI SDK v5 stream protocol with start/delta/end pattern
     // instead of individual text-delta chunks
-    
+
     const mockStream = new ReadableStream<LanguageModelV2StreamPart>({
       start(controller) {
         // Simulate input that would previously break with individual text-delta chunks
@@ -25,11 +25,12 @@ describe("AI SDK v5 compatibility", () => {
       },
     });
 
-    const mockDoStream = () => Promise.resolve({
-      stream: mockStream,
-      request: {},
-      response: {},
-    });
+    const mockDoStream = () =>
+      Promise.resolve({
+        stream: mockStream,
+        request: {},
+        response: {},
+      });
 
     const result = await normalToolStream({
       doStream: mockDoStream,
@@ -39,7 +40,7 @@ describe("AI SDK v5 compatibility", () => {
 
     const chunks: LanguageModelV2StreamPart[] = [];
     const reader = result.stream.getReader();
-    
+
     let done = false;
     while (!done) {
       const { value, done: streamDone } = await reader.read();
@@ -51,26 +52,27 @@ describe("AI SDK v5 compatibility", () => {
 
     // Verify AI SDK v5 compliance
     expect(chunks).toHaveLength(4);
-    
+
     // 1. Must start with text-start
     expect(chunks[0]).toMatchObject({
       type: "text-start",
       id: expect.any(String),
     });
-    
+
     // 2. Followed by text-delta with same ID
     expect(chunks[1]).toMatchObject({
-      type: "text-delta", 
+      type: "text-delta",
+      // @ts-expect-error id exists at runtime
       id: chunks[0].id, // Same ID as text-start
       delta: "Hello world",
     });
-    
-    // 3. Followed by text-end with same ID
+
     expect(chunks[2]).toMatchObject({
       type: "text-end",
+      // @ts-expect-error id exists at runtime
       id: chunks[0].id, // Same ID as text-start and text-delta
     });
-    
+
     // 4. Finally the finish chunk
     expect(chunks[3]).toMatchObject({
       type: "finish",
@@ -79,7 +81,9 @@ describe("AI SDK v5 compatibility", () => {
     });
 
     console.log("✅ AI SDK v5 stream protocol compliance verified!");
-    console.log("Stream chunks follow proper start/delta/end pattern with consistent IDs");
+    console.log(
+      "Stream chunks follow proper start/delta/end pattern with consistent IDs"
+    );
   });
 
   test("handles empty text chunks correctly", async () => {
@@ -87,7 +91,7 @@ describe("AI SDK v5 compatibility", () => {
       start(controller) {
         controller.enqueue({
           type: "text-delta",
-          id: "input-id", 
+          id: "input-id",
           delta: "", // Empty delta
         });
         controller.enqueue({
@@ -99,11 +103,12 @@ describe("AI SDK v5 compatibility", () => {
       },
     });
 
-    const mockDoStream = () => Promise.resolve({
-      stream: mockStream,
-      request: {},
-      response: {},
-    });
+    const mockDoStream = () =>
+      Promise.resolve({
+        stream: mockStream,
+        request: {},
+        response: {},
+      });
 
     const result = await normalToolStream({
       doStream: mockDoStream,
@@ -113,7 +118,7 @@ describe("AI SDK v5 compatibility", () => {
 
     const chunks: LanguageModelV2StreamPart[] = [];
     const reader = result.stream.getReader();
-    
+
     let done = false;
     while (!done) {
       const { value, done: streamDone } = await reader.read();
