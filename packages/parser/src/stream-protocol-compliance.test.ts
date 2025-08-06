@@ -62,15 +62,14 @@ describe("AI SDK v5 compatibility", () => {
     // 2. Followed by text-delta with same ID
     expect(chunks[1]).toMatchObject({
       type: "text-delta",
-      // @ts-expect-error id exists at runtime
-      id: chunks[0].id, // Same ID as text-start
+      id: (chunks[0] as any).id, // Same ID as text-start
+
       delta: "Hello world",
     });
 
     expect(chunks[2]).toMatchObject({
       type: "text-end",
-      // @ts-expect-error id exists at runtime
-      id: chunks[0].id, // Same ID as text-start and text-delta
+      id: (chunks[0] as any).id, // Same ID as text-start and text-delta
     });
 
     // 4. Finally the finish chunk
