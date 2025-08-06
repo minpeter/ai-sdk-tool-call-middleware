@@ -79,10 +79,6 @@ describe("AI SDK v5 compatibility", () => {
       finishReason: "stop",
     });
 
-    console.log("✅ AI SDK v5 stream protocol compliance verified!");
-    console.log(
-      "Stream chunks follow proper start/delta/end pattern with consistent IDs"
-    );
   });
 
   test("handles empty text chunks correctly", async () => {
