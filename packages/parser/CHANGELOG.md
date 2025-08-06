@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.0.11
+
+### Patch Changes
+
+- a7b1878: Fix AI SDK v5 stream protocol compatibility
+
 ## 2.0.10
 
 ### Patch Changes
