@@ -21,11 +21,12 @@
   "license": "ISC",
   "packageManager": "pnpm@9.14.4+sha1.64b6e81e79630419b675c555ef3b65607cfd6315",
   "dependencies": {
-    "@ai-sdk/provider": "2.0.0-beta.1",
-    "@ai-sdk/provider-utils": "3.0.0-beta.2"
+    "@ai-sdk/provider": "2.0.0",
+    "@ai-sdk/provider-utils": "3.0.1"
   },
   "devDependencies": {
-    "@types/node": "^24.1.0",
-    "tsup": "^8.5.0"
+    "@types/node": "^24.2.0",
+    "tsup": "^8.5.0",
+    "vitest": "^3.2.4"
   }
 }
