@@ -27,12 +27,26 @@ export async function normalToolStream({
   let toolCallIndex = -1;
   let toolCallBuffer: string[] = [];
 
+  // Track text chunks for start/delta/end pattern
+  let currentTextId: string | null = null;
+  let hasEmittedTextStart = false;
+
   const transformStream = new TransformStream<
     LanguageModelV2StreamPart,
     LanguageModelV2StreamPart
   >({
     transform(chunk, controller) {
       if (chunk.type === "finish") {
+        // End any active text chunk before processing tool calls
+        if (currentTextId && hasEmittedTextStart) {
+          controller.enqueue({
+            type: "text-end",
+            id: currentTextId,
+          });
+          currentTextId = null;
+          hasEmittedTextStart = false;
+        }
+
         if (toolCallBuffer.length > 0) {
           toolCallBuffer.forEach((toolCall) => {
             try {
@@ -50,10 +64,20 @@ export async function normalToolStream({
             } catch (e) {
               console.error(`Error parsing tool call: ${toolCall}`, e);
 
+              // For error messages, use proper start/delta/end pattern
+              const errorId = generateId();
+              controller.enqueue({
+                type: "text-start",
+                id: errorId,
+              });
               controller.enqueue({
                 type: "text-delta",
-                id: generateId(),
+                id: errorId,
                 delta: `Failed to parse tool call: ${e}`,
+              });
+              controller.enqueue({
+                type: "text-end",
+                id: errorId,
               });
             }
           });
@@ -78,15 +102,35 @@ export async function normalToolStream({
               : "";
 
           if (isToolCall) {
+            // End any active text chunk when switching to tool call
+            if (currentTextId && hasEmittedTextStart) {
+              controller.enqueue({
+                type: "text-end",
+                id: currentTextId,
+              });
+              currentTextId = null;
+              hasEmittedTextStart = false;
+            }
+
             if (!toolCallBuffer[toolCallIndex]) {
               toolCallBuffer[toolCallIndex] = "";
             }
 
             toolCallBuffer[toolCallIndex] += text;
           } else {
+            // Start a new text chunk if needed
+            if (!currentTextId) {
+              currentTextId = generateId();
+              controller.enqueue({
+                type: "text-start",
+                id: currentTextId,
+              });
+              hasEmittedTextStart = true;
+            }
+
             controller.enqueue({
               type: "text-delta",
-              id: generateId(),
+              id: currentTextId,
               delta: prefix + text,
             });
           }
