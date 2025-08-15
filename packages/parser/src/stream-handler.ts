@@ -168,7 +168,7 @@ export async function normalToolStream({
           isToolCall = !isToolCall;
           afterSwitch = true;
         } else {
-          buffer = buffer; //.slice(startIndex); DO nothing
+          // Partial match found, wait for more data to complete the tag.
           break;
         }
       } while (true);
