@@ -1,5 +1,17 @@
 # @ai-sdk-tool/parser
 
+## 2.0.12
+
+### Patch Changes
+
+- 780b01c: Fix gemma streaming matching issue
+- 1ff1177: # feat: upgrade dependencies to latest versions
+  - Updated @ai-sdk dependencies to latest versions
+  - Resolved zod peer dependency warnings
+  - Fixed turbo build warnings
+  - Updated test script to indicate no tests are available for core package
+  - Removed zod overrides and updated peer dependencies to support multiple versions
+
 ## 2.0.11
 
 ### Patch Changes
