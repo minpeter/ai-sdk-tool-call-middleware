@@ -156,18 +156,19 @@ export async function normalToolStream({
           break;
         }
 
-        // publish text before the tag
-        publish(buffer.slice(0, startIndex));
 
         const foundFullMatch = startIndex + nextTag.length <= buffer.length;
 
         if (foundFullMatch) {
+          // publish text before the tag
+          publish(buffer.slice(0, startIndex));
+
           buffer = buffer.slice(startIndex + nextTag.length);
           toolCallIndex++;
           isToolCall = !isToolCall;
           afterSwitch = true;
         } else {
-          buffer = buffer.slice(startIndex);
+          // Partial match found, wait for more data to complete the tag.
           break;
         }
       } while (true);
