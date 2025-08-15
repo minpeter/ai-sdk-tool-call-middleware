@@ -4,20 +4,20 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"No tests for core package\" && exit 0"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@ai-sdk-tool/parser": "workspace:*",
-    "@ai-sdk/openai": "2.0.4",
-    "@ai-sdk/openai-compatible": "1.0.2",
-    "ai": "5.0.5",
-    "tsx": "^4.20.3",
-    "zod": "^4.0.15"
+    "@ai-sdk/openai": "2.0.14",
+    "@ai-sdk/openai-compatible": "1.0.7",
+    "ai": "5.0.14",
+    "tsx": "^4.20.4",
+    "zod": "^4.0.17"
   },
   "devDependencies": {
-    "@types/node": "^24.2.0"
+    "@types/node": "^24.3.0"
   }
 }
