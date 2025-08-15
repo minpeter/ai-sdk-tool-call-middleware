@@ -1,5 +1,6 @@
 {
   "name": "core",
+  "private": true,
   "version": "1.0.14",
   "description": "",
   "main": "index.js",
