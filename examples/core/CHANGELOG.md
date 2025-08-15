@@ -1,5 +1,20 @@
 # core
 
+## 1.0.14
+
+### Patch Changes
+
+- 1ff1177: # feat: upgrade dependencies to latest versions
+  - Updated @ai-sdk dependencies to latest versions
+  - Resolved zod peer dependency warnings
+  - Fixed turbo build warnings
+  - Updated test script to indicate no tests are available for core package
+  - Removed zod overrides and updated peer dependencies to support multiple versions
+
+- Updated dependencies [780b01c]
+- Updated dependencies [1ff1177]
+  - @ai-sdk-tool/parser@2.0.12
+
 ## 1.0.13
 
 ### Patch Changes
