@@ -97,17 +97,49 @@ type ParseState = {
   warnings: ParseWarning[];
   // Options passed to the parser
   tolerant: boolean;
-  duplicate: boolean; // Whether to check for duplicate keys
+  duplicate: boolean; // true = allow duplicate keys (use last value), false = reject duplicate keys with error
   reviver?: (key: string, value: any) => any; // Optional JSON reviver function
 };
 
-// Type for options passed to the main parse function
+/**
+ * Options for configuring JSON parsing behavior
+ */
 type ParseOptions = {
-  relaxed?: boolean; // Use relaxed lexing rules? (default: true)
-  warnings?: boolean; // Collect warnings? (implies tolerant, default: false)
-  tolerant?: boolean; // Tolerate errors and try to continue? (default: false)
-  duplicate?: boolean; // Allow duplicate keys? (default: false)
-  reviver?: (key: string, value: any) => any; // JSON reviver function
+  /**
+   * Enable relaxed JSON syntax parsing (unquoted keys, single quotes, trailing commas, comments)
+   * @default true
+   */
+  relaxed?: boolean;
+  
+  /**
+   * Collect parsing warnings instead of throwing immediately. Implies tolerant mode.
+   * At the end of parsing, if warnings exist, throws with warning details.
+   * @default false
+   */
+  warnings?: boolean;
+  
+  /**
+   * Continue parsing when encountering recoverable errors, collecting warnings.
+   * In strict mode (false), throws immediately on first error.
+   * @default false
+   */
+  tolerant?: boolean;
+  
+  /**
+   * Allow duplicate object keys in JSON.
+   * - true: Allow duplicates (uses last value, like native JSON.parse)
+   * - false: Reject duplicates with error (enforces JSON specification)
+   * @default false
+   */
+  duplicate?: boolean;
+  
+  /**
+   * Optional reviver function to transform parsed values (same as JSON.parse reviver)
+   * @param key - The object key or array index
+   * @param value - The parsed value
+   * @returns The transformed value
+   */
+  reviver?: (key: string, value: any) => any;
 };
 
 // Type for options specific to the parseMany function
@@ -395,9 +427,24 @@ function stripTrailingComma(tokens: Token[]): Token[] {
   return res;
 }
 
-// Transforms raw text into a string closer to standard JSON by lexing and re-joining matches.
-// Primarily used when `warnings: false` but `relaxed: true`.
-// :: string -> string
+/**
+ * Transform relaxed JSON syntax to standard JSON string
+ * 
+ * Converts relaxed JSON features (unquoted keys, single quotes, trailing commas, comments)
+ * into valid standard JSON syntax that can be parsed by native JSON.parse().
+ * 
+ * @param text - The relaxed JSON string to transform
+ * @returns A standard JSON string
+ * 
+ * @example
+ * ```typescript
+ * transform('{key: "value", trailing: "comma",}') 
+ * // Returns: '{"key": "value", "trailing": "comma"}'
+ * 
+ * transform("{'single': 'quotes'}") 
+ * // Returns: '{"single": "quotes"}'
+ * ```
+ */
 function transform(text: string): string {
   // Tokenize contents using the relaxed lexer
   let tokens = lexer(text);
@@ -542,7 +589,9 @@ function raiseUnexpected(
   );
 }
 
-// Checks for duplicate keys in an object if state.duplicate is false
+// Checks for duplicate keys in objects when duplicate checking is enabled (state.duplicate = false).
+// If a duplicate key is found, raises an error (respecting tolerant mode).
+// This enforces JSON specification compliance for duplicate key handling.
 // :: parseState -> {} -> parseToken -> undefined
 function checkDuplicates(
   state: ParseState,
@@ -553,10 +602,12 @@ function checkDuplicates(
   // If other types could be keys, this check needs adjustment.
   const key = String(token.value); // Ensure key is string for lookup
 
-  // Only check if the duplicate checking is enabled
+  // Only check for duplicates when duplicate checking is enabled
+  // state.duplicate = false means "reject duplicates", so we check when !state.duplicate
   if (!state.duplicate && Object.prototype.hasOwnProperty.call(obj, key)) {
     raiseError(state, token, `Duplicate key: ${key}`);
-    // Note: In tolerant mode, this only adds a warning; the duplicate value will overwrite
+    // Note: In tolerant mode, this adds a warning and continues parsing.
+    // In strict mode, this throws immediately. Either way, last value wins for the duplicate key.
   }
 }
 
@@ -876,8 +927,37 @@ function parseAny(
 
 // --- Main Parse Function ---
 
-// Public API: Parses a JSON (or relaxed JSON) string into a JavaScript value
-// :: string -> * -> any
+/**
+ * Parse a JSON string with enhanced features beyond standard JSON.parse()
+ * 
+ * Supports both strict JSON and relaxed JSON syntax with configurable error handling
+ * and duplicate key validation.
+ * 
+ * @param text - The JSON string to parse
+ * @param optsOrReviver - Either a ParseOptions object for configuration, or a reviver function (like JSON.parse)
+ * 
+ * @returns The parsed JavaScript value
+ * 
+ * @throws {SyntaxError} When parsing fails in strict mode, or when warnings are collected in tolerant mode
+ * 
+ * @example
+ * ```typescript
+ * // Standard JSON parsing
+ * parse('{"key": "value"}')
+ * 
+ * // Relaxed JSON with unquoted keys and trailing commas
+ * parse('{key: "value", trailing: "comma",}', { relaxed: true })
+ * 
+ * // Strict duplicate key validation
+ * parse('{"key": 1, "key": 2}', { duplicate: false }) // throws error
+ * 
+ * // Allow duplicates (uses last value)
+ * parse('{"key": 1, "key": 2}', { duplicate: true }) // returns {key: 2}
+ * 
+ * // Tolerant mode with warning collection
+ * parse('malformed json', { tolerant: true, warnings: true })
+ * ```
+ */
 function parse(
   text: string,
   optsOrReviver?: ParseOptions | ((key: string, value: any) => any)
@@ -911,22 +991,21 @@ function parse(
   // Warnings implies tolerant
   options.tolerant = options.tolerant || options.warnings || false;
   options.warnings = options.warnings || false;
-  options.duplicate = options.duplicate || false; // Default: check duplicates (false means check)
+  // Default duplicate key behavior: false = reject duplicates with error, true = allow (use last value)
+  options.duplicate = options.duplicate ?? false;
 
   // --- Parsing Strategy ---
 
   // Strategy 1: Strict JSON, no special handling -> use native JSON.parse for speed
   // Also use if relaxed=false and warnings=false (even if reviver is present)
   if (!options.relaxed && !options.warnings && !options.tolerant) {
-    // Note: native JSON.parse doesn't have duplicate key check option.
-    // If duplicate=false (meaning check), we can't use native parse directly if strict checking is required.
-    // However, the original code falls back to transform+JSON.parse in this case. Let's match that.
-    // If `options.duplicate` is true (allow duplicates), native parse works.
-    // If `options.duplicate` is false (check duplicates), native parse doesn't check, so we *must* use custom path.
+    // Note: native JSON.parse doesn't support duplicate key checking.
+    // - If duplicate=true (allow duplicates): native JSON.parse can be used safely
+    // - If duplicate=false (reject duplicates): must use custom parser for validation
     if (!options.duplicate) {
-      // Fall through to custom parser path to enforce duplicate check if needed.
+      // duplicate=false: Need custom parser to check for duplicate keys
     } else {
-      // Use native parser if relaxed=false, warnings=false, tolerant=false, and duplicate=true (allow)
+      // duplicate=true: Safe to use native JSON.parse (allows duplicates, uses last value)
       return JSON.parse(text, options.reviver);
     }
   }
@@ -953,7 +1032,7 @@ function parse(
       pos: 0,
       reviver: options.reviver,
       tolerant: options.tolerant,
-      duplicate: !options.duplicate, // Internal state: true means *check* for duplicates
+      duplicate: options.duplicate, // true = allow duplicate keys, false = reject duplicates
       warnings: [],
     };
 
@@ -976,14 +1055,14 @@ function parse(
       !options.relaxed &&
       !options.warnings &&
       !options.tolerant &&
-      options.duplicate /* allow dupes */
+      options.duplicate /* duplicate=true: allow duplicate keys */
     ) {
       // Case 1: Strict, no warnings, no tolerance, allow duplicates => Native fastest
       return JSON.parse(text, options.reviver);
     } else if (
       options.warnings ||
       options.tolerant ||
-      !options.duplicate /* check dupes */
+      !options.duplicate /* duplicate=false: need duplicate key validation */
     ) {
       // Case 2: Warnings OR Tolerance OR Strict Duplicate Check needed => Full custom parser
       tokens = lexerToUse(text);
@@ -995,7 +1074,7 @@ function parse(
         pos: 0,
         reviver: options.reviver,
         tolerant: options.tolerant || false, // Ensure boolean
-        duplicate: !options.duplicate, // true = check duplicates
+        duplicate: options.duplicate, // true = allow duplicate keys, false = reject duplicates
         warnings: [],
       };
       return parseAny(tokens, state, true);
@@ -1021,8 +1100,24 @@ function stringifyPair(obj: { [key: string]: any }, key: string): string {
   return JSON.stringify(key) + ":" + stringify(obj[key]); // eslint-disable-line no-use-before-define
 }
 
-// Basic JSON stringify implementation
-// :: any -> ... -> string
+/**
+ * Convert JavaScript value to JSON string with sorted object keys
+ * 
+ * Similar to JSON.stringify but with consistent key ordering (sorted alphabetically).
+ * Handles undefined values by converting them to null.
+ * 
+ * @param obj - The value to convert to JSON string
+ * @returns A JSON string representation
+ * 
+ * @example
+ * ```typescript
+ * stringify({z: 1, a: 2, m: 3})
+ * // Returns: '{"a":2,"m":3,"z":1}' (keys sorted)
+ * 
+ * stringify({key: undefined})
+ * // Returns: '{"key":null}' (undefined becomes null)
+ * ```
+ */
 function stringify(obj: any): string {
   const type = typeof obj;
 
@@ -1065,3 +1160,4 @@ function stringify(obj: any): string {
 }
 
 export { parse, transform, stringify };
+export type { ParseOptions };
