@@ -7,6 +7,12 @@ if git rev-parse --verify MERGE_HEAD >/dev/null 2>&1; then
   exit 0
 fi
 
+# Skip for changeset version commits
+if [ -n "$HUSKY_SKIP_HOOKS" ] || [ -n "$SKIP_CHECKS" ]; then
+  echo "Skipping pre-commit checks (HUSKY_SKIP_HOOKS or SKIP_CHECKS set)"
+  exit 0
+fi
+
 echo "Running pre-commit checks..."
 
 # Check formatting
