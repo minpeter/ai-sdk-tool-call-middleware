@@ -63,19 +63,11 @@ jobs:
             fi
           done
 
-          # run commands in parallel with a concurrency limit
-          MAX=4
-          running=0
+          # run commands serially to ensure coverage files are reliably written
           for c in "${cmds[@]}"; do
-            echo "Starting: $c"
-            bash -lc "$c" &
-            running=$((running+1))
-            if [ "$running" -ge "$MAX" ]; then
-              wait -n || true
-              running=$((running-1))
-            fi
+            echo "Running: $c"
+            bash -lc "$c"
           done
-          wait || true
 
       - name: Merge LCOV files
         run: |
@@ -119,7 +111,22 @@ jobs:
           echo "Listing coverage directories"
           find . -type d -name coverage -maxdepth 4 -print -exec ls -la {} \; || true
 
+      - name: Check for merged coverage
+        id: check_cov
+        run: |
+          if [ -s coverage/lcov.info ]; then
+            echo "found=true" >> $GITHUB_OUTPUT
+          else
+            # also check for any per-package lcovs
+            if find . -type f -name lcov.info | grep -q .; then
+              echo "found=true" >> $GITHUB_OUTPUT
+            else
+              echo "found=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
       - name: Upload coverage to Codecov
+        if: steps.check_cov.outputs.found == 'true'
         uses: codecov/codecov-action@v4
         with:
           files: |
