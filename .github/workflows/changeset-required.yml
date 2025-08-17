@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   check-changeset:
@@ -91,31 +92,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Comment PR
-        if: steps.changeset.outputs.missing == 'true'
+      - name: Handle PR Comments
+        if: always()
         uses: actions/github-script@v7
         with:
           script: |
-            const body = `## ⚠️ Missing Changeset
-
-            This PR is missing a changeset file. Changesets help us track changes and generate changelogs.
-
-            ### To add a changeset:
-            \`\`\`bash
-            pnpm changeset
-            \`\`\`
-
-            Follow the prompts to:
-            1. Select the packages that have changed
-            2. Choose the version bump type (patch/minor/major)
-            3. Write a summary of the changes
-
-            ### To skip this check:
-            Add the \`skip-changeset\` label to this PR if it doesn't require a changeset (e.g., tests, refactoring).
-
-            For more information, see the [changesets documentation](https://github.com/changesets/changesets).`;
-
-            // Find existing comment
+            const isMissing = '${{ steps.changeset.outputs.missing }}' === 'true';
+            const isSkipped = '${{ steps.changeset.outputs.skip }}' === 'true';
+            
+            // Find existing warning comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -124,23 +109,74 @@ jobs:
 
             const botComment = comments.find(comment => 
               comment.user?.type === 'Bot' && 
-              comment.body?.includes('Missing Changeset')
+              (comment.body?.includes('Missing Changeset') || comment.body?.includes('Changeset Check Passed'))
             );
 
-            if (botComment) {
+            if (isMissing) {
+              // Add or update warning comment
+              const body = `## ⚠️ Missing Changeset
+
+              This PR is missing a changeset file. Changesets help us track changes and generate changelogs.
+
+              ### To add a changeset:
+              \`\`\`bash
+              pnpm changeset
+              \`\`\`
+
+              Follow the prompts to:
+              1. Select the packages that have changed
+              2. Choose the version bump type (patch/minor/major)
+              3. Write a summary of the changes
+
+              ### To skip this check:
+              Add the \`skip-changeset\` label to this PR if it doesn't require a changeset (e.g., tests, refactoring).
+
+              For more information, see the [changesets documentation](https://github.com/changesets/changesets).`;
+
+              if (botComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: body
+                });
+              }
+            } else if (botComment) {
+              // Changeset was added or check was skipped - remove warning comment
+              console.log('Changeset found or check skipped - removing warning comment');
+              
+              // Update comment to show success message before deleting
+              const successBody = `## ✅ Changeset Check Passed
+
+              ${isSkipped ? 'This PR has been marked to skip changeset requirements.' : 'A changeset has been added to this PR.'}
+
+              *This comment will be automatically removed.*`;
+              
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 comment_id: botComment.id,
-                body: body
+                body: successBody
               });
-            } else {
-              await github.rest.issues.createComment({
+              
+              // Wait a moment so the success message can be seen
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              
+              // Delete the comment
+              await github.rest.issues.deleteComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: body
+                comment_id: botComment.id
               });
+              
+              console.log('Warning comment removed successfully');
             }
 
       - name: Fail if changeset required
