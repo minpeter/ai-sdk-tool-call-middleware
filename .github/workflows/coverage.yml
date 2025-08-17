@@ -81,15 +81,35 @@ jobs:
         run: |
           echo "Merging LCOV files into ./coverage/lcov.info"
           mkdir -p coverage
-          # Use pnpm dlx to run lcov-result-merger; fallback to concatenation if unavailable
-          if pnpm -v >/dev/null 2>&1; then
-            pnpm dlx -y lcov-result-merger "**/coverage/lcov.info" -o coverage/lcov.info || true
+          set -euo pipefail
+          # find lcov files
+          mapfile -t LCOVS < <(find . -type f -name lcov.info 2>/dev/null || true)
+          if [ ${#LCOVS[@]} -eq 0 ]; then
+            echo "No lcov.info files found, skipping merge."
+            exit 0
           fi
-          # if merger didn't create merged file, try a safe concat fallback
-          if [ ! -f coverage/lcov.info ]; then
-            echo "Falling back to simple concatenation for LCOV files"
-            find . -type f -name lcov.info -print0 | xargs -0 cat > coverage/lcov.info || true
+
+          echo "Found ${#LCOVS[@]} lcov files"
+          # try lcov-result-merger via pnpm dlx (no -y flag)
+          if command -v pnpm >/dev/null 2>&1; then
+            pnpm dlx lcov-result-merger "${LCOVS[@]}" -o coverage/lcov.info || true
           fi
+
+          # if merger didn't create merged file or it's empty, fallback to safe concat
+          if [ ! -s coverage/lcov.info ]; then
+            echo "Falling back to concatenation for LCOV files"
+            # create header/footer safe concatenation to avoid duplicates of 'end_of_record'
+            > coverage/lcov.info
+            for f in "${LCOVS[@]}"; do
+              # skip empty files
+              if [ -s "$f" ]; then
+                # remove potential 'end_of_record' duplicates
+                sed '/^end_of_record$/d' "$f" >> coverage/lcov.info || true
+                echo "end_of_record" >> coverage/lcov.info
+              fi
+            done
+          fi
+
           echo "Merged file size: $(stat -c%s coverage/lcov.info || echo 0)"
 
       - name: List generated coverage files (debug)
