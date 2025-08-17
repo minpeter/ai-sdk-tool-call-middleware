@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "strict": true,
     "declaration": true,
@@ -9,13 +10,11 @@
     "types": ["node"],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "rootDir": "./src",
     "outDir": "./build",
     "skipLibCheck": true,
-    "paths": {
-      "@/*": ["../src/*"]
-    }
+    "composite": true
   },
   "include": ["src/**/*.ts"]
 }

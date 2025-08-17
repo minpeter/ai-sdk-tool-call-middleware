@@ -12,13 +12,15 @@
     "check-types": "turbo run check-types",
     "changeset": "changeset",
     "ci:release": "turbo build && changeset publish",
-    "ci:version": "changeset version"
+    "ci:version": "changeset version",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@changesets/cli": "2.29.6",
     "@eslint/js": "^9.17.0",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",
+    "husky": "^9.1.7",
     "jiti": "^2.4.0",
     "prettier": "^3.6.2",
     "turbo": "^2.5.6",

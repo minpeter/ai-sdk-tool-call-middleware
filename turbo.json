@@ -36,6 +36,15 @@
     "test": {
       "dependsOn": [
         "^test"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "src/**/*.{ts,tsx}",
+        "test/**/*.{ts,tsx}",
+        "vitest.config.*"
+      ],
+      "outputs": [
+        "coverage/**"
       ]
     }
   }
