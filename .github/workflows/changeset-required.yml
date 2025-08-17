@@ -157,7 +157,7 @@ jobs:
 
               ${isSkipped ? 'This PR has been marked to skip changeset requirements.' : 'A changeset has been added to this PR.'}
 
-              *This comment will be automatically removed.*`;
+              *This comment will be automatically removed in 3 seconds...*`;
               
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
