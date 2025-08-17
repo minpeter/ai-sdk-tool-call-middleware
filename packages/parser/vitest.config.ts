@@ -9,5 +9,12 @@ export default defineConfig({
       reporter: ["text", "lcov", "html"],
       reportsDirectory: "./coverage",
     },
+    // Ensure proper module resolution
+    environment: "node",
+    globals: true,
+  },
+  // Ensure ESM compatibility
+  resolve: {
+    conditions: ["node", "import", "module", "require"],
   },
 });
