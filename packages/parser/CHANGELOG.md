@@ -1,5 +1,18 @@
 # @ai-sdk-tool/parser
 
+## 2.0.13
+
+### Patch Changes
+
+- 7358b9f: Add and configure development tooling and quality improvements:
+  - add ESLint and Prettier configs
+  - add code coverage reporting and CI-friendly setup
+  - bump and align dev dependencies
+
+  These changes improve DX, enforce consistent styling, and surface test coverage.
+
+- ca45854: Added extensive testing and improved handling of incomplete function calls.
+
 ## 2.0.12
 
 ### Patch Changes
