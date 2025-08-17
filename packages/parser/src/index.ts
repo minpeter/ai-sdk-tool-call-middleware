@@ -11,7 +11,7 @@ You SHOULD NOT include any other text in the response if you call a function
 ${tools}`;
   },
   toolCallTag: "```tool_call\n",
-  toolCallEndTag: "\n``",  // two backticks are more common in gemma output
+  toolCallEndTag: "\n``", // two backticks are more common in gemma output
   toolResponseTag: "```tool_response\n",
   toolResponseEndTag: "\n```",
 });

@@ -12,12 +12,13 @@ import {
 } from "./utils";
 import { normalToolStream, toolChoiceStream } from "./stream-handler";
 
-function isToolChoiceActive(params: any): boolean {
-  const toolChoice = params?.providerOptions?.toolCallMiddleware?.toolChoice;
+function isToolChoiceActive(params: { providerOptions?: unknown }): boolean {
+  const toolChoice = (params?.providerOptions as any)?.toolCallMiddleware
+    ?.toolChoice;
   return (
     typeof params.providerOptions === "object" &&
     params.providerOptions !== null &&
-    typeof params.providerOptions.toolCallMiddleware === "object" &&
+    typeof (params.providerOptions as any).toolCallMiddleware === "object" &&
     toolChoice &&
     typeof toolChoice === "object" &&
     (toolChoice.type === "tool" || toolChoice.type === "required")
@@ -63,7 +64,7 @@ export function createToolMiddleware({
 
       // Handle case: set tool choice type "tool" and tool name
       if (isToolChoiceActive(params)) {
-        const toolJson: any =
+        const toolJson: { name?: string; arguments?: Record<string, unknown> } =
           result.content[0].type === "text"
             ? JSON.parse(result.content[0].text)
             : {};
@@ -75,7 +76,7 @@ export function createToolMiddleware({
               type: "tool-call",
               toolCallType: "function",
               toolCallId: generateId(),
-              toolName: toolJson.name,
+              toolName: toolJson.name || "unknown",
               input: JSON.stringify(toolJson.arguments || {}),
             },
           ],
@@ -234,8 +235,10 @@ export function createToolMiddleware({
       // Handle specific tool choice scenario
       if (params.toolChoice?.type === "tool") {
         const selectedToolName = params.toolChoice.toolName;
-        const selectedTool = params.tools?.find(
-          (tool) => tool.name === selectedToolName
+        const selectedTool = params.tools?.find((tool) =>
+          tool.type === "function"
+            ? tool.name === selectedToolName
+            : tool.id === selectedToolName
         );
 
         if (!selectedTool) {

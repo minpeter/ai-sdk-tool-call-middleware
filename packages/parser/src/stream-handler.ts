@@ -37,6 +37,37 @@ export async function normalToolStream({
   >({
     transform(chunk, controller) {
       if (chunk.type === "finish") {
+        // Handle incomplete tool calls by restoring them as text
+        if (
+          isToolCall &&
+          (buffer.length > 0 ||
+            (toolCallIndex >= 0 && toolCallBuffer[toolCallIndex]))
+        ) {
+          // Start a new text chunk if needed
+          if (!currentTextId) {
+            currentTextId = generateId();
+            controller.enqueue({
+              type: "text-start",
+              id: currentTextId,
+            });
+            hasEmittedTextStart = true;
+          }
+
+          // Add the incomplete tool call back as text (without end tag)
+          const incompleteContent =
+            (toolCallBuffer[toolCallIndex] || "") + buffer;
+          controller.enqueue({
+            type: "text-delta",
+            id: currentTextId,
+            delta: toolCallTag + incompleteContent,
+          });
+
+          // Clear the current incomplete tool call from the buffer
+          if (toolCallIndex >= 0) {
+            toolCallBuffer = toolCallBuffer.slice(0, toolCallIndex);
+          }
+        }
+
         // End any active text chunk before processing tool calls
         if (currentTextId && hasEmittedTextStart) {
           controller.enqueue({
@@ -64,7 +95,7 @@ export async function normalToolStream({
             } catch (e) {
               console.error(`Error parsing tool call: ${toolCall}`, e);
 
-              // For error messages, use proper start/delta/end pattern
+              // For malformed tool calls, restore original text
               const errorId = generateId();
               controller.enqueue({
                 type: "text-start",
@@ -73,7 +104,7 @@ export async function normalToolStream({
               controller.enqueue({
                 type: "text-delta",
                 id: errorId,
-                delta: `Failed to parse tool call: ${e}`,
+                delta: `${toolCallTag}${toolCall}${toolCallEndTag}`,
               });
               controller.enqueue({
                 type: "text-end",
@@ -95,7 +126,7 @@ export async function normalToolStream({
       buffer += chunk.delta;
 
       function publish(text: string) {
-        if (text.length > 0) {
+        if (text.length > 0 || isToolCall) {
           const prefix =
             afterSwitch && (isToolCall ? !isFirstToolCall : !isFirstText)
               ? "\n" // separator
@@ -117,7 +148,7 @@ export async function normalToolStream({
             }
 
             toolCallBuffer[toolCallIndex] += text;
-          } else {
+          } else if (text.length > 0) {
             // Start a new text chunk if needed
             if (!currentTextId) {
               currentTextId = generateId();
@@ -156,7 +187,6 @@ export async function normalToolStream({
           break;
         }
 
-
         const foundFullMatch = startIndex + nextTag.length <= buffer.length;
 
         if (foundFullMatch) {
@@ -176,7 +206,7 @@ export async function normalToolStream({
   });
 
   return {
-    stream: stream.pipeThrough(transformStream),
+    stream: stream?.pipeThrough(transformStream) ?? new ReadableStream(),
     ...rest,
   };
 }
@@ -190,19 +220,30 @@ export async function toolChoiceStream({
   const result = await doGenerate();
 
   // Assume result.content[0] contains tool-call information (JSON)
-  const toolJson: any =
-    result.content[0].type === "text" ? JSON.parse(result.content[0].text) : {};
+  const toolJson: { name?: string; arguments?: Record<string, unknown> } =
+    result?.content &&
+    result.content.length > 0 &&
+    result.content[0]?.type === "text"
+      ? JSON.parse(result.content[0].text)
+      : {};
 
   const toolCallChunk: LanguageModelV2StreamPart = {
     type: "tool-call",
     toolCallId: generateId(),
-    toolName: toolJson.name,
+    toolName: toolJson.name || "unknown",
     input: JSON.stringify(toolJson.arguments || {}),
   };
 
   const finishChunk: LanguageModelV2StreamPart = {
     type: "finish",
-    usage: result.usage as LanguageModelV2Usage,
+    usage:
+      result?.usage ||
+      // TODO: If possible, try to return a certain amount of LLM usage.
+      ({
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      } as LanguageModelV2Usage),
     finishReason: "tool-calls" as LanguageModelV2FinishReason,
   };
 
@@ -215,8 +256,8 @@ export async function toolChoiceStream({
   });
 
   return {
-    request: result.request,
-    response: result.response,
+    request: result?.request || {},
+    response: result?.response || {},
     stream,
   };
 }
