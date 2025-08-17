@@ -9,6 +9,8 @@
 
 Allows tool calls to be used in the AI ​​SDK framework regardless of the model.
 
+▲ See the Vercel AI SDK official documentation for usage: [Custom tool call parser](https://ai-sdk.dev/docs/ai-sdk-core/middleware#custom-tool-call-parser)
+
 ## Why This Exists
 
 Many self‑hosted or third‑party model endpoints (vLLM, MLC‑LLM, Ollama, OpenRouter, etc.) don’t yet expose the OpenAI‑style `tools` parameter, forcing you to hack together tool parsing.  
