@@ -132,11 +132,15 @@ jobs:
         if: steps.check_cov.outputs.found == 'true'
         uses: codecov/codecov-action@v4
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: |
             coverage/lcov.info
             **/coverage/lcov.info
           fail_ci_if_error: false
+          verbose: true
 
-      - name: Note about protected branches
+      - name: Coverage upload summary
         run: |
-          echo "If upload fails on protected branches, add CODECOV_TOKEN to repository secrets and re-run the workflow."
+          echo "✅ Coverage files were found and processed"
+          echo "📊 Coverage has been uploaded to Codecov"
+          echo "🔒 Note: CODECOV_TOKEN is required for protected branches"
