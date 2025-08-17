@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { gemmaToolMiddleware, hermesToolMiddleware, createToolMiddleware } from "./index";
-import type { LanguageModelV2Message, LanguageModelV2FunctionTool, LanguageModelV2Content } from "@ai-sdk/provider";
+import {
+  gemmaToolMiddleware,
+  hermesToolMiddleware,
+  createToolMiddleware,
+} from "./index";
+import type {
+  LanguageModelV2Message,
+  LanguageModelV2FunctionTool,
+  LanguageModelV2Content,
+} from "@ai-sdk/provider";
 
 describe("index exports", () => {
   describe("gemmaToolMiddleware", () => {
@@ -33,17 +41,23 @@ describe("index exports", () => {
         ],
       };
 
-      const result = await gemmaToolMiddleware.transformParams!({ params } as any);
-      
+      const result = await gemmaToolMiddleware.transformParams!({
+        params,
+      } as any);
+
       // Check that the prompt has been transformed
       expect(result.prompt).toBeDefined();
       expect(result.tools).toEqual([]);
-      
+
       // Verify the system prompt contains gemma-specific formatting
-      const systemMessage = result.prompt.find((msg: LanguageModelV2Message) => msg.role === "system");
+      const systemMessage = result.prompt.find(
+        (msg: LanguageModelV2Message) => msg.role === "system"
+      );
       if (systemMessage && typeof systemMessage.content === "string") {
         expect(systemMessage.content).toContain("```tool_call");
-        expect(systemMessage.content).toContain("{'name': <function-name>, 'arguments': <args-dict>}");
+        expect(systemMessage.content).toContain(
+          "{'name': <function-name>, 'arguments': <args-dict>}"
+        );
       }
     });
   });
@@ -78,14 +92,18 @@ describe("index exports", () => {
         ],
       };
 
-      const result = await hermesToolMiddleware.transformParams!({ params } as any);
-      
+      const result = await hermesToolMiddleware.transformParams!({
+        params,
+      } as any);
+
       // Check that the prompt has been transformed
       expect(result.prompt).toBeDefined();
       expect(result.tools).toEqual([]);
-      
+
       // Verify the system prompt contains hermes-specific formatting
-      const systemMessage = result.prompt.find((msg: LanguageModelV2Message) => msg.role === "system");
+      const systemMessage = result.prompt.find(
+        (msg: LanguageModelV2Message) => msg.role === "system"
+      );
       if (systemMessage && typeof systemMessage.content === "string") {
         expect(systemMessage.content).toContain("<tool_call>");
         expect(systemMessage.content).toContain("</tool_call>");
@@ -107,7 +125,8 @@ describe("index exports", () => {
         toolCallEndTag: "TOOL]]",
         toolResponseTag: "[[RESPONSE",
         toolResponseEndTag: "RESPONSE]]",
-        toolSystemPromptTemplate: (tools: string) => `Custom template: ${tools}`,
+        toolSystemPromptTemplate: (tools: string) =>
+          `Custom template: ${tools}`,
       });
 
       expect(customMiddleware).toBeDefined();
@@ -122,41 +141,49 @@ describe("index exports", () => {
     it("gemma should use two backticks for end tag", async () => {
       // This is a specific quirk of gemma - it often outputs only two backticks
       // The configuration accounts for this
-      const mockDoGenerate = () => Promise.resolve({
-        content: [
-          {
-            type: "text" as const,
-            text: '```tool_call\n{"name": "test", "arguments": {}}\n``'
-          }
-        ] as LanguageModelV2Content[]
-      });
+      const mockDoGenerate = () =>
+        Promise.resolve({
+          content: [
+            {
+              type: "text" as const,
+              text: '```tool_call\n{"name": "test", "arguments": {}}\n``',
+            },
+          ] as LanguageModelV2Content[],
+        });
 
       const result = await gemmaToolMiddleware.wrapGenerate!({
         doGenerate: mockDoGenerate,
         params: { prompt: [] },
       } as any);
 
-      const toolCalls = result.content.filter((c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> => c.type === "tool-call");
+      const toolCalls = result.content.filter(
+        (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
+          c.type === "tool-call"
+      );
       expect(toolCalls).toHaveLength(1);
       expect(toolCalls[0].toolName).toBe("test");
     });
 
     it("hermes should parse XML-style tool calls", async () => {
-      const mockDoGenerate = () => Promise.resolve({
-        content: [
-          {
-            type: "text" as const,
-            text: '<tool_call>\n{"arguments": {"arg": "value"}, "name": "testTool"}\n</tool_call>'
-          }
-        ] as LanguageModelV2Content[]
-      });
+      const mockDoGenerate = () =>
+        Promise.resolve({
+          content: [
+            {
+              type: "text" as const,
+              text: '<tool_call>\n{"arguments": {"arg": "value"}, "name": "testTool"}\n</tool_call>',
+            },
+          ] as LanguageModelV2Content[],
+        });
 
       const result = await hermesToolMiddleware.wrapGenerate!({
         doGenerate: mockDoGenerate,
         params: { prompt: [] },
       } as any);
 
-      const toolCalls = result.content.filter((c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> => c.type === "tool-call");
+      const toolCalls = result.content.filter(
+        (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
+          c.type === "tool-call"
+      );
       expect(toolCalls).toHaveLength(1);
       expect(toolCalls[0].toolName).toBe("testTool");
       expect(JSON.parse(toolCalls[0].input)).toEqual({ arg: "value" });
@@ -165,14 +192,15 @@ describe("index exports", () => {
 
   describe("error handling", () => {
     it("gemma should handle malformed tool calls", async () => {
-      const mockDoGenerate = () => Promise.resolve({
-        content: [
-          {
-            type: "text" as const,
-            text: '```tool_call\ninvalid json\n```'
-          }
-        ] as LanguageModelV2Content[]
-      });
+      const mockDoGenerate = () =>
+        Promise.resolve({
+          content: [
+            {
+              type: "text" as const,
+              text: "```tool_call\ninvalid json\n```",
+            },
+          ] as LanguageModelV2Content[],
+        });
 
       const result = await gemmaToolMiddleware.wrapGenerate!({
         doGenerate: mockDoGenerate,
@@ -184,17 +212,18 @@ describe("index exports", () => {
     });
 
     it("hermes should handle malformed tool calls", async () => {
-      const mockDoGenerate = () => Promise.resolve({
-        content: [
-          {
-            type: "text" as const,
-            text: '<tool_call>not valid json</tool_call>'
-          }
-        ] as LanguageModelV2Content[],
-        finishReason: "stop" as const,
-        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-        warnings: []
-      });
+      const mockDoGenerate = () =>
+        Promise.resolve({
+          content: [
+            {
+              type: "text" as const,
+              text: "<tool_call>not valid json</tool_call>",
+            },
+          ] as LanguageModelV2Content[],
+          finishReason: "stop" as const,
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          warnings: [],
+        });
 
       const result = await hermesToolMiddleware.wrapGenerate!({
         doGenerate: mockDoGenerate,

@@ -466,12 +466,22 @@ describe("normalToolStream", () => {
         controller.enqueue({
           type: "text-delta",
           id: "input-id",
-          delta: "Text before <TOOL_CALL>",
+          delta: "Text before <TOOL_CALL>\n",
         });
         controller.enqueue({
           type: "text-delta",
           id: "input-id",
-          delta: '{"name": "test", "arguments": ',
+          delta: "{'name': 'cnbc_news_",
+        });
+        controller.enqueue({
+          type: "text-delta",
+          id: "input-id",
+          delta: "feed', 'arguments': {}}",
+        });
+        controller.enqueue({
+          type: "text-delta",
+          id: "input-id",
+          delta: "\n</TOOL_",
         });
         // Stream ends without closing the tool call
         controller.enqueue({
@@ -513,10 +523,9 @@ describe("normalToolStream", () => {
     );
     const textContent = textDeltaChunks.map((c) => c.delta).join("");
 
-    expect(textContent).toContain(
-      'Text before <TOOL_CALL>{"name": "test", "arguments": '
+    expect(textContent).toEqual(
+      "Text before <TOOL_CALL>\n{'name': 'cnbc_news_feed', 'arguments': {}}\n</TOOL_"
     );
-    expect(textContent).not.toContain("</TOOL_CALL>");
   });
 
   test("Handle case where first tool in parallel calls succeeds and later tool fails (output handling)", async () => {
@@ -595,7 +604,8 @@ describe("normalToolStream", () => {
     );
     const textContent = textDeltaChunks.map((c) => c.delta).join("");
 
-    expect(textContent).toContain('middle text <TOOL_CALL>{"name": "');
-    expect(textContent).not.toContain("</TOOL_CALL>");
+    expect(textContent).toEqual(
+      'Text before \nmiddle text <TOOL_CALL>{"name": "'
+    );
   });
 });
