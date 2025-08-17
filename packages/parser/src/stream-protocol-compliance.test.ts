@@ -85,7 +85,6 @@ describe("AI SDK v5 compatibility", () => {
       usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 },
       finishReason: "stop",
     });
-
   });
 
   test("handles empty text chunks correctly", async () => {

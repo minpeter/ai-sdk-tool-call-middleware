@@ -144,10 +144,10 @@ describe("normalToolStream", () => {
     }
 
     // Find text and tool-call chunks
-    const textStartChunks = chunks.filter((c) => c.type === "text-start");
-    const textDeltaChunks = chunks.filter((c) => c.type === "text-delta");
-    const textEndChunks = chunks.filter((c) => c.type === "text-end");
-    const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
+    const textStartChunks = chunks.filter(c => c.type === "text-start");
+    const textDeltaChunks = chunks.filter(c => c.type === "text-delta");
+    const textEndChunks = chunks.filter(c => c.type === "text-end");
+    const toolCallChunks = chunks.filter(c => c.type === "tool-call");
 
     // Should have proper text start/delta/end pattern
     expect(textStartChunks).toHaveLength(2); // Before and after tool call
@@ -310,7 +310,7 @@ describe("normalToolStream", () => {
     expect(toolCallChunks[0].toolName).toBe("test");
 
     // Should have text before and after
-    const textContent = textDeltaChunks.map((c) => c.delta).join("");
+    const textContent = textDeltaChunks.map(c => c.delta).join("");
     expect(textContent).toContain("Text before");
     expect(textContent).toContain("after");
   });
@@ -360,7 +360,7 @@ describe("normalToolStream", () => {
       (c): c is Extract<LanguageModelV2StreamPart, { type: "text-delta" }> =>
         c.type === "text-delta"
     );
-    const textContent = textDeltaChunks.map((c) => c.delta).join("");
+    const textContent = textDeltaChunks.map(c => c.delta).join("");
     expect(textContent).toContain("<TOOL_CALL>invalid json</TOOL_CALL>");
   });
 
@@ -409,7 +409,7 @@ describe("normalToolStream", () => {
       (c): c is Extract<LanguageModelV2StreamPart, { type: "text-delta" }> =>
         c.type === "text-delta"
     );
-    const textContent = textDeltaChunks.map((c) => c.delta).join("");
+    const textContent = textDeltaChunks.map(c => c.delta).join("");
     expect(textContent).toContain("<TOOL_CALL></TOOL_CALL>");
   });
 
@@ -453,8 +453,8 @@ describe("normalToolStream", () => {
     }
 
     // Should have error and finish chunks
-    const errorChunks = chunks.filter((c) => c.type === "error");
-    const finishChunks = chunks.filter((c) => c.type === "finish");
+    const errorChunks = chunks.filter(c => c.type === "error");
+    const finishChunks = chunks.filter(c => c.type === "finish");
 
     expect(errorChunks).toHaveLength(1);
     expect(finishChunks).toHaveLength(1);
@@ -521,7 +521,7 @@ describe("normalToolStream", () => {
       (c): c is Extract<LanguageModelV2StreamPart, { type: "text-delta" }> =>
         c.type === "text-delta"
     );
-    const textContent = textDeltaChunks.map((c) => c.delta).join("");
+    const textContent = textDeltaChunks.map(c => c.delta).join("");
 
     expect(textContent).toEqual(
       "Text before <TOOL_CALL>\n{'name': 'cnbc_news_feed', 'arguments': {}}\n</TOOL_"
@@ -602,7 +602,7 @@ describe("normalToolStream", () => {
       (c): c is Extract<LanguageModelV2StreamPart, { type: "text-delta" }> =>
         c.type === "text-delta"
     );
-    const textContent = textDeltaChunks.map((c) => c.delta).join("");
+    const textContent = textDeltaChunks.map(c => c.delta).join("");
 
     expect(textContent).toEqual(
       'Text before \nmiddle text <TOOL_CALL>{"name": "'

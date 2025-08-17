@@ -110,21 +110,21 @@ type ParseOptions = {
    * @default true
    */
   relaxed?: boolean;
-  
+
   /**
    * Collect parsing warnings instead of throwing immediately. Implies tolerant mode.
    * At the end of parsing, if warnings exist, throws with warning details.
    * @default false
    */
   warnings?: boolean;
-  
+
   /**
    * Continue parsing when encountering recoverable errors, collecting warnings.
    * In strict mode (false), throws immediately on first error.
    * @default false
    */
   tolerant?: boolean;
-  
+
   /**
    * Allow duplicate object keys in JSON.
    * - true: Allow duplicates (uses last value, like native JSON.parse)
@@ -132,7 +132,7 @@ type ParseOptions = {
    * @default false
    */
   duplicate?: boolean;
-  
+
   /**
    * Optional reviver function to transform parsed values (same as JSON.parse reviver)
    * @param key - The object key or array index
@@ -165,7 +165,7 @@ function makeLexer(tokenSpecs: TokenSpec[]): (contents: string) => Token[] {
     // :: -> { raw: string, matched: RawToken } | undefined
     function findToken(): { raw: string; matched: RawToken } | undefined {
       // Use the custom 'some' function to iterate through token specifications
-      const result = some(tokenSpecs, (tokenSpec) => {
+      const result = some(tokenSpecs, tokenSpec => {
         const m = tokenSpec.re.exec(contents); // Try to match the regex at the current position
         if (m) {
           const raw = m[0]; // The matched raw string
@@ -224,7 +224,7 @@ function fStringSingle(m: RegExpExecArray): RawToken {
   // Handles strings in single quotes, converting them to standard JSON double-quoted strings
   const content = m[1].replace(
     /([^'\\]|\\['bnrtf\\]|\\u[0-9a-fA-F]{4})/g,
-    (mm) => {
+    mm => {
       if (mm === '"') {
         return '\\"'; // Escape double quotes inside
       } else if (mm === "\\'") {
@@ -272,7 +272,7 @@ function fIdentifier(m: RegExpExecArray): RawToken {
 // :: tuple string -> rawToken
 function fComment(m: RegExpExecArray): RawToken {
   // Treats comments as whitespace, preserving only newlines
-  const match = m[0].replace(/./g, (c) => (/\s/.test(c) ? c : " "));
+  const match = m[0].replace(/./g, c => (/\s/.test(c) ? c : " "));
   return {
     type: " ", // Represent comments as whitespace tokens
     match: match, // String containing original newlines and spaces for other chars
@@ -340,9 +340,9 @@ function makeTokenSpecs(relaxed: boolean): TokenSpec[] {
     { re: /^:/, f: f(":") }, // Key-value separator
     { re: /^(?:true|false|null)/, f: fKeyword }, // Keywords
     // Number: optional sign, digits, optional decimal part, optional exponent
-    { re: /^\-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/, f: fNumber },
+    { re: /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/, f: fNumber },
     // String: double-quoted, handles escapes
-    { re: /^"(?:[^"\\]|\\["bnrtf\\\/]|\\u[0-9a-fA-F]{4})*"/, f: fStringDouble },
+    { re: /^"(?:[^"\\]|\\["bnrtf\\/]|\\u[0-9a-fA-F]{4})*"/, f: fStringDouble },
   ];
 
   // Add relaxed syntax rules if requested
@@ -350,7 +350,7 @@ function makeTokenSpecs(relaxed: boolean): TokenSpec[] {
     tokenSpecs = tokenSpecs.concat([
       // Single-quoted strings
       {
-        re: /^'((?:[^'\\]|\\['bnrtf\\\/]|\\u[0-9a-fA-F]{4})*)'/,
+        re: /^'((?:[^'\\]|\\['bnrtf\\/]|\\u[0-9a-fA-F]{4})*)'/,
         f: fStringSingle,
       },
       // Single-line comments (// ...)
@@ -359,7 +359,7 @@ function makeTokenSpecs(relaxed: boolean): TokenSpec[] {
       { re: /^\/\*[\s\S]*?\*\//, f: fComment },
       // Unquoted identifiers (treated as strings)
       // Allows letters, numbers, _, -, +, ., *, ?, !, |, &, %, ^, /, #, \
-      { re: /^[$a-zA-Z0-9_\-+\.\*\?!\|&%\^\/#\\]+/, f: fIdentifier },
+      { re: /^[$a-zA-Z0-9_\-+.*?!|&%^/#\\]+/, f: fIdentifier },
       // Note: The order matters here. Identifiers are checked after keywords/numbers.
     ]);
   }
@@ -429,19 +429,19 @@ function stripTrailingComma(tokens: Token[]): Token[] {
 
 /**
  * Transform relaxed JSON syntax to standard JSON string
- * 
+ *
  * Converts relaxed JSON features (unquoted keys, single quotes, trailing commas, comments)
  * into valid standard JSON syntax that can be parsed by native JSON.parse().
- * 
+ *
  * @param text - The relaxed JSON string to transform
  * @returns A standard JSON string
- * 
+ *
  * @example
  * ```typescript
- * transform('{key: "value", trailing: "comma",}') 
+ * transform('{key: "value", trailing: "comma",}')
  * // Returns: '{"key": "value", "trailing": "comma"}'
- * 
- * transform("{'single': 'quotes'}") 
+ *
+ * transform("{'single': 'quotes'}")
  * // Returns: '{"single": "quotes"}'
  * ```
  */
@@ -527,7 +527,6 @@ function skipPunctuation(
   let token = popToken(tokens, state);
 
   while (true) {
-    // eslint-disable-line no-constant-condition
     // If the token is one of the valid types we're looking for, return it
     if (valid && valid.includes(token.type)) {
       return token;
@@ -778,7 +777,6 @@ function parseMany<T>(
 
   // --- Parse Remaining Elements ---
   while (true) {
-    // eslint-disable-line no-constant-condition
     // After an element, expect a comma or the end symbol
     token = popToken(tokens, state);
 
@@ -808,7 +806,7 @@ function parseMany<T>(
         // End of the structure found
         return result;
 
-      case ",":
+      case ",": {
         // Comma found, parse the next element
         // Check for trailing comma before end symbol in tolerant mode
         const nextToken = tokens[state.pos]; // Peek ahead
@@ -822,6 +820,7 @@ function parseMany<T>(
         // Otherwise, parse the element following the comma
         opts.elementParser(tokens, state, result);
         break;
+      }
       // Default case is only reachable in tolerant mode recovery above
       default:
         opts.elementParser(tokens, state, result);
@@ -929,31 +928,31 @@ function parseAny(
 
 /**
  * Parse a JSON string with enhanced features beyond standard JSON.parse()
- * 
+ *
  * Supports both strict JSON and relaxed JSON syntax with configurable error handling
  * and duplicate key validation.
- * 
+ *
  * @param text - The JSON string to parse
  * @param optsOrReviver - Either a ParseOptions object for configuration, or a reviver function (like JSON.parse)
- * 
+ *
  * @returns The parsed JavaScript value
- * 
+ *
  * @throws {SyntaxError} When parsing fails in strict mode, or when warnings are collected in tolerant mode
- * 
+ *
  * @example
  * ```typescript
  * // Standard JSON parsing
  * parse('{"key": "value"}')
- * 
+ *
  * // Relaxed JSON with unquoted keys and trailing commas
  * parse('{key: "value", trailing: "comma",}', { relaxed: true })
- * 
+ *
  * // Strict duplicate key validation
  * parse('{"key": 1, "key": 2}', { duplicate: false }) // throws error
- * 
+ *
  * // Allow duplicates (uses last value)
  * parse('{"key": 1, "key": 2}', { duplicate: true }) // returns {key: 2}
- * 
+ *
  * // Tolerant mode with warning collection
  * parse('malformed json', { tolerant: true, warnings: true })
  * ```
@@ -1025,7 +1024,7 @@ function parse(
   // If warnings or tolerance are enabled, use the full parser logic
   if (options.warnings || options.tolerant) {
     // Filter out whitespace tokens as they are not needed by the parser
-    tokens = tokens.filter((token) => token.type !== " ");
+    tokens = tokens.filter(token => token.type !== " ");
 
     // Initialize the parser state
     const state: ParseState = {
@@ -1069,7 +1068,7 @@ function parse(
       if (options.relaxed) {
         tokens = stripTrailingComma(tokens);
       }
-      tokens = tokens.filter((token) => token.type !== " "); // Always filter whitespace for custom parser
+      tokens = tokens.filter(token => token.type !== " "); // Always filter whitespace for custom parser
       const state: ParseState = {
         pos: 0,
         reviver: options.reviver,
@@ -1097,23 +1096,23 @@ function parse(
 function stringifyPair(obj: { [key: string]: any }, key: string): string {
   // Stringify key and value, then join with colon
   // Recursively calls stringify for the value
-  return JSON.stringify(key) + ":" + stringify(obj[key]); // eslint-disable-line no-use-before-define
+  return JSON.stringify(key) + ":" + stringify(obj[key]);
 }
 
 /**
  * Convert JavaScript value to JSON string with sorted object keys
- * 
+ *
  * Similar to JSON.stringify but with consistent key ordering (sorted alphabetically).
  * Handles undefined values by converting them to null.
- * 
+ *
  * @param obj - The value to convert to JSON string
  * @returns A JSON string representation
- * 
+ *
  * @example
  * ```typescript
  * stringify({z: 1, a: 2, m: 3})
  * // Returns: '{"a":2,"m":3,"z":1}' (keys sorted)
- * 
+ *
  * stringify({key: undefined})
  * // Returns: '{"key":null}' (undefined becomes null)
  * ```
@@ -1151,7 +1150,7 @@ function stringify(obj: any): string {
     const keys = Object.keys(obj);
     keys.sort();
     // Stringify each key-value pair and join with commas
-    const pairs = keys.map((key) => stringifyPair(obj, key)).join(",");
+    const pairs = keys.map(key => stringifyPair(obj, key)).join(",");
     return "{" + pairs + "}";
   }
 
