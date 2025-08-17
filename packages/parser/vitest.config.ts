@@ -8,6 +8,11 @@ export default defineConfig({
       provider: "istanbul",
       reporter: ["text", "lcov", "html"],
       reportsDirectory: "./coverage",
+      enabled: true,
+      clean: true,
+      all: true,
+      include: ["src/**/*.ts"],
+      exclude: ["src/**/*.test.ts", "src/**/*.spec.ts", "**/*.d.ts"],
     },
     // Ensure proper module resolution
     environment: "node",

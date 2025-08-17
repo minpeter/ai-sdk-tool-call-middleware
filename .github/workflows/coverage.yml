@@ -67,6 +67,9 @@ jobs:
           for c in "${cmds[@]}"; do
             echo "Running: $c"
             bash -lc "$c"
+            # Debug: check if coverage was generated after each test run
+            echo "Checking for coverage files after running: $c"
+            find . -name "lcov.info" -type f 2>/dev/null | head -10 || echo "No lcov.info files found yet"
           done
 
       - name: Merge LCOV files
