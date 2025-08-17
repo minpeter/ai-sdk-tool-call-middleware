@@ -16,9 +16,9 @@
     "strict": true,
     "types": ["@types/node"],
     "jsx": "react-jsx",
-    "lib": ["dom", "ES2021"],
-    "module": "ESNext",
-    "target": "ES2018",
+    "lib": ["es2021", "dom"],
+    "module": "esnext",
+    "target": "es2018",
     "stripInternal": true,
     "paths": {
       "@/*": ["./src/*"]
