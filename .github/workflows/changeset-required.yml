@@ -1,0 +1,150 @@
+name: Changeset Required
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-changeset:
+    name: Verify Changeset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js 18.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check for Changeset
+        id: changeset
+        run: |
+          # Check if PR has skip-changeset label
+          if gh pr view ${{ github.event.pull_request.number }} --json labels --jq '.labels[].name' | grep -q "skip-changeset"; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "✅ Changeset check skipped due to 'skip-changeset' label" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          # Get changed files
+          git fetch origin ${{ github.base_ref }}
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          
+          # Check if only docs/config files changed
+          ONLY_DOCS_OR_CONFIG=true
+          while IFS= read -r file; do
+            # Skip if file matches documentation or config patterns
+            if [[ ! "$file" =~ ^(docs/|.*\.md$|\.github/|\.changeset/config\.json$|\.gitignore$|\.prettierrc.*$|\.eslintrc.*$|tsconfig.*\.json$|\.vscode/|LICENSE$) ]]; then
+              # Also skip if it's only package.json or lock file changes (dependencies)
+              if [[ ! "$file" =~ ^(package\.json$|pnpm-lock\.yaml$|yarn\.lock$|package-lock\.json$) ]]; then
+                ONLY_DOCS_OR_CONFIG=false
+                break
+              fi
+            fi
+          done <<< "$CHANGED_FILES"
+          
+          if [ "$ONLY_DOCS_OR_CONFIG" == "true" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "✅ Changeset not required for documentation/config-only changes" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          
+          # Check for changeset files
+          CHANGESETS=$(echo "$CHANGED_FILES" | grep '^\.changeset/.*\.md$' | grep -v 'README.md' || true)
+          
+          if [ -z "$CHANGESETS" ]; then
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "missing=true" >> $GITHUB_OUTPUT
+            echo "❌ No changeset found in this PR" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please add a changeset by running:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "pnpm changeset" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Or add the \`skip-changeset\` label if this PR doesn't need a changeset." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "missing=false" >> $GITHUB_OUTPUT
+            echo "✅ Changeset found:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            for changeset in $CHANGESETS; do
+              echo "- \`$changeset\`" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Comment PR
+        if: steps.changeset.outputs.missing == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `## ⚠️ Missing Changeset
+
+            This PR is missing a changeset file. Changesets help us track changes and generate changelogs.
+
+            ### To add a changeset:
+            \`\`\`bash
+            pnpm changeset
+            \`\`\`
+
+            Follow the prompts to:
+            1. Select the packages that have changed
+            2. Choose the version bump type (patch/minor/major)
+            3. Write a summary of the changes
+
+            ### To skip this check:
+            Add the \`skip-changeset\` label to this PR if it doesn't require a changeset (e.g., tests, refactoring).
+
+            For more information, see the [changesets documentation](https://github.com/changesets/changesets).`;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment => 
+              comment.user?.type === 'Bot' && 
+              comment.body?.includes('Missing Changeset')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
+
+      - name: Fail if changeset required
+        if: steps.changeset.outputs.missing == 'true'
+        run: |
+          echo "::error::Changeset required but not found. Please add a changeset or add the 'skip-changeset' label."
+          exit 1
