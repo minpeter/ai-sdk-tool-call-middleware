@@ -9,6 +9,10 @@ fi
 
 echo "Running pre-commit checks..."
 
+# Check formatting
+echo "Checking code formatting..."
+pnpm fmt
+
 # Lint and type check affected packages
 echo "Running lint and type checks..."
 pnpm lint && pnpm check-types
