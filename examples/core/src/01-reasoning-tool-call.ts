@@ -46,15 +46,14 @@ async function main() {
         },
       },
     },
-    onStepFinish: (step) => {
+    onStepFinish: step => {
       console.log({
         text: step.text,
         reasoning: step.reasoning,
         toolCalls: step.toolCalls.map(
-          (call) =>
-            `name: ${call.toolName}, input: ${JSON.stringify(call.input)}`
+          call => `name: ${call.toolName}, input: ${JSON.stringify(call.input)}`
         ),
-        toolResults: step.toolResults.map((result) =>
+        toolResults: step.toolResults.map(result =>
           JSON.stringify(result.output)
         ),
       });

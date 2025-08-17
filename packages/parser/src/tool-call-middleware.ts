@@ -235,7 +235,7 @@ export function createToolMiddleware({
       // Handle specific tool choice scenario
       if (params.toolChoice?.type === "tool") {
         const selectedToolName = params.toolChoice.toolName;
-        const selectedTool = params.tools?.find((tool) =>
+        const selectedTool = params.tools?.find(tool =>
           tool.type === "function"
             ? tool.name === selectedToolName
             : tool.id === selectedToolName

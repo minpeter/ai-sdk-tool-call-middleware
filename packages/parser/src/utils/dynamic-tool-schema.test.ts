@@ -80,20 +80,20 @@ describe("createDynamicIfThenElseSchema", () => {
       type: "string",
       enum: ["tool1", "tool2", "tool3"],
     });
-    
+
     // Check nested structure
     expect(schema.if).toBeDefined();
     expect(schema.then).toBeDefined();
     expect(schema.else).toBeDefined();
-    
+
     // Check first tool condition (last in array due to reverse loop)
     const firstCondition = schema.if as any;
     expect(firstCondition.properties.name.const).toBe("tool1");
-    
+
     // Check nested else conditions
     const secondCondition = (schema.else as any).if;
     expect(secondCondition.properties.name.const).toBe("tool2");
-    
+
     const thirdCondition = ((schema.else as any).else as any).if;
     expect(thirdCondition.properties.name.const).toBe("tool3");
   });
@@ -128,14 +128,14 @@ describe("createDynamicIfThenElseSchema", () => {
 
   it("should preserve tool input schemas correctly", () => {
     const complexSchema = {
-      type: "object",
+      type: "object" as const,
       properties: {
-        requiredField: { type: "string" },
-        optionalField: { type: "number" },
+        requiredField: { type: "string" as const },
+        optionalField: { type: "number" as const },
         nestedObject: {
-          type: "object",
+          type: "object" as const,
           properties: {
-            nestedField: { type: "boolean" },
+            nestedField: { type: "boolean" as const },
           },
         },
       },
@@ -151,7 +151,7 @@ describe("createDynamicIfThenElseSchema", () => {
     ];
 
     const schema = createDynamicIfThenElseSchema(tools);
-    
+
     const thenClause = schema.then as any;
     expect(thenClause.properties.arguments).toEqual(complexSchema);
   });
@@ -176,12 +176,12 @@ describe("createDynamicIfThenElseSchema", () => {
     ];
 
     const schema = createDynamicIfThenElseSchema(tools);
-    
+
     // Tools should be in the order provided
     expect(schema.properties!.name).toMatchObject({
       enum: ["alpha", "beta", "gamma"],
     });
-    
+
     // The if-then-else chain should process tools in reverse order
     // (first tool first due to the loop implementation)
     const firstIf = schema.if as any;
@@ -198,7 +198,7 @@ describe("createDynamicIfThenElseSchema", () => {
     ];
 
     const schema = createDynamicIfThenElseSchema(tools);
-    
+
     expect(schema).toBeDefined();
     expect(schema.then).toBeDefined();
     const thenClause = schema.then as any;
@@ -240,7 +240,7 @@ describe("createDynamicIfThenElseSchema", () => {
     ];
 
     const schema = createDynamicIfThenElseSchema(tools);
-    
+
     // Verify it's a valid JSONSchema7 structure
     expect(schema.type).toBe("object");
     expect(Array.isArray(schema.required)).toBe(true);

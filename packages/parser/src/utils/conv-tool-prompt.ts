@@ -23,7 +23,7 @@ export function convertToolPrompt({
   toolResponseTag: string;
   toolResponseEndTag: string;
 }): LanguageModelV2Prompt {
-  const processedPrompt = paramsPrompt.map((message) => {
+  const processedPrompt = paramsPrompt.map(message => {
     if (message.role === "assistant") {
       // Convert and merge tool-call and text type content while preserving order
       const mergedContents: typeof message.content = [];
@@ -72,7 +72,7 @@ export function convertToolPrompt({
             type: "text",
             text: message.content
               .map(
-                (content) =>
+                content =>
                   `${toolResponseTag}${JSON.stringify({
                     toolName: content.toolName,
                     // TODO: If the tool result part contains content, modify to respect and include it.

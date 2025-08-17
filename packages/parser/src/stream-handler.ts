@@ -79,7 +79,7 @@ export async function normalToolStream({
         }
 
         if (toolCallBuffer.length > 0) {
-          toolCallBuffer.forEach((toolCall) => {
+          toolCallBuffer.forEach(toolCall => {
             try {
               const parsedToolCall = RJSON.parse(toolCall) as {
                 name: string;

@@ -152,7 +152,7 @@ describe("getPotentialStartIndex", () => {
       const chunk1 = "The answer is";
       const chunk2 = "The answer is <too";
       const searchedText = "<tool_call>";
-      
+
       expect(getPotentialStartIndex(chunk1, searchedText)).toBe(null);
       expect(getPotentialStartIndex(chunk2, searchedText)).toBe(14);
     });
