@@ -2,7 +2,7 @@ name: Changeset Required
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     branches:
       - main
 
