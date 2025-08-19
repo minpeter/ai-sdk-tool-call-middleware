@@ -1,5 +1,6 @@
 # Custom tool call parser for AI SDK
 
+▲ Also available in the Vercel AI SDK official documentation: [Custom tool call parser](https://ai-sdk.dev/docs/ai-sdk-core/middleware#custom-tool-call-parser)  
 [![npm](https://img.shields.io/npm/v/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
 [![npm](https://img.shields.io/npm/dt/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
 [![codecov](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware/branch/main/graph/badge.svg)](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware)
@@ -8,8 +9,6 @@
 > Depends on AI SDK v5 release, if you wish to use it on v4, please pin the package version to 1.0.0
 
 Allows tool calls to be used in the AI ​​SDK framework regardless of the model.
-
-▲ Also available in the Vercel AI SDK official documentation: [Custom tool call parser](https://ai-sdk.dev/docs/ai-sdk-core/middleware#custom-tool-call-parser)
 
 ## Why This Exists
 
