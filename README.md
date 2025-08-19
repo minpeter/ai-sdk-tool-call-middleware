@@ -9,6 +9,8 @@
 
 Allows tool calls to be used in the AI ​​SDK framework regardless of the model.
 
+▲ Also available in the Vercel AI SDK official documentation: [Custom tool call parser](https://ai-sdk.dev/docs/ai-sdk-core/middleware#custom-tool-call-parser)
+
 ## Why This Exists
 
 Many self‑hosted or third‑party model endpoints (vLLM, MLC‑LLM, Ollama, OpenRouter, etc.) don’t yet expose the OpenAI‑style `tools` parameter, forcing you to hack together tool parsing.  
@@ -27,7 +29,7 @@ pnpm install @ai-sdk-tool/parser
 
 ---
 
-## Example: Gemma3‑Style Middleware
+## Example: Gemma3 Style Middleware
 
 See `examples/core/src/00-stream-tool-call.ts` for the full demo:
 
@@ -37,6 +39,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, stepCountIs, streamText } from "ai";
 import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
 
+// You can use any provider: ollama, vllm, etc...
 const openrouter = createOpenAICompatible({
   /* ... */
 });
