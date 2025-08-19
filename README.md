@@ -39,6 +39,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, stepCountIs, streamText } from "ai";
 import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
 
+// You can use any provider: ollama, vllm, etc...
 const openrouter = createOpenAICompatible({
   /* ... */
 });
