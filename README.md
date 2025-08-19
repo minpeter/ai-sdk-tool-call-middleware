@@ -9,7 +9,7 @@
 
 Allows tool calls to be used in the AI ​​SDK framework regardless of the model.
 
-▲ See the Vercel AI SDK official documentation for usage: [Custom tool call parser](https://ai-sdk.dev/docs/ai-sdk-core/middleware#custom-tool-call-parser)
+▲ Also available in the Vercel AI SDK official documentation: [Custom tool call parser](https://ai-sdk.dev/docs/ai-sdk-core/middleware#custom-tool-call-parser)
 
 ## Why This Exists
 
@@ -29,7 +29,7 @@ pnpm install @ai-sdk-tool/parser
 
 ---
 
-## Example: Gemma3‑Style Middleware
+## Example: Gemma3 Style Middleware
 
 See `examples/core/src/00-stream-tool-call.ts` for the full demo:
 
