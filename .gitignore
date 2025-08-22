@@ -37,3 +37,26 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Logs
+logs
+*.log
+dev-debug.log
+# Dependency directories
+node_modules/
+# Environment variables
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# OS specific
+
+.taskmaster
+.cursor
+# Task files
+# tasks.json
+# tasks/ 

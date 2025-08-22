@@ -1,0 +1,21 @@
+{
+  "name": "eval",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ai-sdk-tool/eval": "workspace:*",
+    "@ai-sdk/openai": "2.0.15",
+    "@ai-sdk/openai-compatible": "1.0.7",
+    "ai": "5.0.15"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.4"
+  }
+}
