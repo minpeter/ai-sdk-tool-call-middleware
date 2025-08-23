@@ -1,0 +1,630 @@
+{
+  "id": "simple_0",
+  "ground_truth": [
+    {
+      "calculate_triangle_area": {
+        "base": [
+          10
+        ],
+        "height": [
+          5
+        ],
+        "unit": [
+          "units",
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_1",
+  "ground_truth": [
+    {
+      "math.factorial": {
+        "number": [
+          5
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_2",
+  "ground_truth": [
+    {
+      "math.hypot": {
+        "x": [
+          4
+        ],
+        "y": [
+          5
+        ],
+        "z": [
+          "",
+          0
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_3",
+  "ground_truth": [
+    {
+      "algebra.quadratic_roots": {
+        "a": [
+          1
+        ],
+        "b": [
+          -3
+        ],
+        "c": [
+          2
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_4",
+  "ground_truth": [
+    {
+      "solve_quadratic_equation": {
+        "a": [
+          2
+        ],
+        "b": [
+          6
+        ],
+        "c": [
+          5
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_5",
+  "ground_truth": [
+    {
+      "solve_quadratic": {
+        "a": [
+          3
+        ],
+        "b": [
+          -11
+        ],
+        "c": [
+          -4
+        ],
+        "root_type": [
+          "all"
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_6",
+  "ground_truth": [
+    {
+      "solve_quadratic": {
+        "a": [
+          2
+        ],
+        "b": [
+          5
+        ],
+        "c": [
+          3
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_7",
+  "ground_truth": [
+    {
+      "calculate_circumference": {
+        "radius": [
+          4
+        ],
+        "unit": [
+          "inches",
+          "in"
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_8",
+  "ground_truth": [
+    {
+      "geometry.area_circle": {
+        "radius": [
+          10
+        ],
+        "units": [
+          "meters",
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_9",
+  "ground_truth": [
+    {
+      "geometry.calculate_area_circle": {
+        "radius": [
+          5
+        ],
+        "unit": [
+          "units",
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_10",
+  "ground_truth": [
+    {
+      "calculate_area": {
+        "base": [
+          6
+        ],
+        "height": [
+          10
+        ],
+        "unit": [
+          "cm",
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_11",
+  "ground_truth": [
+    {
+      "calculate_triangle_area": {
+        "base": [
+          10
+        ],
+        "height": [
+          5
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_12",
+  "ground_truth": [
+    {
+      "geometry.circumference": {
+        "radius": [
+          3
+        ],
+        "units": [
+          "cm",
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_13",
+  "ground_truth": [
+    {
+      "calculate_area_under_curve": {
+        "function": [
+          "x**2",
+          "lambda x: x**2",
+          "y=x**2"
+        ],
+        "interval": [
+          [
+            1.0,
+            3.0
+          ]
+        ],
+        "method": [
+          "",
+          "trapezoidal"
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_14",
+  "ground_truth": [
+    {
+      "calculate_derivative": {
+        "function": [
+          "3x**2 + 2x - 1",
+          "lambda x: 3x**2 + 2x - 1"
+        ],
+        "x_value": [
+          "",
+          0.0
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_15",
+  "ground_truth": [
+    {
+      "integrate": {
+        "function": [
+          "x**3",
+          "lambda x: x**3"
+        ],
+        "start_x": [
+          -2
+        ],
+        "end_x": [
+          3
+        ],
+        "method": [
+          "simpson"
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_16",
+  "ground_truth": [
+    {
+      "calculus.derivative": {
+        "function": [
+          "2x**2",
+          "lambda x: 2x**2"
+        ],
+        "value": [
+          1
+        ],
+        "function_variable": [
+          "x",
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_17",
+  "ground_truth": [
+    {
+      "get_prime_factors": {
+        "number": [
+          450
+        ],
+        "formatted": [
+          true,
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_18",
+  "ground_truth": [
+    {
+      "number_analysis.prime_factors": {
+        "number": [
+          123456
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_19",
+  "ground_truth": [
+    {
+      "math.gcd": {
+        "num1": [
+          40
+        ],
+        "num2": [
+          50
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_20",
+  "ground_truth": [
+    {
+      "math.hcf": {
+        "number1": [
+          36
+        ],
+        "number2": [
+          24
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_21",
+  "ground_truth": [
+    {
+      "number_theory.gcd": {
+        "number1": [
+          36
+        ],
+        "number2": [
+          48
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_22",
+  "ground_truth": [
+    {
+      "math.gcd": {
+        "num1": [
+          12
+        ],
+        "num2": [
+          15
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_23",
+  "ground_truth": [
+    {
+      "prime_factorize": {
+        "number": [
+          60
+        ],
+        "return_type": [
+          "dictionary"
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_24",
+  "ground_truth": [
+    {
+      "math.gcd": {
+        "num1": [
+          12
+        ],
+        "num2": [
+          18
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_25",
+  "ground_truth": [
+    {
+      "calculate_final_velocity": {
+        "height": [
+          150
+        ],
+        "initial_velocity": [
+          0,
+          ""
+        ],
+        "gravity": [
+          9.81,
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_26",
+  "ground_truth": [
+    {
+      "calculate_velocity": {
+        "distance": [
+          50
+        ],
+        "duration": [
+          2
+        ],
+        "unit": [
+          "",
+          "km/h"
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_27",
+  "ground_truth": [
+    {
+      "final_velocity": {
+        "initial_velocity": [
+          10
+        ],
+        "acceleration": [
+          2
+        ],
+        "time": [
+          5
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_28",
+  "ground_truth": [
+    {
+      "calculate_displacement": {
+        "initial_velocity": [
+          10
+        ],
+        "time": [
+          5
+        ],
+        "acceleration": [
+          9.8
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_29",
+  "ground_truth": [
+    {
+      "calculate_final_speed": {
+        "initial_speed": [
+          0,
+          ""
+        ],
+        "time": [
+          5
+        ],
+        "gravity": [
+          -9.81,
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_30",
+  "ground_truth": [
+    {
+      "kinematics.final_velocity_from_distance": {
+        "acceleration": [
+          4
+        ],
+        "distance": [
+          300
+        ],
+        "initial_velocity": [
+          "",
+          0.0
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_31",
+  "ground_truth": [
+    {
+      "calculate_final_velocity": {
+        "initial_velocity": [
+          0
+        ],
+        "acceleration": [
+          9.8
+        ],
+        "time": [
+          5
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_32",
+  "ground_truth": [
+    {
+      "calculate_final_speed": {
+        "initial_velocity": [
+          0
+        ],
+        "height": [
+          100
+        ],
+        "gravity": [
+          9.8,
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_33",
+  "ground_truth": [
+    {
+      "get_directions": {
+        "start_location": [
+          "Sydney"
+        ],
+        "end_location": [
+          "Melbourne"
+        ],
+        "route_type": [
+          "fastest",
+          ""
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_34",
+  "ground_truth": [
+    {
+      "travel_itinerary_generator": {
+        "destination": [
+          "Tokyo"
+        ],
+        "days": [
+          7
+        ],
+        "daily_budget": [
+          100
+        ],
+        "exploration_type": [
+          "nature"
+        ]
+      }
+    }
+  ]
+}
+{
+  "id": "simple_35",
+  "ground_truth": [
+    {
+      "vegan_restaurant.find_nearby": {
+        "location": [
+          "New York, NY"
+        ],
+        "operating_hours": [
+          23
+        ]
+      }
+    }
+  ]
+}

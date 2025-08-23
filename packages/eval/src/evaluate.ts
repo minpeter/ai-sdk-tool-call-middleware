@@ -1,4 +1,5 @@
 import type { BenchmarkResult, EvaluateOptions } from "./interfaces";
+import type { LanguageModel } from "ai";
 import { runWithConcurrencySettled, Task } from "./orchestrator";
 import { aggregateResults } from "./aggregator";
 import { getReporter } from "./reporters";
@@ -13,11 +14,32 @@ export async function evaluate(
   options: EvaluateOptions
 ): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
-  // options.matrix.models is expected to be an array of { name, model, config? }
-  const combos = options.matrix.models.map(m => ({
-    model: m,
-    config: m.config,
-  }));
+  // Build combos from matrix. Support both legacy { models: LanguageModel[] }
+  // and PRD-style { model: LanguageModel[], config?: Record<string,unknown>[] }
+  let combos: Array<{
+    model: LanguageModel;
+    config?: Record<string, unknown>;
+  }> = [];
+  const matrixAny = options.matrix as any;
+  if (Array.isArray(matrixAny.models)) {
+    combos = matrixAny.models.map((m: LanguageModel) => ({ model: m }));
+  } else if (Array.isArray(matrixAny.model)) {
+    const models: LanguageModel[] = matrixAny.model;
+    const configs: Array<Record<string, unknown>> = Array.isArray(
+      matrixAny.config
+    )
+      ? matrixAny.config
+      : [undefined];
+    for (const m of models) {
+      for (const c of configs) {
+        combos.push({ model: m, config: c });
+      }
+    }
+  } else {
+    throw new Error(
+      "evaluate: options.matrix must contain 'models' or 'model' array"
+    );
+  }
   const concurrency = options.concurrency ?? 4;
   const retries = options.retries ?? 0;
   const failFast = options.failFast ?? false;
@@ -31,9 +53,13 @@ export async function evaluate(
         let attempt = 0;
         while (true) {
           try {
-            const res = await bm.run(combo.model.model, combo.config);
+            const res = await bm.run(combo.model, combo.config);
             if (options.reporter) options.reporter(res);
-            const built = getReporter(options.reporterType);
+            // allow options.reporter to be a built-in reporter string
+            const built =
+              typeof options.reporter === "string"
+                ? getReporter(options.reporter)
+                : getReporter(options.reporterType);
             if (built?.result) built.result(res);
             return res;
           } catch (err: unknown) {

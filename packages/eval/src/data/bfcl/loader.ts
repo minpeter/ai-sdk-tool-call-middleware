@@ -11,7 +11,12 @@ export function ensureCacheDir(cacheDir = DEFAULT_CACHE_DIR) {
   return cacheDir;
 }
 
-export function loadLocalDataset(filePath: string) {
+/**
+ * Load a local BFCL dataset file.
+ * Supports either a single JSON document (BfclDataset) or JSONL (newline-delimited objects).
+ * On error, throws so callers can handle fallbacks.
+ */
+export function loadLocalDataset(filePath: string): BfclDataset {
   const abs = path.isAbsolute(filePath)
     ? filePath
     : path.join(process.cwd(), filePath);
@@ -19,14 +24,43 @@ export function loadLocalDataset(filePath: string) {
     throw new Error(`BFCL dataset not found at path: ${abs}`);
   }
   const raw = fs.readFileSync(abs, "utf-8");
+
+  // Try full JSON document first
   try {
-    const parsed = JSON.parse(raw) as BfclDataset;
-    return parsed;
-  } catch (e) {
-    throw new Error(
-      `Failed to parse BFCL dataset JSON: ${(e as Error).message}`
-    );
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as unknown as BfclDataset;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      Array.isArray((parsed as unknown as Record<string, unknown>).examples)
+    ) {
+      return (parsed as unknown as Record<string, unknown>)
+        .examples as unknown as BfclDataset;
+    }
+    // otherwise fall through to try JSONL
+  } catch {
+    // Not a single JSON doc — try JSONL
   }
+
+  // JSONL fallback: parse each line as a JSON object and return as an array
+  const lines = raw
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    throw new Error(`BFCL dataset at ${abs} is empty`);
+  }
+  const examples = lines.map((line, idx) => {
+    try {
+      return JSON.parse(line);
+    } catch (e) {
+      throw new Error(
+        `Failed to parse JSONL line ${idx + 1} in ${abs}: ${(e as Error).message}`
+      );
+    }
+  });
+
+  return examples as unknown as BfclDataset;
 }
 
 export function cacheDataset(

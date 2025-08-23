@@ -30,8 +30,9 @@ describe("evaluate aggregation", () => {
     let called = false;
     let aggArg: any = null;
 
+    const modelStub = {} as any;
     const res = await evaluate({
-      matrix: { models: [{ name: "m1" }] },
+      matrix: { models: [modelStub] },
       benchmarks: [bm1 as any, bm2 as any],
       aggregateReporter: agg => {
         called = true;

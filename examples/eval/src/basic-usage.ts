@@ -9,7 +9,7 @@ async function main() {
   const benches = getAllBenchmarks().filter(b => b.name === "summarization");
 
   await evaluate({
-    matrix: { model },
+    matrix: { models: [model] },
     benchmarks: benches,
     reporterType: "console",
   });

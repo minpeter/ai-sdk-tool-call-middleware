@@ -15,8 +15,9 @@ describe("evaluate retries/backoff", () => {
       },
     };
 
+    const modelStub = {} as any;
     const res = await evaluate({
-      matrix: { models: [{ name: "m" }] },
+      matrix: { models: [modelStub] },
       benchmarks: [bm as any],
       retries: 3,
     });
@@ -34,8 +35,9 @@ describe("evaluate retries/backoff", () => {
       },
     };
 
+    const modelStub2 = {} as any;
     const res = await evaluate({
-      matrix: { models: [{ name: "m" }] },
+      matrix: { models: [modelStub2] },
       benchmarks: [bm as any],
       retries: 1,
       failFast: false,
@@ -54,9 +56,10 @@ describe("evaluate retries/backoff", () => {
       },
     };
 
+    const modelStub3 = {} as any;
     await expect(
       evaluate({
-        matrix: { models: [{ name: "m" }] },
+        matrix: { models: [modelStub3] },
         benchmarks: [bm as any],
         retries: 1,
         failFast: true,

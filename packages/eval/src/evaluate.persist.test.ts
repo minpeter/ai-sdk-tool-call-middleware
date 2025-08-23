@@ -21,8 +21,9 @@ describe("evaluate persistence", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-test-"));
     const out = path.join(tmpDir, "agg.json");
 
+    const modelStub = {} as any;
     const res = await evaluate({
-      matrix: { models: [{ name: "m" }] },
+      matrix: { models: [modelStub] },
       benchmarks: [bm as any],
       persistPath: out,
     });

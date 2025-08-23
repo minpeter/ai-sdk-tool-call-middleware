@@ -17,8 +17,9 @@ describe("evaluate markdown reporter", () => {
     };
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const modelStub = {} as any;
     await evaluate({
-      matrix: { models: [{ name: "m" }] },
+      matrix: { models: [modelStub] },
       benchmarks: [bm as any],
       reporterType: "markdown",
     });

@@ -1,11 +1,11 @@
-export type ModelConfig = { name: string; config?: Record<string, unknown> };
+import type { LanguageModel } from "ai";
 
 export function expandMatrix(
-  models: ModelConfig[],
+  models: LanguageModel[],
   configs?: Array<Record<string, unknown>>
 ) {
   const combos: Array<{
-    model: ModelConfig;
+    model: LanguageModel;
     config?: Record<string, unknown>;
   }> = [];
   if (!configs || configs.length === 0) {

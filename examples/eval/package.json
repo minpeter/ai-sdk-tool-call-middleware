@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "download-bfcl-v3-simple": "tsx ./scripts/download-bfcl-v3-simple.ts"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +17,9 @@
     "ai": "5.0.15"
   },
   "devDependencies": {
-    "tsx": "^4.20.4"
+    "@types/node": "^24.3.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.4",
+    "typescript": "5.9.2"
   }
 }

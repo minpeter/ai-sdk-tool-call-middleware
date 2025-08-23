@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { evaluate } from "./evaluate";
 import type { LanguageModelV2Benchmark } from "./interfaces";
+const modelStub = {} as any;
 
 const sampleResult = { score: 0.5, success: true, metrics: {}, logs: [] };
 
@@ -15,7 +16,7 @@ describe("evaluate", () => {
   it("runs benchmarks and calls reporter", async () => {
     const reporter = vi.fn();
     const res = await evaluate({
-      matrix: { models: [{ name: "m1" }] },
+      matrix: { models: [modelStub] },
       benchmarks: [bm],
       reporter,
     });

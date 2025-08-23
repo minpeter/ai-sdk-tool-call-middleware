@@ -36,15 +36,17 @@ export type LanguageModelBenchmark = LanguageModelV2Benchmark;
  * Options for the evaluate function.
  */
 export type EvaluateOptions = {
-  matrix: {
-    models: Array<{
-      name: string;
-      model?: LanguageModel;
-      config?: Record<string, unknown>;
-    }>;
-  };
+  // matrix supports two shapes for backward compatibility and PRD-style usage:
+  // - legacy: { models: LanguageModel[] }
+  // - PRD: { model: LanguageModel[]; config?: Record<string, unknown>[] }
+  matrix:
+    | { models: LanguageModel[] }
+    | { model: LanguageModel[]; config?: Record<string, unknown>[] };
   benchmarks: LanguageModelBenchmark[];
-  reporter?: (result: BenchmarkResult) => void;
+  // reporter may be a callback or a built-in reporter name
+  reporter?: (
+    result: BenchmarkResult
+  ) => void | "console" | "json" | "markdown";
   /** Called once after all benchmark runs complete with aggregated statistics */
   aggregateReporter?: (agg: AggregatedResult) => void;
   /** When provided, write aggregated result JSON to this filesystem path */

@@ -13,8 +13,9 @@ describe("evaluate reporters", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
+    const modelStub = {} as any;
     await evaluate({
-      matrix: { models: [{ name: "m" }] },
+      matrix: { models: [modelStub] },
       benchmarks: [bm as any],
       reporterType: "console",
     });
