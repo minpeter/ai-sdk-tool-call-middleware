@@ -1,0 +1,26 @@
+{
+  "name": "@ai-sdk-tool/eval",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test:e2e": "tsc && node dist/run-test.js",
+    "test": "node --test dist/test.js"
+  },
+  "dependencies": {
+    "ajv": "^8.16.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "typescript": "^5.4.5"
+  },
+  "peerDependencies": {
+    "ai": ">=3.0.0"
+  }
+}
