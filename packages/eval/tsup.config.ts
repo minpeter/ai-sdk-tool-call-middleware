@@ -2,10 +2,10 @@ import { defineConfig } from "tsup";
 
 export default defineConfig([
   {
-    // Preserve file structure like tsc (no bundling) so import.meta.url based paths stay valid
-    bundle: false,
+    // Bundle the public entry so ESM output has no relative extensionless imports
+    bundle: true,
     dts: true,
-    entry: ["src/**/*.ts"],
+    entry: ["src/index.ts"],
     format: ["cjs", "esm"],
     sourcemap: true,
     target: "es2022",

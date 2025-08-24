@@ -21,7 +21,7 @@ async function main() {
   await evaluate({
     models: [gpt41nano, gemma27b],
     benchmarks: [bfclSimpleBenchmark],
-    reporter: "json",
+    reporter: "console",
   });
 
   console.log("Evaluation complete!");

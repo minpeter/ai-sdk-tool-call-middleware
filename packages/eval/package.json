@@ -17,10 +17,11 @@
     "data"
   ],
   "scripts": {
-    "dev": "tsc -w --preserveWatchOutput",
-    "build": "tsc",
+    "dev": "tsup --watch",
+    "build": "tsup --clean",
     "prepack": "pnpm run build",
-    "test:e2e": "tsc && node dist/run-test.js",
+    "check-types": "tsc --noEmit",
+    "test:e2e": "tsup src/run-test.ts --format esm --clean --out-dir dist --no-config && node dist/run-test.js",
     "test": "pnpm run test:e2e"
   },
   "dependencies": {

@@ -1,14 +1,14 @@
 // Core evaluation function
-export { evaluate } from "./evaluate.js";
+export { evaluate } from "./evaluate";
 
 // Built-in benchmarks
-export { jsonGenerationBenchmark } from "./benchmarks/json-generation.js";
+export { jsonGenerationBenchmark } from "./benchmarks/json-generation";
 export {
   bfclSimpleBenchmark,
   bfclParallelBenchmark,
   bfclMultipleBenchmark,
   bfclParallelMultipleBenchmark,
-} from "./benchmarks/bfcl.js";
+} from "./benchmarks/bfcl";
 
 // Core interfaces for custom benchmarks
 export type {
@@ -16,4 +16,4 @@ export type {
   BenchmarkResult,
   EvaluateOptions,
   ReporterType,
-} from "./interfaces.js";
+} from "./interfaces";

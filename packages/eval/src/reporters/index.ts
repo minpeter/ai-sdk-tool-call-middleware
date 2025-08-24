@@ -1,6 +1,6 @@
-import { EvaluationResult, ReporterType } from "../interfaces.js";
-import { consoleReporter } from "./console.js";
-import { jsonReporter } from "./json.js";
+import { EvaluationResult, ReporterType } from "../interfaces";
+import { consoleReporter } from "./console";
+import { jsonReporter } from "./json";
 
 export const reporters: Record<
   ReporterType,

@@ -1,13 +1,13 @@
 import { LanguageModel, generateText, jsonSchema } from "ai";
 import { promises as fs } from "fs";
 import path from "path";
-import { resolveDataDir } from "../utils/paths.js";
-import { LanguageModelV2Benchmark, BenchmarkResult } from "../interfaces.js";
+import { resolveDataDir } from "../utils/paths";
+import { LanguageModelV2Benchmark, BenchmarkResult } from "../interfaces";
 import {
   simpleFunctionChecker,
   parallelFunctionCheckerNoOrder,
   multipleFunctionChecker,
-} from "./bfcl/ast-checker.js";
+} from "./bfcl/ast-checker";
 
 // Resolve data files relative to this module using ESM-safe utilities
 
@@ -91,7 +91,8 @@ function createBfclBenchmark(
 
       try {
         // Resolve data directory in a way that works both in monorepo and when installed as a dependency.
-        const dataPath = resolveDataDir(import.meta.url);
+        const dataPath = resolveDataDir();
+        logs.push(`[INFO] Using data dir: ${dataPath}`);
         const testCasesJson = await fs.readFile(
           path.join(dataPath, testDataFile),
           "utf-8"

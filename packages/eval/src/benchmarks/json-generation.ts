@@ -1,6 +1,6 @@
 import { LanguageModel, generateObject } from "ai";
 import { z } from "zod";
-import { LanguageModelV2Benchmark, BenchmarkResult } from "../interfaces.js";
+import { LanguageModelV2Benchmark, BenchmarkResult } from "../interfaces";
 
 // NOTE: This benchmark is temporarily disabled due to a persistent
 // TypeScript error (TS2589: Type instantiation is excessively deep)

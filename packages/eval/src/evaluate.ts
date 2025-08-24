@@ -3,8 +3,8 @@ import {
   EvaluateOptions,
   EvaluationResult,
   LanguageModelV2Benchmark,
-} from "./interfaces.js";
-import { reporters } from "./reporters/index.js";
+} from "./interfaces";
+import { reporters } from "./reporters";
 
 async function runSingleBenchmark(
   model: LanguageModel,

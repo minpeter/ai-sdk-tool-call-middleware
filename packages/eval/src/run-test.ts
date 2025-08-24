@@ -2,7 +2,7 @@ import {
   simpleFunctionChecker,
   parallelFunctionCheckerNoOrder,
   ToolCall, // Import the local interface
-} from "./benchmarks/bfcl/ast-checker.js";
+} from "./benchmarks/bfcl/ast-checker";
 
 // --- Mock Data Interfaces ---
 interface FunctionDescription {
