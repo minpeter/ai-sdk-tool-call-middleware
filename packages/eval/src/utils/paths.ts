@@ -15,8 +15,8 @@ import { createRequire } from "module";
  * 4) Fallback to package-root/data assuming dist/benchmarks depth or cwd
  */
 export function resolveDataDir(fromModuleUrl?: string): string {
-  // 0) Default module URL if not provided (robust in bundled ESM builds)
-  const moduleUrl = fromModuleUrl ?? import.meta.url;
+  // 0) Use provided module URL when available; otherwise rely on require/cwd fallbacks (avoids import.meta in CJS)
+  const moduleUrl = fromModuleUrl;
 
   // 1) Explicit override
   const override = process.env.BFCL_DATA_DIR;
@@ -60,10 +60,14 @@ export function resolveDataDir(fromModuleUrl?: string): string {
 
   // 3) Walk up a few levels to find a 'data' directory from the module URL
   let startDir: string;
-  try {
-    startDir = path.dirname(fileURLToPath(moduleUrl));
-  } catch {
-    // In case moduleUrl is invalid or unavailable, fall back to cwd
+  if (moduleUrl) {
+    try {
+      startDir = path.dirname(fileURLToPath(moduleUrl));
+    } catch {
+      // In case moduleUrl is invalid or unavailable, fall back to cwd
+      startDir = process.cwd();
+    }
+  } else {
     startDir = process.cwd();
   }
   let dir = startDir;
