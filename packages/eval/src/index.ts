@@ -2,7 +2,10 @@
 export { evaluate } from "./evaluate";
 
 // Built-in benchmarks
-export { jsonGenerationBenchmark } from "./benchmarks/json-generation";
+export {
+  jsonGenerationBenchmark,
+  jsonGenerationSchemaOnlyBenchmark,
+} from "./benchmarks/json-generation";
 export {
   bfclSimpleBenchmark,
   bfclParallelBenchmark,

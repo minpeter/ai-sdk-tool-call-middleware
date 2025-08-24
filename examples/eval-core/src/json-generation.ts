@@ -1,4 +1,8 @@
-import { evaluate, jsonGenerationBenchmark } from "@ai-sdk-tool/eval";
+import {
+  evaluate,
+  jsonGenerationBenchmark,
+  jsonGenerationSchemaOnlyBenchmark,
+} from "@ai-sdk-tool/eval";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel } from "ai";
 import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
@@ -20,7 +24,7 @@ async function main() {
 
   await evaluate({
     models: [gpt41nano, gemma27b],
-    benchmarks: [jsonGenerationBenchmark],
+    benchmarks: [jsonGenerationSchemaOnlyBenchmark, jsonGenerationBenchmark],
     reporter: "console",
   });
 
