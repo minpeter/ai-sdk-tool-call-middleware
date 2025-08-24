@@ -62,8 +62,31 @@ describe("convertToolPrompt", () => {
         ...TEST_TAGS,
       });
 
-      // TODO: Support prettier schema rendering for better model comprehension
-      const expectedSystemPrompt = `Tools available:\n[["0",{"type":"function","name":"get_weather","description":"Get the current weather in a given location","inputSchema":{"type":"object","properties":{"location":{"type":"string","description":"The city and state, e.g. San Francisco, CA"},"unit":{"type":"string","enum":["celsius","fahrenheit"],"description":"Unit for temperature"}},"required":["location"]}}]]`;
+      // Build expected prompt using the new array-of-function-descriptors format
+      const expectedSystemPrompt = simpleToolSystemPromptTemplate(
+        JSON.stringify([
+          {
+            name: "get_weather",
+            description: "Get the current weather in a given location",
+            parameters: {
+              type: "object",
+              properties: {
+                location: {
+                  type: "string",
+                  description:
+                    "The city and state, e.g. San Francisco, CA",
+                },
+                unit: {
+                  type: "string",
+                  enum: ["celsius", "fahrenheit"],
+                  description: "Unit for temperature",
+                },
+              },
+              required: ["location"],
+            },
+          },
+        ])
+      );
 
       expect(result).toEqual([
         {
