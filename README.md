@@ -31,10 +31,10 @@ pnpm install @ai-sdk-tool/parser
 
 ## Example: Gemma3 Style Middleware
 
-See `examples/core/src/00-stream-tool-call.ts` for the full demo:
+See `examples/parser-core/src/00-stream-tool-call.ts` for the full demo:
 
 ```typescript
-// filepath: examples/core/src/00-stream-tool-call.ts
+// filepath: examples/parser-core/src/00-stream-tool-call.ts
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, stepCountIs, streamText } from "ai";
 import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
