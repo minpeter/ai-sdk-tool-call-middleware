@@ -88,9 +88,19 @@ export function convertToolPrompt({
     return message;
   }) as LanguageModelV2Prompt;
 
-  const HermesPrompt = toolSystemPromptTemplate(
-    JSON.stringify(Object.entries(paramsTools || {}))
-  );
+  // Serialize tools as an array of function descriptors instead of Object.entries (which introduces numeric keys)
+  const toolsForPrompt = (paramsTools || [])
+    .filter(tool => tool.type === "function")
+    .map(tool => ({
+      name: tool.name,
+      description:
+        tool.type === "function" && typeof tool.description === "string"
+          ? tool.description
+          : undefined,
+      parameters: tool.inputSchema,
+    }));
+
+  const HermesPrompt = toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
 
   const toolSystemPrompt: LanguageModelV2Prompt =
     processedPrompt[0].role === "system"

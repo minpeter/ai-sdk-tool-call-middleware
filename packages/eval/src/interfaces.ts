@@ -1,4 +1,4 @@
-import { LanguageModel } from 'ai';
+import { LanguageModel } from "ai";
 
 /**
  * The result of a single benchmark run.
@@ -60,14 +60,14 @@ export interface LanguageModelV2Benchmark {
    */
   run(
     model: LanguageModel,
-    config?: Record<string, any>,
+    config?: Record<string, any>
   ): Promise<BenchmarkResult>;
 }
 
 /**
  * The supported reporter types.
  */
-export type ReporterType = 'console' | 'json';
+export type ReporterType = "console" | "json";
 
 /**
  * The full result object for an evaluation run,

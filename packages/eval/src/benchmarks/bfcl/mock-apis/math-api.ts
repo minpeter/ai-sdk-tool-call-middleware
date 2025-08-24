@@ -2,39 +2,42 @@
 
 export class MathAPI {
   add(a: number, b: number): { result: number } | { error: string } {
-    if (typeof a !== 'number' || typeof b !== 'number') {
-      return { error: 'Both inputs must be numbers' };
+    if (typeof a !== "number" || typeof b !== "number") {
+      return { error: "Both inputs must be numbers" };
     }
     return { result: a + b };
   }
 
   subtract(a: number, b: number): { result: number } | { error: string } {
-    if (typeof a !== 'number' || typeof b !== 'number') {
-      return { error: 'Both inputs must be numbers' };
+    if (typeof a !== "number" || typeof b !== "number") {
+      return { error: "Both inputs must be numbers" };
     }
     return { result: a - b };
   }
 
   multiply(a: number, b: number): { result: number } | { error: string } {
-    if (typeof a !== 'number' || typeof b !== 'number') {
-      return { error: 'Both inputs must be numbers' };
+    if (typeof a !== "number" || typeof b !== "number") {
+      return { error: "Both inputs must be numbers" };
     }
     return { result: a * b };
   }
 
   divide(a: number, b: number): { result: number } | { error: string } {
-    if (typeof a !== 'number' || typeof b !== 'number') {
-      return { error: 'Both inputs must be numbers' };
+    if (typeof a !== "number" || typeof b !== "number") {
+      return { error: "Both inputs must be numbers" };
     }
     if (b === 0) {
-      return { error: 'Cannot divide by zero' };
+      return { error: "Cannot divide by zero" };
     }
     return { result: a / b };
   }
 
-  power(base: number, exponent: number): { result: number } | { error: string } {
-    if (typeof base !== 'number' || typeof exponent !== 'number') {
-      return { error: 'Both inputs must be numbers' };
+  power(
+    base: number,
+    exponent: number
+  ): { result: number } | { error: string } {
+    if (typeof base !== "number" || typeof exponent !== "number") {
+      return { error: "Both inputs must be numbers" };
     }
     return { result: Math.pow(base, exponent) };
   }

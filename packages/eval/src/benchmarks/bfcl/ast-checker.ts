@@ -10,7 +10,7 @@ interface FunctionDescription {
   name: string;
   description: string;
   parameters: {
-    type: 'object';
+    type: "object";
     properties: {
       [key: string]: {
         type: string;
@@ -26,9 +26,9 @@ interface FunctionDescription {
  * Standardizes a string for comparison.
  */
 function standardizeString(input: string): string {
-  if (typeof input !== 'string') return input;
+  if (typeof input !== "string") return input;
   const regex = /[ ,./\\-_*^]/g;
-  return input.replace(regex, '').toLowerCase().replace(/'/g, '"');
+  return input.replace(regex, "").toLowerCase().replace(/'/g, '"');
 }
 
 /**
@@ -37,18 +37,18 @@ function standardizeString(input: string): string {
 function checkStringValue(
   param: string,
   modelValue: string,
-  possibleAnswers: any[],
+  possibleAnswers: any[]
 ): { valid: boolean; error?: string; error_type?: string } {
   const standardizedModelValue = standardizeString(modelValue);
   const standardizedPossibleAnswers = possibleAnswers.map(ans =>
-    standardizeString(ans),
+    standardizeString(ans)
   );
 
   if (!standardizedPossibleAnswers.includes(standardizedModelValue)) {
     return {
       valid: false,
-      error: `Invalid value for parameter '${param}': '${modelValue}'. Expected one of ${possibleAnswers.join(', ')}.`,
-      error_type: 'value_error:string',
+      error: `Invalid value for parameter '${param}': '${modelValue}'. Expected one of ${possibleAnswers.join(", ")}.`,
+      error_type: "value_error:string",
     };
   }
   return { valid: true };
@@ -61,7 +61,7 @@ function checkStringValue(
 export function simpleFunctionChecker(
   funcDescription: FunctionDescription,
   modelToolCall: ToolCall,
-  possibleAnswer: Record<string, any>,
+  possibleAnswer: Record<string, any>
 ): { valid: boolean; error?: string; error_type?: string } {
   const modelArgs = modelToolCall.args;
   const modelFuncName = modelToolCall.toolName;
@@ -73,7 +73,7 @@ export function simpleFunctionChecker(
     return {
       valid: false,
       error: `Function name '${modelFuncName}' does not match expected '${expectedFuncName}'.`,
-      error_type: 'simple_function_checker:wrong_func_name',
+      error_type: "simple_function_checker:wrong_func_name",
     };
   }
 
@@ -84,51 +84,66 @@ export function simpleFunctionChecker(
       return {
         valid: false,
         error: `Missing required parameter: '${param}'.`,
-        error_type: 'simple_function_checker:missing_required',
+        error_type: "simple_function_checker:missing_required",
       };
     }
   }
 
   for (const paramName in modelArgs) {
     const modelValue = modelArgs[paramName];
-    if (!(paramName in expectedParams) || !(paramName in possibleAnswerParams)) {
+    if (
+      !(paramName in expectedParams) ||
+      !(paramName in possibleAnswerParams)
+    ) {
       return {
         valid: false,
         error: `Unexpected parameter: '${paramName}'.`,
-        error_type: 'simple_function_checker:unexpected_param',
+        error_type: "simple_function_checker:unexpected_param",
       };
     }
 
     const possibleValues = possibleAnswerParams[paramName];
 
-    if (typeof modelValue === 'string') {
+    if (typeof modelValue === "string") {
       const result = checkStringValue(paramName, modelValue, possibleValues);
       if (!result.valid) return result;
     } else if (Array.isArray(modelValue)) {
-      const modelValueStr = JSON.stringify(modelValue.map(v => standardizeString(v.toString())).sort());
-      const hasMatch = possibleValues.some((p: any) =>
-        JSON.stringify(p.map((v: any) => standardizeString(v.toString())).sort()) === modelValueStr
+      const modelValueStr = JSON.stringify(
+        modelValue.map(v => standardizeString(v.toString())).sort()
       );
-      if(!hasMatch) {
-           return { valid: false, error: `Invalid value for list parameter '${paramName}'.`, error_type: 'value_error:list' };
+      const hasMatch = possibleValues.some(
+        (p: any) =>
+          JSON.stringify(
+            p.map((v: any) => standardizeString(v.toString())).sort()
+          ) === modelValueStr
+      );
+      if (!hasMatch) {
+        return {
+          valid: false,
+          error: `Invalid value for list parameter '${paramName}'.`,
+          error_type: "value_error:list",
+        };
       }
     } else {
       if (!possibleValues.includes(modelValue)) {
         return {
-            valid: false,
-            error: `Invalid value for parameter '${paramName}': got '${modelValue}', expected one of '${possibleValues}'.`,
-            error_type: 'value_error:other',
+          valid: false,
+          error: `Invalid value for parameter '${paramName}': got '${modelValue}', expected one of '${possibleValues}'.`,
+          error_type: "value_error:other",
         };
       }
     }
   }
 
   for (const paramName in possibleAnswerParams) {
-    if (!(paramName in modelArgs) && !possibleAnswerParams[paramName].includes('')) {
+    if (
+      !(paramName in modelArgs) &&
+      !possibleAnswerParams[paramName].includes("")
+    ) {
       return {
         valid: false,
         error: `Missing optional parameter '${paramName}' which was not marked as optional.`,
-        error_type: 'simple_function_checker:missing_optional',
+        error_type: "simple_function_checker:missing_optional",
       };
     }
   }
@@ -142,30 +157,40 @@ export function simpleFunctionChecker(
 export function parallelFunctionCheckerNoOrder(
   funcDescriptions: FunctionDescription[],
   modelToolCalls: ToolCall[],
-  possibleAnswers: Record<string, any>[],
+  possibleAnswers: Record<string, any>[]
 ): { valid: boolean; error?: string; error_type?: string } {
   if (modelToolCalls.length !== possibleAnswers.length) {
     return {
       valid: false,
       error: `Wrong number of functions. Expected ${possibleAnswers.length}, got ${modelToolCalls.length}.`,
-      error_type: 'parallel_function_checker_no_order:wrong_count',
+      error_type: "parallel_function_checker_no_order:wrong_count",
     };
   }
 
   const matchedModelCallIndices = new Set<number>();
   for (const possibleAnswer of possibleAnswers) {
     const expectedFuncName = Object.keys(possibleAnswer)[0];
-    const funcDescription = funcDescriptions.find(f => f.name === expectedFuncName);
+    const funcDescription = funcDescriptions.find(
+      f => f.name === expectedFuncName
+    );
 
     if (!funcDescription) {
-      return { valid: false, error: `Could not find function description for '${expectedFuncName}'.`, error_type: 'parallel_function_checker_no_order:missing_func_desc' };
+      return {
+        valid: false,
+        error: `Could not find function description for '${expectedFuncName}'.`,
+        error_type: "parallel_function_checker_no_order:missing_func_desc",
+      };
     }
 
     let foundMatch = false;
     for (let i = 0; i < modelToolCalls.length; i++) {
       if (matchedModelCallIndices.has(i)) continue;
 
-      const checkerResult = simpleFunctionChecker(funcDescription, modelToolCalls[i], possibleAnswer);
+      const checkerResult = simpleFunctionChecker(
+        funcDescription,
+        modelToolCalls[i],
+        possibleAnswer
+      );
       if (checkerResult.valid) {
         matchedModelCallIndices.add(i);
         foundMatch = true;
@@ -174,7 +199,11 @@ export function parallelFunctionCheckerNoOrder(
     }
 
     if (!foundMatch) {
-      return { valid: false, error: `Could not find a matching function call for '${expectedFuncName}'.`, error_type: 'parallel_function_checker_no_order:cannot_find_match' };
+      return {
+        valid: false,
+        error: `Could not find a matching function call for '${expectedFuncName}'.`,
+        error_type: "parallel_function_checker_no_order:cannot_find_match",
+      };
     }
   }
   return { valid: true };
@@ -186,18 +215,32 @@ export function parallelFunctionCheckerNoOrder(
 export function multipleFunctionChecker(
   funcDescriptions: FunctionDescription[],
   modelToolCalls: ToolCall[],
-  possibleAnswers: Record<string, any>[],
+  possibleAnswers: Record<string, any>[]
 ): { valid: boolean; error?: string; error_type?: string } {
   if (modelToolCalls.length !== possibleAnswers.length) {
-    return { valid: false, error: `Wrong number of functions. Expected ${possibleAnswers.length}, got ${modelToolCalls.length}.`, error_type: 'multiple_function_checker:wrong_count' };
+    return {
+      valid: false,
+      error: `Wrong number of functions. Expected ${possibleAnswers.length}, got ${modelToolCalls.length}.`,
+      error_type: "multiple_function_checker:wrong_count",
+    };
   }
 
   const expectedFuncName = Object.keys(possibleAnswers[0])[0];
-  const funcDescription = funcDescriptions.find(f => f.name === expectedFuncName);
+  const funcDescription = funcDescriptions.find(
+    f => f.name === expectedFuncName
+  );
 
   if (!funcDescription) {
-    return { valid: false, error: `Could not find function description for '${expectedFuncName}'.`, error_type: 'multiple_function_checker:missing_func_desc' };
+    return {
+      valid: false,
+      error: `Could not find function description for '${expectedFuncName}'.`,
+      error_type: "multiple_function_checker:missing_func_desc",
+    };
   }
 
-  return simpleFunctionChecker(funcDescription, modelToolCalls[0], possibleAnswers[0]);
+  return simpleFunctionChecker(
+    funcDescription,
+    modelToolCalls[0],
+    possibleAnswers[0]
+  );
 }

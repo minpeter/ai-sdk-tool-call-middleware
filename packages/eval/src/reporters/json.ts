@@ -1,4 +1,4 @@
-import { EvaluationResult } from '../interfaces.js';
+import { EvaluationResult } from "../interfaces.js";
 
 export function jsonReporter(results: EvaluationResult[]): void {
   // Output the raw results array as a JSON string.

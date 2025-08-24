@@ -43,9 +43,7 @@
         "test/**/*.{ts,tsx}",
         "vitest.config.*"
       ],
-      "outputs": [
-        "coverage/**"
-      ]
+      "outputs": []
     }
   }
 }

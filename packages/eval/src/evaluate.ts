@@ -1,24 +1,29 @@
-import { LanguageModel } from 'ai';
+import { LanguageModel } from "ai";
 import {
   EvaluateOptions,
   EvaluationResult,
   LanguageModelV2Benchmark,
-} from './interfaces.js';
-import { reporters } from './reporters/index.js';
+} from "./interfaces.js";
+import { reporters } from "./reporters/index.js";
 
 async function runSingleBenchmark(
   model: LanguageModel,
-  benchmark: LanguageModelV2Benchmark,
+  benchmark: LanguageModelV2Benchmark
 ): Promise<EvaluationResult> {
   const modelId =
-    typeof model === 'object' && model !== null && 'modelId' in model && typeof model.modelId === 'string'
+    typeof model === "object" &&
+    model !== null &&
+    "modelId" in model &&
+    typeof model.modelId === "string"
       ? model.modelId
-      : 'unknown-model';
+      : "unknown-model";
 
   try {
     console.log(`[${modelId}] Running benchmark: ${benchmark.name}...`);
     const result = await benchmark.run(model);
-    console.log(`[${modelId}] Finished benchmark: ${benchmark.name}. Score: ${result.score}`);
+    console.log(
+      `[${modelId}] Finished benchmark: ${benchmark.name}. Score: ${result.score}`
+    );
     return {
       model: modelId,
       benchmark: benchmark.name,
@@ -27,7 +32,7 @@ async function runSingleBenchmark(
   } catch (error) {
     console.error(
       `[${modelId}] Error running benchmark: ${benchmark.name}`,
-      error,
+      error
     );
     return {
       model: modelId,
@@ -43,9 +48,9 @@ async function runSingleBenchmark(
 }
 
 export async function evaluate(
-  options: EvaluateOptions,
+  options: EvaluateOptions
 ): Promise<EvaluationResult[]> {
-  const { models, benchmarks, reporter = 'console' } = options;
+  const { models, benchmarks, reporter = "console" } = options;
 
   const modelsArray = Array.isArray(models) ? models : [models];
   const allResults: EvaluationResult[] = [];
