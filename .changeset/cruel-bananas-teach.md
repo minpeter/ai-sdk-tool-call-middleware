@@ -2,4 +2,4 @@
 "@ai-sdk-tool/eval": patch
 ---
 
-fix package publish config
+Fix publish configuration to ensure public access for the package
