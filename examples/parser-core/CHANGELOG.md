@@ -1,5 +1,12 @@
 # parser-core
 
+## 1.0.16
+
+### Patch Changes
+
+- Updated dependencies [06582e2]
+- docs(examples): add/update `examples/eval-core` and `examples/parser-core` (not published).
+
 ## 1.0.15
 
 ### Patch Changes
