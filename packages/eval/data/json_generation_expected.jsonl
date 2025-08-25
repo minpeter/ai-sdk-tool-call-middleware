@@ -1,0 +1,6 @@
+{"id":"t1_user_info","expected":{"name":"John Doe","email":"john.doe@example.com"}}
+{"id":"t2_order","expected":{"orderId":"ORD-1001","items":[{"name":"Apple","quantity":2},{"name":"Banana","quantity":3}]}}
+{"id":"t3_blog_post","expected":{"title":"AI Trends","tags":["ai","research"],"published":true}}
+{"id":"t4_profile_with_address","expected":{"username":"johnd","address":{"city":"Seattle","zip":"98101"}}}
+{"id":"t5_products","expected":{"products":[{"id":"P1","price":19.99},{"id":"P2","price":0}]}}
+{"id":"t6_schedule","expected":{"events":[{"title":"Team Meeting","date":"2025-09-01"}]}}

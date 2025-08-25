@@ -1,4 +1,4 @@
-# core
+# parser-core
 
 ## 1.0.15
 
