@@ -4,6 +4,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -25,13 +28,13 @@
     "test": "pnpm run test:e2e"
   },
   "dependencies": {
-    "ajv": "^8.16.0",
-    "zod": "^3.23.8"
+    "ajv": "^8.17.1",
+    "zod": "^4.1.1"
   },
   "devDependencies": {
-    "@types/node": "^20.12.7",
-    "typescript": "^5.4.5",
-    "tsup": "^8.5.0"
+    "@types/node": "^24.3.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2"
   },
   "peerDependencies": {
     "ai": ">=3.0.0"
