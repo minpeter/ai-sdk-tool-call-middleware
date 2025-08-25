@@ -1,5 +1,12 @@
 # @ai-sdk-tool/eval
 
+## 0.1.1
+
+### Patch Changes
+
+- 43a8d59: Fix publish configuration to ensure public access for the package
+- 43a8d59: bump deps
+
 ## 0.1.0
 
 ### Minor Changes

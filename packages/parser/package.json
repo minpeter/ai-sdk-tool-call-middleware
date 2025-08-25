@@ -1,6 +1,6 @@
 {
   "name": "@ai-sdk-tool/parser",
-  "version": "2.0.14",
+  "version": "2.0.15",
   "description": "",
   "type": "module",
   "main": "./dist/index.js",
