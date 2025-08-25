@@ -5,7 +5,7 @@
 ### Patch Changes
 
 - Updated dependencies [06582e2]
-  - @ai-sdk-tool/parser@2.0.14
+- docs(examples): add/update `examples/eval-core` and `examples/parser-core` (not published).
 
 ## 1.0.15
 
