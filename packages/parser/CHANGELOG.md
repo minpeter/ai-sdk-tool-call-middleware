@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.0.15
+
+### Patch Changes
+
+- 43a8d59: bump deps
+
 ## 2.0.14
 
 ### Patch Changes
