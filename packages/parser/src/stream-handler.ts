@@ -14,12 +14,18 @@ export async function toolChoiceStream({
   const result = await doGenerate();
 
   // Assume result.content[0] contains tool-call information (JSON)
-  const toolJson: { name?: string; arguments?: Record<string, unknown> } =
+  let toolJson: { name?: string; arguments?: Record<string, unknown> } = {};
+  if (
     result?.content &&
     result.content.length > 0 &&
     result.content[0]?.type === "text"
-      ? JSON.parse(result.content[0].text)
-      : {};
+  ) {
+    try {
+      toolJson = JSON.parse(result.content[0].text);
+    } catch {
+      toolJson = {};
+    }
+  }
 
   const toolCallChunk: LanguageModelV2StreamPart = {
     type: "tool-call",
