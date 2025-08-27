@@ -1,6 +1,3 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
 # Check if it's a merge commit (has multiple parents)
 if git rev-parse --verify MERGE_HEAD >/dev/null 2>&1; then
   echo "Skipping pre-commit checks for merge commit"

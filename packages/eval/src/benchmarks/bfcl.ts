@@ -1,4 +1,4 @@
-import { LanguageModel, generateText, jsonSchema } from "ai"; 
+import { LanguageModel, generateText, jsonSchema } from "ai";
 import { promises as fs } from "fs";
 import path from "path";
 import { resolveDataDir } from "../utils/paths";
