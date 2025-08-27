@@ -49,11 +49,11 @@ const xmlToolMiddleware = createToolMiddleware({
     Here are the available tools: <tools>${tools}</tools>
     For each function call return the call wrapped in <tool_call>...</tool_call> tags and nothing else.
     Example KorinAI-style call (text form):
-    <get_wheather>
+    <get_weather>
     <location>
     San Fransisco
     </location>
-    </get_wheather>`;
+    </get_weather>`;
   },
 });
 
