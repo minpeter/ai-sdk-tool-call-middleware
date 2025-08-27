@@ -3,27 +3,8 @@ import type {
   LanguageModelV2,
   LanguageModelV2Usage,
   LanguageModelV2FinishReason,
-  LanguageModelV2FunctionTool,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import { ToolCallProtocol } from "./protocols/tool-call-protocol";
-
-export async function normalToolStream({
-  doStream,
-  protocol,
-  tools,
-}: {
-  doStream: () => ReturnType<LanguageModelV2["doStream"]>;
-  protocol: ToolCallProtocol;
-  tools: LanguageModelV2FunctionTool[];
-}) {
-  const { stream, ...rest } = await doStream();
-
-  return {
-    stream: stream.pipeThrough(protocol.createStreamParser({ tools })),
-    ...rest,
-  };
-}
 
 export async function toolChoiceStream({
   doGenerate,
