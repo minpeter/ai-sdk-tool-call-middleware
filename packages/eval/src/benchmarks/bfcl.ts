@@ -181,12 +181,12 @@ function createBfclBenchmark(
                 type: "function" as const,
                 name: sanitized,
                 description: t.description,
-                inputSchema: inputSchema, // inputSchema is a JSON Schema object; will be wrapped with jsonSchema() below
+                inputSchema: inputSchema, // Keep as plain JSON for now, will be wrapped in jsonSchema later
               };
             });
 
             // Convert array to object format expected by generateText
-            const toolsObject: Record<string, any> = Object.fromEntries(
+            const toolsMap: Record<string, any> = Object.fromEntries(
               transformedTools.map(tool => [
                 tool.name,
                 {
@@ -214,7 +214,7 @@ function createBfclBenchmark(
             const { toolCalls, text, finishReason } = await generateText({
               model,
               messages: flatMessages,
-              tools: toolsObject,
+              tools: toolsMap,
               toolChoice: "auto",
             });
 
