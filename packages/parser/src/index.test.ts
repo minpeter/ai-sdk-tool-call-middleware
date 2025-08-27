@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   gemmaToolMiddleware,
   hermesToolMiddleware,
-  korinaiToolMiddleware,
+  xmlToolMiddleware,
   createToolMiddleware,
   jsonMixProtocol,
   xmlProtocol,
@@ -26,9 +26,9 @@ describe("index exports", () => {
     });
   });
 
-  describe("korinaiToolMiddleware", () => {
+  describe("xmlToolMiddleware", () => {
     it("should be defined", () => {
-      expect(korinaiToolMiddleware).toBeDefined();
+      expect(xmlToolMiddleware).toBeDefined();
     });
 
     it("should parse XML tool calls", async () => {
@@ -42,7 +42,7 @@ describe("index exports", () => {
           ] as LanguageModelV2Content[],
         });
 
-      const result = await korinaiToolMiddleware.wrapGenerate!({
+      const result = await xmlToolMiddleware.wrapGenerate!({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],
@@ -79,7 +79,7 @@ describe("index exports", () => {
           ] as LanguageModelV2Content[],
         });
 
-      const result = await korinaiToolMiddleware.wrapGenerate!({
+      const result = await xmlToolMiddleware.wrapGenerate!({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],

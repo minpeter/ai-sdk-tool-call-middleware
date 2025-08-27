@@ -1,6 +1,6 @@
 import {
   gemmaToolMiddleware,
-  korinaiToolMiddleware,
+  xmlToolMiddleware,
 } from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
@@ -16,7 +16,7 @@ async function main() {
   const result = streamText({
     model: wrapLanguageModel({
       model: openrouter("z-ai/glm-4.5-air"),
-      middleware: korinaiToolMiddleware,
+      middleware: xmlToolMiddleware,
     }),
     temperature: 0.0,
     system: "You are a helpful assistant.",

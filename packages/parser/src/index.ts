@@ -47,7 +47,7 @@ For each function call return a json object with function name and arguments wit
   },
 });
 
-const korinaiToolMiddleware = createToolMiddleware({
+const xmlToolMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
   toolSystemPromptTemplate(tools: string) {
     return `You are KorinAI, a function-calling AI model.
@@ -68,7 +68,7 @@ const korinaiToolMiddleware = createToolMiddleware({
 export {
   gemmaToolMiddleware,
   hermesToolMiddleware,
-  korinaiToolMiddleware,
+  xmlToolMiddleware,
   createToolMiddleware,
   jsonMixProtocol,
   xmlProtocol,
