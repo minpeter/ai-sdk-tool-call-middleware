@@ -181,7 +181,7 @@ function createBfclBenchmark(
                 type: "function" as const,
                 name: sanitized,
                 description: t.description,
-                inputSchema: inputSchema, // Keep as plain JSON for now, will be wrapped in jsonSchema later
+                inputSchema: inputSchema,
               };
             });
 
