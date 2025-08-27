@@ -24,15 +24,7 @@ ${tools}`;
 });
 
 const hermesToolMiddleware = createToolMiddleware({
-  protocol: jsonMixProtocol(
-    // Customize the tool call delimiters to use XML tags
-    {
-      toolCallStart: "<tool_call>",
-      toolCallEnd: "</tool_call>",
-      toolResponseStart: "<tool_response>",
-      toolResponseEnd: "</tool_response>",
-    }
-  ),
+  protocol: jsonMixProtocol,
   toolSystemPromptTemplate(tools) {
     return `You are a function calling AI model.
 You are provided with function signatures within <tools></tools> XML tags.
