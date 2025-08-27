@@ -22,14 +22,22 @@ export interface ToolCallProtocol {
   parseGeneratedText({
     text,
     tools,
+    options,
   }: {
     text: string;
     tools: LanguageModelV2FunctionTool[];
+    options?: {
+      onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    };
   }): LanguageModelV2Content[];
 
   createStreamParser({
     tools,
+    options,
   }: {
     tools: LanguageModelV2FunctionTool[];
+    options?: {
+      onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    };
   }): TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>;
 }
