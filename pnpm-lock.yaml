@@ -99,7 +99,7 @@ importers:
     dependencies:
       ai:
         specifier: '>=3.0.0'
-        version: 5.0.15(zod@4.1.1)
+        version: 5.0.15(zod@4.1.3)
       ajv:
         specifier: ^8.17.1
         version: 8.17.1
@@ -1941,9 +1941,6 @@ packages:
     peerDependencies:
       zod: ^3.24.1
 
-  zod@4.1.1:
-    resolution: {integrity: sha512-SgMZK/h8Tigt9nnKkfJMvB/mKjiJXaX26xegP4sa+0wHIFVFWVlsQGdhklDmuargBD3Hsi3rsQRIzwJIhTPJHA==}
-
   zod@4.1.3:
     resolution: {integrity: sha512-1neef4bMce1hNTrxvHVKxWjKfGDn0oAli3Wy1Uwb7TRO1+wEwoZUZNP1NXIEESybOBiFnBOhI6a4m6tCLE8dog==}
 
@@ -1955,11 +1952,11 @@ snapshots:
       '@ai-sdk/provider-utils': 3.0.7(zod@4.1.3)
       zod: 4.1.3
 
-  '@ai-sdk/gateway@1.0.7(zod@4.1.1)':
+  '@ai-sdk/gateway@1.0.7(zod@4.1.3)':
     dependencies:
       '@ai-sdk/provider': 2.0.0
-      '@ai-sdk/provider-utils': 3.0.3(zod@4.1.1)
-      zod: 4.1.1
+      '@ai-sdk/provider-utils': 3.0.3(zod@4.1.3)
+      zod: 4.1.3
 
   '@ai-sdk/openai-compatible@1.0.13(zod@4.1.3)':
     dependencies:
@@ -1973,13 +1970,13 @@ snapshots:
       '@ai-sdk/provider-utils': 3.0.7(zod@4.1.3)
       zod: 4.1.3
 
-  '@ai-sdk/provider-utils@3.0.3(zod@4.1.1)':
+  '@ai-sdk/provider-utils@3.0.3(zod@4.1.3)':
     dependencies:
       '@ai-sdk/provider': 2.0.0
       '@standard-schema/spec': 1.0.0
       eventsource-parser: 3.0.3
-      zod: 4.1.1
-      zod-to-json-schema: 3.24.6(zod@4.1.1)
+      zod: 4.1.3
+      zod-to-json-schema: 3.24.6(zod@4.1.3)
 
   '@ai-sdk/provider-utils@3.0.7(zod@4.1.3)':
     dependencies:
@@ -2678,13 +2675,13 @@ snapshots:
 
   acorn@8.15.0: {}
 
-  ai@5.0.15(zod@4.1.1):
+  ai@5.0.15(zod@4.1.3):
     dependencies:
-      '@ai-sdk/gateway': 1.0.7(zod@4.1.1)
+      '@ai-sdk/gateway': 1.0.7(zod@4.1.3)
       '@ai-sdk/provider': 2.0.0
-      '@ai-sdk/provider-utils': 3.0.3(zod@4.1.1)
+      '@ai-sdk/provider-utils': 3.0.3(zod@4.1.3)
       '@opentelemetry/api': 1.9.0
-      zod: 4.1.1
+      zod: 4.1.3
 
   ai@5.0.26(zod@4.1.3):
     dependencies:
@@ -3761,10 +3758,8 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod-to-json-schema@3.24.6(zod@4.1.1):
+  zod-to-json-schema@3.24.6(zod@4.1.3):
     dependencies:
-      zod: 4.1.1
-
-  zod@4.1.1: {}
+      zod: 4.1.3
 
   zod@4.1.3: {}
