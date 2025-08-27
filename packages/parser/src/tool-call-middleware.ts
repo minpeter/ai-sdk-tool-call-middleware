@@ -2,23 +2,34 @@ import type {
   LanguageModelV2Middleware,
   LanguageModelV2ToolCall,
   LanguageModelV2Content,
+  LanguageModelV2Prompt,
+  LanguageModelV2FunctionTool,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
+import { XMLParser } from "fast-xml-parser";
 
-import {
-  RJSON,
-  convertToolPrompt,
-  createDynamicIfThenElseSchema,
-} from "./utils";
+import { createDynamicIfThenElseSchema } from "./utils";
 import { normalToolStream, toolChoiceStream } from "./stream-handler";
+import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 
-function isToolChoiceActive(params: { providerOptions?: unknown }): boolean {
-  const toolChoice = (params?.providerOptions as any)?.toolCallMiddleware
-    ?.toolChoice;
-  return (
+function isProtocolFactory(
+  protocol: ToolCallProtocol | (() => ToolCallProtocol)
+): protocol is () => ToolCallProtocol {
+  return typeof protocol === "function";
+}
+
+function isToolChoiceActive(params: {
+  providerOptions?: {
+    toolCallMiddleware?: {
+      toolChoice?: { type: string };
+    };
+  };
+}): boolean {
+  const toolChoice = params.providerOptions?.toolCallMiddleware?.toolChoice;
+  return !!(
     typeof params.providerOptions === "object" &&
     params.providerOptions !== null &&
-    typeof (params.providerOptions as any).toolCallMiddleware === "object" &&
+    typeof params.providerOptions?.toolCallMiddleware === "object" &&
     toolChoice &&
     typeof toolChoice === "object" &&
     (toolChoice.type === "tool" || toolChoice.type === "required")
@@ -26,44 +37,64 @@ function isToolChoiceActive(params: { providerOptions?: unknown }): boolean {
 }
 
 export function createToolMiddleware({
-  toolCallTag,
-  toolCallEndTag,
-  toolResponseTag,
-  toolResponseEndTag,
+  protocol,
   toolSystemPromptTemplate,
 }: {
-  toolCallTag: string;
-  toolCallEndTag: string;
-  toolResponseTag: string;
-  toolResponseEndTag: string;
+  protocol: ToolCallProtocol | (() => ToolCallProtocol);
   toolSystemPromptTemplate: (tools: string) => string;
 }): LanguageModelV2Middleware {
+  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
+  type ProviderOptionsWithToolNames = {
+    toolCallMiddleware?: { toolNames?: string[] };
+  };
+  function getFunctionTools(params: {
+    tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
+    providerOptions?: unknown;
+  }): LanguageModelV2FunctionTool[] {
+    const rawToolNames =
+      (params.providerOptions &&
+        typeof params.providerOptions === "object" &&
+        (params.providerOptions as ProviderOptionsWithToolNames)
+          .toolCallMiddleware?.toolNames) ||
+      [];
+    const toolNames: string[] = Array.isArray(rawToolNames)
+      ? (rawToolNames as unknown[]).filter(
+          (n): n is string => typeof n === "string"
+        )
+      : [];
+    if (toolNames.length > 0) {
+      return toolNames.map((name: string) => ({
+        type: "function",
+        name,
+        description: "",
+        inputSchema: { type: "object" },
+      }));
+    }
+    return (params.tools ?? []).filter(
+      (t): t is LanguageModelV2FunctionTool =>
+        (t as { type: string }).type === "function"
+    );
+  }
   return {
     middlewareVersion: "v2",
     wrapStream: async ({ doStream, doGenerate, params }) => {
       if (isToolChoiceActive(params)) {
-        // Handle tool choice type "tool" or "required" in streaming
-        return toolChoiceStream({
-          doGenerate,
-        });
-      } else {
-        return normalToolStream({
-          doStream,
-          toolCallTag,
-          toolCallEndTag,
-        });
+        return toolChoiceStream({ doGenerate });
       }
+
+      const { stream, ...rest } = await doStream();
+      return {
+        stream: stream.pipeThrough(
+          resolvedProtocol.createStreamParser({
+            tools: getFunctionTools(params),
+          })
+        ),
+        ...rest,
+      };
     },
     wrapGenerate: async ({ doGenerate, params }) => {
-      const result = await doGenerate();
-
-      // Handle case: content is empty
-      if (result.content.length === 0) {
-        return result;
-      }
-
-      // Handle case: set tool choice type "tool" and tool name
       if (isToolChoiceActive(params)) {
+        const result = await doGenerate();
         const toolJson: { name?: string; arguments?: Record<string, unknown> } =
           result.content[0].type === "text"
             ? JSON.parse(result.content[0].text)
@@ -74,7 +105,6 @@ export function createToolMiddleware({
           content: [
             {
               type: "tool-call",
-              toolCallType: "function",
               toolCallId: generateId(),
               toolName: toolJson.name || "unknown",
               input: JSON.stringify(toolJson.arguments || {}),
@@ -83,124 +113,22 @@ export function createToolMiddleware({
         };
       }
 
-      const toolCallRegex = new RegExp(
-        `${toolCallTag}(.*?)(?:${toolCallEndTag}|$)`,
-        "gs"
-      );
+      const result = await doGenerate();
 
-      // Process each content item using flatMap
-      const newContent = result.content.flatMap(
-        (contentItem): LanguageModelV2Content[] => {
-          // Keep non-text items or text items without the tool call tag as they are.
-          if (
-            contentItem.type !== "text" ||
-            !contentItem.text.includes(toolCallTag)
-          ) {
-            return [contentItem]; // Return as an array for flatMap
-          }
+      if (result.content.length === 0) {
+        return result;
+      }
 
-          const text = contentItem.text;
-          const processedElements: LanguageModelV2Content[] = [];
-          let currentIndex = 0;
-          let match;
-
-          // --- Nested Tool Call Parsing Logic ---
-          const parseAndCreateToolCall = (
-            toolCallJson: string
-          ): LanguageModelV2ToolCall | null => {
-            try {
-              const parsedToolCall = RJSON.parse(toolCallJson) as {
-                name: string;
-                arguments: unknown; // Use unknown for initial parsing flexibility
-              };
-
-              if (
-                !parsedToolCall ||
-                typeof parsedToolCall.name !== "string" ||
-                typeof parsedToolCall.arguments === "undefined"
-              ) {
-                console.error(
-                  "Failed to parse tool call: Invalid structure",
-                  toolCallJson
-                );
-                return null;
-              }
-
-              return {
-                type: "tool-call",
-                toolCallId: generateId(),
-                toolName: parsedToolCall.name,
-                // Ensure args is always a JSON string
-                input:
-                  typeof parsedToolCall.arguments === "string"
-                    ? parsedToolCall.arguments
-                    : JSON.stringify(parsedToolCall.arguments),
-              };
-            } catch (error) {
-              console.error(
-                "Failed to parse tool call JSON:",
-                error,
-                "JSON:",
-                toolCallJson
-              );
-              return null; // Indicate failure
-            }
-          };
-          // --- End of Nested Logic ---
-
-          // Use regex.exec in a loop to find all matches and indices
-          while ((match = toolCallRegex.exec(text)) !== null) {
-            const startIndex = match.index;
-            const endIndex = startIndex + match[0].length;
-            const toolCallJson = match[1]; // Captured group 1: the JSON content
-
-            // 1. Add text segment *before* the match
-            if (startIndex > currentIndex) {
-              const textSegment = text.substring(currentIndex, startIndex);
-              // Add only if it contains non-whitespace characters
-              if (textSegment.trim()) {
-                processedElements.push({ type: "text", text: textSegment });
-              }
-            }
-
-            // 2. Parse and add the tool call
-            if (toolCallJson) {
-              const toolCallObject = parseAndCreateToolCall(toolCallJson);
-              if (toolCallObject) {
-                processedElements.push(toolCallObject);
-              } else {
-                // Handle parsing failure: Option 1: Log and add original match as text
-                console.warn(
-                  `Could not process tool call, keeping original text: ${match[0]}`
-                );
-                processedElements.push({ type: "text", text: match[0] });
-                // Option 2: Log and discard (do nothing here)
-                // Option 3: Create a specific error content part if supported
-              }
-            }
-
-            // 3. Update index for the next search
-            currentIndex = endIndex;
-
-            // Reset lastIndex if using exec with 'g' flag in a loop (though typically not needed if loop condition is `match !== null`)
-            // toolCallRegex.lastIndex = currentIndex;
-          }
-
-          // 4. Add any remaining text *after* the last match
-          if (currentIndex < text.length) {
-            const remainingText = text.substring(currentIndex);
-            // Add only if it contains non-whitespace characters
-            if (remainingText.trim()) {
-              processedElements.push({ type: "text", text: remainingText });
-            }
-          }
-
-          // Return the array of processed parts, replacing the original text item
-          return processedElements;
+      const newContent = result.content.flatMap(contentItem => {
+        if (contentItem.type !== "text") {
+          return [contentItem];
         }
-      );
+        return resolvedProtocol.parseGeneratedText({
+          text: contentItem.text,
+          tools: getFunctionTools(params),
+        });
+      });
 
-      // Return the result with the potentially modified content array
       return {
         ...result,
         content: newContent,
@@ -208,22 +136,105 @@ export function createToolMiddleware({
     },
 
     transformParams: async ({ params }) => {
-      const toolSystemPrompt = convertToolPrompt({
-        paramsPrompt: params.prompt,
-        paramsTools: params.tools,
+      const convertToolPrompt = (
+        prompt: LanguageModelV2Prompt
+      ): LanguageModelV2Prompt => {
+        const processedPrompt = prompt.map(message => {
+          if (message.role === "assistant") {
+            const newContent: LanguageModelV2Content[] = [];
+            for (const content of message.content) {
+              if (content.type === "tool-call") {
+                newContent.push({
+                  type: "text",
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  text: resolvedProtocol.formatToolCall(content as any),
+                });
+              } else {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                newContent.push(content as any);
+              }
+            }
+            return { role: "assistant", content: newContent };
+          }
+          if (message.role === "tool") {
+            return {
+              role: "user",
+              content: message.content.map(toolResult => ({
+                type: "text",
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                text: resolvedProtocol.formatToolResponse(toolResult as any),
+              })),
+            };
+          }
+          return message;
+        });
+
+        // Merge consecutive text blocks
+        for (let i = processedPrompt.length - 1; i > 0; i--) {
+          const current = processedPrompt[i];
+          const prev = processedPrompt[i - 1];
+          if (current.role === "user" && prev.role === "user") {
+            const prevContent = prev.content
+              .map(c => (c.type === "text" ? c.text : ""))
+              .join("\n");
+            const currentContent = current.content
+              .map(c => (c.type === "text" ? c.text : ""))
+              .join("\n");
+            processedPrompt[i - 1] = {
+              role: "user",
+              content: [
+                { type: "text", text: prevContent + "\n" + currentContent },
+              ],
+            };
+            processedPrompt.splice(i, 1);
+          }
+        }
+        return processedPrompt as LanguageModelV2Prompt;
+      };
+
+      const functionTools = (params.tools ?? []).filter(
+        t => t.type === "function"
+      );
+
+      const systemPrompt = resolvedProtocol.formatTools({
+        tools: functionTools,
         toolSystemPromptTemplate,
-        toolCallTag,
-        toolCallEndTag,
-        toolResponseTag,
-        toolResponseEndTag,
       });
+      const processedPrompt = convertToolPrompt(params.prompt);
+
+      const finalPrompt: LanguageModelV2Prompt =
+        processedPrompt[0]?.role === "system"
+          ? [
+              {
+                role: "system",
+                content: systemPrompt + "\n\n" + processedPrompt[0].content,
+              },
+              ...processedPrompt.slice(1),
+            ]
+          : [
+              {
+                role: "system",
+                content: systemPrompt,
+              },
+              ...processedPrompt,
+            ];
 
       const baseReturnParams = {
         ...params,
-        prompt: toolSystemPrompt,
-        // Reset tools and toolChoice to default after prompt transformation
+        prompt: finalPrompt,
         tools: [],
         toolChoice: undefined,
+        providerOptions: {
+          ...(params.providerOptions || {}),
+          toolCallMiddleware: {
+            ...((params.providerOptions &&
+              typeof params.providerOptions === "object" &&
+              (params.providerOptions as { toolCallMiddleware?: unknown })
+                .toolCallMiddleware) ||
+              {}),
+            toolNames: functionTools.map(t => t.name),
+          },
+        },
       };
 
       if (params.toolChoice?.type === "none") {
@@ -232,7 +243,6 @@ export function createToolMiddleware({
         );
       }
 
-      // Handle specific tool choice scenario
       if (params.toolChoice?.type === "tool") {
         const selectedToolName = params.toolChoice.toolName;
         const selectedTool = params.tools?.find(tool =>
@@ -255,7 +265,6 @@ export function createToolMiddleware({
 
         return {
           ...baseReturnParams,
-
           responseFormat: {
             type: "json",
             schema: {
@@ -276,7 +285,16 @@ export function createToolMiddleware({
                 : undefined,
           },
           providerOptions: {
+            ...(baseReturnParams.providerOptions || {}),
             toolCallMiddleware: {
+              ...((baseReturnParams.providerOptions &&
+                typeof baseReturnParams.providerOptions === "object" &&
+                (
+                  baseReturnParams.providerOptions as {
+                    toolCallMiddleware?: unknown;
+                  }
+                ).toolCallMiddleware) ||
+                {}),
               toolChoice: params.toolChoice,
             },
           },
@@ -294,10 +312,21 @@ export function createToolMiddleware({
           ...baseReturnParams,
           responseFormat: {
             type: "json",
-            schema: createDynamicIfThenElseSchema(params.tools),
+            schema: createDynamicIfThenElseSchema(
+              params.tools.filter(t => t.type === "function")
+            ),
           },
           providerOptions: {
+            ...(baseReturnParams.providerOptions || {}),
             toolCallMiddleware: {
+              ...((baseReturnParams.providerOptions &&
+                typeof baseReturnParams.providerOptions === "object" &&
+                (
+                  baseReturnParams.providerOptions as {
+                    toolCallMiddleware?: unknown;
+                  }
+                ).toolCallMiddleware) ||
+                {}),
               toolChoice: { type: "required" },
             },
           },

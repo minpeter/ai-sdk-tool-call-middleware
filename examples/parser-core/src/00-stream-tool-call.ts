@@ -1,4 +1,7 @@
-import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
+import {
+  gemmaToolMiddleware,
+  korinaiToolMiddleware,
+} from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
@@ -12,9 +15,10 @@ const openrouter = createOpenAICompatible({
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: openrouter("google/gemma-3-27b-it"),
-      middleware: gemmaToolMiddleware,
+      model: openrouter("z-ai/glm-4.5-air"),
+      middleware: korinaiToolMiddleware,
     }),
+    temperature: 0.0,
     system: "You are a helpful assistant.",
     prompt: "What is the weather in my city?",
     stopWhen: stepCountIs(4),

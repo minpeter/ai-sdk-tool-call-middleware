@@ -3,215 +3,28 @@ import type {
   LanguageModelV2,
   LanguageModelV2Usage,
   LanguageModelV2FinishReason,
+  LanguageModelV2FunctionTool,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import { getPotentialStartIndex, RJSON } from "./utils";
+import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 
 export async function normalToolStream({
   doStream,
-  toolCallTag,
-  toolCallEndTag,
+  protocol,
+  tools,
 }: {
   doStream: () => ReturnType<LanguageModelV2["doStream"]>;
-  toolCallTag: string;
-  toolCallEndTag: string;
+  protocol: ToolCallProtocol;
+  tools: LanguageModelV2FunctionTool[];
 }) {
   const { stream, ...rest } = await doStream();
 
-  let isFirstToolCall = true;
-  let isFirstText = true;
-  let afterSwitch = false;
-  let isToolCall = false;
-  let buffer = "";
-
-  let toolCallIndex = -1;
-  let toolCallBuffer: string[] = [];
-
-  // Track text chunks for start/delta/end pattern
-  let currentTextId: string | null = null;
-  let hasEmittedTextStart = false;
-
-  const transformStream = new TransformStream<
-    LanguageModelV2StreamPart,
-    LanguageModelV2StreamPart
-  >({
-    transform(chunk, controller) {
-      if (chunk.type === "finish") {
-        // Handle incomplete tool calls by restoring them as text
-        if (
-          isToolCall &&
-          (buffer.length > 0 ||
-            (toolCallIndex >= 0 && toolCallBuffer[toolCallIndex]))
-        ) {
-          // Start a new text chunk if needed
-          if (!currentTextId) {
-            currentTextId = generateId();
-            controller.enqueue({
-              type: "text-start",
-              id: currentTextId,
-            });
-            hasEmittedTextStart = true;
-          }
-
-          // Add the incomplete tool call back as text (without end tag)
-          const incompleteContent =
-            (toolCallBuffer[toolCallIndex] || "") + buffer;
-          controller.enqueue({
-            type: "text-delta",
-            id: currentTextId,
-            delta: toolCallTag + incompleteContent,
-          });
-
-          // Clear the current incomplete tool call from the buffer
-          if (toolCallIndex >= 0) {
-            toolCallBuffer = toolCallBuffer.slice(0, toolCallIndex);
-          }
-        }
-
-        // End any active text chunk before processing tool calls
-        if (currentTextId && hasEmittedTextStart) {
-          controller.enqueue({
-            type: "text-end",
-            id: currentTextId,
-          });
-          currentTextId = null;
-          hasEmittedTextStart = false;
-        }
-
-        if (toolCallBuffer.length > 0) {
-          toolCallBuffer.forEach(toolCall => {
-            try {
-              const parsedToolCall = RJSON.parse(toolCall) as {
-                name: string;
-                arguments: string;
-              };
-
-              controller.enqueue({
-                type: "tool-call",
-                toolCallId: generateId(),
-                toolName: parsedToolCall.name,
-                input: JSON.stringify(parsedToolCall.arguments),
-              });
-            } catch (e) {
-              console.error(`Error parsing tool call: ${toolCall}`, e);
-
-              // For malformed tool calls, restore original text
-              const errorId = generateId();
-              controller.enqueue({
-                type: "text-start",
-                id: errorId,
-              });
-              controller.enqueue({
-                type: "text-delta",
-                id: errorId,
-                delta: `${toolCallTag}${toolCall}${toolCallEndTag}`,
-              });
-              controller.enqueue({
-                type: "text-end",
-                id: errorId,
-              });
-            }
-          });
-        }
-
-        // stop token
-        controller.enqueue(chunk);
-
-        return;
-      } else if (chunk.type !== "text-delta") {
-        controller.enqueue(chunk);
-        return;
-      }
-
-      buffer += chunk.delta;
-
-      function publish(text: string) {
-        if (text.length > 0 || isToolCall) {
-          const prefix =
-            afterSwitch && (isToolCall ? !isFirstToolCall : !isFirstText)
-              ? "\n" // separator
-              : "";
-
-          if (isToolCall) {
-            // End any active text chunk when switching to tool call
-            if (currentTextId && hasEmittedTextStart) {
-              controller.enqueue({
-                type: "text-end",
-                id: currentTextId,
-              });
-              currentTextId = null;
-              hasEmittedTextStart = false;
-            }
-
-            if (!toolCallBuffer[toolCallIndex]) {
-              toolCallBuffer[toolCallIndex] = "";
-            }
-
-            toolCallBuffer[toolCallIndex] += text;
-          } else if (text.length > 0) {
-            // Start a new text chunk if needed
-            if (!currentTextId) {
-              currentTextId = generateId();
-              controller.enqueue({
-                type: "text-start",
-                id: currentTextId,
-              });
-              hasEmittedTextStart = true;
-            }
-
-            controller.enqueue({
-              type: "text-delta",
-              id: currentTextId,
-              delta: prefix + text,
-            });
-          }
-
-          afterSwitch = false;
-
-          if (isToolCall) {
-            isFirstToolCall = false;
-          } else {
-            isFirstText = false;
-          }
-        }
-      }
-
-      do {
-        const nextTag = isToolCall ? toolCallEndTag : toolCallTag;
-        const startIndex = getPotentialStartIndex(buffer, nextTag);
-
-        // no opening or closing tag found, publish the buffer
-        if (startIndex == null) {
-          publish(buffer);
-          buffer = "";
-          break;
-        }
-
-        const foundFullMatch = startIndex + nextTag.length <= buffer.length;
-
-        if (foundFullMatch) {
-          // publish text before the tag
-          publish(buffer.slice(0, startIndex));
-
-          buffer = buffer.slice(startIndex + nextTag.length);
-          toolCallIndex++;
-          isToolCall = !isToolCall;
-          afterSwitch = true;
-        } else {
-          // Partial match found, wait for more data to complete the tag.
-          break;
-        }
-      } while (true);
-    },
-  });
-
   return {
-    stream: stream?.pipeThrough(transformStream) ?? new ReadableStream(),
+    stream: stream.pipeThrough(protocol.createStreamParser({ tools })),
     ...rest,
   };
 }
 
-// TODO: Modify tool calls to be streamed
 export async function toolChoiceStream({
   doGenerate,
 }: {
