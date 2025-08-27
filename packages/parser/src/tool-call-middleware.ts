@@ -1,15 +1,13 @@
 import type {
   LanguageModelV2Middleware,
-  LanguageModelV2ToolCall,
   LanguageModelV2Content,
   LanguageModelV2Prompt,
   LanguageModelV2FunctionTool,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import { XMLParser } from "fast-xml-parser";
 
 import { createDynamicIfThenElseSchema } from "./utils";
-import { normalToolStream, toolChoiceStream } from "./stream-handler";
+import { toolChoiceStream } from "./stream-handler";
 import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 
 function isProtocolFactory(
@@ -45,7 +43,10 @@ export function createToolMiddleware({
 }): LanguageModelV2Middleware {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
   type ProviderOptionsWithToolNames = {
-    toolCallMiddleware?: { toolNames?: string[] };
+    toolCallMiddleware?: {
+      toolNames?: string[];
+      onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    };
   };
   function getFunctionTools(params: {
     tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
@@ -87,6 +88,17 @@ export function createToolMiddleware({
         stream: stream.pipeThrough(
           resolvedProtocol.createStreamParser({
             tools: getFunctionTools(params),
+            options:
+              params.providerOptions &&
+              typeof params.providerOptions === "object" &&
+              (params.providerOptions as ProviderOptionsWithToolNames)
+                .toolCallMiddleware?.onError
+                ? {
+                    onError: (
+                      params.providerOptions as ProviderOptionsWithToolNames
+                    ).toolCallMiddleware?.onError,
+                  }
+                : undefined,
           })
         ),
         ...rest,
@@ -126,6 +138,17 @@ export function createToolMiddleware({
         return resolvedProtocol.parseGeneratedText({
           text: contentItem.text,
           tools: getFunctionTools(params),
+          options:
+            params.providerOptions &&
+            typeof params.providerOptions === "object" &&
+            (params.providerOptions as ProviderOptionsWithToolNames)
+              .toolCallMiddleware?.onError
+              ? {
+                  onError: (
+                    params.providerOptions as ProviderOptionsWithToolNames
+                  ).toolCallMiddleware?.onError,
+                }
+              : undefined,
         });
       });
 

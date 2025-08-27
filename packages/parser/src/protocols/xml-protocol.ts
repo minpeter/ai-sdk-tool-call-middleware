@@ -45,8 +45,8 @@ export const xmlProtocol = (): ToolCallProtocol => ({
     return xmlContent;
   },
 
-  parseGeneratedText({ text, tools }) {
-    const toolNames = tools.map(t => t.name).filter(Boolean);
+  parseGeneratedText({ text, tools, options }) {
+    const toolNames = tools.map(t => t.name).filter(name => name != null);
     if (toolNames.length === 0) {
       return [{ type: "text", text }];
     }
@@ -103,9 +103,12 @@ export const xmlProtocol = (): ToolCallProtocol => ({
           input: JSON.stringify(args),
         });
       } catch {
-        console.warn(
-          `Could not process XML tool call, keeping original text: ${match[0]}`
-        );
+        const message = `Could not process XML tool call, keeping original text: ${match[0]}`;
+        if (options?.onError) {
+          options.onError(message, { toolCall: match[0], toolName });
+        } else {
+          console.warn(message);
+        }
         processedElements.push({ type: "text", text: match[0] });
       }
 
@@ -122,8 +125,8 @@ export const xmlProtocol = (): ToolCallProtocol => ({
     return processedElements;
   },
 
-  createStreamParser({ tools }) {
-    const toolNames = tools.map(t => t.name).filter(Boolean);
+  createStreamParser({ tools, options }) {
+    const toolNames = tools.map(t => t.name).filter(name => name != null);
     let buffer = "";
     let currentToolCall: { name: string; content: string } | null = null;
     let currentTextId: string | null = null;
@@ -204,6 +207,15 @@ export const xmlProtocol = (): ToolCallProtocol => ({
                 });
               } catch {
                 const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;
+                if (options?.onError) {
+                  options.onError(
+                    "Could not process streaming XML tool call; emitting original text.",
+                    {
+                      toolCall: originalCallText,
+                      toolName: currentToolCall.name,
+                    }
+                  );
+                }
                 flushText(controller, originalCallText);
               }
               currentToolCall = null;

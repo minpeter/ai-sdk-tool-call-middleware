@@ -58,7 +58,7 @@ export const jsonMixProtocol = ({
     })}${toolResponseEnd}`;
   },
 
-  parseGeneratedText({ text }) {
+  parseGeneratedText({ text, options }) {
     // Support legacy tag names by normalizing them to the configured ones.
     const legacyStart =
       toolCallStart === "<tool_call>" ? "<tool_code>" : "<tool_call>";
@@ -103,6 +103,12 @@ export const jsonMixProtocol = ({
             input: JSON.stringify(parsedToolCall.arguments ?? {}),
           });
         } catch {
+          if (options?.onError) {
+            options.onError(
+              "Could not process JSON tool call, keeping original text.",
+              { toolCall: match[0] }
+            );
+          }
           processedElements.push({ type: "text", text: match[0] });
         }
       }
@@ -120,7 +126,7 @@ export const jsonMixProtocol = ({
     return processedElements;
   },
 
-  createStreamParser() {
+  createStreamParser({ tools: _tools, options } = { tools: [] }) {
     let isInsideToolCall = false;
     let buffer = "";
     const toolCallBuffer: string[] = [];
@@ -172,6 +178,12 @@ export const jsonMixProtocol = ({
                 delta: `${toolCallStart}${toolCallText}${toolCallEnd}`,
               });
               controller.enqueue({ type: "text-end", id: errorId });
+              if (options?.onError) {
+                options.onError(
+                  "Could not process streaming JSON tool call; emitting original text.",
+                  { toolCall: `${toolCallStart}${toolCallText}${toolCallEnd}` }
+                );
+              }
             }
           });
 
