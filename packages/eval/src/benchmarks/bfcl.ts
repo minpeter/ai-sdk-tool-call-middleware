@@ -186,13 +186,15 @@ function createBfclBenchmark(
             });
 
             // Convert array to object format expected by generateText
-            const toolsObject: Record<string, any> = {};
-            transformedTools.forEach(tool => {
-              toolsObject[tool.name] = {
-                ...tool,
-                inputSchema: jsonSchema(tool.inputSchema), // Wrap with jsonSchema for ai package compatibility
-              };
-            });
+            const toolsObject: Record<string, any> = Object.fromEntries(
+              transformedTools.map(tool => [
+                tool.name,
+                {
+                  ...tool,
+                  inputSchema: jsonSchema(tool.inputSchema), // Wrap with jsonSchema for ai package compatibility
+                },
+              ])
+            );
 
             // Debug: record first tool object and schema type
             try {
