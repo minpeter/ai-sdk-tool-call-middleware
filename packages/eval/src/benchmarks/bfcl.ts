@@ -1,4 +1,4 @@
-import { LanguageModel, generateText, jsonSchema } from "ai";
+import { LanguageModel, generateText, jsonSchema } from "ai"; 
 import { promises as fs } from "fs";
 import path from "path";
 import { resolveDataDir } from "../utils/paths";
@@ -181,8 +181,16 @@ function createBfclBenchmark(
                 type: "function" as const,
                 name: sanitized,
                 description: t.description,
-                // Mark as JSON schema explicitly to prevent Zod parsing
-                inputSchema: jsonSchema(inputSchema as any) as any,
+                inputSchema: inputSchema, // Keep as plain JSON for now, will be wrapped in jsonSchema later
+              };
+            });
+
+            // Convert array to object format expected by generateText
+            const toolsObject: Record<string, any> = {};
+            transformedTools.forEach(tool => {
+              toolsObject[tool.name] = {
+                ...tool,
+                inputSchema: jsonSchema(tool.inputSchema), // Wrap with jsonSchema for ai package compatibility
               };
             });
 
@@ -204,8 +212,8 @@ function createBfclBenchmark(
             const { toolCalls, text, finishReason } = await generateText({
               model,
               messages: flatMessages,
-              tools: transformedTools as any,
-              toolChoice: "required",
+              tools: toolsObject,
+              toolChoice: "auto",
             });
 
             // Debug: raw toolCalls
