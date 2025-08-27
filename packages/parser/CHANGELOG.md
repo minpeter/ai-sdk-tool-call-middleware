@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.0.16
+
+### Patch Changes
+
+- bd04904: bump dependencies
+
 ## 2.0.15
 
 ### Patch Changes
