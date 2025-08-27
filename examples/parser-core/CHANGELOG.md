@@ -1,5 +1,13 @@
 # parser-core
 
+## 1.0.18
+
+### Patch Changes
+
+- bd04904: bump dependencies
+- Updated dependencies [bd04904]
+  - @ai-sdk-tool/parser@2.0.16
+
 ## 1.0.17
 
 ### Patch Changes

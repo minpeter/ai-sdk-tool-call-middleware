@@ -1,5 +1,12 @@
 # @ai-sdk-tool/eval
 
+## 0.1.2
+
+### Patch Changes
+
+- bd04904: bump dependencies
+- bd04904: toolChoice required -> auto
+
 ## 0.1.1
 
 ### Patch Changes
