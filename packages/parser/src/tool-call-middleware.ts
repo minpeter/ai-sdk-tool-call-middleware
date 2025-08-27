@@ -2,36 +2,27 @@ import type {
   LanguageModelV2Middleware,
   LanguageModelV2Content,
   LanguageModelV2Prompt,
-  LanguageModelV2FunctionTool,
+  LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
-import { createDynamicIfThenElseSchema } from "./utils";
+import {
+  createDynamicIfThenElseSchema,
+  isToolCallContent,
+  isToolResultPart,
+} from "./utils";
 import { toolChoiceStream } from "./stream-handler";
 import { ToolCallProtocol } from "./protocols/tool-call-protocol";
+import {
+  isToolChoiceActive,
+  getFunctionTools,
+  extractOnErrorOption,
+} from "./utils";
 
 function isProtocolFactory(
   protocol: ToolCallProtocol | (() => ToolCallProtocol)
 ): protocol is () => ToolCallProtocol {
   return typeof protocol === "function";
-}
-
-function isToolChoiceActive(params: {
-  providerOptions?: {
-    toolCallMiddleware?: {
-      toolChoice?: { type: string };
-    };
-  };
-}): boolean {
-  const toolChoice = params.providerOptions?.toolCallMiddleware?.toolChoice;
-  return !!(
-    typeof params.providerOptions === "object" &&
-    params.providerOptions !== null &&
-    typeof params.providerOptions?.toolCallMiddleware === "object" &&
-    toolChoice &&
-    typeof toolChoice === "object" &&
-    (toolChoice.type === "tool" || toolChoice.type === "required")
-  );
 }
 
 export function createToolMiddleware({
@@ -42,40 +33,6 @@ export function createToolMiddleware({
   toolSystemPromptTemplate: (tools: string) => string;
 }): LanguageModelV2Middleware {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
-  type ProviderOptionsWithToolNames = {
-    toolCallMiddleware?: {
-      toolNames?: string[];
-      onError?: (message: string, metadata?: Record<string, unknown>) => void;
-    };
-  };
-  function getFunctionTools(params: {
-    tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
-    providerOptions?: unknown;
-  }): LanguageModelV2FunctionTool[] {
-    const rawToolNames =
-      (params.providerOptions &&
-        typeof params.providerOptions === "object" &&
-        (params.providerOptions as ProviderOptionsWithToolNames)
-          .toolCallMiddleware?.toolNames) ||
-      [];
-    const toolNames: string[] = Array.isArray(rawToolNames)
-      ? (rawToolNames as unknown[]).filter(
-          (n): n is string => typeof n === "string"
-        )
-      : [];
-    if (toolNames.length > 0) {
-      return toolNames.map((name: string) => ({
-        type: "function",
-        name,
-        description: "",
-        inputSchema: { type: "object" },
-      }));
-    }
-    return (params.tools ?? []).filter(
-      (t): t is LanguageModelV2FunctionTool =>
-        (t as { type: string }).type === "function"
-    );
-  }
   return {
     middlewareVersion: "v2",
     wrapStream: async ({ doStream, doGenerate, params }) => {
@@ -88,17 +45,7 @@ export function createToolMiddleware({
         stream: stream.pipeThrough(
           resolvedProtocol.createStreamParser({
             tools: getFunctionTools(params),
-            options:
-              params.providerOptions &&
-              typeof params.providerOptions === "object" &&
-              (params.providerOptions as ProviderOptionsWithToolNames)
-                .toolCallMiddleware?.onError
-                ? {
-                    onError: (
-                      params.providerOptions as ProviderOptionsWithToolNames
-                    ).toolCallMiddleware?.onError,
-                  }
-                : undefined,
+            options: extractOnErrorOption(params.providerOptions),
           })
         ),
         ...rest,
@@ -107,10 +54,15 @@ export function createToolMiddleware({
     wrapGenerate: async ({ doGenerate, params }) => {
       if (isToolChoiceActive(params)) {
         const result = await doGenerate();
-        const toolJson: { name?: string; arguments?: Record<string, unknown> } =
-          result.content[0].type === "text"
-            ? JSON.parse(result.content[0].text)
-            : {};
+        let parsed: { name?: string; arguments?: Record<string, unknown> } = {};
+        const first = result.content?.[0];
+        if (first && first.type === "text") {
+          try {
+            parsed = JSON.parse(first.text);
+          } catch {
+            parsed = {};
+          }
+        }
 
         return {
           ...result,
@@ -118,8 +70,8 @@ export function createToolMiddleware({
             {
               type: "tool-call",
               toolCallId: generateId(),
-              toolName: toolJson.name || "unknown",
-              input: JSON.stringify(toolJson.arguments || {}),
+              toolName: parsed.name || "unknown",
+              input: JSON.stringify(parsed.arguments || {}),
             },
           ],
         };
@@ -138,17 +90,7 @@ export function createToolMiddleware({
         return resolvedProtocol.parseGeneratedText({
           text: contentItem.text,
           tools: getFunctionTools(params),
-          options:
-            params.providerOptions &&
-            typeof params.providerOptions === "object" &&
-            (params.providerOptions as ProviderOptionsWithToolNames)
-              .toolCallMiddleware?.onError
-              ? {
-                  onError: (
-                    params.providerOptions as ProviderOptionsWithToolNames
-                  ).toolCallMiddleware?.onError,
-                }
-              : undefined,
+          options: extractOnErrorOption(params.providerOptions),
         });
       });
 
@@ -166,15 +108,18 @@ export function createToolMiddleware({
           if (message.role === "assistant") {
             const newContent: LanguageModelV2Content[] = [];
             for (const content of message.content) {
-              if (content.type === "tool-call") {
+              if (isToolCallContent(content)) {
                 newContent.push({
                   type: "text",
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  text: resolvedProtocol.formatToolCall(content as any),
+                  text: resolvedProtocol.formatToolCall(content),
                 });
+              } else if ((content as { type?: string }).type === "text") {
+                newContent.push(content as LanguageModelV2Content);
               } else {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                newContent.push(content as any);
+                newContent.push({
+                  type: "text",
+                  text: JSON.stringify(content),
+                });
               }
             }
             return { role: "assistant", content: newContent };
@@ -184,8 +129,11 @@ export function createToolMiddleware({
               role: "user",
               content: message.content.map(toolResult => ({
                 type: "text",
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                text: resolvedProtocol.formatToolResponse(toolResult as any),
+                text: isToolResultPart(toolResult)
+                  ? resolvedProtocol.formatToolResponse(toolResult)
+                  : resolvedProtocol.formatToolResponse(
+                      toolResult as LanguageModelV2ToolResultPart
+                    ),
               })),
             };
           }

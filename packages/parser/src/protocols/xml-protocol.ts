@@ -6,6 +6,7 @@ import {
 import { ToolCallProtocol } from "./tool-call-protocol";
 import { generateId } from "@ai-sdk/provider-utils";
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
+import { escapeRegExp } from "../utils";
 
 export const xmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
@@ -51,8 +52,9 @@ export const xmlProtocol = (): ToolCallProtocol => ({
       return [{ type: "text", text }];
     }
 
+    const toolNamesPattern = toolNames.map(n => escapeRegExp(n)).join("|");
     const toolCallRegex = new RegExp(
-      String.raw`<(${toolNames.join("|")})>([\s\S]*?)<\/\1>`,
+      String.raw`<(${toolNamesPattern})>([\s\S]*?)<\/\1>`,
       "g"
     );
 

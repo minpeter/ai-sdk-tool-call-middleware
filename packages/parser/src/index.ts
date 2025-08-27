@@ -1,6 +1,5 @@
 import { createToolMiddleware } from "./tool-call-middleware";
-import { jsonMixProtocol } from "./protocols/json-mix-protocol";
-import { xmlProtocol } from "./protocols/xml-protocol";
+import { jsonMixProtocol, xmlProtocol } from "./protocols";
 
 const gemmaToolMiddleware = createToolMiddleware({
   protocol: jsonMixProtocol(

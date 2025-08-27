@@ -5,7 +5,7 @@ import type {
 } from "@ai-sdk/provider";
 import { ToolCallProtocol } from "./tool-call-protocol";
 import { generateId } from "@ai-sdk/provider-utils";
-import { getPotentialStartIndex, RJSON } from "../utils";
+import { getPotentialStartIndex, RJSON, escapeRegExp } from "../utils";
 
 type JsonMixOptions = {
   toolCallStart?: string;
@@ -13,10 +13,6 @@ type JsonMixOptions = {
   toolResponseStart?: string;
   toolResponseEnd?: string;
 };
-
-function escapeForRegExp(literal: string): string {
-  return literal.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
-}
 
 export const jsonMixProtocol = ({
   toolCallStart = "<tool_call>",
@@ -68,8 +64,8 @@ export const jsonMixProtocol = ({
       .replaceAll(legacyStart, toolCallStart)
       .replaceAll(legacyEnd, toolCallEnd);
 
-    const startEsc = escapeForRegExp(toolCallStart);
-    const endEsc = escapeForRegExp(toolCallEnd);
+    const startEsc = escapeRegExp(toolCallStart);
+    const endEsc = escapeRegExp(toolCallEnd);
     const toolCallRegex = new RegExp(
       `${startEsc}([\u0000-\uFFFF]*?)${endEsc}`,
       "gs"
