@@ -44,6 +44,11 @@
         "vitest.config.*"
       ],
       "outputs": []
+    },
+    "test:watch": {
+      "dependsOn": [
+        "^test:watch"
+      ]
     }
   }
 }

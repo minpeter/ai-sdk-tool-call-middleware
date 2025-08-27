@@ -4,6 +4,7 @@
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
+    "test:watch": "turbo run test:watch --parallel",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",

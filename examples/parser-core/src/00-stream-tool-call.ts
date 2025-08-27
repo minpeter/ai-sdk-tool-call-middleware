@@ -1,7 +1,4 @@
-import {
-  gemmaToolMiddleware,
-  xmlToolMiddleware,
-} from "@ai-sdk-tool/parser";
+import { gemmaToolMiddleware, xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
