@@ -148,7 +148,12 @@ export const xmlProtocol = (): ToolCallProtocol => ({
           id: currentTextId,
           delta: content,
         });
-        buffer = "";
+        // Only clear the internal buffer when we are flushing the buffer itself.
+        // When flushing an explicit slice (textBeforeTag), keep buffer intact so
+        // subsequent substring operations use the original indices.
+        if (text === undefined) {
+          buffer = "";
+        }
       }
 
       if (currentTextId && !text) {
