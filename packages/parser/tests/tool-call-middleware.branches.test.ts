@@ -8,9 +8,16 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-vi.mock("@/stream-handler", () => ({
-  toolChoiceStream: vi.fn(),
-}));
+vi.mock("@/stream-handler", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/stream-handler")>(
+      "@/stream-handler"
+    );
+  return {
+    ...actual,
+    toolChoiceStream: vi.fn(),
+  };
+});
 
 describe("createToolMiddleware branches", () => {
   beforeEach(() => {
@@ -136,7 +143,9 @@ describe("createToolMiddleware branches", () => {
     } as any);
 
     expect(toolChoiceStream).toHaveBeenCalledTimes(1);
-    expect(toolChoiceStream).toHaveBeenCalledWith({ doGenerate });
+    expect(toolChoiceStream).toHaveBeenCalledWith(
+      expect.objectContaining({ doGenerate })
+    );
     expect(result).toBe(expected);
   });
 
@@ -170,7 +179,9 @@ describe("createToolMiddleware branches", () => {
     } as any);
 
     expect(toolChoiceStream).toHaveBeenCalledTimes(1);
-    expect(toolChoiceStream).toHaveBeenCalledWith({ doGenerate });
+    expect(toolChoiceStream).toHaveBeenCalledWith(
+      expect.objectContaining({ doGenerate })
+    );
     expect(result).toBe(expected);
   });
 });

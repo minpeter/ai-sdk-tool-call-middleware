@@ -3,8 +3,15 @@ import type {
   LanguageModelV2,
   LanguageModelV2Usage,
   LanguageModelV2FinishReason,
+  LanguageModelV2FunctionTool,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
+import { ToolCallProtocol } from "./protocols/tool-call-protocol";
+import {
+  isToolChoiceActive,
+  getFunctionTools,
+  extractOnErrorOption,
+} from "./utils";
 
 export async function toolChoiceStream({
   doGenerate,
@@ -70,5 +77,40 @@ export async function toolChoiceStream({
     request: result?.request || {},
     response: result?.response || {},
     stream,
+  };
+}
+
+type WrapStreamParams = Parameters<typeof isToolChoiceActive>[0] & {
+  tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
+  providerOptions?: unknown;
+};
+
+export async function wrapStream({
+  protocol,
+  doStream,
+  doGenerate,
+  params,
+}: {
+  protocol: ToolCallProtocol;
+  doStream: () => ReturnType<LanguageModelV2["doStream"]>;
+  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
+  params: WrapStreamParams;
+}) {
+  if (isToolChoiceActive(params)) {
+    return toolChoiceStream({
+      doGenerate,
+      options: extractOnErrorOption(params.providerOptions),
+    });
+  }
+
+  const { stream, ...rest } = await doStream();
+  return {
+    stream: stream.pipeThrough(
+      protocol.createStreamParser({
+        tools: getFunctionTools(params),
+        options: extractOnErrorOption(params.providerOptions),
+      })
+    ),
+    ...rest,
   };
 }

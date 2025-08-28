@@ -4,21 +4,19 @@ import type {
   LanguageModelV2Prompt,
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
-import { generateId } from "@ai-sdk/provider-utils";
 
 import {
   createDynamicIfThenElseSchema,
   isToolCallContent,
   isToolResultPart,
 } from "./utils";
-import { coerceToolCallInput } from "./utils/coercion";
-import { toolChoiceStream } from "./stream-handler";
-import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
-  isToolChoiceActive,
-  getFunctionTools,
-  extractOnErrorOption,
-} from "./utils";
+  toolChoiceStream,
+  wrapStream as wrapStreamHandler,
+} from "./stream-handler";
+import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
+import { ToolCallProtocol } from "./protocols/tool-call-protocol";
+import { extractOnErrorOption, isToolChoiceActive } from "./utils";
 import { isProtocolFactory } from "./utils/protocol";
 
 export function createToolMiddleware({
@@ -29,6 +27,7 @@ export function createToolMiddleware({
   toolSystemPromptTemplate: (tools: string) => string;
 }): LanguageModelV2Middleware {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
+
   return {
     middlewareVersion: "v2",
     wrapStream: async ({ doStream, doGenerate, params }) => {
@@ -37,79 +36,21 @@ export function createToolMiddleware({
           doGenerate,
           options: extractOnErrorOption(params.providerOptions),
         });
-      }
-
-      const { stream, ...rest } = await doStream();
-      return {
-        stream: stream.pipeThrough(
-          resolvedProtocol.createStreamParser({
-            tools: getFunctionTools(params),
-            options: extractOnErrorOption(params.providerOptions),
-          })
-        ),
-        ...rest,
-      };
-    },
-    wrapGenerate: async ({ doGenerate, params }) => {
-      if (isToolChoiceActive(params)) {
-        const result = await doGenerate();
-        let parsed: { name?: string; arguments?: Record<string, unknown> } = {};
-        const first = result.content?.[0];
-        if (first && first.type === "text") {
-          try {
-            parsed = JSON.parse(first.text);
-          } catch (error) {
-            const options = extractOnErrorOption(params.providerOptions);
-            options?.onError?.(
-              "Failed to parse toolChoice JSON from generated model output",
-              {
-                text: first.text,
-                error: error instanceof Error ? error.message : String(error),
-              }
-            );
-            parsed = {};
-          }
-        }
-
-        return {
-          ...result,
-          content: [
-            {
-              type: "tool-call",
-              toolCallId: generateId(),
-              toolName: parsed.name || "unknown",
-              input: JSON.stringify(parsed.arguments || {}),
-            },
-          ],
-        };
-      }
-
-      const result = await doGenerate();
-
-      if (result.content.length === 0) {
-        return result;
-      }
-
-      const parsed = result.content.flatMap(contentItem => {
-        if (contentItem.type !== "text") {
-          return [contentItem];
-        }
-        return resolvedProtocol.parseGeneratedText({
-          text: contentItem.text,
-          tools: getFunctionTools(params),
-          options: extractOnErrorOption(params.providerOptions),
+      } else {
+        return wrapStreamHandler({
+          protocol: resolvedProtocol,
+          doStream,
+          doGenerate,
+          params,
         });
-      });
-      const tools = getFunctionTools(params);
-      const newContent = parsed.map(part =>
-        coerceToolCallInput(part as LanguageModelV2Content, tools)
-      );
-
-      return {
-        ...result,
-        content: newContent,
-      };
+      }
     },
+    wrapGenerate: async ({ doGenerate, params }) =>
+      wrapGenerateHandler({
+        protocol: resolvedProtocol,
+        doGenerate,
+        params,
+      }),
 
     transformParams: async ({ params }) => {
       const convertToolPrompt = (
