@@ -19,6 +19,105 @@ import {
   extractOnErrorOption,
 } from "./utils";
 
+function getSchemaType(schema: unknown): string | undefined {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!unwrapped || typeof unwrapped !== "object") return undefined;
+  const t: unknown = (unwrapped as Record<string, unknown>).type;
+  if (typeof t === "string") return t;
+  if (Array.isArray(t)) {
+    const preferred = [
+      "object",
+      "array",
+      "boolean",
+      "number",
+      "integer",
+      "string",
+    ];
+    for (const p of preferred) if (t.includes(p)) return p;
+  }
+  return undefined;
+}
+
+function coerceBySchema(value: unknown, schema?: unknown): unknown {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!unwrapped || typeof unwrapped !== "object") return value;
+  const schemaType = getSchemaType(unwrapped);
+  if (
+    schemaType === "object" &&
+    (unwrapped as Record<string, unknown>).properties &&
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    const out: Record<string, unknown> = {};
+    const props = (unwrapped as Record<string, unknown>).properties as
+      | Record<string, unknown>
+      | undefined;
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const propSchema = props ? (props[k] as unknown) : undefined;
+      out[k] =
+        typeof propSchema === "boolean" ? v : coerceBySchema(v, propSchema);
+    }
+    return out;
+  }
+  if (schemaType === "array" && Array.isArray(value)) {
+    const itemsSchema = (unwrapped as Record<string, unknown>).items as unknown;
+    return value.map(v => coerceBySchema(v, itemsSchema));
+  }
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (schemaType === "boolean") {
+      const lower = s.toLowerCase();
+      if (lower === "true") return true;
+      if (lower === "false") return false;
+    }
+    if (schemaType === "number" || schemaType === "integer") {
+      if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) {
+        const num = Number(s);
+        if (Number.isFinite(num)) return num;
+      }
+    }
+  }
+  return value;
+}
+
+function unwrapJsonSchema(schema: unknown): unknown {
+  if (!schema || typeof schema !== "object") return schema;
+  const s = schema as Record<string, unknown>;
+  if (s.jsonSchema && typeof s.jsonSchema === "object") {
+    return unwrapJsonSchema(s.jsonSchema);
+  }
+  return schema;
+}
+
+function coerceToolCallInput(
+  part: LanguageModelV2Content,
+  tools: ReturnType<typeof getFunctionTools>
+): LanguageModelV2Content {
+  if ((part as { type?: string }).type !== "tool-call") return part;
+  const tc = part as unknown as {
+    toolName: string;
+    input: unknown;
+  };
+  let args: unknown = {};
+  if (typeof tc.input === "string") {
+    try {
+      args = JSON.parse(tc.input);
+    } catch {
+      return part;
+    }
+  } else if (tc.input && typeof tc.input === "object") {
+    args = tc.input;
+  }
+  const schema = tools.find(t => t.name === tc.toolName)
+    ?.inputSchema as unknown;
+  const coerced = coerceBySchema(args, schema);
+  return {
+    ...(part as Record<string, unknown>),
+    input: JSON.stringify(coerced ?? {}),
+  } as LanguageModelV2Content;
+}
+
 function isProtocolFactory(
   protocol: ToolCallProtocol | (() => ToolCallProtocol)
 ): protocol is () => ToolCallProtocol {
@@ -94,7 +193,7 @@ export function createToolMiddleware({
         return result;
       }
 
-      const newContent = result.content.flatMap(contentItem => {
+      const parsed = result.content.flatMap(contentItem => {
         if (contentItem.type !== "text") {
           return [contentItem];
         }
@@ -104,6 +203,10 @@ export function createToolMiddleware({
           options: extractOnErrorOption(params.providerOptions),
         });
       });
+      const tools = getFunctionTools(params);
+      const newContent = parsed.map(part =>
+        coerceToolCallInput(part as LanguageModelV2Content, tools)
+      );
 
       return {
         ...result,

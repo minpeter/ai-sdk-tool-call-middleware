@@ -9,12 +9,96 @@ import { XMLParser, XMLBuilder } from "fast-xml-parser";
 import { escapeRegExp } from "../utils";
 import { hasInputProperty } from "../utils";
 
+function unwrapJsonSchema(schema: unknown): unknown {
+  if (!schema || typeof schema !== "object") return schema;
+  const s = schema as Record<string, unknown>;
+  if (s.jsonSchema && typeof s.jsonSchema === "object") {
+    return unwrapJsonSchema(s.jsonSchema);
+  }
+  return schema;
+}
+
+function getSchemaType(schema: unknown): string | undefined {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!unwrapped || typeof unwrapped !== "object") return undefined;
+  const t: unknown = (unwrapped as Record<string, unknown>).type;
+  if (typeof t === "string") return t;
+  if (Array.isArray(t)) {
+    // Prefer specific primitive/object/array types if present
+    const preferred = [
+      "object",
+      "array",
+      "boolean",
+      "number",
+      "integer",
+      "string",
+    ];
+    for (const p of preferred) if (t.includes(p)) return p;
+  }
+  return undefined;
+}
+
+function coerceBySchema(value: unknown, schema?: unknown): unknown {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!unwrapped || typeof unwrapped !== "object") {
+    if (typeof value === "string") {
+      const s = value.trim();
+      const lower = s.toLowerCase();
+      if (lower === "true") return true;
+      if (lower === "false") return false;
+      if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) {
+        const num = Number(s);
+        if (Number.isFinite(num)) return num;
+      }
+    }
+    return value;
+  }
+  const schemaType = getSchemaType(unwrapped);
+  if (
+    schemaType === "object" &&
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    const out: Record<string, unknown> = {};
+    const props = (unwrapped as Record<string, unknown>).properties as
+      | Record<string, unknown>
+      | undefined;
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const propSchema = props ? (props[k] as unknown) : undefined;
+      // JSON Schema allows property schema to be boolean; ignore boolean schemas
+      out[k] =
+        typeof propSchema === "boolean" ? v : coerceBySchema(v, propSchema);
+    }
+    return out;
+  }
+  if (schemaType === "array" && Array.isArray(value)) {
+    const itemsSchema = (unwrapped as Record<string, unknown>).items as unknown;
+    return value.map(v => coerceBySchema(v, itemsSchema));
+  }
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (schemaType === "boolean") {
+      const lower = s.toLowerCase();
+      if (lower === "true") return true;
+      if (lower === "false") return false;
+    }
+    if (schemaType === "number" || schemaType === "integer") {
+      if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) {
+        const num = Number(s);
+        if (Number.isFinite(num)) return num;
+      }
+    }
+  }
+  return value;
+}
+
 export const xmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt = (tools || []).map(tool => ({
       name: tool.name,
       description: tool.description,
-      parameters: tool.inputSchema,
+      parameters: unwrapJsonSchema(tool.inputSchema),
     }));
     return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
   },
@@ -52,6 +136,8 @@ export const xmlProtocol = (): ToolCallProtocol => ({
   },
 
   parseGeneratedText({ text, tools, options }) {
+    // Schema-based coercion: convert string primitives according to tool JSON schema types
+
     const toolNames = tools.map(t => t.name).filter(name => name != null);
     if (toolNames.length === 0) {
       return [{ type: "text", text }];
@@ -103,11 +189,18 @@ export const xmlProtocol = (): ToolCallProtocol => ({
           args[k] = typeof val === "string" ? val.trim() : val;
         }
 
+        const schema = tools.find(t => t.name === toolName)
+          ?.inputSchema as unknown;
+        const coercedArgs = coerceBySchema(args, schema) as Record<
+          string,
+          unknown
+        >;
+
         processedElements.push({
           type: "tool-call",
           toolCallId: generateId(),
           toolName,
-          input: JSON.stringify(args),
+          input: JSON.stringify(coercedArgs),
         });
       } catch (error) {
         const message = `Could not process XML tool call, keeping original text: ${match[0]}`;
@@ -206,12 +299,20 @@ export const xmlProtocol = (): ToolCallProtocol => ({
                   args[k] = typeof val === "string" ? val.trim() : val;
                 }
 
+                const toolSchema = tools.find(
+                  t => t.name === currentToolCall!.name
+                )?.inputSchema;
+                const coercedArgs = coerceBySchema(args, toolSchema) as Record<
+                  string,
+                  unknown
+                >;
+
                 flushText(controller);
                 controller.enqueue({
                   type: "tool-call",
                   toolCallId: generateId(),
                   toolName: currentToolCall.name,
-                  input: JSON.stringify(args),
+                  input: JSON.stringify(coercedArgs),
                 });
               } catch {
                 const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;

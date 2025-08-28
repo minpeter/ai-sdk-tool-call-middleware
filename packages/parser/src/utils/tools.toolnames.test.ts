@@ -2,16 +2,9 @@ import { describe, it, expect } from "vitest";
 import { getFunctionTools } from "./tools";
 
 describe("getFunctionTools respects providerOptions.toolCallMiddleware.toolNames", () => {
-  it("builds function tool stubs from string toolNames and ignores non-strings", () => {
+  it("builds function tool stubs from string toolNames and ignores non-strings when no full tools provided", () => {
     const tools = getFunctionTools({
-      tools: [
-        {
-          type: "function",
-          name: "a",
-          description: "",
-          inputSchema: { type: "object" },
-        },
-      ] as any,
+      tools: [],
       providerOptions: {
         toolCallMiddleware: { toolNames: ["x", 1, null] as any },
       },

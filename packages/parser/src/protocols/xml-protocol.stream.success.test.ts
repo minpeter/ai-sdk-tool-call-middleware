@@ -52,7 +52,7 @@ describe("xmlProtocol streaming success path", () => {
 
     expect(tool?.toolName).toBe("calc");
     const parsed = JSON.parse(tool.input);
-    expect(parsed).toEqual({ a: "1", b: "2" });
+    expect(parsed).toEqual({ a: 1, b: 2 }); // In the case of XML, type casting should automatically convert to numbers.
     expect(text).toContain("pre ");
     expect(text).toContain(" post");
     // ensure text-end is emitted eventually
