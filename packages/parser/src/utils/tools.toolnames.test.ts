@@ -1,0 +1,21 @@
+import { describe, it, expect } from "vitest";
+import { getFunctionTools } from "./tools";
+
+describe("getFunctionTools respects providerOptions.toolCallMiddleware.toolNames", () => {
+  it("builds function tool stubs from string toolNames and ignores non-strings", () => {
+    const tools = getFunctionTools({
+      tools: [
+        {
+          type: "function",
+          name: "a",
+          description: "",
+          inputSchema: { type: "object" },
+        },
+      ] as any,
+      providerOptions: {
+        toolCallMiddleware: { toolNames: ["x", 1, null] as any },
+      },
+    });
+    expect(tools.map(t => t.name)).toEqual(["x"]);
+  });
+});

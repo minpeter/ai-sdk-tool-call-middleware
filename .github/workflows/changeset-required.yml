@@ -46,7 +46,7 @@ jobs:
           # Get changed files
           git fetch origin ${{ github.base_ref }}
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
-          
+
           # Check if only docs/config files changed
           ONLY_DOCS_OR_CONFIG=true
           while IFS= read -r file; do
@@ -59,16 +59,16 @@ jobs:
               fi
             fi
           done <<< "$CHANGED_FILES"
-          
+
           if [ "$ONLY_DOCS_OR_CONFIG" == "true" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "✅ Changeset not required for documentation/config-only changes" >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
-          
+
           # Check for changeset files
           CHANGESETS=$(echo "$CHANGED_FILES" | grep '^\.changeset/.*\.md$' | grep -v 'README.md' || true)
-          
+
           if [ -z "$CHANGESETS" ]; then
             echo "skip=false" >> $GITHUB_OUTPUT
             echo "missing=true" >> $GITHUB_OUTPUT
@@ -99,7 +99,7 @@ jobs:
           script: |
             const isMissing = '${{ steps.changeset.outputs.missing }}' === 'true';
             const isSkipped = '${{ steps.changeset.outputs.skip }}' === 'true';
-            
+
             // Find existing warning comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,

@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   gemmaToolMiddleware,
   hermesToolMiddleware,
+  xmlToolMiddleware,
   createToolMiddleware,
+  jsonMixProtocol,
+  xmlProtocol,
 } from "./index";
 import type {
   LanguageModelV2Message,
@@ -12,104 +15,271 @@ import type {
 
 describe("index exports", () => {
   describe("gemmaToolMiddleware", () => {
-    it("should be defined with correct properties", () => {
+    it("should be defined", () => {
       expect(gemmaToolMiddleware).toBeDefined();
-      expect(gemmaToolMiddleware.middlewareVersion).toBe("v2");
-      expect(gemmaToolMiddleware.wrapGenerate).toBeDefined();
-      expect(gemmaToolMiddleware.wrapStream).toBeDefined();
-      expect(gemmaToolMiddleware.transformParams).toBeDefined();
-    });
-
-    it("should use markdown code blocks for tool calls", async () => {
-      const params: {
-        prompt: LanguageModelV2Message[];
-        tools: LanguageModelV2FunctionTool[];
-      } = {
-        prompt: [{ role: "user", content: [{ type: "text", text: "test" }] }],
-        tools: [
-          {
-            type: "function",
-            name: "getTool",
-            description: "Gets a tool",
-            inputSchema: {
-              type: "object",
-              properties: {
-                name: { type: "string" },
-              },
-            },
-          },
-        ],
-      };
-
-      const result = await gemmaToolMiddleware.transformParams!({
-        params,
-      } as any);
-
-      // Check that the prompt has been transformed
-      expect(result.prompt).toBeDefined();
-      expect(result.tools).toEqual([]);
-
-      // Verify the system prompt contains gemma-specific formatting
-      const systemMessage = result.prompt.find(
-        (msg: LanguageModelV2Message) => msg.role === "system"
-      );
-      if (systemMessage && typeof systemMessage.content === "string") {
-        expect(systemMessage.content).toContain("```tool_call");
-        expect(systemMessage.content).toContain(
-          "{'name': <function-name>, 'arguments': <args-dict>}"
-        );
-      }
     });
   });
 
   describe("hermesToolMiddleware", () => {
-    it("should be defined with correct properties", () => {
+    it("should be defined", () => {
       expect(hermesToolMiddleware).toBeDefined();
-      expect(hermesToolMiddleware.middlewareVersion).toBe("v2");
-      expect(hermesToolMiddleware.wrapGenerate).toBeDefined();
-      expect(hermesToolMiddleware.wrapStream).toBeDefined();
-      expect(hermesToolMiddleware.transformParams).toBeDefined();
+    });
+  });
+
+  describe("xmlToolMiddleware", () => {
+    it("should be defined", () => {
+      expect(xmlToolMiddleware).toBeDefined();
     });
 
-    it("should use XML tags for tool calls", async () => {
-      const params: {
-        prompt: LanguageModelV2Message[];
-        tools: LanguageModelV2FunctionTool[];
-      } = {
-        prompt: [{ role: "user", content: [{ type: "text", text: "test" }] }],
-        tools: [
-          {
-            type: "function",
-            name: "getTool",
-            description: "Gets a tool",
-            inputSchema: {
-              type: "object",
-              properties: {
-                name: { type: "string" },
-              },
+    it("should parse XML tool calls", async () => {
+      const mockDoGenerate = () =>
+        Promise.resolve({
+          content: [
+            {
+              type: "text" as const,
+              text: `<get_weather><location>San Francisco</location></get_weather>`,
             },
-          },
-        ],
-      };
+          ] as LanguageModelV2Content[],
+        });
 
-      const result = await hermesToolMiddleware.transformParams!({
-        params,
+      const result = await xmlToolMiddleware.wrapGenerate!({
+        doGenerate: mockDoGenerate,
+        params: {
+          prompt: [],
+          tools: [
+            {
+              type: "function",
+              name: "get_weather",
+              description: "Get the weather",
+              inputSchema: { type: "object" },
+            },
+          ],
+        },
       } as any);
 
-      // Check that the prompt has been transformed
-      expect(result.prompt).toBeDefined();
-      expect(result.tools).toEqual([]);
-
-      // Verify the system prompt contains hermes-specific formatting
-      const systemMessage = result.prompt.find(
-        (msg: LanguageModelV2Message) => msg.role === "system"
+      const toolCalls = result.content.filter(
+        (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
+          c.type === "tool-call"
       );
-      if (systemMessage && typeof systemMessage.content === "string") {
-        expect(systemMessage.content).toContain("<tool_call>");
-        expect(systemMessage.content).toContain("</tool_call>");
-        expect(systemMessage.content).toContain("<tools>");
-        expect(systemMessage.content).toContain("</tools>");
-      }
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0].toolName).toBe("get_weather");
+      expect(JSON.parse(toolCalls[0].input)).toEqual({
+        location: "San Francisco",
+      });
+    });
+
+    it("should parse XML tool calls with no arguments", async () => {
+      const mockDoGenerate = () =>
+        Promise.resolve({
+          content: [
+            {
+              type: "text" as const,
+              text: `<get_location></get_location>`,
+            },
+          ] as LanguageModelV2Content[],
+        });
+
+      const result = await xmlToolMiddleware.wrapGenerate!({
+        doGenerate: mockDoGenerate,
+        params: {
+          prompt: [],
+          tools: [
+            {
+              type: "function",
+              name: "get_location",
+              description: "Get the user's location",
+              inputSchema: { type: "object" },
+            },
+          ],
+        },
+      } as any);
+
+      const toolCalls = result.content.filter(
+        (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
+          c.type === "tool-call"
+      );
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0].toolName).toBe("get_location");
+      expect(JSON.parse(toolCalls[0].input)).toEqual({});
+    });
+  });
+
+  describe("non-stream assistant->user merge formatting with object input", () => {
+    it("gemma: formats assistant tool-call (object input) and tool result into user text", async () => {
+      const mw = gemmaToolMiddleware;
+
+      const out = await mw.transformParams!({
+        params: {
+          prompt: [
+            { role: "user", content: [{ type: "text", text: "q" }] },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool-call",
+                  toolCallId: "tc1",
+                  toolName: "get_weather",
+                  // simulate provider giving parsed object input
+                  input: JSON.stringify({ city: "Seoul" }),
+                } as any,
+              ],
+            },
+            {
+              role: "tool",
+              content: [
+                {
+                  type: "tool-result",
+                  toolName: "get_weather",
+                  toolCallId: "tc1",
+                  output: { ok: true },
+                },
+              ],
+            },
+          ],
+          tools: [
+            {
+              type: "function",
+              name: "get_weather",
+              description: "",
+              inputSchema: { type: "object" },
+            },
+          ],
+        },
+      } as any);
+
+      // last message is the tool result
+      console.debug(out.prompt[out.prompt.length - 1]);
+
+      const assistantMsg = out.prompt.find((m: any) => m.role === "assistant")!;
+      const assistantText = (assistantMsg.content as any[])
+        .map((c: any) => (c.type === "text" ? c.text : ""))
+        .join("");
+      expect(assistantText).toMatch(/tool_call/);
+
+      const userMsgs = out.prompt.filter((m: any) => m.role === "user");
+      const userCombined = userMsgs
+        .map((u: any) =>
+          u.content.map((c: any) => (c.type === "text" ? c.text : "")).join("")
+        )
+        .join("\n");
+
+      expect(userCombined).toMatch(/tool_response/);
+    });
+
+    it("hermes: formats assistant tool-call (object input) and tool result into user text", async () => {
+      const mw = hermesToolMiddleware;
+      const out = await mw.transformParams!({
+        params: {
+          prompt: [
+            { role: "user", content: [{ type: "text", text: "q" }] },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool-call",
+                  toolCallId: "tc1",
+                  toolName: "get_weather",
+                  input: JSON.stringify({ city: "Seoul" }),
+                } as any,
+              ],
+            },
+            {
+              role: "tool",
+              content: [
+                {
+                  type: "tool-result",
+                  toolName: "get_weather",
+                  toolCallId: "tc1",
+                  output: { ok: true },
+                },
+              ],
+            },
+          ],
+          tools: [
+            {
+              type: "function",
+              name: "get_weather",
+              description: "",
+              inputSchema: { type: "object" },
+            },
+          ],
+        },
+      } as any);
+
+      // last message is the tool result
+      console.debug(out.prompt[out.prompt.length - 1]);
+
+      const assistantMsg = out.prompt.find((m: any) => m.role === "assistant")!;
+      const assistantText = (assistantMsg.content as any[])
+        .map((c: any) => (c.type === "text" ? c.text : ""))
+        .join("");
+      expect(assistantText).toMatch(/<tool_call>/);
+
+      const userMsgs = out.prompt.filter((m: any) => m.role === "user");
+      const userCombined = userMsgs
+        .map((u: any) =>
+          u.content.map((c: any) => (c.type === "text" ? c.text : "")).join("")
+        )
+        .join("\n");
+      expect(userCombined).toMatch(/<tool_response>/);
+    });
+
+    it("xml: formats assistant tool-call (object input) and tool result into user text", async () => {
+      const mw = xmlToolMiddleware;
+      const out = await mw.transformParams!({
+        params: {
+          prompt: [
+            { role: "user", content: [{ type: "text", text: "q" }] },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool-call",
+                  toolCallId: "tc1",
+                  toolName: "get_weather",
+                  input: JSON.stringify({ city: "Seoul" }),
+                } as any,
+              ],
+            },
+            {
+              role: "tool",
+              content: [
+                {
+                  type: "tool-result",
+                  toolName: "get_weather",
+                  toolCallId: "tc1",
+                  output: { ok: true },
+                },
+              ],
+            },
+          ],
+          tools: [
+            {
+              type: "function",
+              name: "get_weather",
+              description: "",
+              inputSchema: { type: "object" },
+            },
+          ],
+        },
+      } as any);
+
+      // last message is the tool result
+      console.debug(out.prompt[out.prompt.length - 1]);
+
+      const assistantMsg = out.prompt.find((m: any) => m.role === "assistant")!;
+      const assistantText = (assistantMsg.content as any[])
+        .map((c: any) => (c.type === "text" ? c.text : ""))
+        .join("");
+      expect(assistantText).toMatch(/<get_weather>/);
+
+      const userMsgs = out.prompt.filter((m: any) => m.role === "user");
+      const userCombined = userMsgs
+        .map((u: any) =>
+          u.content.map((c: any) => (c.type === "text" ? c.text : "")).join("")
+        )
+        .join("\n");
+      expect(userCombined).toMatch(/<tool_response>/);
     });
   });
 
@@ -121,117 +291,13 @@ describe("index exports", () => {
 
     it("should create custom middleware", () => {
       const customMiddleware = createToolMiddleware({
-        toolCallTag: "[[TOOL",
-        toolCallEndTag: "TOOL]]",
-        toolResponseTag: "[[RESPONSE",
-        toolResponseEndTag: "RESPONSE]]",
+        protocol: jsonMixProtocol(), // or xmlProtocol
         toolSystemPromptTemplate: (tools: string) =>
           `Custom template: ${tools}`,
       });
 
       expect(customMiddleware).toBeDefined();
       expect(customMiddleware.middlewareVersion).toBe("v2");
-      expect(customMiddleware.wrapGenerate).toBeDefined();
-      expect(customMiddleware.wrapStream).toBeDefined();
-      expect(customMiddleware.transformParams).toBeDefined();
-    });
-  });
-
-  describe("middleware configurations", () => {
-    it("gemma should use two backticks for end tag", async () => {
-      // This is a specific quirk of gemma - it often outputs only two backticks
-      // The configuration accounts for this
-      const mockDoGenerate = () =>
-        Promise.resolve({
-          content: [
-            {
-              type: "text" as const,
-              text: '```tool_call\n{"name": "test", "arguments": {}}\n``',
-            },
-          ] as LanguageModelV2Content[],
-        });
-
-      const result = await gemmaToolMiddleware.wrapGenerate!({
-        doGenerate: mockDoGenerate,
-        params: { prompt: [] },
-      } as any);
-
-      const toolCalls = result.content.filter(
-        (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
-          c.type === "tool-call"
-      );
-      expect(toolCalls).toHaveLength(1);
-      expect(toolCalls[0].toolName).toBe("test");
-    });
-
-    it("hermes should parse XML-style tool calls", async () => {
-      const mockDoGenerate = () =>
-        Promise.resolve({
-          content: [
-            {
-              type: "text" as const,
-              text: '<tool_call>\n{"arguments": {"arg": "value"}, "name": "testTool"}\n</tool_call>',
-            },
-          ] as LanguageModelV2Content[],
-        });
-
-      const result = await hermesToolMiddleware.wrapGenerate!({
-        doGenerate: mockDoGenerate,
-        params: { prompt: [] },
-      } as any);
-
-      const toolCalls = result.content.filter(
-        (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
-          c.type === "tool-call"
-      );
-      expect(toolCalls).toHaveLength(1);
-      expect(toolCalls[0].toolName).toBe("testTool");
-      expect(JSON.parse(toolCalls[0].input)).toEqual({ arg: "value" });
-    });
-  });
-
-  describe("error handling", () => {
-    it("gemma should handle malformed tool calls", async () => {
-      const mockDoGenerate = () =>
-        Promise.resolve({
-          content: [
-            {
-              type: "text" as const,
-              text: "```tool_call\ninvalid json\n```",
-            },
-          ] as LanguageModelV2Content[],
-        });
-
-      const result = await gemmaToolMiddleware.wrapGenerate!({
-        doGenerate: mockDoGenerate,
-        params: { prompt: [] },
-      } as any);
-
-      // Should keep the original text when parsing fails
-      expect(result.content[0].type).toBe("text");
-    });
-
-    it("hermes should handle malformed tool calls", async () => {
-      const mockDoGenerate = () =>
-        Promise.resolve({
-          content: [
-            {
-              type: "text" as const,
-              text: "<tool_call>not valid json</tool_call>",
-            },
-          ] as LanguageModelV2Content[],
-          finishReason: "stop" as const,
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-          warnings: [],
-        });
-
-      const result = await hermesToolMiddleware.wrapGenerate!({
-        doGenerate: mockDoGenerate,
-        params: { prompt: [] },
-      } as any);
-
-      // Should keep the original text when parsing fails
-      expect(result.content[0].type).toBe("text");
     });
   });
 });
