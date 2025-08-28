@@ -18,8 +18,8 @@
     "test": "vitest run",
     "test:watch": "vitest --watch",
     "check-types": "tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx",
-    "lint:fix": "eslint src --ext .ts,.tsx --fix"
+    "lint": "eslint src tests --ext .ts,.tsx",
+    "lint:fix": "eslint src tests --ext .ts,.tsx --fix"
   },
   "keywords": [],
   "author": "",
