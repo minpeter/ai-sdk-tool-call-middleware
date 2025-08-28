@@ -8,11 +8,7 @@ import { generateId } from "@ai-sdk/provider-utils";
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
 import { escapeRegExp } from "../utils";
 import { hasInputProperty } from "../utils";
-import {
-  unwrapJsonSchema,
-  getSchemaType,
-  coerceBySchema,
-} from "../utils/coercion";
+import { unwrapJsonSchema, coerceBySchema } from "../utils/coercion";
 
 export const xmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
