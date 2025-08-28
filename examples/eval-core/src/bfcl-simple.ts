@@ -1,4 +1,10 @@
-import { evaluate, bfclSimpleBenchmark } from "@ai-sdk-tool/eval";
+import {
+  evaluate,
+  bfclSimpleBenchmark,
+  bfclMultipleBenchmark,
+  bfclParallelBenchmark,
+  bfclParallelMultipleBenchmark,
+} from "@ai-sdk-tool/eval";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel } from "ai";
 import { gemmaToolMiddleware, xmlToolMiddleware } from "@ai-sdk-tool/parser";
@@ -37,7 +43,12 @@ async function main() {
       xmlGemma27b,
       jsonGemma27b,
     ],
-    benchmarks: [bfclSimpleBenchmark],
+    benchmarks: [
+      bfclSimpleBenchmark,
+      bfclMultipleBenchmark,
+      bfclParallelBenchmark,
+      bfclParallelMultipleBenchmark,
+    ],
     reporter: "console",
   });
 
