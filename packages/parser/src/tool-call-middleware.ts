@@ -209,6 +209,7 @@ export function createToolMiddleware({
       };
 
       if (params.toolChoice?.type === "none") {
+        // TODO: Support 'none' toolChoice type.
         throw new Error(
           "The 'none' toolChoice type is not supported by this middleware. Please use 'auto', 'required', or specify a tool name."
         );
