@@ -32,3 +32,11 @@ export function isToolResultPart(
     "output" in c
   );
 }
+
+export function hasInputProperty(obj: unknown): obj is { input?: unknown } {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    "input" in (obj as Record<string, unknown>)
+  );
+}

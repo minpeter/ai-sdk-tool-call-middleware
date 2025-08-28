@@ -130,12 +130,12 @@ export function createToolMiddleware({
                 // Pass through reasoning parts unchanged for providers that support it
                 newContent.push(content as LanguageModelV2Content);
               } else {
-                if (process.env.NODE_ENV !== "test") {
-                  console.warn(
-                    "tool-call-middleware: unknown assistant content; stringifying for provider compatibility",
-                    content
-                  );
-                }
+                // Prefer the onError callback for surfacing non-fatal warnings
+                const options = extractOnErrorOption(params.providerOptions);
+                options?.onError?.(
+                  "tool-call-middleware: unknown assistant content; stringifying for provider compatibility",
+                  { content }
+                );
                 newContent.push({
                   type: "text",
                   text: JSON.stringify(content),

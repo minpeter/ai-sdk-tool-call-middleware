@@ -7,6 +7,7 @@ import { ToolCallProtocol } from "./tool-call-protocol";
 import { generateId } from "@ai-sdk/provider-utils";
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
 import { escapeRegExp } from "../utils";
+import { hasInputProperty } from "../utils";
 
 export const xmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
@@ -22,12 +23,7 @@ export const xmlProtocol = (): ToolCallProtocol => ({
     const builder = new XMLBuilder({ format: true, suppressEmptyNode: true });
     // Some providers pass JSON string; some runtime paths may provide an object
     let args: unknown = {};
-    const inputValue =
-      typeof toolCall === "object" &&
-      toolCall !== null &&
-      "input" in (toolCall as Record<string, unknown>)
-        ? (toolCall as { input?: unknown }).input
-        : undefined;
+    const inputValue = hasInputProperty(toolCall) ? toolCall.input : undefined;
 
     if (typeof inputValue === "string") {
       try {
@@ -115,11 +111,7 @@ export const xmlProtocol = (): ToolCallProtocol => ({
         });
       } catch {
         const message = `Could not process XML tool call, keeping original text: ${match[0]}`;
-        if (options?.onError) {
-          options.onError(message, { toolCall: match[0], toolName });
-        } else {
-          console.warn(message);
-        }
+        options?.onError?.(message, { toolCall: match[0], toolName });
         processedElements.push({ type: "text", text: match[0] });
       }
 
