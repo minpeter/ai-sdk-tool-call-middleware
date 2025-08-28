@@ -89,11 +89,11 @@ export const jsonMixProtocol = ({
             toolName: parsedToolCall.name,
             input: JSON.stringify(parsedToolCall.arguments ?? {}),
           });
-        } catch {
+        } catch (error) {
           if (options?.onError) {
             options.onError(
               "Could not process JSON tool call, keeping original text.",
-              { toolCall: match[0] }
+              { toolCall: match[0], error }
             );
           }
           processedElements.push({ type: "text", text: match[0] });
