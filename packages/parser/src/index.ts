@@ -33,7 +33,7 @@ Here are the available tools: <tools>${tools}</tools>
 Use the following pydantic model json schema for each tool call you will make: {"title": "FunctionCall", "type": "object", "properties": {"arguments": {"title": "Arguments", "type": "object"}, "name": {"title": "Name", "type": "string"}}, "required": ["arguments", "name"]}
 For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
 <tool_call>
-{'arguments': <args-dict>, 'name': <function-name>}
+{"name": "<function-name>", "arguments": <args-dict>}
 </tool_call>`;
   },
 });
