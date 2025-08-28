@@ -109,9 +109,9 @@ export const xmlProtocol = (): ToolCallProtocol => ({
           toolName,
           input: JSON.stringify(args),
         });
-      } catch {
+      } catch (error) {
         const message = `Could not process XML tool call, keeping original text: ${match[0]}`;
-        options?.onError?.(message, { toolCall: match[0], toolName });
+        options?.onError?.(message, { toolCall: match[0], toolName, error });
         processedElements.push({ type: "text", text: match[0] });
       }
 
