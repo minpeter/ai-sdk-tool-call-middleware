@@ -11,7 +11,7 @@ import {
   isToolCallContent,
   isToolResultPart,
 } from "./utils";
-import { coerceBySchema } from "./utils/coercion";
+import { coerceToolCallInput } from "./utils/coercion";
 import { toolChoiceStream } from "./stream-handler";
 import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
@@ -19,40 +19,7 @@ import {
   getFunctionTools,
   extractOnErrorOption,
 } from "./utils";
-
-function coerceToolCallInput(
-  part: LanguageModelV2Content,
-  tools: ReturnType<typeof getFunctionTools>
-): LanguageModelV2Content {
-  if ((part as { type?: string }).type !== "tool-call") return part;
-  const tc = part as unknown as {
-    toolName: string;
-    input: unknown;
-  };
-  let args: unknown = {};
-  if (typeof tc.input === "string") {
-    try {
-      args = JSON.parse(tc.input);
-    } catch {
-      return part;
-    }
-  } else if (tc.input && typeof tc.input === "object") {
-    args = tc.input;
-  }
-  const schema = tools.find(t => t.name === tc.toolName)
-    ?.inputSchema as unknown;
-  const coerced = coerceBySchema(args, schema);
-  return {
-    ...(part as Record<string, unknown>),
-    input: JSON.stringify(coerced ?? {}),
-  } as LanguageModelV2Content;
-}
-
-function isProtocolFactory(
-  protocol: ToolCallProtocol | (() => ToolCallProtocol)
-): protocol is () => ToolCallProtocol {
-  return typeof protocol === "function";
-}
+import { isProtocolFactory } from "./utils/protocol";
 
 export function createToolMiddleware({
   protocol,

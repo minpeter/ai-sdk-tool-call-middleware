@@ -22,7 +22,7 @@ const dummyProtocol: ToolCallProtocol = {
   createStreamParser: () => new TransformStream(),
 };
 
-describe("tool-call-middleware coercion", () => {
+describe("tool-call-middleware coercion (utils)", () => {
   it("coerces using jsonSchema wrapper in tools via middleware", async () => {
     const middleware = createToolMiddleware({
       protocol: dummyProtocol,
