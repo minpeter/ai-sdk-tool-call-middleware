@@ -1,0 +1,7 @@
+comment:
+  require_bundle_changes: True
+  bundle_change_threshold: "1Kb"
+
+bundle_analysis:
+  warning_threshold: "5%"
+  status: "informational"
