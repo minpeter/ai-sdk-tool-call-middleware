@@ -20,14 +20,23 @@ export const xmlProtocol = (): ToolCallProtocol => ({
 
   formatToolCall(toolCall: LanguageModelV2ToolCall): string {
     const builder = new XMLBuilder({ format: true, suppressEmptyNode: true });
+    // Some providers pass JSON string; some runtime paths may provide an object
     let args: unknown = {};
-    try {
-      // Many providers pass JSON string; some runtime paths may provide an object
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      args = JSON.parse((toolCall as any).input);
-    } catch {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      args = (toolCall as any).input;
+    const inputValue =
+      typeof toolCall === "object" &&
+      toolCall !== null &&
+      "input" in (toolCall as Record<string, unknown>)
+        ? (toolCall as { input?: unknown }).input
+        : undefined;
+
+    if (typeof inputValue === "string") {
+      try {
+        args = JSON.parse(inputValue);
+      } catch {
+        args = inputValue;
+      }
+    } else {
+      args = inputValue;
     }
     const xmlContent = builder.build({
       [toolCall.toolName]: args,
