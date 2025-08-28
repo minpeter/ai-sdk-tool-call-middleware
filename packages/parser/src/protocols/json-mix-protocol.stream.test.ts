@@ -258,7 +258,6 @@ describe("jsonMixProtocol streaming edge cases", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
-    console.debug(out);
     const tool = out.find(c => c.type === "tool-call") as any;
     expect(tool).toBeTruthy();
     expect(JSON.parse(tool.input).location).toBe("NY");
