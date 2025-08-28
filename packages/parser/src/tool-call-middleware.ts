@@ -37,7 +37,10 @@ export function createToolMiddleware({
     middlewareVersion: "v2",
     wrapStream: async ({ doStream, doGenerate, params }) => {
       if (isToolChoiceActive(params)) {
-        return toolChoiceStream({ doGenerate });
+        return toolChoiceStream({
+          doGenerate,
+          options: extractOnErrorOption(params.providerOptions),
+        });
       }
 
       const { stream, ...rest } = await doStream();
@@ -59,7 +62,15 @@ export function createToolMiddleware({
         if (first && first.type === "text") {
           try {
             parsed = JSON.parse(first.text);
-          } catch {
+          } catch (error) {
+            const options = extractOnErrorOption(params.providerOptions);
+            options?.onError?.(
+              "Failed to parse toolChoice JSON from generated model output",
+              {
+                text: first.text,
+                error: error instanceof Error ? error.message : String(error),
+              }
+            );
             parsed = {};
           }
         }
@@ -115,7 +126,16 @@ export function createToolMiddleware({
                 });
               } else if ((content as { type?: string }).type === "text") {
                 newContent.push(content as LanguageModelV2Content);
+              } else if ((content as { type?: string }).type === "reasoning") {
+                // Pass through reasoning parts unchanged for providers that support it
+                newContent.push(content as LanguageModelV2Content);
               } else {
+                if (process.env.NODE_ENV !== "test") {
+                  console.warn(
+                    "tool-call-middleware: unknown assistant content; stringifying for provider compatibility",
+                    content
+                  );
+                }
                 newContent.push({
                   type: "text",
                   text: JSON.stringify(content),

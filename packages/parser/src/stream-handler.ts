@@ -8,8 +8,12 @@ import { generateId } from "@ai-sdk/provider-utils";
 
 export async function toolChoiceStream({
   doGenerate,
+  options,
 }: {
   doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
+  options?: {
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  };
 }) {
   const result = await doGenerate();
 
@@ -22,7 +26,14 @@ export async function toolChoiceStream({
   ) {
     try {
       toolJson = JSON.parse(result.content[0].text);
-    } catch {
+    } catch (error) {
+      options?.onError?.(
+        "Failed to parse toolChoice JSON from streamed model output",
+        {
+          text: result.content[0].text,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      );
       toolJson = {};
     }
   }

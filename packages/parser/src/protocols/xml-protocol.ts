@@ -102,7 +102,7 @@ export const xmlProtocol = (): ToolCallProtocol => ({
             typeof v === "object" &&
             Object.prototype.hasOwnProperty.call(v, "#text")
           ) {
-            val = v?.["#text"];
+            val = (v as Record<string, unknown>)?.["#text"];
           }
           args[k] = typeof val === "string" ? val.trim() : val;
         }
@@ -209,7 +209,7 @@ export const xmlProtocol = (): ToolCallProtocol => ({
                     typeof v === "object" &&
                     Object.prototype.hasOwnProperty.call(v, "#text")
                   ) {
-                    val = v?.["#text"];
+                    val = (v as Record<string, unknown>)?.["#text"];
                   }
                   args[k] = typeof val === "string" ? val.trim() : val;
                 }

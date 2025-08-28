@@ -93,6 +93,27 @@ describe("createToolMiddleware", () => {
       });
       expect(result.content[2]).toEqual({ type: "text", text: " more text" });
     });
+
+    it("should pass through non-text content unchanged", async () => {
+      const middleware = createJsonMiddleware();
+      const original = {
+        type: "tool-call" as const,
+        toolCallId: "id1",
+        toolName: "t",
+        input: "{}",
+      };
+      const doGenerate = vi.fn().mockResolvedValue({
+        content: [original],
+      });
+
+      const result = await middleware.wrapGenerate!({
+        doGenerate,
+        params: { prompt: [] },
+      } as any);
+
+      expect(result.content).toHaveLength(1);
+      expect(result.content[0]).toEqual(original);
+    });
   });
 
   describe("wrapGenerate with xmlProtocol", () => {

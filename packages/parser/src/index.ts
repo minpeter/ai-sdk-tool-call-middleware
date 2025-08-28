@@ -6,7 +6,7 @@ const gemmaToolMiddleware = createToolMiddleware({
     // Customize the tool call delimiters to use markdown code fences
     {
       toolCallStart: "```tool_call\n",
-      toolCallEnd: "\n``", // two backticks are more common in gemma output
+      toolCallEnd: "\n``", // two backticks are more common in gemma output @
       toolResponseStart: "```tool_response\n",
       toolResponseEnd: "\n```",
     }

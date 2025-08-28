@@ -39,4 +39,14 @@ describe("createToolMiddleware error branches", () => {
       } as any)
     ).rejects.toThrow(/Provider-defined tools/);
   });
+
+  it("throws when required toolChoice is set but no tools are provided", async () => {
+    await expect(
+      mw.transformParams!({
+        params: { prompt: [], tools: [], toolChoice: { type: "required" } },
+      } as any)
+    ).rejects.toThrow(
+      /Tool choice type 'required' is set, but no tools are provided/
+    );
+  });
 });

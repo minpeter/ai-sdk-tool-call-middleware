@@ -5,6 +5,7 @@ import { escapeRegExp } from "./regex";
 export * from "./type-guards";
 export * from "./tools";
 export * from "./on-error";
+export * from "./xml";
 
 export {
   getPotentialStartIndex,

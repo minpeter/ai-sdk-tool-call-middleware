@@ -36,11 +36,13 @@ export function getFunctionTools(params: {
       (params.providerOptions as ProviderOptionsWithToolNames)
         .toolCallMiddleware?.toolNames) ||
     [];
-  const toolNames: string[] = Array.isArray(rawToolNames)
-    ? (rawToolNames as unknown[]).filter(
-        (n): n is string => typeof n === "string"
-      )
-    : [];
+  const toStringArray = (val: unknown): string[] =>
+    Array.isArray(val)
+      ? (val as unknown[]).filter(
+          (item): item is string => typeof item === "string"
+        )
+      : [];
+  const toolNames: string[] = toStringArray(rawToolNames);
   if (toolNames.length > 0) {
     return toolNames.map((name: string) => ({
       type: "function",

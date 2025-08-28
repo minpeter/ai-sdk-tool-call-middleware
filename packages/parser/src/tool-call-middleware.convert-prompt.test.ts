@@ -84,4 +84,27 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     // existing provider option preserved
     expect((out.providerOptions as any).toolCallMiddleware.existing).toBe(true);
   });
+
+  it("condenses multiple text parts in a single user message into one", async () => {
+    const params = {
+      prompt: [
+        {
+          role: "user" as const,
+          content: [
+            { type: "text" as const, text: "line1" },
+            { type: "text" as const, text: "line2" },
+          ],
+        },
+      ],
+      tools: [],
+    };
+
+    const out = await mw.transformParams!({ params } as any);
+    const userMsgs = out.prompt.filter(m => m.role === "user");
+    expect(userMsgs).toHaveLength(1);
+    const onlyText = userMsgs[0].content.every((c: any) => c.type === "text");
+    expect(onlyText).toBe(true);
+    expect(userMsgs[0].content).toHaveLength(1);
+    expect((userMsgs[0].content[0] as any).text).toBe("line1\nline2");
+  });
 });
