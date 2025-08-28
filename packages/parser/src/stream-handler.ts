@@ -13,6 +13,41 @@ import {
   extractOnErrorOption,
 } from "./utils";
 
+type WrapStreamParams = Parameters<typeof isToolChoiceActive>[0] & {
+  tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
+  providerOptions?: unknown;
+};
+
+export async function wrapStream({
+  protocol,
+  doStream,
+  doGenerate,
+  params,
+}: {
+  protocol: ToolCallProtocol;
+  doStream: () => ReturnType<LanguageModelV2["doStream"]>;
+  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
+  params: WrapStreamParams;
+}) {
+  if (isToolChoiceActive(params)) {
+    return toolChoiceStream({
+      doGenerate,
+      options: extractOnErrorOption(params.providerOptions),
+    });
+  }
+
+  const { stream, ...rest } = await doStream();
+  return {
+    stream: stream.pipeThrough(
+      protocol.createStreamParser({
+        tools: getFunctionTools(params),
+        options: extractOnErrorOption(params.providerOptions),
+      })
+    ),
+    ...rest,
+  };
+}
+
 export async function toolChoiceStream({
   doGenerate,
   options,
@@ -77,40 +112,5 @@ export async function toolChoiceStream({
     request: result?.request || {},
     response: result?.response || {},
     stream,
-  };
-}
-
-type WrapStreamParams = Parameters<typeof isToolChoiceActive>[0] & {
-  tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
-  providerOptions?: unknown;
-};
-
-export async function wrapStream({
-  protocol,
-  doStream,
-  doGenerate,
-  params,
-}: {
-  protocol: ToolCallProtocol;
-  doStream: () => ReturnType<LanguageModelV2["doStream"]>;
-  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
-  params: WrapStreamParams;
-}) {
-  if (isToolChoiceActive(params)) {
-    return toolChoiceStream({
-      doGenerate,
-      options: extractOnErrorOption(params.providerOptions),
-    });
-  }
-
-  const { stream, ...rest } = await doStream();
-  return {
-    stream: stream.pipeThrough(
-      protocol.createStreamParser({
-        tools: getFunctionTools(params),
-        options: extractOnErrorOption(params.providerOptions),
-      })
-    ),
-    ...rest,
   };
 }

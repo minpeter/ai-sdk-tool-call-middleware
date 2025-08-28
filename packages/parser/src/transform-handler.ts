@@ -32,116 +32,6 @@ export const transformParams = async ({
 }) => {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
-  const convertToolPrompt = (
-    prompt: LanguageModelV2Prompt
-  ): LanguageModelV2Prompt => {
-    const processedPrompt = prompt.map(message => {
-      if (message.role === "assistant") {
-        const newContent: LanguageModelV2Content[] = [];
-        for (const content of message.content) {
-          if (isToolCallContent(content)) {
-            newContent.push({
-              type: "text",
-              text: resolvedProtocol.formatToolCall(content),
-            });
-          } else if ((content as { type?: string }).type === "text") {
-            newContent.push(content as LanguageModelV2Content);
-          } else if ((content as { type?: string }).type === "reasoning") {
-            // Pass through reasoning parts unchanged for providers that support it
-            newContent.push(content as LanguageModelV2Content);
-          } else {
-            // Prefer the onError callback for surfacing non-fatal warnings
-            const options = extractOnErrorOption(params.providerOptions);
-            options?.onError?.(
-              "tool-call-middleware: unknown assistant content; stringifying for provider compatibility",
-              { content }
-            );
-            newContent.push({
-              type: "text",
-              text: JSON.stringify(content),
-            });
-          }
-        }
-        // If assistant content consists solely of text parts, condense into a single text part
-        const onlyText = newContent.every(c => c.type === "text");
-        const condensedAssistant = onlyText
-          ? [
-              {
-                type: "text" as const,
-                text: newContent.map(c => (c as any).text).join("\n"),
-              },
-            ]
-          : newContent;
-        return { role: "assistant", content: condensedAssistant };
-      }
-      if (message.role === "tool") {
-        return {
-          role: "user",
-          // Map tool results to text response blocks, then condense into a single text block
-          content: [
-            {
-              type: "text" as const,
-              text: message.content
-                .map(toolResult =>
-                  isToolResultPart(toolResult)
-                    ? resolvedProtocol.formatToolResponse(toolResult)
-                    : resolvedProtocol.formatToolResponse(
-                        toolResult as LanguageModelV2ToolResultPart
-                      )
-                )
-                .join("\n"),
-            },
-          ],
-        };
-      }
-      return message;
-    });
-
-    // Condense any message that contains only text parts into a single text part
-    for (let i = 0; i < processedPrompt.length; i++) {
-      const msg = processedPrompt[i] as unknown as {
-        role: string;
-        content: any;
-      };
-      if (Array.isArray(msg.content)) {
-        const allText = msg.content.every((c: any) => c?.type === "text");
-        if (allText && msg.content.length > 1) {
-          processedPrompt[i] = {
-            role: msg.role as any,
-            content: [
-              {
-                type: "text",
-                text: msg.content.map((c: any) => c.text).join("\n"),
-              },
-            ],
-          } as any;
-        }
-      }
-    }
-
-    // Merge consecutive text blocks
-    for (let i = processedPrompt.length - 1; i > 0; i--) {
-      const current = processedPrompt[i];
-      const prev = processedPrompt[i - 1];
-      if (current.role === "user" && prev.role === "user") {
-        const prevContent = prev.content
-          .map(c => (c.type === "text" ? c.text : ""))
-          .join("\n");
-        const currentContent = current.content
-          .map(c => (c.type === "text" ? c.text : ""))
-          .join("\n");
-        processedPrompt[i - 1] = {
-          role: "user",
-          content: [
-            { type: "text", text: prevContent + "\n" + currentContent },
-          ],
-        };
-        processedPrompt.splice(i, 1);
-      }
-    }
-    return processedPrompt as LanguageModelV2Prompt;
-  };
-
   const functionTools = (params.tools ?? []).filter(
     (t): t is LanguageModelV2FunctionTool => t.type === "function"
   );
@@ -150,7 +40,12 @@ export const transformParams = async ({
     tools: functionTools,
     toolSystemPromptTemplate,
   });
-  const processedPrompt = convertToolPrompt(params.prompt ?? []);
+
+  const processedPrompt = convertToolPrompt(
+    params.prompt ?? [],
+    resolvedProtocol,
+    extractOnErrorOption(params.providerOptions)
+  );
 
   const finalPrompt: LanguageModelV2Prompt =
     processedPrompt[0]?.role === "system"
@@ -291,3 +186,115 @@ export const transformParams = async ({
 
   return baseReturnParams;
 };
+
+function convertToolPrompt(
+  prompt: LanguageModelV2Prompt,
+  resolvedProtocol: ToolCallProtocol,
+  providerOptions?: {
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  }
+): LanguageModelV2Prompt {
+  const processedPrompt = prompt.map(message => {
+    if (message.role === "assistant") {
+      const newContent: LanguageModelV2Content[] = [];
+      for (const content of message.content) {
+        if (isToolCallContent(content)) {
+          newContent.push({
+            type: "text",
+            text: resolvedProtocol.formatToolCall(content),
+          });
+        } else if ((content as { type?: string }).type === "text") {
+          newContent.push(content as LanguageModelV2Content);
+        } else if ((content as { type?: string }).type === "reasoning") {
+          // Pass through reasoning parts unchanged for providers that support it
+          newContent.push(content as LanguageModelV2Content);
+        } else {
+          // Prefer the onError callback for surfacing non-fatal warnings
+          const options = extractOnErrorOption(providerOptions);
+          options?.onError?.(
+            "tool-call-middleware: unknown assistant content; stringifying for provider compatibility",
+            { content }
+          );
+          newContent.push({
+            type: "text",
+            text: JSON.stringify(content),
+          });
+        }
+      }
+      // If assistant content consists solely of text parts, condense into a single text part
+      const onlyText = newContent.every(c => c.type === "text");
+      const condensedAssistant = onlyText
+        ? [
+            {
+              type: "text" as const,
+              text: newContent.map(c => (c as any).text).join("\n"),
+            },
+          ]
+        : newContent;
+      return { role: "assistant", content: condensedAssistant };
+    }
+    if (message.role === "tool") {
+      return {
+        role: "user",
+        // Map tool results to text response blocks, then condense into a single text block
+        content: [
+          {
+            type: "text" as const,
+            text: message.content
+              .map(toolResult =>
+                isToolResultPart(toolResult)
+                  ? resolvedProtocol.formatToolResponse(toolResult)
+                  : resolvedProtocol.formatToolResponse(
+                      toolResult as LanguageModelV2ToolResultPart
+                    )
+              )
+              .join("\n"),
+          },
+        ],
+      };
+    }
+    return message;
+  });
+
+  // Condense any message that contains only text parts into a single text part
+  for (let i = 0; i < processedPrompt.length; i++) {
+    const msg = processedPrompt[i] as unknown as {
+      role: string;
+      content: any;
+    };
+    if (Array.isArray(msg.content)) {
+      const allText = msg.content.every((c: any) => c?.type === "text");
+      if (allText && msg.content.length > 1) {
+        processedPrompt[i] = {
+          role: msg.role as any,
+          content: [
+            {
+              type: "text",
+              text: msg.content.map((c: any) => c.text).join("\n"),
+            },
+          ],
+        } as any;
+      }
+    }
+  }
+
+  // Merge consecutive text blocks
+  for (let i = processedPrompt.length - 1; i > 0; i--) {
+    const current = processedPrompt[i];
+    const prev = processedPrompt[i - 1];
+    if (current.role === "user" && prev.role === "user") {
+      const prevContent = prev.content
+        .map(c => (c.type === "text" ? c.text : ""))
+        .join("\n");
+      const currentContent = current.content
+        .map(c => (c.type === "text" ? c.text : ""))
+        .join("\n");
+      processedPrompt[i - 1] = {
+        role: "user",
+        content: [{ type: "text", text: prevContent + "\n" + currentContent }],
+      };
+      processedPrompt.splice(i, 1);
+    }
+  }
+  return processedPrompt as LanguageModelV2Prompt;
+}
