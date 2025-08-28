@@ -398,7 +398,7 @@ function createBfclBenchmark(
                     }
                   }
                 } else {
-                  // Parallel / multiple: show function name sets and args count summary
+                  // Parallel / multiple: show function name sets and param-level diffs per matched function
                   const gtArr: any[] =
                     (possibleAnswer as any).ground_truth ?? [];
                   const expectedNames = gtArr.map(g => Object.keys(g)[0]);
@@ -407,11 +407,13 @@ function createBfclBenchmark(
                   );
                   expected.functions = expectedNames;
                   actual.functions = actualNames;
+
                   if (expectedNames.length !== actualNames.length) {
                     diff.push(`@@ call count`);
                     diff.push(`- expected ${expectedNames.length}`);
                     diff.push(`+ got ${actualNames.length}`);
                   }
+
                   const missing = expectedNames.filter(
                     n => !actualNames.includes(n)
                   );
@@ -422,6 +424,99 @@ function createBfclBenchmark(
                     diff.push(`- missing function: ${m}`);
                   for (const e of extra)
                     diff.push(`+ unexpected function: ${e}`);
+
+                  // Attempt to compute param-level diffs for functions that exist in both expected and actual
+                  const usedActual = new Set<number>();
+                  for (const expectedObj of gtArr) {
+                    const fname = Object.keys(expectedObj)[0];
+                    // Find a matching actual call not yet used
+                    let matchedIndex = -1;
+                    for (let i = 0; i < (restoredCalls as any[]).length; i++) {
+                      if (usedActual.has(i)) continue;
+                      const rc = (restoredCalls as any[])[i];
+                      const rcName = rc?.toolName ?? rc?.name;
+                      if (rcName === fname) {
+                        matchedIndex = i;
+                        break;
+                      }
+                    }
+                    if (matchedIndex === -1) continue; // already reported as missing above
+                    usedActual.add(matchedIndex);
+
+                    const received = (restoredCalls as any[])[matchedIndex];
+                    const receivedArgs = summarizeArgs(received?.args);
+
+                    // expected parameters allowed values
+                    const expectedParamsAllowed = expectedObj[fname];
+                    const funcDesc: any = (tools as any[]).find(
+                      (t: any) => t.name === fname
+                    );
+                    const requiredParams = (funcDesc?.parameters?.required ??
+                      []) as string[];
+
+                    diff.push(`@@ function ${fname}`);
+
+                    if (expectedParamsAllowed && receivedArgs) {
+                      // Missing required
+                      for (const req of requiredParams) {
+                        if (!(req in receivedArgs)) {
+                          diff.push(`- missing required param: ${req}`);
+                        }
+                      }
+                      // Unexpected params
+                      for (const k of Object.keys(receivedArgs)) {
+                        if (
+                          !Object.prototype.hasOwnProperty.call(
+                            expectedParamsAllowed,
+                            k
+                          )
+                        ) {
+                          diff.push(`+ unexpected param: ${k}`);
+                        }
+                      }
+                      // Invalid values
+                      for (const k of Object.keys(receivedArgs)) {
+                        if (
+                          Object.prototype.hasOwnProperty.call(
+                            expectedParamsAllowed,
+                            k
+                          )
+                        ) {
+                          const allowed = expectedParamsAllowed[k];
+                          const got = receivedArgs[k];
+                          const includes =
+                            Array.isArray(allowed) &&
+                            allowed.some((v: any) => {
+                              try {
+                                if (Array.isArray(got)) {
+                                  return (
+                                    JSON.stringify(
+                                      got.map(x => String(x)).sort()
+                                    ) ===
+                                    JSON.stringify(
+                                      (v as any[]).map(x => String(x)).sort()
+                                    )
+                                  );
+                                }
+                              } catch {
+                                void 0;
+                              }
+                              return (
+                                String(v).toLowerCase().replace(/\s+/g, "") ===
+                                String(got).toLowerCase().replace(/\s+/g, "")
+                              );
+                            });
+                          if (!includes) {
+                            diff.push(`@@ param ${k}`);
+                            diff.push(
+                              `- expected one of: ${JSON.stringify(allowed)}`
+                            );
+                            diff.push(`+ got: ${JSON.stringify(got)}`);
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
 
                 caseLogs.push(

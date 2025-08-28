@@ -47,7 +47,9 @@ function checkStringValue(
   if (!standardizedPossibleAnswers.includes(standardizedModelValue)) {
     return {
       valid: false,
-      error: `Invalid value for parameter '${param}': '${modelValue}'. Expected one of ${possibleAnswers.join(", ")}.`,
+      error: `Invalid value for parameter '${param}': ${JSON.stringify(
+        modelValue
+      )}. Expected one of ${JSON.stringify(possibleAnswers)}.`,
       error_type: "value_error:string",
     };
   }
@@ -120,7 +122,9 @@ export function simpleFunctionChecker(
       if (!hasMatch) {
         return {
           valid: false,
-          error: `Invalid value for list parameter '${paramName}'.`,
+          error: `Invalid value for list parameter '${paramName}'. Got ${JSON.stringify(
+            modelValue
+          )}. Expected one of ${JSON.stringify(possibleValues)}.`,
           error_type: "value_error:list",
         };
       }
@@ -128,7 +132,9 @@ export function simpleFunctionChecker(
       if (!possibleValues.includes(modelValue)) {
         return {
           valid: false,
-          error: `Invalid value for parameter '${paramName}': got '${modelValue}', expected one of '${possibleValues}'.`,
+          error: `Invalid value for parameter '${paramName}'. Got ${JSON.stringify(
+            modelValue
+          )}. Expected one of ${JSON.stringify(possibleValues)}.`,
           error_type: "value_error:other",
         };
       }

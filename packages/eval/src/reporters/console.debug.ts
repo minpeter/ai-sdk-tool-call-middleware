@@ -115,13 +115,13 @@ function suggestFixFromDiff(parsed: any): string[] {
 export function consoleDebugReporter(results: EvaluationResult[]): void {
   console.log("\n--- 📊 Evaluation Report (debug) ---");
   for (const r of results) {
-    const { model, benchmark, result } = r;
+    const { model, modelKey, benchmark, result } = r;
     const status = result.success
       ? `${colors.green}✔ SUCCESS${colors.reset}`
       : `${colors.red}✖ FAILURE${colors.reset}`;
 
     console.log(
-      `\n ${colors.cyan}[${model}]${colors.reset} - ${colors.magenta}${benchmark}${colors.reset}`
+      `\n ${colors.cyan}[${model}]${colors.reset}${modelKey ? ` ${colors.gray}(${modelKey})${colors.reset}` : ""} - ${colors.magenta}${benchmark}${colors.reset}`
     );
     console.log(
       `  └ ${status} | Score: ${colors.yellow}${result.score.toFixed(2)}${colors.reset}`

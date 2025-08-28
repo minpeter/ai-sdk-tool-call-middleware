@@ -8,16 +8,17 @@ const colors = {
   yellow: "\x1b[33m",
   cyan: "\x1b[36m",
   magenta: "\x1b[35m",
+  gray: "\x1b[90m",
 };
 
 function printResult(result: EvaluationResult) {
-  const { model, benchmark, result: benchmarkResult } = result;
+  const { model, modelKey, benchmark, result: benchmarkResult } = result;
   const status = benchmarkResult.success
     ? `${colors.green}✔ SUCCESS${colors.reset}`
     : `${colors.red}✖ FAILURE${colors.reset}`;
 
   console.log(
-    `\n ${colors.cyan}[${model}]${colors.reset} - ${colors.magenta}${benchmark}${colors.reset}`
+    `\n ${colors.cyan}[${model}]${colors.reset}${modelKey ? ` ${colors.gray}(${modelKey})${colors.reset}` : ""} - ${colors.magenta}${benchmark}${colors.reset}`
   );
   console.log(
     `  └ ${status} | Score: ${colors.yellow}${benchmarkResult.score.toFixed(2)}${colors.reset}`

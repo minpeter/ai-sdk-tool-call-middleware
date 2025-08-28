@@ -35,6 +35,14 @@ function getSchemaType(schema: unknown): string | undefined {
     ];
     for (const p of preferred) if (t.includes(p)) return p;
   }
+  // Heuristic: infer from shape when `type` is not explicitly provided
+  const s = unwrapped as Record<string, unknown>;
+  if (s && typeof s === "object" && (s.properties || s.additionalProperties)) {
+    return "object";
+  }
+  if (s && typeof s === "object" && (s.items || s.prefixItems)) {
+    return "array";
+  }
   return undefined;
 }
 
@@ -86,16 +94,28 @@ function coerceBySchema(value: unknown, schema?: unknown): unknown {
         const normalized = s.replace(/'/g, '"');
         const arr = JSON.parse(normalized);
         if (Array.isArray(arr)) {
-          const itemsSchema = (unwrapped as Record<string, unknown>)
-            .items as unknown;
+          const u = unwrapped as Record<string, unknown>;
+          const prefixItems = Array.isArray(u.prefixItems)
+            ? (u.prefixItems as unknown[])
+            : undefined;
+          const itemsSchema = u.items as unknown;
+          if (prefixItems && arr.length === prefixItems.length) {
+            return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
+          }
           return arr.map(v => coerceBySchema(v, itemsSchema));
         }
       } catch {
         // Fallbacks: CSV or newline separated numbers/strings
         const csv = s.includes("\n") ? s.split(/\n+/) : s.split(/,\s*/);
         const trimmed = csv.map(x => x.trim()).filter(x => x.length > 0);
-        const itemsSchema = (unwrapped as Record<string, unknown>)
-          .items as unknown;
+        const u = unwrapped as Record<string, unknown>;
+        const prefixItems = Array.isArray(u.prefixItems)
+          ? (u.prefixItems as unknown[])
+          : undefined;
+        const itemsSchema = u.items as unknown;
+        if (prefixItems && trimmed.length === prefixItems.length) {
+          return trimmed.map((x, i) => coerceBySchema(x, prefixItems[i]));
+        }
         return trimmed.map(x => coerceBySchema(x, itemsSchema));
       }
     }
@@ -119,8 +139,15 @@ function coerceBySchema(value: unknown, schema?: unknown): unknown {
     return out;
   }
   if (schemaType === "array") {
-    const itemsSchema = (unwrapped as Record<string, unknown>).items as unknown;
+    const u = unwrapped as Record<string, unknown>;
+    const itemsSchema = u.items as unknown;
+    const prefixItems = Array.isArray(u.prefixItems)
+      ? (u.prefixItems as unknown[])
+      : undefined;
     if (Array.isArray(value)) {
+      if (prefixItems && value.length === prefixItems.length) {
+        return value.map((v, i) => coerceBySchema(v, prefixItems[i]));
+      }
       return value.map(v => coerceBySchema(v, itemsSchema));
     }
     // Handle XML form: { item: [...] } or { item: single }
@@ -129,8 +156,34 @@ function coerceBySchema(value: unknown, schema?: unknown): unknown {
       if (Object.prototype.hasOwnProperty.call(maybe, "item")) {
         const items = maybe.item as unknown;
         const arr = Array.isArray(items) ? items : [items];
+        if (prefixItems && arr.length === prefixItems.length) {
+          return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
+        }
         return arr.map(v => coerceBySchema(v, itemsSchema));
       }
+      // Heuristic: object with numeric-like keys → treat as tuple/array
+      const keys = Object.keys(maybe);
+      if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+        const arr = keys
+          .sort((a, b) => Number(a) - Number(b))
+          .map(k => maybe[k]);
+        if (prefixItems && arr.length === prefixItems.length) {
+          return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
+        }
+        return arr.map(v => coerceBySchema(v, itemsSchema));
+      }
+    }
+    // Heuristic: wrap single primitive into array when schema expects array
+    if (
+      value == null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      if (prefixItems && prefixItems.length > 0) {
+        return [coerceBySchema(value, prefixItems[0])];
+      }
+      return [coerceBySchema(value, itemsSchema)];
     }
   }
   if (typeof value === "string") {
