@@ -7,7 +7,11 @@ import {
 } from "@ai-sdk-tool/eval";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel } from "ai";
-import { gemmaToolMiddleware, xmlToolMiddleware } from "@ai-sdk-tool/parser";
+import {
+  gemmaToolMiddleware,
+  xmlToolMiddleware,
+  morphExpToolMiddleware,
+} from "@ai-sdk-tool/parser";
 import { openai } from "@ai-sdk/openai";
 
 const friendli = createOpenAICompatible({
@@ -34,6 +38,12 @@ const jsonGemma27b = wrapLanguageModel({
   middleware: gemmaToolMiddleware,
 });
 
+const morphExpGemma27b = wrapLanguageModel({
+  model: friendli("google/gemma-3-27b-it"),
+  // model: openrouter("z-ai/glm-4.5-air"),
+  middleware: morphExpToolMiddleware,
+});
+
 const gpt41nano = openai("gpt-4.1-nano");
 
 async function main() {
@@ -43,15 +53,16 @@ async function main() {
     models: [
       // gpt41nano,
       xmlGemma27b,
+      morphExpGemma27b,
       jsonGemma27b,
     ],
     benchmarks: [
-      bfclSimpleBenchmark,
-      // bfclMultipleBenchmark,
+      // bfclSimpleBenchmark,
+      bfclMultipleBenchmark,
       // bfclParallelBenchmark,
       // bfclParallelMultipleBenchmark,
     ],
-    reporter: "json",
+    reporter: "console.debug",
   });
 
   console.log("Evaluation complete!");

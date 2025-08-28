@@ -67,7 +67,7 @@ export interface LanguageModelV2Benchmark {
 /**
  * The supported reporter types.
  */
-export type ReporterType = "console" | "json";
+export type ReporterType = "console" | "json" | "console.debug";
 
 /**
  * The full result object for an evaluation run,

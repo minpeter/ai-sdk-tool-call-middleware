@@ -1,5 +1,6 @@
 import { EvaluationResult, ReporterType } from "../interfaces";
 import { consoleReporter } from "./console";
+import { consoleDebugReporter } from "./console.debug";
 import { jsonReporter } from "./json";
 
 export const reporters: Record<
@@ -8,4 +9,5 @@ export const reporters: Record<
 > = {
   console: consoleReporter,
   json: jsonReporter,
+  "console.debug": consoleDebugReporter,
 };
