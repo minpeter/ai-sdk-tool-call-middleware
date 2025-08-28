@@ -77,7 +77,6 @@ describe("transformParams merges adjacent user messages", () => {
       },
     } as any);
 
-    console.log(out.prompt[out.prompt.length - 1]);
 
     const userMsgs = out.prompt.filter(m => m.role === "user");
     expect(userMsgs).toHaveLength(1);
