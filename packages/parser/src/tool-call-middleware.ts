@@ -122,23 +122,62 @@ export function createToolMiddleware({
                 });
               }
             }
-            return { role: "assistant", content: newContent };
+            // If assistant content consists solely of text parts, condense into a single text part
+            const onlyText = newContent.every(c => c.type === "text");
+            const condensedAssistant = onlyText
+              ? [
+                  {
+                    type: "text" as const,
+                    text: newContent.map(c => (c as any).text).join("\n"),
+                  },
+                ]
+              : newContent;
+            return { role: "assistant", content: condensedAssistant };
           }
           if (message.role === "tool") {
             return {
               role: "user",
-              content: message.content.map(toolResult => ({
-                type: "text",
-                text: isToolResultPart(toolResult)
-                  ? resolvedProtocol.formatToolResponse(toolResult)
-                  : resolvedProtocol.formatToolResponse(
-                      toolResult as LanguageModelV2ToolResultPart
-                    ),
-              })),
+              // Map tool results to text response blocks, then condense into a single text block
+              content: [
+                {
+                  type: "text" as const,
+                  text: message.content
+                    .map(toolResult =>
+                      isToolResultPart(toolResult)
+                        ? resolvedProtocol.formatToolResponse(toolResult)
+                        : resolvedProtocol.formatToolResponse(
+                            toolResult as LanguageModelV2ToolResultPart
+                          )
+                    )
+                    .join("\n"),
+                },
+              ],
             };
           }
           return message;
         });
+
+        // Condense any message that contains only text parts into a single text part
+        for (let i = 0; i < processedPrompt.length; i++) {
+          const msg = processedPrompt[i] as unknown as {
+            role: string;
+            content: any;
+          };
+          if (Array.isArray(msg.content)) {
+            const allText = msg.content.every((c: any) => c?.type === "text");
+            if (allText && msg.content.length > 1) {
+              processedPrompt[i] = {
+                role: msg.role as any,
+                content: [
+                  {
+                    type: "text",
+                    text: msg.content.map((c: any) => c.text).join("\n"),
+                  },
+                ],
+              } as any;
+            }
+          }
+        }
 
         // Merge consecutive text blocks
         for (let i = processedPrompt.length - 1; i > 0; i--) {
