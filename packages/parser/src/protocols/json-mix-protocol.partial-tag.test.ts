@@ -31,6 +31,7 @@ describe("jsonMixProtocol partial tag handling", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
+    console.debug(out);
     const text = out
       .filter(c => c.type === "text-delta")
       .map(c => (c as any).delta)

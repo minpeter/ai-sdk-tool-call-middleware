@@ -134,10 +134,26 @@ export const jsonMixProtocol = ({
               id: currentTextId,
               delta: `${toolCallStart}${buffer}`,
             });
+            buffer = "";
+          } else if (!isInsideToolCall && buffer.length > 0) {
+            // Flush any remaining buffered text (e.g., partial start tag suffix)
+            if (!currentTextId) {
+              currentTextId = generateId();
+              controller.enqueue({ type: "text-start", id: currentTextId });
+              hasEmittedTextStart = true;
+            }
+            controller.enqueue({
+              type: "text-delta",
+              id: currentTextId,
+              delta: buffer,
+            });
+            buffer = "";
           }
 
           if (currentTextId && hasEmittedTextStart) {
             controller.enqueue({ type: "text-end", id: currentTextId });
+            currentTextId = null;
+            hasEmittedTextStart = false;
           }
 
           // No pending calls should remain; if there is leftover, emit as text
