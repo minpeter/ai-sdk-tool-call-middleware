@@ -12,7 +12,7 @@ import { isProtocolFactory } from "./utils/protocol";
 import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import { createDynamicIfThenElseSchema } from "./utils";
 
-export const transformParams = async ({
+export async function transformParams({
   params,
   protocol,
   toolSystemPromptTemplate,
@@ -29,7 +29,7 @@ export const transformParams = async ({
   };
   protocol: ToolCallProtocol | (() => ToolCallProtocol);
   toolSystemPromptTemplate: (tools: string) => string;
-}) => {
+}) {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
   const functionTools = (params.tools ?? []).filter(
@@ -185,7 +185,7 @@ export const transformParams = async ({
   }
 
   return baseReturnParams;
-};
+}
 
 function convertToolPrompt(
   prompt: LanguageModelV2Prompt,
