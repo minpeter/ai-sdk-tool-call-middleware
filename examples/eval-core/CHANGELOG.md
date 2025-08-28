@@ -1,5 +1,12 @@
 # eval-core
 
+## 1.0.19
+
+### Patch Changes
+
+- Updated dependencies [86bb361]
+  - @ai-sdk-tool/parser@2.1.0
+
 ## 1.0.18
 
 ### Patch Changes
