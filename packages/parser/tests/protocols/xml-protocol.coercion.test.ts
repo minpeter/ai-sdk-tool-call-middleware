@@ -361,4 +361,39 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({ arr: [{ min: 1 }, { min: 2 }] });
   });
+
+  it("handles multiline JSON strings in object properties", () => {
+    const p = xmlProtocol();
+    const tools = [
+      {
+        type: "function",
+        name: "calculate_average",
+        description: "Calculate average grade",
+        inputSchema: {
+          type: "object",
+          properties: {
+            gradeDict: {
+              type: "object",
+              description:
+                "A dictionary where keys represent subjects and values represent scores",
+            },
+          },
+          required: ["gradeDict"],
+        },
+      },
+    ] as any;
+
+    const out = p.parseGeneratedText({
+      text: `<calculate_average><gradeDict>{\n  "math": 90,\n  "science": 75,\n  "history": 82,\n  "music": 89\n}</gradeDict></calculate_average>`,
+      tools,
+      options: {},
+    });
+
+    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    expect(tc).toBeTruthy();
+    expect(tc.toolName).toBe("calculate_average");
+    expect(JSON.parse(tc.input)).toEqual({
+      gradeDict: { math: 90, science: 75, history: 82, music: 89 },
+    });
+  });
 });

@@ -238,6 +238,14 @@ function createBfclBenchmark(
               messages: flatMessages,
               tools: toolsMap,
               toolChoice: "auto",
+              // Pass original schema information to middleware
+              providerOptions: {
+                toolCallMiddleware: {
+                  originalToolSchemas: Object.fromEntries(
+                    transformedTools.map(t => [t.name, t.inputSchema])
+                  ),
+                },
+              },
             });
 
             // Debug: raw toolCalls

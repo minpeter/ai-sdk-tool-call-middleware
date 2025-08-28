@@ -30,7 +30,7 @@ const openrouter = createOpenAICompatible({
 const morphExpToolMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
   toolSystemPromptTemplate(tools: string) {
-    return `You are KorinAI, a function-calling AI model.
+    return `You are a function calling AI model.
 
 Available functions are listed inside <tools></tools>.
 <tools>${tools}</tools>
@@ -77,14 +77,14 @@ async function main() {
   await evaluate({
     models: {
       // gpt41nano,
-      xml: xmlGemma27b,
+      // xml: xmlGemma27b,
       morphExp: morphExpGemma27b,
-      json: jsonGemma27b,
+      // json: jsonGemma27b,
     },
     benchmarks: [
       // bfclSimpleBenchmark,
-      bfclMultipleBenchmark,
-      // bfclParallelBenchmark,
+      // bfclMultipleBenchmark,
+      bfclParallelBenchmark,
       // bfclParallelMultipleBenchmark,
     ],
     reporter: "console.debug",

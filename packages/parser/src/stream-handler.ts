@@ -41,7 +41,10 @@ export async function wrapStream({
     stream: stream.pipeThrough(
       protocol.createStreamParser({
         tools: getFunctionTools(params),
-        options: extractOnErrorOption(params.providerOptions),
+        options: {
+          ...extractOnErrorOption(params.providerOptions),
+          ...(params.providerOptions as any)?.toolCallMiddleware,
+        },
       })
     ),
     ...rest,

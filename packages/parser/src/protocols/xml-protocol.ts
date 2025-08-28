@@ -53,6 +53,15 @@ export const xmlProtocol = (): ToolCallProtocol => ({
   },
 
   parseGeneratedText({ text, tools, options }) {
+    // Get original schemas from provider options if available
+    const originalSchemas = (options as any)?.originalToolSchemas || {};
+
+    // Optional debug
+    // console.log("XML Protocol schema debug:", {
+    //   toolsReceived: tools.map(t => t.name),
+    //   hasOriginalSchemas: Object.keys(originalSchemas).length > 0,
+    //   originalSchemaKeys: Object.keys(originalSchemas)
+    // });
     // Schema-based coercion: convert string primitives according to tool JSON schema types
 
     const toolNames = tools.map(t => t.name).filter(name => name != null);
@@ -106,8 +115,12 @@ export const xmlProtocol = (): ToolCallProtocol => ({
           args[k] = typeof val === "string" ? val.trim() : val;
         }
 
-        const schema = tools.find(t => t.name === toolName)
+        // Use original schema if available, fallback to transformed schema
+        const originalSchema = originalSchemas[toolName];
+        const fallbackSchema = tools.find(t => t.name === toolName)
           ?.inputSchema as unknown;
+        const schema = originalSchema || fallbackSchema;
+
         const coercedArgs = coerceBySchema(args, schema) as Record<
           string,
           unknown
@@ -139,6 +152,8 @@ export const xmlProtocol = (): ToolCallProtocol => ({
   },
 
   createStreamParser({ tools, options }) {
+    // Get original schemas from options if available
+    const originalSchemas = (options as any)?.originalToolSchemas || {};
     const toolNames = tools.map(t => t.name).filter(name => name != null);
     let buffer = "";
     let currentToolCall: { name: string; content: string } | null = null;
@@ -216,9 +231,13 @@ export const xmlProtocol = (): ToolCallProtocol => ({
                   args[k] = typeof val === "string" ? val.trim() : val;
                 }
 
-                const toolSchema = tools.find(
+                // Use original schema if available, fallback to transformed schema
+                const originalSchema = originalSchemas[currentToolCall!.name];
+                const fallbackSchema = tools.find(
                   t => t.name === currentToolCall!.name
                 )?.inputSchema;
+                const toolSchema = originalSchema || fallbackSchema;
+
                 const coercedArgs = coerceBySchema(args, toolSchema) as Record<
                   string,
                   unknown

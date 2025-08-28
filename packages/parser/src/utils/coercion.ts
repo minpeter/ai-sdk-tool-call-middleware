@@ -47,7 +47,22 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
         const num = Number(s);
         if (Number.isFinite(num)) return num;
       }
+
+      // Fallback: try parsing JSON-like strings when no schema info
+      if (
+        (s.startsWith("{") && s.endsWith("}")) ||
+        (s.startsWith("[") && s.endsWith("]"))
+      ) {
+        try {
+          const parsed = JSON.parse(s);
+          // Recursively apply coercion to the parsed value without schema
+          return coerceBySchema(parsed, undefined);
+        } catch {
+          // If parsing fails, return original value
+        }
+      }
     }
+
     return value;
   }
 
@@ -57,7 +72,11 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
     const s = value.trim();
     if (schemaType === "object") {
       try {
-        const normalized = s.replace(/^\{\s*\}$/s, "{}").replace(/'/g, '"');
+        // Better normalization for JSON strings with newlines and indentation
+        let normalized = s.replace(/'/g, '"');
+        // Handle empty object cases
+        normalized = normalized.replace(/^\{\s*\}$/s, "{}");
+
         const obj = JSON.parse(normalized);
         if (obj && typeof obj === "object" && !Array.isArray(obj)) {
           const props = (unwrapped as Record<string, unknown>).properties as

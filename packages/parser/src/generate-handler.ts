@@ -80,7 +80,10 @@ export async function wrapGenerate({
     return protocol.parseGeneratedText({
       text: contentItem.text,
       tools: getFunctionTools(params),
-      options: extractOnErrorOption(params.providerOptions),
+      options: {
+        ...extractOnErrorOption(params.providerOptions),
+        ...(params.providerOptions as any)?.toolCallMiddleware,
+      },
     });
   });
   const tools = getFunctionTools(params);
