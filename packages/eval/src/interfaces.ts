@@ -69,6 +69,11 @@ export interface LanguageModelV2Benchmark {
  */
 export type ReporterType = "console" | "json";
 
+// NOTE: we also provide a specialized 'highlight' reporter for easier
+// examination of failed BFCL cases. It's not yet part of ReporterType to
+// avoid a breaking API change; callers can import it from
+// `packages/eval/src/reporters/highlight` and call directly.
+
 /**
  * The full result object for an evaluation run,
  * containing results for all model-benchmark combinations.

@@ -86,13 +86,19 @@ function createBfclBenchmark(
     description,
     async run(model: LanguageModel): Promise<BenchmarkResult> {
       const logs: string[] = [];
+      const pushLog = (m: string) => {
+        logs.push(m);
+        try {
+          console.debug(`[bfcl] ${m}`);
+        } catch {}
+      };
       let correctCount = 0;
       let testCases: TestCase[] = [];
 
       try {
         // Resolve data directory in a way that works both in monorepo and when installed as a dependency.
         const dataPath = resolveDataDir();
-        logs.push(`[INFO] Using data dir: ${dataPath}`);
+        pushLog(`[INFO] Using data dir: ${dataPath}`);
         const testCasesJson = await fs.readFile(
           path.join(dataPath, testDataFile),
           "utf-8"
@@ -121,9 +127,7 @@ function createBfclBenchmark(
         const limit = limitEnv ? Number(limitEnv) : undefined;
         if (limit && Number.isFinite(limit) && limit > 0) {
           testCases = testCases.slice(0, limit);
-          logs.push(
-            `[INFO] Limiting test cases to ${limit} due to BFCL_LIMIT.`
-          );
+          pushLog(`[INFO] Limiting test cases to ${limit} due to BFCL_LIMIT.`);
         }
 
         // Helper: fix BFCL JSON schema types to OpenAI-compatible JSON Schema
@@ -205,11 +209,11 @@ function createBfclBenchmark(
               const schemaType =
                 firstTool?.inputSchema?.type ??
                 firstTool?.inputSchema?.jsonSchema?.type;
-              logs.push(
+              pushLog(
                 `[DEBUG] ${testCase.id}: firstTool=${JSON.stringify(firstTool)}, schemaType=${schemaType}`
               );
             } catch (e: any) {
-              logs.push(
+              pushLog(
                 `[DEBUG] ${testCase.id}: failed to introspect tools: ${e.message}`
               );
             }
@@ -223,13 +227,11 @@ function createBfclBenchmark(
 
             // Debug: raw toolCalls
             try {
-              logs.push(
+              pushLog(
                 `[DEBUG] ${testCase.id}: rawToolCalls=${JSON.stringify(toolCalls)}, finishReason=${finishReason}, text=${JSON.stringify(text)}`
               );
             } catch {
-              logs.push(
-                `[DEBUG] ${testCase.id}: failed to serialize toolCalls`
-              );
+              pushLog(`[DEBUG] ${testCase.id}: failed to serialize toolCalls`);
             }
 
             const possibleAnswer = possibleAnswersMap.get(testCase.id);
@@ -279,16 +281,14 @@ function createBfclBenchmark(
 
             if (checkerResult.valid) {
               correctCount++;
-              logs.push(`[PASS] ${testCase.id}`);
+              pushLog(`[PASS] ${testCase.id}`);
             } else {
-              logs.push(`[FAIL] ${testCase.id}: ${checkerResult.error}`);
+              pushLog(`[FAIL] ${testCase.id}: ${checkerResult.error}`);
             }
           } catch (e: any) {
-            logs.push(
-              `[ERROR] ${testCase.id}: Model generation failed: ${e?.message}`
-            );
+            pushLog(`[ERROR] ${testCase.id}: Model generation failed: ${e?.message}`);
             if (e?.stack) {
-              logs.push(`[STACK] ${testCase.id}: ${e.stack}`);
+              pushLog(`[STACK] ${testCase.id}: ${e.stack}`);
             }
           }
         }
