@@ -116,3 +116,35 @@ describe("createToolMiddleware", () => {
     });
   });
 });
+
+describe("createToolMiddleware positive paths", () => {
+  it("wrapGenerate parses text content via protocol parseGeneratedText", async () => {
+    const mw = createToolMiddleware({
+      protocol: jsonMixProtocol,
+      toolSystemPromptTemplate: () => "",
+    });
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: '<tool_call>{"name":"t","arguments":{}}</tool_call>',
+        },
+      ],
+    });
+    const result = await mw.wrapGenerate!({
+      doGenerate,
+      params: {
+        prompt: [],
+        tools: [
+          {
+            type: "function",
+            name: "t",
+            description: "",
+            inputSchema: { type: "object" },
+          },
+        ],
+      },
+    } as any);
+    expect(result.content.some((c: any) => c.type === "tool-call")).toBe(true);
+  });
+});
