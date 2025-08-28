@@ -46,7 +46,7 @@ You are provided with function signatures within <tools></tools> XML tags.
 You may call one or more functions to assist with the user query.
 Don't make assumptions about what values to plug into functions.
 Here are the available tools: <tools>${tools}</tools>
-For each function call return the call wrapped in <tool_call>...</tool_call> tags and nothing else.
+For each function call return a tool call in an XML tag that matches the tool's name, and nothing else.
 Example KorinAI-style call (text form):
 <get_weather>
 <location>
