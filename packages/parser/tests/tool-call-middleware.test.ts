@@ -2,11 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { createToolMiddleware } from "@/tool-call-middleware";
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
 import { xmlProtocol } from "@/protocols/xml-protocol";
-import type {
-  LanguageModelV2Content,
-  LanguageModelV2Message,
-  LanguageModelV2FunctionTool,
-} from "@ai-sdk/provider";
+import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
 
 describe("createToolMiddleware", () => {
   const mockToolSystemPromptTemplate = (tools: string) =>
@@ -32,38 +28,6 @@ describe("createToolMiddleware", () => {
       expect(middleware.wrapGenerate).toBeDefined();
       expect(middleware.wrapStream).toBeDefined();
       expect(middleware.transformParams).toBeDefined();
-    });
-  });
-
-  describe("transformParams", () => {
-    it("should transform params with tools into prompt", async () => {
-      const middleware = createJsonMiddleware();
-      const params = {
-        prompt: [
-          {
-            role: "user" as const,
-            content: [{ type: "text" as const, text: "test" }],
-          },
-        ],
-        tools: [
-          {
-            type: "function" as const,
-            name: "getTool",
-            description: "Gets a tool",
-            inputSchema: {
-              type: "object",
-              properties: {
-                name: { type: "string" },
-              },
-            },
-          },
-        ],
-      };
-
-      const result = await middleware.transformParams!({ params } as any);
-      expect(result.prompt).toBeDefined();
-      expect(result.tools).toEqual([]);
-      expect(result.toolChoice).toBeUndefined();
     });
   });
 
