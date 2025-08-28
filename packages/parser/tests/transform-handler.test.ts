@@ -552,6 +552,56 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     expect(userMsgs[0].content).toHaveLength(1);
     expect((userMsgs[0].content[0] as any).text).toBe("line1\nline2");
   });
+
+  it("preserves assistant reasoning parts and formats tool-call", async () => {
+    const params = {
+      prompt: [
+        {
+          role: "assistant" as const,
+          content: [
+            {
+              type: "tool-call" as const,
+              toolCallId: "tc1",
+              toolName: "t1",
+              input: "{}",
+            },
+            {
+              type: "reasoning" as const,
+              content: [{ type: "text", text: "thinking..." }],
+            } as any,
+          ],
+        },
+      ],
+      tools: [
+        {
+          type: "function" as const,
+          name: "t1",
+          description: "desc",
+          inputSchema: { type: "object" },
+        },
+      ],
+    };
+
+    const out = await mw.transformParams!({ params } as any);
+    const assistant = out.prompt.find(m => m.role === "assistant")! as any;
+    // Should contain both formatted tool_call text and original reasoning block
+    const hasReasoning = assistant.content.some(
+      (c: any) => c.type === "reasoning"
+    );
+    expect(hasReasoning).toBe(true);
+    const assistantText = assistant.content
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("\n");
+    expect(assistantText).toMatch(/<tool_call>/);
+    // Ensure the reasoning's inner text remains
+    const reasoning = assistant.content.find(
+      (c: any) => c.type === "reasoning"
+    );
+    expect(
+      (reasoning as any).content?.map((p: any) => p.text).join("")
+    ).toContain("thinking...");
+  });
 });
 
 describe(".....", () => {
