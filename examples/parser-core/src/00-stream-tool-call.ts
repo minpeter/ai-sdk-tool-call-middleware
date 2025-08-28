@@ -11,10 +11,16 @@ const openrouter = createOpenAICompatible({
 
 async function main() {
   const result = streamText({
+    // model: wrapLanguageModel({
+    //   model: openrouter("z-ai/glm-4.5-air"),
+    //   middleware: xmlToolMiddleware,
+    // }),
+
     model: wrapLanguageModel({
-      model: openrouter("z-ai/glm-4.5-air"),
-      middleware: xmlToolMiddleware,
+      model: openrouter("google/gemma-3-27b-it"),
+      middleware: gemmaToolMiddleware,
     }),
+
     temperature: 0.0,
     system: "You are a helpful assistant.",
     prompt: "What is the weather in my city?",

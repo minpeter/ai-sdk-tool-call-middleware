@@ -9,7 +9,9 @@ export function isToolCallContent(
   return (
     (content as { type?: string }).type === "tool-call" &&
     typeof (content as { toolName?: unknown }).toolName === "string" &&
-    typeof (content as { input?: unknown }).input === "string"
+    // input may be a JSON string or an already-parsed object depending on provider/runtime
+    (typeof (content as { input?: unknown }).input === "string" ||
+      typeof (content as { input?: unknown }).input === "object")
   );
 }
 
