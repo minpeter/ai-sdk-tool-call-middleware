@@ -24,11 +24,13 @@ const openrouter = createOpenAICompatible({
 
 const xmlGemma27b = wrapLanguageModel({
   model: friendli("google/gemma-3-27b-it"),
+  // model: openrouter("z-ai/glm-4.5-air"),
   middleware: xmlToolMiddleware,
 });
 
 const jsonGemma27b = wrapLanguageModel({
   model: friendli("google/gemma-3-27b-it"),
+  // model: openrouter("z-ai/glm-4.5-air"),
   middleware: gemmaToolMiddleware,
 });
 
@@ -45,11 +47,11 @@ async function main() {
     ],
     benchmarks: [
       bfclSimpleBenchmark,
-      bfclMultipleBenchmark,
-      bfclParallelBenchmark,
-      bfclParallelMultipleBenchmark,
+      // bfclMultipleBenchmark,
+      // bfclParallelBenchmark,
+      // bfclParallelMultipleBenchmark,
     ],
-    reporter: "console",
+    reporter: "json",
   });
 
   console.log("Evaluation complete!");

@@ -54,6 +54,52 @@ function coerceBySchema(value: unknown, schema?: unknown): unknown {
     return value;
   }
   const schemaType = getSchemaType(unwrapped);
+  // If schema expects object/array but we got a string, try to parse
+  if (typeof value === "string") {
+    const s = value.trim();
+    if (schemaType === "object") {
+      try {
+        // Accept JSON-like strings (including single quotes by relaxing)
+        const normalized = s.replace(/^\{\s*\}$/s, "{}").replace(/'/g, '"');
+        const obj = JSON.parse(normalized);
+        if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+          const props = (unwrapped as Record<string, unknown>).properties as
+            | Record<string, unknown>
+            | undefined;
+          const out: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+            const propSchema = props ? (props[k] as unknown) : undefined;
+            out[k] =
+              typeof propSchema === "boolean"
+                ? v
+                : coerceBySchema(v, propSchema);
+          }
+          return out;
+        }
+      } catch {
+        // fall through
+      }
+    }
+    if (schemaType === "array") {
+      // Try JSON first
+      try {
+        const normalized = s.replace(/'/g, '"');
+        const arr = JSON.parse(normalized);
+        if (Array.isArray(arr)) {
+          const itemsSchema = (unwrapped as Record<string, unknown>)
+            .items as unknown;
+          return arr.map(v => coerceBySchema(v, itemsSchema));
+        }
+      } catch {
+        // Fallbacks: CSV or newline separated numbers/strings
+        const csv = s.includes("\n") ? s.split(/\n+/) : s.split(/,\s*/);
+        const trimmed = csv.map(x => x.trim()).filter(x => x.length > 0);
+        const itemsSchema = (unwrapped as Record<string, unknown>)
+          .items as unknown;
+        return trimmed.map(x => coerceBySchema(x, itemsSchema));
+      }
+    }
+  }
   if (
     schemaType === "object" &&
     value &&
@@ -72,9 +118,20 @@ function coerceBySchema(value: unknown, schema?: unknown): unknown {
     }
     return out;
   }
-  if (schemaType === "array" && Array.isArray(value)) {
+  if (schemaType === "array") {
     const itemsSchema = (unwrapped as Record<string, unknown>).items as unknown;
-    return value.map(v => coerceBySchema(v, itemsSchema));
+    if (Array.isArray(value)) {
+      return value.map(v => coerceBySchema(v, itemsSchema));
+    }
+    // Handle XML form: { item: [...] } or { item: single }
+    if (value && typeof value === "object") {
+      const maybe = value as Record<string, unknown>;
+      if (Object.prototype.hasOwnProperty.call(maybe, "item")) {
+        const items = maybe.item as unknown;
+        const arr = Array.isArray(items) ? items : [items];
+        return arr.map(v => coerceBySchema(v, itemsSchema));
+      }
+    }
   }
   if (typeof value === "string") {
     const s = value.trim();
