@@ -20,13 +20,19 @@ const openrouter = createOpenAICompatible({
   baseURL: "https://openrouter.ai/api/v1",
 });
 
+const friendli = createOpenAICompatible({
+  name: "friendli",
+  apiKey: process.env.FRIENDLI_TOKEN,
+  baseURL: "https://api.friendli.ai/serverless/v1",
+});
+
 const testModels = {
   gemma: wrapLanguageModel({
     model: openrouter("google/gemma-3-27b-it"),
     middleware: gemmaToolMiddleware,
   }),
   hermes: wrapLanguageModel({
-    model: openrouter("nousresearch/hermes-4-70b"),
+    model: openrouter("nousresearch/hermes-4-405b"),
     middleware: hermesToolMiddleware,
   }),
   xml: wrapLanguageModel({
@@ -34,8 +40,7 @@ const testModels = {
     middleware: xmlToolMiddleware,
   }),
   reasoning: wrapLanguageModel({
-    model: openrouter("qwen/qwen3-235b-a22b-thinking-2507"),
-
+    model: friendli("deepseek-ai/DeepSeek-R1-0528"),
     middleware: [
       hermesToolMiddleware,
       extractReasoningMiddleware({ tagName: "think" }),
@@ -90,6 +95,9 @@ async function streamE2E(model: LanguageModel) {
   for await (const part of result.fullStream) {
     if (part.type === "text-delta") {
       process.stdout.write(part.text);
+    } else if (part.type === "reasoning-delta") {
+      // Print reasoning text in a different color (e.g., yellow)
+      process.stdout.write(`\x1b[33m${part.text}\x1b[0m`);
     } else if (part.type === "tool-result") {
       console.log({
         name: part.toolName,
