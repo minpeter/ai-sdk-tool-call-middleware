@@ -11,12 +11,7 @@ import {
   isToolCallContent,
   isToolResultPart,
 } from "./utils";
-import {
-  coerceBySchema,
-  fixToolCallWithSchema,
-  unwrapJsonSchema,
-  getSchemaType,
-} from "./utils/coercion";
+import { coerceBySchema } from "./utils/coercion";
 import { toolChoiceStream } from "./stream-handler";
 import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
