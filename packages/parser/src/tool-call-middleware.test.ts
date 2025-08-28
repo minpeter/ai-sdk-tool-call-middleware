@@ -74,7 +74,7 @@ describe("createToolMiddleware", () => {
         content: [
           {
             type: "text",
-            text: `Some text <tool_code>{"name": "getTool", "arguments": {"arg1": "value1"}}</tool_code> more text`,
+            text: `Some text <tool_call>{"name": "getTool", "arguments": {"arg1": "value1"}}</tool_call> more text`,
           },
         ],
       });

@@ -55,15 +55,6 @@ export const jsonMixProtocol = ({
   },
 
   parseGeneratedText({ text, options }) {
-    // Support legacy tag names by normalizing them to the configured ones.
-    const legacyStart =
-      toolCallStart === "<tool_call>" ? "<tool_code>" : "<tool_call>";
-    const legacyEnd =
-      toolCallEnd === "</tool_call>" ? "</tool_code>" : "</tool_call>";
-    const normalizedText = text
-      .replaceAll(legacyStart, toolCallStart)
-      .replaceAll(legacyEnd, toolCallEnd);
-
     const startEsc = escapeRegExp(toolCallStart);
     const endEsc = escapeRegExp(toolCallEnd);
     const toolCallRegex = new RegExp(
@@ -75,12 +66,12 @@ export const jsonMixProtocol = ({
     let currentIndex = 0;
     let match: RegExpExecArray | null;
 
-    while ((match = toolCallRegex.exec(normalizedText)) !== null) {
+    while ((match = toolCallRegex.exec(text)) !== null) {
       const startIndex = match.index;
       const toolCallJson = match[1];
 
       if (startIndex > currentIndex) {
-        const textSegment = normalizedText.substring(currentIndex, startIndex);
+        const textSegment = text.substring(currentIndex, startIndex);
         if (textSegment.trim()) {
           processedElements.push({ type: "text", text: textSegment });
         }
@@ -112,8 +103,8 @@ export const jsonMixProtocol = ({
       currentIndex = startIndex + match[0].length;
     }
 
-    if (currentIndex < normalizedText.length) {
-      const remainingText = normalizedText.substring(currentIndex);
+    if (currentIndex < text.length) {
+      const remainingText = text.substring(currentIndex);
       if (remainingText.trim()) {
         processedElements.push({ type: "text", text: remainingText });
       }
@@ -125,13 +116,9 @@ export const jsonMixProtocol = ({
   createStreamParser({ tools: _tools, options } = { tools: [] }) {
     let isInsideToolCall = false;
     let buffer = "";
-    const toolCallBuffer: string[] = [];
+    let currentToolCallJson = "";
     let currentTextId: string | null = null;
     let hasEmittedTextStart = false;
-    const legacyStart =
-      toolCallStart === "<tool_call>" ? "<tool_code>" : "<tool_call>";
-    const legacyEnd =
-      toolCallEnd === "</tool_call>" ? "</tool_code>" : "</tool_call>";
 
     return new TransformStream({
       transform(chunk, controller) {
@@ -153,35 +140,18 @@ export const jsonMixProtocol = ({
             controller.enqueue({ type: "text-end", id: currentTextId });
           }
 
-          toolCallBuffer.forEach(toolCallText => {
-            try {
-              const parsedToolCall = RJSON.parse(toolCallText) as {
-                name: string;
-                arguments: unknown;
-              };
-              controller.enqueue({
-                type: "tool-call",
-                toolCallId: generateId(),
-                toolName: parsedToolCall.name,
-                input: JSON.stringify(parsedToolCall.arguments ?? {}),
-              });
-            } catch {
-              const errorId = generateId();
-              controller.enqueue({ type: "text-start", id: errorId });
-              controller.enqueue({
-                type: "text-delta",
-                id: errorId,
-                delta: `${toolCallStart}${toolCallText}${toolCallEnd}`,
-              });
-              controller.enqueue({ type: "text-end", id: errorId });
-              if (options?.onError) {
-                options.onError(
-                  "Could not process streaming JSON tool call; emitting original text.",
-                  { toolCall: `${toolCallStart}${toolCallText}${toolCallEnd}` }
-                );
-              }
-            }
-          });
+          // No pending calls should remain; if there is leftover, emit as text
+          if (currentToolCallJson) {
+            const errorId = generateId();
+            controller.enqueue({ type: "text-start", id: errorId });
+            controller.enqueue({
+              type: "text-delta",
+              id: errorId,
+              delta: `${toolCallStart}${currentToolCallJson}`,
+            });
+            controller.enqueue({ type: "text-end", id: errorId });
+            currentToolCallJson = "";
+          }
 
           controller.enqueue(chunk);
           return;
@@ -192,11 +162,7 @@ export const jsonMixProtocol = ({
           return;
         }
 
-        // Normalize legacy tag names to the configured ones for streaming parsing.
-        const normalizedDelta = chunk.delta
-          .replaceAll(legacyStart, toolCallStart)
-          .replaceAll(legacyEnd, toolCallEnd);
-        buffer += normalizedDelta;
+        buffer += chunk.delta;
 
         const publish = (text: string) => {
           if (isInsideToolCall) {
@@ -205,7 +171,7 @@ export const jsonMixProtocol = ({
               currentTextId = null;
               hasEmittedTextStart = false;
             }
-            toolCallBuffer.push(text);
+            currentToolCallJson += text;
           } else if (text.length > 0) {
             if (!currentTextId) {
               currentTextId = generateId();
@@ -234,12 +200,69 @@ export const jsonMixProtocol = ({
 
           publish(buffer.slice(0, startIndex));
           buffer = buffer.slice(startIndex + tag.length);
-          isInsideToolCall = !isInsideToolCall;
+          // Toggle state and finalize/initialize as needed
+          if (!isInsideToolCall) {
+            // We just consumed a start tag; begin accumulating JSON
+            currentToolCallJson = "";
+            isInsideToolCall = true;
+          } else {
+            // We just consumed an end tag; parse and emit tool-call
+            try {
+              const parsedToolCall = RJSON.parse(currentToolCallJson) as {
+                name: string;
+                arguments: unknown;
+              };
+              // close any open text block before emitting tool-call
+              if (currentTextId && hasEmittedTextStart) {
+                controller.enqueue({ type: "text-end", id: currentTextId });
+                currentTextId = null;
+                hasEmittedTextStart = false;
+              }
+              controller.enqueue({
+                type: "tool-call",
+                toolCallId: generateId(),
+                toolName: parsedToolCall.name,
+                input: JSON.stringify(parsedToolCall.arguments ?? {}),
+              });
+            } catch {
+              const errorId = generateId();
+              controller.enqueue({ type: "text-start", id: errorId });
+              controller.enqueue({
+                type: "text-delta",
+                id: errorId,
+                delta: `${toolCallStart}${currentToolCallJson}${toolCallEnd}`,
+              });
+              controller.enqueue({ type: "text-end", id: errorId });
+              if (options?.onError) {
+                options.onError(
+                  "Could not process streaming JSON tool call; emitting original text.",
+                  {
+                    toolCall: `${toolCallStart}${currentToolCallJson}${toolCallEnd}`,
+                  }
+                );
+              }
+            }
+            currentToolCallJson = "";
+            isInsideToolCall = false;
+          }
         }
 
         if (!isInsideToolCall) {
-          publish(buffer);
-          buffer = "";
+          // Avoid emitting a partial start tag that may be completed in the next chunk.
+          // If the buffer ends with a suffix that matches the beginning of the start tag,
+          // keep that suffix in the buffer and only emit the safe prefix.
+          const potentialIndex = getPotentialStartIndex(buffer, toolCallStart);
+          if (
+            potentialIndex != null &&
+            potentialIndex + toolCallStart.length > buffer.length
+          ) {
+            // Emit only the safe portion before the potential (incomplete) start tag.
+            publish(buffer.slice(0, potentialIndex));
+            buffer = buffer.slice(potentialIndex);
+          } else {
+            publish(buffer);
+            buffer = "";
+          }
         }
       },
     });

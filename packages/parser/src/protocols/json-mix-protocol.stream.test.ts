@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { jsonMixProtocol } from "./json-mix-protocol";
 import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import { xmlProtocol } from "./xml-protocol";
 
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];
@@ -37,7 +38,7 @@ describe("jsonMixProtocol streaming", () => {
     expect(JSON.parse(tool.input)).toEqual({ a: 1 });
   });
 
-  it("normalizes legacy <tool_code> tags and parses", async () => {
+  it("normalizes legacy <tool_call> tags and parses", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV2StreamPart>({
@@ -45,7 +46,7 @@ describe("jsonMixProtocol streaming", () => {
         ctrl.enqueue({
           type: "text-delta",
           id: "1",
-          delta: '<tool_code>{"name":"y","arguments":{}}</tool_code>',
+          delta: '<tool_call>{"name":"y","arguments":{}}</tool_call>',
         });
         ctrl.enqueue({
           type: "finish",
@@ -138,7 +139,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
     expect(out.find(c => c.type === "finish")).toBeTruthy();
   });
 
-  it("supports legacy <tool_code> tags mixed in chunks", async () => {
+  it("supports legacy <tool_call> tags mixed in chunks", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV2StreamPart>({
@@ -146,9 +147,9 @@ describe("jsonMixProtocol streaming edge cases", () => {
         ctrl.enqueue({
           type: "text-delta",
           id: "1",
-          delta: '<tool_code>{"name":"b","arguments":{}}',
+          delta: '<tool_call>{"name":"b","arguments":{}}',
         });
-        ctrl.enqueue({ type: "text-delta", id: "1", delta: "</tool_code>" });
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: "</tool_call>" });
         ctrl.enqueue({
           type: "finish",
           finishReason: "stop",
@@ -217,5 +218,50 @@ describe("jsonMixProtocol streaming edge cases", () => {
       .map((c: any) => c.delta)
       .join("");
     expect(text).toContain('<tool_call>{"name":"c"');
+  });
+
+  it("parses a single call whose tags are split across many chunks (>=6)", async () => {
+    const protocol = jsonMixProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: "<tool" });
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: "_ca" });
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: "ll>" });
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: '{"name":"d"' });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: ',"argume',
+        });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: 'nts":{',
+        });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '"location"',
+        });
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: ':"NY"' });
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: "}}" });
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: "</tool" });
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: "_" });
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: "call>" });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: "stop",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        });
+        ctrl.close();
+      },
+    });
+    const out = await collect(rs.pipeThrough(transformer));
+    console.debug(out);
+    const tool = out.find(c => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(JSON.parse(tool.input).location).toBe("NY");
+    expect(tool.toolName).toBe("d");
   });
 });
