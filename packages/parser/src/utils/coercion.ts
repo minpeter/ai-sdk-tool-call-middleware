@@ -169,7 +169,25 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
         }
         return arr.map(v => coerceBySchema(v, itemsSchema));
       }
+
+      // Special handling for objects with array-like field names that might represent arrays
+      // This commonly happens when models output <multiples><number>3</number><number>5</number></multiples>
+      // which gets parsed as { "number": ["3", "5"] }
       const keys = Object.keys(maybe);
+
+      // Check for single field that contains an array (common XML pattern)
+      if (keys.length === 1) {
+        const singleKey = keys[0];
+        const singleValue = maybe[singleKey];
+        if (Array.isArray(singleValue)) {
+          const coercedArray = singleValue.map(v =>
+            coerceBySchema(v, itemsSchema)
+          );
+          return coercedArray;
+        }
+      }
+
+      // Check for numeric keys (traditional tuple handling)
       if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
         const arr = keys
           .sort((a, b) => Number(a) - Number(b))

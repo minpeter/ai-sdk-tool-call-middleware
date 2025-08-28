@@ -77,15 +77,15 @@ async function main() {
   await evaluate({
     models: {
       // gpt41nano,
-      // xml: xmlGemma27b,
+      xml: xmlGemma27b,
       morphExp: morphExpGemma27b,
-      // json: jsonGemma27b,
+      json: jsonGemma27b,
     },
     benchmarks: [
-      // bfclSimpleBenchmark,
-      // bfclMultipleBenchmark,
+      bfclSimpleBenchmark,
+      bfclMultipleBenchmark,
       bfclParallelBenchmark,
-      // bfclParallelMultipleBenchmark,
+      bfclParallelMultipleBenchmark,
     ],
     reporter: "console.debug",
   });

@@ -105,6 +105,8 @@ export const xmlProtocol = (): ToolCallProtocol => ({
         for (const k of Object.keys(parsedArgs || {})) {
           const v = parsedArgs[k];
           let val: unknown = v;
+
+          // Handle text content extraction
           if (
             v &&
             typeof v === "object" &&
@@ -112,6 +114,126 @@ export const xmlProtocol = (): ToolCallProtocol => ({
           ) {
             val = (v as Record<string, unknown>)?.["#text"];
           }
+
+          // Heuristic array parsing for multiple tags with same name
+          if (Array.isArray(v)) {
+            val = v.map(item => {
+              if (
+                item &&
+                typeof item === "object" &&
+                Object.prototype.hasOwnProperty.call(item, "#text")
+              ) {
+                const textVal = (item as Record<string, unknown>)?.["#text"];
+                return typeof textVal === "string" ? textVal.trim() : textVal;
+              }
+              return typeof item === "string" ? item.trim() : item;
+            });
+          }
+          // Heuristic tuple/array parsing for various XML patterns
+          else if (
+            v &&
+            typeof v === "object" &&
+            !Object.prototype.hasOwnProperty.call(v, "#text")
+          ) {
+            const obj = v as Record<string, unknown>;
+            const keys = Object.keys(obj);
+
+            // Check for 'item' key pattern (common XML array pattern)
+            if (keys.length === 1 && keys[0] === "item") {
+              const itemValue = obj.item;
+              if (Array.isArray(itemValue)) {
+                val = itemValue.map(item => {
+                  if (
+                    item &&
+                    typeof item === "object" &&
+                    Object.prototype.hasOwnProperty.call(item, "#text")
+                  ) {
+                    const textVal = (item as Record<string, unknown>)?.[
+                      "#text"
+                    ];
+                    const trimmed =
+                      typeof textVal === "string" ? textVal.trim() : textVal;
+                    // Try to convert to number if it looks like one
+                    if (
+                      typeof trimmed === "string" &&
+                      /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                    ) {
+                      const num = Number(trimmed);
+                      if (Number.isFinite(num)) return num;
+                    }
+                    return trimmed;
+                  }
+                  const trimmed = typeof item === "string" ? item.trim() : item;
+                  // Try to convert to number if it looks like one
+                  if (
+                    typeof trimmed === "string" &&
+                    /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                  ) {
+                    const num = Number(trimmed);
+                    if (Number.isFinite(num)) return num;
+                  }
+                  return trimmed;
+                });
+              } else {
+                const trimmed =
+                  typeof itemValue === "string" ? itemValue.trim() : itemValue;
+                // Try to convert to number if it looks like one
+                if (
+                  typeof trimmed === "string" &&
+                  /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                ) {
+                  const num = Number(trimmed);
+                  if (Number.isFinite(num)) {
+                    val = num;
+                  } else {
+                    val = trimmed;
+                  }
+                } else {
+                  val = trimmed;
+                }
+              }
+            }
+            // Check if all keys are numeric indices (0, 1, 2, ...) and consecutive
+            else {
+              const isIndexedTuple =
+                keys.length > 0 &&
+                keys.every(key => /^\d+$/.test(key)) &&
+                (() => {
+                  const indices = keys
+                    .map(k => parseInt(k))
+                    .sort((a, b) => a - b);
+                  return (
+                    indices[0] === 0 && indices.every((val, idx) => val === idx)
+                  );
+                })();
+
+              if (isIndexedTuple) {
+                // Convert indexed object to array (tuple)
+                const sortedKeys = keys.sort(
+                  (a, b) => parseInt(a) - parseInt(b)
+                );
+                val = sortedKeys.map(key => {
+                  const item = obj[key];
+                  if (
+                    item &&
+                    typeof item === "object" &&
+                    Object.prototype.hasOwnProperty.call(item, "#text")
+                  ) {
+                    const textVal = (item as Record<string, unknown>)?.[
+                      "#text"
+                    ];
+                    return typeof textVal === "string"
+                      ? textVal.trim()
+                      : textVal;
+                  }
+                  return typeof item === "string" ? item.trim() : item;
+                });
+              } else {
+                val = v;
+              }
+            }
+          }
+
           args[k] = typeof val === "string" ? val.trim() : val;
         }
 
@@ -221,6 +343,8 @@ export const xmlProtocol = (): ToolCallProtocol => ({
                 for (const k of Object.keys(parsedArgs || {})) {
                   const v = parsedArgs[k];
                   let val: unknown = v;
+
+                  // Handle text content extraction
                   if (
                     v &&
                     typeof v === "object" &&
@@ -228,6 +352,136 @@ export const xmlProtocol = (): ToolCallProtocol => ({
                   ) {
                     val = (v as Record<string, unknown>)?.["#text"];
                   }
+
+                  // Heuristic array parsing for multiple tags with same name
+                  if (Array.isArray(v)) {
+                    val = v.map(item => {
+                      if (
+                        item &&
+                        typeof item === "object" &&
+                        Object.prototype.hasOwnProperty.call(item, "#text")
+                      ) {
+                        const textVal = (item as Record<string, unknown>)?.[
+                          "#text"
+                        ];
+                        return typeof textVal === "string"
+                          ? textVal.trim()
+                          : textVal;
+                      }
+                      return typeof item === "string" ? item.trim() : item;
+                    });
+                  }
+                  // Heuristic tuple/array parsing for various XML patterns
+                  else if (
+                    v &&
+                    typeof v === "object" &&
+                    !Object.prototype.hasOwnProperty.call(v, "#text")
+                  ) {
+                    const obj = v as Record<string, unknown>;
+                    const keys = Object.keys(obj);
+
+                    // Check for 'item' key pattern (common XML array pattern)
+                    if (keys.length === 1 && keys[0] === "item") {
+                      const itemValue = obj.item;
+                      if (Array.isArray(itemValue)) {
+                        val = itemValue.map(item => {
+                          if (
+                            item &&
+                            typeof item === "object" &&
+                            Object.prototype.hasOwnProperty.call(item, "#text")
+                          ) {
+                            const textVal = (item as Record<string, unknown>)?.[
+                              "#text"
+                            ];
+                            const trimmed =
+                              typeof textVal === "string"
+                                ? textVal.trim()
+                                : textVal;
+                            // Try to convert to number if it looks like one
+                            if (
+                              typeof trimmed === "string" &&
+                              /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                            ) {
+                              const num = Number(trimmed);
+                              if (Number.isFinite(num)) return num;
+                            }
+                            return trimmed;
+                          }
+                          const trimmed =
+                            typeof item === "string" ? item.trim() : item;
+                          // Try to convert to number if it looks like one
+                          if (
+                            typeof trimmed === "string" &&
+                            /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                          ) {
+                            const num = Number(trimmed);
+                            if (Number.isFinite(num)) return num;
+                          }
+                          return trimmed;
+                        });
+                      } else {
+                        const trimmed =
+                          typeof itemValue === "string"
+                            ? itemValue.trim()
+                            : itemValue;
+                        // Try to convert to number if it looks like one
+                        if (
+                          typeof trimmed === "string" &&
+                          /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                        ) {
+                          const num = Number(trimmed);
+                          if (Number.isFinite(num)) {
+                            val = num;
+                          } else {
+                            val = trimmed;
+                          }
+                        } else {
+                          val = trimmed;
+                        }
+                      }
+                    }
+                    // Check if all keys are numeric indices (0, 1, 2, ...) and consecutive
+                    else {
+                      const isIndexedTuple =
+                        keys.length > 0 &&
+                        keys.every(key => /^\d+$/.test(key)) &&
+                        (() => {
+                          const indices = keys
+                            .map(k => parseInt(k))
+                            .sort((a, b) => a - b);
+                          return (
+                            indices[0] === 0 &&
+                            indices.every((val, idx) => val === idx)
+                          );
+                        })();
+
+                      if (isIndexedTuple) {
+                        // Convert indexed object to array (tuple)
+                        const sortedKeys = keys.sort(
+                          (a, b) => parseInt(a) - parseInt(b)
+                        );
+                        val = sortedKeys.map(key => {
+                          const item = obj[key];
+                          if (
+                            item &&
+                            typeof item === "object" &&
+                            Object.prototype.hasOwnProperty.call(item, "#text")
+                          ) {
+                            const textVal = (item as Record<string, unknown>)?.[
+                              "#text"
+                            ];
+                            return typeof textVal === "string"
+                              ? textVal.trim()
+                              : textVal;
+                          }
+                          return typeof item === "string" ? item.trim() : item;
+                        });
+                      } else {
+                        val = v;
+                      }
+                    }
+                  }
+
                   args[k] = typeof val === "string" ? val.trim() : val;
                 }
 
