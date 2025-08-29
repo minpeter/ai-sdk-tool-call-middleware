@@ -236,6 +236,8 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
         }
 
         // Use original schema if available, fallback to transformed schema
+        // INTERNAL: `originalToolSchemas` is used to propagate the provider's
+        // untouched tool schemas for better coercion. Not part of public API.
         const originalSchema = originalSchemas[toolName];
         const fallbackSchema = tools.find(t => t.name === toolName)
           ?.inputSchema as unknown;

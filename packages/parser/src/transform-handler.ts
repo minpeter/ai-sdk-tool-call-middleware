@@ -80,6 +80,9 @@ export async function transformParams({
           (params.providerOptions as { toolCallMiddleware?: unknown })
             .toolCallMiddleware) ||
           {}),
+        // INTERNAL: used by the middleware to propagate the names of custom
+        // function tools into downstream handlers (stream/generate) when
+        // providers strip or ignore `params.tools`. Not a stable public API.
         toolNames: functionTools.map(t => t.name),
       },
     },
@@ -151,6 +154,8 @@ export async function transformParams({
               }
             ).toolCallMiddleware) ||
             {}),
+          // INTERNAL: used by the middleware to activate the tool-choice
+          // fast-path in handlers. Not a stable public API.
           toolChoice: params.toolChoice,
         },
       },
@@ -181,6 +186,8 @@ export async function transformParams({
               }
             ).toolCallMiddleware) ||
             {}),
+          // INTERNAL: used by the middleware to activate the tool-choice
+          // fast-path in handlers. Not a stable public API.
           toolChoice: { type: "required" },
         },
       },

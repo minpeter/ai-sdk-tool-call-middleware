@@ -23,7 +23,7 @@ For single package development, run commands from within the package directory:
 
 ## Architecture Overview
 
-This project provides middleware for AI SDK v2 to enable tool calling with models that don't natively support OpenAI-style tool calling.
+This project provides middleware for AI SDK to enable tool calling with models that don't natively support OpenAI-style tool calling.
 
 ### Core Packages
 
@@ -48,7 +48,7 @@ This project provides middleware for AI SDK v2 to enable tool calling with model
 - Formatted for the model (`formatTools`, `formatToolCall`, `formatToolResponse`)
 - Parsed from model output (`parseGeneratedText`, `createStreamParser`)
 
-**Middleware Pattern**: Uses AI SDK v2 middleware to intercept and transform:
+**Middleware Pattern**: Uses AI SDK middleware to intercept and transform:
 
 - `transformParams`: Converts tool definitions to system prompts
 - `wrapStream`: Handles streaming responses with tool call detection

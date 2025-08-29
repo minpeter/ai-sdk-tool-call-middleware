@@ -7,9 +7,9 @@
 [![codecov](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware/branch/main/graph/badge.svg)](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware)
 
 > [!NOTE]
-> Depends on AI SDK v5. For AI SDK v4, pin `@ai-sdk-tool/parser@1.0.0`.
+> Requires AI SDK v5. For AI SDK v4, pin `@ai-sdk-tool/parser@1.0.0`.
 
-Middleware that enables tool calling with models that don’t natively support OpenAI‑style `tools`. Works with any provider (OpenRouter, vLLM, Ollama, etc.) via AI SDK v2 middleware.
+Middleware that enables tool calling with models that don’t natively support OpenAI‑style `tools`. Works with any provider (OpenRouter, vLLM, Ollama, etc.) via AI SDK middleware.
 
 ## Why This Exists
 
@@ -17,9 +17,8 @@ Many self‑hosted or third‑party model endpoints (vLLM, MLC‑LLM, Ollama, Op
 This project provides a flexible middleware that:
 
 - Parses tool calls from streaming or batch responses
-- Supports Hermes and Gemma formats
-- Llama, Mistral, and JSON formats are coming soon
-- Gain complete control over the tool call system prompt.
+- Prebuilt protocols: JSON‑mix (Gemma/Hermes‑style) and Morph‑XML
+- Full control over the tool call system prompt
 
 ## Installation
 
@@ -98,8 +97,8 @@ main().catch(console.error);
 
 ## Prebuilt middlewares
 
-- `gemmaToolMiddleware` — JSON‑mix format inside markdown fences (`tool_call/`tool_response).
-- `hermesToolMiddleware` — JSON‑mix format with XML wrappers (`<tool_call>` tags).
+- `gemmaToolMiddleware` — JSON‑mix format inside markdown fences (`tool_call` / ```tool_response").
+- `hermesToolMiddleware` — JSON‑mix format wrapped in `<tool_call>` XML tags.
 - `xmlToolMiddleware` — XML format (Morph‑XML protocol).
 
 ## Protocols
@@ -107,6 +106,24 @@ main().catch(console.error);
 - `jsonMixProtocol` — JSON function calls in flexible text wrappers.
 - `morphXmlProtocol` — XML element per call, robust to streaming.
 
+## Tool choice support
+
+- `toolChoice: { type: "required" }`: forces one tool call. Middleware sets a JSON response schema to validate calls.
+- `toolChoice: { type: "tool", toolName }`: forces a specific tool. Provider‑defined tools are not supported; pass only custom function tools.
+- `toolChoice: { type: "none" }` is not supported and will throw.
+
 ## Examples
 
 See `examples/parser-core/src/*` for runnable demos (streaming/non‑streaming, tool choice).
+
+## [dev] Contributor notes
+
+- Exported API: `createToolMiddleware`, `gemmaToolMiddleware`, `hermesToolMiddleware`, `xmlToolMiddleware`, `jsonMixProtocol`, `morphXmlProtocol`.
+- Debugging:
+  - Set `DEBUG_PASER_MW=stream` to log raw/parsed chunks during runs.
+  - Set `DEBUG_PASER_MW=parse` to log original matched text and parsed summary.
+  - Optional `DEBUG_PASER_MW_STYLE=bg|inverse|underline|bold` to change highlight style.
+- Provider options passthrough: `providerOptions.toolCallMiddleware` fields are merged into protocol options. Internal fields used:
+  - `toolNames`: internal propagation of custom tool names.
+  - `toolChoice`: internal fast‑path activation for required/specific tool modes.
+- Transform details: `transformParams` injects a system message built from protocol `formatTools` and clears `tools` since many providers strip/ignore them.

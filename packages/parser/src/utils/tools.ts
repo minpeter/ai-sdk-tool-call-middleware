@@ -2,8 +2,11 @@ import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
 
 type ProviderOptionsWithToolNames = {
   toolCallMiddleware?: {
+    // INTERNAL: set by transform-handler to propagate tool names when providers
+    // strip `params.tools`. Used as a fallback in downstream handlers.
     toolNames?: string[];
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    // INTERNAL: set by transform-handler to activate tool-choice fast-path.
     toolChoice?: { type: string };
   };
 };
