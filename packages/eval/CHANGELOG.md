@@ -1,5 +1,11 @@
 # @ai-sdk-tool/eval
 
+## 0.1.3
+
+### Patch Changes
+
+- eb546f2: Fixed an issue where the expected and actual values ​​would not be mapped even though they matched in certain corner tests.
+
 ## 0.1.2
 
 ### Patch Changes
