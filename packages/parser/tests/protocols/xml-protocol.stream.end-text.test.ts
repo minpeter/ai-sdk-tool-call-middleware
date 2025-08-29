@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { xmlProtocol } from "@/protocols/xml-protocol";
 import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import { describe, expect, it } from "vitest";
+
+import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];
@@ -10,9 +11,9 @@ function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   })();
 }
 
-describe("xmlProtocol streaming trailing text-end on flush", () => {
+describe("morphXmlProtocol streaming trailing text-end on flush", () => {
   it("emits text-end when there is open text at flush with no tags", async () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV2StreamPart>({
       start(ctrl) {

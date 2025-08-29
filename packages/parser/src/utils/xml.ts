@@ -1,4 +1,5 @@
 import type { LanguageModelV2ToolCall } from "@ai-sdk/provider";
+
 import { hasInputProperty } from "./type-guards";
 
 export const XML_TEXT_NODE = "#text";

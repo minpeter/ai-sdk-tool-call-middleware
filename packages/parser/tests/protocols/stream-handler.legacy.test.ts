@@ -1,7 +1,8 @@
-import { describe, test, expect, vi } from "vitest";
 import { LanguageModelV2StreamPart } from "@ai-sdk/provider";
-import { createToolMiddleware } from "@/tool-call-middleware";
+import { describe, expect, test, vi } from "vitest";
+
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
+import { createToolMiddleware } from "@/tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

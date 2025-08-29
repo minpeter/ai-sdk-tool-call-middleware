@@ -1,15 +1,35 @@
 {
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
+    "composite": false,
+    "declaration": true,
+    "declarationMap": true,
     "esModuleInterop": true,
-    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "inlineSources": false,
+    "isolatedModules": true,
+    "moduleResolution": "bundler",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "preserveWatchOutput": true,
     "skipLibCheck": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "declaration": true
+    "strict": true,
+    "types": ["@types/node"],
+    "jsx": "react-jsx",
+    "lib": [
+      "es2021",
+      "dom",
+      "dom.iterable",
+      "dom.asynciterable",
+      "es2018.asynciterable"
+    ],
+    "module": "esnext",
+    "target": "es2018",
+    "stripInternal": true,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["."],
+  "exclude": ["dist", "build", "node_modules"]
 }

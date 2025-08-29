@@ -1,6 +1,6 @@
 import {
-  simpleFunctionChecker,
   parallelFunctionCheckerNoOrder,
+  simpleFunctionChecker,
   ToolCall, // Import the local interface
 } from "./benchmarks/bfcl/ast-checker";
 

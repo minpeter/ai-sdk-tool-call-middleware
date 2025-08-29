@@ -1173,5 +1173,5 @@ function stringify(obj: unknown): string {
   return "null";
 }
 
-export { parse, transform, stringify };
+export { parse, stringify, transform };
 export type { ParseOptions };

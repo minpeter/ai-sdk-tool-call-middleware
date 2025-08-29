@@ -1,9 +1,9 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   extractReasoningMiddleware,
+  generateText,
   LanguageModel,
   stepCountIs,
-  generateText,
   wrapLanguageModel,
 } from "ai";
 import { z } from "zod";
@@ -12,7 +12,7 @@ import {
   gemmaToolMiddleware,
   hermesToolMiddleware,
   xmlToolMiddleware,
-} from "../src";
+} from "@/index";
 
 const openrouter = createOpenAICompatible({
   name: "openrouter",

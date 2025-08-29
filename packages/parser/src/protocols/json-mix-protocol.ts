@@ -3,9 +3,11 @@ import type {
   LanguageModelV2ToolCall,
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
-import { ToolCallProtocol } from "./tool-call-protocol";
 import { generateId } from "@ai-sdk/provider-utils";
-import { getPotentialStartIndex, RJSON, escapeRegExp } from "../utils";
+
+import { escapeRegExp, getPotentialStartIndex, RJSON } from "@/utils";
+
+import { ToolCallProtocol } from "./tool-call-protocol";
 
 type JsonMixOptions = {
   toolCallStart?: string;

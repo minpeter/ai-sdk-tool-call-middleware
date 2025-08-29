@@ -3,20 +3,20 @@ export { evaluate } from "./evaluate";
 
 // Built-in benchmarks
 export {
+  bfclMultipleBenchmark,
+  bfclParallelBenchmark,
+  bfclParallelMultipleBenchmark,
+  bfclSimpleBenchmark,
+} from "./benchmarks/bfcl";
+export {
   jsonGenerationBenchmark,
   jsonGenerationSchemaOnlyBenchmark,
 } from "./benchmarks/json-generation";
-export {
-  bfclSimpleBenchmark,
-  bfclParallelBenchmark,
-  bfclMultipleBenchmark,
-  bfclParallelMultipleBenchmark,
-} from "./benchmarks/bfcl";
 
 // Core interfaces for custom benchmarks
 export type {
-  LanguageModelV2Benchmark,
   BenchmarkResult,
   EvaluateOptions,
+  LanguageModelV2Benchmark,
   ReporterType,
 } from "./interfaces";

@@ -1,13 +1,13 @@
-import { describe, it, expect, vi } from "vitest";
+import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import { describe, expect, it, vi } from "vitest";
+
 import {
   gemmaToolMiddleware,
   hermesToolMiddleware,
   xmlToolMiddleware,
 } from "@/index";
-import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
-
-import { createToolMiddleware } from "@/tool-call-middleware";
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
+import { createToolMiddleware } from "@/tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

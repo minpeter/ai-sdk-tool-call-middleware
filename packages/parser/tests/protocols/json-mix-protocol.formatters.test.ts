@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
 
 describe("jsonMixProtocol formatters and parseGeneratedText edges", () => {

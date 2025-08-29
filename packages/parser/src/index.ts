@@ -1,11 +1,5 @@
+import { jsonMixProtocol, morphXmlProtocol } from "./protocols";
 import { createToolMiddleware } from "./tool-call-middleware";
-import { jsonMixProtocol, xmlProtocol } from "./protocols";
-export {
-  unwrapJsonSchema,
-  getSchemaType,
-  coerceBySchema,
-  fixToolCallWithSchema,
-} from "./utils/coercion";
 
 const gemmaToolMiddleware = createToolMiddleware({
   protocol: jsonMixProtocol(
@@ -45,7 +39,7 @@ For each function call return a json object with function name and arguments wit
 });
 
 const xmlToolMiddleware = createToolMiddleware({
-  protocol: xmlProtocol,
+  protocol: morphXmlProtocol,
   toolSystemPromptTemplate(tools: string) {
     return `You are a function calling AI model.
 You are provided with function signatures within <tools></tools> XML tags.
@@ -64,10 +58,10 @@ San Fransisco
 });
 
 export {
+  createToolMiddleware,
   gemmaToolMiddleware,
   hermesToolMiddleware,
-  xmlToolMiddleware,
-  createToolMiddleware,
   jsonMixProtocol,
-  xmlProtocol,
+  morphXmlProtocol,
+  xmlToolMiddleware,
 };

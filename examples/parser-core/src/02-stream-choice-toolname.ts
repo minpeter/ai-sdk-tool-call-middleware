@@ -1,7 +1,7 @@
-import { z } from "zod";
-import { streamText, wrapLanguageModel } from "ai";
 import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { createOpenAI } from "@ai-sdk/openai";
+import { streamText, wrapLanguageModel } from "ai";
+import { z } from "zod";
 
 // A provider with supportsStructuredOutputs: true is required. Investigating....
 // createOpenAICompatible cannot be used here.

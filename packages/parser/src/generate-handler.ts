@@ -5,13 +5,14 @@ import type {
   LanguageModelV2ToolCall,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
+
 import { ToolCallProtocol } from "./protocols/tool-call-protocol";
-import { coerceToolCallInput } from "./utils/coercion";
 import {
-  isToolChoiceActive,
-  getFunctionTools,
   extractOnErrorOption,
+  getFunctionTools,
+  isToolChoiceActive,
 } from "./utils";
+import { coerceToolCallInput } from "./utils/coercion";
 
 type WrapGenerateParams = {
   prompt?: unknown;

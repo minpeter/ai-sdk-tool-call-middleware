@@ -60,7 +60,7 @@ export interface LanguageModelV2Benchmark {
    */
   run(
     model: LanguageModel,
-    config?: Record<string, any>
+    config?: Record<string, unknown>
   ): Promise<BenchmarkResult>;
 }
 

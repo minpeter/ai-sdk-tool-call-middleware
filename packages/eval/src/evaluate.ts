@@ -1,4 +1,5 @@
 import { LanguageModel } from "ai";
+
 import {
   EvaluateOptions,
   EvaluationResult,
@@ -63,9 +64,9 @@ export async function evaluate(
   } else if (
     typeof models === "object" &&
     models !== null &&
-    "modelId" in (models as any)
+    "modelId" in (models as Record<string, unknown>)
   ) {
-    modelEntries.push([undefined, models as LanguageModel]);
+    modelEntries.push([undefined, models as unknown as LanguageModel]);
   } else {
     for (const [key, m] of Object.entries(
       models as Record<string, LanguageModel>

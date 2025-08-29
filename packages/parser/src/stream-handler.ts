@@ -1,16 +1,17 @@
 import type {
-  LanguageModelV2StreamPart,
   LanguageModelV2,
-  LanguageModelV2Usage,
   LanguageModelV2FinishReason,
   LanguageModelV2FunctionTool,
+  LanguageModelV2StreamPart,
+  LanguageModelV2Usage,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
+
 import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
-  isToolChoiceActive,
-  getFunctionTools,
   extractOnErrorOption,
+  getFunctionTools,
+  isToolChoiceActive,
 } from "./utils";
 
 type WrapStreamParams = Parameters<typeof isToolChoiceActive>[0] & {

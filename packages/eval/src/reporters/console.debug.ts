@@ -1,4 +1,4 @@
-import { EvaluationResult } from "../interfaces";
+import { EvaluationResult } from "@/interfaces";
 
 const colors = {
   reset: "\x1b[0m",
@@ -31,57 +31,68 @@ function uniqueLines(lines: string[]): string[] {
   return out;
 }
 
-function suggestFixFromDiff(parsed: any): string[] {
+function suggestFixFromDiff(parsed: unknown): string[] {
   const suggestions: string[] = [];
-  const { error_type, expected, actual, diff } = parsed ?? {};
+  const { error_type, expected, actual, diff } =
+    (parsed as Record<string, unknown>) ?? {};
 
   if (
-    (diff && diff.some((d: string) => d.includes("function name"))) ||
-    (diff && diff.some((d: string) => d.includes("missing function:")))
+    (Array.isArray(diff) &&
+      diff.some((d: unknown) => String(d).includes("function name"))) ||
+    (Array.isArray(diff) &&
+      diff.some((d: unknown) => String(d).includes("missing function:")))
   ) {
-    const expectedName = expected?.function;
-    const actualName = actual?.function;
+    const expectedName = (expected as Record<string, unknown> | undefined)
+      ?.function as string | undefined;
+    const actualName = (actual as Record<string, unknown> | undefined)
+      ?.function as string | undefined;
     if (expectedName && actualName && expectedName !== actualName) {
       suggestions.push(
         `Call the function '${expectedName}' instead of '${actualName}'.`
       );
     }
-    if (Array.isArray(expected?.functions)) {
+    if (Array.isArray((expected as Record<string, unknown>)?.functions)) {
       suggestions.push(
-        `Ensure tool calls include: ${expected.functions.join(", ")}.`
+        `Ensure tool calls include: ${((expected as Record<string, unknown>).functions as string[]).join(", ")}.`
       );
     }
   }
 
   if (
-    diff &&
-    diff.some((d: string) => d.startsWith("- missing required param:"))
+    Array.isArray(diff) &&
+    diff.some((d: unknown) => String(d).startsWith("- missing required param:"))
   ) {
     const missing = diff
-      .filter((d: string) => d.startsWith("- missing required param:"))
-      .map((d: string) => d.replace("- missing required param: ", ""));
+      .filter((d: unknown) => String(d).startsWith("- missing required param:"))
+      .map((d: unknown) => String(d).replace("- missing required param: ", ""));
     if (missing.length) {
       suggestions.push(`Add required parameter(s): ${missing.join(", ")}.`);
     }
   }
 
-  if (diff && diff.some((d: string) => d.startsWith("+ unexpected param:"))) {
+  if (
+    Array.isArray(diff) &&
+    diff.some((d: unknown) => String(d).startsWith("+ unexpected param:"))
+  ) {
     const extras = diff
-      .filter((d: string) => d.startsWith("+ unexpected param:"))
-      .map((d: string) => d.replace("+ unexpected param: ", ""));
+      .filter((d: unknown) => String(d).startsWith("+ unexpected param:"))
+      .map((d: unknown) => String(d).replace("+ unexpected param: ", ""));
     if (extras.length) {
       suggestions.push(`Remove unexpected parameter(s): ${extras.join(", ")}.`);
     }
   }
 
-  if (diff && diff.some((d: string) => d.startsWith("@@ param "))) {
+  if (
+    Array.isArray(diff) &&
+    diff.some((d: unknown) => String(d).startsWith("@@ param "))
+  ) {
     const targets = diff
-      .filter((d: string) => d.startsWith("@@ param "))
-      .map((d: string) => d.replace("@@ param ", ""));
+      .filter((d: unknown) => String(d).startsWith("@@ param "))
+      .map((d: unknown) => String(d).replace("@@ param ", ""));
     for (const param of targets) {
-      const allowedLine = diff.find((d: string) =>
-        d.startsWith("- expected one of:")
-      );
+      const allowedLine = (diff as unknown[]).find((d: unknown) =>
+        String(d).startsWith("- expected one of:")
+      ) as string | undefined;
       if (allowedLine) {
         const allowed = allowedLine.replace("- expected one of: ", "");
         suggestions.push(`Set '${param}' to one of: ${allowed}.`);
@@ -153,7 +164,9 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
             try {
               const parsed = JSON.parse(l.replace(/^\[DEBUG-FAIL\] /, ""));
               if (parsed?.id) debugIds.add(String(parsed.id));
-            } catch {}
+            } catch {
+              // ignore JSON parse errors for debug lines
+            }
           }
         }
         for (const line of failLogs) {

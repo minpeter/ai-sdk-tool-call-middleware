@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Mock } from "vitest";
-import { createToolMiddleware } from "@/tool-call-middleware";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
 import { toolChoiceStream } from "@/stream-handler";
+import { createToolMiddleware } from "@/tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

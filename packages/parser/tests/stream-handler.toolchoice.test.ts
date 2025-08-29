@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { toolChoiceStream } from "@/stream-handler";
 import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import { describe, expect, it, vi } from "vitest";
+
+import { toolChoiceStream } from "@/stream-handler";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

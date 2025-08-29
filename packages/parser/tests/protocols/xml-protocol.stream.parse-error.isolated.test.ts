@@ -1,8 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
 import type {
-  LanguageModelV2StreamPart,
   LanguageModelV2FunctionTool,
+  LanguageModelV2StreamPart,
 } from "@ai-sdk/provider";
+import { describe, expect, it, vi } from "vitest";
 
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];
@@ -12,7 +12,7 @@ function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   })();
 }
 
-describe("xmlProtocol streaming parse error with isolated module mock", () => {
+describe("morphXmlProtocol streaming parse error with isolated module mock", () => {
   it("invokes onError and emits original text on parser exception", async () => {
     vi.resetModules();
     vi.doMock("fast-xml-parser", () => ({
@@ -24,8 +24,8 @@ describe("xmlProtocol streaming parse error with isolated module mock", () => {
       XMLBuilder: class {},
     }));
 
-    const { xmlProtocol } = await import("@/protocols/xml-protocol");
-    const protocol = xmlProtocol();
+    const { morphXmlProtocol } = await import("@/protocols/morph-xml-protocol");
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV2FunctionTool[] = [
       {
         type: "function",

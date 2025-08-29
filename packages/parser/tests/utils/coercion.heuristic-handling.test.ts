@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { coerceBySchema } from "../../src/utils/coercion";
+import { describe, expect, it } from "vitest";
+
+import { coerceBySchema } from "@/utils/coercion";
 
 describe("Coercion Heuristic Handling", () => {
   describe("Single key array extraction", () => {
