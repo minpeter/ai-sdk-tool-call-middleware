@@ -62,9 +62,9 @@ See `packages/parser/src/tool-call-middleware.ts` and `packages/parser/src/proto
 
 ## Debugging
 
-- Set `DEBUG_PASER_MW` to control logging:
+- Set `DEBUG_PARSER_MW` to control logging:
   - `off` (default), `stream` (raw + normalized chunks), `parse` (parsed summary with origin highlights)
-- Optional style for origin highlighting: `DEBUG_PASER_MW_STYLE` = `bg` | `inverse` | `underline` | `bold`
+- Optional style for origin highlighting: `DEBUG_PARSER_MW_STYLE` = `bg` | `inverse` | `underline` | `bold`
 
 ## Protocol API (what a protocol must provide)
 

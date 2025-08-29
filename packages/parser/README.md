@@ -120,9 +120,9 @@ See `examples/parser-core/src/*` for runnable demos (streaming/non‑streaming, 
 
 - Exported API: `createToolMiddleware`, `gemmaToolMiddleware`, `hermesToolMiddleware`, `xmlToolMiddleware`, `jsonMixProtocol`, `morphXmlProtocol`.
 - Debugging:
-  - Set `DEBUG_PASER_MW=stream` to log raw/parsed chunks during runs.
-  - Set `DEBUG_PASER_MW=parse` to log original matched text and parsed summary.
-  - Optional `DEBUG_PASER_MW_STYLE=bg|inverse|underline|bold` to change highlight style.
+  - Set `DEBUG_PARSER_MW=stream` to log raw/parsed chunks during runs.
+  - Set `DEBUG_PARSER_MW=parse` to log original matched text and parsed summary.
+  - Optional `DEBUG_PARSER_MW_STYLE=bg|inverse|underline|bold` to change highlight style.
 - Provider options passthrough: `providerOptions.toolCallMiddleware` fields are merged into protocol options. Internal fields used:
   - `toolNames`: internal propagation of custom tool names.
   - `toolChoice`: internal fast‑path activation for required/specific tool modes.

@@ -98,9 +98,9 @@ const result = await generateText({
 
 Set env variables:
 
-- `DEBUG_PASER_MW=stream` — log raw/normalized stream events
-- `DEBUG_PASER_MW=parse` — log parsed summary and original text highlighting
-- `DEBUG_PASER_MW_STYLE=bg|inverse|underline|bold` — tweak summary style
+- `DEBUG_PARSER_MW=stream` — log raw/normalized stream events
+- `DEBUG_PARSER_MW=parse` — log parsed summary and original text highlighting
+- `DEBUG_PARSER_MW_STYLE=bg|inverse|underline|bold` — tweak summary style
 
 ## Protocol specifics
 

@@ -4,14 +4,14 @@ Enable middleware debug logs via environment variables.
 
 ## Levels
 
-- `DEBUG_PASER_MW=off` (default): no logs
-- `DEBUG_PASER_MW=stream`: logs raw provider output and the normalized parts the middleware emits
-- `DEBUG_PASER_MW=parse`: after parsing completes, logs a highlighted view of detected tool-call source text (origin) and a JSON summary of tool-calls
+- `DEBUG_PARSER_MW=off` (default): no logs
+- `DEBUG_PARSER_MW=stream`: logs raw provider output and the normalized parts the middleware emits
+- `DEBUG_PARSER_MW=parse`: after parsing completes, logs a highlighted view of detected tool-call source text (origin) and a JSON summary of tool-calls
 
 Aliases:
 
-- `DEBUG_PASER_MW=1`, `true`, `yes` → treated as `stream`
-- `DEBUG_PASER_MW=2` → treated as `parse`
+- `DEBUG_PARSER_MW=1`, `true`, `yes` → treated as `stream`
+- `DEBUG_PARSER_MW=2` → treated as `parse`
 
 When it logs:
 
@@ -25,7 +25,7 @@ When it logs:
 
 ## Styles (parse summary)
 
-- `DEBUG_PASER_MW_STYLE=bg` (default), `inverse` (or `invert`), `underline` (or `ul`), `bold`
+- `DEBUG_PARSER_MW_STYLE=bg` (default), `inverse` (or `invert`), `underline` (or `ul`), `bold`
 - Truthy values (e.g., `1`, `true`, `yes`) map to `bg`
 - Origin lines are highlighted using the selected style; the summary is printed with a distinct background for readability.
 
@@ -39,14 +39,14 @@ When it logs:
 ## How to use
 
 - macOS/Linux (one-off):
-  - `DEBUG_PASER_MW=stream node your-app.js`
-  - `DEBUG_PASER_MW=parse node your-app.js`
-- With pnpm scripts: `DEBUG_PASER_MW=parse pnpm dev`
+  - `DEBUG_PARSER_MW=stream node your-app.js`
+  - `DEBUG_PARSER_MW=parse node your-app.js`
+- With pnpm scripts: `DEBUG_PARSER_MW=parse pnpm dev`
 - Numeric/boolean shorthands:
-  - `DEBUG_PASER_MW=1` → stream, `DEBUG_PASER_MW=2` → parse
+  - `DEBUG_PARSER_MW=1` → stream, `DEBUG_PARSER_MW=2` → parse
 
 Notes:
 
-- Variable name is intentionally `DEBUG_PASER_MW` (no extra “R”).
+- Variable name is intentionally `DEBUG_PARSER_MW` (no extra “R”).
 - ANSI colors render best in TTY; collectors may strip styling.
 - Origin highlighting uses each protocol’s optional `extractToolCallSegments`.

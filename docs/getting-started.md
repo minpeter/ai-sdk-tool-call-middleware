@@ -149,4 +149,4 @@ export const customMiddleware = createToolMiddleware({
 ````
 
 - **[dev] Build/test**: `pnpm build`, `pnpm test`, `pnpm dev`
-- **[dev] Debug logs**: `DEBUG_PASER_MW=stream` or `DEBUG_PASER_MW=parse`
+- **[dev] Debug logs**: `DEBUG_PARSER_MW=stream` or `DEBUG_PARSER_MW=parse`
