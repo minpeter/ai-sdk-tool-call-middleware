@@ -54,7 +54,9 @@ export const xmlProtocol = (): ToolCallProtocol => ({
 
   parseGeneratedText({ text, tools, options }) {
     // Get original schemas from provider options if available
-    const originalSchemas = (options as any)?.originalToolSchemas || {};
+    const originalSchemas =
+      (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
+        ?.originalToolSchemas || {};
 
     // Optional debug
     // console.log("XML Protocol schema debug:", {
@@ -275,7 +277,9 @@ export const xmlProtocol = (): ToolCallProtocol => ({
 
   createStreamParser({ tools, options }) {
     // Get original schemas from options if available
-    const originalSchemas = (options as any)?.originalToolSchemas || {};
+    const originalSchemas =
+      (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
+        ?.originalToolSchemas || {};
     const toolNames = tools.map(t => t.name).filter(name => name != null);
     let buffer = "";
     let currentToolCall: { name: string; content: string } | null = null;

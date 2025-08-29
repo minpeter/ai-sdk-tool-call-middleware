@@ -13,7 +13,6 @@ import {
   xmlProtocol,
   createToolMiddleware,
 } from "@ai-sdk-tool/parser";
-import { openai } from "@ai-sdk/openai";
 
 const friendli = createOpenAICompatible({
   name: "friendli.serverless",

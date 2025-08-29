@@ -82,7 +82,9 @@ export async function wrapGenerate({
       tools: getFunctionTools(params),
       options: {
         ...extractOnErrorOption(params.providerOptions),
-        ...(params.providerOptions as any)?.toolCallMiddleware,
+        ...((
+          params.providerOptions as { toolCallMiddleware?: unknown } | undefined
+        )?.toolCallMiddleware as Record<string, unknown>),
       },
     });
   });

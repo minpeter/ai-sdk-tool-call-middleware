@@ -227,7 +227,9 @@ function convertToolPrompt(
         ? [
             {
               type: "text" as const,
-              text: newContent.map(c => (c as any).text).join("\n"),
+              text: newContent
+                .map(c => (c as { text: string }).text)
+                .join("\n"),
             },
           ]
         : newContent;
@@ -260,20 +262,43 @@ function convertToolPrompt(
   for (let i = 0; i < processedPrompt.length; i++) {
     const msg = processedPrompt[i] as unknown as {
       role: string;
-      content: any;
+      content: unknown;
     };
     if (Array.isArray(msg.content)) {
-      const allText = msg.content.every((c: any) => c?.type === "text");
+      const allText = (msg.content as { type: string }[]).every(
+        (c: { type: string }) => c?.type === "text"
+      );
       if (allText && msg.content.length > 1) {
-        processedPrompt[i] = {
-          role: msg.role as any,
-          content: [
-            {
-              type: "text",
-              text: msg.content.map((c: any) => c.text).join("\n"),
-            },
-          ],
-        } as any;
+        const joinedText = (msg.content as { text: string }[])
+          .map((c: { text: string }) => c.text)
+          .join("\n");
+        if (msg.role === "system") {
+          processedPrompt[i] = {
+            role: "system",
+            content: joinedText,
+          };
+        } else if (msg.role === "assistant") {
+          processedPrompt[i] = {
+            role: "assistant",
+            content: [
+              {
+                type: "text" as const,
+                text: joinedText,
+              },
+            ],
+          };
+        } else {
+          // Treat remaining roles (e.g., user) as user text content
+          processedPrompt[i] = {
+            role: "user",
+            content: [
+              {
+                type: "text" as const,
+                text: joinedText,
+              },
+            ],
+          };
+        }
       }
     }
   }

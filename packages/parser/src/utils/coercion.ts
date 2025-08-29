@@ -29,7 +29,11 @@ export function getSchemaType(schema: unknown): string | undefined {
   if (s && typeof s === "object" && (s.properties || s.additionalProperties)) {
     return "object";
   }
-  if (s && typeof s === "object" && (s.items || (s as any).prefixItems)) {
+  if (
+    s &&
+    typeof s === "object" &&
+    (s.items || (s as Record<string, unknown>).prefixItems)
+  ) {
     return "array";
   }
   return undefined;
@@ -102,8 +106,10 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
         const arr = JSON.parse(normalized);
         if (Array.isArray(arr)) {
           const u = unwrapped as Record<string, unknown>;
-          const prefixItems = Array.isArray((u as any).prefixItems)
-            ? ((u as any).prefixItems as unknown[])
+          const prefixItems = Array.isArray(
+            (u as Record<string, unknown>).prefixItems
+          )
+            ? ((u as Record<string, unknown>).prefixItems as unknown[])
             : undefined;
           const itemsSchema = u.items as unknown;
           if (prefixItems && arr.length === prefixItems.length) {
@@ -115,8 +121,10 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
         const csv = s.includes("\n") ? s.split(/\n+/) : s.split(/,\s*/);
         const trimmed = csv.map(x => x.trim()).filter(x => x.length > 0);
         const u = unwrapped as Record<string, unknown>;
-        const prefixItems = Array.isArray((u as any).prefixItems)
-          ? ((u as any).prefixItems as unknown[])
+        const prefixItems = Array.isArray(
+          (u as Record<string, unknown>).prefixItems
+        )
+          ? ((u as Record<string, unknown>).prefixItems as unknown[])
           : undefined;
         const itemsSchema = u.items as unknown;
         if (prefixItems && trimmed.length === prefixItems.length) {
@@ -148,8 +156,10 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
   if (schemaType === "array") {
     const u = unwrapped as Record<string, unknown>;
     const itemsSchema = u.items as unknown;
-    const prefixItems = Array.isArray((u as any).prefixItems)
-      ? ((u as any).prefixItems as unknown[])
+    const prefixItems = Array.isArray(
+      (u as Record<string, unknown>).prefixItems
+    )
+      ? ((u as Record<string, unknown>).prefixItems as unknown[])
       : undefined;
 
     if (Array.isArray(value)) {
@@ -162,7 +172,7 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
     if (value && typeof value === "object") {
       const maybe = value as Record<string, unknown>;
       if (Object.prototype.hasOwnProperty.call(maybe, "item")) {
-        const items = (maybe as any).item as unknown;
+        const items = (maybe as Record<string, unknown>).item as unknown;
         const arr = Array.isArray(items) ? items : [items];
         if (prefixItems && arr.length === prefixItems.length) {
           return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
@@ -191,7 +201,7 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
       if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
         const arr = keys
           .sort((a, b) => Number(a) - Number(b))
-          .map(k => (maybe as any)[k]);
+          .map(k => (maybe as Record<string, unknown>)[k]);
         if (prefixItems && arr.length === prefixItems.length) {
           return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
         }

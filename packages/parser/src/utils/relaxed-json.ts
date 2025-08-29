@@ -77,7 +77,7 @@ type TokenType =
 type RawToken = {
   type: TokenType;
   match: string; // The raw matched text
-  value?: any; // The parsed value (for strings, numbers, atoms)
+  value?: unknown; // The parsed value (for strings, numbers, atoms)
 };
 
 // Type for a token including line number information
@@ -98,7 +98,7 @@ type ParseState = {
   // Options passed to the parser
   tolerant: boolean;
   duplicate: boolean; // true = allow duplicate keys (use last value), false = reject duplicate keys with error
-  reviver?: (key: string, value: any) => any; // Optional JSON reviver function
+  reviver?: (key: string, value: unknown) => unknown; // Optional JSON reviver function
 };
 
 /**
@@ -139,7 +139,7 @@ type ParseOptions = {
    * @param value - The parsed value
    * @returns The transformed value
    */
-  reviver?: (key: string, value: any) => any;
+  reviver?: (key: string, value: unknown) => unknown;
 };
 
 // Type for options specific to the parseMany function
@@ -194,7 +194,7 @@ function makeLexer(tokenSpecs: TokenSpec[]): (contents: string) => Token[] {
           )}`
         );
         // Attach line number to the error object (standard Error doesn't have it by default)
-        (err as any).line = line;
+        (err as { line?: number }).line = line;
         throw err;
       }
 
@@ -508,7 +508,7 @@ function skipColon(tokens: Token[], state: ParseState): void {
       state.pos -= 1;
     } else {
       const err = new SyntaxError(message);
-      (err as any).line = colon.line;
+      (err as { line?: number }).line = colon.line;
       throw err;
     }
   }
@@ -548,7 +548,7 @@ function skipPunctuation(
       } else {
         // In strict mode, throw an error
         const err = new SyntaxError(message);
-        (err as any).line = token.line;
+        (err as { line?: number }).line = token.line;
         throw err;
       }
     } else {
@@ -569,7 +569,7 @@ function raiseError(state: ParseState, token: Token, message: string): void {
     });
   } else {
     const err = new SyntaxError(message);
-    (err as any).line = token.line;
+    (err as { line?: number }).line = token.line;
     throw err;
   }
 }
@@ -594,7 +594,7 @@ function raiseUnexpected(
 // :: parseState -> {} -> parseToken -> undefined
 function checkDuplicates(
   state: ParseState,
-  obj: { [key: string]: any },
+  obj: { [key: string]: unknown },
   token: Token
 ): void {
   // We assume token.type is 'string' here based on where it's called in parsePair
@@ -614,9 +614,9 @@ function checkDuplicates(
 // :: parseState -> any -> any -> any -> undefined
 function appendPair(
   state: ParseState,
-  obj: { [key: string]: any },
+  obj: { [key: string]: unknown },
   key: string,
-  value: any
+  value: unknown
 ): void {
   // Apply reviver function if it exists
   const finalValue = state.reviver ? state.reviver(key, value) : value;
@@ -631,12 +631,11 @@ function appendPair(
 function parsePair(
   tokens: Token[],
   state: ParseState,
-  obj: { [key: string]: any }
+  obj: { [key: string]: unknown }
 ): void {
   // Skip leading punctuation, expecting a string key (or ':' in tolerant mode)
   let token = skipPunctuation(tokens, state, [":", "string", "number", "atom"]); // Allow recovery
-  let key: string;
-  let value: any;
+  let value: unknown;
 
   // --- Key Parsing ---
   if (token.type !== "string") {
@@ -691,7 +690,7 @@ function parsePair(
 
   // Now we have a string token (potentially recovered)
   checkDuplicates(state, obj, token);
-  key = String(token.value); // Ensure key is string
+  const key = String(token.value); // Ensure key is string
 
   // --- Colon and Value Parsing ---
   skipColon(tokens, state); // Expect and consume ':'
@@ -703,7 +702,11 @@ function parsePair(
 
 // Parses an element within an array
 // :: array parseToken -> parseState -> array -> undefined
-function parseElement(tokens: Token[], state: ParseState, arr: any[]): void {
+function parseElement(
+  tokens: Token[],
+  state: ParseState,
+  arr: unknown[]
+): void {
   const key = arr.length; // Key is the current array index
   // Skip potential leading punctuation (like extra commas in tolerant mode)
   // skipPunctuation used inside parseAny handles this implicitly
@@ -717,10 +720,10 @@ function parseElement(tokens: Token[], state: ParseState, arr: any[]): void {
 function parseObject(
   tokens: Token[],
   state: ParseState
-): { [key: string]: any } {
+): { [key: string]: unknown } {
   const obj = {};
   // Call parseMany to handle the structure { pair1, pair2, ... }
-  return parseMany<{ [key: string]: any }>(tokens, state, obj, {
+  return parseMany<{ [key: string]: unknown }>(tokens, state, obj, {
     skip: [":", "}"], // Initially skip over colon or closing brace (for empty/tolerant cases)
     elementParser: parsePair, // Use parsePair to parse each key-value element
     elementName: "string key", // Expected element type for errors
@@ -730,10 +733,10 @@ function parseObject(
 
 // Parses a JSON array structure: '[' element, ... ']'
 // :: array parseToken -> parseState -> array
-function parseArray(tokens: Token[], state: ParseState): any[] {
-  const arr: any[] = [];
+function parseArray(tokens: Token[], state: ParseState): unknown[] {
+  const arr: unknown[] = [];
   // Call parseMany to handle the structure [ element1, element2, ... ]
-  return parseMany<any[]>(tokens, state, arr, {
+  return parseMany<unknown[]>(tokens, state, arr, {
     skip: ["]"], // Initially skip over closing bracket (for empty/tolerant cases)
     elementParser: parseElement, // Use parseElement to parse each array item
     elementName: "json value", // Expected element type for errors
@@ -831,7 +834,7 @@ function parseMany<T>(
 
 // Perform final checks after parsing the main value
 // :: array parseToken -> parseState -> any -> undefined
-function endChecks(tokens: Token[], state: ParseState, ret: any): void {
+function endChecks(tokens: Token[], state: ParseState, ret: unknown): void {
   // Check if there are unparsed tokens remaining
   if (state.pos < tokens.length) {
     // In tolerant mode, skip trailing whitespace/punctuation before declaring error
@@ -856,9 +859,13 @@ function endChecks(tokens: Token[], state: ParseState, ret: any): void {
         : `${state.warnings.length} parse warnings`; // Multiple warnings summary
     const err = new SyntaxError(message);
     // Attach details to the error object
-    (err as any).line = state.warnings[0].line; // Line of the first warning
-    (err as any).warnings = state.warnings; // Array of all warnings
-    (err as any).obj = ret; // The partially parsed object (might be useful)
+    (err as { line?: number; warnings?: ParseWarning[]; obj?: unknown }).line =
+      state.warnings[0].line; // Line of the first warning
+    (
+      err as { line?: number; warnings?: ParseWarning[]; obj?: unknown }
+    ).warnings = state.warnings; // Array of all warnings
+    (err as { line?: number; warnings?: ParseWarning[]; obj?: unknown }).obj =
+      ret; // The partially parsed object (might be useful)
     throw err;
   }
 }
@@ -869,10 +876,10 @@ function parseAny(
   tokens: Token[],
   state: ParseState,
   end: boolean = false
-): any {
+): unknown {
   // Skip any leading punctuation (useful for recovery in tolerant mode)
   const token = skipPunctuation(tokens, state);
-  let ret: any; // Variable to hold the parsed result
+  let ret: unknown; // Variable to hold the parsed result
 
   // Check for premature end of file
   if (token.type === "eof") {
@@ -959,8 +966,8 @@ function parseAny(
  */
 function parse(
   text: string,
-  optsOrReviver?: ParseOptions | ((key: string, value: any) => any)
-): any {
+  optsOrReviver?: ParseOptions | ((key: string, value: unknown) => unknown)
+): unknown {
   let options: ParseOptions = {};
 
   // Determine if the second argument is options object or reviver function
@@ -1005,7 +1012,10 @@ function parse(
       // duplicate=false: Need custom parser to check for duplicate keys
     } else {
       // duplicate=true: Safe to use native JSON.parse (allows duplicates, uses last value)
-      return JSON.parse(text, options.reviver);
+      return JSON.parse(
+        text,
+        options.reviver as (key: string, value: unknown) => unknown
+      );
     }
   }
 
@@ -1041,7 +1051,7 @@ function parse(
     // Strategy 3: Relaxed input, but no warnings/tolerance requested.
     // Transform the relaxed syntax to stricter JSON and use native JSON.parse.
     // This path is also used for strict mode (!relaxed) when duplicate checking is needed (!options.duplicate).
-    const newtext = tokens.reduce((str, token) => {
+    tokens.reduce((str, token) => {
       return str + token.match;
     }, "");
 
@@ -1082,7 +1092,10 @@ function parse(
       tokens = lexer(text); // Must be relaxed lexer here
       tokens = stripTrailingComma(tokens);
       const newtext = tokens.reduce((str, token) => str + token.match, "");
-      return JSON.parse(newtext, options.reviver);
+      return JSON.parse(
+        newtext,
+        options.reviver as (key: string, value: unknown) => unknown
+      );
     }
   }
 }
@@ -1093,7 +1106,7 @@ function parse(
 
 // Helper for stringifying object pairs
 // :: any -> string -> ... -> string
-function stringifyPair(obj: { [key: string]: any }, key: string): string {
+function stringifyPair(obj: { [key: string]: unknown }, key: string): string {
   // Stringify key and value, then join with colon
   // Recursively calls stringify for the value
   return JSON.stringify(key) + ":" + stringify(obj[key]);
@@ -1117,7 +1130,7 @@ function stringifyPair(obj: { [key: string]: any }, key: string): string {
  * // Returns: '{"key":null}' (undefined becomes null)
  * ```
  */
-function stringify(obj: any): string {
+function stringify(obj: unknown): string {
   const type = typeof obj;
 
   // Handle primitives directly using JSON.stringify (handles escaping etc.)
@@ -1147,10 +1160,12 @@ function stringify(obj: any): string {
   if (type === "object") {
     // Already checked for null and Array above
     // Get keys, sort them for consistent output (optional, but good practice)
-    const keys = Object.keys(obj);
+    const keys = Object.keys(obj as object);
     keys.sort();
     // Stringify each key-value pair and join with commas
-    const pairs = keys.map(key => stringifyPair(obj, key)).join(",");
+    const pairs = keys
+      .map(key => stringifyPair(obj as { [key: string]: unknown }, key))
+      .join(",");
     return "{" + pairs + "}";
   }
 
