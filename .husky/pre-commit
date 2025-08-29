@@ -1,3 +1,9 @@
-pnpm fmt:fix
-git add -A
+git diff -z --name-only --cached --diff-filter=ACMR | while IFS= read -r -d '' file; do
+  case "$file" in
+    *.ts|*.tsx|*.js|*.mjs|*.cjs|*.json|*.md|*.yaml|*.yml)
+      pnpm prettier --write "$file"
+      git add -- "$file"
+      ;;
+  esac
+done
 pnpm lint && pnpm check-types && pnpm test
