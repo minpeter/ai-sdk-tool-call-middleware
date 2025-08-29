@@ -24,10 +24,13 @@
     "build": "tsup --clean",
     "prepack": "pnpm run build",
     "check-types": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "test:e2e": "tsup src/run-test.ts --format esm --clean --out-dir dist --no-config && node dist/run-test.js",
     "test": "pnpm run test:e2e"
   },
   "dependencies": {
+    "@ai-sdk/provider": "2.0.0",
     "ajv": "^8.17.1",
     "zod": "^4.1.5"
   },
