@@ -166,7 +166,6 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
               if (parsed?.id) debugIds.add(String(parsed.id));
             } catch {
               // ignore JSON parse errors for debug lines
-              void 0;
             }
           }
         }
