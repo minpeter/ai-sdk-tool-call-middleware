@@ -1,5 +1,12 @@
 # @ai-sdk-tool/parser
 
+## 2.1.1
+
+### Patch Changes
+
+- eb546f2: Add a heuristic-based typecaster to the xml tool parser.
+- eb546f2: The XML Parser has been significantly improved through heuristics. It is robust in parallel calls.
+
 ## 2.1.0
 
 ### Minor Changes

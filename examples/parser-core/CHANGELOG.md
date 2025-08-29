@@ -1,5 +1,13 @@
 # parser-core
 
+## 1.0.20
+
+### Patch Changes
+
+- Updated dependencies [eb546f2]
+- Updated dependencies [eb546f2]
+  - @ai-sdk-tool/parser@2.1.1
+
 ## 1.0.19
 
 ### Patch Changes
