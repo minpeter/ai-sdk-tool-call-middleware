@@ -97,7 +97,7 @@ main().catch(console.error);
 
 ## Prebuilt middlewares
 
-- `gemmaToolMiddleware` — JSON‑mix format inside markdown fences (`tool_call` / ```tool_response").
+- `gemmaToolMiddleware` — JSON‑mix format inside markdown fences (markdown code fences)
 - `hermesToolMiddleware` — JSON‑mix format wrapped in `<tool_call>` XML tags.
 - `xmlToolMiddleware` — XML format (Morph‑XML protocol).
 

@@ -42,7 +42,7 @@ Protocols are wired through the middleware created by `createToolMiddleware` (se
 
 Preconfigured middlewares exported from `packages/parser/src/index.ts`:
 
-- `gemmaToolMiddleware` — `jsonMixProtocol` with markdown fences labeled `tool_call` / `tool_response` and a Gemma-friendly prompt.
+- `gemmaToolMiddleware` — Uses `jsonMixProtocol` with markdown code fences labeled `tool_call` and a prompt tailored for Gemma.
 - `hermesToolMiddleware` — `jsonMixProtocol` with `<tool_call>` tags and a Hermes-style prompt.
 - `xmlToolMiddleware` — `morphXmlProtocol` with an XML-oriented prompt.
 
