@@ -454,7 +454,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         const input = JSON.parse(result[0].input);
         expect(input.values[0]).toBeCloseTo(1.23456789);
         expect(input.values[1]).toBeCloseTo(2.0);
-        expect(input.values[2]).toBeCloseTo(3.1415926535897932);
+        expect(input.values[2]).toBeCloseTo(3.141592653589793);
       }
     });
 

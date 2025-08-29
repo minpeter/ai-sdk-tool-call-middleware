@@ -21,12 +21,6 @@ const friendli = createOpenAICompatible({
   baseURL: "https://api.friendli.ai/serverless/v1",
 });
 
-const openrouter = createOpenAICompatible({
-  name: "openrouter",
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: "https://openrouter.ai/api/v1",
-});
-
 const morphExpToolMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
   toolSystemPromptTemplate(tools: string) {
@@ -68,8 +62,6 @@ const morphExpGemma27b = wrapLanguageModel({
   // model: openrouter("z-ai/glm-4.5-air"),
   middleware: morphExpToolMiddleware,
 });
-
-const gpt41nano = openai("gpt-4.1-nano");
 
 async function main() {
   console.log("Starting model evaluation...");
