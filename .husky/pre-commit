@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Format only staged files with Prettier, re-stage them, then lint/typecheck/test
 if [ -n "$CI" ]; then
   # Skip heavy hooks in CI (e.g., Changesets version commits)
