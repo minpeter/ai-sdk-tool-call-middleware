@@ -1,4 +1,5 @@
-import { EvaluationResult, ReporterType } from "../interfaces";
+import { EvaluationResult, ReporterType } from "@/interfaces";
+
 import { consoleReporter } from "./console";
 import { consoleDebugReporter } from "./console.debug";
 import { jsonReporter } from "./json";

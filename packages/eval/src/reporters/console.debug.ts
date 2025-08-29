@@ -1,4 +1,4 @@
-import { EvaluationResult } from "../interfaces";
+import { EvaluationResult } from "@/interfaces";
 
 const colors = {
   reset: "\x1b[0m",

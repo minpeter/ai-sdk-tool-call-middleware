@@ -1,9 +1,9 @@
+import { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
+import { resolveDataDir } from "@/utils/paths";
 import { LanguageModel, generateText } from "ai";
 import Ajv, { AnySchema } from "ajv";
 import { promises as fs } from "fs";
 import path from "path";
-import { BenchmarkResult, LanguageModelV2Benchmark } from "../interfaces";
-import { resolveDataDir } from "../utils/paths";
 
 type Json = unknown;
 

@@ -1,8 +1,8 @@
+import { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
+import { resolveDataDir } from "@/utils/paths";
 import { LanguageModel, generateText, jsonSchema, tool } from "ai";
 import { promises as fs } from "fs";
 import path from "path";
-import { BenchmarkResult, LanguageModelV2Benchmark } from "../interfaces";
-import { resolveDataDir } from "../utils/paths";
 import {
   multipleFunctionChecker,
   parallelFunctionCheckerNoOrder,
