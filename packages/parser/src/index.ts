@@ -1,11 +1,5 @@
 import { createToolMiddleware } from "./tool-call-middleware";
 import { jsonMixProtocol, xmlProtocol } from "./protocols";
-export {
-  unwrapJsonSchema,
-  getSchemaType,
-  coerceBySchema,
-  fixToolCallWithSchema,
-} from "./utils/coercion";
 
 const gemmaToolMiddleware = createToolMiddleware({
   protocol: jsonMixProtocol(
