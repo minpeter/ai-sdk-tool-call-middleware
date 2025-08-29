@@ -569,4 +569,18 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       },
     });
   },
+
+  extractToolCallSegments({ text, tools }) {
+    const toolNames = tools.map(t => t.name).filter(Boolean) as string[];
+    if (toolNames.length === 0) return [];
+    const names = toolNames.map(n => escapeRegExp(String(n))).join("|");
+    if (!names) return [];
+    const regex = new RegExp(`<(${names})>[\\s\\S]*?<\\/\\1>`, "g");
+    const segments: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(text)) != null) {
+      segments.push(m[0]);
+    }
+    return segments;
+  },
 });
