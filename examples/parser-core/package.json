@@ -17,9 +17,9 @@
     "@ai-sdk-tool/parser": "workspace:*",
     "@ai-sdk/openai": "2.0.22",
     "@ai-sdk/openai-compatible": "1.0.13",
-    "ai": "5.0.26",
+    "ai": "5.0.27",
     "tsx": "^4.20.5",
-    "zod": "^4.1.3"
+    "zod": "^4.1.5"
   },
   "devDependencies": {
     "@types/node": "^24.3.0"
