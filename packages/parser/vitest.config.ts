@@ -1,9 +1,16 @@
 import { defineConfig } from "vitest/config";
+import path from "node:path";
 
 export default defineConfig({
   test: {
     // Automatically detect CI environment and disable watch mode
     watch: false,
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.spec.ts",
+      "tests/**/*.test.ts",
+      "tests/**/*.spec.ts",
+    ],
     coverage: {
       provider: "istanbul",
       reporter: ["text", "lcov", "html"],
@@ -21,5 +28,8 @@ export default defineConfig({
   // Ensure ESM compatibility
   resolve: {
     conditions: ["node", "import", "module", "require"],
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
   },
 });

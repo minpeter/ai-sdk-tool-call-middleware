@@ -47,7 +47,9 @@ function checkStringValue(
   if (!standardizedPossibleAnswers.includes(standardizedModelValue)) {
     return {
       valid: false,
-      error: `Invalid value for parameter '${param}': '${modelValue}'. Expected one of ${possibleAnswers.join(", ")}.`,
+      error: `Invalid value for parameter '${param}': ${JSON.stringify(
+        modelValue
+      )}. Expected one of ${JSON.stringify(possibleAnswers)}.`,
       error_type: "value_error:string",
     };
   }
@@ -120,15 +122,86 @@ export function simpleFunctionChecker(
       if (!hasMatch) {
         return {
           valid: false,
-          error: `Invalid value for list parameter '${paramName}'.`,
+          error: `Invalid value for list parameter '${paramName}'. Got ${JSON.stringify(
+            modelValue
+          )}. Expected one of ${JSON.stringify(possibleValues)}.`,
           error_type: "value_error:list",
         };
       }
     } else {
-      if (!possibleValues.includes(modelValue)) {
+      // Handle nested objects by comparing JSON representations
+      const hasMatch = possibleValues.some((possibleValue: any) => {
+        // Direct equality check first
+        if (modelValue === possibleValue) return true;
+
+        // For objects, perform deep comparison via JSON serialization
+        if (
+          typeof modelValue === "object" &&
+          modelValue !== null &&
+          typeof possibleValue === "object" &&
+          possibleValue !== null
+        ) {
+          try {
+            // Handle BFCL dataset quirk where object property values are wrapped in arrays
+            // e.g. {"min": [300000], "max": [400000]} should match {"min": 300000, "max": 400000}
+            const normalizeObject = (obj: any): any => {
+              if (Array.isArray(obj)) {
+                return obj.map(normalizeObject);
+              }
+              if (obj && typeof obj === "object") {
+                const normalized: any = {};
+                for (const [key, value] of Object.entries(obj)) {
+                  // If value is a single-element array, unwrap it
+                  if (
+                    Array.isArray(value) &&
+                    value.length === 1 &&
+                    (typeof value[0] !== "object" || value[0] === null)
+                  ) {
+                    normalized[key] = value[0];
+                  } else {
+                    normalized[key] = normalizeObject(value);
+                  }
+                }
+                return normalized;
+              }
+              return obj;
+            };
+
+            const normalizedModel = normalizeObject(modelValue);
+            const normalizedPossible = normalizeObject(possibleValue);
+
+            return (
+              JSON.stringify(normalizedModel) ===
+              JSON.stringify(normalizedPossible)
+            );
+          } catch {
+            return false;
+          }
+        }
+
+        // For numbers, handle string/number conversion
+        if (
+          typeof modelValue === "number" &&
+          typeof possibleValue === "string"
+        ) {
+          return modelValue.toString() === possibleValue;
+        }
+        if (
+          typeof modelValue === "string" &&
+          typeof possibleValue === "number"
+        ) {
+          return modelValue === possibleValue.toString();
+        }
+
+        return false;
+      });
+
+      if (!hasMatch) {
         return {
           valid: false,
-          error: `Invalid value for parameter '${paramName}': got '${modelValue}', expected one of '${possibleValues}'.`,
+          error: `Invalid value for parameter '${paramName}'. Got ${JSON.stringify(
+            modelValue
+          )}. Expected one of ${JSON.stringify(possibleValues)}.`,
           error_type: "value_error:other",
         };
       }

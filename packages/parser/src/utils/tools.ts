@@ -30,6 +30,14 @@ export function getFunctionTools(params: {
   tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
   providerOptions?: unknown;
 }): LanguageModelV2FunctionTool[] {
+  // Prefer full tool definitions from params.tools when available
+  const functionTools = (params.tools ?? []).filter(
+    (t): t is LanguageModelV2FunctionTool =>
+      (t as { type: string }).type === "function"
+  );
+  if (functionTools.length > 0) return functionTools;
+
+  // Fallback: use tool names passed in providerOptions (name-only stubs)
   const rawToolNames =
     (params.providerOptions &&
       typeof params.providerOptions === "object" &&
@@ -51,8 +59,5 @@ export function getFunctionTools(params: {
       inputSchema: { type: "object" },
     }));
   }
-  return (params.tools ?? []).filter(
-    (t): t is LanguageModelV2FunctionTool =>
-      (t as { type: string }).type === "function"
-  );
+  return [];
 }

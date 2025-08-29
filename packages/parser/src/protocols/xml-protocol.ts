@@ -8,13 +8,14 @@ import { generateId } from "@ai-sdk/provider-utils";
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
 import { escapeRegExp } from "../utils";
 import { hasInputProperty } from "../utils";
+import { unwrapJsonSchema, coerceBySchema } from "../utils/coercion";
 
 export const xmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt = (tools || []).map(tool => ({
       name: tool.name,
       description: tool.description,
-      parameters: tool.inputSchema,
+      parameters: unwrapJsonSchema(tool.inputSchema),
     }));
     return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
   },
@@ -52,6 +53,14 @@ export const xmlProtocol = (): ToolCallProtocol => ({
   },
 
   parseGeneratedText({ text, tools, options }) {
+    // Get original schemas from provider options if available
+    const originalSchemas =
+      (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
+        ?.originalToolSchemas || {};
+
+    // Optional debug
+    // Schema-based coercion: convert string primitives according to tool JSON schema types
+
     const toolNames = tools.map(t => t.name).filter(name => name != null);
     if (toolNames.length === 0) {
       return [{ type: "text", text }];
@@ -93,6 +102,8 @@ export const xmlProtocol = (): ToolCallProtocol => ({
         for (const k of Object.keys(parsedArgs || {})) {
           const v = parsedArgs[k];
           let val: unknown = v;
+
+          // Handle text content extraction
           if (
             v &&
             typeof v === "object" &&
@@ -100,14 +111,145 @@ export const xmlProtocol = (): ToolCallProtocol => ({
           ) {
             val = (v as Record<string, unknown>)?.["#text"];
           }
+
+          // Heuristic array parsing for multiple tags with same name
+          if (Array.isArray(v)) {
+            val = v.map(item => {
+              if (
+                item &&
+                typeof item === "object" &&
+                Object.prototype.hasOwnProperty.call(item, "#text")
+              ) {
+                const textVal = (item as Record<string, unknown>)?.["#text"];
+                return typeof textVal === "string" ? textVal.trim() : textVal;
+              }
+              return typeof item === "string" ? item.trim() : item;
+            });
+          }
+          // Heuristic tuple/array parsing for various XML patterns
+          else if (
+            v &&
+            typeof v === "object" &&
+            !Object.prototype.hasOwnProperty.call(v, "#text")
+          ) {
+            const obj = v as Record<string, unknown>;
+            const keys = Object.keys(obj);
+
+            // Check for 'item' key pattern (common XML array pattern)
+            if (keys.length === 1 && keys[0] === "item") {
+              const itemValue = obj.item;
+              if (Array.isArray(itemValue)) {
+                val = itemValue.map(item => {
+                  if (
+                    item &&
+                    typeof item === "object" &&
+                    Object.prototype.hasOwnProperty.call(item, "#text")
+                  ) {
+                    const textVal = (item as Record<string, unknown>)?.[
+                      "#text"
+                    ];
+                    const trimmed =
+                      typeof textVal === "string" ? textVal.trim() : textVal;
+                    // Try to convert to number if it looks like one
+                    if (
+                      typeof trimmed === "string" &&
+                      /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                    ) {
+                      const num = Number(trimmed);
+                      if (Number.isFinite(num)) return num;
+                    }
+                    return trimmed;
+                  }
+                  const trimmed = typeof item === "string" ? item.trim() : item;
+                  // Try to convert to number if it looks like one
+                  if (
+                    typeof trimmed === "string" &&
+                    /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                  ) {
+                    const num = Number(trimmed);
+                    if (Number.isFinite(num)) return num;
+                  }
+                  return trimmed;
+                });
+              } else {
+                const trimmed =
+                  typeof itemValue === "string" ? itemValue.trim() : itemValue;
+                // Try to convert to number if it looks like one
+                if (
+                  typeof trimmed === "string" &&
+                  /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                ) {
+                  const num = Number(trimmed);
+                  if (Number.isFinite(num)) {
+                    val = num;
+                  } else {
+                    val = trimmed;
+                  }
+                } else {
+                  val = trimmed;
+                }
+              }
+            }
+            // Check if all keys are numeric indices (0, 1, 2, ...) and consecutive
+            else {
+              const isIndexedTuple =
+                keys.length > 0 &&
+                keys.every(key => /^\d+$/.test(key)) &&
+                (() => {
+                  const indices = keys
+                    .map(k => parseInt(k))
+                    .sort((a, b) => a - b);
+                  return (
+                    indices[0] === 0 && indices.every((val, idx) => val === idx)
+                  );
+                })();
+
+              if (isIndexedTuple) {
+                // Convert indexed object to array (tuple)
+                const sortedKeys = keys.sort(
+                  (a, b) => parseInt(a) - parseInt(b)
+                );
+                val = sortedKeys.map(key => {
+                  const item = obj[key];
+                  if (
+                    item &&
+                    typeof item === "object" &&
+                    Object.prototype.hasOwnProperty.call(item, "#text")
+                  ) {
+                    const textVal = (item as Record<string, unknown>)?.[
+                      "#text"
+                    ];
+                    return typeof textVal === "string"
+                      ? textVal.trim()
+                      : textVal;
+                  }
+                  return typeof item === "string" ? item.trim() : item;
+                });
+              } else {
+                val = v;
+              }
+            }
+          }
+
           args[k] = typeof val === "string" ? val.trim() : val;
         }
+
+        // Use original schema if available, fallback to transformed schema
+        const originalSchema = originalSchemas[toolName];
+        const fallbackSchema = tools.find(t => t.name === toolName)
+          ?.inputSchema as unknown;
+        const schema = originalSchema || fallbackSchema;
+
+        const coercedArgs = coerceBySchema(args, schema) as Record<
+          string,
+          unknown
+        >;
 
         processedElements.push({
           type: "tool-call",
           toolCallId: generateId(),
           toolName,
-          input: JSON.stringify(args),
+          input: JSON.stringify(coercedArgs),
         });
       } catch (error) {
         const message = `Could not process XML tool call, keeping original text: ${match[0]}`;
@@ -129,6 +271,10 @@ export const xmlProtocol = (): ToolCallProtocol => ({
   },
 
   createStreamParser({ tools, options }) {
+    // Get original schemas from options if available
+    const originalSchemas =
+      (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
+        ?.originalToolSchemas || {};
     const toolNames = tools.map(t => t.name).filter(name => name != null);
     let buffer = "";
     let currentToolCall: { name: string; content: string } | null = null;
@@ -196,6 +342,8 @@ export const xmlProtocol = (): ToolCallProtocol => ({
                 for (const k of Object.keys(parsedArgs || {})) {
                   const v = parsedArgs[k];
                   let val: unknown = v;
+
+                  // Handle text content extraction
                   if (
                     v &&
                     typeof v === "object" &&
@@ -203,15 +351,157 @@ export const xmlProtocol = (): ToolCallProtocol => ({
                   ) {
                     val = (v as Record<string, unknown>)?.["#text"];
                   }
+
+                  // Heuristic array parsing for multiple tags with same name
+                  if (Array.isArray(v)) {
+                    val = v.map(item => {
+                      if (
+                        item &&
+                        typeof item === "object" &&
+                        Object.prototype.hasOwnProperty.call(item, "#text")
+                      ) {
+                        const textVal = (item as Record<string, unknown>)?.[
+                          "#text"
+                        ];
+                        return typeof textVal === "string"
+                          ? textVal.trim()
+                          : textVal;
+                      }
+                      return typeof item === "string" ? item.trim() : item;
+                    });
+                  }
+                  // Heuristic tuple/array parsing for various XML patterns
+                  else if (
+                    v &&
+                    typeof v === "object" &&
+                    !Object.prototype.hasOwnProperty.call(v, "#text")
+                  ) {
+                    const obj = v as Record<string, unknown>;
+                    const keys = Object.keys(obj);
+
+                    // Check for 'item' key pattern (common XML array pattern)
+                    if (keys.length === 1 && keys[0] === "item") {
+                      const itemValue = obj.item;
+                      if (Array.isArray(itemValue)) {
+                        val = itemValue.map(item => {
+                          if (
+                            item &&
+                            typeof item === "object" &&
+                            Object.prototype.hasOwnProperty.call(item, "#text")
+                          ) {
+                            const textVal = (item as Record<string, unknown>)?.[
+                              "#text"
+                            ];
+                            const trimmed =
+                              typeof textVal === "string"
+                                ? textVal.trim()
+                                : textVal;
+                            // Try to convert to number if it looks like one
+                            if (
+                              typeof trimmed === "string" &&
+                              /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                            ) {
+                              const num = Number(trimmed);
+                              if (Number.isFinite(num)) return num;
+                            }
+                            return trimmed;
+                          }
+                          const trimmed =
+                            typeof item === "string" ? item.trim() : item;
+                          // Try to convert to number if it looks like one
+                          if (
+                            typeof trimmed === "string" &&
+                            /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                          ) {
+                            const num = Number(trimmed);
+                            if (Number.isFinite(num)) return num;
+                          }
+                          return trimmed;
+                        });
+                      } else {
+                        const trimmed =
+                          typeof itemValue === "string"
+                            ? itemValue.trim()
+                            : itemValue;
+                        // Try to convert to number if it looks like one
+                        if (
+                          typeof trimmed === "string" &&
+                          /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
+                        ) {
+                          const num = Number(trimmed);
+                          if (Number.isFinite(num)) {
+                            val = num;
+                          } else {
+                            val = trimmed;
+                          }
+                        } else {
+                          val = trimmed;
+                        }
+                      }
+                    }
+                    // Check if all keys are numeric indices (0, 1, 2, ...) and consecutive
+                    else {
+                      const isIndexedTuple =
+                        keys.length > 0 &&
+                        keys.every(key => /^\d+$/.test(key)) &&
+                        (() => {
+                          const indices = keys
+                            .map(k => parseInt(k))
+                            .sort((a, b) => a - b);
+                          return (
+                            indices[0] === 0 &&
+                            indices.every((val, idx) => val === idx)
+                          );
+                        })();
+
+                      if (isIndexedTuple) {
+                        // Convert indexed object to array (tuple)
+                        const sortedKeys = keys.sort(
+                          (a, b) => parseInt(a) - parseInt(b)
+                        );
+                        val = sortedKeys.map(key => {
+                          const item = obj[key];
+                          if (
+                            item &&
+                            typeof item === "object" &&
+                            Object.prototype.hasOwnProperty.call(item, "#text")
+                          ) {
+                            const textVal = (item as Record<string, unknown>)?.[
+                              "#text"
+                            ];
+                            return typeof textVal === "string"
+                              ? textVal.trim()
+                              : textVal;
+                          }
+                          return typeof item === "string" ? item.trim() : item;
+                        });
+                      } else {
+                        val = v;
+                      }
+                    }
+                  }
+
                   args[k] = typeof val === "string" ? val.trim() : val;
                 }
+
+                // Use original schema if available, fallback to transformed schema
+                const originalSchema = originalSchemas[currentToolCall!.name];
+                const fallbackSchema = tools.find(
+                  t => t.name === currentToolCall!.name
+                )?.inputSchema;
+                const toolSchema = originalSchema || fallbackSchema;
+
+                const coercedArgs = coerceBySchema(args, toolSchema) as Record<
+                  string,
+                  unknown
+                >;
 
                 flushText(controller);
                 controller.enqueue({
                   type: "tool-call",
                   toolCallId: generateId(),
                   toolName: currentToolCall.name,
-                  input: JSON.stringify(args),
+                  input: JSON.stringify(coercedArgs),
                 });
               } catch {
                 const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;

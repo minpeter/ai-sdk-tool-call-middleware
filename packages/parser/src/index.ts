@@ -1,5 +1,11 @@
 import { createToolMiddleware } from "./tool-call-middleware";
 import { jsonMixProtocol, xmlProtocol } from "./protocols";
+export {
+  unwrapJsonSchema,
+  getSchemaType,
+  coerceBySchema,
+  fixToolCallWithSchema,
+} from "./utils/coercion";
 
 const gemmaToolMiddleware = createToolMiddleware({
   protocol: jsonMixProtocol(
@@ -41,13 +47,14 @@ For each function call return a json object with function name and arguments wit
 const xmlToolMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
   toolSystemPromptTemplate(tools: string) {
-    return `You are KorinAI, a function-calling AI model.
+    return `You are a function calling AI model.
 You are provided with function signatures within <tools></tools> XML tags.
 You may call one or more functions to assist with the user query.
 Don't make assumptions about what values to plug into functions.
 Here are the available tools: <tools>${tools}</tools>
-For each function call return a tool call in an XML tag that matches the tool's name, and nothing else.
-Example KorinAI-style call (text form):
+For a function call, return exactly one XML element whose tag name matches the tool's name, and nothing else.
+When an argument is an array, write each item inside a single element on one line separated by commas (or provide a JSON-like list). When an argument is an object, provide a JSON-like value.
+Examples:
 <get_weather>
 <location>
 San Fransisco

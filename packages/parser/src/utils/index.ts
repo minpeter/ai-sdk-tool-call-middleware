@@ -6,6 +6,8 @@ export * from "./type-guards";
 export * from "./tools";
 export * from "./on-error";
 export * from "./xml";
+export * from "./coercion";
+export * from "./protocol";
 
 export {
   getPotentialStartIndex,

@@ -1,27 +1,11 @@
-# Check if it's a merge commit (has multiple parents)
-if git rev-parse --verify MERGE_HEAD >/dev/null 2>&1; then
-  echo "Skipping pre-commit checks for merge commit"
-  exit 0
-fi
-
-# Skip for changeset version commits
-if [ -n "$HUSKY_SKIP_HOOKS" ] || [ -n "$SKIP_CHECKS" ]; then
-  echo "Skipping pre-commit checks (HUSKY_SKIP_HOOKS or SKIP_CHECKS set)"
-  exit 0
-fi
-
-echo "Running pre-commit checks..."
-
-# Check formatting
-echo "Checking code formatting..."
-pnpm fmt
-
-# Lint and type check affected packages
-echo "Running lint and type checks..."
-pnpm lint && pnpm check-types
-
-# Run tests for changed packages
-echo "Running tests..."
-pnpm test
-
-echo "Pre-commit checks passed!"
+#!/bin/sh
+# Format only staged files with Prettier, re-stage them, then lint/typecheck/test
+git diff -z --name-only --cached --diff-filter=ACMR | while IFS= read -r -d '' file; do
+  case "$file" in
+    *.ts|*.tsx|*.js|*.mjs|*.cjs|*.json|*.md|*.yaml|*.yml)
+      pnpm prettier --write "$file"
+      git add -- "$file"
+      ;;
+  esac
+done
+pnpm lint && pnpm check-types && pnpm test

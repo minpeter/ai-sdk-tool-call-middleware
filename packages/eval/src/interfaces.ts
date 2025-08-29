@@ -67,7 +67,7 @@ export interface LanguageModelV2Benchmark {
 /**
  * The supported reporter types.
  */
-export type ReporterType = "console" | "json";
+export type ReporterType = "console" | "json" | "console.debug";
 
 /**
  * The full result object for an evaluation run,
@@ -75,6 +75,8 @@ export type ReporterType = "console" | "json";
  */
 export interface EvaluationResult {
   model: string; // A string identifier for the model
+  /** Optional user-provided key when models are passed as a keyed map */
+  modelKey?: string;
   benchmark: string; // The name of the benchmark
   result: BenchmarkResult;
 }
@@ -86,7 +88,7 @@ export interface EvaluateOptions {
   /**
    * The language model or models to evaluate.
    */
-  models: LanguageModel | LanguageModel[];
+  models: LanguageModel | LanguageModel[] | Record<string, LanguageModel>;
 
   /**
    * An array of benchmarks to run against the models.
