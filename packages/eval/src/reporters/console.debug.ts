@@ -153,7 +153,10 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
             try {
               const parsed = JSON.parse(l.replace(/^\[DEBUG-FAIL\] /, ""));
               if (parsed?.id) debugIds.add(String(parsed.id));
-            } catch {}
+            } catch {
+              // ignore JSON parse errors for debug lines
+              void 0;
+            }
           }
         }
         for (const line of failLogs) {
