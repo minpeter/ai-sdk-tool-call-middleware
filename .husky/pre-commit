@@ -1,1 +1,3 @@
+pnpm fmt:fix
+git add -A
 pnpm lint && pnpm check-types && pnpm test
