@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
 import { xmlProtocol } from "../../src/protocols/xml-protocol";
 
 describe("XML Protocol Heuristic Streaming", () => {
@@ -48,8 +49,9 @@ describe("XML Protocol Heuristic Streaming", () => {
         <numbers>7</numbers>
       </math_sum>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "math_sum",
           inputSchema: {
             type: "object",
@@ -81,8 +83,9 @@ describe("XML Protocol Heuristic Streaming", () => {
         </coordinates>
       </set_point>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "set_point",
           inputSchema: {
             type: "object",
@@ -114,8 +117,9 @@ describe("XML Protocol Heuristic Streaming", () => {
         </position>
       </get_coordinates>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "get_coordinates",
           inputSchema: {
             type: "object",
@@ -155,8 +159,9 @@ describe("XML Protocol Heuristic Streaming", () => {
         </tags>
       </complex_data>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "complex_data",
           inputSchema: {
             type: "object",
@@ -199,8 +204,9 @@ describe("XML Protocol Heuristic Streaming", () => {
       </process_list>
       Some text after`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "process_list",
           inputSchema: {
             type: "object",
@@ -237,8 +243,9 @@ describe("XML Protocol Heuristic Streaming", () => {
           <item>complete</item>
           <item>partial`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "incomplete_test",
           inputSchema: {
             type: "object",
@@ -266,8 +273,9 @@ describe("XML Protocol Heuristic Streaming", () => {
     it("should handle streaming with very small chunks", async () => {
       const text = `<tiny_chunks><data><item>1</item><item>2</item></data></tiny_chunks>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "tiny_chunks",
           inputSchema: {
             type: "object",

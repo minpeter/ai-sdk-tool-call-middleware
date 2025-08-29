@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
 import { xmlProtocol } from "../../src/protocols/xml-protocol";
 
 describe("XML Protocol Heuristic Parsing", () => {
@@ -13,8 +14,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         <multiples>5</multiples>
       </math_toolkit_sum_of_multiples>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "math_toolkit_sum_of_multiples",
           inputSchema: {
             type: "object",
@@ -51,8 +53,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         <city>Marseille</city>
       </get_cities>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "get_cities",
           inputSchema: {
             type: "object",
@@ -89,8 +92,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </point>
       </set_coordinates>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "set_coordinates",
           inputSchema: {
             type: "object",
@@ -124,8 +128,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </coordinates>
       </set_position>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "set_position",
           inputSchema: {
             type: "object",
@@ -159,8 +164,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </values>
       </set_data>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "set_data",
           inputSchema: {
             type: "object",
@@ -194,8 +200,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </set_mixed>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "set_mixed",
           inputSchema: {
             type: "object",
@@ -231,8 +238,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </values>
       </get_numbers>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "get_numbers",
           inputSchema: {
             type: "object",
@@ -266,8 +274,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </palette>
       </get_colors>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "get_colors",
           inputSchema: {
             type: "object",
@@ -303,8 +312,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         <date>2023-12-25</date>
       </weather_get_by_coordinates_date>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "weather_get_by_coordinates_date",
           inputSchema: {
             type: "object",
@@ -338,8 +348,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </get_single_value>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "get_single_value",
           inputSchema: {
             type: "object",
@@ -373,8 +384,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </point2>
       </calculate_distance>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "calculate_distance",
           inputSchema: {
             type: "object",
@@ -417,8 +429,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </values>
       </test_precision>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "test_precision",
           inputSchema: {
             type: "object",
@@ -454,8 +467,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </scientific_values>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "scientific_values",
           inputSchema: {
             type: "object",
@@ -489,8 +503,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         <message>Hello World</message>
       </get_content>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "get_content",
           inputSchema: {
             type: "object",
@@ -520,8 +535,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </values>
       </format_text>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "format_text",
           inputSchema: {
             type: "object",
@@ -551,8 +567,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         <values></values>
       </empty_data>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "empty_data",
           inputSchema: {
             type: "object",
@@ -584,8 +601,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </mixed_content>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "mixed_content",
           inputSchema: {
             type: "object",
@@ -632,8 +650,9 @@ describe("XML Protocol Heuristic Parsing", () => {
         <name>test</name>
       </complex_structure>`;
 
-      const tools = [
+      const tools: LanguageModelV2FunctionTool[] = [
         {
+          type: "function",
           name: "complex_structure",
           inputSchema: {
             type: "object",

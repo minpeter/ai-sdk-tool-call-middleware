@@ -13,9 +13,10 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "number" },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual([3, 5, 7]);
-      expect(result.every(item => typeof item === "number")).toBe(true);
+      const arr = result as any[];
+      expect(arr.every((item: any) => typeof item === "number")).toBe(true);
     });
 
     it("should extract string array from single key object", () => {
@@ -28,9 +29,10 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual(["red", "green", "blue"]);
-      expect(result.every(item => typeof item === "string")).toBe(true);
+      const arr = result as any[];
+      expect(arr.every((item: any) => typeof item === "string")).toBe(true);
     });
 
     it("should handle mixed type single key extraction", () => {
@@ -43,7 +45,7 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual(["123", "hello", "45.67", "true"]);
     });
 
@@ -59,7 +61,7 @@ describe("Coercion Heuristic Handling", () => {
       };
 
       // Should not extract when there are multiple keys
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual(input); // Should return original
     });
   });
@@ -75,9 +77,10 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "number" },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual([46.603354, 1.888334]);
-      expect(result.every(item => typeof item === "number")).toBe(true);
+      const arr = result as any[];
+      expect(arr.every((item: any) => typeof item === "number")).toBe(true);
     });
 
     it("should handle single item value", () => {
@@ -90,7 +93,7 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "number" },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual([42]);
       expect(typeof result[0]).toBe("number");
     });
@@ -105,7 +108,7 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "number" },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual([123, "hello", 45.67]); // "hello" stays as string
     });
   });
@@ -123,7 +126,7 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual(["first", "second", "third"]);
     });
 
@@ -139,9 +142,10 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "number" },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any;
       expect(result).toEqual([10.5, 20.3, 15.8]);
-      expect(result.every(item => typeof item === "number")).toBe(true);
+      const arr = result as any[];
+      expect(arr.every((item: any) => typeof item === "number")).toBe(true);
     });
 
     it("should handle non-consecutive numeric keys", () => {
@@ -157,7 +161,7 @@ describe("Coercion Heuristic Handling", () => {
       };
 
       // Non-consecutive keys should still be converted but maintain order
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual(["first", "third", "sixth"]);
     });
 
@@ -193,7 +197,7 @@ describe("Coercion Heuristic Handling", () => {
         ],
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual([10.5, "hello", true]);
       expect(typeof result[0]).toBe("number");
       expect(typeof result[1]).toBe("string");
@@ -216,7 +220,7 @@ describe("Coercion Heuristic Handling", () => {
         ],
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual([123, "hello", 45.67]);
       expect(typeof result[0]).toBe("number");
       expect(typeof result[1]).toBe("string");
@@ -234,9 +238,9 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "string" }, // fallback for extra items
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual(["10", "20", "30", "40"]); // All converted as strings due to fallback
-      expect(result.every(item => typeof item === "string")).toBe(true);
+      expect(result.every((item: any) => typeof item === "string")).toBe(true);
     });
   });
 
@@ -260,14 +264,17 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any;
       expect(result).toEqual({
         coordinates: [46.603354, 1.888334],
         name: "test location",
       });
-      expect(result.coordinates.every(item => typeof item === "number")).toBe(
-        true
-      );
+      const obj = result as any;
+      expect(
+        (obj.coordinates as any[]).every(
+          (item: any) => typeof item === "number"
+        )
+      ).toBe(true);
     });
 
     it("should handle array of objects with heuristic extraction", () => {
@@ -281,13 +288,15 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual([
         [1, 2],
         [3, 4],
       ]);
       expect(
-        result.every(arr => arr.every(item => typeof item === "number"))
+        (result as any[]).every((arr: any[]) =>
+          arr.every((item: any) => typeof item === "number")
+        )
       ).toBe(true);
     });
   });
@@ -371,11 +380,12 @@ describe("Coercion Heuristic Handling", () => {
       };
 
       const start = Date.now();
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any[];
       const end = Date.now();
 
-      expect(result).toHaveLength(1000);
-      expect(result.every(item => typeof item === "number")).toBe(true);
+      const arr = result as any[];
+      expect(arr).toHaveLength(1000);
+      expect(arr.every((item: any) => typeof item === "number")).toBe(true);
       expect(end - start).toBeLessThan(100); // Should complete within 100ms
     });
 
@@ -410,7 +420,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema);
+      const result = coerceBySchema(input, schema) as any;
       expect(result.level1.level2.level3).toEqual([1, 2, 3]);
     });
   });
