@@ -7,5 +7,8 @@
   "access": "restricted",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": []
+  "ignore": [
+    "@ai-sdk-tool/example/eval-core",
+    "@ai-sdk-tool/example/parser-core"
+  ]
 }
