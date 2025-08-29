@@ -1,79 +1,69 @@
-# Custom tool call parser for AI SDK
+# `@ai-sdk-tool/` monorepo
 
-▲ Also available in the Vercel AI SDK official documentation: [Custom tool call parser](https://ai-sdk.dev/docs/ai-sdk-core/middleware#custom-tool-call-parser)
-
-[![npm](https://img.shields.io/npm/v/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
-[![npm](https://img.shields.io/npm/dt/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
+[![npm - parser](https://img.shields.io/npm/v/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
+[![npm downloads - parser](https://img.shields.io/npm/dt/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
 [![codecov](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware/branch/main/graph/badge.svg)](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware)
 
-> [!NOTE]
-> Depends on AI SDK v5 release, if you wish to use it on v4, please pin the package version to 1.0.0
+Monorepo of tooling around AI SDK to enable tool calling and evaluation.
 
-Allows tool calls to be used in the AI ​​SDK framework regardless of the model.
+- **@ai-sdk-tool/parser**: middleware to parse tool calls for models without native `tools` support. Works with any provider.
+- **@ai-sdk-tool/eval**: benchmarks and evaluation helpers (BFCL, JSON generation).
 
-## Why This Exists
+## Packages
 
-Many self‑hosted or third‑party model endpoints (vLLM, MLC‑LLM, Ollama, OpenRouter, etc.) don’t yet expose the OpenAI‑style `tools` parameter, forcing you to hack together tool parsing.  
-This project provides a flexible middleware that:
+- `packages/parser` — core tool‑call parsing middleware and prebuilt middlewares (`gemmaToolMiddleware`, `hermesToolMiddleware`, `xmlToolMiddleware`).
+  - Quickstarts: [packages/parser/README.md](packages/parser/README.md)
+  - Official docs reference: [Custom tool call parser](https://ai-sdk.dev/docs/ai-sdk-core/middleware#custom-tool-call-parser)
+- `packages/eval` — evaluation utilities (BFCL, JSON generation).  
+  – Quickstarts: [packages/eval/README.md](packages/eval/README.md)
 
-- Parses tool calls from streaming or batch responses
-- Supports Hermes and Gemma formats
-- Llama, Mistral, and JSON formats are coming soon
-- Gain complete control over the tool call system prompt.
-
-## Installation
+## Install (per package)
 
 ```bash
-pnpm install @ai-sdk-tool/parser
+pnpm add @ai-sdk-tool/parser
+pnpm add @ai-sdk-tool/eval
 ```
 
----
+## Examples
 
-## Example: Gemma3 Style Middleware
+- Parser examples: `examples/parser-core/src/` (streaming/non‑streaming, tool choice variants)
+- Eval examples: `examples/eval-core/src/`
 
-See `examples/parser-core/src/00-stream-tool-call.ts` for the full demo:
+Run examples locally (after `pnpm install` at repo root):
 
-```typescript
-// filepath: examples/parser-core/src/00-stream-tool-call.ts
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { wrapLanguageModel, stepCountIs, streamText } from "ai";
-import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
-
-// You can use any provider: ollama, vllm, etc...
-const openrouter = createOpenAICompatible({
-  /* ... */
-});
-
-async function main() {
-  const result = streamText({
-    model: wrapLanguageModel({
-      model: openrouter("google/gemma-3-27b-it"),
-      middleware: gemmaToolMiddleware,
-    }),
-    system: "You are a helpful assistant.",
-    prompt: "What is the weather in my city?",
-    stopWhen: stepCountIs(4),
-    tools: {
-      get_location: {
-        /* ... */
-      },
-      get_weather: {
-        /* ... */
-      },
-    },
-  });
-
-  for await (const part of result.fullStream) {
-    // ...handling text-delta and tool-result...
-  }
-}
-
-main().catch(console.error);
+```bash
+cd examples/parser-core && pnpm dlx tsx src/00-stream-tool-call.ts
+cd examples/eval-core && pnpm dlx tsx src/bfcl-simple.ts
 ```
 
----
+## Development (monorepo)
 
-## 🤝 Contributing
+This is a pnpm workspace managed by Turborepo.
 
-• Feel free to open issues or PRs—especially for new model formats.  
-• See `CONTRIBUTING.md` for guidelines.
+```bash
+# install deps
+pnpm install
+
+# build/lint/test all packages
+pnpm build
+pnpm test
+pnpm check-types
+pnpm lint
+pnpm lint:fix
+pnpm fmt
+pnpm fmt:fix
+
+# develop (watch builds)
+pnpm dev
+```
+
+Single‑package development:
+
+```bash
+cd packages/parser && pnpm test:watch
+cd packages/eval && pnpm dev
+```
+
+## Contributing
+
+Issues and PRs are welcome. See `CONTRIBUTING.md` and `AGENTS.md` for architecture and workflow.
