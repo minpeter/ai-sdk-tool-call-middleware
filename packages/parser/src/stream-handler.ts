@@ -47,19 +47,73 @@ export async function wrapStream({
   const { stream, ...rest } = await doStream();
 
   const debugLevel = getDebugLevel();
+  const tools = getFunctionTools(params);
+  const options = {
+    ...extractOnErrorOption(params.providerOptions),
+    ...((params.providerOptions as { toolCallMiddleware?: unknown } | undefined)
+      ?.toolCallMiddleware as Record<string, unknown>),
+  };
+
+  if (debugLevel === "off") {
+    return {
+      stream: stream.pipeThrough(
+        protocol.createStreamParser({
+          tools,
+          options,
+        })
+      ),
+      ...rest,
+    };
+  }
+
+  if (debugLevel === "stream") {
+    const withRawTap = stream.pipeThrough(
+      new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>(
+        {
+          transform(part, controller) {
+            logRawChunk(part);
+            controller.enqueue(part);
+          },
+        }
+      )
+    );
+
+    const parsed = withRawTap.pipeThrough(
+      protocol.createStreamParser({
+        tools,
+        options,
+      })
+    );
+
+    const withParsedTap = parsed.pipeThrough(
+      new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>(
+        {
+          transform(part, controller) {
+            logParsedChunk(part);
+            controller.enqueue(part);
+          },
+        }
+      )
+    );
+
+    return {
+      stream: withParsedTap,
+      ...rest,
+    };
+  }
+
+  // debugLevel === "parse"
   let fullRawText = "";
   const withRawTap = stream.pipeThrough(
     new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>({
       transform(part, controller) {
-        if (debugLevel === "stream") {
-          logRawChunk(part);
-        }
-        if (debugLevel === "parse" && part.type === "text-delta") {
+        if (part.type === "text-delta") {
           const delta = (
             part as Extract<LanguageModelV2StreamPart, { type: "text-delta" }>
           ).delta as string | undefined;
-          if (typeof delta === "string" && delta.length > 0)
+          if (typeof delta === "string" && delta.length > 0) {
             fullRawText += delta;
+          }
         }
         controller.enqueue(part);
       },
@@ -68,51 +122,28 @@ export async function wrapStream({
 
   const parsed = withRawTap.pipeThrough(
     protocol.createStreamParser({
-      tools: getFunctionTools(params),
-      options: {
-        ...extractOnErrorOption(params.providerOptions),
-        ...((
-          params.providerOptions as { toolCallMiddleware?: unknown } | undefined
-        )?.toolCallMiddleware as Record<string, unknown>),
-      },
+      tools,
+      options,
     })
   );
 
-  const withParsedTap = parsed.pipeThrough(
+  const withSummary = parsed.pipeThrough(
     new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>({
-      start() {
-        /* noop */
-      },
-      transform(part, controller) {
-        if (debugLevel === "stream") {
-          logParsedChunk(part);
-        }
-        controller.enqueue(part);
-      },
-    })
-  );
-
-  // For parse mode, emit summary after finish
-  const withSummary = withParsedTap.pipeThrough(
-    new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>({
-      start() {
-        /* noop */
-      },
       transform: (() => {
         const parsedToolCalls: LanguageModelV2StreamPart[] = [];
         return (
           part: LanguageModelV2StreamPart,
           controller: TransformStreamDefaultController<LanguageModelV2StreamPart>
         ) => {
-          if (debugLevel === "parse" && part.type === "tool-call") {
+          if (part.type === "tool-call") {
             parsedToolCalls.push(part);
           }
-          if (debugLevel === "parse" && part.type === "finish") {
+          if (part.type === "finish") {
             try {
               const segments = protocol.extractToolCallSegments
                 ? protocol.extractToolCallSegments({
                     text: fullRawText,
-                    tools: getFunctionTools(params),
+                    tools,
                   })
                 : [];
               const origin = segments.join("\n\n");
