@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-describe("xmlProtocol parseGeneratedText error path via mocked XMLParser", () => {
+describe("morphXmlProtocol parseGeneratedText error path via mocked XMLParser", () => {
   it("calls onError and emits original text when XMLParser throws", async () => {
     vi.doMock("fast-xml-parser", () => ({
       XMLParser: class {
@@ -11,8 +11,8 @@ describe("xmlProtocol parseGeneratedText error path via mocked XMLParser", () =>
       XMLBuilder: class {},
     }));
 
-    const { xmlProtocol } = await import("@/protocols/xml-protocol");
-    const p = xmlProtocol();
+    const { morphXmlProtocol } = await import("@/protocols/morph-xml-protocol");
+    const p = morphXmlProtocol();
     const onError = vi.fn();
     const tools = [
       {

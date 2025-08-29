@@ -1,17 +1,13 @@
-import { describe, it, expect } from "vitest";
+import type { LanguageModelV2Content } from "@ai-sdk/provider";
+import { describe, expect, it } from "vitest";
+
 import {
+  createToolMiddleware,
   gemmaToolMiddleware,
   hermesToolMiddleware,
-  xmlToolMiddleware,
-  createToolMiddleware,
   jsonMixProtocol,
-  xmlProtocol,
+  xmlToolMiddleware,
 } from "@/index";
-import type {
-  LanguageModelV2Message,
-  LanguageModelV2FunctionTool,
-  LanguageModelV2Content,
-} from "@ai-sdk/provider";
 
 describe("index exports", () => {
   describe("gemmaToolMiddleware", () => {
@@ -112,7 +108,7 @@ describe("index exports", () => {
 
     it("should create custom middleware", () => {
       const customMiddleware = createToolMiddleware({
-        protocol: jsonMixProtocol(), // or xmlProtocol
+        protocol: jsonMixProtocol(), // or morphXmlProtocol
         toolSystemPromptTemplate: (tools: string) =>
           `Custom template: ${tools}`,
       });

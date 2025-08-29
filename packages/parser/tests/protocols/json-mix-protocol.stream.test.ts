@@ -1,7 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
 import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
-import { xmlProtocol } from "@/protocols/xml-protocol";
+import { describe, expect, it, vi } from "vitest";
+
+import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
 
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];

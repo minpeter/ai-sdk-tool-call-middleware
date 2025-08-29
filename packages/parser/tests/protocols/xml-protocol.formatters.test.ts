@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { xmlProtocol } from "@/protocols/xml-protocol";
+import { describe, expect, it } from "vitest";
 
-describe("xmlProtocol formatters", () => {
+import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
+
+describe("morphXmlProtocol formatters", () => {
   it("formatToolCall handles JSON string input and object input", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const asString = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",
@@ -23,7 +24,7 @@ describe("xmlProtocol formatters", () => {
   });
 
   it("formatToolResponse builds response envelope", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const xml = p.formatToolResponse({
       type: "tool-result",
       toolCallId: "id",

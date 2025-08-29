@@ -1,18 +1,18 @@
 import {
-  evaluate,
-  bfclSimpleBenchmark,
   bfclMultipleBenchmark,
   bfclParallelBenchmark,
   bfclParallelMultipleBenchmark,
+  bfclSimpleBenchmark,
+  evaluate,
 } from "@ai-sdk-tool/eval";
+import {
+  createToolMiddleware,
+  gemmaToolMiddleware,
+  morphXmlProtocol,
+  xmlToolMiddleware,
+} from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel } from "ai";
-import {
-  gemmaToolMiddleware,
-  xmlToolMiddleware,
-  xmlProtocol,
-  createToolMiddleware,
-} from "@ai-sdk-tool/parser";
 
 const friendli = createOpenAICompatible({
   name: "friendli.serverless",
@@ -21,7 +21,7 @@ const friendli = createOpenAICompatible({
 });
 
 const morphExpToolMiddleware = createToolMiddleware({
-  protocol: xmlProtocol,
+  protocol: morphXmlProtocol,
   toolSystemPromptTemplate(tools: string) {
     return `You are a function calling AI model.
 

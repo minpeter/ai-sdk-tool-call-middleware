@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { XML_TEXT_NODE, extractToolCallInput } from "@/utils/xml";
+import { describe, expect, it } from "vitest";
+
+import { extractToolCallInput, XML_TEXT_NODE } from "@/utils/xml";
 
 describe("xml utils", () => {
   it("exports XML_TEXT_NODE constant", () => {

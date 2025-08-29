@@ -1,12 +1,12 @@
 import { LanguageModel, generateText, jsonSchema, tool } from "ai";
 import { promises as fs } from "fs";
 import path from "path";
+import { BenchmarkResult, LanguageModelV2Benchmark } from "../interfaces";
 import { resolveDataDir } from "../utils/paths";
-import { LanguageModelV2Benchmark, BenchmarkResult } from "../interfaces";
 import {
-  simpleFunctionChecker,
-  parallelFunctionCheckerNoOrder,
   multipleFunctionChecker,
+  parallelFunctionCheckerNoOrder,
+  simpleFunctionChecker,
 } from "./bfcl/ast-checker";
 
 // Resolve data files relative to this module using ESM-safe utilities

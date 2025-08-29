@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
-import { createToolMiddleware } from "@/tool-call-middleware";
+import { describe, expect, it, vi } from "vitest";
+
 import { ToolCallProtocol } from "@/protocols/tool-call-protocol";
+import { createToolMiddleware } from "@/tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

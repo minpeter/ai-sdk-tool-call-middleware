@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
-import { createToolMiddleware } from "@/tool-call-middleware";
-import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
-import { xmlProtocol } from "@/protocols/xml-protocol";
 import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import { describe, expect, it, vi } from "vitest";
+
+import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
+import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
+import { createToolMiddleware } from "@/tool-call-middleware";
 
 describe("createToolMiddleware", () => {
   const mockToolSystemPromptTemplate = (tools: string) =>
@@ -16,7 +17,7 @@ describe("createToolMiddleware", () => {
 
   const createXmlMiddleware = () =>
     createToolMiddleware({
-      protocol: xmlProtocol,
+      protocol: morphXmlProtocol,
       toolSystemPromptTemplate: mockToolSystemPromptTemplate,
     });
 
@@ -80,7 +81,7 @@ describe("createToolMiddleware", () => {
     });
   });
 
-  describe("wrapGenerate with xmlProtocol", () => {
+  describe("wrapGenerate with morphXmlProtocol", () => {
     it("should parse XML tool calls from text content", async () => {
       const middleware = createXmlMiddleware();
       const tools: LanguageModelV2FunctionTool[] = [

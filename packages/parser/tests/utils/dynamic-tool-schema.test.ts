@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { createDynamicIfThenElseSchema } from "@/utils/dynamic-tool-schema";
 import type {
   LanguageModelV2FunctionTool,
   LanguageModelV2ProviderDefinedTool,
 } from "@ai-sdk/provider";
+import { describe, expect, it } from "vitest";
+
+import { createDynamicIfThenElseSchema } from "@/utils/dynamic-tool-schema";
 
 describe("createDynamicIfThenElseSchema", () => {
   it("should create schema for single tool", () => {

@@ -1,5 +1,6 @@
-import { ToolCallProtocol } from "./tool-call-protocol";
 import { generateId } from "@ai-sdk/provider-utils";
+
+import { ToolCallProtocol } from "./tool-call-protocol";
 
 export const dummyProtocol = (): ToolCallProtocol => ({
   formatTools: () => "",

@@ -1,16 +1,17 @@
-import { describe, test, expect, vi } from "vitest";
 import {
-  LanguageModelV2StreamPart,
   LanguageModelV2FunctionTool,
+  LanguageModelV2StreamPart,
 } from "@ai-sdk/provider";
+import { describe, expect, test, vi } from "vitest";
+
+import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 import { createToolMiddleware } from "@/tool-call-middleware";
-import { xmlProtocol } from "@/protocols/xml-protocol";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-describe("xmlProtocol stream parsing", () => {
+describe("morphXmlProtocol stream parsing", () => {
   const tools: LanguageModelV2FunctionTool[] = [
     {
       type: "function",
@@ -21,7 +22,7 @@ describe("xmlProtocol stream parsing", () => {
   ];
 
   const middleware = createToolMiddleware({
-    protocol: xmlProtocol,
+    protocol: morphXmlProtocol,
     toolSystemPromptTemplate: () => "",
   });
 

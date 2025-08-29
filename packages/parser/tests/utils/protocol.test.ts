@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { isProtocolFactory } from "@/utils";
+import { describe, expect, it } from "vitest";
+
 import type { ToolCallProtocol } from "@/protocols/tool-call-protocol";
+import { isProtocolFactory } from "@/utils";
 
 describe("utils/protocol - isProtocolFactory", () => {
   it("returns true for a factory function", () => {

@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
 import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
-import { xmlProtocol } from "../../src/protocols/xml-protocol";
+import { describe, expect, it } from "vitest";
+
+import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
 
 describe("XML Protocol Heuristic Parsing", () => {
-  const protocol = xmlProtocol();
+  const protocol = morphXmlProtocol();
 
   describe("Multiple tags handling", () => {
     it("should convert multiple same-named tags to array", () => {

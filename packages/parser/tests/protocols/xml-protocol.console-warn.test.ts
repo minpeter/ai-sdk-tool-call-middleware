@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-describe("xmlProtocol parseGeneratedText without onError", () => {
+describe("morphXmlProtocol parseGeneratedText without onError", () => {
   it("does not warn to console and returns original text when parsing fails", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.resetModules();
@@ -12,8 +12,8 @@ describe("xmlProtocol parseGeneratedText without onError", () => {
       },
       XMLBuilder: class {},
     }));
-    const { xmlProtocol } = await import("@/protocols/xml-protocol");
-    const p = xmlProtocol();
+    const { morphXmlProtocol } = await import("@/protocols/morph-xml-protocol");
+    const p = morphXmlProtocol();
     const text = "<a><x>1</x></a>";
     const result = p.parseGeneratedText({
       text,

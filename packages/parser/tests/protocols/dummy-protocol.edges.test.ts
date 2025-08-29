@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { dummyProtocol } from "@/protocols/dummy-protocol";
 import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import { describe, expect, it } from "vitest";
+
+import { dummyProtocol } from "@/protocols/dummy-protocol";
 
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];

@@ -1,7 +1,8 @@
-import { describe, test, expect, vi } from "vitest";
 import { LanguageModelV2StreamPart } from "@ai-sdk/provider";
-import { createToolMiddleware } from "@/tool-call-middleware";
+import { describe, expect, test } from "vitest";
+
 import { dummyProtocol } from "@/protocols/dummy-protocol";
+import { createToolMiddleware } from "@/tool-call-middleware";
 
 describe("AI SDK v5 stream protocol compliance", () => {
   const middleware = createToolMiddleware({

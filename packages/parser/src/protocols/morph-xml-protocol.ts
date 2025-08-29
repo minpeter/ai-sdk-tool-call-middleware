@@ -3,14 +3,14 @@ import {
   LanguageModelV2ToolCall,
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
-import { ToolCallProtocol } from "./tool-call-protocol";
 import { generateId } from "@ai-sdk/provider-utils";
-import { XMLParser, XMLBuilder } from "fast-xml-parser";
-import { escapeRegExp } from "../utils";
-import { hasInputProperty } from "../utils";
-import { unwrapJsonSchema, coerceBySchema } from "../utils/coercion";
+import { XMLBuilder, XMLParser } from "fast-xml-parser";
 
-export const xmlProtocol = (): ToolCallProtocol => ({
+import { escapeRegExp, hasInputProperty } from "../utils";
+import { coerceBySchema, unwrapJsonSchema } from "../utils/coercion";
+import { ToolCallProtocol } from "./tool-call-protocol";
+
+export const morphXmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt = (tools || []).map(tool => ({
       name: tool.name,

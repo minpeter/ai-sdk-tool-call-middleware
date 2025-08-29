@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { parse, transform, stringify } from "@/utils/relaxed-json";
+import { describe, expect, it } from "vitest";
+
+import { parse, stringify, transform } from "@/utils/relaxed-json";
 
 describe("relaxed-json", () => {
   describe("parse", () => {

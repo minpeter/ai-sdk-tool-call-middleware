@@ -1,9 +1,9 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   extractReasoningMiddleware,
+  generateText,
   LanguageModel,
   stepCountIs,
-  generateText,
   wrapLanguageModel,
 } from "ai";
 import { z } from "zod";
