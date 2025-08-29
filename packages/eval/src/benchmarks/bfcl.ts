@@ -159,12 +159,10 @@ function createBfclBenchmark(
         }
 
         // Helper: fix BFCL JSON schema types to OpenAI-compatible JSON Schema
-        const fixSchema = (schema: unknown): ToolSchemaObject => {
+        const fixSchema = (schema: unknown): unknown => {
           if (!schema || typeof schema !== "object")
             return { type: "object", properties: {} };
-          const copy: ToolSchemaObject | ToolSchemaObject[] = Array.isArray(
-            schema
-          )
+          const copy: ToolSchemaObject | unknown[] = Array.isArray(schema)
             ? (schema as unknown[]).map(v => fixSchema(v))
             : ({ ...(schema as Record<string, unknown>) } as ToolSchemaObject);
           if (!Array.isArray(copy)) {
@@ -183,8 +181,7 @@ function createBfclBenchmark(
             if (copy.items) copy.items = fixSchema(copy.items);
             return copy;
           }
-          // If array, return as any to satisfy return type; arrays occur only in nested positions we pass through
-          return copy as unknown as ToolSchemaObject;
+          return copy;
         };
 
         // Concurrency control via env BFCL_CONCURRENCY (default 4)
@@ -226,10 +223,13 @@ function createBfclBenchmark(
             ).map(t => {
               const fixed = fixSchema(t.parameters);
               // Ensure we always provide a valid JSON Schema object of type 'object'
-              const inputSchema =
-                fixed && typeof fixed === "object" && fixed.type === "object"
-                  ? fixed
-                  : { type: "object", properties: {} };
+              const isObjectSchema =
+                fixed &&
+                typeof fixed === "object" &&
+                (fixed as ToolSchemaObject).type === "object";
+              const inputSchema: ToolSchemaObject = isObjectSchema
+                ? (fixed as ToolSchemaObject)
+                : { type: "object", properties: {} };
 
               const sanitized = sanitizeName(t.name);
               nameMap.set(sanitized, t.name);
