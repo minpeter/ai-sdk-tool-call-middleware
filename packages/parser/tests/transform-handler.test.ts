@@ -57,7 +57,7 @@ describe("index prompt templates", () => {
     const system = out.prompt[0];
     expect(system.role).toBe("system");
     const text = String(system.content);
-    expect(text).toMatch(/KorinAI/);
+    expect(text).toMatch(/You are a function calling AI model/);
     expect(text).toMatch(/<tools>/);
     expect(text).toMatch(/get_weather/);
   });

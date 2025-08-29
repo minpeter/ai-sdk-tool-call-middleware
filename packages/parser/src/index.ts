@@ -47,7 +47,7 @@ For each function call return a json object with function name and arguments wit
 const xmlToolMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
   toolSystemPromptTemplate(tools: string) {
-    return `You are KorinAI, a function-calling AI model.
+    return `You are a function calling AI model.
 You are provided with function signatures within <tools></tools> XML tags.
 You may call one or more functions to assist with the user query.
 Don't make assumptions about what values to plug into functions.
