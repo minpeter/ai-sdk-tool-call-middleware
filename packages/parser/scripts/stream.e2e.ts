@@ -12,7 +12,7 @@ import {
   gemmaToolMiddleware,
   hermesToolMiddleware,
   xmlToolMiddleware,
-} from "../src";
+} from "@/index";
 
 const openrouter = createOpenAICompatible({
   name: "openrouter",

@@ -6,8 +6,9 @@ import {
 import { generateId } from "@ai-sdk/provider-utils";
 import { XMLBuilder, XMLParser } from "fast-xml-parser";
 
-import { escapeRegExp, hasInputProperty } from "../utils";
-import { coerceBySchema, unwrapJsonSchema } from "../utils/coercion";
+import { escapeRegExp, hasInputProperty } from "@/utils";
+import { coerceBySchema, unwrapJsonSchema } from "@/utils/coercion";
+
 import { ToolCallProtocol } from "./tool-call-protocol";
 
 export const morphXmlProtocol = (): ToolCallProtocol => ({

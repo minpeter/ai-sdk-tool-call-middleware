@@ -5,7 +5,8 @@ import type {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
-import { escapeRegExp, getPotentialStartIndex, RJSON } from "../utils";
+import { escapeRegExp, getPotentialStartIndex, RJSON } from "@/utils";
+
 import { ToolCallProtocol } from "./tool-call-protocol";
 
 type JsonMixOptions = {
