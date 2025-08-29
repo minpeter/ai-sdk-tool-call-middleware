@@ -1,5 +1,6 @@
 import type {
   LanguageModelV2,
+  LanguageModelV2Content,
   LanguageModelV2FinishReason,
   LanguageModelV2FunctionTool,
   LanguageModelV2StreamPart,
@@ -13,6 +14,12 @@ import {
   getFunctionTools,
   isToolChoiceActive,
 } from "./utils";
+import {
+  getDebugLevel,
+  logParsedChunk,
+  logParsedSummary,
+  logRawChunk,
+} from "./utils/debug";
 
 type WrapStreamParams = Parameters<typeof isToolChoiceActive>[0] & {
   tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
@@ -38,20 +45,124 @@ export async function wrapStream({
   }
 
   const { stream, ...rest } = await doStream();
-  return {
-    stream: stream.pipeThrough(
+
+  const debugLevel = getDebugLevel();
+  const tools = getFunctionTools(params);
+  const options = {
+    ...extractOnErrorOption(params.providerOptions),
+    ...((params.providerOptions as { toolCallMiddleware?: unknown } | undefined)
+      ?.toolCallMiddleware as Record<string, unknown>),
+  };
+
+  if (debugLevel === "off") {
+    return {
+      stream: stream.pipeThrough(
+        protocol.createStreamParser({
+          tools,
+          options,
+        })
+      ),
+      ...rest,
+    };
+  }
+
+  if (debugLevel === "stream") {
+    const withRawTap = stream.pipeThrough(
+      new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>(
+        {
+          transform(part, controller) {
+            logRawChunk(part);
+            controller.enqueue(part);
+          },
+        }
+      )
+    );
+
+    const parsed = withRawTap.pipeThrough(
       protocol.createStreamParser({
-        tools: getFunctionTools(params),
-        options: {
-          ...extractOnErrorOption(params.providerOptions),
-          ...((
-            params.providerOptions as
-              | { toolCallMiddleware?: unknown }
-              | undefined
-          )?.toolCallMiddleware as Record<string, unknown>),
-        },
+        tools,
+        options,
       })
-    ),
+    );
+
+    const withParsedTap = parsed.pipeThrough(
+      new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>(
+        {
+          transform(part, controller) {
+            logParsedChunk(part);
+            controller.enqueue(part);
+          },
+        }
+      )
+    );
+
+    return {
+      stream: withParsedTap,
+      ...rest,
+    };
+  }
+
+  // debugLevel === "parse"
+  let fullRawText = "";
+  const withRawTap = stream.pipeThrough(
+    new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>({
+      transform(part, controller) {
+        if (part.type === "text-delta") {
+          const delta = (
+            part as Extract<LanguageModelV2StreamPart, { type: "text-delta" }>
+          ).delta as string | undefined;
+          if (typeof delta === "string" && delta.length > 0) {
+            fullRawText += delta;
+          }
+        }
+        controller.enqueue(part);
+      },
+    })
+  );
+
+  const parsed = withRawTap.pipeThrough(
+    protocol.createStreamParser({
+      tools,
+      options,
+    })
+  );
+
+  const withSummary = parsed.pipeThrough(
+    new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>({
+      transform: (() => {
+        const parsedToolCalls: LanguageModelV2StreamPart[] = [];
+        return (
+          part: LanguageModelV2StreamPart,
+          controller: TransformStreamDefaultController<LanguageModelV2StreamPart>
+        ) => {
+          if (part.type === "tool-call") {
+            parsedToolCalls.push(part);
+          }
+          if (part.type === "finish") {
+            try {
+              const segments = protocol.extractToolCallSegments
+                ? protocol.extractToolCallSegments({
+                    text: fullRawText,
+                    tools,
+                  })
+                : [];
+              const origin = segments.join("\n\n");
+              logParsedSummary({
+                toolCalls: parsedToolCalls,
+                originalText: origin,
+              });
+            } catch {
+              // ignore logging failures
+            }
+          }
+          controller.enqueue(part);
+        };
+      })(),
+    })
+  );
+
+  return {
+    stream: withSummary,
     ...rest,
   };
 }
@@ -116,9 +227,43 @@ export async function toolChoiceStream({
     },
   });
 
+  const debugLevel = getDebugLevel();
+  const firstText =
+    (result?.content &&
+      result.content[0] &&
+      (result.content[0] as Extract<LanguageModelV2Content, { type: "text" }>)
+        .type === "text" &&
+      (result.content[0] as Extract<LanguageModelV2Content, { type: "text" }>)
+        .text) ||
+    "";
+  const streamWithSummary =
+    debugLevel === "parse"
+      ? stream.pipeThrough(
+          new TransformStream<
+            LanguageModelV2StreamPart,
+            LanguageModelV2StreamPart
+          >({
+            transform(part, controller) {
+              if (part.type === "finish") {
+                try {
+                  logParsedSummary({
+                    toolCalls: [toolCallChunk],
+                    originalText:
+                      typeof firstText === "string" ? firstText : "",
+                  });
+                } catch {
+                  // ignore logging failures
+                }
+              }
+              controller.enqueue(part);
+            },
+          })
+        )
+      : stream;
+
   return {
     request: result?.request || {},
     response: result?.response || {},
-    stream,
+    stream: streamWithSummary,
   };
 }

@@ -13,6 +13,12 @@ import {
   isToolChoiceActive,
 } from "./utils";
 import { coerceToolCallInput } from "./utils/coercion";
+import {
+  getDebugLevel,
+  logParsedChunk,
+  logParsedSummary,
+  logRawChunk,
+} from "./utils/debug";
 
 type WrapGenerateParams = {
   prompt?: unknown;
@@ -40,6 +46,10 @@ export async function wrapGenerate({
     let parsed: { name?: string; arguments?: Record<string, unknown> } = {};
     const first = result.content?.[0];
     if (first && first.type === "text") {
+      const debugLevel = getDebugLevel();
+      if (debugLevel === "parse") {
+        logRawChunk(first.text);
+      }
       try {
         parsed = JSON.parse(first.text);
       } catch (error) {
@@ -53,6 +63,7 @@ export async function wrapGenerate({
         );
         parsed = {};
       }
+      // Defer summary logging until toolCall object is constructed below
     }
 
     const toolCall: LanguageModelV2ToolCall = {
@@ -61,6 +72,13 @@ export async function wrapGenerate({
       toolName: parsed.name || "unknown",
       input: JSON.stringify(parsed.arguments || {}),
     };
+
+    // Use the same parse-summary shape as streaming path
+    const debugLevelToolChoice = getDebugLevel();
+    const originText = first && first.type === "text" ? first.text : "";
+    if (debugLevelToolChoice === "parse") {
+      logParsedSummary({ toolCalls: [toolCall], originalText: originText });
+    }
 
     return {
       ...result,
@@ -78,6 +96,11 @@ export async function wrapGenerate({
     if (contentItem.type !== "text") {
       return [contentItem];
     }
+    const debugLevel = getDebugLevel();
+    if (debugLevel === "stream") {
+      // For generate flow with stream debug we show raw text and parsed parts
+      logRawChunk(contentItem.text);
+    }
     return protocol.parseGeneratedText({
       text: contentItem.text,
       tools: getFunctionTools(params),
@@ -93,6 +116,29 @@ export async function wrapGenerate({
   const newContent = parsed.map(part =>
     coerceToolCallInput(part as LanguageModelV2Content, tools)
   );
+
+  const debugLevel = getDebugLevel();
+  if (debugLevel === "stream") {
+    newContent.forEach(part => logParsedChunk(part));
+  }
+  if (debugLevel === "parse") {
+    const allText = result.content
+      .filter(
+        (c): c is Extract<LanguageModelV2Content, { type: "text" }> =>
+          c.type === "text"
+      )
+      .map(c => c.text)
+      .join("\n\n");
+    const segments = protocol.extractToolCallSegments
+      ? protocol.extractToolCallSegments({ text: allText, tools })
+      : [];
+    const originalText = segments.join("\n\n");
+    const toolCalls = newContent.filter(
+      (p): p is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
+        (p as LanguageModelV2Content).type === "tool-call"
+    );
+    logParsedSummary({ toolCalls, originalText });
+  }
 
   return {
     ...result,

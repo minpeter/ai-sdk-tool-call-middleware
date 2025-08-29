@@ -1,4 +1,7 @@
-# Vercel AI SDK - Evaluation Tool (`@ai-sdk-tool/eval`)
+# AI SDK - evaluation tool
+
+[![npm](https://img.shields.io/npm/v/@ai-sdk-tool/eval)](https://www.npmjs.com/package/@ai-sdk-tool/eval)
+[![npm](https://img.shields.io/npm/dt/@ai-sdk-tool/eval)](https://www.npmjs.com/package/@ai-sdk-tool/eval)
 
 This package provides a standardized, extensible, and reproducible way to benchmark and evaluate the performance of Language Models (`LanguageModel` instances) within the Vercel AI SDK ecosystem.
 
@@ -18,9 +21,7 @@ It allows developers to:
 ## Installation
 
 ```bash
-# This package is currently local within the monorepo.
-# In the future, it would be published to npm:
-# npm install @ai-sdk-tool/eval
+pnpm add @ai-sdk-tool/eval
 ```
 
 ## Quick Start
@@ -52,6 +53,12 @@ async function runMyEvaluation() {
 runMyEvaluation();
 ```
 
+Run the example from this repo:
+
+```bash
+cd examples/eval-core && pnpm dlx tsx src/bfcl-simple.ts
+```
+
 ## Built-in Benchmarks
 
 This package includes several pre-built benchmarks.
@@ -60,7 +67,13 @@ This package includes several pre-built benchmarks.
 - `bfclParallelBenchmark`: Evaluates parallel (multi-tool) function calls.
 - `bfclMultipleBenchmark`: Evaluates multiple calls to the same function.
 - `bfclParallelMultipleBenchmark`: A combination of parallel and multiple function calls.
-- `jsonGenerationBenchmark`: Evaluates the model's ability to generate schema-compliant JSON. _(Note: This benchmark is temporarily disabled due to a TypeScript compilation issue)._
+- `jsonGenerationBenchmark`: Evaluates the model's ability to generate schema-compliant JSON.
+
+To try a JSON generation run locally:
+
+```bash
+cd examples/eval-core && pnpm dlx tsx src/json-generation.ts
+```
 
 ## Creating a Custom Benchmark
 

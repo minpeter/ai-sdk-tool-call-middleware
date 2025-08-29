@@ -121,4 +121,17 @@ export interface ToolCallProtocol {
       onError?: (message: string, metadata?: Record<string, unknown>) => void;
     };
   }): TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>;
+
+  /**
+   * Optionally returns the exact substrings that would be parsed as tool-calls
+   * from the provided text for this protocol.
+   * Used for debug logging in parse mode.
+   */
+  extractToolCallSegments?: ({
+    text,
+    tools,
+  }: {
+    text: string;
+    tools: LanguageModelV2FunctionTool[];
+  }) => string[];
 }

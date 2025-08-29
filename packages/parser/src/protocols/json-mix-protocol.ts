@@ -285,4 +285,16 @@ export const jsonMixProtocol = ({
       },
     });
   },
+
+  extractToolCallSegments({ text }) {
+    const startEsc = escapeRegExp(toolCallStart);
+    const endEsc = escapeRegExp(toolCallEnd);
+    const regex = new RegExp(`${startEsc}([\u0000-\uFFFF]*?)${endEsc}`, "gs");
+    const segments: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(text)) != null) {
+      segments.push(m[0]);
+    }
+    return segments;
+  },
 });
