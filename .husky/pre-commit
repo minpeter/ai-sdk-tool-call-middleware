@@ -1,3 +1,5 @@
+#!/bin/sh
+# Format only staged files with Prettier, re-stage them, then lint/typecheck/test
 git diff -z --name-only --cached --diff-filter=ACMR | while IFS= read -r -d '' file; do
   case "$file" in
     *.ts|*.tsx|*.js|*.mjs|*.cjs|*.json|*.md|*.yaml|*.yml)
