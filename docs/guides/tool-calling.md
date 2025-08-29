@@ -105,7 +105,7 @@ Set env variables:
 ## Protocol specifics
 
 - `gemmaToolMiddleware` (JSON-mix):
-  - Emits/consumes tool calls inside markdown fences: `tool_call ... `
+  - Emits/consumes tool calls inside markdown fences: `tool_call ...`
   - Tool responses are formatted with ```tool_response fences.
 - `hermesToolMiddleware` (JSON-mix with `<tool_call>`):
   - System prompt describes `<tools>` block and requires returning JSON inside `<tool_call> ... </tool_call>` tags.
