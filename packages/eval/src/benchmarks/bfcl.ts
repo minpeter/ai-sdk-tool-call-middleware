@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { generateText, jsonSchema, LanguageModel, tool } from "ai";
 import { promises as fs } from "fs";
 import path from "path";
@@ -6,75 +7,100 @@ import { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
 import { resolveDataDir } from "@/utils/paths";
 
 import {
+  FunctionDescription,
   multipleFunctionChecker,
   parallelFunctionCheckerNoOrder,
   simpleFunctionChecker,
+  ToolCall,
 } from "./bfcl/ast-checker";
 
 // Resolve data files relative to this module using ESM-safe utilities
 
 // --- Interfaces ---
+interface ToolSchemaObject {
+  type: string;
+  properties?: Record<string, unknown>;
+  items?: unknown;
+  required?: string[];
+  [key: string]: unknown;
+}
+
+interface ToolSpec {
+  name: string;
+  description?: string;
+  parameters: ToolSchemaObject;
+}
+
+type Message = { role: string; content: string };
+
 interface TestCase {
   id: string;
-  question: any;
-  function: any;
+  question: Message[] | Message[][];
+  function: ToolSpec[];
+}
+
+interface TransformedTool {
+  type: "function";
+  name: string;
+  description?: string;
+  inputSchema: ToolSchemaObject;
 }
 
 interface PossibleAnswer {
   id: string;
-  ground_truth: any;
+  ground_truth: unknown;
 }
 
 // --- Generic Checker Dispatcher ---
 function check(
   testCase: TestCase,
-  modelOutput: any, // This is an array of tool_calls
+  modelOutput: unknown, // This is an array of tool_calls
   possibleAnswer: PossibleAnswer
 ): { valid: boolean; error?: string; error_type?: string } {
   const category = testCase.id.split("_")[0];
 
   try {
     if (category === "simple") {
-      if (!modelOutput || modelOutput.length !== 1) {
+      if (!Array.isArray(modelOutput) || modelOutput.length !== 1) {
         return {
           valid: false,
-          error: `Expected 1 function call, but got ${modelOutput?.length ?? 0}.`,
+          error: `Expected 1 function call, but got ${Array.isArray(modelOutput) ? modelOutput.length : 0}.`,
           error_type: "simple:wrong_count",
         };
       }
       return simpleFunctionChecker(
-        testCase.function[0],
-        modelOutput[0],
-        possibleAnswer.ground_truth[0]
+        testCase.function[0] as unknown as FunctionDescription,
+        modelOutput[0] as ToolCall,
+        (possibleAnswer.ground_truth as Array<Record<string, unknown>>)[0]
       );
     } else if (category === "parallel") {
       return parallelFunctionCheckerNoOrder(
-        testCase.function,
-        modelOutput,
-        possibleAnswer.ground_truth
+        testCase.function as unknown as FunctionDescription[],
+        modelOutput as ToolCall[],
+        possibleAnswer.ground_truth as Array<Record<string, unknown>>
       );
     } else if (category === "multiple") {
       return multipleFunctionChecker(
-        testCase.function,
-        modelOutput,
-        possibleAnswer.ground_truth
+        testCase.function as unknown as FunctionDescription[],
+        modelOutput as ToolCall[],
+        possibleAnswer.ground_truth as Array<Record<string, unknown>>
       );
     } else if (category.includes("parallel-multiple")) {
       // parallel-multiple is just a more complex parallel case
       return parallelFunctionCheckerNoOrder(
-        testCase.function,
-        modelOutput,
-        possibleAnswer.ground_truth
+        testCase.function as unknown as FunctionDescription[],
+        modelOutput as ToolCall[],
+        possibleAnswer.ground_truth as Array<Record<string, unknown>>
       );
     }
 
     // Default for unimplemented categories (like multi_turn)
     // As per user request, we are deferring multi-turn.
     return { valid: true }; // Pass to not fail the whole benchmark
-  } catch (e: any) {
+  } catch (e: unknown) {
     return {
       valid: false,
-      error: `Checker Error: ${e.message}`,
+      error: `Checker Error: ${(e as Error).message}`,
       error_type: "checker_error",
     };
   }
@@ -134,23 +160,32 @@ function createBfclBenchmark(
         }
 
         // Helper: fix BFCL JSON schema types to OpenAI-compatible JSON Schema
-        const fixSchema = (schema: any): any => {
-          if (!schema || typeof schema !== "object") return schema;
-          const copy: any = Array.isArray(schema)
-            ? schema.map(v => fixSchema(v))
-            : { ...schema };
-          if (copy.type) {
-            if (copy.type === "dict") copy.type = "object";
-            if (copy.type === "integer" || copy.type === "float")
-              copy.type = "number";
-          }
-          if (copy.properties && typeof copy.properties === "object") {
-            for (const k of Object.keys(copy.properties)) {
-              copy.properties[k] = fixSchema(copy.properties[k]);
+        const fixSchema = (schema: unknown): ToolSchemaObject => {
+          if (!schema || typeof schema !== "object")
+            return { type: "object", properties: {} };
+          const copy: ToolSchemaObject | ToolSchemaObject[] = Array.isArray(
+            schema
+          )
+            ? (schema as unknown[]).map(v => fixSchema(v))
+            : ({ ...(schema as Record<string, unknown>) } as ToolSchemaObject);
+          if (!Array.isArray(copy)) {
+            if (copy.type) {
+              if (copy.type === "dict") copy.type = "object";
+              if (copy.type === "integer" || copy.type === "float")
+                copy.type = "number";
             }
+            if (copy.properties && typeof copy.properties === "object") {
+              for (const k of Object.keys(copy.properties)) {
+                (copy.properties as Record<string, unknown>)[k] = fixSchema(
+                  (copy.properties as Record<string, unknown>)[k]
+                );
+              }
+            }
+            if (copy.items) copy.items = fixSchema(copy.items);
+            return copy;
           }
-          if (copy.items) copy.items = fixSchema(copy.items);
-          return copy;
+          // If array, return as any to satisfy return type; arrays occur only in nested positions we pass through
+          return copy as unknown as ToolSchemaObject;
         };
 
         // Concurrency control via env BFCL_CONCURRENCY (default 4)
@@ -174,9 +209,9 @@ function createBfclBenchmark(
             // Flatten BFCL message shape [[{role, content}], ...] to [{role, content}, ...]
             const flatMessages =
               Array.isArray(messages) &&
-              messages.some((m: any) => Array.isArray(m))
-                ? (messages as any[]).flat(1)
-                : messages;
+              (messages as unknown[]).some(m => Array.isArray(m))
+                ? (messages as unknown[] as Message[][]).flat(1)
+                : (messages as Message[]);
 
             // Build tools array (LanguageModelV2FunctionTool[]) for middleware compatibility
             // Keep a mapping sanitized -> original to restore before checking
@@ -187,7 +222,9 @@ function createBfclBenchmark(
               return s.length > 0 ? s : "tool";
             };
 
-            const transformedTools = (tools as any[]).map((t: any) => {
+            const transformedTools: TransformedTool[] = (
+              tools as ToolSpec[]
+            ).map(t => {
               const fixed = fixSchema(t.parameters);
               // Ensure we always provide a valid JSON Schema object of type 'object'
               const inputSchema =
@@ -215,36 +252,39 @@ function createBfclBenchmark(
                     typeof t.description === "string"
                       ? t.description
                       : undefined,
-                  inputSchema: jsonSchema(t.inputSchema),
+                  inputSchema: jsonSchema(t.inputSchema as unknown as any),
                 }),
               ])
             );
 
             // Debug: record first tool object and schema type
             try {
-              const firstTool: any = (transformedTools as any)[0];
+              const firstTool = transformedTools[0];
               const schemaType =
-                firstTool?.inputSchema?.type ??
-                firstTool?.inputSchema?.jsonSchema?.type;
+                (firstTool as any)?.inputSchema?.type ??
+                (firstTool as any)?.inputSchema?.jsonSchema?.type;
               caseLogs.push(
                 `[DEBUG] ${testCase.id}: firstTool=${JSON.stringify(firstTool)}, schemaType=${schemaType}`
               );
-            } catch (e: any) {
+            } catch (e: unknown) {
               caseLogs.push(
-                `[DEBUG] ${testCase.id}: failed to introspect tools: ${e.message}`
+                `[DEBUG] ${testCase.id}: failed to introspect tools: ${(e as Error).message}`
               );
             }
 
             const { toolCalls, text, finishReason } = await generateText({
               model,
-              messages: flatMessages,
+              messages: flatMessages as unknown as any,
               tools: toolsMap,
               toolChoice: "auto",
               // Pass original schema information to middleware
               providerOptions: {
                 toolCallMiddleware: {
                   originalToolSchemas: Object.fromEntries(
-                    transformedTools.map(t => [t.name, t.inputSchema])
+                    transformedTools.map(t => [
+                      t.name,
+                      t.inputSchema as unknown as any,
+                    ])
                   ),
                 },
               },
@@ -268,21 +308,20 @@ function createBfclBenchmark(
 
             // Restore original tool names in toolCalls before checking
             const restoredCalls = (toolCalls || []).map((c: any) => {
-              const rawName = c.toolName ?? c.name;
+              const rawName = (c as any).toolName ?? (c as any).name;
               // Some providers (e.g., response-format models) may encode tool name as a numeric index string
               const sanitizedFromIndex =
                 typeof rawName === "string" && /^\d+$/.test(rawName)
-                  ? ((transformedTools as any[])[Number(rawName)]?.name ??
-                    rawName)
+                  ? (transformedTools[Number(rawName)]?.name ?? rawName)
                   : rawName;
               const originalName =
                 nameMap.get(sanitizedFromIndex) ?? sanitizedFromIndex;
               const extractedArgs =
-                c.args ??
-                c.arguments ??
-                c.input ??
-                c.params ??
-                c.parameters ??
+                (c as any).args ??
+                (c as any).arguments ??
+                (c as any).input ??
+                (c as any).params ??
+                (c as any).parameters ??
                 undefined;
               let parsedArgs = extractedArgs;
               if (typeof parsedArgs === "string") {
@@ -315,24 +354,28 @@ function createBfclBenchmark(
                 // Build a compact expectation/actual summary and a human-friendly diff
                 const category = testCase.id.split("_")[0];
                 const diff: string[] = [];
-                const summarizeArgs = (args: any): any => {
+                const summarizeArgs = (args: unknown): unknown => {
                   if (args == null) return args;
                   if (typeof args !== "object") return args;
                   // Sort object keys for stable output
                   return Object.keys(args)
                     .sort()
-                    .reduce((acc: any, k) => {
-                      acc[k] = args[k];
-                      return acc;
-                    }, {});
+                    .reduce(
+                      (acc: Record<string, unknown>, k) => {
+                        acc[k] = (args as Record<string, unknown>)[k];
+                        return acc;
+                      },
+                      {} as Record<string, unknown>
+                    );
                 };
 
-                const expected: any = {};
-                const actual: any = {};
+                const expected: Record<string, unknown> = {};
+                const actual: Record<string, unknown> = {};
 
                 if (category === "simple") {
-                  const funcDesc: any = (tools as any[])[0];
-                  const gt: any = (possibleAnswer as any).ground_truth?.[0];
+                  const funcDesc = (tools as ToolSpec[])[0];
+                  const gt = (possibleAnswer as { ground_truth?: unknown[] })
+                    .ground_truth?.[0] as Record<string, unknown> | undefined;
                   const expectedFuncName = funcDesc?.name;
                   const expectedParams = gt
                     ? gt[Object.keys(gt)[0]]
@@ -351,7 +394,12 @@ function createBfclBenchmark(
                     diff.push(`- ${expectedFuncName}`);
                     diff.push(`+ ${receivedName}`);
                   }
-                  if (expectedParams && receivedArgs) {
+                  if (
+                    expectedParams &&
+                    receivedArgs &&
+                    typeof receivedArgs === "object" &&
+                    receivedArgs !== null
+                  ) {
                     const required = (funcDesc?.parameters?.required ??
                       []) as string[];
                     // Missing required
@@ -361,7 +409,9 @@ function createBfclBenchmark(
                       }
                     }
                     // Unexpected
-                    for (const k of Object.keys(receivedArgs)) {
+                    for (const k of Object.keys(
+                      receivedArgs as Record<string, unknown>
+                    )) {
                       if (
                         !Object.prototype.hasOwnProperty.call(expectedParams, k)
                       ) {
@@ -369,15 +419,21 @@ function createBfclBenchmark(
                       }
                     }
                     // Invalid values
-                    for (const k of Object.keys(receivedArgs)) {
+                    for (const k of Object.keys(
+                      receivedArgs as Record<string, unknown>
+                    )) {
                       if (
                         Object.prototype.hasOwnProperty.call(expectedParams, k)
                       ) {
-                        const allowed = expectedParams[k];
-                        const got = receivedArgs[k];
+                        const allowed = (
+                          expectedParams as Record<string, unknown[]>
+                        )[k];
+                        const got = (receivedArgs as Record<string, unknown>)[
+                          k
+                        ];
                         const includes =
                           Array.isArray(allowed) &&
-                          allowed.some((v: any) => {
+                          allowed.some((v: unknown) => {
                             try {
                               if (Array.isArray(got)) {
                                 return (
@@ -385,7 +441,7 @@ function createBfclBenchmark(
                                     got.map(x => String(x)).sort()
                                   ) ===
                                   JSON.stringify(
-                                    (v as any[]).map(x => String(x)).sort()
+                                    (v as unknown[]).map(x => String(x)).sort()
                                   )
                                 );
                               }
@@ -409,8 +465,12 @@ function createBfclBenchmark(
                   }
                 } else {
                   // Parallel / multiple: show function name sets and param-level diffs per matched function
-                  const gtArr: any[] =
-                    (possibleAnswer as any).ground_truth ?? [];
+                  const gtArr: Array<Record<string, unknown>> =
+                    (
+                      possibleAnswer as {
+                        ground_truth?: Array<Record<string, unknown>>;
+                      }
+                    ).ground_truth ?? [];
                   const expectedNames = gtArr.map(g => Object.keys(g)[0]);
                   const actualNames = (restoredCalls as any[]).map(
                     c => c.toolName ?? c.name
@@ -457,16 +517,24 @@ function createBfclBenchmark(
                     const receivedArgs = summarizeArgs(received?.args);
 
                     // expected parameters allowed values
-                    const expectedParamsAllowed = expectedObj[fname];
-                    const funcDesc: any = (tools as any[]).find(
-                      (t: any) => t.name === fname
+                    const expectedParamsAllowed = expectedObj[fname] as Record<
+                      string,
+                      unknown
+                    >;
+                    const funcDesc = (tools as ToolSpec[]).find(
+                      (t: ToolSpec) => t.name === fname
                     );
                     const requiredParams = (funcDesc?.parameters?.required ??
                       []) as string[];
 
                     diff.push(`@@ function ${fname}`);
 
-                    if (expectedParamsAllowed && receivedArgs) {
+                    if (
+                      expectedParamsAllowed &&
+                      receivedArgs &&
+                      typeof receivedArgs === "object" &&
+                      receivedArgs !== null
+                    ) {
                       // Missing required
                       for (const req of requiredParams) {
                         if (!(req in receivedArgs)) {
@@ -474,7 +542,9 @@ function createBfclBenchmark(
                         }
                       }
                       // Unexpected params
-                      for (const k of Object.keys(receivedArgs)) {
+                      for (const k of Object.keys(
+                        receivedArgs as Record<string, unknown>
+                      )) {
                         if (
                           !Object.prototype.hasOwnProperty.call(
                             expectedParamsAllowed,
@@ -485,18 +555,24 @@ function createBfclBenchmark(
                         }
                       }
                       // Invalid values
-                      for (const k of Object.keys(receivedArgs)) {
+                      for (const k of Object.keys(
+                        receivedArgs as Record<string, unknown>
+                      )) {
                         if (
                           Object.prototype.hasOwnProperty.call(
                             expectedParamsAllowed,
                             k
                           )
                         ) {
-                          const allowed = expectedParamsAllowed[k];
-                          const got = receivedArgs[k];
+                          const allowed = (
+                            expectedParamsAllowed as Record<string, unknown[]>
+                          )[k];
+                          const got = (receivedArgs as Record<string, unknown>)[
+                            k
+                          ];
                           const includes =
                             Array.isArray(allowed) &&
-                            allowed.some((v: any) => {
+                            allowed.some((v: unknown) => {
                               try {
                                 if (Array.isArray(got)) {
                                   return (
@@ -504,7 +580,9 @@ function createBfclBenchmark(
                                       got.map(x => String(x)).sort()
                                     ) ===
                                     JSON.stringify(
-                                      (v as any[]).map(x => String(x)).sort()
+                                      (v as unknown[])
+                                        .map(x => String(x))
+                                        .sort()
                                     )
                                   );
                                 }
