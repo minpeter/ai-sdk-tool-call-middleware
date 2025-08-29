@@ -59,11 +59,6 @@ export const xmlProtocol = (): ToolCallProtocol => ({
         ?.originalToolSchemas || {};
 
     // Optional debug
-    // console.log("XML Protocol schema debug:", {
-    //   toolsReceived: tools.map(t => t.name),
-    //   hasOriginalSchemas: Object.keys(originalSchemas).length > 0,
-    //   originalSchemaKeys: Object.keys(originalSchemas)
-    // });
     // Schema-based coercion: convert string primitives according to tool JSON schema types
 
     const toolNames = tools.map(t => t.name).filter(name => name != null);
