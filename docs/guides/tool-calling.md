@@ -4,8 +4,8 @@ Use the middleware to enable tool calls on models without native `tools` support
 
 ## Prebuilt middlewares
 
-- `gemmaToolMiddleware` — JSON-mix in markdown fences (`tool_call / `tool_response)
-- `hermesToolMiddleware` — JSON-mix with XML wrappers (<tool_call>)
+- `gemmaToolMiddleware` — JSON-mix in markdown fences (`tool_call`)
+- `hermesToolMiddleware` — JSON-mix with XML wrappers (`<tool_call>`)
 - `xmlToolMiddleware` — Morph-XML protocol (native XML elements per tool name)
 
 ## Generate mode
