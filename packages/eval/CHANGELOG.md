@@ -1,5 +1,11 @@
 # @ai-sdk-tool/eval
 
+## 0.1.4
+
+### Patch Changes
+
+- 6b37de7: Improved README documentation
+
 ## 0.1.3
 
 ### Patch Changes

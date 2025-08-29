@@ -1,5 +1,12 @@
 # @ai-sdk-tool/parser
 
+## 2.1.2
+
+### Patch Changes
+
+- 6b37de7: Added a debugger to check model output and parsing results.
+- 6b37de7: Improved README documentation
+
 ## 2.1.1
 
 ### Patch Changes
