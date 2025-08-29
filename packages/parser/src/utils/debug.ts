@@ -15,7 +15,7 @@ export function getDebugLevel(): DebugLevel {
   const envVal =
     (typeof process !== "undefined" &&
       process.env &&
-      process.env.AI_TOOL_MW_DEBUG) ||
+      process.env.DEBUG_PASER_MW) ||
     "off";
   const envLower = String(envVal).toLowerCase();
   if (envLower === "stream" || envLower === "parse" || envLower === "off") {
@@ -70,10 +70,9 @@ export function logParsedSummary({
       const envVal =
         (typeof process !== "undefined" &&
           process.env &&
-          (process.env.AI_TOOL_MW_DEBUG_STYLE ||
-            process.env.AI_TOOL_MW_DEBUG_HIGHLIGHT ||
-            process.env.AI_TOOL_MW_DEBUG_BG)) ||
-        "";
+          process.env.DEBUG_PASER_MW_STYLE) ||
+        "bg";
+
       const normalized = String(envVal).trim().toLowerCase();
       if (normalized === "inverse" || normalized === "invert")
         return "inverse" as const;
