@@ -1,3 +1,4 @@
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   bfclMultipleBenchmark,
   bfclParallelBenchmark,
@@ -11,7 +12,6 @@ import {
   morphXmlProtocol,
   xmlToolMiddleware,
 } from "@ai-sdk-tool/parser";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel } from "ai";
 
 const friendli = createOpenAICompatible({
@@ -45,19 +45,19 @@ Available functions are listed inside <tools></tools>.
 });
 
 const xmlGemma27b = wrapLanguageModel({
-  model: friendli("google/gemma-3-27b-it"),
+  model: friendli("skt/A.X-3.1"),
   // model: openrouter("z-ai/glm-4.5-air"),
   middleware: xmlToolMiddleware,
 });
 
 const jsonGemma27b = wrapLanguageModel({
-  model: friendli("google/gemma-3-27b-it"),
+  model: friendli("skt/A.X-3.1"),
   // model: openrouter("z-ai/glm-4.5-air"),
   middleware: gemmaToolMiddleware,
 });
 
 const morphExpGemma27b = wrapLanguageModel({
-  model: friendli("google/gemma-3-27b-it"),
+  model: friendli("skt/A.X-3.1"),
   // model: openrouter("z-ai/glm-4.5-air"),
   middleware: morphExpToolMiddleware,
 });
@@ -78,7 +78,7 @@ async function main() {
       bfclParallelBenchmark,
       bfclParallelMultipleBenchmark,
     ],
-    reporter: "console.debug",
+    reporter: "console",
   });
 
   console.log("Evaluation complete!");
