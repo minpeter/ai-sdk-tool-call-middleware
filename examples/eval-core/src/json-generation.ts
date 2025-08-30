@@ -1,11 +1,11 @@
+import { openai } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   evaluate,
   jsonGenerationBenchmark,
   jsonGenerationSchemaOnlyBenchmark,
 } from "@ai-sdk-tool/eval";
 import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
-import { openai } from "@ai-sdk/openai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel } from "ai";
 
 const gemma27b = wrapLanguageModel({

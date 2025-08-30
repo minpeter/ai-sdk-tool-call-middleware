@@ -11,6 +11,59 @@ import { coerceBySchema, unwrapJsonSchema } from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
 
+// Helper to get unwrapped schema type string
+function getSchemaTypeString(schema: unknown): string | undefined {
+  const s = unwrapJsonSchema(schema);
+  if (!s || typeof s !== "object") return undefined;
+  const t = (s as Record<string, unknown>).type;
+  if (typeof t === "string") return t;
+  if (Array.isArray(t)) {
+    const preferred = [
+      "object",
+      "array",
+      "boolean",
+      "number",
+      "integer",
+      "string",
+    ];
+    for (const p of preferred) if (t.includes(p)) return p;
+  }
+  return undefined;
+}
+
+function getToolSchema(
+  tools: Array<{ name?: string; inputSchema?: unknown }>,
+  originalSchemas: Record<string, unknown>,
+  toolName: string
+): unknown {
+  const original = originalSchemas[toolName];
+  if (original) return original;
+  const fallback = tools.find(t => t.name === toolName)?.inputSchema;
+  return fallback as unknown;
+}
+
+function getPropertySchema(toolSchema: unknown, key: string): unknown {
+  const unwrapped = unwrapJsonSchema(toolSchema);
+  if (!unwrapped || typeof unwrapped !== "object") return undefined;
+  const u = unwrapped as Record<string, unknown>;
+  const props = u.properties as Record<string, unknown> | undefined;
+  if (props && Object.prototype.hasOwnProperty.call(props, key)) {
+    return (props as Record<string, unknown>)[key];
+  }
+  return undefined;
+}
+
+function extractRawInner(
+  xmlContent: string,
+  tagName: string
+): string | undefined {
+  // Extract inner text of the first matching tag without parsing, preserving nested markup
+  const tag = escapeRegExp(tagName);
+  const regex = new RegExp(String.raw`<${tag}>([\s\S]*?)<\/${tag}>`);
+  const m = regex.exec(xmlContent);
+  return m ? m[1] : undefined;
+}
+
 export const morphXmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt = (tools || []).map(tool => ({
@@ -100,9 +153,22 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
           parser.parse(`<root>${toolContent}</root>`)?.root || {};
 
         const args: Record<string, unknown> = {};
+        // Determine tool schema for property-level decisions
+        const toolSchema = getToolSchema(tools, originalSchemas, toolName);
         for (const k of Object.keys(parsedArgs || {})) {
           const v = parsedArgs[k];
           let val: unknown = v;
+
+          // If schema says this property is a string, prefer raw inner content
+          const propSchema = getPropertySchema(toolSchema, k);
+          const propType = getSchemaTypeString(propSchema);
+          if (propType === "string") {
+            const raw = extractRawInner(toolContent, k);
+            if (typeof raw === "string") {
+              args[k] = raw; // do not trim or coerce raw string
+              continue;
+            }
+          }
 
           // Handle text content extraction
           if (
@@ -238,10 +304,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
         // Use original schema if available, fallback to transformed schema
         // INTERNAL: `originalToolSchemas` is used to propagate the provider's
         // untouched tool schemas for better coercion. Not part of public API.
-        const originalSchema = originalSchemas[toolName];
-        const fallbackSchema = tools.find(t => t.name === toolName)
-          ?.inputSchema as unknown;
-        const schema = originalSchema || fallbackSchema;
+        const schema = toolSchema;
 
         const coercedArgs = coerceBySchema(args, schema) as Record<
           string,
@@ -342,9 +405,26 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   parser.parse(`<root>${toolContent}</root>`)?.root || {};
 
                 const args: Record<string, unknown> = {};
+                // Determine tool schema for property-level decisions
+                const toolSchema = getToolSchema(
+                  tools,
+                  originalSchemas,
+                  currentToolCall!.name
+                );
                 for (const k of Object.keys(parsedArgs || {})) {
                   const v = parsedArgs[k];
                   let val: unknown = v;
+
+                  // If schema says this property is a string, prefer raw inner content
+                  const propSchema = getPropertySchema(toolSchema, k);
+                  const propType = getSchemaTypeString(propSchema);
+                  if (propType === "string") {
+                    const raw = extractRawInner(toolContent, k);
+                    if (typeof raw === "string") {
+                      args[k] = raw; // do not trim or coerce raw string
+                      continue;
+                    }
+                  }
 
                   // Handle text content extraction
                   if (
@@ -488,12 +568,6 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                 }
 
                 // Use original schema if available, fallback to transformed schema
-                const originalSchema = originalSchemas[currentToolCall!.name];
-                const fallbackSchema = tools.find(
-                  t => t.name === currentToolCall!.name
-                )?.inputSchema;
-                const toolSchema = originalSchema || fallbackSchema;
-
                 const coercedArgs = coerceBySchema(args, toolSchema) as Record<
                   string,
                   unknown
