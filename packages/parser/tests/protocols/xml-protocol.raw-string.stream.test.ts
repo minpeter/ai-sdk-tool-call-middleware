@@ -20,6 +20,7 @@ async function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
 
 describe("morphXmlProtocol raw string handling in streaming", () => {
   it("captures raw inner XML for string-typed arg during streaming", async () => {
+    const CHUNK_SIZE = 7;
     const protocol = morphXmlProtocol();
     const tools: LanguageModelV2FunctionTool[] = [
       {
@@ -53,11 +54,11 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
         ];
         // emit in small chunks to simulate streaming
         for (const p of parts) {
-          for (let i = 0; i < p.length; i += 7) {
+          for (let i = 0; i < p.length; i += CHUNK_SIZE) {
             ctrl.enqueue({
               type: "text-delta",
               id: "t",
-              delta: p.slice(i, i + 7),
+              delta: p.slice(i, i + CHUNK_SIZE),
             });
           }
         }
