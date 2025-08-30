@@ -14,7 +14,7 @@
       "dependsOn": ["^lint:fix"]
     },
     "check-types": {
-      "dependsOn": ["^build", "^check-types"],
+      "dependsOn": ["^build", "build", "^check-types"],
       "inputs": ["$TURBO_DEFAULT$", "dist/**"]
     },
     "dev": {

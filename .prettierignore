@@ -1,3 +1,13 @@
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+coverage/
+**/coverage/
+.turbo/
+*.tsbuildinfo
+pnpm-lock.yaml
+**/*.min.js
 **/node_modules/**
 **/dist/**
 **/coverage/**

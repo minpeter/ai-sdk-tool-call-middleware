@@ -1,5 +1,5 @@
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import {
   extractReasoningMiddleware,
   stepCountIs,

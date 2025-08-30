@@ -1,5 +1,5 @@
-import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
