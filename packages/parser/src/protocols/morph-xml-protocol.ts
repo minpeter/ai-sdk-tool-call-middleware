@@ -192,14 +192,20 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                 });
               } catch (error) {
                 const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;
-                options?.onError?.(
-                  "Could not process streaming XML tool call; emitting original text.",
-                  {
-                    toolCall: originalCallText,
-                    toolName: currentToolCall.name,
-                    error,
-                  }
-                );
+                let message =
+                  "Could not process streaming XML tool call; emitting original text.";
+                if (error instanceof RXML.RXMLDuplicateStringTagError) {
+                  message = `Duplicate string tags detected in streaming tool call '${currentToolCall.name}'; emitting original text.`;
+                } else if (error instanceof RXML.RXMLCoercionError) {
+                  message = `Failed to coerce arguments for streaming tool call '${currentToolCall.name}'; emitting original text.`;
+                } else if (error instanceof RXML.RXMLParseError) {
+                  message = `Failed to parse XML for streaming tool call '${currentToolCall.name}'; emitting original text.`;
+                }
+                options?.onError?.(message, {
+                  toolCall: originalCallText,
+                  toolName: currentToolCall.name,
+                  error,
+                });
                 flushText(controller, originalCallText);
               }
               currentToolCall = null;
