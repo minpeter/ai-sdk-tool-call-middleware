@@ -90,7 +90,9 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
       try {
         const toolSchema = getToolSchema(tools, originalSchemas, toolName);
-        const parsed = RXML.parse(toolContent, toolSchema);
+        const parsed = RXML.parse(toolContent, toolSchema, {
+          onError: options?.onError,
+        });
 
         processedElements.push({
           type: "tool-call",
@@ -177,7 +179,9 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   originalSchemas,
                   currentToolCall!.name
                 );
-                const parsed = RXML.parse(toolContent, toolSchema);
+                const parsed = RXML.parse(toolContent, toolSchema, {
+                  onError: options?.onError,
+                });
 
                 flushText(controller);
                 controller.enqueue({
