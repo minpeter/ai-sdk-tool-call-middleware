@@ -1,10 +1,9 @@
-import { describe, expect, it } from "vitest";
-
 import {
   parse as rxmlParse,
-  stringify as rxmlStringify,
   RXMLDuplicateStringTagError,
+  stringify as rxmlStringify,
 } from "@ai-sdk-tool/rxml";
+import { describe, expect, it } from "vitest";
 
 describe("RXML", () => {
   describe("parse: basic and options", () => {
