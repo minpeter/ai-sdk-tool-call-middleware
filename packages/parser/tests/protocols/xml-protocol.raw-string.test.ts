@@ -40,4 +40,35 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     expect(args.content).toBe(html);
     expect(args.encoding).toBe("utf-8");
   });
+
+  it("cancels entire tool call when duplicate string tags are emitted (non-stream)", () => {
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV2FunctionTool[] = [
+      {
+        type: "function",
+        name: "write_file",
+        description: "Write a file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string" },
+            content: { type: "string" },
+          },
+          required: ["file_path", "content"],
+        },
+      },
+    ];
+
+    const text =
+      `<write_file>` +
+      `<file_path>/tmp/file.txt</file_path>` +
+      `<content>part1</content>` +
+      `<content>part2</content>` +
+      `</write_file>`;
+
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+    // Entire tool call should be cancelled and returned as text
+    const only = out.find(p => (p as any).type === "text") as any;
+    expect(only?.text).toBe(text);
+  });
 });

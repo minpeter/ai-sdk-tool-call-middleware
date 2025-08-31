@@ -25,6 +25,14 @@ See the interface in `packages/parser/src/protocols/tool-call-protocol.ts`.
   - Type coercion: values are coerced using the tool's JSON schema via `coerceBySchema` (original provider schemas are used when available).
   - `formatTools` emits tool signatures as JSON (using `unwrapJsonSchema`) inside your system prompt template. `formatToolResponse` returns a `<tool_response>` XML block.
 
+### morph-xml: Duplicate string tag handling
+
+Some models may mistakenly emit multiple tags for a property whose schema type is `string`, e.g. `<content>part1</content><content>part2</content>`. This is considered malformed output. The `morphXmlProtocol` handles this strictly:
+
+- If duplicate tags are detected for a `string` field, the entire tool call is cancelled and emitted as text. A warning is reported via `options.onError` when provided.
+
+This behavior is consistent in both non-stream (`parseGeneratedText`) and stream (`createStreamParser`) paths; no tool-call part is emitted in this case.
+
 Implementations live in `packages/parser/src/protocols/`.
 
 ## Choosing a Protocol

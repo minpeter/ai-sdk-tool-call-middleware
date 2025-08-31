@@ -107,6 +107,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   },
 
   parseGeneratedText({ text, tools, options }) {
+    const warnOnDuplicate: boolean = true;
     // Get original schemas from provider options if available
     const originalSchemas =
       (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
@@ -153,6 +154,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
           parser.parse(`<root>${toolContent}</root>`)?.root || {};
 
         const args: Record<string, unknown> = {};
+        let cancelToolCall = false;
         // Determine tool schema for property-level decisions
         const toolSchema = getToolSchema(tools, originalSchemas, toolName);
         for (const k of Object.keys(parsedArgs || {})) {
@@ -162,7 +164,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
           // If schema says this property is a string, prefer raw inner content
           const propSchema = getPropertySchema(toolSchema, k);
           const propType = getSchemaTypeString(propSchema);
-          if (propType === "string") {
+          if (propType === "string" && !Array.isArray(v)) {
             const raw = extractRawInner(toolContent, k);
             if (typeof raw === "string") {
               args[k] = raw; // do not trim or coerce raw string
@@ -181,17 +183,54 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
           // Heuristic array parsing for multiple tags with same name
           if (Array.isArray(v)) {
-            val = v.map(item => {
-              if (
-                item &&
-                typeof item === "object" &&
-                Object.prototype.hasOwnProperty.call(item, "#text")
-              ) {
-                const textVal = (item as Record<string, unknown>)?.["#text"];
-                return typeof textVal === "string" ? textVal.trim() : textVal;
+            if (propType === "string") {
+              const mapped = v
+                .map(item => {
+                  if (
+                    item &&
+                    typeof item === "object" &&
+                    Object.prototype.hasOwnProperty.call(item, "#text")
+                  ) {
+                    const textVal = (item as Record<string, unknown>)?.[
+                      "#text"
+                    ];
+                    return typeof textVal === "string"
+                      ? textVal
+                      : String(textVal);
+                  }
+                  return typeof item === "string" ? item : String(item);
+                })
+                .filter(x => typeof x === "string");
+
+              if (mapped.length > 1 && warnOnDuplicate) {
+                options?.onError?.(
+                  `Duplicate string tags for <${k}> detected; cancelling tool call`,
+                  {
+                    toolName,
+                    toolCall: `<${toolName}>${toolContent}</${toolName}>`,
+                  }
+                );
               }
-              return typeof item === "string" ? item.trim() : item;
-            });
+
+              if (mapped.length > 1) {
+                cancelToolCall = true;
+                break;
+              } else {
+                val = mapped[0] ?? "";
+              }
+            } else {
+              val = v.map(item => {
+                if (
+                  item &&
+                  typeof item === "object" &&
+                  Object.prototype.hasOwnProperty.call(item, "#text")
+                ) {
+                  const textVal = (item as Record<string, unknown>)?.["#text"];
+                  return typeof textVal === "string" ? textVal.trim() : textVal;
+                }
+                return typeof item === "string" ? item.trim() : item;
+              });
+            }
           }
           // Heuristic tuple/array parsing for various XML patterns
           else if (
@@ -298,25 +337,37 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
             }
           }
 
+          if (cancelToolCall) {
+            break;
+          }
           args[k] = typeof val === "string" ? val.trim() : val;
         }
 
-        // Use original schema if available, fallback to transformed schema
-        // INTERNAL: `originalToolSchemas` is used to propagate the provider's
-        // untouched tool schemas for better coercion. Not part of public API.
-        const schema = toolSchema;
+        if (cancelToolCall) {
+          const originalCallText = match[0];
+          options?.onError?.(
+            `Duplicate string tags detected; cancelling tool call`,
+            { toolCall: originalCallText, toolName }
+          );
+          processedElements.push({ type: "text", text: originalCallText });
+        } else {
+          // Use original schema if available, fallback to transformed schema
+          // INTERNAL: `originalToolSchemas` is used to propagate the provider's
+          // untouched tool schemas for better coercion. Not part of public API.
+          const schema = toolSchema;
 
-        const coercedArgs = coerceBySchema(args, schema) as Record<
-          string,
-          unknown
-        >;
+          const coercedArgs = coerceBySchema(args, schema) as Record<
+            string,
+            unknown
+          >;
 
-        processedElements.push({
-          type: "tool-call",
-          toolCallId: generateId(),
-          toolName,
-          input: JSON.stringify(coercedArgs),
-        });
+          processedElements.push({
+            type: "tool-call",
+            toolCallId: generateId(),
+            toolName,
+            input: JSON.stringify(coercedArgs),
+          });
+        }
       } catch (error) {
         const message = `Could not process XML tool call, keeping original text: ${match[0]}`;
         options?.onError?.(message, { toolCall: match[0], toolName, error });
@@ -337,6 +388,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   },
 
   createStreamParser({ tools, options }) {
+    const warnOnDuplicate: boolean = true;
     // Get original schemas from options if available
     const originalSchemas =
       (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
@@ -405,6 +457,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   parser.parse(`<root>${toolContent}</root>`)?.root || {};
 
                 const args: Record<string, unknown> = {};
+                let cancelToolCall = false;
                 // Determine tool schema for property-level decisions
                 const toolSchema = getToolSchema(
                   tools,
@@ -418,7 +471,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   // If schema says this property is a string, prefer raw inner content
                   const propSchema = getPropertySchema(toolSchema, k);
                   const propType = getSchemaTypeString(propSchema);
-                  if (propType === "string") {
+                  if (propType === "string" && !Array.isArray(v)) {
                     const raw = extractRawInner(toolContent, k);
                     if (typeof raw === "string") {
                       args[k] = raw; // do not trim or coerce raw string
@@ -437,21 +490,58 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
                   // Heuristic array parsing for multiple tags with same name
                   if (Array.isArray(v)) {
-                    val = v.map(item => {
-                      if (
-                        item &&
-                        typeof item === "object" &&
-                        Object.prototype.hasOwnProperty.call(item, "#text")
-                      ) {
-                        const textVal = (item as Record<string, unknown>)?.[
-                          "#text"
-                        ];
-                        return typeof textVal === "string"
-                          ? textVal.trim()
-                          : textVal;
+                    if (propType === "string") {
+                      const mapped = v
+                        .map(item => {
+                          if (
+                            item &&
+                            typeof item === "object" &&
+                            Object.prototype.hasOwnProperty.call(item, "#text")
+                          ) {
+                            const textVal = (item as Record<string, unknown>)?.[
+                              "#text"
+                            ];
+                            return typeof textVal === "string"
+                              ? textVal
+                              : String(textVal);
+                          }
+                          return typeof item === "string" ? item : String(item);
+                        })
+                        .filter(x => typeof x === "string");
+
+                      if (mapped.length > 1 && warnOnDuplicate) {
+                        options?.onError?.(
+                          `Duplicate string tags for <${k}> detected; cancelling tool call`,
+                          {
+                            toolName: currentToolCall!.name,
+                            toolCall: `<${currentToolCall!.name}>${toolContent}</${currentToolCall!.name}>`,
+                          }
+                        );
                       }
-                      return typeof item === "string" ? item.trim() : item;
-                    });
+
+                      if (mapped.length > 1) {
+                        cancelToolCall = true;
+                        break;
+                      } else {
+                        val = mapped[0] ?? "";
+                      }
+                    } else {
+                      val = v.map(item => {
+                        if (
+                          item &&
+                          typeof item === "object" &&
+                          Object.prototype.hasOwnProperty.call(item, "#text")
+                        ) {
+                          const textVal = (item as Record<string, unknown>)?.[
+                            "#text"
+                          ];
+                          return typeof textVal === "string"
+                            ? textVal.trim()
+                            : textVal;
+                        }
+                        return typeof item === "string" ? item.trim() : item;
+                      });
+                    }
                   }
                   // Heuristic tuple/array parsing for various XML patterns
                   else if (
@@ -564,22 +654,39 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                     }
                   }
 
+                  if (cancelToolCall) {
+                    break;
+                  }
                   args[k] = typeof val === "string" ? val.trim() : val;
                 }
 
-                // Use original schema if available, fallback to transformed schema
-                const coercedArgs = coerceBySchema(args, toolSchema) as Record<
-                  string,
-                  unknown
-                >;
+                if (cancelToolCall) {
+                  const originalCallText = `<${currentToolCall.name}>${toolContent}</${currentToolCall.name}>`;
+                  if (options?.onError) {
+                    options.onError(
+                      "Duplicate string tags detected; cancelling tool call",
+                      {
+                        toolCall: originalCallText,
+                        toolName: currentToolCall.name,
+                      }
+                    );
+                  }
+                  flushText(controller, originalCallText);
+                } else {
+                  // Use original schema if available, fallback to transformed schema
+                  const coercedArgs = coerceBySchema(
+                    args,
+                    toolSchema
+                  ) as Record<string, unknown>;
 
-                flushText(controller);
-                controller.enqueue({
-                  type: "tool-call",
-                  toolCallId: generateId(),
-                  toolName: currentToolCall.name,
-                  input: JSON.stringify(coercedArgs),
-                });
+                  flushText(controller);
+                  controller.enqueue({
+                    type: "tool-call",
+                    toolCallId: generateId(),
+                    toolName: currentToolCall.name,
+                    input: JSON.stringify(coercedArgs),
+                  });
+                }
               } catch {
                 const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;
                 if (options?.onError) {
