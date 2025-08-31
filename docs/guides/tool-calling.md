@@ -4,8 +4,8 @@ Use the middleware to enable tool calls on models without native `tools` support
 
 ## Prebuilt middlewares
 
-- `gemmaToolMiddleware` — JSON-mix in markdown fences (`tool_call`)
-- `hermesToolMiddleware` — JSON-mix with XML wrappers (`<tool_call>`)
+- `gemmaToolMiddleware` — JSON-mix in markdown fences (```tool_call)
+- `hermesToolMiddleware` — JSON-mix with XML wrappers (<tool_call>)
 - `xmlToolMiddleware` — Morph-XML protocol (native XML elements per tool name)
 
 ## Generate mode
@@ -72,13 +72,15 @@ const result = streamText({
 - `toolChoice: "required"` forces a call. The middleware injects a dynamic JSON schema to guide the model.
 - `toolChoice: { type: "tool", toolName: "get_weather" }` forces a specific tool. The middleware injects a fixed schema for that tool.
 - `toolChoice: "none"` is not supported and will throw.
+- Provider-defined tools (non-function tools defined by provider) are not supported when forcing a specific tool.
 
 ## Provider options (advanced)
 
-Pass via `providerOptions.toolCallMiddleware`:
+Pass via `providerOptions.toolCallMiddleware`.
 
 - `onError(message, metadata)` — receive non-fatal parsing/coercion warnings.
 - `originalToolSchemas` — for XML protocol to coerce arguments using provider-original schemas during generate/stream.
+- Additional fields under `providerOptions.toolCallMiddleware` are forwarded to handlers. Reserved internal fields include `toolNames` and `toolChoice`.
 
 Example:
 
@@ -105,12 +107,14 @@ Set env variables:
 ## Protocol specifics
 
 - `gemmaToolMiddleware` (JSON-mix):
-  - Emits/consumes tool calls inside markdown fences: `tool_call ...`
+  - Emits/consumes tool calls inside markdown fences: ```tool_call ...
   - Tool responses are formatted with ```tool_response fences.
 - `hermesToolMiddleware` (JSON-mix with `<tool_call>`):
   - System prompt describes `<tools>` block and requires returning JSON inside `<tool_call> ... </tool_call>` tags.
+  - Tool responses are formatted with `<tool_response>` tags.
 - `xmlToolMiddleware` (Morph-XML):
   - Tool call must be an XML element named after the tool (e.g., `<get_weather>...</get_weather>`).
-  - Arguments parsed via `fast-xml-parser`, then coerced using JSON Schema.
+  - Arguments are parsed by RXML (Robust XML) via `RXML.parse` and then coerced via JSON Schema. On parse/coercion issues, the protocol falls back to emitting the original text and reports via `options.onError`.
+  - To improve coercion accuracy, pass `originalToolSchemas` under `providerOptions.toolCallMiddleware`.
 
 See runnable examples in `examples/parser-core/src/*`.

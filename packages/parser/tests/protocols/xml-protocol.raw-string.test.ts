@@ -2,7 +2,7 @@ import type {
   LanguageModelV2Content,
   LanguageModelV2FunctionTool,
 } from "@ai-sdk/provider";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 import { isToolCallContent } from "@/utils/type-guards";
@@ -44,6 +44,40 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     // Content must be the raw inner string including XML-like tags
     expect(args.content).toBe(html);
     expect(args.encoding).toBe("utf-8");
+  });
+
+  it("preserves HTML with DOCTYPE inside string-typed <content> (user-reported)", () => {
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV2FunctionTool[] = [
+      {
+        type: "function",
+        name: "file_write",
+        description: "Write a file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            content: { type: "string" },
+          },
+          required: ["path", "content"],
+        },
+      },
+    ];
+
+    const html = `<!DOCTYPE html>\n<html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Simple HTML Page</title> </head> <body> <h1>Hello World!</h1> <p>This is a simple HTML file.</p> <button>Click Me</button> </body> </html>`;
+    const text =
+      `<file_write>` +
+      `<path>index.html</path>` +
+      `<content>${html}</content>` +
+      `</file_write>`;
+
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+    const tc = out.find(isToolCallContent);
+    expect(tc?.toolName).toBe("file_write");
+    const args =
+      typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
+    expect(args.path).toBe("index.html");
+    expect(args.content).toBe(html);
   });
 
   it("cancels entire tool call when duplicate string tags are emitted (non-stream)", () => {
@@ -382,5 +416,110 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
     expect(args.content).toBe(inner);
+  });
+
+  it("emits onError and returns original text when duplicate string tags are present", () => {
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV2FunctionTool[] = [
+      {
+        type: "function",
+        name: "write_file",
+        description: "Write a file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string" },
+            content: { type: "string" },
+          },
+          required: ["file_path", "content"],
+        },
+      },
+    ];
+
+    const text =
+      `<write_file>` +
+      `<file_path>/tmp/file.txt</file_path>` +
+      `<content>A</content>` +
+      `<content>B</content>` +
+      `</write_file>`;
+
+    const onError = vi.fn();
+    const out = protocol.parseGeneratedText({
+      text,
+      tools,
+      options: { onError },
+    });
+
+    // Entire tool call is returned as text
+    expect(out).toEqual([{ type: "text", text }]);
+    // onError should be called with message containing key phrase
+    expect(onError).toHaveBeenCalled();
+    const [msg] = onError.mock.calls[0] as [string];
+    expect(String(msg).toLowerCase()).toContain(
+      "could not process xml tool call"
+    );
+  });
+
+  it("coerces numeric-like strings inside <item> to numbers when schema expects numbers", () => {
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV2FunctionTool[] = [
+      {
+        type: "function",
+        name: "nums",
+        description: "Numbers",
+        inputSchema: {
+          type: "object",
+          properties: {
+            data: { type: "array", items: { type: "number" } },
+          },
+          required: ["data"],
+        },
+      },
+    ];
+
+    const text =
+      `<nums>` +
+      `<data>` +
+      `<item>1</item><item>2.5</item><item>1.23e3</item><item>-4.56E-2</item>` +
+      `</data>` +
+      `</nums>`;
+
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+    const tc = out.find(isToolCallContent);
+    const args =
+      typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
+    expect(args.data).toEqual([1, 2.5, 1230, -0.0456]);
+  });
+
+  it("coerces numeric-like items with attributes (#text objects) to numbers when schema expects numbers", () => {
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV2FunctionTool[] = [
+      {
+        type: "function",
+        name: "nums",
+        description: "Numbers",
+        inputSchema: {
+          type: "object",
+          properties: {
+            data: { type: "array", items: { type: "number" } },
+          },
+          required: ["data"],
+        },
+      },
+    ];
+
+    const text =
+      `<nums>` +
+      `<data>` +
+      // Add attributes so fast-xml-parser represents nodes as objects with #text
+      `<item kind="n"> 10.5 </item><item kind="n">3</item><item kind="n">1e2</item>` +
+      `</data>` +
+      `</nums>`;
+
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+    const tc = out.find(isToolCallContent);
+    const args =
+      typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
+    expect(args.data).toEqual([10.5, 3, 100]);
   });
 });
