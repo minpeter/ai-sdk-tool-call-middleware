@@ -753,7 +753,11 @@ export function parse(
 export function stringify(
   rootTag: string,
   obj: unknown,
-  options?: { format?: boolean; suppressEmptyNode?: boolean }
+  options?: {
+    format?: boolean;
+    suppressEmptyNode?: boolean;
+    onError?: OnErrorFn;
+  }
 ): string {
   try {
     const builder = new XMLBuilder({
@@ -762,6 +766,13 @@ export function stringify(
     });
     return builder.build({ [rootTag]: obj });
   } catch (error) {
+    if (options?.onError) {
+      options.onError("RXML: Failed to stringify XML.", {
+        error,
+        rootTag,
+        obj,
+      });
+    }
     throw new RXMLStringifyError("Failed to stringify XML", error);
   }
 }
