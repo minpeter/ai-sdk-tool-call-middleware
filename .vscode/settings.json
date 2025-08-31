@@ -30,5 +30,6 @@
     {
       "mode": "auto"
     }
-  ]
+  ],
+  "cSpell.words": ["RJSON", "RXML"]
 }

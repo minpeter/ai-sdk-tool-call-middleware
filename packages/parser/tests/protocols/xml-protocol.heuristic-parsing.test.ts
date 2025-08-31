@@ -629,6 +629,67 @@ describe("XML Protocol Heuristic Parsing", () => {
         expect(input.data).toEqual([123, "hello", 45.67, "true"]);
       }
     });
+
+    it("preserves nested object structure when no #text and no array/tuple heuristics apply (parse mode)", () => {
+      const text = `<config>
+        <settings>
+          <theme>
+            <dark>true</dark>
+          </theme>
+        </settings>
+      </config>`;
+
+      const tools: LanguageModelV2FunctionTool[] = [
+        {
+          type: "function",
+          name: "config",
+          inputSchema: {
+            type: "object",
+            properties: { settings: { type: "object" } },
+          },
+        },
+      ];
+
+      const result = protocol.parseGeneratedText({ text, tools });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe("tool-call");
+      if (result[0].type === "tool-call") {
+        const input = JSON.parse(result[0].input);
+        expect(typeof input.settings).toBe("object");
+        expect(input.settings.theme.dark).toBe("true");
+      }
+    });
+
+    it("maps arrays of objects with #text to trimmed values when prop is array of strings (parse mode)", () => {
+      const text = `<tags>
+        <labels>
+          <item kind="s">  a  </item>
+          <item kind="s">b</item>
+        </labels>
+      </tags>`;
+
+      const tools: LanguageModelV2FunctionTool[] = [
+        {
+          type: "function",
+          name: "tags",
+          inputSchema: {
+            type: "object",
+            properties: {
+              labels: { type: "array", items: { type: "string" } },
+            },
+          },
+        },
+      ];
+
+      const result = protocol.parseGeneratedText({ text, tools });
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe("tool-call");
+      if (result[0].type === "tool-call") {
+        const input = JSON.parse(result[0].input);
+        expect(input.labels).toEqual(["a", "b"]);
+      }
+    });
   });
 
   describe("Complex nested structures", () => {
