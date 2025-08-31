@@ -316,7 +316,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     const toolNames = tools.map(t => t.name).filter(Boolean) as string[];
     if (toolNames.length === 0) return [];
 
-    const segments: string[] = [];
+    const toolCalls: Array<{ segment: string; startIndex: number }> = [];
 
     for (const toolName of toolNames) {
       let searchIndex = 0;
@@ -334,7 +334,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
           const fullTagEnd = contentEnd + `</${toolName}>`.length;
 
           const fullSegment = text.substring(tagStart, fullTagEnd);
-          segments.push(fullSegment);
+          toolCalls.push({ segment: fullSegment, startIndex: tagStart });
 
           searchIndex = fullTagEnd;
         } else {
@@ -343,6 +343,8 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       }
     }
 
-    return segments;
+    return toolCalls
+      .sort((a, b) => a.startIndex - b.startIndex)
+      .map(tc => tc.segment);
   },
 });
