@@ -46,6 +46,40 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     expect(args.encoding).toBe("utf-8");
   });
 
+  it("preserves HTML with DOCTYPE inside string-typed <content> (user-reported)", () => {
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV2FunctionTool[] = [
+      {
+        type: "function",
+        name: "file_write",
+        description: "Write a file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            content: { type: "string" },
+          },
+          required: ["path", "content"],
+        },
+      },
+    ];
+
+    const html = `<!DOCTYPE html>\n<html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Simple HTML Page</title> </head> <body> <h1>Hello World!</h1> <p>This is a simple HTML file.</p> <button>Click Me</button> </body> </html>`;
+    const text =
+      `<file_write>` +
+      `<path>index.html</path>` +
+      `<content>${html}</content>` +
+      `</file_write>`;
+
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+    const tc = out.find(isToolCallContent);
+    expect(tc?.toolName).toBe("file_write");
+    const args =
+      typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
+    expect(args.path).toBe("index.html");
+    expect(args.content).toBe(html);
+  });
+
   it("cancels entire tool call when duplicate string tags are emitted (non-stream)", () => {
     const protocol = morphXmlProtocol();
     const tools: LanguageModelV2FunctionTool[] = [

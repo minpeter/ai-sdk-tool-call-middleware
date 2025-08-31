@@ -149,4 +149,68 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     const hasToolCall = out.some(p => p.type === "tool-call");
     expect(hasToolCall).toBe(false);
   });
+
+  it("captures DOCTYPE HTML inside string-typed <content> during streaming (user-reported)", async () => {
+    const CHUNK_SIZE = 11;
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV2FunctionTool[] = [
+      {
+        type: "function",
+        name: "file_write",
+        description: "Write a file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            content: { type: "string" },
+          },
+          required: ["path", "content"],
+        },
+      },
+    ];
+
+    const transformer = protocol.createStreamParser({ tools });
+    const html = `<!DOCTYPE html>\n<html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Simple HTML Page</title> </head> <body> <h1>Hello World!</h1> <p>This is a simple HTML file.</p> <button>Click Me</button> </body> </html>`;
+    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+      start(ctrl) {
+        const parts = [
+          `<file_write>`,
+          `<path>index.html</path>`,
+          `<content>`,
+          html,
+          `</content>`,
+          `</file_write>`,
+        ];
+        for (const p of parts) {
+          for (let i = 0; i < p.length; i += CHUNK_SIZE) {
+            ctrl.enqueue({
+              type: "text-delta",
+              id: "t",
+              delta: p.slice(i, i + CHUNK_SIZE),
+            });
+          }
+        }
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: "stop",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await collect(rs.pipeThrough(transformer));
+    const tool = out.find(
+      (p): p is Extract<LanguageModelV2StreamPart, { type: "tool-call" }> =>
+        p.type === "tool-call"
+    );
+    expect(tool?.toolName).toBe("file_write");
+    if (!tool) throw new Error("Expected tool-call part to be present");
+    const args = JSON.parse(tool.input) as {
+      path: string;
+      content: string;
+    };
+    expect(args.path).toBe("index.html");
+    expect(args.content).toBe(html);
+  });
 });

@@ -488,7 +488,7 @@ export function countTagOccurrences(
   return count;
 }
 
-export function parser(
+export function parse(
   xmlInner: string,
   schema: unknown,
   options?: Options
@@ -496,22 +496,7 @@ export function parser(
   const textNodeName = options?.textNodeName ?? "#text";
   const throwDup = options?.throwOnDuplicateStringTags ?? true;
 
-  let parsedArgs: Record<string, unknown> = {};
-  try {
-    const xmlParser = new XMLParser({
-      ignoreAttributes: false,
-      parseTagValue: false,
-      ignoreDeclaration: true,
-      textNodeName,
-    });
-    parsedArgs = (xmlParser.parse(`<root>${xmlInner}</root>`)?.root ||
-      {}) as Record<string, unknown>;
-  } catch (cause) {
-    throw new RXMLParseError("Failed to parse XML", cause);
-  }
-
-  const args: Record<string, unknown> = {};
-
+  // Identify string-typed properties to allow placeholder sanitization
   const stringTypedProps: Set<string> = (() => {
     const set = new Set<string>();
     const unwrapped = unwrapJsonSchema(schema);
@@ -527,6 +512,48 @@ export function parser(
     }
     return set;
   })();
+
+  // Replace inner content of string-typed tags with placeholders to avoid
+  // XML parsing errors from constructs like <!DOCTYPE ...> within element bodies
+  let xmlInnerForParsing = xmlInner;
+  try {
+    const ranges: Array<{ start: number; end: number; key: string }> = [];
+    for (const key of stringTypedProps) {
+      const r = findFirstTopLevelRange(xmlInner, key);
+      if (r && r.end > r.start) ranges.push({ ...r, key });
+    }
+    if (ranges.length > 0) {
+      ranges.sort((a, b) => a.start - b.start);
+      let rebuilt = "";
+      let cursor = 0;
+      for (const r of ranges) {
+        if (cursor < r.start) rebuilt += xmlInner.slice(cursor, r.start);
+        rebuilt += `__RXML_PLACEHOLDER_${r.key}__`;
+        cursor = r.end;
+      }
+      if (cursor < xmlInner.length) rebuilt += xmlInner.slice(cursor);
+      xmlInnerForParsing = rebuilt;
+    }
+  } catch {
+    xmlInnerForParsing = xmlInner;
+  }
+
+  let parsedArgs: Record<string, unknown> = {};
+  try {
+    const xmlParser = new XMLParser({
+      ignoreAttributes: false,
+      parseTagValue: false,
+      ignoreDeclaration: true,
+      textNodeName,
+    });
+    parsedArgs = (xmlParser.parse(`<root>${xmlInnerForParsing}</root>`)?.root ||
+      {}) as Record<string, unknown>;
+  } catch (cause) {
+    throw new RXMLParseError("Failed to parse XML", cause);
+  }
+
+  const args: Record<string, unknown> = {};
+  // stringTypedProps computed above
 
   for (const k of Object.keys(parsedArgs || {})) {
     const v = parsedArgs[k];
