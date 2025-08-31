@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { RXML } from "@/utils";
 
@@ -99,6 +99,36 @@ describe("RXML", () => {
       expect(xml).toContain("<tool_response>");
       expect(xml).toContain("<tool_name>get_weather</tool_name>");
       expect(xml).toContain("<result>");
+    });
+  });
+
+  describe("parse: placeholder/raw extraction guard", () => {
+    it.skip("throws if placeholder replacement occurred but raw extraction failed", async () => {
+      const xml = `<content>Some <b>text</b></content>`;
+      const schema = {
+        type: "object",
+        properties: { content: { type: "string" } },
+        additionalProperties: false,
+      };
+
+      vi.resetModules();
+      vi.doMock("@/utils/robust-xml", async () => {
+        const actual =
+          await vi.importActual<typeof import("@/utils/robust-xml")>(
+            "@/utils/robust-xml"
+          );
+        return {
+          ...actual,
+          extractRawInner: () => undefined,
+        };
+      });
+
+      const { RXML: RXMLLocal } = await import("@/utils");
+      expect(() => RXMLLocal.parse(xml, schema)).toThrowError(
+        RXMLLocal.RXMLParseError
+      );
+
+      vi.resetModules();
     });
   });
 });

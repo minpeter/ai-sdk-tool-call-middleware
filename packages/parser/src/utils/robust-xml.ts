@@ -606,6 +606,24 @@ export function parse(
         args[k] = raw;
         continue;
       }
+      // If placeholder replacement was used for this string property but we failed
+      // to extract the raw content from the original XML, throw to avoid
+      // accidentally returning the placeholder token.
+      const placeholderUsed =
+        (typeof v === "string" && v.startsWith("__RXML_PLACEHOLDER_")) ||
+        (v &&
+          typeof v === "object" &&
+          Object.prototype.hasOwnProperty.call(v, textNodeName) &&
+          typeof (v as Record<string, unknown>)[textNodeName as "#text"] ===
+            "string" &&
+          (
+            (v as Record<string, unknown>)[textNodeName as "#text"] as string
+          ).startsWith("__RXML_PLACEHOLDER_"));
+      if (placeholderUsed) {
+        throw new RXMLParseError(
+          `Failed to extract raw content for string property '${k}' after placeholder replacement.`
+        );
+      }
     }
 
     if (
