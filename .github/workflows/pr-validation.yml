@@ -35,20 +35,20 @@ jobs:
           node-version: 20
           cache: "pnpm"
 
-      - name: Install Dependencies (workspace root)
-        run: pnpm -w -r install --frozen-lockfile
+      - name: Install Dependencies (all workspace packages)
+        run: pnpm -r install --frozen-lockfile
 
       - name: Build (workspace root)
-        run: pnpm -w build
+        run: pnpm build
 
       - name: Type Check (workspace root)
-        run: pnpm -w check-types
+        run: pnpm check-types
 
       - name: Lint (workspace root)
-        run: pnpm -w lint
+        run: pnpm lint
 
       - name: Format Check (workspace root)
-        run: pnpm -w fmt
+        run: pnpm fmt
 
       - name: Test (workspace root)
-        run: pnpm -w test
+        run: pnpm test
