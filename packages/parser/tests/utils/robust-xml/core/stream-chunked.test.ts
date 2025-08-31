@@ -526,7 +526,7 @@ The search has been initiated successfully.`;
   });
 
   describe("Memory efficiency with chunked streaming", () => {
-    it.skip("should not accumulate excessive memory with large chunked streams", async () => {
+    it("should not accumulate excessive memory with large chunked streams", async () => {
       // Create a very large XML document
       const largeXml = `<data>${Array.from(
         { length: 1000 },
@@ -534,7 +534,21 @@ The search has been initiated successfully.`;
           `<item id="${i}">Content for item ${i} with some additional text to make it larger</item>`
       ).join("")}</data>`;
 
-      const stream = createChunkedStream(largeXml, CHUNK_SIZE);
+      // Use a rapid stream to avoid test timeout (push without delays)
+      const chunks: string[] = [];
+      for (let i = 0; i < largeXml.length; i += CHUNK_SIZE) {
+        chunks.push(largeXml.slice(i, i + CHUNK_SIZE));
+      }
+      const stream = new Readable({
+        read() {
+          const chunk = chunks.shift();
+          if (chunk) {
+            this.push(chunk);
+          } else {
+            this.push(null);
+          }
+        },
+      });
       let processedCount = 0;
       const maxProcessed = 100; // Process only first 100 elements
 

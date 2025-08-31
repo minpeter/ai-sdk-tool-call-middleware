@@ -18,38 +18,96 @@ class SimpleStreamingXMLParser {
     const newResults: any[] = [];
 
     // Try to parse complete XML elements from buffer
-    let lastValidEnd = 0;
+    let processed = true;
 
-    // Look for complete XML elements
-    const tagMatches = Array.from(this.buffer.matchAll(/<(\w+)[^>]*>/g));
+    while (processed) {
+      processed = false;
 
-    for (const match of tagMatches) {
-      const tagName = match[1];
-      const startPos = match.index!;
+      // Find the first opening tag
+      const openMatch = this.buffer.match(/<([a-zA-Z_][\w.-]*)[^>]*>/);
+      if (!openMatch) {
+        break; // No more opening tags
+      }
 
-      // Look for closing tag
-      const closeTag = `</${tagName}>`;
-      const closePos = this.buffer.indexOf(closeTag, startPos);
+      const tagName = openMatch[1];
+      const openTagStart = openMatch.index!;
+      const openTagEnd = openTagStart + openMatch[0].length;
 
-      if (closePos !== -1) {
-        const completeElement = this.buffer.slice(
-          startPos,
-          closePos + closeTag.length
-        );
+      // Look for the matching closing tag, accounting for nesting
+      const closingTag = `</${tagName}>`;
+      let searchPos = openTagEnd;
+      let depth = 1;
+      let foundClosing = false;
+      let closingEnd = -1;
+
+      while (searchPos < this.buffer.length && depth > 0) {
+        // Look for next opening or closing tag of the same type
+        const nextOpen = this.buffer.indexOf(`<${tagName}`, searchPos);
+        const nextClose = this.buffer.indexOf(closingTag, searchPos);
+
+        if (nextClose === -1) {
+          // No more closing tags
+          break;
+        }
+
+        if (nextOpen !== -1 && nextOpen < nextClose) {
+          // Found another opening tag before the closing tag
+          // Check if it's actually an opening tag (not part of an attribute)
+          const beforeOpen = this.buffer.charAt(nextOpen - 1);
+          const afterTagName = this.buffer.charAt(
+            nextOpen + tagName.length + 1
+          );
+          if (
+            beforeOpen === "<" &&
+            (afterTagName === ">" || afterTagName === " ")
+          ) {
+            depth++;
+          }
+          searchPos = nextOpen + tagName.length + 1;
+        } else {
+          // Found a closing tag
+          depth--;
+          if (depth === 0) {
+            closingEnd = nextClose + closingTag.length;
+            foundClosing = true;
+            break;
+          }
+          searchPos = nextClose + closingTag.length;
+        }
+      }
+
+      if (foundClosing) {
+        // Extract the complete element
+        const completeElement = this.buffer.slice(openTagStart, closingEnd);
 
         try {
           const parsed = parseWithoutSchema(completeElement);
           newResults.push(...parsed);
-          lastValidEnd = closePos + closeTag.length;
-        } catch (error) {
-          // Skip invalid elements
-        }
-      }
-    }
 
-    // Remove processed content from buffer
-    if (lastValidEnd > 0) {
-      this.buffer = this.buffer.slice(lastValidEnd);
+          // Also extract child elements if this is a container element
+          for (const element of parsed) {
+            if (typeof element === "object" && element.children) {
+              for (const child of element.children) {
+                if (typeof child === "object" && child.tagName) {
+                  newResults.push(child);
+                }
+              }
+            }
+          }
+
+          // Remove the processed element from buffer
+          this.buffer =
+            this.buffer.slice(0, openTagStart) + this.buffer.slice(closingEnd);
+          processed = true; // Continue looking for more elements
+        } catch (error) {
+          // Failed to parse, remove just the opening tag to continue
+          this.buffer = this.buffer.slice(openTagEnd);
+          processed = true;
+        }
+      } else {
+        // Incomplete element, stop processing
+        break;
+      }
     }
 
     this.results.push(...newResults);

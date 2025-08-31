@@ -38,13 +38,32 @@ export function parse(
   const throwDup = options.throwOnDuplicateStringTags ?? true;
 
   // If xmlInner looks like a full XML document (single root element), extract its inner content
+  // But only if the schema doesn't expect that root element
   let actualXmlInner = xmlInner.trim();
   if (actualXmlInner.startsWith("<") && actualXmlInner.endsWith(">")) {
     // Use a simple regex approach to extract inner content while preserving formatting
     const match = actualXmlInner.match(/^<([^>\s]+)(?:\s[^>]*)?>(.+)<\/\1>$/s);
     if (match) {
-      // Extract the inner content (group 2) which preserves original formatting
-      actualXmlInner = match[2];
+      const rootTagName = match[1];
+      const innerContent = match[2];
+
+      // Check if the schema expects this root tag
+      const unwrapped = unwrapJsonSchema(schema);
+      const schemaProps =
+        unwrapped && typeof unwrapped === "object"
+          ? ((unwrapped as Record<string, unknown>).properties as
+              | Record<string, unknown>
+              | undefined)
+          : undefined;
+
+      // Only unwrap if the schema doesn't expect the root tag
+      if (
+        schemaProps &&
+        !Object.prototype.hasOwnProperty.call(schemaProps, rootTagName)
+      ) {
+        actualXmlInner = innerContent;
+      }
+      // Otherwise keep the original XML as-is
     }
     // If regex doesn't match, fall back to using the original input
     // This handles cases where xmlInner is already inner content
@@ -129,7 +148,8 @@ export function parse(
   // Parse XML using our TXML-based tokenizer
   let parsedNodes: (RXMLNode | string)[];
   try {
-    const tokenizer = new XMLTokenizer(`<root>${xmlInnerForParsing}</root>`, {
+    const wrappedXml = `<root>${xmlInnerForParsing}</root>`;
+    const tokenizer = new XMLTokenizer(wrappedXml, {
       ...options,
       textNodeName,
     });
@@ -366,12 +386,14 @@ export function parseWithoutSchema(
   } catch (error) {
     // Check if this is a specific type of error that should be re-thrown
     if (error instanceof RXMLParseError) {
-      // Only re-throw errors for clearly invalid XML where the tags are properly formed
-      // but mismatched (like <item>content</wrong>). Don't re-throw for malformed tag
-      // structures where tags are incomplete or unclosed.
+      const isSimple = xmlString.split("<").length < 6;
+
+      // Re-throw errors for clearly invalid XML structures in simple cases
+      // 1. Mismatched tags (like <item>content</wrong>)
+      // 2. Unclosed tags at end of input (like <root><item>text)
       if (
-        error.message.includes("Unexpected close tag") &&
-        !error.message.includes("Expected </unclosed>")
+        (error.message.includes("Unexpected close tag") && isSimple) ||
+        (error.message.includes("Unclosed tag") && isSimple)
       ) {
         // Preserve the original error message and line/column information
         throw new RXMLParseError(
@@ -383,14 +405,41 @@ export function parseWithoutSchema(
       }
     }
 
-    // For other types of malformed XML, be more tolerant and return partial results
+    // For other types of malformed XML, try to be more tolerant and return partial results
     // This matches the expected behavior of being "robust" with malformed XML
     if (options.onError) {
       options.onError("Failed to parse XML without schema", { error });
     }
 
-    // Try to parse as much as possible by treating the entire input as text
-    // This ensures we don't lose data even when XML is malformed
+    // Try to extract any valid XML elements that we can parse
+    try {
+      const partialResults: (RXMLNode | string)[] = [];
+
+      // Look for complete XML elements in the string
+      const xmlPattern = /<([a-zA-Z_][\w.-]*)[^>]*>.*?<\/\1>/gs;
+      let match;
+
+      while ((match = xmlPattern.exec(xmlString)) !== null) {
+        try {
+          const elementXml = match[0];
+          const tokenizer = new XMLTokenizer(elementXml, options);
+          const parsed = tokenizer.parseChildren();
+          partialResults.push(...parsed);
+        } catch {
+          // Skip this element if it can't be parsed
+          continue;
+        }
+      }
+
+      // If we found some valid elements, return them
+      if (partialResults.length > 0) {
+        return partialResults;
+      }
+    } catch {
+      // Fallback failed too
+    }
+
+    // Last resort: return the input as text content
     return [xmlString.trim()];
   }
 }

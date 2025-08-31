@@ -3,7 +3,7 @@
  * Provides memory-efficient parsing for large XML documents
  */
 
-import { Readable, Transform } from "stream";
+import { Readable, Transform, type TransformCallback } from "stream";
 
 import { RXMLStreamError } from "../errors/types";
 import { XMLTokenizer } from "./tokenizer";
@@ -16,6 +16,8 @@ export class XMLTransformStream extends Transform {
   private buffer = "";
   private position: number;
   private readonly parseOptions: ParseOptions;
+  private emittedCount = 0;
+  private sawTagChar = false;
 
   constructor(offset?: number | string, parseOptions: ParseOptions = {}) {
     super({ readableObjectMode: true });
@@ -35,11 +37,13 @@ export class XMLTransformStream extends Transform {
 
   _transform(
     chunk: Buffer,
-    encoding: string,
-    callback: (error?: Error, data?: any) => void
+    encoding: BufferEncoding,
+    callback: TransformCallback
   ): void {
     try {
-      this.buffer += chunk.toString();
+      const incoming = chunk.toString();
+      if (incoming.includes("<")) this.sawTagChar = true;
+      this.buffer += incoming;
       this.processBuffer();
       callback();
     } catch (error) {
@@ -47,11 +51,18 @@ export class XMLTransformStream extends Transform {
     }
   }
 
-  _flush(callback: (error?: Error, data?: any) => void): void {
+  _flush(callback: TransformCallback): void {
     try {
       // Process any remaining buffer content
       if (this.buffer.length > 0) {
         this.processBuffer(true);
+      }
+      // If we saw XML-like input but emitted nothing, surface a meaningful error
+      if (this.sawTagChar && this.emittedCount === 0) {
+        throw new RXMLStreamError(
+          "Flush error",
+          new Error("No XML elements could be parsed from stream")
+        );
       }
       callback();
     } catch (error) {
@@ -60,90 +71,141 @@ export class XMLTransformStream extends Transform {
   }
 
   private processBuffer(isFlush = false): void {
-    let searchPos = 0;
-
-    while (true) {
-      // Find the next opening tag
-      const openPos = this.buffer.indexOf("<", searchPos);
-      if (openPos === -1) {
-        // No more opening tags
-        if (!isFlush) {
-          // Keep unprocessed data for next chunk
-          this.buffer = this.buffer.slice(searchPos);
-          this.position = 0;
-        }
-        return;
+    // Try to find and emit complete XML elements in the buffer
+    while (this.buffer.length > 0) {
+      // Find first '<'
+      const openBracket = this.buffer.indexOf("<");
+      if (openBracket === -1) {
+        // No tags at all
+        if (isFlush) this.buffer = "";
+        break;
       }
 
-      // Skip closing tags
-      if (this.buffer[openPos + 1] === "/") {
-        searchPos = openPos + 1;
-        continue;
+      // Trim leading non-XML text
+      if (openBracket > 0) {
+        this.buffer = this.buffer.slice(openBracket);
       }
 
-      // Handle comments
+      // Skip processing instructions, comments, CDATA
       if (
-        this.buffer[openPos + 1] === "!" &&
-        this.buffer[openPos + 2] === "-" &&
-        this.buffer[openPos + 3] === "-"
+        this.buffer.startsWith("<?") ||
+        this.buffer.startsWith("<!--") ||
+        this.buffer.startsWith("<![CDATA[")
       ) {
-        const commentEnd = this.buffer.indexOf("-->", openPos + 4);
-        if (commentEnd === -1) {
-          if (!isFlush) {
-            this.buffer = this.buffer.slice(searchPos);
-            this.position = 0;
-            return;
+        const endMarkers: Record<string, string> = {
+          "<?": "?>",
+          "<!--": "-->",
+          "<![CDATA[": "]]>",
+        };
+        let endMarker = "";
+        for (const [start, end] of Object.entries(endMarkers)) {
+          if (this.buffer.startsWith(start)) {
+            endMarker = end;
+            break;
           }
-          searchPos = this.buffer.length;
-        } else {
-          if (this.parseOptions.keepComments) {
-            const commentContent = this.buffer.substring(
-              openPos,
-              commentEnd + 3
-            );
-            this.push(commentContent);
-          }
-          searchPos = commentEnd + 3;
         }
+        const endPos = endMarker ? this.buffer.indexOf(endMarker) : -1;
+        if (endPos === -1) {
+          if (!isFlush) break;
+          // On flush, drop the incomplete special node
+          this.buffer = "";
+          break;
+        }
+        // Keep comment text as string node when requested
+        if (this.parseOptions.keepComments && this.buffer.startsWith("<!--")) {
+          this.push(this.buffer.slice(0, endPos + endMarker.length));
+        }
+        this.buffer = this.buffer.slice(endPos + endMarker.length);
         continue;
       }
 
-      // Try to parse a complete element starting at openPos
-      try {
-        const tokenizer = new XMLTokenizer(this.buffer, {
-          ...this.parseOptions,
-          pos: openPos,
-        });
+      // Skip stray closing tags
+      if (this.buffer.startsWith("</")) {
+        const closeEnd = this.buffer.indexOf(">");
+        if (closeEnd === -1) {
+          if (!isFlush) break;
+          this.buffer = "";
+          break;
+        }
+        this.buffer = this.buffer.slice(closeEnd + 1);
+        continue;
+      }
 
-        const node = tokenizer.parseNode();
+      // Identify opening tag end and tag name (only proceed when we have the closing '>')
+      const openTagEnd = this.buffer.indexOf(">");
+      if (openTagEnd === -1) {
+        if (!isFlush) break;
+        // Incomplete open tag at flush; drop it
+        this.buffer = "";
+        break;
+      }
+      const openTagContent = this.buffer.slice(1, openTagEnd);
+      const nameMatch = openTagContent.match(/^([a-zA-Z_][\w.-]*)/);
+      if (!nameMatch) {
+        // Not a valid tag start, drop one char and continue
+        this.buffer = this.buffer.slice(1);
+        continue;
+      }
+      const tagName = nameMatch[1];
 
-        // Get the new position from the tokenizer
-        const newPos = tokenizer.getPosition();
-
-        if (newPos > this.buffer.length || newPos <= openPos) {
-          if (!isFlush) {
-            // Incomplete element, wait for more data
-            this.buffer = this.buffer.slice(searchPos);
-            this.position = 0;
-            return;
-          }
-          // If flushing and still incomplete, skip this element
-          searchPos = openPos + 1;
-        } else {
-          // Successfully parsed element
+      // Handle self-closing immediately
+      const isSelfClosing = this.buffer[openTagEnd - 1] === "/";
+      if (isSelfClosing) {
+        const elementEnd = openTagEnd + 1;
+        const elementXml = this.buffer.slice(0, elementEnd);
+        try {
+          const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
+          const node = tokenizer.parseNode();
           this.emitElementAndChildren(node);
-          searchPos = newPos;
+          this.buffer = this.buffer.slice(elementEnd);
+          continue;
+        } catch {
+          // Skip this malformed self-closing element
+          this.buffer = this.buffer.slice(1);
+          continue;
         }
-      } catch (error) {
-        if (!isFlush) {
-          // Incomplete element, wait for more data
-          this.buffer = this.buffer.slice(searchPos);
-          this.position = 0;
-          return;
+      }
+
+      // Find matching closing tag with depth handling
+      const closingTag = `</${tagName}>`;
+      let depth = 1;
+      let searchStart = openTagEnd + 1;
+      let elementEnd = -1;
+      while (searchStart < this.buffer.length) {
+        const nextOpen = this.buffer.indexOf(`<${tagName}`, searchStart);
+        const nextClose = this.buffer.indexOf(closingTag, searchStart);
+        if (nextClose === -1) break;
+        if (nextOpen !== -1 && nextOpen < nextClose) {
+          depth++;
+          searchStart = nextOpen + 1;
         } else {
-          // If flushing and parse fails, skip this position
-          searchPos = openPos + 1;
+          depth--;
+          searchStart = nextClose + closingTag.length;
+          if (depth === 0) {
+            elementEnd = searchStart;
+            break;
+          }
         }
+      }
+
+      if (elementEnd === -1) {
+        if (!isFlush) break;
+        // At flush with incomplete element; drop leading '<' to prevent infinite loop
+        this.buffer = this.buffer.slice(1);
+        continue;
+      }
+
+      // We have a complete element; parse and emit
+      const elementXml = this.buffer.slice(0, elementEnd);
+      try {
+        const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
+        const node = tokenizer.parseNode();
+        this.emitElementAndChildren(node);
+        this.buffer = this.buffer.slice(elementEnd);
+      } catch (e) {
+        // Malformed complete element; surface as stream error
+        this.emit("error", new RXMLStreamError("Parse error", e as Error));
+        return;
       }
     }
   }
@@ -153,12 +215,17 @@ export class XMLTransformStream extends Transform {
    */
   private emitElementAndChildren(node: RXMLNode | string): void {
     if (typeof node === "string") {
-      // Don't emit text nodes separately in streaming mode
+      // Emit comment nodes if requested
+      if (this.parseOptions.keepComments && node.includes("<!--")) {
+        this.push(node);
+        this.emittedCount++;
+      }
       return;
     }
 
     // Emit the element itself
     this.push(node);
+    this.emittedCount++;
 
     // Recursively emit children
     for (const child of node.children) {
@@ -189,15 +256,23 @@ export async function parseFromStream(
     const results: (RXMLNode | string)[] = [];
     const transformStream = createXMLStream(offset, parseOptions);
 
+    // Propagate source stream errors
+    const onSourceError = (err: Error) => {
+      transformStream.destroy(err);
+    };
+    stream.on("error", onSourceError);
+
     transformStream.on("data", (element: RXMLNode | string) => {
       results.push(element);
     });
 
     transformStream.on("end", () => {
+      stream.off("error", onSourceError);
       resolve(results);
     });
 
     transformStream.on("error", (error: Error) => {
+      stream.off("error", onSourceError);
       reject(new RXMLStreamError("Stream parsing failed", error));
     });
 
@@ -221,6 +296,13 @@ export async function* processXMLStream(
   let resolveNext: ((value: IteratorResult<RXMLNode | string>) => void) | null =
     null;
 
+  // Ensure source stream errors are propagated and terminate iteration
+  const onSourceError = (err: Error) => {
+    error = err;
+    transformStream.destroy(err);
+  };
+  stream.on("error", onSourceError);
+
   transformStream.on("data", (element: RXMLNode | string) => {
     if (resolveNext) {
       resolveNext({ value: element, done: false });
@@ -236,6 +318,7 @@ export async function* processXMLStream(
       resolveNext({ value: undefined, done: true });
       resolveNext = null;
     }
+    stream.off("error", onSourceError);
   });
 
   transformStream.on("error", (err: Error) => {
@@ -244,6 +327,7 @@ export async function* processXMLStream(
       resolveNext({ value: undefined, done: true });
       resolveNext = null;
     }
+    stream.off("error", onSourceError);
   });
 
   stream.pipe(transformStream);
@@ -270,6 +354,9 @@ export async function* processXMLStream(
     );
 
     if (result.done) {
+      if (error) {
+        throw new RXMLStreamError("Stream processing error", error);
+      }
       break;
     }
 
