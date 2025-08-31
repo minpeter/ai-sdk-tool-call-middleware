@@ -48,7 +48,7 @@ function extractRawInner(
 ): string | undefined {
   // Extract inner text of the first matching tag without parsing, preserving nested markup
   const tag = escapeRegExp(tagName);
-  const regex = new RegExp(String.raw`<${tag}>([\s\S]*?)<\/${tag}>`);
+  const regex = new RegExp(String.raw`<${tag}[^>]*>([\s\S]*?)<\/${tag}>`);
   const m = regex.exec(xmlContent);
   return m ? m[1] : undefined;
 }
@@ -187,15 +187,12 @@ export function processParsedArgs(
       }
       // Check if all keys are numeric indices (0, 1, 2, ...) and consecutive
       else {
-        const isIndexedTuple =
-          keys.length > 0 &&
-          keys.every(key => /^\d+$/.test(key)) &&
-          (() => {
-            const indices = keys
-              .map(k => parseInt(k, 10))
-              .sort((a, b) => a - b);
-            return indices[0] === 0 && indices.every((val, idx) => val === idx);
-          })();
+        let isIndexedTuple = false;
+        if (keys.length > 0 && keys.every(key => /^\d+$/.test(key))) {
+          const indices = keys.map(k => parseInt(k, 10)).sort((a, b) => a - b);
+          isIndexedTuple =
+            indices[0] === 0 && indices.every((val, idx) => val === idx);
+        }
 
         if (isIndexedTuple) {
           // Convert indexed object to array (tuple)
