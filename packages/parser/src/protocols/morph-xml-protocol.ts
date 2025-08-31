@@ -54,7 +54,8 @@ function extractRawInner(
 }
 
 // Shared helper to process parsed XML arguments according to schema and heuristics
-function processParsedArgs(
+// exported for internal use (test)
+export function processParsedArgs(
   parsedArgs: Record<string, unknown>,
   toolSchema: unknown,
   toolContent: string,
@@ -150,25 +151,16 @@ function processParsedArgs(
         const itemValue = obj.item as unknown;
         if (Array.isArray(itemValue)) {
           val = itemValue.map(item => {
+            let currentVal: unknown = item;
             if (
               item &&
               typeof item === "object" &&
               Object.prototype.hasOwnProperty.call(item, "#text")
             ) {
-              const textVal = (item as Record<string, unknown>)?.["#text"];
-              const trimmed =
-                typeof textVal === "string" ? textVal.trim() : textVal;
-              // Try to convert to number if it looks like one
-              if (
-                typeof trimmed === "string" &&
-                /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
-              ) {
-                const num = Number(trimmed);
-                if (Number.isFinite(num)) return num;
-              }
-              return trimmed;
+              currentVal = (item as Record<string, unknown>)?.["#text"];
             }
-            const trimmed = typeof item === "string" ? item.trim() : item;
+            const trimmed =
+              typeof currentVal === "string" ? currentVal.trim() : currentVal;
             // Try to convert to number if it looks like one
             if (
               typeof trimmed === "string" &&
@@ -182,17 +174,12 @@ function processParsedArgs(
         } else {
           const trimmed =
             typeof itemValue === "string" ? itemValue.trim() : itemValue;
-          // Try to convert to number if it looks like one
           if (
             typeof trimmed === "string" &&
             /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)
           ) {
             const num = Number(trimmed);
-            if (Number.isFinite(num)) {
-              val = num;
-            } else {
-              val = trimmed;
-            }
+            val = Number.isFinite(num) ? num : trimmed;
           } else {
             val = trimmed;
           }
