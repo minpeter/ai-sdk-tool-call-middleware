@@ -766,13 +766,6 @@ export function stringify(
     });
     return builder.build({ [rootTag]: obj });
   } catch (error) {
-    if (options?.onError) {
-      options.onError("RXML: Failed to stringify XML.", {
-        error,
-        rootTag,
-        obj,
-      });
-    }
     throw new RXMLStringifyError("Failed to stringify XML", error);
   }
 }
