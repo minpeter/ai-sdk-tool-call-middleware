@@ -56,7 +56,7 @@ async function runSingleBenchmark(
 export async function evaluate(
   options: EvaluateOptions
 ): Promise<EvaluationResult[]> {
-  const { models, benchmarks, reporter = "console" } = options;
+  const { models, benchmarks, reporter = "console", temperature } = options;
 
   const modelEntries: Array<[string | undefined, LanguageModel]> = [];
   if (Array.isArray(models)) {
@@ -80,7 +80,13 @@ export async function evaluate(
     for (const benchmark of benchmarks) {
       const evaluationResult = await runSingleBenchmark(
         model,
-        benchmark,
+        // Wrap the benchmark to pass optional config including temperature
+        {
+          ...benchmark,
+          async run(m, _config) {
+            return benchmark.run(m, { temperature });
+          },
+        } as typeof benchmark,
         modelKey
       );
       allResults.push(evaluationResult);

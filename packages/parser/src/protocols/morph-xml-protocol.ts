@@ -218,7 +218,8 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                 cancelToolCall = true;
                 break;
               } else {
-                val = mapped[0] ?? "";
+                args[k] = mapped[0] ?? "";
+                continue;
               }
             } else {
               val = v.map(item => {
@@ -524,7 +525,8 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                         cancelToolCall = true;
                         break;
                       } else {
-                        val = mapped[0] ?? "";
+                        args[k] = mapped[0] ?? "";
+                        continue;
                       }
                     } else {
                       val = v.map(item => {

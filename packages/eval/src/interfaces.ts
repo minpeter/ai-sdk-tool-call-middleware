@@ -100,4 +100,9 @@ export interface EvaluateOptions {
    * Defaults to 'console'.
    */
   reporter?: ReporterType;
+
+  /**
+   * Optional temperature setting to pass to model generation during evaluation.
+   */
+  temperature?: number;
 }

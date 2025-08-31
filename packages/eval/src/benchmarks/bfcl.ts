@@ -116,7 +116,10 @@ function createBfclBenchmark(
     name,
     version: "1.0.0",
     description,
-    async run(model: LanguageModel): Promise<BenchmarkResult> {
+    async run(
+      model: LanguageModel,
+      config?: Record<string, unknown>
+    ): Promise<BenchmarkResult> {
       const logs: string[] = [];
       let correctCount = 0;
       let testCases: TestCase[] = [];
@@ -200,6 +203,10 @@ function createBfclBenchmark(
         ): Promise<{ valid: boolean; logs: string[] }> => {
           const caseLogs: string[] = [];
           const { function: tools, question: messages } = testCase;
+          const temperature =
+            typeof (config?.temperature as unknown) === "number"
+              ? (config?.temperature as number)
+              : undefined;
 
           try {
             // Flatten BFCL message shape [[{role, content}], ...] to [{role, content}, ...]
@@ -276,6 +283,7 @@ function createBfclBenchmark(
               messages: flatMessages as unknown as any,
               tools: toolsMap,
               toolChoice: "auto",
+              ...(temperature !== undefined ? { temperature } : {}),
               // Pass original schema information to middleware
               providerOptions: {
                 toolCallMiddleware: {

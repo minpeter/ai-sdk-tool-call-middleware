@@ -79,6 +79,7 @@ async function main() {
       bfclParallelMultipleBenchmark,
     ],
     reporter: "console",
+    temperature: 0.0,
   });
 
   console.log("Evaluation complete!");
