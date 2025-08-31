@@ -4,7 +4,7 @@ import {
   countTagOccurrences,
   extractRawInner,
   findFirstTopLevelRange,
-} from "@/protocols/morph-xml-protocol";
+} from "@/utils/rxml";
 
 describe("XML helper utilities", () => {
   describe("extractRawInner", () => {

@@ -21,11 +21,7 @@ function getToolSchema(
   return fallback as unknown;
 }
 
-// Re-export helper utilities for backward compatibility in tests
-export const extractRawInner = RXML.extractRawInner;
-export const findFirstTopLevelRange = RXML.findFirstTopLevelRange;
-export const countTagOccurrences = RXML.countTagOccurrences;
-export const processParsedArgs = RXML.processParsedArgs;
+//
 
 export const morphXmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
