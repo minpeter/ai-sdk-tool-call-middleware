@@ -1,10 +1,11 @@
 import path from "node:path";
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
     // Automatically detect CI environment and disable watch mode
-    watch: false,
+    watch: !process.env.CI,
     include: [
       "src/**/*.test.ts",
       "src/**/*.spec.ts",

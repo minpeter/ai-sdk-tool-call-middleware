@@ -328,6 +328,8 @@ export function findFirstTopLevelRange(
               }
               u++;
             }
+            // Track nested opening tags with the same name so we only end when
+            // the matching top-level closing tag is reached
             if (startName === target && !isSelfClosingNested) {
               sameDepth++;
             }
@@ -352,14 +354,14 @@ export function countTagOccurrences(
   xmlContent: string,
   tagName: string,
   excludeRanges?: Array<{ start: number; end: number }>,
-  skipFirst: boolean = true
+  shouldSkipFirst: boolean = true
 ): number {
   const len = xmlContent.length;
   const target = tagName;
 
   let i = 0;
   let count = 0;
-  let shouldSkipFirst = skipFirst;
+  let skipFirstLocal = shouldSkipFirst;
   const isExcluded = (pos: number): boolean => {
     if (!excludeRanges || excludeRanges.length === 0) return false;
     for (const r of excludeRanges) {
@@ -419,8 +421,8 @@ export function countTagOccurrences(
         k++;
       }
       if (name === target && !isExcluded(lt)) {
-        if (shouldSkipFirst) {
-          shouldSkipFirst = false;
+        if (skipFirstLocal) {
+          skipFirstLocal = false;
         } else {
           count++;
         }
