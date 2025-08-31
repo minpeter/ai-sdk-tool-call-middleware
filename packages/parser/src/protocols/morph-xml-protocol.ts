@@ -186,23 +186,19 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
           // Heuristic array parsing for multiple tags with same name
           if (Array.isArray(v)) {
             if (propType === "string") {
-              const mapped = v
-                .map(item => {
-                  if (
-                    item &&
-                    typeof item === "object" &&
-                    Object.prototype.hasOwnProperty.call(item, "#text")
-                  ) {
-                    const textVal = (item as Record<string, unknown>)?.[
-                      "#text"
-                    ];
-                    return typeof textVal === "string"
-                      ? textVal
-                      : String(textVal);
-                  }
-                  return typeof item === "string" ? item : String(item);
-                })
-                .filter(x => typeof x === "string");
+              const mapped = v.map(item => {
+                if (
+                  item &&
+                  typeof item === "object" &&
+                  Object.prototype.hasOwnProperty.call(item, "#text")
+                ) {
+                  const textVal = (item as Record<string, unknown>)?.["#text"];
+                  return typeof textVal === "string"
+                    ? textVal
+                    : String(textVal);
+                }
+                return typeof item === "string" ? item : String(item);
+              });
 
               if (mapped.length > 1 && WARN_ON_DUPLICATE_STRING_TAGS) {
                 options?.onError?.(
@@ -493,23 +489,21 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   // Heuristic array parsing for multiple tags with same name
                   if (Array.isArray(v)) {
                     if (propType === "string") {
-                      const mapped = v
-                        .map(item => {
-                          if (
-                            item &&
-                            typeof item === "object" &&
-                            Object.prototype.hasOwnProperty.call(item, "#text")
-                          ) {
-                            const textVal = (item as Record<string, unknown>)?.[
-                              "#text"
-                            ];
-                            return typeof textVal === "string"
-                              ? textVal
-                              : String(textVal);
-                          }
-                          return typeof item === "string" ? item : String(item);
-                        })
-                        .filter(x => typeof x === "string");
+                      const mapped = v.map(item => {
+                        if (
+                          item &&
+                          typeof item === "object" &&
+                          Object.prototype.hasOwnProperty.call(item, "#text")
+                        ) {
+                          const textVal = (item as Record<string, unknown>)?.[
+                            "#text"
+                          ];
+                          return typeof textVal === "string"
+                            ? textVal
+                            : String(textVal);
+                        }
+                        return typeof item === "string" ? item : String(item);
+                      });
 
                       if (mapped.length > 1 && WARN_ON_DUPLICATE_STRING_TAGS) {
                         options?.onError?.(
