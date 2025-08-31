@@ -42,10 +42,13 @@ function getPropertySchema(toolSchema: unknown, key: string): unknown {
   return undefined;
 }
 
-function extractRawInner(
+export function extractRawInner(
   xmlContent: string,
   tagName: string
 ): string | undefined {
+  // XML Name parsing helpers (simplified per XML 1.0)
+  const isNameStartChar = (ch: string): boolean => /[A-Za-z_:]/.test(ch);
+  const isNameChar = (ch: string): boolean => /[A-Za-z0-9_.:-]/.test(ch);
   // Extract the raw inner content of the FIRST TOP-LEVEL occurrence of <tagName ...>...</tagName>
   // within xmlContent (which is expected to be the inside of the tool element).
   // This preserves raw markup and avoids accidentally matching nested same-named tags inside other fields.
@@ -110,7 +113,10 @@ function extractRawInner(
       // end tag
       // read name
       let j = i + 1;
-      while (j < len && /[-A-Za-z0-9_:\\]/.test(xmlContent[j])) j++;
+      if (j < len && isNameStartChar(xmlContent[j])) {
+        j++;
+        while (j < len && isNameChar(xmlContent[j])) j++;
+      }
       // move to '>'
       const gt = xmlContent.indexOf(">", j);
       i = gt === -1 ? len : gt + 1;
@@ -119,7 +125,10 @@ function extractRawInner(
     } else {
       // start tag
       let j = i;
-      while (j < len && /[-A-Za-z0-9_:\\]/.test(xmlContent[j])) j++;
+      if (j < len && isNameStartChar(xmlContent[j])) {
+        j++;
+        while (j < len && isNameChar(xmlContent[j])) j++;
+      }
       const name = xmlContent.slice(i, j);
 
       // skip attributes to '>' while respecting quotes
@@ -187,7 +196,10 @@ function extractRawInner(
             } else if (h === "/") {
               // end tag
               let t = nx + 1;
-              while (t < len && /[-A-Za-z0-9_:\\]/.test(xmlContent[t])) t++;
+              if (t < len && isNameStartChar(xmlContent[t])) {
+                t++;
+                while (t < len && isNameChar(xmlContent[t])) t++;
+              }
               const endName = xmlContent.slice(nx + 1, t);
               const gt2 = xmlContent.indexOf(">", t);
               if (endName === target) {
@@ -209,7 +221,10 @@ function extractRawInner(
             } else {
               // start tag
               let t = nx;
-              while (t < len && /[-A-Za-z0-9_:\\]/.test(xmlContent[t])) t++;
+              if (t < len && isNameStartChar(xmlContent[t])) {
+                t++;
+                while (t < len && isNameChar(xmlContent[t])) t++;
+              }
               const startName = xmlContent.slice(nx, t);
               // skip attributes
               let u = t;
@@ -250,10 +265,12 @@ function extractRawInner(
   return undefined;
 }
 
-function findFirstTopLevelRange(
+export function findFirstTopLevelRange(
   xmlContent: string,
   tagName: string
 ): { start: number; end: number } | undefined {
+  const isNameStartChar = (ch: string): boolean => /[A-Za-z_:]/.test(ch);
+  const isNameChar = (ch: string): boolean => /[A-Za-z0-9_.:-]/.test(ch);
   const len = xmlContent.length;
   const target = tagName;
 
@@ -305,7 +322,10 @@ function findFirstTopLevelRange(
       continue;
     } else {
       let j = i;
-      while (j < len && /[A-Za-z0-9_:\\-]/.test(xmlContent[j])) j++;
+      if (j < len && isNameStartChar(xmlContent[j])) {
+        j++;
+        while (j < len && isNameChar(xmlContent[j])) j++;
+      }
       const name = xmlContent.slice(i, j);
       let k = j;
       let isSelfClosing = false;
@@ -357,7 +377,10 @@ function findFirstTopLevelRange(
             continue;
           } else if (h === "/") {
             let t = nx + 1;
-            while (t < len && /[A-Za-z0-9_:\\-]/.test(xmlContent[t])) t++;
+            if (t < len && isNameStartChar(xmlContent[t])) {
+              t++;
+              while (t < len && isNameChar(xmlContent[t])) t++;
+            }
             const endName = xmlContent.slice(nx + 1, t);
             const gt2 = xmlContent.indexOf(">", t);
             if (endName === target) {
@@ -370,7 +393,10 @@ function findFirstTopLevelRange(
             continue;
           } else {
             let t = nx;
-            while (t < len && /[A-Za-z0-9_:\\-]/.test(xmlContent[t])) t++;
+            if (t < len && isNameStartChar(xmlContent[t])) {
+              t++;
+              while (t < len && isNameChar(xmlContent[t])) t++;
+            }
             // skip attributes
             let u = t;
             let selfClose = false;
@@ -405,12 +431,14 @@ function findFirstTopLevelRange(
   return undefined;
 }
 
-function countTagOccurrences(
+export function countTagOccurrences(
   xmlContent: string,
   tagName: string,
   excludeRanges?: Array<{ start: number; end: number }>,
   skipFirst: boolean = true
 ): number {
+  const isNameStartChar = (ch: string): boolean => /[A-Za-z_:]/.test(ch);
+  const isNameChar = (ch: string): boolean => /[A-Za-z0-9_.:-]/.test(ch);
   const len = xmlContent.length;
   const target = tagName;
 
@@ -468,7 +496,10 @@ function countTagOccurrences(
       continue;
     } else {
       let j = i;
-      while (j < len && /[-A-Za-z0-9_:\\]/.test(xmlContent[j])) j++;
+      if (j < len && isNameStartChar(xmlContent[j])) {
+        j++;
+        while (j < len && isNameChar(xmlContent[j])) j++;
+      }
       const name = xmlContent.slice(i, j);
       let k = j;
       while (k < len) {
