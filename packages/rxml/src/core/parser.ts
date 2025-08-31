@@ -118,20 +118,35 @@ export function parse(
     }
 
     if (ranges.length > 0) {
-      ranges.sort((a, b) => a.start - b.start);
-      let rebuilt = "";
-      let cursor = 0;
-      for (const r of ranges) {
-        if (cursor < r.start) rebuilt += actualXmlInner.slice(cursor, r.start);
-        const placeholder = `__RXML_PLACEHOLDER_${r.key}__`;
-        const originalContent = actualXmlInner.slice(r.start, r.end);
-        originalContentMap.set(placeholder, originalContent);
-        rebuilt += placeholder;
-        cursor = r.end;
+      // Keep only outermost ranges by removing any range fully contained within a previously kept range.
+      const sorted = [...ranges].sort((a, b) => a.start - b.start);
+      const filtered: Array<{ start: number; end: number; key: string }> = [];
+      for (const r of sorted) {
+        const last = filtered[filtered.length - 1];
+        if (last && r.start >= last.start && r.end <= last.end) {
+          // Nested inside the last kept range; skip this inner range
+          continue;
+        }
+        filtered.push(r);
       }
-      if (cursor < actualXmlInner.length)
-        rebuilt += actualXmlInner.slice(cursor);
-      xmlInnerForParsing = rebuilt;
+
+      if (filtered.length > 0) {
+        filtered.sort((a, b) => a.start - b.start);
+        let rebuilt = "";
+        let cursor = 0;
+        for (const r of filtered) {
+          if (cursor < r.start)
+            rebuilt += actualXmlInner.slice(cursor, r.start);
+          const placeholder = `__RXML_PLACEHOLDER_${r.key}__`;
+          const originalContent = actualXmlInner.slice(r.start, r.end);
+          originalContentMap.set(placeholder, originalContent);
+          rebuilt += placeholder;
+          cursor = r.end;
+        }
+        if (cursor < actualXmlInner.length)
+          rebuilt += actualXmlInner.slice(cursor);
+        xmlInnerForParsing = rebuilt;
+      }
     }
   } catch (error) {
     // Non-fatal: fall back to original XML; allow caller to handle via onError
@@ -338,6 +353,16 @@ export function parse(
     }
 
     args[k] = typeof val === "string" ? val.trim() : val;
+  }
+
+  // Ensure missing string-typed properties are populated from original XML
+  for (const key of stringTypedProps) {
+    if (!Object.prototype.hasOwnProperty.call(args, key)) {
+      const raw = extractRawInner(actualXmlInner, key);
+      if (typeof raw === "string") {
+        args[key] = raw;
+      }
+    }
   }
 
   // Auto-unwrap single root element if schema doesn't expect it (before coercion)

@@ -183,6 +183,23 @@ describe("robust-xml parser", () => {
       const result = parse(xml, schema, { textNodeName: "_text" });
       expect(result).toEqual({ value: 10.5 });
     });
+
+    it("parses nested string-typed tags without swallowing inner content", () => {
+      const xml = "<outer><inner>inside</inner></outer>";
+      const schema = {
+        type: "object",
+        properties: {
+          outer: { type: "string" },
+          inner: { type: "string" },
+        },
+      };
+
+      const result = parse(xml, schema);
+      // outer should contain the full raw inner including <inner>...</inner>
+      expect(result.outer).toContain("<inner>inside</inner>");
+      // inner should be parsed as its own string value
+      expect(result.inner).toBe("inside");
+    });
   });
 
   describe("duplicate tag handling", () => {
