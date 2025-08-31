@@ -21,7 +21,7 @@ See the interface in `packages/parser/src/protocols/tool-call-protocol.ts`.
 
 - `morphXmlProtocol` — one XML element per call with the tag equal to the tool name (e.g., `<get_weather>...</get_weather>`).
   - Strong streaming support: the stream parser buffers text, recognizes start/end tags, and emits a `tool-call` when a full element arrives.
-  - Argument parsing: XML content is converted to an object with heuristics for text nodes, repeated tags (arrays), `item` lists, and tuple-like indexed objects.
+  - Argument parsing: XML arguments are parsed by RXML (Robust XML) via `RXML.parse`, which encapsulates XML parsing and heuristics (text nodes, repeated tags → arrays, `item` lists, tuple-like indexed objects, numeric conversion, raw string extraction for string-typed fields). RXML throws typed errors (`RXMLParseError`, `RXMLDuplicateStringTagError`, `RXMLCoercionError`) and the protocol catches these to apply fallback behavior.
   - Type coercion: values are coerced using the tool's JSON schema via `coerceBySchema` (original provider schemas are used when available).
   - `formatTools` emits tool signatures as JSON (using `unwrapJsonSchema`) inside your system prompt template. `formatToolResponse` returns a `<tool_response>` XML block.
 
@@ -31,7 +31,25 @@ Some models may mistakenly emit multiple tags for a property whose schema type i
 
 - If duplicate tags are detected for a `string` field, the entire tool call is cancelled and emitted as text. A warning is reported via `options.onError` when provided.
 
-This behavior is consistent in both non-stream (`parseGeneratedText`) and stream (`createStreamParser`) paths; no tool-call part is emitted in this case.
+This behavior is consistent in both non-stream (`parseGeneratedText`) and stream (`createStreamParser`) paths; no tool-call part is emitted in this case. Internally, this is surfaced as `RXMLDuplicateStringTagError` from RXML and handled by the protocol with a pass-through of the original text and an `onError` message.
+
+### RXML (Robust XML) utility
+
+RXML is a reusable XML parsing utility independent from the protocol layer.
+
+- Simple API: `RXML.parse(xmlInner, jsonSchema, options?)` returns a schema-coerced object or throws a typed error.
+- Stringify: `RXML.stringify(rootTag, obj, { format?, suppressEmptyNode? })` builds XML for display/echoing results.
+- Options: `textNodeName` (default `#text`), `throwOnDuplicateStringTags` (default `true`).
+- Error types: `RXMLParseError` (XML parse failure), `RXMLDuplicateStringTagError` (duplicate string tags), `RXMLCoercionError` (schema coercion failure).
+
+RJSON (Robust JSON) is the counterpart for JSON: `RJSON.parse` accepts relaxed JSON often produced by LLMs (unquoted keys, comments, trailing commas) and aims to be resilient to minor noise while preserving correctness.
+
+### Robust parsing
+
+In this project, “Robust” means resilient to minor LLM imperfections and noise. Robust parsers (RJSON/RXML) attempt best-effort recovery and normalization for slightly malformed or unconventional outputs while maintaining a clear error model:
+
+- Non-fatal issues are normalized when safe (e.g., relaxed JSON features, common XML list patterns).
+- Fatal issues are surfaced as typed errors from the robust utility (e.g., `RXMLParseError`), and callers (protocols) decide fallback behavior (usually passing through the original text and invoking `onError`).
 
 Implementations live in `packages/parser/src/protocols/`.
 

@@ -13,7 +13,7 @@ Notes common to both protocols:
 Defaults and configuration:
 
 - Tags: `toolCallStart = "<tool_call>"`, `toolCallEnd = "</tool_call>"`. Tool responses (`<tool_response>...</tool_response>`) can be formatted but are not parsed in streaming.
-- Arguments parsing: uses relaxed JSON (`RJSON.parse`) allowing unquoted keys, comments, and trailing commas.
+- Arguments parsing: uses RJSON (Robust JSON) via `RJSON.parse`, tolerant of minor model noise: unquoted keys, comments, trailing commas, etc.
 
 State:
 
@@ -47,7 +47,7 @@ Source: `packages/parser/src/protocols/json-mix-protocol.ts`.
 Detection and schemas:
 
 - Only known tool names are considered: the parser scans for the earliest `<name>` where `name ∈ tools.map(t => t.name)`.
-- Arguments are parsed with `fast-xml-parser`, then coerced with `coerceBySchema` using provider-original schemas when available (via `options.originalToolSchemas`), otherwise the transformed `inputSchema`.
+- Arguments are parsed by RXML (Robust XML) via `RXML.parse`, which applies best-effort parsing and heuristics to handle noisy/unstructured model XML, then coerced with `coerceBySchema` using provider-original schemas when available (via `options.originalToolSchemas`), otherwise the transformed `inputSchema`.
 
 State:
 

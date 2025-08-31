@@ -111,6 +111,6 @@ Set env variables:
   - System prompt describes `<tools>` block and requires returning JSON inside `<tool_call> ... </tool_call>` tags.
 - `xmlToolMiddleware` (Morph-XML):
   - Tool call must be an XML element named after the tool (e.g., `<get_weather>...</get_weather>`).
-  - Arguments parsed via `fast-xml-parser`, then coerced using JSON Schema.
+  - Arguments are parsed by RXML (Robust XML) via `RXML.parse` and then coerced via JSON Schema. On parse/coercion issues, the protocol falls back to emitting the original text and reports via `options.onError`.
 
 See runnable examples in `examples/parser-core/src/*`.
