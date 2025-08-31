@@ -26,7 +26,7 @@ jobs:
           cache: "pnpm"
 
       - name: Install (workspace root)
-        run: pnpm -w install --frozen-lockfile
+        run: pnpm -w -r install --frozen-lockfile
 
       - name: Build (workspace root)
         run: pnpm -w build
