@@ -1,5 +1,13 @@
 # @ai-sdk-tool/parser
 
+## 2.1.3
+
+### Patch Changes
+
+- 2656b85: Preserve raw inner text for string-typed arguments in Morph-XML protocol; add tests; adjust examples.
+  - XML parser now prefers raw inner content for properties typed as string
+  - Adds unit tests for parse and streaming cases
+
 ## 2.1.2
 
 ### Patch Changes
