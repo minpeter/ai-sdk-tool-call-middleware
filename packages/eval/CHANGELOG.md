@@ -1,5 +1,11 @@
 # @ai-sdk-tool/eval
 
+## 0.1.5
+
+### Patch Changes
+
+- 2656b85: Added option to control temperature parameter.
+
 ## 0.1.4
 
 ### Patch Changes
