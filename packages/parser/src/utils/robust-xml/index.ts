@@ -55,5 +55,5 @@ export {
 export interface Options {
   textNodeName?: string;
   throwOnDuplicateStringTags?: boolean;
-  onError?: (message: string, context?: any) => void;
+  onError?: (message: string, context?: Record<string, unknown>) => void;
 }

@@ -3,6 +3,17 @@ import { describe, expect, it } from "vitest";
 import { RXMLParseError, XMLTokenizer } from "@/utils/robust-xml";
 
 describe("XMLTokenizer", () => {
+  const isNode = (
+    value: unknown
+  ): value is {
+    tagName: string;
+    attributes: Record<string, unknown>;
+    children: unknown[];
+  } =>
+    typeof value === "object" &&
+    value !== null &&
+    "tagName" in (value as Record<string, unknown>) &&
+    "children" in (value as Record<string, unknown>);
   describe("basic parsing", () => {
     it("parses simple elements", () => {
       const tokenizer = new XMLTokenizer("<item>test</item>");
@@ -246,8 +257,9 @@ describe("XMLTokenizer", () => {
         expect.fail("Should have thrown an error");
       } catch (error) {
         expect(error).toBeInstanceOf(RXMLParseError);
-        expect((error as RXMLParseError).line).toBeDefined();
-        expect((error as RXMLParseError).column).toBeDefined();
+        const err = error as RXMLParseError;
+        expect(err.line).toBeDefined();
+        expect(err.column).toBeDefined();
       }
     });
   });
@@ -292,9 +304,21 @@ describe("XMLTokenizer", () => {
       const img = result.children.find((child: any) => child.tagName === "img");
       const p = result.children.find((child: any) => child.tagName === "p");
 
-      expect(br?.children).toEqual([]);
-      expect(img?.children).toEqual([]);
-      expect(p?.children).toEqual(["content"]);
+      if (isNode(br)) {
+        expect(br.children).toEqual([]);
+      } else {
+        expect.fail("br was not a node");
+      }
+      if (isNode(img)) {
+        expect(img.children).toEqual([]);
+      } else {
+        expect.fail("img was not a node");
+      }
+      if (isNode(p)) {
+        expect(p.children).toEqual(["content"]);
+      } else {
+        expect.fail("p was not a node");
+      }
     });
 
     it("allows custom noChildNodes configuration", () => {
@@ -308,7 +332,11 @@ describe("XMLTokenizer", () => {
       const custom = result.children.find(
         (child: any) => child.tagName === "custom"
       );
-      expect(custom?.children).toEqual([]);
+      if (isNode(custom)) {
+        expect(custom.children).toEqual([]);
+      } else {
+        expect.fail("custom was not a node");
+      }
     });
   });
 });

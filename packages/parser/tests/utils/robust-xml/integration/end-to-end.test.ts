@@ -159,11 +159,10 @@ describe("robust-xml integration", () => {
         expect.fail("Should have thrown an error");
       } catch (error) {
         expect(error).toBeInstanceOf(RXML.RXMLParseError);
-        expect((error as RXML.RXMLParseError).message).toContain(
-          "Unexpected close tag"
-        );
-        expect((error as RXML.RXMLParseError).line).toBeGreaterThan(0);
-        expect((error as RXML.RXMLParseError).column).toBeGreaterThan(0);
+        const err = error as RXML.RXMLParseError;
+        expect(err.message).toContain("Unexpected close tag");
+        expect(err.line).toBeGreaterThan(0);
+        expect(err.column).toBeGreaterThan(0);
       }
     });
 
@@ -305,9 +304,12 @@ describe("robust-xml integration", () => {
       const endTime = Date.now();
 
       expect(endTime - startTime).toBeLessThan(1000); // Should complete within 1 second
-      expect(result.data).toHaveLength(100);
-      expect(typeof result.data[0].value).toBe("number");
-      expect(typeof result.data[0].active).toBe("boolean");
+      const data = (
+        result as unknown as { data: Array<{ value: number; active: boolean }> }
+      ).data;
+      expect(data).toHaveLength(100);
+      expect(typeof data[0].value).toBe("number");
+      expect(typeof data[0].active).toBe("boolean");
     });
   });
 

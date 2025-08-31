@@ -237,8 +237,12 @@ describe("RXML Chunked Streaming (Working Implementation)", () => {
       expect(toolCalls.length).toBe(2);
 
       if (toolCalls.length >= 2) {
-        expect(toolCalls[0].attributes.id).toBe("1");
-        expect(toolCalls[1].attributes.id).toBe("2");
+        const first = toolCalls[0];
+        const second = toolCalls[1];
+        if (typeof first === "object" && typeof second === "object") {
+          expect(first.attributes.id).toBe("1");
+          expect(second.attributes.id).toBe("2");
+        }
       }
     });
   });
@@ -514,7 +518,8 @@ The search has been initiated successfully.`;
 
         console.log("✅ Malformed XML handled gracefully");
       } catch (error) {
-        console.log("Malformed XML threw error (acceptable):", error.message);
+        const message = error instanceof Error ? error.message : String(error);
+        console.log("Malformed XML threw error (acceptable):", message);
         expect(error).toBeInstanceOf(RXMLStreamError);
       }
     });

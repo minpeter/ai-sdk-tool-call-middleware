@@ -9,7 +9,6 @@ export * from "./on-error";
 export * from "./protocol";
 export * from "./tools";
 export * from "./type-guards";
-export * from "./xml";
 
 export {
   createDynamicIfThenElseSchema,

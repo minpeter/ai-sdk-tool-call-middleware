@@ -239,10 +239,8 @@ describe("RXML Stream Analysis", () => {
 
       console.log("parseWithoutSchema with streaming options:", result);
     } catch (error) {
-      console.log(
-        "parseWithoutSchema with streaming options failed:",
-        error.message
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      console.log("parseWithoutSchema with streaming options failed:", message);
       console.log("This explains why streaming is not working!");
     }
 
@@ -252,7 +250,8 @@ describe("RXML Stream Analysis", () => {
       console.log("parseWithoutSchema without streaming options:", result);
       console.log("This works fine, so the issue is in the streaming options");
     } catch (error) {
-      console.log("Even basic parseWithoutSchema failed:", error.message);
+      const message = error instanceof Error ? error.message : String(error);
+      console.log("Even basic parseWithoutSchema failed:", message);
     }
 
     expect(true).toBe(true); // This test is just for analysis

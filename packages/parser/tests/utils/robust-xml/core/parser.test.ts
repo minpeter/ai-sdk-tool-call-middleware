@@ -18,6 +18,8 @@ import {
 } from "../fixtures/test-data";
 
 describe("robust-xml parser", () => {
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
   describe("parseWithoutSchema", () => {
     it("parses simple XML correctly", () => {
       const result = parseWithoutSchema(validXmlSamples.simple);
@@ -243,7 +245,12 @@ describe("robust-xml parser", () => {
         "<test><cc>one</cc><cc>two</cc></test>"
       );
       const simplified = simplify(parsed);
-      expect(simplified.test.cc).toEqual(["one", "two"]);
+      if (isRecord(simplified) && isRecord(simplified["test"])) {
+        const cc = (simplified["test"] as Record<string, unknown>)["cc"];
+        expect(cc).toEqual(["one", "two"]);
+      } else {
+        expect.fail("simplified result was not an object with 'test'");
+      }
     });
 
     it("preserves attributes in simplification", () => {
@@ -251,7 +258,17 @@ describe("robust-xml parser", () => {
         '<test><cc attr="value">content</cc></test>'
       );
       const simplified = simplify(parsed);
-      expect(simplified.test.cc._attributes).toEqual({ attr: "value" });
+      if (isRecord(simplified) && isRecord(simplified["test"])) {
+        const testNode = simplified["test"] as Record<string, unknown>;
+        const cc = testNode["cc"] as unknown;
+        if (isRecord(cc)) {
+          expect(cc["_attributes"]).toEqual({ attr: "value" });
+        } else {
+          expect.fail("cc was not an object on simplified.test");
+        }
+      } else {
+        expect.fail("simplified result was not an object with 'test'");
+      }
     });
   });
 
