@@ -534,7 +534,9 @@ export function parse(
       if (cursor < xmlInner.length) rebuilt += xmlInner.slice(cursor);
       xmlInnerForParsing = rebuilt;
     }
-  } catch {
+  } catch (error) {
+    // Log the error for debugging purposes, but still fall back to the original XML.
+    console.error('RXML: Failed to replace string placeholders, falling back to original XML.', error);
     xmlInnerForParsing = xmlInner;
   }
 
