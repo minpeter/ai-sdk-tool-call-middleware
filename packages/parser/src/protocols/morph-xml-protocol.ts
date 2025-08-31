@@ -191,13 +191,17 @@ export function processParsedArgs(
           keys.length > 0 &&
           keys.every(key => /^\d+$/.test(key)) &&
           (() => {
-            const indices = keys.map(k => parseInt(k)).sort((a, b) => a - b);
+            const indices = keys
+              .map(k => parseInt(k, 10))
+              .sort((a, b) => a - b);
             return indices[0] === 0 && indices.every((val, idx) => val === idx);
           })();
 
         if (isIndexedTuple) {
           // Convert indexed object to array (tuple)
-          const sortedKeys = keys.sort((a, b) => parseInt(a) - parseInt(b));
+          const sortedKeys = keys.sort(
+            (a, b) => parseInt(a, 10) - parseInt(b, 10)
+          );
           val = sortedKeys.map(key => {
             const item = obj[key];
             if (
