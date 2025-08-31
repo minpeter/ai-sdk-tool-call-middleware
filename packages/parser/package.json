@@ -23,7 +23,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "packageManager": "pnpm@9.14.4+sha1.64b6e81e79630419b675c555ef3b65607cfd6315",
   "dependencies": {
     "@ai-sdk/provider": "2.0.0",

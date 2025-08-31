@@ -20,3 +20,7 @@ Monorepo documentation for AI SDK tool-calling middleware and evaluation utiliti
   - [dev] Provider Options: [concepts/provider-options.md](concepts/provider-options.md)
 - Evaluation: [evaluation.md](evaluation.md)
 - Examples: [examples.md](examples.md)
+
+## License
+
+This repository is licensed under Apache License 2.0. See the root `LICENSE` for details. Include the `NOTICE` file in distributions per the license.

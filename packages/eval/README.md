@@ -122,3 +122,7 @@ export const politenessBenchmark: LanguageModelV2Benchmark = {
 //   benchmarks: [politenessBenchmark],
 // });
 ```
+
+## License
+
+Licensed under Apache License 2.0. See the repository `LICENSE`. Include the `NOTICE` file in distributions.

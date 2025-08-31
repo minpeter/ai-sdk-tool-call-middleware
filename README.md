@@ -113,3 +113,7 @@ Issues and PRs are welcome. See `CONTRIBUTING.md` and `AGENTS.md` for architectu
 ---
 
 Full docs: [docs/index.md](docs/index.md)
+
+## License
+
+Licensed under Apache License 2.0. See `LICENSE` for full terms. If you distribute binaries or source, include the `NOTICE` file as required by the license.
