@@ -128,7 +128,7 @@ describe("stringify", () => {
         },
       });
       expect(result).toContain(
-        'title="This has &quot;quotes&quot; and &lt;tags&gt;"'
+        "title='This has &quot;quotes&quot; and &lt;tags&gt;'"
       );
     });
 
@@ -139,7 +139,51 @@ describe("stringify", () => {
           "#text": "content",
         },
       });
-      expect(result).toContain("title='Text with \"double quotes\"'");
+      expect(result).toContain("title='Text with &quot;double quotes&quot;'");
+    });
+
+    it("escapes both quote types when value contains both", () => {
+      const result = stringify("root", {
+        item: {
+          "@title": `It's a "quote"`,
+          "#text": "content",
+        },
+      });
+      // Since value contains double quotes, we use single-quoted attribute and escape both quotes
+      expect(result).toContain("title='It&apos;s a &quot;quote&quot;'");
+    });
+  });
+
+  describe("minimalEscaping option", () => {
+    it("escapes minimal characters in text content", () => {
+      const xml = stringify(
+        "root",
+        { text: "A < B & C > D and 'quotes'\"double\"" },
+        { format: false, minimalEscaping: true }
+      );
+      expect(xml).toContain(
+        "<text>A &lt; B &amp; C > D and 'quotes'\"double\"</text>"
+      );
+    });
+
+    it("escapes only wrapper quote in attributes (double)", () => {
+      const xml = stringify(
+        "root",
+        { item: { "@title": 'It\'s "ok"', "#text": "x" } },
+        { format: false, minimalEscaping: true }
+      );
+      // value contains double quotes -> single-quoted attribute; escape &, <, and the single quote
+      expect(xml).toContain("<item title='It&apos;s \"ok\"'>x</item>");
+    });
+
+    it("escapes only wrapper quote in attributes (single)", () => {
+      const xml = stringify(
+        "root",
+        { item: { "@title": "no doubles here", "#text": "x" } },
+        { format: false, minimalEscaping: true }
+      );
+      // no double quotes in value -> double quoted attribute; single quotes remain
+      expect(xml).toContain('<item title="no doubles here">x</item>');
     });
   });
 

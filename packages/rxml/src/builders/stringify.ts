@@ -5,7 +5,11 @@
 
 import type { RXMLNode, StringifyOptions } from "../core/types";
 import { RXMLStringifyError } from "../errors/types";
-import { escapeXml } from "../utils/helpers";
+import {
+  escapeXml,
+  escapeXmlMinimalAttr,
+  escapeXmlMinimalText,
+} from "../utils/helpers";
 
 /**
  * Stringify an object to XML
@@ -17,6 +21,7 @@ export function stringify(
 ): string {
   try {
     const format = options.format ?? true;
+    const minimalEscaping = options.minimalEscaping ?? false;
     const suppressEmptyNode = options.suppressEmptyNode ?? false;
 
     let result = "";
@@ -25,7 +30,14 @@ export function stringify(
       result += '<?xml version="1.0" encoding="UTF-8"?>\n';
     }
 
-    result += stringifyValue(rootTag, obj, 0, format, suppressEmptyNode);
+    result += stringifyValue(
+      rootTag,
+      obj,
+      0,
+      format,
+      suppressEmptyNode,
+      minimalEscaping
+    );
 
     return result;
   } catch (error) {
@@ -41,7 +53,8 @@ function stringifyValue(
   value: unknown,
   depth: number,
   format: boolean,
-  suppressEmptyNode: boolean
+  suppressEmptyNode: boolean,
+  minimalEscaping: boolean
 ): string {
   const indent = format ? "  ".repeat(depth) : "";
   const newline = format ? "\n" : "";
@@ -56,7 +69,9 @@ function stringifyValue(
     typeof value === "number" ||
     typeof value === "boolean"
   ) {
-    const content = escapeXml(String(value));
+    const content = minimalEscaping
+      ? escapeXmlMinimalText(String(value))
+      : escapeXml(String(value));
     if (content === "" && suppressEmptyNode) return "";
     return `${indent}<${tagName}>${content}</${tagName}>${newline}`;
   }
@@ -64,7 +79,14 @@ function stringifyValue(
   if (Array.isArray(value)) {
     let result = "";
     for (const item of value) {
-      result += stringifyValue(tagName, item, depth, format, suppressEmptyNode);
+      result += stringifyValue(
+        tagName,
+        item,
+        depth,
+        format,
+        suppressEmptyNode,
+        minimalEscaping
+      );
     }
     return result;
   }
@@ -75,12 +97,15 @@ function stringifyValue(
       value as Record<string, unknown>,
       depth,
       format,
-      suppressEmptyNode
+      suppressEmptyNode,
+      minimalEscaping
     );
   }
 
   // Fallback for other types
-  const content = escapeXml(String(value));
+  const content = minimalEscaping
+    ? escapeXmlMinimalText(String(value))
+    : escapeXml(String(value));
   if (content === "" && suppressEmptyNode) return "";
   return `${indent}<${tagName}>${content}</${tagName}>${newline}`;
 }
@@ -93,7 +118,8 @@ function stringifyObject(
   obj: Record<string, unknown>,
   depth: number,
   format: boolean,
-  suppressEmptyNode: boolean
+  suppressEmptyNode: boolean,
+  minimalEscaping: boolean
 ): string {
   const indent = format ? "  ".repeat(depth) : "";
   const newline = format ? "\n" : "";
@@ -125,20 +151,22 @@ function stringifyObject(
       openTag += ` ${attrName}`;
     } else {
       const valueStr = String(attrValue);
-      const hasDoubleQuotes = valueStr.indexOf('"') !== -1;
-      const hasSpecialChars = /[&<>]/.test(valueStr);
-
-      if (hasDoubleQuotes && !hasSpecialChars) {
-        // Use single quotes and don't escape quotes when only quotes are present
-        openTag += ` ${attrName}='${valueStr}'`;
-      } else {
-        // Use double quotes and escape everything including quotes
-        const escaped = valueStr
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
+      // Attribute quoting strategy per XML 1.0:
+      // - 3.1 (AttValue [10]): attribute values MUST be quoted with ' or ".
+      //   If the same quote appears in the value, it MUST be escaped (via
+      //   predefined entities per 4.6). We choose the quote that minimizes
+      //   escaping: prefer " unless value contains ", otherwise use '.
+      //   See: https://www.w3.org/TR/2008/REC-xml-20081126/
+      if (valueStr.indexOf('"') === -1) {
+        const escaped = minimalEscaping
+          ? escapeXmlMinimalAttr(valueStr, '"')
+          : escapeXml(valueStr);
         openTag += ` ${attrName}="${escaped}"`;
+      } else {
+        const escaped = minimalEscaping
+          ? escapeXmlMinimalAttr(valueStr, "'")
+          : escapeXml(valueStr);
+        openTag += ` ${attrName}='${escaped}'`;
       }
     }
   }
@@ -156,15 +184,24 @@ function stringifyObject(
 
   // Handle text-only content
   if (!hasElements && hasTextContent && textContent) {
-    return `${indent}${openTag}${escapeXml(textContent)}</${tagName}>${newline}`;
+    // 2.4 Character Data and Markup: '<' and '&' MUST be escaped in content.
+    // Minimal vs conservative controlled by option.
+    const content = minimalEscaping
+      ? escapeXmlMinimalText(textContent)
+      : escapeXml(textContent);
+    return `${indent}${openTag}${content}</${tagName}>${newline}`;
   }
 
   // Handle complex content
   let result = `${indent}${openTag}`;
 
   if (hasTextContent && textContent) {
-    if (format) result += `${newline}${childIndent}${escapeXml(textContent)}`;
-    else result += escapeXml(textContent);
+    // See spec notes above (2.4, 4.6) for escaping rationale.
+    const content = minimalEscaping
+      ? escapeXmlMinimalText(textContent)
+      : escapeXml(textContent);
+    if (format) result += `${newline}${childIndent}${content}`;
+    else result += content;
   }
 
   if (hasElements) {
@@ -176,7 +213,8 @@ function stringifyObject(
         elementValue,
         depth + 1,
         format,
-        suppressEmptyNode
+        suppressEmptyNode,
+        minimalEscaping
       );
     }
 

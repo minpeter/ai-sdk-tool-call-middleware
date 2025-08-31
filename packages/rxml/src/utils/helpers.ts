@@ -133,7 +133,18 @@ export function getLineColumn(
 }
 
 /**
- * Escape XML special characters
+ * Escape XML special characters used in element content and attribute values.
+ *
+ * References (W3C XML 1.0, Fifth Edition):
+ * - 2.4 Character Data and Markup: '<' and '&' MUST NOT appear literally in content;
+ *   they MUST be escaped. '>' MUST be escaped in the sequence ']]>' and MAY be
+ *   escaped otherwise. Spec: https://www.w3.org/TR/2008/REC-xml-20081126/
+ * - 3.1 Start-Tags, End-Tags, and Empty-Element Tags (AttValue [10]): attribute
+ *   values are quoted with ' or ", and the matching quote MUST be escaped inside.
+ * - 4.6 Predefined Entities: amp, lt, gt, apos, quot MUST be recognized by all
+ *   XML processors. Spec: https://www.w3.org/TR/2008/REC-xml-20081126/#sec-predefined-ent
+ *
+ * We conservatively escape &, <, >, ", ' using the predefined entities.
  */
 export function escapeXml(text: string): string {
   return text
@@ -142,6 +153,36 @@ export function escapeXml(text: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+}
+
+/**
+ * Minimal escaping for character data per XML 1.0 §2.4.
+ * - Escape '&' and '<' always
+ * - Escape only the ']]>' sequence by turning '>' into '&gt;' in that context
+ */
+export function escapeXmlMinimalText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/]]>/g, "]]&gt;");
+}
+
+/**
+ * Minimal escaping for attribute values per XML 1.0 §3.1 (AttValue [10]).
+ * - Escape '&' and '<' always
+ * - Escape only the wrapper quote among ' or "
+ */
+export function escapeXmlMinimalAttr(
+  value: string,
+  wrapper: '"' | "'" = '"'
+): string {
+  let escaped = value.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  if (wrapper === '"') {
+    escaped = escaped.replace(/"/g, "&quot;");
+  } else {
+    escaped = escaped.replace(/'/g, "&apos;");
+  }
+  return escaped;
 }
 
 /**

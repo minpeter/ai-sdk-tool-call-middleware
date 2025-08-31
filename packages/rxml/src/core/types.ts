@@ -58,6 +58,13 @@ export interface StringifyOptions {
   format?: boolean;
   /** Whether to suppress empty nodes */
   suppressEmptyNode?: boolean;
+  /**
+   * Whether to use minimal escaping per XML 1.0:
+   * - In character data: escape '&' and '<' (and '>' only in ']]>' sequence)
+   * - In attribute values: escape '&', '<', and only the wrapping quote
+   * Defaults to false (conservative escaping of &, <, >, ", ')
+   */
+  minimalEscaping?: boolean;
   /** Error handling callback */
   onError?: OnErrorFn;
 }
