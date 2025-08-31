@@ -5,7 +5,7 @@ import {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
-import { escapeRegExp, hasInputProperty, RXML } from "@/utils";
+import { hasInputProperty, RXML } from "@/utils";
 import { unwrapJsonSchema } from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
@@ -46,7 +46,10 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     } else {
       args = inputValue;
     }
-    return RXML.stringify(toolCall.toolName, args, { suppressEmptyNode: true });
+    return RXML.stringify(toolCall.toolName, args, {
+      suppressEmptyNode: false,
+      format: false,
+    });
   },
 
   formatToolResponse(toolResult: LanguageModelV2ToolResultPart): string {
@@ -66,49 +69,96 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       return [{ type: "text", text }];
     }
 
-    const toolNamesPattern = toolNames.map(n => escapeRegExp(n)).join("|");
-    const toolCallRegex = new RegExp(
-      String.raw`<(${toolNamesPattern})>([\s\S]*?)<\/\1>`,
-      "g"
-    );
-
     const processedElements: LanguageModelV2Content[] = [];
     let currentIndex = 0;
-    let match;
 
-    while ((match = toolCallRegex.exec(text)) !== null) {
-      const startIndex = match.index;
-      const toolName = match[1];
-      const toolContent = match[2].trim();
+    // Find all tool calls using proper XML parsing
+    const toolCalls: Array<{
+      toolName: string;
+      startIndex: number;
+      endIndex: number;
+      content: string;
+    }> = [];
 
-      if (startIndex > currentIndex) {
-        const textSegment = text.substring(currentIndex, startIndex);
+    for (const toolName of toolNames) {
+      let searchIndex = 0;
+      while (searchIndex < text.length) {
+        const startTag = `<${toolName}>`;
+        const tagStart = text.indexOf(startTag, searchIndex);
+        if (tagStart === -1) break;
+
+        // Use findFirstTopLevelRange to get the proper content
+        const remainingText = text.substring(tagStart);
+        const range = RXML.findFirstTopLevelRange(remainingText, toolName);
+        if (range) {
+          const fullTagStart = tagStart;
+          const contentStart = tagStart + startTag.length;
+          const contentEnd = contentStart + (range.end - range.start);
+          const fullTagEnd = contentEnd + `</${toolName}>`.length;
+
+          const toolContent = text.substring(contentStart, contentEnd);
+
+          toolCalls.push({
+            toolName,
+            startIndex: fullTagStart,
+            endIndex: fullTagEnd,
+            content: toolContent,
+          });
+
+          searchIndex = fullTagEnd;
+        } else {
+          searchIndex = tagStart + startTag.length;
+        }
+      }
+    }
+
+    // Sort tool calls by start index
+    toolCalls.sort((a, b) => a.startIndex - b.startIndex);
+
+    // Process text and tool calls in order
+    for (const toolCall of toolCalls) {
+      // Add text before this tool call
+      if (toolCall.startIndex > currentIndex) {
+        const textSegment = text.substring(currentIndex, toolCall.startIndex);
         if (textSegment.trim()) {
           processedElements.push({ type: "text", text: textSegment });
         }
       }
 
       try {
-        const toolSchema = getToolSchema(tools, originalSchemas, toolName);
-        const parsed = RXML.parse(toolContent, toolSchema, {
+        const toolSchema = getToolSchema(
+          tools,
+          originalSchemas,
+          toolCall.toolName
+        );
+        const parsed = RXML.parse(toolCall.content, toolSchema, {
           onError: options?.onError,
         });
 
         processedElements.push({
           type: "tool-call",
           toolCallId: generateId(),
-          toolName,
+          toolName: toolCall.toolName,
           input: JSON.stringify(parsed),
         });
       } catch (error) {
-        const message = `Could not process XML tool call, keeping original text: ${match[0]}`;
-        options?.onError?.(message, { toolCall: match[0], toolName, error });
-        processedElements.push({ type: "text", text: match[0] });
+        const originalCallText = text.substring(
+          toolCall.startIndex,
+          toolCall.endIndex
+        );
+        const message = `Could not process XML tool call, keeping original text: ${originalCallText}`;
+        options?.onError?.(message, {
+          toolCall: originalCallText,
+          toolName: toolCall.toolName,
+          error,
+        });
+        processedElements.push({ type: "text", text: originalCallText });
       }
 
-      currentIndex = startIndex + match[0].length;
+      currentIndex = toolCall.endIndex;
     }
 
+    // Add remaining text
     if (currentIndex < text.length) {
       const remainingText = text.substring(currentIndex);
       if (remainingText.trim()) {
@@ -264,14 +314,34 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   extractToolCallSegments({ text, tools }) {
     const toolNames = tools.map(t => t.name).filter(Boolean) as string[];
     if (toolNames.length === 0) return [];
-    const names = toolNames.map(n => escapeRegExp(String(n))).join("|");
-    if (!names) return [];
-    const regex = new RegExp(`<(${names})>[\\s\\S]*?<\\/\\1>`, "g");
+
     const segments: string[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(text)) != null) {
-      segments.push(m[0]);
+
+    for (const toolName of toolNames) {
+      let searchIndex = 0;
+      while (searchIndex < text.length) {
+        const startTag = `<${toolName}>`;
+        const tagStart = text.indexOf(startTag, searchIndex);
+        if (tagStart === -1) break;
+
+        // Use findFirstTopLevelRange to get the proper content
+        const remainingText = text.substring(tagStart);
+        const range = RXML.findFirstTopLevelRange(remainingText, toolName);
+        if (range) {
+          const contentStart = tagStart + startTag.length;
+          const contentEnd = contentStart + (range.end - range.start);
+          const fullTagEnd = contentEnd + `</${toolName}>`.length;
+
+          const fullSegment = text.substring(tagStart, fullTagEnd);
+          segments.push(fullSegment);
+
+          searchIndex = fullTagEnd;
+        } else {
+          searchIndex = tagStart + startTag.length;
+        }
+      }
     }
+
     return segments;
   },
 });
