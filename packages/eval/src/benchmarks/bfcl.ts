@@ -203,10 +203,8 @@ function createBfclBenchmark(
         ): Promise<{ valid: boolean; logs: string[] }> => {
           const caseLogs: string[] = [];
           const { function: tools, question: messages } = testCase;
-          const temperature =
-            typeof (config?.temperature as unknown) === "number"
-              ? (config?.temperature as number)
-              : undefined;
+          const temp = config?.temperature;
+          const temperature = typeof temp === "number" ? temp : undefined;
 
           try {
             // Flatten BFCL message shape [[{role, content}], ...] to [{role, content}, ...]

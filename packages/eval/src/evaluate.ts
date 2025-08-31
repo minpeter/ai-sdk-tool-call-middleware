@@ -86,7 +86,7 @@ export async function evaluate(
           async run(m, _config) {
             return benchmark.run(m, { temperature });
           },
-        } as typeof benchmark,
+        } as LanguageModelV2Benchmark,
         modelKey
       );
       allResults.push(evaluationResult);

@@ -169,10 +169,8 @@ export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
           },
         ];
 
-        const temperature =
-          typeof (config?.temperature as unknown) === "number"
-            ? (config?.temperature as number)
-            : undefined;
+        const temp = config?.temperature;
+        const temperature = typeof temp === "number" ? temp : undefined;
         const { text } = await generateText({
           model,
           messages,
@@ -310,10 +308,8 @@ export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV2Benchmark = {
           },
         ];
 
-        const temperature =
-          typeof (config?.temperature as unknown) === "number"
-            ? (config?.temperature as number)
-            : undefined;
+        const temp = config?.temperature;
+        const temperature = typeof temp === "number" ? temp : undefined;
         const { text } = await generateText({
           model,
           messages,
