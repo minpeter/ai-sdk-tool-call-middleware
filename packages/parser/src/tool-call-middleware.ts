@@ -4,14 +4,16 @@ import type {
 } from "@ai-sdk/provider";
 
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
-import { ToolCallProtocol } from "./protocols/tool-call-protocol";
+import {
+  isProtocolFactory,
+  ToolCallProtocol,
+} from "./protocols/tool-call-protocol";
 import {
   toolChoiceStream,
   wrapStream as wrapStreamHandler,
 } from "./stream-handler";
 import { transformParams } from "./transform-handler";
 import { extractOnErrorOption, isToolChoiceActive } from "./utils";
-import { isProtocolFactory } from "./utils/protocol";
 
 export function createToolMiddleware({
   protocol,
