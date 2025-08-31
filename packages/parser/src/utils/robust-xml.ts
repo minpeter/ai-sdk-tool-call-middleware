@@ -2,10 +2,12 @@ import { XMLParser } from "fast-xml-parser";
 import { XMLBuilder } from "fast-xml-parser";
 
 import { coerceBySchema, getSchemaType, unwrapJsonSchema } from "./coercion";
+import type { OnErrorFn } from "./on-error";
 
 export interface Options {
   textNodeName?: string;
   throwOnDuplicateStringTags?: boolean;
+  onError?: OnErrorFn;
 }
 
 export class RXMLParseError extends Error {
@@ -537,11 +539,13 @@ export function parse(
       xmlInnerForParsing = rebuilt;
     }
   } catch (error) {
-    // Log the error for debugging purposes, but still fall back to the original XML.
-    console.error(
-      "RXML: Failed to replace string placeholders, falling back to original XML.",
-      error
-    );
+    // Non-fatal: fall back to original XML; allow caller to handle via onError
+    if (options?.onError) {
+      options.onError(
+        "RXML: Failed to replace string placeholders, falling back to original XML.",
+        { error }
+      );
+    }
     xmlInnerForParsing = xmlInner;
   }
 
@@ -581,6 +585,12 @@ export function parse(
           `Duplicate string tags for <${k}> detected`
         );
       }
+      if (occurrences > 0 && !throwDup && options?.onError) {
+        options.onError(
+          `RXML: Duplicate string tags for <${k}> detected; using first occurrence.`,
+          { tag: k, occurrences }
+        );
+      }
       const raw = extractRawInner(xmlInner, k);
       if (typeof raw === "string") {
         args[k] = raw;
@@ -615,6 +625,12 @@ export function parse(
         if (mapped.length > 1 && throwDup) {
           throw new RXMLDuplicateStringTagError(
             `Duplicate string tags for <${k}> detected`
+          );
+        }
+        if (mapped.length > 1 && !throwDup && options?.onError) {
+          options.onError(
+            `RXML: Duplicate string tags for <${k}> detected; using first occurrence.`,
+            { tag: k, occurrences: mapped.length }
           );
         }
 
