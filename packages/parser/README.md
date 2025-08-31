@@ -127,3 +127,7 @@ See `examples/parser-core/src/*` for runnable demos (streaming/non‑streaming, 
   - `toolNames`: internal propagation of custom tool names.
   - `toolChoice`: internal fast‑path activation for required/specific tool modes.
 - Transform details: `transformParams` injects a system message built from protocol `formatTools` and clears `tools` since many providers strip/ignore them.
+
+## License
+
+Licensed under Apache License 2.0. See the repository `LICENSE`. Include the `NOTICE` file in distributions.
