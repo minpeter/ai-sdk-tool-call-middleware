@@ -1,7 +1,7 @@
 import { Readable } from "stream";
 import { describe, expect, it } from "vitest";
 
-import { parseWithoutSchema } from "@/utils/robust-xml";
+import { parseWithoutSchema } from "@/index";
 
 const CHUNK_SIZE = 7;
 

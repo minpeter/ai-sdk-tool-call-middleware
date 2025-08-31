@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { RXMLParseError, XMLTokenizer } from "@/utils/robust-xml";
+import { RXMLParseError, XMLTokenizer } from "@/index";
 
 describe("XMLTokenizer", () => {
   const isNode = (

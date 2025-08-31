@@ -4,8 +4,9 @@ import {
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
+import * as RXML from "@ai-sdk-tool/rxml";
 
-import { hasInputProperty, RXML } from "@/utils";
+import { hasInputProperty } from "@/utils";
 import { unwrapJsonSchema } from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";

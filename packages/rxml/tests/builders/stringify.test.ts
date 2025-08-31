@@ -6,7 +6,7 @@ import {
   stringifyNode,
   stringifyNodes,
   toContentString,
-} from "@/utils/robust-xml";
+} from "@/index";
 
 describe("stringify", () => {
   describe("basic stringify", () => {

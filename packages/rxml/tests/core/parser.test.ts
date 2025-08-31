@@ -8,7 +8,7 @@ import {
   RXMLDuplicateStringTagError,
   RXMLParseError,
   simplify,
-} from "@/utils/robust-xml";
+} from "@/index";
 
 import {
   duplicateTagSamples,

@@ -5,7 +5,7 @@ import {
   createXMLStream,
   parseWithoutSchema,
   XMLTransformStream,
-} from "@/utils/robust-xml";
+} from "@/index";
 
 const CHUNK_SIZE = 7;
 

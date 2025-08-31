@@ -8,7 +8,7 @@ import {
   parseWithoutSchema,
   processArrayContent,
   processIndexedTuple,
-} from "@/utils/robust-xml";
+} from "@/index";
 
 describe("schema coercion", () => {
   describe("getPropertySchema", () => {

@@ -1,7 +1,7 @@
 import { Readable } from "stream";
 import { describe, expect, it } from "vitest";
 
-import { processXMLStream } from "@/utils/robust-xml";
+import { processXMLStream } from "@/index";
 
 const CHUNK_SIZE = 7;
 

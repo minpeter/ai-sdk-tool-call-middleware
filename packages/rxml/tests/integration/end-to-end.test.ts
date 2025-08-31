@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import * as RXML from "@/utils/robust-xml";
+import * as RXML from "@/index";
 
 import { schemaTestCases } from "../fixtures/test-data";
 

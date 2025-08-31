@@ -1,7 +1,7 @@
 import { Readable } from "stream";
 import { describe, expect, it } from "vitest";
 
-import { parseFromStream, RXMLStreamError } from "@/utils/robust-xml";
+import { parseFromStream, RXMLStreamError } from "@/index";
 
 const CHUNK_SIZE = 7;
 
