@@ -11,6 +11,9 @@ import { coerceBySchema, unwrapJsonSchema } from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
 
+// Controls whether the parser emits warnings when duplicate string tags are detected
+const WARN_ON_DUPLICATE_STRING_TAGS: boolean = true;
+
 // Helper to get unwrapped schema type string
 function getSchemaTypeString(schema: unknown): string | undefined {
   const s = unwrapJsonSchema(schema);
@@ -107,7 +110,6 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   },
 
   parseGeneratedText({ text, tools, options }) {
-    const warnOnDuplicate: boolean = true;
     // Get original schemas from provider options if available
     const originalSchemas =
       (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
@@ -202,7 +204,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                 })
                 .filter(x => typeof x === "string");
 
-              if (mapped.length > 1 && warnOnDuplicate) {
+              if (mapped.length > 1 && WARN_ON_DUPLICATE_STRING_TAGS) {
                 options?.onError?.(
                   `Duplicate string tags for <${k}> detected; cancelling tool call`,
                   {
@@ -388,7 +390,6 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   },
 
   createStreamParser({ tools, options }) {
-    const warnOnDuplicate: boolean = true;
     // Get original schemas from options if available
     const originalSchemas =
       (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
@@ -509,7 +510,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                         })
                         .filter(x => typeof x === "string");
 
-                      if (mapped.length > 1 && warnOnDuplicate) {
+                      if (mapped.length > 1 && WARN_ON_DUPLICATE_STRING_TAGS) {
                         options?.onError?.(
                           `Duplicate string tags for <${k}> detected; cancelling tool call`,
                           {

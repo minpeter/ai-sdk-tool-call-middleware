@@ -73,9 +73,17 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
 
     const out = await collect(rs.pipeThrough(transformer));
 
-    const tool = out.find(p => p.type === "tool-call") as any;
+    const tool = out.find(
+      (p): p is Extract<LanguageModelV2StreamPart, { type: "tool-call" }> =>
+        p.type === "tool-call"
+    );
     expect(tool?.toolName).toBe("write_file");
-    const args = JSON.parse(tool.input);
+    if (!tool) throw new Error("Expected tool-call part to be present");
+    const args = JSON.parse(tool.input) as {
+      file_path: string;
+      content: string;
+      encoding?: string;
+    };
     expect(args.file_path).toBe("/home/username/myfile.html");
     expect(args.content).toBe(html);
     expect(args.encoding).toBe("utf-8");
@@ -128,7 +136,10 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     });
     const out = await collect(rs.pipeThrough(transformer));
     // Entire tool call is cancelled and returned as text stream
-    const textParts = out.filter(p => p.type === "text-delta") as any[];
+    const textParts = out.filter(
+      (p): p is Extract<LanguageModelV2StreamPart, { type: "text-delta" }> =>
+        p.type === "text-delta"
+    );
     const combined = textParts.map(p => p.delta).join("");
     expect(combined).toContain("<write_file>");
     expect(combined).toContain(

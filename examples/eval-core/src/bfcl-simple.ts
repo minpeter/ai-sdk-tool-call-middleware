@@ -45,19 +45,19 @@ Available functions are listed inside <tools></tools>.
 });
 
 const xmlGemma27b = wrapLanguageModel({
-  model: friendli("skt/A.X-3.1"),
+  model: friendli("google/gemma-3-27b-it"),
   // model: openrouter("z-ai/glm-4.5-air"),
   middleware: xmlToolMiddleware,
 });
 
 const jsonGemma27b = wrapLanguageModel({
-  model: friendli("skt/A.X-3.1"),
+  model: friendli("google/gemma-3-27b-it"),
   // model: openrouter("z-ai/glm-4.5-air"),
   middleware: gemmaToolMiddleware,
 });
 
 const morphExpGemma27b = wrapLanguageModel({
-  model: friendli("skt/A.X-3.1"),
+  model: friendli("google/gemma-3-27b-it"),
   // model: openrouter("z-ai/glm-4.5-air"),
   middleware: morphExpToolMiddleware,
 });

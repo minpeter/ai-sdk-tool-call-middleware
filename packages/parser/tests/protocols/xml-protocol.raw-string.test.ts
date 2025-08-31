@@ -1,7 +1,11 @@
-import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV2Content,
+  LanguageModelV2FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
+import { isToolCallContent } from "@/utils/type-guards";
 
 describe("morphXmlProtocol raw string handling by schema", () => {
   it("treats string-typed args as raw text, not nested XML", () => {
@@ -32,9 +36,10 @@ describe("morphXmlProtocol raw string handling by schema", () => {
       `</write_file>`;
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find(isToolCallContent);
     expect(tc?.toolName).toBe("write_file");
-    const args = JSON.parse(tc.input);
+    const args =
+      typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
     expect(args.file_path).toBe("/home/username/myfile.html");
     // Content must be the raw inner string including XML-like tags
     expect(args.content).toBe(html);
@@ -68,7 +73,10 @@ describe("morphXmlProtocol raw string handling by schema", () => {
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     // Entire tool call should be cancelled and returned as text
-    const only = out.find(p => (p as any).type === "text") as any;
+    const isText = (
+      p: LanguageModelV2Content
+    ): p is { type: "text"; text: string } => p.type === "text";
+    const only = out.find(isText);
     expect(only?.text).toBe(text);
   });
 });
