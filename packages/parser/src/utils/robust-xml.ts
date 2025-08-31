@@ -26,7 +26,10 @@ export class RXMLDuplicateStringTagError extends Error {
 }
 
 export class RXMLCoercionError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public cause?: unknown
+  ) {
     super(message);
     this.name = "RXMLCoercionError";
   }
@@ -371,7 +374,6 @@ export function findFirstTopLevelRange(
               }
               u++;
             }
-            // const startName = xmlContent.slice(nx, t);
             if (!isSelfClosingNested) {
               // nested tag encountered; ignore for range calculation
             }
@@ -536,7 +538,10 @@ export function parse(
     }
   } catch (error) {
     // Log the error for debugging purposes, but still fall back to the original XML.
-    console.error('RXML: Failed to replace string placeholders, falling back to original XML.', error);
+    console.error(
+      "RXML: Failed to replace string placeholders, falling back to original XML.",
+      error
+    );
     xmlInnerForParsing = xmlInner;
   }
 
@@ -714,8 +719,8 @@ export function parse(
   try {
     const coerced = coerceBySchema(args, schema) as Record<string, unknown>;
     return coerced;
-  } catch {
-    throw new RXMLCoercionError("Failed to coerce by schema");
+  } catch (error) {
+    throw new RXMLCoercionError("Failed to coerce by schema", error);
   }
 }
 
