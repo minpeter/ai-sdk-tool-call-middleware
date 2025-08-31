@@ -1,3 +1,4 @@
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   bfclMultipleBenchmark,
   bfclParallelBenchmark,
@@ -11,7 +12,6 @@ import {
   morphXmlProtocol,
   xmlToolMiddleware,
 } from "@ai-sdk-tool/parser";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel } from "ai";
 
 const friendli = createOpenAICompatible({
@@ -78,7 +78,8 @@ async function main() {
       bfclParallelBenchmark,
       bfclParallelMultipleBenchmark,
     ],
-    reporter: "console.debug",
+    reporter: "console",
+    temperature: 0.0,
   });
 
   console.log("Evaluation complete!");

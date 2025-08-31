@@ -102,7 +102,10 @@ export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
   description:
     "Evaluates schema-compliant JSON generation from natural language using JSON Schema prompts.",
 
-  async run(model: LanguageModel): Promise<BenchmarkResult> {
+  async run(
+    model: LanguageModel,
+    config?: Record<string, unknown>
+  ): Promise<BenchmarkResult> {
     const logs: string[] = [];
     const ajv = new Ajv({ allErrors: true, strict: false });
 
@@ -166,7 +169,13 @@ export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
           },
         ];
 
-        const { text } = await generateText({ model, messages });
+        const temp = config?.temperature;
+        const temperature = typeof temp === "number" ? temp : undefined;
+        const { text } = await generateText({
+          model,
+          messages,
+          ...(temperature !== undefined ? { temperature } : {}),
+        });
 
         let parsed: Json | undefined;
         try {
@@ -245,7 +254,10 @@ export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV2Benchmark = {
   description:
     "Evaluates whether model outputs strictly conform to the provided JSON Schema (structure only).",
 
-  async run(model: LanguageModel): Promise<BenchmarkResult> {
+  async run(
+    model: LanguageModel,
+    config?: Record<string, unknown>
+  ): Promise<BenchmarkResult> {
     const logs: string[] = [];
     const ajv = new Ajv({ allErrors: true, strict: false });
 
@@ -296,7 +308,13 @@ export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV2Benchmark = {
           },
         ];
 
-        const { text } = await generateText({ model, messages });
+        const temp = config?.temperature;
+        const temperature = typeof temp === "number" ? temp : undefined;
+        const { text } = await generateText({
+          model,
+          messages,
+          ...(temperature !== undefined ? { temperature } : {}),
+        });
 
         let parsed: Json | undefined;
         try {

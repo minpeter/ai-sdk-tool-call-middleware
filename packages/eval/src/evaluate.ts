@@ -10,7 +10,8 @@ import { reporters } from "./reporters";
 async function runSingleBenchmark(
   model: LanguageModel,
   benchmark: LanguageModelV2Benchmark,
-  modelKey?: string
+  modelKey?: string,
+  config?: Record<string, unknown>
 ): Promise<EvaluationResult> {
   const modelId =
     typeof model === "object" &&
@@ -24,7 +25,7 @@ async function runSingleBenchmark(
     console.log(
       `[${modelId}]${modelKey ? ` (${modelKey})` : ""} Running benchmark: ${benchmark.name}...`
     );
-    const result = await benchmark.run(model);
+    const result = await benchmark.run(model, config);
     console.log(
       `[${modelId}]${modelKey ? ` (${modelKey})` : ""} Finished benchmark: ${benchmark.name}. Score: ${result.score}`
     );
@@ -56,7 +57,7 @@ async function runSingleBenchmark(
 export async function evaluate(
   options: EvaluateOptions
 ): Promise<EvaluationResult[]> {
-  const { models, benchmarks, reporter = "console" } = options;
+  const { models, benchmarks, reporter = "console", temperature } = options;
 
   const modelEntries: Array<[string | undefined, LanguageModel]> = [];
   if (Array.isArray(models)) {
@@ -81,7 +82,8 @@ export async function evaluate(
       const evaluationResult = await runSingleBenchmark(
         model,
         benchmark,
-        modelKey
+        modelKey,
+        temperature !== undefined ? { temperature } : undefined
       );
       allResults.push(evaluationResult);
     }
