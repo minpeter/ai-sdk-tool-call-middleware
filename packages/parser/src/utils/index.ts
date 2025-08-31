@@ -5,7 +5,6 @@ import * as RJSON from "./robust-json";
 export * from "./coercion";
 export * from "./debug";
 export * from "./on-error";
-export * from "./protocol";
 export * from "./tools";
 export * from "./type-guards";
 

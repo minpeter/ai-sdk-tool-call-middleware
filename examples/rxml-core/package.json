@@ -1,0 +1,24 @@
+{
+  "name": "@ai-sdk-tool/examples/rxml-core",
+  "private": true,
+  "version": "1.0.20",
+  "description": "Examples demonstrating streaming XML parsing with @ai-sdk-tool/rxml",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No tests for rxml-core example\" && exit 0",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "dev": "tsx src/00-stream-basic.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@ai-sdk-tool/rxml": "workspace:*",
+    "tsx": "^4.20.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0"
+  }
+}
