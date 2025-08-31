@@ -37,6 +37,16 @@ export class RXMLCoercionError extends Error {
   }
 }
 
+export class RXMLStringifyError extends Error {
+  constructor(
+    message: string,
+    public cause?: unknown
+  ) {
+    super(message);
+    this.name = "RXMLStringifyError";
+  }
+}
+
 function getPropertySchema(toolSchema: unknown, key: string): unknown {
   const unwrapped = unwrapJsonSchema(toolSchema);
   if (!unwrapped || typeof unwrapped !== "object") return undefined;
@@ -745,9 +755,13 @@ export function stringify(
   obj: unknown,
   options?: { format?: boolean; suppressEmptyNode?: boolean }
 ): string {
-  const builder = new XMLBuilder({
-    format: options?.format ?? true,
-    suppressEmptyNode: options?.suppressEmptyNode ?? false,
-  });
-  return builder.build({ [rootTag]: obj });
+  try {
+    const builder = new XMLBuilder({
+      format: options?.format ?? true,
+      suppressEmptyNode: options?.suppressEmptyNode ?? false,
+    });
+    return builder.build({ [rootTag]: obj });
+  } catch (error) {
+    throw new RXMLStringifyError("Failed to stringify XML", error);
+  }
 }
