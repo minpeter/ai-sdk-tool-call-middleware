@@ -7,32 +7,18 @@ import { generateId } from "@ai-sdk/provider-utils";
 import { XMLBuilder, XMLParser } from "fast-xml-parser";
 
 import { escapeRegExp, hasInputProperty } from "@/utils";
-import { coerceBySchema, unwrapJsonSchema } from "@/utils/coercion";
+import {
+  coerceBySchema,
+  getSchemaType,
+  unwrapJsonSchema,
+} from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
 
 // Controls whether the parser emits warnings when duplicate string tags are detected
 const WARN_ON_DUPLICATE_STRING_TAGS: boolean = true;
 
-// Helper to get unwrapped schema type string
-function getSchemaTypeString(schema: unknown): string | undefined {
-  const s = unwrapJsonSchema(schema);
-  if (!s || typeof s !== "object") return undefined;
-  const t = (s as Record<string, unknown>).type;
-  if (typeof t === "string") return t;
-  if (Array.isArray(t)) {
-    const preferred = [
-      "object",
-      "array",
-      "boolean",
-      "number",
-      "integer",
-      "string",
-    ];
-    for (const p of preferred) if (t.includes(p)) return p;
-  }
-  return undefined;
-}
+// Use shared schema type resolver from coercion utils
 
 function getToolSchema(
   tools: Array<{ name?: string; inputSchema?: unknown }>,
@@ -165,7 +151,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
           // If schema says this property is a string, prefer raw inner content
           const propSchema = getPropertySchema(toolSchema, k);
-          const propType = getSchemaTypeString(propSchema);
+          const propType = getSchemaType(propSchema);
           if (propType === "string" && !Array.isArray(v)) {
             const raw = extractRawInner(toolContent, k);
             if (typeof raw === "string") {
@@ -336,9 +322,6 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
             }
           }
 
-          if (cancelToolCall) {
-            break;
-          }
           args[k] = typeof val === "string" ? val.trim() : val;
         }
 
@@ -468,7 +451,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
                   // If schema says this property is a string, prefer raw inner content
                   const propSchema = getPropertySchema(toolSchema, k);
-                  const propType = getSchemaTypeString(propSchema);
+                  const propType = getSchemaType(propSchema);
                   if (propType === "string" && !Array.isArray(v)) {
                     const raw = extractRawInner(toolContent, k);
                     if (typeof raw === "string") {
@@ -651,9 +634,6 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                     }
                   }
 
-                  if (cancelToolCall) {
-                    break;
-                  }
                   args[k] = typeof val === "string" ? val.trim() : val;
                 }
 
