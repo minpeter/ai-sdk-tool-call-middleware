@@ -25,11 +25,11 @@ jobs:
           node-version: 20
           cache: "pnpm"
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
+      - name: Install (workspace root)
+        run: pnpm -w install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      - name: Build (workspace root)
+        run: pnpm -w build
 
       - name: Run tests (auto-detect, parallel, coverage when supported)
         run: |

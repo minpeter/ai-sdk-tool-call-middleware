@@ -29,26 +29,26 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
-      - name: Setup Node.js 18.x
+      - name: Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: "pnpm"
 
-      - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install Dependencies (workspace root)
+        run: pnpm -w install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      - name: Build (workspace root)
+        run: pnpm -w build
 
-      - name: Type Check
-        run: pnpm check-types
+      - name: Type Check (workspace root)
+        run: pnpm -w check-types
 
-      - name: Lint
-        run: pnpm lint
+      - name: Lint (workspace root)
+        run: pnpm -w lint
 
-      - name: Format Check
-        run: pnpm fmt
+      - name: Format Check (workspace root)
+        run: pnpm -w fmt
 
-      - name: Test
-        run: pnpm test
+      - name: Test (workspace root)
+        run: pnpm -w test
