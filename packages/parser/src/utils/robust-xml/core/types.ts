@@ -3,7 +3,10 @@
  * Based on TXML structure but enhanced for schema-aware parsing
  */
 
-import type { OnErrorFn } from "@/utils/on-error";
+export type OnErrorFn = (
+  message: string,
+  metadata?: Record<string, unknown>
+) => void;
 
 /**
  * Represents a parsed XML node in the DOM tree

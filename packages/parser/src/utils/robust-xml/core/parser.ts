@@ -3,13 +3,12 @@
  * This replaces the fast-xml-parser dependency with a TXML-based implementation
  */
 
-import { getSchemaType, unwrapJsonSchema } from "@/utils/coercion";
-
 import {
   RXMLCoercionError,
   RXMLDuplicateStringTagError,
   RXMLParseError,
 } from "../errors/types";
+import { getSchemaType, unwrapJsonSchema } from "../schema/base-coercion";
 import {
   coerceDomBySchema,
   domToObject,

@@ -1,0 +1,12 @@
+{
+  "name": "@ai-sdk-tool/rxml",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No tests for rxml package\" && exit 0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

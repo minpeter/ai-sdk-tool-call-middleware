@@ -3,14 +3,13 @@
  * Integrates with the existing coercion system but adds XML-specific handling
  */
 
+import type { RXMLNode } from "../core/types";
+import { RXMLCoercionError } from "../errors/types";
 import {
   coerceBySchema as baseCoerceBySchema,
   getSchemaType,
   unwrapJsonSchema,
-} from "@/utils/coercion";
-
-import type { RXMLNode } from "../core/types";
-import { RXMLCoercionError } from "../errors/types";
+} from "./base-coercion";
 
 /**
  * Get property schema from a parent schema
