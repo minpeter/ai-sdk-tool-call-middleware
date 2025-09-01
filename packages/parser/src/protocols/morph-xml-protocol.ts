@@ -5,7 +5,6 @@ import {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 import * as RXML from "@ai-sdk-tool/rxml";
-import { extractRawInner } from "@ai-sdk-tool/rxml";
 
 import { hasInputProperty } from "@/utils";
 import { unwrapJsonSchema } from "@/utils/coercion";
@@ -217,7 +216,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
           for (const key of Object.keys(obj)) {
             const val = obj[key];
             if (typeof val === "string") {
-              const rawInner = extractRawInner(toolCall.content, key);
+              const rawInner = RXML.extractRawInner(toolCall.content, key);
               if (typeof rawInner === "string") {
                 // Fix for truncated DOCTYPE declarations
                 let fixedContent = rawInner;
@@ -361,7 +360,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   for (const key of Object.keys(obj)) {
                     const val = obj[key];
                     if (typeof val === "string") {
-                      const rawInner = extractRawInner(toolContent, key);
+                      const rawInner = RXML.extractRawInner(toolContent, key);
                       if (typeof rawInner === "string") {
                         // Fix for truncated DOCTYPE declarations (streaming version)
                         let fixedContent = rawInner;

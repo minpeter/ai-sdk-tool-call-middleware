@@ -1,6 +1,7 @@
 export {
   stringify,
   findFirstTopLevelRange,
+  extractRawInner,
   parse,
   RXMLDuplicateStringTagError,
   RXMLCoercionError,
