@@ -29,6 +29,60 @@ function getToolSchema(
   return fallback as unknown;
 }
 
+// Shared helper to find tool call ranges for a given set of tool names
+function findToolCalls(
+  text: string,
+  toolNames: string[]
+): Array<{
+  toolName: string;
+  startIndex: number;
+  endIndex: number;
+  content: string;
+  segment: string;
+}> {
+  const toolCalls: Array<{
+    toolName: string;
+    startIndex: number;
+    endIndex: number;
+    content: string;
+    segment: string;
+  }> = [];
+
+  for (const toolName of toolNames) {
+    let searchIndex = 0;
+    while (searchIndex < text.length) {
+      const startTag = `<${toolName}>`;
+      const tagStart = text.indexOf(startTag, searchIndex);
+      if (tagStart === -1) break;
+
+      const remainingText = text.substring(tagStart);
+      const range = findFirstTopLevelRange(remainingText, toolName);
+      if (range) {
+        const contentStart = tagStart + startTag.length;
+        const contentEnd = contentStart + (range.end - range.start);
+        const fullTagEnd = contentEnd + `</${toolName}>`.length;
+
+        const toolContent = text.substring(contentStart, contentEnd);
+        const fullSegment = text.substring(tagStart, fullTagEnd);
+
+        toolCalls.push({
+          toolName,
+          startIndex: tagStart,
+          endIndex: fullTagEnd,
+          content: toolContent,
+          segment: fullSegment,
+        });
+
+        searchIndex = fullTagEnd;
+      } else {
+        searchIndex = tagStart + startTag.length;
+      }
+    }
+  }
+
+  return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
+}
+
 //
 
 export const morphXmlProtocol = (): ToolCallProtocol => ({
@@ -81,47 +135,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     let currentIndex = 0;
 
     // Find all tool calls using proper XML parsing
-    const toolCalls: Array<{
-      toolName: string;
-      startIndex: number;
-      endIndex: number;
-      content: string;
-    }> = [];
-
-    for (const toolName of toolNames) {
-      let searchIndex = 0;
-      while (searchIndex < text.length) {
-        const startTag = `<${toolName}>`;
-        const tagStart = text.indexOf(startTag, searchIndex);
-        if (tagStart === -1) break;
-
-        // Use findFirstTopLevelRange to get the proper content
-        const remainingText = text.substring(tagStart);
-        const range = findFirstTopLevelRange(remainingText, toolName);
-        if (range) {
-          const fullTagStart = tagStart;
-          const contentStart = tagStart + startTag.length;
-          const contentEnd = contentStart + (range.end - range.start);
-          const fullTagEnd = contentEnd + `</${toolName}>`.length;
-
-          const toolContent = text.substring(contentStart, contentEnd);
-
-          toolCalls.push({
-            toolName,
-            startIndex: fullTagStart,
-            endIndex: fullTagEnd,
-            content: toolContent,
-          });
-
-          searchIndex = fullTagEnd;
-        } else {
-          searchIndex = tagStart + startTag.length;
-        }
-      }
-    }
-
-    // Sort tool calls by start index
-    toolCalls.sort((a, b) => a.startIndex - b.startIndex);
+    const toolCalls = findToolCalls(text, toolNames);
 
     // Process text and tool calls in order
     for (const toolCall of toolCalls) {
@@ -323,35 +337,6 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     const toolNames = tools.map(t => t.name).filter(Boolean) as string[];
     if (toolNames.length === 0) return [];
 
-    const toolCalls: Array<{ segment: string; startIndex: number }> = [];
-
-    for (const toolName of toolNames) {
-      let searchIndex = 0;
-      while (searchIndex < text.length) {
-        const startTag = `<${toolName}>`;
-        const tagStart = text.indexOf(startTag, searchIndex);
-        if (tagStart === -1) break;
-
-        // Use findFirstTopLevelRange to get the proper content
-        const remainingText = text.substring(tagStart);
-        const range = findFirstTopLevelRange(remainingText, toolName);
-        if (range) {
-          const contentStart = tagStart + startTag.length;
-          const contentEnd = contentStart + (range.end - range.start);
-          const fullTagEnd = contentEnd + `</${toolName}>`.length;
-
-          const fullSegment = text.substring(tagStart, fullTagEnd);
-          toolCalls.push({ segment: fullSegment, startIndex: tagStart });
-
-          searchIndex = fullTagEnd;
-        } else {
-          searchIndex = tagStart + startTag.length;
-        }
-      }
-    }
-
-    return toolCalls
-      .sort((a, b) => a.startIndex - b.startIndex)
-      .map(tc => tc.segment);
+    return findToolCalls(text, toolNames).map(tc => tc.segment);
   },
 });
