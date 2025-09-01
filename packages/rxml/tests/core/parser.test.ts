@@ -200,6 +200,31 @@ describe("robust-xml parser", () => {
       // inner should be parsed as its own string value
       expect(result.inner).toBe("inside");
     });
+
+    it("handles angle brackets in string content within nested object schema", () => {
+      const xml = `<file_write>\n<path>\ntest.c\n</path>\n<content>\n#include <stdio.h>\n\nint main() {\n  printf("Hello, world!\\n");\n  return 0;\n}\n</content>\n</file_write>`;
+      const schema = {
+        type: "object",
+        properties: {
+          file_write: {
+            type: "object",
+            properties: {
+              path: { type: "string" },
+              content: { type: "string" },
+            },
+          },
+        },
+      };
+
+      const result = parse(xml, schema);
+      expect(result.file_write).toBeDefined();
+      expect((result as any).file_write.path).toContain("test.c");
+      // Should preserve the raw content including angle brackets without treating <stdio.h> as a tag
+      expect((result as any).file_write.content).toContain(
+        "#include <stdio.h>"
+      );
+      expect((result as any).file_write.content).toContain("int main() {");
+    });
   });
 
   describe("duplicate tag handling", () => {
