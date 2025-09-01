@@ -60,7 +60,14 @@ function findToolCalls(
       if (range) {
         const contentStart = tagStart + startTag.length;
         const contentEnd = contentStart + (range.end - range.start);
-        const fullTagEnd = contentEnd + `</${toolName}>`.length;
+        // Robustly find the actual end of the closing tag allowing whitespace before '>'
+        let fullTagEnd = contentEnd + `</${toolName}>`.length;
+        const closeHead = text.indexOf(`</${toolName}`, contentEnd);
+        if (closeHead !== -1 && closeHead === contentEnd) {
+          let p = closeHead + 2 + toolName.length;
+          while (p < text.length && /\s/.test(text[p])) p++;
+          if (text[p] === ">") fullTagEnd = p + 1;
+        }
 
         const toolContent = text.substring(contentStart, contentEnd);
         const fullSegment = text.substring(tagStart, fullTagEnd);

@@ -172,15 +172,29 @@ export class XMLTransformStream extends Transform {
       let searchStart = openTagEnd + 1;
       let elementEnd = -1;
       while (searchStart < this.buffer.length) {
-        const nextOpen = this.buffer.indexOf(`<${tagName}`, searchStart);
-        const nextClose = this.buffer.indexOf(closingTag, searchStart);
-        if (nextClose === -1) break;
-        if (nextOpen !== -1 && nextOpen < nextClose) {
+        // Ensure the next opening match is an actual tag name boundary
+        let nextOpen = this.buffer.indexOf(`<${tagName}`, searchStart);
+        while (nextOpen !== -1) {
+          const after = this.buffer[nextOpen + tagName.length + 1];
+          if (after === undefined || after === ">" || /\s/.test(after)) break;
+          nextOpen = this.buffer.indexOf(`<${tagName}`, nextOpen + 1);
+        }
+
+        // Find the next closing tag start (position of '<')
+        let nextCloseStart = this.buffer.indexOf(`</${tagName}`, searchStart);
+        if (nextCloseStart === -1) break;
+
+        if (nextOpen !== -1 && nextOpen < nextCloseStart) {
           depth++;
           searchStart = nextOpen + 1;
         } else {
           depth--;
-          searchStart = nextClose + closingTag.length;
+          // Advance past the actual closing tag allowing optional whitespace before '>'
+          let p = nextCloseStart + 2 + tagName.length; // after </tagName
+          while (p < this.buffer.length && /\s/.test(this.buffer[p])) p++;
+          if (this.buffer[p] !== ">") break; // malformed/incomplete closing tag
+          const closeAdvance = p + 1;
+          searchStart = closeAdvance;
           if (depth === 0) {
             elementEnd = searchStart;
             break;

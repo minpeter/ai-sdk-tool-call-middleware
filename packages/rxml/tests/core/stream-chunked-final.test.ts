@@ -1,137 +1,9 @@
 import { Readable } from "stream";
 import { describe, expect, it } from "vitest";
 
-import { parseWithoutSchema } from "@/index";
+import { parseFromStream, processXMLStream } from "@/index";
 
 const CHUNK_SIZE = 7;
-
-/**
- * Since the built-in RXML streaming doesn't work properly,
- * let's create our own simple streaming parser for demonstration
- */
-class SimpleStreamingXMLParser {
-  private buffer = "";
-  private results: any[] = [];
-
-  processChunk(chunk: string): any[] {
-    this.buffer += chunk;
-    const newResults: any[] = [];
-
-    // Try to parse complete XML elements from buffer
-    let processed = true;
-
-    while (processed) {
-      processed = false;
-
-      // Find the first opening tag
-      const openMatch = this.buffer.match(/<([a-zA-Z_][\w.-]*)[^>]*>/);
-      if (!openMatch) {
-        break; // No more opening tags
-      }
-
-      const tagName = openMatch[1];
-      const openTagStart = openMatch.index!;
-      const openTagEnd = openTagStart + openMatch[0].length;
-
-      // Look for the matching closing tag, accounting for nesting
-      const closingTag = `</${tagName}>`;
-      let searchPos = openTagEnd;
-      let depth = 1;
-      let foundClosing = false;
-      let closingEnd = -1;
-
-      while (searchPos < this.buffer.length && depth > 0) {
-        // Look for next opening or closing tag of the same type
-        const nextOpen = this.buffer.indexOf(`<${tagName}`, searchPos);
-        const nextClose = this.buffer.indexOf(closingTag, searchPos);
-
-        if (nextClose === -1) {
-          // No more closing tags
-          break;
-        }
-
-        if (nextOpen !== -1 && nextOpen < nextClose) {
-          // Found another opening tag before the closing tag
-          // Check if it's actually an opening tag (not part of an attribute)
-          const beforeOpen = this.buffer.charAt(nextOpen - 1);
-          const afterTagName = this.buffer.charAt(
-            nextOpen + tagName.length + 1
-          );
-          if (
-            beforeOpen === "<" &&
-            (afterTagName === ">" || afterTagName === " ")
-          ) {
-            depth++;
-          }
-          searchPos = nextOpen + tagName.length + 1;
-        } else {
-          // Found a closing tag
-          depth--;
-          if (depth === 0) {
-            closingEnd = nextClose + closingTag.length;
-            foundClosing = true;
-            break;
-          }
-          searchPos = nextClose + closingTag.length;
-        }
-      }
-
-      if (foundClosing) {
-        // Extract the complete element
-        const completeElement = this.buffer.slice(openTagStart, closingEnd);
-
-        try {
-          const parsed = parseWithoutSchema(completeElement);
-          newResults.push(...parsed);
-
-          // Also extract child elements if this is a container element
-          for (const element of parsed) {
-            if (typeof element === "object" && element.children) {
-              for (const child of element.children) {
-                if (typeof child === "object" && child.tagName) {
-                  newResults.push(child);
-                }
-              }
-            }
-          }
-
-          // Remove the processed element from buffer
-          this.buffer =
-            this.buffer.slice(0, openTagStart) + this.buffer.slice(closingEnd);
-          processed = true; // Continue looking for more elements
-        } catch (error) {
-          // Failed to parse, remove just the opening tag to continue
-          this.buffer = this.buffer.slice(openTagEnd);
-          processed = true;
-        }
-      } else {
-        // Incomplete element, stop processing
-        break;
-      }
-    }
-
-    this.results.push(...newResults);
-    return newResults;
-  }
-
-  flush(): any[] {
-    // Try to parse any remaining buffer content
-    if (this.buffer.trim()) {
-      try {
-        const parsed = parseWithoutSchema(this.buffer);
-        this.results.push(...parsed);
-        return parsed;
-      } catch (error) {
-        // Ignore unparseable content
-      }
-    }
-    return [];
-  }
-
-  getAllResults(): any[] {
-    return this.results;
-  }
-}
 
 /**
  * Simulates LLM token-based streaming by splitting text into fixed-size chunks
@@ -161,24 +33,8 @@ function createChunkedStream(
   });
 }
 
-/**
- * Process a stream with our simple streaming parser
- */
-async function processStreamWithSimpleParser(stream: Readable): Promise<any[]> {
-  const parser = new SimpleStreamingXMLParser();
-
-  return new Promise((resolve, reject) => {
-    stream.on("data", (chunk: Buffer) => {
-      parser.processChunk(chunk.toString());
-    });
-
-    stream.on("end", () => {
-      parser.flush();
-      resolve(parser.getAllResults());
-    });
-
-    stream.on("error", reject);
-  });
+async function collectWithCoreStream(stream: Readable): Promise<any[]> {
+  return await parseFromStream(stream);
 }
 
 /**
@@ -223,7 +79,7 @@ const testXmlSamples = {
 </tools>`,
 };
 
-describe("RXML Chunked Streaming - Working Implementation", () => {
+describe("RXML Chunked Streaming - Core Stream Implementation", () => {
   describe("Chunk splitting demonstration", () => {
     it("should show how XML is split into CHUNK_SIZE=7 chunks", () => {
       const xml = testXmlSamples.simple;
@@ -305,14 +161,14 @@ describe("RXML Chunked Streaming - Working Implementation", () => {
     });
   });
 
-  describe("Working streaming implementation", () => {
+  describe("Core streaming implementation", () => {
     it("should parse simple tool call with chunked streaming", async () => {
       const stream = createChunkedStream(testXmlSamples.simple, CHUNK_SIZE);
 
       console.log("\\n=== Testing Simple Tool Call ===");
       console.log("XML:", testXmlSamples.simple);
 
-      const results = await processStreamWithSimpleParser(stream);
+      const results = await collectWithCoreStream(stream);
 
       console.log("Parsed results:", results.length, "elements");
       results.forEach((result, index) => {
@@ -344,7 +200,7 @@ describe("RXML Chunked Streaming - Working Implementation", () => {
 
       console.log("\\n=== Testing XML with Attributes ===");
 
-      const results = await processStreamWithSimpleParser(stream);
+      const results = await collectWithCoreStream(stream);
 
       console.log("Results with attributes:", results.length, "elements");
 
@@ -370,7 +226,7 @@ describe("RXML Chunked Streaming - Working Implementation", () => {
 
       console.log("\\n=== Testing Multiple Tool Calls ===");
 
-      const results = await processStreamWithSimpleParser(stream);
+      const results = await collectWithCoreStream(stream);
 
       console.log("Multiple tools results:", results.length, "elements");
 
@@ -412,7 +268,7 @@ describe("RXML Chunked Streaming - Working Implementation", () => {
         },
       });
 
-      const results = await processStreamWithSimpleParser(stream);
+      const results = await collectWithCoreStream(stream);
 
       console.log("Manual chunking results:", results.length, "elements");
 
@@ -434,7 +290,7 @@ describe("RXML Chunked Streaming - Working Implementation", () => {
       console.log("XML:", xml);
       console.log("Chunk size: 1 character");
 
-      const results = await processStreamWithSimpleParser(stream);
+      const results = await collectWithCoreStream(stream);
 
       console.log("Single char results:", results.length, "elements");
 
@@ -460,7 +316,7 @@ describe("RXML Chunked Streaming - Working Implementation", () => {
         console.log(`\\nTesting chunk size: ${chunkSize}`);
 
         const stream = createChunkedStream(xml, chunkSize);
-        const results = await processStreamWithSimpleParser(stream);
+        const results = await collectWithCoreStream(stream);
 
         console.log(`  Results: ${results.length} elements`);
 
@@ -500,7 +356,7 @@ The search has been initiated successfully.`;
       console.log("Response length:", llmResponse.length, "characters");
 
       const stream = createChunkedStream(llmResponse, CHUNK_SIZE);
-      const results = await processStreamWithSimpleParser(stream);
+      const results = await collectWithCoreStream(stream);
 
       console.log("LLM response results:", results.length, "elements");
 
@@ -526,36 +382,22 @@ The search has been initiated successfully.`;
       console.log("\\n=== Streaming Progress Demo ===");
       console.log("Total chunks to process:", chunks.length);
 
-      const parser = new SimpleStreamingXMLParser();
+      // Use core processXMLStream over a synthesized stream
+      const source = new Readable({
+        read() {
+          const chunk = chunks.shift();
+          if (chunk) this.push(chunk);
+          else this.push(null);
+        },
+      });
 
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        console.log(
-          `\\nProcessing chunk ${i + 1}/${chunks.length}: "${chunk}"`
-        );
-
-        const newResults = parser.processChunk(chunk);
-        if (newResults.length > 0) {
-          console.log(`  📦 Found ${newResults.length} complete elements`);
-          newResults.forEach(result => {
-            if (typeof result === "object") {
-              console.log(`    - <${result.tagName}>`);
-            }
-          });
-        } else {
-          console.log("  ⏳ Buffering incomplete elements...");
-        }
+      const seen: any[] = [];
+      for await (const element of processXMLStream(source)) {
+        seen.push(element);
       }
 
-      const finalResults = parser.flush();
-      if (finalResults.length > 0) {
-        console.log(`\\n🏁 Final flush found ${finalResults.length} elements`);
-      }
-
-      const allResults = parser.getAllResults();
-      console.log(`\\n✅ Total parsed elements: ${allResults.length}`);
-
-      expect(allResults.length).toBeGreaterThan(0);
+      console.log(`\\n✅ Total parsed elements: ${seen.length}`);
+      expect(seen.length).toBeGreaterThan(0);
     });
   });
 
@@ -565,14 +407,10 @@ The search has been initiated successfully.`;
       console.log("");
       console.log("🔍 Analysis Results:");
       console.log(
-        "1. ❌ Built-in RXML streaming (XMLTransformStream) is not working"
+        "1. ✅ Core RXML streaming (XMLTransformStream) is used in tests"
       );
-      console.log(
-        "2. ✅ Basic RXML parsing (parseWithoutSchema) works perfectly"
-      );
-      console.log(
-        "3. ✅ Custom streaming parser successfully handles chunked XML"
-      );
+      console.log("2. ✅ Basic RXML parsing works in streaming context");
+      console.log("3. ✅ Chunked XML is handled by core stream implementation");
       console.log("");
       console.log("📋 Key Findings:");
       console.log("- CHUNK_SIZE=7 creates realistic token-like chunks");
@@ -583,12 +421,9 @@ The search has been initiated successfully.`;
       console.log("- Different chunk sizes produce consistent results");
       console.log("");
       console.log("🛠️  Recommendations:");
-      console.log("1. Fix the XMLTransformStream.processBuffer() logic");
+      console.log("1. Keep expanding streaming edge case coverage");
       console.log("2. Ensure proper handling of incomplete XML elements");
-      console.log("3. Add comprehensive streaming tests");
-      console.log(
-        "4. Consider using the working SimpleStreamingXMLParser as reference"
-      );
+      console.log("3. Maintain comprehensive streaming tests");
       console.log("");
       console.log("✅ Chunked streaming simulation successful!");
 
