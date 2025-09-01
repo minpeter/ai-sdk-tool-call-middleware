@@ -4,7 +4,7 @@ import {
   countTagOccurrences,
   extractRawInner,
   findFirstTopLevelRange,
-} from "@/utils/robust-xml";
+} from "@/index";
 
 describe("XML helper utilities", () => {
   describe("extractRawInner", () => {

@@ -4,8 +4,16 @@ import {
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
+import {
+  findFirstTopLevelRange,
+  parse as parseXml,
+  RXMLCoercionError,
+  RXMLDuplicateStringTagError,
+  RXMLParseError,
+  stringify,
+} from "@ai-sdk-tool/rxml";
 
-import { escapeRegExp, hasInputProperty, RXML } from "@/utils";
+import { hasInputProperty } from "@/utils";
 import { unwrapJsonSchema } from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
@@ -19,6 +27,67 @@ function getToolSchema(
   if (original) return original;
   const fallback = tools.find(t => t.name === toolName)?.inputSchema;
   return fallback as unknown;
+}
+
+// Shared helper to find tool call ranges for a given set of tool names
+function findToolCalls(
+  text: string,
+  toolNames: string[]
+): Array<{
+  toolName: string;
+  startIndex: number;
+  endIndex: number;
+  content: string;
+  segment: string;
+}> {
+  const toolCalls: Array<{
+    toolName: string;
+    startIndex: number;
+    endIndex: number;
+    content: string;
+    segment: string;
+  }> = [];
+
+  for (const toolName of toolNames) {
+    let searchIndex = 0;
+    while (searchIndex < text.length) {
+      const startTag = `<${toolName}>`;
+      const tagStart = text.indexOf(startTag, searchIndex);
+      if (tagStart === -1) break;
+
+      const remainingText = text.substring(tagStart);
+      const range = findFirstTopLevelRange(remainingText, toolName);
+      if (range) {
+        const contentStart = tagStart + startTag.length;
+        const contentEnd = contentStart + (range.end - range.start);
+        // Robustly find the actual end of the closing tag allowing whitespace before '>'
+        let fullTagEnd = contentEnd + `</${toolName}>`.length;
+        const closeHead = text.indexOf(`</${toolName}`, contentEnd);
+        if (closeHead === contentEnd) {
+          let p = closeHead + 2 + toolName.length;
+          while (p < text.length && /\s/.test(text[p])) p++;
+          if (text[p] === ">") fullTagEnd = p + 1;
+        }
+
+        const toolContent = text.substring(contentStart, contentEnd);
+        const fullSegment = text.substring(tagStart, fullTagEnd);
+
+        toolCalls.push({
+          toolName,
+          startIndex: tagStart,
+          endIndex: fullTagEnd,
+          content: toolContent,
+          segment: fullSegment,
+        });
+
+        searchIndex = fullTagEnd;
+      } else {
+        searchIndex = tagStart + startTag.length;
+      }
+    }
+  }
+
+  return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
 }
 
 //
@@ -46,11 +115,14 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     } else {
       args = inputValue;
     }
-    return RXML.stringify(toolCall.toolName, args, { suppressEmptyNode: true });
+    return stringify(toolCall.toolName, args, {
+      suppressEmptyNode: false,
+      format: false,
+    });
   },
 
   formatToolResponse(toolResult: LanguageModelV2ToolResultPart): string {
-    return RXML.stringify("tool_response", {
+    return stringify("tool_response", {
       tool_name: toolResult.toolName,
       result: toolResult.output,
     });
@@ -66,49 +138,56 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       return [{ type: "text", text }];
     }
 
-    const toolNamesPattern = toolNames.map(n => escapeRegExp(n)).join("|");
-    const toolCallRegex = new RegExp(
-      String.raw`<(${toolNamesPattern})>([\s\S]*?)<\/\1>`,
-      "g"
-    );
-
     const processedElements: LanguageModelV2Content[] = [];
     let currentIndex = 0;
-    let match;
 
-    while ((match = toolCallRegex.exec(text)) !== null) {
-      const startIndex = match.index;
-      const toolName = match[1];
-      const toolContent = match[2].trim();
+    // Find all tool calls using proper XML parsing
+    const toolCalls = findToolCalls(text, toolNames);
 
-      if (startIndex > currentIndex) {
-        const textSegment = text.substring(currentIndex, startIndex);
+    // Process text and tool calls in order
+    for (const toolCall of toolCalls) {
+      // Add text before this tool call
+      if (toolCall.startIndex > currentIndex) {
+        const textSegment = text.substring(currentIndex, toolCall.startIndex);
         if (textSegment.trim()) {
           processedElements.push({ type: "text", text: textSegment });
         }
       }
 
       try {
-        const toolSchema = getToolSchema(tools, originalSchemas, toolName);
-        const parsed = RXML.parse(toolContent, toolSchema, {
+        const toolSchema = getToolSchema(
+          tools,
+          originalSchemas,
+          toolCall.toolName
+        );
+        const parsed = parseXml(toolCall.content, toolSchema, {
           onError: options?.onError,
         });
 
         processedElements.push({
           type: "tool-call",
           toolCallId: generateId(),
-          toolName,
+          toolName: toolCall.toolName,
           input: JSON.stringify(parsed),
         });
       } catch (error) {
-        const message = `Could not process XML tool call, keeping original text: ${match[0]}`;
-        options?.onError?.(message, { toolCall: match[0], toolName, error });
-        processedElements.push({ type: "text", text: match[0] });
+        const originalCallText = text.substring(
+          toolCall.startIndex,
+          toolCall.endIndex
+        );
+        const message = `Could not process XML tool call, keeping original text: ${originalCallText}`;
+        options?.onError?.(message, {
+          toolCall: originalCallText,
+          toolName: toolCall.toolName,
+          error,
+        });
+        processedElements.push({ type: "text", text: originalCallText });
       }
 
-      currentIndex = startIndex + match[0].length;
+      currentIndex = toolCall.endIndex;
     }
 
+    // Add remaining text
     if (currentIndex < text.length) {
       const remainingText = text.substring(currentIndex);
       if (remainingText.trim()) {
@@ -179,7 +258,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   originalSchemas,
                   currentToolCall!.name
                 );
-                const parsed = RXML.parse(toolContent, toolSchema, {
+                const parsed = parseXml(toolContent, toolSchema, {
                   onError: options?.onError,
                 });
 
@@ -194,11 +273,11 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                 const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;
                 let message =
                   "Could not process streaming XML tool call; emitting original text.";
-                if (error instanceof RXML.RXMLDuplicateStringTagError) {
+                if (error instanceof RXMLDuplicateStringTagError) {
                   message = `Duplicate string tags detected in streaming tool call '${currentToolCall.name}'; emitting original text.`;
-                } else if (error instanceof RXML.RXMLCoercionError) {
+                } else if (error instanceof RXMLCoercionError) {
                   message = `Failed to coerce arguments for streaming tool call '${currentToolCall.name}'; emitting original text.`;
-                } else if (error instanceof RXML.RXMLParseError) {
+                } else if (error instanceof RXMLParseError) {
                   message = `Failed to parse XML for streaming tool call '${currentToolCall.name}'; emitting original text.`;
                 }
                 options?.onError?.(message, {
@@ -264,14 +343,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   extractToolCallSegments({ text, tools }) {
     const toolNames = tools.map(t => t.name).filter(Boolean) as string[];
     if (toolNames.length === 0) return [];
-    const names = toolNames.map(n => escapeRegExp(String(n))).join("|");
-    if (!names) return [];
-    const regex = new RegExp(`<(${names})>[\\s\\S]*?<\\/\\1>`, "g");
-    const segments: string[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(text)) != null) {
-      segments.push(m[0]);
-    }
-    return segments;
+
+    return findToolCalls(text, toolNames).map(tc => tc.segment);
   },
 });

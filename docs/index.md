@@ -18,6 +18,8 @@ Monorepo documentation for AI SDK tool-calling middleware and evaluation utiliti
   - [dev] Argument Coercion: [concepts/coercion.md](concepts/coercion.md)
   - [dev] Streaming Algorithms: [concepts/streaming.md](concepts/streaming.md)
   - [dev] Provider Options: [concepts/provider-options.md](concepts/provider-options.md)
+- Packages
+  - **RXML (Robust XML)**: Robust XML parser/streamer/builder — [rxml.md](rxml.md)
 - Evaluation: [evaluation.md](evaluation.md)
 - Examples: [examples.md](examples.md)
 

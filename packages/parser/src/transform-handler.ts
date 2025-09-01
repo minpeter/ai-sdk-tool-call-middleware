@@ -6,14 +6,16 @@ import {
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
 
-import { ToolCallProtocol } from "./protocols/tool-call-protocol";
+import {
+  isProtocolFactory,
+  ToolCallProtocol,
+} from "./protocols/tool-call-protocol";
 import {
   createDynamicIfThenElseSchema,
   extractOnErrorOption,
   isToolCallContent,
   isToolResultPart,
 } from "./utils";
-import { isProtocolFactory } from "./utils/protocol";
 
 export async function transformParams({
   params,

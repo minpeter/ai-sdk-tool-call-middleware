@@ -4,6 +4,8 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
+import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
+
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];
   return (async () => {
@@ -12,19 +14,8 @@ function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   })();
 }
 
-describe("morphXmlProtocol streaming parse error with isolated module mock", () => {
+describe("morphXmlProtocol streaming parse error with malformed XML", () => {
   it("invokes onError and emits original text on parser exception", async () => {
-    vi.resetModules();
-    vi.doMock("fast-xml-parser", () => ({
-      XMLParser: class {
-        parse() {
-          throw new Error("forced parse error");
-        }
-      },
-      XMLBuilder: class {},
-    }));
-
-    const { morphXmlProtocol } = await import("@/protocols/morph-xml-protocol");
     const protocol = morphXmlProtocol();
     const tools: LanguageModelV2FunctionTool[] = [
       {
@@ -41,7 +32,12 @@ describe("morphXmlProtocol streaming parse error with isolated module mock", () 
     });
     const rs = new ReadableStream<LanguageModelV2StreamPart>({
       start(ctrl) {
-        ctrl.enqueue({ type: "text-delta", id: "1", delta: "<a><x>1</x></a>" });
+        // Use malformed XML that will cause parsing to fail
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: "<a><x>1</x><unclosed>tag</a>",
+        });
         ctrl.enqueue({
           type: "finish",
           finishReason: "stop",
@@ -55,7 +51,7 @@ describe("morphXmlProtocol streaming parse error with isolated module mock", () 
       .filter(c => c.type === "text-delta")
       .map(c => (c as any).delta)
       .join("");
-    expect(text).toContain("<a><x>1</x></a>");
+    expect(text).toContain("<a><x>1</x><unclosed>tag</a>");
     expect(onError).toHaveBeenCalled();
   });
 });

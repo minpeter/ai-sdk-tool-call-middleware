@@ -1,6 +1,9 @@
+import {
+  parse as rxmlParse,
+  RXMLDuplicateStringTagError,
+  stringify as rxmlStringify,
+} from "@ai-sdk-tool/rxml";
 import { describe, expect, it } from "vitest";
-
-import { RXML } from "@/utils";
 
 describe("RXML", () => {
   describe("parse: basic and options", () => {
@@ -11,7 +14,7 @@ describe("RXML", () => {
         properties: { location: { type: "string" } },
         additionalProperties: false,
       };
-      const out = RXML.parse(xml, schema);
+      const out = rxmlParse(xml, schema);
       expect(out).toEqual({ location: "San Francisco" });
     });
 
@@ -23,7 +26,7 @@ describe("RXML", () => {
         additionalProperties: false,
       };
       // Use a non-default text node name and ensure we still unwrap
-      const out = RXML.parse(xml, schema, { textNodeName: "_text" });
+      const out = rxmlParse(xml, schema, { textNodeName: "_text" });
       // Coercion to number expected
       expect(out).toEqual({ value: 10.5 });
     });
@@ -39,7 +42,7 @@ describe("RXML", () => {
         },
         additionalProperties: false,
       };
-      const out = RXML.parse(xml, schema);
+      const out = rxmlParse(xml, schema);
       expect(out).toEqual({ numbers: [1, 2, 100] });
     });
 
@@ -52,7 +55,7 @@ describe("RXML", () => {
         },
         additionalProperties: false,
       };
-      const out = RXML.parse(xml, schema);
+      const out = rxmlParse(xml, schema);
       expect(out).toEqual({ tags: ["a", "b", "c"] });
     });
 
@@ -69,7 +72,7 @@ describe("RXML", () => {
         },
         additionalProperties: false,
       };
-      const out = RXML.parse(xml, schema);
+      const out = rxmlParse(xml, schema);
       expect(out).toEqual({
         obj: { name: { "#text": "John Doe", "@_attr": "x" } },
       });
@@ -84,15 +87,15 @@ describe("RXML", () => {
         properties: { content: { type: "string" } },
         additionalProperties: false,
       };
-      expect(() => RXML.parse(xml, schema)).toThrowError(
-        RXML.RXMLDuplicateStringTagError
+      expect(() => rxmlParse(xml, schema)).toThrowError(
+        RXMLDuplicateStringTagError
       );
     });
   });
 
   describe("stringify", () => {
     it("builds XML with given root tag and preserves structure", () => {
-      const xml = RXML.stringify("tool_response", {
+      const xml = rxmlStringify("tool_response", {
         tool_name: "get_weather",
         result: { ok: true },
       });

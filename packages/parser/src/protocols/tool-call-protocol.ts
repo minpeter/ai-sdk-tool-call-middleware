@@ -135,3 +135,9 @@ export interface ToolCallProtocol {
     tools: LanguageModelV2FunctionTool[];
   }) => string[];
 }
+
+export function isProtocolFactory(
+  protocol: ToolCallProtocol | (() => ToolCallProtocol)
+): protocol is () => ToolCallProtocol {
+  return typeof protocol === "function";
+}
