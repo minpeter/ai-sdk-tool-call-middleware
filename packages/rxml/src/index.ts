@@ -39,6 +39,9 @@ export {
   toContentString,
 } from "./builders/stringify";
 
+// Utils
+export { unescapeXml } from "./utils/helpers";
+
 // Types
 export type { ParseOptions, RXMLNode, StringifyOptions } from "./core/types";
 
