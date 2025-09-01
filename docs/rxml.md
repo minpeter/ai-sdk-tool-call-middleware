@@ -109,7 +109,7 @@ const out = parse(xml, schema);
 
 ## Stringification
 
-- `stringify(rootTag, obj, { format = true, suppressEmptyNode = false, strictBooleanAttributes = false })`:
+- `stringify(rootTag, obj, { format = true, suppressEmptyNode = false, strictBooleanAttributes = false, minimalEscaping = false })`:
   - Convert objects to XML with XML declaration, indentation, and empty-node suppression
 - `stringifyNode(node)` / `stringifyNodes(nodes)`:
   - Serialize parsed nodes back to XML strings

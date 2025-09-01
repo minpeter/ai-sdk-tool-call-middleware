@@ -181,7 +181,7 @@ export class XMLTransformStream extends Transform {
         }
 
         // Find the next closing tag start (position of '<')
-        let nextCloseStart = this.buffer.indexOf(`</${tagName}`, searchStart);
+        const nextCloseStart = this.buffer.indexOf(`</${tagName}`, searchStart);
         if (nextCloseStart === -1) break;
 
         if (nextOpen !== -1 && nextOpen < nextCloseStart) {

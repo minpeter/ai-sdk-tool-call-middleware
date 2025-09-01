@@ -37,35 +37,91 @@ export function parse(
   const throwDup = options.throwOnDuplicateStringTags ?? true;
 
   // If xmlInner looks like a full XML document (single root element), extract its inner content
-  // But only if the schema doesn't expect that root element
+  // But only if the schema doesn't expect that root element. Use a parser-style scan for robustness.
   let actualXmlInner = xmlInner.trim();
   if (actualXmlInner.startsWith("<") && actualXmlInner.endsWith(">")) {
-    // Use a simple regex approach to extract inner content while preserving formatting
-    const match = actualXmlInner.match(/^<([^>\s]+)(?:\s[^>]*)?>(.+)<\/\1>$/s);
-    if (match) {
-      const rootTagName = match[1];
-      const innerContent = match[2];
+    const s = actualXmlInner;
+    let i = 0;
+    let rootStart = -1;
+    let rootName = "";
 
-      // Check if the schema expects this root tag
-      const unwrapped = unwrapJsonSchema(schema);
-      const schemaProps =
-        unwrapped && typeof unwrapped === "object"
-          ? ((unwrapped as Record<string, unknown>).properties as
-              | Record<string, unknown>
-              | undefined)
-          : undefined;
-
-      // Only unwrap if the schema doesn't expect the root tag
-      if (
-        schemaProps &&
-        !Object.prototype.hasOwnProperty.call(schemaProps, rootTagName)
-      ) {
-        actualXmlInner = innerContent;
+    while (i < s.length) {
+      const lt = s.indexOf("<", i);
+      if (lt === -1) break;
+      const next = s[lt + 1];
+      if (next === "?") {
+        const end = s.indexOf("?>", lt + 2);
+        i = end === -1 ? s.length : end + 2;
+        continue;
       }
-      // Otherwise keep the original XML as-is
+      if (next === "!") {
+        if (s.startsWith("!--", lt + 2)) {
+          const end = s.indexOf("-->", lt + 5);
+          i = end === -1 ? s.length : end + 3;
+          continue;
+        }
+        if (s.startsWith("![CDATA[", lt + 2)) {
+          const end = s.indexOf("]]>", lt + 9);
+          i = end === -1 ? s.length : end + 3;
+          continue;
+        }
+        const end = s.indexOf(">", lt + 2);
+        i = end === -1 ? s.length : end + 1;
+        continue;
+      }
+      if (next === "/") {
+        // unexpected close before open; treat as not-a-root document
+        break;
+      }
+      // Found a start tag; parse name until whitespace, '/', or '>'
+      let j = lt + 1;
+      while (
+        j < s.length &&
+        s[j] !== " " &&
+        s[j] !== "\n" &&
+        s[j] !== "\r" &&
+        s[j] !== "\t" &&
+        s[j] !== "/" &&
+        s[j] !== ">"
+      ) {
+        j++;
+      }
+      rootStart = lt;
+      rootName = s.slice(lt + 1, j);
+      break;
     }
-    // If regex doesn't match, fall back to using the original input
-    // This handles cases where xmlInner is already inner content
+
+    if (rootStart === 0 && rootName) {
+      const range = findFirstTopLevelRange(s, rootName);
+      if (range) {
+        // Compute full closing tag end index allowing whitespace before '>'
+        let fullEnd = range.end + `</${rootName}>`.length;
+        const closeHead = s.indexOf(`</${rootName}`, range.end);
+        if (closeHead === range.end) {
+          let p = closeHead + 2 + rootName.length;
+          while (p < s.length && /\s/.test(s[p])) p++;
+          if (s[p] === ">") fullEnd = p + 1;
+        }
+
+        if (fullEnd === s.length) {
+          // Check if the schema expects this root tag
+          const unwrapped = unwrapJsonSchema(schema);
+          const schemaProps =
+            unwrapped && typeof unwrapped === "object"
+              ? ((unwrapped as Record<string, unknown>).properties as
+                  | Record<string, unknown>
+                  | undefined)
+              : undefined;
+
+          if (
+            schemaProps &&
+            !Object.prototype.hasOwnProperty.call(schemaProps, rootName)
+          ) {
+            actualXmlInner = s.slice(range.start, range.end);
+          }
+        }
+      }
+    }
   }
 
   // Identify string-typed properties for special handling

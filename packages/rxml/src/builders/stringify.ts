@@ -242,7 +242,11 @@ function stringifyObject(
  */
 export function stringifyNodes(
   nodes: (RXMLNode | string)[],
-  format = true
+  format = true,
+  options: Pick<
+    StringifyOptions,
+    "strictBooleanAttributes" | "minimalEscaping"
+  > = {}
 ): string {
   let result = "";
 
@@ -250,7 +254,7 @@ export function stringifyNodes(
     if (typeof node === "string") {
       result += node;
     } else {
-      result += stringifyNode(node, 0, format);
+      result += stringifyNode(node, 0, format, options);
     }
   }
 
@@ -263,25 +267,37 @@ export function stringifyNodes(
 export function stringifyNode(
   node: RXMLNode,
   depth = 0,
-  format = true
+  format = true,
+  options: Pick<
+    StringifyOptions,
+    "strictBooleanAttributes" | "minimalEscaping"
+  > = {}
 ): string {
   const indent = format ? "  ".repeat(depth) : "";
   const newline = format ? "\n" : "";
+  const minimalEscaping = options.minimalEscaping ?? false;
+  const strictBooleanAttributes = options.strictBooleanAttributes ?? false;
 
   let result = `${indent}<${node.tagName}`;
 
   // Add attributes
   for (const [attrName, attrValue] of Object.entries(node.attributes)) {
     if (attrValue === null) {
-      if (format) {
-        // format does not affect attribute output; use strict option default false
+      if (strictBooleanAttributes) {
+        result += ` ${attrName}="${attrName}"`;
+      } else {
+        result += ` ${attrName}`;
       }
-      // We don't have StringifyOptions here; use convenience mode by default
-      result += ` ${attrName}`;
     } else if (attrValue.indexOf('"') === -1) {
-      result += ` ${attrName}="${escapeXml(attrValue)}"`;
+      const escaped = minimalEscaping
+        ? escapeXmlMinimalAttr(attrValue, '"')
+        : escapeXml(attrValue);
+      result += ` ${attrName}="${escaped}"`;
     } else {
-      result += ` ${attrName}='${escapeXml(attrValue)}'`;
+      const escaped = minimalEscaping
+        ? escapeXmlMinimalAttr(attrValue, "'")
+        : escapeXml(attrValue);
+      result += ` ${attrName}='${escaped}'`;
     }
   }
 
@@ -303,13 +319,15 @@ export function stringifyNode(
   let hasElementChildren = false;
   for (const child of node.children) {
     if (typeof child === "string") {
-      result += escapeXml(child);
+      result += minimalEscaping
+        ? escapeXmlMinimalText(child)
+        : escapeXml(child);
     } else {
       if (!hasElementChildren && format) {
         result += newline;
         hasElementChildren = true;
       }
-      result += stringifyNode(child, depth + 1, format);
+      result += stringifyNode(child, depth + 1, format, options);
     }
   }
 

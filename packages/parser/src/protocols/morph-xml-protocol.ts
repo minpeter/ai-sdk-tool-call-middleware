@@ -63,7 +63,7 @@ function findToolCalls(
         // Robustly find the actual end of the closing tag allowing whitespace before '>'
         let fullTagEnd = contentEnd + `</${toolName}>`.length;
         const closeHead = text.indexOf(`</${toolName}`, contentEnd);
-        if (closeHead !== -1 && closeHead === contentEnd) {
+        if (closeHead === contentEnd) {
           let p = closeHead + 2 + toolName.length;
           while (p < text.length && /\s/.test(text[p])) p++;
           if (text[p] === ">") fullTagEnd = p + 1;
