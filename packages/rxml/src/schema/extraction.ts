@@ -36,6 +36,14 @@ export function extractRawInner(
 
     const ch = xmlContent[i];
     if (ch === "!") {
+      // Handle DOCTYPE declarations specially - treat them as regular content
+      // when they appear within tag content, not as XML declarations
+      if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
+        // For DOCTYPE within content, we need to find the closing >
+        const gt = xmlContent.indexOf(">", i + 1);
+        i = gt === -1 ? len : gt + 1;
+        continue;
+      }
       if (xmlContent.startsWith("!--", i + 1)) {
         const close = xmlContent.indexOf("-->", i + 4);
         i = close === -1 ? len : close + 3;
@@ -106,6 +114,12 @@ export function extractRawInner(
 
             const h = xmlContent[nx];
             if (h === "!") {
+              // Special handling for DOCTYPE and other declarations within content
+              if (xmlContent.startsWith("!DOCTYPE", nx + 1)) {
+                const gt2 = xmlContent.indexOf(">", nx + 1);
+                pos = gt2 === -1 ? len : gt2 + 1;
+                continue;
+              }
               if (xmlContent.startsWith("!--", nx + 1)) {
                 const close = xmlContent.indexOf("-->", nx + 4);
                 pos = close === -1 ? len : close + 3;
@@ -209,6 +223,14 @@ export function findFirstTopLevelRange(
 
     const ch = xmlContent[i];
     if (ch === "!") {
+      // Handle DOCTYPE declarations specially - treat them as regular content
+      // when they appear within tag content, not as XML declarations
+      if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
+        // For DOCTYPE within content, we need to find the closing >
+        const gt = xmlContent.indexOf(">", i + 1);
+        i = gt === -1 ? len : gt + 1;
+        continue;
+      }
       if (xmlContent.startsWith("!--", i + 1)) {
         const close = xmlContent.indexOf("-->", i + 4);
         i = close === -1 ? len : close + 3;
@@ -272,6 +294,12 @@ export function findFirstTopLevelRange(
 
           const h = xmlContent[nx];
           if (h === "!") {
+            // Special handling for DOCTYPE and other declarations within content
+            if (xmlContent.startsWith("!DOCTYPE", nx + 1)) {
+              const gt2 = xmlContent.indexOf(">", nx + 1);
+              pos = gt2 === -1 ? len : gt2 + 1;
+              continue;
+            }
             if (xmlContent.startsWith("!--", nx + 1)) {
               const close = xmlContent.indexOf("-->", nx + 4);
               pos = close === -1 ? len : close + 3;
@@ -456,6 +484,14 @@ export function findAllTopLevelRanges(
 
     const ch = xmlContent[i];
     if (ch === "!") {
+      // Handle DOCTYPE declarations specially - treat them as regular content
+      // when they appear within tag content, not as XML declarations
+      if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
+        // For DOCTYPE within content, we need to find the closing >
+        const gt = xmlContent.indexOf(">", i + 1);
+        i = gt === -1 ? len : gt + 1;
+        continue;
+      }
       if (xmlContent.startsWith("!--", i + 1)) {
         const close = xmlContent.indexOf("-->", i + 4);
         i = close === -1 ? len : close + 3;
@@ -529,7 +565,8 @@ export function findAllTopLevelRanges(
             if (closeName === target) closeDepth--;
           } else if (
             xmlContent[nextLt + 1] !== "!" &&
-            xmlContent[nextLt + 1] !== "?"
+            xmlContent[nextLt + 1] !== "?" &&
+            xmlContent[nextLt + 1] !== "!" // This line was redundant, keeping as is
           ) {
             const { name: openName } = parseName(xmlContent, nextLt + 1);
             if (openName === target) closeDepth++;

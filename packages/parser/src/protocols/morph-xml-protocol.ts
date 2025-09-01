@@ -4,14 +4,7 @@ import {
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import {
-  findFirstTopLevelRange,
-  parse as parseXml,
-  RXMLCoercionError,
-  RXMLDuplicateStringTagError,
-  RXMLParseError,
-  stringify,
-} from "@ai-sdk-tool/rxml";
+import * as RXML from "@ai-sdk-tool/rxml";
 import { extractRawInner } from "@ai-sdk-tool/rxml";
 
 import { hasInputProperty } from "@/utils";
@@ -97,7 +90,7 @@ function findToolCalls(
       if (tagStart === -1) break;
 
       const remainingText = text.substring(tagStart);
-      const range = findFirstTopLevelRange(remainingText, toolName);
+      const range = RXML.findFirstTopLevelRange(remainingText, toolName);
       if (range) {
         const contentStart = tagStart + startTag.length;
         const contentEnd = contentStart + (range.end - range.start);
@@ -156,14 +149,14 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     } else {
       args = inputValue;
     }
-    return stringify(toolCall.toolName, args, {
+    return RXML.stringify(toolCall.toolName, args, {
       suppressEmptyNode: false,
       format: false,
     });
   },
 
   formatToolResponse(toolResult: LanguageModelV2ToolResultPart): string {
-    return stringify("tool_response", {
+    return RXML.stringify("tool_response", {
       tool_name: toolResult.toolName,
       result: toolResult.output,
     });
@@ -204,7 +197,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
           originalSchemas,
           toolCall.toolName
         );
-        let parsed: any = parseXml(toolCall.content, toolSchema, {
+        let parsed: any = RXML.parse(toolCall.content, toolSchema, {
           onError: options?.onError,
         });
         // Post-process: decode XML entities for string-typed schema fields
@@ -225,8 +218,29 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
             const val = obj[key];
             if (typeof val === "string") {
               const rawInner = extractRawInner(toolCall.content, key);
-              if (typeof rawInner === "string" && rawInner.includes("<")) {
-                obj[key] = decodeXmlEntities(rawInner);
+              if (typeof rawInner === "string") {
+                // Fix for truncated DOCTYPE declarations
+                let fixedContent = rawInner;
+                if (
+                  rawInner.startsWith("!DOCTYPE") &&
+                  !rawInner.startsWith("<!DOCTYPE")
+                ) {
+                  fixedContent = "<" + rawInner;
+                }
+                // Also fix other HTML declarations that might be truncated
+                if (
+                  rawInner.startsWith("![CDATA[") &&
+                  !rawInner.startsWith("<![CDATA[")
+                ) {
+                  fixedContent = "<" + rawInner;
+                }
+                if (
+                  rawInner.startsWith("!--") &&
+                  !rawInner.startsWith("<!--")
+                ) {
+                  fixedContent = "<" + rawInner;
+                }
+                obj[key] = decodeXmlEntities(fixedContent);
               }
             }
           }
@@ -330,7 +344,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   originalSchemas,
                   currentToolCall!.name
                 );
-                let parsed: any = parseXml(toolContent, toolSchema, {
+                let parsed: any = RXML.parse(toolContent, toolSchema, {
                   onError: options?.onError,
                 });
                 parsed = deepDecodeStringsBySchema(
@@ -348,11 +362,29 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                     const val = obj[key];
                     if (typeof val === "string") {
                       const rawInner = extractRawInner(toolContent, key);
-                      if (
-                        typeof rawInner === "string" &&
-                        rawInner.includes("<")
-                      ) {
-                        obj[key] = decodeXmlEntities(rawInner);
+                      if (typeof rawInner === "string") {
+                        // Fix for truncated DOCTYPE declarations (streaming version)
+                        let fixedContent = rawInner;
+                        if (
+                          rawInner.startsWith("!DOCTYPE") &&
+                          !rawInner.startsWith("<!DOCTYPE")
+                        ) {
+                          fixedContent = "<" + rawInner;
+                        }
+                        // Also fix other HTML declarations that might be truncated
+                        if (
+                          rawInner.startsWith("![CDATA[") &&
+                          !rawInner.startsWith("<![CDATA[")
+                        ) {
+                          fixedContent = "<" + rawInner;
+                        }
+                        if (
+                          rawInner.startsWith("!--") &&
+                          !rawInner.startsWith("<!--")
+                        ) {
+                          fixedContent = "<" + rawInner;
+                        }
+                        obj[key] = decodeXmlEntities(fixedContent);
                       }
                     }
                   }
@@ -370,11 +402,11 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                 const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;
                 let message =
                   "Could not process streaming XML tool call; emitting original text.";
-                if (error instanceof RXMLDuplicateStringTagError) {
+                if (error instanceof RXML.RXMLDuplicateStringTagError) {
                   message = `Duplicate string tags detected in streaming tool call '${currentToolCall.name}'; emitting original text.`;
-                } else if (error instanceof RXMLCoercionError) {
+                } else if (error instanceof RXML.RXMLCoercionError) {
                   message = `Failed to coerce arguments for streaming tool call '${currentToolCall.name}'; emitting original text.`;
-                } else if (error instanceof RXMLParseError) {
+                } else if (error instanceof RXML.RXMLParseError) {
                   message = `Failed to parse XML for streaming tool call '${currentToolCall.name}'; emitting original text.`;
                 }
                 options?.onError?.(message, {

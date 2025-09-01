@@ -8,7 +8,8 @@
     "test": "echo \"No tests for core package\" && exit 0",
     "check-types": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
-    "lint:fix": "eslint src --ext .ts,.tsx --fix"
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "debug:file-write": "tsx src/XX-debug-file-write.ts"
   },
   "keywords": [],
   "author": "",
