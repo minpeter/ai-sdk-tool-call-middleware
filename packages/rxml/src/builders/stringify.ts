@@ -23,6 +23,7 @@ export function stringify(
     const format = options.format ?? true;
     const minimalEscaping = options.minimalEscaping ?? false;
     const suppressEmptyNode = options.suppressEmptyNode ?? false;
+    const strictBooleanAttributes = options.strictBooleanAttributes ?? false;
 
     let result = "";
 
@@ -36,7 +37,8 @@ export function stringify(
       0,
       format,
       suppressEmptyNode,
-      minimalEscaping
+      minimalEscaping,
+      strictBooleanAttributes
     );
 
     return result;
@@ -54,7 +56,8 @@ function stringifyValue(
   depth: number,
   format: boolean,
   suppressEmptyNode: boolean,
-  minimalEscaping: boolean
+  minimalEscaping: boolean,
+  strictBooleanAttributes: boolean
 ): string {
   const indent = format ? "  ".repeat(depth) : "";
   const newline = format ? "\n" : "";
@@ -85,7 +88,8 @@ function stringifyValue(
         depth,
         format,
         suppressEmptyNode,
-        minimalEscaping
+        minimalEscaping,
+        strictBooleanAttributes
       );
     }
     return result;
@@ -98,7 +102,8 @@ function stringifyValue(
       depth,
       format,
       suppressEmptyNode,
-      minimalEscaping
+      minimalEscaping,
+      strictBooleanAttributes
     );
   }
 
@@ -119,7 +124,8 @@ function stringifyObject(
   depth: number,
   format: boolean,
   suppressEmptyNode: boolean,
-  minimalEscaping: boolean
+  minimalEscaping: boolean,
+  strictBooleanAttributes: boolean
 ): string {
   const indent = format ? "  ".repeat(depth) : "";
   const newline = format ? "\n" : "";
@@ -148,7 +154,11 @@ function stringifyObject(
   let openTag = `<${tagName}`;
   for (const [attrName, attrValue] of Object.entries(attributes)) {
     if (attrValue === null) {
-      openTag += ` ${attrName}`;
+      if (strictBooleanAttributes) {
+        openTag += ` ${attrName}="${attrName}"`;
+      } else {
+        openTag += ` ${attrName}`;
+      }
     } else {
       const valueStr = String(attrValue);
       // Attribute quoting strategy per XML 1.0:
@@ -214,7 +224,8 @@ function stringifyObject(
         depth + 1,
         format,
         suppressEmptyNode,
-        minimalEscaping
+        minimalEscaping,
+        strictBooleanAttributes
       );
     }
 
@@ -262,6 +273,10 @@ export function stringifyNode(
   // Add attributes
   for (const [attrName, attrValue] of Object.entries(node.attributes)) {
     if (attrValue === null) {
+      if (format) {
+        // format does not affect attribute output; use strict option default false
+      }
+      // We don't have StringifyOptions here; use convenience mode by default
       result += ` ${attrName}`;
     } else if (attrValue.indexOf('"') === -1) {
       result += ` ${attrName}="${escapeXml(attrValue)}"`;

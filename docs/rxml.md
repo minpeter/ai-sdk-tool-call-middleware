@@ -109,12 +109,15 @@ const out = parse(xml, schema);
 
 ## Stringification
 
-- `stringify(rootTag, obj, { format = true, suppressEmptyNode = false })`:
+- `stringify(rootTag, obj, { format = true, suppressEmptyNode = false, strictBooleanAttributes = false })`:
   - Convert objects to XML with XML declaration, indentation, and empty-node suppression
 - `stringifyNode(node)` / `stringifyNodes(nodes)`:
   - Serialize parsed nodes back to XML strings
 - Attribute conventions:
   - Use `@name` or `_attributes` for attributes, and `#text` / `_text` for text content
+  - Boolean-like attributes (value `null`):
+    - Default (convenience): `<item checked>`
+    - Strict mode (`strictBooleanAttributes: true`): `<item checked="checked">`
 
 ```ts
 const xml = stringify("root", {
@@ -122,6 +125,14 @@ const xml = stringify("root", {
   title: "Hello",
   meta: { _attributes: { id: 1 }, "#text": "ok" },
 });
+
+// Strict boolean attributes
+const strictXml = stringify(
+  "root",
+  { item: { "@checked": null, "#text": "x" } },
+  { format: false, strictBooleanAttributes: true }
+);
+// => <root><item checked="checked">x</item></root>
 ```
 
 ## Options and error handling

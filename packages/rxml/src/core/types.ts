@@ -67,6 +67,13 @@ export interface StringifyOptions {
   minimalEscaping?: boolean;
   /** Error handling callback */
   onError?: OnErrorFn;
+  /**
+   * When true, serialize boolean-like attributes (value === null)
+   * as name="name" to follow strict XML attribute rules.
+   * When false (default), serialize as a convenience flag without value
+   * (e.g., <item checked>), for compatibility with existing outputs.
+   */
+  strictBooleanAttributes?: boolean;
 }
 
 /**

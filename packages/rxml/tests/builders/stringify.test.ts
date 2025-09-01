@@ -120,6 +120,23 @@ describe("stringify", () => {
       expect(result).toContain("<item checked disabled>content</item>");
     });
 
+    it('handles boolean attributes in strict mode (name="name")', () => {
+      const result = stringify(
+        "root",
+        {
+          item: {
+            "@checked": null,
+            "@disabled": null,
+            "#text": "content",
+          },
+        },
+        { strictBooleanAttributes: true, format: false }
+      );
+      expect(result).toContain(
+        '<item checked="checked" disabled="disabled">content</item>'
+      );
+    });
+
     it("escapes attribute values", () => {
       const result = stringify("root", {
         item: {
