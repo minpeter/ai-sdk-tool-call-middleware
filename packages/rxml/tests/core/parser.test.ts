@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   filter,
@@ -175,24 +176,23 @@ describe("robust-xml parser", () => {
 
     it("handles custom textNodeName", () => {
       const xml = '<value kind="n"> 10.5 </value>';
-      const schema = {
-        type: "object",
-        properties: { value: { type: "number" } },
-        additionalProperties: false,
-      };
+      const schema = z.toJSONSchema(
+        z.object({
+          value: z.number(),
+        })
+      );
       const result = parse(xml, schema, { textNodeName: "_text" });
       expect(result).toEqual({ value: 10.5 });
     });
 
     it("parses nested string-typed tags without swallowing inner content", () => {
       const xml = "<outer><inner>inside</inner></outer>";
-      const schema = {
-        type: "object",
-        properties: {
-          outer: { type: "string" },
-          inner: { type: "string" },
-        },
-      };
+      const schema = z.toJSONSchema(
+        z.object({
+          outer: z.string(),
+          inner: z.string(),
+        })
+      );
 
       const result = parse(xml, schema);
       // outer should contain the full raw inner including <inner>...</inner>
@@ -203,18 +203,14 @@ describe("robust-xml parser", () => {
 
     it("handles angle brackets in string content within nested object schema", () => {
       const xml = `<file_write>\n<path>\ntest.c\n</path>\n<content>\n#include <stdio.h>\n\nint main() {\n  printf("Hello, world!\\n");\n  return 0;\n}\n</content>\n</file_write>`;
-      const schema = {
-        type: "object",
-        properties: {
-          file_write: {
-            type: "object",
-            properties: {
-              path: { type: "string" },
-              content: { type: "string" },
-            },
-          },
-        },
-      };
+      const schema = z.toJSONSchema(
+        z.object({
+          file_write: z.object({
+            path: z.string(),
+            content: z.string(),
+          }),
+        })
+      );
 
       const result = parse(xml, schema);
       expect(result.file_write).toBeDefined();
@@ -224,6 +220,162 @@ describe("robust-xml parser", () => {
         "#include <stdio.h>"
       );
       expect((result as any).file_write.content).toContain("int main() {");
+    });
+
+    it("parses file_write content across multiple languages using zod schema", () => {
+      const schema = z.toJSONSchema(
+        z.object({
+          file_write: z.object({
+            path: z.string(),
+            content: z.string(),
+          }),
+        })
+      );
+
+      const snippets: Array<{ path: string; content: string[] }> = [
+        {
+          path: "test.c",
+          content: [
+            "#include <stdio.h>",
+            "int main() {",
+            '  printf("Hello, world!\\n");',
+            "  return 0;",
+            "}",
+          ],
+        },
+        {
+          path: "test.py",
+          content: [
+            "import os",
+            "def write_file(path, content):",
+            "  with open(path, 'w') as f:",
+            "    f.write(content)",
+            "  if f.closed:",
+            "    return 'success'",
+            "  else:",
+            "    return 'error'",
+            "",
+            "write_file('test.py', \"print('Hello, world!')\\nreturn 'success'\")",
+            "print('Hello, world!')",
+            "",
+            "return 'success'",
+          ],
+        },
+        {
+          path: "test.js",
+          content: [
+            "function greet(name) {",
+            "  console.log(`Hello, ${name}!`);",
+            "}",
+            "greet('world');",
+          ],
+        },
+        {
+          path: "test.ts",
+          content: [
+            "type User = { name: string; age: number };",
+            "const user: User = { name: 'John', age: 30 };",
+            "console.log(user.name.toUpperCase());",
+          ],
+        },
+        {
+          path: "test.java",
+          content: [
+            "public class Main {",
+            "  public static void main(String[] args) {",
+            '    System.out.println("Hello, world!");',
+            "  }",
+            "}",
+          ],
+        },
+        {
+          path: "test.go",
+          content: [
+            "package main",
+            'import "fmt"',
+            "func main() {",
+            '  fmt.Println("Hello, world!")',
+            "}",
+          ],
+        },
+        {
+          path: "test.rs",
+          content: ["fn main() {", '    println!("Hello, world!");', "}"],
+        },
+        {
+          path: "test.rb",
+          content: [
+            "def greet(name)",
+            '  puts "Hello, #{name}!"',
+            "end",
+            "greet('world')",
+          ],
+        },
+        {
+          path: "test.php",
+          content: ["<?php", "echo 'Hello, world!';", "?>"],
+        },
+        {
+          path: "test.sh",
+          content: ["#!/usr/bin/env bash", 'echo "Hello, world!"'],
+        },
+        {
+          path: "test.yaml",
+          content: ["name: example", "values:", "  - one", "  - two"],
+        },
+        {
+          path: "test.json",
+          content: ["{", '  "name": "example",', '  "value": 1', "}"],
+        },
+        {
+          path: "test.html",
+          content: [
+            "<!doctype html>",
+            "<html>",
+            "  <head><title>Hello</title></head>",
+            "  <body><h1>Hello</h1></body>",
+            "</html>",
+          ],
+        },
+        {
+          path: "test.sql",
+          content: [
+            "CREATE TABLE users (id INT PRIMARY KEY, name TEXT);",
+            "INSERT INTO users (id, name) VALUES (1, 'John');",
+            "SELECT * FROM users;",
+          ],
+        },
+        {
+          path: "test.scala",
+          content: [
+            "object Main extends App {",
+            '  println("Hello, world!")',
+            "}",
+          ],
+        },
+        {
+          path: "test.kt",
+          content: ["fun main() {", '  println("Hello, world!")', "}"],
+        },
+      ];
+
+      for (const { path, content } of snippets) {
+        const xml = [
+          "<file_write>",
+          `<path>${path}</path>`,
+          "<content>",
+          content.join("\n"),
+          "</content>",
+          "</file_write>",
+        ].join("\n");
+
+        const result = parse(xml, schema);
+        expect(result.file_write).toBeDefined();
+        expect((result as any).file_write.path).toBe(path);
+        for (const line of content) {
+          expect((result as any).file_write.content).toContain(line);
+        }
+      }
     });
   });
 

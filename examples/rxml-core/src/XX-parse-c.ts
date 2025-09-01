@@ -18,15 +18,34 @@ const c_code = [
   "}",
 ];
 
-const text = [
-  "<file_write>",
-  "<path>test.c</path>",
-  "<content>",
-  c_code.join("\n"),
-  "</content>",
-  "</file_write>",
+const py_code = [
+  "import os",
+  "def write_file(path, content):",
+  "  with open(path, 'w') as f:",
+  "    f.write(content)",
+  "  if f.closed:",
+  "    return 'success'",
+  "  else:",
+  "    return 'error'",
+  "",
+  "write_file('test.py', \"print('Hello, world!')\nreturn 'success'\")",
+  "print('Hello, world!')",
+  "",
+  "return 'success'",
 ];
 
-const result = parse(text.join("\n"), schema);
+const langs = [c_code, py_code];
 
-console.log(result);
+for (const lang of langs) {
+  const text = [
+    "<file_write>",
+    "<path>test.c</path>",
+    "<content>",
+    lang.join("\n"),
+    "</content>",
+    "</file_write>",
+  ];
+  const result = parse(text.join("\n"), schema);
+
+  console.log(result);
+}
