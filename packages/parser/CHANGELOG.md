@@ -1,5 +1,18 @@
 # @ai-sdk-tool/parser
 
+## 2.1.4
+
+### Patch Changes
+
+- 49f5024: Added license to Apache 2.0
+- 02b32c0: Morph XML protocol and utils robustness tweaks.
+  - Add `RXML` for safer XML extraction (raw string tags, duplicate checks) and use it in `morphXmlProtocol`.
+  - Replace relaxed JSON helper with `RJSON`; export `RXML`/`RJSON` from utils.
+  - Minor improvements to streaming parsing and XML stringify options.
+
+- Updated dependencies [5e03e27]
+  - @ai-sdk-tool/rxml@0.1.0
+
 ## 2.1.3
 
 ### Patch Changes

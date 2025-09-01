@@ -1,5 +1,11 @@
 # @ai-sdk-tool/eval
 
+## 0.1.6
+
+### Patch Changes
+
+- 49f5024: Added license to Apache 2.0
+
 ## 0.1.5
 
 ### Patch Changes
