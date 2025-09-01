@@ -4,7 +4,14 @@ import {
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import * as RXML from "@ai-sdk-tool/rxml";
+import {
+  findFirstTopLevelRange,
+  parse as parseXml,
+  RXMLCoercionError,
+  RXMLDuplicateStringTagError,
+  RXMLParseError,
+  stringify,
+} from "@ai-sdk-tool/rxml";
 
 import { hasInputProperty } from "@/utils";
 import { unwrapJsonSchema } from "@/utils/coercion";
@@ -47,14 +54,14 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     } else {
       args = inputValue;
     }
-    return RXML.stringify(toolCall.toolName, args, {
+    return stringify(toolCall.toolName, args, {
       suppressEmptyNode: false,
       format: false,
     });
   },
 
   formatToolResponse(toolResult: LanguageModelV2ToolResultPart): string {
-    return RXML.stringify("tool_response", {
+    return stringify("tool_response", {
       tool_name: toolResult.toolName,
       result: toolResult.output,
     });
@@ -90,7 +97,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
         // Use findFirstTopLevelRange to get the proper content
         const remainingText = text.substring(tagStart);
-        const range = RXML.findFirstTopLevelRange(remainingText, toolName);
+        const range = findFirstTopLevelRange(remainingText, toolName);
         if (range) {
           const fullTagStart = tagStart;
           const contentStart = tagStart + startTag.length;
@@ -132,7 +139,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
           originalSchemas,
           toolCall.toolName
         );
-        const parsed = RXML.parse(toolCall.content, toolSchema, {
+        const parsed = parseXml(toolCall.content, toolSchema, {
           onError: options?.onError,
         });
 
@@ -230,7 +237,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   originalSchemas,
                   currentToolCall!.name
                 );
-                const parsed = RXML.parse(toolContent, toolSchema, {
+                const parsed = parseXml(toolContent, toolSchema, {
                   onError: options?.onError,
                 });
 
@@ -245,11 +252,11 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                 const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;
                 let message =
                   "Could not process streaming XML tool call; emitting original text.";
-                if (error instanceof RXML.RXMLDuplicateStringTagError) {
+                if (error instanceof RXMLDuplicateStringTagError) {
                   message = `Duplicate string tags detected in streaming tool call '${currentToolCall.name}'; emitting original text.`;
-                } else if (error instanceof RXML.RXMLCoercionError) {
+                } else if (error instanceof RXMLCoercionError) {
                   message = `Failed to coerce arguments for streaming tool call '${currentToolCall.name}'; emitting original text.`;
-                } else if (error instanceof RXML.RXMLParseError) {
+                } else if (error instanceof RXMLParseError) {
                   message = `Failed to parse XML for streaming tool call '${currentToolCall.name}'; emitting original text.`;
                 }
                 options?.onError?.(message, {
@@ -327,7 +334,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
         // Use findFirstTopLevelRange to get the proper content
         const remainingText = text.substring(tagStart);
-        const range = RXML.findFirstTopLevelRange(remainingText, toolName);
+        const range = findFirstTopLevelRange(remainingText, toolName);
         if (range) {
           const contentStart = tagStart + startTag.length;
           const contentEnd = contentStart + (range.end - range.start);
