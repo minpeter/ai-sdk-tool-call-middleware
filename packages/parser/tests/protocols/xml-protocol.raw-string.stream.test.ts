@@ -213,4 +213,66 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     expect(args.path).toBe("index.html");
     expect(args.content).toBe(html);
   });
+
+  it("decodes entity-escaped HTML inside string-typed <content> during streaming", async () => {
+    const CHUNK_SIZE = 13;
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV2FunctionTool[] = [
+      {
+        type: "function",
+        name: "file_write",
+        description: "Write a file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            content: { type: "string" },
+          },
+          required: ["path", "content"],
+        },
+      },
+    ];
+
+    const transformer = protocol.createStreamParser({ tools });
+    const htmlRaw = `<!DOCTYPE html>\n<html><body><h1>안녕</h1></body></html>`;
+    const htmlEscaped = `&lt;!DOCTYPE html&gt;\n&lt;html&gt;&lt;body&gt;&lt;h1&gt;안녕&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;`;
+    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+      start(ctrl) {
+        const parts = [
+          `<file_write>`,
+          `<path>index.html</path>`,
+          `<content>`,
+          htmlEscaped,
+          `</content>`,
+          `</file_write>`,
+        ];
+        for (const p of parts) {
+          for (let i = 0; i < p.length; i += CHUNK_SIZE) {
+            ctrl.enqueue({
+              type: "text-delta",
+              id: "t",
+              delta: p.slice(i, i + CHUNK_SIZE),
+            });
+          }
+        }
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: "stop",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await collect(rs.pipeThrough(transformer));
+    const tool = out.find(
+      (p): p is Extract<LanguageModelV2StreamPart, { type: "tool-call" }> =>
+        p.type === "tool-call"
+    );
+    expect(tool?.toolName).toBe("file_write");
+    if (!tool) throw new Error("Expected tool-call part to be present");
+    const args = JSON.parse(tool.input) as { path: string; content: string };
+    expect(args.path).toBe("index.html");
+    expect(args.content).toBe(htmlRaw);
+  });
 });

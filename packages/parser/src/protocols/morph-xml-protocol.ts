@@ -12,11 +12,52 @@ import {
   RXMLParseError,
   stringify,
 } from "@ai-sdk-tool/rxml";
+import { extractRawInner } from "@ai-sdk-tool/rxml";
 
 import { hasInputProperty } from "@/utils";
 import { unwrapJsonSchema } from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
+
+function decodeXmlEntities(value: string): string {
+  // Minimal decode to reverse &lt; &gt; &amp; &quot; &apos; produced by models
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+function deepDecodeStringsBySchema(input: unknown, schema: any): unknown {
+  if (input == null || schema == null) return input;
+  const type = schema.type;
+
+  if (type === "string" && typeof input === "string") {
+    return decodeXmlEntities(input);
+  }
+
+  if (type === "array" && Array.isArray(input)) {
+    return input.map(item =>
+      deepDecodeStringsBySchema(item, schema.items ?? {})
+    );
+  }
+
+  if (type === "object" && input && typeof input === "object") {
+    const obj: Record<string, unknown> = input as Record<string, unknown>;
+    const props: Record<string, unknown> = schema.properties ?? {};
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(obj)) {
+      const childSchema = props[key] ?? {};
+      out[key] = deepDecodeStringsBySchema(obj[key], childSchema);
+    }
+    return out;
+  }
+
+  // Fallback: attempt best-effort decode if primitive string and schema unspecified
+  if (typeof input === "string") return decodeXmlEntities(input);
+  return input;
+}
 
 function getToolSchema(
   tools: Array<{ name?: string; inputSchema?: unknown }>,
@@ -134,6 +175,9 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
         ?.originalToolSchemas || {};
 
     const toolNames = tools.map(t => t.name).filter(name => name != null);
+    const maxStartTagLen = toolNames.length
+      ? Math.max(...toolNames.map(n => `<${n}>`.length))
+      : 0;
     if (toolNames.length === 0) {
       return [{ type: "text", text }];
     }
@@ -160,9 +204,34 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
           originalSchemas,
           toolCall.toolName
         );
-        const parsed = parseXml(toolCall.content, toolSchema, {
+        let parsed: any = parseXml(toolCall.content, toolSchema, {
           onError: options?.onError,
         });
+        // Post-process: decode XML entities for string-typed schema fields
+        parsed = deepDecodeStringsBySchema(
+          parsed,
+          unwrapJsonSchema(toolSchema)
+        );
+
+        // Fallback: if schema couldn't mark string-typed fields (e.g., zod),
+        // and a parsed field is a primitive string but the raw inner contains markup,
+        // restore the raw inner content to avoid truncation like "!DOCTYPE html".
+        if (parsed && typeof parsed === "object") {
+          const obj: Record<string, unknown> = parsed as Record<
+            string,
+            unknown
+          >;
+          for (const key of Object.keys(obj)) {
+            const val = obj[key];
+            if (typeof val === "string") {
+              const rawInner = extractRawInner(toolCall.content, key);
+              if (typeof rawInner === "string" && rawInner.includes("<")) {
+                obj[key] = decodeXmlEntities(rawInner);
+              }
+            }
+          }
+          parsed = obj;
+        }
 
         processedElements.push({
           type: "tool-call",
@@ -203,6 +272,9 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
         ?.originalToolSchemas || {};
     const toolNames = tools.map(t => t.name).filter(name => name != null);
+    const maxStartTagLen = toolNames.length
+      ? Math.max(...toolNames.map(n => `<${n}>`.length))
+      : 0;
     let buffer = "";
     let currentToolCall: { name: string; content: string } | null = null;
     let currentTextId: string | null = null;
@@ -258,9 +330,34 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   originalSchemas,
                   currentToolCall!.name
                 );
-                const parsed = parseXml(toolContent, toolSchema, {
+                let parsed: any = parseXml(toolContent, toolSchema, {
                   onError: options?.onError,
                 });
+                parsed = deepDecodeStringsBySchema(
+                  parsed,
+                  unwrapJsonSchema(toolSchema)
+                );
+
+                // Fallback: same logic as non-streaming for schemas that don't mark string fields
+                if (parsed && typeof parsed === "object") {
+                  const obj: Record<string, unknown> = parsed as Record<
+                    string,
+                    unknown
+                  >;
+                  for (const key of Object.keys(obj)) {
+                    const val = obj[key];
+                    if (typeof val === "string") {
+                      const rawInner = extractRawInner(toolContent, key);
+                      if (
+                        typeof rawInner === "string" &&
+                        rawInner.includes("<")
+                      ) {
+                        obj[key] = decodeXmlEntities(rawInner);
+                      }
+                    }
+                  }
+                  parsed = obj;
+                }
 
                 flushText(controller);
                 controller.enqueue({
@@ -320,6 +417,17 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
               );
               currentToolCall = { name: earliestToolName, content: "" };
             } else {
+              // No start tag currently in buffer. Stream out as much as possible
+              // while keeping a small tail to catch a tag split across chunks.
+              const tail = Math.max(0, maxStartTagLen - 1);
+              const safeLen = Math.max(0, buffer.length - tail);
+              if (safeLen > 0) {
+                const textToFlush = buffer.slice(0, safeLen);
+                flushText(controller, textToFlush);
+                buffer = buffer.slice(safeLen);
+                // Continue loop to process any newly available patterns
+                continue;
+              }
               break;
             }
           }
