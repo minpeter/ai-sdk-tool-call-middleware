@@ -739,8 +739,7 @@ export function findAllTopLevelRanges(
             if (closeName === target) closeDepth--;
           } else if (
             xmlContent[nextLt + 1] !== "!" &&
-            xmlContent[nextLt + 1] !== "?" &&
-            xmlContent[nextLt + 1] !== "!" // This line was redundant, keeping as is
+            xmlContent[nextLt + 1] !== "?"
           ) {
             const { name: openName } = parseName(xmlContent, nextLt + 1);
             if (openName === target) closeDepth++;
