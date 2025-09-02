@@ -18,6 +18,11 @@ export { XMLTokenizer } from "./core/tokenizer";
 
 // Schema integration
 export {
+  coerceBySchema,
+  getSchemaType,
+  unwrapJsonSchema,
+} from "./schema/base-coercion";
+export {
   coerceDomBySchema,
   domToObject,
   getPropertySchema,

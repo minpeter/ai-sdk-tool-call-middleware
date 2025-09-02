@@ -4,6 +4,7 @@ import type {
   LanguageModelV2ToolCall,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
+import * as RXML from "@ai-sdk-tool/rxml";
 
 import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
@@ -12,7 +13,6 @@ import {
   originalToolsSchema,
   ToolCallMiddlewareProviderOptions,
 } from "./utils";
-import { fixToolCallWithSchema } from "./utils/coercion";
 import {
   getDebugLevel,
   logParsedChunk,
@@ -137,4 +137,29 @@ export async function wrapGenerate({
     ...result,
     content: newContent,
   };
+}
+
+function fixToolCallWithSchema(
+  part: LanguageModelV2Content,
+  tools: Array<{ name?: string; inputSchema?: unknown }>
+): LanguageModelV2Content {
+  if ((part as { type?: string }).type !== "tool-call") return part;
+  const tc = part as unknown as { toolName: string; input: unknown };
+  let args: unknown = {};
+  if (typeof tc.input === "string") {
+    try {
+      args = JSON.parse(tc.input);
+    } catch {
+      return part;
+    }
+  } else if (tc.input && typeof tc.input === "object") {
+    args = tc.input;
+  }
+  const schema = tools.find(t => t.name === tc.toolName)
+    ?.inputSchema as unknown;
+  const coerced = RXML.coerceBySchema(args, schema);
+  return {
+    ...(part as Record<string, unknown>),
+    input: JSON.stringify(coerced ?? {}),
+  } as LanguageModelV2Content;
 }

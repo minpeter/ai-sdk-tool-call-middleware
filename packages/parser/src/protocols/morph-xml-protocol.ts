@@ -1,5 +1,6 @@
 import {
   LanguageModelV2Content,
+  LanguageModelV2FunctionTool,
   LanguageModelV2ToolCall,
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
@@ -7,7 +8,6 @@ import { generateId } from "@ai-sdk/provider-utils";
 import * as RXML from "@ai-sdk-tool/rxml";
 
 import { hasInputProperty } from "@/utils";
-import { getToolSchema, unwrapJsonSchema } from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
 
@@ -16,7 +16,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     const toolsForPrompt = (tools || []).map(tool => ({
       name: tool.name,
       description: tool.description,
-      parameters: unwrapJsonSchema(tool.inputSchema),
+      parameters: RXML.unwrapJsonSchema(tool.inputSchema),
     }));
     return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
   },
@@ -269,6 +269,13 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     return findToolCalls(text, toolNames).map(tc => tc.segment);
   },
 });
+
+export function getToolSchema(
+  tools: LanguageModelV2FunctionTool[],
+  toolName: string
+) {
+  return tools.find(t => t.name === toolName)?.inputSchema;
+}
 
 // Shared helper to find tool call ranges for a given set of tool names
 function findToolCalls(

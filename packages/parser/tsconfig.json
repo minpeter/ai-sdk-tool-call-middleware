@@ -30,6 +30,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": [".", "../rxml/tests/robust-xml.test.ts"],
+  "include": ["."],
   "exclude": ["dist", "build", "node_modules"]
 }
