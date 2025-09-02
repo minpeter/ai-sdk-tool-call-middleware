@@ -264,3 +264,14 @@ export function fixToolCallWithSchema(
     input: JSON.stringify(coerced ?? {}),
   } as LanguageModelV2Content;
 }
+
+export function getToolSchema(
+  tools: Array<{ name?: string; inputSchema?: unknown }>,
+  originalSchemas: Record<string, unknown>,
+  toolName: string
+): unknown {
+  const original = originalSchemas[toolName];
+  if (original) return original;
+  const fallback = tools.find(t => t.name === toolName)?.inputSchema;
+  return fallback as unknown;
+}

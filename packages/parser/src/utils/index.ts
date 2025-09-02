@@ -7,7 +7,6 @@ export * from "./debug";
 export * from "./on-error";
 export * from "./tools";
 export * from "./type-guards";
-export * from "./xml";
 
 export {
   createDynamicIfThenElseSchema,

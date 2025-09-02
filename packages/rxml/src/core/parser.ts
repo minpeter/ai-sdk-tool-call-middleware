@@ -23,8 +23,42 @@ import {
   findAllInnerRanges,
   findFirstTopLevelRange,
 } from "../schema/extraction";
+import { unescapeXml } from "../utils/helpers";
 import { XMLTokenizer } from "./tokenizer";
 import type { ParseOptions, RXMLNode } from "./types";
+
+// Internal: schema-guided deep XML entity decoding
+function deepDecodeStringsBySchema(input: unknown, schema: unknown): unknown {
+  if (input == null || schema == null) return input;
+
+  const type = getSchemaType(schema);
+
+  if (type === "string" && typeof input === "string") {
+    return unescapeXml(input);
+  }
+
+  if (type === "array" && Array.isArray(input)) {
+    const unwrapped = unwrapJsonSchema(schema) as
+      | { items?: unknown }
+      | undefined;
+    const itemSchema = unwrapped?.items ?? {};
+    return input.map(item => deepDecodeStringsBySchema(item, itemSchema));
+  }
+
+  if (type === "object" && input && typeof input === "object") {
+    const obj = input as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(obj)) {
+      const childSchema = getPropertySchema(schema, key);
+      out[key] = deepDecodeStringsBySchema(obj[key], childSchema);
+    }
+    return out;
+  }
+
+  // Fallback: decode any string when schema typing is ambiguous/missing
+  if (typeof input === "string") return unescapeXml(input);
+  return input;
+}
 
 /**
  * Parse XML with schema-aware type coercion
@@ -485,7 +519,11 @@ export function parse(
   // Apply schema-based coercion
   try {
     const coerced = coerceDomBySchema(dataToCoerce, schema);
-    return coerced;
+    const decoded = deepDecodeStringsBySchema(coerced, schema) as Record<
+      string,
+      unknown
+    >;
+    return decoded;
   } catch (error) {
     throw new RXMLCoercionError("Failed to coerce by schema", error);
   }

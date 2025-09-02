@@ -7,12 +7,7 @@ import { generateId } from "@ai-sdk/provider-utils";
 import * as RXML from "@ai-sdk-tool/rxml";
 
 import { hasInputProperty } from "@/utils";
-import { unwrapJsonSchema } from "@/utils/coercion";
-import {
-  deepDecodeStringsBySchema,
-  getToolSchema,
-  JsonSchemaNode,
-} from "@/utils/xml";
+import { getToolSchema, unwrapJsonSchema } from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
 
@@ -153,14 +148,9 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
           originalSchemas,
           toolCall.toolName
         );
-        let parsed: unknown = RXML.parse(toolCall.content, toolSchema, {
+        const parsed: unknown = RXML.parse(toolCall.content, toolSchema, {
           onError: options?.onError,
         });
-        // Post-process: decode XML entities for string-typed schema fields
-        parsed = deepDecodeStringsBySchema(
-          parsed,
-          unwrapJsonSchema(toolSchema) as JsonSchemaNode
-        );
 
         // No additional fallback: RXML handles raw content for string fields
 
@@ -261,13 +251,9 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   originalSchemas,
                   currentToolCall!.name
                 );
-                let parsed: unknown = RXML.parse(toolContent, toolSchema, {
+                const parsed: unknown = RXML.parse(toolContent, toolSchema, {
                   onError: options?.onError,
                 });
-                parsed = deepDecodeStringsBySchema(
-                  parsed,
-                  unwrapJsonSchema(toolSchema) as JsonSchemaNode
-                );
 
                 // No additional fallback: RXML handles raw content for string fields
 
