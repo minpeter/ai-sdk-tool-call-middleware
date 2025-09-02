@@ -1,6 +1,7 @@
 /**
  * Test fixtures and data for robust-xml tests
  */
+import { z } from "zod";
 
 export const validXmlSamples = {
   simple: "<root><item>test</item></root>",
@@ -31,55 +32,50 @@ export const malformedXmlSamples = {
 export const schemaTestCases = {
   stringProperty: {
     xml: "<content>Hello World</content>",
-    schema: {
-      type: "object",
-      properties: { content: { type: "string" } },
-    },
+    schema: z.toJSONSchema(
+      z.object({
+        content: z.string(),
+      })
+    ),
     expected: { content: "Hello World" },
   },
   numberProperty: {
     xml: "<value>42</value>",
-    schema: {
-      type: "object",
-      properties: { value: { type: "number" } },
-    },
+    schema: z.toJSONSchema(
+      z.object({
+        value: z.number(),
+      })
+    ),
     expected: { value: 42 },
   },
   booleanProperty: {
     xml: "<flag>true</flag>",
-    schema: {
-      type: "object",
-      properties: { flag: { type: "boolean" } },
-    },
+    schema: z.toJSONSchema(
+      z.object({
+        flag: z.boolean(),
+      })
+    ),
     expected: { flag: true },
   },
   arrayProperty: {
     xml: "<items><item>1</item><item>2</item><item>3</item></items>",
-    schema: {
-      type: "object",
-      properties: {
-        items: {
-          type: "array",
-          items: { type: "number" },
-        },
-      },
-    },
+    schema: z.toJSONSchema(
+      z.object({
+        items: z.array(z.number()),
+      })
+    ),
     expected: { items: [1, 2, 3] },
   },
   objectProperty: {
     xml: "<user><name>John</name><age>30</age></user>",
-    schema: {
-      type: "object",
-      properties: {
-        user: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            age: { type: "number" },
-          },
-        },
-      },
-    },
+    schema: z.toJSONSchema(
+      z.object({
+        user: z.object({
+          name: z.string(),
+          age: z.number(),
+        }),
+      })
+    ),
     expected: { user: { name: "John", age: 30 } },
   },
 };
@@ -149,18 +145,20 @@ export const errorTestCases = {
   },
   coercionError: {
     xml: "<value>not-a-number</value>",
-    schema: {
-      type: "object",
-      properties: { value: { type: "number" } },
-    },
+    schema: z.toJSONSchema(
+      z.object({
+        value: z.number(),
+      })
+    ),
     expectedError: "RXMLCoercionError",
   },
   duplicateError: {
     xml: "<content>First</content><content>Second</content>",
-    schema: {
-      type: "object",
-      properties: { content: { type: "string" } },
-    },
+    schema: z.toJSONSchema(
+      z.object({
+        content: z.string(),
+      })
+    ),
     options: { throwOnDuplicateStringTags: true },
     expectedError: "RXMLDuplicateStringTagError",
   },

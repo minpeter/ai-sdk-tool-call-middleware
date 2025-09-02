@@ -2,7 +2,6 @@ import type {
   LanguageModelV2,
   LanguageModelV2Content,
   LanguageModelV2FinishReason,
-  LanguageModelV2FunctionTool,
   LanguageModelV2StreamPart,
   LanguageModelV2Usage,
 } from "@ai-sdk/provider";
@@ -11,8 +10,9 @@ import { generateId } from "@ai-sdk/provider-utils";
 import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
   extractOnErrorOption,
-  getFunctionTools,
   isToolChoiceActive,
+  originalToolsSchema,
+  ToolCallMiddlewareProviderOptions,
 } from "./utils";
 import {
   getDebugLevel,
@@ -20,11 +20,6 @@ import {
   logParsedSummary,
   logRawChunk,
 } from "./utils/debug";
-
-type WrapStreamParams = Parameters<typeof isToolChoiceActive>[0] & {
-  tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
-  providerOptions?: unknown;
-};
 
 export async function wrapStream({
   protocol,
@@ -35,7 +30,9 @@ export async function wrapStream({
   protocol: ToolCallProtocol;
   doStream: () => ReturnType<LanguageModelV2["doStream"]>;
   doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
-  params: WrapStreamParams;
+  params: {
+    providerOptions?: ToolCallMiddlewareProviderOptions;
+  };
 }) {
   if (isToolChoiceActive(params)) {
     return toolChoiceStream({
@@ -47,7 +44,11 @@ export async function wrapStream({
   const { stream, ...rest } = await doStream();
 
   const debugLevel = getDebugLevel();
-  const tools = getFunctionTools(params);
+
+  const tools = originalToolsSchema.decode(
+    params.providerOptions?.toolCallMiddleware?.originalTools
+  );
+
   const options = {
     ...extractOnErrorOption(params.providerOptions),
     ...((params.providerOptions as { toolCallMiddleware?: unknown } | undefined)

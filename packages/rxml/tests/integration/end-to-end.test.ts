@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import * as RXML from "@/index";
 
@@ -19,21 +20,17 @@ describe("robust-xml integration", () => {
         </tool_call>
       `;
 
-      const schema = {
-        type: "object",
-        properties: {
-          name: { type: "string" },
-          parameters: {
-            type: "object",
-            properties: {
-              location: { type: "string" },
-              unit: { type: "string" },
-              include_forecast: { type: "boolean" },
-              days: { type: "number" },
-            },
-          },
-        },
-      };
+      const schema = z.toJSONSchema(
+        z.object({
+          name: z.string(),
+          parameters: z.object({
+            location: z.string(),
+            unit: z.string(),
+            include_forecast: z.boolean(),
+            days: z.number(),
+          }),
+        })
+      );
 
       const result = RXML.parse(xml, schema);
       expect(result).toEqual({
@@ -73,13 +70,12 @@ describe("robust-xml integration", () => {
         </response>
       `;
 
-      const schema = {
-        type: "object",
-        properties: {
-          message: { type: "string" },
-          count: { type: "number" },
-        },
-      };
+      const schema = z.toJSONSchema(
+        z.object({
+          message: z.string(),
+          count: z.number(),
+        })
+      );
 
       const result = RXML.parse(xml, schema);
       expect(result.message).toBe(
@@ -97,13 +93,12 @@ describe("robust-xml integration", () => {
         </data>
       `;
 
-      const schema = {
-        type: "object",
-        properties: {
-          description: { type: "string" },
-          value: { type: "number" },
-        },
-      };
+      const schema = z.toJSONSchema(
+        z.object({
+          description: z.string(),
+          value: z.number(),
+        })
+      );
 
       // Should throw by default
       expect(() => RXML.parse(xml, schema)).toThrow(
@@ -231,41 +226,33 @@ describe("robust-xml integration", () => {
     it("works with the existing test cases", () => {
       // Test case from the original robust-xml tests
       const xml = `<location>San Francisco</location>`;
-      const schema = {
-        type: "object",
-        properties: { location: { type: "string" } },
-        additionalProperties: false,
-      };
+      const schema = z.toJSONSchema(
+        z.object({
+          location: z.string(),
+        })
+      );
       const result = RXML.parse(xml, schema);
       expect(result).toEqual({ location: "San Francisco" });
     });
 
     it("handles the item list normalization pattern", () => {
       const xml = `<numbers><item> 1 </item><item>2</item><item>1e2</item></numbers>`;
-      const schema = {
-        type: "object",
-        properties: {
-          numbers: { type: "array", items: { type: "number" } },
-        },
-        additionalProperties: false,
-      };
+      const schema = z.toJSONSchema(
+        z.object({
+          numbers: z.array(z.number()),
+        })
+      );
       const result = RXML.parse(xml, schema);
       expect(result).toEqual({ numbers: [1, 2, 100] });
     });
 
     it("handles nested element structure with text nodes", () => {
       const xml = `<obj><name attr="x"> John Doe </name></obj>`;
-      const schema = {
-        type: "object",
-        properties: {
-          obj: {
-            type: "object",
-            properties: { name: { type: "string" } },
-            additionalProperties: true,
-          },
-        },
-        additionalProperties: false,
-      };
+      const schema = z.toJSONSchema(
+        z.object({
+          obj: z.object({ name: z.string() }).passthrough(),
+        })
+      );
       const result = RXML.parse(xml, schema);
       expect(result).toEqual({
         obj: { name: { "#text": "John Doe", "@_attr": "x" } },
@@ -281,23 +268,18 @@ describe("robust-xml integration", () => {
           `<record id="${i}"><name>Record ${i}</name><value>${Math.random()}</value><active>${i % 2 === 0}</active></record>`
       ).join("")}</data>`;
 
-      const schema = {
-        type: "object",
-        properties: {
-          data: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                id: { type: "string" },
-                name: { type: "string" },
-                value: { type: "number" },
-                active: { type: "boolean" },
-              },
-            },
-          },
-        },
-      };
+      const schema = z.toJSONSchema(
+        z.object({
+          data: z.array(
+            z.object({
+              id: z.string(),
+              name: z.string(),
+              value: z.number(),
+              active: z.boolean(),
+            })
+          ),
+        })
+      );
 
       const startTime = Date.now();
       const result = RXML.parse(mediumXml, schema);

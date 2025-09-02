@@ -1,7 +1,9 @@
+import { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { ToolCallProtocol } from "@/protocols/tool-call-protocol";
 import { createToolMiddleware } from "@/tool-call-middleware";
+import { originalToolsSchema } from "@/utils/provider-options";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -30,27 +32,33 @@ describe("tool-call-middleware coercion (utils)", () => {
       toolSystemPromptTemplate: () => "",
     });
 
-    const tools = [
+    const tools: LanguageModelV2FunctionTool[] = [
       {
         type: "function",
         name: "calc",
-        description: "",
         inputSchema: {
-          jsonSchema: {
-            type: "object",
-            properties: {
-              a: { type: "number" },
-              b: { type: "boolean" },
-            },
+          type: "object",
+          properties: {
+            a: { type: "number" },
+            b: { type: "boolean" },
           },
         },
       },
-    ] as any;
+    ];
 
     const result = await middleware.wrapGenerate!({
       doGenerate: async () =>
         ({ content: [{ type: "text", text: "" }] }) as any,
-      params: { tools },
+      params: {
+        tools,
+        providerOptions: {
+          // INFO: Since this test does not go through the transform handler
+          // that normally injects this, we need to provide it manually.
+          toolCallMiddleware: {
+            originalTools: originalToolsSchema.encode(tools),
+          },
+        },
+      },
     } as any);
 
     const tc = (result.content as any[]).find(

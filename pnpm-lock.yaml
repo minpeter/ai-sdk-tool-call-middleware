@@ -103,6 +103,9 @@ importers:
         specifier: ^4.1.5
         version: 4.1.5
     devDependencies:
+      '@ai-sdk/provider':
+        specifier: 2.0.0
+        version: 2.0.0
       '@types/node':
         specifier: ^24.3.0
         version: 24.3.0
@@ -119,6 +122,9 @@ importers:
       '@types/node':
         specifier: ^24.3.0
         version: 24.3.0
+      zod:
+        specifier: ^4.1.5
+        version: 4.1.5
 
   packages/eval:
     dependencies:

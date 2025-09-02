@@ -20,10 +20,45 @@ import {
 import {
   countTagOccurrences,
   extractRawInner,
+  findAllInnerRanges,
   findFirstTopLevelRange,
 } from "../schema/extraction";
+import { unescapeXml } from "../utils/helpers";
 import { XMLTokenizer } from "./tokenizer";
 import type { ParseOptions, RXMLNode } from "./types";
+
+// Internal: schema-guided deep XML entity decoding
+function deepDecodeStringsBySchema(input: unknown, schema: unknown): unknown {
+  if (input == null || schema == null) return input;
+
+  const type = getSchemaType(schema);
+
+  if (type === "string" && typeof input === "string") {
+    return unescapeXml(input);
+  }
+
+  if (type === "array" && Array.isArray(input)) {
+    const unwrapped = unwrapJsonSchema(schema) as
+      | { items?: unknown }
+      | undefined;
+    const itemSchema = unwrapped?.items ?? {};
+    return input.map(item => deepDecodeStringsBySchema(item, itemSchema));
+  }
+
+  if (type === "object" && input && typeof input === "object") {
+    const obj = input as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(obj)) {
+      const childSchema = getPropertySchema(schema, key);
+      out[key] = deepDecodeStringsBySchema(obj[key], childSchema);
+    }
+    return out;
+  }
+
+  // Fallback: decode any string when schema typing is ambiguous/missing
+  if (typeof input === "string") return unescapeXml(input);
+  return input;
+}
 
 /**
  * Parse XML with schema-aware type coercion
@@ -125,13 +160,30 @@ export function parse(
   }
 
   // Identify string-typed properties for special handling
-  const stringTypedProps = getStringTypedProperties(schema);
+  // Use top-level keys for duplicate detection/backfill, deep keys for placeholder shielding
+  const getTopLevelStringProps = (s: unknown): Set<string> => {
+    const set = new Set<string>();
+    const unwrapped = unwrapJsonSchema(s);
+    if (unwrapped && typeof unwrapped === "object") {
+      const props = (unwrapped as Record<string, unknown>).properties as
+        | Record<string, unknown>
+        | undefined;
+      if (props && typeof props === "object") {
+        for (const [k, v] of Object.entries(props)) {
+          if (getSchemaType(v) === "string") set.add(k);
+        }
+      }
+    }
+    return set;
+  };
+  const topLevelStringProps = getTopLevelStringProps(schema);
+  const deepStringTypedProps = getStringTypedProperties(schema);
 
   // First, check for duplicates before doing any placeholder replacement
   const duplicateKeys = new Set<string>();
-  for (const key of stringTypedProps) {
+  for (const key of topLevelStringProps) {
     const excludeRanges: Array<{ start: number; end: number }> = [];
-    for (const other of stringTypedProps) {
+    for (const other of topLevelStringProps) {
       if (other === key) continue;
       const range = findFirstTopLevelRange(actualXmlInner, other);
       if (range) excludeRanges.push(range);
@@ -165,44 +217,35 @@ export function parse(
   let xmlInnerForParsing = actualXmlInner;
   const originalContentMap = new Map<string, string>();
   try {
+    // Collect ranges of all occurrences for each string-typed tag name (at any depth)
     const ranges: Array<{ start: number; end: number; key: string }> = [];
-
-    for (const key of stringTypedProps) {
-      // Find the range for placeholder replacement
-      const r = findFirstTopLevelRange(actualXmlInner, key);
-      if (r && r.end > r.start) ranges.push({ ...r, key });
+    for (const key of deepStringTypedProps) {
+      const innerRanges = findAllInnerRanges(actualXmlInner, key);
+      for (const r of innerRanges) {
+        if (r.end > r.start) ranges.push({ ...r, key });
+      }
     }
 
     if (ranges.length > 0) {
-      // Keep only outermost ranges by removing any range fully contained within a previously kept range.
+      // Sort by start index and replace from left to right
       const sorted = [...ranges].sort((a, b) => a.start - b.start);
-      const filtered: Array<{ start: number; end: number; key: string }> = [];
+      let rebuilt = "";
+      let cursor = 0;
       for (const r of sorted) {
-        const last = filtered[filtered.length - 1];
-        if (last && r.start >= last.start && r.end <= last.end) {
-          // Nested inside the last kept range; skip this inner range
+        if (r.start < cursor) {
+          // Overlapping range (nested); skip, as outer replacement already handled it
           continue;
         }
-        filtered.push(r);
+        if (cursor < r.start) rebuilt += actualXmlInner.slice(cursor, r.start);
+        const placeholder = `__RXML_PLACEHOLDER_${r.key}_${r.start}_${r.end}__`;
+        const originalContent = actualXmlInner.slice(r.start, r.end);
+        originalContentMap.set(placeholder, originalContent);
+        rebuilt += placeholder;
+        cursor = r.end;
       }
-
-      if (filtered.length > 0) {
-        filtered.sort((a, b) => a.start - b.start);
-        let rebuilt = "";
-        let cursor = 0;
-        for (const r of filtered) {
-          if (cursor < r.start)
-            rebuilt += actualXmlInner.slice(cursor, r.start);
-          const placeholder = `__RXML_PLACEHOLDER_${r.key}__`;
-          const originalContent = actualXmlInner.slice(r.start, r.end);
-          originalContentMap.set(placeholder, originalContent);
-          rebuilt += placeholder;
-          cursor = r.end;
-        }
-        if (cursor < actualXmlInner.length)
-          rebuilt += actualXmlInner.slice(cursor);
-        xmlInnerForParsing = rebuilt;
-      }
+      if (cursor < actualXmlInner.length)
+        rebuilt += actualXmlInner.slice(cursor);
+      xmlInnerForParsing = rebuilt;
     }
   } catch (error) {
     // Non-fatal: fall back to original XML; allow caller to handle via onError
@@ -233,11 +276,43 @@ export function parse(
 
   // Convert DOM to flat object structure
   const parsedArgs = domToObject(parsedNodes, schema, textNodeName);
+
+  // Restore any placeholders across the entire parsed structure before schema-aware processing
+  const restorePlaceholdersDeep = (val: unknown): unknown => {
+    if (val == null) return val;
+    if (typeof val === "string") {
+      if (val.startsWith("__RXML_PLACEHOLDER_")) {
+        const orig = originalContentMap.get(val);
+        return orig !== undefined ? orig : val;
+      }
+      return val;
+    }
+    if (Array.isArray(val)) return val.map(restorePlaceholdersDeep);
+    if (typeof val === "object") {
+      const obj = val as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        const restored = restorePlaceholdersDeep(v);
+        // Trim when restoring into text node field to match tokenizer's default trimming
+        if (k === textNodeName && typeof restored === "string") {
+          out[k] = restored.trim();
+        } else {
+          out[k] = restored;
+        }
+      }
+      return out;
+    }
+    return val;
+  };
+  const parsedArgsRestored = restorePlaceholdersDeep(parsedArgs) as Record<
+    string,
+    unknown
+  >;
   const args: Record<string, unknown> = {};
 
   // Process each property with schema-aware handling
-  for (const k of Object.keys(parsedArgs || {})) {
-    const v = parsedArgs[k];
+  for (const k of Object.keys(parsedArgsRestored || {})) {
+    const v = parsedArgsRestored[k];
     let val: unknown = v;
     const propSchema = getPropertySchema(schema, k);
     const propType = getSchemaType(propSchema);
@@ -285,11 +360,8 @@ export function parse(
           ] as string;
         }
 
-        // Find the original content from the ranges that were replaced
         const originalContent = originalContentMap.get(placeholderKey);
-
         if (originalContent !== undefined) {
-          // originalContent is already the inner content from findFirstTopLevelRange
           args[k] = originalContent;
           continue;
         }
@@ -412,7 +484,7 @@ export function parse(
   }
 
   // Ensure missing string-typed properties are populated from original XML
-  for (const key of stringTypedProps) {
+  for (const key of topLevelStringProps) {
     if (!Object.prototype.hasOwnProperty.call(args, key)) {
       const raw = extractRawInner(actualXmlInner, key);
       if (typeof raw === "string") {
@@ -447,7 +519,11 @@ export function parse(
   // Apply schema-based coercion
   try {
     const coerced = coerceDomBySchema(dataToCoerce, schema);
-    return coerced;
+    const decoded = deepDecodeStringsBySchema(coerced, schema) as Record<
+      string,
+      unknown
+    >;
+    return decoded;
   } catch (error) {
     throw new RXMLCoercionError("Failed to coerce by schema", error);
   }

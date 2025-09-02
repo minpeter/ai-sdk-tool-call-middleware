@@ -36,6 +36,14 @@ export function extractRawInner(
 
     const ch = xmlContent[i];
     if (ch === "!") {
+      // Handle DOCTYPE declarations specially - treat them as regular content
+      // when they appear within tag content, not as XML declarations
+      if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
+        // For DOCTYPE within content, we need to find the closing >
+        const gt = xmlContent.indexOf(">", i + 1);
+        i = gt === -1 ? len : gt + 1;
+        continue;
+      }
       if (xmlContent.startsWith("!--", i + 1)) {
         const close = xmlContent.indexOf("-->", i + 4);
         i = close === -1 ? len : close + 3;
@@ -106,6 +114,12 @@ export function extractRawInner(
 
             const h = xmlContent[nx];
             if (h === "!") {
+              // Special handling for DOCTYPE and other declarations within content
+              if (xmlContent.startsWith("!DOCTYPE", nx + 1)) {
+                const gt2 = xmlContent.indexOf(">", nx + 1);
+                pos = gt2 === -1 ? len : gt2 + 1;
+                continue;
+              }
               if (xmlContent.startsWith("!--", nx + 1)) {
                 const close = xmlContent.indexOf("-->", nx + 4);
                 pos = close === -1 ? len : close + 3;
@@ -189,6 +203,180 @@ export function extractRawInner(
 }
 
 /**
+ * Find all inner content ranges for a given tag name at any depth.
+ * Returns ranges for the inner content between <tagName ...> and </tagName>.
+ */
+export function findAllInnerRanges(
+  xmlContent: string,
+  tagName: string
+): Array<{ start: number; end: number }> {
+  const len = xmlContent.length;
+  const target = tagName;
+  const ranges: Array<{ start: number; end: number }> = [];
+
+  let i = 0;
+
+  while (i < len) {
+    const lt = xmlContent.indexOf("<", i);
+    if (lt === -1) break;
+    i = lt + 1;
+    if (i >= len) break;
+
+    const ch = xmlContent[i];
+    if (ch === "!") {
+      if (xmlContent.startsWith("!--", i + 1)) {
+        const close = xmlContent.indexOf("-->", i + 4);
+        i = close === -1 ? len : close + 3;
+        continue;
+      }
+      if (xmlContent.startsWith("![CDATA[", i + 1)) {
+        const close = xmlContent.indexOf("]]>", i + 9);
+        i = close === -1 ? len : close + 3;
+        continue;
+      }
+      // DOCTYPE or other declaration
+      const gt = xmlContent.indexOf(">", i + 1);
+      i = gt === -1 ? len : gt + 1;
+      continue;
+    }
+    if (ch === "?") {
+      const close = xmlContent.indexOf("?>", i + 1);
+      i = close === -1 ? len : close + 2;
+      continue;
+    }
+    if (ch === "/") {
+      const gt = xmlContent.indexOf(">", i + 1);
+      i = gt === -1 ? len : gt + 1;
+      continue;
+    }
+
+    // Opening tag
+    let j = i;
+    if (j < len && isNameStartChar(xmlContent[j])) {
+      j++;
+      while (j < len && isNameChar(xmlContent[j])) j++;
+    }
+    const name = xmlContent.slice(i, j);
+    let k = j;
+    let isSelfClosing = false;
+    while (k < len) {
+      const c = xmlContent[k];
+      if (c === '"' || c === "'") {
+        k = skipQuoted(xmlContent, k);
+        continue;
+      }
+      if (c === ">") break;
+      if (c === "/" && xmlContent[k + 1] === ">") {
+        isSelfClosing = true;
+        k++;
+        break;
+      }
+      k++;
+    }
+    const tagEnd = k;
+
+    if (name !== target) {
+      // Advance over this tag
+      i = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
+      continue;
+    }
+
+    // Found a target start tag
+    const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
+    if (isSelfClosing) {
+      ranges.push({ start: contentStart, end: contentStart });
+      i = contentStart; // continue after this position
+      continue;
+    }
+
+    // Find matching close tag at same depth for this occurrence
+    let pos = contentStart;
+    let sameDepth = 1;
+    while (pos < len) {
+      const nextLt = xmlContent.indexOf("<", pos);
+      if (nextLt === -1) break;
+      const nx = nextLt + 1;
+      if (nx >= len) break;
+
+      const h = xmlContent[nx];
+      if (h === "!") {
+        if (xmlContent.startsWith("!--", nx + 1)) {
+          const close = xmlContent.indexOf("-->", nx + 4);
+          pos = close === -1 ? len : close + 3;
+          continue;
+        }
+        if (xmlContent.startsWith("![CDATA[", nx + 1)) {
+          const close = xmlContent.indexOf("]]>", nx + 9);
+          pos = close === -1 ? len : close + 3;
+          continue;
+        }
+        const gt2 = xmlContent.indexOf(">", nx + 1);
+        pos = gt2 === -1 ? len : gt2 + 1;
+        continue;
+      } else if (h === "?") {
+        const close = xmlContent.indexOf("?>", nx + 1);
+        pos = close === -1 ? len : close + 2;
+        continue;
+      } else if (h === "/") {
+        let t = nx + 1;
+        if (t < len && isNameStartChar(xmlContent[t])) {
+          t++;
+          while (t < len && isNameChar(xmlContent[t])) t++;
+        }
+        const endName = xmlContent.slice(nx + 1, t);
+        const gt2 = xmlContent.indexOf(">", t);
+        if (endName === target) {
+          sameDepth--;
+          if (sameDepth === 0) {
+            ranges.push({ start: contentStart, end: nextLt });
+            // advance i to after this closing tag
+            i = gt2 === -1 ? len : gt2 + 1;
+            break;
+          }
+        }
+        pos = gt2 === -1 ? len : gt2 + 1;
+        continue;
+      } else {
+        let t = nx;
+        if (t < len && isNameStartChar(xmlContent[t])) {
+          t++;
+          while (t < len && isNameChar(xmlContent[t])) t++;
+        }
+        let u = t;
+        let isSelfClosingNested = false;
+        while (u < len) {
+          const cu = xmlContent[u];
+          if (cu === '"' || cu === "'") {
+            u = skipQuoted(xmlContent, u);
+            continue;
+          }
+          if (cu === ">") break;
+          if (cu === "/" && xmlContent[u + 1] === ">") {
+            isSelfClosingNested = true;
+            u++;
+            break;
+          }
+          u++;
+        }
+        const startName = xmlContent.slice(nx, t);
+        if (startName === target && !isSelfClosingNested) {
+          sameDepth++;
+        }
+        pos = xmlContent[u] === ">" ? u + 1 : u + 1;
+        continue;
+      }
+    }
+
+    if (sameDepth !== 0) {
+      // unmatched; stop scanning further to avoid infinite loops
+      break;
+    }
+  }
+
+  return ranges;
+}
+
+/**
  * Find the first top-level range for a tag
  */
 export function findFirstTopLevelRange(
@@ -209,6 +397,14 @@ export function findFirstTopLevelRange(
 
     const ch = xmlContent[i];
     if (ch === "!") {
+      // Handle DOCTYPE declarations specially - treat them as regular content
+      // when they appear within tag content, not as XML declarations
+      if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
+        // For DOCTYPE within content, we need to find the closing >
+        const gt = xmlContent.indexOf(">", i + 1);
+        i = gt === -1 ? len : gt + 1;
+        continue;
+      }
       if (xmlContent.startsWith("!--", i + 1)) {
         const close = xmlContent.indexOf("-->", i + 4);
         i = close === -1 ? len : close + 3;
@@ -272,6 +468,12 @@ export function findFirstTopLevelRange(
 
           const h = xmlContent[nx];
           if (h === "!") {
+            // Special handling for DOCTYPE and other declarations within content
+            if (xmlContent.startsWith("!DOCTYPE", nx + 1)) {
+              const gt2 = xmlContent.indexOf(">", nx + 1);
+              pos = gt2 === -1 ? len : gt2 + 1;
+              continue;
+            }
             if (xmlContent.startsWith("!--", nx + 1)) {
               const close = xmlContent.indexOf("-->", nx + 4);
               pos = close === -1 ? len : close + 3;
@@ -456,6 +658,14 @@ export function findAllTopLevelRanges(
 
     const ch = xmlContent[i];
     if (ch === "!") {
+      // Handle DOCTYPE declarations specially - treat them as regular content
+      // when they appear within tag content, not as XML declarations
+      if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
+        // For DOCTYPE within content, we need to find the closing >
+        const gt = xmlContent.indexOf(">", i + 1);
+        i = gt === -1 ? len : gt + 1;
+        continue;
+      }
       if (xmlContent.startsWith("!--", i + 1)) {
         const close = xmlContent.indexOf("-->", i + 4);
         i = close === -1 ? len : close + 3;

@@ -18,6 +18,11 @@ export { XMLTokenizer } from "./core/tokenizer";
 
 // Schema integration
 export {
+  coerceBySchema,
+  getSchemaType,
+  unwrapJsonSchema,
+} from "./schema/base-coercion";
+export {
   coerceDomBySchema,
   domToObject,
   getPropertySchema,
@@ -28,6 +33,7 @@ export {
 export {
   countTagOccurrences,
   extractRawInner,
+  findAllTopLevelRanges,
   findFirstTopLevelRange,
 } from "./schema/extraction";
 
@@ -38,6 +44,9 @@ export {
   stringifyNodes,
   toContentString,
 } from "./builders/stringify";
+
+// Utils
+export { unescapeXml } from "./utils/helpers";
 
 // Types
 export type { ParseOptions, RXMLNode, StringifyOptions } from "./core/types";

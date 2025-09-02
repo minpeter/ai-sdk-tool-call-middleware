@@ -80,6 +80,70 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     expect(args.content).toBe(html);
   });
 
+  it("preserves DOCTYPE HTML when model doesn't escape entities (non-escaped)", () => {
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV2FunctionTool[] = [
+      {
+        type: "function",
+        name: "file_write",
+        description: "Write a file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            content: { type: "string" },
+          },
+          required: ["path", "content"],
+        },
+      },
+    ];
+
+    const html = `<!DOCTYPE html>\n<html><body><h1>ok</h1></body></html>`;
+    const text = `<file_write><path>a.html</path><content>${html}</content></file_write>`;
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+    const tc = out.find(isToolCallContent);
+    const args =
+      typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
+    expect(args.path).toBe("a.html");
+    expect(args.content).toBe(html);
+  });
+
+  it("decodes entity-escaped HTML inside string-typed <content>", () => {
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV2FunctionTool[] = [
+      {
+        type: "function",
+        name: "file_write",
+        description: "Write a file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            content: { type: "string" },
+          },
+          required: ["path", "content"],
+        },
+      },
+    ];
+
+    const htmlRaw = `<!DOCTYPE html>\n<html lang="ko"><head><title>테스트 페이지</title></head><body><h1>안녕</h1></body></html>`;
+    const htmlEscaped = `&lt;!DOCTYPE html&gt;\n&lt;html lang="ko"&gt;&lt;head&gt;&lt;title&gt;테스트 페이지&lt;/title&gt;&lt;/head&gt;&lt;body&gt;&lt;h1&gt;안녕&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;`;
+    const text =
+      `<file_write>` +
+      `<path>index.html</path>` +
+      `<content>${htmlEscaped}</content>` +
+      `</file_write>`;
+
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+    const tc = out.find(isToolCallContent);
+    expect(tc?.toolName).toBe("file_write");
+    const args =
+      typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
+    expect(args.path).toBe("index.html");
+    // Ensure entities are decoded back to raw HTML
+    expect(args.content).toBe(htmlRaw);
+  });
+
   it("cancels entire tool call when duplicate string tags are emitted (non-stream)", () => {
     const protocol = morphXmlProtocol();
     const tools: LanguageModelV2FunctionTool[] = [

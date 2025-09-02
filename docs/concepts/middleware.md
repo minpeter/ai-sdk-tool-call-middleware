@@ -27,7 +27,7 @@ See `packages/parser/src/tool-call-middleware.ts` and `packages/parser/src/proto
      - Assistant tool-call parts are converted to provider-friendly text with `protocol.formatToolCall`.
      - Tool result messages (`role: "tool"`) are mapped to `role: "user"` text via `protocol.formatToolResponse`.
      - Condenses multiple text parts into a single text block and merges consecutive user text messages.
-   - Clears `params.tools` (providers may drop/alter them) and propagates tool names internally to `providerOptions.toolCallMiddleware.toolNames` for downstream parsing.
+   - Clears `params.tools` (providers may drop/alter them) and propagates tool schemas internally to `providerOptions.toolCallMiddleware.originalTools` for downstream parsing.
    - Tool choice handling:
      - `toolChoice: { type: "tool", toolName }`: sets `responseFormat` to a strict JSON schema for the selected tool and enables the fast-path.
      - `toolChoice: { type: "required" }`: sets a dynamic JSON schema that requires exactly one of the provided tools and enables the fast-path.
@@ -56,7 +56,7 @@ See `packages/parser/src/tool-call-middleware.ts` and `packages/parser/src/proto
 
 - `providerOptions.toolCallMiddleware.onError?: (message, metadata) => void`
   - Non-fatal parse/format issues are surfaced here (e.g., failed JSON parse on fast-path).
-- `providerOptions.toolCallMiddleware.toolNames?: string[]`
+- `providerOptions.toolCallMiddleware.originalTools?: Array<{ name: string; inputSchema: string }>`
   - Internal: automatically set by `transformParams` to propagate tool names when providers strip `params.tools`.
 - These are internal wiring details used by the middleware; user-facing configuration is through `tools`, `toolChoice`, and the chosen protocol.
 

@@ -53,7 +53,7 @@ When an argument is an array, write each item inside a single element on one lin
 Examples:
 <get_weather>
 <location>
-San Fransisco
+San Francisco
 </location>
 </get_weather>`;
   },

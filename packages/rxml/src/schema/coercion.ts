@@ -207,25 +207,38 @@ export function coerceDomBySchema(
  * Extract string-typed property names from schema
  */
 export function getStringTypedProperties(schema: unknown): Set<string> {
-  const set = new Set<string>();
-  const unwrapped = unwrapJsonSchema(schema);
+  const collected = new Set<string>();
 
-  if (unwrapped && typeof unwrapped === "object") {
+  const visit = (s: unknown): void => {
+    const unwrapped = unwrapJsonSchema(s);
+    if (!unwrapped || typeof unwrapped !== "object") return;
     const u = unwrapped as Record<string, unknown>;
-    const props = u.properties as Record<string, unknown> | undefined;
+    const type = getSchemaType(unwrapped);
 
-    if (props && typeof props === "object") {
-      for (const key of Object.keys(props)) {
-        const propSchema = (props as Record<string, unknown>)[key];
-        const propType = getSchemaType(propSchema);
-        if (propType === "string") {
-          set.add(key);
+    if (type === "object") {
+      const props = u.properties as Record<string, unknown> | undefined;
+      if (props && typeof props === "object") {
+        for (const [key, propSchema] of Object.entries(props)) {
+          const t = getSchemaType(propSchema);
+          if (t === "string") {
+            collected.add(key);
+          } else if (t === "object" || t === "array") {
+            visit(propSchema);
+          }
         }
       }
+    } else if (type === "array") {
+      const items = (u as Record<string, unknown>).items as unknown;
+      if (items) visit(items);
+      const prefix = (u as Record<string, unknown>).prefixItems as
+        | unknown[]
+        | undefined;
+      if (Array.isArray(prefix)) prefix.forEach(visit);
     }
-  }
+  };
 
-  return set;
+  visit(schema);
+  return collected;
 }
 
 /**

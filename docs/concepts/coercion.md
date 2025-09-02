@@ -5,7 +5,7 @@ The middleware coerces `tool-call.input` to match the tool JSON Schema so tools 
 ## Where it runs
 
 - Generate mode:
-  - After `parseGeneratedText`, each `tool-call` passes through `coerceToolCallInput` (schema-based coercion, then `input` is `JSON.stringify`-ed).
+  - After `parseGeneratedText`, each `tool-call` passes through `fixToolCallWithSchema` (schema-based coercion, then `input` is `JSON.stringify`-ed).
 - Stream mode:
   - Protocol-dependent. The XML protocol coerces during both `parseGeneratedText` and `createStreamParser`. The JSON-mix protocol does not coerce in stream (only generate’s global pass applies).
 - Tool-choice mode (provider-native):
@@ -39,7 +39,7 @@ The middleware coerces `tool-call.input` to match the tool JSON Schema so tools 
 ## Helpers
 
 - `coerceBySchema(value, schema)` — main coercion routine.
-- `coerceToolCallInput(part, tools)` — applies `coerceBySchema` using the matched tool’s `inputSchema`, then serializes `input` as JSON.
+- `fixToolCallWithSchema(part, tools)` — applies `coerceBySchema` using the matched tool’s `inputSchema`, then serializes `input` as JSON.
 
 See `packages/parser/src/utils/coercion.ts`.
 

@@ -5,27 +5,17 @@
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
-  "types": "./index.d.ts",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./index.d.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs",
       "default": "./dist/index.js"
-    },
-    "./index.d.ts": "./index.d.ts",
-    "./dist/index.d.ts": "./dist/index.d.ts"
-  },
-  "typesVersions": {
-    "*": {
-      "*": [
-        "index.d.ts"
-      ]
     }
   },
   "files": [
-    "dist/**/*",
-    "index.d.ts"
+    "dist/**/*"
   ],
   "publishConfig": {
     "access": "public"

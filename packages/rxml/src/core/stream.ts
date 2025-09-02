@@ -167,7 +167,6 @@ export class XMLTransformStream extends Transform {
       }
 
       // Find matching closing tag with depth handling
-      const closingTag = `</${tagName}>`;
       let depth = 1;
       let searchStart = openTagEnd + 1;
       let elementEnd = -1;

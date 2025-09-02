@@ -26,7 +26,7 @@ const result = await model.generateText({
 
 ## Internal (not public API; subject to change)
 
-- `toolNames: string[]`
+- `originalTools: Array<{ name: string; inputSchema: string }>`
   - Set by `transformParams` to propagate function tool names when providers strip `params.tools`.
   - Read by `getFunctionTools` as a fallback.
   - Source: `transform-handler.ts`, `utils/tools.ts`.
@@ -45,7 +45,7 @@ const result = await model.generateText({
 ## Protocol options passthrough
 
 - All fields under `providerOptions.toolCallMiddleware` are forwarded to protocol parsers as `options` in both generate and stream flows.
-- Reserved/internal keys include: `onError`, `toolNames`, and `toolChoice`.
+- Reserved/internal keys include: `onError`, `originalTools`, and `toolChoice`.
 - Protocols may read additional keys. Today, `morphXmlProtocol` supports `originalToolSchemas`.
 
 Example (XML coercion using original schemas):

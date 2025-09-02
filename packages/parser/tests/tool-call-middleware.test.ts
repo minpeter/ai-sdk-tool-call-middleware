@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 import { createToolMiddleware } from "@/tool-call-middleware";
+import { originalToolsSchema } from "@/utils/provider-options";
 
 describe("createToolMiddleware", () => {
   const mockToolSystemPromptTemplate = (tools: string) =>
@@ -103,7 +104,17 @@ describe("createToolMiddleware", () => {
 
       const result = await middleware.wrapGenerate!({
         doGenerate,
-        params: { prompt: [], tools },
+        params: {
+          prompt: [],
+          tools,
+          providerOptions: {
+            // INFO: Since this test does not go through the transform handler
+            // that normally injects this, we need to provide it manually.
+            toolCallMiddleware: {
+              originalTools: originalToolsSchema.encode(tools),
+            },
+          },
+        },
       } as any);
 
       expect(result.content).toHaveLength(3);

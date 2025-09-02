@@ -205,6 +205,8 @@ function createBfclBenchmark(
           const { function: tools, question: messages } = testCase;
           const temp = config?.temperature;
           const temperature = typeof temp === "number" ? temp : undefined;
+          const maxTok = config?.maxTokens;
+          const maxTokens = typeof maxTok === "number" ? maxTok : undefined;
 
           try {
             // Flatten BFCL message shape [[{role, content}], ...] to [{role, content}, ...]
@@ -282,17 +284,9 @@ function createBfclBenchmark(
               tools: toolsMap,
               toolChoice: "auto",
               ...(temperature !== undefined ? { temperature } : {}),
-              // Pass original schema information to middleware
-              providerOptions: {
-                toolCallMiddleware: {
-                  originalToolSchemas: Object.fromEntries(
-                    transformedTools.map(t => [
-                      t.name,
-                      t.inputSchema as unknown as any,
-                    ])
-                  ),
-                },
-              },
+              ...(maxTokens !== undefined
+                ? { maxOutputTokens: maxTokens }
+                : {}),
             });
 
             // Debug: raw toolCalls

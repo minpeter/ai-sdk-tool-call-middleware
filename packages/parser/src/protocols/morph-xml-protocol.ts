@@ -1,103 +1,22 @@
 import {
   LanguageModelV2Content,
+  LanguageModelV2FunctionTool,
   LanguageModelV2ToolCall,
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import {
-  findFirstTopLevelRange,
-  parse as parseXml,
-  RXMLCoercionError,
-  RXMLDuplicateStringTagError,
-  RXMLParseError,
-  stringify,
-} from "@ai-sdk-tool/rxml";
+import * as RXML from "@ai-sdk-tool/rxml";
 
 import { hasInputProperty } from "@/utils";
-import { unwrapJsonSchema } from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
-
-function getToolSchema(
-  tools: Array<{ name?: string; inputSchema?: unknown }>,
-  originalSchemas: Record<string, unknown>,
-  toolName: string
-): unknown {
-  const original = originalSchemas[toolName];
-  if (original) return original;
-  const fallback = tools.find(t => t.name === toolName)?.inputSchema;
-  return fallback as unknown;
-}
-
-// Shared helper to find tool call ranges for a given set of tool names
-function findToolCalls(
-  text: string,
-  toolNames: string[]
-): Array<{
-  toolName: string;
-  startIndex: number;
-  endIndex: number;
-  content: string;
-  segment: string;
-}> {
-  const toolCalls: Array<{
-    toolName: string;
-    startIndex: number;
-    endIndex: number;
-    content: string;
-    segment: string;
-  }> = [];
-
-  for (const toolName of toolNames) {
-    let searchIndex = 0;
-    while (searchIndex < text.length) {
-      const startTag = `<${toolName}>`;
-      const tagStart = text.indexOf(startTag, searchIndex);
-      if (tagStart === -1) break;
-
-      const remainingText = text.substring(tagStart);
-      const range = findFirstTopLevelRange(remainingText, toolName);
-      if (range) {
-        const contentStart = tagStart + startTag.length;
-        const contentEnd = contentStart + (range.end - range.start);
-        // Robustly find the actual end of the closing tag allowing whitespace before '>'
-        let fullTagEnd = contentEnd + `</${toolName}>`.length;
-        const closeHead = text.indexOf(`</${toolName}`, contentEnd);
-        if (closeHead === contentEnd) {
-          let p = closeHead + 2 + toolName.length;
-          while (p < text.length && /\s/.test(text[p])) p++;
-          if (text[p] === ">") fullTagEnd = p + 1;
-        }
-
-        const toolContent = text.substring(contentStart, contentEnd);
-        const fullSegment = text.substring(tagStart, fullTagEnd);
-
-        toolCalls.push({
-          toolName,
-          startIndex: tagStart,
-          endIndex: fullTagEnd,
-          content: toolContent,
-          segment: fullSegment,
-        });
-
-        searchIndex = fullTagEnd;
-      } else {
-        searchIndex = tagStart + startTag.length;
-      }
-    }
-  }
-
-  return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
-}
-
-//
 
 export const morphXmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt = (tools || []).map(tool => ({
       name: tool.name,
       description: tool.description,
-      parameters: unwrapJsonSchema(tool.inputSchema),
+      parameters: RXML.unwrapJsonSchema(tool.inputSchema),
     }));
     return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
   },
@@ -115,24 +34,20 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     } else {
       args = inputValue;
     }
-    return stringify(toolCall.toolName, args, {
+    return RXML.stringify(toolCall.toolName, args, {
       suppressEmptyNode: false,
       format: false,
     });
   },
 
   formatToolResponse(toolResult: LanguageModelV2ToolResultPart): string {
-    return stringify("tool_response", {
+    return RXML.stringify("tool_response", {
       tool_name: toolResult.toolName,
       result: toolResult.output,
     });
   },
 
   parseGeneratedText({ text, tools, options }) {
-    const originalSchemas =
-      (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
-        ?.originalToolSchemas || {};
-
     const toolNames = tools.map(t => t.name).filter(name => name != null);
     if (toolNames.length === 0) {
       return [{ type: "text", text }];
@@ -155,14 +70,14 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       }
 
       try {
-        const toolSchema = getToolSchema(
-          tools,
-          originalSchemas,
-          toolCall.toolName
-        );
-        const parsed = parseXml(toolCall.content, toolSchema, {
+        const toolSchema = getToolSchema(tools, toolCall.toolName);
+        const parsed: unknown = RXML.parse(toolCall.content, toolSchema, {
           onError: options?.onError,
+          // Disable HTML self-closing tag behavior to allow base, meta, link etc. as regular tags
+          noChildNodes: [],
         });
+
+        // No additional fallback: RXML handles raw content for string fields
 
         processedElements.push({
           type: "tool-call",
@@ -199,10 +114,10 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   },
 
   createStreamParser({ tools, options }) {
-    const originalSchemas =
-      (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
-        ?.originalToolSchemas || {};
     const toolNames = tools.map(t => t.name).filter(name => name != null);
+    const maxStartTagLen = toolNames.length
+      ? Math.max(...toolNames.map(n => `<${n}>`.length))
+      : 0;
     let buffer = "";
     let currentToolCall: { name: string; content: string } | null = null;
     let currentTextId: string | null = null;
@@ -253,14 +168,14 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
               buffer = buffer.substring(endTagIndex + endTag.length);
 
               try {
-                const toolSchema = getToolSchema(
-                  tools,
-                  originalSchemas,
-                  currentToolCall!.name
-                );
-                const parsed = parseXml(toolContent, toolSchema, {
+                const toolSchema = getToolSchema(tools, currentToolCall!.name);
+                const parsed: unknown = RXML.parse(toolContent, toolSchema, {
                   onError: options?.onError,
+                  // Disable HTML self-closing tag behavior to allow base, meta, link etc. as regular tags
+                  noChildNodes: [],
                 });
+
+                // No additional fallback: RXML handles raw content for string fields
 
                 flushText(controller);
                 controller.enqueue({
@@ -273,11 +188,11 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                 const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;
                 let message =
                   "Could not process streaming XML tool call; emitting original text.";
-                if (error instanceof RXMLDuplicateStringTagError) {
+                if (error instanceof RXML.RXMLDuplicateStringTagError) {
                   message = `Duplicate string tags detected in streaming tool call '${currentToolCall.name}'; emitting original text.`;
-                } else if (error instanceof RXMLCoercionError) {
+                } else if (error instanceof RXML.RXMLCoercionError) {
                   message = `Failed to coerce arguments for streaming tool call '${currentToolCall.name}'; emitting original text.`;
-                } else if (error instanceof RXMLParseError) {
+                } else if (error instanceof RXML.RXMLParseError) {
                   message = `Failed to parse XML for streaming tool call '${currentToolCall.name}'; emitting original text.`;
                 }
                 options?.onError?.(message, {
@@ -320,6 +235,17 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
               );
               currentToolCall = { name: earliestToolName, content: "" };
             } else {
+              // No start tag currently in buffer. Stream out as much as possible
+              // while keeping a small tail to catch a tag split across chunks.
+              const tail = Math.max(0, maxStartTagLen - 1);
+              const safeLen = Math.max(0, buffer.length - tail);
+              if (safeLen > 0) {
+                const textToFlush = buffer.slice(0, safeLen);
+                flushText(controller, textToFlush);
+                buffer = buffer.slice(safeLen);
+                // Continue loop to process any newly available patterns
+                continue;
+              }
               break;
             }
           }
@@ -347,3 +273,74 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     return findToolCalls(text, toolNames).map(tc => tc.segment);
   },
 });
+
+export function getToolSchema(
+  tools: LanguageModelV2FunctionTool[],
+  toolName: string
+) {
+  return tools.find(t => t.name === toolName)?.inputSchema;
+}
+
+// Shared helper to find tool call ranges for a given set of tool names
+function findToolCalls(
+  text: string,
+  toolNames: string[]
+): Array<{
+  toolName: string;
+  startIndex: number;
+  endIndex: number;
+  content: string;
+  segment: string;
+}> {
+  const toolCalls: Array<{
+    toolName: string;
+    startIndex: number;
+    endIndex: number;
+    content: string;
+    segment: string;
+  }> = [];
+
+  for (const toolName of toolNames) {
+    let searchIndex = 0;
+    while (searchIndex < text.length) {
+      const startTag = `<${toolName}>`;
+      const tagStart = text.indexOf(startTag, searchIndex);
+      if (tagStart === -1) break;
+
+      const remainingText = text.substring(tagStart);
+      const range = RXML.findFirstTopLevelRange(remainingText, toolName);
+      if (range) {
+        const contentStart = tagStart + startTag.length;
+        const contentEnd = contentStart + (range.end - range.start);
+
+        // Compute actual end of the closing tag allowing optional whitespace
+        let fullTagEnd = contentEnd + `</${toolName}>`.length;
+        const closeHead = text.indexOf(`</${toolName}`, contentEnd);
+        if (closeHead === contentEnd) {
+          let p = closeHead + 2 + toolName.length;
+          while (p < text.length && /\s/.test(text[p])) p++;
+          if (text[p] === ">") fullTagEnd = p + 1;
+        }
+
+        const segment = text.substring(tagStart, fullTagEnd);
+        const content =
+          RXML.extractRawInner(segment, toolName) ??
+          text.substring(contentStart, contentEnd);
+
+        toolCalls.push({
+          toolName,
+          startIndex: tagStart,
+          endIndex: fullTagEnd,
+          content,
+          segment,
+        });
+
+        searchIndex = fullTagEnd;
+      } else {
+        searchIndex = tagStart + startTag.length;
+      }
+    }
+  }
+
+  return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
+}

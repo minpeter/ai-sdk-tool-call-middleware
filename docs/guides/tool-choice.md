@@ -33,7 +33,7 @@ When `toolChoice` is present, `transformParams` constructs a JSON schema and set
 Additionally:
 
 - For `tool`, `responseFormat` includes `name` and `description` of the tool (hints for some providers).
-- `tools` are cleared in the outgoing params; tool names are propagated via `providerOptions.toolCallMiddleware.toolNames` for downstream parsing when providers strip `params.tools`.
+- `tools` are cleared in the outgoing params; tool schemas are propagated via `providerOptions.toolCallMiddleware.originalTools` for downstream parsing when providers strip `params.tools`.
 - Internal activation flag: `providerOptions.toolCallMiddleware.toolChoice` is set to `{ type: "tool" | "required", ... }` to enable the fast-path in stream/generate handlers.
 
 `wrapStream`/`wrapGenerate` in tool-choice mode parse the provider output as raw JSON text `{ name, arguments }` and synthesize a `tool-call` part.
