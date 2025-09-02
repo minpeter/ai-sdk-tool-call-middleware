@@ -73,6 +73,8 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
         const toolSchema = getToolSchema(tools, toolCall.toolName);
         const parsed: unknown = RXML.parse(toolCall.content, toolSchema, {
           onError: options?.onError,
+          // Disable HTML self-closing tag behavior to allow base, meta, link etc. as regular tags
+          noChildNodes: [],
         });
 
         // No additional fallback: RXML handles raw content for string fields
@@ -169,6 +171,8 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                 const toolSchema = getToolSchema(tools, currentToolCall!.name);
                 const parsed: unknown = RXML.parse(toolContent, toolSchema, {
                   onError: options?.onError,
+                  // Disable HTML self-closing tag behavior to allow base, meta, link etc. as regular tags
+                  noChildNodes: [],
                 });
 
                 // No additional fallback: RXML handles raw content for string fields
