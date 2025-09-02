@@ -56,6 +56,17 @@ const jsonGemma27b = wrapLanguageModel({
   middleware: gemmaToolMiddleware,
 });
 
+const morphExpGemma27b = wrapLanguageModel({
+  model: friendli("google/gemma-3-27b-it"),
+  middleware: morphExpToolMiddleware,
+});
+
+const compareDifferentMiddlewares = {
+  xml: xmlGemma27b,
+  morphExp: morphExpGemma27b,
+  json: jsonGemma27b,
+};
+
 const morphExp = wrapLanguageModel({
   model: friendli("meta-llama/Llama-3.3-70B-Instruct"),
   middleware: morphExpToolMiddleware,
@@ -63,16 +74,16 @@ const morphExp = wrapLanguageModel({
 
 const original = friendli("meta-llama/Llama-3.3-70B-Instruct");
 
+const compareWithNativeToolCalling = {
+  morphExp: morphExp,
+  original: original,
+};
+
 async function main() {
   console.log("Starting model evaluation...");
 
   await evaluate({
-    models: {
-      // xml: xmlGemma27b,
-      // json: jsonGemma27b,
-      morphExp: morphExp,
-      original: original,
-    },
+    models: compareDifferentMiddlewares,
     benchmarks: [
       bfclSimpleBenchmark,
       bfclMultipleBenchmark,
