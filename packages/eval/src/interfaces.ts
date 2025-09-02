@@ -105,4 +105,9 @@ export interface EvaluateOptions {
    * Optional temperature setting to pass to model generation during evaluation.
    */
   temperature?: number;
+
+  /**
+   * Optional maximum number of tokens to generate during evaluation.
+   */
+  maxTokens?: number;
 }

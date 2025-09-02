@@ -57,7 +57,13 @@ async function runSingleBenchmark(
 export async function evaluate(
   options: EvaluateOptions
 ): Promise<EvaluationResult[]> {
-  const { models, benchmarks, reporter = "console", temperature } = options;
+  const {
+    models,
+    benchmarks,
+    reporter = "console",
+    temperature,
+    maxTokens,
+  } = options;
 
   const modelEntries: Array<[string | undefined, LanguageModel]> = [];
   if (Array.isArray(models)) {
@@ -79,11 +85,15 @@ export async function evaluate(
 
   for (const [modelKey, model] of modelEntries) {
     for (const benchmark of benchmarks) {
+      const config: Record<string, unknown> = {};
+      if (temperature !== undefined) config.temperature = temperature;
+      if (maxTokens !== undefined) config.maxTokens = maxTokens;
+
       const evaluationResult = await runSingleBenchmark(
         model,
         benchmark,
         modelKey,
-        temperature !== undefined ? { temperature } : undefined
+        Object.keys(config).length > 0 ? config : undefined
       );
       allResults.push(evaluationResult);
     }

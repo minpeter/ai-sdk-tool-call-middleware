@@ -45,13 +45,9 @@ export async function wrapStream({
 
   const debugLevel = getDebugLevel();
 
-  console.log(`params: ${JSON.stringify(params)}`);
-
   const tools = originalToolsSchema.decode(
     params.providerOptions?.toolCallMiddleware?.originalTools
   );
-
-  console.log(`originalToolsSchema.decode: ${JSON.stringify(tools)}`);
 
   const options = {
     ...extractOnErrorOption(params.providerOptions),

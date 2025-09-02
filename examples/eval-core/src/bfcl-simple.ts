@@ -56,21 +56,22 @@ const jsonGemma27b = wrapLanguageModel({
   middleware: gemmaToolMiddleware,
 });
 
-const morphExpGemma27b = wrapLanguageModel({
-  model: friendli("google/gemma-3-27b-it"),
-  // model: openrouter("z-ai/glm-4.5-air"),
+const morphExp = wrapLanguageModel({
+  model: friendli("meta-llama/Llama-3.3-70B-Instruct"),
   middleware: morphExpToolMiddleware,
 });
+
+const original = friendli("meta-llama/Llama-3.3-70B-Instruct");
 
 async function main() {
   console.log("Starting model evaluation...");
 
   await evaluate({
     models: {
-      // gpt41nano,
-      xml: xmlGemma27b,
-      morphExp: morphExpGemma27b,
-      json: jsonGemma27b,
+      // xml: xmlGemma27b,
+      // json: jsonGemma27b,
+      morphExp: morphExp,
+      original: original,
     },
     benchmarks: [
       bfclSimpleBenchmark,
@@ -80,6 +81,7 @@ async function main() {
     ],
     reporter: "console",
     temperature: 0.0,
+    maxTokens: 4096,
   });
 
   console.log("Evaluation complete!");

@@ -68,9 +68,6 @@ export function parse(
   schema: unknown,
   options: ParseOptions = {}
 ): Record<string, unknown> {
-  console.log("xmlInner", xmlInner);
-  console.log("schema", schema);
-
   const textNodeName = options.textNodeName ?? "#text";
   const throwDup = options.throwOnDuplicateStringTags ?? true;
 

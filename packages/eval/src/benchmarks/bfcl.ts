@@ -205,6 +205,8 @@ function createBfclBenchmark(
           const { function: tools, question: messages } = testCase;
           const temp = config?.temperature;
           const temperature = typeof temp === "number" ? temp : undefined;
+          const maxTok = config?.maxTokens;
+          const maxTokens = typeof maxTok === "number" ? maxTok : undefined;
 
           try {
             // Flatten BFCL message shape [[{role, content}], ...] to [{role, content}, ...]
@@ -282,6 +284,7 @@ function createBfclBenchmark(
               tools: toolsMap,
               toolChoice: "auto",
               ...(temperature !== undefined ? { temperature } : {}),
+              ...(maxTokens !== undefined ? { maxTokens } : {}),
             });
 
             // Debug: raw toolCalls
