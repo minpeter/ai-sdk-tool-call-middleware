@@ -1,5 +1,14 @@
 # @ai-sdk-tool/parser
 
+## 2.1.5
+
+### Patch Changes
+
+- c25f1d4: `ToolCallMiddlewareProviderOptions` stability improvements and refactoring
+- c25f1d4: Apply `noChildNodes: []` to the RXML parser to treat self-closing tags as regular tags
+- Updated dependencies [c25f1d4]
+  - @ai-sdk-tool/rxml@0.1.1
+
 ## 2.1.4
 
 ### Patch Changes

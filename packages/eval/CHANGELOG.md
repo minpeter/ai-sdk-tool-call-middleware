@@ -1,5 +1,11 @@
 # @ai-sdk-tool/eval
 
+## 0.1.7
+
+### Patch Changes
+
+- c25f1d4: Added maxToken option to enable
+
 ## 0.1.6
 
 ### Patch Changes

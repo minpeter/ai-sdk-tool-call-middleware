@@ -1,5 +1,11 @@
 # @ai-sdk-tool/rxml
 
+## 0.1.1
+
+### Patch Changes
+
+- c25f1d4: Improved parsing stability in output containing inner tags.
+
 ## 0.1.0
 
 ### Minor Changes
