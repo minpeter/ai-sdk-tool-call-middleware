@@ -264,11 +264,3 @@ export function fixToolCallWithSchema(
     input: JSON.stringify(coerced ?? {}),
   } as LanguageModelV2Content;
 }
-
-// Wrapper retained for backward compatibility with previous internal helper name
-export function coerceToolCallInput(
-  part: LanguageModelV2Content,
-  tools: Array<{ name?: string; inputSchema?: unknown }>
-): LanguageModelV2Content {
-  return fixToolCallWithSchema(part, tools);
-}

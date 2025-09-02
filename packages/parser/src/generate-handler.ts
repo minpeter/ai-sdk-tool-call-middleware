@@ -12,7 +12,7 @@ import {
   getFunctionTools,
   isToolChoiceActive,
 } from "./utils";
-import { coerceToolCallInput } from "./utils/coercion";
+import { fixToolCallWithSchema } from "./utils/coercion";
 import {
   getDebugLevel,
   logParsedChunk,
@@ -114,7 +114,7 @@ export async function wrapGenerate({
   });
   const tools = getFunctionTools(params);
   const newContent = parsed.map(part =>
-    coerceToolCallInput(part as LanguageModelV2Content, tools)
+    fixToolCallWithSchema(part as LanguageModelV2Content, tools)
   );
 
   const debugLevel = getDebugLevel();

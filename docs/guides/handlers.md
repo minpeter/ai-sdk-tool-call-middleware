@@ -39,7 +39,7 @@ Middleware integrates at three points of AI SDK:
 - Otherwise:
   - For each `text` content, runs `protocol.parseGeneratedText({ text, tools, options })`.
     - `tools` are function tools, `options` includes public `onError` and INTERNAL `providerOptions.toolCallMiddleware`.
-  - Coerces each `tool-call.input` with `coerceToolCallInput` using the tool's `inputSchema`.
+  - Coerces each `tool-call.input` with `fixToolCallWithSchema` using the tool's `inputSchema`.
   - Debug: `stream` logs raw and parsed parts; `parse` logs `extractToolCallSegments` (if available) and a parsed summary.
 
 Additional dev notes (high-signal):
