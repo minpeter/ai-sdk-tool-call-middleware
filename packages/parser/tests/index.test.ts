@@ -1,4 +1,7 @@
-import type { LanguageModelV2Content } from "@ai-sdk/provider";
+import type {
+  LanguageModelV2Content,
+  LanguageModelV2FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,6 +9,7 @@ import {
   gemmaToolMiddleware,
   hermesToolMiddleware,
   jsonMixProtocol,
+  originalToolsSchema,
   xmlToolMiddleware,
 } from "@/index";
 
@@ -38,18 +42,27 @@ describe("index exports", () => {
           ] as LanguageModelV2Content[],
         });
 
+      const tools: LanguageModelV2FunctionTool[] = [
+        {
+          type: "function",
+          name: "get_weather",
+          description: "Get the weather",
+          inputSchema: { type: "object" },
+        },
+      ];
+
       const result = await xmlToolMiddleware.wrapGenerate!({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],
-          tools: [
-            {
-              type: "function",
-              name: "get_weather",
-              description: "Get the weather",
-              inputSchema: { type: "object" },
+          tools,
+          providerOptions: {
+            // INFO: Since this test does not go through the transform handler
+            // that normally injects this, we need to provide it manually.
+            toolCallMiddleware: {
+              originalTools: originalToolsSchema.encode(tools),
             },
-          ],
+          },
         },
       } as any);
 
@@ -75,18 +88,27 @@ describe("index exports", () => {
           ] as LanguageModelV2Content[],
         });
 
+      const tools: LanguageModelV2FunctionTool[] = [
+        {
+          type: "function",
+          name: "get_location",
+          description: "Get the user's location",
+          inputSchema: { type: "object" },
+        },
+      ];
+
       const result = await xmlToolMiddleware.wrapGenerate!({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],
-          tools: [
-            {
-              type: "function",
-              name: "get_location",
-              description: "Get the user's location",
-              inputSchema: { type: "object" },
+          tools,
+          providerOptions: {
+            // INFO: Since this test does not go through the transform handler
+            // that normally injects this, we need to provide it manually.
+            toolCallMiddleware: {
+              originalTools: originalToolsSchema.encode(tools),
             },
-          ],
+          },
         },
       } as any);
 

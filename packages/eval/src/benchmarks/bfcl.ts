@@ -282,17 +282,6 @@ function createBfclBenchmark(
               tools: toolsMap,
               toolChoice: "auto",
               ...(temperature !== undefined ? { temperature } : {}),
-              // Pass original schema information to middleware
-              providerOptions: {
-                toolCallMiddleware: {
-                  originalToolSchemas: Object.fromEntries(
-                    transformedTools.map(t => [
-                      t.name,
-                      t.inputSchema as unknown as any,
-                    ])
-                  ),
-                },
-              },
             });
 
             // Debug: raw toolCalls

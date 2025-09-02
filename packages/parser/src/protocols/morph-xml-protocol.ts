@@ -48,10 +48,6 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   },
 
   parseGeneratedText({ text, tools, options }) {
-    const originalSchemas =
-      (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
-        ?.originalToolSchemas || {};
-
     const toolNames = tools.map(t => t.name).filter(name => name != null);
     if (toolNames.length === 0) {
       return [{ type: "text", text }];
@@ -74,11 +70,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       }
 
       try {
-        const toolSchema = getToolSchema(
-          tools,
-          originalSchemas,
-          toolCall.toolName
-        );
+        const toolSchema = getToolSchema(tools, toolCall.toolName);
         const parsed: unknown = RXML.parse(toolCall.content, toolSchema, {
           onError: options?.onError,
         });
@@ -120,9 +112,6 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   },
 
   createStreamParser({ tools, options }) {
-    const originalSchemas =
-      (options as { originalToolSchemas?: Record<string, unknown> } | undefined)
-        ?.originalToolSchemas || {};
     const toolNames = tools.map(t => t.name).filter(name => name != null);
     const maxStartTagLen = toolNames.length
       ? Math.max(...toolNames.map(n => `<${n}>`.length))
@@ -177,11 +166,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
               buffer = buffer.substring(endTagIndex + endTag.length);
 
               try {
-                const toolSchema = getToolSchema(
-                  tools,
-                  originalSchemas,
-                  currentToolCall!.name
-                );
+                const toolSchema = getToolSchema(tools, currentToolCall!.name);
                 const parsed: unknown = RXML.parse(toolContent, toolSchema, {
                   onError: options?.onError,
                 });

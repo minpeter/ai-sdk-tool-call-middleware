@@ -1,7 +1,6 @@
 import type {
   LanguageModelV2,
   LanguageModelV2Content,
-  LanguageModelV2FunctionTool,
   LanguageModelV2ToolCall,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
@@ -9,8 +8,9 @@ import { generateId } from "@ai-sdk/provider-utils";
 import { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
   extractOnErrorOption,
-  getFunctionTools,
   isToolChoiceActive,
+  originalToolsSchema,
+  ToolCallMiddlewareProviderOptions,
 } from "./utils";
 import { fixToolCallWithSchema } from "./utils/coercion";
 import {
@@ -20,12 +20,6 @@ import {
   logRawChunk,
 } from "./utils/debug";
 
-type WrapGenerateParams = {
-  prompt?: unknown;
-  tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
-  providerOptions?: unknown;
-};
-
 export async function wrapGenerate({
   protocol,
   doGenerate,
@@ -33,12 +27,8 @@ export async function wrapGenerate({
 }: {
   protocol: ToolCallProtocol;
   doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
-  params: WrapGenerateParams & {
-    providerOptions?: {
-      toolCallMiddleware?: {
-        toolChoice?: { type: string };
-      };
-    };
+  params: {
+    providerOptions?: ToolCallMiddlewareProviderOptions;
   };
 }) {
   if (isToolChoiceActive(params)) {
@@ -86,6 +76,10 @@ export async function wrapGenerate({
     };
   }
 
+  const tools = originalToolsSchema.decode(
+    params.providerOptions?.toolCallMiddleware?.originalTools
+  );
+
   const result = await doGenerate();
 
   if (result.content.length === 0) {
@@ -103,7 +97,7 @@ export async function wrapGenerate({
     }
     return protocol.parseGeneratedText({
       text: contentItem.text,
-      tools: getFunctionTools(params),
+      tools: tools,
       options: {
         ...extractOnErrorOption(params.providerOptions),
         ...((
@@ -112,7 +106,6 @@ export async function wrapGenerate({
       },
     });
   });
-  const tools = getFunctionTools(params);
   const newContent = parsed.map(part =>
     fixToolCallWithSchema(part as LanguageModelV2Content, tools)
   );

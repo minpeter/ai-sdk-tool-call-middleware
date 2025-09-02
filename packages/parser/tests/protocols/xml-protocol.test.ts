@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 import { createToolMiddleware } from "@/tool-call-middleware";
+import { originalToolsSchema } from "@/utils/provider-options";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -30,7 +31,16 @@ describe("morphXmlProtocol stream parsing", () => {
     const mockDoStream = () => Promise.resolve({ stream });
     return middleware.wrapStream!({
       doStream: mockDoStream,
-      params: { tools },
+      params: {
+        tools,
+        providerOptions: {
+          // INFO: Since this test does not go through the transform handler
+          // that normally injects this, we need to provide it manually.
+          toolCallMiddleware: {
+            originalTools: originalToolsSchema.encode(tools),
+          },
+        },
+      },
     } as any);
   };
 

@@ -15,6 +15,8 @@ import {
   extractOnErrorOption,
   isToolCallContent,
   isToolResultPart,
+  originalToolsSchema,
+  ToolCallMiddlewareProviderOptions,
 } from "./utils";
 
 export async function transformParams({
@@ -82,6 +84,7 @@ export async function transformParams({
           (params.providerOptions as { toolCallMiddleware?: unknown })
             .toolCallMiddleware) ||
           {}),
+
         // INTERNAL: used by the middleware to propagate the names of custom
         // function tools into downstream handlers (stream/generate) when
         // providers strip or ignore `params.tools`. Not a stable public API.
@@ -89,10 +92,8 @@ export async function transformParams({
         // INTERNAL: used by the middleware so downstream parsers can access
         // the original tool schemas even if providers strip `params.tools`.
         // Not a stable public API.
-        originalToolSchemas: JSON.stringify(
-          Object.fromEntries(functionTools.map(t => [t.name, t.inputSchema]))
-        ),
-      },
+        originalTools: originalToolsSchema.encode(functionTools),
+      } as ToolCallMiddlewareProviderOptions,
     },
   };
 
