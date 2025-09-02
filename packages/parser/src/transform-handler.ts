@@ -86,6 +86,12 @@ export async function transformParams({
         // function tools into downstream handlers (stream/generate) when
         // providers strip or ignore `params.tools`. Not a stable public API.
         toolNames: functionTools.map(t => t.name),
+        // INTERNAL: used by the middleware so downstream parsers can access
+        // the original tool schemas even if providers strip `params.tools`.
+        // Not a stable public API.
+        originalToolSchemas: JSON.stringify(
+          Object.fromEntries(functionTools.map(t => [t.name, t.inputSchema]))
+        ),
       },
     },
   };

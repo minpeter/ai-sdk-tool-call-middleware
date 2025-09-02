@@ -267,11 +267,32 @@ export function fixToolCallWithSchema(
 
 export function getToolSchema(
   tools: Array<{ name?: string; inputSchema?: unknown }>,
-  originalSchemas: Record<string, unknown>,
+  originalSchemas: Record<string, unknown> | string,
   toolName: string
 ): unknown {
-  const original = originalSchemas[toolName];
-  if (original) return original;
+  let originals: Record<string, unknown> = {};
+  if (typeof originalSchemas === "string") {
+    try {
+      const parsed = JSON.parse(originalSchemas);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        originals = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // ignore parse errors and fall back to tools
+    }
+  } else if (
+    originalSchemas &&
+    typeof originalSchemas === "object" &&
+    !Array.isArray(originalSchemas)
+  ) {
+    originals = originalSchemas as Record<string, unknown>;
+  }
+
+  const fromOriginal = Object.prototype.hasOwnProperty.call(originals, toolName)
+    ? (originals[toolName] as unknown)
+    : undefined;
+  if (fromOriginal !== undefined) return fromOriginal;
+
   const fallback = tools.find(t => t.name === toolName)?.inputSchema;
   return fallback as unknown;
 }

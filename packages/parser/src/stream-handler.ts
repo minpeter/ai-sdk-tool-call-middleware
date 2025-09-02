@@ -47,7 +47,13 @@ export async function wrapStream({
   const { stream, ...rest } = await doStream();
 
   const debugLevel = getDebugLevel();
+
+  console.log(params);
+
   const tools = getFunctionTools(params);
+
+  console.debug(tools);
+
   const options = {
     ...extractOnErrorOption(params.providerOptions),
     ...((params.providerOptions as { toolCallMiddleware?: unknown } | undefined)

@@ -11,75 +11,6 @@ import { getToolSchema, unwrapJsonSchema } from "@/utils/coercion";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
 
-// Shared helper to find tool call ranges for a given set of tool names
-function findToolCalls(
-  text: string,
-  toolNames: string[]
-): Array<{
-  toolName: string;
-  startIndex: number;
-  endIndex: number;
-  content: string;
-  segment: string;
-}> {
-  const toolCalls: Array<{
-    toolName: string;
-    startIndex: number;
-    endIndex: number;
-    content: string;
-    segment: string;
-  }> = [];
-
-  for (const toolName of toolNames) {
-    let searchIndex = 0;
-    while (searchIndex < text.length) {
-      const startTag = `<${toolName}>`;
-      const tagStart = text.indexOf(startTag, searchIndex);
-      if (tagStart === -1) break;
-
-      const remainingText = text.substring(tagStart);
-      const range = RXML.findFirstTopLevelRange(remainingText, toolName);
-      if (range) {
-        const contentStart = tagStart + startTag.length;
-        const contentEnd = contentStart + (range.end - range.start);
-
-        // Compute actual end of the closing tag allowing optional whitespace
-        let fullTagEnd = contentEnd + `</${toolName}>`.length;
-        const closeHead = text.indexOf(`</${toolName}`, contentEnd);
-        if (closeHead === contentEnd) {
-          let p = closeHead + 2 + toolName.length;
-          while (p < text.length && /\s/.test(text[p])) p++;
-          if (text[p] === ">") fullTagEnd = p + 1;
-        }
-
-        const segment = text.substring(tagStart, fullTagEnd);
-        const content =
-          RXML.extractRawInner(segment, toolName) ??
-          text.substring(contentStart, contentEnd);
-
-        toolCalls.push({
-          toolName,
-          startIndex: tagStart,
-          endIndex: fullTagEnd,
-          content,
-          segment,
-        });
-
-        searchIndex = fullTagEnd;
-      } else {
-        searchIndex = tagStart + startTag.length;
-      }
-    }
-  }
-
-  return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
-}
-
-//
-
-// Note: RXML.parse already restores raw content for string-typed fields via
-// placeholder/inner extraction. No extra fallback is required here.
-
 export const morphXmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt = (tools || []).map(tool => ({
@@ -353,3 +284,67 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     return findToolCalls(text, toolNames).map(tc => tc.segment);
   },
 });
+
+// Shared helper to find tool call ranges for a given set of tool names
+function findToolCalls(
+  text: string,
+  toolNames: string[]
+): Array<{
+  toolName: string;
+  startIndex: number;
+  endIndex: number;
+  content: string;
+  segment: string;
+}> {
+  const toolCalls: Array<{
+    toolName: string;
+    startIndex: number;
+    endIndex: number;
+    content: string;
+    segment: string;
+  }> = [];
+
+  for (const toolName of toolNames) {
+    let searchIndex = 0;
+    while (searchIndex < text.length) {
+      const startTag = `<${toolName}>`;
+      const tagStart = text.indexOf(startTag, searchIndex);
+      if (tagStart === -1) break;
+
+      const remainingText = text.substring(tagStart);
+      const range = RXML.findFirstTopLevelRange(remainingText, toolName);
+      if (range) {
+        const contentStart = tagStart + startTag.length;
+        const contentEnd = contentStart + (range.end - range.start);
+
+        // Compute actual end of the closing tag allowing optional whitespace
+        let fullTagEnd = contentEnd + `</${toolName}>`.length;
+        const closeHead = text.indexOf(`</${toolName}`, contentEnd);
+        if (closeHead === contentEnd) {
+          let p = closeHead + 2 + toolName.length;
+          while (p < text.length && /\s/.test(text[p])) p++;
+          if (text[p] === ">") fullTagEnd = p + 1;
+        }
+
+        const segment = text.substring(tagStart, fullTagEnd);
+        const content =
+          RXML.extractRawInner(segment, toolName) ??
+          text.substring(contentStart, contentEnd);
+
+        toolCalls.push({
+          toolName,
+          startIndex: tagStart,
+          endIndex: fullTagEnd,
+          content,
+          segment,
+        });
+
+        searchIndex = fullTagEnd;
+      } else {
+        searchIndex = tagStart + startTag.length;
+      }
+    }
+  }
+
+  return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
+}
