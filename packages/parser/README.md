@@ -124,7 +124,7 @@ See `examples/parser-core/src/*` for runnable demos (streaming/non‑streaming, 
   - Set `DEBUG_PARSER_MW=parse` to log original matched text and parsed summary.
   - Optional `DEBUG_PARSER_MW_STYLE=bg|inverse|underline|bold` to change highlight style.
 - Provider options passthrough: `providerOptions.toolCallMiddleware` fields are merged into protocol options. Internal fields used:
-  - `toolNames`: internal propagation of custom tool names.
+  - `originalTools`: internal propagation of custom tool schemas.
   - `toolChoice`: internal fast‑path activation for required/specific tool modes.
 - Transform details: `transformParams` injects a system message built from protocol `formatTools` and clears `tools` since many providers strip/ignore them.
 

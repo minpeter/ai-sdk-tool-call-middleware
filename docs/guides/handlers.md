@@ -10,7 +10,7 @@ Middleware integrates at three points of AI SDK:
 
 - Resolves protocol (factory or instance) and serializes only function tools via `protocol.formatTools({ tools, toolSystemPromptTemplate })`.
 - Prepends/merges the system prompt. Disables provider-native tools by setting `params.tools = []` and clears `params.toolChoice`.
-- Stores `toolNames` in `providerOptions.toolCallMiddleware` for downstream handlers. This is INTERNAL state propagation (not public API).
+- Stores `originalTools` in `providerOptions.toolCallMiddleware` for downstream handlers. This is INTERNAL state propagation (not public API).
 - Remaps prompt via `convertToolPrompt` (provider-safe):
   - Assistant `tool-call` → `text` using `protocol.formatToolCall`.
   - Assistant unknown parts are stringified; warnings go to `onError` if provided.
@@ -46,6 +46,6 @@ Additional dev notes (high-signal):
 
 - `isToolChoiceActive(params)` checks INTERNAL `providerOptions.toolCallMiddleware.toolChoice` set by `transformParams`.
 - Only function-type tools participate in prompts/parsing; provider-native tools are disabled to avoid conflicts.
-- Providers that strip `params.tools` are handled by propagating `toolNames` internally to downstream handlers.
+- Providers that strip `params.tools` are handled by propagating `originalTools` internally to downstream handlers.
 
 See `packages/parser/src/transform-handler.ts`, `stream-handler.ts`, `generate-handler.ts` for exact behavior. Provider options breakdown: `docs/concepts/provider-options.md` (Public vs INTERNAL).

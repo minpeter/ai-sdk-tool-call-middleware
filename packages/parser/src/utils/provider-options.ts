@@ -4,15 +4,12 @@ export type ToolCallMiddlewareProviderOptions = {
   toolCallMiddleware?: {
     // onError?: (message: string, metadata?: Record<string, unknown>) => void;
 
-    // INTERNAL: set by transform-handler to propagate tool names when providers
-    // strip `params.tools`. Used as a fallback in downstream handlers.
-    toolNames?: string[];
-    // INTERNAL: set by transform-handler to activate tool-choice fast-path.
+    // INTERNAL: Set by transform-handler. Used for internal propagation of tool-choice.
     toolChoice?: { type: string };
-    // INTERNAL: Field to preserve removed "params.tools" for passing to middleware
+    // INTERNAL: Set by transform-handler. Used for internal propagation of params.tools.
     originalTools?: Array<{
       name: string;
-      inputSchema: string; // stringified JSONSchema7
+      inputSchema: string; // Stringified JSONSchema7
     }>;
   };
 };
@@ -53,41 +50,16 @@ export function decodeOriginalTools(
   return tools;
 }
 
-// export const originalToolsSchema = z.codec(
-//   z.array(
-//     z.object({
-//       type: z.literal("function"),
-//       name: z.string(),
-//       inputSchema: z.record(z.string(), z.unknown()), // JSONSchema7 object
-//     })
-//   ),
-//   z.array(z.object({ name: z.string(), inputSchema: z.string() })),
-//   {
-//     encode: originalTools =>
-//       originalTools?.map(t => ({
-//         type: "function" as const,
-//         name: t.name,
-//         inputSchema: JSON.parse(t.inputSchema),
-//       })),
-//     decode: originalTools =>
-//       originalTools?.map(t => ({
-//         name: t.name,
-//         inputSchema: JSON.stringify(t.inputSchema),
-//       })) || [],
-//   }
-// );
-
-// export const toolCallMiddlewareProviderOptions = z.object({
-//   toolNames: z.array(z.string()).optional(),
-
-//   toolChoice: z.object({ type: z.string() }).optional(),
-
-//   originalTools: originalToolsSchema,
-// });
-
-// export type ToolCallMiddlewareProviderOptions = z.infer<
-//   typeof toolCallMiddlewareProviderOptions
-// >;
+export function extractToolNamesFromOriginalTools(
+  originalTools:
+    | Array<{
+        name: string;
+        inputSchema: string; // stringified JSONSchema7
+      }>
+    | undefined
+): string[] {
+  return originalTools?.map(t => t.name) || [];
+}
 
 export function isToolChoiceActive(params: {
   providerOptions?: {

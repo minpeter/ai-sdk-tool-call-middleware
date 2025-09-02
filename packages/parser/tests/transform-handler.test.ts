@@ -522,10 +522,16 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     expect(userCombined).toContain("hello");
     expect(userCombined).toMatch(/<tool_response>/);
 
-    // tools cleared; toolNames propagated into providerOptions
+    // tools cleared; originalTools propagated into providerOptions
     expect(out.tools).toEqual([]);
-    const toolNames = (out.providerOptions as any).toolCallMiddleware.toolNames;
-    expect(toolNames).toEqual(["t1"]);
+    const originalTools = (out.providerOptions as any).toolCallMiddleware
+      .originalTools;
+    expect(originalTools).toEqual([
+      {
+        name: "t1",
+        inputSchema: JSON.stringify({ type: "object" }),
+      },
+    ]);
     // existing provider option preserved
     expect((out.providerOptions as any).toolCallMiddleware.existing).toBe(true);
   });

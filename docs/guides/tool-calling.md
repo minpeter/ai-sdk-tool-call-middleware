@@ -80,7 +80,7 @@ Pass via `providerOptions.toolCallMiddleware`.
 
 - `onError(message, metadata)` — receive non-fatal parsing/coercion warnings.
 - `originalToolSchemas` — for XML protocol to coerce arguments using provider-original schemas during generate/stream.
-- Additional fields under `providerOptions.toolCallMiddleware` are forwarded to handlers. Reserved internal fields include `toolNames` and `toolChoice`.
+- Additional fields under `providerOptions.toolCallMiddleware` are forwarded to handlers. Reserved internal fields include `originalTools` and `toolChoice`.
 
 Example:
 
