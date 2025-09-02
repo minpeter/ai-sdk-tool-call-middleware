@@ -2,7 +2,10 @@ import { JSONSchema7, LanguageModelV2FunctionTool } from "@ai-sdk/provider";
 
 export type ToolCallMiddlewareProviderOptions = {
   toolCallMiddleware?: {
-    // onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    // Optional debug event hook used by advanced clients (e.g., eval runners)
+    // to capture raw provider output and parse summaries.
+    // Not a stable public API.
+    onDebug?: (event: string, payload?: Record<string, unknown>) => void;
 
     // INTERNAL: Set by transform-handler. Used for internal propagation of tool-choice.
     toolChoice?: { type: string };

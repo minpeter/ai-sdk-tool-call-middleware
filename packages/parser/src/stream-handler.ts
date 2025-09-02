@@ -73,6 +73,14 @@ export async function wrapStream({
         {
           transform(part, controller) {
             logRawChunk(part);
+            try {
+              (params.providerOptions as any)?.toolCallMiddleware?.onDebug?.(
+                "raw-chunk",
+                { part: part as unknown as Record<string, unknown> }
+              );
+            } catch {
+              // ignore
+            }
             controller.enqueue(part);
           },
         }
@@ -91,6 +99,14 @@ export async function wrapStream({
         {
           transform(part, controller) {
             logParsedChunk(part);
+            try {
+              (params.providerOptions as any)?.toolCallMiddleware?.onDebug?.(
+                "parsed-chunk",
+                { part: part as unknown as Record<string, unknown> }
+              );
+            } catch {
+              // ignore
+            }
             controller.enqueue(part);
           },
         }
@@ -115,6 +131,14 @@ export async function wrapStream({
           if (typeof delta === "string" && delta.length > 0) {
             fullRawText += delta;
           }
+        }
+        try {
+          (params.providerOptions as any)?.toolCallMiddleware?.onDebug?.(
+            "raw-chunk",
+            { part: part as unknown as Record<string, unknown> }
+          );
+        } catch {
+          // ignore
         }
         controller.enqueue(part);
       },
@@ -152,6 +176,20 @@ export async function wrapStream({
                 toolCalls: parsedToolCalls,
                 originalText: origin,
               });
+              try {
+                (params.providerOptions as any)?.toolCallMiddleware?.onDebug?.(
+                  "parse-summary",
+                  {
+                    toolCalls: parsedToolCalls as unknown as Record<
+                      string,
+                      unknown
+                    >[],
+                    originalText: origin,
+                  }
+                );
+              } catch {
+                // ignore
+              }
             } catch {
               // ignore logging failures
             }

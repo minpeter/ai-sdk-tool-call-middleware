@@ -263,20 +263,26 @@ function createBfclBenchmark(
               ])
             );
 
-            // Debug: record first tool object and schema type
-            try {
-              const firstTool = transformedTools[0];
-              const schemaType =
-                (firstTool as any)?.inputSchema?.type ??
-                (firstTool as any)?.inputSchema?.jsonSchema?.type;
-              caseLogs.push(
-                `[DEBUG] ${testCase.id}: firstTool=${JSON.stringify(firstTool)}, schemaType=${schemaType}`
-              );
-            } catch (e: unknown) {
-              caseLogs.push(
-                `[DEBUG] ${testCase.id}: failed to introspect tools: ${(e as Error).message}`
-              );
-            }
+            // Prepare a rich debug context to emit on failures
+            const debugContext: Record<string, unknown> = {
+              id: testCase.id,
+              modelId:
+                (typeof (model as any)?.modelId === "string"
+                  ? (model as any).modelId
+                  : undefined) ?? "unknown-model",
+              config: {
+                temperature,
+                maxTokens,
+                toolChoice: "auto",
+              },
+              messages: flatMessages,
+              toolsOriginal: tools,
+              toolsTransformed: transformedTools,
+              nameMap: Object.fromEntries(nameMap.entries()),
+            };
+
+            // Debug hooks: capture raw text and parse summaries emitted by middleware
+            const mwDebug: Array<{ event: string; payload?: unknown }> = [];
 
             const { toolCalls, text, finishReason } = await generateText({
               model,
@@ -287,6 +293,20 @@ function createBfclBenchmark(
               ...(maxTokens !== undefined
                 ? { maxOutputTokens: maxTokens }
                 : {}),
+              providerOptions: {
+                toolCallMiddleware: {
+                  onDebug: (
+                    event: string,
+                    payload?: Record<string, unknown>
+                  ) => {
+                    try {
+                      mwDebug.push({ event, payload });
+                    } catch {
+                      // ignore
+                    }
+                  },
+                },
+              },
             });
 
             // Debug: raw toolCalls
@@ -294,6 +314,12 @@ function createBfclBenchmark(
               caseLogs.push(
                 `[DEBUG] ${testCase.id}: rawToolCalls=${JSON.stringify(toolCalls)}, finishReason=${finishReason}, text=${JSON.stringify(text)}`
               );
+              (debugContext as any).rawOutput = {
+                text,
+                finishReason,
+                toolCalls,
+              };
+              (debugContext as any).middlewareDebug = mwDebug;
             } catch {
               caseLogs.push(
                 `[DEBUG] ${testCase.id}: failed to serialize toolCalls`
@@ -337,6 +363,15 @@ function createBfclBenchmark(
                 args: parsedArgs ?? {},
               };
             });
+
+            // Attach parse results to debug context
+            try {
+              (debugContext as any).parse = {
+                restoredCalls,
+              };
+            } catch {
+              // ignore serialization issues
+            }
 
             const checkerResult = check(
               testCase,
@@ -615,6 +650,18 @@ function createBfclBenchmark(
                     actual,
                     diff,
                   })}`
+                );
+
+                // Enrich with BFCL ground truth and full context
+                try {
+                  (debugContext as any).groundTruth = (
+                    possibleAnswer as any
+                  )?.ground_truth;
+                } catch {
+                  // noop
+                }
+                caseLogs.push(
+                  `[DEBUG-CONTEXT] ${JSON.stringify(debugContext)}`
                 );
               } catch {
                 caseLogs.push(

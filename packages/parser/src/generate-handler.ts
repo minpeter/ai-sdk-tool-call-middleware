@@ -40,6 +40,15 @@ export async function wrapGenerate({
       if (debugLevel === "parse") {
         logRawChunk(first.text);
       }
+      // Emit raw text through onDebug hook when available
+      try {
+        (params.providerOptions as any)?.toolCallMiddleware?.onDebug?.(
+          "raw-text",
+          { text: first.text }
+        );
+      } catch {
+        // ignore
+      }
       try {
         parsed = JSON.parse(first.text);
       } catch (error) {
@@ -69,6 +78,15 @@ export async function wrapGenerate({
     if (debugLevelToolChoice === "parse") {
       logParsedSummary({ toolCalls: [toolCall], originalText: originText });
     }
+    // Emit parse summary through onDebug hook
+    try {
+      (params.providerOptions as any)?.toolCallMiddleware?.onDebug?.(
+        "parse-summary",
+        { toolCalls: [toolCall], originalText: originText }
+      );
+    } catch {
+      // ignore
+    }
 
     return {
       ...result,
@@ -94,6 +112,15 @@ export async function wrapGenerate({
     if (debugLevel === "stream") {
       // For generate flow with stream debug we show raw text and parsed parts
       logRawChunk(contentItem.text);
+    }
+    // Emit raw text through onDebug when available
+    try {
+      (params.providerOptions as any)?.toolCallMiddleware?.onDebug?.(
+        "raw-text",
+        { text: contentItem.text }
+      );
+    } catch {
+      // ignore
     }
     return protocol.parseGeneratedText({
       text: contentItem.text,
@@ -131,6 +158,15 @@ export async function wrapGenerate({
         (p as LanguageModelV2Content).type === "tool-call"
     );
     logParsedSummary({ toolCalls, originalText });
+    // Emit parse summary for generate path
+    try {
+      (params.providerOptions as any)?.toolCallMiddleware?.onDebug?.(
+        "parse-summary",
+        { toolCalls, originalText }
+      );
+    } catch {
+      // ignore
+    }
   }
 
   return {

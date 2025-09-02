@@ -152,7 +152,8 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
           l.startsWith("[ERROR]") ||
           l.startsWith("[FATAL]") ||
           l.startsWith("[STACK]") ||
-          l.startsWith("[DEBUG-FAIL]")
+          l.startsWith("[DEBUG-FAIL]") ||
+          l.startsWith("[DEBUG-CONTEXT]")
       );
       const hasFails = failLogs.length > 0;
       if (hasFails) {
@@ -169,6 +170,20 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
             }
           }
         }
+        // Map id -> context payload if present
+        const contextById = new Map<string, any>();
+        for (const line of failLogs) {
+          if (line.startsWith("[DEBUG-CONTEXT]")) {
+            const payload = line.replace(/^\[DEBUG-CONTEXT\] /, "");
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed?.id) contextById.set(String(parsed.id), parsed);
+            } catch {
+              // ignore
+            }
+          }
+        }
+
         for (const line of failLogs) {
           // Highlight test id and reasons
           if (line.startsWith("[FAIL]")) {
@@ -220,9 +235,125 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
                 );
                 for (const s of suggestions) console.log(`          • ${s}`);
               }
+
+              // If we have a detailed debug context for this id, pretty print it here
+              const ctx = contextById.get(String(id));
+              if (ctx) {
+                console.log(`        ${colors.bold}Context:${colors.reset}`);
+                const printSection = (title: string, value: unknown) => {
+                  console.log(
+                    `          ${colors.cyan}${title}:${colors.reset}`
+                  );
+                  const str = (() => {
+                    try {
+                      return JSON.stringify(value, null, 2);
+                    } catch {
+                      return String(value);
+                    }
+                  })();
+                  console.log(
+                    "            " +
+                      str
+                        .split("\n")
+                        .map(l => l)
+                        .join("\n            ")
+                  );
+                };
+                try {
+                  printSection("modelId", ctx.modelId);
+                  printSection("config", ctx.config);
+                  // Condensed tool info
+                  try {
+                    const toolNames = Array.isArray(ctx.toolsOriginal)
+                      ? (ctx.toolsOriginal as Array<{ name?: string }>).map(
+                          t => t?.name
+                        )
+                      : [];
+                    printSection("toolNames", toolNames);
+                  } catch {}
+                  try {
+                    const inputTypes = Array.isArray(ctx.toolsTransformed)
+                      ? (
+                          ctx.toolsTransformed as Array<{
+                            inputSchema?: { type?: string };
+                          }>
+                        ).map(
+                          t =>
+                            (t?.inputSchema as { type?: string } | undefined)
+                              ?.type
+                        )
+                      : [];
+                    printSection("toolInputTypes", inputTypes);
+                  } catch {}
+                  try {
+                    const nameMapKeys = ctx.nameMap
+                      ? Object.keys(ctx.nameMap as Record<string, unknown>)
+                      : [];
+                    printSection("nameMapKeys", nameMapKeys);
+                  } catch {}
+                  try {
+                    const messagesArr = Array.isArray(ctx.messages)
+                      ? (ctx.messages as unknown[])
+                      : [];
+                    printSection("messagesCount", messagesArr.length);
+                    if (messagesArr.length > 0) {
+                      printSection("message[0]", messagesArr[0]);
+                    }
+                  } catch {}
+                  if (ctx.rawOutput) printSection("rawOutput", ctx.rawOutput);
+                  if (ctx.parse) printSection("parse", ctx.parse);
+                  if (ctx.groundTruth)
+                    printSection("groundTruth", ctx.groundTruth);
+                  // Include original tool-call text if present in middlewareDebug
+                  try {
+                    const events = Array.isArray((ctx as any).middlewareDebug)
+                      ? ((ctx as any).middlewareDebug as Array<{
+                          event?: string;
+                          payload?: any;
+                        }>)
+                      : [];
+                    const latestParse = [...events]
+                      .reverse()
+                      .find(e => e?.event === "parse-summary" && e?.payload);
+                    if (latestParse && latestParse.payload) {
+                      const origin = latestParse.payload.originalText as
+                        | string
+                        | undefined;
+                      if (origin && origin.trim().length > 0) {
+                        console.log(
+                          `          ${colors.cyan}originalToolText:${colors.reset}`
+                        );
+                        console.log(
+                          "            " +
+                            origin
+                              .split("\n")
+                              .map(l => l)
+                              .join("\n            ")
+                        );
+                      }
+                      if (latestParse.payload.toolCalls) {
+                        printSection(
+                          "parsedToolCalls",
+                          latestParse.payload.toolCalls
+                        );
+                      }
+                    }
+                    const rawTexts = events
+                      .filter(e => e.event === "raw-text")
+                      .map(e => e.payload?.text);
+                    if (rawTexts.length > 0) {
+                      printSection("rawTextSample[0]", rawTexts[0]);
+                    }
+                  } catch {}
+                } catch {
+                  // ignore errors while pretty-printing context
+                }
+              }
             } catch {
               console.log(`      ${line}`);
             }
+          } else if (line.startsWith("[DEBUG-CONTEXT]")) {
+            // Skip here; printed alongside its matching [DEBUG-FAIL]
           }
         }
       } else {
