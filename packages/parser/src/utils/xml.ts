@@ -4,14 +4,7 @@ export type JsonSchemaNode = {
   properties?: Record<string, JsonSchemaNode>;
 };
 
-export function decodeXmlEntities(value: string): string {
-  return value
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}
+import { unescapeXml } from "@ai-sdk-tool/rxml";
 
 export function deepDecodeStringsBySchema(
   input: unknown,
@@ -21,7 +14,7 @@ export function deepDecodeStringsBySchema(
   const type = schema.type;
 
   if (type === "string" && typeof input === "string") {
-    return decodeXmlEntities(input);
+    return unescapeXml(input);
   }
 
   if (type === "array" && Array.isArray(input)) {
@@ -41,7 +34,7 @@ export function deepDecodeStringsBySchema(
     return out;
   }
 
-  if (typeof input === "string") return decodeXmlEntities(input);
+  if (typeof input === "string") return unescapeXml(input);
   return input;
 }
 

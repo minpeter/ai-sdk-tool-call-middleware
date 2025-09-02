@@ -28,6 +28,7 @@ export {
 export {
   countTagOccurrences,
   extractRawInner,
+  findAllTopLevelRanges,
   findFirstTopLevelRange,
 } from "./schema/extraction";
 

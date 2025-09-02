@@ -47,7 +47,8 @@ function findToolCalls(
       if (range) {
         const contentStart = tagStart + startTag.length;
         const contentEnd = contentStart + (range.end - range.start);
-        // Robustly find the actual end of the closing tag allowing whitespace before '>'
+
+        // Compute actual end of the closing tag allowing optional whitespace
         let fullTagEnd = contentEnd + `</${toolName}>`.length;
         const closeHead = text.indexOf(`</${toolName}`, contentEnd);
         if (closeHead === contentEnd) {
@@ -56,15 +57,17 @@ function findToolCalls(
           if (text[p] === ">") fullTagEnd = p + 1;
         }
 
-        const toolContent = text.substring(contentStart, contentEnd);
-        const fullSegment = text.substring(tagStart, fullTagEnd);
+        const segment = text.substring(tagStart, fullTagEnd);
+        const content =
+          RXML.extractRawInner(segment, toolName) ??
+          text.substring(contentStart, contentEnd);
 
         toolCalls.push({
           toolName,
           startIndex: tagStart,
           endIndex: fullTagEnd,
-          content: toolContent,
-          segment: fullSegment,
+          content,
+          segment,
         });
 
         searchIndex = fullTagEnd;
