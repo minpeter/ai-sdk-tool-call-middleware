@@ -284,7 +284,9 @@ function createBfclBenchmark(
               tools: toolsMap,
               toolChoice: "auto",
               ...(temperature !== undefined ? { temperature } : {}),
-              ...(maxTokens !== undefined ? { maxTokens } : {}),
+              ...(maxTokens !== undefined
+                ? { maxOutputTokens: maxTokens }
+                : {}),
             });
 
             // Debug: raw toolCalls
