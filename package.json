@@ -2,7 +2,7 @@
   "name": "ai-sdk-tool",
   "private": true,
   "scripts": {
-    "build": "turbo run build --parallel",
+    "build": "turbo run build",
     "test": "turbo run test --parallel",
     "test:watch": "turbo run test:watch --parallel",
     "dev": "turbo run dev",
@@ -12,7 +12,7 @@
     "fmt:fix": "pnpm run lint:fix",
     "check-types": "turbo run check-types --parallel",
     "changeset": "changeset",
-    "ci:release": "turbo build --parallel && changeset publish",
+    "ci:release": "turbo build && changeset publish",
     "ci:version": "changeset version",
     "prepare": "husky"
   },
