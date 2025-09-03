@@ -488,9 +488,24 @@ function createBfclBenchmark(
                           });
                         if (!includes) {
                           diff.push(`@@ param ${k}`);
-                          diff.push(
-                            `- expected one of: ${JSON.stringify(allowed)}`
-                          );
+                          const allowedArray = Array.isArray(allowed)
+                            ? (allowed as unknown[])
+                            : [allowed as unknown];
+                          const expectedLine = (() => {
+                            if (allowedArray.length === 1) {
+                              return `- expected: ${JSON.stringify(allowedArray[0])}`;
+                            }
+                            const formatted = allowedArray
+                              .map(v =>
+                                Array.isArray(v) ||
+                                (typeof v === "object" && v !== null)
+                                  ? JSON.stringify(v)
+                                  : String(v)
+                              )
+                              .join(", ");
+                            return `- expected one of: ${formatted}`;
+                          })();
+                          diff.push(expectedLine);
                           diff.push(`+ got: ${JSON.stringify(got)}`);
                         }
                       }
@@ -629,9 +644,24 @@ function createBfclBenchmark(
                             });
                           if (!includes) {
                             diff.push(`@@ param ${k}`);
-                            diff.push(
-                              `- expected one of: ${JSON.stringify(allowed)}`
-                            );
+                            const allowedArray = Array.isArray(allowed)
+                              ? (allowed as unknown[])
+                              : [allowed as unknown];
+                            const expectedLine = (() => {
+                              if (allowedArray.length === 1) {
+                                return `- expected: ${JSON.stringify(allowedArray[0])}`;
+                              }
+                              const formatted = allowedArray
+                                .map(v =>
+                                  Array.isArray(v) ||
+                                  (typeof v === "object" && v !== null)
+                                    ? JSON.stringify(v)
+                                    : String(v)
+                                )
+                                .join(", ");
+                              return `- expected one of: ${formatted}`;
+                            })();
+                            diff.push(expectedLine);
                             diff.push(`+ got: ${JSON.stringify(got)}`);
                           }
                         }

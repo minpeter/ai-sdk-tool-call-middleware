@@ -90,11 +90,17 @@ function suggestFixFromDiff(parsed: unknown): string[] {
       .filter((d: unknown) => String(d).startsWith("@@ param "))
       .map((d: unknown) => String(d).replace("@@ param ", ""));
     for (const param of targets) {
-      const allowedLine = (diff as unknown[]).find((d: unknown) =>
+      const allowedOneOfLine = (diff as unknown[]).find((d: unknown) =>
         String(d).startsWith("- expected one of:")
       ) as string | undefined;
-      if (allowedLine) {
-        const allowed = allowedLine.replace("- expected one of: ", "");
+      const allowedSingleLine = (diff as unknown[]).find((d: unknown) =>
+        String(d).startsWith("- expected:")
+      ) as string | undefined;
+      if (allowedSingleLine) {
+        const value = allowedSingleLine.replace("- expected: ", "");
+        suggestions.push(`Set '${param}' to: ${value}.`);
+      } else if (allowedOneOfLine) {
+        const allowed = allowedOneOfLine.replace("- expected one of: ", "");
         suggestions.push(`Set '${param}' to one of: ${allowed}.`);
       } else {
         suggestions.push(`Adjust '${param}' to an allowed value.`);
