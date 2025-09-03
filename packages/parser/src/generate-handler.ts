@@ -147,11 +147,8 @@ export async function wrapGenerate({
     try {
       dbg.toolCalls = JSON.stringify(
         toolCalls.map(tc => ({
-          toolName: (
-            tc as Extract<LanguageModelV2Content, { type: "tool-call" }>
-          )?.toolName as string | undefined,
-          input: (tc as Extract<LanguageModelV2Content, { type: "tool-call" }>)
-            ?.input as unknown,
+          toolName: tc.toolName,
+          input: tc.input as unknown,
         }))
       );
     } catch {

@@ -406,6 +406,35 @@ function createBfclBenchmark(
                     );
                 };
 
+                function generateParamMismatchDiff(
+                  paramName: string,
+                  allowed: unknown,
+                  got: unknown
+                ): string[] {
+                  const diffLines: string[] = [];
+                  diffLines.push(`@@ param ${paramName}`);
+                  const allowedArray = Array.isArray(allowed)
+                    ? (allowed as unknown[])
+                    : [allowed as unknown];
+                  const expectedLine = (() => {
+                    if (allowedArray.length === 1) {
+                      return `- expected: ${JSON.stringify(allowedArray[0])}`;
+                    }
+                    const formatted = allowedArray
+                      .map(v =>
+                        Array.isArray(v) ||
+                        (typeof v === "object" && v !== null)
+                          ? JSON.stringify(v)
+                          : String(v)
+                      )
+                      .join(", ");
+                    return `- expected one of: ${formatted}`;
+                  })();
+                  diffLines.push(expectedLine);
+                  diffLines.push(`+ got: ${JSON.stringify(got)}`);
+                  return diffLines;
+                }
+
                 const expected: Record<string, unknown> = {};
                 const actual: Record<string, unknown> = {};
 
@@ -491,26 +520,9 @@ function createBfclBenchmark(
                             );
                           });
                         if (!includes) {
-                          diff.push(`@@ param ${k}`);
-                          const allowedArray = Array.isArray(allowed)
-                            ? (allowed as unknown[])
-                            : [allowed as unknown];
-                          const expectedLine = (() => {
-                            if (allowedArray.length === 1) {
-                              return `- expected: ${JSON.stringify(allowedArray[0])}`;
-                            }
-                            const formatted = allowedArray
-                              .map(v =>
-                                Array.isArray(v) ||
-                                (typeof v === "object" && v !== null)
-                                  ? JSON.stringify(v)
-                                  : String(v)
-                              )
-                              .join(", ");
-                            return `- expected one of: ${formatted}`;
-                          })();
-                          diff.push(expectedLine);
-                          diff.push(`+ got: ${JSON.stringify(got)}`);
+                          diff.push(
+                            ...generateParamMismatchDiff(k, allowed, got)
+                          );
                         }
                       }
                     }
@@ -647,26 +659,9 @@ function createBfclBenchmark(
                               );
                             });
                           if (!includes) {
-                            diff.push(`@@ param ${k}`);
-                            const allowedArray = Array.isArray(allowed)
-                              ? (allowed as unknown[])
-                              : [allowed as unknown];
-                            const expectedLine = (() => {
-                              if (allowedArray.length === 1) {
-                                return `- expected: ${JSON.stringify(allowedArray[0])}`;
-                              }
-                              const formatted = allowedArray
-                                .map(v =>
-                                  Array.isArray(v) ||
-                                  (typeof v === "object" && v !== null)
-                                    ? JSON.stringify(v)
-                                    : String(v)
-                                )
-                                .join(", ");
-                              return `- expected one of: ${formatted}`;
-                            })();
-                            diff.push(expectedLine);
-                            diff.push(`+ got: ${JSON.stringify(got)}`);
+                            diff.push(
+                              ...generateParamMismatchDiff(k, allowed, got)
+                            );
                           }
                         }
                       }

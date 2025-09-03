@@ -165,28 +165,33 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
       if (hasFails) {
         // Group failure logs by test id
         const byId = new Map<string, string[]>();
-        for (const line of failLogs) {
-          let id: string | undefined;
+        function getTestIdFromLogLine(line: string): string | undefined {
           if (line.startsWith("[FAIL]")) {
             const m = line.match(/^\[FAIL\]\s+([^:]+):/);
-            id = m?.[1];
-          } else if (line.startsWith("[DEBUG-FAIL]")) {
+            return m?.[1];
+          }
+          if (line.startsWith("[DEBUG-FAIL]")) {
             try {
               const parsed = JSON.parse(line.replace(/^\[DEBUG-FAIL\] /, ""));
-              id = String(parsed?.id ?? "");
-            } catch {
-              /* intentionally ignored */
-            }
-          } else if (line.startsWith("[DEBUG-FAIL-CONTEXT]")) {
-            try {
-              const parsed = JSON.parse(
-                line.replace(/^\[DEBUG-FAIL-CONTEXT\] /, "")
-              );
-              id = String(parsed?.id ?? "");
+              return String(parsed?.id ?? "");
             } catch {
               /* intentionally ignored */
             }
           }
+          if (line.startsWith("[DEBUG-FAIL-CONTEXT]")) {
+            try {
+              const parsed = JSON.parse(
+                line.replace(/^\[DEBUG-FAIL-CONTEXT\] /, "")
+              );
+              return String(parsed?.id ?? "");
+            } catch {
+              /* intentionally ignored */
+            }
+          }
+          return undefined;
+        }
+        for (const line of failLogs) {
+          const id = getTestIdFromLogLine(line);
           const key = id ?? "__general__";
           const arr = byId.get(key) ?? [];
           arr.push(line);
