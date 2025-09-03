@@ -175,7 +175,9 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
               const parsed = JSON.parse(line.replace(/^\[DEBUG-FAIL\] /, ""));
               return String(parsed?.id ?? "");
             } catch {
-              /* intentionally ignored */
+              // Intentionally ignore: malformed [DEBUG-FAIL] payloads are expected when
+              // earlier steps fail to JSON-stringify complex values (circular/BigInt/etc.).
+              // We only use parsed IDs for de-duplication, so a parse miss is safe.
             }
           }
           if (line.startsWith("[DEBUG-FAIL-CONTEXT]")) {

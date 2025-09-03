@@ -157,10 +157,8 @@ export async function wrapStream({
                   const toolCallParts = parsedToolCalls.filter(
                     (
                       p
-                    ): p is Extract<
-                      LanguageModelV2StreamPart,
-                      { type: "tool-call" }
-                    > => p.type === "tool-call"
+                    ): p is LanguageModelV2StreamPart & { type: "tool-call" } =>
+                      p.type === "tool-call"
                   );
                   dbg.toolCalls = JSON.stringify(
                     toolCallParts.map(tc => ({

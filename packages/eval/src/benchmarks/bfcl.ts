@@ -325,7 +325,8 @@ function createBfclBenchmark(
                 return [];
               }
             })();
-            // Debug summary is captured via debugSummaryRef; removed unused try/catch per review
+            // Debug summary is sourced from debugSummaryRef (originalText, toolCalls).
+            // Parsing of toolCalls is already guarded above; no additional try/catch is required here.
 
             // Debug: raw toolCalls
             try {
