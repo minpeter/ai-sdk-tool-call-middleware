@@ -60,15 +60,15 @@ Available functions are listed inside <tools></tools>.
 // const compareDifferentMiddlewares = { xml: xmlGemma27b, morphExp: morphExpGemma27b, json: jsonGemma27b };
 
 const morphExp = wrapLanguageModel({
-  model: friendli("meta-llama/Llama-3.1-8B-Instruct"),
+  model: friendli("LGAI-EXAONE/EXAONE-4.0.1-32B"),
   middleware: morphExpToolMiddleware,
 });
 
-// const original = friendli("meta-llama/Llama-3.1-8B-Instruct");
+const original = friendli("LGAI-EXAONE/EXAONE-4.0.1-32B");
 
 const compareWithNativeToolCalling = {
   morphExp: morphExp,
-  // original: original,
+  original: original,
 };
 
 async function main() {
