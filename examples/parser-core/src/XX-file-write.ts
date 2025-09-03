@@ -13,8 +13,6 @@ import {
 } from "ai";
 import { z } from "zod";
 
-import { LoggingMiddleware } from "./logging-middleware";
-
 const friendli = createOpenAICompatible({
   name: "friendli",
   apiKey: process.env.FRIENDLI_TOKEN,
@@ -87,8 +85,11 @@ async function main() {
 
     const result = streamText({
       model: wrapLanguageModel({
-        model: friendli("skt/A.X-3.1"),
-        middleware: [xmlToolMiddleware, LoggingMiddleware],
+        model: friendli("LGAI-EXAONE/EXAONE-4.0.1-32B"),
+        middleware: [
+          xmlToolMiddleware,
+          // loggingMiddleware
+        ],
       }),
       temperature: 0.0,
       messages,
