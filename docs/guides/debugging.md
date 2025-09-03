@@ -36,6 +36,44 @@ When it logs:
 - `[debug:mw:origin]` — highlighted source segments recognized as tool-calls
 - `[debug:mw:summary]` — JSON summary of emitted tool-calls
 
+## Structured capture (no console spam)
+
+When integrating with evaluators or apps, prefer a structured capture instead of console logs:
+
+- Provide `providerOptions.toolCallMiddleware.debugSummary` to capture parse results.
+- The middleware populates this JSON-safe object and suppresses console output in `parse` mode.
+
+Shape:
+
+```ts
+{
+  debugSummary?: {
+    originalText?: string;        // pre-parse origin segments (per protocol)
+    toolCalls?: string;           // JSON stringified array of { toolName?: string; input?: unknown }
+  }
+}
+```
+
+Usage:
+
+```ts
+const debugSummary: { originalText?: string; toolCalls?: string } = {};
+const { text, toolCalls } = await generateText({
+  model,
+  messages,
+  tools,
+  providerOptions: {
+    toolCallMiddleware: {
+      debugSummary,
+    },
+  },
+});
+
+// Later, read structured info for reporting:
+console.log(debugSummary.originalText);
+console.log(JSON.parse(debugSummary.toolCalls ?? "[]"));
+```
+
 ## How to use
 
 - macOS/Linux (one-off):

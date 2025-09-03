@@ -278,16 +278,50 @@ function createBfclBenchmark(
               );
             }
 
+            // Capture middleware debugSummary output via shared reference
+            const debugSummaryRef: {
+              originalText?: string;
+              toolCalls?: string;
+            } = {};
             const { toolCalls, text, finishReason } = await generateText({
               model,
               messages: flatMessages as unknown as any,
               tools: toolsMap,
               toolChoice: "auto",
+              providerOptions: {
+                toolCallMiddleware: {
+                  debugSummary: debugSummaryRef,
+                },
+              } as any,
               ...(temperature !== undefined ? { temperature } : {}),
               ...(maxTokens !== undefined
                 ? { maxOutputTokens: maxTokens }
                 : {}),
             });
+
+            const mwOriginalText: string | undefined =
+              debugSummaryRef.originalText;
+            const mwParsedToolCalls: Array<{
+              toolName?: string;
+              input?: unknown;
+            }> = (() => {
+              const raw = debugSummaryRef.toolCalls;
+              if (!raw) return [];
+              try {
+                const arr = JSON.parse(raw);
+                return Array.isArray(arr) ? arr : [];
+              } catch {
+                return [];
+              }
+            })();
+            // Read debug summary back if present
+            try {
+              const dbg = ({} as any)?.toolCallMiddleware?.debugSummary;
+              // Not accessible directly from generateText return; rely on our values below if wired in the provider
+              void dbg;
+            } catch {
+              // ignore
+            }
 
             // Debug: raw toolCalls
             try {
@@ -616,6 +650,38 @@ function createBfclBenchmark(
                     diff,
                   })}`
                 );
+                // Attach rich context for debugging
+                try {
+                  const lastUser = (() => {
+                    const reversed = [...flatMessages].reverse();
+                    const found = reversed.find(
+                      m => (m as Message).role === "user"
+                    ) as Message | undefined;
+                    return found?.content ?? undefined;
+                  })();
+                  const contextPayload = {
+                    id: testCase.id,
+                    tool_schema: tools,
+                    last_user_query: lastUser,
+                    raw_model_text:
+                      mwOriginalText && mwOriginalText.length > 0
+                        ? mwOriginalText
+                        : typeof text === "string"
+                          ? text
+                          : "",
+                    finish_reason: finishReason,
+                    parsed_tool_calls: mwParsedToolCalls.length
+                      ? mwParsedToolCalls
+                      : restoredCalls,
+                    ground_truth: (possibleAnswer as { ground_truth?: unknown })
+                      .ground_truth,
+                  };
+                  caseLogs.push(
+                    `[DEBUG-FAIL-CONTEXT] ${JSON.stringify(contextPayload)}`
+                  );
+                } catch {
+                  // ignore context build failures
+                }
               } catch {
                 caseLogs.push(
                   `[DEBUG] ${testCase.id}: failed to build debug diff`

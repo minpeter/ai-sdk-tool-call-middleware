@@ -5,13 +5,9 @@ import {
   bfclParallelMultipleBenchmark,
   bfclSimpleBenchmark,
   evaluate,
+  type ReporterType,
 } from "@ai-sdk-tool/eval";
-import {
-  createToolMiddleware,
-  gemmaToolMiddleware,
-  morphXmlProtocol,
-  xmlToolMiddleware,
-} from "@ai-sdk-tool/parser";
+import { createToolMiddleware, morphXmlProtocol } from "@ai-sdk-tool/parser";
 import { wrapLanguageModel } from "ai";
 
 const friendli = createOpenAICompatible({
@@ -44,55 +40,53 @@ Available functions are listed inside <tools></tools>.
   },
 });
 
-const xmlGemma27b = wrapLanguageModel({
-  model: friendli("google/gemma-3-27b-it"),
-  // model: openrouter("z-ai/glm-4.5-air"),
-  middleware: xmlToolMiddleware,
-});
+// const xmlGemma27b = wrapLanguageModel({
+//   model: friendli("google/gemma-3-27b-it"),
+//   // model: openrouter("z-ai/glm-4.5-air"),
+//   middleware: xmlToolMiddleware,
+// });
 
-const jsonGemma27b = wrapLanguageModel({
-  model: friendli("google/gemma-3-27b-it"),
-  // model: openrouter("z-ai/glm-4.5-air"),
-  middleware: gemmaToolMiddleware,
-});
+// const jsonGemma27b = wrapLanguageModel({
+//   model: friendli("google/gemma-3-27b-it"),
+//   // model: openrouter("z-ai/glm-4.5-air"),
+//   middleware: gemmaToolMiddleware,
+// });
 
-const morphExpGemma27b = wrapLanguageModel({
-  model: friendli("google/gemma-3-27b-it"),
-  middleware: morphExpToolMiddleware,
-});
+// const morphExpGemma27b = wrapLanguageModel({
+//   model: friendli("google/gemma-3-27b-it"),
+//   middleware: morphExpToolMiddleware,
+// });
 
-const compareDifferentMiddlewares = {
-  xml: xmlGemma27b,
-  morphExp: morphExpGemma27b,
-  json: jsonGemma27b,
-};
+// const compareDifferentMiddlewares = { xml: xmlGemma27b, morphExp: morphExpGemma27b, json: jsonGemma27b };
 
 const morphExp = wrapLanguageModel({
-  model: friendli("meta-llama/Llama-3.3-70B-Instruct"),
+  model: friendli("meta-llama/Llama-3.1-8B-Instruct"),
   middleware: morphExpToolMiddleware,
 });
 
-const original = friendli("meta-llama/Llama-3.3-70B-Instruct");
+// const original = friendli("meta-llama/Llama-3.1-8B-Instruct");
 
 const compareWithNativeToolCalling = {
   morphExp: morphExp,
-  original: original,
+  // original: original,
 };
 
 async function main() {
   console.log("Starting model evaluation...");
 
+  const reporterEnv = process.env.EVAL_REPORTER as ReporterType | undefined;
+
   await evaluate({
-    models: compareDifferentMiddlewares,
+    models: compareWithNativeToolCalling,
     benchmarks: [
       bfclSimpleBenchmark,
       bfclMultipleBenchmark,
       bfclParallelBenchmark,
       bfclParallelMultipleBenchmark,
     ],
-    reporter: "console",
+    reporter: reporterEnv ?? "console",
     temperature: 0.0,
-    maxTokens: 4096,
+    maxTokens: 512,
   });
 
   console.log("Evaluation complete!");

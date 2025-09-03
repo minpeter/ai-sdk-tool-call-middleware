@@ -63,10 +63,20 @@ export async function wrapGenerate({
       input: JSON.stringify(parsed.arguments || {}),
     };
 
-    // Use the same parse-summary shape as streaming path
+    // Use the same parse-summary shape as streaming path, preferring debugSummary
     const debugLevelToolChoice = getDebugLevel();
     const originText = first && first.type === "text" ? first.text : "";
-    if (debugLevelToolChoice === "parse") {
+    const dbg = params.providerOptions?.toolCallMiddleware?.debugSummary;
+    if (dbg) {
+      dbg.originalText = originText;
+      try {
+        dbg.toolCalls = JSON.stringify([
+          { toolName: toolCall.toolName, input: toolCall.input },
+        ]);
+      } catch {
+        // ignore
+      }
+    } else if (debugLevelToolChoice === "parse") {
       logParsedSummary({ toolCalls: [toolCall], originalText: originText });
     }
 
@@ -114,22 +124,40 @@ export async function wrapGenerate({
   if (debugLevel === "stream") {
     newContent.forEach(part => logParsedChunk(part));
   }
-  if (debugLevel === "parse") {
-    const allText = result.content
-      .filter(
-        (c): c is Extract<LanguageModelV2Content, { type: "text" }> =>
-          c.type === "text"
-      )
-      .map(c => c.text)
-      .join("\n\n");
-    const segments = protocol.extractToolCallSegments
-      ? protocol.extractToolCallSegments({ text: allText, tools })
-      : [];
-    const originalText = segments.join("\n\n");
-    const toolCalls = newContent.filter(
-      (p): p is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
-        (p as LanguageModelV2Content).type === "tool-call"
-    );
+  // Always compute a debug summary payload; only log to console if no container provided and parse-level
+  const allText = result.content
+    .filter(
+      (c): c is Extract<LanguageModelV2Content, { type: "text" }> =>
+        c.type === "text"
+    )
+    .map(c => c.text)
+    .join("\n\n");
+  const segments = protocol.extractToolCallSegments
+    ? protocol.extractToolCallSegments({ text: allText, tools })
+    : [];
+  const originalText = segments.join("\n\n");
+  const toolCalls = newContent.filter(
+    (p): p is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
+      (p as LanguageModelV2Content).type === "tool-call"
+  );
+
+  const dbg = params.providerOptions?.toolCallMiddleware?.debugSummary;
+  if (dbg) {
+    dbg.originalText = originalText;
+    try {
+      dbg.toolCalls = JSON.stringify(
+        toolCalls.map(tc => ({
+          toolName: (
+            tc as Extract<LanguageModelV2Content, { type: "tool-call" }>
+          )?.toolName as string | undefined,
+          input: (tc as Extract<LanguageModelV2Content, { type: "tool-call" }>)
+            ?.input as unknown,
+        }))
+      );
+    } catch {
+      // ignore JSON failure
+    }
+  } else if (debugLevel === "parse") {
     logParsedSummary({ toolCalls, originalText });
   }
 

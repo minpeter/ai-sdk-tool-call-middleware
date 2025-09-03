@@ -145,83 +145,187 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
     }
 
     if (result.logs && result.logs.length) {
-      // Print only failure-related logs prominently. Pass logs stay compact.
+      // Only show failure-related logs and group them by test id
       const failLogs = result.logs.filter(
         l =>
           l.startsWith("[FAIL]") ||
           l.startsWith("[ERROR]") ||
           l.startsWith("[FATAL]") ||
           l.startsWith("[STACK]") ||
-          l.startsWith("[DEBUG-FAIL]")
+          l.startsWith("[DEBUG-FAIL]") ||
+          l.startsWith("[DEBUG-FAIL-CONTEXT]")
       );
       const hasFails = failLogs.length > 0;
       if (hasFails) {
-        console.log(`    ${colors.bold}Failure details:${colors.reset}`);
-        // Build set of IDs that have structured debug entries to prevent duplicate prints
-        const debugIds = new Set<string>();
-        for (const l of failLogs) {
-          if (l.startsWith("[DEBUG-FAIL]")) {
+        // Group failure logs by test id
+        const byId = new Map<string, string[]>();
+        for (const line of failLogs) {
+          let id: string | undefined;
+          if (line.startsWith("[FAIL]")) {
+            const m = line.match(/^\[FAIL\]\s+([^:]+):/);
+            id = m?.[1];
+          } else if (line.startsWith("[DEBUG-FAIL]")) {
             try {
-              const parsed = JSON.parse(l.replace(/^\[DEBUG-FAIL\] /, ""));
-              if (parsed?.id) debugIds.add(String(parsed.id));
-            } catch {
-              // ignore JSON parse errors for debug lines
+              const parsed = JSON.parse(line.replace(/^\[DEBUG-FAIL\] /, ""));
+              id = String(parsed?.id ?? "");
+            } catch (_err) {
+              void _err;
+            }
+          } else if (line.startsWith("[DEBUG-FAIL-CONTEXT]")) {
+            try {
+              const parsed = JSON.parse(
+                line.replace(/^\[DEBUG-FAIL-CONTEXT\] /, "")
+              );
+              id = String(parsed?.id ?? "");
+            } catch (_err) {
+              void _err;
             }
           }
+          const key = id ?? "__general__";
+          const arr = byId.get(key) ?? [];
+          arr.push(line);
+          byId.set(key, arr);
         }
-        for (const line of failLogs) {
-          // Highlight test id and reasons
-          if (line.startsWith("[FAIL]")) {
-            // Skip duplicate [FAIL] if we also have a [DEBUG-FAIL] for same id
-            const m = line.match(/^\[FAIL\]\s+([^:]+):/);
-            const failId = m?.[1];
-            if (failId && debugIds.has(failId)) continue;
-            console.log(`      ${colors.red}${line}${colors.reset}`);
-          } else if (line.startsWith("[ERROR]") || line.startsWith("[FATAL]")) {
-            console.log(`      ${colors.yellow}${line}${colors.reset}`);
-          } else if (line.startsWith("[STACK]")) {
-            console.log(`      ${colors.gray}${line}${colors.reset}`);
-          } else if (line.startsWith("[DEBUG-FAIL]")) {
-            // Attempt to pretty print embedded diffs
-            const payload = line.replace(/^\[DEBUG-FAIL\] /, "");
-            try {
-              const parsed = JSON.parse(payload);
-              const { id, expected, actual, message, diff } = parsed;
-              console.log(
-                `      ${colors.underline}${id}${colors.reset} ${message ? "- " + message : ""}`
-              );
-              if (diff && Array.isArray(diff)) {
-                for (const dLine of diff)
-                  console.log("        " + colorizeDiffLine(dLine));
-              } else {
-                console.log("        expected:");
-                console.log(
-                  colors.green +
-                    "          " +
-                    JSON.stringify(expected, null, 2)
-                      .split("\n")
-                      .join("\n          ") +
-                    colors.reset
-                );
-                console.log("        actual:");
-                console.log(
-                  colors.red +
-                    "          " +
-                    JSON.stringify(actual, null, 2)
-                      .split("\n")
-                      .join("\n          ") +
-                    colors.reset
-                );
+
+        console.log(
+          `    ${colors.bold}Failure details (grouped):${colors.reset}`
+        );
+        for (const [groupId, lines] of byId) {
+          if (groupId !== "__general__") {
+            console.log(`      ${colors.underline}${groupId}${colors.reset}`);
+          }
+          const debugIds = new Set<string>();
+          for (const l of lines) {
+            if (l.startsWith("[DEBUG-FAIL]")) {
+              try {
+                const parsed = JSON.parse(l.replace(/^\[DEBUG-FAIL\] /, ""));
+                if (parsed?.id) debugIds.add(String(parsed.id));
+              } catch (_err) {
+                void _err;
               }
-              const suggestions = suggestFixFromDiff(parsed);
-              if (suggestions.length) {
-                console.log(
-                  `        ${colors.bold}Suggested fix:${colors.reset}`
-                );
-                for (const s of suggestions) console.log(`          • ${s}`);
+            }
+          }
+          for (const line of lines) {
+            if (line.startsWith("[FAIL]")) {
+              const m = line.match(/^\[FAIL\]\s+([^:]+):/);
+              const failId = m?.[1];
+              if (failId && debugIds.has(failId)) continue;
+              console.log(`        ${colors.red}${line}${colors.reset}`);
+            } else if (
+              line.startsWith("[ERROR]") ||
+              line.startsWith("[FATAL]")
+            ) {
+              console.log(`        ${colors.yellow}${line}${colors.reset}`);
+            } else if (line.startsWith("[STACK]")) {
+              console.log(`        ${colors.gray}${line}${colors.reset}`);
+            } else if (line.startsWith("[DEBUG-FAIL]")) {
+              const payload = line.replace(/^\[DEBUG-FAIL\] /, "");
+              try {
+                const parsed = JSON.parse(payload);
+                const { message, diff, expected, actual } = parsed;
+                if (message)
+                  console.log(
+                    `        ${colors.bold}${message}${colors.reset}`
+                  );
+                if (diff && Array.isArray(diff)) {
+                  for (const dLine of diff)
+                    console.log("          " + colorizeDiffLine(dLine));
+                } else {
+                  console.log("          expected:");
+                  console.log(
+                    colors.green +
+                      "            " +
+                      JSON.stringify(expected, null, 2)
+                        .split("\n")
+                        .join("\n            ") +
+                      colors.reset
+                  );
+                  console.log("          actual:");
+                  console.log(
+                    colors.red +
+                      "            " +
+                      JSON.stringify(actual, null, 2)
+                        .split("\n")
+                        .join("\n            ") +
+                      colors.reset
+                  );
+                }
+                const suggestions = suggestFixFromDiff(parsed);
+                if (suggestions.length) {
+                  console.log(
+                    `          ${colors.bold}Suggested fix:${colors.reset}`
+                  );
+                  for (const s of suggestions)
+                    console.log(`            • ${s}`);
+                }
+              } catch {
+                console.log(`        ${line}`);
               }
-            } catch {
-              console.log(`      ${line}`);
+            } else if (line.startsWith("[DEBUG-FAIL-CONTEXT]")) {
+              const payload = line.replace(/^\[DEBUG-FAIL-CONTEXT\] /, "");
+              try {
+                const ctx = JSON.parse(payload) as Record<string, unknown>;
+                console.log(`        ${colors.gray}context:${colors.reset}`);
+                if (ctx.tool_schema) {
+                  console.log(
+                    colors.gray +
+                      "          tool schema: " +
+                      JSON.stringify(ctx.tool_schema, null, 2)
+                        .split("\n")
+                        .join("\n            ") +
+                      colors.reset
+                  );
+                }
+                if (ctx.last_user_query) {
+                  console.log(
+                    colors.gray +
+                      "          last user: " +
+                      JSON.stringify(ctx.last_user_query) +
+                      colors.reset
+                  );
+                }
+                if (ctx.raw_model_text) {
+                  console.log(
+                    colors.gray +
+                      "          raw model text (middleware parsed):\n            " +
+                      String(ctx.raw_model_text)
+                        .split("\n")
+                        .join("\n            ") +
+                      colors.reset
+                  );
+                }
+                if (ctx.parsed_tool_calls) {
+                  console.log(
+                    colors.gray +
+                      "          parsed tool calls: " +
+                      JSON.stringify(ctx.parsed_tool_calls, null, 2)
+                        .split("\n")
+                        .join("\n            ") +
+                      colors.reset
+                  );
+                }
+                if (ctx.ground_truth) {
+                  console.log(
+                    colors.gray +
+                      "          ground truth: " +
+                      JSON.stringify(ctx.ground_truth, null, 2)
+                        .split("\n")
+                        .join("\n            ") +
+                      colors.reset
+                  );
+                }
+                if (ctx.finish_reason) {
+                  console.log(
+                    colors.gray +
+                      "          finish reason: " +
+                      JSON.stringify(ctx.finish_reason) +
+                      colors.reset
+                  );
+                }
+              } catch (_err) {
+                void _err;
+                console.log(`        ${line}`);
+              }
             }
           }
         }

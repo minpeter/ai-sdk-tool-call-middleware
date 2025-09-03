@@ -40,7 +40,7 @@ See the interface in `packages/parser/src/protocols/tool-call-protocol.ts`.
 - `morphXmlProtocol` — one XML element per call with the tag equal to the tool name (e.g., `<get_weather>...</get_weather>`).
   - Strong streaming support: the stream parser buffers text, recognizes start/end tags, and emits a `tool-call` when a full element arrives.
   - Argument parsing: XML arguments are parsed by RXML (Robust XML) via `RXML.parse`, which encapsulates XML parsing and heuristics (text nodes, repeated tags → arrays, `item` lists, tuple-like indexed objects, numeric conversion, raw string extraction for string-typed fields). RXML throws typed errors (`RXMLParseError`, `RXMLDuplicateStringTagError`, `RXMLCoercionError`) and the protocol catches these to apply fallback behavior.
-  - Type coercion: values are coerced using the tool's JSON schema via `coerceBySchema`. When available, the original provider schemas are preferred via `options.originalToolSchemas`.
+  - Type coercion: values are coerced using the tool's JSON schema via `coerceBySchema`. The middleware injects schemas via `originalTools` internally; protocols use the decoded schemas.
   - `formatTools` emits tool signatures as JSON (using `unwrapJsonSchema`) inside your system prompt template. `formatToolResponse` returns a `<tool_response>` XML block.
 
   Example call/result:
