@@ -148,10 +148,33 @@ export async function wrapStream({
                   })
                 : [];
               const origin = segments.join("\n\n");
-              logParsedSummary({
-                toolCalls: parsedToolCalls,
-                originalText: origin,
-              });
+              // Prefer JSON-safe debug container over console logs
+              const dbg =
+                params.providerOptions?.toolCallMiddleware?.debugSummary;
+              if (dbg) {
+                dbg.originalText = origin;
+                try {
+                  const toolCallParts = parsedToolCalls.filter(
+                    (
+                      p
+                    ): p is LanguageModelV2StreamPart & { type: "tool-call" } =>
+                      p.type === "tool-call"
+                  );
+                  dbg.toolCalls = JSON.stringify(
+                    toolCallParts.map(tc => ({
+                      toolName: tc.toolName,
+                      input: tc.input,
+                    }))
+                  );
+                } catch {
+                  // ignore
+                }
+              } else {
+                logParsedSummary({
+                  toolCalls: parsedToolCalls,
+                  originalText: origin,
+                });
+              }
             } catch {
               // ignore logging failures
             }

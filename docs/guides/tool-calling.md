@@ -79,7 +79,7 @@ const result = streamText({
 Pass via `providerOptions.toolCallMiddleware`.
 
 - `onError(message, metadata)` — receive non-fatal parsing/coercion warnings.
-- `originalToolSchemas` — for XML protocol to coerce arguments using provider-original schemas during generate/stream.
+- `debugSummary: { originalText?: string; toolCalls?: string }` — JSON-safe sink for structured parse info; suppresses console logs in `parse` mode.
 - Additional fields under `providerOptions.toolCallMiddleware` are forwarded to handlers. Reserved internal fields include `originalTools` and `toolChoice`.
 
 Example:
@@ -90,7 +90,7 @@ const result = await generateText({
   providerOptions: {
     toolCallMiddleware: {
       onError: (msg, meta) => console.warn(msg, meta),
-      originalToolSchemas: {/* name->schema map */},
+      debugSummary: {},
     },
   },
 });

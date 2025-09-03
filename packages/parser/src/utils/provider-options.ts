@@ -3,6 +3,12 @@ import { JSONSchema7, LanguageModelV2FunctionTool } from "@ai-sdk/provider";
 export type ToolCallMiddlewareProviderOptions = {
   toolCallMiddleware?: {
     // onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    // Optional debug summary container that middleware can populate.
+    // Values must be JSON-safe.
+    debugSummary?: {
+      originalText?: string;
+      toolCalls?: string; // JSON string of array of { toolName, input }
+    };
 
     // INTERNAL: Set by transform-handler. Used for internal propagation of tool-choice.
     toolChoice?: { type: string };

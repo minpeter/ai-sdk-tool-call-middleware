@@ -37,10 +37,16 @@ const result = await model.generateText({
   - Source: `transform-handler.ts`, `utils/tools.ts`, `stream-handler.ts`, `generate-handler.ts`.
   - Note: `type: "none"` is not supported by this middleware.
 
-- `originalToolSchemas: Record<string, unknown>`
-  - Optional. If supplied, protocols may use the original provider schemas to coerce argument types.
-  - Currently consumed by `morphXmlProtocol` in both generate and stream paths.
-  - Source: `protocols/morph-xml-protocol.ts`.
+- `debugSummary: { originalText?: string; toolCalls?: string }`
+  - JSON-safe sink for structured parse information that suppresses console logs in `parse` mode.
+  - Populated by middleware in both generate and stream paths.
+  - `originalText` contains pre-parse origin segments.
+  - `toolCalls` is a JSON stringified array of `{ toolName?: string; input?: unknown }`.
+  - Source: `generate-handler.ts`, `stream-handler.ts`.
+
+Deprecated/removed:
+
+- `originalToolSchemas` — replaced by the internal `originalTools` propagation.
 
 ## Protocol options passthrough
 

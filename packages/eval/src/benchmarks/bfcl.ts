@@ -278,16 +278,55 @@ function createBfclBenchmark(
               );
             }
 
+            // Capture middleware debugSummary output via shared reference
+            // Note: providerOptions are provider-specific in AI SDK; we only type the middleware slice we use
+            type ProviderOptionsWithMiddleware = {
+              toolCallMiddleware?: {
+                debugSummary?: {
+                  originalText?: string;
+                  toolCalls?: string;
+                };
+              };
+            };
+            const debugSummaryRef: {
+              originalText?: string;
+              toolCalls?: string;
+            } = {};
+            // Narrowly typed provider options to carry middleware debug sink
+            const providerOptions: ProviderOptionsWithMiddleware = {
+              toolCallMiddleware: {
+                debugSummary: debugSummaryRef,
+              },
+            };
             const { toolCalls, text, finishReason } = await generateText({
               model,
               messages: flatMessages as unknown as any,
               tools: toolsMap,
               toolChoice: "auto",
+              providerOptions,
               ...(temperature !== undefined ? { temperature } : {}),
               ...(maxTokens !== undefined
                 ? { maxOutputTokens: maxTokens }
                 : {}),
             });
+
+            const mwOriginalText: string | undefined =
+              debugSummaryRef.originalText;
+            const mwParsedToolCalls: Array<{
+              toolName?: string;
+              input?: unknown;
+            }> = (() => {
+              const raw = debugSummaryRef.toolCalls;
+              if (!raw) return [];
+              try {
+                const arr = JSON.parse(raw);
+                return Array.isArray(arr) ? arr : [];
+              } catch {
+                return [];
+              }
+            })();
+            // Debug summary is sourced from debugSummaryRef (originalText, toolCalls).
+            // Parsing of toolCalls is already guarded above; no additional try/catch is required here.
 
             // Debug: raw toolCalls
             try {
@@ -367,6 +406,35 @@ function createBfclBenchmark(
                       {} as Record<string, unknown>
                     );
                 };
+
+                function generateParamMismatchDiff(
+                  paramName: string,
+                  allowed: unknown,
+                  got: unknown
+                ): string[] {
+                  const diffLines: string[] = [];
+                  diffLines.push(`@@ param ${paramName}`);
+                  const allowedArray = Array.isArray(allowed)
+                    ? (allowed as unknown[])
+                    : [allowed as unknown];
+                  const expectedLine = (() => {
+                    if (allowedArray.length === 1) {
+                      return `- expected: ${JSON.stringify(allowedArray[0])}`;
+                    }
+                    const formatted = allowedArray
+                      .map(v =>
+                        Array.isArray(v) ||
+                        (typeof v === "object" && v !== null)
+                          ? JSON.stringify(v)
+                          : String(v)
+                      )
+                      .join(", ");
+                    return `- expected one of: ${formatted}`;
+                  })();
+                  diffLines.push(expectedLine);
+                  diffLines.push(`+ got: ${JSON.stringify(got)}`);
+                  return diffLines;
+                }
 
                 const expected: Record<string, unknown> = {};
                 const actual: Record<string, unknown> = {};
@@ -453,11 +521,9 @@ function createBfclBenchmark(
                             );
                           });
                         if (!includes) {
-                          diff.push(`@@ param ${k}`);
                           diff.push(
-                            `- expected one of: ${JSON.stringify(allowed)}`
+                            ...generateParamMismatchDiff(k, allowed, got)
                           );
-                          diff.push(`+ got: ${JSON.stringify(got)}`);
                         }
                       }
                     }
@@ -594,11 +660,9 @@ function createBfclBenchmark(
                               );
                             });
                           if (!includes) {
-                            diff.push(`@@ param ${k}`);
                             diff.push(
-                              `- expected one of: ${JSON.stringify(allowed)}`
+                              ...generateParamMismatchDiff(k, allowed, got)
                             );
-                            diff.push(`+ got: ${JSON.stringify(got)}`);
                           }
                         }
                       }
@@ -616,6 +680,38 @@ function createBfclBenchmark(
                     diff,
                   })}`
                 );
+                // Attach rich context for debugging
+                try {
+                  const lastUser = (() => {
+                    const reversed = [...flatMessages].reverse();
+                    const found = reversed.find(
+                      m => (m as Message).role === "user"
+                    ) as Message | undefined;
+                    return found?.content ?? undefined;
+                  })();
+                  const contextPayload = {
+                    id: testCase.id,
+                    tool_schema: tools,
+                    last_user_query: lastUser,
+                    raw_model_text:
+                      mwOriginalText && mwOriginalText.length > 0
+                        ? mwOriginalText
+                        : typeof text === "string"
+                          ? text
+                          : "",
+                    finish_reason: finishReason,
+                    parsed_tool_calls: mwParsedToolCalls.length
+                      ? mwParsedToolCalls
+                      : restoredCalls,
+                    ground_truth: (possibleAnswer as { ground_truth?: unknown })
+                      .ground_truth,
+                  };
+                  caseLogs.push(
+                    `[DEBUG-FAIL-CONTEXT] ${JSON.stringify(contextPayload)}`
+                  );
+                } catch {
+                  // ignore context build failures
+                }
               } catch {
                 caseLogs.push(
                   `[DEBUG] ${testCase.id}: failed to build debug diff`

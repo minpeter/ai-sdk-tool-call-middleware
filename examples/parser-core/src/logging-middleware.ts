@@ -37,7 +37,7 @@ function invLog(...args: unknown[]) {
   }
 }
 
-export const LoggingMiddleware: LanguageModelV2Middleware = {
+export const loggingMiddleware: LanguageModelV2Middleware = {
   wrapGenerate: async ({ doGenerate, params }) => {
     invLog("doGenerate called");
     invLog(`params: ${JSON.stringify(params, null, 2)}`);
