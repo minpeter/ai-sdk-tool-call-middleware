@@ -174,8 +174,8 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
             try {
               const parsed = JSON.parse(line.replace(/^\[DEBUG-FAIL\] /, ""));
               id = String(parsed?.id ?? "");
-            } catch (_err) {
-              void _err;
+            } catch {
+              /* intentionally ignored */
             }
           } else if (line.startsWith("[DEBUG-FAIL-CONTEXT]")) {
             try {
@@ -183,8 +183,8 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
                 line.replace(/^\[DEBUG-FAIL-CONTEXT\] /, "")
               );
               id = String(parsed?.id ?? "");
-            } catch (_err) {
-              void _err;
+            } catch {
+              /* intentionally ignored */
             }
           }
           const key = id ?? "__general__";
@@ -206,8 +206,8 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
               try {
                 const parsed = JSON.parse(l.replace(/^\[DEBUG-FAIL\] /, ""));
                 if (parsed?.id) debugIds.add(String(parsed.id));
-              } catch (_err) {
-                void _err;
+              } catch {
+                /* intentionally ignored */
               }
             }
           }
@@ -328,8 +328,7 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
                       colors.reset
                   );
                 }
-              } catch (_err) {
-                void _err;
+              } catch {
                 console.log(`        ${line}`);
               }
             }

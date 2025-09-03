@@ -279,20 +279,31 @@ function createBfclBenchmark(
             }
 
             // Capture middleware debugSummary output via shared reference
+            // Note: providerOptions are provider-specific in AI SDK; we only type the middleware slice we use
+            type ProviderOptionsWithMiddleware = {
+              toolCallMiddleware?: {
+                debugSummary?: {
+                  originalText?: string;
+                  toolCalls?: string;
+                };
+              };
+            };
             const debugSummaryRef: {
               originalText?: string;
               toolCalls?: string;
             } = {};
+            // Narrowly typed provider options to carry middleware debug sink
+            const providerOptions: ProviderOptionsWithMiddleware = {
+              toolCallMiddleware: {
+                debugSummary: debugSummaryRef,
+              },
+            };
             const { toolCalls, text, finishReason } = await generateText({
               model,
               messages: flatMessages as unknown as any,
               tools: toolsMap,
               toolChoice: "auto",
-              providerOptions: {
-                toolCallMiddleware: {
-                  debugSummary: debugSummaryRef,
-                },
-              } as any,
+              providerOptions,
               ...(temperature !== undefined ? { temperature } : {}),
               ...(maxTokens !== undefined
                 ? { maxOutputTokens: maxTokens }
@@ -314,14 +325,7 @@ function createBfclBenchmark(
                 return [];
               }
             })();
-            // Read debug summary back if present
-            try {
-              const dbg = ({} as any)?.toolCallMiddleware?.debugSummary;
-              // Not accessible directly from generateText return; rely on our values below if wired in the provider
-              void dbg;
-            } catch {
-              // ignore
-            }
+            // Debug summary is captured via debugSummaryRef; removed unused try/catch per review
 
             // Debug: raw toolCalls
             try {
