@@ -12,7 +12,7 @@ import {
   morphXmlToolMiddleware,
 } from "@ai-sdk-tool/parser";
 import {
-  sijawaraConsiseXmlToolMiddleware,
+  sijawaraConciseXmlToolMiddleware,
   sijawaraDetailedXmlToolMiddleware,
 } from "@ai-sdk-tool/parser/community";
 import { wrapLanguageModel } from "ai";
@@ -60,16 +60,16 @@ const sijawaraDetailed = wrapLanguageModel({
   middleware: sijawaraDetailedXmlToolMiddleware,
 });
 
-const sijawaraConsise = wrapLanguageModel({
+const sijawaraConcise = wrapLanguageModel({
   model: testTargetModel,
-  middleware: sijawaraConsiseXmlToolMiddleware,
+  middleware: sijawaraConciseXmlToolMiddleware,
 });
 
 const compareWithNativeToolCalling = {
   hermes: hermes,
   morphXml: morphXml,
   sijawaraDetailed: sijawaraDetailed,
-  sijawaraConsise: sijawaraConsise,
+  sijawaraConcise: sijawaraConcise,
   original: testTargetModel,
 };
 

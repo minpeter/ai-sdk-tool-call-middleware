@@ -71,7 +71,7 @@ export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
  * Originally contributed by: sijawara
  * Source: https://github.com/minpeter/ai-sdk-tool-call-middleware/issues/51#issuecomment-3234519376
  */
-export const sijawaraConsiseXmlToolMiddleware = createToolMiddleware({
+export const sijawaraConciseXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
   toolSystemPromptTemplate(tools: string) {
     return `You have access to callable functions (tools).
