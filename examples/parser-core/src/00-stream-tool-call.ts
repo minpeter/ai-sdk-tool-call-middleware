@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
+import { sijawaraDetailedXmlToolMiddleware } from "@ai-sdk-tool/parser/community";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
@@ -13,7 +13,7 @@ async function main() {
   const result = streamText({
     model: wrapLanguageModel({
       model: openrouter("z-ai/glm-4.5-air"),
-      middleware: xmlToolMiddleware,
+      middleware: sijawaraDetailedXmlToolMiddleware,
     }),
 
     // model: wrapLanguageModel({
