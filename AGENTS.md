@@ -30,7 +30,7 @@ This project provides middleware for AI SDK to enable tool calling with models t
 **@ai-sdk-tool/parser** (`packages/parser/`):
 
 - Main middleware package for tool call parsing
-- Exports pre-configured middlewares: `gemmaToolMiddleware`, `hermesToolMiddleware`, `xmlToolMiddleware`
+- Exports pre-configured middlewares: `gemmaToolMiddleware`, `hermesToolMiddleware`, `morphXmlToolMiddleware`
 - Core factory function: `createToolMiddleware()` for custom protocols
 - Protocol system with pluggable parsers for different model formats (JSON-mix, XML, etc.)
 

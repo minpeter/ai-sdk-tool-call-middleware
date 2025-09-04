@@ -99,7 +99,7 @@ main().catch(console.error);
 
 - `gemmaToolMiddleware` — JSON‑mix format inside markdown fences (markdown code fences)
 - `hermesToolMiddleware` — JSON‑mix format wrapped in `<tool_call>` XML tags.
-- `xmlToolMiddleware` — XML format (Morph‑XML protocol).
+- `morphXmlToolMiddleware` — XML format (Morph‑XML protocol).
 
 ## Protocols
 
@@ -118,7 +118,7 @@ See `examples/parser-core/src/*` for runnable demos (streaming/non‑streaming, 
 
 ## [dev] Contributor notes
 
-- Exported API: `createToolMiddleware`, `gemmaToolMiddleware`, `hermesToolMiddleware`, `xmlToolMiddleware`, `jsonMixProtocol`, `morphXmlProtocol`.
+- Exported API: `createToolMiddleware`, `gemmaToolMiddleware`, `hermesToolMiddleware`, `morphXmlToolMiddleware`, `jsonMixProtocol`, `morphXmlProtocol`.
 - Debugging:
   - Set `DEBUG_PARSER_MW=stream` to log raw/parsed chunks during runs.
   - Set `DEBUG_PARSER_MW=parse` to log original matched text and parsed summary.

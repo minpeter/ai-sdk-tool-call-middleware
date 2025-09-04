@@ -83,7 +83,7 @@ See concrete implementations in `packages/parser/src/protocols/json-mix-protocol
 - Preconfigured:
   - `gemmaToolMiddleware` — JSON-mix with fenced code blocks for Gemma-style models.
   - `hermesToolMiddleware` — JSON-mix with XML-tag wrapping of tool calls.
-  - `xmlToolMiddleware` — Morph-XML protocol for XML-native formats.
+  - `morphXmlToolMiddleware` — Morph-XML protocol for XML-native formats.
 - Protocol factories: `jsonMixProtocol`, `morphXmlProtocol`.
 
 Defined in `packages/parser/src/index.ts`.

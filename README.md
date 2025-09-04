@@ -15,7 +15,7 @@ Note: Requires AI SDK v5. For AI SDK v4, use `@ai-sdk-tool/parser@1.0.0`.
 
 ## Packages
 
-- `packages/parser` — core tool‑call parsing middleware and prebuilt middlewares (`gemmaToolMiddleware`, `hermesToolMiddleware`, `xmlToolMiddleware`).
+- `packages/parser` — core tool‑call parsing middleware and prebuilt middlewares (`gemmaToolMiddleware`, `hermesToolMiddleware`, `morphXmlToolMiddleware`).
   - Quickstarts: [packages/parser/README.md](packages/parser/README.md)
   - Official docs reference: [Custom tool call parser](https://ai-sdk.dev/docs/ai-sdk-core/middleware#custom-tool-call-parser)
 - `packages/eval` — evaluation utilities (BFCL, JSON generation).  
@@ -24,7 +24,7 @@ Note: Requires AI SDK v5. For AI SDK v4, use `@ai-sdk-tool/parser@1.0.0`.
 ### Choose a middleware (at a glance)
 
 - **gemmaToolMiddleware**: JSON tool calls inside markdown fences. Best for Gemma-like models.
-- **xmlToolMiddleware**: Plain XML tool calls. Good fit for GLM/GLM-like models.
+- **morphXmlToolMiddleware**: Plain XML tool calls. Good fit for GLM/GLM-like models.
 - **hermesToolMiddleware**: JSON payload wrapped in `<tool_call>` XML tags. Hermes/Llama-style prompts.
 
 ## Install (per package)

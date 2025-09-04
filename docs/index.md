@@ -6,7 +6,7 @@ Monorepo documentation for AI SDK tool-calling middleware and evaluation utiliti
 - Prebuilt Middlewares (choose one):
   - **gemmaToolMiddleware**: JSON tool calls in markdown fences — Gemma-like models
   - **hermesToolMiddleware**: JSON payload wrapped in XML tags — Hermes/Llama-style
-  - **xmlToolMiddleware**: XML elements per tool — GLM/XML-friendly models
+  - **morphXmlToolMiddleware**: XML elements per tool — GLM/XML-friendly models
 - Guides
   - [dev] Tool Calling: [guides/tool-calling.md](guides/tool-calling.md)
   - [dev] Handlers Overview: [guides/handlers.md](guides/handlers.md)

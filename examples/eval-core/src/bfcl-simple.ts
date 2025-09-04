@@ -26,7 +26,7 @@ const friendli = createOpenAICompatible({
 // const xmlGemma27b = wrapLanguageModel({
 //   model: friendli("google/gemma-3-27b-it"),
 //   // model: openrouter("z-ai/glm-4.5-air"),
-//   middleware: xmlToolMiddleware,
+//   middleware: morphXmlToolMiddleware,
 // });
 
 // const jsonGemma27b = wrapLanguageModel({

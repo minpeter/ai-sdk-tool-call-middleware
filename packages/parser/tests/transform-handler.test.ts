@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   gemmaToolMiddleware,
   hermesToolMiddleware,
-  xmlToolMiddleware,
+  morphXmlToolMiddleware,
 } from "@/index";
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
 import { createToolMiddleware } from "@/tool-call-middleware";
@@ -49,8 +49,8 @@ describe("index prompt templates", () => {
     expect(text).toMatch(/get_weather/);
   });
 
-  it("xmlToolMiddleware template appears in system prompt", async () => {
-    const out = await (xmlToolMiddleware.transformParams as any)!({
+  it("morphXmlToolMiddleware template appears in system prompt", async () => {
+    const out = await (morphXmlToolMiddleware.transformParams as any)!({
       params: { prompt: [], tools },
     } as any);
 
@@ -270,7 +270,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
   });
 
   it("xml: formats assistant tool-call (object input) and tool result into user text", async () => {
-    const mw = xmlToolMiddleware;
+    const mw = morphXmlToolMiddleware;
     const out = await mw.transformParams!({
       params: {
         prompt: [
