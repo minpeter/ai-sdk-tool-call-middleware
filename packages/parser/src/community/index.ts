@@ -66,7 +66,7 @@ export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
 
 /**
  * A community-contributed middleware that uses morphXmlProtocol
- * with a more consise system prompt template for function calling.
+ * with a more concise system prompt template for function calling.
  *
  * Originally contributed by: sijawara
  * Source: https://github.com/minpeter/ai-sdk-tool-call-middleware/issues/51#issuecomment-3234519376
