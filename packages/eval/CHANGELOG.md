@@ -1,5 +1,11 @@
 # @ai-sdk-tool/eval
 
+## 0.1.8
+
+### Patch Changes
+
+- dce31fe: Improved debugging capabilities of console.debug.
+
 ## 0.1.7
 
 ### Patch Changes

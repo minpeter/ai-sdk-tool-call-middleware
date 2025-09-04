@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.1.6
+
+### Patch Changes
+
+- dce31fe: Add a debugging field that returns the original output of the model before parsing.
+
 ## 2.1.5
 
 ### Patch Changes
