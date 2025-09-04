@@ -13,7 +13,7 @@ async function main() {
   await generateText({
     // model: wrapLanguageModel({
     //   model: openrouter("z-ai/glm-4.5-air"),
-    //   middleware: xmlToolMiddleware,
+    //   middleware: morphXmlToolMiddleware,
     // }),
 
     model: wrapLanguageModel({

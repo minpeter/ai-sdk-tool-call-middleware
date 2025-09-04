@@ -119,7 +119,7 @@ main().catch(console.error);
 ## Choose a middleware (protocol)
 
 - **gemmaToolMiddleware**: JSON tool calls inside markdown fences. Best for Gemma-like models.
-- **xmlToolMiddleware**: XML tool calls. Works well with GLM-style models.
+- **morphXmlToolMiddleware**: XML tool calls. Works well with GLM-style models.
 - **hermesToolMiddleware**: JSON payload wrapped in XML tags. For Hermes/Llama-style prompts.
 
 Swap by importing a different middleware; your tool definitions stay the same.

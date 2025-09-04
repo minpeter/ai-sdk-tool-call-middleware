@@ -40,21 +40,26 @@ For each function call return a json object with function name and arguments wit
   },
 });
 
-const xmlToolMiddleware = createToolMiddleware({
+const morphXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
   toolSystemPromptTemplate(tools: string) {
     return `You are a function calling AI model.
-You are provided with function signatures within <tools></tools> XML tags.
-You may call one or more functions to assist with the user query.
-Don't make assumptions about what values to plug into functions.
-Here are the available tools: <tools>${tools}</tools>
-For a function call, return exactly one XML element whose tag name matches the tool's name, and nothing else.
-When an argument is an array, write each item inside a single element on one line separated by commas (or provide a JSON-like list). When an argument is an object, provide a JSON-like value.
-Examples:
+
+Available functions are listed inside <tools></tools>.
+<tools>${tools}</tools>
+
+# Rules
+- Use exactly one XML element whose tag name is the function name.
+- Put each parameter as a child element.
+- Values must follow the schema exactly (numbers, arrays, objects, enums → copy as-is).
+- Do not add or remove functions or parameters.
+- Each required parameter must appear once.
+- Output nothing before or after the function call.
+
+# Example
 <get_weather>
-<location>
-San Francisco
-</location>
+  <location>New York</location>
+  <unit>celsius</unit>
 </get_weather>`;
   },
 });
@@ -65,7 +70,7 @@ export {
   hermesToolMiddleware,
   jsonMixProtocol,
   morphXmlProtocol,
-  xmlToolMiddleware,
+  morphXmlToolMiddleware,
 };
 
 // Export utilities

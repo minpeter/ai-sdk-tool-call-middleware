@@ -38,6 +38,6 @@ cd examples/eval-core && pnpm dlx tsx src/json-generation.ts
 
 ### [dev] Notes
 
-- **Middleware switch**: parser examples show how to swap between `xmlToolMiddleware` and `gemmaToolMiddleware` via commented lines. Choose a provider/model your account can access.
+- **Middleware switch**: parser examples show how to swap between `morphXmlToolMiddleware` and `gemmaToolMiddleware` via commented lines. Choose a provider/model your account can access.
 - **Providers**: OpenRouter base URL is `https://openrouter.ai/api/v1`. Friendli serverless base URL is `https://api.friendli.ai/serverless/v1`.
 - **Streaming vs non‑streaming**: `00-stream-tool-call.ts` uses streaming (`streamText`), while `00-tool-call.ts` is non‑streaming (`generateText`).

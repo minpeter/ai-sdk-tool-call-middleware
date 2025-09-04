@@ -9,8 +9,8 @@ import {
   gemmaToolMiddleware,
   hermesToolMiddleware,
   jsonMixProtocol,
+  morphXmlToolMiddleware,
   originalToolsSchema,
-  xmlToolMiddleware,
 } from "@/index";
 
 describe("index exports", () => {
@@ -26,9 +26,9 @@ describe("index exports", () => {
     });
   });
 
-  describe("xmlToolMiddleware", () => {
+  describe("morphXmlToolMiddleware", () => {
     it("should be defined", () => {
-      expect(xmlToolMiddleware).toBeDefined();
+      expect(morphXmlToolMiddleware).toBeDefined();
     });
 
     it("should parse XML tool calls", async () => {
@@ -51,7 +51,7 @@ describe("index exports", () => {
         },
       ];
 
-      const result = await xmlToolMiddleware.wrapGenerate!({
+      const result = await morphXmlToolMiddleware.wrapGenerate!({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],
@@ -97,7 +97,7 @@ describe("index exports", () => {
         },
       ];
 
-      const result = await xmlToolMiddleware.wrapGenerate!({
+      const result = await morphXmlToolMiddleware.wrapGenerate!({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],

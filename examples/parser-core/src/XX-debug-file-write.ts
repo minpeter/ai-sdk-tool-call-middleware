@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
+import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import {
   type ModelMessage,
   stepCountIs,
@@ -48,7 +48,7 @@ type FirstToolCall = {
 };
 
 async function runOnce(
-  runIndex: number
+  _runIndex: number
 ): Promise<{ ok: boolean; detail: string; first?: FirstToolCall }> {
   const messages: ModelMessage[] = [
     {
@@ -62,7 +62,7 @@ async function runOnce(
   const result = streamText({
     model: wrapLanguageModel({
       model: friendli("google/gemma-3-27b-it"),
-      middleware: xmlToolMiddleware,
+      middleware: morphXmlToolMiddleware,
     }),
     temperature: 0.0,
     messages,
@@ -147,7 +147,7 @@ async function main() {
           ? (input.content as string).slice(0, 120)
           : String(input?.content);
       console.log(`First tool-call: ${outcome.first.toolName}`);
-      console.log(`Path: ${String((input as any).path)}`);
+      console.log(`Path: ${String(input?.path)}`);
       console.log(`Content (head): ${sample.replace(/\n/g, "\\n")}...`);
     }
     console.log(`Verdict: ${outcome.ok ? "PASS" : "FAIL"} (${outcome.detail})`);

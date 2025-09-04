@@ -101,7 +101,7 @@ Preconfigured middlewares exported from `packages/parser/src/index.ts`:
 
 - `gemmaToolMiddleware` — Uses `jsonMixProtocol` with markdown code fences labeled `tool_call` and a prompt tailored for Gemma.
 - `hermesToolMiddleware` — `jsonMixProtocol` with `<tool_call>` tags and a Hermes-style prompt.
-- `xmlToolMiddleware` — `morphXmlProtocol` with an XML-oriented prompt.
+- `morphXmlToolMiddleware` — `morphXmlProtocol` with an XML-oriented prompt.
 
 ## Implementing a Custom Protocol
 

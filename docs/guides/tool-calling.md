@@ -6,7 +6,7 @@ Use the middleware to enable tool calls on models without native `tools` support
 
 - `gemmaToolMiddleware` — JSON-mix in markdown fences (```tool_call)
 - `hermesToolMiddleware` — JSON-mix with XML wrappers (<tool_call>)
-- `xmlToolMiddleware` — Morph-XML protocol (native XML elements per tool name)
+- `morphXmlToolMiddleware` — Morph-XML protocol (native XML elements per tool name)
 
 ## Generate mode
 
@@ -112,7 +112,7 @@ Set env variables:
 - `hermesToolMiddleware` (JSON-mix with `<tool_call>`):
   - System prompt describes `<tools>` block and requires returning JSON inside `<tool_call> ... </tool_call>` tags.
   - Tool responses are formatted with `<tool_response>` tags.
-- `xmlToolMiddleware` (Morph-XML):
+- `morphXmlToolMiddleware` (Morph-XML):
   - Tool call must be an XML element named after the tool (e.g., `<get_weather>...</get_weather>`).
   - Arguments are parsed by RXML (Robust XML) via `RXML.parse` and then coerced via JSON Schema. On parse/coercion issues, the protocol falls back to emitting the original text and reports via `options.onError`.
   - To improve coercion accuracy, pass `originalToolSchemas` under `providerOptions.toolCallMiddleware`.

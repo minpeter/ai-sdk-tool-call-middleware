@@ -11,7 +11,7 @@ import { z } from "zod";
 import {
   gemmaToolMiddleware,
   hermesToolMiddleware,
-  xmlToolMiddleware,
+  morphXmlToolMiddleware,
 } from "@/index";
 
 const openrouter = createOpenAICompatible({
@@ -37,7 +37,7 @@ const testModels = {
   }),
   xml: wrapLanguageModel({
     model: openrouter("z-ai/glm-4.5-air"),
-    middleware: xmlToolMiddleware,
+    middleware: morphXmlToolMiddleware,
   }),
   reasoning: wrapLanguageModel({
     model: friendli("deepseek-ai/DeepSeek-R1-0528"),

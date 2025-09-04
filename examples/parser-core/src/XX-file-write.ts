@@ -4,7 +4,7 @@ import { stdin as input, stdout as output } from "node:process";
 import readline from "node:readline/promises";
 
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
+import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import {
   type ModelMessage,
   stepCountIs,
@@ -87,7 +87,7 @@ async function main() {
       model: wrapLanguageModel({
         model: friendli("LGAI-EXAONE/EXAONE-4.0.1-32B"),
         middleware: [
-          xmlToolMiddleware,
+          morphXmlToolMiddleware,
           // loggingMiddleware
         ],
       }),
