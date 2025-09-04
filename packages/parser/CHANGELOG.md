@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 2.1.7
+
+### Patch Changes
+
+- 4fb674f: Add community XML tools and reorganize parsers
+
 ## 2.1.6
 
 ### Patch Changes
