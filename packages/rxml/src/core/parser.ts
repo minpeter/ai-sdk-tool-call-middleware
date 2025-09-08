@@ -332,7 +332,15 @@ export function parse(
           continue;
         }
       } else {
-        args[k] = firstValue;
+        if (
+          firstValue &&
+          typeof firstValue === "object" &&
+          Object.prototype.hasOwnProperty.call(firstValue, textNodeName)
+        ) {
+          args[k] = (firstValue as Record<string, unknown>)[textNodeName];
+        } else {
+          args[k] = firstValue;
+        }
         continue;
       }
     }

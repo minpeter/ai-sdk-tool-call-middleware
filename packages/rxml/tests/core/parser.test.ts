@@ -400,6 +400,20 @@ describe("robust-xml parser", () => {
       });
       expect(result.content).toBe("First"); // Should use first occurrence
     });
+
+    it("handles duplicate string tags with attributes correctly", () => {
+      const xml = `<content id="1">First content</content><content>Second content</content>`;
+      const schema = {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+      };
+      const result = parse(xml, schema, {
+        throwOnDuplicateStringTags: false,
+      });
+      expect(result.content).toBe("First content");
+    });
   });
 
   describe("error handling", () => {
