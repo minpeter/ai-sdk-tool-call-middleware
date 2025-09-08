@@ -30,6 +30,8 @@ export default defineConfig({
     conditions: ["node", "import", "module", "require"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Resolve workspace package to source during tests to avoid requiring a build
+      "@ai-sdk-tool/rxml": path.resolve(__dirname, "../rxml/src/index.ts"),
     },
   },
 });

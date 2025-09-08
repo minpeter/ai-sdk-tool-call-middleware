@@ -27,7 +27,8 @@
     "target": "es2018",
     "stripInternal": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@ai-sdk-tool/rxml": ["../rxml/src/index.ts"]
     }
   },
   "include": ["."],
