@@ -171,6 +171,7 @@ function createBfclBenchmark(
           if (!Array.isArray(copy)) {
             if (copy.type) {
               if (copy.type === "dict") copy.type = "object";
+              if (copy.type === "tuple") copy.type = "array";
               if (copy.type === "integer" || copy.type === "float")
                 copy.type = "number";
             }
