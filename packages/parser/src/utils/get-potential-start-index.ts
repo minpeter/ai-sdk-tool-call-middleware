@@ -63,20 +63,26 @@ export function getPotentialStartIndexMultiple(
   }
 
   // Second pass: look for partial matches (suffix of text matching prefix of searchedText)
+  // Find the longest possible partial match
+  let longestMatch: { index: number; matchedText: string; isComplete: boolean } | null = null;
+
   for (const searchedText of searchedTexts) {
     if (searchedText.length === 0) continue;
 
-    for (let i = text.length - 1; i >= 0; i--) {
+    // Find the longest suffix of text that matches a prefix of searchedText
+    for (let i = 0; i < text.length; i++) {
       const suffix = text.substring(i);
       if (searchedText.startsWith(suffix) && suffix.length < searchedText.length) {
         const match = { index: i, matchedText: searchedText, isComplete: false };
-        if (!bestMatch || i < bestMatch.index) {
-          bestMatch = match;
+        // Prefer longer matches, or earlier indices for same length matches
+        if (!longestMatch || 
+            suffix.length > text.substring(longestMatch.index).length ||
+            (suffix.length === text.substring(longestMatch.index).length && i < longestMatch.index)) {
+          longestMatch = match;
         }
-        break; // We found the longest suffix for this searchedText
       }
     }
   }
 
-  return bestMatch;
+  return longestMatch || bestMatch;
 }

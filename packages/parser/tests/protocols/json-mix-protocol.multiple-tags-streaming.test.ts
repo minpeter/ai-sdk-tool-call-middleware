@@ -267,18 +267,19 @@ describe("jsonMixProtocol multiple tags streaming", () => {
 
     it("should demonstrate ` vs ``` behavior when streaming incrementally (user's specific case)", async () => {
       // This test specifically addresses the user's comment about how ` vs ``` behaves
+      // The user wants `` to be consumed by the ``` case, which suggests a start tag that begins with ``
       const protocol = jsonMixProtocol({
-        toolCallStart: "<tool_call>",
-        toolCallEnd: ["`", "```"], // ` comes first in array, ``` second
+        toolCallStart: ["```tool_call\n", "```json\n"], // Multiple start patterns 
+        toolCallEnd: ["`", "```"], // Multiple end patterns like user's example
       });
 
       const transformer = protocol.createStreamParser({ tools: [] });
       const rs = new ReadableStream<LanguageModelV2StreamPart>({
         start(ctrl) {
-          ctrl.enqueue({ type: "text-delta", id: "1", delta: '<tool_call>{"name": "weather", "arguments": {}}' });
+          ctrl.enqueue({ type: "text-delta", id: "1", delta: '```tool_call\n{"name": "weather", "arguments": {}}' });
           // Send one backtick - this immediately completes the tool call with ` end tag
           ctrl.enqueue({ type: "text-delta", id: "1", delta: "`" });
-          // Later we get more backticks - but tool call is already complete
+          // Later we get more backticks - these should be consumed by ``` case (partial match for ```json\n or ```tool_call\n)
           ctrl.enqueue({ type: "text-delta", id: "1", delta: "``" });
           ctrl.enqueue({ type: "text-delta", id: "1", delta: " done" });
           ctrl.enqueue({
@@ -301,7 +302,7 @@ describe("jsonMixProtocol multiple tags streaming", () => {
         .filter(c => c.type === "text-delta")
         .map((c: any) => c.delta)
         .join("");
-      expect(textDeltas).toBe("`` done");
+      expect(textDeltas).toBe(" done");
     });
   });
 
