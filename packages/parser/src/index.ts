@@ -6,9 +6,8 @@ const gemmaToolMiddleware = createToolMiddleware({
     // Customize the tool call delimiters to use markdown code fences
     {
       toolCallStart: "```tool_call\n",
-      // TODO: Support specifying multiple possible tags,
-      // e.g., for gemma, it would be nice to be able to set both `` and ``` at the same time.
-      toolCallEnd: "\n```",
+      // Support specifying multiple possible tags for Gemma, which can use both `` and ```
+      toolCallEnd: ["\n```", "`"],
       toolResponseStart: "```tool_response\n",
       toolResponseEnd: "\n```",
     }

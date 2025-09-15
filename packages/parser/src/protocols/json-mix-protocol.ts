@@ -5,23 +5,46 @@ import type {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
-import { escapeRegExp, getPotentialStartIndex, RJSON } from "@/utils";
+import { escapeRegExp, getPotentialStartIndexMultiple, RJSON } from "@/utils";
 
 import { ToolCallProtocol } from "./tool-call-protocol";
 
 type JsonMixOptions = {
-  toolCallStart?: string;
-  toolCallEnd?: string;
-  toolResponseStart?: string;
-  toolResponseEnd?: string;
+  toolCallStart?: string | string[];
+  toolCallEnd?: string | string[];
+  toolResponseStart?: string | string[];
+  toolResponseEnd?: string | string[];
 };
+
+// Helper functions to normalize tag options
+function normalizeTagOption(tag: string | string[] | undefined, defaultValue: string): string[] {
+  if (!tag) return [defaultValue];
+  return Array.isArray(tag) ? tag : [tag];
+}
+
+function getFirstTag(tags: string[]): string {
+  return tags[0];
+}
 
 export const jsonMixProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
   toolResponseStart = "<tool_response>",
   toolResponseEnd = "</tool_response>",
-}: JsonMixOptions = {}): ToolCallProtocol => ({
+}: JsonMixOptions = {}): ToolCallProtocol => {
+  // Normalize tag options to arrays
+  const toolCallStartTags = normalizeTagOption(toolCallStart, "<tool_call>");
+  const toolCallEndTags = normalizeTagOption(toolCallEnd, "</tool_call>");
+  const toolResponseStartTags = normalizeTagOption(toolResponseStart, "<tool_response>");
+  const toolResponseEndTags = normalizeTagOption(toolResponseEnd, "</tool_response>");
+
+  // Use first tag for formatting
+  const toolCallStartTag = getFirstTag(toolCallStartTags);
+  const toolCallEndTag = getFirstTag(toolCallEndTags);
+  const toolResponseStartTag = getFirstTag(toolResponseStartTags);
+  const toolResponseEndTag = getFirstTag(toolResponseEndTags);
+
+  return {
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt = (tools || [])
       .filter(tool => tool.type === "function")
@@ -43,24 +66,25 @@ export const jsonMixProtocol = ({
     } catch {
       args = toolCall.input;
     }
-    return `${toolCallStart}${JSON.stringify({
+    return `${toolCallStartTag}${JSON.stringify({
       name: toolCall.toolName,
       arguments: args,
-    })}${toolCallEnd}`;
+    })}${toolCallEndTag}`;
   },
 
   formatToolResponse(toolResult: LanguageModelV2ToolResultPart) {
-    return `${toolResponseStart}${JSON.stringify({
+    return `${toolResponseStartTag}${JSON.stringify({
       toolName: toolResult.toolName,
       result: toolResult.output,
-    })}${toolResponseEnd}`;
+    })}${toolResponseEndTag}`;
   },
 
   parseGeneratedText({ text, options }) {
-    const startEsc = escapeRegExp(toolCallStart);
-    const endEsc = escapeRegExp(toolCallEnd);
+    // Create regex pattern that matches any of the start tags followed by content and any of the end tags
+    const startPattern = toolCallStartTags.map(escapeRegExp).join('|');
+    const endPattern = toolCallEndTags.map(escapeRegExp).join('|');
     const toolCallRegex = new RegExp(
-      `${startEsc}([\u0000-\uFFFF]*?)${endEsc}`,
+      `(${startPattern})([\u0000-\uFFFF]*?)(${endPattern})`,
       "gs"
     );
 
@@ -70,7 +94,7 @@ export const jsonMixProtocol = ({
 
     while ((match = toolCallRegex.exec(text)) !== null) {
       const startIndex = match.index;
-      const toolCallJson = match[1];
+      const toolCallJson = match[2];
 
       if (startIndex > currentIndex) {
         const textSegment = text.substring(currentIndex, startIndex);
@@ -121,6 +145,7 @@ export const jsonMixProtocol = ({
     let currentToolCallJson = "";
     let currentTextId: string | null = null;
     let hasEmittedTextStart = false;
+    let currentStartTag = "";
 
     return new TransformStream({
       transform(chunk, controller) {
@@ -134,7 +159,7 @@ export const jsonMixProtocol = ({
             controller.enqueue({
               type: "text-delta",
               id: currentTextId,
-              delta: `${toolCallStart}${buffer}`,
+              delta: `${currentStartTag}${buffer}`,
             });
             buffer = "";
           } else if (!isInsideToolCall && buffer.length > 0) {
@@ -165,7 +190,7 @@ export const jsonMixProtocol = ({
             controller.enqueue({
               type: "text-delta",
               id: errorId,
-              delta: `${toolCallStart}${currentToolCallJson}`,
+              delta: `${currentStartTag}${currentToolCallJson}`,
             });
             controller.enqueue({ type: "text-end", id: errorId });
             currentToolCallJson = "";
@@ -204,24 +229,25 @@ export const jsonMixProtocol = ({
           }
         };
 
-        let startIndex: number | null | undefined;
-        while (
-          (startIndex = getPotentialStartIndex(
-            buffer,
-            isInsideToolCall ? toolCallEnd : toolCallStart
-          )) != null
-        ) {
-          const tag = isInsideToolCall ? toolCallEnd : toolCallStart;
-          if (startIndex + tag.length > buffer.length) {
+        let searchTags = isInsideToolCall ? toolCallEndTags : toolCallStartTags;
+        let matchInfo = getPotentialStartIndexMultiple(buffer, searchTags);
+        
+        while (matchInfo) {
+          const { index: startIndex, matchedText: tag, isComplete } = matchInfo;
+          
+          if (!isComplete) {
+            // Partial match found - keep the partial match in buffer
             break;
           }
 
           publish(buffer.slice(0, startIndex));
           buffer = buffer.slice(startIndex + tag.length);
+          
           // Toggle state and finalize/initialize as needed
           if (!isInsideToolCall) {
             // We just consumed a start tag; begin accumulating JSON
             currentToolCallJson = "";
+            currentStartTag = tag;
             isInsideToolCall = true;
           } else {
             // We just consumed an end tag; parse and emit tool-call
@@ -248,35 +274,37 @@ export const jsonMixProtocol = ({
               controller.enqueue({
                 type: "text-delta",
                 id: errorId,
-                delta: `${toolCallStart}${currentToolCallJson}${toolCallEnd}`,
+                delta: `${currentStartTag}${currentToolCallJson}${tag}`,
               });
               controller.enqueue({ type: "text-end", id: errorId });
               if (options?.onError) {
                 options.onError(
                   "Could not process streaming JSON tool call; emitting original text.",
                   {
-                    toolCall: `${toolCallStart}${currentToolCallJson}${toolCallEnd}`,
+                    toolCall: `${currentStartTag}${currentToolCallJson}${tag}`,
                   }
                 );
               }
             }
             currentToolCallJson = "";
+            currentStartTag = "";
             isInsideToolCall = false;
           }
+          
+          // Check for more matches
+          searchTags = isInsideToolCall ? toolCallEndTags : toolCallStartTags;
+          matchInfo = getPotentialStartIndexMultiple(buffer, searchTags);
         }
 
         if (!isInsideToolCall) {
           // Avoid emitting a partial start tag that may be completed in the next chunk.
-          // If the buffer ends with a suffix that matches the beginning of the start tag,
+          // If the buffer ends with a suffix that matches the beginning of any start tag,
           // keep that suffix in the buffer and only emit the safe prefix.
-          const potentialIndex = getPotentialStartIndex(buffer, toolCallStart);
-          if (
-            potentialIndex != null &&
-            potentialIndex + toolCallStart.length > buffer.length
-          ) {
+          const potentialMatch = getPotentialStartIndexMultiple(buffer, toolCallStartTags);
+          if (potentialMatch && !potentialMatch.isComplete) {
             // Emit only the safe portion before the potential (incomplete) start tag.
-            publish(buffer.slice(0, potentialIndex));
-            buffer = buffer.slice(potentialIndex);
+            publish(buffer.slice(0, potentialMatch.index));
+            buffer = buffer.slice(potentialMatch.index);
           } else {
             publish(buffer);
             buffer = "";
@@ -287,9 +315,9 @@ export const jsonMixProtocol = ({
   },
 
   extractToolCallSegments({ text }) {
-    const startEsc = escapeRegExp(toolCallStart);
-    const endEsc = escapeRegExp(toolCallEnd);
-    const regex = new RegExp(`${startEsc}([\u0000-\uFFFF]*?)${endEsc}`, "gs");
+    const startPattern = toolCallStartTags.map(escapeRegExp).join('|');
+    const endPattern = toolCallEndTags.map(escapeRegExp).join('|');
+    const regex = new RegExp(`(${startPattern})([\u0000-\uFFFF]*?)(${endPattern})`, "gs");
     const segments: string[] = [];
     let m: RegExpExecArray | null;
     while ((m = regex.exec(text)) != null) {
@@ -297,4 +325,5 @@ export const jsonMixProtocol = ({
     }
     return segments;
   },
-});
+  };
+};
