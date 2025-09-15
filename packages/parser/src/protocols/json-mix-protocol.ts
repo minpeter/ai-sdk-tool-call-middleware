@@ -304,9 +304,22 @@ export const jsonMixProtocol = ({
           // keep that suffix in the buffer and only emit the safe prefix.
           const potentialMatch = getPotentialStartIndexMultiple(buffer, toolCallStartTags);
           if (potentialMatch && !potentialMatch.isComplete) {
-            // Emit only the safe portion before the potential (incomplete) start tag.
-            publish(buffer.slice(0, potentialMatch.index));
-            buffer = buffer.slice(potentialMatch.index);
+            const suffix = buffer.slice(potentialMatch.index);
+            
+            // Special case: if we have `` (two backticks) as partial match for ```tool_call\n,
+            // and there's a space after it (indicating it won't complete), consume the ``
+            if (suffix === "``" && buffer.length > potentialMatch.index + 2 && 
+                buffer[potentialMatch.index + 2] === " " &&
+                toolCallStartTags.some(tag => tag.startsWith("```"))) {
+              // Consume the `` and emit the rest
+              const afterMatch = buffer.slice(potentialMatch.index + 2);
+              publish(afterMatch);
+              buffer = "";
+            } else {
+              // Emit only the safe portion before the potential (incomplete) start tag.
+              publish(buffer.slice(0, potentialMatch.index));
+              buffer = buffer.slice(potentialMatch.index);
+            }
           } else {
             publish(buffer);
             buffer = "";

@@ -267,10 +267,10 @@ describe("jsonMixProtocol multiple tags streaming", () => {
 
     it("should demonstrate ` vs ``` behavior when streaming incrementally (user's specific case)", async () => {
       // This test specifically addresses the user's comment about how ` vs ``` behaves
-      // The user wants `` to be consumed by the ``` case, which suggests a start tag that begins with ``
+      // Using the real Gemma configuration: toolCallEnd: ["\n```", "`"]
       const protocol = jsonMixProtocol({
-        toolCallStart: ["```tool_call\n", "```json\n"], // Multiple start patterns 
-        toolCallEnd: ["`", "```"], // Multiple end patterns like user's example
+        toolCallStart: "```tool_call\n",
+        toolCallEnd: ["\n```", "`"], // Real Gemma order: \n``` first, ` second
       });
 
       const transformer = protocol.createStreamParser({ tools: [] });
@@ -279,7 +279,7 @@ describe("jsonMixProtocol multiple tags streaming", () => {
           ctrl.enqueue({ type: "text-delta", id: "1", delta: '```tool_call\n{"name": "weather", "arguments": {}}' });
           // Send one backtick - this immediately completes the tool call with ` end tag
           ctrl.enqueue({ type: "text-delta", id: "1", delta: "`" });
-          // Later we get more backticks - these should be consumed by ``` case (partial match for ```json\n or ```tool_call\n)
+          // Send two more backticks - these should be consumed by ``` case (partial match for ```tool_call\n)
           ctrl.enqueue({ type: "text-delta", id: "1", delta: "``" });
           ctrl.enqueue({ type: "text-delta", id: "1", delta: " done" });
           ctrl.enqueue({
