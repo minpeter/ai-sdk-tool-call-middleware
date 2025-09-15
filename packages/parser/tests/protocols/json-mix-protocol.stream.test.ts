@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
 
+// Mock generateId to avoid dependency issues in tests
+vi.mock("@ai-sdk/provider-utils", () => ({
+  generateId: vi.fn(() => "test-id"),
+}));
+
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];
   return (async () => {

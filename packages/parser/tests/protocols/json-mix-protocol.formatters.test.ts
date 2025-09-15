@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
+
+// Mock generateId to avoid dependency issues in tests
+vi.mock("@ai-sdk/provider-utils", () => ({
+  generateId: vi.fn(() => "test-id"),
+}));
 
 describe("jsonMixProtocol formatters and parseGeneratedText edges", () => {
   it("formatToolCall stringifies input JSON and non-JSON inputs", () => {
