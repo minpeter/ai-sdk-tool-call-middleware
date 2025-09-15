@@ -12,14 +12,18 @@ import { ToolCallProtocol } from "./tool-call-protocol";
 type JsonMixOptions = {
   toolCallStart?: string | string[];
   toolCallEnd?: string | string[];
-  toolResponseStart?: string | string[];
-  toolResponseEnd?: string | string[];
+  toolResponseStart?: string;
+  toolResponseEnd?: string;
 };
 
 // Helper functions to normalize tag options
-function normalizeTagOption(tag: string | string[] | undefined, defaultValue: string): string[] {
+function normalizeToolCallTag(tag: string | string[] | undefined, defaultValue: string): string[] {
   if (!tag) return [defaultValue];
   return Array.isArray(tag) ? tag : [tag];
+}
+
+function normalizeToolResponseTag(tag: string | undefined, defaultValue: string): string {
+  return tag ?? defaultValue;
 }
 
 function getFirstTag(tags: string[]): string {
@@ -32,17 +36,15 @@ export const jsonMixProtocol = ({
   toolResponseStart = "<tool_response>",
   toolResponseEnd = "</tool_response>",
 }: JsonMixOptions = {}): ToolCallProtocol => {
-  // Normalize tag options to arrays
-  const toolCallStartTags = normalizeTagOption(toolCallStart, "<tool_call>");
-  const toolCallEndTags = normalizeTagOption(toolCallEnd, "</tool_call>");
-  const toolResponseStartTags = normalizeTagOption(toolResponseStart, "<tool_response>");
-  const toolResponseEndTags = normalizeTagOption(toolResponseEnd, "</tool_response>");
+  // Normalize tag options
+  const toolCallStartTags = normalizeToolCallTag(toolCallStart, "<tool_call>");
+  const toolCallEndTags = normalizeToolCallTag(toolCallEnd, "</tool_call>");
+  const toolResponseStartTag = normalizeToolResponseTag(toolResponseStart, "<tool_response>");
+  const toolResponseEndTag = normalizeToolResponseTag(toolResponseEnd, "</tool_response>");
 
   // Use first tag for formatting
   const toolCallStartTag = getFirstTag(toolCallStartTags);
   const toolCallEndTag = getFirstTag(toolCallEndTags);
-  const toolResponseStartTag = getFirstTag(toolResponseStartTags);
-  const toolResponseEndTag = getFirstTag(toolResponseEndTags);
 
   return {
   formatTools({ tools, toolSystemPromptTemplate }) {
