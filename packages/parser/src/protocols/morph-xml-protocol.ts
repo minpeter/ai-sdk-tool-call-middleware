@@ -119,7 +119,8 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       ? Math.max(...toolNames.map(n => `<${n}>`.length))
       : 0;
     let buffer = "";
-    let currentToolCall: { name: string; content: string } | null = null;
+    let currentToolCall: { name: string; content: string; id: string } | null =
+      null;
     let currentTextId: string | null = null;
 
     const flushText = (
@@ -178,9 +179,16 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                 // No additional fallback: RXML handles raw content for string fields
 
                 flushText(controller);
+
+                // Emit tool-input-end event
+                controller.enqueue({
+                  type: "tool-input-end",
+                  id: currentToolCall.id,
+                });
+
                 controller.enqueue({
                   type: "tool-call",
-                  toolCallId: generateId(),
+                  toolCallId: currentToolCall.id,
                   toolName: currentToolCall.name,
                   input: JSON.stringify(parsed),
                 });
@@ -200,6 +208,13 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
                   toolName: currentToolCall.name,
                   error,
                 });
+
+                // Emit tool-input-end event even on error
+                controller.enqueue({
+                  type: "tool-input-end",
+                  id: currentToolCall.id,
+                });
+
                 flushText(controller, originalCallText);
               }
               currentToolCall = null;
@@ -233,7 +248,20 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
               buffer = buffer.substring(
                 earliestStartTagIndex + startTag.length
               );
-              currentToolCall = { name: earliestToolName, content: "" };
+
+              const toolCallId = generateId();
+              currentToolCall = {
+                name: earliestToolName,
+                content: "",
+                id: toolCallId,
+              };
+
+              // Emit tool-input-start event
+              controller.enqueue({
+                type: "tool-input-start",
+                id: toolCallId,
+                toolName: earliestToolName,
+              });
             } else {
               // No start tag currently in buffer. Stream out as much as possible
               // while keeping a small tail to catch a tag split across chunks.
@@ -253,6 +281,12 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       },
       flush(controller) {
         if (currentToolCall) {
+          // Emit tool-input-end for incomplete tool call
+          controller.enqueue({
+            type: "tool-input-end",
+            id: currentToolCall.id,
+          });
+
           const unfinishedCall = `<${currentToolCall.name}>${buffer}`;
           flushText(controller, unfinishedCall);
         } else if (buffer) {
