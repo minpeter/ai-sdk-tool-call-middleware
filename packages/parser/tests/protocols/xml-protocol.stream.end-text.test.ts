@@ -6,7 +6,9 @@ import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];
   return (async () => {
-    for await (const c of stream) out.push(c);
+    for await (const c of stream) {
+      out.push(c);
+    }
     return out;
   })();
 }

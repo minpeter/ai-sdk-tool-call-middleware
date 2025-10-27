@@ -16,7 +16,10 @@ describe("jsonMixProtocol stream parsing", () => {
 
   const runMiddleware = (stream: ReadableStream<LanguageModelV2StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
-    return middleware.wrapStream!({
+    if (!middleware.wrapStream) {
+      throw new Error("wrapStream is not defined");
+    }
+    return middleware.wrapStream({
       doStream: mockDoStream,
       params: {},
     } as any);

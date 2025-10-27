@@ -12,7 +12,10 @@ describe("AI SDK v5 stream protocol compliance", () => {
 
   const runMiddleware = (stream: ReadableStream<LanguageModelV2StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
-    return middleware.wrapStream!({
+    if (!middleware.wrapStream) {
+      throw new Error("wrapStream is not defined");
+    }
+    return middleware.wrapStream({
       doStream: mockDoStream,
       params: {},
     } as any);
@@ -37,7 +40,8 @@ describe("AI SDK v5 stream protocol compliance", () => {
       chunks.push(chunk);
     }
 
-    expect(chunks.length).toBeGreaterThanOrEqual(3);
+    const MINIMUM_EXPECTED_CHUNKS = 3;
+    expect(chunks.length).toBeGreaterThanOrEqual(MINIMUM_EXPECTED_CHUNKS);
     expect(chunks[0].type).toBe("text-start");
     const id = (chunks[0] as any).id;
     expect(chunks[1]).toEqual({ type: "text-delta", id, delta: "Hello world" });

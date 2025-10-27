@@ -31,10 +31,7 @@ export class RXMLDuplicateStringTagError extends Error {
 export class RXMLCoercionError extends Error {
   cause?: unknown;
 
-  constructor(
-    message: string,
-    cause?: unknown
-  ) {
+  constructor(message: string, cause?: unknown) {
     super(message);
     this.name = "RXMLCoercionError";
     this.cause = cause;
@@ -44,10 +41,7 @@ export class RXMLCoercionError extends Error {
 export class RXMLStringifyError extends Error {
   cause?: unknown;
 
-  constructor(
-    message: string,
-    cause?: unknown
-  ) {
+  constructor(message: string, cause?: unknown) {
     super(message);
     this.name = "RXMLStringifyError";
     this.cause = cause;
@@ -57,10 +51,7 @@ export class RXMLStringifyError extends Error {
 export class RXMLStreamError extends Error {
   cause?: unknown;
 
-  constructor(
-    message: string,
-    cause?: unknown
-  ) {
+  constructor(message: string, cause?: unknown) {
     super(message);
     this.name = "RXMLStreamError";
     this.cause = cause;

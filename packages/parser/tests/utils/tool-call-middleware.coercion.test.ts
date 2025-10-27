@@ -46,7 +46,10 @@ describe("tool-call-middleware coercion (utils)", () => {
       },
     ];
 
-    const result = await middleware.wrapGenerate!({
+    if (!middleware.wrapGenerate) {
+      throw new Error("wrapGenerate is not defined");
+    }
+    const result = await middleware.wrapGenerate({
       doGenerate: async () =>
         ({ content: [{ type: "text", text: "" }] }) as any,
       params: {

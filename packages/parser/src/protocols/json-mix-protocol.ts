@@ -81,7 +81,7 @@ export const jsonMixProtocol = ({
 
       if (toolCallJson) {
         try {
-          const parsedToolCall = RJSON.parse(toolCallJson) as {
+          const parsedToolCall = parseRJSON(toolCallJson) as {
             name: string;
             arguments: unknown;
           };

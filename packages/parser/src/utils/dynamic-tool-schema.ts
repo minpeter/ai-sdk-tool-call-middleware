@@ -45,6 +45,7 @@ export function createDynamicIfThenElseSchema(
         },
         required: ["name"],
       },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema uses 'then' as a keyword
       then: {
         properties: {
           name: {
