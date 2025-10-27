@@ -1,4 +1,4 @@
-import { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
 import { describe, expect, test, vi } from "vitest";
 
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
@@ -58,7 +58,7 @@ describe("jsonMixProtocol stream parsing", () => {
       chunks.push(chunk);
     }
 
-    const toolCallChunks = chunks.filter(c => c.type === "tool-call");
+    const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
     expect(toolCallChunks).toHaveLength(1);
     expect(toolCallChunks[0]).toMatchObject({
       type: "tool-call",
@@ -93,8 +93,8 @@ describe("jsonMixProtocol stream parsing", () => {
     }
 
     const textContent = chunks
-      .filter(c => c.type === "text-delta")
-      .map(c => (c as any).delta)
+      .filter((c) => c.type === "text-delta")
+      .map((c) => (c as any).delta)
       .join("");
     expect(textContent).toContain("<tool_call>invalid json</tool_call>");
   });

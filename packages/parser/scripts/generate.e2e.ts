@@ -2,7 +2,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   extractReasoningMiddleware,
   generateText,
-  LanguageModel,
+  type LanguageModel,
   stepCountIs,
   wrapLanguageModel,
 } from "ai";
@@ -57,7 +57,7 @@ async function main() {
 
 async function generateE2E(model: LanguageModel) {
   await generateText({
-    model: model,
+    model,
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
     stopWhen: stepCountIs(4),
@@ -78,14 +78,15 @@ async function generateE2E(model: LanguageModel) {
         },
       },
     },
-    onStepFinish: step => {
+    onStepFinish: (step) => {
       console.log({
         text: step.text,
         reasoning: step.reasoning,
         toolCalls: step.toolCalls.map(
-          call => `name: ${call.toolName}, input: ${JSON.stringify(call.input)}`
+          (call) =>
+            `name: ${call.toolName}, input: ${JSON.stringify(call.input)}`
         ),
-        toolResults: step.toolResults.map(result =>
+        toolResults: step.toolResults.map((result) =>
           JSON.stringify(result.output)
         ),
       });

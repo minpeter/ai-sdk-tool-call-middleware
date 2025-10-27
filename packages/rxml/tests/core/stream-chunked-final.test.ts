@@ -185,7 +185,7 @@ describe("RXML Chunked Streaming - Core Stream Implementation", () => {
 
       // Find the tool_call element
       const toolCall = results.find(
-        r => typeof r === "object" && r.tagName === "tool_call"
+        (r) => typeof r === "object" && r.tagName === "tool_call"
       );
       expect(toolCall).toBeDefined();
 
@@ -205,7 +205,7 @@ describe("RXML Chunked Streaming - Core Stream Implementation", () => {
       console.log("Results with attributes:", results.length, "elements");
 
       const toolCall = results.find(
-        r => typeof r === "object" && r.tagName === "tool_call"
+        (r) => typeof r === "object" && r.tagName === "tool_call"
       );
       expect(toolCall).toBeDefined();
 
@@ -231,7 +231,7 @@ describe("RXML Chunked Streaming - Core Stream Implementation", () => {
       console.log("Multiple tools results:", results.length, "elements");
 
       const toolCalls = results.filter(
-        r => typeof r === "object" && r.tagName === "tool_call"
+        (r) => typeof r === "object" && r.tagName === "tool_call"
       );
       console.log("Found tool calls:", toolCalls.length);
 
@@ -275,7 +275,7 @@ describe("RXML Chunked Streaming - Core Stream Implementation", () => {
       expect(results.length).toBeGreaterThan(0);
 
       const toolElement = results.find(
-        r => typeof r === "object" && r.tagName === "tool"
+        (r) => typeof r === "object" && r.tagName === "tool"
       );
       expect(toolElement).toBeDefined();
 
@@ -297,7 +297,7 @@ describe("RXML Chunked Streaming - Core Stream Implementation", () => {
       expect(results.length).toBeGreaterThan(0);
 
       const toolElement = results.find(
-        r => typeof r === "object" && r.tagName === "tool"
+        (r) => typeof r === "object" && r.tagName === "tool"
       );
       expect(toolElement).toBeDefined();
 
@@ -324,7 +324,7 @@ describe("RXML Chunked Streaming - Core Stream Implementation", () => {
         expect(results.length).toBeGreaterThan(0);
 
         const toolCall = results.find(
-          r => typeof r === "object" && r.tagName === "tool_call"
+          (r) => typeof r === "object" && r.tagName === "tool_call"
         );
         expect(toolCall).toBeDefined();
       }
@@ -362,7 +362,7 @@ The search has been initiated successfully.`;
 
       // Should extract the tool call from the mixed content
       const toolCall = results.find(
-        r => typeof r === "object" && r.tagName === "tool_call"
+        (r) => typeof r === "object" && r.tagName === "tool_call"
       );
       expect(toolCall).toBeDefined();
 

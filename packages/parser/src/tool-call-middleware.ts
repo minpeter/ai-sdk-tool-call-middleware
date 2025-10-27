@@ -6,7 +6,7 @@ import type {
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
 import {
   isProtocolFactory,
-  ToolCallProtocol,
+  type ToolCallProtocol,
 } from "./protocols/tool-call-protocol";
 import {
   toolChoiceStream,
@@ -32,14 +32,13 @@ export function createToolMiddleware({
           doGenerate,
           options: extractOnErrorOption(params.providerOptions),
         });
-      } else {
-        return wrapStreamHandler({
-          protocol: resolvedProtocol,
-          doStream,
-          doGenerate,
-          params,
-        });
       }
+      return wrapStreamHandler({
+        protocol: resolvedProtocol,
+        doStream,
+        doGenerate,
+        params,
+      });
     },
     wrapGenerate: async ({ doGenerate, params }) =>
       wrapGenerateHandler({
@@ -47,14 +46,11 @@ export function createToolMiddleware({
         doGenerate,
         params,
       }),
-    transformParams: async ({
-      params,
-    }): Promise<LanguageModelV2CallOptions> => {
-      return transformParams({
+    transformParams: async ({ params }): Promise<LanguageModelV2CallOptions> =>
+      transformParams({
         protocol: resolvedProtocol,
         toolSystemPromptTemplate,
         params,
-      });
-    },
+      }),
   };
 }

@@ -1,4 +1,12 @@
 // Core functionality
+
+// Builders
+export {
+  stringify,
+  stringifyNode,
+  stringifyNodes,
+  toContentString,
+} from "./builders/stringify";
 export {
   filter,
   parse,
@@ -15,7 +23,16 @@ export {
   XMLTransformStream,
 } from "./core/stream";
 export { XMLTokenizer } from "./core/tokenizer";
-
+// Types
+export type { ParseOptions, RXMLNode, StringifyOptions } from "./core/types";
+// Errors
+export {
+  RXMLCoercionError,
+  RXMLDuplicateStringTagError,
+  RXMLParseError,
+  RXMLStreamError,
+  RXMLStringifyError,
+} from "./errors/types";
 // Schema integration
 export {
   coerceBySchema,
@@ -36,29 +53,8 @@ export {
   findAllTopLevelRanges,
   findFirstTopLevelRange,
 } from "./schema/extraction";
-
-// Builders
-export {
-  stringify,
-  stringifyNode,
-  stringifyNodes,
-  toContentString,
-} from "./builders/stringify";
-
 // Utils
 export { unescapeXml } from "./utils/helpers";
-
-// Types
-export type { ParseOptions, RXMLNode, StringifyOptions } from "./core/types";
-
-// Errors
-export {
-  RXMLCoercionError,
-  RXMLDuplicateStringTagError,
-  RXMLParseError,
-  RXMLStreamError,
-  RXMLStringifyError,
-} from "./errors/types";
 
 // Compatibility
 export interface Options {

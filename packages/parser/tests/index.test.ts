@@ -37,7 +37,7 @@ describe("index exports", () => {
           content: [
             {
               type: "text" as const,
-              text: `<get_weather><location>San Francisco</location></get_weather>`,
+              text: "<get_weather><location>San Francisco</location></get_weather>",
             },
           ] as LanguageModelV2Content[],
         });
@@ -83,7 +83,7 @@ describe("index exports", () => {
           content: [
             {
               type: "text" as const,
-              text: `<get_location></get_location>`,
+              text: "<get_location></get_location>",
             },
           ] as LanguageModelV2Content[],
         });

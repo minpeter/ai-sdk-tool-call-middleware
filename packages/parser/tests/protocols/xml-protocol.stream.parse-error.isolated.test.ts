@@ -48,8 +48,8 @@ describe("morphXmlProtocol streaming parse error with malformed XML", () => {
     });
     const out = await collect(rs.pipeThrough(transformer));
     const text = out
-      .filter(c => c.type === "text-delta")
-      .map(c => (c as any).delta)
+      .filter((c) => c.type === "text-delta")
+      .map((c) => (c as any).delta)
       .join("");
     expect(text).toContain("<a><x>1</x><unclosed>tag</a>");
     expect(onError).toHaveBeenCalled();

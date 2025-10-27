@@ -173,14 +173,14 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         results.push(element);
       }
 
-      const toolCall = results.find(r => r.tagName === "tool_call");
+      const toolCall = results.find((r) => r.tagName === "tool_call");
       expect(toolCall).toBeDefined();
       expect(toolCall.attributes).toMatchObject({
         id: "call_1",
         type: "function",
       });
 
-      const nameElement = results.find(r => r.tagName === "name");
+      const nameElement = results.find((r) => r.tagName === "name");
       expect(nameElement.children[0]).toBe("calculate");
     });
 
@@ -195,7 +195,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         results.push(element);
       }
 
-      const toolCalls = results.filter(r => r.tagName === "tool_call");
+      const toolCalls = results.filter((r) => r.tagName === "tool_call");
       expect(toolCalls).toHaveLength(2);
       expect(toolCalls[0].attributes.id).toBe("1");
       expect(toolCalls[1].attributes.id).toBe("2");
@@ -282,7 +282,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         results.push(element);
       }
 
-      const codeElement = results.find(r => r.tagName === "code");
+      const codeElement = results.find((r) => r.tagName === "code");
       expect(codeElement).toBeDefined();
       expect(codeElement.children[0]).toContain("def hello_world():");
       expect(codeElement.children[0]).toContain('print("Hello, World!")');
@@ -303,7 +303,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
       }
 
       const comments = results.filter(
-        r => typeof r === "string" && r.includes("<!--")
+        (r) => typeof r === "string" && r.includes("<!--")
       );
       expect(comments.length).toBeGreaterThan(0);
       expect(comments[0]).toContain("<!-- Tool call response -->");
@@ -329,7 +329,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
       expect(endTime - startTime).toBeLessThan(5000); // Should complete within 5 seconds
 
       // Verify large data element exists
-      const dataElement = results.find(r => r.tagName === "data");
+      const dataElement = results.find((r) => r.tagName === "data");
       expect(dataElement).toBeDefined();
       expect(dataElement.children[0]).toHaveLength(500); // 500 'x' characters
     });
@@ -346,16 +346,18 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
       }
 
       // Verify nested structure is preserved
-      const userElement = results.find(r => r.tagName === "user");
-      const profileElement = results.find(r => r.tagName === "profile");
-      const preferencesElement = results.find(r => r.tagName === "preferences");
+      const userElement = results.find((r) => r.tagName === "user");
+      const profileElement = results.find((r) => r.tagName === "profile");
+      const preferencesElement = results.find(
+        (r) => r.tagName === "preferences"
+      );
 
       expect(userElement).toBeDefined();
       expect(profileElement).toBeDefined();
       expect(preferencesElement).toBeDefined();
 
       const nameElement = results.find(
-        r => r.tagName === "name" && r.children[0] === "John Doe"
+        (r) => r.tagName === "name" && r.children[0] === "John Doe"
       );
       expect(nameElement).toBeDefined();
       expect(nameElement.children[0]).toBe("John Doe");
@@ -377,8 +379,8 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         // Should have parsed some elements despite malformed content
         expect(results.length).toBeGreaterThan(0);
 
-        const toolCall = results.find(r => r.tagName === "tool_call");
-        const nameElement = results.find(r => r.tagName === "name");
+        const toolCall = results.find((r) => r.tagName === "tool_call");
+        const nameElement = results.find((r) => r.tagName === "name");
 
         // At least one of these should be defined for graceful handling
         expect(toolCall || nameElement).toBeTruthy();
@@ -405,7 +407,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         }
 
         // Should have parsed the complete elements
-        const nameElement = results.find(r => r.tagName === "name");
+        const nameElement = results.find((r) => r.tagName === "name");
         expect(nameElement).toBeDefined();
         expect(nameElement.children[0]).toBe("test");
       } catch (error) {
@@ -442,13 +444,13 @@ The search has been initiated successfully.`;
       }
 
       // Should extract the tool call from the mixed content
-      const toolCall = results.find(r => r.tagName === "tool_call");
+      const toolCall = results.find((r) => r.tagName === "tool_call");
       expect(toolCall).toBeDefined();
 
-      const nameElement = results.find(r => r.tagName === "name");
+      const nameElement = results.find((r) => r.tagName === "name");
       expect(nameElement.children[0]).toBe("search_database");
 
-      const filtersElement = results.find(r => r.tagName === "filters");
+      const filtersElement = results.find((r) => r.tagName === "filters");
       expect(filtersElement).toBeDefined();
     });
 
@@ -520,7 +522,7 @@ The search has been initiated successfully.`;
       expect(results.length).toBeGreaterThan(0);
       expect(endTime - startTime).toBeLessThan(1000); // Should be very fast
 
-      const toolCall = results.find(r => r.tagName === "tool_call");
+      const toolCall = results.find((r) => r.tagName === "tool_call");
       expect(toolCall.attributes.id).toBe("call_1");
     });
   });

@@ -23,7 +23,7 @@ describe("RXML Stream Analysis", () => {
       console.log("Result length:", result.length);
       console.log(
         "Result types:",
-        result.map(r => typeof r)
+        result.map((r) => typeof r)
       );
 
       expect(result.length).toBeGreaterThan(0);
@@ -42,7 +42,7 @@ describe("RXML Stream Analysis", () => {
     const transformStream = new XMLTransformStream();
     const results: any[] = [];
 
-    transformStream.on("data", data => {
+    transformStream.on("data", (data) => {
       console.log("Transform stream data:", data);
       results.push(data);
     });
@@ -51,7 +51,7 @@ describe("RXML Stream Analysis", () => {
       console.log("Transform stream ended");
     });
 
-    transformStream.on("error", error => {
+    transformStream.on("error", (error) => {
       console.error("Transform stream error:", error);
     });
 
@@ -60,7 +60,7 @@ describe("RXML Stream Analysis", () => {
     transformStream.end();
 
     // Wait a bit for processing
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     console.log("Transform results:", results);
     console.log("Transform results length:", results.length);
@@ -78,7 +78,7 @@ describe("RXML Stream Analysis", () => {
     const stream = createXMLStream();
     const results: any[] = [];
 
-    stream.on("data", data => {
+    stream.on("data", (data) => {
       console.log("XML stream data:", data);
       results.push(data);
     });
@@ -87,7 +87,7 @@ describe("RXML Stream Analysis", () => {
       console.log("XML stream ended");
     });
 
-    stream.on("error", error => {
+    stream.on("error", (error) => {
       console.error("XML stream error:", error);
     });
 
@@ -96,7 +96,7 @@ describe("RXML Stream Analysis", () => {
     stream.end();
 
     // Wait for processing
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     console.log("createXMLStream results:", results);
     expect(results.length).toBeGreaterThanOrEqual(0);
@@ -119,7 +119,7 @@ describe("RXML Stream Analysis", () => {
     const transformStream = new XMLTransformStream();
     const results: any[] = [];
 
-    transformStream.on("data", data => {
+    transformStream.on("data", (data) => {
       console.log("Chunk processing data:", data);
       results.push(data);
     });
@@ -128,7 +128,7 @@ describe("RXML Stream Analysis", () => {
       console.log("Chunk processing ended");
     });
 
-    transformStream.on("error", error => {
+    transformStream.on("error", (error) => {
       console.error("Chunk processing error:", error);
     });
 
@@ -137,13 +137,13 @@ describe("RXML Stream Analysis", () => {
       console.log("Writing chunk:", JSON.stringify(chunk));
       transformStream.write(Buffer.from(chunk));
       // Small delay between chunks
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
 
     transformStream.end();
 
     // Wait for final processing
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     console.log("Final chunk processing results:", results);
     console.log("Final results length:", results.length);
@@ -168,7 +168,7 @@ describe("RXML Stream Analysis", () => {
     const transformStream = createXMLStream();
     const results: any[] = [];
 
-    transformStream.on("data", data => {
+    transformStream.on("data", (data) => {
       console.log("Streaming data received:", data);
       console.log("Data type:", typeof data);
       if (typeof data === "object" && data.tagName) {
@@ -183,7 +183,7 @@ describe("RXML Stream Analysis", () => {
       console.log("Streaming ended");
     });
 
-    transformStream.on("error", error => {
+    transformStream.on("error", (error) => {
       console.error("Streaming error:", error);
     });
 
@@ -191,7 +191,7 @@ describe("RXML Stream Analysis", () => {
     readable.pipe(transformStream);
 
     // Wait for completion
-    await new Promise(resolve => {
+    await new Promise((resolve) => {
       transformStream.on("end", resolve);
       setTimeout(resolve, 1000); // Fallback timeout
     });
@@ -200,11 +200,11 @@ describe("RXML Stream Analysis", () => {
     console.log("  Total results:", results.length);
     console.log(
       "  Result types:",
-      results.map(r => typeof r)
+      results.map((r) => typeof r)
     );
     console.log(
       "  Object results:",
-      results.filter(r => typeof r === "object").map(r => r.tagName)
+      results.filter((r) => typeof r === "object").map((r) => r.tagName)
     );
 
     expect(results.length).toBeGreaterThanOrEqual(0);

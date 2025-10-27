@@ -64,7 +64,7 @@ describe("robust-xml parser", () => {
     it("ignores comments by default", () => {
       const result = parseWithoutSchema(validXmlSamples.withComments);
       const commentNodes = result.filter(
-        node => typeof node === "string" && node.includes("<!--")
+        (node) => typeof node === "string" && node.includes("<!--")
       );
       expect(commentNodes).toHaveLength(0);
     });
@@ -471,7 +471,7 @@ describe("robust-xml parser", () => {
       const parsed = parseWithoutSchema(
         '<root><item id="1">first</item><item id="2">second</item><other>test</other></root>'
       );
-      const filtered = filter(parsed, node => node.tagName === "item");
+      const filtered = filter(parsed, (node) => node.tagName === "item");
       expect(filtered).toHaveLength(2);
       expect(filtered[0].tagName).toBe("item");
       expect(filtered[1].tagName).toBe("item");
@@ -481,7 +481,7 @@ describe("robust-xml parser", () => {
       const parsed = parseWithoutSchema(
         '<root><item type="a">first</item><item type="b">second</item></root>'
       );
-      const filtered = filter(parsed, node => node.attributes.type === "a");
+      const filtered = filter(parsed, (node) => node.attributes.type === "a");
       expect(filtered).toHaveLength(1);
       expect(filtered[0].attributes.type).toBe("a");
     });

@@ -38,11 +38,11 @@ describe("jsonMixProtocol partial end-tag handling", () => {
     });
     const out = await collect(rs.pipeThrough(transformer));
     const text = out
-      .filter(c => c.type === "text-delta")
+      .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
       .join("");
     expect(text).toContain('<tool_call>{"name":"t","arguments":{}');
     // No tool-call emitted due to incomplete end tag
-    expect(out.some(c => c.type === "tool-call")).toBe(false);
+    expect(out.some((c) => c.type === "tool-call")).toBe(false);
   });
 });

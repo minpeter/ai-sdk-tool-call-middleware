@@ -22,13 +22,13 @@ describe("XML snippets coverage", () => {
       // Expect PI first and DOCTYPE preserved as raw string token
       expect(nodes[0]).toMatchObject({ tagName: "?xml" });
       const doctype = nodes.find(
-        n =>
+        (n) =>
           typeof n === "string" && (n as string).startsWith("!DOCTYPE catalog")
       );
       expect(doctype).toBeTruthy();
       // Ensure catalog element exists
       const catalog = nodes.find(
-        n => typeof n === "object" && (n as any).tagName === "catalog"
+        (n) => typeof n === "object" && (n as any).tagName === "catalog"
       );
       expect(catalog).toBeTruthy();
     });
@@ -51,12 +51,12 @@ describe("XML snippets coverage", () => {
       const t = new XMLTokenizer(xml);
       const nodes = t.parseChildren();
       const doctype = nodes.find(
-        n =>
+        (n) =>
           typeof n === "string" && (n as string).startsWith("!DOCTYPE catalog")
       );
       expect(doctype).toBeTruthy();
       const catalog = nodes.find(
-        n => typeof n === "object" && (n as any).tagName === "catalog"
+        (n) => typeof n === "object" && (n as any).tagName === "catalog"
       );
       expect(catalog).toBeTruthy();
     });
@@ -93,7 +93,7 @@ describe("XML snippets coverage", () => {
 
       const node = new XMLTokenizer(xml)
         .parseChildren()
-        .find(n => typeof n === "object") as any;
+        .find((n) => typeof n === "object") as any;
       expect(node.tagName).toBe("product");
       expect(node.attributes.id).toBe("p1");
       expect(node.attributes.sku).toBe("A-001");
@@ -132,7 +132,7 @@ describe("XML snippets coverage", () => {
       ].join("");
       const node = new XMLTokenizer(xml)
         .parseChildren()
-        .find(n => typeof n === "object") as any;
+        .find((n) => typeof n === "object") as any;
       expect(node.tagName).toBe("media");
       expect(node.children).toEqual([]);
       expect(node.attributes.type).toBe("image");
@@ -153,7 +153,7 @@ describe("XML snippets coverage", () => {
       ].join("");
       const node = new XMLTokenizer(xml)
         .parseChildren()
-        .find(n => typeof n === "object") as any;
+        .find((n) => typeof n === "object") as any;
       expect(node.tagName).toBe("related");
       const ref = node.children.find(
         (c: any) => typeof c === "object" && c.tagName === "ref"

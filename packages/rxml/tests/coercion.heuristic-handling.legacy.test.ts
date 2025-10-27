@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { coerceBySchema } from "@/index";
+
 describe("Coercion Heuristic Handling", () => {
   describe("Single key array extraction", () => {
     it("should extract array from single key object", () => {
@@ -78,7 +79,7 @@ describe("Coercion Heuristic Handling", () => {
       };
 
       const result = coerceBySchema(input, schema) as any[];
-      expect(result).toEqual([46.603354, 1.888334]);
+      expect(result).toEqual([46.603_354, 1.888_334]);
       const arr = result as any[];
       expect(arr.every((item: any) => typeof item === "number")).toBe(true);
     });
@@ -266,7 +267,7 @@ describe("Coercion Heuristic Handling", () => {
 
       const result = coerceBySchema(input, schema) as any;
       expect(result).toEqual({
-        coordinates: [46.603354, 1.888334],
+        coordinates: [46.603_354, 1.888_334],
         name: "test location",
       });
       const obj = result as any;

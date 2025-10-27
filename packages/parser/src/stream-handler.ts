@@ -7,12 +7,12 @@ import type {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
-import { ToolCallProtocol } from "./protocols/tool-call-protocol";
+import type { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
   extractOnErrorOption,
   isToolChoiceActive,
   originalToolsSchema,
-  ToolCallMiddlewareProviderOptions,
+  type ToolCallMiddlewareProviderOptions,
 } from "./utils";
 import {
   getDebugLevel,
@@ -161,7 +161,7 @@ export async function wrapStream({
                       p.type === "tool-call"
                   );
                   dbg.toolCalls = JSON.stringify(
-                    toolCallParts.map(tc => ({
+                    toolCallParts.map((tc) => ({
                       toolName: tc.toolName,
                       input: tc.input,
                     }))

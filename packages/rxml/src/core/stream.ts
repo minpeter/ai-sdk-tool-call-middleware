@@ -3,7 +3,7 @@
  * Provides memory-efficient parsing for large XML documents
  */
 
-import { Readable, Transform, type TransformCallback } from "stream";
+import { type Readable, Transform, type TransformCallback } from "stream";
 
 import { RXMLStreamError } from "../errors/types";
 import { XMLTokenizer } from "./tokenizer";
@@ -361,7 +361,7 @@ export async function* processXMLStream(
 
     // Wait for next element
     const result = await new Promise<IteratorResult<RXMLNode | string>>(
-      resolve => {
+      (resolve) => {
         resolveNext = resolve;
       }
     );

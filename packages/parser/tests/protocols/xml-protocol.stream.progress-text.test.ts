@@ -41,9 +41,9 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
     });
 
     const out = await collect(rs.pipeThrough(transformer));
-    const deltas = out.filter(p => p.type === "text-delta");
+    const deltas = out.filter((p) => p.type === "text-delta");
     // Should have emitted each chunk (no coalescing into one big delta)
-    expect(deltas.map(d => d.delta)).toEqual(chunks);
+    expect(deltas.map((d) => d.delta)).toEqual(chunks);
   });
 
   it("emits text progressively around tool tags, buffering minimal tail to detect split tags", async () => {
@@ -78,7 +78,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
 
     const out = await collect(rs.pipeThrough(transformer));
     // Expect text-deltas for "Before " and then minimal holding for split tag
-    const textDeltas = out.filter(p => p.type === "text-delta");
+    const textDeltas = out.filter((p) => p.type === "text-delta");
 
     // Concatenate text deltas that occur before the tool-call
     const beforeTool = [] as string[];
@@ -91,7 +91,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
     expect(beforeCombined.startsWith("Before ")).toBe(true);
 
     // Ensure tool-call exists
-    const hasTool = out.some(p => p.type === "tool-call");
+    const hasTool = out.some((p) => p.type === "tool-call");
     expect(hasTool).toBe(true);
   });
 
@@ -114,7 +114,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
     ];
 
     const transformer = protocol.createStreamParser({ tools });
-    const html = `<!DOCTYPE html>\n<html><body><h1>ok</h1></body></html>`;
+    const html = "<!DOCTYPE html>\n<html><body><h1>ok</h1></body></html>";
 
     const rs = new ReadableStream<LanguageModelV2StreamPart>({
       start(ctrl) {

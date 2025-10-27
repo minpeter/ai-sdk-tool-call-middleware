@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  parse as rxmlParse,
   RXMLDuplicateStringTagError,
+  parse as rxmlParse,
   stringify as rxmlStringify,
 } from "@/index";
 
 describe("RXML", () => {
   describe("parse: basic and options", () => {
     it("parses simple string field", () => {
-      const xml = `<location>San Francisco</location>`;
+      const xml = "<location>San Francisco</location>";
       const schema = {
         type: "object",
         properties: { location: { type: "string" } },
@@ -35,7 +35,8 @@ describe("RXML", () => {
 
   describe("parse: heuristics", () => {
     it("normalizes <item> lists to arrays of numbers", () => {
-      const xml = `<numbers><item> 1 </item><item>2</item><item>1e2</item></numbers>`;
+      const xml =
+        "<numbers><item> 1 </item><item>2</item><item>1e2</item></numbers>";
       const schema = {
         type: "object",
         properties: {
@@ -48,7 +49,7 @@ describe("RXML", () => {
     });
 
     it("handles arrays of string elements and trims text content", () => {
-      const xml = `<tags><item> a </item><item>b</item><item> c </item></tags>`;
+      const xml = "<tags><item> a </item><item>b</item><item> c </item></tags>";
       const schema = {
         type: "object",
         properties: {
@@ -82,7 +83,7 @@ describe("RXML", () => {
 
   describe("parse: duplicate string tag handling", () => {
     it("throws RXMLDuplicateStringTagError for duplicate string tags (default)", () => {
-      const xml = `<content>A</content><content>B</content>`;
+      const xml = "<content>A</content><content>B</content>";
       const schema = {
         type: "object",
         properties: { content: { type: "string" } },

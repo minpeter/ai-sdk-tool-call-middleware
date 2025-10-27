@@ -66,10 +66,10 @@ const sijawaraConcise = wrapLanguageModel({
 });
 
 const compareWithNativeToolCalling = {
-  hermes: hermes,
-  morphXml: morphXml,
-  sijawaraDetailed: sijawaraDetailed,
-  sijawaraConcise: sijawaraConcise,
+  hermes,
+  morphXml,
+  sijawaraDetailed,
+  sijawaraConcise,
   original: testTargetModel,
 };
 

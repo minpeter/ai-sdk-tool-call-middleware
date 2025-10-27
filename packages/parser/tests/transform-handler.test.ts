@@ -66,7 +66,7 @@ describe("index prompt templates", () => {
 describe("createToolMiddleware error branches", () => {
   const mw = createToolMiddleware({
     protocol: jsonMixProtocol,
-    toolSystemPromptTemplate: t => `T:${t}`,
+    toolSystemPromptTemplate: (t) => `T:${t}`,
   });
 
   it("throws when toolChoice none is used", async () => {
@@ -116,7 +116,7 @@ describe("createToolMiddleware positive paths", () => {
   it("transformParams injects system prompt and merges consecutive user texts", async () => {
     const mw = createToolMiddleware({
       protocol: jsonMixProtocol,
-      toolSystemPromptTemplate: t => `SYS:${t}`,
+      toolSystemPromptTemplate: (t) => `SYS:${t}`,
     });
     const tools = [
       {
@@ -141,8 +141,8 @@ describe("createToolMiddleware positive paths", () => {
     const mergedUser = out.prompt[1];
     expect(mergedUser.role).toBe("user");
     const text = (mergedUser.content as any[])
-      .filter(c => c.type === "text")
-      .map(c => c.text)
+      .filter((c) => c.type === "text")
+      .map((c) => c.text)
       .join("");
     expect(text).toContain("A");
     expect(text).toContain("B");
@@ -368,7 +368,7 @@ describe("transformParams merges adjacent user messages", () => {
   it("merges two consecutive user messages into one with newline", async () => {
     const mw = createToolMiddleware({
       protocol: jsonMixProtocol,
-      toolSystemPromptTemplate: t => `T:${t}`,
+      toolSystemPromptTemplate: (t) => `T:${t}`,
     });
 
     const out = await mw.transformParams!({
@@ -382,7 +382,7 @@ describe("transformParams merges adjacent user messages", () => {
     } as any);
 
     // After inserting system, the merged user should be at index 1
-    const user = out.prompt.find(m => m.role === "user")!;
+    const user = out.prompt.find((m) => m.role === "user")!;
     const text = user.content.map((c: any) => c.text).join("");
     expect(text).toBe("first\nsecond");
   });
@@ -390,7 +390,7 @@ describe("transformParams merges adjacent user messages", () => {
   it("condenses multiple tool_response messages into single user text content", async () => {
     const mw = createToolMiddleware({
       protocol: jsonMixProtocol,
-      toolSystemPromptTemplate: t => `T:${t}`,
+      toolSystemPromptTemplate: (t) => `T:${t}`,
     });
 
     const out = await mw.transformParams!({
@@ -439,7 +439,7 @@ describe("transformParams merges adjacent user messages", () => {
       },
     } as any);
 
-    const userMsgs = out.prompt.filter(m => m.role === "user");
+    const userMsgs = out.prompt.filter((m) => m.role === "user");
     expect(userMsgs).toHaveLength(1);
     const user = userMsgs[0] as any;
     // Single text content only
@@ -454,7 +454,7 @@ describe("transformParams merges adjacent user messages", () => {
 describe("transformParams convertToolPrompt mapping and merge", () => {
   const mw = createToolMiddleware({
     protocol: jsonMixProtocol,
-    toolSystemPromptTemplate: t => `TOOLS:${t}`,
+    toolSystemPromptTemplate: (t) => `TOOLS:${t}`,
   });
 
   it("converts assistant tool-call and tool role messages, merges adjacent user texts, and preserves providerOptions", async () => {
@@ -504,19 +504,21 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     const out = await mw.transformParams!({ params } as any);
     expect(out.prompt[0].role).toBe("system");
     // Assistant remains assistant with formatted tool call text
-    const assistantMsg = out.prompt.find(m => m.role === "assistant");
+    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     expect(assistantMsg).toBeTruthy();
     const assistantText = assistantMsg!.content
-      .map(c => (c.type === "text" ? (c as any).text : ""))
+      .map((c) => (c.type === "text" ? (c as any).text : ""))
       .join("");
     expect(assistantText).toMatch(/<tool_call>/);
 
     // Tool role becomes user text; original user remains user; they are not adjacent so not merged
-    const userMsgs = out.prompt.filter(m => m.role === "user");
+    const userMsgs = out.prompt.filter((m) => m.role === "user");
     expect(userMsgs.length).toBe(2);
     const userCombined = userMsgs
-      .map(u =>
-        u.content.map(c => (c.type === "text" ? (c as any).text : "")).join("")
+      .map((u) =>
+        u.content
+          .map((c) => (c.type === "text" ? (c as any).text : ""))
+          .join("")
       )
       .join("\n");
     expect(userCombined).toContain("hello");
@@ -551,7 +553,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     };
 
     const out = await mw.transformParams!({ params } as any);
-    const userMsgs = out.prompt.filter(m => m.role === "user");
+    const userMsgs = out.prompt.filter((m) => m.role === "user");
     expect(userMsgs).toHaveLength(1);
     const onlyText = userMsgs[0].content.every((c: any) => c.type === "text");
     expect(onlyText).toBe(true);
@@ -589,7 +591,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     };
 
     const out = await mw.transformParams!({ params } as any);
-    const assistant = out.prompt.find(m => m.role === "assistant")! as any;
+    const assistant = out.prompt.find((m) => m.role === "assistant")! as any;
     // Should contain both formatted tool_call text and original reasoning block
     const hasReasoning = assistant.content.some(
       (c: any) => c.type === "reasoning"

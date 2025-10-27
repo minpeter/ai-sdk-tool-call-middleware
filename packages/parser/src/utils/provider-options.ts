@@ -1,4 +1,7 @@
-import { JSONSchema7, LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONSchema7,
+  LanguageModelV2FunctionTool,
+} from "@ai-sdk/provider";
 
 export type ToolCallMiddlewareProviderOptions = {
   toolCallMiddleware?: {
@@ -29,7 +32,7 @@ export function encodeOriginalTools(
   tools: LanguageModelV2FunctionTool[] | undefined
 ): Array<{ name: string; inputSchema: string }> {
   return (
-    tools?.map(t => ({
+    tools?.map((t) => ({
       name: t.name,
       inputSchema: JSON.stringify(t.inputSchema),
     })) || []
@@ -46,7 +49,7 @@ export function decodeOriginalTools(
 ): LanguageModelV2FunctionTool[] {
   const tools =
     originalTools?.map(
-      t =>
+      (t) =>
         ({
           name: t.name,
           inputSchema: JSON.parse(t.inputSchema) as JSONSchema7,
@@ -64,7 +67,7 @@ export function extractToolNamesFromOriginalTools(
       }>
     | undefined
 ): string[] {
-  return originalTools?.map(t => t.name) || [];
+  return originalTools?.map((t) => t.name) || [];
 }
 
 export function isToolChoiceActive(params: {

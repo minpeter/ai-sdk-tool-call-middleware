@@ -54,9 +54,8 @@ export class XMLTokenizer {
 
           if (this.pos !== -1) this.pos += 1;
           return children;
-        } else if (
-          this.xmlString.charCodeAt(this.pos + 1) === CharCodes.EXCLAMATION
-        ) {
+        }
+        if (this.xmlString.charCodeAt(this.pos + 1) === CharCodes.EXCLAMATION) {
           // Comment, CDATA, or DOCTYPE
           const prevPos = this.pos;
           this.handleSpecialContent(children);
@@ -204,53 +203,51 @@ export class XMLTokenizer {
       (tagName[0] === "?" &&
         this.xmlString.charCodeAt(this.pos - 1) === CharCodes.QUESTION);
 
-    if (!isSelfClosing) {
-      if (tagName === "script") {
-        // Special handling for script tags
-        const start = this.pos + 1;
-        this.pos = this.xmlString.indexOf("</script>", this.pos);
-        if (this.pos === -1) {
-          // Unclosed script tag - extract content to end
-          children = [this.xmlString.slice(start)];
-          this.pos = this.xmlString.length;
-        } else {
-          children = [this.xmlString.slice(start, this.pos)];
-          this.pos += 9;
-        }
-      } else if (tagName === "style") {
-        // Special handling for style tags
-        const start = this.pos + 1;
-        this.pos = this.xmlString.indexOf("</style>", this.pos);
-        if (this.pos === -1) {
-          // Unclosed style tag - extract content to end
-          children = [this.xmlString.slice(start)];
-          this.pos = this.xmlString.length;
-        } else {
-          children = [this.xmlString.slice(start, this.pos)];
-          this.pos += 8;
-        }
-      } else if (this.options.noChildNodes?.indexOf(tagName) === -1) {
-        // Parse children for non-self-closing tags
-        this.pos++;
-        children = this.parseChildren(tagName);
-      } else {
-        // Tag is in noChildNodes - handle based on whether it's a default HTML self-closing tag
-        this.pos++;
-        if ((DEFAULT_NO_CHILD_NODES as readonly string[]).includes(tagName)) {
-          // HTML self-closing tags don't have closing tags
-          // Position is already correct
-        } else {
-          // Custom noChildNodes tags might have closing tags to skip
-          const closingTag = `</${tagName}>`;
-          const closingPos = this.xmlString.indexOf(closingTag, this.pos);
-          if (closingPos !== -1) {
-            this.pos = closingPos + closingTag.length;
-          }
-          // If no closing tag found, leave position as is
-        }
-      }
-    } else {
+    if (isSelfClosing) {
       this.pos++;
+    } else if (tagName === "script") {
+      // Special handling for script tags
+      const start = this.pos + 1;
+      this.pos = this.xmlString.indexOf("</script>", this.pos);
+      if (this.pos === -1) {
+        // Unclosed script tag - extract content to end
+        children = [this.xmlString.slice(start)];
+        this.pos = this.xmlString.length;
+      } else {
+        children = [this.xmlString.slice(start, this.pos)];
+        this.pos += 9;
+      }
+    } else if (tagName === "style") {
+      // Special handling for style tags
+      const start = this.pos + 1;
+      this.pos = this.xmlString.indexOf("</style>", this.pos);
+      if (this.pos === -1) {
+        // Unclosed style tag - extract content to end
+        children = [this.xmlString.slice(start)];
+        this.pos = this.xmlString.length;
+      } else {
+        children = [this.xmlString.slice(start, this.pos)];
+        this.pos += 8;
+      }
+    } else if (this.options.noChildNodes?.indexOf(tagName) === -1) {
+      // Parse children for non-self-closing tags
+      this.pos++;
+      children = this.parseChildren(tagName);
+    } else {
+      // Tag is in noChildNodes - handle based on whether it's a default HTML self-closing tag
+      this.pos++;
+      if ((DEFAULT_NO_CHILD_NODES as readonly string[]).includes(tagName)) {
+        // HTML self-closing tags don't have closing tags
+        // Position is already correct
+      } else {
+        // Custom noChildNodes tags might have closing tags to skip
+        const closingTag = `</${tagName}>`;
+        const closingPos = this.xmlString.indexOf(closingTag, this.pos);
+        if (closingPos !== -1) {
+          this.pos = closingPos + closingTag.length;
+        }
+        // If no closing tag found, leave position as is
+      }
     }
 
     return { tagName, attributes, children };

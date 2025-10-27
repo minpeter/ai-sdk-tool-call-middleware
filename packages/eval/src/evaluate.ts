@@ -1,6 +1,6 @@
-import { LanguageModel } from "ai";
+import type { LanguageModel } from "ai";
 
-import {
+import type {
   EvaluateOptions,
   EvaluationResult,
   LanguageModelV2Benchmark,

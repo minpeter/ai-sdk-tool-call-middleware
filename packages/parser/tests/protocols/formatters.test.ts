@@ -16,7 +16,7 @@ describe("protocol formatters", () => {
     ] as any;
     const sys = p.formatTools({
       tools,
-      toolSystemPromptTemplate: t => `tools:${t}`,
+      toolSystemPromptTemplate: (t) => `tools:${t}`,
     });
     expect(sys).toContain("tools:");
     const call = p.formatToolCall({
@@ -47,7 +47,7 @@ describe("protocol formatters", () => {
     ] as any;
     const sys = p.formatTools({
       tools,
-      toolSystemPromptTemplate: t => `tools:${t}`,
+      toolSystemPromptTemplate: (t) => `tools:${t}`,
     });
     expect(sys).toContain("tools:");
     const call = p.formatToolCall({

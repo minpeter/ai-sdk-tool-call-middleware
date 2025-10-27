@@ -8,7 +8,7 @@ function normalizeBooleanString(value: string): boolean | undefined {
   if (normalized === "0" || normalized === "false" || normalized === "no") {
     return false;
   }
-  return undefined;
+  return;
 }
 
 export function getDebugLevel(): DebugLevel {
@@ -104,7 +104,7 @@ export function logParsedSummary({
       style === "bold"
         ? originalText
             .split(/\r?\n/)
-            .map(line => (line.length ? highlight(line) : line))
+            .map((line) => (line.length ? highlight(line) : line))
             .join("\n")
         : highlight(originalText);
 
@@ -114,7 +114,7 @@ export function logParsedSummary({
   if (toolCalls.length > 0) {
     const styledSummary = safeStringify(toolCalls)
       .split(/\r?\n/)
-      .map(line => (line.length ? cBgBlue(line) : line))
+      .map((line) => (line.length ? cBgBlue(line) : line))
       .join("\n");
     console.log(cGray("[debug:mw:summary]"), styledSummary);
   }

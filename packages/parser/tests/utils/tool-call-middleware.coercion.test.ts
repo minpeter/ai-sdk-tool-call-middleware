@@ -1,7 +1,7 @@
-import { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { ToolCallProtocol } from "@/protocols/tool-call-protocol";
+import type { ToolCallProtocol } from "@/protocols/tool-call-protocol";
 import { createToolMiddleware } from "@/tool-call-middleware";
 import { originalToolsSchema } from "@/utils/provider-options";
 

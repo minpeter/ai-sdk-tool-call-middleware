@@ -32,7 +32,7 @@ describe("dummyProtocol edge cases", () => {
     });
     const out = await collect(rs.pipeThrough(transformer));
     expect(out[0]).toMatchObject({ type: "tool-call" });
-    expect(out.some(c => c.type === "text-end")).toBe(false);
+    expect(out.some((c) => c.type === "text-end")).toBe(false);
   });
 
   it("flush without any prior text does not emit extra text-end", async () => {
@@ -48,6 +48,6 @@ describe("dummyProtocol edge cases", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
-    expect(out.filter(c => c.type === "text-end").length).toBe(0);
+    expect(out.filter((c) => c.type === "text-end").length).toBe(0);
   });
 });

@@ -185,7 +185,7 @@ function stringifyObject(
   const hasElements = Object.keys(elements).length > 0;
   const hasTextContent = textContent !== undefined && textContent !== "";
 
-  if (!hasElements && !hasTextContent) {
+  if (!(hasElements || hasTextContent)) {
     if (suppressEmptyNode) return "";
     return `${indent}${openTag}/>${newline}`;
   }

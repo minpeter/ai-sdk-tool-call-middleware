@@ -1,16 +1,16 @@
-import { generateText, jsonSchema, LanguageModel, tool } from "ai";
+import { generateText, jsonSchema, type LanguageModel, tool } from "ai";
 import { promises as fs } from "fs";
 import path from "path";
 
-import { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
+import type { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
 import { resolveDataDir } from "@/utils/paths";
 
 import {
-  FunctionDescription,
+  type FunctionDescription,
   multipleFunctionChecker,
   parallelFunctionCheckerNoOrder,
   simpleFunctionChecker,
-  ToolCall,
+  type ToolCall,
 } from "./bfcl/ast-checker";
 
 // Resolve data files relative to this module using ESM-safe utilities
@@ -72,19 +72,22 @@ function check(
         modelOutput[0] as ToolCall,
         (possibleAnswer.ground_truth as Array<Record<string, unknown>>)[0]
       );
-    } else if (category === "parallel") {
+    }
+    if (category === "parallel") {
       return parallelFunctionCheckerNoOrder(
         testCase.function as unknown as FunctionDescription[],
         modelOutput as ToolCall[],
         possibleAnswer.ground_truth as Array<Record<string, unknown>>
       );
-    } else if (category === "multiple") {
+    }
+    if (category === "multiple") {
       return multipleFunctionChecker(
         testCase.function as unknown as FunctionDescription[],
         modelOutput as ToolCall[],
         possibleAnswer.ground_truth as Array<Record<string, unknown>>
       );
-    } else if (category.includes("parallel-multiple")) {
+    }
+    if (category.includes("parallel-multiple")) {
       // parallel-multiple is just a more complex parallel case
       return parallelFunctionCheckerNoOrder(
         testCase.function as unknown as FunctionDescription[],
@@ -141,14 +144,14 @@ function createBfclBenchmark(
         // Parse them line-by-line instead of as a single JSON value.
         testCases = testCasesJson
           .split(/\r?\n/)
-          .filter(line => line.trim().length > 0)
-          .map(line => JSON.parse(line));
+          .filter((line) => line.trim().length > 0)
+          .map((line) => JSON.parse(line));
         const possibleAnswers: PossibleAnswer[] = possibleAnswersJson
           .split(/\r?\n/)
-          .filter(line => line.trim().length > 0)
-          .map(line => JSON.parse(line));
+          .filter((line) => line.trim().length > 0)
+          .map((line) => JSON.parse(line));
         const possibleAnswersMap = new Map(
-          possibleAnswers.map(ans => [ans.id, ans])
+          possibleAnswers.map((ans) => [ans.id, ans])
         );
 
         // Optional: limit number of test cases via env for faster local runs
@@ -166,7 +169,7 @@ function createBfclBenchmark(
           if (!schema || typeof schema !== "object")
             return { type: "object", properties: {} };
           const copy: ToolSchemaObject | unknown[] = Array.isArray(schema)
-            ? (schema as unknown[]).map(v => fixSchema(v))
+            ? (schema as unknown[]).map((v) => fixSchema(v))
             : ({ ...(schema as Record<string, unknown>) } as ToolSchemaObject);
           if (!Array.isArray(copy)) {
             if (copy.type) {
@@ -213,7 +216,7 @@ function createBfclBenchmark(
             // Flatten BFCL message shape [[{role, content}], ...] to [{role, content}, ...]
             const flatMessages =
               Array.isArray(messages) &&
-              (messages as unknown[]).some(m => Array.isArray(m))
+              (messages as unknown[]).some((m) => Array.isArray(m))
                 ? (messages as unknown[] as Message[][]).flat(1)
                 : (messages as Message[]);
 
@@ -228,7 +231,7 @@ function createBfclBenchmark(
 
             const transformedTools: TransformedTool[] = (
               tools as ToolSpec[]
-            ).map(t => {
+            ).map((t) => {
               const fixed = fixSchema(t.parameters);
               // Ensure we always provide a valid JSON Schema object of type 'object'
               const isObjectSchema =
@@ -246,13 +249,13 @@ function createBfclBenchmark(
                 type: "function" as const,
                 name: sanitized,
                 description: t.description,
-                inputSchema: inputSchema,
+                inputSchema,
               };
             });
 
             // Convert to ToolSet expected by generateText
             const toolsMap = Object.fromEntries(
-              transformedTools.map(t => [
+              transformedTools.map((t) => [
                 t.name,
                 tool({
                   description:
@@ -387,102 +390,220 @@ function createBfclBenchmark(
             if (checkerResult.valid) {
               caseLogs.push(`[PASS] ${testCase.id}`);
               return { valid: true, logs: caseLogs };
-            } else {
-              caseLogs.push(`[FAIL] ${testCase.id}: ${checkerResult.error}`);
-              try {
-                // Build a compact expectation/actual summary and a human-friendly diff
-                const category = testCase.id.split("_")[0];
-                const diff: string[] = [];
-                const summarizeArgs = (args: unknown): unknown => {
-                  if (args == null) return args;
-                  if (typeof args !== "object") return args;
-                  // Sort object keys for stable output
-                  return Object.keys(args)
-                    .sort()
-                    .reduce(
-                      (acc: Record<string, unknown>, k) => {
-                        acc[k] = (args as Record<string, unknown>)[k];
-                        return acc;
-                      },
-                      {} as Record<string, unknown>
-                    );
-                };
+            }
+            caseLogs.push(`[FAIL] ${testCase.id}: ${checkerResult.error}`);
+            try {
+              // Build a compact expectation/actual summary and a human-friendly diff
+              const category = testCase.id.split("_")[0];
+              const diff: string[] = [];
+              const summarizeArgs = (args: unknown): unknown => {
+                if (args == null) return args;
+                if (typeof args !== "object") return args;
+                // Sort object keys for stable output
+                return Object.keys(args)
+                  .sort()
+                  .reduce(
+                    (acc: Record<string, unknown>, k) => {
+                      acc[k] = (args as Record<string, unknown>)[k];
+                      return acc;
+                    },
+                    {} as Record<string, unknown>
+                  );
+              };
 
-                function generateParamMismatchDiff(
-                  paramName: string,
-                  allowed: unknown,
-                  got: unknown
-                ): string[] {
-                  const diffLines: string[] = [];
-                  diffLines.push(`@@ param ${paramName}`);
-                  const allowedArray = Array.isArray(allowed)
-                    ? (allowed as unknown[])
-                    : [allowed as unknown];
-                  const expectedLine = (() => {
-                    if (allowedArray.length === 1) {
-                      return `- expected: ${JSON.stringify(allowedArray[0])}`;
+              function generateParamMismatchDiff(
+                paramName: string,
+                allowed: unknown,
+                got: unknown
+              ): string[] {
+                const diffLines: string[] = [];
+                diffLines.push(`@@ param ${paramName}`);
+                const allowedArray = Array.isArray(allowed)
+                  ? (allowed as unknown[])
+                  : [allowed as unknown];
+                const expectedLine = (() => {
+                  if (allowedArray.length === 1) {
+                    return `- expected: ${JSON.stringify(allowedArray[0])}`;
+                  }
+                  const formatted = allowedArray
+                    .map((v) =>
+                      Array.isArray(v) || (typeof v === "object" && v !== null)
+                        ? JSON.stringify(v)
+                        : String(v)
+                    )
+                    .join(", ");
+                  return `- expected one of: ${formatted}`;
+                })();
+                diffLines.push(expectedLine);
+                diffLines.push(`+ got: ${JSON.stringify(got)}`);
+                return diffLines;
+              }
+
+              const expected: Record<string, unknown> = {};
+              const actual: Record<string, unknown> = {};
+
+              if (category === "simple") {
+                const funcDesc = (tools as ToolSpec[])[0];
+                const gt = (possibleAnswer as { ground_truth?: unknown[] })
+                  .ground_truth?.[0] as Record<string, unknown> | undefined;
+                const expectedFuncName = funcDesc?.name;
+                const expectedParams = gt ? gt[Object.keys(gt)[0]] : undefined;
+                const received = (restoredCalls as any[])[0];
+                const receivedName = received?.toolName ?? received?.name;
+                const receivedArgs = summarizeArgs(received?.args);
+
+                expected.function = expectedFuncName;
+                expected.params = expectedParams;
+                actual.function = receivedName;
+                actual.args = receivedArgs;
+
+                if (expectedFuncName !== receivedName) {
+                  diff.push("@@ function name");
+                  diff.push(`- ${expectedFuncName}`);
+                  diff.push(`+ ${receivedName}`);
+                }
+                if (
+                  expectedParams &&
+                  receivedArgs &&
+                  typeof receivedArgs === "object" &&
+                  receivedArgs !== null
+                ) {
+                  const required = (funcDesc?.parameters?.required ??
+                    []) as string[];
+                  // Missing required
+                  for (const req of required) {
+                    if (!(req in receivedArgs)) {
+                      diff.push(`- missing required param: ${req}`);
                     }
-                    const formatted = allowedArray
-                      .map(v =>
-                        Array.isArray(v) ||
-                        (typeof v === "object" && v !== null)
-                          ? JSON.stringify(v)
-                          : String(v)
-                      )
-                      .join(", ");
-                    return `- expected one of: ${formatted}`;
-                  })();
-                  diffLines.push(expectedLine);
-                  diffLines.push(`+ got: ${JSON.stringify(got)}`);
-                  return diffLines;
+                  }
+                  // Unexpected
+                  for (const k of Object.keys(
+                    receivedArgs as Record<string, unknown>
+                  )) {
+                    if (!Object.hasOwn(expectedParams, k)) {
+                      diff.push(`+ unexpected param: ${k}`);
+                    }
+                  }
+                  // Invalid values
+                  for (const k of Object.keys(
+                    receivedArgs as Record<string, unknown>
+                  )) {
+                    if (Object.hasOwn(expectedParams, k)) {
+                      const allowed = (
+                        expectedParams as Record<string, unknown[]>
+                      )[k];
+                      const got = (receivedArgs as Record<string, unknown>)[k];
+                      const includes =
+                        Array.isArray(allowed) &&
+                        allowed.some((v: unknown) => {
+                          try {
+                            if (Array.isArray(got)) {
+                              return (
+                                JSON.stringify(
+                                  got.map((x) => String(x)).sort()
+                                ) ===
+                                JSON.stringify(
+                                  (v as unknown[]).map((x) => String(x)).sort()
+                                )
+                              );
+                            }
+                          } catch {
+                            void 0;
+                          }
+                          return (
+                            String(v).toLowerCase().replace(/\s+/g, "") ===
+                            String(got).toLowerCase().replace(/\s+/g, "")
+                          );
+                        });
+                      if (!includes) {
+                        diff.push(
+                          ...generateParamMismatchDiff(k, allowed, got)
+                        );
+                      }
+                    }
+                  }
+                }
+              } else {
+                // Parallel / multiple: show function name sets and param-level diffs per matched function
+                const gtArr: Array<Record<string, unknown>> =
+                  (
+                    possibleAnswer as {
+                      ground_truth?: Array<Record<string, unknown>>;
+                    }
+                  ).ground_truth ?? [];
+                const expectedNames = gtArr.map((g) => Object.keys(g)[0]);
+                const actualNames = (restoredCalls as any[]).map(
+                  (c) => c.toolName ?? c.name
+                );
+                expected.functions = expectedNames;
+                actual.functions = actualNames;
+
+                if (expectedNames.length !== actualNames.length) {
+                  diff.push("@@ call count");
+                  diff.push(`- expected ${expectedNames.length}`);
+                  diff.push(`+ got ${actualNames.length}`);
                 }
 
-                const expected: Record<string, unknown> = {};
-                const actual: Record<string, unknown> = {};
+                const missing = expectedNames.filter(
+                  (n) => !actualNames.includes(n)
+                );
+                const extra = actualNames.filter(
+                  (n) => !expectedNames.includes(n)
+                );
+                for (const m of missing) diff.push(`- missing function: ${m}`);
+                for (const e of extra) diff.push(`+ unexpected function: ${e}`);
 
-                if (category === "simple") {
-                  const funcDesc = (tools as ToolSpec[])[0];
-                  const gt = (possibleAnswer as { ground_truth?: unknown[] })
-                    .ground_truth?.[0] as Record<string, unknown> | undefined;
-                  const expectedFuncName = funcDesc?.name;
-                  const expectedParams = gt
-                    ? gt[Object.keys(gt)[0]]
-                    : undefined;
-                  const received = (restoredCalls as any[])[0];
-                  const receivedName = received?.toolName ?? received?.name;
+                // Attempt to compute param-level diffs for functions that exist in both expected and actual
+                const usedActual = new Set<number>();
+                for (const expectedObj of gtArr) {
+                  const fname = Object.keys(expectedObj)[0];
+                  // Find a matching actual call not yet used
+                  let matchedIndex = -1;
+                  for (let i = 0; i < (restoredCalls as any[]).length; i++) {
+                    if (usedActual.has(i)) continue;
+                    const rc = (restoredCalls as any[])[i];
+                    const rcName = rc?.toolName ?? rc?.name;
+                    if (rcName === fname) {
+                      matchedIndex = i;
+                      break;
+                    }
+                  }
+                  if (matchedIndex === -1) continue; // already reported as missing above
+                  usedActual.add(matchedIndex);
+
+                  const received = (restoredCalls as any[])[matchedIndex];
                   const receivedArgs = summarizeArgs(received?.args);
 
-                  expected.function = expectedFuncName;
-                  expected.params = expectedParams;
-                  actual.function = receivedName;
-                  actual.args = receivedArgs;
+                  // expected parameters allowed values
+                  const expectedParamsAllowed = expectedObj[fname] as Record<
+                    string,
+                    unknown
+                  >;
+                  const funcDesc = (tools as ToolSpec[]).find(
+                    (t: ToolSpec) => t.name === fname
+                  );
+                  const requiredParams = (funcDesc?.parameters?.required ??
+                    []) as string[];
 
-                  if (expectedFuncName !== receivedName) {
-                    diff.push(`@@ function name`);
-                    diff.push(`- ${expectedFuncName}`);
-                    diff.push(`+ ${receivedName}`);
-                  }
+                  diff.push(`@@ function ${fname}`);
+
                   if (
-                    expectedParams &&
+                    expectedParamsAllowed &&
                     receivedArgs &&
                     typeof receivedArgs === "object" &&
                     receivedArgs !== null
                   ) {
-                    const required = (funcDesc?.parameters?.required ??
-                      []) as string[];
                     // Missing required
-                    for (const req of required) {
+                    for (const req of requiredParams) {
                       if (!(req in receivedArgs)) {
                         diff.push(`- missing required param: ${req}`);
                       }
                     }
-                    // Unexpected
+                    // Unexpected params
                     for (const k of Object.keys(
                       receivedArgs as Record<string, unknown>
                     )) {
-                      if (
-                        !Object.prototype.hasOwnProperty.call(expectedParams, k)
-                      ) {
+                      if (!Object.hasOwn(expectedParamsAllowed, k)) {
                         diff.push(`+ unexpected param: ${k}`);
                       }
                     }
@@ -490,11 +611,9 @@ function createBfclBenchmark(
                     for (const k of Object.keys(
                       receivedArgs as Record<string, unknown>
                     )) {
-                      if (
-                        Object.prototype.hasOwnProperty.call(expectedParams, k)
-                      ) {
+                      if (Object.hasOwn(expectedParamsAllowed, k)) {
                         const allowed = (
-                          expectedParams as Record<string, unknown[]>
+                          expectedParamsAllowed as Record<string, unknown[]>
                         )[k];
                         const got = (receivedArgs as Record<string, unknown>)[
                           k
@@ -506,10 +625,12 @@ function createBfclBenchmark(
                               if (Array.isArray(got)) {
                                 return (
                                   JSON.stringify(
-                                    got.map(x => String(x)).sort()
+                                    got.map((x) => String(x)).sort()
                                   ) ===
                                   JSON.stringify(
-                                    (v as unknown[]).map(x => String(x)).sort()
+                                    (v as unknown[])
+                                      .map((x) => String(x))
+                                      .sort()
                                   )
                                 );
                               }
@@ -529,197 +650,57 @@ function createBfclBenchmark(
                       }
                     }
                   }
-                } else {
-                  // Parallel / multiple: show function name sets and param-level diffs per matched function
-                  const gtArr: Array<Record<string, unknown>> =
-                    (
-                      possibleAnswer as {
-                        ground_truth?: Array<Record<string, unknown>>;
-                      }
-                    ).ground_truth ?? [];
-                  const expectedNames = gtArr.map(g => Object.keys(g)[0]);
-                  const actualNames = (restoredCalls as any[]).map(
-                    c => c.toolName ?? c.name
-                  );
-                  expected.functions = expectedNames;
-                  actual.functions = actualNames;
-
-                  if (expectedNames.length !== actualNames.length) {
-                    diff.push(`@@ call count`);
-                    diff.push(`- expected ${expectedNames.length}`);
-                    diff.push(`+ got ${actualNames.length}`);
-                  }
-
-                  const missing = expectedNames.filter(
-                    n => !actualNames.includes(n)
-                  );
-                  const extra = actualNames.filter(
-                    n => !expectedNames.includes(n)
-                  );
-                  for (const m of missing)
-                    diff.push(`- missing function: ${m}`);
-                  for (const e of extra)
-                    diff.push(`+ unexpected function: ${e}`);
-
-                  // Attempt to compute param-level diffs for functions that exist in both expected and actual
-                  const usedActual = new Set<number>();
-                  for (const expectedObj of gtArr) {
-                    const fname = Object.keys(expectedObj)[0];
-                    // Find a matching actual call not yet used
-                    let matchedIndex = -1;
-                    for (let i = 0; i < (restoredCalls as any[]).length; i++) {
-                      if (usedActual.has(i)) continue;
-                      const rc = (restoredCalls as any[])[i];
-                      const rcName = rc?.toolName ?? rc?.name;
-                      if (rcName === fname) {
-                        matchedIndex = i;
-                        break;
-                      }
-                    }
-                    if (matchedIndex === -1) continue; // already reported as missing above
-                    usedActual.add(matchedIndex);
-
-                    const received = (restoredCalls as any[])[matchedIndex];
-                    const receivedArgs = summarizeArgs(received?.args);
-
-                    // expected parameters allowed values
-                    const expectedParamsAllowed = expectedObj[fname] as Record<
-                      string,
-                      unknown
-                    >;
-                    const funcDesc = (tools as ToolSpec[]).find(
-                      (t: ToolSpec) => t.name === fname
-                    );
-                    const requiredParams = (funcDesc?.parameters?.required ??
-                      []) as string[];
-
-                    diff.push(`@@ function ${fname}`);
-
-                    if (
-                      expectedParamsAllowed &&
-                      receivedArgs &&
-                      typeof receivedArgs === "object" &&
-                      receivedArgs !== null
-                    ) {
-                      // Missing required
-                      for (const req of requiredParams) {
-                        if (!(req in receivedArgs)) {
-                          diff.push(`- missing required param: ${req}`);
-                        }
-                      }
-                      // Unexpected params
-                      for (const k of Object.keys(
-                        receivedArgs as Record<string, unknown>
-                      )) {
-                        if (
-                          !Object.prototype.hasOwnProperty.call(
-                            expectedParamsAllowed,
-                            k
-                          )
-                        ) {
-                          diff.push(`+ unexpected param: ${k}`);
-                        }
-                      }
-                      // Invalid values
-                      for (const k of Object.keys(
-                        receivedArgs as Record<string, unknown>
-                      )) {
-                        if (
-                          Object.prototype.hasOwnProperty.call(
-                            expectedParamsAllowed,
-                            k
-                          )
-                        ) {
-                          const allowed = (
-                            expectedParamsAllowed as Record<string, unknown[]>
-                          )[k];
-                          const got = (receivedArgs as Record<string, unknown>)[
-                            k
-                          ];
-                          const includes =
-                            Array.isArray(allowed) &&
-                            allowed.some((v: unknown) => {
-                              try {
-                                if (Array.isArray(got)) {
-                                  return (
-                                    JSON.stringify(
-                                      got.map(x => String(x)).sort()
-                                    ) ===
-                                    JSON.stringify(
-                                      (v as unknown[])
-                                        .map(x => String(x))
-                                        .sort()
-                                    )
-                                  );
-                                }
-                              } catch {
-                                void 0;
-                              }
-                              return (
-                                String(v).toLowerCase().replace(/\s+/g, "") ===
-                                String(got).toLowerCase().replace(/\s+/g, "")
-                              );
-                            });
-                          if (!includes) {
-                            diff.push(
-                              ...generateParamMismatchDiff(k, allowed, got)
-                            );
-                          }
-                        }
-                      }
-                    }
-                  }
                 }
-
-                caseLogs.push(
-                  `[DEBUG-FAIL] ${JSON.stringify({
-                    id: testCase.id,
-                    message: checkerResult.error,
-                    error_type: checkerResult.error_type,
-                    expected,
-                    actual,
-                    diff,
-                  })}`
-                );
-                // Attach rich context for debugging
-                try {
-                  const lastUser = (() => {
-                    const reversed = [...flatMessages].reverse();
-                    const found = reversed.find(
-                      m => (m as Message).role === "user"
-                    ) as Message | undefined;
-                    return found?.content ?? undefined;
-                  })();
-                  const contextPayload = {
-                    id: testCase.id,
-                    tool_schema: tools,
-                    last_user_query: lastUser,
-                    raw_model_text:
-                      mwOriginalText && mwOriginalText.length > 0
-                        ? mwOriginalText
-                        : typeof text === "string"
-                          ? text
-                          : "",
-                    finish_reason: finishReason,
-                    parsed_tool_calls: mwParsedToolCalls.length
-                      ? mwParsedToolCalls
-                      : restoredCalls,
-                    ground_truth: (possibleAnswer as { ground_truth?: unknown })
-                      .ground_truth,
-                  };
-                  caseLogs.push(
-                    `[DEBUG-FAIL-CONTEXT] ${JSON.stringify(contextPayload)}`
-                  );
-                } catch {
-                  // ignore context build failures
-                }
-              } catch {
-                caseLogs.push(
-                  `[DEBUG] ${testCase.id}: failed to build debug diff`
-                );
               }
-              return { valid: false, logs: caseLogs };
+
+              caseLogs.push(
+                `[DEBUG-FAIL] ${JSON.stringify({
+                  id: testCase.id,
+                  message: checkerResult.error,
+                  error_type: checkerResult.error_type,
+                  expected,
+                  actual,
+                  diff,
+                })}`
+              );
+              // Attach rich context for debugging
+              try {
+                const lastUser = (() => {
+                  const reversed = [...flatMessages].reverse();
+                  const found = reversed.find(
+                    (m) => (m as Message).role === "user"
+                  ) as Message | undefined;
+                  return found?.content ?? undefined;
+                })();
+                const contextPayload = {
+                  id: testCase.id,
+                  tool_schema: tools,
+                  last_user_query: lastUser,
+                  raw_model_text:
+                    mwOriginalText && mwOriginalText.length > 0
+                      ? mwOriginalText
+                      : typeof text === "string"
+                        ? text
+                        : "",
+                  finish_reason: finishReason,
+                  parsed_tool_calls: mwParsedToolCalls.length
+                    ? mwParsedToolCalls
+                    : restoredCalls,
+                  ground_truth: (possibleAnswer as { ground_truth?: unknown })
+                    .ground_truth,
+                };
+                caseLogs.push(
+                  `[DEBUG-FAIL-CONTEXT] ${JSON.stringify(contextPayload)}`
+                );
+              } catch {
+                // ignore context build failures
+              }
+            } catch {
+              caseLogs.push(
+                `[DEBUG] ${testCase.id}: failed to build debug diff`
+              );
             }
+            return { valid: false, logs: caseLogs };
           } catch (e: any) {
             caseLogs.push(
               `[ERROR] ${testCase.id}: Model generation failed: ${e?.message}`
@@ -755,7 +736,7 @@ function createBfclBenchmark(
         const resultsPerCase = await mapWithConcurrency(
           testCases,
           concurrency,
-          async tc => runSingleCase(tc)
+          async (tc) => runSingleCase(tc)
         );
 
         // Aggregate

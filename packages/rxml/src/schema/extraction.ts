@@ -30,9 +30,9 @@ export function extractRawInner(
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) return undefined;
+    if (lt === -1) return;
     i = lt + 1;
-    if (i >= len) return undefined;
+    if (i >= len) return;
 
     const ch = xmlContent[i];
     if (ch === "!") {
@@ -56,16 +56,13 @@ export function extractRawInner(
       }
       const gt = xmlContent.indexOf(">", i + 1);
       i = gt === -1 ? len : gt + 1;
-      continue;
     } else if (ch === "?") {
       const close = xmlContent.indexOf("?>", i + 1);
       i = close === -1 ? len : close + 2;
-      continue;
     } else if (ch === "/") {
       const gt = xmlContent.indexOf(">", i + 1);
       i = gt === -1 ? len : gt + 1;
       depth = Math.max(0, depth - 1);
-      continue;
     } else {
       let j = i;
       if (j < len && isNameStartChar(xmlContent[j])) {
@@ -132,11 +129,9 @@ export function extractRawInner(
               }
               const gt2 = xmlContent.indexOf(">", nx + 1);
               pos = gt2 === -1 ? len : gt2 + 1;
-              continue;
             } else if (h === "?") {
               const close = xmlContent.indexOf("?>", nx + 1);
               pos = close === -1 ? len : close + 2;
-              continue;
             } else if (h === "/") {
               let t = nx + 1;
               if (t < len && isNameStartChar(xmlContent[t])) {
@@ -157,7 +152,6 @@ export function extractRawInner(
                 }
               }
               pos = gt2 === -1 ? len : gt2 + 1;
-              continue;
             } else {
               let t = nx;
               if (t < len && isNameStartChar(xmlContent[t])) {
@@ -185,21 +179,19 @@ export function extractRawInner(
                 sameDepth++;
               }
               pos = xmlContent[u] === ">" ? u + 1 : u + 1;
-              continue;
             }
           }
         }
       }
       i = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
       depth += isSelfClosing ? 0 : 1;
-      continue;
     }
   }
 
   if (bestStart !== -1) {
     return xmlContent.slice(bestStart, bestEnd);
   }
-  return undefined;
+  return;
 }
 
 /**
@@ -312,11 +304,9 @@ export function findAllInnerRanges(
         }
         const gt2 = xmlContent.indexOf(">", nx + 1);
         pos = gt2 === -1 ? len : gt2 + 1;
-        continue;
       } else if (h === "?") {
         const close = xmlContent.indexOf("?>", nx + 1);
         pos = close === -1 ? len : close + 2;
-        continue;
       } else if (h === "/") {
         let t = nx + 1;
         if (t < len && isNameStartChar(xmlContent[t])) {
@@ -335,7 +325,6 @@ export function findAllInnerRanges(
           }
         }
         pos = gt2 === -1 ? len : gt2 + 1;
-        continue;
       } else {
         let t = nx;
         if (t < len && isNameStartChar(xmlContent[t])) {
@@ -363,7 +352,6 @@ export function findAllInnerRanges(
           sameDepth++;
         }
         pos = xmlContent[u] === ">" ? u + 1 : u + 1;
-        continue;
       }
     }
 
@@ -391,9 +379,9 @@ export function findFirstTopLevelRange(
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) return undefined;
+    if (lt === -1) return;
     i = lt + 1;
-    if (i >= len) return undefined;
+    if (i >= len) return;
 
     const ch = xmlContent[i];
     if (ch === "!") {
@@ -417,16 +405,13 @@ export function findFirstTopLevelRange(
       }
       const gt = xmlContent.indexOf(">", i + 1);
       i = gt === -1 ? len : gt + 1;
-      continue;
     } else if (ch === "?") {
       const close = xmlContent.indexOf("?>", i + 1);
       i = close === -1 ? len : close + 2;
-      continue;
     } else if (ch === "/") {
       const gt = xmlContent.indexOf(">", i + 1);
       i = gt === -1 ? len : gt + 1;
       depth = Math.max(0, depth - 1);
-      continue;
     } else {
       let j = i;
       if (j < len && isNameStartChar(xmlContent[j])) {
@@ -486,11 +471,9 @@ export function findFirstTopLevelRange(
             }
             const gt2 = xmlContent.indexOf(">", nx + 1);
             pos = gt2 === -1 ? len : gt2 + 1;
-            continue;
           } else if (h === "?") {
             const close = xmlContent.indexOf("?>", nx + 1);
             pos = close === -1 ? len : close + 2;
-            continue;
           } else if (h === "/") {
             let t = nx + 1;
             if (t < len && isNameStartChar(xmlContent[t])) {
@@ -506,7 +489,6 @@ export function findFirstTopLevelRange(
               }
             }
             pos = gt2 === -1 ? len : gt2 + 1;
-            continue;
           } else {
             let t = nx;
             if (t < len && isNameStartChar(xmlContent[t])) {
@@ -536,17 +518,15 @@ export function findFirstTopLevelRange(
               sameDepth++;
             }
             pos = xmlContent[u] === ">" ? u + 1 : u + 1;
-            continue;
           }
         }
-        return undefined;
+        return;
       }
       i = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
       depth += isSelfClosing ? 0 : 1;
-      continue;
     }
   }
-  return undefined;
+  return;
 }
 
 /**
@@ -556,7 +536,7 @@ export function countTagOccurrences(
   xmlContent: string,
   tagName: string,
   excludeRanges?: Array<{ start: number; end: number }>,
-  shouldSkipFirst: boolean = true
+  shouldSkipFirst = true
 ): number {
   const len = xmlContent.length;
   const target = tagName;
@@ -592,15 +572,12 @@ export function countTagOccurrences(
       }
       const gt = xmlContent.indexOf(">", i + 1);
       i = gt === -1 ? len : gt + 1;
-      continue;
     } else if (ch === "?") {
       const close = xmlContent.indexOf("?>", i + 1);
       i = close === -1 ? len : close + 2;
-      continue;
     } else if (ch === "/") {
       const gt = xmlContent.indexOf(">", i + 1);
       i = gt === -1 ? len : gt + 1;
-      continue;
     } else {
       let j = i;
       if (j < len && isNameStartChar(xmlContent[j])) {
@@ -630,7 +607,6 @@ export function countTagOccurrences(
         }
       }
       i = k + 1;
-      continue;
     }
   }
 
@@ -679,11 +655,13 @@ export function findAllTopLevelRanges(
       const gt = xmlContent.indexOf(">", i + 1);
       i = gt === -1 ? len : gt + 1;
       continue;
-    } else if (ch === "?") {
+    }
+    if (ch === "?") {
       const close = xmlContent.indexOf("?>", i + 1);
       i = close === -1 ? len : close + 2;
       continue;
-    } else if (ch === "/") {
+    }
+    if (ch === "/") {
       // Closing tag
       i++;
       const { name, newPos } = parseName(xmlContent, i);

@@ -225,7 +225,7 @@ describe("robust-xml integration", () => {
 
     it("works with the existing test cases", () => {
       // Test case from the original robust-xml tests
-      const xml = `<location>San Francisco</location>`;
+      const xml = "<location>San Francisco</location>";
       const schema = z.toJSONSchema(
         z.object({
           location: z.string(),
@@ -236,7 +236,8 @@ describe("robust-xml integration", () => {
     });
 
     it("handles the item list normalization pattern", () => {
-      const xml = `<numbers><item> 1 </item><item>2</item><item>1e2</item></numbers>`;
+      const xml =
+        "<numbers><item> 1 </item><item>2</item><item>1e2</item></numbers>";
       const schema = z.toJSONSchema(
         z.object({
           numbers: z.array(z.number()),
@@ -297,14 +298,14 @@ describe("robust-xml integration", () => {
 
   describe("TXML feature compatibility", () => {
     it("supports CDATA sections like TXML", () => {
-      const xml = `<xml><![CDATA[some data]]></xml>`;
+      const xml = "<xml><![CDATA[some data]]></xml>";
       const result = RXML.parseWithoutSchema(xml);
       const xmlNode = result[0] as any;
       expect(xmlNode.children[0]).toBe("some data");
     });
 
     it("supports comments when enabled", () => {
-      const xml = `<test><!-- test --></test>`;
+      const xml = "<test><!-- test --></test>";
       const result = RXML.parseWithoutSchema(xml, { keepComments: true });
       const testNode = result[0] as any;
       expect(testNode.children).toContain("<!-- test -->");
@@ -336,11 +337,11 @@ describe("robust-xml integration", () => {
     });
 
     it("supports filter functionality", () => {
-      const xml = `<test><cc></cc><cc></cc></test>`;
+      const xml = "<test><cc></cc><cc></cc></test>";
       const parsed = RXML.parseWithoutSchema(xml);
       const filtered = RXML.filter(
         parsed,
-        element => element.tagName.toLowerCase() === "cc"
+        (element) => element.tagName.toLowerCase() === "cc"
       );
 
       expect(filtered).toHaveLength(2);

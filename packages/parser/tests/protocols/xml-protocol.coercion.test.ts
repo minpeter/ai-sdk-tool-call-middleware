@@ -25,12 +25,12 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
     ] as any;
 
     const out = p.parseGeneratedText({
-      text: `<calc><a>10</a><b>5</b><c>true</c><d>ok</d></calc>`,
+      text: "<calc><a>10</a><b>5</b><c>true</c><d>ok</d></calc>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({ a: 10, b: 5, c: true, d: "ok" });
   });
@@ -55,12 +55,12 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
     ] as any;
 
     const out = p.parseGeneratedText({
-      text: `<calc><x>3.14</x><y>false</y></calc>`,
+      text: "<calc><x>3.14</x><y>false</y></calc>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({ x: 3.14, y: false });
   });
@@ -77,12 +77,12 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
     ] as any;
 
     const out = p.parseGeneratedText({
-      text: `<calc><n>42</n><t>true</t><s>hello</s></calc>`,
+      text: "<calc><n>42</n><t>true</t><s>hello</s></calc>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({ n: 42, t: true, s: "hello" });
   });
@@ -107,16 +107,16 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
 
     const out = p.parseGeneratedText({
       text:
-        `<calc>` +
-        `<coords>[3,4,5]</coords>` +
-        `<a1>1, 2, 3</a1>` +
-        `<a2>10\n20\n30</a2>` +
-        `</calc>`,
+        "<calc>" +
+        "<coords>[3,4,5]</coords>" +
+        "<a1>1, 2, 3</a1>" +
+        "<a2>10\n20\n30</a2>" +
+        "</calc>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({
       coords: [3, 4, 5],
@@ -144,15 +144,15 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
 
     const out = p.parseGeneratedText({
       text:
-        `<player>` +
+        "<player>" +
         `<stats_fields>['points', 'assists']</stats_fields>` +
-        `<nums>[1, 2, 3]</nums>` +
-        `</player>`,
+        "<nums>[1, 2, 3]</nums>" +
+        "</player>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({
       stats_fields: ["points", "assists"],
@@ -188,18 +188,18 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
 
     const out = p.parseGeneratedText({
       text:
-        `<realestate>` +
+        "<realestate>" +
         `<budget>{'min':300000,'max':400000}</budget>` +
         `<gradeDict>{'math':90,'science':75}</gradeDict>` +
-        `</realestate>`,
+        "</realestate>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({
-      budget: { min: 300000, max: 400000 },
+      budget: { min: 300_000, max: 400_000 },
       gradeDict: { math: 90, science: 75 },
     });
   });
@@ -228,14 +228,14 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
 
     const out = p.parseGeneratedText({
       text:
-        `<nested>` +
+        "<nested>" +
         `<items>[{'a':1,'b':true},{'a':2,'b':false}]</items>` +
-        `</nested>`,
+        "</nested>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({
       items: [
@@ -264,12 +264,12 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
     ] as any;
 
     const out = p.parseGeneratedText({
-      text: `<calc><t>TRUE</t><f>false</f><n>1.23e3</n></calc>`,
+      text: "<calc><t>TRUE</t><f>false</f><n>1.23e3</n></calc>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({ t: true, f: false, n: 1230 });
   });
@@ -286,12 +286,12 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
     ] as any;
 
     const out = p.parseGeneratedText({
-      text: `<s><s>10</s></s>`,
+      text: "<s><s>10</s></s>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({ s: "10" });
   });
@@ -314,12 +314,12 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
     ] as any;
 
     const out = p.parseGeneratedText({
-      text: `<empty><arr>   </arr><obj>{}</obj></empty>`,
+      text: "<empty><arr>   </arr><obj>{}</obj></empty>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({ arr: [], obj: {} });
   });
@@ -348,17 +348,17 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
 
     const out = p.parseGeneratedText({
       text:
-        `<wrap>` +
-        `<arr>` +
+        "<wrap>" +
+        "<arr>" +
         `<item>{'min':1}</item>` +
         `<item>{'min':2}</item>` +
-        `</arr>` +
-        `</wrap>`,
+        "</arr>" +
+        "</wrap>",
       tools,
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({ arr: [{ min: 1 }, { min: 2 }] });
   });
@@ -390,7 +390,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find(p => (p as any).type === "tool-call") as any;
+    const tc = out.find((p) => (p as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(tc.toolName).toBe("calculate_average");
     expect(JSON.parse(tc.input)).toEqual({

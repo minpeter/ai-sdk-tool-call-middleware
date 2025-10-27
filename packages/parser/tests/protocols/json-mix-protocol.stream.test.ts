@@ -33,7 +33,7 @@ describe("jsonMixProtocol streaming", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
-    const tool = out.find(c => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call") as any;
     expect(tool.toolName).toBe("x");
     expect(JSON.parse(tool.input)).toEqual({ a: 1 });
   });
@@ -57,7 +57,7 @@ describe("jsonMixProtocol streaming", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
-    const tool = out.find(c => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call") as any;
     expect(tool.toolName).toBe("y");
   });
 
@@ -85,12 +85,12 @@ describe("jsonMixProtocol streaming", () => {
     });
     const out = await collect(rs.pipeThrough(transformer));
     const text = out
-      .filter(c => c.type === "text-delta")
-      .map(c => (c as any).delta)
+      .filter((c) => c.type === "text-delta")
+      .map((c) => (c as any).delta)
       .join("");
     expect(text).toContain("<tool_call>{bad}</tool_call>");
-    expect(out.some(c => c.type === "text-start")).toBe(true);
-    expect(out.some(c => c.type === "text-end")).toBe(true);
+    expect(out.some((c) => c.type === "text-start")).toBe(true);
+    expect(out.some((c) => c.type === "text-end")).toBe(true);
     expect(onError).toHaveBeenCalled();
   });
 });
@@ -125,18 +125,18 @@ describe("jsonMixProtocol streaming edge cases", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
-    const tool = out.find(c => c.type === "tool-call");
+    const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toMatchObject({
       type: "tool-call",
       toolName: "a",
       input: "{}",
     });
     const text = out
-      .filter(c => c.type === "text-delta")
+      .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
       .join("");
     expect(text).toContain("before ");
-    expect(out.find(c => c.type === "finish")).toBeTruthy();
+    expect(out.find((c) => c.type === "finish")).toBeTruthy();
   });
 
   it("supports legacy <tool_call> tags mixed in chunks", async () => {
@@ -159,7 +159,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
-    const tool = out.find(c => c.type === "tool-call");
+    const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toMatchObject({ type: "tool-call", toolName: "b" });
   });
 
@@ -187,7 +187,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
     });
     const out = await collect(rs.pipeThrough(transformer));
     const text = out
-      .filter(c => c.type === "text-delta")
+      .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
       .join("");
     expect(text).toContain("<tool_call>{invalid}</tool_call>");
@@ -214,7 +214,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
     });
     const out = await collect(rs.pipeThrough(transformer));
     const text = out
-      .filter(c => c.type === "text-delta")
+      .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
       .join("");
     expect(text).toContain('<tool_call>{"name":"c"');
@@ -258,7 +258,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
-    const tool = out.find(c => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call") as any;
     expect(tool).toBeTruthy();
     expect(JSON.parse(tool.input).location).toBe("NY");
     expect(tool.toolName).toBe("d");

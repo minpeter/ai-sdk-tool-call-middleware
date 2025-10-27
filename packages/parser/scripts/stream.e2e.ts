@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   extractReasoningMiddleware,
-  LanguageModel,
+  type LanguageModel,
   stepCountIs,
   streamText,
   wrapLanguageModel,
@@ -57,7 +57,7 @@ async function main() {
 
 async function streamE2E(model: LanguageModel) {
   const result = streamText({
-    model: model,
+    model,
     temperature: 0.0,
     system: "You are a helpful assistant.",
     prompt: "What is the weather in my city?",

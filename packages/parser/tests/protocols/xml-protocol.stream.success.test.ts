@@ -45,10 +45,10 @@ describe("morphXmlProtocol streaming success path", () => {
     });
 
     const out = await collect(rs.pipeThrough(transformer));
-    const tool = out.find(c => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call") as any;
     const text = out
-      .filter(c => c.type === "text-delta")
-      .map(c => (c as any).delta)
+      .filter((c) => c.type === "text-delta")
+      .map((c) => (c as any).delta)
       .join("");
 
     expect(tool?.toolName).toBe("calc");
@@ -57,6 +57,6 @@ describe("morphXmlProtocol streaming success path", () => {
     expect(text).toContain("pre ");
     expect(text).toContain(" post");
     // ensure text-end is emitted eventually
-    expect(out.some(c => c.type === "text-end")).toBe(true);
+    expect(out.some((c) => c.type === "text-end")).toBe(true);
   });
 });

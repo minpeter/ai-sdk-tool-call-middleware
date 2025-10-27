@@ -1,4 +1,4 @@
-import {
+import type {
   LanguageModelV2Content,
   LanguageModelV2FunctionTool,
   LanguageModelV2ToolCall,
@@ -9,11 +9,11 @@ import * as RXML from "@ai-sdk-tool/rxml";
 
 import { hasInputProperty } from "@/utils";
 
-import { ToolCallProtocol } from "./tool-call-protocol";
+import type { ToolCallProtocol } from "./tool-call-protocol";
 
 export const morphXmlProtocol = (): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
-    const toolsForPrompt = (tools || []).map(tool => ({
+    const toolsForPrompt = (tools || []).map((tool) => ({
       name: tool.name,
       description: tool.description,
       parameters: RXML.unwrapJsonSchema(tool.inputSchema),
@@ -48,7 +48,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   },
 
   parseGeneratedText({ text, tools, options }) {
-    const toolNames = tools.map(t => t.name).filter(name => name != null);
+    const toolNames = tools.map((t) => t.name).filter((name) => name != null);
     if (toolNames.length === 0) {
       return [{ type: "text", text }];
     }
@@ -114,9 +114,9 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   },
 
   createStreamParser({ tools, options }) {
-    const toolNames = tools.map(t => t.name).filter(name => name != null);
+    const toolNames = tools.map((t) => t.name).filter((name) => name != null);
     const maxStartTagLen = toolNames.length
-      ? Math.max(...toolNames.map(n => `<${n}>`.length))
+      ? Math.max(...toolNames.map((n) => `<${n}>`.length))
       : 0;
     let buffer = "";
     let currentToolCall: { name: string; content: string } | null = null;
@@ -267,10 +267,10 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
   },
 
   extractToolCallSegments({ text, tools }) {
-    const toolNames = tools.map(t => t.name).filter(Boolean) as string[];
+    const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
     if (toolNames.length === 0) return [];
 
-    return findToolCalls(text, toolNames).map(tc => tc.segment);
+    return findToolCalls(text, toolNames).map((tc) => tc.segment);
   },
 });
 
@@ -278,7 +278,7 @@ export function getToolSchema(
   tools: LanguageModelV2FunctionTool[],
   toolName: string
 ) {
-  return tools.find(t => t.name === toolName)?.inputSchema;
+  return tools.find((t) => t.name === toolName)?.inputSchema;
 }
 
 // Shared helper to find tool call ranges for a given set of tool names

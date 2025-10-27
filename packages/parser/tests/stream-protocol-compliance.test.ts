@@ -1,4 +1,4 @@
-import { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
 import { describe, expect, test } from "vitest";
 
 import { dummyProtocol } from "@/protocols/dummy-protocol";
@@ -64,12 +64,12 @@ describe("AI SDK v5 stream protocol compliance", () => {
     }
 
     const textChunks = chunks.filter(
-      c =>
+      (c) =>
         c.type === "text-delta" ||
         c.type === "text-start" ||
         c.type === "text-end"
     );
     expect(textChunks).toHaveLength(0);
-    expect(chunks.find(c => c.type === "finish")).toBeDefined();
+    expect(chunks.find((c) => c.type === "finish")).toBeDefined();
   });
 });

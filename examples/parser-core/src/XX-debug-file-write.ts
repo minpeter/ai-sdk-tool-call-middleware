@@ -153,12 +153,12 @@ async function main() {
     console.log(`Verdict: ${outcome.ok ? "PASS" : "FAIL"} (${outcome.detail})`);
   }
 
-  const passCount = results.filter(r => r.ok).length;
+  const passCount = results.filter((r) => r.ok).length;
   console.log(`\nSummary: ${passCount}/3 runs passed.`);
   process.exit(passCount === 3 ? 0 : 1);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

@@ -27,7 +27,7 @@ describe("morphXmlProtocol streaming trailing text-end on flush", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
-    const types = out.map(c => c.type);
+    const types = out.map((c) => c.type);
     expect(types).toContain("text-start");
     expect(types).toContain("text-delta");
     expect(types).toContain("text-end");

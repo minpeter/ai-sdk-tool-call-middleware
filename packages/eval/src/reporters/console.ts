@@ -1,4 +1,4 @@
-import { EvaluationResult } from "@/interfaces";
+import type { EvaluationResult } from "@/interfaces";
 
 // Basic ANSI color codes for console output
 const colors = {

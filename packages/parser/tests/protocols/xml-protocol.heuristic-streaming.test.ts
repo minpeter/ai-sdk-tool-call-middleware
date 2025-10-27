@@ -67,7 +67,7 @@ describe("XML Protocol Heuristic Streaming", () => {
       ];
 
       const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
@@ -101,7 +101,7 @@ describe("XML Protocol Heuristic Streaming", () => {
       ];
 
       const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
@@ -135,11 +135,11 @@ describe("XML Protocol Heuristic Streaming", () => {
       ];
 
       const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
-      expect(input.position).toEqual([46.603354, 1.888334]);
+      expect(input.position).toEqual([46.603_354, 1.888_334]);
     });
   });
 
@@ -185,7 +185,7 @@ describe("XML Protocol Heuristic Streaming", () => {
       ];
 
       const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
@@ -222,8 +222,8 @@ describe("XML Protocol Heuristic Streaming", () => {
       ];
 
       const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
-      const textChunks = chunks.filter(chunk => chunk.type === "text-delta");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
+      const textChunks = chunks.filter((chunk) => chunk.type === "text-delta");
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
@@ -231,7 +231,7 @@ describe("XML Protocol Heuristic Streaming", () => {
 
       // Should also preserve text content
       expect(textChunks.length).toBeGreaterThan(0);
-      const allText = textChunks.map(chunk => chunk.delta).join("");
+      const allText = textChunks.map((chunk) => chunk.delta).join("");
       expect(allText).toContain("Some text before");
       expect(allText).toContain("Some text after");
     });
@@ -263,16 +263,17 @@ describe("XML Protocol Heuristic Streaming", () => {
       const chunks = await simulateStreaming(text, tools);
 
       // Should not produce a tool call for incomplete XML
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
       expect(toolCalls).toHaveLength(0);
 
       // Should preserve the incomplete content as text
-      const textChunks = chunks.filter(chunk => chunk.type === "text-delta");
+      const textChunks = chunks.filter((chunk) => chunk.type === "text-delta");
       expect(textChunks.length).toBeGreaterThan(0);
     });
 
     it("should handle streaming with very small chunks", async () => {
-      const text = `<tiny_chunks><data><item>1</item><item>2</item></data></tiny_chunks>`;
+      const text =
+        "<tiny_chunks><data><item>1</item><item>2</item></data></tiny_chunks>";
 
       const tools: LanguageModelV2FunctionTool[] = [
         {
@@ -319,7 +320,7 @@ describe("XML Protocol Heuristic Streaming", () => {
         reader.releaseLock();
       }
 
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
       expect(input.data).toEqual([1, 2]);

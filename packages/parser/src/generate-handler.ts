@@ -6,12 +6,12 @@ import type {
 import { generateId } from "@ai-sdk/provider-utils";
 import * as RXML from "@ai-sdk-tool/rxml";
 
-import { ToolCallProtocol } from "./protocols/tool-call-protocol";
+import type { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
   extractOnErrorOption,
   isToolChoiceActive,
   originalToolsSchema,
-  ToolCallMiddlewareProviderOptions,
+  type ToolCallMiddlewareProviderOptions,
 } from "./utils";
 import {
   getDebugLevel,
@@ -96,7 +96,7 @@ export async function wrapGenerate({
     return result;
   }
 
-  const parsed = result.content.flatMap(contentItem => {
+  const parsed = result.content.flatMap((contentItem) => {
     if (contentItem.type !== "text") {
       return [contentItem];
     }
@@ -107,7 +107,7 @@ export async function wrapGenerate({
     }
     return protocol.parseGeneratedText({
       text: contentItem.text,
-      tools: tools,
+      tools,
       options: {
         ...extractOnErrorOption(params.providerOptions),
         ...((
@@ -116,13 +116,13 @@ export async function wrapGenerate({
       },
     });
   });
-  const newContent = parsed.map(part =>
+  const newContent = parsed.map((part) =>
     fixToolCallWithSchema(part as LanguageModelV2Content, tools)
   );
 
   const debugLevel = getDebugLevel();
   if (debugLevel === "stream") {
-    newContent.forEach(part => logParsedChunk(part));
+    newContent.forEach((part) => logParsedChunk(part));
   }
   // Always compute a debug summary payload; only log to console if no container provided and parse-level
   const allText = result.content
@@ -130,7 +130,7 @@ export async function wrapGenerate({
       (c): c is Extract<LanguageModelV2Content, { type: "text" }> =>
         c.type === "text"
     )
-    .map(c => c.text)
+    .map((c) => c.text)
     .join("\n\n");
   const segments = protocol.extractToolCallSegments
     ? protocol.extractToolCallSegments({ text: allText, tools })
@@ -146,7 +146,7 @@ export async function wrapGenerate({
     dbg.originalText = originalText;
     try {
       dbg.toolCalls = JSON.stringify(
-        toolCalls.map(tc => ({
+        toolCalls.map((tc) => ({
           toolName: tc.toolName,
           input: tc.input as unknown,
         }))
@@ -180,7 +180,7 @@ function fixToolCallWithSchema(
   } else if (tc.input && typeof tc.input === "object") {
     args = tc.input;
   }
-  const schema = tools.find(t => t.name === tc.toolName)
+  const schema = tools.find((t) => t.name === tc.toolName)
     ?.inputSchema as unknown;
   const coerced = RXML.coerceBySchema(args, schema);
   return {

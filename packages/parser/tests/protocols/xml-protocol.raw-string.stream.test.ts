@@ -40,17 +40,17 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     ];
 
     const transformer = protocol.createStreamParser({ tools });
-    const html = `<html><body><h1>Hi</h1><p>World</p></body></html>`;
+    const html = "<html><body><h1>Hi</h1><p>World</p></body></html>";
     const rs = new ReadableStream<LanguageModelV2StreamPart>({
       start(ctrl) {
         const parts = [
-          `<write_file>`,
-          `<file_path>/home/username/myfile.html</file_path>`,
-          `<content>`,
+          "<write_file>",
+          "<file_path>/home/username/myfile.html</file_path>",
+          "<content>",
           html,
-          `</content>`,
-          `<encoding>utf-8</encoding>`,
-          `</write_file>`,
+          "</content>",
+          "<encoding>utf-8</encoding>",
+          "</write_file>",
         ];
         // emit in small chunks to simulate streaming
         for (const p of parts) {
@@ -111,11 +111,11 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     const rs = new ReadableStream<LanguageModelV2StreamPart>({
       start(ctrl) {
         const parts = [
-          `<write_file>`,
-          `<file_path>/tmp/file.txt</file_path>`,
-          `<content>part1</content>`,
-          `<content>part2</content>`,
-          `</write_file>`,
+          "<write_file>",
+          "<file_path>/tmp/file.txt</file_path>",
+          "<content>part1</content>",
+          "<content>part2</content>",
+          "</write_file>",
         ];
         for (const p of parts) {
           for (let i = 0; i < p.length; i += CHUNK_SIZE) {
@@ -140,13 +140,13 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
       (p): p is Extract<LanguageModelV2StreamPart, { type: "text-delta" }> =>
         p.type === "text-delta"
     );
-    const combined = textParts.map(p => p.delta).join("");
+    const combined = textParts.map((p) => p.delta).join("");
     expect(combined).toContain("<write_file>");
     expect(combined).toContain(
       "<content>part1</content><content>part2</content>"
     );
     expect(combined).toContain("</write_file>");
-    const hasToolCall = out.some(p => p.type === "tool-call");
+    const hasToolCall = out.some((p) => p.type === "tool-call");
     expect(hasToolCall).toBe(false);
   });
 
@@ -174,12 +174,12 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     const rs = new ReadableStream<LanguageModelV2StreamPart>({
       start(ctrl) {
         const parts = [
-          `<file_write>`,
-          `<path>index.html</path>`,
-          `<content>`,
+          "<file_write>",
+          "<path>index.html</path>",
+          "<content>",
           html,
-          `</content>`,
-          `</file_write>`,
+          "</content>",
+          "</file_write>",
         ];
         for (const p of parts) {
           for (let i = 0; i < p.length; i += CHUNK_SIZE) {
@@ -234,17 +234,18 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     ];
 
     const transformer = protocol.createStreamParser({ tools });
-    const htmlRaw = `<!DOCTYPE html>\n<html><body><h1>안녕</h1></body></html>`;
-    const htmlEscaped = `&lt;!DOCTYPE html&gt;\n&lt;html&gt;&lt;body&gt;&lt;h1&gt;안녕&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;`;
+    const htmlRaw = "<!DOCTYPE html>\n<html><body><h1>안녕</h1></body></html>";
+    const htmlEscaped =
+      "&lt;!DOCTYPE html&gt;\n&lt;html&gt;&lt;body&gt;&lt;h1&gt;안녕&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;";
     const rs = new ReadableStream<LanguageModelV2StreamPart>({
       start(ctrl) {
         const parts = [
-          `<file_write>`,
-          `<path>index.html</path>`,
-          `<content>`,
+          "<file_write>",
+          "<path>index.html</path>",
+          "<content>",
           htmlEscaped,
-          `</content>`,
-          `</file_write>`,
+          "</content>",
+          "</file_write>",
         ];
         for (const p of parts) {
           for (let i = 0; i < p.length; i += CHUNK_SIZE) {

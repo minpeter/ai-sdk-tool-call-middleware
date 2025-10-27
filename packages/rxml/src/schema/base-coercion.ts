@@ -9,7 +9,7 @@ export function unwrapJsonSchema(schema: unknown): unknown {
 
 export function getSchemaType(schema: unknown): string | undefined {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!unwrapped || typeof unwrapped !== "object") return undefined;
+  if (!unwrapped || typeof unwrapped !== "object") return;
   const t: unknown = (unwrapped as Record<string, unknown>).type;
   if (typeof t === "string") return t;
   if (Array.isArray(t)) {
@@ -34,7 +34,7 @@ export function getSchemaType(schema: unknown): string | undefined {
   ) {
     return "array";
   }
-  return undefined;
+  return;
 }
 
 export function coerceBySchema(value: unknown, schema?: unknown): unknown {
@@ -113,11 +113,11 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
           if (prefixItems && arr.length === prefixItems.length) {
             return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
           }
-          return arr.map(v => coerceBySchema(v, itemsSchema));
+          return arr.map((v) => coerceBySchema(v, itemsSchema));
         }
       } catch {
         const csv = s.includes("\n") ? s.split(/\n+/) : s.split(/,\s*/);
-        const trimmed = csv.map(x => x.trim()).filter(x => x.length > 0);
+        const trimmed = csv.map((x) => x.trim()).filter((x) => x.length > 0);
         const u = unwrapped as Record<string, unknown>;
         const prefixItems = Array.isArray(
           (u as Record<string, unknown>).prefixItems
@@ -128,7 +128,7 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
         if (prefixItems && trimmed.length === prefixItems.length) {
           return trimmed.map((x, i) => coerceBySchema(x, prefixItems[i]));
         }
-        return trimmed.map(x => coerceBySchema(x, itemsSchema));
+        return trimmed.map((x) => coerceBySchema(x, itemsSchema));
       }
     }
   }
@@ -164,18 +164,18 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
       if (prefixItems && value.length === prefixItems.length) {
         return value.map((v, i) => coerceBySchema(v, prefixItems[i]));
       }
-      return value.map(v => coerceBySchema(v, itemsSchema));
+      return value.map((v) => coerceBySchema(v, itemsSchema));
     }
 
     if (value && typeof value === "object") {
       const maybe = value as Record<string, unknown>;
-      if (Object.prototype.hasOwnProperty.call(maybe, "item")) {
+      if (Object.hasOwn(maybe, "item")) {
         const items = (maybe as Record<string, unknown>).item as unknown;
         const arr = Array.isArray(items) ? items : [items];
         if (prefixItems && arr.length === prefixItems.length) {
           return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
         }
-        return arr.map(v => coerceBySchema(v, itemsSchema));
+        return arr.map((v) => coerceBySchema(v, itemsSchema));
       }
 
       // Special handling for objects with array-like field names that might represent arrays
@@ -188,7 +188,7 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
         const singleKey = keys[0];
         const singleValue = maybe[singleKey];
         if (Array.isArray(singleValue)) {
-          const coercedArray = singleValue.map(v =>
+          const coercedArray = singleValue.map((v) =>
             coerceBySchema(v, itemsSchema)
           );
           return coercedArray;
@@ -196,14 +196,14 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
       }
 
       // Check for numeric keys (traditional tuple handling)
-      if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+      if (keys.length > 0 && keys.every((k) => /^\d+$/.test(k))) {
         const arr = keys
           .sort((a, b) => Number(a) - Number(b))
-          .map(k => (maybe as Record<string, unknown>)[k]);
+          .map((k) => (maybe as Record<string, unknown>)[k]);
         if (prefixItems && arr.length === prefixItems.length) {
           return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
         }
-        return arr.map(v => coerceBySchema(v, itemsSchema));
+        return arr.map((v) => coerceBySchema(v, itemsSchema));
       }
     }
 
@@ -227,11 +227,12 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
       if (lower === "true") return true;
       if (lower === "false") return false;
     }
-    if (schemaType === "number" || schemaType === "integer") {
-      if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) {
-        const num = Number(s);
-        if (Number.isFinite(num)) return num;
-      }
+    if (
+      (schemaType === "number" || schemaType === "integer") &&
+      /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)
+    ) {
+      const num = Number(s);
+      if (Number.isFinite(num)) return num;
     }
   }
 

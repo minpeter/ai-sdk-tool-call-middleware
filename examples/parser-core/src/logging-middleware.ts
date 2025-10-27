@@ -12,7 +12,7 @@ function invLog(...args: unknown[]) {
   if (isBrowser) {
     try {
       const text = args
-        .map(a =>
+        .map((a) =>
           typeof a === "string"
             ? a
             : a instanceof Error

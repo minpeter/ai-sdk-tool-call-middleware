@@ -16,13 +16,13 @@ import {
  */
 export function getPropertySchema(toolSchema: unknown, key: string): unknown {
   const unwrapped = unwrapJsonSchema(toolSchema);
-  if (!unwrapped || typeof unwrapped !== "object") return undefined;
+  if (!unwrapped || typeof unwrapped !== "object") return;
   const u = unwrapped as Record<string, unknown>;
   const props = u.properties as Record<string, unknown> | undefined;
-  if (props && Object.prototype.hasOwnProperty.call(props, key)) {
+  if (props && Object.hasOwn(props, key)) {
     return (props as Record<string, unknown>)[key];
   }
-  return undefined;
+  return;
 }
 
 /**
@@ -255,7 +255,7 @@ export function processArrayContent(
 
   if (schemaType === "string") {
     // For string arrays, extract text content and take first item for duplicates
-    return value.map(item => {
+    return value.map((item) => {
       if (typeof item === "string") return item.trim();
       if (item && typeof item === "object" && textNodeName in item) {
         const textVal = (item as Record<string, unknown>)[textNodeName];
@@ -266,7 +266,7 @@ export function processArrayContent(
   }
 
   // For other types, process each item
-  return value.map(item => {
+  return value.map((item) => {
     if (typeof item === "string") return item.trim();
     if (item && typeof item === "object" && textNodeName in item) {
       const textVal = (item as Record<string, unknown>)[textNodeName];
@@ -284,14 +284,16 @@ export function processIndexedTuple(
   textNodeName: string
 ): unknown[] {
   const keys = Object.keys(obj);
-  const indices = keys.map(k => parseInt(k, 10)).sort((a, b) => a - b);
+  const indices = keys.map((k) => Number.parseInt(k, 10)).sort((a, b) => a - b);
   const isValidTuple =
     indices[0] === 0 && indices.every((val, idx) => val === idx);
 
   if (!isValidTuple) return [obj];
 
-  const sortedKeys = keys.sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
-  return sortedKeys.map(key => {
+  const sortedKeys = keys.sort(
+    (a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10)
+  );
+  return sortedKeys.map((key) => {
     const item = obj[key];
     if (item && typeof item === "object" && textNodeName in item) {
       const textVal = (item as Record<string, unknown>)[textNodeName];

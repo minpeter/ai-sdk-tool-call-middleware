@@ -137,7 +137,7 @@ describe("XMLTokenizer", () => {
       );
       const result = tokenizer.parseNode();
       const commentNodes = result.children.filter(
-        child => typeof child === "string" && child.includes("<!--")
+        (child) => typeof child === "string" && child.includes("<!--")
       );
       expect(commentNodes).toHaveLength(0);
     });
@@ -206,7 +206,7 @@ describe("XMLTokenizer", () => {
       );
       const result = tokenizer.parseNode();
       const whitespaceNodes = result.children.filter(
-        child => typeof child === "string" && /^\s+$/.test(child)
+        (child) => typeof child === "string" && /^\s+$/.test(child)
       );
       expect(whitespaceNodes).toHaveLength(0);
     });

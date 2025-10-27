@@ -7,7 +7,7 @@ import { generateId } from "@ai-sdk/provider-utils";
 
 import { escapeRegExp, getPotentialStartIndex, RJSON } from "@/utils";
 
-import { ToolCallProtocol } from "./tool-call-protocol";
+import type { ToolCallProtocol } from "./tool-call-protocol";
 
 type JsonMixOptions = {
   toolCallStart?: string;
@@ -24,8 +24,8 @@ export const jsonMixProtocol = ({
 }: JsonMixOptions = {}): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt = (tools || [])
-      .filter(tool => tool.type === "function")
-      .map(tool => ({
+      .filter((tool) => tool.type === "function")
+      .map((tool) => ({
         name: tool.name,
         description:
           tool.type === "function" && typeof tool.description === "string"
@@ -219,11 +219,7 @@ export const jsonMixProtocol = ({
           publish(buffer.slice(0, startIndex));
           buffer = buffer.slice(startIndex + tag.length);
           // Toggle state and finalize/initialize as needed
-          if (!isInsideToolCall) {
-            // We just consumed a start tag; begin accumulating JSON
-            currentToolCallJson = "";
-            isInsideToolCall = true;
-          } else {
+          if (isInsideToolCall) {
             // We just consumed an end tag; parse and emit tool-call
             try {
               const parsedToolCall = RJSON.parse(currentToolCallJson) as {
@@ -262,6 +258,10 @@ export const jsonMixProtocol = ({
             }
             currentToolCallJson = "";
             isInsideToolCall = false;
+          } else {
+            // We just consumed a start tag; begin accumulating JSON
+            currentToolCallJson = "";
+            isInsideToolCall = true;
           }
         }
 

@@ -1,4 +1,4 @@
-import { LanguageModel } from "ai";
+import type { LanguageModel } from "ai";
 
 /**
  * The result of a single benchmark run.

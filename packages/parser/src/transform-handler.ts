@@ -1,5 +1,5 @@
-import type { JSONSchema7 } from "@ai-sdk/provider";
-import {
+import type {
+  JSONSchema7,
   LanguageModelV2Content,
   LanguageModelV2FunctionTool,
   LanguageModelV2Prompt,
@@ -8,7 +8,7 @@ import {
 
 import {
   isProtocolFactory,
-  ToolCallProtocol,
+  type ToolCallProtocol,
 } from "./protocols/tool-call-protocol";
 import {
   createDynamicIfThenElseSchema,
@@ -16,7 +16,7 @@ import {
   isToolCallContent,
   isToolResultPart,
   originalToolsSchema,
-  ToolCallMiddlewareProviderOptions,
+  type ToolCallMiddlewareProviderOptions,
 } from "./utils";
 
 export async function transformParams({
@@ -103,7 +103,7 @@ export async function transformParams({
   if (params.toolChoice?.type === "tool") {
     const selectedToolName = params.toolChoice.toolName;
     // If a provider-defined tool matches the requested tool identifier, surface the specific error
-    const providerDefinedMatch = (params.tools ?? []).find(t => {
+    const providerDefinedMatch = (params.tools ?? []).find((t) => {
       if (t.type === "function") return false;
       const anyTool = t as unknown as { id?: string; name?: string };
       return (
@@ -209,7 +209,7 @@ function convertToolPrompt(
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
 ): LanguageModelV2Prompt {
-  const processedPrompt = prompt.map(message => {
+  const processedPrompt = prompt.map((message) => {
     if (message.role === "assistant") {
       const newContent: LanguageModelV2Content[] = [];
       for (const content of message.content) {
@@ -237,13 +237,13 @@ function convertToolPrompt(
         }
       }
       // If assistant content consists solely of text parts, condense into a single text part
-      const onlyText = newContent.every(c => c.type === "text");
+      const onlyText = newContent.every((c) => c.type === "text");
       const condensedAssistant = onlyText
         ? [
             {
               type: "text" as const,
               text: newContent
-                .map(c => (c as { text: string }).text)
+                .map((c) => (c as { text: string }).text)
                 .join("\n"),
             },
           ]
@@ -258,7 +258,7 @@ function convertToolPrompt(
           {
             type: "text" as const,
             text: message.content
-              .map(toolResult =>
+              .map((toolResult) =>
                 isToolResultPart(toolResult)
                   ? resolvedProtocol.formatToolResponse(toolResult)
                   : resolvedProtocol.formatToolResponse(
@@ -324,10 +324,10 @@ function convertToolPrompt(
     const prev = processedPrompt[i - 1];
     if (current.role === "user" && prev.role === "user") {
       const prevContent = prev.content
-        .map(c => (c.type === "text" ? c.text : ""))
+        .map((c) => (c.type === "text" ? c.text : ""))
         .join("\n");
       const currentContent = current.content
-        .map(c => (c.type === "text" ? c.text : ""))
+        .map((c) => (c.type === "text" ? c.text : ""))
         .join("\n");
       processedPrompt[i - 1] = {
         role: "user",

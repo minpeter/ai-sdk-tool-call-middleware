@@ -14,7 +14,7 @@ describe("protocol error paths", () => {
     const out = p.parseGeneratedText({ text, tools: [], options: { onError } });
     expect(onError).toHaveBeenCalled();
     const rejoined = out
-      .map(x => (x.type === "text" ? (x as any).text : ""))
+      .map((x) => (x.type === "text" ? (x as any).text : ""))
       .join("");
     expect(rejoined).toContain("<tool_call>{invalid}</tool_call>");
   });

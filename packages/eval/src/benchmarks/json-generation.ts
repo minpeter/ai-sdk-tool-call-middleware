@@ -1,9 +1,9 @@
-import { generateText, LanguageModel } from "ai";
-import Ajv, { AnySchema } from "ajv";
+import { generateText, type LanguageModel } from "ai";
+import Ajv, { type AnySchema } from "ajv";
 import { promises as fs } from "fs";
 import path from "path";
 
-import { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
+import type { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
 import { resolveDataDir } from "@/utils/paths";
 
 type Json = unknown;
@@ -46,9 +46,9 @@ function extractFirstJsonBlock(text: string): Json | undefined {
   const startIdxObj = text.indexOf("{");
   const startIdxArr = text.indexOf("[");
   const start = [startIdxObj, startIdxArr]
-    .filter(i => i >= 0)
+    .filter((i) => i >= 0)
     .sort((a, b) => a - b)[0];
-  if (start === undefined) return undefined;
+  if (start === undefined) return;
 
   const open = text[start] === "{" ? "{" : "[";
   const close = open === "{" ? "}" : "]";
@@ -67,7 +67,7 @@ function extractFirstJsonBlock(text: string): Json | undefined {
       break;
     }
   }
-  return undefined;
+  return;
 }
 
 function subsetMatch(expected: Json, actual: Json): boolean {
@@ -129,12 +129,12 @@ export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
 
       tests = testsJsonl
         .split(/\r?\n/)
-        .filter(line => line.trim().length > 0)
-        .map(line => JSON.parse(line));
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line));
       const expecteds: ExpectedRecord[] = expectedJsonl
         .split(/\r?\n/)
-        .filter(line => line.trim().length > 0)
-        .map(line => JSON.parse(line));
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line));
       for (const r of expecteds) expectedMap.set(r.id, r);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -196,7 +196,7 @@ export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
           logs.push(
             `[INFO] ${tc.id}: Schema validation errors: ${
               (validate.errors || [])
-                .map(e => `${e.instancePath} ${e.message}`)
+                .map((e) => `${e.instancePath} ${e.message}`)
                 .join(", ") || "unknown"
             }`
           );
@@ -271,8 +271,8 @@ export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV2Benchmark = {
       );
       tests = testsJsonl
         .split(/\r?\n/)
-        .filter(line => line.trim().length > 0)
-        .map(line => JSON.parse(line));
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       return {
@@ -336,7 +336,7 @@ export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV2Benchmark = {
           logs.push(
             `[FAIL] ${tc.id}: Schema validation errors: ${
               (validate.errors || [])
-                .map(e => `${e.instancePath} ${e.message}`)
+                .map((e) => `${e.instancePath} ${e.message}`)
                 .join(", ") || "unknown"
             }`
           );

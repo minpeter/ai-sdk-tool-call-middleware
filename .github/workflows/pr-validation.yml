@@ -42,7 +42,7 @@ jobs:
         run: pnpm build
 
       - name: Type Check (workspace root)
-        run: pnpm check-types
+        run: pnpm typecheck
 
       - name: Lint (workspace root)
         run: pnpm lint

@@ -1,4 +1,4 @@
-import {
+import type {
   LanguageModelV2FunctionTool,
   LanguageModelV2StreamPart,
 } from "@ai-sdk/provider";
@@ -90,7 +90,7 @@ describe("morphXmlProtocol stream parsing", () => {
       chunks.push(chunk);
     }
 
-    const toolCallChunks = chunks.filter(c => c.type === "tool-call");
+    const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
     expect(toolCallChunks).toHaveLength(1);
     expect(toolCallChunks[0]).toMatchObject({
       type: "tool-call",
@@ -130,7 +130,7 @@ describe("morphXmlProtocol stream parsing", () => {
       chunks.push(chunk);
     }
 
-    const toolCallChunks = chunks.filter(c => c.type === "tool-call");
+    const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
     expect(toolCallChunks).toHaveLength(1);
     expect(toolCallChunks[0]).toMatchObject({
       type: "tool-call",

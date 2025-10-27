@@ -97,7 +97,7 @@ describe("createToolMiddleware", () => {
         content: [
           {
             type: "text",
-            text: `Some text <getTool><arg1>value1</arg1></getTool> more text`,
+            text: "Some text <getTool><arg1>value1</arg1></getTool> more text",
           },
         ],
       });

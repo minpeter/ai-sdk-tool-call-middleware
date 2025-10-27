@@ -40,7 +40,7 @@ function checkStringValue(
   possibleAnswers: unknown[]
 ): { valid: boolean; error?: string; error_type?: string } {
   const standardizedModelValue = standardizeString(modelValue);
-  const standardizedPossibleAnswers = possibleAnswers.map(ans =>
+  const standardizedPossibleAnswers = possibleAnswers.map((ans) =>
     standardizeString(String(ans))
   );
 
@@ -101,10 +101,7 @@ export function simpleFunctionChecker(
   if (modelArgs && typeof modelArgs === "object") {
     for (const paramName of Object.keys(argsObj)) {
       const modelValue = argsObj[paramName];
-      if (
-        !(paramName in expectedParams) ||
-        !(paramName in possibleAnswerParams)
-      ) {
+      if (!(paramName in expectedParams && paramName in possibleAnswerParams)) {
         return {
           valid: false,
           error: `Unexpected parameter: '${paramName}'.`,
@@ -123,14 +120,14 @@ export function simpleFunctionChecker(
         if (!result.valid) return result;
       } else if (Array.isArray(modelValue)) {
         const modelValueStr = JSON.stringify(
-          modelValue.map(v => standardizeString(String(v))).sort()
+          modelValue.map((v) => standardizeString(String(v))).sort()
         );
         const hasMatch = Array.isArray(possibleValues)
-          ? (possibleValues as unknown[]).some(p => {
+          ? (possibleValues as unknown[]).some((p) => {
               if (!Array.isArray(p)) return false;
               return (
                 JSON.stringify(
-                  p.map(v => standardizeString(String(v))).sort()
+                  p.map((v) => standardizeString(String(v))).sort()
                 ) === modelValueStr
               );
             })
@@ -147,7 +144,7 @@ export function simpleFunctionChecker(
       } else {
         // Handle nested objects by comparing JSON representations
         const hasMatch = Array.isArray(possibleValues)
-          ? (possibleValues as unknown[]).some(possibleValue => {
+          ? (possibleValues as unknown[]).some((possibleValue) => {
               // Direct equality check first
               if (modelValue === possibleValue) return true;
 
@@ -232,7 +229,7 @@ export function simpleFunctionChecker(
   for (const paramName in possibleAnswerParams) {
     const val = possibleAnswerParams[paramName] as unknown;
     const isOptional = Array.isArray(val) && val.includes("");
-    if (!(paramName in argsObj) && !isOptional) {
+    if (!(paramName in argsObj || isOptional)) {
       return {
         valid: false,
         error: `Missing optional parameter '${paramName}' which was not marked as optional.`,
@@ -264,7 +261,7 @@ export function parallelFunctionCheckerNoOrder(
   for (const possibleAnswer of possibleAnswers) {
     const expectedFuncName = Object.keys(possibleAnswer)[0];
     const funcDescription = funcDescriptions.find(
-      f => f.name === expectedFuncName
+      (f) => f.name === expectedFuncName
     );
 
     if (!funcDescription) {
@@ -320,7 +317,7 @@ export function multipleFunctionChecker(
 
   const expectedFuncName = Object.keys(possibleAnswers[0])[0];
   const funcDescription = funcDescriptions.find(
-    f => f.name === expectedFuncName
+    (f) => f.name === expectedFuncName
   );
 
   if (!funcDescription) {

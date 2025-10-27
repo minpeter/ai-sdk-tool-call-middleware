@@ -1,4 +1,4 @@
-import { EvaluationResult } from "@/interfaces";
+import type { EvaluationResult } from "@/interfaces";
 
 const colors = {
   reset: "\x1b[0m",
@@ -153,7 +153,7 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
     if (result.logs && result.logs.length) {
       // Only show failure-related logs and group them by test id
       const failLogs = result.logs.filter(
-        l =>
+        (l) =>
           l.startsWith("[FAIL]") ||
           l.startsWith("[ERROR]") ||
           l.startsWith("[FATAL]") ||
@@ -190,7 +190,7 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
               /* intentionally ignored */
             }
           }
-          return undefined;
+          return;
         }
         for (const line of failLogs) {
           const id = getTestIdFromLogLine(line);
@@ -344,7 +344,7 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
       } else {
         // Compact debug lines on success
         const info = result.logs.filter(
-          l => l.startsWith("[INFO]") || l.startsWith("[PASS]")
+          (l) => l.startsWith("[INFO]") || l.startsWith("[PASS]")
         );
         for (const line of info)
           console.log(`      ${colors.gray}${line}${colors.reset}`);

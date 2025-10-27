@@ -42,7 +42,7 @@ function deepDecodeStringsBySchema(input: unknown, schema: unknown): unknown {
       | { items?: unknown }
       | undefined;
     const itemSchema = unwrapped?.items ?? {};
-    return input.map(item => deepDecodeStringsBySchema(item, itemSchema));
+    return input.map((item) => deepDecodeStringsBySchema(item, itemSchema));
   }
 
   if (type === "object" && input && typeof input === "object") {
@@ -148,10 +148,7 @@ export function parse(
                   | undefined)
               : undefined;
 
-          if (
-            schemaProps &&
-            !Object.prototype.hasOwnProperty.call(schemaProps, rootName)
-          ) {
+          if (schemaProps && !Object.hasOwn(schemaProps, rootName)) {
             actualXmlInner = s.slice(range.start, range.end);
           }
         }
@@ -343,7 +340,7 @@ export function parse(
         (typeof v === "string" && v.startsWith("__RXML_PLACEHOLDER_")) ||
         (v &&
           typeof v === "object" &&
-          Object.prototype.hasOwnProperty.call(v, textNodeName) &&
+          Object.hasOwn(v, textNodeName) &&
           typeof (v as Record<string, unknown>)[textNodeName] === "string" &&
           ((v as Record<string, unknown>)[textNodeName] as string).startsWith(
             "__RXML_PLACEHOLDER_"
@@ -376,22 +373,18 @@ export function parse(
     }
 
     // Extract text content from wrapped objects
-    if (
-      v &&
-      typeof v === "object" &&
-      Object.prototype.hasOwnProperty.call(v, textNodeName)
-    ) {
+    if (v && typeof v === "object" && Object.hasOwn(v, textNodeName)) {
       val = (v as Record<string, unknown>)[textNodeName];
     }
 
     // Handle array content
     if (Array.isArray(v)) {
       if (propType === "string") {
-        const mapped = v.map(item => {
+        const mapped = v.map((item) => {
           if (
             item &&
             typeof item === "object" &&
-            Object.prototype.hasOwnProperty.call(item, textNodeName)
+            Object.hasOwn(item, textNodeName)
           ) {
             const textVal = (item as Record<string, unknown>)[textNodeName];
             return typeof textVal === "string" ? textVal : String(textVal);
@@ -413,14 +406,9 @@ export function parse(
 
         args[k] = mapped[0] ?? "";
         continue;
-      } else {
-        val = processArrayContent(v, propSchema, textNodeName);
       }
-    } else if (
-      v &&
-      typeof v === "object" &&
-      !Object.prototype.hasOwnProperty.call(v, textNodeName)
-    ) {
+      val = processArrayContent(v, propSchema, textNodeName);
+    } else if (v && typeof v === "object" && !Object.hasOwn(v, textNodeName)) {
       const obj = v as Record<string, unknown>;
       const keys = Object.keys(obj);
 
@@ -428,12 +416,12 @@ export function parse(
       if (keys.length === 1 && keys[0] === "item") {
         const itemValue = obj.item;
         if (Array.isArray(itemValue)) {
-          val = itemValue.map(item => {
+          val = itemValue.map((item) => {
             let currentVal: unknown = item;
             if (
               item &&
               typeof item === "object" &&
-              Object.prototype.hasOwnProperty.call(item, textNodeName)
+              Object.hasOwn(item, textNodeName)
             ) {
               currentVal = (item as Record<string, unknown>)[textNodeName];
             }
@@ -466,8 +454,10 @@ export function parse(
       } else {
         // Check for indexed tuple pattern (numeric keys)
         let isIndexedTuple = false;
-        if (keys.length > 0 && keys.every(key => /^\d+$/.test(key))) {
-          const indices = keys.map(k => parseInt(k, 10)).sort((a, b) => a - b);
+        if (keys.length > 0 && keys.every((key) => /^\d+$/.test(key))) {
+          const indices = keys
+            .map((k) => Number.parseInt(k, 10))
+            .sort((a, b) => a - b);
           isIndexedTuple =
             indices[0] === 0 && indices.every((val, idx) => val === idx);
         }
@@ -485,7 +475,7 @@ export function parse(
 
   // Ensure missing string-typed properties are populated from original XML
   for (const key of topLevelStringProps) {
-    if (!Object.prototype.hasOwnProperty.call(args, key)) {
+    if (!Object.hasOwn(args, key)) {
       const raw = extractRawInner(actualXmlInner, key);
       if (typeof raw === "string") {
         args[key] = raw;
@@ -506,10 +496,7 @@ export function parse(
       const schemaProps = (unwrapped as Record<string, unknown>).properties as
         | Record<string, unknown>
         | undefined;
-      if (
-        schemaProps &&
-        !Object.prototype.hasOwnProperty.call(schemaProps, rootKey)
-      ) {
+      if (schemaProps && !Object.hasOwn(schemaProps, rootKey)) {
         // Schema doesn't expect the root key, so unwrap it before coercion
         dataToCoerce = rootValue as Record<string, unknown>;
       }
@@ -581,10 +568,7 @@ export function parseWithoutSchema(
           const tokenizer = new XMLTokenizer(elementXml, options);
           const parsed = tokenizer.parseChildren();
           partialResults.push(...parsed);
-        } catch {
-          // Skip this element if it can't be parsed
-          continue;
-        }
+        } catch {}
       }
 
       // If we found some valid elements, return them
@@ -630,7 +614,7 @@ export function simplify(children: (RXMLNode | string)[]): unknown {
   const out: Record<string, unknown> = {};
 
   // Map each object
-  children.forEach(child => {
+  children.forEach((child) => {
     if (typeof child !== "object") {
       return;
     }

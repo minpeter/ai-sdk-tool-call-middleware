@@ -28,8 +28,8 @@ describe("morphXmlProtocol parseGeneratedText branches", () => {
     const p = morphXmlProtocol();
     const text = "<a><x></y></a>";
     const out = p.parseGeneratedText({ text, tools, options: {} });
-    const hasText = out.some(c => c.type === "text");
-    const hasTool = out.some(c => c.type === "tool-call");
+    const hasText = out.some((c) => c.type === "text");
+    const hasTool = out.some((c) => c.type === "tool-call");
     expect(hasText || hasTool).toBe(true);
   });
 });
