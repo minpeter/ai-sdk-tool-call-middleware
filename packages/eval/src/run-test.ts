@@ -5,7 +5,11 @@ import {
 } from "./benchmarks/bfcl/ast-checker";
 
 // --- Mock Data Interfaces ---
-interface FunctionDescription {
+const BASE_VALUE = 10;
+const HEIGHT_VALUE = 5;
+const TEST_NUMBER = 123;
+
+type FunctionDescription = {
   name: string;
   description: string;
   parameters: {
@@ -19,7 +23,7 @@ interface FunctionDescription {
     };
     required: string[];
   };
-}
+};
 
 function runSimpleCheckTest() {
   console.log("--- Running simpleFunctionChecker Test ---");
@@ -46,8 +50,8 @@ function runSimpleCheckTest() {
 
   const possibleAnswer = {
     calculate_triangle_area: {
-      base: [10],
-      height: [5],
+      base: [BASE_VALUE],
+      height: [HEIGHT_VALUE],
       unit: ["cm", "inches"],
     },
   };
@@ -96,7 +100,7 @@ function runParallelCheckTest() {
 
   const possibleAnswers = [
     { func_A: { p1: ["hello"] } },
-    { func_B: { p2: [123] } },
+    { func_B: { p2: [TEST_NUMBER] } },
   ];
 
   const result = parallelFunctionCheckerNoOrder(
