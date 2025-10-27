@@ -8,6 +8,11 @@ import { resolveDataDir } from "@/utils/paths";
 
 type Json = unknown;
 
+// Regex patterns used for JSON extraction
+const JSON_FENCE_REGEX = /```json\s*([\s\S]*?)```/i;
+const CODE_FENCE_REGEX = /```\s*([\s\S]*?)```/i;
+const NEWLINE_REGEX = /\r?\n/;
+
 type SchemaTestCase = {
   id: string;
   description: string;
@@ -21,53 +26,79 @@ type ExpectedRecord = {
   expected: Json;
 };
 
-function extractFirstJsonBlock(text: string): Json | undefined {
-  // 1) try direct parse
+function tryDirectParse(text: string): Json | undefined {
   try {
     return JSON.parse(text);
   } catch {
-    // ignore parse errors
+    return undefined;
   }
+}
 
-  // 2) try code fence ```json ... ```
-  const fenceMatch =
-    text.match(/```json\s*([\s\S]*?)```/i) ||
-    text.match(/```\s*([\s\S]*?)```/i);
-  if (fenceMatch) {
-    const inner = fenceMatch[1].trim();
-    try {
-      return JSON.parse(inner);
-    } catch {
-      // ignore parse errors
-    }
+function tryCodeFenceParse(text: string): Json | undefined {
+  const fenceMatch = text.match(JSON_FENCE_REGEX) || text.match(CODE_FENCE_REGEX);
+  if (!fenceMatch) {
+    return undefined;
   }
+  
+  const inner = fenceMatch[1].trim();
+  try {
+    return JSON.parse(inner);
+  } catch {
+    return undefined;
+  }
+}
 
-  // 3) bracket scanning for first object or array
+function tryBracketScan(text: string): Json | undefined {
   const startIdxObj = text.indexOf("{");
   const startIdxArr = text.indexOf("[");
   const start = [startIdxObj, startIdxArr]
     .filter((i) => i >= 0)
     .sort((a, b) => a - b)[0];
-  if (start === undefined) return;
+  
+  if (start === undefined) {
+    return undefined;
+  }
 
   const open = text[start] === "{" ? "{" : "[";
   const close = open === "{" ? "}" : "]";
   let depth = 0;
+  
   for (let i = start; i < text.length; i++) {
     const ch = text[i];
-    if (ch === open) depth++;
-    else if (ch === close) depth--;
+    if (ch === open) {
+      depth++;
+    } else if (ch === close) {
+      depth--;
+    }
+    
     if (depth === 0) {
       const candidate = text.slice(start, i + 1);
       try {
         return JSON.parse(candidate);
       } catch {
-        // ignore parse errors
+        return undefined;
       }
-      break;
     }
   }
-  return;
+  
+  return undefined;
+}
+
+function extractFirstJsonBlock(text: string): Json | undefined {
+  // 1) try direct parse
+  const directResult = tryDirectParse(text);
+  if (directResult !== undefined) {
+    return directResult;
+  }
+
+  // 2) try code fence ```json ... ```
+  const fenceResult = tryCodeFenceParse(text);
+  if (fenceResult !== undefined) {
+    return fenceResult;
+  }
+
+  // 3) bracket scanning for first object or array
+  return tryBracketScan(text);
 }
 
 function subsetMatch(expected: Json, actual: Json): boolean {
@@ -77,24 +108,189 @@ function subsetMatch(expected: Json, actual: Json): boolean {
   }
   // arrays
   if (Array.isArray(expected)) {
-    if (!Array.isArray(actual)) return false;
+    if (!Array.isArray(actual)) {
+      return false;
+    }
     // Require at least that expected elements (by index) match if provided
     for (let i = 0; i < expected.length; i++) {
-      if (!subsetMatch(expected[i], actual[i])) return false;
+      if (!subsetMatch(expected[i], actual[i])) {
+        return false;
+      }
     }
     return true;
   }
   // object subset
-  if (actual === null || typeof actual !== "object") return false;
+  if (actual === null || typeof actual !== "object") {
+    return false;
+  }
   const eObj = expected as Record<string, unknown>;
   const aObj = actual as Record<string, unknown>;
   for (const key of Object.keys(eObj)) {
-    if (!subsetMatch(eObj[key], aObj[key])) return false;
+    if (!subsetMatch(eObj[key], aObj[key])) {
+      return false;
+    }
   }
   return true;
 }
 
 // Test cases will be loaded from data files at runtime
+
+type DatasetLoadResult = {
+  tests: Omit<SchemaTestCase, "expected">[];
+  expectedMap: Map<string, ExpectedRecord>;
+  error?: Error;
+};
+
+async function loadDatasets(): Promise<DatasetLoadResult> {
+  try {
+    const dataDir = resolveDataDir();
+    const testsJsonl = await fs.readFile(
+      path.join(dataDir, "json_generation_tests.jsonl"),
+      "utf-8"
+    );
+    const expectedJsonl = await fs.readFile(
+      path.join(dataDir, "json_generation_expected.jsonl"),
+      "utf-8"
+    );
+
+    const tests = testsJsonl
+      .split(NEWLINE_REGEX)
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line));
+    
+    const expecteds: ExpectedRecord[] = expectedJsonl
+      .split(NEWLINE_REGEX)
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line));
+    
+    const expectedMap = new Map<string, ExpectedRecord>();
+    for (const r of expecteds) {
+      expectedMap.set(r.id, r);
+    }
+    
+    return { tests, expectedMap };
+  } catch (e: unknown) {
+    return {
+      tests: [],
+      expectedMap: new Map(),
+      error: e as Error,
+    };
+  }
+}
+
+function buildMessages(tc: Omit<SchemaTestCase, "expected">) {
+  const schemaStr = JSON.stringify(tc.schema, null, 2);
+  return [
+    {
+      role: "system" as const,
+      content:
+        "You must output only a single JSON document that strictly conforms to the given JSON Schema. Do not include any extra text or code fences.",
+    },
+    {
+      role: "user" as const,
+      content: [
+        "Generate a JSON object that reflects the following facts.",
+        "JSON Schema:",
+        schemaStr,
+        "Facts:",
+        tc.promptFacts,
+        "Output must be a single JSON only, with no additional text.",
+      ].join("\n\n"),
+    },
+  ];
+}
+
+type ValidationResult = {
+  valid: boolean;
+  valuesOk: boolean;
+  parsed: Json;
+};
+
+function validateTestCase(
+  tc: Omit<SchemaTestCase, "expected">,
+  parsed: Json,
+  expectedMap: Map<string, ExpectedRecord>,
+  ajv: Ajv,
+  logs: string[]
+): ValidationResult {
+  const validate = ajv.compile(tc.schema);
+  const valid = validate(parsed) as boolean;
+  
+  if (!valid) {
+    logs.push(
+      `[INFO] ${tc.id}: Schema validation errors: ${
+        (validate.errors || [])
+          .map((e) => `${e.instancePath} ${e.message}`)
+          .join(", ") || "unknown"
+      }`
+    );
+  }
+
+  const expectedRec = expectedMap.get(tc.id);
+  if (!expectedRec) {
+    logs.push(
+      `[WARN] ${tc.id}: No expected record found. Skipping value match.`
+    );
+  }
+  
+  const valuesOk = expectedRec
+    ? subsetMatch(expectedRec.expected, parsed)
+    : false;
+
+  return { valid, valuesOk, parsed };
+}
+
+async function processTestCase(
+  tc: Omit<SchemaTestCase, "expected">,
+  model: LanguageModel,
+  config: Record<string, unknown> | undefined,
+  expectedMap: Map<string, ExpectedRecord>,
+  ajv: Ajv,
+  logs: string[]
+): Promise<{ schemaValid: boolean; valueMatch: boolean; correct: boolean }> {
+  const messages = buildMessages(tc);
+  
+  const temp = config?.temperature;
+  const temperature = typeof temp === "number" ? temp : undefined;
+  const { text } = await generateText({
+    model,
+    messages,
+    ...(temperature !== undefined ? { temperature } : {}),
+  });
+
+  let parsed: Json | undefined;
+  try {
+    parsed = extractFirstJsonBlock(text);
+  } catch {
+    // ignore parse errors
+  }
+
+  if (parsed === undefined) {
+    logs.push(`[FAIL] ${tc.id}: Unable to parse JSON from model output.`);
+    return { schemaValid: false, valueMatch: false, correct: false };
+  }
+
+  const { valid, valuesOk, parsed: validatedParsed } = validateTestCase(
+    tc,
+    parsed,
+    expectedMap,
+    ajv,
+    logs
+  );
+
+  const correct = valid && valuesOk;
+  if (correct) {
+    logs.push(`[PASS] ${tc.id}`);
+  } else {
+    logs.push(
+      `[FAIL] ${tc.id}: schemaValid=${valid}, valuesOk=${valuesOk}. Output=${JSON.stringify(
+        validatedParsed
+      )}`
+    );
+  }
+
+  return { schemaValid: valid, valueMatch: valuesOk, correct };
+}
 
 export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
   name: "json-generation",
@@ -111,116 +307,33 @@ export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
 
     let schemaValidCount = 0;
     let valueMatchCount = 0;
-    let correctCount = 0; // both schema + value subset
+    let correctCount = 0;
 
-    // Load JSONL datasets (tests + expected) similar to BFCL
-    let tests: Omit<SchemaTestCase, "expected">[] = [];
-    const expectedMap = new Map<string, ExpectedRecord>();
-    try {
-      const dataDir = resolveDataDir();
-      const testsJsonl = await fs.readFile(
-        path.join(dataDir, "json_generation_tests.jsonl"),
-        "utf-8"
-      );
-      const expectedJsonl = await fs.readFile(
-        path.join(dataDir, "json_generation_expected.jsonl"),
-        "utf-8"
-      );
-
-      tests = testsJsonl
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length > 0)
-        .map((line) => JSON.parse(line));
-      const expecteds: ExpectedRecord[] = expectedJsonl
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length > 0)
-        .map((line) => JSON.parse(line));
-      for (const r of expecteds) expectedMap.set(r.id, r);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
+    // Load datasets
+    const { tests, expectedMap, error } = await loadDatasets();
+    if (error) {
+      const msg = error.message;
       return {
         score: 0,
         success: false,
         metrics: {},
         logs: [`[FATAL] Failed to load json-generation datasets: ${msg}`],
-        error: e as Error,
+        error,
       };
     }
 
+    // Process each test case
     for (const tc of tests) {
       try {
-        const schemaStr = JSON.stringify(tc.schema, null, 2);
-        const messages = [
-          {
-            role: "system" as const,
-            content:
-              "You must output only a single JSON document that strictly conforms to the given JSON Schema. Do not include any extra text or code fences.",
-          },
-          {
-            role: "user" as const,
-            content: [
-              "Generate a JSON object that reflects the following facts.",
-              "JSON Schema:",
-              schemaStr,
-              "Facts:",
-              tc.promptFacts,
-              "Output must be a single JSON only, with no additional text.",
-            ].join("\n\n"),
-          },
-        ];
-
-        const temp = config?.temperature;
-        const temperature = typeof temp === "number" ? temp : undefined;
-        const { text } = await generateText({
-          model,
-          messages,
-          ...(temperature !== undefined ? { temperature } : {}),
-        });
-
-        let parsed: Json | undefined;
-        try {
-          parsed = extractFirstJsonBlock(text);
-        } catch {
-          // ignore parse errors
+        const result = await processTestCase(tc, model, config, expectedMap, ajv, logs);
+        if (result.schemaValid) {
+          schemaValidCount++;
         }
-
-        if (parsed === undefined) {
-          logs.push(`[FAIL] ${tc.id}: Unable to parse JSON from model output.`);
-          continue;
+        if (result.valueMatch) {
+          valueMatchCount++;
         }
-
-        const validate = ajv.compile(tc.schema);
-        const valid = validate(parsed) as boolean;
-        if (valid) schemaValidCount++;
-        else
-          logs.push(
-            `[INFO] ${tc.id}: Schema validation errors: ${
-              (validate.errors || [])
-                .map((e) => `${e.instancePath} ${e.message}`)
-                .join(", ") || "unknown"
-            }`
-          );
-
-        const expectedRec = expectedMap.get(tc.id);
-        if (!expectedRec) {
-          logs.push(
-            `[WARN] ${tc.id}: No expected record found. Skipping value match.`
-          );
-        }
-        const valuesOk = expectedRec
-          ? subsetMatch(expectedRec.expected, parsed)
-          : false;
-        if (valuesOk) valueMatchCount++;
-
-        if (valid && valuesOk) {
+        if (result.correct) {
           correctCount++;
-          logs.push(`[PASS] ${tc.id}`);
-        } else {
-          logs.push(
-            `[FAIL] ${tc.id}: schemaValid=${valid}, valuesOk=${valuesOk}. Output=${JSON.stringify(
-              parsed
-            )}`
-          );
         }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
