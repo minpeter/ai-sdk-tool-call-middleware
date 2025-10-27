@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 
-vi.spyOn(console, "warn").mockImplementation(() => {});
+vi.spyOn(console, "warn").mockImplementation(() => {
+  // Intentionally empty - suppressing console warnings in tests
+});
 
 describe("morphXmlProtocol parseGeneratedText branches", () => {
   const tools = [

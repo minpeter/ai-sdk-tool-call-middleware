@@ -109,7 +109,7 @@ describe("createToolMiddleware branches", () => {
 
     (toolChoiceStream as unknown as Mock).mockResolvedValueOnce(expected);
 
-    const result = await mw.wrapStream!({
+    const result = await mw.wrapStream?.({
       doStream: vi.fn(),
       doGenerate,
       params: {

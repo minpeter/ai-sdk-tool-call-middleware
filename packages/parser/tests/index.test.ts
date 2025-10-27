@@ -51,7 +51,7 @@ describe("index exports", () => {
         },
       ];
 
-      const result = await morphXmlToolMiddleware.wrapGenerate!({
+      const result = await morphXmlToolMiddleware.wrapGenerate?.({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],
@@ -97,7 +97,7 @@ describe("index exports", () => {
         },
       ];
 
-      const result = await morphXmlToolMiddleware.wrapGenerate!({
+      const result = await morphXmlToolMiddleware.wrapGenerate?.({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],

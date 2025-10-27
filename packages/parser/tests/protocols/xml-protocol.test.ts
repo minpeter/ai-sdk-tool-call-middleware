@@ -29,7 +29,7 @@ describe("morphXmlProtocol stream parsing", () => {
 
   const runMiddleware = (stream: ReadableStream<LanguageModelV2StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
-    return middleware.wrapStream!({
+    return middleware.wrapStream?.({
       doStream: mockDoStream,
       params: {
         tools,
