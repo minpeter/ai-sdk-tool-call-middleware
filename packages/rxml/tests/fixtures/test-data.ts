@@ -64,6 +64,7 @@ export const schemaTestCases = {
         items: z.array(z.number()),
       })
     ),
+    // biome-ignore lint/style/noMagicNumbers: test fixture data
     expected: { items: [1, 2, 3] },
   },
   objectProperty: {
