@@ -471,7 +471,14 @@ function stringifyNodeChildren(options: {
   minimalEscaping: boolean;
   newline: string;
 }): { content: string; hasElementChildren: boolean } {
-  const { children, depth, format, stringifyOptions, minimalEscaping, newline } = options;
+  const {
+    children,
+    depth,
+    format,
+    stringifyOptions,
+    minimalEscaping,
+    newline,
+  } = options;
   let content = "";
   let hasElementChildren = false;
 

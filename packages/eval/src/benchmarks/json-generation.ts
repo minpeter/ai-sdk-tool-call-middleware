@@ -1,25 +1,25 @@
 import { generateText, type LanguageModel } from "ai";
 import Ajv, { type AnySchema } from "ajv";
-import { promises as fs } from "fs";
-import path from "path";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 
 import type { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
 import { resolveDataDir } from "@/utils/paths";
 
 type Json = unknown;
 
-interface SchemaTestCase {
+type SchemaTestCase = {
   id: string;
   description: string;
   schema: AnySchema; // JSON Schema (draft 2020-12 subset supported by Ajv v8)
   promptFacts: string; // natural language facts to express desired values
   expected: Json; // subset of fields we expect to match exactly
-}
+};
 
-interface ExpectedRecord {
+type ExpectedRecord = {
   id: string;
   expected: Json;
-}
+};
 
 function extractFirstJsonBlock(text: string): Json | undefined {
   // 1) try direct parse

@@ -138,7 +138,9 @@ function coerceStringToArray(
       return arr.map((v) => coerceBySchema(v, itemsSchema));
     }
   } catch {
-    const csv = s.includes("\n") ? s.split(NEWLINE_SPLIT_REGEX) : s.split(COMMA_SPLIT_REGEX);
+    const csv = s.includes("\n")
+      ? s.split(NEWLINE_SPLIT_REGEX)
+      : s.split(COMMA_SPLIT_REGEX);
     const trimmed = csv.map((x) => x.trim()).filter((x) => x.length > 0);
     if (prefixItems && trimmed.length === prefixItems.length) {
       return trimmed.map((x, i) => coerceBySchema(x, prefixItems[i]));
@@ -260,26 +262,26 @@ function coerceStringValue(
   u: Record<string, unknown>
 ): unknown {
   const s = value.trim();
-  
+
   if (schemaType === "object") {
     const result = coerceStringToObject(s, u);
     if (result !== null) {
       return result;
     }
   }
-  
+
   if (schemaType === "array") {
     const result = coerceStringToArray(s, u);
     if (result !== null) {
       return result;
     }
   }
-  
+
   const primitiveResult = coerceStringToPrimitive(s, schemaType);
   if (primitiveResult !== null) {
     return primitiveResult;
   }
-  
+
   return value;
 }
 

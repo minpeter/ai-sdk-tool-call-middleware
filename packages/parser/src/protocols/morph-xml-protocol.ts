@@ -6,12 +6,12 @@ import type {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 import {
-  RXMLCoercionError,
-  RXMLDuplicateStringTagError,
-  RXMLParseError,
   extractRawInner,
   findFirstTopLevelRange,
   parse,
+  RXMLCoercionError,
+  RXMLDuplicateStringTagError,
+  RXMLParseError,
   stringify,
   unwrapJsonSchema,
 } from "@ai-sdk-tool/rxml";
@@ -41,9 +41,16 @@ function processTextBeforeToolCall(
 }
 
 function processToolCall(
-  toolCall: { toolName: string; content: string; startIndex: number; endIndex: number },
+  toolCall: {
+    toolName: string;
+    content: string;
+    startIndex: number;
+    endIndex: number;
+  },
   tools: LanguageModelV2FunctionTool[],
-  options: { onError?: (message: string, details?: unknown) => void } | undefined,
+  options:
+    | { onError?: (message: string, details?: unknown) => void }
+    | undefined,
   text: string,
   processedElements: LanguageModelV2Content[]
 ): void {
@@ -93,9 +100,14 @@ function handleStreamingToolCallEnd(
   toolContent: string,
   currentToolCall: { name: string; content: string },
   tools: LanguageModelV2FunctionTool[],
-  options: { onError?: (message: string, details?: unknown) => void } | undefined,
+  options:
+    | { onError?: (message: string, details?: unknown) => void }
+    | undefined,
   controller: TransformStreamDefaultController,
-  flushText: (controller: TransformStreamDefaultController, text?: string) => void
+  flushText: (
+    controller: TransformStreamDefaultController,
+    text?: string
+  ) => void
 ): void {
   try {
     const toolSchema = getToolSchema(tools, currentToolCall.name);
@@ -127,14 +139,20 @@ function handleStreamingToolCallError(
   error: unknown,
   currentToolCall: { name: string; content: string },
   toolContent: string,
-  options: { onError?: (message: string, details?: unknown) => void } | undefined,
+  options:
+    | { onError?: (message: string, details?: unknown) => void }
+    | undefined,
   controller: TransformStreamDefaultController,
-  flushText: (controller: TransformStreamDefaultController, text?: string) => void
+  flushText: (
+    controller: TransformStreamDefaultController,
+    text?: string
+  ) => void
 ): void {
   const endTag = `</${currentToolCall.name}>`;
   const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;
-  let message = "Could not process streaming XML tool call; emitting original text.";
-  
+  let message =
+    "Could not process streaming XML tool call; emitting original text.";
+
   if (error instanceof RXMLDuplicateStringTagError) {
     message = `Duplicate string tags detected in streaming tool call '${currentToolCall.name}'; emitting original text.`;
   } else if (error instanceof RXMLCoercionError) {
@@ -142,7 +160,7 @@ function handleStreamingToolCallError(
   } else if (error instanceof RXMLParseError) {
     message = `Failed to parse XML for streaming tool call '${currentToolCall.name}'; emitting original text.`;
   }
-  
+
   options?.onError?.(message, {
     toolCall: originalCallText,
     toolName: currentToolCall.name,
@@ -179,7 +197,10 @@ function handleNoToolTagInBuffer(
   buffer: string,
   maxStartTagLen: number,
   controller: TransformStreamDefaultController,
-  flushText: (controller: TransformStreamDefaultController, text?: string) => void
+  flushText: (
+    controller: TransformStreamDefaultController,
+    text?: string
+  ) => void
 ): { buffer: string; shouldContinue: boolean } {
   const tail = Math.max(0, maxStartTagLen - 1);
   const safeLen = Math.max(0, buffer.length - tail);

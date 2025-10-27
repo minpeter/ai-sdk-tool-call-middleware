@@ -49,6 +49,42 @@ function processToolCallJson(
   }
 }
 
+function addTextSegment(
+  text: string,
+  processedElements: LanguageModelV2Content[]
+) {
+  if (text.trim()) {
+    processedElements.push({ type: "text", text });
+  }
+}
+
+type ParseContext = {
+  match: RegExpExecArray;
+  text: string;
+  currentIndex: number;
+  processedElements: LanguageModelV2Content[];
+  options?: { onError?: (message: string, details: unknown) => void };
+};
+
+function processMatchedToolCall(context: ParseContext): number {
+  const { match, text, currentIndex, processedElements, options } = context;
+  const startIndex = match.index;
+  const toolCallJson = match[1];
+
+  // Add text before tool call if exists
+  if (startIndex > currentIndex) {
+    const textSegment = text.substring(currentIndex, startIndex);
+    addTextSegment(textSegment, processedElements);
+  }
+
+  // Process tool call
+  if (toolCallJson) {
+    processToolCallJson(toolCallJson, match[0], processedElements, options);
+  }
+
+  return startIndex + match[0].length;
+}
+
 type StreamState = {
   isInsideToolCall: boolean;
   buffer: string;
@@ -57,12 +93,28 @@ type StreamState = {
   hasEmittedTextStart: boolean;
 };
 
+type StreamController = TransformStreamDefaultController<unknown>;
+
+type StreamOptions = {
+  onError?: (message: string, details: unknown) => void;
+};
+
+type TagProcessingContext = {
+  state: StreamState;
+  controller: StreamController;
+  toolCallStart: string;
+  toolCallEnd: string;
+  options?: StreamOptions;
+};
+
 function flushBuffer(
   state: StreamState,
-  controller: TransformStreamDefaultController<any>,
+  controller: StreamController,
   toolCallStart: string
 ) {
-  if (state.buffer.length === 0) return;
+  if (state.buffer.length === 0) {
+    return;
+  }
 
   if (!state.currentTextId) {
     state.currentTextId = generateId();
@@ -84,7 +136,7 @@ function flushBuffer(
 
 function closeTextBlock(
   state: StreamState,
-  controller: TransformStreamDefaultController<any>
+  controller: StreamController
 ) {
   if (state.currentTextId && state.hasEmittedTextStart) {
     controller.enqueue({ type: "text-end", id: state.currentTextId });
@@ -95,10 +147,12 @@ function closeTextBlock(
 
 function emitIncompleteToolCall(
   state: StreamState,
-  controller: TransformStreamDefaultController<any>,
+  controller: StreamController,
   toolCallStart: string
 ) {
-  if (!state.currentToolCallJson) return;
+  if (!state.currentToolCallJson) {
+    return;
+  }
 
   const errorId = generateId();
   controller.enqueue({ type: "text-start", id: errorId });
@@ -113,9 +167,9 @@ function emitIncompleteToolCall(
 
 function handleFinishChunk(
   state: StreamState,
-  controller: TransformStreamDefaultController<any>,
+  controller: StreamController,
   toolCallStart: string,
-  chunk: any
+  chunk: unknown
 ) {
   if (state.buffer.length > 0) {
     flushBuffer(state, controller, toolCallStart);
@@ -128,7 +182,7 @@ function handleFinishChunk(
 function publishText(
   text: string,
   state: StreamState,
-  controller: TransformStreamDefaultController<any>
+  controller: StreamController
 ) {
   if (state.isInsideToolCall) {
     closeTextBlock(state, controller);
@@ -147,13 +201,8 @@ function publishText(
   }
 }
 
-function emitToolCall(
-  state: StreamState,
-  controller: TransformStreamDefaultController<any>,
-  toolCallStart: string,
-  toolCallEnd: string,
-  options?: { onError?: (message: string, details: unknown) => void }
-) {
+function emitToolCall(context: TagProcessingContext) {
+  const { state, controller, toolCallStart, toolCallEnd, options } = context;
   try {
     const parsedToolCall = RJSON.parse(state.currentToolCallJson) as {
       name: string;
@@ -186,15 +235,10 @@ function emitToolCall(
   }
 }
 
-function processTagMatch(
-  state: StreamState,
-  controller: TransformStreamDefaultController<any>,
-  toolCallStart: string,
-  toolCallEnd: string,
-  options?: { onError?: (message: string, details: unknown) => void }
-) {
+function processTagMatch(context: TagProcessingContext) {
+  const { state } = context;
   if (state.isInsideToolCall) {
-    emitToolCall(state, controller, toolCallStart, toolCallEnd, options);
+    emitToolCall(context);
     state.currentToolCallJson = "";
     state.isInsideToolCall = false;
   } else {
@@ -203,13 +247,8 @@ function processTagMatch(
   }
 }
 
-function processBufferTags(
-  state: StreamState,
-  controller: TransformStreamDefaultController<any>,
-  toolCallStart: string,
-  toolCallEnd: string,
-  options?: { onError?: (message: string, details: unknown) => void }
-) {
+function processBufferTags(context: TagProcessingContext) {
+  const { state, controller, toolCallStart, toolCallEnd } = context;
   let startIndex = getPotentialStartIndex(
     state.buffer,
     state.isInsideToolCall ? toolCallEnd : toolCallStart
@@ -223,7 +262,7 @@ function processBufferTags(
 
     publishText(state.buffer.slice(0, startIndex), state, controller);
     state.buffer = state.buffer.slice(startIndex + tag.length);
-    processTagMatch(state, controller, toolCallStart, toolCallEnd, options);
+    processTagMatch(context);
 
     startIndex = getPotentialStartIndex(
       state.buffer,
@@ -234,10 +273,12 @@ function processBufferTags(
 
 function handlePartialTag(
   state: StreamState,
-  controller: TransformStreamDefaultController<any>,
+  controller: StreamController,
   toolCallStart: string
 ) {
-  if (state.isInsideToolCall) return;
+  if (state.isInsideToolCall) {
+    return;
+  }
 
   const potentialIndex = getPotentialStartIndex(state.buffer, toolCallStart);
   if (
@@ -305,32 +346,20 @@ export const jsonMixProtocol = ({
     let match = toolCallRegex.exec(text);
 
     while (match !== null) {
-      const startIndex = match.index;
-      const toolCallJson = match[1];
-
-      // Add text before tool call if exists
-      if (startIndex > currentIndex) {
-        const textSegment = text.substring(currentIndex, startIndex);
-        if (textSegment.trim()) {
-          processedElements.push({ type: "text", text: textSegment });
-        }
-      }
-
-      // Process tool call
-      if (toolCallJson) {
-        processToolCallJson(toolCallJson, match[0], processedElements, options);
-      }
-
-      currentIndex = startIndex + match[0].length;
+      currentIndex = processMatchedToolCall({
+        match,
+        text,
+        currentIndex,
+        processedElements,
+        options,
+      });
       match = toolCallRegex.exec(text);
     }
 
     // Add remaining text
     if (currentIndex < text.length) {
       const remainingText = text.substring(currentIndex);
-      if (remainingText.trim()) {
-        processedElements.push({ type: "text", text: remainingText });
-      }
+      addTextSegment(remainingText, processedElements);
     }
 
     return processedElements;
@@ -358,13 +387,13 @@ export const jsonMixProtocol = ({
         }
 
         state.buffer += chunk.delta;
-        processBufferTags(
+        processBufferTags({
           state,
           controller,
           toolCallStart,
           toolCallEnd,
-          options
-        );
+          options,
+        });
         handlePartialTag(state, controller, toolCallStart);
       },
     });
