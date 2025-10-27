@@ -593,7 +593,8 @@ function createBfclBenchmark(
           usedActual: Set<number>;
           diff: string[];
         }): void => {
-          const { expectedObj, restoredCalls, tools, usedActual, diff } = options;
+          const { expectedObj, restoredCalls, tools, usedActual, diff } =
+            options;
           const fname = Object.keys(expectedObj)[0];
           const matchedIndex = findMatchingCallIndex(
             fname,
@@ -702,11 +703,8 @@ function createBfclBenchmark(
             const schemaType =
               firstTool?.inputSchema?.type ??
               (
-                (
-                  firstTool?.inputSchema as
-                    | Record<string, unknown>
-                    | undefined
-                )?.jsonSchema as Record<string, unknown> | undefined
+                (firstTool?.inputSchema as Record<string, unknown> | undefined)
+                  ?.jsonSchema as Record<string, unknown> | undefined
               )?.type;
             caseLogs.push(
               `[DEBUG] ${testCaseId}: firstTool=${JSON.stringify(firstTool)}, schemaType=${schemaType}`
@@ -719,13 +717,14 @@ function createBfclBenchmark(
         };
 
         // Helper: Log raw tool calls
-        const logRawToolCalls = (
-          toolCalls: unknown,
-          finishReason: unknown,
-          text: unknown,
-          testCaseId: string,
-          caseLogs: string[]
-        ): void => {
+        const logRawToolCalls = (options: {
+          toolCalls: unknown;
+          finishReason: unknown;
+          text: unknown;
+          testCaseId: string;
+          caseLogs: string[];
+        }): void => {
+          const { toolCalls, finishReason, text, testCaseId, caseLogs } = options;
           try {
             caseLogs.push(
               `[DEBUG] ${testCaseId}: rawToolCalls=${JSON.stringify(toolCalls)}, finishReason=${finishReason}, text=${JSON.stringify(text)}`
@@ -799,7 +798,11 @@ function createBfclBenchmark(
           tools: ToolSpec[];
           possibleAnswer: PossibleAnswer;
           restoredCalls: unknown[];
-          checkerResult: { valid: boolean; error?: string; error_type?: string };
+          checkerResult: {
+            valid: boolean;
+            error?: string;
+            error_type?: string;
+          };
           flatMessages: Message[];
           mwOriginalText: string | undefined;
           text: unknown;
@@ -866,10 +869,125 @@ function createBfclBenchmark(
               // ignore context build failures
             }
           } catch {
-            caseLogs.push(
-              `[DEBUG] ${testCase.id}: failed to build debug diff`
-            );
+            caseLogs.push(`[DEBUG] ${testCase.id}: failed to build debug diff`);
           }
+        };
+
+        // Helper: Build tools map for AI SDK
+        const buildToolsMap = (
+          transformedTools: TransformedTool[]
+        ): Record<string, ReturnType<typeof tool>> =>
+          Object.fromEntries(
+            transformedTools.map((t) => [
+              t.name,
+              tool({
+                description:
+                  typeof t.description === "string" ? t.description : undefined,
+                inputSchema: jsonSchema(
+                  t.inputSchema as Record<string, unknown>
+                ),
+              }),
+            ])
+          );
+
+        // Helper: Execute model generation
+        const executeModelGeneration = async (options: {
+          model: LanguageModel;
+          flatMessages: Message[];
+          toolsMap: Record<string, ReturnType<typeof tool>>;
+          temperature: number | undefined;
+          maxTokens: number | undefined;
+        }): Promise<{
+          toolCalls: unknown;
+          text: unknown;
+          finishReason: unknown;
+          debugSummaryRef: { originalText?: string; toolCalls?: string };
+        }> => {
+          const { model, flatMessages, toolsMap, temperature, maxTokens } =
+            options;
+
+          type ProviderOptionsWithMiddleware = {
+            toolCallMiddleware?: {
+              debugSummary?: {
+                originalText?: string;
+                toolCalls?: string;
+              };
+            };
+          };
+          const debugSummaryRef: {
+            originalText?: string;
+            toolCalls?: string;
+          } = {};
+          const providerOptions: ProviderOptionsWithMiddleware = {
+            toolCallMiddleware: {
+              debugSummary: debugSummaryRef,
+            },
+          };
+          const { toolCalls, text, finishReason } = await generateText({
+            model,
+            messages: flatMessages as unknown as CoreMessage[],
+            tools: toolsMap,
+            toolChoice: "auto",
+            providerOptions,
+            ...(temperature !== undefined ? { temperature } : {}),
+            ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
+          });
+
+          return { toolCalls, text, finishReason, debugSummaryRef };
+        };
+
+        // Helper: Process validation result
+        const processValidationResult = (options: {
+          checkerResult: {
+            valid: boolean;
+            error?: string;
+            error_type?: string;
+          };
+          testCase: TestCase;
+          tools: ToolSpec[];
+          possibleAnswer: PossibleAnswer;
+          restoredCalls: unknown[];
+          flatMessages: Message[];
+          mwOriginalText: string | undefined;
+          text: unknown;
+          finishReason: unknown;
+          mwParsedToolCalls: Array<{ toolName?: string; input?: unknown }>;
+          caseLogs: string[];
+        }): { valid: boolean; logs: string[] } => {
+          const {
+            checkerResult,
+            testCase,
+            tools,
+            possibleAnswer,
+            restoredCalls,
+            flatMessages,
+            mwOriginalText,
+            text,
+            finishReason,
+            mwParsedToolCalls,
+            caseLogs,
+          } = options;
+
+          if (checkerResult.valid) {
+            caseLogs.push(`[PASS] ${testCase.id}`);
+            return { valid: true, logs: caseLogs };
+          }
+
+          caseLogs.push(`[FAIL] ${testCase.id}: ${checkerResult.error}`);
+          logFailureDetails({
+            testCase,
+            tools,
+            possibleAnswer,
+            restoredCalls,
+            checkerResult,
+            flatMessages,
+            mwOriginalText,
+            text,
+            finishReason,
+            mwParsedToolCalls,
+            caseLogs,
+          });
+          return { valid: false, logs: caseLogs };
         };
 
         // Per-test runner that does not throw and returns its own logs
@@ -890,52 +1008,18 @@ function createBfclBenchmark(
               fixSchema
             );
 
-            const toolsMap = Object.fromEntries(
-              transformedTools.map((t) => [
-                t.name,
-                tool({
-                  description:
-                    typeof t.description === "string"
-                      ? t.description
-                      : undefined,
-                  inputSchema: jsonSchema(
-                    t.inputSchema as Record<string, unknown>
-                  ),
-                }),
-              ])
-            );
+            const toolsMap = buildToolsMap(transformedTools);
 
             logFirstToolDebug(transformedTools, testCase.id, caseLogs);
 
-            // Capture middleware debugSummary output via shared reference
-            type ProviderOptionsWithMiddleware = {
-              toolCallMiddleware?: {
-                debugSummary?: {
-                  originalText?: string;
-                  toolCalls?: string;
-                };
-              };
-            };
-            const debugSummaryRef: {
-              originalText?: string;
-              toolCalls?: string;
-            } = {};
-            const providerOptions: ProviderOptionsWithMiddleware = {
-              toolCallMiddleware: {
-                debugSummary: debugSummaryRef,
-              },
-            };
-            const { toolCalls, text, finishReason } = await generateText({
-              model,
-              messages: flatMessages as unknown as CoreMessage[],
-              tools: toolsMap,
-              toolChoice: "auto",
-              providerOptions,
-              ...(temperature !== undefined ? { temperature } : {}),
-              ...(maxTokens !== undefined
-                ? { maxOutputTokens: maxTokens }
-                : {}),
-            });
+            const { toolCalls, text, finishReason, debugSummaryRef } =
+              await executeModelGeneration({
+                model,
+                flatMessages,
+                toolsMap,
+                temperature,
+                maxTokens,
+              });
 
             const mwOriginalText: string | undefined =
               debugSummaryRef.originalText;
@@ -943,7 +1027,13 @@ function createBfclBenchmark(
               debugSummaryRef.toolCalls
             );
 
-            logRawToolCalls(toolCalls, finishReason, text, testCase.id, caseLogs);
+            logRawToolCalls({
+              toolCalls,
+              finishReason,
+              text,
+              testCaseId: testCase.id,
+              caseLogs,
+            });
 
             const possibleAnswer = possibleAnswersMap.get(testCase.id);
             if (!possibleAnswer) {
@@ -962,18 +1052,12 @@ function createBfclBenchmark(
               possibleAnswer
             );
 
-            if (checkerResult.valid) {
-              caseLogs.push(`[PASS] ${testCase.id}`);
-              return { valid: true, logs: caseLogs };
-            }
-
-            caseLogs.push(`[FAIL] ${testCase.id}: ${checkerResult.error}`);
-            logFailureDetails({
+            return processValidationResult({
+              checkerResult,
               testCase,
               tools: tools as ToolSpec[],
               possibleAnswer,
               restoredCalls,
-              checkerResult,
               flatMessages,
               mwOriginalText,
               text,
@@ -981,7 +1065,6 @@ function createBfclBenchmark(
               mwParsedToolCalls,
               caseLogs,
             });
-            return { valid: false, logs: caseLogs };
           } catch (e: unknown) {
             caseLogs.push(
               `[ERROR] ${testCase.id}: Model generation failed: ${(e as Error)?.message}`
@@ -1057,7 +1140,9 @@ function createBfclBenchmark(
           success: false,
           metrics: {},
           error: e,
-          logs: [`[FATAL] Failed to run benchmark ${name}: ${(e as Error).message}`],
+          logs: [
+            `[FATAL] Failed to run benchmark ${name}: ${(e as Error).message}`,
+          ],
         };
       }
     },
