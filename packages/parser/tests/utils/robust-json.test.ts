@@ -343,11 +343,20 @@ describe("relaxed-json", () => {
     });
 
     it("should handle functions and symbols as null", () => {
-      expect(stringify((() => { /* empty */ }) as any)).toBe("null");
+      expect(
+        stringify((() => {
+          /* empty */
+        }) as any)
+      ).toBe("null");
       expect(stringify(Symbol("test") as any)).toBe("null");
-      expect(stringify({ fn: () => { /* empty */ }, sym: Symbol("test") } as any)).toBe(
-        '{"fn":null,"sym":null}'
-      );
+      expect(
+        stringify({
+          fn: () => {
+            /* empty */
+          },
+          sym: Symbol("test"),
+        } as any)
+      ).toBe('{"fn":null,"sym":null}');
     });
   });
 });

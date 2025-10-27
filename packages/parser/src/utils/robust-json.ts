@@ -31,6 +31,23 @@
   Follows the license of the original code.
 */
 
+// --- Regex Constants (for performance) ---
+const WHITESPACE_TEST_REGEX = /\s/;
+const WHITESPACE_REGEX = /^\s+/;
+const OBJECT_START_REGEX = /^\{/;
+const OBJECT_END_REGEX = /^\}/;
+const ARRAY_START_REGEX = /^\[/;
+const ARRAY_END_REGEX = /^\]/;
+const COMMA_REGEX = /^,/;
+const COLON_REGEX = /^:/;
+const KEYWORD_REGEX = /^(?:true|false|null)/;
+const NUMBER_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/;
+const STRING_DOUBLE_REGEX = /^"(?:[^"\\]|\\["bnrtf\\/]|\\u[0-9a-fA-F]{4})*"/;
+const STRING_SINGLE_REGEX = /^'((?:[^'\\]|\\['bnrtf\\/]|\\u[0-9a-fA-F]{4})*)'/;
+const COMMENT_SINGLE_REGEX = /^\/\/.*?(?:\r\n|\r|\n)/;
+const COMMENT_MULTI_REGEX = /^\/\*[\s\S]*?\*\//;
+const IDENTIFIER_REGEX = /^[$a-zA-Z0-9_\-+.*?!|&%^/#\\]+/;
+
 // Custom 'some' function definition (slightly different from ES5, returns the truthy value directly)
 // :: array -> fn -> *
 function some<T, R>(
@@ -271,7 +288,7 @@ function fIdentifier(m: RegExpExecArray): RawToken {
 // :: tuple string -> rawToken
 function fComment(m: RegExpExecArray): RawToken {
   // Treats comments as whitespace, preserving only newlines
-  const match = m[0].replace(/./g, (c) => (/\s/.test(c) ? c : " "));
+  const match = m[0].replace(/./g, (c) => (WHITESPACE_TEST_REGEX.test(c) ? c : " "));
   return {
     type: " ", // Represent comments as whitespace tokens
     match, // String containing original newlines and spaces for other chars
@@ -330,18 +347,18 @@ function makeTokenSpecs(relaxed: boolean): TokenSpec[] {
 
   // Base JSON token specifications (strict)
   let tokenSpecs: TokenSpec[] = [
-    { re: /^\s+/, f: f(" ") }, // Whitespace
-    { re: /^\{/, f: f("{") }, // Object start
-    { re: /^\}/, f: f("}") }, // Object end
-    { re: /^\[/, f: f("[") }, // Array start
-    { re: /^\]/, f: f("]") }, // Array end
-    { re: /^,/, f: f(",") }, // Comma separator
-    { re: /^:/, f: f(":") }, // Key-value separator
-    { re: /^(?:true|false|null)/, f: fKeyword }, // Keywords
+    { re: WHITESPACE_REGEX, f: f(" ") }, // Whitespace
+    { re: OBJECT_START_REGEX, f: f("{") }, // Object start
+    { re: OBJECT_END_REGEX, f: f("}") }, // Object end
+    { re: ARRAY_START_REGEX, f: f("[") }, // Array start
+    { re: ARRAY_END_REGEX, f: f("]") }, // Array end
+    { re: COMMA_REGEX, f: f(",") }, // Comma separator
+    { re: COLON_REGEX, f: f(":") }, // Key-value separator
+    { re: KEYWORD_REGEX, f: fKeyword }, // Keywords
     // Number: optional sign, digits, optional decimal part, optional exponent
-    { re: /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/, f: fNumber },
+    { re: NUMBER_REGEX, f: fNumber },
     // String: double-quoted, handles escapes
-    { re: /^"(?:[^"\\]|\\["bnrtf\\/]|\\u[0-9a-fA-F]{4})*"/, f: fStringDouble },
+    { re: STRING_DOUBLE_REGEX, f: fStringDouble },
   ];
 
   // Add relaxed syntax rules if requested
@@ -349,16 +366,16 @@ function makeTokenSpecs(relaxed: boolean): TokenSpec[] {
     tokenSpecs = tokenSpecs.concat([
       // Single-quoted strings
       {
-        re: /^'((?:[^'\\]|\\['bnrtf\\/]|\\u[0-9a-fA-F]{4})*)'/,
+        re: STRING_SINGLE_REGEX,
         f: fStringSingle,
       },
       // Single-line comments (// ...)
-      { re: /^\/\/.*?(?:\r\n|\r|\n)/, f: fComment },
+      { re: COMMENT_SINGLE_REGEX, f: fComment },
       // Multi-line comments (/* ... */)
-      { re: /^\/\*[\s\S]*?\*\//, f: fComment },
+      { re: COMMENT_MULTI_REGEX, f: fComment },
       // Unquoted identifiers (treated as strings)
       // Allows letters, numbers, _, -, +, ., *, ?, !, |, &, %, ^, /, #, \
-      { re: /^[$a-zA-Z0-9_\-+.*?!|&%^/#\\]+/, f: fIdentifier },
+      { re: IDENTIFIER_REGEX, f: fIdentifier },
       // Note: The order matters here. Identifiers are checked after keywords/numbers.
     ]);
   }
@@ -465,7 +482,7 @@ function popToken(tokens: Token[], state: ParseState): Token {
 
   if (!token) {
     // If we are past the end of the token array, return an EOF token
-    const lastLine = tokens.length !== 0 ? tokens[tokens.length - 1].line : 1;
+    const lastLine = tokens.length !== 0 ? tokens.at(-1)!.line : 1;
     return { type: "eof", match: "", value: undefined, line: lastLine };
   }
 
@@ -743,6 +760,44 @@ function parseArray(tokens: Token[], state: ParseState): unknown[] {
   });
 }
 
+// Helper to handle invalid tokens in parseMany
+function handleInvalidToken<T>(
+  token: Token,
+  state: ParseState,
+  opts: ParseManyOpts<T>,
+  result: T
+): T | null {
+  raiseUnexpected(state, token, `',' or '${opts.endSymbol}'`);
+
+  if (state.tolerant) {
+    if (token.type === "eof") {
+      return result;
+    }
+    // Assume a comma was missing and put the token back
+    state.pos -= 1;
+    return null; // Signal to continue parsing
+  }
+  return result; // Should be unreachable in strict mode
+}
+
+// Helper to handle comma tokens in parseMany
+function handleCommaToken<T>(
+  token: Token,
+  tokens: Token[],
+  state: ParseState,
+  opts: ParseManyOpts<T>,
+  result: T
+): T | null {
+  const nextToken = tokens[state.pos];
+  if (state.tolerant && nextToken && nextToken.type === opts.endSymbol) {
+    raiseError(state, token, `Trailing comma before '${opts.endSymbol}'`);
+    popToken(tokens, state);
+    return result;
+  }
+  opts.elementParser(tokens, state, result);
+  return null; // Signal to continue parsing
+}
+
 // Generic function to parse comma-separated elements within enclosing symbols (like objects or arrays)
 // :: t : array | {} => array parseToken -> parseState -> t -> parseManyOpts -> t
 function parseMany<T>(
@@ -751,78 +806,45 @@ function parseMany<T>(
   result: T,
   opts: ParseManyOpts<T>
 ): T {
-  // Get the first token, skipping over potential initial punctuation (defined in opts.skip)
   let token = skipPunctuation(tokens, state, opts.skip);
 
-  // Handle empty structure or unexpected EOF
   if (token.type === "eof") {
     raiseUnexpected(state, token, `'${opts.endSymbol}' or ${opts.elementName}`);
-    // Attempt recovery in tolerant mode by assuming structure was closed
     if (state.tolerant) {
       return result;
     }
-    // Error already thrown by raiseUnexpected
-    return result; // Should be unreachable
+    return result;
   }
 
-  // Check if it's immediately the end symbol (e.g., empty array/object)
   if (token.type === opts.endSymbol) {
     return result;
   }
 
-  // --- Parse First Element ---
-  // If it wasn't the end symbol, it should be the start of the first element.
-  // Put the token back so the element parser can consume it.
   state.pos -= 1;
   opts.elementParser(tokens, state, result);
 
-  // --- Parse Remaining Elements ---
   while (true) {
-    // After an element, expect a comma or the end symbol
     token = popToken(tokens, state);
 
-    // Validate the token
     if (token.type !== opts.endSymbol && token.type !== ",") {
-      raiseUnexpected(state, token, `',' or '${opts.endSymbol}'`);
-
-      // Attempt recovery in tolerant mode
-      if (state.tolerant) {
-        // If it was EOF, assume the structure was implicitly closed
-        if (token.type === "eof") {
-          return result;
-        }
-        // Otherwise, assume a comma was missing and put the token back
-        // to be parsed as the start of the next element.
-        state.pos -= 1;
-        // Continue to the element parsing step below (simulates a comma)
-      } else {
-        // Error already thrown by raiseUnexpected
-        return result; // Should be unreachable
+      const handledResult = handleInvalidToken(token, state, opts, result);
+      if (handledResult !== null) {
+        return handledResult;
       }
     }
 
-    // Handle based on token type
     switch (token.type) {
       case opts.endSymbol:
-        // End of the structure found
         return result;
 
       case ",": {
-        // Comma found, parse the next element
-        // Check for trailing comma before end symbol in tolerant mode
-        const nextToken = tokens[state.pos]; // Peek ahead
-        if (state.tolerant && nextToken && nextToken.type === opts.endSymbol) {
-          // If the next token is the end symbol, treat this as a trailing comma
-          raiseError(state, token, `Trailing comma before '${opts.endSymbol}'`);
-          // Consume the end symbol and return
-          popToken(tokens, state); // Consume the end symbol
-          return result;
+        const handledResult = handleCommaToken(token, tokens, state, opts, result);
+        if (handledResult !== null) {
+          return handledResult;
         }
-        // Otherwise, parse the element following the comma
-        opts.elementParser(tokens, state, result);
         break;
       }
-      // Default case is only reachable in tolerant mode recovery above
+
       default:
         opts.elementParser(tokens, state, result);
         break;
@@ -925,6 +947,82 @@ function parseAny(tokens: Token[], state: ParseState, end = false): unknown {
   return ret;
 }
 
+// Helper to normalize parse options
+function normalizeParseOptions(
+  optsOrReviver?: ParseOptions | ((key: string, value: unknown) => unknown)
+): ParseOptions {
+  let options: ParseOptions = {};
+
+  if (typeof optsOrReviver === "function") {
+    options.reviver = optsOrReviver;
+  } else if (optsOrReviver !== null && typeof optsOrReviver === "object") {
+    options = { ...optsOrReviver };
+  } else if (optsOrReviver !== undefined) {
+    throw new TypeError(
+      "Second argument must be a reviver function or an options object."
+    );
+  }
+
+  // Set default for relaxed mode
+  if (options.relaxed === undefined) {
+    if (options.warnings === true || options.tolerant === true) {
+      options.relaxed = true;
+    } else if (options.warnings === false && options.tolerant === false) {
+      options.relaxed = false;
+    } else {
+      options.relaxed = true;
+    }
+  }
+
+  options.tolerant = options.tolerant || options.warnings;
+  options.warnings = options.warnings;
+  options.duplicate = options.duplicate ?? false;
+
+  return options;
+}
+
+// Helper to create parser state
+function createParseState(options: ParseOptions): ParseState {
+  return {
+    pos: 0,
+    reviver: options.reviver,
+    tolerant: options.tolerant ?? false,
+    duplicate: options.duplicate ?? false,
+    warnings: [],
+  };
+}
+
+// Helper to use custom parser with tokens
+function parseWithCustomParser(
+  text: string,
+  options: ParseOptions
+): unknown {
+  const lexerToUse = options.relaxed ? lexer : strictLexer;
+  let tokens = lexerToUse(text);
+
+  if (options.relaxed) {
+    tokens = stripTrailingComma(tokens);
+  }
+
+  tokens = tokens.filter((token) => token.type !== " ");
+  const state = createParseState(options);
+  return parseAny(tokens, state, true);
+}
+
+// Helper to use native JSON.parse with transformation
+function parseWithTransform(
+  text: string,
+  options: ParseOptions
+): unknown {
+  let tokens = lexer(text);
+  tokens = stripTrailingComma(tokens);
+  const newtext = tokens.reduce((str, token) => str + token.match, "");
+  return JSON.parse(
+    newtext,
+    options.reviver as (key: string, value: unknown) => unknown
+  );
+}
+
 // --- Main Parse Function ---
 
 /**
@@ -962,129 +1060,23 @@ function parse(
   text: string,
   optsOrReviver?: ParseOptions | ((key: string, value: unknown) => unknown)
 ): unknown {
-  let options: ParseOptions = {};
+  const options = normalizeParseOptions(optsOrReviver);
 
-  // Determine if the second argument is options object or reviver function
-  if (typeof optsOrReviver === "function") {
-    options.reviver = optsOrReviver;
-  } else if (optsOrReviver !== null && typeof optsOrReviver === "object") {
-    options = { ...optsOrReviver }; // Shallow copy options
-  } else if (optsOrReviver !== undefined) {
-    throw new TypeError(
-      "Second argument must be a reviver function or an options object."
+  // Strategy 1: Strict JSON with duplicate allowance -> use native JSON.parse
+  if (!(options.relaxed || options.warnings || options.tolerant) && options.duplicate) {
+    return JSON.parse(
+      text,
+      options.reviver as (key: string, value: unknown) => unknown
     );
   }
 
-  // Set default options
-  // Default to relaxed true ONLY IF no specific mode is set AND warnings/tolerant are not explicitly false.
-  // If tolerant=true or warnings=true, imply relaxed=true unless explicitly set to false.
-  // If strict JSON is desired, set relaxed: false explicitly.
-  if (options.relaxed === undefined) {
-    if (options.warnings === true || options.tolerant === true) {
-      options.relaxed = true;
-    } else if (options.warnings === false && options.tolerant === false) {
-      options.relaxed = false; // Strict if tolerance/warnings explicitly off
-    } else {
-      options.relaxed = true; // Default to relaxed otherwise
-    }
-  }
-  // Warnings implies tolerant
-  options.tolerant = options.tolerant || options.warnings;
-  options.warnings = options.warnings;
-  // Default duplicate key behavior: false = reject duplicates with error, true = allow (use last value)
-  options.duplicate = options.duplicate ?? false;
-
-  // --- Parsing Strategy ---
-
-  // Strategy 1: Strict JSON, no special handling -> use native JSON.parse for speed
-  // Also use if relaxed=false and warnings=false (even if reviver is present)
-  if (!(options.relaxed || options.warnings || options.tolerant)) {
-    // Note: native JSON.parse doesn't support duplicate key checking.
-    // - If duplicate=true (allow duplicates): native JSON.parse can be used safely
-    // - If duplicate=false (reject duplicates): must use custom parser for validation
-    if (options.duplicate) {
-      // duplicate=true: Safe to use native JSON.parse (allows duplicates, uses last value)
-      return JSON.parse(
-        text,
-        options.reviver as (key: string, value: unknown) => unknown
-      );
-    }
+  // Strategy 2: Need custom parser (warnings, tolerant, or duplicate checking)
+  if (options.warnings || options.tolerant || !options.duplicate) {
+    return parseWithCustomParser(text, options);
   }
 
-  // Strategy 2: Use custom lexer/parser
-  // This is needed for: relaxed syntax, warning collection, tolerance, or strict duplicate checking.
-
-  // Lex the input text based on the 'relaxed' option
-  const lexerToUse = options.relaxed ? lexer : strictLexer;
-  let tokens = lexerToUse(text);
-
-  // Pre-processing for relaxed mode: strip trailing commas
-  if (options.relaxed) {
-    tokens = stripTrailingComma(tokens);
-  }
-
-  // If warnings or tolerance are enabled, use the full parser logic
-  if (options.warnings || options.tolerant) {
-    // Filter out whitespace tokens as they are not needed by the parser
-    tokens = tokens.filter((token) => token.type !== " ");
-
-    // Initialize the parser state
-    const state: ParseState = {
-      pos: 0,
-      reviver: options.reviver,
-      tolerant: options.tolerant,
-      duplicate: options.duplicate, // true = allow duplicate keys, false = reject duplicates
-      warnings: [],
-    };
-
-    // Start parsing from the top level
-    return parseAny(tokens, state, true);
-  }
-  // Strategy 3: Relaxed input, but no warnings/tolerance requested.
-  // Transform the relaxed syntax to stricter JSON and use native JSON.parse.
-  // This path is also used for strict mode (!relaxed) when duplicate checking is needed (!options.duplicate).
-  tokens.reduce((str, token) => str + token.match, "");
-
-  // We might need a custom duplicate check *before* native parse here if options.duplicate is false.
-  // However, the simplest way to check duplicates is during the custom parse.
-  // Let's refine the logic: if duplicate checking is needed, always use the full custom parser.
-
-  // --- Refined Strategy Selection ---
-  if (
-    !(options.relaxed || options.warnings || options.tolerant) &&
-    options.duplicate /* duplicate=true: allow duplicate keys */
-  ) {
-    // Case 1: Strict, no warnings, no tolerance, allow duplicates => Native fastest
-    return JSON.parse(text, options.reviver);
-  }
-  if (
-    options.warnings ||
-    options.tolerant ||
-    !options.duplicate /* duplicate=false: need duplicate key validation */
-  ) {
-    // Case 2: Warnings OR Tolerance OR Strict Duplicate Check needed => Full custom parser
-    tokens = lexerToUse(text);
-    if (options.relaxed) {
-      tokens = stripTrailingComma(tokens);
-    }
-    tokens = tokens.filter((token) => token.type !== " "); // Always filter whitespace for custom parser
-    const state: ParseState = {
-      pos: 0,
-      reviver: options.reviver,
-      tolerant: options.tolerant, // Ensure boolean
-      duplicate: options.duplicate, // true = allow duplicate keys, false = reject duplicates
-      warnings: [],
-    };
-    return parseAny(tokens, state, true);
-  }
-  // Case 3: Relaxed, no warnings, no tolerance, allow duplicates => Lex, transform, native parse
-  tokens = lexer(text); // Must be relaxed lexer here
-  tokens = stripTrailingComma(tokens);
-  const newtext = tokens.reduce((str, token) => str + token.match, "");
-  return JSON.parse(
-    newtext,
-    options.reviver as (key: string, value: unknown) => unknown
-  );
+  // Strategy 3: Relaxed syntax without warnings/tolerance -> transform and use native
+  return parseWithTransform(text, options);
 }
 
 // --- Stringify Function (Basic Implementation) ---

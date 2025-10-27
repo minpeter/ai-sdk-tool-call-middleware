@@ -355,9 +355,17 @@ function processBufferWithToolCall(
   params: ProcessBufferHandlerParams,
   controller: TransformStreamDefaultController
 ): boolean {
-  const { getBuffer, setBuffer, getCurrentToolCall, setCurrentToolCall, tools, options, flushText } = params;
+  const {
+    getBuffer,
+    setBuffer,
+    getCurrentToolCall,
+    setCurrentToolCall,
+    tools,
+    options,
+    flushText,
+  } = params;
   const currentToolCall = getCurrentToolCall();
-  
+
   const result = processToolCallInBuffer({
     buffer: getBuffer(),
     currentToolCall,
@@ -375,8 +383,15 @@ function processBufferWithoutToolCall(
   params: ProcessBufferHandlerParams,
   controller: TransformStreamDefaultController
 ): { shouldBreak: boolean; shouldContinue: boolean } {
-  const { getBuffer, setBuffer, setCurrentToolCall, toolNames, maxStartTagLen, flushText } = params;
-  
+  const {
+    getBuffer,
+    setBuffer,
+    setCurrentToolCall,
+    toolNames,
+    maxStartTagLen,
+    flushText,
+  } = params;
+
   const result = processNoToolCallInBuffer({
     buffer: getBuffer(),
     toolNames,
@@ -386,28 +401,41 @@ function processBufferWithoutToolCall(
   });
   setBuffer(result.buffer);
   setCurrentToolCall(result.currentToolCall);
-  return { shouldBreak: result.shouldBreak, shouldContinue: result.shouldContinue };
+  return {
+    shouldBreak: result.shouldBreak,
+    shouldContinue: result.shouldContinue,
+  };
+}
+
+function processBufferLoop(
+  params: ProcessBufferHandlerParams,
+  controller: TransformStreamDefaultController
+): void {
+  while (true) {
+    const currentToolCall = params.getCurrentToolCall();
+    if (currentToolCall) {
+      const shouldBreak = processBufferWithToolCall(params, controller);
+      if (shouldBreak) {
+        break;
+      }
+    } else {
+      const { shouldBreak, shouldContinue } = processBufferWithoutToolCall(
+        params,
+        controller
+      );
+      if (shouldContinue) {
+        continue;
+      }
+      if (shouldBreak) {
+        break;
+      }
+    }
+  }
 }
 
 function createProcessBufferHandler(params: ProcessBufferHandlerParams) {
   return (controller: TransformStreamDefaultController) => {
-    while (true) {
-      const currentToolCall = params.getCurrentToolCall();
-      if (currentToolCall) {
-        const shouldBreak = processBufferWithToolCall(params, controller);
-        if (shouldBreak) {
-          break;
-        }
-      } else {
-        const { shouldBreak, shouldContinue } = processBufferWithoutToolCall(params, controller);
-        if (shouldContinue) {
-          continue;
-        }
-        if (shouldBreak) {
-          break;
-        }
-      }
-    }
+    processBufferLoop(params, controller);
   };
 }
 
@@ -523,7 +551,9 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
         buffer = newBuffer;
       },
       getCurrentToolCall: () => currentToolCall,
-      setCurrentToolCall: (newToolCall: { name: string; content: string } | null) => {
+      setCurrentToolCall: (
+        newToolCall: { name: string; content: string } | null
+      ) => {
         currentToolCall = newToolCall;
       },
       tools,
