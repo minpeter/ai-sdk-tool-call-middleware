@@ -208,7 +208,8 @@ describe("XMLTokenizer", () => {
       );
       const result = tokenizer.parseNode();
       const whitespaceNodes = result.children.filter(
-        (child) => typeof child === "string" && WHITESPACE_ONLY_REGEX.test(child)
+        (child) =>
+          typeof child === "string" && WHITESPACE_ONLY_REGEX.test(child)
       );
       expect(whitespaceNodes).toHaveLength(0);
     });

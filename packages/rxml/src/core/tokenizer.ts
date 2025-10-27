@@ -126,7 +126,7 @@ export class XMLTokenizer {
     }
 
     const nextChar = this.xmlString.charCodeAt(this.pos + 1);
-    
+
     if (nextChar === CharCodes.SLASH) {
       // Closing tag
       const result = this.handleClosingTag(tagName, children);

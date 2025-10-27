@@ -14,7 +14,6 @@ import {
   RXMLStringifyError,
   simplify,
   stringify,
-  unwrapJsonSchema,
 } from "@/index";
 
 import { schemaTestCases } from "../fixtures/test-data";
@@ -115,9 +114,7 @@ describe("robust-xml integration", () => {
       );
 
       // Should throw by default
-      expect(() => parse(xml, schema)).toThrow(
-        RXMLDuplicateStringTagError
-      );
+      expect(() => parse(xml, schema)).toThrow(RXMLDuplicateStringTagError);
 
       // Should handle gracefully when configured
       const result = parse(xml, schema, {

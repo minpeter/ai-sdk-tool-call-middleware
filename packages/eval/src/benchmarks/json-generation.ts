@@ -446,7 +446,9 @@ async function processSchemaOnlyTestCase(
     // ignore
   }
   if (parsed === undefined) {
-    context.logs.push(`[FAIL] ${tc.id}: Could not parse JSON from model output.`);
+    context.logs.push(
+      `[FAIL] ${tc.id}: Could not parse JSON from model output.`
+    );
     return false;
   }
 

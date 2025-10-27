@@ -18,19 +18,12 @@ const WHITESPACE_REGEX = /\s/;
  */
 export class XMLTransformStream extends Transform {
   private buffer = "";
-  private position: number;
   private readonly parseOptions: ParseOptions;
   private emittedCount = 0;
   private sawTagChar = false;
 
   constructor(offset?: number | string, parseOptions: ParseOptions = {}) {
     super({ readableObjectMode: true });
-
-    if (typeof offset === "string") {
-      this.position = offset.length;
-    } else {
-      this.position = offset || 0;
-    }
 
     this.parseOptions = {
       keepComments: false,
@@ -41,7 +34,7 @@ export class XMLTransformStream extends Transform {
 
   _transform(
     chunk: Buffer,
-    encoding: BufferEncoding,
+    _encoding: BufferEncoding,
     callback: TransformCallback
   ): void {
     try {
@@ -353,7 +346,7 @@ export function createXMLStream(
 /**
  * Parse XML from a readable stream
  */
-export async function parseFromStream(
+export function parseFromStream(
   stream: Readable,
   offset?: number | string,
   parseOptions?: ParseOptions
@@ -444,7 +437,10 @@ export async function* processXMLStream(
     }
 
     if (queue.length > 0) {
-      yield queue.shift()!;
+      const item = queue.shift();
+      if (item !== undefined) {
+        yield item;
+      }
       continue;
     }
 

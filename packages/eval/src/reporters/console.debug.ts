@@ -13,10 +13,15 @@ const colors = {
 };
 
 function colorizeDiffLine(line: string): string {
-  if (line.startsWith("+")) return `${colors.green}${line}${colors.reset}`;
-  if (line.startsWith("-")) return `${colors.red}${line}${colors.reset}`;
-  if (line.startsWith("@"))
+  if (line.startsWith("+")) {
+    return `${colors.green}${line}${colors.reset}`;
+  }
+  if (line.startsWith("-")) {
+    return `${colors.red}${line}${colors.reset}`;
+  }
+  if (line.startsWith("@")) {
     return `${colors.cyan}${colors.bold}${line}${colors.reset}`;
+  }
   return line;
 }
 
