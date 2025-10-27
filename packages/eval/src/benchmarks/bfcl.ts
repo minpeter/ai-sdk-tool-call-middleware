@@ -23,6 +23,7 @@ import {
 
 // Regex constants for performance
 const LINE_SPLIT_REGEX = /\r?\n/;
+const NUMERIC_STRING_REGEX = /^\d+$/;
 
 // --- Interfaces ---
 type ToolSchemaObject = {
@@ -274,12 +275,38 @@ function createBfclBenchmark(
         const parseDebugToolCalls = (
           raw: string | undefined
         ): Array<{ toolName?: string; input?: unknown }> => {
-          if (!raw) return [];
+          if (!raw) {
+            return [];
+          }
           try {
             const arr = JSON.parse(raw);
             return Array.isArray(arr) ? arr : [];
           } catch {
             return [];
+          }
+        };
+
+        // Helper: Get sanitized name from index or raw name
+        const getSanitizedName = (
+          rawName: unknown,
+          transformedTools: TransformedTool[]
+        ): unknown => {
+          if (typeof rawName === "string" && NUMERIC_STRING_REGEX.test(rawName)) {
+            return transformedTools[Number(rawName)]?.name ?? rawName;
+          }
+          return rawName;
+        };
+
+        // Helper: Parse arguments from various formats
+        const parseToolArgs = (extractedArgs: unknown): unknown => {
+          if (typeof extractedArgs !== "string") {
+            return extractedArgs;
+          }
+          try {
+            return JSON.parse(extractedArgs);
+          } catch {
+            // leave as string if not JSON
+            return extractedArgs;
           }
         };
 
@@ -291,22 +318,12 @@ function createBfclBenchmark(
         ): unknown[] =>
           (toolCalls || []).map((c: Record<string, unknown>) => {
             const rawName = c.toolName ?? c.name;
-            const sanitizedFromIndex =
-              typeof rawName === "string" && /^\d+$/.test(rawName)
-                ? (transformedTools[Number(rawName)]?.name ?? rawName)
-                : rawName;
+            const sanitizedFromIndex = getSanitizedName(rawName, transformedTools);
             const originalName =
               nameMap.get(sanitizedFromIndex as string) ?? sanitizedFromIndex;
             const extractedArgs =
               c.args ?? c.arguments ?? c.input ?? c.params ?? c.parameters;
-            let parsedArgs = extractedArgs;
-            if (typeof parsedArgs === "string") {
-              try {
-                parsedArgs = JSON.parse(parsedArgs);
-              } catch {
-                // leave as string if not JSON
-              }
-            }
+            const parsedArgs = parseToolArgs(extractedArgs);
             return {
               ...c,
               toolName: originalName,
@@ -317,8 +334,12 @@ function createBfclBenchmark(
 
         // Helper: Summarize args for stable output
         const summarizeArgs = (args: unknown): unknown => {
-          if (args == null) return args;
-          if (typeof args !== "object") return args;
+          if (args == null) {
+            return args;
+          }
+          if (typeof args !== "object") {
+            return args;
+          }
           return Object.keys(args)
             .sort()
             .reduce(
@@ -361,7 +382,9 @@ function createBfclBenchmark(
 
         // Helper: Check if param value matches allowed values
         const paramValueMatches = (allowed: unknown, got: unknown): boolean => {
-          if (!Array.isArray(allowed)) return false;
+          if (!Array.isArray(allowed)) {
+            return false;
+          }
           return allowed.some((v: unknown) => {
             try {
               if (Array.isArray(got)) {
@@ -371,7 +394,7 @@ function createBfclBenchmark(
                 );
               }
             } catch {
-              void 0;
+              // Ignore parse errors
             }
             return (
               String(v).toLowerCase().replace(/\s+/g, "") ===
