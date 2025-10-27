@@ -193,13 +193,13 @@ function createBfclBenchmark(
         // Helper: fix BFCL JSON schema properties recursively
         const fixSchemaProperties = (
           copy: ToolSchemaObject,
-          fixSchema: (schema: unknown) => unknown
+          fixSchemaFn: (schema: unknown) => unknown
         ): void => {
           if (!copy.properties || typeof copy.properties !== "object") {
             return;
           }
           for (const k of Object.keys(copy.properties)) {
-            (copy.properties as Record<string, unknown>)[k] = fixSchema(
+            (copy.properties as Record<string, unknown>)[k] = fixSchemaFn(
               (copy.properties as Record<string, unknown>)[k]
             );
           }
@@ -234,22 +234,22 @@ function createBfclBenchmark(
             : (messages as Message[]);
 
         // Helper: Sanitize tool name for OpenAI compatibility
-        const sanitizeName = (name: string): string => {
-          const s = name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+        const sanitizeName = (toolName: string): string => {
+          const s = toolName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
           return s.length > 0 ? s : "tool";
         };
 
         // Helper: Build transformed tools and name mapping
         const buildTransformedTools = (
           tools: ToolSpec[],
-          fixSchema: (schema: unknown) => unknown
+          fixSchemaFn: (schema: unknown) => unknown
         ): {
           transformedTools: TransformedTool[];
           nameMap: Map<string, string>;
         } => {
           const nameMap = new Map<string, string>();
           const transformedTools: TransformedTool[] = tools.map((t) => {
-            const fixed = fixSchema(t.parameters);
+            const fixed = fixSchemaFn(t.parameters);
             const isObjectSchema =
               fixed &&
               typeof fixed === "object" &&
@@ -503,9 +503,21 @@ function createBfclBenchmark(
             receivedArgs !== null
           ) {
             const required = (funcDesc?.parameters?.required ?? []) as string[];
-            checkMissingParams(required, receivedArgs as Record<string, unknown>, diff);
-            checkUnexpectedParams(expectedParams, receivedArgs as Record<string, unknown>, diff);
-            checkParamValueMismatches(expectedParams, receivedArgs as Record<string, unknown>, diff);
+            checkMissingParams(
+              required,
+              receivedArgs as Record<string, unknown>,
+              diff
+            );
+            checkUnexpectedParams(
+              expectedParams,
+              receivedArgs as Record<string, unknown>,
+              diff
+            );
+            checkParamValueMismatches(
+              expectedParams,
+              receivedArgs as Record<string, unknown>,
+              diff
+            );
           }
 
           return { expected, actual, diff };
@@ -560,38 +572,49 @@ function createBfclBenchmark(
         };
 
         // Helper: Validate function parameters
-        const validateFunctionParams = (
-          receivedArgs: Record<string, unknown>,
-          expectedParamsAllowed: Record<string, unknown>,
-          requiredParams: string[],
-          diff: string[]
-        ): void => {
+        const validateFunctionParams = (options: {
+          receivedArgs: Record<string, unknown>;
+          expectedParamsAllowed: Record<string, unknown>;
+          requiredParams: string[];
+          diff: string[];
+        }): void => {
+          const { receivedArgs, expectedParamsAllowed, requiredParams, diff } =
+            options;
           checkMissingParams(requiredParams, receivedArgs, diff);
           checkUnexpectedParams(expectedParamsAllowed, receivedArgs, diff);
           checkParamValueMismatches(expectedParamsAllowed, receivedArgs, diff);
         };
 
         // Helper: Process single expected function call
-        const processExpectedCall = (
-          expectedObj: Record<string, unknown>,
-          restoredCalls: Record<string, unknown>[],
-          tools: ToolSpec[],
-          usedActual: Set<number>,
-          diff: string[]
-        ): void => {
+        const processExpectedCall = (options: {
+          expectedObj: Record<string, unknown>;
+          restoredCalls: Record<string, unknown>[];
+          tools: ToolSpec[];
+          usedActual: Set<number>;
+          diff: string[];
+        }): void => {
+          const { expectedObj, restoredCalls, tools, usedActual, diff } = options;
           const fname = Object.keys(expectedObj)[0];
-          const matchedIndex = findMatchingCallIndex(fname, restoredCalls, usedActual);
-          
+          const matchedIndex = findMatchingCallIndex(
+            fname,
+            restoredCalls,
+            usedActual
+          );
+
           if (matchedIndex === -1) {
             return;
           }
-          
+
           usedActual.add(matchedIndex);
           const received = restoredCalls[matchedIndex];
           const receivedArgs = summarizeArgs(received?.args);
-          const expectedParamsAllowed = expectedObj[fname] as Record<string, unknown>;
+          const expectedParamsAllowed = expectedObj[fname] as Record<
+            string,
+            unknown
+          >;
           const funcDesc = tools.find((t: ToolSpec) => t.name === fname);
-          const requiredParams = (funcDesc?.parameters?.required ?? []) as string[];
+          const requiredParams = (funcDesc?.parameters?.required ??
+            []) as string[];
 
           diff.push(`@@ function ${fname}`);
 
@@ -601,12 +624,12 @@ function createBfclBenchmark(
             typeof receivedArgs === "object" &&
             receivedArgs !== null
           ) {
-            validateFunctionParams(
-              receivedArgs as Record<string, unknown>,
+            validateFunctionParams({
+              receivedArgs: receivedArgs as Record<string, unknown>,
               expectedParamsAllowed,
               requiredParams,
-              diff
-            );
+              diff,
+            });
           }
         };
 
@@ -637,18 +660,22 @@ function createBfclBenchmark(
           const actual: Record<string, unknown> = { functions: actualNames };
           const diff: string[] = [];
 
-          checkCallCountMismatch(expectedNames.length, actualNames.length, diff);
+          checkCallCountMismatch(
+            expectedNames.length,
+            actualNames.length,
+            diff
+          );
           addMissingAndExtraFunctions(expectedNames, actualNames, diff);
 
           const usedActual = new Set<number>();
           for (const expectedObj of gtArr) {
-            processExpectedCall(
+            processExpectedCall({
               expectedObj,
-              restoredCalls as Record<string, unknown>[],
+              restoredCalls: restoredCalls as Record<string, unknown>[],
               tools,
               usedActual,
-              diff
-            );
+              diff,
+            });
           }
 
           return { expected, actual, diff };
@@ -663,6 +690,187 @@ function createBfclBenchmark(
         logs.push(
           `[INFO] Running ${testCases.length} test cases with concurrency=${concurrency}`
         );
+
+        // Helper: Log first tool debug info
+        const logFirstToolDebug = (
+          transformedTools: TransformedTool[],
+          testCaseId: string,
+          caseLogs: string[]
+        ): void => {
+          try {
+            const firstTool = transformedTools[0];
+            const schemaType =
+              firstTool?.inputSchema?.type ??
+              (
+                (
+                  firstTool?.inputSchema as
+                    | Record<string, unknown>
+                    | undefined
+                )?.jsonSchema as Record<string, unknown> | undefined
+              )?.type;
+            caseLogs.push(
+              `[DEBUG] ${testCaseId}: firstTool=${JSON.stringify(firstTool)}, schemaType=${schemaType}`
+            );
+          } catch (e: unknown) {
+            caseLogs.push(
+              `[DEBUG] ${testCaseId}: failed to introspect tools: ${(e as Error).message}`
+            );
+          }
+        };
+
+        // Helper: Log raw tool calls
+        const logRawToolCalls = (
+          toolCalls: unknown,
+          finishReason: unknown,
+          text: unknown,
+          testCaseId: string,
+          caseLogs: string[]
+        ): void => {
+          try {
+            caseLogs.push(
+              `[DEBUG] ${testCaseId}: rawToolCalls=${JSON.stringify(toolCalls)}, finishReason=${finishReason}, text=${JSON.stringify(text)}`
+            );
+          } catch {
+            caseLogs.push(
+              `[DEBUG] ${testCaseId}: failed to serialize toolCalls`
+            );
+          }
+        };
+
+        // Helper: Build failure context payload
+        const buildFailureContext = (options: {
+          testCase: TestCase;
+          tools: ToolSpec[];
+          flatMessages: Message[];
+          mwOriginalText: string | undefined;
+          text: unknown;
+          finishReason: unknown;
+          mwParsedToolCalls: Array<{ toolName?: string; input?: unknown }>;
+          restoredCalls: unknown[];
+          possibleAnswer: PossibleAnswer;
+        }): Record<string, unknown> => {
+          const {
+            testCase,
+            tools,
+            flatMessages,
+            mwOriginalText,
+            text,
+            finishReason,
+            mwParsedToolCalls,
+            restoredCalls,
+            possibleAnswer,
+          } = options;
+
+          const lastUser = (() => {
+            const reversed = [...flatMessages].reverse();
+            const found = reversed.find(
+              (m) => (m as Message).role === "user"
+            ) as Message | undefined;
+            return found?.content ?? undefined;
+          })();
+
+          const rawModelText = (() => {
+            if (mwOriginalText && mwOriginalText.length > 0) {
+              return mwOriginalText;
+            }
+            if (typeof text === "string") {
+              return text;
+            }
+            return "";
+          })();
+
+          return {
+            id: testCase.id,
+            tool_schema: tools,
+            last_user_query: lastUser,
+            raw_model_text: rawModelText,
+            finish_reason: finishReason,
+            parsed_tool_calls: mwParsedToolCalls.length
+              ? mwParsedToolCalls
+              : restoredCalls,
+            ground_truth: (possibleAnswer as { ground_truth?: unknown })
+              .ground_truth,
+          };
+        };
+
+        // Helper: Log failure details
+        const logFailureDetails = (options: {
+          testCase: TestCase;
+          tools: ToolSpec[];
+          possibleAnswer: PossibleAnswer;
+          restoredCalls: unknown[];
+          checkerResult: { valid: boolean; error?: string; error_type?: string };
+          flatMessages: Message[];
+          mwOriginalText: string | undefined;
+          text: unknown;
+          finishReason: unknown;
+          mwParsedToolCalls: Array<{ toolName?: string; input?: unknown }>;
+          caseLogs: string[];
+        }): void => {
+          const {
+            testCase,
+            tools,
+            possibleAnswer,
+            restoredCalls,
+            checkerResult,
+            flatMessages,
+            mwOriginalText,
+            text,
+            finishReason,
+            mwParsedToolCalls,
+            caseLogs,
+          } = options;
+
+          try {
+            const category = testCase.id.split("_")[0];
+            const { expected, actual, diff } =
+              category === "simple"
+                ? buildSimpleDiff(
+                    tools as ToolSpec[],
+                    possibleAnswer,
+                    restoredCalls
+                  )
+                : buildParallelDiff(
+                    tools as ToolSpec[],
+                    possibleAnswer,
+                    restoredCalls
+                  );
+
+            caseLogs.push(
+              `[DEBUG-FAIL] ${JSON.stringify({
+                id: testCase.id,
+                message: checkerResult.error,
+                error_type: checkerResult.error_type,
+                expected,
+                actual,
+                diff,
+              })}`
+            );
+
+            try {
+              const contextPayload = buildFailureContext({
+                testCase,
+                tools,
+                flatMessages,
+                mwOriginalText,
+                text,
+                finishReason,
+                mwParsedToolCalls,
+                restoredCalls,
+                possibleAnswer,
+              });
+              caseLogs.push(
+                `[DEBUG-FAIL-CONTEXT] ${JSON.stringify(contextPayload)}`
+              );
+            } catch {
+              // ignore context build failures
+            }
+          } catch {
+            caseLogs.push(
+              `[DEBUG] ${testCase.id}: failed to build debug diff`
+            );
+          }
+        };
 
         // Per-test runner that does not throw and returns its own logs
         const runSingleCase = async (
@@ -697,29 +905,9 @@ function createBfclBenchmark(
               ])
             );
 
-            // Debug: record first tool object and schema type
-            try {
-              const firstTool = transformedTools[0];
-              const schemaType =
-                firstTool?.inputSchema?.type ??
-                (
-                  (
-                    firstTool?.inputSchema as
-                      | Record<string, unknown>
-                      | undefined
-                  )?.jsonSchema as Record<string, unknown> | undefined
-                )?.type;
-              caseLogs.push(
-                `[DEBUG] ${testCase.id}: firstTool=${JSON.stringify(firstTool)}, schemaType=${schemaType}`
-              );
-            } catch (e: unknown) {
-              caseLogs.push(
-                `[DEBUG] ${testCase.id}: failed to introspect tools: ${(e as Error).message}`
-              );
-            }
+            logFirstToolDebug(transformedTools, testCase.id, caseLogs);
 
             // Capture middleware debugSummary output via shared reference
-            // Note: providerOptions are provider-specific in AI SDK; we only type the middleware slice we use
             type ProviderOptionsWithMiddleware = {
               toolCallMiddleware?: {
                 debugSummary?: {
@@ -732,7 +920,6 @@ function createBfclBenchmark(
               originalText?: string;
               toolCalls?: string;
             } = {};
-            // Narrowly typed provider options to carry middleware debug sink
             const providerOptions: ProviderOptionsWithMiddleware = {
               toolCallMiddleware: {
                 debugSummary: debugSummaryRef,
@@ -756,16 +943,7 @@ function createBfclBenchmark(
               debugSummaryRef.toolCalls
             );
 
-            // Debug: raw toolCalls
-            try {
-              caseLogs.push(
-                `[DEBUG] ${testCase.id}: rawToolCalls=${JSON.stringify(toolCalls)}, finishReason=${finishReason}, text=${JSON.stringify(text)}`
-              );
-            } catch {
-              caseLogs.push(
-                `[DEBUG] ${testCase.id}: failed to serialize toolCalls`
-              );
-            }
+            logRawToolCalls(toolCalls, finishReason, text, testCase.id, caseLogs);
 
             const possibleAnswer = possibleAnswersMap.get(testCase.id);
             if (!possibleAnswer) {
@@ -790,75 +968,26 @@ function createBfclBenchmark(
             }
 
             caseLogs.push(`[FAIL] ${testCase.id}: ${checkerResult.error}`);
-            try {
-              const category = testCase.id.split("_")[0];
-              const { expected, actual, diff } =
-                category === "simple"
-                  ? buildSimpleDiff(
-                      tools as ToolSpec[],
-                      possibleAnswer,
-                      restoredCalls
-                    )
-                  : buildParallelDiff(
-                      tools as ToolSpec[],
-                      possibleAnswer,
-                      restoredCalls
-                    );
-
-              caseLogs.push(
-                `[DEBUG-FAIL] ${JSON.stringify({
-                  id: testCase.id,
-                  message: checkerResult.error,
-                  error_type: checkerResult.error_type,
-                  expected,
-                  actual,
-                  diff,
-                })}`
-              );
-              // Attach rich context for debugging
-              try {
-                const lastUser = (() => {
-                  const reversed = [...flatMessages].reverse();
-                  const found = reversed.find(
-                    (m) => (m as Message).role === "user"
-                  ) as Message | undefined;
-                  return found?.content ?? undefined;
-                })();
-                const contextPayload = {
-                  id: testCase.id,
-                  tool_schema: tools,
-                  last_user_query: lastUser,
-                  raw_model_text:
-                    mwOriginalText && mwOriginalText.length > 0
-                      ? mwOriginalText
-                      : typeof text === "string"
-                        ? text
-                        : "",
-                  finish_reason: finishReason,
-                  parsed_tool_calls: mwParsedToolCalls.length
-                    ? mwParsedToolCalls
-                    : restoredCalls,
-                  ground_truth: (possibleAnswer as { ground_truth?: unknown })
-                    .ground_truth,
-                };
-                caseLogs.push(
-                  `[DEBUG-FAIL-CONTEXT] ${JSON.stringify(contextPayload)}`
-                );
-              } catch {
-                // ignore context build failures
-              }
-            } catch {
-              caseLogs.push(
-                `[DEBUG] ${testCase.id}: failed to build debug diff`
-              );
-            }
+            logFailureDetails({
+              testCase,
+              tools: tools as ToolSpec[],
+              possibleAnswer,
+              restoredCalls,
+              checkerResult,
+              flatMessages,
+              mwOriginalText,
+              text,
+              finishReason,
+              mwParsedToolCalls,
+              caseLogs,
+            });
             return { valid: false, logs: caseLogs };
-          } catch (e: any) {
+          } catch (e: unknown) {
             caseLogs.push(
-              `[ERROR] ${testCase.id}: Model generation failed: ${e?.message}`
+              `[ERROR] ${testCase.id}: Model generation failed: ${(e as Error)?.message}`
             );
-            if (e?.stack) {
-              caseLogs.push(`[STACK] ${testCase.id}: ${e.stack}`);
+            if ((e as Error)?.stack) {
+              caseLogs.push(`[STACK] ${testCase.id}: ${(e as Error).stack}`);
             }
             return { valid: false, logs: caseLogs };
           }
@@ -867,17 +996,19 @@ function createBfclBenchmark(
         // Generic concurrency mapper
         const mapWithConcurrency = async <T, R>(
           items: T[],
-          limit: number,
+          concurrencyLimit: number,
           mapper: (item: T, index: number) => Promise<R>
         ): Promise<R[]> => {
           const results = new Array<R>(items.length);
           let idx = 0;
-          const workers = new Array(Math.min(limit, items.length))
+          const workers = new Array(Math.min(concurrencyLimit, items.length))
             .fill(0)
             .map(async () => {
               while (true) {
                 const current = idx++;
-                if (current >= items.length) break;
+                if (current >= items.length) {
+                  break;
+                }
                 results[current] = await mapper(items[current], current);
               }
             });
@@ -896,7 +1027,9 @@ function createBfclBenchmark(
           (acc, r) => acc + (r.valid ? 1 : 0),
           0
         );
-        for (const r of resultsPerCase) logs.push(...r.logs);
+        for (const r of resultsPerCase) {
+          logs.push(...r.logs);
+        }
 
         if (testCases.length === 0) {
           return {
@@ -918,13 +1051,13 @@ function createBfclBenchmark(
           },
           logs,
         };
-      } catch (e: any) {
+      } catch (e: unknown) {
         return {
           score: 0,
           success: false,
           metrics: {},
           error: e,
-          logs: [`[FATAL] Failed to run benchmark ${name}: ${e.message}`],
+          logs: [`[FATAL] Failed to run benchmark ${name}: ${(e as Error).message}`],
         };
       }
     },

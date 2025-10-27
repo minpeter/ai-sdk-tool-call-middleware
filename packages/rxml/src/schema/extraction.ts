@@ -134,17 +134,18 @@ function skipToTagEnd(
 /**
  * Helper to process closing tag in findMatchingCloseTag
  */
-function processClosingTagMatch(
-  xmlContent: string,
-  nx: number,
-  len: number,
-  tagName: string,
-  depth: number,
-  nextLt: number
-): { newPos: number; newDepth: number; found: boolean } {
+function processClosingTagMatch(options: {
+  xmlContent: string;
+  nx: number;
+  len: number;
+  tagName: string;
+  depth: number;
+  nextLt: number;
+}): { newPos: number; newDepth: number; found: boolean } {
+  const { xmlContent, nx, len, tagName, depth, nextLt } = options;
   const tagInfo = parseTagName(xmlContent, nx + 1, len);
   const gt = xmlContent.indexOf(">", tagInfo.pos);
-  
+
   if (tagInfo.name === tagName) {
     const newDepth = depth - 1;
     if (newDepth === 0) {
@@ -152,31 +153,32 @@ function processClosingTagMatch(
     }
     return { newPos: gt === -1 ? len : gt + 1, newDepth, found: false };
   }
-  
+
   return { newPos: gt === -1 ? len : gt + 1, newDepth: depth, found: false };
 }
 
 /**
  * Helper to process opening tag in findMatchingCloseTag
  */
-function processOpeningTagMatch(
-  xmlContent: string,
-  nx: number,
-  len: number,
-  tagName: string,
-  depth: number
-): { newPos: number; newDepth: number } {
+function processOpeningTagMatch(options: {
+  xmlContent: string;
+  nx: number;
+  len: number;
+  tagName: string;
+  depth: number;
+}): { newPos: number; newDepth: number } {
+  const { xmlContent, nx, len, tagName, depth } = options;
   const tagInfo = parseTagName(xmlContent, nx, len);
   const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
 
-  const newDepth = (tagInfo.name === tagName && !tagEndInfo.isSelfClosing) 
-    ? depth + 1 
-    : depth;
-  
-  const newPos = xmlContent[tagEndInfo.pos] === ">"
-    ? tagEndInfo.pos + 1
-    : tagEndInfo.pos + 1;
-  
+  const newDepth =
+    tagInfo.name === tagName && !tagEndInfo.isSelfClosing ? depth + 1 : depth;
+
+  const newPos =
+    xmlContent[tagEndInfo.pos] === ">"
+      ? tagEndInfo.pos + 1
+      : tagEndInfo.pos + 1;
+
   return { newPos, newDepth };
 }
 
@@ -202,21 +204,34 @@ function findMatchingCloseTag(
     const nx = nextLt + 1;
     const h = xmlContent[nx];
     const specialPos = skipSpecialConstruct(xmlContent, nx, len);
-    
+
     if (specialPos !== -1) {
       pos = specialPos;
       continue;
     }
 
     if (h === "/") {
-      const result = processClosingTagMatch(xmlContent, nx, len, tagName, depth, nextLt);
+      const result = processClosingTagMatch({
+        xmlContent,
+        nx,
+        len,
+        tagName,
+        depth,
+        nextLt,
+      });
       if (result.found) {
         return result.newPos;
       }
       pos = result.newPos;
       depth = result.newDepth;
     } else {
-      const result = processOpeningTagMatch(xmlContent, nx, len, tagName, depth);
+      const result = processOpeningTagMatch({
+        xmlContent,
+        nx,
+        len,
+        tagName,
+        depth,
+      });
       pos = result.newPos;
       depth = result.newDepth;
     }
@@ -252,7 +267,8 @@ function processTargetTag(options: {
   depth: number;
   bestDepth: number;
 }): { start: number; end: number; depth: number } | null {
-  const { xmlContent, tagEnd, isSelfClosing, target, len, depth, bestDepth } = options;
+  const { xmlContent, tagEnd, isSelfClosing, target, len, depth, bestDepth } =
+    options;
   const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
 
   if (isSelfClosing) {
@@ -285,18 +301,19 @@ function handleClosingTagInExtract(
 /**
  * Helper to process opening tag in extractRawInner
  */
-function processOpeningTagInExtract(
-  xmlContent: string,
-  i: number,
-  len: number,
-  target: string,
-  depth: number,
-  bestDepth: number
-): {
+function processOpeningTagInExtract(options: {
+  xmlContent: string;
+  i: number;
+  len: number;
+  target: string;
+  depth: number;
+  bestDepth: number;
+}): {
   newPos: number;
   newDepth: number;
   bestMatch: { start: number; end: number; depth: number } | null;
 } {
+  const { xmlContent, i, len, target, depth, bestDepth } = options;
   const tagInfo = parseTagName(xmlContent, i, len);
   const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
   const tagEnd = tagEndInfo.pos;
@@ -360,7 +377,14 @@ export function extractRawInner(
       continue;
     }
 
-    const result = processOpeningTagInExtract(xmlContent, i, len, target, depth, bestDepth);
+    const result = processOpeningTagInExtract({
+      xmlContent,
+      i,
+      len,
+      target,
+      depth,
+      bestDepth,
+    });
     if (result.bestMatch) {
       bestStart = result.bestMatch.start;
       bestEnd = result.bestMatch.end;
@@ -597,7 +621,11 @@ function isPositionExcluded(
 /**
  * Helper to skip comment in counting
  */
-function skipCommentInCounting(xmlContent: string, i: number, len: number): number {
+function skipCommentInCounting(
+  xmlContent: string,
+  i: number,
+  len: number
+): number {
   const close = xmlContent.indexOf("-->", i + 4);
   return close === -1 ? len : close + 3;
 }
@@ -605,7 +633,11 @@ function skipCommentInCounting(xmlContent: string, i: number, len: number): numb
 /**
  * Helper to skip CDATA in counting
  */
-function skipCdataInCounting(xmlContent: string, i: number, len: number): number {
+function skipCdataInCounting(
+  xmlContent: string,
+  i: number,
+  len: number
+): number {
   const close = xmlContent.indexOf("]]>", i + 9);
   return close === -1 ? len : close + 3;
 }
@@ -799,12 +831,22 @@ function findClosingTagForRange(
     }
 
     if (xmlContent[nextLt + 1] === "/") {
-      closeDepth = updateDepthForClosingTag(xmlContent, nextLt, target, closeDepth);
+      closeDepth = updateDepthForClosingTag(
+        xmlContent,
+        nextLt,
+        target,
+        closeDepth
+      );
     } else if (
       xmlContent[nextLt + 1] !== "!" &&
       xmlContent[nextLt + 1] !== "?"
     ) {
-      closeDepth = updateDepthForOpeningTag(xmlContent, nextLt, target, closeDepth);
+      closeDepth = updateDepthForOpeningTag(
+        xmlContent,
+        nextLt,
+        target,
+        closeDepth
+      );
     }
 
     j = xmlContent.indexOf(">", nextLt + 1);
@@ -849,7 +891,11 @@ function processTopLevelTarget(options: {
 /**
  * Helper to skip DOCTYPE declaration
  */
-function skipDoctypeInSpecial(xmlContent: string, i: number, len: number): number {
+function skipDoctypeInSpecial(
+  xmlContent: string,
+  i: number,
+  len: number
+): number {
   const gt = xmlContent.indexOf(">", i + 1);
   return gt === -1 ? len : gt + 1;
 }
@@ -892,7 +938,10 @@ function handleClosingTagInFindAllTop(
   target: string,
   depth: number
 ): { newPos: number; newDepth: number } {
-  const { name: closingName, newPos: closingPos } = parseName(xmlContent, i + 1);
+  const { name: closingName, newPos: closingPos } = parseName(
+    xmlContent,
+    i + 1
+  );
   const newDepth = closingName === target ? depth - 1 : depth;
   const gt = xmlContent.indexOf(">", closingPos);
   return {
