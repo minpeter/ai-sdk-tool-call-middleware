@@ -1,3 +1,10 @@
+// Regex constants for performance
+const NUMERIC_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const EMPTY_OBJECT_REGEX = /^\{\s*\}$/s;
+const NEWLINE_SPLIT_REGEX = /\n+/;
+const COMMA_SPLIT_REGEX = /,\s*/;
+const DIGIT_KEY_REGEX = /^\d+$/;
+
 export function unwrapJsonSchema(schema: unknown): unknown {
   if (!schema || typeof schema !== "object") {
     return schema;
@@ -59,7 +66,7 @@ function coerceStringWithoutSchema(value: string): unknown {
   if (lower === "false") {
     return false;
   }
-  if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)) {
+  if (NUMERIC_REGEX.test(s)) {
     const num = Number(s);
     if (Number.isFinite(num)) {
       return num;
@@ -90,20 +97,16 @@ function coerceStringToObject(
 ): unknown {
   try {
     let normalized = s.replace(/'/g, '"');
-    normalized = normalized.replace(/^\{\s*\}$/s, "{}");
+    normalized = normalized.replace(EMPTY_OBJECT_REGEX, "{}");
 
     const obj = JSON.parse(normalized);
     if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      const props = unwrapped.properties as
-        | Record<string, unknown>
-        | undefined;
+      const props = unwrapped.properties as Record<string, unknown> | undefined;
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
         const propSchema = props ? (props[k] as unknown) : undefined;
         out[k] =
-          typeof propSchema === "boolean"
-            ? v
-            : coerceBySchema(v, propSchema);
+          typeof propSchema === "boolean" ? v : coerceBySchema(v, propSchema);
       }
       return out;
     }
@@ -135,7 +138,7 @@ function coerceStringToArray(
       return arr.map((v) => coerceBySchema(v, itemsSchema));
     }
   } catch {
-    const csv = s.includes("\n") ? s.split(/\n+/) : s.split(/,\s*/);
+    const csv = s.includes("\n") ? s.split(NEWLINE_SPLIT_REGEX) : s.split(COMMA_SPLIT_REGEX);
     const trimmed = csv.map((x) => x.trim()).filter((x) => x.length > 0);
     if (prefixItems && trimmed.length === prefixItems.length) {
       return trimmed.map((x, i) => coerceBySchema(x, prefixItems[i]));
@@ -201,10 +204,8 @@ function coerceObjectToArray(
   }
 
   // Check for numeric keys (traditional tuple handling)
-  if (keys.length > 0 && keys.every((k) => /^\d+$/.test(k))) {
-    const arr = keys
-      .sort((a, b) => Number(a) - Number(b))
-      .map((k) => maybe[k]);
+  if (keys.length > 0 && keys.every((k) => DIGIT_KEY_REGEX.test(k))) {
+    const arr = keys.sort((a, b) => Number(a) - Number(b)).map((k) => maybe[k]);
     return coerceArrayToArray(arr, prefixItems, itemsSchema);
   }
 
@@ -243,7 +244,7 @@ function coerceStringToPrimitive(
   }
   if (
     (schemaType === "number" || schemaType === "integer") &&
-    /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(s)
+    NUMERIC_REGEX.test(s)
   ) {
     const num = Number(s);
     if (Number.isFinite(num)) {
@@ -251,6 +252,67 @@ function coerceStringToPrimitive(
     }
   }
   return null;
+}
+
+function coerceStringValue(
+  value: string,
+  schemaType: string | undefined,
+  u: Record<string, unknown>
+): unknown {
+  const s = value.trim();
+  
+  if (schemaType === "object") {
+    const result = coerceStringToObject(s, u);
+    if (result !== null) {
+      return result;
+    }
+  }
+  
+  if (schemaType === "array") {
+    const result = coerceStringToArray(s, u);
+    if (result !== null) {
+      return result;
+    }
+  }
+  
+  const primitiveResult = coerceStringToPrimitive(s, schemaType);
+  if (primitiveResult !== null) {
+    return primitiveResult;
+  }
+  
+  return value;
+}
+
+function coerceArrayValue(
+  value: unknown,
+  prefixItems: unknown[] | undefined,
+  itemsSchema: unknown
+): unknown {
+  if (Array.isArray(value)) {
+    return coerceArrayToArray(value, prefixItems, itemsSchema);
+  }
+
+  if (value && typeof value === "object") {
+    const result = coerceObjectToArray(
+      value as Record<string, unknown>,
+      prefixItems,
+      itemsSchema
+    );
+    if (result !== null) {
+      return result;
+    }
+  }
+
+  if (
+    value == null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return coercePrimitiveToArray(value, prefixItems, itemsSchema);
+  }
+
+  return value;
 }
 
 export function coerceBySchema(value: unknown, schema?: unknown): unknown {
@@ -267,19 +329,7 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
 
   // Handle string values
   if (typeof value === "string") {
-    const s = value.trim();
-    if (schemaType === "object") {
-      const result = coerceStringToObject(s, u);
-      if (result !== null) {
-        return result;
-      }
-    }
-    if (schemaType === "array") {
-      const result = coerceStringToArray(s, u);
-      if (result !== null) {
-        return result;
-      }
-    }
+    return coerceStringValue(value, schemaType, u);
   }
 
   // Handle object to object coercion
@@ -299,38 +349,7 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
       : undefined;
     const itemsSchema = u.items as unknown;
 
-    if (Array.isArray(value)) {
-      return coerceArrayToArray(value, prefixItems, itemsSchema);
-    }
-
-    if (value && typeof value === "object") {
-      const result = coerceObjectToArray(
-        value as Record<string, unknown>,
-        prefixItems,
-        itemsSchema
-      );
-      if (result !== null) {
-        return result;
-      }
-    }
-
-    if (
-      value == null ||
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean"
-    ) {
-      return coercePrimitiveToArray(value, prefixItems, itemsSchema);
-    }
-  }
-
-  // Handle string to primitive coercion
-  if (typeof value === "string") {
-    const s = value.trim();
-    const result = coerceStringToPrimitive(s, schemaType);
-    if (result !== null) {
-      return result;
-    }
+    return coerceArrayValue(value, prefixItems, itemsSchema);
   }
 
   return value;

@@ -264,13 +264,14 @@ function buildOpeningTag(
 /**
  * Stringify text-only content
  */
-function stringifyTextOnlyContent(
-  tagName: string,
-  textContent: string,
-  openTag: string,
-  format: FormatOptions,
-  minimalEscaping: boolean
-): string {
+function stringifyTextOnlyContent(options: {
+  tagName: string;
+  textContent: string;
+  openTag: string;
+  format: FormatOptions;
+  minimalEscaping: boolean;
+}): string {
+  const { tagName, textContent, openTag, format, minimalEscaping } = options;
   const content = escapeContent(textContent, minimalEscaping);
   return `${format.indent}${openTag}${content}</${tagName}>${format.newline}`;
 }
@@ -299,7 +300,9 @@ function stringifyComplexContent(
 
   if (textContent) {
     const content = escapeContent(textContent, minimalEscaping);
-    result += format ? `${options.newline}${options.childIndent}${content}` : content;
+    result += format
+      ? `${options.newline}${options.childIndent}${content}`
+      : content;
   }
 
   if (hasElements) {
@@ -355,22 +358,22 @@ function stringifyObject(
 
   // Handle text-only content
   if (!hasElements && hasTextContent && parts.textContent) {
-    return stringifyTextOnlyContent(
+    return stringifyTextOnlyContent({
       tagName,
-      parts.textContent,
-      fullOpenTag,
-      { indent, newline },
-      context.minimalEscaping
-    );
+      textContent: parts.textContent,
+      openTag: fullOpenTag,
+      format: { indent, newline },
+      minimalEscaping: context.minimalEscaping,
+    });
   }
 
   // Handle complex content
-  return stringifyComplexContent(
-    tagName,
-    parts,
-    context,
-    { indent, newline, childIndent, openTag: fullOpenTag }
-  );
+  return stringifyComplexContent(tagName, parts, context, {
+    indent,
+    newline,
+    childIndent,
+    openTag: fullOpenTag,
+  });
 }
 
 /**
@@ -457,14 +460,18 @@ function buildNodeOpeningTag(
 /**
  * Stringify node children
  */
-function stringifyNodeChildren(
-  children: (RXMLNode | string)[],
-  depth: number,
-  format: boolean,
-  options: Pick<StringifyOptions, "strictBooleanAttributes" | "minimalEscaping">,
-  minimalEscaping: boolean,
-  newline: string
-): { content: string; hasElementChildren: boolean } {
+function stringifyNodeChildren(options: {
+  children: (RXMLNode | string)[];
+  depth: number;
+  format: boolean;
+  stringifyOptions: Pick<
+    StringifyOptions,
+    "strictBooleanAttributes" | "minimalEscaping"
+  >;
+  minimalEscaping: boolean;
+  newline: string;
+}): { content: string; hasElementChildren: boolean } {
+  const { children, depth, format, stringifyOptions, minimalEscaping, newline } = options;
   let content = "";
   let hasElementChildren = false;
 
@@ -478,7 +485,7 @@ function stringifyNodeChildren(
         content += newline;
         hasElementChildren = true;
       }
-      content += stringifyNode(child, depth + 1, format, options);
+      content += stringifyNode(child, depth + 1, format, stringifyOptions);
     }
   }
 
@@ -524,14 +531,14 @@ export function stringifyNode(
   result += ">";
 
   // Handle children
-  const { content, hasElementChildren } = stringifyNodeChildren(
-    node.children,
+  const { content, hasElementChildren } = stringifyNodeChildren({
+    children: node.children,
     depth,
     format,
-    options,
+    stringifyOptions: options,
     minimalEscaping,
-    newline
-  );
+    newline,
+  });
 
   result += content;
 
