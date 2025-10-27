@@ -291,7 +291,10 @@ function createBfclBenchmark(
           rawName: unknown,
           transformedTools: TransformedTool[]
         ): unknown => {
-          if (typeof rawName === "string" && NUMERIC_STRING_REGEX.test(rawName)) {
+          if (
+            typeof rawName === "string" &&
+            NUMERIC_STRING_REGEX.test(rawName)
+          ) {
             return transformedTools[Number(rawName)]?.name ?? rawName;
           }
           return rawName;
@@ -318,7 +321,10 @@ function createBfclBenchmark(
         ): unknown[] =>
           (toolCalls || []).map((c: Record<string, unknown>) => {
             const rawName = c.toolName ?? c.name;
-            const sanitizedFromIndex = getSanitizedName(rawName, transformedTools);
+            const sanitizedFromIndex = getSanitizedName(
+              rawName,
+              transformedTools
+            );
             const originalName =
               nameMap.get(sanitizedFromIndex as string) ?? sanitizedFromIndex;
             const extractedArgs =
@@ -403,6 +409,62 @@ function createBfclBenchmark(
           });
         };
 
+        // Helper: Check function name mismatch
+        const checkFunctionNameMismatch = (
+          expectedName: unknown,
+          receivedName: unknown,
+          diff: string[]
+        ): void => {
+          if (expectedName !== receivedName) {
+            diff.push("@@ function name");
+            diff.push(`- ${expectedName}`);
+            diff.push(`+ ${receivedName}`);
+          }
+        };
+
+        // Helper: Check missing required params
+        const checkMissingParams = (
+          required: string[],
+          receivedArgs: Record<string, unknown>,
+          diff: string[]
+        ): void => {
+          for (const req of required) {
+            if (!(req in receivedArgs)) {
+              diff.push(`- missing required param: ${req}`);
+            }
+          }
+        };
+
+        // Helper: Check unexpected params
+        const checkUnexpectedParams = (
+          expectedParams: Record<string, unknown>,
+          receivedArgs: Record<string, unknown>,
+          diff: string[]
+        ): void => {
+          for (const k of Object.keys(receivedArgs)) {
+            if (!Object.hasOwn(expectedParams, k)) {
+              diff.push(`+ unexpected param: ${k}`);
+            }
+          }
+        };
+
+        // Helper: Check param value mismatches
+        const checkParamValueMismatches = (
+          expectedParams: Record<string, unknown>,
+          receivedArgs: Record<string, unknown>,
+          diff: string[]
+        ): void => {
+          for (const k of Object.keys(receivedArgs)) {
+            if (Object.hasOwn(expectedParams, k)) {
+              const allowed = (expectedParams as Record<string, unknown[]>)[k];
+              const got = receivedArgs[k];
+              if (!paramValueMatches(allowed, got)) {
+                diff.push(...generateParamMismatchDiff(k, allowed, got));
+              }
+            }
+          }
+        };
+
         // Helper: Build diff for simple test case
         const buildSimpleDiff = (
           tools: ToolSpec[],
@@ -432,11 +494,7 @@ function createBfclBenchmark(
           };
           const diff: string[] = [];
 
-          if (expectedFuncName !== receivedName) {
-            diff.push("@@ function name");
-            diff.push(`- ${expectedFuncName}`);
-            diff.push(`+ ${receivedName}`);
-          }
+          checkFunctionNameMismatch(expectedFuncName, receivedName, diff);
 
           if (
             expectedParams &&
@@ -445,34 +503,111 @@ function createBfclBenchmark(
             receivedArgs !== null
           ) {
             const required = (funcDesc?.parameters?.required ?? []) as string[];
-            for (const req of required) {
-              if (!(req in receivedArgs)) {
-                diff.push(`- missing required param: ${req}`);
-              }
-            }
-            for (const k of Object.keys(
-              receivedArgs as Record<string, unknown>
-            )) {
-              if (!Object.hasOwn(expectedParams, k)) {
-                diff.push(`+ unexpected param: ${k}`);
-              }
-            }
-            for (const k of Object.keys(
-              receivedArgs as Record<string, unknown>
-            )) {
-              if (Object.hasOwn(expectedParams, k)) {
-                const allowed = (expectedParams as Record<string, unknown[]>)[
-                  k
-                ];
-                const got = (receivedArgs as Record<string, unknown>)[k];
-                if (!paramValueMatches(allowed, got)) {
-                  diff.push(...generateParamMismatchDiff(k, allowed, got));
-                }
-              }
-            }
+            checkMissingParams(required, receivedArgs as Record<string, unknown>, diff);
+            checkUnexpectedParams(expectedParams, receivedArgs as Record<string, unknown>, diff);
+            checkParamValueMismatches(expectedParams, receivedArgs as Record<string, unknown>, diff);
           }
 
           return { expected, actual, diff };
+        };
+
+        // Helper: Check call count mismatch
+        const checkCallCountMismatch = (
+          expectedCount: number,
+          actualCount: number,
+          diff: string[]
+        ): void => {
+          if (expectedCount !== actualCount) {
+            diff.push("@@ call count");
+            diff.push(`- expected ${expectedCount}`);
+            diff.push(`+ got ${actualCount}`);
+          }
+        };
+
+        // Helper: Add missing and extra functions to diff
+        const addMissingAndExtraFunctions = (
+          expectedNames: unknown[],
+          actualNames: unknown[],
+          diff: string[]
+        ): void => {
+          const missing = expectedNames.filter((n) => !actualNames.includes(n));
+          const extra = actualNames.filter((n) => !expectedNames.includes(n));
+          for (const m of missing) {
+            diff.push(`- missing function: ${m}`);
+          }
+          for (const e of extra) {
+            diff.push(`+ unexpected function: ${e}`);
+          }
+        };
+
+        // Helper: Find matching call index
+        const findMatchingCallIndex = (
+          fname: string,
+          restoredCalls: Record<string, unknown>[],
+          usedActual: Set<number>
+        ): number => {
+          for (let i = 0; i < restoredCalls.length; i++) {
+            if (usedActual.has(i)) {
+              continue;
+            }
+            const rc = restoredCalls[i];
+            const rcName = rc?.toolName ?? rc?.name;
+            if (rcName === fname) {
+              return i;
+            }
+          }
+          return -1;
+        };
+
+        // Helper: Validate function parameters
+        const validateFunctionParams = (
+          receivedArgs: Record<string, unknown>,
+          expectedParamsAllowed: Record<string, unknown>,
+          requiredParams: string[],
+          diff: string[]
+        ): void => {
+          checkMissingParams(requiredParams, receivedArgs, diff);
+          checkUnexpectedParams(expectedParamsAllowed, receivedArgs, diff);
+          checkParamValueMismatches(expectedParamsAllowed, receivedArgs, diff);
+        };
+
+        // Helper: Process single expected function call
+        const processExpectedCall = (
+          expectedObj: Record<string, unknown>,
+          restoredCalls: Record<string, unknown>[],
+          tools: ToolSpec[],
+          usedActual: Set<number>,
+          diff: string[]
+        ): void => {
+          const fname = Object.keys(expectedObj)[0];
+          const matchedIndex = findMatchingCallIndex(fname, restoredCalls, usedActual);
+          
+          if (matchedIndex === -1) {
+            return;
+          }
+          
+          usedActual.add(matchedIndex);
+          const received = restoredCalls[matchedIndex];
+          const receivedArgs = summarizeArgs(received?.args);
+          const expectedParamsAllowed = expectedObj[fname] as Record<string, unknown>;
+          const funcDesc = tools.find((t: ToolSpec) => t.name === fname);
+          const requiredParams = (funcDesc?.parameters?.required ?? []) as string[];
+
+          diff.push(`@@ function ${fname}`);
+
+          if (
+            expectedParamsAllowed &&
+            receivedArgs &&
+            typeof receivedArgs === "object" &&
+            receivedArgs !== null
+          ) {
+            validateFunctionParams(
+              receivedArgs as Record<string, unknown>,
+              expectedParamsAllowed,
+              requiredParams,
+              diff
+            );
+          }
         };
 
         // Helper: Build diff for parallel/multiple test case
@@ -485,10 +620,10 @@ function createBfclBenchmark(
           actual: Record<string, unknown>;
           diff: string[];
         } => {
-          const gtArr: Array<Record<string, unknown>> =
+          const gtArr: Record<string, unknown>[] =
             (
               possibleAnswer as {
-                ground_truth?: Array<Record<string, unknown>>;
+                ground_truth?: Record<string, unknown>[];
               }
             ).ground_truth ?? [];
           const expectedNames = gtArr.map((g) => Object.keys(g)[0]);
@@ -502,79 +637,18 @@ function createBfclBenchmark(
           const actual: Record<string, unknown> = { functions: actualNames };
           const diff: string[] = [];
 
-          if (expectedNames.length !== actualNames.length) {
-            diff.push("@@ call count");
-            diff.push(`- expected ${expectedNames.length}`);
-            diff.push(`+ got ${actualNames.length}`);
-          }
-
-          const missing = expectedNames.filter((n) => !actualNames.includes(n));
-          const extra = actualNames.filter((n) => !expectedNames.includes(n));
-          for (const m of missing) diff.push(`- missing function: ${m}`);
-          for (const e of extra) diff.push(`+ unexpected function: ${e}`);
+          checkCallCountMismatch(expectedNames.length, actualNames.length, diff);
+          addMissingAndExtraFunctions(expectedNames, actualNames, diff);
 
           const usedActual = new Set<number>();
           for (const expectedObj of gtArr) {
-            const fname = Object.keys(expectedObj)[0];
-            let matchedIndex = -1;
-            for (let i = 0; i < (restoredCalls as unknown[]).length; i++) {
-              if (usedActual.has(i)) continue;
-              const rc = (restoredCalls as Record<string, unknown>[])[i];
-              const rcName = rc?.toolName ?? rc?.name;
-              if (rcName === fname) {
-                matchedIndex = i;
-                break;
-              }
-            }
-            if (matchedIndex === -1) continue;
-            usedActual.add(matchedIndex);
-
-            const received = (restoredCalls as Record<string, unknown>[])[
-              matchedIndex
-            ];
-            const receivedArgs = summarizeArgs(received?.args);
-            const expectedParamsAllowed = expectedObj[fname] as Record<
-              string,
-              unknown
-            >;
-            const funcDesc = tools.find((t: ToolSpec) => t.name === fname);
-            const requiredParams = (funcDesc?.parameters?.required ??
-              []) as string[];
-
-            diff.push(`@@ function ${fname}`);
-
-            if (
-              expectedParamsAllowed &&
-              receivedArgs &&
-              typeof receivedArgs === "object" &&
-              receivedArgs !== null
-            ) {
-              for (const req of requiredParams) {
-                if (!(req in receivedArgs)) {
-                  diff.push(`- missing required param: ${req}`);
-                }
-              }
-              for (const k of Object.keys(
-                receivedArgs as Record<string, unknown>
-              )) {
-                if (!Object.hasOwn(expectedParamsAllowed, k)) {
-                  diff.push(`+ unexpected param: ${k}`);
-                }
-              }
-              for (const k of Object.keys(
-                receivedArgs as Record<string, unknown>
-              )) {
-                if (Object.hasOwn(expectedParamsAllowed, k)) {
-                  const allowed = (
-                    expectedParamsAllowed as Record<string, unknown[]>
-                  )[k];
-                  const got = (receivedArgs as Record<string, unknown>)[k];
-                  if (!paramValueMatches(allowed, got)) {
-                    diff.push(...generateParamMismatchDiff(k, allowed, got));
-                  }
-                }
-              }
-            }
+            processExpectedCall(
+              expectedObj,
+              restoredCalls as Record<string, unknown>[],
+              tools,
+              usedActual,
+              diff
+            );
           }
 
           return { expected, actual, diff };

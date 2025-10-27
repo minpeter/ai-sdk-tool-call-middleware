@@ -38,7 +38,11 @@ function skipCdata(xmlContent: string, i: number, len: number): number {
 /**
  * Helper to skip processing instructions
  */
-function skipProcessingInstruction(xmlContent: string, i: number, len: number): number {
+function skipProcessingInstruction(
+  xmlContent: string,
+  i: number,
+  len: number
+): number {
   const close = xmlContent.indexOf("?>", i + 1);
   return close === -1 ? len : close + 2;
 }
@@ -128,6 +132,55 @@ function skipToTagEnd(
 }
 
 /**
+ * Helper to process closing tag in findMatchingCloseTag
+ */
+function processClosingTagMatch(
+  xmlContent: string,
+  nx: number,
+  len: number,
+  tagName: string,
+  depth: number,
+  nextLt: number
+): { newPos: number; newDepth: number; found: boolean } {
+  const tagInfo = parseTagName(xmlContent, nx + 1, len);
+  const gt = xmlContent.indexOf(">", tagInfo.pos);
+  
+  if (tagInfo.name === tagName) {
+    const newDepth = depth - 1;
+    if (newDepth === 0) {
+      return { newPos: nextLt, newDepth, found: true };
+    }
+    return { newPos: gt === -1 ? len : gt + 1, newDepth, found: false };
+  }
+  
+  return { newPos: gt === -1 ? len : gt + 1, newDepth: depth, found: false };
+}
+
+/**
+ * Helper to process opening tag in findMatchingCloseTag
+ */
+function processOpeningTagMatch(
+  xmlContent: string,
+  nx: number,
+  len: number,
+  tagName: string,
+  depth: number
+): { newPos: number; newDepth: number } {
+  const tagInfo = parseTagName(xmlContent, nx, len);
+  const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
+
+  const newDepth = (tagInfo.name === tagName && !tagEndInfo.isSelfClosing) 
+    ? depth + 1 
+    : depth;
+  
+  const newPos = xmlContent[tagEndInfo.pos] === ">"
+    ? tagEndInfo.pos + 1
+    : tagEndInfo.pos + 1;
+  
+  return { newPos, newDepth };
+}
+
+/**
  * Find the matching closing tag for a given opening tag
  * Returns the position of the start of the closing tag, or -1 if not found
  */
@@ -142,44 +195,30 @@ function findMatchingCloseTag(
 
   while (pos < len) {
     const nextLt = xmlContent.indexOf("<", pos);
-    if (nextLt === -1) {
-      break;
-    }
-    const nx = nextLt + 1;
-    if (nx >= len) {
+    if (nextLt === -1 || nextLt + 1 >= len) {
       break;
     }
 
+    const nx = nextLt + 1;
     const h = xmlContent[nx];
     const specialPos = skipSpecialConstruct(xmlContent, nx, len);
+    
     if (specialPos !== -1) {
       pos = specialPos;
       continue;
     }
 
     if (h === "/") {
-      // Closing tag
-      const tagInfo = parseTagName(xmlContent, nx + 1, len);
-      const gt = xmlContent.indexOf(">", tagInfo.pos);
-      if (tagInfo.name === tagName) {
-        depth--;
-        if (depth === 0) {
-          return nextLt;
-        }
+      const result = processClosingTagMatch(xmlContent, nx, len, tagName, depth, nextLt);
+      if (result.found) {
+        return result.newPos;
       }
-      pos = gt === -1 ? len : gt + 1;
+      pos = result.newPos;
+      depth = result.newDepth;
     } else {
-      // Opening tag
-      const tagInfo = parseTagName(xmlContent, nx, len);
-      const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
-
-      if (tagInfo.name === tagName && !tagEndInfo.isSelfClosing) {
-        depth++;
-      }
-      pos =
-        xmlContent[tagEndInfo.pos] === ">"
-          ? tagEndInfo.pos + 1
-          : tagEndInfo.pos + 1;
+      const result = processOpeningTagMatch(xmlContent, nx, len, tagName, depth);
+      pos = result.newPos;
+      depth = result.newDepth;
     }
   }
 
@@ -204,15 +243,16 @@ function updateBestMatch(
 /**
  * Helper to process target tag match
  */
-function processTargetTag(
-  xmlContent: string,
-  tagEnd: number,
-  isSelfClosing: boolean,
-  target: string,
-  len: number,
-  depth: number,
-  bestDepth: number
-): { start: number; end: number; depth: number } | null {
+function processTargetTag(options: {
+  xmlContent: string;
+  tagEnd: number;
+  isSelfClosing: boolean;
+  target: string;
+  len: number;
+  depth: number;
+  bestDepth: number;
+}): { start: number; end: number; depth: number } | null {
+  const { xmlContent, tagEnd, isSelfClosing, target, len, depth, bestDepth } = options;
   const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
 
   if (isSelfClosing) {
@@ -224,6 +264,62 @@ function processTargetTag(
     return updateBestMatch(depth, bestDepth, contentStart, closePos);
   }
   return null;
+}
+
+/**
+ * Helper to handle closing tag in extractRawInner
+ */
+function handleClosingTagInExtract(
+  xmlContent: string,
+  i: number,
+  len: number,
+  depth: number
+): { newPos: number; newDepth: number } {
+  const gt = xmlContent.indexOf(">", i + 1);
+  return {
+    newPos: gt === -1 ? len : gt + 1,
+    newDepth: Math.max(0, depth - 1),
+  };
+}
+
+/**
+ * Helper to process opening tag in extractRawInner
+ */
+function processOpeningTagInExtract(
+  xmlContent: string,
+  i: number,
+  len: number,
+  target: string,
+  depth: number,
+  bestDepth: number
+): {
+  newPos: number;
+  newDepth: number;
+  bestMatch: { start: number; end: number; depth: number } | null;
+} {
+  const tagInfo = parseTagName(xmlContent, i, len);
+  const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
+  const tagEnd = tagEndInfo.pos;
+  const isSelfClosing = tagEndInfo.isSelfClosing;
+
+  let bestMatch: { start: number; end: number; depth: number } | null = null;
+  if (tagInfo.name === target) {
+    bestMatch = processTargetTag({
+      xmlContent,
+      tagEnd,
+      isSelfClosing,
+      target,
+      len,
+      depth,
+      bestDepth,
+    });
+  }
+
+  return {
+    newPos: xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1,
+    newDepth: depth + (isSelfClosing ? 0 : 1),
+    bestMatch,
+  };
 }
 
 /**
@@ -245,13 +341,10 @@ export function extractRawInner(
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) {
+    if (lt === -1 || lt + 1 >= len) {
       return;
     }
     i = lt + 1;
-    if (i >= len) {
-      return;
-    }
 
     const ch = xmlContent[i];
     const specialPos = skipSpecialConstruct(xmlContent, i, len);
@@ -261,35 +354,20 @@ export function extractRawInner(
     }
 
     if (ch === "/") {
-      const gt = xmlContent.indexOf(">", i + 1);
-      i = gt === -1 ? len : gt + 1;
-      depth = Math.max(0, depth - 1);
+      const result = handleClosingTagInExtract(xmlContent, i, len, depth);
+      i = result.newPos;
+      depth = result.newDepth;
       continue;
     }
 
-    const tagInfo = parseTagName(xmlContent, i, len);
-    const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
-    const tagEnd = tagEndInfo.pos;
-    const isSelfClosing = tagEndInfo.isSelfClosing;
-
-    if (tagInfo.name === target) {
-      const match = processTargetTag(
-        xmlContent,
-        tagEnd,
-        isSelfClosing,
-        target,
-        len,
-        depth,
-        bestDepth
-      );
-      if (match) {
-        bestStart = match.start;
-        bestEnd = match.end;
-        bestDepth = match.depth;
-      }
+    const result = processOpeningTagInExtract(xmlContent, i, len, target, depth, bestDepth);
+    if (result.bestMatch) {
+      bestStart = result.bestMatch.start;
+      bestEnd = result.bestMatch.end;
+      bestDepth = result.bestMatch.depth;
     }
-    i = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
-    depth += isSelfClosing ? 0 : 1;
+    i = result.newPos;
+    depth = result.newDepth;
   }
 
   if (bestStart !== -1) {
@@ -301,15 +379,15 @@ export function extractRawInner(
 /**
  * Helper to process opening tag and add range if it's a target
  */
-function processOpeningTag(
-  xmlContent: string,
-  tagInfo: { name: string; pos: number },
-  tagEnd: number,
-  isSelfClosing: boolean,
-  target: string,
-  len: number,
-  ranges: Array<{ start: number; end: number }>
-): number {
+function processOpeningTag(options: {
+  xmlContent: string;
+  tagEnd: number;
+  isSelfClosing: boolean;
+  target: string;
+  len: number;
+  ranges: Array<{ start: number; end: number }>;
+}): number {
+  const { xmlContent, tagEnd, isSelfClosing, target, len, ranges } = options;
   const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
 
   if (isSelfClosing) {
@@ -329,6 +407,18 @@ function processOpeningTag(
 }
 
 /**
+ * Helper to handle closing tag in findAllInnerRanges
+ */
+function handleClosingTagInFindAll(
+  xmlContent: string,
+  i: number,
+  len: number
+): number {
+  const gt = xmlContent.indexOf(">", i + 1);
+  return gt === -1 ? len : gt + 1;
+}
+
+/**
  * Find all inner content ranges for a given tag name at any depth.
  * Returns ranges for the inner content between <tagName ...> and </tagName>.
  */
@@ -344,13 +434,10 @@ export function findAllInnerRanges(
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) {
+    if (lt === -1 || lt + 1 >= len) {
       break;
     }
     i = lt + 1;
-    if (i >= len) {
-      break;
-    }
 
     const ch = xmlContent[i];
     const specialPos = skipSpecialConstruct(xmlContent, i, len);
@@ -360,8 +447,7 @@ export function findAllInnerRanges(
     }
 
     if (ch === "/") {
-      const gt = xmlContent.indexOf(">", i + 1);
-      i = gt === -1 ? len : gt + 1;
+      i = handleClosingTagInFindAll(xmlContent, i, len);
       continue;
     }
 
@@ -378,15 +464,14 @@ export function findAllInnerRanges(
     }
 
     // Found a target start tag
-    const nextPos = processOpeningTag(
+    const nextPos = processOpeningTag({
       xmlContent,
-      tagInfo,
       tagEnd,
       isSelfClosing,
       target,
       len,
-      ranges
-    );
+      ranges,
+    });
     if (nextPos === -1) {
       // Unmatched tag, stop to avoid infinite loops
       break;
@@ -400,15 +485,16 @@ export function findAllInnerRanges(
 /**
  * Helper to find range for top-level target tag
  */
-function findTopLevelTargetRange(
-  xmlContent: string,
-  tagEnd: number,
-  isSelfClosing: boolean,
-  target: string,
-  len: number
-): { start: number; end: number } | undefined {
+function findTopLevelTargetRange(options: {
+  xmlContent: string;
+  tagEnd: number;
+  isSelfClosing: boolean;
+  target: string;
+  len: number;
+}): { start: number; end: number } | undefined {
+  const { xmlContent, tagEnd, isSelfClosing, target, len } = options;
   const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
-  
+
   if (isSelfClosing) {
     return { start: contentStart, end: contentStart };
   }
@@ -418,6 +504,22 @@ function findTopLevelTargetRange(
     return { start: contentStart, end: closePos };
   }
   return;
+}
+
+/**
+ * Helper to handle closing tag in findFirstTopLevelRange
+ */
+function handleClosingTagInFindFirst(
+  xmlContent: string,
+  i: number,
+  len: number,
+  depth: number
+): { newPos: number; newDepth: number } {
+  const gt = xmlContent.indexOf(">", i + 1);
+  return {
+    newPos: gt === -1 ? len : gt + 1,
+    newDepth: Math.max(0, depth - 1),
+  };
 }
 
 /**
@@ -435,13 +537,10 @@ export function findFirstTopLevelRange(
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) {
+    if (lt === -1 || lt + 1 >= len) {
       return;
     }
     i = lt + 1;
-    if (i >= len) {
-      return;
-    }
 
     const ch = xmlContent[i];
     const specialPos = skipSpecialConstruct(xmlContent, i, len);
@@ -451,9 +550,9 @@ export function findFirstTopLevelRange(
     }
 
     if (ch === "/") {
-      const gt = xmlContent.indexOf(">", i + 1);
-      i = gt === -1 ? len : gt + 1;
-      depth = Math.max(0, depth - 1);
+      const result = handleClosingTagInFindFirst(xmlContent, i, len, depth);
+      i = result.newPos;
+      depth = result.newDepth;
       continue;
     }
 
@@ -463,13 +562,13 @@ export function findFirstTopLevelRange(
     const isSelfClosing = tagEndInfo.isSelfClosing;
 
     if (depth === 0 && tagInfo.name === target) {
-      return findTopLevelTargetRange(
+      return findTopLevelTargetRange({
         xmlContent,
         tagEnd,
         isSelfClosing,
         target,
-        len
-      );
+        len,
+      });
     }
     i = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
     depth += isSelfClosing ? 0 : 1;
@@ -496,6 +595,22 @@ function isPositionExcluded(
 }
 
 /**
+ * Helper to skip comment in counting
+ */
+function skipCommentInCounting(xmlContent: string, i: number, len: number): number {
+  const close = xmlContent.indexOf("-->", i + 4);
+  return close === -1 ? len : close + 3;
+}
+
+/**
+ * Helper to skip CDATA in counting
+ */
+function skipCdataInCounting(xmlContent: string, i: number, len: number): number {
+  const close = xmlContent.indexOf("]]>", i + 9);
+  return close === -1 ? len : close + 3;
+}
+
+/**
  * Helper to handle special constructs in counting
  */
 function skipSpecialInCounting(
@@ -506,12 +621,10 @@ function skipSpecialInCounting(
 ): number {
   if (ch === "!") {
     if (xmlContent.startsWith("!--", i + 1)) {
-      const close = xmlContent.indexOf("-->", i + 4);
-      return close === -1 ? len : close + 3;
+      return skipCommentInCounting(xmlContent, i, len);
     }
     if (xmlContent.startsWith("![CDATA[", i + 1)) {
-      const close = xmlContent.indexOf("]]>", i + 9);
-      return close === -1 ? len : close + 3;
+      return skipCdataInCounting(xmlContent, i, len);
     }
     const gt = xmlContent.indexOf(">", i + 1);
     return gt === -1 ? len : gt + 1;
@@ -530,14 +643,15 @@ function skipSpecialInCounting(
 /**
  * Helper to parse and count opening tag
  */
-function parseAndCountTag(
-  xmlContent: string,
-  i: number,
-  len: number,
-  target: string,
-  lt: number,
-  excludeRanges?: Array<{ start: number; end: number }>
-): { nextPos: number; shouldCount: boolean } {
+function parseAndCountTag(options: {
+  xmlContent: string;
+  i: number;
+  len: number;
+  target: string;
+  lt: number;
+  excludeRanges?: Array<{ start: number; end: number }>;
+}): { nextPos: number; shouldCount: boolean } {
+  const { xmlContent, i, len, target, lt, excludeRanges } = options;
   let j = i;
   if (j < len && isNameStartChar(xmlContent[j])) {
     j++;
@@ -599,7 +713,14 @@ export function countTagOccurrences(
       continue;
     }
 
-    const result = parseAndCountTag(xmlContent, i, len, target, lt, excludeRanges);
+    const result = parseAndCountTag({
+      xmlContent,
+      i,
+      len,
+      target,
+      lt,
+      excludeRanges,
+    });
     if (result.shouldCount) {
       if (skipFirstLocal) {
         skipFirstLocal = false;
@@ -634,6 +755,32 @@ function skipAttributes(xmlContent: string, i: number, len: number): number {
 }
 
 /**
+ * Helper to update depth for closing tag
+ */
+function updateDepthForClosingTag(
+  xmlContent: string,
+  nextLt: number,
+  target: string,
+  closeDepth: number
+): number {
+  const { name: closeName } = parseName(xmlContent, nextLt + 2);
+  return closeName === target ? closeDepth - 1 : closeDepth;
+}
+
+/**
+ * Helper to update depth for opening tag
+ */
+function updateDepthForOpeningTag(
+  xmlContent: string,
+  nextLt: number,
+  target: string,
+  closeDepth: number
+): number {
+  const { name: openName } = parseName(xmlContent, nextLt + 1);
+  return openName === target ? closeDepth + 1 : closeDepth;
+}
+
+/**
  * Helper to find closing tag for top-level range
  */
 function findClosingTagForRange(
@@ -652,18 +799,12 @@ function findClosingTagForRange(
     }
 
     if (xmlContent[nextLt + 1] === "/") {
-      const { name: closeName } = parseName(xmlContent, nextLt + 2);
-      if (closeName === target) {
-        closeDepth--;
-      }
+      closeDepth = updateDepthForClosingTag(xmlContent, nextLt, target, closeDepth);
     } else if (
       xmlContent[nextLt + 1] !== "!" &&
       xmlContent[nextLt + 1] !== "?"
     ) {
-      const { name: openName } = parseName(xmlContent, nextLt + 1);
-      if (openName === target) {
-        closeDepth++;
-      }
+      closeDepth = updateDepthForOpeningTag(xmlContent, nextLt, target, closeDepth);
     }
 
     j = xmlContent.indexOf(">", nextLt + 1);
@@ -679,16 +820,16 @@ function findClosingTagForRange(
 /**
  * Helper to process top-level target tag
  */
-function processTopLevelTarget(
-  xmlContent: string,
-  tagStart: number,
-  k: number,
-  len: number,
-  target: string,
-  ranges: Array<{ start: number; end: number }>
-): { newDepth: number } {
-  const isSelfClosing =
-    xmlContent[k] === "/" || xmlContent.startsWith("/>", k);
+function processTopLevelTarget(options: {
+  xmlContent: string;
+  tagStart: number;
+  k: number;
+  len: number;
+  target: string;
+  ranges: Array<{ start: number; end: number }>;
+}): { newDepth: number } {
+  const { xmlContent, tagStart, k, len, target, ranges } = options;
+  const isSelfClosing = xmlContent[k] === "/" || xmlContent.startsWith("/>", k);
 
   if (isSelfClosing) {
     ranges.push({
@@ -706,6 +847,14 @@ function processTopLevelTarget(
 }
 
 /**
+ * Helper to skip DOCTYPE declaration
+ */
+function skipDoctypeInSpecial(xmlContent: string, i: number, len: number): number {
+  const gt = xmlContent.indexOf(">", i + 1);
+  return gt === -1 ? len : gt + 1;
+}
+
+/**
  * Helper to handle special constructs for top-level ranges
  */
 function handleSpecialConstructs(
@@ -716,16 +865,13 @@ function handleSpecialConstructs(
 ): number {
   if (ch === "!") {
     if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
-      const gt = xmlContent.indexOf(">", i + 1);
-      return gt === -1 ? len : gt + 1;
+      return skipDoctypeInSpecial(xmlContent, i, len);
     }
     if (xmlContent.startsWith("!--", i + 1)) {
-      const close = xmlContent.indexOf("-->", i + 4);
-      return close === -1 ? len : close + 3;
+      return skipCommentInCounting(xmlContent, i, len);
     }
     if (xmlContent.startsWith("![CDATA[", i + 1)) {
-      const close = xmlContent.indexOf("]]>", i + 9);
-      return close === -1 ? len : close + 3;
+      return skipCdataInCounting(xmlContent, i, len);
     }
     const gt = xmlContent.indexOf(">", i + 1);
     return gt === -1 ? len : gt + 1;
@@ -735,6 +881,24 @@ function handleSpecialConstructs(
     return close === -1 ? len : close + 2;
   }
   return -1;
+}
+
+/**
+ * Helper to handle closing tag in findAllTopLevelRanges
+ */
+function handleClosingTagInFindAllTop(
+  xmlContent: string,
+  i: number,
+  target: string,
+  depth: number
+): { newPos: number; newDepth: number } {
+  const { name: closingName, newPos: closingPos } = parseName(xmlContent, i + 1);
+  const newDepth = closingName === target ? depth - 1 : depth;
+  const gt = xmlContent.indexOf(">", closingPos);
+  return {
+    newPos: gt === -1 ? -1 : gt + 1,
+    newDepth,
+  };
 }
 
 /**
@@ -752,13 +916,10 @@ export function findAllTopLevelRanges(
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) {
+    if (lt === -1 || lt + 1 >= len) {
       break;
     }
     i = lt + 1;
-    if (i >= len) {
-      break;
-    }
 
     const ch = xmlContent[i];
     const specialPos = handleSpecialConstructs(xmlContent, ch, i, len);
@@ -768,17 +929,12 @@ export function findAllTopLevelRanges(
     }
 
     if (ch === "/") {
-      // Closing tag
-      i++;
-      const { name: closingName, newPos: closingPos } = parseName(xmlContent, i);
-      if (closingName === target) {
-        depth--;
-      }
-      i = xmlContent.indexOf(">", closingPos);
-      if (i === -1) {
+      const result = handleClosingTagInFindAllTop(xmlContent, i, target, depth);
+      if (result.newPos === -1) {
         break;
       }
-      i++;
+      i = result.newPos;
+      depth = result.newDepth;
       continue;
     }
 
@@ -790,14 +946,14 @@ export function findAllTopLevelRanges(
 
     if (name === target && depth === 0) {
       depth++;
-      const result = processTopLevelTarget(
+      const result = processTopLevelTarget({
         xmlContent,
-        lt,
+        tagStart: lt,
         k,
         len,
         target,
-        ranges
-      );
+        ranges,
+      });
       depth += result.newDepth;
     }
 
