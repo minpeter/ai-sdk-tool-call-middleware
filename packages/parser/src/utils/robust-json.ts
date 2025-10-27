@@ -486,7 +486,7 @@ function popToken(tokens: Token[], state: ParseState): Token {
 
   if (!token) {
     // If we are past the end of the token array, return an EOF token
-    const lastLine = tokens.length !== 0 ? tokens.at(-1)?.line ?? 1 : 1;
+    const lastLine = tokens.length !== 0 ? (tokens.at(-1)?.line ?? 1) : 1;
     return { type: "eof", match: "", value: undefined, line: lastLine };
   }
 
@@ -825,7 +825,7 @@ function parseManyInitialElement<T>(
 
   state.pos -= 1;
   opts.elementParser(tokens, state, result);
-  return undefined; // Signal to continue parsing
+  return; // Signal to continue parsing
 }
 
 // Helper to process a token in parseMany loop
@@ -858,11 +858,11 @@ function parseManyProcessToken<T>(
     if (handledResult !== null) {
       return handledResult;
     }
-    return undefined; // Continue loop
+    return; // Continue loop
   }
 
   opts.elementParser(tokens, state, result);
-  return undefined; // Continue loop
+  return; // Continue loop
 }
 
 // Generic function to parse comma-separated elements within enclosing symbols (like objects or arrays)
@@ -1122,7 +1122,10 @@ function parse(
 
 // Helper for stringifying object pairs
 // :: any -> string -> ... -> string
-function stringifyPair(obj: { [objKey: string]: unknown }, key: string): string {
+function stringifyPair(
+  obj: { [objKey: string]: unknown },
+  key: string
+): string {
   // Stringify key and value, then join with colon
   // Recursively calls stringify for the value
   return `${JSON.stringify(key)}:${stringify(obj[key])}`;

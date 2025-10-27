@@ -12,6 +12,7 @@ import { getSchemaType, unwrapJsonSchema } from "../schema/base-coercion";
 
 // Regex constants for performance
 const WHITESPACE_REGEX = /\s/;
+
 import {
   coerceDomBySchema,
   domToObject,

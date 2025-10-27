@@ -13,6 +13,21 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
+// Regex constants for performance
+const REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
+const REGEX_TOOL_CALL_FENCE = /```tool_call/;
+const REGEX_GET_WEATHER = /get_weather/;
+const REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
+const REGEX_TOOLS_TAG = /<tools>/;
+const REGEX_NONE = /none/;
+const REGEX_NOT_FOUND = /not found/;
+const REGEX_PROVIDER_DEFINED = /Provider-defined tools/;
+const REGEX_REQUIRED_NO_TOOLS =
+  /Tool choice type 'required' is set, but no tools are provided/;
+const REGEX_TOOL_CALL_TAG = /<tool_call>/;
+const REGEX_TOOL_RESPONSE_TAG = /<tool_response>/;
+const REGEX_GET_WEATHER_TAG = /<get_weather>/;
+
 describe("index prompt templates", () => {
   const tools: LanguageModelV2FunctionTool[] = [
     {
@@ -24,42 +39,45 @@ describe("index prompt templates", () => {
   ];
 
   it("gemmaToolMiddleware template appears in system prompt", async () => {
-    const out = await (gemmaToolMiddleware.transformParams as any)!({
+    const transformParams = gemmaToolMiddleware.transformParams as any;
+    const out = await transformParams({
       params: { prompt: [], tools },
     } as any);
 
     const system = out.prompt[0];
     expect(system.role).toBe("system");
     const text = String(system.content);
-    expect(text).toMatch(/You have access to functions/);
-    expect(text).toMatch(/```tool_call/);
-    expect(text).toMatch(/get_weather/);
+    expect(text).toMatch(REGEX_ACCESS_TO_FUNCTIONS);
+    expect(text).toMatch(REGEX_TOOL_CALL_FENCE);
+    expect(text).toMatch(REGEX_GET_WEATHER);
   });
 
   it("hermesToolMiddleware template appears in system prompt", async () => {
-    const out = await (hermesToolMiddleware.transformParams as any)!({
+    const transformParams = hermesToolMiddleware.transformParams as any;
+    const out = await transformParams({
       params: { prompt: [], tools },
     } as any);
 
     const system = out.prompt[0];
     expect(system.role).toBe("system");
     const text = String(system.content);
-    expect(text).toMatch(/You are a function calling AI model/);
-    expect(text).toMatch(/<tools>/);
-    expect(text).toMatch(/get_weather/);
+    expect(text).toMatch(REGEX_FUNCTION_CALLING_MODEL);
+    expect(text).toMatch(REGEX_TOOLS_TAG);
+    expect(text).toMatch(REGEX_GET_WEATHER);
   });
 
   it("morphXmlToolMiddleware template appears in system prompt", async () => {
-    const out = await (morphXmlToolMiddleware.transformParams as any)!({
+    const transformParams = morphXmlToolMiddleware.transformParams as any;
+    const out = await transformParams({
       params: { prompt: [], tools },
     } as any);
 
     const system = out.prompt[0];
     expect(system.role).toBe("system");
     const text = String(system.content);
-    expect(text).toMatch(/You are a function calling AI model/);
-    expect(text).toMatch(/<tools>/);
-    expect(text).toMatch(/get_weather/);
+    expect(text).toMatch(REGEX_FUNCTION_CALLING_MODEL);
+    expect(text).toMatch(REGEX_TOOLS_TAG);
+    expect(text).toMatch(REGEX_GET_WEATHER);
   });
 });
 
@@ -70,45 +88,51 @@ describe("createToolMiddleware error branches", () => {
   });
 
   it("throws when toolChoice none is used", async () => {
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
     await expect(
-      mw.transformParams!({
+      transformParams({
         params: { prompt: [], toolChoice: { type: "none" } },
       } as any)
-    ).rejects.toThrow(/none/);
+    ).rejects.toThrow(REGEX_NONE);
   });
 
   it("throws when specific tool not found", async () => {
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
     await expect(
-      mw.transformParams!({
+      transformParams({
         params: {
           prompt: [],
           tools: [],
           toolChoice: { type: "tool", toolName: "missing" },
         },
       } as any)
-    ).rejects.toThrow(/not found/);
+    ).rejects.toThrow(REGEX_NOT_FOUND);
   });
 
   it("throws when provider-defined tool is selected", async () => {
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
     await expect(
-      mw.transformParams!({
+      transformParams({
         params: {
           prompt: [],
           tools: [{ type: "provider-defined", id: "x" } as any],
           toolChoice: { type: "tool", toolName: "x" },
         },
       } as any)
-    ).rejects.toThrow(/Provider-defined tools/);
+    ).rejects.toThrow(REGEX_PROVIDER_DEFINED);
   });
 
   it("throws when required toolChoice is set but no tools are provided", async () => {
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
     await expect(
-      mw.transformParams!({
+      transformParams({
         params: { prompt: [], tools: [], toolChoice: { type: "required" } },
       } as any)
-    ).rejects.toThrow(
-      /Tool choice type 'required' is set, but no tools are provided/
-    );
+    ).rejects.toThrow(REGEX_REQUIRED_NO_TOOLS);
   });
 });
 
@@ -126,7 +150,9 @@ describe("createToolMiddleware positive paths", () => {
         inputSchema: { type: "object" },
       },
     ];
-    const out = await mw.transformParams!({
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const out = await transformParams({
       params: {
         prompt: [
           { role: "user", content: [{ type: "text", text: "A" }] },
@@ -152,8 +178,10 @@ describe("createToolMiddleware positive paths", () => {
 describe("non-stream assistant->user merge formatting with object input", () => {
   it("gemma: formats assistant tool-call (object input) and tool result into user text", async () => {
     const mw = gemmaToolMiddleware;
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
 
-    const out = await mw.transformParams!({
+    const out = await transformParams({
       params: {
         prompt: [
           { role: "user", content: [{ type: "text", text: "q" }] },
@@ -195,7 +223,8 @@ describe("non-stream assistant->user merge formatting with object input", () => 
     // last message is the tool result
     console.debug(out.prompt[out.prompt.length - 1]);
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant")!;
+    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    if (!assistantMsg) throw new Error("assistant message not found");
     const assistantText = (assistantMsg.content as any[])
       .map((c: any) => (c.type === "text" ? c.text : ""))
       .join("");
@@ -208,12 +237,14 @@ describe("non-stream assistant->user merge formatting with object input", () => 
       )
       .join("\n");
 
-    expect(userCombined).toMatch(/tool_response/);
+    expect(userCombined).toMatch(REGEX_TOOL_RESPONSE_TAG);
   });
 
   it("hermes: formats assistant tool-call (object input) and tool result into user text", async () => {
     const mw = hermesToolMiddleware;
-    const out = await mw.transformParams!({
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const out = await transformParams({
       params: {
         prompt: [
           { role: "user", content: [{ type: "text", text: "q" }] },
@@ -254,11 +285,12 @@ describe("non-stream assistant->user merge formatting with object input", () => 
     // last message is the tool result
     console.debug(out.prompt[out.prompt.length - 1]);
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant")!;
+    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    if (!assistantMsg) throw new Error("assistant message not found");
     const assistantText = (assistantMsg.content as any[])
       .map((c: any) => (c.type === "text" ? c.text : ""))
       .join("");
-    expect(assistantText).toMatch(/<tool_call>/);
+    expect(assistantText).toMatch(REGEX_TOOL_CALL_TAG);
 
     const userMsgs = out.prompt.filter((m: any) => m.role === "user");
     const userCombined = userMsgs
@@ -266,12 +298,14 @@ describe("non-stream assistant->user merge formatting with object input", () => 
         u.content.map((c: any) => (c.type === "text" ? c.text : "")).join("")
       )
       .join("\n");
-    expect(userCombined).toMatch(/<tool_response>/);
+    expect(userCombined).toMatch(REGEX_TOOL_RESPONSE_TAG);
   });
 
   it("xml: formats assistant tool-call (object input) and tool result into user text", async () => {
     const mw = morphXmlToolMiddleware;
-    const out = await mw.transformParams!({
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const out = await transformParams({
       params: {
         prompt: [
           { role: "user", content: [{ type: "text", text: "q" }] },
@@ -312,11 +346,12 @@ describe("non-stream assistant->user merge formatting with object input", () => 
     // last message is the tool result
     console.debug(out.prompt[out.prompt.length - 1]);
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant")!;
+    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    if (!assistantMsg) throw new Error("assistant message not found");
     const assistantText = (assistantMsg.content as any[])
       .map((c: any) => (c.type === "text" ? c.text : ""))
       .join("");
-    expect(assistantText).toMatch(/<get_weather>/);
+    expect(assistantText).toMatch(REGEX_GET_WEATHER_TAG);
 
     const userMsgs = out.prompt.filter((m: any) => m.role === "user");
     const userCombined = userMsgs
@@ -324,7 +359,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
         u.content.map((c: any) => (c.type === "text" ? c.text : "")).join("")
       )
       .join("\n");
-    expect(userCombined).toMatch(/<tool_response>/);
+    expect(userCombined).toMatch(REGEX_TOOL_RESPONSE_TAG);
   });
 });
 
@@ -357,7 +392,9 @@ describe("transformParams", () => {
       ],
     };
 
-    const result = await middleware.transformParams!({ params } as any);
+    const transformParams = middleware.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const result = await transformParams({ params } as any);
     expect(result.prompt).toBeDefined();
     expect(result.tools).toEqual([]);
     expect(result.toolChoice).toBeUndefined();
@@ -371,7 +408,9 @@ describe("transformParams merges adjacent user messages", () => {
       toolSystemPromptTemplate: (t) => `T:${t}`,
     });
 
-    const out = await mw.transformParams!({
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const out = await transformParams({
       params: {
         prompt: [
           { role: "user", content: [{ type: "text", text: "first" }] },
@@ -382,7 +421,8 @@ describe("transformParams merges adjacent user messages", () => {
     } as any);
 
     // After inserting system, the merged user should be at index 1
-    const user = out.prompt.find((m) => m.role === "user")!;
+    const user = out.prompt.find((m) => m.role === "user");
+    if (!user) throw new Error("user message not found");
     const text = user.content.map((c: any) => c.text).join("");
     expect(text).toBe("first\nsecond");
   });
@@ -393,7 +433,9 @@ describe("transformParams merges adjacent user messages", () => {
       toolSystemPromptTemplate: (t) => `T:${t}`,
     });
 
-    const out = await mw.transformParams!({
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const out = await transformParams({
       params: {
         prompt: [
           {
@@ -501,15 +543,18 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       providerOptions: { toolCallMiddleware: { existing: true } },
     };
 
-    const out = await mw.transformParams!({ params } as any);
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const out = await transformParams({ params } as any);
     expect(out.prompt[0].role).toBe("system");
     // Assistant remains assistant with formatted tool call text
     const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     expect(assistantMsg).toBeTruthy();
-    const assistantText = assistantMsg!.content
+    if (!assistantMsg) throw new Error("assistant message not found");
+    const assistantText = assistantMsg.content
       .map((c) => (c.type === "text" ? (c as any).text : ""))
       .join("");
-    expect(assistantText).toMatch(/<tool_call>/);
+    expect(assistantText).toMatch(REGEX_TOOL_CALL_TAG);
 
     // Tool role becomes user text; original user remains user; they are not adjacent so not merged
     const userMsgs = out.prompt.filter((m) => m.role === "user");
@@ -522,7 +567,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       )
       .join("\n");
     expect(userCombined).toContain("hello");
-    expect(userCombined).toMatch(/<tool_response>/);
+    expect(userCombined).toMatch(REGEX_TOOL_RESPONSE_TAG);
 
     // tools cleared; originalTools propagated into providerOptions
     expect(out.tools).toEqual([]);
@@ -552,7 +597,9 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       tools: [],
     };
 
-    const out = await mw.transformParams!({ params } as any);
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const out = await transformParams({ params } as any);
     const userMsgs = out.prompt.filter((m) => m.role === "user");
     expect(userMsgs).toHaveLength(1);
     const onlyText = userMsgs[0].content.every((c: any) => c.type === "text");
@@ -590,20 +637,24 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       ],
     };
 
-    const out = await mw.transformParams!({ params } as any);
-    const assistant = out.prompt.find((m) => m.role === "assistant")! as any;
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const out = await transformParams({ params } as any);
+    const assistant = out.prompt.find((m) => m.role === "assistant");
+    if (!assistant) throw new Error("assistant message not found");
+    const assistantAny = assistant as any;
     // Should contain both formatted tool_call text and original reasoning block
-    const hasReasoning = assistant.content.some(
+    const hasReasoning = assistantAny.content.some(
       (c: any) => c.type === "reasoning"
     );
     expect(hasReasoning).toBe(true);
-    const assistantText = assistant.content
+    const assistantText = assistantAny.content
       .filter((c: any) => c.type === "text")
       .map((c: any) => c.text)
       .join("\n");
-    expect(assistantText).toMatch(/<tool_call>/);
+    expect(assistantText).toMatch(REGEX_TOOL_CALL_TAG);
     // Ensure the reasoning's inner text remains
-    const reasoning = assistant.content.find(
+    const reasoning = assistantAny.content.find(
       (c: any) => c.type === "reasoning"
     );
     expect(
@@ -618,11 +669,13 @@ describe(".....", () => {
       protocol: jsonMixProtocol,
       toolSystemPromptTemplate: () => "",
     });
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
     await expect(
-      mw.transformParams!({
+      transformParams({
         params: { prompt: [], tools: [], toolChoice: { type: "none" } },
       } as any)
-    ).rejects.toThrow(/none/);
+    ).rejects.toThrow(REGEX_NONE);
   });
 
   it("transformParams validates specific tool selection and builds JSON schema", async () => {
@@ -638,7 +691,9 @@ describe(".....", () => {
         inputSchema: { type: "object", properties: { a: { type: "string" } } },
       },
     ];
-    const result = await mw.transformParams!({
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const result = await transformParams({
       params: {
         prompt: [],
         tools,
@@ -670,7 +725,9 @@ describe(".....", () => {
         inputSchema: { type: "object" },
       },
     ];
-    const result = await mw.transformParams!({
+    const transformParams = mw.transformParams;
+    if (!transformParams) throw new Error("transformParams is undefined");
+    const result = await transformParams({
       params: { prompt: [], tools, toolChoice: { type: "required" } },
     } as any);
     expect(result.responseFormat).toMatchObject({ type: "json" });
