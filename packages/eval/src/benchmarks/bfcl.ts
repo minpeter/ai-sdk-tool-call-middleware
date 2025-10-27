@@ -724,7 +724,8 @@ function createBfclBenchmark(
           testCaseId: string;
           caseLogs: string[];
         }): void => {
-          const { toolCalls, finishReason, text, testCaseId, caseLogs } = options;
+          const { toolCalls, finishReason, text, testCaseId, caseLogs } =
+            options;
           try {
             caseLogs.push(
               `[DEBUG] ${testCaseId}: rawToolCalls=${JSON.stringify(toolCalls)}, finishReason=${finishReason}, text=${JSON.stringify(text)}`
@@ -903,7 +904,7 @@ function createBfclBenchmark(
           finishReason: unknown;
           debugSummaryRef: { originalText?: string; toolCalls?: string };
         }> => {
-          const { model, flatMessages, toolsMap, temperature, maxTokens } =
+          const { model: modelInstance, flatMessages, toolsMap, temperature, maxTokens } =
             options;
 
           type ProviderOptionsWithMiddleware = {
@@ -924,7 +925,7 @@ function createBfclBenchmark(
             },
           };
           const { toolCalls, text, finishReason } = await generateText({
-            model,
+            model: modelInstance,
             messages: flatMessages as unknown as CoreMessage[],
             tools: toolsMap,
             toolChoice: "auto",
@@ -990,25 +991,105 @@ function createBfclBenchmark(
           return { valid: false, logs: caseLogs };
         };
 
+        // Helper: Prepare test case data
+        const prepareTestCaseData = (testCase: TestCase): {
+          flatMessages: Message[];
+          transformedTools: TransformedTool[];
+          nameMap: Map<string, string>;
+          toolsMap: Record<string, ReturnType<typeof tool>>;
+        } => {
+          const { function: tools, question: messages } = testCase;
+          const flatMessages = flattenMessages(messages);
+          const { transformedTools, nameMap } = buildTransformedTools(
+            tools as ToolSpec[],
+            fixSchema
+          );
+          const toolsMap = buildToolsMap(transformedTools);
+          return { flatMessages, transformedTools, nameMap, toolsMap };
+        };
+
+        // Helper: Process model response
+        const processModelResponse = (options: {
+          testCase: TestCase;
+          toolCalls: unknown;
+          text: unknown;
+          finishReason: unknown;
+          debugSummaryRef: { originalText?: string; toolCalls?: string };
+          nameMap: Map<string, string>;
+          transformedTools: TransformedTool[];
+          flatMessages: Message[];
+          tools: ToolSpec[];
+          caseLogs: string[];
+        }): { valid: boolean; logs: string[] } => {
+          const {
+            testCase,
+            toolCalls,
+            text,
+            finishReason,
+            debugSummaryRef,
+            nameMap,
+            transformedTools,
+            flatMessages,
+            tools,
+            caseLogs,
+          } = options;
+
+          const mwOriginalText: string | undefined =
+            debugSummaryRef.originalText;
+          const mwParsedToolCalls = parseDebugToolCalls(
+            debugSummaryRef.toolCalls
+          );
+
+          logRawToolCalls({
+            toolCalls,
+            finishReason,
+            text,
+            testCaseId: testCase.id,
+            caseLogs,
+          });
+
+          const possibleAnswer = possibleAnswersMap.get(testCase.id);
+          if (!possibleAnswer) {
+            throw new Error(`No possible answer for id: ${testCase.id}`);
+          }
+
+          const restoredCalls = restoreToolCalls(
+            toolCalls || [],
+            nameMap,
+            transformedTools
+          );
+
+          const checkerResult = check(testCase, restoredCalls, possibleAnswer);
+
+          return processValidationResult({
+            checkerResult,
+            testCase,
+            tools,
+            possibleAnswer,
+            restoredCalls,
+            flatMessages,
+            mwOriginalText,
+            text,
+            finishReason,
+            mwParsedToolCalls,
+            caseLogs,
+          });
+        };
+
         // Per-test runner that does not throw and returns its own logs
         const runSingleCase = async (
           testCase: TestCase
         ): Promise<{ valid: boolean; logs: string[] }> => {
           const caseLogs: string[] = [];
-          const { function: tools, question: messages } = testCase;
+          const { function: tools } = testCase;
           const temp = config?.temperature;
           const temperature = typeof temp === "number" ? temp : undefined;
           const maxTok = config?.maxTokens;
           const maxTokens = typeof maxTok === "number" ? maxTok : undefined;
 
           try {
-            const flatMessages = flattenMessages(messages);
-            const { transformedTools, nameMap } = buildTransformedTools(
-              tools as ToolSpec[],
-              fixSchema
-            );
-
-            const toolsMap = buildToolsMap(transformedTools);
+            const { flatMessages, transformedTools, nameMap, toolsMap } =
+              prepareTestCaseData(testCase);
 
             logFirstToolDebug(transformedTools, testCase.id, caseLogs);
 
@@ -1021,48 +1102,16 @@ function createBfclBenchmark(
                 maxTokens,
               });
 
-            const mwOriginalText: string | undefined =
-              debugSummaryRef.originalText;
-            const mwParsedToolCalls = parseDebugToolCalls(
-              debugSummaryRef.toolCalls
-            );
-
-            logRawToolCalls({
+            return processModelResponse({
+              testCase,
               toolCalls,
-              finishReason,
               text,
-              testCaseId: testCase.id,
-              caseLogs,
-            });
-
-            const possibleAnswer = possibleAnswersMap.get(testCase.id);
-            if (!possibleAnswer) {
-              throw new Error(`No possible answer for id: ${testCase.id}`);
-            }
-
-            const restoredCalls = restoreToolCalls(
-              toolCalls || [],
+              finishReason,
+              debugSummaryRef,
               nameMap,
-              transformedTools
-            );
-
-            const checkerResult = check(
-              testCase,
-              restoredCalls,
-              possibleAnswer
-            );
-
-            return processValidationResult({
-              checkerResult,
-              testCase,
-              tools: tools as ToolSpec[],
-              possibleAnswer,
-              restoredCalls,
+              transformedTools,
               flatMessages,
-              mwOriginalText,
-              text,
-              finishReason,
-              mwParsedToolCalls,
+              tools: tools as ToolSpec[],
               caseLogs,
             });
           } catch (e: unknown) {
