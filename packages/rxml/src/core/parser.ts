@@ -55,7 +55,7 @@ function restorePlaceholderString(
  */
 function restorePlaceholdersInObject(
   obj: Record<string, unknown>,
-  placeholderMap: Map<string, string>,
+  _placeholderMap: Map<string, string>,
   textNodeName: string,
   restorer: (val: unknown) => unknown
 ): Record<string, unknown> {
@@ -135,15 +135,11 @@ function processItemValue(item: unknown, textNodeName: string): unknown {
 /**
  * Process item wrapper pattern values
  */
-function processItemWrapper(
-  itemValue: unknown,
-  textNodeName: string
-): unknown {
+function processItemWrapper(itemValue: unknown, textNodeName: string): unknown {
   if (Array.isArray(itemValue)) {
     return itemValue.map((item) => processItemValue(item, textNodeName));
   }
-  const trimmed =
-    typeof itemValue === "string" ? itemValue.trim() : itemValue;
+  const trimmed = typeof itemValue === "string" ? itemValue.trim() : itemValue;
   return tryConvertToNumber(trimmed);
 }
 
@@ -182,7 +178,9 @@ function extractPartialXmlResults(
       const tokenizer = new XMLTokenizer(elementXml, options);
       const parsed = tokenizer.parseChildren();
       partialResults.push(...parsed);
-    } catch {}
+    } catch {
+      // Ignore parse errors for individual elements
+    }
     match = xmlPattern.exec(xmlString);
   }
 
@@ -583,10 +581,10 @@ export function parse(
         let isIndexedTuple = false;
         if (keys.length > 0 && keys.every((key) => DIGIT_KEY_REGEX.test(key))) {
           const indices = keys
-            .map((k) => Number.parseInt(k, 10))
+            .map((keyStr) => Number.parseInt(keyStr, 10))
             .sort((a, b) => a - b);
           isIndexedTuple =
-            indices[0] === 0 && indices.every((val, idx) => val === idx);
+            indices[0] === 0 && indices.every((indexVal, idx) => indexVal === idx);
         }
 
         if (isIndexedTuple) {
@@ -701,6 +699,34 @@ export function parseNode(
 }
 
 /**
+ * Build node value with attributes if present
+ */
+function buildNodeValue(child: RXMLNode): unknown {
+  const kids = simplify(child.children);
+  let nodeValue: unknown = kids;
+
+  // Add attributes if present
+  if (Object.keys(child.attributes).length) {
+    if (typeof kids === "string") {
+      nodeValue = kids;
+      // For string content with attributes, we need to preserve both
+      if (kids !== "") {
+        nodeValue = { _attributes: child.attributes, value: kids };
+      } else {
+        nodeValue = { _attributes: child.attributes };
+      }
+    } else if (typeof kids === "object" && kids !== null) {
+      (kids as Record<string, unknown>)._attributes = child.attributes;
+      nodeValue = kids;
+    } else {
+      nodeValue = { _attributes: child.attributes };
+    }
+  }
+
+  return nodeValue;
+}
+
+/**
  * Simplify parsed XML structure (similar to TXML's simplify)
  */
 export function simplify(children: (RXMLNode | string)[]): unknown {
@@ -715,41 +741,24 @@ export function simplify(children: (RXMLNode | string)[]): unknown {
   const out: Record<string, unknown> = {};
 
   // Map each object
-  children.forEach((child) => {
+  for (const child of children) {
     if (typeof child !== "object") {
-      return;
+      continue;
     }
 
     if (!out[child.tagName]) {
       out[child.tagName] = [];
     }
 
-    const kids = simplify(child.children);
-    let nodeValue: unknown = kids;
-
-    // Add attributes if present
-    if (Object.keys(child.attributes).length) {
-      if (typeof kids === "string") {
-        nodeValue = kids;
-        // For string content with attributes, we need to preserve both
-        if (kids !== "") {
-          nodeValue = { _attributes: child.attributes, value: kids };
-        } else {
-          nodeValue = { _attributes: child.attributes };
-        }
-      } else if (typeof kids === "object" && kids !== null) {
-        (kids as Record<string, unknown>)._attributes = child.attributes;
-        nodeValue = kids;
-      } else {
-        nodeValue = { _attributes: child.attributes };
-      }
-    }
-
+    const nodeValue = buildNodeValue(child);
     (out[child.tagName] as unknown[]).push(nodeValue);
-  });
+  }
 
   // Flatten single-item arrays
   for (const key in out) {
+    if (!Object.hasOwn(out, key)) {
+      continue;
+    }
     const value = out[key];
     if (Array.isArray(value) && value.length === 1) {
       out[key] = value[0];
@@ -775,20 +784,22 @@ export function filter(
 ): RXMLNode[] {
   const out: RXMLNode[] = [];
 
-  children.forEach((child, i) => {
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
     if (typeof child === "object" && filterFn(child, i, depth, path)) {
       out.push(child);
     }
     if (typeof child === "object" && child.children) {
+      const childPath = `${path ? `${path}.` : ""}${i}.${child.tagName}`;
       const kids = filter(
         child.children,
         filterFn,
         depth + 1,
-        (path ? path + "." : "") + i + "." + child.tagName
+        childPath
       );
       out.push(...kids);
     }
-  });
+  }
 
   return out;
 }

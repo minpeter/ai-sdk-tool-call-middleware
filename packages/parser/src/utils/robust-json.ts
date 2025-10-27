@@ -831,7 +831,6 @@ function parseManyInitialElement<T>(
 // Helper to process a token in parseMany loop
 function parseManyProcessToken<T>(
   token: Token,
-  tokens: Token[],
   state: ParseState,
   opts: ParseManyOpts<T>,
   result: T
@@ -850,7 +849,7 @@ function parseManyProcessToken<T>(
   if (token.type === ",") {
     const handledResult = handleCommaToken({
       token,
-      tokens,
+      tokens: state.tokens,
       state,
       opts,
       result,
@@ -882,7 +881,6 @@ function parseMany<T>(
     const token = popToken(tokens, state);
     const processedResult = parseManyProcessToken(
       token,
-      tokens,
       state,
       opts,
       result

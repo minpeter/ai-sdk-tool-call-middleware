@@ -89,7 +89,9 @@ describe("createToolMiddleware error branches", () => {
 
   it("throws when toolChoice none is used", async () => {
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     await expect(
       transformParams({
         params: { prompt: [], toolChoice: { type: "none" } },
@@ -99,7 +101,9 @@ describe("createToolMiddleware error branches", () => {
 
   it("throws when specific tool not found", async () => {
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     await expect(
       transformParams({
         params: {
@@ -113,7 +117,9 @@ describe("createToolMiddleware error branches", () => {
 
   it("throws when provider-defined tool is selected", async () => {
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     await expect(
       transformParams({
         params: {
@@ -127,7 +133,9 @@ describe("createToolMiddleware error branches", () => {
 
   it("throws when required toolChoice is set but no tools are provided", async () => {
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     await expect(
       transformParams({
         params: { prompt: [], tools: [], toolChoice: { type: "required" } },
@@ -151,7 +159,9 @@ describe("createToolMiddleware positive paths", () => {
       },
     ];
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const out = await transformParams({
       params: {
         prompt: [
@@ -179,7 +189,9 @@ describe("non-stream assistant->user merge formatting with object input", () => 
   it("gemma: formats assistant tool-call (object input) and tool result into user text", async () => {
     const mw = gemmaToolMiddleware;
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
 
     const out = await transformParams({
       params: {
@@ -221,10 +233,12 @@ describe("non-stream assistant->user merge formatting with object input", () => 
     } as any);
 
     // last message is the tool result
-    console.debug(out.prompt[out.prompt.length - 1]);
+    console.debug(out.prompt.at(-1));
 
     const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
-    if (!assistantMsg) throw new Error("assistant message not found");
+    if (!assistantMsg) {
+      throw new Error("assistant message not found");
+    }
     const assistantText = (assistantMsg.content as any[])
       .map((c: any) => (c.type === "text" ? c.text : ""))
       .join("");
@@ -283,10 +297,12 @@ describe("non-stream assistant->user merge formatting with object input", () => 
     } as any);
 
     // last message is the tool result
-    console.debug(out.prompt[out.prompt.length - 1]);
+    console.debug(out.prompt.at(-1));
 
     const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
-    if (!assistantMsg) throw new Error("assistant message not found");
+    if (!assistantMsg) {
+      throw new Error("assistant message not found");
+    }
     const assistantText = (assistantMsg.content as any[])
       .map((c: any) => (c.type === "text" ? c.text : ""))
       .join("");
@@ -344,10 +360,12 @@ describe("non-stream assistant->user merge formatting with object input", () => 
     } as any);
 
     // last message is the tool result
-    console.debug(out.prompt[out.prompt.length - 1]);
+    console.debug(out.prompt.at(-1));
 
     const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
-    if (!assistantMsg) throw new Error("assistant message not found");
+    if (!assistantMsg) {
+      throw new Error("assistant message not found");
+    }
     const assistantText = (assistantMsg.content as any[])
       .map((c: any) => (c.type === "text" ? c.text : ""))
       .join("");
@@ -550,7 +568,9 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     // Assistant remains assistant with formatted tool call text
     const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     expect(assistantMsg).toBeTruthy();
-    if (!assistantMsg) throw new Error("assistant message not found");
+    if (!assistantMsg) {
+      throw new Error("assistant message not found");
+    }
     const assistantText = assistantMsg.content
       .map((c) => (c.type === "text" ? (c as any).text : ""))
       .join("");
