@@ -1,7 +1,7 @@
-import { generateText, type LanguageModel } from "ai";
-import Ajv, { type AnySchema } from "ajv";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { generateText, type LanguageModel } from "ai";
+import Ajv, { type AnySchema } from "ajv";
 
 import type { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
 import { resolveDataDir } from "@/utils/paths";

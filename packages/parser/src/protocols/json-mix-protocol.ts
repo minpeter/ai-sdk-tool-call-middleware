@@ -134,10 +134,7 @@ function flushBuffer(
   state.buffer = "";
 }
 
-function closeTextBlock(
-  state: StreamState,
-  controller: StreamController
-) {
+function closeTextBlock(state: StreamState, controller: StreamController) {
   if (state.currentTextId && state.hasEmittedTextStart) {
     controller.enqueue({ type: "text-end", id: state.currentTextId });
     state.currentTextId = null;
