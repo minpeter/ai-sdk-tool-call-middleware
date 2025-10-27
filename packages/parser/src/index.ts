@@ -1,5 +1,5 @@
-import { jsonMixProtocol, morphXmlProtocol } from "./protocols";
 import { createToolMiddleware } from "./tool-call-middleware";
+import { jsonMixProtocol, morphXmlProtocol } from "./protocols";
 
 const gemmaToolMiddleware = createToolMiddleware({
   protocol: jsonMixProtocol(
@@ -64,14 +64,9 @@ Available functions are listed inside <tools></tools>.
   },
 });
 
-export {
-  createToolMiddleware,
-  gemmaToolMiddleware,
-  hermesToolMiddleware,
-  jsonMixProtocol,
-  morphXmlProtocol,
-  morphXmlToolMiddleware,
-};
+export { createToolMiddleware } from "./tool-call-middleware";
+export { jsonMixProtocol, morphXmlProtocol } from "./protocols";
+export { gemmaToolMiddleware, hermesToolMiddleware, morphXmlToolMiddleware };
 
 // Export utilities
 export * from "./utils";

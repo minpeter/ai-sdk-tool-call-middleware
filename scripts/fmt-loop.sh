@@ -7,7 +7,7 @@ while true; do
   if ! output=$(pnpm fmt -- --max-diagnostics 10 2>&1); then
     status=$?
     printf 'pnpm fmt failed with exit code %d. Forwarding output to cursor-agent.\n' "$status"
-    cursor-agent --model sonnet-4.5 <<EOF
+    cursor-agent --model sonnet-4.5 -p <<EOF
 Please fix the biome lint error below.
 
 $output

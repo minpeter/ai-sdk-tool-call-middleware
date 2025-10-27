@@ -3,14 +3,21 @@
  */
 
 export class RXMLParseError extends Error {
+  cause?: unknown;
+  line?: number;
+  column?: number;
+
   constructor(
     message: string,
-    public cause?: unknown,
-    public line?: number,
-    public column?: number
+    cause?: unknown,
+    line?: number,
+    column?: number
   ) {
     super(message);
     this.name = "RXMLParseError";
+    this.cause = cause;
+    this.line = line;
+    this.column = column;
   }
 }
 
@@ -22,31 +29,40 @@ export class RXMLDuplicateStringTagError extends Error {
 }
 
 export class RXMLCoercionError extends Error {
+  cause?: unknown;
+
   constructor(
     message: string,
-    public cause?: unknown
+    cause?: unknown
   ) {
     super(message);
     this.name = "RXMLCoercionError";
+    this.cause = cause;
   }
 }
 
 export class RXMLStringifyError extends Error {
+  cause?: unknown;
+
   constructor(
     message: string,
-    public cause?: unknown
+    cause?: unknown
   ) {
     super(message);
     this.name = "RXMLStringifyError";
+    this.cause = cause;
   }
 }
 
 export class RXMLStreamError extends Error {
+  cause?: unknown;
+
   constructor(
     message: string,
-    public cause?: unknown
+    cause?: unknown
   ) {
     super(message);
     this.name = "RXMLStreamError";
+    this.cause = cause;
   }
 }
