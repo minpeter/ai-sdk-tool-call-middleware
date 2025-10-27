@@ -14,7 +14,6 @@ const INDEX_7 = 7;
 const INDEX_14 = 14;
 const INDEX_17 = 17;
 const INDEX_1000 = 1000;
-const VALUE_100 = 100;
 
 describe("getPotentialStartIndex", () => {
   describe("direct substring matches", () => {

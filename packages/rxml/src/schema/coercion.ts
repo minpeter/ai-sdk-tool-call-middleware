@@ -28,6 +28,75 @@ export function getPropertySchema(toolSchema: unknown, key: string): unknown {
 }
 
 /**
+ * Get node value from children
+ */
+function getNodeValue(
+  children: (RXMLNode | string)[],
+  schema: unknown,
+  tagName: string,
+  textNodeName: string
+): unknown {
+  if (children.length === 0) {
+    return "";
+  }
+  if (children.length === 1 && typeof children[0] === "string") {
+    return children[0];
+  }
+  return processComplexContent(
+    children,
+    getPropertySchema(schema, tagName),
+    textNodeName
+  );
+}
+
+/**
+ * Add attributes to value
+ */
+function addAttributesToValue(
+  value: unknown,
+  attributes: Record<string, string>,
+  textNodeName: string
+): unknown {
+  if (Object.keys(attributes).length === 0) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const valueResult: Record<string, unknown> = { [textNodeName]: value };
+    for (const [attrName, attrValue] of Object.entries(attributes)) {
+      valueResult[`@_${attrName}`] = attrValue;
+    }
+    return valueResult;
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [attrName, attrValue] of Object.entries(attributes)) {
+      (value as Record<string, unknown>)[`@_${attrName}`] = attrValue;
+    }
+  }
+
+  return value;
+}
+
+/**
+ * Add value to result, handling duplicates
+ */
+function addToResult(
+  result: Record<string, unknown>,
+  tagName: string,
+  value: unknown
+): void {
+  if (result[tagName]) {
+    if (!Array.isArray(result[tagName])) {
+      result[tagName] = [result[tagName]];
+    }
+    (result[tagName] as unknown[]).push(value);
+  } else {
+    result[tagName] = value;
+  }
+}
+
+/**
  * Convert TXML-style DOM to flat object structure for schema coercion
  */
 export function domToObject(
@@ -39,59 +108,73 @@ export function domToObject(
 
   for (const node of nodes) {
     if (typeof node === "string") {
-      // Top-level text content - usually from DOCTYPE, comments, etc.
       continue;
     }
 
     const { tagName, children, attributes } = node;
-
-    // Handle the node content
-    let value: unknown;
-
-    if (children.length === 0) {
-      // Empty element
-      value = "";
-    } else if (children.length === 1 && typeof children[0] === "string") {
-      // Simple text content
-      value = children[0];
-    } else {
-      // Complex content - convert children to object/array
-      value = processComplexContent(
-        children,
-        getPropertySchema(schema, tagName),
-        textNodeName
-      );
-    }
-
-    // Add attributes if present
-    if (Object.keys(attributes).length > 0) {
-      if (typeof value === "string") {
-        // For string values with attributes, create an object with text content and prefixed attributes
-        const valueResult: Record<string, unknown> = { [textNodeName]: value };
-        for (const [attrName, attrValue] of Object.entries(attributes)) {
-          valueResult[`@_${attrName}`] = attrValue;
-        }
-        value = valueResult;
-      } else if (value && typeof value === "object" && !Array.isArray(value)) {
-        // For object values, add attributes with @_ prefix
-        for (const [attrName, attrValue] of Object.entries(attributes)) {
-          (value as Record<string, unknown>)[`@_${attrName}`] = attrValue;
-        }
-      }
-    }
-
-    // Handle multiple elements with same tag name
-    if (result[tagName]) {
-      if (!Array.isArray(result[tagName])) {
-        result[tagName] = [result[tagName]];
-      }
-      (result[tagName] as unknown[]).push(value);
-    } else {
-      result[tagName] = value;
-    }
+    let value = getNodeValue(children, schema, tagName, textNodeName);
+    value = addAttributesToValue(value, attributes, textNodeName);
+    addToResult(result, tagName, value);
   }
 
   return result;
+}
+
+/**
+ * Process child element node
+ */
+function processChildElement(
+  child: RXMLNode,
+  schema: unknown,
+  textNodeName: string
+): unknown {
+  let childValue: unknown;
+
+  if (child.children.length === 0) {
+    childValue = "";
+  } else if (
+    child.children.length === 1 &&
+    typeof child.children[0] === "string"
+  ) {
+    childValue = child.children[0];
+  } else {
+    childValue = processComplexContent(
+      child.children,
+      getPropertySchema(schema, child.tagName),
+      textNodeName
+    );
+  }
+
+  return addAttributesToValue(childValue, child.attributes, textNodeName);
+}
+
+/**
+ * Combine text and elements into result
+ */
+function combineContent(
+  textContent: string[],
+  elements: Record<string, unknown>,
+  textNodeName: string
+): unknown {
+  const hasText = textContent.length > 0;
+  const hasElements = Object.keys(elements).length > 0;
+
+  if (hasText && hasElements) {
+    return {
+      [textNodeName]: textContent.join("").trim(),
+      ...elements,
+    };
+  }
+
+  if (hasText) {
+    return textContent.join("").trim();
+  }
+
+  if (hasElements) {
+    return elements;
+  }
+
+  return "";
 }
 
 /**
@@ -109,86 +192,12 @@ function processComplexContent(
     if (typeof child === "string") {
       textContent.push(child);
     } else {
-      // Process the entire child node, not just its children
-      let childValue: unknown;
-
-      if (child.children.length === 0) {
-        // Empty element
-        childValue = "";
-      } else if (
-        child.children.length === 1 &&
-        typeof child.children[0] === "string"
-      ) {
-        // Simple text content
-        childValue = child.children[0];
-      } else {
-        // Complex content - convert children to object/array
-        childValue = processComplexContent(
-          child.children,
-          getPropertySchema(schema, child.tagName),
-          textNodeName
-        );
-      }
-
-      // Add attributes if present
-      if (Object.keys(child.attributes).length > 0) {
-        if (typeof childValue === "string") {
-          // For string values with attributes, create an object with text content and prefixed attributes
-          const childResult: Record<string, unknown> = {
-            [textNodeName]: childValue,
-          };
-          for (const [attrName, attrValue] of Object.entries(
-            child.attributes
-          )) {
-            childResult[`@_${attrName}`] = attrValue;
-          }
-          childValue = childResult;
-        } else if (
-          childValue &&
-          typeof childValue === "object" &&
-          !Array.isArray(childValue)
-        ) {
-          // For object values, add attributes with @_ prefix
-          for (const [attrName, attrValue] of Object.entries(
-            child.attributes
-          )) {
-            (childValue as Record<string, unknown>)[`@_${attrName}`] =
-              attrValue;
-          }
-        }
-      }
-
-      if (elements[child.tagName]) {
-        if (!Array.isArray(elements[child.tagName])) {
-          elements[child.tagName] = [elements[child.tagName]];
-        }
-        (elements[child.tagName] as unknown[]).push(childValue);
-      } else {
-        elements[child.tagName] = childValue;
-      }
+      const childValue = processChildElement(child, schema, textNodeName);
+      addToResult(elements, child.tagName, childValue);
     }
   }
 
-  // If we have both text and elements, create a mixed content object
-  if (textContent.length > 0 && Object.keys(elements).length > 0) {
-    return {
-      [textNodeName]: textContent.join("").trim(),
-      ...elements,
-    };
-  }
-
-  // If only text content
-  if (textContent.length > 0 && Object.keys(elements).length === 0) {
-    return textContent.join("").trim();
-  }
-
-  // If only elements
-  if (Object.keys(elements).length > 0) {
-    return elements;
-  }
-
-  // Empty content
-  return "";
+  return combineContent(textContent, elements, textNodeName);
 }
 
 /**
@@ -202,6 +211,43 @@ export function coerceDomBySchema(
     return baseCoerceBySchema(domObject, schema) as Record<string, unknown>;
   } catch (error) {
     throw new RXMLCoercionError("Failed to coerce DOM object by schema", error);
+  }
+}
+
+/**
+ * Visit object schema properties
+ */
+function visitObjectProperties(
+  props: Record<string, unknown>,
+  collected: Set<string>,
+  visit: (s: unknown) => void
+): void {
+  for (const [key, propSchema] of Object.entries(props)) {
+    const t = getSchemaType(propSchema);
+    if (t === "string") {
+      collected.add(key);
+    } else if (t === "object" || t === "array") {
+      visit(propSchema);
+    }
+  }
+}
+
+/**
+ * Visit array schema items
+ */
+function visitArrayItems(
+  u: Record<string, unknown>,
+  visit: (s: unknown) => void
+): void {
+  const items = u.items as unknown;
+  if (items) {
+    visit(items);
+  }
+  const prefix = u.prefixItems as unknown[] | undefined;
+  if (Array.isArray(prefix)) {
+    for (const item of prefix) {
+      visit(item);
+    }
   }
 }
 
@@ -222,26 +268,10 @@ export function getStringTypedProperties(schema: unknown): Set<string> {
     if (type === "object") {
       const props = u.properties as Record<string, unknown> | undefined;
       if (props && typeof props === "object") {
-        for (const [key, propSchema] of Object.entries(props)) {
-          const t = getSchemaType(propSchema);
-          if (t === "string") {
-            collected.add(key);
-          } else if (t === "object" || t === "array") {
-            visit(propSchema);
-          }
-        }
+        visitObjectProperties(props, collected, visit);
       }
     } else if (type === "array") {
-      const items = (u as Record<string, unknown>).items as unknown;
-      if (items) {
-        visit(items);
-      }
-      const prefix = (u as Record<string, unknown>).prefixItems as
-        | unknown[]
-        | undefined;
-      if (Array.isArray(prefix)) {
-        prefix.forEach(visit);
-      }
+      visitArrayItems(u, visit);
     }
   };
 

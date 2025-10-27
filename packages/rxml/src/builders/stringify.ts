@@ -45,13 +45,13 @@ export function stringify(
   }
 }
 
-interface StringifyContext {
+type StringifyContext = {
   depth: number;
   format: boolean;
   suppressEmptyNode: boolean;
   minimalEscaping: boolean;
   strictBooleanAttributes: boolean;
-}
+};
 
 /**
  * Escape content based on escaping mode
@@ -94,6 +94,11 @@ function isPrimitive(value: unknown): boolean {
   );
 }
 
+type FormatOptions = {
+  indent: string;
+  newline: string;
+};
+
 /**
  * Stringify a primitive value
  */
@@ -101,8 +106,7 @@ function stringifyPrimitive(
   tagName: string,
   value: unknown,
   context: StringifyContext,
-  indent: string,
-  newline: string
+  format: FormatOptions
 ): string {
   const { minimalEscaping, suppressEmptyNode } = context;
   const content = escapeContent(String(value), minimalEscaping);
@@ -111,7 +115,7 @@ function stringifyPrimitive(
     return "";
   }
 
-  return createTextElement(tagName, content, indent, newline);
+  return createTextElement(tagName, content, format.indent, format.newline);
 }
 
 /**
@@ -149,7 +153,7 @@ function stringifyValue(
   }
 
   if (isPrimitive(value)) {
-    return stringifyPrimitive(tagName, value, context, indent, newline);
+    return stringifyPrimitive(tagName, value, context, { indent, newline });
   }
 
   if (Array.isArray(value)) {
@@ -168,11 +172,11 @@ function stringifyValue(
   return createTextElement(tagName, content, indent, newline);
 }
 
-interface ObjectParts {
+type ObjectParts = {
   attributes: Record<string, unknown>;
   elements: Record<string, unknown>;
   textContent: string | undefined;
-}
+};
 
 /**
  * Extract attributes, elements, and text content from an object
@@ -263,14 +267,20 @@ function buildOpeningTag(
 function stringifyTextOnlyContent(
   tagName: string,
   textContent: string,
-  indent: string,
-  newline: string,
   openTag: string,
+  format: FormatOptions,
   minimalEscaping: boolean
 ): string {
   const content = escapeContent(textContent, minimalEscaping);
-  return `${indent}${openTag}${content}</${tagName}>${newline}`;
+  return `${format.indent}${openTag}${content}</${tagName}>${format.newline}`;
 }
+
+type ComplexContentOptions = {
+  indent: string;
+  newline: string;
+  childIndent: string;
+  openTag: string;
+};
 
 /**
  * Stringify complex content (text + elements)
@@ -279,25 +289,22 @@ function stringifyComplexContent(
   tagName: string,
   parts: ObjectParts,
   context: StringifyContext,
-  indent: string,
-  newline: string,
-  childIndent: string,
-  openTag: string
+  options: ComplexContentOptions
 ): string {
   const { format, minimalEscaping, depth } = context;
   const { textContent, elements } = parts;
   const hasElements = Object.keys(elements).length > 0;
 
-  let result = `${indent}${openTag}`;
+  let result = `${options.indent}${options.openTag}`;
 
   if (textContent) {
     const content = escapeContent(textContent, minimalEscaping);
-    result += format ? `${newline}${childIndent}${content}` : content;
+    result += format ? `${options.newline}${options.childIndent}${content}` : content;
   }
 
   if (hasElements) {
     if (format) {
-      result += newline;
+      result += options.newline;
     }
 
     for (const [elementName, elementValue] of Object.entries(elements)) {
@@ -308,11 +315,11 @@ function stringifyComplexContent(
     }
 
     if (format) {
-      result += indent;
+      result += options.indent;
     }
   }
 
-  result += `</${tagName}>${newline}`;
+  result += `</${tagName}>${options.newline}`;
   return result;
 }
 
@@ -351,9 +358,8 @@ function stringifyObject(
     return stringifyTextOnlyContent(
       tagName,
       parts.textContent,
-      indent,
-      newline,
       fullOpenTag,
+      { indent, newline },
       context.minimalEscaping
     );
   }
@@ -363,10 +369,7 @@ function stringifyObject(
     tagName,
     parts,
     context,
-    indent,
-    newline,
-    childIndent,
-    fullOpenTag
+    { indent, newline, childIndent, openTag: fullOpenTag }
   );
 }
 
@@ -394,6 +397,94 @@ export function stringifyNodes(
   return result;
 }
 
+type NodeStringifyOptions = {
+  minimalEscaping: boolean;
+  strictBooleanAttributes: boolean;
+  indent: string;
+  newline: string;
+};
+
+/**
+ * Format a single node attribute
+ */
+function formatNodeAttribute(
+  attrName: string,
+  attrValue: string | null,
+  minimalEscaping: boolean,
+  strictBooleanAttributes: boolean
+): string {
+  if (attrValue === null) {
+    if (strictBooleanAttributes) {
+      return ` ${attrName}="${attrName}"`;
+    }
+    return ` ${attrName}`;
+  }
+
+  if (attrValue.indexOf('"') === -1) {
+    const escaped = minimalEscaping
+      ? escapeXmlMinimalAttr(attrValue, '"')
+      : escapeXml(attrValue);
+    return ` ${attrName}="${escaped}"`;
+  }
+
+  const escaped = minimalEscaping
+    ? escapeXmlMinimalAttr(attrValue, "'")
+    : escapeXml(attrValue);
+  return ` ${attrName}='${escaped}'`;
+}
+
+/**
+ * Build opening tag with attributes
+ */
+function buildNodeOpeningTag(
+  node: RXMLNode,
+  opts: NodeStringifyOptions
+): string {
+  let result = `${opts.indent}<${node.tagName}`;
+
+  for (const [attrName, attrValue] of Object.entries(node.attributes)) {
+    result += formatNodeAttribute(
+      attrName,
+      attrValue,
+      opts.minimalEscaping,
+      opts.strictBooleanAttributes
+    );
+  }
+
+  return result;
+}
+
+/**
+ * Stringify node children
+ */
+function stringifyNodeChildren(
+  children: (RXMLNode | string)[],
+  depth: number,
+  format: boolean,
+  options: Pick<StringifyOptions, "strictBooleanAttributes" | "minimalEscaping">,
+  minimalEscaping: boolean,
+  newline: string
+): { content: string; hasElementChildren: boolean } {
+  let content = "";
+  let hasElementChildren = false;
+
+  for (const child of children) {
+    if (typeof child === "string") {
+      content += minimalEscaping
+        ? escapeXmlMinimalText(child)
+        : escapeXml(child);
+    } else {
+      if (!hasElementChildren && format) {
+        content += newline;
+        hasElementChildren = true;
+      }
+      content += stringifyNode(child, depth + 1, format, options);
+    }
+  }
+
+  return { content, hasElementChildren };
+}
+
 /**
  * Stringify a single XML node
  */
@@ -411,58 +502,38 @@ export function stringifyNode(
   const minimalEscaping = options.minimalEscaping ?? false;
   const strictBooleanAttributes = options.strictBooleanAttributes ?? false;
 
-  let result = `${indent}<${node.tagName}`;
+  const opts: NodeStringifyOptions = {
+    minimalEscaping,
+    strictBooleanAttributes,
+    indent,
+    newline,
+  };
 
-  // Add attributes
-  for (const [attrName, attrValue] of Object.entries(node.attributes)) {
-    if (attrValue === null) {
-      if (strictBooleanAttributes) {
-        result += ` ${attrName}="${attrName}"`;
-      } else {
-        result += ` ${attrName}`;
-      }
-    } else if (attrValue.indexOf('"') === -1) {
-      const escaped = minimalEscaping
-        ? escapeXmlMinimalAttr(attrValue, '"')
-        : escapeXml(attrValue);
-      result += ` ${attrName}="${escaped}"`;
-    } else {
-      const escaped = minimalEscaping
-        ? escapeXmlMinimalAttr(attrValue, "'")
-        : escapeXml(attrValue);
-      result += ` ${attrName}='${escaped}'`;
-    }
-  }
+  let result = buildNodeOpeningTag(node, opts);
 
   // Handle processing instructions
   if (node.tagName[0] === "?") {
-    result += "?>";
-    return result + newline;
+    return `${result}?>${newline}`;
   }
 
   // Handle self-closing tags
   if (node.children.length === 0) {
-    result += "/>";
-    return result + newline;
+    return `${result}/>${newline}`;
   }
 
   result += ">";
 
   // Handle children
-  let hasElementChildren = false;
-  for (const child of node.children) {
-    if (typeof child === "string") {
-      result += minimalEscaping
-        ? escapeXmlMinimalText(child)
-        : escapeXml(child);
-    } else {
-      if (!hasElementChildren && format) {
-        result += newline;
-        hasElementChildren = true;
-      }
-      result += stringifyNode(child, depth + 1, format, options);
-    }
-  }
+  const { content, hasElementChildren } = stringifyNodeChildren(
+    node.children,
+    depth,
+    format,
+    options,
+    minimalEscaping,
+    newline
+  );
+
+  result += content;
 
   if (hasElementChildren && format) {
     result += indent;
@@ -485,9 +556,9 @@ export function toContentString(nodes: (RXMLNode | string)[]): string {
 
   for (const node of nodes) {
     if (typeof node === "string") {
-      result += " " + node;
+      result += ` ${node}`;
     } else {
-      result += " " + toContentString(node.children);
+      result += ` ${toContentString(node.children)}`;
     }
     result = result.trim();
   }
