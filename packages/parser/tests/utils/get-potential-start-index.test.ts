@@ -113,20 +113,20 @@ describe("getPotentialStartIndex", () => {
     });
 
     it("should handle whitespace", () => {
-      expect(getPotentialStartIndex("hello world", " ")).toBe(5);
+      expect(getPotentialStartIndex("hello world", " ")).toBe(INDEX_5);
       expect(getPotentialStartIndex("  spaces  ", "  ")).toBe(0);
-      expect(getPotentialStartIndex("tab\ttab", "\t")).toBe(3);
+      expect(getPotentialStartIndex("tab\ttab", "\t")).toBe(INDEX_3);
     });
 
     it("should handle newlines", () => {
-      expect(getPotentialStartIndex("line1\nline2", "\n")).toBe(5);
-      expect(getPotentialStartIndex("line1\nli", "line2")).toBe(6);
+      expect(getPotentialStartIndex("line1\nline2", "\n")).toBe(INDEX_5);
+      expect(getPotentialStartIndex("line1\nli", "line2")).toBe(INDEX_6);
     });
   });
 
   describe("performance considerations", () => {
     it("should handle long strings efficiently", () => {
-      const longText = "a".repeat(INDEX_1000) + "b";
+      const longText = `${"a".repeat(INDEX_1000)}b`;
       expect(getPotentialStartIndex(longText, "b")).toBe(INDEX_1000);
     });
 
@@ -137,7 +137,7 @@ describe("getPotentialStartIndex", () => {
     });
 
     it("should find partial match in long string", () => {
-      const text = "a".repeat(INDEX_1000) + "abc";
+      const text = `${"a".repeat(INDEX_1000)}abc`;
       const searchedText = "abcdef";
       expect(getPotentialStartIndex(text, searchedText)).toBe(INDEX_1000);
     });

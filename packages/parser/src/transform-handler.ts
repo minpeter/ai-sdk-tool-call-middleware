@@ -390,7 +390,7 @@ function createCondensedMessage(role: string, joinedText: string) {
       content: joinedText,
     };
   }
-  
+
   return {
     role: role as "assistant" | "user",
     content: [
@@ -413,12 +413,13 @@ function condenseTextContent(
       role: string;
       content: unknown;
     };
-    
+
     if (!Array.isArray(msg.content)) {
       continue;
     }
-    
-    const shouldCondense = isAllTextContent(msg.content) && msg.content.length > 1;
+
+    const shouldCondense =
+      isAllTextContent(msg.content) && msg.content.length > 1;
     if (shouldCondense) {
       const joinedText = joinTextContent(msg.content as { text: string }[]);
       processedPrompt[i] = createCondensedMessage(msg.role, joinedText);

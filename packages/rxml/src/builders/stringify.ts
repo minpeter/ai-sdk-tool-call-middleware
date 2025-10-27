@@ -63,7 +63,11 @@ function escapeContent(content: string, minimalEscaping: boolean): string {
 /**
  * Create self-closing tag
  */
-function createSelfClosingTag(tagName: string, indent: string, newline: string): string {
+function createSelfClosingTag(
+  tagName: string,
+  indent: string,
+  newline: string
+): string {
   return `${indent}<${tagName}/>${newline}`;
 }
 
@@ -102,11 +106,11 @@ function stringifyPrimitive(
 ): string {
   const { minimalEscaping, suppressEmptyNode } = context;
   const content = escapeContent(String(value), minimalEscaping);
-  
+
   if (content === "" && suppressEmptyNode) {
     return "";
   }
-  
+
   return createTextElement(tagName, content, indent, newline);
 }
 
@@ -223,7 +227,7 @@ function formatAttribute(
       : escapeXml(valueStr);
     return ` ${attrName}="${escaped}"`;
   }
-  
+
   const escaped = minimalEscaping
     ? escapeXmlMinimalAttr(valueStr, "'")
     : escapeXml(valueStr);
@@ -240,11 +244,16 @@ function buildOpeningTag(
 ): string {
   let openTag = `<${tagName}`;
   const { minimalEscaping, strictBooleanAttributes } = context;
-  
+
   for (const [attrName, attrValue] of Object.entries(attributes)) {
-    openTag += formatAttribute(attrName, attrValue, minimalEscaping, strictBooleanAttributes);
+    openTag += formatAttribute(
+      attrName,
+      attrValue,
+      minimalEscaping,
+      strictBooleanAttributes
+    );
   }
-  
+
   return openTag;
 }
 
@@ -278,7 +287,7 @@ function stringifyComplexContent(
   const { format, minimalEscaping, depth } = context;
   const { textContent, elements } = parts;
   const hasElements = Object.keys(elements).length > 0;
-  
+
   let result = `${indent}${openTag}`;
 
   if (textContent) {
@@ -325,7 +334,8 @@ function stringifyObject(
 
   // Check if we have any content
   const hasElements = Object.keys(parts.elements).length > 0;
-  const hasTextContent = parts.textContent !== undefined && parts.textContent !== "";
+  const hasTextContent =
+    parts.textContent !== undefined && parts.textContent !== "";
 
   if (!(hasElements || hasTextContent)) {
     if (suppressEmptyNode) {

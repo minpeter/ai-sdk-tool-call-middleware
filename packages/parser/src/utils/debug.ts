@@ -1,5 +1,7 @@
 export type DebugLevel = "off" | "stream" | "parse";
 
+const LINE_SPLIT_REGEX = /\r?\n/;
+
 function normalizeBooleanString(value: string): boolean | undefined {
   const normalized = value.trim().toLowerCase();
   if (normalized === "1" || normalized === "true" || normalized === "yes") {
@@ -127,7 +129,7 @@ function renderHighlightedText(
     style === "bold"
   ) {
     return originalText
-      .split(/\r?\n/)
+      .split(LINE_SPLIT_REGEX)
       .map((line) => (line.length ? highlight(line) : line))
       .join("\n");
   }
@@ -151,7 +153,7 @@ export function logParsedSummary({
 
   if (toolCalls.length > 0) {
     const styledSummary = safeStringify(toolCalls)
-      .split(/\r?\n/)
+      .split(LINE_SPLIT_REGEX)
       .map((line) => (line.length ? cBgBlue(line) : line))
       .join("\n");
     console.log(cGray("[debug:mw:summary]"), styledSummary);
