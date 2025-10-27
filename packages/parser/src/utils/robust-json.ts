@@ -860,7 +860,7 @@ function parseManyProcessToken<T>(
     return; // Continue loop
   }
 
-  opts.elementParser(tokens, state, result);
+  opts.elementParser(state.tokens, state, result);
   return; // Continue loop
 }
 

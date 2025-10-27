@@ -27,6 +27,7 @@ const REGEX_REQUIRED_NO_TOOLS =
 const REGEX_TOOL_CALL_TAG = /<tool_call>/;
 const REGEX_TOOL_RESPONSE_TAG = /<tool_response>/;
 const REGEX_GET_WEATHER_TAG = /<get_weather>/;
+const REGEX_TOOL_CALL_WORD = /tool_call/;
 
 describe("index prompt templates", () => {
   const tools: LanguageModelV2FunctionTool[] = [
@@ -242,7 +243,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
     const assistantText = (assistantMsg.content as any[])
       .map((c: any) => (c.type === "text" ? c.text : ""))
       .join("");
-    expect(assistantText).toMatch(/tool_call/);
+    expect(assistantText).toMatch(REGEX_TOOL_CALL_WORD);
 
     const userMsgs = out.prompt.filter((m: any) => m.role === "user");
     const userCombined = userMsgs
@@ -257,7 +258,9 @@ describe("non-stream assistant->user merge formatting with object input", () => 
   it("hermes: formats assistant tool-call (object input) and tool result into user text", async () => {
     const mw = hermesToolMiddleware;
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const out = await transformParams({
       params: {
         prompt: [
@@ -320,7 +323,9 @@ describe("non-stream assistant->user merge formatting with object input", () => 
   it("xml: formats assistant tool-call (object input) and tool result into user text", async () => {
     const mw = morphXmlToolMiddleware;
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const out = await transformParams({
       params: {
         prompt: [
@@ -411,7 +416,9 @@ describe("transformParams", () => {
     };
 
     const transformParams = middleware.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const result = await transformParams({ params } as any);
     expect(result.prompt).toBeDefined();
     expect(result.tools).toEqual([]);
@@ -427,7 +434,9 @@ describe("transformParams merges adjacent user messages", () => {
     });
 
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const out = await transformParams({
       params: {
         prompt: [
@@ -440,7 +449,9 @@ describe("transformParams merges adjacent user messages", () => {
 
     // After inserting system, the merged user should be at index 1
     const user = out.prompt.find((m) => m.role === "user");
-    if (!user) throw new Error("user message not found");
+    if (!user) {
+      throw new Error("user message not found");
+    }
     const text = user.content.map((c: any) => c.text).join("");
     expect(text).toBe("first\nsecond");
   });
@@ -452,7 +463,9 @@ describe("transformParams merges adjacent user messages", () => {
     });
 
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const out = await transformParams({
       params: {
         prompt: [
@@ -562,7 +575,9 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     };
 
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const out = await transformParams({ params } as any);
     expect(out.prompt[0].role).toBe("system");
     // Assistant remains assistant with formatted tool call text
@@ -618,7 +633,9 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     };
 
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const out = await transformParams({ params } as any);
     const userMsgs = out.prompt.filter((m) => m.role === "user");
     expect(userMsgs).toHaveLength(1);
@@ -658,10 +675,14 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     };
 
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const out = await transformParams({ params } as any);
     const assistant = out.prompt.find((m) => m.role === "assistant");
-    if (!assistant) throw new Error("assistant message not found");
+    if (!assistant) {
+      throw new Error("assistant message not found");
+    }
     const assistantAny = assistant as any;
     // Should contain both formatted tool_call text and original reasoning block
     const hasReasoning = assistantAny.content.some(
@@ -690,7 +711,9 @@ describe(".....", () => {
       toolSystemPromptTemplate: () => "",
     });
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     await expect(
       transformParams({
         params: { prompt: [], tools: [], toolChoice: { type: "none" } },
@@ -712,7 +735,9 @@ describe(".....", () => {
       },
     ];
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const result = await transformParams({
       params: {
         prompt: [],
@@ -746,7 +771,9 @@ describe(".....", () => {
       },
     ];
     const transformParams = mw.transformParams;
-    if (!transformParams) throw new Error("transformParams is undefined");
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
     const result = await transformParams({
       params: { prompt: [], tools, toolChoice: { type: "required" } },
     } as any);

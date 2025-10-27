@@ -1,6 +1,12 @@
-import { generateText, jsonSchema, type LanguageModel, tool } from "ai";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import {
+  type CoreMessage,
+  generateText,
+  jsonSchema,
+  type LanguageModel,
+  tool,
+} from "ai";
 
 import type { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
 import { resolveDataDir } from "@/utils/paths";
@@ -217,6 +223,330 @@ function createBfclBenchmark(
           return copy;
         };
 
+        // Helper: Flatten BFCL message shape
+        const flattenMessages = (messages: Message[] | Message[][]): Message[] =>
+          Array.isArray(messages) &&
+          (messages as unknown[]).some((m) => Array.isArray(m))
+            ? (messages as unknown[] as Message[][]).flat(1)
+            : (messages as Message[]);
+
+        // Helper: Sanitize tool name for OpenAI compatibility
+        const sanitizeName = (name: string): string => {
+          const s = name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+          return s.length > 0 ? s : "tool";
+        };
+
+        // Helper: Build transformed tools and name mapping
+        const buildTransformedTools = (
+          tools: ToolSpec[],
+          fixSchema: (schema: unknown) => unknown
+        ): {
+          transformedTools: TransformedTool[];
+          nameMap: Map<string, string>;
+        } => {
+          const nameMap = new Map<string, string>();
+          const transformedTools: TransformedTool[] = tools.map((t) => {
+            const fixed = fixSchema(t.parameters);
+            const isObjectSchema =
+              fixed &&
+              typeof fixed === "object" &&
+              (fixed as ToolSchemaObject).type === "object";
+            const inputSchema: ToolSchemaObject = isObjectSchema
+              ? (fixed as ToolSchemaObject)
+              : { type: "object", properties: {} };
+
+            const sanitized = sanitizeName(t.name);
+            nameMap.set(sanitized, t.name);
+
+            return {
+              type: "function" as const,
+              name: sanitized,
+              description: t.description,
+              inputSchema,
+            };
+          });
+          return { transformedTools, nameMap };
+        };
+
+        // Helper: Parse middleware debug tool calls
+        const parseDebugToolCalls = (
+          raw: string | undefined
+        ): Array<{ toolName?: string; input?: unknown }> => {
+          if (!raw) return [];
+          try {
+            const arr = JSON.parse(raw);
+            return Array.isArray(arr) ? arr : [];
+          } catch {
+            return [];
+          }
+        };
+
+        // Helper: Restore original tool names in tool calls
+        const restoreToolCalls = (
+          toolCalls: unknown[],
+          nameMap: Map<string, string>,
+          transformedTools: TransformedTool[]
+        ): unknown[] =>
+          (toolCalls || []).map((c: Record<string, unknown>) => {
+            const rawName = c.toolName ?? c.name;
+            const sanitizedFromIndex =
+              typeof rawName === "string" && /^\d+$/.test(rawName)
+                ? (transformedTools[Number(rawName)]?.name ?? rawName)
+                : rawName;
+            const originalName =
+              nameMap.get(sanitizedFromIndex as string) ?? sanitizedFromIndex;
+            const extractedArgs =
+              c.args ?? c.arguments ?? c.input ?? c.params ?? c.parameters;
+            let parsedArgs = extractedArgs;
+            if (typeof parsedArgs === "string") {
+              try {
+                parsedArgs = JSON.parse(parsedArgs);
+              } catch {
+                // leave as string if not JSON
+              }
+            }
+            return {
+              ...c,
+              toolName: originalName,
+              name: originalName,
+              args: parsedArgs ?? {},
+            };
+          });
+
+        // Helper: Summarize args for stable output
+        const summarizeArgs = (args: unknown): unknown => {
+          if (args == null) return args;
+          if (typeof args !== "object") return args;
+          return Object.keys(args)
+            .sort()
+            .reduce(
+              (acc: Record<string, unknown>, k) => {
+                acc[k] = (args as Record<string, unknown>)[k];
+                return acc;
+              },
+              {} as Record<string, unknown>
+            );
+        };
+
+        // Helper: Generate parameter mismatch diff
+        const generateParamMismatchDiff = (
+          paramName: string,
+          allowed: unknown,
+          got: unknown
+        ): string[] => {
+          const diffLines: string[] = [];
+          diffLines.push(`@@ param ${paramName}`);
+          const allowedArray = Array.isArray(allowed)
+            ? (allowed as unknown[])
+            : [allowed as unknown];
+          const expectedLine = (() => {
+            if (allowedArray.length === 1) {
+              return `- expected: ${JSON.stringify(allowedArray[0])}`;
+            }
+            const formatted = allowedArray
+              .map((v) =>
+                Array.isArray(v) || (typeof v === "object" && v !== null)
+                  ? JSON.stringify(v)
+                  : String(v)
+              )
+              .join(", ");
+            return `- expected one of: ${formatted}`;
+          })();
+          diffLines.push(expectedLine);
+          diffLines.push(`+ got: ${JSON.stringify(got)}`);
+          return diffLines;
+        };
+
+        // Helper: Check if param value matches allowed values
+        const paramValueMatches = (allowed: unknown, got: unknown): boolean => {
+          if (!Array.isArray(allowed)) return false;
+          return allowed.some((v: unknown) => {
+            try {
+              if (Array.isArray(got)) {
+                return (
+                  JSON.stringify(got.map((x) => String(x)).sort()) ===
+                  JSON.stringify((v as unknown[]).map((x) => String(x)).sort())
+                );
+              }
+            } catch {
+              void 0;
+            }
+            return (
+              String(v).toLowerCase().replace(/\s+/g, "") ===
+              String(got).toLowerCase().replace(/\s+/g, "")
+            );
+          });
+        };
+
+        // Helper: Build diff for simple test case
+        const buildSimpleDiff = (
+          tools: ToolSpec[],
+          possibleAnswer: PossibleAnswer,
+          restoredCalls: unknown[]
+        ): {
+          expected: Record<string, unknown>;
+          actual: Record<string, unknown>;
+          diff: string[];
+        } => {
+          const funcDesc = tools[0];
+          const gt = (possibleAnswer as { ground_truth?: unknown[] })
+            .ground_truth?.[0] as Record<string, unknown> | undefined;
+          const expectedFuncName = funcDesc?.name;
+          const expectedParams = gt ? gt[Object.keys(gt)[0]] : undefined;
+          const received = (restoredCalls as Record<string, unknown>[])[0];
+          const receivedName = received?.toolName ?? received?.name;
+          const receivedArgs = summarizeArgs(received?.args);
+
+          const expected: Record<string, unknown> = {
+            function: expectedFuncName,
+            params: expectedParams,
+          };
+          const actual: Record<string, unknown> = {
+            function: receivedName,
+            args: receivedArgs,
+          };
+          const diff: string[] = [];
+
+          if (expectedFuncName !== receivedName) {
+            diff.push("@@ function name");
+            diff.push(`- ${expectedFuncName}`);
+            diff.push(`+ ${receivedName}`);
+          }
+
+          if (
+            expectedParams &&
+            receivedArgs &&
+            typeof receivedArgs === "object" &&
+            receivedArgs !== null
+          ) {
+            const required = (funcDesc?.parameters?.required ?? []) as string[];
+            for (const req of required) {
+              if (!(req in receivedArgs)) {
+                diff.push(`- missing required param: ${req}`);
+              }
+            }
+            for (const k of Object.keys(receivedArgs as Record<string, unknown>)) {
+              if (!Object.hasOwn(expectedParams, k)) {
+                diff.push(`+ unexpected param: ${k}`);
+              }
+            }
+            for (const k of Object.keys(receivedArgs as Record<string, unknown>)) {
+              if (Object.hasOwn(expectedParams, k)) {
+                const allowed = (expectedParams as Record<string, unknown[]>)[k];
+                const got = (receivedArgs as Record<string, unknown>)[k];
+                if (!paramValueMatches(allowed, got)) {
+                  diff.push(...generateParamMismatchDiff(k, allowed, got));
+                }
+              }
+            }
+          }
+
+          return { expected, actual, diff };
+        };
+
+        // Helper: Build diff for parallel/multiple test case
+        const buildParallelDiff = (
+          tools: ToolSpec[],
+          possibleAnswer: PossibleAnswer,
+          restoredCalls: unknown[]
+        ): {
+          expected: Record<string, unknown>;
+          actual: Record<string, unknown>;
+          diff: string[];
+        } => {
+          const gtArr: Array<Record<string, unknown>> =
+            (
+              possibleAnswer as {
+                ground_truth?: Array<Record<string, unknown>>;
+              }
+            ).ground_truth ?? [];
+          const expectedNames = gtArr.map((g) => Object.keys(g)[0]);
+          const actualNames = (restoredCalls as Record<string, unknown>[]).map(
+            (c) => c.toolName ?? c.name
+          );
+
+          const expected: Record<string, unknown> = { functions: expectedNames };
+          const actual: Record<string, unknown> = { functions: actualNames };
+          const diff: string[] = [];
+
+          if (expectedNames.length !== actualNames.length) {
+            diff.push("@@ call count");
+            diff.push(`- expected ${expectedNames.length}`);
+            diff.push(`+ got ${actualNames.length}`);
+          }
+
+          const missing = expectedNames.filter((n) => !actualNames.includes(n));
+          const extra = actualNames.filter((n) => !expectedNames.includes(n));
+          for (const m of missing) diff.push(`- missing function: ${m}`);
+          for (const e of extra) diff.push(`+ unexpected function: ${e}`);
+
+          const usedActual = new Set<number>();
+          for (const expectedObj of gtArr) {
+            const fname = Object.keys(expectedObj)[0];
+            let matchedIndex = -1;
+            for (let i = 0; i < (restoredCalls as unknown[]).length; i++) {
+              if (usedActual.has(i)) continue;
+              const rc = (restoredCalls as Record<string, unknown>[])[i];
+              const rcName = rc?.toolName ?? rc?.name;
+              if (rcName === fname) {
+                matchedIndex = i;
+                break;
+              }
+            }
+            if (matchedIndex === -1) continue;
+            usedActual.add(matchedIndex);
+
+            const received = (restoredCalls as Record<string, unknown>[])[
+              matchedIndex
+            ];
+            const receivedArgs = summarizeArgs(received?.args);
+            const expectedParamsAllowed = expectedObj[fname] as Record<
+              string,
+              unknown
+            >;
+            const funcDesc = tools.find((t: ToolSpec) => t.name === fname);
+            const requiredParams = (funcDesc?.parameters?.required ??
+              []) as string[];
+
+            diff.push(`@@ function ${fname}`);
+
+            if (
+              expectedParamsAllowed &&
+              receivedArgs &&
+              typeof receivedArgs === "object" &&
+              receivedArgs !== null
+            ) {
+              for (const req of requiredParams) {
+                if (!(req in receivedArgs)) {
+                  diff.push(`- missing required param: ${req}`);
+                }
+              }
+              for (const k of Object.keys(
+                receivedArgs as Record<string, unknown>
+              )) {
+                if (!Object.hasOwn(expectedParamsAllowed, k)) {
+                  diff.push(`+ unexpected param: ${k}`);
+                }
+              }
+              for (const k of Object.keys(
+                receivedArgs as Record<string, unknown>
+              )) {
+                if (Object.hasOwn(expectedParamsAllowed, k)) {
+                  const allowed = (
+                    expectedParamsAllowed as Record<string, unknown[]>
+                  )[k];
+                  const got = (receivedArgs as Record<string, unknown>)[k];
+                  if (!paramValueMatches(allowed, got)) {
+                    diff.push(...generateParamMismatchDiff(k, allowed, got));
+                  }
+                }
+              }
+            }
+          }
+
+          return { expected, actual, diff };
+        };
+
         // Concurrency control via env BFCL_CONCURRENCY (default 4)
         const concurrencyEnv = process.env.BFCL_CONCURRENCY;
         const concurrency =
@@ -239,47 +569,12 @@ function createBfclBenchmark(
           const maxTokens = typeof maxTok === "number" ? maxTok : undefined;
 
           try {
-            // Flatten BFCL message shape [[{role, content}], ...] to [{role, content}, ...]
-            const flatMessages =
-              Array.isArray(messages) &&
-              (messages as unknown[]).some((m) => Array.isArray(m))
-                ? (messages as unknown[] as Message[][]).flat(1)
-                : (messages as Message[]);
+            const flatMessages = flattenMessages(messages);
+            const { transformedTools, nameMap } = buildTransformedTools(
+              tools as ToolSpec[],
+              fixSchema
+            );
 
-            // Build tools array (LanguageModelV2FunctionTool[]) for middleware compatibility
-            // Keep a mapping sanitized -> original to restore before checking
-            const nameMap = new Map<string, string>();
-            const sanitizeName = (name: string) => {
-              // OpenAI-compatible: letters, digits, underscores and dashes, max 64
-              const s = name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
-              return s.length > 0 ? s : "tool";
-            };
-
-            const transformedTools: TransformedTool[] = (
-              tools as ToolSpec[]
-            ).map((t) => {
-              const fixed = fixSchema(t.parameters);
-              // Ensure we always provide a valid JSON Schema object of type 'object'
-              const isObjectSchema =
-                fixed &&
-                typeof fixed === "object" &&
-                (fixed as ToolSchemaObject).type === "object";
-              const inputSchema: ToolSchemaObject = isObjectSchema
-                ? (fixed as ToolSchemaObject)
-                : { type: "object", properties: {} };
-
-              const sanitized = sanitizeName(t.name);
-              nameMap.set(sanitized, t.name);
-
-              return {
-                type: "function" as const,
-                name: sanitized,
-                description: t.description,
-                inputSchema,
-              };
-            });
-
-            // Convert to ToolSet expected by generateText
             const toolsMap = Object.fromEntries(
               transformedTools.map((t) => [
                 t.name,
@@ -288,7 +583,7 @@ function createBfclBenchmark(
                     typeof t.description === "string"
                       ? t.description
                       : undefined,
-                  inputSchema: jsonSchema(t.inputSchema as unknown as any),
+                  inputSchema: jsonSchema(t.inputSchema as Record<string, unknown>),
                 }),
               ])
             );
@@ -297,8 +592,8 @@ function createBfclBenchmark(
             try {
               const firstTool = transformedTools[0];
               const schemaType =
-                (firstTool as any)?.inputSchema?.type ??
-                (firstTool as any)?.inputSchema?.jsonSchema?.type;
+                firstTool?.inputSchema?.type ??
+                ((firstTool?.inputSchema as Record<string, unknown> | undefined)?.jsonSchema as Record<string, unknown> | undefined)?.type;
               caseLogs.push(
                 `[DEBUG] ${testCase.id}: firstTool=${JSON.stringify(firstTool)}, schemaType=${schemaType}`
               );
@@ -330,7 +625,7 @@ function createBfclBenchmark(
             };
             const { toolCalls, text, finishReason } = await generateText({
               model,
-              messages: flatMessages as unknown as any,
+              messages: flatMessages as unknown as CoreMessage[],
               tools: toolsMap,
               toolChoice: "auto",
               providerOptions,
@@ -342,21 +637,9 @@ function createBfclBenchmark(
 
             const mwOriginalText: string | undefined =
               debugSummaryRef.originalText;
-            const mwParsedToolCalls: Array<{
-              toolName?: string;
-              input?: unknown;
-            }> = (() => {
-              const raw = debugSummaryRef.toolCalls;
-              if (!raw) return [];
-              try {
-                const arr = JSON.parse(raw);
-                return Array.isArray(arr) ? arr : [];
-              } catch {
-                return [];
-              }
-            })();
-            // Debug summary is sourced from debugSummaryRef (originalText, toolCalls).
-            // Parsing of toolCalls is already guarded above; no additional try/catch is required here.
+            const mwParsedToolCalls = parseDebugToolCalls(
+              debugSummaryRef.toolCalls
+            );
 
             // Debug: raw toolCalls
             try {
@@ -374,38 +657,11 @@ function createBfclBenchmark(
               throw new Error(`No possible answer for id: ${testCase.id}`);
             }
 
-            // Restore original tool names in toolCalls before checking
-            const restoredCalls = (toolCalls || []).map((c: any) => {
-              const rawName = (c as any).toolName ?? (c as any).name;
-              // Some providers (e.g., response-format models) may encode tool name as a numeric index string
-              const sanitizedFromIndex =
-                typeof rawName === "string" && /^\d+$/.test(rawName)
-                  ? (transformedTools[Number(rawName)]?.name ?? rawName)
-                  : rawName;
-              const originalName =
-                nameMap.get(sanitizedFromIndex) ?? sanitizedFromIndex;
-              const extractedArgs =
-                (c as any).args ??
-                (c as any).arguments ??
-                (c as any).input ??
-                (c as any).params ??
-                (c as any).parameters ??
-                undefined;
-              let parsedArgs = extractedArgs;
-              if (typeof parsedArgs === "string") {
-                try {
-                  parsedArgs = JSON.parse(parsedArgs);
-                } catch {
-                  // leave as string if not JSON
-                }
-              }
-              return {
-                ...c,
-                toolName: originalName,
-                name: originalName,
-                args: parsedArgs ?? {},
-              };
-            });
+            const restoredCalls = restoreToolCalls(
+              toolCalls || [],
+              nameMap,
+              transformedTools
+            );
 
             const checkerResult = check(
               testCase,
@@ -417,267 +673,22 @@ function createBfclBenchmark(
               caseLogs.push(`[PASS] ${testCase.id}`);
               return { valid: true, logs: caseLogs };
             }
+
             caseLogs.push(`[FAIL] ${testCase.id}: ${checkerResult.error}`);
             try {
-              // Build a compact expectation/actual summary and a human-friendly diff
               const category = testCase.id.split("_")[0];
-              const diff: string[] = [];
-              const summarizeArgs = (args: unknown): unknown => {
-                if (args == null) return args;
-                if (typeof args !== "object") return args;
-                // Sort object keys for stable output
-                return Object.keys(args)
-                  .sort()
-                  .reduce(
-                    (acc: Record<string, unknown>, k) => {
-                      acc[k] = (args as Record<string, unknown>)[k];
-                      return acc;
-                    },
-                    {} as Record<string, unknown>
-                  );
-              };
-
-              function generateParamMismatchDiff(
-                paramName: string,
-                allowed: unknown,
-                got: unknown
-              ): string[] {
-                const diffLines: string[] = [];
-                diffLines.push(`@@ param ${paramName}`);
-                const allowedArray = Array.isArray(allowed)
-                  ? (allowed as unknown[])
-                  : [allowed as unknown];
-                const expectedLine = (() => {
-                  if (allowedArray.length === 1) {
-                    return `- expected: ${JSON.stringify(allowedArray[0])}`;
-                  }
-                  const formatted = allowedArray
-                    .map((v) =>
-                      Array.isArray(v) || (typeof v === "object" && v !== null)
-                        ? JSON.stringify(v)
-                        : String(v)
+              const { expected, actual, diff } =
+                category === "simple"
+                  ? buildSimpleDiff(
+                      tools as ToolSpec[],
+                      possibleAnswer,
+                      restoredCalls
                     )
-                    .join(", ");
-                  return `- expected one of: ${formatted}`;
-                })();
-                diffLines.push(expectedLine);
-                diffLines.push(`+ got: ${JSON.stringify(got)}`);
-                return diffLines;
-              }
-
-              const expected: Record<string, unknown> = {};
-              const actual: Record<string, unknown> = {};
-
-              if (category === "simple") {
-                const funcDesc = (tools as ToolSpec[])[0];
-                const gt = (possibleAnswer as { ground_truth?: unknown[] })
-                  .ground_truth?.[0] as Record<string, unknown> | undefined;
-                const expectedFuncName = funcDesc?.name;
-                const expectedParams = gt ? gt[Object.keys(gt)[0]] : undefined;
-                const received = (restoredCalls as any[])[0];
-                const receivedName = received?.toolName ?? received?.name;
-                const receivedArgs = summarizeArgs(received?.args);
-
-                expected.function = expectedFuncName;
-                expected.params = expectedParams;
-                actual.function = receivedName;
-                actual.args = receivedArgs;
-
-                if (expectedFuncName !== receivedName) {
-                  diff.push("@@ function name");
-                  diff.push(`- ${expectedFuncName}`);
-                  diff.push(`+ ${receivedName}`);
-                }
-                if (
-                  expectedParams &&
-                  receivedArgs &&
-                  typeof receivedArgs === "object" &&
-                  receivedArgs !== null
-                ) {
-                  const required = (funcDesc?.parameters?.required ??
-                    []) as string[];
-                  // Missing required
-                  for (const req of required) {
-                    if (!(req in receivedArgs)) {
-                      diff.push(`- missing required param: ${req}`);
-                    }
-                  }
-                  // Unexpected
-                  for (const k of Object.keys(
-                    receivedArgs as Record<string, unknown>
-                  )) {
-                    if (!Object.hasOwn(expectedParams, k)) {
-                      diff.push(`+ unexpected param: ${k}`);
-                    }
-                  }
-                  // Invalid values
-                  for (const k of Object.keys(
-                    receivedArgs as Record<string, unknown>
-                  )) {
-                    if (Object.hasOwn(expectedParams, k)) {
-                      const allowed = (
-                        expectedParams as Record<string, unknown[]>
-                      )[k];
-                      const got = (receivedArgs as Record<string, unknown>)[k];
-                      const includes =
-                        Array.isArray(allowed) &&
-                        allowed.some((v: unknown) => {
-                          try {
-                            if (Array.isArray(got)) {
-                              return (
-                                JSON.stringify(
-                                  got.map((x) => String(x)).sort()
-                                ) ===
-                                JSON.stringify(
-                                  (v as unknown[]).map((x) => String(x)).sort()
-                                )
-                              );
-                            }
-                          } catch {
-                            void 0;
-                          }
-                          return (
-                            String(v).toLowerCase().replace(/\s+/g, "") ===
-                            String(got).toLowerCase().replace(/\s+/g, "")
-                          );
-                        });
-                      if (!includes) {
-                        diff.push(
-                          ...generateParamMismatchDiff(k, allowed, got)
-                        );
-                      }
-                    }
-                  }
-                }
-              } else {
-                // Parallel / multiple: show function name sets and param-level diffs per matched function
-                const gtArr: Array<Record<string, unknown>> =
-                  (
-                    possibleAnswer as {
-                      ground_truth?: Array<Record<string, unknown>>;
-                    }
-                  ).ground_truth ?? [];
-                const expectedNames = gtArr.map((g) => Object.keys(g)[0]);
-                const actualNames = (restoredCalls as any[]).map(
-                  (c) => c.toolName ?? c.name
-                );
-                expected.functions = expectedNames;
-                actual.functions = actualNames;
-
-                if (expectedNames.length !== actualNames.length) {
-                  diff.push("@@ call count");
-                  diff.push(`- expected ${expectedNames.length}`);
-                  diff.push(`+ got ${actualNames.length}`);
-                }
-
-                const missing = expectedNames.filter(
-                  (n) => !actualNames.includes(n)
-                );
-                const extra = actualNames.filter(
-                  (n) => !expectedNames.includes(n)
-                );
-                for (const m of missing) diff.push(`- missing function: ${m}`);
-                for (const e of extra) diff.push(`+ unexpected function: ${e}`);
-
-                // Attempt to compute param-level diffs for functions that exist in both expected and actual
-                const usedActual = new Set<number>();
-                for (const expectedObj of gtArr) {
-                  const fname = Object.keys(expectedObj)[0];
-                  // Find a matching actual call not yet used
-                  let matchedIndex = -1;
-                  for (let i = 0; i < (restoredCalls as any[]).length; i++) {
-                    if (usedActual.has(i)) continue;
-                    const rc = (restoredCalls as any[])[i];
-                    const rcName = rc?.toolName ?? rc?.name;
-                    if (rcName === fname) {
-                      matchedIndex = i;
-                      break;
-                    }
-                  }
-                  if (matchedIndex === -1) continue; // already reported as missing above
-                  usedActual.add(matchedIndex);
-
-                  const received = (restoredCalls as any[])[matchedIndex];
-                  const receivedArgs = summarizeArgs(received?.args);
-
-                  // expected parameters allowed values
-                  const expectedParamsAllowed = expectedObj[fname] as Record<
-                    string,
-                    unknown
-                  >;
-                  const funcDesc = (tools as ToolSpec[]).find(
-                    (t: ToolSpec) => t.name === fname
-                  );
-                  const requiredParams = (funcDesc?.parameters?.required ??
-                    []) as string[];
-
-                  diff.push(`@@ function ${fname}`);
-
-                  if (
-                    expectedParamsAllowed &&
-                    receivedArgs &&
-                    typeof receivedArgs === "object" &&
-                    receivedArgs !== null
-                  ) {
-                    // Missing required
-                    for (const req of requiredParams) {
-                      if (!(req in receivedArgs)) {
-                        diff.push(`- missing required param: ${req}`);
-                      }
-                    }
-                    // Unexpected params
-                    for (const k of Object.keys(
-                      receivedArgs as Record<string, unknown>
-                    )) {
-                      if (!Object.hasOwn(expectedParamsAllowed, k)) {
-                        diff.push(`+ unexpected param: ${k}`);
-                      }
-                    }
-                    // Invalid values
-                    for (const k of Object.keys(
-                      receivedArgs as Record<string, unknown>
-                    )) {
-                      if (Object.hasOwn(expectedParamsAllowed, k)) {
-                        const allowed = (
-                          expectedParamsAllowed as Record<string, unknown[]>
-                        )[k];
-                        const got = (receivedArgs as Record<string, unknown>)[
-                          k
-                        ];
-                        const includes =
-                          Array.isArray(allowed) &&
-                          allowed.some((v: unknown) => {
-                            try {
-                              if (Array.isArray(got)) {
-                                return (
-                                  JSON.stringify(
-                                    got.map((x) => String(x)).sort()
-                                  ) ===
-                                  JSON.stringify(
-                                    (v as unknown[])
-                                      .map((x) => String(x))
-                                      .sort()
-                                  )
-                                );
-                              }
-                            } catch {
-                              void 0;
-                            }
-                            return (
-                              String(v).toLowerCase().replace(/\s+/g, "") ===
-                              String(got).toLowerCase().replace(/\s+/g, "")
-                            );
-                          });
-                        if (!includes) {
-                          diff.push(
-                            ...generateParamMismatchDiff(k, allowed, got)
-                          );
-                        }
-                      }
-                    }
-                  }
-                }
-              }
+                  : buildParallelDiff(
+                      tools as ToolSpec[],
+                      possibleAnswer,
+                      restoredCalls
+                    );
 
               caseLogs.push(
                 `[DEBUG-FAIL] ${JSON.stringify({
