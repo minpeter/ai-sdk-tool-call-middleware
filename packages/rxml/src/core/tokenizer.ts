@@ -113,6 +113,41 @@ export class XMLTokenizer {
   }
 
   /**
+   * Process a single child element based on the current character
+   */
+  private processSingleChild(
+    children: (RXMLNode | string)[],
+    tagName: string | undefined
+  ): { shouldReturn: boolean; consumedToEnd: boolean } {
+    if (this.xmlString.charCodeAt(this.pos) !== CharCodes.OPEN_BRACKET) {
+      // Text content
+      this.handleTextContent(children);
+      return { shouldReturn: false, consumedToEnd: false };
+    }
+
+    const nextChar = this.xmlString.charCodeAt(this.pos + 1);
+    
+    if (nextChar === CharCodes.SLASH) {
+      // Closing tag
+      const result = this.handleClosingTag(tagName, children);
+      if (result !== null) {
+        return { shouldReturn: true, consumedToEnd: false };
+      }
+      return { shouldReturn: false, consumedToEnd: false };
+    }
+
+    if (nextChar === CharCodes.EXCLAMATION) {
+      // Comment, CDATA, or DOCTYPE
+      const wasConsumedToEnd = this.processSpecialContent(children);
+      return { shouldReturn: false, consumedToEnd: wasConsumedToEnd };
+    }
+
+    // Regular element
+    this.handleRegularElement(children);
+    return { shouldReturn: false, consumedToEnd: false };
+  }
+
+  /**
    * Parse XML children recursively
    */
   parseChildren(tagName?: string): (RXMLNode | string)[] {
@@ -120,28 +155,12 @@ export class XMLTokenizer {
     let consumedToEnd = false;
 
     while (this.xmlString[this.pos]) {
-      if (this.xmlString.charCodeAt(this.pos) === CharCodes.OPEN_BRACKET) {
-        if (this.xmlString.charCodeAt(this.pos + 1) === CharCodes.SLASH) {
-          // Closing tag
-          const result = this.handleClosingTag(tagName, children);
-          if (result !== null) {
-            return result;
-          }
-        } else if (
-          this.xmlString.charCodeAt(this.pos + 1) === CharCodes.EXCLAMATION
-        ) {
-          // Comment, CDATA, or DOCTYPE
-          const wasConsumedToEnd = this.processSpecialContent(children);
-          if (wasConsumedToEnd) {
-            consumedToEnd = true;
-          }
-        } else {
-          // Regular element
-          this.handleRegularElement(children);
-        }
-      } else {
-        // Text content
-        this.handleTextContent(children);
+      const result = this.processSingleChild(children, tagName);
+      if (result.shouldReturn) {
+        return children;
+      }
+      if (result.consumedToEnd) {
+        consumedToEnd = true;
       }
     }
 

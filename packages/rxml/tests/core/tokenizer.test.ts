@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { RXMLParseError, XMLTokenizer } from "@/index";
 
+const WHITESPACE_ONLY_REGEX = /^\s+$/;
+
 describe("XMLTokenizer", () => {
   const isNode = (
     value: unknown
@@ -206,7 +208,7 @@ describe("XMLTokenizer", () => {
       );
       const result = tokenizer.parseNode();
       const whitespaceNodes = result.children.filter(
-        (child) => typeof child === "string" && /^\s+$/.test(child)
+        (child) => typeof child === "string" && WHITESPACE_ONLY_REGEX.test(child)
       );
       expect(whitespaceNodes).toHaveLength(0);
     });

@@ -1,4 +1,4 @@
-import { Readable } from "stream";
+import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 import { parseFromStream, processXMLStream } from "@/index";
@@ -138,7 +138,7 @@ describe("RXML Chunked Streaming - Core Stream Implementation", () => {
 
         // Highlight where important XML constructs are split
         chunks.forEach((chunk, index) => {
-          const issues = [];
+          const issues: string[] = [];
           if (chunk.includes("<") && !chunk.includes(">")) {
             issues.push("incomplete opening tag");
           }
@@ -386,8 +386,11 @@ The search has been initiated successfully.`;
       const source = new Readable({
         read() {
           const chunk = chunks.shift();
-          if (chunk) this.push(chunk);
-          else this.push(null);
+          if (chunk) {
+            this.push(chunk);
+          } else {
+            this.push(null);
+          }
         },
       });
 

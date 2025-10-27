@@ -123,9 +123,11 @@ export class XMLTransformStream extends Transform {
 
   private tryProcessSpecialNode(isFlush: boolean): boolean {
     if (
-      !this.buffer.startsWith("<?") &&
-      !this.buffer.startsWith("<!--") &&
-      !this.buffer.startsWith("<![CDATA[")
+      !(
+        this.buffer.startsWith("<?") ||
+        this.buffer.startsWith("<!--") ||
+        this.buffer.startsWith("<![CDATA[")
+      )
     ) {
       return false;
     }
@@ -176,7 +178,9 @@ export class XMLTransformStream extends Transform {
     return true;
   }
 
-  private extractTagInfo(isFlush: boolean): { openTagEnd: number; tagName: string } | null {
+  private extractTagInfo(
+    isFlush: boolean
+  ): { openTagEnd: number; tagName: string } | null {
     const openTagEnd = this.buffer.indexOf(">");
     if (openTagEnd === -1) {
       if (isFlush) {
@@ -195,7 +199,10 @@ export class XMLTransformStream extends Transform {
     return { openTagEnd, tagName: nameMatch[1] };
   }
 
-  private tryProcessSelfClosingTag(tagInfo: { openTagEnd: number; tagName: string }): boolean {
+  private tryProcessSelfClosingTag(tagInfo: {
+    openTagEnd: number;
+    tagName: string;
+  }): boolean {
     const isSelfClosing = this.buffer[tagInfo.openTagEnd - 1] === "/";
     if (!isSelfClosing) {
       return false;
@@ -215,9 +222,15 @@ export class XMLTransformStream extends Transform {
     }
   }
 
-  private tryProcessRegularElement(tagInfo: { openTagEnd: number; tagName: string }, isFlush: boolean): boolean {
-    const elementEnd = this.findMatchingClosingTag(tagInfo.tagName, tagInfo.openTagEnd);
-    
+  private tryProcessRegularElement(
+    tagInfo: { openTagEnd: number; tagName: string },
+    isFlush: boolean
+  ): boolean {
+    const elementEnd = this.findMatchingClosingTag(
+      tagInfo.tagName,
+      tagInfo.openTagEnd
+    );
+
     if (elementEnd === -1) {
       if (isFlush) {
         this.buffer = this.buffer.slice(1);
@@ -246,7 +259,7 @@ export class XMLTransformStream extends Transform {
     while (searchStart < this.buffer.length) {
       const nextOpen = this.findNextOpeningTag(tagName, searchStart);
       const nextCloseStart = this.buffer.indexOf(`</${tagName}`, searchStart);
-      
+
       if (nextCloseStart === -1) {
         return -1;
       }
@@ -256,7 +269,10 @@ export class XMLTransformStream extends Transform {
         searchStart = nextOpen + 1;
       } else {
         depth--;
-        const closeAdvance = this.advancePastClosingTag(tagName, nextCloseStart);
+        const closeAdvance = this.advancePastClosingTag(
+          tagName,
+          nextCloseStart
+        );
         if (closeAdvance === -1) {
           return -1;
         }
@@ -274,7 +290,11 @@ export class XMLTransformStream extends Transform {
     let nextOpen = this.buffer.indexOf(`<${tagName}`, searchStart);
     while (nextOpen !== -1) {
       const after = this.buffer[nextOpen + tagName.length + 1];
-      if (after === undefined || after === ">" || WHITESPACE_REGEX.test(after)) {
+      if (
+        after === undefined ||
+        after === ">" ||
+        WHITESPACE_REGEX.test(after)
+      ) {
         break;
       }
       nextOpen = this.buffer.indexOf(`<${tagName}`, nextOpen + 1);
@@ -282,7 +302,10 @@ export class XMLTransformStream extends Transform {
     return nextOpen;
   }
 
-  private advancePastClosingTag(tagName: string, nextCloseStart: number): number {
+  private advancePastClosingTag(
+    tagName: string,
+    nextCloseStart: number
+  ): number {
     let p = nextCloseStart + 2 + tagName.length;
     while (p < this.buffer.length && WHITESPACE_REGEX.test(this.buffer[p])) {
       p++;

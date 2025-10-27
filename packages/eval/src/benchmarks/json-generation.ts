@@ -12,6 +12,7 @@ type Json = unknown;
 const JSON_FENCE_REGEX = /```json\s*([\s\S]*?)```/i;
 const CODE_FENCE_REGEX = /```\s*([\s\S]*?)```/i;
 const NEWLINE_REGEX = /\r?\n/;
+const LINE_SPLIT_REGEX = /\r?\n/;
 
 type SchemaTestCase = {
   id: string;
@@ -273,7 +274,9 @@ async function processTestCase(
   }
 
   if (parsed === undefined) {
-    context.validation.logs.push(`[FAIL] ${tc.id}: Unable to parse JSON from model output.`);
+    context.validation.logs.push(
+      `[FAIL] ${tc.id}: Unable to parse JSON from model output.`
+    );
     return { schemaValid: false, valueMatch: false, correct: false };
   }
 
@@ -317,7 +320,9 @@ export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
         score: 0,
         success: false,
         metrics: {},
-        logs: [`[FATAL] Failed to load json-generation datasets: ${error.message}`],
+        logs: [
+          `[FATAL] Failed to load json-generation datasets: ${error.message}`,
+        ],
         error,
       };
     }
@@ -336,7 +341,11 @@ export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
 async function processAllTests(
   tests: Omit<SchemaTestCase, "expected">[],
   context: ProcessContext
-): Promise<{ schemaValidCount: number; valueMatchCount: number; correctCount: number }> {
+): Promise<{
+  schemaValidCount: number;
+  valueMatchCount: number;
+  correctCount: number;
+}> {
   let schemaValidCount = 0;
   let valueMatchCount = 0;
   let correctCount = 0;
@@ -364,7 +373,11 @@ async function processAllTests(
 
 function buildBenchmarkResult(
   total: number,
-  counts: { schemaValidCount: number; valueMatchCount: number; correctCount: number },
+  counts: {
+    schemaValidCount: number;
+    valueMatchCount: number;
+    correctCount: number;
+  },
   logs: string[]
 ): BenchmarkResult {
   const score = counts.correctCount / total;
@@ -385,6 +398,96 @@ function buildBenchmarkResult(
 // A schema-only variant that validates structure/format without value matching
 type SchemaOnlyTestCase = Omit<SchemaTestCase, "expected">;
 
+type SchemaOnlyContext = {
+  model: LanguageModel;
+  config: Record<string, unknown> | undefined;
+  ajv: Ajv;
+  logs: string[];
+};
+
+async function loadSchemaOnlyTests(): Promise<{
+  tests: SchemaOnlyTestCase[];
+  error?: Error;
+}> {
+  try {
+    const dataDir = resolveDataDir();
+    const testsJsonl = await fs.readFile(
+      path.join(dataDir, "json_generation_tests.jsonl"),
+      "utf-8"
+    );
+    const tests = testsJsonl
+      .split(LINE_SPLIT_REGEX)
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line));
+    return { tests };
+  } catch (e: unknown) {
+    return { tests: [], error: e as Error };
+  }
+}
+
+async function processSchemaOnlyTestCase(
+  tc: SchemaOnlyTestCase,
+  context: SchemaOnlyContext
+): Promise<boolean> {
+  const messages = buildMessages(tc);
+
+  const temp = context.config?.temperature;
+  const temperature = typeof temp === "number" ? temp : undefined;
+  const { text } = await generateText({
+    model: context.model,
+    messages,
+    ...(temperature !== undefined ? { temperature } : {}),
+  });
+
+  let parsed: Json | undefined;
+  try {
+    parsed = extractFirstJsonBlock(text);
+  } catch {
+    // ignore
+  }
+  if (parsed === undefined) {
+    context.logs.push(`[FAIL] ${tc.id}: Could not parse JSON from model output.`);
+    return false;
+  }
+
+  const validate = context.ajv.compile(tc.schema);
+  const valid = validate(parsed) as boolean;
+  if (valid) {
+    context.logs.push(`[PASS] ${tc.id}`);
+    return true;
+  }
+
+  context.logs.push(
+    `[FAIL] ${tc.id}: Schema validation errors: ${
+      (validate.errors || [])
+        .map((e) => `${e.instancePath} ${e.message}`)
+        .join(", ") || "unknown"
+    }`
+  );
+  return false;
+}
+
+async function runSchemaOnlyTests(
+  tests: SchemaOnlyTestCase[],
+  context: SchemaOnlyContext
+): Promise<number> {
+  let schemaValidCount = 0;
+
+  for (const tc of tests) {
+    try {
+      const isValid = await processSchemaOnlyTestCase(tc, context);
+      if (isValid) {
+        schemaValidCount++;
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      context.logs.push(`[ERROR] ${tc.id}: ${msg}`);
+    }
+  }
+
+  return schemaValidCount;
+}
+
 export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV2Benchmark = {
   name: "json-generation-schema-only",
   version: "1.0.1",
@@ -398,91 +501,20 @@ export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV2Benchmark = {
     const logs: string[] = [];
     const ajv = new Ajv({ allErrors: true, strict: false });
 
-    // Load tests
-    let tests: SchemaOnlyTestCase[] = [];
-    try {
-      const dataDir = resolveDataDir();
-      const testsJsonl = await fs.readFile(
-        path.join(dataDir, "json_generation_tests.jsonl"),
-        "utf-8"
-      );
-      tests = testsJsonl
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length > 0)
-        .map((line) => JSON.parse(line));
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
+    const { tests, error } = await loadSchemaOnlyTests();
+    if (error) {
+      const msg = error.message;
       return {
         score: 0,
         success: false,
         metrics: {},
         logs: [`[FATAL] Failed to load schema-only tests: ${msg}`],
-        error: e as Error,
+        error,
       };
     }
 
-    let schemaValidCount = 0;
-
-    for (const tc of tests) {
-      try {
-        const schemaStr = JSON.stringify(tc.schema, null, 2);
-        const messages = [
-          {
-            role: "system" as const,
-            content:
-              "You must output only a single JSON document that strictly conforms to the given JSON Schema. Do not include any extra text or code fences.",
-          },
-          {
-            role: "user" as const,
-            content: [
-              "Generate a JSON object that reflects the following facts.",
-              "JSON Schema:",
-              schemaStr,
-              "Facts:",
-              tc.promptFacts,
-              "Output must be a single JSON only, with no additional text.",
-            ].join("\n\n"),
-          },
-        ];
-
-        const temp = config?.temperature;
-        const temperature = typeof temp === "number" ? temp : undefined;
-        const { text } = await generateText({
-          model,
-          messages,
-          ...(temperature !== undefined ? { temperature } : {}),
-        });
-
-        let parsed: Json | undefined;
-        try {
-          parsed = extractFirstJsonBlock(text);
-        } catch {
-          // ignore
-        }
-        if (parsed === undefined) {
-          logs.push(`[FAIL] ${tc.id}: Could not parse JSON from model output.`);
-          continue;
-        }
-
-        const validate = ajv.compile(tc.schema);
-        const valid = validate(parsed) as boolean;
-        if (valid) {
-          schemaValidCount++;
-          logs.push(`[PASS] ${tc.id}`);
-        } else {
-          logs.push(
-            `[FAIL] ${tc.id}: Schema validation errors: ${
-              (validate.errors || [])
-                .map((e) => `${e.instancePath} ${e.message}`)
-                .join(", ") || "unknown"
-            }`
-          );
-        }
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        logs.push(`[ERROR] ${tc.id}: ${msg}`);
-      }
-    }
+    const context: SchemaOnlyContext = { model, config, ajv, logs };
+    const schemaValidCount = await runSchemaOnlyTests(tests, context);
 
     const total = tests.length;
     const score = total > 0 ? schemaValidCount / total : 0;

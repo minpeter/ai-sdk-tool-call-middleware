@@ -188,7 +188,10 @@ type CheckerContext = {
   funcDescription: FunctionDescription;
   modelToolCall: ToolCall;
   possibleAnswerParams: Record<string, unknown>;
-  expectedParams: Record<string, { type: string; description?: string; items?: { type: string } }>;
+  expectedParams: Record<
+    string,
+    { type: string; description?: string; items?: { type: string } }
+  >;
 };
 
 /**
@@ -200,7 +203,10 @@ export function simpleFunctionChecker(
   modelToolCall: ToolCall,
   possibleAnswer: Record<string, unknown>
 ): CheckerResult {
-  const funcNameCheck = checkFunctionName(funcDescription.name, modelToolCall.toolName);
+  const funcNameCheck = checkFunctionName(
+    funcDescription.name,
+    modelToolCall.toolName
+  );
   if (!funcNameCheck.valid) {
     return funcNameCheck;
   }
@@ -221,7 +227,10 @@ export function simpleFunctionChecker(
     expectedParams: funcDescription.parameters.properties,
   };
 
-  const requiredCheck = checkRequiredParams(funcDescription.parameters.required, argsObj);
+  const requiredCheck = checkRequiredParams(
+    funcDescription.parameters.required,
+    argsObj
+  );
   if (!requiredCheck.valid) {
     return requiredCheck;
   }
@@ -271,7 +280,11 @@ function checkAllParameters(
   context: CheckerContext
 ): CheckerResult {
   for (const paramName of Object.keys(argsObj)) {
-    const paramCheck = checkSingleParameter(paramName, argsObj[paramName], context);
+    const paramCheck = checkSingleParameter(
+      paramName,
+      argsObj[paramName],
+      context
+    );
     if (!paramCheck.valid) {
       return paramCheck;
     }
@@ -284,7 +297,12 @@ function checkSingleParameter(
   modelValue: unknown,
   context: CheckerContext
 ): CheckerResult {
-  if (!(paramName in context.expectedParams && paramName in context.possibleAnswerParams)) {
+  if (
+    !(
+      paramName in context.expectedParams &&
+      paramName in context.possibleAnswerParams
+    )
+  ) {
     return {
       valid: false,
       error: `Unexpected parameter: '${paramName}'.`,
@@ -301,11 +319,11 @@ function checkSingleParameter(
       (possibleValues as unknown[] | undefined) ?? []
     );
   }
-  
+
   if (Array.isArray(modelValue)) {
     return checkArrayValue(paramName, modelValue, possibleValues);
   }
-  
+
   return checkObjectValue(paramName, modelValue, possibleValues);
 }
 
