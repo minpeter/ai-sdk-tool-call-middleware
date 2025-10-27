@@ -318,12 +318,7 @@ export const jsonMixProtocol = ({
 
       // Process tool call
       if (toolCallJson) {
-        processToolCallJson(
-          toolCallJson,
-          match[0],
-          processedElements,
-          options
-        );
+        processToolCallJson(toolCallJson, match[0], processedElements, options);
       }
 
       currentIndex = startIndex + match[0].length;

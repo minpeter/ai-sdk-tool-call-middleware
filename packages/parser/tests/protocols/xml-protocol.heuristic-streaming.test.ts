@@ -126,7 +126,10 @@ describe("XML Protocol Heuristic Streaming", () => {
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
-      expect(input.coordinates).toEqual([10.5, 20.3]);
+      expect(input.coordinates).toEqual([
+        EXPECTED_COORD_10_5,
+        EXPECTED_COORD_20_3,
+      ]);
     });
   });
 
@@ -213,7 +216,10 @@ describe("XML Protocol Heuristic Streaming", () => {
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
-      expect(input.coordinates).toEqual([EXPECTED_COORD_1_5, EXPECTED_COORD_2_5]);
+      expect(input.coordinates).toEqual([
+        EXPECTED_COORD_1_5,
+        EXPECTED_COORD_2_5,
+      ]);
       expect(input.dimensions).toEqual([
         EXPECTED_NUMBER_100,
         EXPECTED_NUMBER_200,

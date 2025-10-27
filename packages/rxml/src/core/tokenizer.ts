@@ -29,7 +29,7 @@ export class XMLTokenizer {
   /**
    * Parse XML children recursively
    */
-  public parseChildren(tagName?: string): (RXMLNode | string)[] {
+  parseChildren(tagName?: string): (RXMLNode | string)[] {
     const children: (RXMLNode | string)[] = [];
     let consumedToEnd = false;
 
@@ -52,7 +52,9 @@ export class XMLTokenizer {
             );
           }
 
-          if (this.pos !== -1) this.pos += 1;
+          if (this.pos !== -1) {
+            this.pos += 1;
+          }
           return children;
         }
         if (this.xmlString.charCodeAt(this.pos + 1) === CharCodes.EXCLAMATION) {
@@ -112,7 +114,7 @@ export class XMLTokenizer {
   /**
    * Parse a single XML node
    */
-  public parseNode(): RXMLNode {
+  parseNode(): RXMLNode {
     this.pos++; // Skip opening <
 
     const { name: tagName, newPos } = parseName(this.xmlString, this.pos);

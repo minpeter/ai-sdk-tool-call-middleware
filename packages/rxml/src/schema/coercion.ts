@@ -16,7 +16,9 @@ import {
  */
 export function getPropertySchema(toolSchema: unknown, key: string): unknown {
   const unwrapped = unwrapJsonSchema(toolSchema);
-  if (!unwrapped || typeof unwrapped !== "object") return;
+  if (!unwrapped || typeof unwrapped !== "object") {
+    return;
+  }
   const u = unwrapped as Record<string, unknown>;
   const props = u.properties as Record<string, unknown> | undefined;
   if (props && Object.hasOwn(props, key)) {
@@ -65,11 +67,11 @@ export function domToObject(
     if (Object.keys(attributes).length > 0) {
       if (typeof value === "string") {
         // For string values with attributes, create an object with text content and prefixed attributes
-        const result: Record<string, unknown> = { [textNodeName]: value };
+        const valueResult: Record<string, unknown> = { [textNodeName]: value };
         for (const [attrName, attrValue] of Object.entries(attributes)) {
-          result[`@_${attrName}`] = attrValue;
+          valueResult[`@_${attrName}`] = attrValue;
         }
-        value = result;
+        value = valueResult;
       } else if (value && typeof value === "object" && !Array.isArray(value)) {
         // For object values, add attributes with @_ prefix
         for (const [attrName, attrValue] of Object.entries(attributes)) {
@@ -132,15 +134,15 @@ function processComplexContent(
       if (Object.keys(child.attributes).length > 0) {
         if (typeof childValue === "string") {
           // For string values with attributes, create an object with text content and prefixed attributes
-          const result: Record<string, unknown> = {
+          const childResult: Record<string, unknown> = {
             [textNodeName]: childValue,
           };
           for (const [attrName, attrValue] of Object.entries(
             child.attributes
           )) {
-            result[`@_${attrName}`] = attrValue;
+            childResult[`@_${attrName}`] = attrValue;
           }
-          childValue = result;
+          childValue = childResult;
         } else if (
           childValue &&
           typeof childValue === "object" &&
@@ -211,7 +213,9 @@ export function getStringTypedProperties(schema: unknown): Set<string> {
 
   const visit = (s: unknown): void => {
     const unwrapped = unwrapJsonSchema(s);
-    if (!unwrapped || typeof unwrapped !== "object") return;
+    if (!unwrapped || typeof unwrapped !== "object") {
+      return;
+    }
     const u = unwrapped as Record<string, unknown>;
     const type = getSchemaType(unwrapped);
 
@@ -229,11 +233,15 @@ export function getStringTypedProperties(schema: unknown): Set<string> {
       }
     } else if (type === "array") {
       const items = (u as Record<string, unknown>).items as unknown;
-      if (items) visit(items);
+      if (items) {
+        visit(items);
+      }
       const prefix = (u as Record<string, unknown>).prefixItems as
         | unknown[]
         | undefined;
-      if (Array.isArray(prefix)) prefix.forEach(visit);
+      if (Array.isArray(prefix)) {
+        prefix.forEach(visit);
+      }
     }
   };
 
@@ -249,14 +257,18 @@ export function processArrayContent(
   schema: unknown,
   textNodeName: string
 ): unknown {
-  if (!Array.isArray(value)) return value;
+  if (!Array.isArray(value)) {
+    return value;
+  }
 
   const schemaType = getSchemaType(schema);
 
   if (schemaType === "string") {
     // For string arrays, extract text content and take first item for duplicates
     return value.map((item) => {
-      if (typeof item === "string") return item.trim();
+      if (typeof item === "string") {
+        return item.trim();
+      }
       if (item && typeof item === "object" && textNodeName in item) {
         const textVal = (item as Record<string, unknown>)[textNodeName];
         return typeof textVal === "string" ? textVal.trim() : String(textVal);
@@ -267,7 +279,9 @@ export function processArrayContent(
 
   // For other types, process each item
   return value.map((item) => {
-    if (typeof item === "string") return item.trim();
+    if (typeof item === "string") {
+      return item.trim();
+    }
     if (item && typeof item === "object" && textNodeName in item) {
       const textVal = (item as Record<string, unknown>)[textNodeName];
       return typeof textVal === "string" ? textVal.trim() : textVal;
@@ -288,7 +302,9 @@ export function processIndexedTuple(
   const isValidTuple =
     indices[0] === 0 && indices.every((val, idx) => val === idx);
 
-  if (!isValidTuple) return [obj];
+  if (!isValidTuple) {
+    return [obj];
+  }
 
   const sortedKeys = keys.sort(
     (a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10)
