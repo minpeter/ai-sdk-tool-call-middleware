@@ -11,8 +11,11 @@ permissions:
 
 jobs:
   cursor-code-review:
-    runs-on: ubuntu-latest # Skip automated code review for draft PRs
+    runs-on: ubuntu-latest # Run automated code review only for non-draft PRs
     if: github.event.pull_request.draft == false
+    env:
+      MODEL: ${{ vars.CURSOR_REVIEW_MODEL || 'gpt-5' }}
+      BLOCKING_REVIEW: ${{ vars.BLOCKING_REVIEW || 'false' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,31 +52,39 @@ jobs:
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           GH_TOKEN: ${{ github.token }}
+          MODEL: gpt-5
         run: |
-          cursor-agent --force --model "$MODEL" --output-format=text --print "You are operating in a GitHub Actions runner performing automated code review. The gh CLI is available and authenticated via GH_TOKEN. You may comment on pull requests.
+          cursor-agent --force --model "$MODEL" --output-format=text --print "
+          You are operating in a GitHub Actions runner performing automated code review. The gh CLI is available and authenticated via GH_TOKEN. You may comment on pull requests.
+
           Context:
           - Repo: ${{ github.repository }}
           - PR Number: ${{ github.event.pull_request.number }}
           - PR Head SHA: ${{ github.event.pull_request.head.sha }}
           - PR Base SHA: ${{ github.event.pull_request.base.sha }}
+          - Blocking Review: ${{ env.BLOCKING_REVIEW }}
+
           Objectives:
-          1) Re-check existing review comments and reply resolved when addressed
-          2) Review the current PR diff and flag only clear, high-severity issues
-          3) Leave very short inline comments (1-2 sentences) on changed lines only and a brief summary at the end
+          1) Re-check existing review comments and reply resolved when addressed.
+          2) Review the current PR diff and flag only clear, high-severity issues.
+          3) Leave very short inline comments (1-2 sentences) on changed lines only and a brief summary at the end.
+
           Procedure:
           - Get existing comments: gh pr view --json comments
           - Get diff: gh pr diff
           - If a previously reported issue appears fixed by nearby changes, reply: ✅ This issue appears to be resolved by the recent changes
           - Avoid duplicates: skip if similar feedback already exists on or near the same lines
+
           Commenting rules:
           - Max 10 inline comments total; prioritize the most critical issues
           - One issue per comment; place on the exact changed line
           - Natural tone, specific and actionable; do not mention automated or high-confidence
           - Use emojis: 🚨 Critical 🔒 Security ⚡ Performance ⚠️ Logic ✅ Resolved ✨ Improvement
+
           Submission:
           - Submit one review containing inline comments plus a concise summary
           - Use only: gh pr review --comment
-          - Do not use: gh pr review --approve or --request-changes"
+          - Do not use: gh pr review --approve or --request-changes
 
           Blocking behavior:
           - If BLOCKING_REVIEW is true and any 🚨 or 🔒 issues were posted: echo "CRITICAL_ISSUES_FOUND=true" >> $GITHUB_ENV
