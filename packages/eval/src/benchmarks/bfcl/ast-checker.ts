@@ -67,9 +67,7 @@ function normalizeObject(obj: unknown): unknown {
   }
   if (obj && typeof obj === "object") {
     const normalized: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(
-      obj as Record<string, unknown>
-    )) {
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
       // If value is a single-element array, unwrap it
       if (
         Array.isArray(value) &&
@@ -114,16 +112,10 @@ function valuesMatch(modelValue: unknown, possibleValue: unknown): boolean {
   }
 
   // For numbers, handle string/number conversion
-  if (
-    typeof modelValue === "number" &&
-    typeof possibleValue === "string"
-  ) {
+  if (typeof modelValue === "number" && typeof possibleValue === "string") {
     return modelValue.toString() === possibleValue;
   }
-  if (
-    typeof modelValue === "string" &&
-    typeof possibleValue === "number"
-  ) {
+  if (typeof modelValue === "string" && typeof possibleValue === "number") {
     return modelValue === possibleValue.toString();
   }
 
@@ -147,9 +139,8 @@ function checkArrayValue(
           return false;
         }
         return (
-          JSON.stringify(
-            p.map((v) => standardizeString(String(v))).sort()
-          ) === modelValueStr
+          JSON.stringify(p.map((v) => standardizeString(String(v))).sort()) ===
+          modelValueStr
         );
       })
     : false;
@@ -191,6 +182,15 @@ function checkObjectValue(
   return { valid: true };
 }
 
+type CheckerResult = { valid: boolean; error?: string; error_type?: string };
+
+type CheckerContext = {
+  funcDescription: FunctionDescription;
+  modelToolCall: ToolCall;
+  possibleAnswerParams: Record<string, unknown>;
+  expectedParams: Record<string, { type: string; description?: string; items?: { type: string } }>;
+};
+
 /**
  * Main checker for a single function call.
  * Aligned with the `ai` package's `ToolCall` type.
@@ -199,19 +199,10 @@ export function simpleFunctionChecker(
   funcDescription: FunctionDescription,
   modelToolCall: ToolCall,
   possibleAnswer: Record<string, unknown>
-): { valid: boolean; error?: string; error_type?: string } {
-  const modelArgs = modelToolCall.args;
-  const modelFuncName = modelToolCall.toolName;
-  const expectedFuncName = funcDescription.name;
-  const expectedParams = funcDescription.parameters.properties;
-  const requiredParams = funcDescription.parameters.required;
-
-  if (modelFuncName !== expectedFuncName) {
-    return {
-      valid: false,
-      error: `Function name '${modelFuncName}' does not match expected '${expectedFuncName}'.`,
-      error_type: "simple_function_checker:wrong_func_name",
-    };
+): CheckerResult {
+  const funcNameCheck = checkFunctionName(funcDescription.name, modelToolCall.toolName);
+  if (!funcNameCheck.valid) {
+    return funcNameCheck;
   }
 
   const possibleAnswerParams = possibleAnswer[
@@ -219,10 +210,50 @@ export function simpleFunctionChecker(
   ] as Record<string, unknown>;
 
   const argsObj: Record<string, unknown> =
-    modelArgs && typeof modelArgs === "object"
-      ? (modelArgs as Record<string, unknown>)
+    modelToolCall.args && typeof modelToolCall.args === "object"
+      ? (modelToolCall.args as Record<string, unknown>)
       : {};
 
+  const context: CheckerContext = {
+    funcDescription,
+    modelToolCall,
+    possibleAnswerParams,
+    expectedParams: funcDescription.parameters.properties,
+  };
+
+  const requiredCheck = checkRequiredParams(funcDescription.parameters.required, argsObj);
+  if (!requiredCheck.valid) {
+    return requiredCheck;
+  }
+
+  const paramsCheck = checkAllParameters(argsObj, context);
+  if (!paramsCheck.valid) {
+    return paramsCheck;
+  }
+
+  const optionalCheck = checkOptionalParams(argsObj, possibleAnswerParams);
+  if (!optionalCheck.valid) {
+    return optionalCheck;
+  }
+
+  return { valid: true };
+}
+
+function checkFunctionName(expected: string, actual: string): CheckerResult {
+  if (actual !== expected) {
+    return {
+      valid: false,
+      error: `Function name '${actual}' does not match expected '${expected}'.`,
+      error_type: "simple_function_checker:wrong_func_name",
+    };
+  }
+  return { valid: true };
+}
+
+function checkRequiredParams(
+  requiredParams: string[],
+  argsObj: Record<string, unknown>
+): CheckerResult {
   for (const param of requiredParams) {
     if (!(param in argsObj)) {
       return {
@@ -232,43 +263,56 @@ export function simpleFunctionChecker(
       };
     }
   }
+  return { valid: true };
+}
 
-  if (modelArgs && typeof modelArgs === "object") {
-    for (const paramName of Object.keys(argsObj)) {
-      const modelValue = argsObj[paramName];
-      if (!(paramName in expectedParams && paramName in possibleAnswerParams)) {
-        return {
-          valid: false,
-          error: `Unexpected parameter: '${paramName}'.`,
-          error_type: "simple_function_checker:unexpected_param",
-        };
-      }
-
-      const possibleValues = possibleAnswerParams[paramName] as unknown;
-
-      if (typeof modelValue === "string") {
-        const result = checkStringValue(
-          paramName,
-          modelValue,
-          (possibleValues as unknown[] | undefined) ?? []
-        );
-        if (!result.valid) {
-          return result;
-        }
-      } else if (Array.isArray(modelValue)) {
-        const result = checkArrayValue(paramName, modelValue, possibleValues);
-        if (!result.valid) {
-          return result;
-        }
-      } else {
-        const result = checkObjectValue(paramName, modelValue, possibleValues);
-        if (!result.valid) {
-          return result;
-        }
-      }
+function checkAllParameters(
+  argsObj: Record<string, unknown>,
+  context: CheckerContext
+): CheckerResult {
+  for (const paramName of Object.keys(argsObj)) {
+    const paramCheck = checkSingleParameter(paramName, argsObj[paramName], context);
+    if (!paramCheck.valid) {
+      return paramCheck;
     }
   }
+  return { valid: true };
+}
 
+function checkSingleParameter(
+  paramName: string,
+  modelValue: unknown,
+  context: CheckerContext
+): CheckerResult {
+  if (!(paramName in context.expectedParams && paramName in context.possibleAnswerParams)) {
+    return {
+      valid: false,
+      error: `Unexpected parameter: '${paramName}'.`,
+      error_type: "simple_function_checker:unexpected_param",
+    };
+  }
+
+  const possibleValues = context.possibleAnswerParams[paramName] as unknown;
+
+  if (typeof modelValue === "string") {
+    return checkStringValue(
+      paramName,
+      modelValue,
+      (possibleValues as unknown[] | undefined) ?? []
+    );
+  }
+  
+  if (Array.isArray(modelValue)) {
+    return checkArrayValue(paramName, modelValue, possibleValues);
+  }
+  
+  return checkObjectValue(paramName, modelValue, possibleValues);
+}
+
+function checkOptionalParams(
+  argsObj: Record<string, unknown>,
+  possibleAnswerParams: Record<string, unknown>
+): CheckerResult {
   for (const paramName in possibleAnswerParams) {
     if (Object.hasOwn(possibleAnswerParams, paramName)) {
       const val = possibleAnswerParams[paramName] as unknown;
@@ -282,7 +326,6 @@ export function simpleFunctionChecker(
       }
     }
   }
-
   return { valid: true };
 }
 

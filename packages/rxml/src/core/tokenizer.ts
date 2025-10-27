@@ -74,15 +74,10 @@ export class XMLTokenizer {
   /**
    * Process special content (comments, CDATA, DOCTYPE) and track if we consumed to end
    */
-  private processSpecialContent(
-    children: (RXMLNode | string)[]
-  ): boolean {
+  private processSpecialContent(children: (RXMLNode | string)[]): boolean {
     const prevPos = this.pos;
     this.handleSpecialContent(children);
-    return (
-      this.pos >= this.xmlString.length &&
-      prevPos < this.xmlString.length
-    );
+    return this.pos >= this.xmlString.length && prevPos < this.xmlString.length;
   }
 
   /**

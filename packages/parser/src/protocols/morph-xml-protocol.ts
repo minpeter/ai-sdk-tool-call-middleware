@@ -224,7 +224,11 @@ function processToolCallInBuffer(
     controller: TransformStreamDefaultController,
     text?: string
   ) => void
-): { buffer: string; currentToolCall: { name: string; content: string } | null; shouldBreak: boolean } {
+): {
+  buffer: string;
+  currentToolCall: { name: string; content: string } | null;
+  shouldBreak: boolean;
+} {
   const endTag = `</${currentToolCall.name}>`;
   const endTagIndex = buffer.indexOf(endTag);
 
@@ -254,7 +258,12 @@ function processNoToolCallInBuffer(
     controller: TransformStreamDefaultController,
     text?: string
   ) => void
-): { buffer: string; currentToolCall: { name: string; content: string } | null; shouldBreak: boolean; shouldContinue: boolean } {
+): {
+  buffer: string;
+  currentToolCall: { name: string; content: string } | null;
+  shouldBreak: boolean;
+  shouldContinue: boolean;
+} {
   const { index: earliestStartTagIndex, name: earliestToolName } =
     findEarliestToolTag(buffer, toolNames);
 
@@ -263,28 +272,26 @@ function processNoToolCallInBuffer(
     flushText(controller, textBeforeTag);
 
     const startTag = `<${earliestToolName}>`;
-    const newBuffer = buffer.substring(
-      earliestStartTagIndex + startTag.length
-    );
-    return { 
-      buffer: newBuffer, 
+    const newBuffer = buffer.substring(earliestStartTagIndex + startTag.length);
+    return {
+      buffer: newBuffer,
       currentToolCall: { name: earliestToolName, content: "" },
       shouldBreak: false,
-      shouldContinue: false
+      shouldContinue: false,
     };
   }
-  
+
   const result = handleNoToolTagInBuffer(
     buffer,
     maxStartTagLen,
     controller,
     flushText
   );
-  return { 
-    buffer: result.buffer, 
+  return {
+    buffer: result.buffer,
     currentToolCall: null,
     shouldBreak: !result.shouldContinue,
-    shouldContinue: result.shouldContinue
+    shouldContinue: result.shouldContinue,
   };
 }
 

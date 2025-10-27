@@ -207,18 +207,22 @@ type ValidationResult = {
   parsed: Json;
 };
 
+type ValidationContext = {
+  expectedMap: Map<string, ExpectedRecord>;
+  ajv: Ajv;
+  logs: string[];
+};
+
 function validateTestCase(
   tc: Omit<SchemaTestCase, "expected">,
   parsed: Json,
-  expectedMap: Map<string, ExpectedRecord>,
-  ajv: Ajv,
-  logs: string[]
+  context: ValidationContext
 ): ValidationResult {
-  const validate = ajv.compile(tc.schema);
+  const validate = context.ajv.compile(tc.schema);
   const valid = validate(parsed) as boolean;
 
   if (!valid) {
-    logs.push(
+    context.logs.push(
       `[INFO] ${tc.id}: Schema validation errors: ${
         (validate.errors || [])
           .map((e) => `${e.instancePath} ${e.message}`)
@@ -227,9 +231,9 @@ function validateTestCase(
     );
   }
 
-  const expectedRec = expectedMap.get(tc.id);
+  const expectedRec = context.expectedMap.get(tc.id);
   if (!expectedRec) {
-    logs.push(
+    context.logs.push(
       `[WARN] ${tc.id}: No expected record found. Skipping value match.`
     );
   }
@@ -241,20 +245,22 @@ function validateTestCase(
   return { valid, valuesOk, parsed };
 }
 
+type ProcessContext = {
+  model: LanguageModel;
+  config: Record<string, unknown> | undefined;
+  validation: ValidationContext;
+};
+
 async function processTestCase(
   tc: Omit<SchemaTestCase, "expected">,
-  model: LanguageModel,
-  config: Record<string, unknown> | undefined,
-  expectedMap: Map<string, ExpectedRecord>,
-  ajv: Ajv,
-  logs: string[]
+  context: ProcessContext
 ): Promise<{ schemaValid: boolean; valueMatch: boolean; correct: boolean }> {
   const messages = buildMessages(tc);
 
-  const temp = config?.temperature;
+  const temp = context.config?.temperature;
   const temperature = typeof temp === "number" ? temp : undefined;
   const { text } = await generateText({
-    model,
+    model: context.model,
     messages,
     ...(temperature !== undefined ? { temperature } : {}),
   });
@@ -267,7 +273,7 @@ async function processTestCase(
   }
 
   if (parsed === undefined) {
-    logs.push(`[FAIL] ${tc.id}: Unable to parse JSON from model output.`);
+    context.validation.logs.push(`[FAIL] ${tc.id}: Unable to parse JSON from model output.`);
     return { schemaValid: false, valueMatch: false, correct: false };
   }
 
@@ -275,13 +281,13 @@ async function processTestCase(
     valid,
     valuesOk,
     parsed: validatedParsed,
-  } = validateTestCase(tc, parsed, expectedMap, ajv, logs);
+  } = validateTestCase(tc, parsed, context.validation);
 
   const correct = valid && valuesOk;
   if (correct) {
-    logs.push(`[PASS] ${tc.id}`);
+    context.validation.logs.push(`[PASS] ${tc.id}`);
   } else {
-    logs.push(
+    context.validation.logs.push(
       `[FAIL] ${tc.id}: schemaValid=${valid}, valuesOk=${valuesOk}. Output=${JSON.stringify(
         validatedParsed
       )}`
@@ -304,65 +310,77 @@ export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
     const logs: string[] = [];
     const ajv = new Ajv({ allErrors: true, strict: false });
 
-    let schemaValidCount = 0;
-    let valueMatchCount = 0;
-    let correctCount = 0;
-
     // Load datasets
     const { tests, expectedMap, error } = await loadDatasets();
     if (error) {
-      const msg = error.message;
       return {
         score: 0,
         success: false,
         metrics: {},
-        logs: [`[FATAL] Failed to load json-generation datasets: ${msg}`],
+        logs: [`[FATAL] Failed to load json-generation datasets: ${error.message}`],
         error,
       };
     }
 
-    // Process each test case
-    for (const tc of tests) {
-      try {
-        const result = await processTestCase(
-          tc,
-          model,
-          config,
-          expectedMap,
-          ajv,
-          logs
-        );
-        if (result.schemaValid) {
-          schemaValidCount++;
-        }
-        if (result.valueMatch) {
-          valueMatchCount++;
-        }
-        if (result.correct) {
-          correctCount++;
-        }
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        logs.push(`[ERROR] ${tc.id}: ${msg}`);
-      }
-    }
-
-    const total = tests.length;
-    const score = correctCount / total;
-    return {
-      score,
-      success: score >= 0.8,
-      metrics: {
-        total_cases: total,
-        correct_count: correctCount,
-        schema_valid_count: schemaValidCount,
-        value_match_count: valueMatchCount,
-        accuracy: score,
-      },
-      logs,
+    const context: ProcessContext = {
+      model,
+      config,
+      validation: { expectedMap, ajv, logs },
     };
+
+    const counts = await processAllTests(tests, context);
+    return buildBenchmarkResult(tests.length, counts, logs);
   },
 };
+
+async function processAllTests(
+  tests: Omit<SchemaTestCase, "expected">[],
+  context: ProcessContext
+): Promise<{ schemaValidCount: number; valueMatchCount: number; correctCount: number }> {
+  let schemaValidCount = 0;
+  let valueMatchCount = 0;
+  let correctCount = 0;
+
+  for (const tc of tests) {
+    try {
+      const result = await processTestCase(tc, context);
+      if (result.schemaValid) {
+        schemaValidCount++;
+      }
+      if (result.valueMatch) {
+        valueMatchCount++;
+      }
+      if (result.correct) {
+        correctCount++;
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      context.validation.logs.push(`[ERROR] ${tc.id}: ${msg}`);
+    }
+  }
+
+  return { schemaValidCount, valueMatchCount, correctCount };
+}
+
+function buildBenchmarkResult(
+  total: number,
+  counts: { schemaValidCount: number; valueMatchCount: number; correctCount: number },
+  logs: string[]
+): BenchmarkResult {
+  const score = counts.correctCount / total;
+  return {
+    score,
+    success: score >= 0.8,
+    metrics: {
+      total_cases: total,
+      correct_count: counts.correctCount,
+      schema_valid_count: counts.schemaValidCount,
+      value_match_count: counts.valueMatchCount,
+      accuracy: score,
+    },
+    logs,
+  };
+}
 
 // A schema-only variant that validates structure/format without value matching
 type SchemaOnlyTestCase = Omit<SchemaTestCase, "expected">;

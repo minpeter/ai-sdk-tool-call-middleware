@@ -3,11 +3,15 @@
  * Provides memory-efficient parsing for large XML documents
  */
 
-import { type Readable, Transform, type TransformCallback } from "stream";
+import { type Readable, Transform, type TransformCallback } from "node:stream";
 
 import { RXMLStreamError } from "../errors/types";
 import { XMLTokenizer } from "./tokenizer";
 import type { ParseOptions, RXMLNode } from "./types";
+
+// Regex patterns used at module level for performance
+const TAG_NAME_REGEX = /^([a-zA-Z_][\w.-]*)/;
+const WHITESPACE_REGEX = /\s/;
 
 /**
  * Transform stream for parsing XML
@@ -42,7 +46,9 @@ export class XMLTransformStream extends Transform {
   ): void {
     try {
       const incoming = chunk.toString();
-      if (incoming.includes("<")) this.sawTagChar = true;
+      if (incoming.includes("<")) {
+        this.sawTagChar = true;
+      }
       this.buffer += incoming;
       this.processBuffer();
       callback();
@@ -73,154 +79,218 @@ export class XMLTransformStream extends Transform {
   private processBuffer(isFlush = false): void {
     // Try to find and emit complete XML elements in the buffer
     while (this.buffer.length > 0) {
-      // Find first '<'
-      const openBracket = this.buffer.indexOf("<");
-      if (openBracket === -1) {
-        // No tags at all
-        if (isFlush) this.buffer = "";
+      if (!this.trimToNextTag(isFlush)) {
         break;
       }
 
-      // Trim leading non-XML text
-      if (openBracket > 0) {
-        this.buffer = this.buffer.slice(openBracket);
-      }
-
-      // Skip processing instructions, comments, CDATA
-      if (
-        this.buffer.startsWith("<?") ||
-        this.buffer.startsWith("<!--") ||
-        this.buffer.startsWith("<![CDATA[")
-      ) {
-        const endMarkers: Record<string, string> = {
-          "<?": "?>",
-          "<!--": "-->",
-          "<![CDATA[": "]]>",
-        };
-        let endMarker = "";
-        for (const [start, end] of Object.entries(endMarkers)) {
-          if (this.buffer.startsWith(start)) {
-            endMarker = end;
-            break;
-          }
-        }
-        const endPos = endMarker ? this.buffer.indexOf(endMarker) : -1;
-        if (endPos === -1) {
-          if (!isFlush) break;
-          // On flush, drop the incomplete special node
-          this.buffer = "";
-          break;
-        }
-        // Keep comment text as string node when requested
-        if (this.parseOptions.keepComments && this.buffer.startsWith("<!--")) {
-          this.push(this.buffer.slice(0, endPos + endMarker.length));
-        }
-        this.buffer = this.buffer.slice(endPos + endMarker.length);
+      if (this.tryProcessSpecialNode(isFlush)) {
         continue;
       }
 
-      // Skip stray closing tags
-      if (this.buffer.startsWith("</")) {
-        const closeEnd = this.buffer.indexOf(">");
-        if (closeEnd === -1) {
-          if (!isFlush) break;
-          this.buffer = "";
-          break;
-        }
-        this.buffer = this.buffer.slice(closeEnd + 1);
+      if (this.trySkipStrayClosingTag(isFlush)) {
         continue;
       }
 
-      // Identify opening tag end and tag name (only proceed when we have the closing '>')
-      const openTagEnd = this.buffer.indexOf(">");
-      if (openTagEnd === -1) {
-        if (!isFlush) break;
-        // Incomplete open tag at flush; drop it
-        this.buffer = "";
+      const tagInfo = this.extractTagInfo(isFlush);
+      if (!tagInfo) {
         break;
       }
-      const openTagContent = this.buffer.slice(1, openTagEnd);
-      const nameMatch = openTagContent.match(/^([a-zA-Z_][\w.-]*)/);
-      if (!nameMatch) {
-        // Not a valid tag start, drop one char and continue
-        this.buffer = this.buffer.slice(1);
-        continue;
-      }
-      const tagName = nameMatch[1];
 
-      // Handle self-closing immediately
-      const isSelfClosing = this.buffer[openTagEnd - 1] === "/";
-      if (isSelfClosing) {
-        const elementEnd = openTagEnd + 1;
-        const elementXml = this.buffer.slice(0, elementEnd);
-        try {
-          const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
-          const node = tokenizer.parseNode();
-          this.emitElementAndChildren(node);
-          this.buffer = this.buffer.slice(elementEnd);
-          continue;
-        } catch {
-          // Skip this malformed self-closing element
-          this.buffer = this.buffer.slice(1);
-          continue;
-        }
-      }
-
-      // Find matching closing tag with depth handling
-      let depth = 1;
-      let searchStart = openTagEnd + 1;
-      let elementEnd = -1;
-      while (searchStart < this.buffer.length) {
-        // Ensure the next opening match is an actual tag name boundary
-        let nextOpen = this.buffer.indexOf(`<${tagName}`, searchStart);
-        while (nextOpen !== -1) {
-          const after = this.buffer[nextOpen + tagName.length + 1];
-          if (after === undefined || after === ">" || /\s/.test(after)) break;
-          nextOpen = this.buffer.indexOf(`<${tagName}`, nextOpen + 1);
-        }
-
-        // Find the next closing tag start (position of '<')
-        const nextCloseStart = this.buffer.indexOf(`</${tagName}`, searchStart);
-        if (nextCloseStart === -1) break;
-
-        if (nextOpen !== -1 && nextOpen < nextCloseStart) {
-          depth++;
-          searchStart = nextOpen + 1;
-        } else {
-          depth--;
-          // Advance past the actual closing tag allowing optional whitespace before '>'
-          let p = nextCloseStart + 2 + tagName.length; // after </tagName
-          while (p < this.buffer.length && /\s/.test(this.buffer[p])) p++;
-          if (this.buffer[p] !== ">") break; // malformed/incomplete closing tag
-          const closeAdvance = p + 1;
-          searchStart = closeAdvance;
-          if (depth === 0) {
-            elementEnd = searchStart;
-            break;
-          }
-        }
-      }
-
-      if (elementEnd === -1) {
-        if (!isFlush) break;
-        // At flush with incomplete element; drop leading '<' to prevent infinite loop
-        this.buffer = this.buffer.slice(1);
+      if (this.tryProcessSelfClosingTag(tagInfo)) {
         continue;
       }
 
-      // We have a complete element; parse and emit
-      const elementXml = this.buffer.slice(0, elementEnd);
-      try {
-        const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
-        const node = tokenizer.parseNode();
-        this.emitElementAndChildren(node);
-        this.buffer = this.buffer.slice(elementEnd);
-      } catch (e) {
-        // Malformed complete element; surface as stream error
-        this.emit("error", new RXMLStreamError("Parse error", e as Error));
-        return;
+      if (!this.tryProcessRegularElement(tagInfo, isFlush)) {
+        break;
       }
     }
+  }
+
+  private trimToNextTag(isFlush: boolean): boolean {
+    const openBracket = this.buffer.indexOf("<");
+    if (openBracket === -1) {
+      if (isFlush) {
+        this.buffer = "";
+      }
+      return false;
+    }
+
+    if (openBracket > 0) {
+      this.buffer = this.buffer.slice(openBracket);
+    }
+    return true;
+  }
+
+  private tryProcessSpecialNode(isFlush: boolean): boolean {
+    if (
+      !this.buffer.startsWith("<?") &&
+      !this.buffer.startsWith("<!--") &&
+      !this.buffer.startsWith("<![CDATA[")
+    ) {
+      return false;
+    }
+
+    const endMarkers: Record<string, string> = {
+      "<?": "?>",
+      "<!--": "-->",
+      "<![CDATA[": "]]>",
+    };
+
+    let endMarker = "";
+    for (const [start, end] of Object.entries(endMarkers)) {
+      if (this.buffer.startsWith(start)) {
+        endMarker = end;
+        break;
+      }
+    }
+
+    const endPos = endMarker ? this.buffer.indexOf(endMarker) : -1;
+    if (endPos === -1) {
+      if (isFlush) {
+        this.buffer = "";
+      }
+      return true;
+    }
+
+    if (this.parseOptions.keepComments && this.buffer.startsWith("<!--")) {
+      this.push(this.buffer.slice(0, endPos + endMarker.length));
+    }
+    this.buffer = this.buffer.slice(endPos + endMarker.length);
+    return true;
+  }
+
+  private trySkipStrayClosingTag(isFlush: boolean): boolean {
+    if (!this.buffer.startsWith("</")) {
+      return false;
+    }
+
+    const closeEnd = this.buffer.indexOf(">");
+    if (closeEnd === -1) {
+      if (isFlush) {
+        this.buffer = "";
+      }
+      return true;
+    }
+
+    this.buffer = this.buffer.slice(closeEnd + 1);
+    return true;
+  }
+
+  private extractTagInfo(isFlush: boolean): { openTagEnd: number; tagName: string } | null {
+    const openTagEnd = this.buffer.indexOf(">");
+    if (openTagEnd === -1) {
+      if (isFlush) {
+        this.buffer = "";
+      }
+      return null;
+    }
+
+    const openTagContent = this.buffer.slice(1, openTagEnd);
+    const nameMatch = openTagContent.match(TAG_NAME_REGEX);
+    if (!nameMatch) {
+      this.buffer = this.buffer.slice(1);
+      return null;
+    }
+
+    return { openTagEnd, tagName: nameMatch[1] };
+  }
+
+  private tryProcessSelfClosingTag(tagInfo: { openTagEnd: number; tagName: string }): boolean {
+    const isSelfClosing = this.buffer[tagInfo.openTagEnd - 1] === "/";
+    if (!isSelfClosing) {
+      return false;
+    }
+
+    const elementEnd = tagInfo.openTagEnd + 1;
+    const elementXml = this.buffer.slice(0, elementEnd);
+    try {
+      const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
+      const node = tokenizer.parseNode();
+      this.emitElementAndChildren(node);
+      this.buffer = this.buffer.slice(elementEnd);
+      return true;
+    } catch {
+      this.buffer = this.buffer.slice(1);
+      return true;
+    }
+  }
+
+  private tryProcessRegularElement(tagInfo: { openTagEnd: number; tagName: string }, isFlush: boolean): boolean {
+    const elementEnd = this.findMatchingClosingTag(tagInfo.tagName, tagInfo.openTagEnd);
+    
+    if (elementEnd === -1) {
+      if (isFlush) {
+        this.buffer = this.buffer.slice(1);
+        return true;
+      }
+      return false;
+    }
+
+    const elementXml = this.buffer.slice(0, elementEnd);
+    try {
+      const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
+      const node = tokenizer.parseNode();
+      this.emitElementAndChildren(node);
+      this.buffer = this.buffer.slice(elementEnd);
+      return true;
+    } catch (e) {
+      this.emit("error", new RXMLStreamError("Parse error", e as Error));
+      return false;
+    }
+  }
+
+  private findMatchingClosingTag(tagName: string, openTagEnd: number): number {
+    let depth = 1;
+    let searchStart = openTagEnd + 1;
+
+    while (searchStart < this.buffer.length) {
+      const nextOpen = this.findNextOpeningTag(tagName, searchStart);
+      const nextCloseStart = this.buffer.indexOf(`</${tagName}`, searchStart);
+      
+      if (nextCloseStart === -1) {
+        return -1;
+      }
+
+      if (nextOpen !== -1 && nextOpen < nextCloseStart) {
+        depth++;
+        searchStart = nextOpen + 1;
+      } else {
+        depth--;
+        const closeAdvance = this.advancePastClosingTag(tagName, nextCloseStart);
+        if (closeAdvance === -1) {
+          return -1;
+        }
+        searchStart = closeAdvance;
+        if (depth === 0) {
+          return searchStart;
+        }
+      }
+    }
+
+    return -1;
+  }
+
+  private findNextOpeningTag(tagName: string, searchStart: number): number {
+    let nextOpen = this.buffer.indexOf(`<${tagName}`, searchStart);
+    while (nextOpen !== -1) {
+      const after = this.buffer[nextOpen + tagName.length + 1];
+      if (after === undefined || after === ">" || WHITESPACE_REGEX.test(after)) {
+        break;
+      }
+      nextOpen = this.buffer.indexOf(`<${tagName}`, nextOpen + 1);
+    }
+    return nextOpen;
+  }
+
+  private advancePastClosingTag(tagName: string, nextCloseStart: number): number {
+    let p = nextCloseStart + 2 + tagName.length;
+    while (p < this.buffer.length && WHITESPACE_REGEX.test(this.buffer[p])) {
+      p++;
+    }
+    if (this.buffer[p] !== ">") {
+      return -1;
+    }
+    return p + 1;
   }
 
   /**
