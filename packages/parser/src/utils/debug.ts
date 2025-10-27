@@ -22,8 +22,12 @@ export function getDebugLevel(): DebugLevel {
     return envLower as DebugLevel;
   }
   const boolEnv = normalizeBooleanString(envLower);
-  if (boolEnv === true) return "stream";
-  if (envLower === "2") return "parse";
+  if (boolEnv === true) {
+    return "stream";
+  }
+  if (envLower === "2") {
+    return "parse";
+  }
   return "off";
 }
 
@@ -31,14 +35,24 @@ function color(code: number) {
   return (text: string) => `\u001b[${code}m${text}\u001b[0m`;
 }
 
-const cGray = color(90);
-const cYellow = color(33);
-const cCyan = color(36);
-const cBgBlue = color(44);
-const cBgGreen = color(42);
-const cInverse = color(7);
-const cUnderline = color(4);
-const cBold = color(1);
+// ANSI color codes
+const ANSI_GRAY = 90;
+const ANSI_YELLOW = 33;
+const ANSI_CYAN = 36;
+const ANSI_BG_BLUE = 44;
+const ANSI_BG_GREEN = 42;
+const ANSI_INVERSE = 7;
+const ANSI_UNDERLINE = 4;
+const ANSI_BOLD = 1;
+
+const cGray = color(ANSI_GRAY);
+const cYellow = color(ANSI_YELLOW);
+const cCyan = color(ANSI_CYAN);
+const cBgBlue = color(ANSI_BG_BLUE);
+const cBgGreen = color(ANSI_BG_GREEN);
+const cInverse = color(ANSI_INVERSE);
+const cUnderline = color(ANSI_UNDERLINE);
+const cBold = color(ANSI_BOLD);
 
 function safeStringify(value: unknown): string {
   try {
@@ -58,6 +72,68 @@ export function logParsedChunk(part: unknown) {
   console.log(cGray("[debug:mw:out]"), cCyan(safeStringify(part)));
 }
 
+function getHighlightStyle(): "inverse" | "underline" | "bold" | "bg" {
+  const envVal =
+    (typeof process !== "undefined" &&
+      process.env &&
+      process.env.DEBUG_PARSER_MW_STYLE) ||
+    "bg";
+
+  const normalized = String(envVal).trim().toLowerCase();
+  if (normalized === "inverse" || normalized === "invert") {
+    return "inverse" as const;
+  }
+  if (normalized === "underline" || normalized === "ul") {
+    return "underline" as const;
+  }
+  if (normalized === "bold") {
+    return "bold" as const;
+  }
+  if (normalized === "bg" || normalized === "background") {
+    return "bg" as const;
+  }
+  const asBool = normalizeBooleanString(normalized);
+  if (asBool === true) {
+    return "bg" as const;
+  }
+  return "bg" as const; // default: background highlight
+}
+
+function getHighlightFunction(style: "inverse" | "underline" | "bold" | "bg") {
+  if (style === "inverse") {
+    return cInverse;
+  }
+  if (style === "underline") {
+    return cUnderline;
+  }
+  if (style === "bold") {
+    return cBold;
+  }
+  if (style === "bg") {
+    return cBgGreen;
+  }
+  return cYellow;
+}
+
+function renderHighlightedText(
+  originalText: string,
+  style: "inverse" | "underline" | "bold" | "bg",
+  highlight: (text: string) => string,
+) {
+  if (
+    style === "bg" ||
+    style === "inverse" ||
+    style === "underline" ||
+    style === "bold"
+  ) {
+    return originalText
+      .split(/\r?\n/)
+      .map((line) => (line.length ? highlight(line) : line))
+      .join("\n");
+  }
+  return highlight(originalText);
+}
+
 export function logParsedSummary({
   toolCalls,
   originalText,
@@ -66,47 +142,9 @@ export function logParsedSummary({
   originalText: string;
 }) {
   if (originalText) {
-    const style = (() => {
-      const envVal =
-        (typeof process !== "undefined" &&
-          process.env &&
-          process.env.DEBUG_PARSER_MW_STYLE) ||
-        "bg";
-
-      const normalized = String(envVal).trim().toLowerCase();
-      if (normalized === "inverse" || normalized === "invert")
-        return "inverse" as const;
-      if (normalized === "underline" || normalized === "ul")
-        return "underline" as const;
-      if (normalized === "bold") return "bold" as const;
-      if (normalized === "bg" || normalized === "background")
-        return "bg" as const;
-      const asBool = normalizeBooleanString(normalized);
-      if (asBool === true) return "bg" as const;
-      return "bg" as const; // default: background highlight
-    })();
-
-    const highlight =
-      style === "inverse"
-        ? cInverse
-        : style === "underline"
-          ? cUnderline
-          : style === "bold"
-            ? cBold
-            : style === "bg"
-              ? cBgGreen
-              : cYellow;
-
-    const rendered =
-      style === "bg" ||
-      style === "inverse" ||
-      style === "underline" ||
-      style === "bold"
-        ? originalText
-            .split(/\r?\n/)
-            .map((line) => (line.length ? highlight(line) : line))
-            .join("\n")
-        : highlight(originalText);
+    const style = getHighlightStyle();
+    const highlight = getHighlightFunction(style);
+    const rendered = renderHighlightedText(originalText, style, highlight);
 
     console.log(cGray("[debug:mw:origin]"), `\n${rendered}`);
   }

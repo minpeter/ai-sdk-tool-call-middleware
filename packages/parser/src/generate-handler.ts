@@ -203,7 +203,13 @@ export async function wrapGenerate({
   );
 
   logParsedContent(newContent);
-  computeDebugSummary(result, newContent, protocol, tools, params.providerOptions);
+  computeDebugSummary(
+    result,
+    newContent,
+    protocol,
+    tools,
+    params.providerOptions
+  );
 
   return {
     ...result,

@@ -26,7 +26,7 @@ export function createToolMiddleware({
 
   return {
     middlewareVersion: "v2",
-    wrapStream: async ({ doStream, doGenerate, params }) => {
+    wrapStream: ({ doStream, doGenerate, params }) => {
       if (isToolChoiceActive(params)) {
         return toolChoiceStream({
           doGenerate,
