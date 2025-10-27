@@ -13,7 +13,13 @@ Please fix the biome lint error below.
 $output
 EOF
   else
-    echo "pnpm fmt completed successfully. Restarting loop..."
+    echo "pnpm fmt completed successfully."
+
+    # stop the loop
+    exit 0
   fi
+  git add .
+  git commit -m "fmt mig by cursor-agent"
+  git push
   sleep 1
 done
