@@ -265,6 +265,7 @@ describe("robust-xml parser", () => {
           path: "test.js",
           content: [
             "function greet(name) {",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: This is test data containing a template literal
             "  console.log(`Hello, ${name}!`);",
             "}",
             "greet('world');",

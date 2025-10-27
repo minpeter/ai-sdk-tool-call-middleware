@@ -177,16 +177,17 @@ function makeLexer(tokenSpecs: TokenSpec[]): (contents: string) => Token[] {
   return (contents: string): Token[] => {
     const tokens: Token[] = [];
     let line = 1; // Start at line 1
+    let remainingContents = contents;
 
     // Helper function to find the next token in the input string
     // :: -> { raw: string, matched: RawToken } | undefined
     function findToken(): { raw: string; matched: RawToken } | undefined {
       // Use the custom 'some' function to iterate through token specifications
       const result = some(tokenSpecs, (tokenSpec) => {
-        const m = tokenSpec.re.exec(contents); // Try to match the regex at the current position
+        const m = tokenSpec.re.exec(remainingContents); // Try to match the regex at the current position
         if (m) {
           const raw = m[0]; // The matched raw string
-          contents = contents.slice(raw.length); // Consume the matched part from the input
+          remainingContents = remainingContents.slice(raw.length); // Consume the matched part from the input
           return {
             raw,
             matched: tokenSpec.f(m), // Process the match using the spec's function
@@ -198,13 +199,13 @@ function makeLexer(tokenSpecs: TokenSpec[]): (contents: string) => Token[] {
     }
 
     // Main lexing loop
-    while (contents !== "") {
+    while (remainingContents !== "") {
       const matched = findToken(); // Find the next token
 
       if (!matched) {
         // If no token spec matches, it's a syntax error
         const err = new SyntaxError(
-          `Unexpected character: ${contents[0]}; input: ${contents.substr(
+          `Unexpected character: ${remainingContents[0]}; input: ${remainingContents.substr(
             0,
             100
           )}`
@@ -288,7 +289,9 @@ function fIdentifier(m: RegExpExecArray): RawToken {
 // :: tuple string -> rawToken
 function fComment(m: RegExpExecArray): RawToken {
   // Treats comments as whitespace, preserving only newlines
-  const match = m[0].replace(/./g, (c) => (WHITESPACE_TEST_REGEX.test(c) ? c : " "));
+  const match = m[0].replace(/./g, (c) =>
+    WHITESPACE_TEST_REGEX.test(c) ? c : " "
+  );
   return {
     type: " ", // Represent comments as whitespace tokens
     match, // String containing original newlines and spaces for other chars
@@ -392,9 +395,10 @@ const strictLexer = makeLexer(makeTokenSpecs(false)); // Strict JSON lexer
 // Find the index of the previous non-whitespace token
 // :: array token -> nat -> nat?
 function previousNWSToken(tokens: Token[], index: number): number | undefined {
-  for (; index >= 0; index--) {
-    if (tokens[index].type !== " ") {
-      return index; // Return index of the non-whitespace token
+  let currentIndex = index;
+  for (; currentIndex >= 0; currentIndex--) {
+    if (tokens[currentIndex].type !== " ") {
+      return currentIndex; // Return index of the non-whitespace token
     }
   }
   return; // Not found
@@ -482,7 +486,7 @@ function popToken(tokens: Token[], state: ParseState): Token {
 
   if (!token) {
     // If we are past the end of the token array, return an EOF token
-    const lastLine = tokens.length !== 0 ? tokens.at(-1)!.line : 1;
+    const lastLine = tokens.length !== 0 ? tokens.at(-1)?.line ?? 1 : 1;
     return { type: "eof", match: "", value: undefined, line: lastLine };
   }
 
@@ -542,7 +546,7 @@ function skipPunctuation(
 
   while (true) {
     // If the token is one of the valid types we're looking for, return it
-    if (valid && valid.includes(token.type)) {
+    if (valid?.includes(token.type)) {
       return token;
     }
     if (token.type === "eof") {
@@ -630,7 +634,7 @@ function checkDuplicates(
 // :: parseState -> any -> any -> any -> undefined
 function appendPair(
   state: ParseState,
-  obj: { [key: string]: unknown },
+  obj: { [objKey: string]: unknown },
   key: string,
   value: unknown
 ): void {
@@ -781,13 +785,16 @@ function handleInvalidToken<T>(
 }
 
 // Helper to handle comma tokens in parseMany
-function handleCommaToken<T>(
-  token: Token,
-  tokens: Token[],
-  state: ParseState,
-  opts: ParseManyOpts<T>,
-  result: T
-): T | null {
+type HandleCommaTokenParams<T> = {
+  token: Token;
+  tokens: Token[];
+  state: ParseState;
+  opts: ParseManyOpts<T>;
+  result: T;
+};
+
+function handleCommaToken<T>(params: HandleCommaTokenParams<T>): T | null {
+  const { token, tokens, state, opts, result } = params;
   const nextToken = tokens[state.pos];
   if (state.tolerant && nextToken && nextToken.type === opts.endSymbol) {
     raiseError(state, token, `Trailing comma before '${opts.endSymbol}'`);
@@ -798,21 +805,17 @@ function handleCommaToken<T>(
   return null; // Signal to continue parsing
 }
 
-// Generic function to parse comma-separated elements within enclosing symbols (like objects or arrays)
-// :: t : array | {} => array parseToken -> parseState -> t -> parseManyOpts -> t
-function parseMany<T>(
+// Helper to handle the initial element in parseMany
+function parseManyInitialElement<T>(
   tokens: Token[],
   state: ParseState,
   result: T,
   opts: ParseManyOpts<T>
-): T {
-  let token = skipPunctuation(tokens, state, opts.skip);
+): T | undefined {
+  const token = skipPunctuation(tokens, state, opts.skip);
 
   if (token.type === "eof") {
     raiseUnexpected(state, token, `'${opts.endSymbol}' or ${opts.elementName}`);
-    if (state.tolerant) {
-      return result;
-    }
     return result;
   }
 
@@ -822,32 +825,70 @@ function parseMany<T>(
 
   state.pos -= 1;
   opts.elementParser(tokens, state, result);
+  return undefined; // Signal to continue parsing
+}
+
+// Helper to process a token in parseMany loop
+function parseManyProcessToken<T>(
+  token: Token,
+  tokens: Token[],
+  state: ParseState,
+  opts: ParseManyOpts<T>,
+  result: T
+): T | undefined {
+  if (token.type !== opts.endSymbol && token.type !== ",") {
+    const handledResult = handleInvalidToken(token, state, opts, result);
+    if (handledResult !== null) {
+      return handledResult;
+    }
+  }
+
+  if (token.type === opts.endSymbol) {
+    return result;
+  }
+
+  if (token.type === ",") {
+    const handledResult = handleCommaToken({
+      token,
+      tokens,
+      state,
+      opts,
+      result,
+    });
+    if (handledResult !== null) {
+      return handledResult;
+    }
+    return undefined; // Continue loop
+  }
+
+  opts.elementParser(tokens, state, result);
+  return undefined; // Continue loop
+}
+
+// Generic function to parse comma-separated elements within enclosing symbols (like objects or arrays)
+// :: t : array | {} => array parseToken -> parseState -> t -> parseManyOpts -> t
+function parseMany<T>(
+  tokens: Token[],
+  state: ParseState,
+  result: T,
+  opts: ParseManyOpts<T>
+): T {
+  const initialResult = parseManyInitialElement(tokens, state, result, opts);
+  if (initialResult !== undefined) {
+    return initialResult;
+  }
 
   while (true) {
-    token = popToken(tokens, state);
-
-    if (token.type !== opts.endSymbol && token.type !== ",") {
-      const handledResult = handleInvalidToken(token, state, opts, result);
-      if (handledResult !== null) {
-        return handledResult;
-      }
-    }
-
-    switch (token.type) {
-      case opts.endSymbol:
-        return result;
-
-      case ",": {
-        const handledResult = handleCommaToken(token, tokens, state, opts, result);
-        if (handledResult !== null) {
-          return handledResult;
-        }
-        break;
-      }
-
-      default:
-        opts.elementParser(tokens, state, result);
-        break;
+    const token = popToken(tokens, state);
+    const processedResult = parseManyProcessToken(
+      token,
+      tokens,
+      state,
+      opts,
+      result
+    );
+    if (processedResult !== undefined) {
+      return processedResult;
     }
   }
 }
@@ -975,7 +1016,6 @@ function normalizeParseOptions(
   }
 
   options.tolerant = options.tolerant || options.warnings;
-  options.warnings = options.warnings;
   options.duplicate = options.duplicate ?? false;
 
   return options;
@@ -993,10 +1033,7 @@ function createParseState(options: ParseOptions): ParseState {
 }
 
 // Helper to use custom parser with tokens
-function parseWithCustomParser(
-  text: string,
-  options: ParseOptions
-): unknown {
+function parseWithCustomParser(text: string, options: ParseOptions): unknown {
   const lexerToUse = options.relaxed ? lexer : strictLexer;
   let tokens = lexerToUse(text);
 
@@ -1010,10 +1047,7 @@ function parseWithCustomParser(
 }
 
 // Helper to use native JSON.parse with transformation
-function parseWithTransform(
-  text: string,
-  options: ParseOptions
-): unknown {
+function parseWithTransform(text: string, options: ParseOptions): unknown {
   let tokens = lexer(text);
   tokens = stripTrailingComma(tokens);
   const newtext = tokens.reduce((str, token) => str + token.match, "");
@@ -1063,7 +1097,10 @@ function parse(
   const options = normalizeParseOptions(optsOrReviver);
 
   // Strategy 1: Strict JSON with duplicate allowance -> use native JSON.parse
-  if (!(options.relaxed || options.warnings || options.tolerant) && options.duplicate) {
+  if (
+    !(options.relaxed || options.warnings || options.tolerant) &&
+    options.duplicate
+  ) {
     return JSON.parse(
       text,
       options.reviver as (key: string, value: unknown) => unknown
@@ -1085,10 +1122,10 @@ function parse(
 
 // Helper for stringifying object pairs
 // :: any -> string -> ... -> string
-function stringifyPair(obj: { [key: string]: unknown }, key: string): string {
+function stringifyPair(obj: { [objKey: string]: unknown }, key: string): string {
   // Stringify key and value, then join with colon
   // Recursively calls stringify for the value
-  return JSON.stringify(key) + ":" + stringify(obj[key]);
+  return `${JSON.stringify(key)}:${stringify(obj[key])}`;
 }
 
 /**
@@ -1131,7 +1168,7 @@ function stringify(obj: unknown): string {
   if (Array.isArray(obj)) {
     // Recursively stringify each element and join with commas
     const elements = obj.map(stringify).join(",");
-    return "[" + elements + "]";
+    return `[${elements}]`;
   }
 
   // Handle objects
@@ -1143,9 +1180,9 @@ function stringify(obj: unknown): string {
     keys.sort();
     // Stringify each key-value pair and join with commas
     const pairs = keys
-      .map((key) => stringifyPair(obj as { [key: string]: unknown }, key))
+      .map((key) => stringifyPair(obj as { [objKey: string]: unknown }, key))
       .join(",");
-    return "{" + pairs + "}";
+    return `{${pairs}}`;
   }
 
   // Fallback for unsupported types (like functions, symbols) - represent as null

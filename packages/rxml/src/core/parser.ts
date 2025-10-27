@@ -9,6 +9,9 @@ import {
   RXMLParseError,
 } from "../errors/types";
 import { getSchemaType, unwrapJsonSchema } from "../schema/base-coercion";
+
+// Regex constants for performance
+const WHITESPACE_REGEX = /\s/;
 import {
   coerceDomBySchema,
   domToObject,
@@ -29,7 +32,9 @@ import type { ParseOptions, RXMLNode } from "./types";
 
 // Internal: schema-guided deep XML entity decoding
 function deepDecodeStringsBySchema(input: unknown, schema: unknown): unknown {
-  if (input == null || schema == null) return input;
+  if (input == null || schema == null) {
+    return input;
+  }
 
   const type = getSchemaType(schema);
 
@@ -56,13 +61,16 @@ function deepDecodeStringsBySchema(input: unknown, schema: unknown): unknown {
   }
 
   // Fallback: decode any string when schema typing is ambiguous/missing
-  if (typeof input === "string") return unescapeXml(input);
+  if (typeof input === "string") {
+    return unescapeXml(input);
+  }
   return input;
 }
 
 /**
  * Parse XML with schema-aware type coercion
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This function handles complex XML parsing logic that is difficult to break down further without losing clarity
 export function parse(
   xmlInner: string,
   schema: unknown,
@@ -82,7 +90,9 @@ export function parse(
 
     while (i < s.length) {
       const lt = s.indexOf("<", i);
-      if (lt === -1) break;
+      if (lt === -1) {
+        break;
+      }
       const next = s[lt + 1];
       if (next === "?") {
         const end = s.indexOf("?>", lt + 2);
@@ -134,7 +144,9 @@ export function parse(
         const closeHead = s.indexOf(`</${rootName}`, range.end);
         if (closeHead === range.end) {
           let p = closeHead + 2 + rootName.length;
-          while (p < s.length && /\s/.test(s[p])) p++;
+          while (p < s.length && WHITESPACE_REGEX.test(s[p])) {
+            p++;
+          }
           if (s[p] === ">") fullEnd = p + 1;
         }
 
