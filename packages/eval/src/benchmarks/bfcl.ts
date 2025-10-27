@@ -224,7 +224,9 @@ function createBfclBenchmark(
         };
 
         // Helper: Flatten BFCL message shape
-        const flattenMessages = (messages: Message[] | Message[][]): Message[] =>
+        const flattenMessages = (
+          messages: Message[] | Message[][]
+        ): Message[] =>
           Array.isArray(messages) &&
           (messages as unknown[]).some((m) => Array.isArray(m))
             ? (messages as unknown[] as Message[][]).flat(1)
@@ -425,14 +427,20 @@ function createBfclBenchmark(
                 diff.push(`- missing required param: ${req}`);
               }
             }
-            for (const k of Object.keys(receivedArgs as Record<string, unknown>)) {
+            for (const k of Object.keys(
+              receivedArgs as Record<string, unknown>
+            )) {
               if (!Object.hasOwn(expectedParams, k)) {
                 diff.push(`+ unexpected param: ${k}`);
               }
             }
-            for (const k of Object.keys(receivedArgs as Record<string, unknown>)) {
+            for (const k of Object.keys(
+              receivedArgs as Record<string, unknown>
+            )) {
               if (Object.hasOwn(expectedParams, k)) {
-                const allowed = (expectedParams as Record<string, unknown[]>)[k];
+                const allowed = (expectedParams as Record<string, unknown[]>)[
+                  k
+                ];
                 const got = (receivedArgs as Record<string, unknown>)[k];
                 if (!paramValueMatches(allowed, got)) {
                   diff.push(...generateParamMismatchDiff(k, allowed, got));
@@ -465,7 +473,9 @@ function createBfclBenchmark(
             (c) => c.toolName ?? c.name
           );
 
-          const expected: Record<string, unknown> = { functions: expectedNames };
+          const expected: Record<string, unknown> = {
+            functions: expectedNames,
+          };
           const actual: Record<string, unknown> = { functions: actualNames };
           const diff: string[] = [];
 
@@ -583,7 +593,9 @@ function createBfclBenchmark(
                     typeof t.description === "string"
                       ? t.description
                       : undefined,
-                  inputSchema: jsonSchema(t.inputSchema as Record<string, unknown>),
+                  inputSchema: jsonSchema(
+                    t.inputSchema as Record<string, unknown>
+                  ),
                 }),
               ])
             );
@@ -593,7 +605,13 @@ function createBfclBenchmark(
               const firstTool = transformedTools[0];
               const schemaType =
                 firstTool?.inputSchema?.type ??
-                ((firstTool?.inputSchema as Record<string, unknown> | undefined)?.jsonSchema as Record<string, unknown> | undefined)?.type;
+                (
+                  (
+                    firstTool?.inputSchema as
+                      | Record<string, unknown>
+                      | undefined
+                  )?.jsonSchema as Record<string, unknown> | undefined
+                )?.type;
               caseLogs.push(
                 `[DEBUG] ${testCase.id}: firstTool=${JSON.stringify(firstTool)}, schemaType=${schemaType}`
               );

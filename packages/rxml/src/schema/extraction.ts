@@ -12,6 +12,154 @@ import {
 } from "../utils/helpers";
 
 /**
+ * Helper to skip special XML constructs (comments, CDATA, DOCTYPE, processing instructions)
+ * Returns the new position after the construct, or -1 if not a special construct
+ */
+function skipSpecialConstruct(
+  xmlContent: string,
+  i: number,
+  len: number
+): number {
+  const ch = xmlContent[i];
+  
+  if (ch === "!") {
+    // Handle DOCTYPE declarations
+    if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
+      const gt = xmlContent.indexOf(">", i + 1);
+      return gt === -1 ? len : gt + 1;
+    }
+    // Handle comments
+    if (xmlContent.startsWith("!--", i + 1)) {
+      const close = xmlContent.indexOf("-->", i + 4);
+      return close === -1 ? len : close + 3;
+    }
+    // Handle CDATA
+    if (xmlContent.startsWith("![CDATA[", i + 1)) {
+      const close = xmlContent.indexOf("]]>", i + 9);
+      return close === -1 ? len : close + 3;
+    }
+    // Other declarations
+    const gt = xmlContent.indexOf(">", i + 1);
+    return gt === -1 ? len : gt + 1;
+  }
+  
+  if (ch === "?") {
+    // Processing instruction
+    const close = xmlContent.indexOf("?>", i + 1);
+    return close === -1 ? len : close + 2;
+  }
+  
+  return -1;
+}
+
+/**
+ * Parse tag name starting at position i
+ * Returns the tag name and position after the name
+ */
+function parseTagName(
+  xmlContent: string,
+  i: number,
+  len: number
+): { name: string; pos: number } {
+  let j = i;
+  if (j < len && isNameStartChar(xmlContent[j])) {
+    j++;
+    while (j < len && isNameChar(xmlContent[j])) {
+      j++;
+    }
+  }
+  return { name: xmlContent.slice(i, j), pos: j };
+}
+
+/**
+ * Skip to the end of a tag (finding the closing > or />)
+ * Returns { pos: position after >, isSelfClosing: boolean }
+ */
+function skipToTagEnd(
+  xmlContent: string,
+  start: number,
+  len: number
+): { pos: number; isSelfClosing: boolean } {
+  let k = start;
+  let isSelfClosing = false;
+  
+  while (k < len) {
+    const c = xmlContent[k];
+    if (c === '"' || c === "'") {
+      k = skipQuoted(xmlContent, k);
+      continue;
+    }
+    if (c === ">") {
+      break;
+    }
+    if (c === "/" && xmlContent[k + 1] === ">") {
+      isSelfClosing = true;
+      k++;
+      break;
+    }
+    k++;
+  }
+  
+  return { pos: k, isSelfClosing };
+}
+
+/**
+ * Find the matching closing tag for a given opening tag
+ * Returns the position of the start of the closing tag, or -1 if not found
+ */
+function findMatchingCloseTag(
+  xmlContent: string,
+  startPos: number,
+  tagName: string,
+  len: number
+): number {
+  let pos = startPos;
+  let depth = 1;
+  
+  while (pos < len) {
+    const nextLt = xmlContent.indexOf("<", pos);
+    if (nextLt === -1) {
+      break;
+    }
+    const nx = nextLt + 1;
+    if (nx >= len) {
+      break;
+    }
+    
+    const h = xmlContent[nx];
+    const specialPos = skipSpecialConstruct(xmlContent, nx, len);
+    if (specialPos !== -1) {
+      pos = specialPos;
+      continue;
+    }
+    
+    if (h === "/") {
+      // Closing tag
+      const tagInfo = parseTagName(xmlContent, nx + 1, len);
+      const gt = xmlContent.indexOf(">", tagInfo.pos);
+      if (tagInfo.name === tagName) {
+        depth--;
+        if (depth === 0) {
+          return nextLt;
+        }
+      }
+      pos = gt === -1 ? len : gt + 1;
+    } else {
+      // Opening tag
+      const tagInfo = parseTagName(xmlContent, nx, len);
+      const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
+      
+      if (tagInfo.name === tagName && !tagEndInfo.isSelfClosing) {
+        depth++;
+      }
+      pos = xmlContent[tagEndInfo.pos] === ">" ? tagEndInfo.pos + 1 : tagEndInfo.pos + 1;
+    }
+  }
+  
+  return -1;
+}
+
+/**
  * Extract raw inner content from XML string for a specific tag
  * This is used for string-typed properties to preserve exact content
  */
@@ -30,68 +178,33 @@ export function extractRawInner(
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) return;
+    if (lt === -1) {
+      return;
+    }
     i = lt + 1;
-    if (i >= len) return;
+    if (i >= len) {
+      return;
+    }
 
     const ch = xmlContent[i];
-    if (ch === "!") {
-      // Handle DOCTYPE declarations specially - treat them as regular content
-      // when they appear within tag content, not as XML declarations
-      if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
-        // For DOCTYPE within content, we need to find the closing >
-        const gt = xmlContent.indexOf(">", i + 1);
-        i = gt === -1 ? len : gt + 1;
-        continue;
-      }
-      if (xmlContent.startsWith("!--", i + 1)) {
-        const close = xmlContent.indexOf("-->", i + 4);
-        i = close === -1 ? len : close + 3;
-        continue;
-      }
-      if (xmlContent.startsWith("![CDATA[", i + 1)) {
-        const close = xmlContent.indexOf("]]>", i + 9);
-        i = close === -1 ? len : close + 3;
-        continue;
-      }
-      const gt = xmlContent.indexOf(">", i + 1);
-      i = gt === -1 ? len : gt + 1;
-    } else if (ch === "?") {
-      const close = xmlContent.indexOf("?>", i + 1);
-      i = close === -1 ? len : close + 2;
-    } else if (ch === "/") {
+    const specialPos = skipSpecialConstruct(xmlContent, i, len);
+    if (specialPos !== -1) {
+      i = specialPos;
+      continue;
+    }
+    
+    if (ch === "/") {
       const gt = xmlContent.indexOf(">", i + 1);
       i = gt === -1 ? len : gt + 1;
       depth = Math.max(0, depth - 1);
     } else {
-      let j = i;
-      if (j < len && isNameStartChar(xmlContent[j])) {
-        j++;
-        while (j < len && isNameChar(xmlContent[j])) j++;
-      }
-      const name = xmlContent.slice(i, j);
-      let k = j;
-      let isSelfClosing = false;
+      const tagInfo = parseTagName(xmlContent, i, len);
+      const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
+      const tagEnd = tagEndInfo.pos;
+      const isSelfClosing = tagEndInfo.isSelfClosing;
 
-      while (k < len) {
-        const c = xmlContent[k];
-        if (c === '"' || c === "'") {
-          k = skipQuoted(xmlContent, k);
-          continue;
-        }
-        if (c === ">") break;
-        if (c === "/" && xmlContent[k + 1] === ">") {
-          isSelfClosing = true;
-          k++;
-          break;
-        }
-        k++;
-      }
-
-      const tagEnd = k;
-      if (name === target) {
-        const contentStart =
-          xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
+      if (tagInfo.name === target) {
+        const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
 
         if (isSelfClosing) {
           if (depth < bestDepth) {
@@ -100,86 +213,11 @@ export function extractRawInner(
             bestDepth = depth;
           }
         } else {
-          let pos = contentStart;
-          let sameDepth = 1;
-
-          while (pos < len) {
-            const nextLt = xmlContent.indexOf("<", pos);
-            if (nextLt === -1) break;
-            const nx = nextLt + 1;
-            if (nx >= len) break;
-
-            const h = xmlContent[nx];
-            if (h === "!") {
-              // Special handling for DOCTYPE and other declarations within content
-              if (xmlContent.startsWith("!DOCTYPE", nx + 1)) {
-                const gt2 = xmlContent.indexOf(">", nx + 1);
-                pos = gt2 === -1 ? len : gt2 + 1;
-                continue;
-              }
-              if (xmlContent.startsWith("!--", nx + 1)) {
-                const close = xmlContent.indexOf("-->", nx + 4);
-                pos = close === -1 ? len : close + 3;
-                continue;
-              }
-              if (xmlContent.startsWith("![CDATA[", nx + 1)) {
-                const close = xmlContent.indexOf("]]>", nx + 9);
-                pos = close === -1 ? len : close + 3;
-                continue;
-              }
-              const gt2 = xmlContent.indexOf(">", nx + 1);
-              pos = gt2 === -1 ? len : gt2 + 1;
-            } else if (h === "?") {
-              const close = xmlContent.indexOf("?>", nx + 1);
-              pos = close === -1 ? len : close + 2;
-            } else if (h === "/") {
-              let t = nx + 1;
-              if (t < len && isNameStartChar(xmlContent[t])) {
-                t++;
-                while (t < len && isNameChar(xmlContent[t])) t++;
-              }
-              const endName = xmlContent.slice(nx + 1, t);
-              const gt2 = xmlContent.indexOf(">", t);
-              if (endName === target) {
-                sameDepth--;
-                if (sameDepth === 0) {
-                  if (depth < bestDepth) {
-                    bestStart = contentStart;
-                    bestEnd = nextLt;
-                    bestDepth = depth;
-                  }
-                  break;
-                }
-              }
-              pos = gt2 === -1 ? len : gt2 + 1;
-            } else {
-              let t = nx;
-              if (t < len && isNameStartChar(xmlContent[t])) {
-                t++;
-                while (t < len && isNameChar(xmlContent[t])) t++;
-              }
-              let u = t;
-              let isSelfClosingNested = false;
-              while (u < len) {
-                const cu = xmlContent[u];
-                if (cu === '"' || cu === "'") {
-                  u = skipQuoted(xmlContent, u);
-                  continue;
-                }
-                if (cu === ">") break;
-                if (cu === "/" && xmlContent[u + 1] === ">") {
-                  isSelfClosingNested = true;
-                  u++;
-                  break;
-                }
-                u++;
-              }
-              const startName = xmlContent.slice(nx, t);
-              if (startName === target && !isSelfClosingNested) {
-                sameDepth++;
-              }
-              pos = xmlContent[u] === ">" ? u + 1 : u + 1;
-            }
+          const closePos = findMatchingCloseTag(xmlContent, contentStart, target, len);
+          if (closePos !== -1 && depth < bestDepth) {
+            bestStart = contentStart;
+            bestEnd = closePos;
+            bestDepth = depth;
           }
         }
       }
@@ -210,32 +248,21 @@ export function findAllInnerRanges(
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) break;
+    if (lt === -1) {
+      break;
+    }
     i = lt + 1;
-    if (i >= len) break;
+    if (i >= len) {
+      break;
+    }
 
     const ch = xmlContent[i];
-    if (ch === "!") {
-      if (xmlContent.startsWith("!--", i + 1)) {
-        const close = xmlContent.indexOf("-->", i + 4);
-        i = close === -1 ? len : close + 3;
-        continue;
-      }
-      if (xmlContent.startsWith("![CDATA[", i + 1)) {
-        const close = xmlContent.indexOf("]]>", i + 9);
-        i = close === -1 ? len : close + 3;
-        continue;
-      }
-      // DOCTYPE or other declaration
-      const gt = xmlContent.indexOf(">", i + 1);
-      i = gt === -1 ? len : gt + 1;
+    const specialPos = skipSpecialConstruct(xmlContent, i, len);
+    if (specialPos !== -1) {
+      i = specialPos;
       continue;
     }
-    if (ch === "?") {
-      const close = xmlContent.indexOf("?>", i + 1);
-      i = close === -1 ? len : close + 2;
-      continue;
-    }
+    
     if (ch === "/") {
       const gt = xmlContent.indexOf(">", i + 1);
       i = gt === -1 ? len : gt + 1;
@@ -243,31 +270,12 @@ export function findAllInnerRanges(
     }
 
     // Opening tag
-    let j = i;
-    if (j < len && isNameStartChar(xmlContent[j])) {
-      j++;
-      while (j < len && isNameChar(xmlContent[j])) j++;
-    }
-    const name = xmlContent.slice(i, j);
-    let k = j;
-    let isSelfClosing = false;
-    while (k < len) {
-      const c = xmlContent[k];
-      if (c === '"' || c === "'") {
-        k = skipQuoted(xmlContent, k);
-        continue;
-      }
-      if (c === ">") break;
-      if (c === "/" && xmlContent[k + 1] === ">") {
-        isSelfClosing = true;
-        k++;
-        break;
-      }
-      k++;
-    }
-    const tagEnd = k;
+    const tagInfo = parseTagName(xmlContent, i, len);
+    const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
+    const tagEnd = tagEndInfo.pos;
+    const isSelfClosing = tagEndInfo.isSelfClosing;
 
-    if (name !== target) {
+    if (tagInfo.name !== target) {
       // Advance over this tag
       i = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
       continue;
@@ -277,86 +285,18 @@ export function findAllInnerRanges(
     const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
     if (isSelfClosing) {
       ranges.push({ start: contentStart, end: contentStart });
-      i = contentStart; // continue after this position
+      i = contentStart;
       continue;
     }
 
-    // Find matching close tag at same depth for this occurrence
-    let pos = contentStart;
-    let sameDepth = 1;
-    while (pos < len) {
-      const nextLt = xmlContent.indexOf("<", pos);
-      if (nextLt === -1) break;
-      const nx = nextLt + 1;
-      if (nx >= len) break;
-
-      const h = xmlContent[nx];
-      if (h === "!") {
-        if (xmlContent.startsWith("!--", nx + 1)) {
-          const close = xmlContent.indexOf("-->", nx + 4);
-          pos = close === -1 ? len : close + 3;
-          continue;
-        }
-        if (xmlContent.startsWith("![CDATA[", nx + 1)) {
-          const close = xmlContent.indexOf("]]>", nx + 9);
-          pos = close === -1 ? len : close + 3;
-          continue;
-        }
-        const gt2 = xmlContent.indexOf(">", nx + 1);
-        pos = gt2 === -1 ? len : gt2 + 1;
-      } else if (h === "?") {
-        const close = xmlContent.indexOf("?>", nx + 1);
-        pos = close === -1 ? len : close + 2;
-      } else if (h === "/") {
-        let t = nx + 1;
-        if (t < len && isNameStartChar(xmlContent[t])) {
-          t++;
-          while (t < len && isNameChar(xmlContent[t])) t++;
-        }
-        const endName = xmlContent.slice(nx + 1, t);
-        const gt2 = xmlContent.indexOf(">", t);
-        if (endName === target) {
-          sameDepth--;
-          if (sameDepth === 0) {
-            ranges.push({ start: contentStart, end: nextLt });
-            // advance i to after this closing tag
-            i = gt2 === -1 ? len : gt2 + 1;
-            break;
-          }
-        }
-        pos = gt2 === -1 ? len : gt2 + 1;
-      } else {
-        let t = nx;
-        if (t < len && isNameStartChar(xmlContent[t])) {
-          t++;
-          while (t < len && isNameChar(xmlContent[t])) t++;
-        }
-        let u = t;
-        let isSelfClosingNested = false;
-        while (u < len) {
-          const cu = xmlContent[u];
-          if (cu === '"' || cu === "'") {
-            u = skipQuoted(xmlContent, u);
-            continue;
-          }
-          if (cu === ">") break;
-          if (cu === "/" && xmlContent[u + 1] === ">") {
-            isSelfClosingNested = true;
-            u++;
-            break;
-          }
-          u++;
-        }
-        const startName = xmlContent.slice(nx, t);
-        if (startName === target && !isSelfClosingNested) {
-          sameDepth++;
-        }
-        pos = xmlContent[u] === ">" ? u + 1 : u + 1;
-      }
-    }
-
-    if (sameDepth !== 0) {
-      // unmatched; stop scanning further to avoid infinite loops
+    // Find matching close tag
+    const closePos = findMatchingCloseTag(xmlContent, contentStart, target, len);
+    if (closePos !== -1) {
+      ranges.push({ start: contentStart, end: closePos });
+      const gt = xmlContent.indexOf(">", closePos);
+      i = gt === -1 ? len : gt + 1;
+    } else {
+      // Unmatched tag, stop to avoid infinite loops
       break;
     }
   }
@@ -379,146 +319,40 @@ export function findFirstTopLevelRange(
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) return;
+    if (lt === -1) {
+      return;
+    }
     i = lt + 1;
-    if (i >= len) return;
+    if (i >= len) {
+      return;
+    }
 
     const ch = xmlContent[i];
-    if (ch === "!") {
-      // Handle DOCTYPE declarations specially - treat them as regular content
-      // when they appear within tag content, not as XML declarations
-      if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
-        // For DOCTYPE within content, we need to find the closing >
-        const gt = xmlContent.indexOf(">", i + 1);
-        i = gt === -1 ? len : gt + 1;
-        continue;
-      }
-      if (xmlContent.startsWith("!--", i + 1)) {
-        const close = xmlContent.indexOf("-->", i + 4);
-        i = close === -1 ? len : close + 3;
-        continue;
-      }
-      if (xmlContent.startsWith("![CDATA[", i + 1)) {
-        const close = xmlContent.indexOf("]]>", i + 9);
-        i = close === -1 ? len : close + 3;
-        continue;
-      }
-      const gt = xmlContent.indexOf(">", i + 1);
-      i = gt === -1 ? len : gt + 1;
-    } else if (ch === "?") {
-      const close = xmlContent.indexOf("?>", i + 1);
-      i = close === -1 ? len : close + 2;
-    } else if (ch === "/") {
+    const specialPos = skipSpecialConstruct(xmlContent, i, len);
+    if (specialPos !== -1) {
+      i = specialPos;
+      continue;
+    }
+    
+    if (ch === "/") {
       const gt = xmlContent.indexOf(">", i + 1);
       i = gt === -1 ? len : gt + 1;
       depth = Math.max(0, depth - 1);
     } else {
-      let j = i;
-      if (j < len && isNameStartChar(xmlContent[j])) {
-        j++;
-        while (j < len && isNameChar(xmlContent[j])) j++;
-      }
-      const name = xmlContent.slice(i, j);
-      let k = j;
-      let isSelfClosing = false;
+      const tagInfo = parseTagName(xmlContent, i, len);
+      const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
+      const tagEnd = tagEndInfo.pos;
+      const isSelfClosing = tagEndInfo.isSelfClosing;
 
-      while (k < len) {
-        const c = xmlContent[k];
-        if (c === '"' || c === "'") {
-          k = skipQuoted(xmlContent, k);
-          continue;
+      if (depth === 0 && tagInfo.name === target) {
+        const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
+        if (isSelfClosing) {
+          return { start: contentStart, end: contentStart };
         }
-        if (c === ">") break;
-        if (c === "/" && xmlContent[k + 1] === ">") {
-          isSelfClosing = true;
-          k++;
-          break;
-        }
-        k++;
-      }
 
-      const tagEnd = k;
-      if (depth === 0 && name === target) {
-        const contentStart =
-          xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
-        if (isSelfClosing) return { start: contentStart, end: contentStart };
-
-        let pos = contentStart;
-        let sameDepth = 1;
-        while (pos < len) {
-          const nextLt = xmlContent.indexOf("<", pos);
-          if (nextLt === -1) break;
-          const nx = nextLt + 1;
-          if (nx >= len) break;
-
-          const h = xmlContent[nx];
-          if (h === "!") {
-            // Special handling for DOCTYPE and other declarations within content
-            if (xmlContent.startsWith("!DOCTYPE", nx + 1)) {
-              const gt2 = xmlContent.indexOf(">", nx + 1);
-              pos = gt2 === -1 ? len : gt2 + 1;
-              continue;
-            }
-            if (xmlContent.startsWith("!--", nx + 1)) {
-              const close = xmlContent.indexOf("-->", nx + 4);
-              pos = close === -1 ? len : close + 3;
-              continue;
-            }
-            if (xmlContent.startsWith("![CDATA[", nx + 1)) {
-              const close = xmlContent.indexOf("]]>", nx + 9);
-              pos = close === -1 ? len : close + 3;
-              continue;
-            }
-            const gt2 = xmlContent.indexOf(">", nx + 1);
-            pos = gt2 === -1 ? len : gt2 + 1;
-          } else if (h === "?") {
-            const close = xmlContent.indexOf("?>", nx + 1);
-            pos = close === -1 ? len : close + 2;
-          } else if (h === "/") {
-            let t = nx + 1;
-            if (t < len && isNameStartChar(xmlContent[t])) {
-              t++;
-              while (t < len && isNameChar(xmlContent[t])) t++;
-            }
-            const endName = xmlContent.slice(nx + 1, t);
-            const gt2 = xmlContent.indexOf(">", t);
-            if (endName === target) {
-              sameDepth--;
-              if (sameDepth === 0) {
-                return { start: contentStart, end: nextLt };
-              }
-            }
-            pos = gt2 === -1 ? len : gt2 + 1;
-          } else {
-            let t = nx;
-            if (t < len && isNameStartChar(xmlContent[t])) {
-              t++;
-              while (t < len && isNameChar(xmlContent[t])) t++;
-            }
-            const startName = xmlContent.slice(nx, t);
-            let u = t;
-            let isSelfClosingNested = false;
-            while (u < len) {
-              const cu = xmlContent[u];
-              if (cu === '"' || cu === "'") {
-                u = skipQuoted(xmlContent, u);
-                continue;
-              }
-              if (cu === ">") break;
-              if (cu === "/" && xmlContent[u + 1] === ">") {
-                isSelfClosingNested = true;
-                u++;
-                break;
-              }
-              u++;
-            }
-            // Track nested opening tags with the same name so we only end when
-            // the matching top-level closing tag is reached
-            if (startName === target && !isSelfClosingNested) {
-              sameDepth++;
-            }
-            pos = xmlContent[u] === ">" ? u + 1 : u + 1;
-          }
+        const closePos = findMatchingCloseTag(xmlContent, contentStart, target, len);
+        if (closePos !== -1) {
+          return { start: contentStart, end: closePos };
         }
         return;
       }
@@ -545,18 +379,26 @@ export function countTagOccurrences(
   let count = 0;
   let skipFirstLocal = shouldSkipFirst;
   const isExcluded = (pos: number): boolean => {
-    if (!excludeRanges || excludeRanges.length === 0) return false;
+    if (!excludeRanges || excludeRanges.length === 0) {
+      return false;
+    }
     for (const r of excludeRanges) {
-      if (pos >= r.start && pos < r.end) return true;
+      if (pos >= r.start && pos < r.end) {
+        return true;
+      }
     }
     return false;
   };
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) break;
+    if (lt === -1) {
+      break;
+    }
     i = lt + 1;
-    if (i >= len) break;
+    if (i >= len) {
+      break;
+    }
 
     const ch = xmlContent[i];
     if (ch === "!") {
@@ -582,7 +424,9 @@ export function countTagOccurrences(
       let j = i;
       if (j < len && isNameStartChar(xmlContent[j])) {
         j++;
-        while (j < len && isNameChar(xmlContent[j])) j++;
+        while (j < len && isNameChar(xmlContent[j])) {
+          j++;
+        }
       }
       const name = xmlContent.slice(i, j);
       let k = j;
@@ -592,7 +436,9 @@ export function countTagOccurrences(
           k = skipQuoted(xmlContent, k);
           continue;
         }
-        if (c === ">") break;
+        if (c === ">") {
+          break;
+        }
         if (c === "/" && xmlContent[k + 1] === ">") {
           k++;
           break;
@@ -628,9 +474,13 @@ export function findAllTopLevelRanges(
 
   while (i < len) {
     const lt = xmlContent.indexOf("<", i);
-    if (lt === -1) break;
+    if (lt === -1) {
+      break;
+    }
     i = lt + 1;
-    if (i >= len) break;
+    if (i >= len) {
+      break;
+    }
 
     const ch = xmlContent[i];
     if (ch === "!") {
@@ -665,9 +515,13 @@ export function findAllTopLevelRanges(
       // Closing tag
       i++;
       const { name, newPos } = parseName(xmlContent, i);
-      if (name === target) depth--;
+      if (name === target) {
+        depth--;
+      }
       i = xmlContent.indexOf(">", newPos);
-      if (i === -1) break;
+      if (i === -1) {
+        break;
+      }
       i++;
       continue;
     }
@@ -710,21 +564,29 @@ export function findAllTopLevelRanges(
 
         while (j < len && closeDepth > 0) {
           const nextLt = xmlContent.indexOf("<", j);
-          if (nextLt === -1) break;
+          if (nextLt === -1) {
+            break;
+          }
 
           if (xmlContent[nextLt + 1] === "/") {
             const { name: closeName } = parseName(xmlContent, nextLt + 2);
-            if (closeName === target) closeDepth--;
+            if (closeName === target) {
+              closeDepth--;
+            }
           } else if (
             xmlContent[nextLt + 1] !== "!" &&
             xmlContent[nextLt + 1] !== "?"
           ) {
             const { name: openName } = parseName(xmlContent, nextLt + 1);
-            if (openName === target) closeDepth++;
+            if (openName === target) {
+              closeDepth++;
+            }
           }
 
           j = xmlContent.indexOf(">", nextLt + 1);
-          if (j === -1) break;
+          if (j === -1) {
+            break;
+          }
           j++;
         }
 
@@ -745,7 +607,9 @@ export function findAllTopLevelRanges(
  * Extract raw content from DOM node
  */
 export function extractRawFromNode(node: RXMLNode): string {
-  if (node.children.length === 0) return "";
+  if (node.children.length === 0) {
+    return "";
+  }
   if (node.children.length === 1 && typeof node.children[0] === "string") {
     return node.children[0];
   }
