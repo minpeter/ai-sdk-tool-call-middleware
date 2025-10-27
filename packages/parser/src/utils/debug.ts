@@ -118,7 +118,7 @@ function getHighlightFunction(style: "inverse" | "underline" | "bold" | "bg") {
 function renderHighlightedText(
   originalText: string,
   style: "inverse" | "underline" | "bold" | "bg",
-  highlight: (text: string) => string,
+  highlight: (text: string) => string
 ) {
   if (
     style === "bg" ||

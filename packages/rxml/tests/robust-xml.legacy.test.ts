@@ -6,6 +6,8 @@ import {
   stringify as rxmlStringify,
 } from "@/index";
 
+const VALUE_100 = 100;
+
 describe("RXML", () => {
   describe("parse: basic and options", () => {
     it("parses simple string field", () => {
@@ -45,7 +47,7 @@ describe("RXML", () => {
         additionalProperties: false,
       };
       const out = rxmlParse(xml, schema);
-      expect(out).toEqual({ numbers: [1, 2, 100] });
+      expect(out).toEqual({ numbers: [1, 2, VALUE_100] });
     });
 
     it("handles arrays of string elements and trims text content", () => {

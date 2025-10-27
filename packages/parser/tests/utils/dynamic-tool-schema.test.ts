@@ -26,12 +26,12 @@ describe("createDynamicIfThenElseSchema", () => {
 
     expect(schema.type).toBe("object");
     expect(schema.properties).toBeDefined();
-    expect(schema.properties!.name).toMatchObject({
+    expect(schema.properties?.name).toMatchObject({
       type: "string",
       description: "Name of the tool to call",
       enum: ["getTool"],
     });
-    expect(schema.properties!.arguments).toMatchObject({
+    expect(schema.properties?.arguments).toMatchObject({
       type: "object",
       description: "Argument object to be passed to the tool",
     });
@@ -77,7 +77,7 @@ describe("createDynamicIfThenElseSchema", () => {
     const schema = createDynamicIfThenElseSchema(tools);
 
     expect(schema.type).toBe("object");
-    expect(schema.properties!.name).toMatchObject({
+    expect(schema.properties?.name).toMatchObject({
       type: "string",
       enum: ["tool1", "tool2", "tool3"],
     });
@@ -120,7 +120,7 @@ describe("createDynamicIfThenElseSchema", () => {
     const schema = createDynamicIfThenElseSchema(tools);
 
     expect(schema.type).toBe("object");
-    expect(schema.properties!.name).toMatchObject({
+    expect(schema.properties?.name).toMatchObject({
       type: "string",
       enum: [],
     });
@@ -179,7 +179,7 @@ describe("createDynamicIfThenElseSchema", () => {
     const schema = createDynamicIfThenElseSchema(tools);
 
     // Tools should be in the order provided
-    expect(schema.properties!.name).toMatchObject({
+    expect(schema.properties?.name).toMatchObject({
       enum: ["alpha", "beta", "gamma"],
     });
 
