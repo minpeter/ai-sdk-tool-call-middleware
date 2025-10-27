@@ -1,4 +1,4 @@
-import { Readable } from "stream";
+import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 import { processXMLStream, RXMLStreamError } from "@/index";
@@ -11,7 +11,7 @@ const CHUNK_SIZE = 7;
 function createChunkedStream(
   text: string,
   chunkSize: number = CHUNK_SIZE,
-  parseOptions?: any
+  _parseOptions?: any
 ): Readable {
   const chunks: string[] = [];
 
@@ -205,7 +205,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
   describe("Edge cases with chunking", () => {
     it("should handle tag boundaries split across chunks", async () => {
       // This test specifically checks when tags are split across chunk boundaries
-      const xml = "<tool><name>test</name></tool>";
+      const _xml = "<tool><name>test</name></tool>";
 
       // Create chunks that deliberately split tags
       const manualChunks = ["<tool><", "name>te", "st</na", "me></t", "ool>"];
@@ -233,7 +233,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
     });
 
     it("should handle attribute boundaries split across chunks", async () => {
-      const xml = '<tool id="test123" type="function">content</tool>';
+      const _xml = '<tool id="test123" type="function">content</tool>';
 
       // Split attributes across chunks
       const manualChunks = [

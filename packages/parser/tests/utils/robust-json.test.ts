@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { parse, stringify, transform } from "@/utils/robust-json";
 
+const DUPLICATE_KEY_REGEX = /Duplicate key: key/;
+const PARSE_WARNINGS_REGEX = /parse warnings/;
+const TRAILING_BRACE_REGEX = /}\s*$/;
+
 describe("relaxed-json", () => {
   describe("parse", () => {
     describe("standard JSON", () => {
@@ -143,7 +147,9 @@ describe("relaxed-json", () => {
     describe("options", () => {
       it("should support reviver function", () => {
         const reviver = (_key: string, value: any) => {
-          if (typeof value === "number") return value * 2;
+          if (typeof value === "number") {
+            return value * 2;
+          }
           return value;
         };
         expect(parse('{"a": 1, "b": 2}', reviver)).toEqual({ a: 2, b: 4 });
@@ -151,7 +157,9 @@ describe("relaxed-json", () => {
 
       it("should support reviver in options object", () => {
         const reviver = (_key: string, value: any) => {
-          if (typeof value === "string") return value.toUpperCase();
+          if (typeof value === "string") {
+            return value.toUpperCase();
+          }
           return value;
         };
         expect(parse('{"key": "value"}', { reviver })).toEqual({
@@ -185,13 +193,13 @@ describe("relaxed-json", () => {
             tolerant: true,
             warnings: true,
           })
-        ).toThrow(/Duplicate key: key/);
+        ).toThrow(DUPLICATE_KEY_REGEX);
       });
 
       it("should collect warnings in tolerant mode", () => {
         expect(() =>
           parse("{key: , another: value}", { tolerant: true, warnings: true })
-        ).toThrow(/parse warnings/);
+        ).toThrow(PARSE_WARNINGS_REGEX);
       });
 
       it("should use strict lexer when relaxed is false", () => {
@@ -211,7 +219,7 @@ describe("relaxed-json", () => {
       });
 
       it("should handle large arrays", () => {
-        const largeArray = "[" + Array(1000).fill("1").join(",") + "]";
+        const largeArray = `[${new Array(1000).fill("1").join(",")}]`;
         const result = parse(largeArray) as number[];
         expect(result).toHaveLength(1000);
         expect(result[0]).toBe(1);
@@ -276,7 +284,7 @@ describe("relaxed-json", () => {
     it("should strip trailing commas", () => {
       const withTrailing = '{"a": 1, "b": 2,}';
       const transformed = transform(withTrailing);
-      expect(transformed).toMatch(/}\s*$/);
+      expect(transformed).toMatch(TRAILING_BRACE_REGEX);
       expect(() => JSON.parse(transformed)).not.toThrow();
     });
   });
@@ -335,9 +343,9 @@ describe("relaxed-json", () => {
     });
 
     it("should handle functions and symbols as null", () => {
-      expect(stringify((() => {}) as any)).toBe("null");
+      expect(stringify((() => { /* empty */ }) as any)).toBe("null");
       expect(stringify(Symbol("test") as any)).toBe("null");
-      expect(stringify({ fn: () => {}, sym: Symbol("test") } as any)).toBe(
+      expect(stringify({ fn: () => { /* empty */ }, sym: Symbol("test") } as any)).toBe(
         '{"fn":null,"sym":null}'
       );
     });

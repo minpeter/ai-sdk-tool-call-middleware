@@ -335,52 +335,75 @@ function createFlushTextHandler(
   };
 }
 
-function createProcessBufferHandler(
-  getBuffer: () => string,
-  setBuffer: (buffer: string) => void,
-  getCurrentToolCall: () => { name: string; content: string } | null,
+type ProcessBufferHandlerParams = {
+  getBuffer: () => string;
+  setBuffer: (buffer: string) => void;
+  getCurrentToolCall: () => { name: string; content: string } | null;
   setCurrentToolCall: (
     toolCall: { name: string; content: string } | null
-  ) => void,
-  tools: LanguageModelV2FunctionTool[],
+  ) => void;
+  tools: LanguageModelV2FunctionTool[];
   options:
     | { onError?: (message: string, details?: unknown) => void }
-    | undefined,
-  toolNames: string[],
-  maxStartTagLen: number,
-  flushText: (ctrl: TransformStreamDefaultController, text?: string) => void
-) {
+    | undefined;
+  toolNames: string[];
+  maxStartTagLen: number;
+  flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
+};
+
+function processBufferWithToolCall(
+  params: ProcessBufferHandlerParams,
+  controller: TransformStreamDefaultController
+): boolean {
+  const { getBuffer, setBuffer, getCurrentToolCall, setCurrentToolCall, tools, options, flushText } = params;
+  const currentToolCall = getCurrentToolCall();
+  
+  const result = processToolCallInBuffer({
+    buffer: getBuffer(),
+    currentToolCall,
+    tools,
+    options,
+    controller,
+    flushText,
+  });
+  setBuffer(result.buffer);
+  setCurrentToolCall(result.currentToolCall);
+  return result.shouldBreak;
+}
+
+function processBufferWithoutToolCall(
+  params: ProcessBufferHandlerParams,
+  controller: TransformStreamDefaultController
+): { shouldBreak: boolean; shouldContinue: boolean } {
+  const { getBuffer, setBuffer, setCurrentToolCall, toolNames, maxStartTagLen, flushText } = params;
+  
+  const result = processNoToolCallInBuffer({
+    buffer: getBuffer(),
+    toolNames,
+    maxStartTagLen,
+    controller,
+    flushText,
+  });
+  setBuffer(result.buffer);
+  setCurrentToolCall(result.currentToolCall);
+  return { shouldBreak: result.shouldBreak, shouldContinue: result.shouldContinue };
+}
+
+function createProcessBufferHandler(params: ProcessBufferHandlerParams) {
   return (controller: TransformStreamDefaultController) => {
     while (true) {
-      const currentToolCall = getCurrentToolCall();
+      const currentToolCall = params.getCurrentToolCall();
       if (currentToolCall) {
-        const result = processToolCallInBuffer({
-          buffer: getBuffer(),
-          currentToolCall,
-          tools,
-          options,
-          controller,
-          flushText,
-        });
-        setBuffer(result.buffer);
-        setCurrentToolCall(result.currentToolCall);
-        if (result.shouldBreak) {
+        const shouldBreak = processBufferWithToolCall(params, controller);
+        if (shouldBreak) {
           break;
         }
       } else {
-        const result = processNoToolCallInBuffer({
-          buffer: getBuffer(),
-          toolNames,
-          maxStartTagLen,
-          controller,
-          flushText,
-        });
-        setBuffer(result.buffer);
-        setCurrentToolCall(result.currentToolCall);
-        if (result.shouldContinue) {
+        const { shouldBreak, shouldContinue } = processBufferWithoutToolCall(params, controller);
+        if (shouldContinue) {
           continue;
         }
-        if (result.shouldBreak) {
+        if (shouldBreak) {
           break;
         }
       }
@@ -494,21 +517,21 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       processBuffer(controller);
     };
 
-    const processBuffer = createProcessBufferHandler(
-      () => buffer,
-      (newBuffer: string) => {
+    const processBuffer = createProcessBufferHandler({
+      getBuffer: () => buffer,
+      setBuffer: (newBuffer: string) => {
         buffer = newBuffer;
       },
-      () => currentToolCall,
-      (newToolCall: { name: string; content: string } | null) => {
+      getCurrentToolCall: () => currentToolCall,
+      setCurrentToolCall: (newToolCall: { name: string; content: string } | null) => {
         currentToolCall = newToolCall;
       },
       tools,
       options,
       toolNames,
       maxStartTagLen,
-      flushText
-    );
+      flushText,
+    });
 
     const flushBuffer = (controller: TransformStreamDefaultController) => {
       if (currentToolCall) {

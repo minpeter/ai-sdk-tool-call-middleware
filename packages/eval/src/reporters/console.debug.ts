@@ -60,9 +60,8 @@ function suggestFunctionNameFix(
 ): void {
   const expectedName = (expected as Record<string, unknown> | undefined)
     ?.function as string | undefined;
-  const actualName = (actual as Record<string, unknown> | undefined)?.function as
-    | string
-    | undefined;
+  const actualName = (actual as Record<string, unknown> | undefined)
+    ?.function as string | undefined;
   if (expectedName && actualName && expectedName !== actualName) {
     suggestions.push(
       `Call the function '${expectedName}' instead of '${actualName}'.`
@@ -123,16 +122,15 @@ function suggestParamValueFix(diff: unknown[], suggestions: string[]): void {
 }
 
 // Helper function to suggest fixes based on error type
-function suggestFromErrorType(
-  error_type: string,
-  suggestions: string[]
-): void {
+function suggestFromErrorType(error_type: string, suggestions: string[]): void {
   if (error_type.includes("missing_required")) {
     suggestions.push("Add all required parameters defined by the tool schema.");
   } else if (error_type.includes("unexpected_param")) {
     suggestions.push("Remove parameters not present in the tool schema.");
   } else if (error_type.includes("wrong_count")) {
-    suggestions.push("Adjust the number of tool calls to match expected count.");
+    suggestions.push(
+      "Adjust the number of tool calls to match expected count."
+    );
   } else if (error_type.includes("wrong_func_name")) {
     suggestions.push("Use the exact expected function name from the schema.");
   } else if (error_type.includes("value_error")) {
@@ -156,7 +154,9 @@ function suggestFixFromDiff(parsed: unknown): string[] {
     suggestFunctionNameFix(expected, actual, suggestions);
   }
 
-  if (diff.some((d: unknown) => String(d).startsWith("- missing required param:"))) {
+  if (
+    diff.some((d: unknown) => String(d).startsWith("- missing required param:"))
+  ) {
     suggestMissingParamFix(diff, suggestions);
   }
 
@@ -236,11 +236,7 @@ function collectDebugIds(lines: string[]): Set<string> {
 }
 
 // Helper function to print formatted JSON with indentation
-function printIndentedJson(
-  prefix: string,
-  data: unknown,
-  color: string
-): void {
+function printIndentedJson(prefix: string, data: unknown, color: string): void {
   console.log(
     color +
       prefix +
@@ -309,7 +305,11 @@ function displayContextInfo(ctx: Record<string, unknown>): void {
     );
   }
   if (ctx.ground_truth) {
-    printIndentedJson("          ground truth: ", ctx.ground_truth, colors.gray);
+    printIndentedJson(
+      "          ground truth: ",
+      ctx.ground_truth,
+      colors.gray
+    );
   }
   if (ctx.finish_reason) {
     console.log(
@@ -432,7 +432,7 @@ export function consoleDebugReporter(results: EvaluationResult[]): void {
   for (const r of results) {
     displayResultHeader(r);
     displayMetrics(Object.entries(r.result.metrics));
-    if (r.result.logs && r.result.logs.length) {
+    if (r.result.logs?.length) {
       displayResultLogs(r.result.logs);
     }
   }

@@ -1,4 +1,4 @@
-import { Readable } from "stream";
+import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 import { parseFromStream, RXMLStreamError } from "@/index";
@@ -135,7 +135,7 @@ describe("RXML Chunked Streaming (Working Implementation)", () => {
 
         // Highlight where important XML constructs are split
         chunks.forEach((chunk, index) => {
-          const issues = [];
+          const issues: string[] = [];
           if (chunk.includes("<") && !chunk.includes(">")) {
             issues.push("incomplete opening tag");
           }
