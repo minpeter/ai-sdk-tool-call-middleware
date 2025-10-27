@@ -1,6 +1,6 @@
 import { generateText, jsonSchema, type LanguageModel, tool } from "ai";
-import { promises as fs } from "fs";
-import path from "path";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 
 import type { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
 import { resolveDataDir } from "@/utils/paths";
@@ -15,40 +15,43 @@ import {
 
 // Resolve data files relative to this module using ESM-safe utilities
 
+// Regex constants for performance
+const LINE_SPLIT_REGEX = /\r?\n/;
+
 // --- Interfaces ---
-interface ToolSchemaObject {
+type ToolSchemaObject = {
   type: string;
   properties?: Record<string, unknown>;
   items?: unknown;
   required?: string[];
   [key: string]: unknown;
-}
+};
 
-interface ToolSpec {
+type ToolSpec = {
   name: string;
   description?: string;
   parameters: ToolSchemaObject;
-}
+};
 
 type Message = { role: string; content: string };
 
-interface TestCase {
+type TestCase = {
   id: string;
   question: Message[] | Message[][];
   function: ToolSpec[];
-}
+};
 
-interface TransformedTool {
+type TransformedTool = {
   type: "function";
   name: string;
   description?: string;
   inputSchema: ToolSchemaObject;
-}
+};
 
-interface PossibleAnswer {
+type PossibleAnswer = {
   id: string;
   ground_truth: unknown;
-}
+};
 
 // --- Generic Checker Dispatcher ---
 function check(
@@ -70,21 +73,21 @@ function check(
       return simpleFunctionChecker(
         testCase.function[0] as unknown as FunctionDescription,
         modelOutput[0] as ToolCall,
-        (possibleAnswer.ground_truth as Array<Record<string, unknown>>)[0]
+        (possibleAnswer.ground_truth as Record<string, unknown>[])[0]
       );
     }
     if (category === "parallel") {
       return parallelFunctionCheckerNoOrder(
         testCase.function as unknown as FunctionDescription[],
         modelOutput as ToolCall[],
-        possibleAnswer.ground_truth as Array<Record<string, unknown>>
+        possibleAnswer.ground_truth as Record<string, unknown>[]
       );
     }
     if (category === "multiple") {
       return multipleFunctionChecker(
         testCase.function as unknown as FunctionDescription[],
         modelOutput as ToolCall[],
-        possibleAnswer.ground_truth as Array<Record<string, unknown>>
+        possibleAnswer.ground_truth as Record<string, unknown>[]
       );
     }
     if (category.includes("parallel-multiple")) {
@@ -92,7 +95,7 @@ function check(
       return parallelFunctionCheckerNoOrder(
         testCase.function as unknown as FunctionDescription[],
         modelOutput as ToolCall[],
-        possibleAnswer.ground_truth as Array<Record<string, unknown>>
+        possibleAnswer.ground_truth as Record<string, unknown>[]
       );
     }
 
@@ -143,11 +146,11 @@ function createBfclBenchmark(
         // The BFCL datasets are in JSON Lines (NDJSON) format: one JSON object per line.
         // Parse them line-by-line instead of as a single JSON value.
         testCases = testCasesJson
-          .split(/\r?\n/)
+          .split(LINE_SPLIT_REGEX)
           .filter((line) => line.trim().length > 0)
           .map((line) => JSON.parse(line));
         const possibleAnswers: PossibleAnswer[] = possibleAnswersJson
-          .split(/\r?\n/)
+          .split(LINE_SPLIT_REGEX)
           .filter((line) => line.trim().length > 0)
           .map((line) => JSON.parse(line));
         const possibleAnswersMap = new Map(
@@ -164,28 +167,51 @@ function createBfclBenchmark(
           );
         }
 
+        // Helper: fix BFCL JSON schema type field
+        const fixSchemaType = (copy: ToolSchemaObject): void => {
+          if (!copy.type) {
+            return;
+          }
+          if (copy.type === "dict") {
+            copy.type = "object";
+          }
+          if (copy.type === "tuple") {
+            copy.type = "array";
+          }
+          if (copy.type === "integer" || copy.type === "float") {
+            copy.type = "number";
+          }
+        };
+
+        // Helper: fix BFCL JSON schema properties recursively
+        const fixSchemaProperties = (
+          copy: ToolSchemaObject,
+          fixSchema: (schema: unknown) => unknown
+        ): void => {
+          if (!copy.properties || typeof copy.properties !== "object") {
+            return;
+          }
+          for (const k of Object.keys(copy.properties)) {
+            (copy.properties as Record<string, unknown>)[k] = fixSchema(
+              (copy.properties as Record<string, unknown>)[k]
+            );
+          }
+        };
+
         // Helper: fix BFCL JSON schema types to OpenAI-compatible JSON Schema
         const fixSchema = (schema: unknown): unknown => {
-          if (!schema || typeof schema !== "object")
+          if (!schema || typeof schema !== "object") {
             return { type: "object", properties: {} };
+          }
           const copy: ToolSchemaObject | unknown[] = Array.isArray(schema)
             ? (schema as unknown[]).map((v) => fixSchema(v))
             : ({ ...(schema as Record<string, unknown>) } as ToolSchemaObject);
           if (!Array.isArray(copy)) {
-            if (copy.type) {
-              if (copy.type === "dict") copy.type = "object";
-              if (copy.type === "tuple") copy.type = "array";
-              if (copy.type === "integer" || copy.type === "float")
-                copy.type = "number";
+            fixSchemaType(copy);
+            fixSchemaProperties(copy, fixSchema);
+            if (copy.items) {
+              copy.items = fixSchema(copy.items);
             }
-            if (copy.properties && typeof copy.properties === "object") {
-              for (const k of Object.keys(copy.properties)) {
-                (copy.properties as Record<string, unknown>)[k] = fixSchema(
-                  (copy.properties as Record<string, unknown>)[k]
-                );
-              }
-            }
-            if (copy.items) copy.items = fixSchema(copy.items);
             return copy;
           }
           return copy;

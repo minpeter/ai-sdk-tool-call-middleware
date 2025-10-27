@@ -879,12 +879,7 @@ function parseMany<T>(
 
   while (true) {
     const token = popToken(tokens, state);
-    const processedResult = parseManyProcessToken(
-      token,
-      state,
-      opts,
-      result
-    );
+    const processedResult = parseManyProcessToken(token, state, opts, result);
     if (processedResult !== undefined) {
       return processedResult;
     }

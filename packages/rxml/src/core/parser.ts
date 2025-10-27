@@ -584,7 +584,8 @@ export function parse(
             .map((keyStr) => Number.parseInt(keyStr, 10))
             .sort((a, b) => a - b);
           isIndexedTuple =
-            indices[0] === 0 && indices.every((indexVal, idx) => indexVal === idx);
+            indices[0] === 0 &&
+            indices.every((indexVal, idx) => indexVal === idx);
         }
 
         if (isIndexedTuple) {
@@ -776,8 +777,8 @@ export function filter(
   filterFn: (
     node: RXMLNode,
     index: number,
-    depth: number,
-    path: string
+    currentDepth: number,
+    currentPath: string
   ) => boolean,
   depth = 0,
   path = ""
@@ -791,12 +792,7 @@ export function filter(
     }
     if (typeof child === "object" && child.children) {
       const childPath = `${path ? `${path}.` : ""}${i}.${child.tagName}`;
-      const kids = filter(
-        child.children,
-        filterFn,
-        depth + 1,
-        childPath
-      );
+      const kids = filter(child.children, filterFn, depth + 1, childPath);
       out.push(...kids);
     }
   }
