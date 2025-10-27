@@ -127,13 +127,14 @@ function logParsedContent(content: LanguageModelV2Content[]) {
   }
 }
 
-function computeDebugSummary(
-  result: { content: LanguageModelV2Content[] },
-  newContent: LanguageModelV2Content[],
-  protocol: ToolCallProtocol,
-  tools: Array<{ name?: string; inputSchema?: unknown }>,
-  providerOptions?: ToolCallMiddlewareProviderOptions
-) {
+function computeDebugSummary(options: {
+  result: { content: LanguageModelV2Content[] };
+  newContent: LanguageModelV2Content[];
+  protocol: ToolCallProtocol;
+  tools: Array<{ name?: string; inputSchema?: unknown }>;
+  providerOptions?: ToolCallMiddlewareProviderOptions;
+}) {
+  const { result, newContent, protocol, tools, providerOptions } = options;
   const allText = result.content
     .filter(
       (c): c is Extract<LanguageModelV2Content, { type: "text" }> =>
@@ -203,13 +204,13 @@ export async function wrapGenerate({
   );
 
   logParsedContent(newContent);
-  computeDebugSummary(
+  computeDebugSummary({
     result,
     newContent,
     protocol,
     tools,
-    params.providerOptions
-  );
+    providerOptions: params.providerOptions,
+  });
 
   return {
     ...result,
@@ -221,7 +222,9 @@ function fixToolCallWithSchema(
   part: LanguageModelV2Content,
   tools: Array<{ name?: string; inputSchema?: unknown }>
 ): LanguageModelV2Content {
-  if ((part as { type?: string }).type !== "tool-call") return part;
+  if ((part as { type?: string }).type !== "tool-call") {
+    return part;
+  }
   const tc = part as unknown as { toolName: string; input: unknown };
   let args: unknown = {};
   if (typeof tc.input === "string") {

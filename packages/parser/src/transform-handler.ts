@@ -362,6 +362,47 @@ function processMessage(
 }
 
 /**
+ * Check if all content parts are text
+ */
+function isAllTextContent(content: unknown): boolean {
+  if (!Array.isArray(content)) {
+    return false;
+  }
+  return (content as { type: string }[]).every(
+    (c: { type: string }) => c?.type === "text"
+  );
+}
+
+/**
+ * Join text content parts into a single string
+ */
+function joinTextContent(content: { text: string }[]): string {
+  return content.map((c) => c.text).join("\n");
+}
+
+/**
+ * Create condensed message based on role
+ */
+function createCondensedMessage(role: string, joinedText: string) {
+  if (role === "system") {
+    return {
+      role: "system" as const,
+      content: joinedText,
+    };
+  }
+  
+  return {
+    role: role as "assistant" | "user",
+    content: [
+      {
+        type: "text" as const,
+        text: joinedText,
+      },
+    ],
+  };
+}
+
+/**
  * Condense multi-part text content into single text part
  */
 function condenseTextContent(
@@ -372,41 +413,15 @@ function condenseTextContent(
       role: string;
       content: unknown;
     };
-    if (Array.isArray(msg.content)) {
-      const allText = (msg.content as { type: string }[]).every(
-        (c: { type: string }) => c?.type === "text"
-      );
-      if (allText && msg.content.length > 1) {
-        const joinedText = (msg.content as { text: string }[])
-          .map((c: { text: string }) => c.text)
-          .join("\n");
-        if (msg.role === "system") {
-          processedPrompt[i] = {
-            role: "system",
-            content: joinedText,
-          };
-        } else if (msg.role === "assistant") {
-          processedPrompt[i] = {
-            role: "assistant",
-            content: [
-              {
-                type: "text" as const,
-                text: joinedText,
-              },
-            ],
-          };
-        } else {
-          processedPrompt[i] = {
-            role: "user",
-            content: [
-              {
-                type: "text" as const,
-                text: joinedText,
-              },
-            ],
-          };
-        }
-      }
+    
+    if (!Array.isArray(msg.content)) {
+      continue;
+    }
+    
+    const shouldCondense = isAllTextContent(msg.content) && msg.content.length > 1;
+    if (shouldCondense) {
+      const joinedText = joinTextContent(msg.content as { text: string }[]);
+      processedPrompt[i] = createCondensedMessage(msg.role, joinedText);
     }
   }
   return processedPrompt;

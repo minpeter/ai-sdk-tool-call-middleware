@@ -1,4 +1,4 @@
-import { Readable } from "stream";
+import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,6 +8,9 @@ import {
 } from "@/index";
 
 const CHUNK_SIZE = 7;
+const PROCESSING_DELAY_MS = 100;
+const CHUNK_DELAY_MS = 10;
+const FALLBACK_TIMEOUT_MS = 1000;
 
 describe("RXML Stream Analysis", () => {
   it("should analyze the current streaming implementation", () => {
@@ -60,7 +63,7 @@ describe("RXML Stream Analysis", () => {
     transformStream.end();
 
     // Wait a bit for processing
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, PROCESSING_DELAY_MS));
 
     console.log("Transform results:", results);
     console.log("Transform results length:", results.length);
@@ -96,7 +99,7 @@ describe("RXML Stream Analysis", () => {
     stream.end();
 
     // Wait for processing
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, PROCESSING_DELAY_MS));
 
     console.log("createXMLStream results:", results);
     expect(results.length).toBeGreaterThanOrEqual(0);
@@ -137,13 +140,13 @@ describe("RXML Stream Analysis", () => {
       console.log("Writing chunk:", JSON.stringify(chunk));
       transformStream.write(Buffer.from(chunk));
       // Small delay between chunks
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, CHUNK_DELAY_MS));
     }
 
     transformStream.end();
 
     // Wait for final processing
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, PROCESSING_DELAY_MS));
 
     console.log("Final chunk processing results:", results);
     console.log("Final results length:", results.length);
@@ -193,7 +196,7 @@ describe("RXML Stream Analysis", () => {
     // Wait for completion
     await new Promise((resolve) => {
       transformStream.on("end", resolve);
-      setTimeout(resolve, 1000); // Fallback timeout
+      setTimeout(resolve, FALLBACK_TIMEOUT_MS); // Fallback timeout
     });
 
     console.log("Streaming results summary:");

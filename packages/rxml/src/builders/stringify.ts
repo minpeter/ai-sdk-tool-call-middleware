@@ -31,20 +31,98 @@ export function stringify(
       result += '<?xml version="1.0" encoding="UTF-8"?>\n';
     }
 
-    result += stringifyValue(
-      rootTag,
-      obj,
-      0,
+    result += stringifyValue(rootTag, obj, {
+      depth: 0,
       format,
       suppressEmptyNode,
       minimalEscaping,
-      strictBooleanAttributes
-    );
+      strictBooleanAttributes,
+    });
 
     return result;
   } catch (error) {
     throw new RXMLStringifyError("Failed to stringify XML", error);
   }
+}
+
+interface StringifyContext {
+  depth: number;
+  format: boolean;
+  suppressEmptyNode: boolean;
+  minimalEscaping: boolean;
+  strictBooleanAttributes: boolean;
+}
+
+/**
+ * Escape content based on escaping mode
+ */
+function escapeContent(content: string, minimalEscaping: boolean): string {
+  return minimalEscaping ? escapeXmlMinimalText(content) : escapeXml(content);
+}
+
+/**
+ * Create self-closing tag
+ */
+function createSelfClosingTag(tagName: string, indent: string, newline: string): string {
+  return `${indent}<${tagName}/>${newline}`;
+}
+
+/**
+ * Create element with text content
+ */
+function createTextElement(
+  tagName: string,
+  content: string,
+  indent: string,
+  newline: string
+): string {
+  return `${indent}<${tagName}>${content}</${tagName}>${newline}`;
+}
+
+/**
+ * Check if value is a primitive type
+ */
+function isPrimitive(value: unknown): boolean {
+  return (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  );
+}
+
+/**
+ * Stringify a primitive value
+ */
+function stringifyPrimitive(
+  tagName: string,
+  value: unknown,
+  context: StringifyContext,
+  indent: string,
+  newline: string
+): string {
+  const { minimalEscaping, suppressEmptyNode } = context;
+  const content = escapeContent(String(value), minimalEscaping);
+  
+  if (content === "" && suppressEmptyNode) {
+    return "";
+  }
+  
+  return createTextElement(tagName, content, indent, newline);
+}
+
+/**
+ * Stringify an array value
+ */
+function stringifyArray(
+  tagName: string,
+  value: unknown[],
+  context: StringifyContext
+): string {
+  let result = "";
+  for (const item of value) {
+    result += stringifyValue(tagName, item, context);
+  }
+  return result;
 }
 
 /**
@@ -53,85 +131,49 @@ export function stringify(
 function stringifyValue(
   tagName: string,
   value: unknown,
-  depth: number,
-  format: boolean,
-  suppressEmptyNode: boolean,
-  minimalEscaping: boolean,
-  strictBooleanAttributes: boolean
+  context: StringifyContext
 ): string {
-  const indent = format ? "  ".repeat(depth) : "";
+  const { format, suppressEmptyNode, minimalEscaping } = context;
+  const indent = format ? "  ".repeat(context.depth) : "";
   const newline = format ? "\n" : "";
 
   if (value === null || value === undefined) {
-    if (suppressEmptyNode) return "";
-    return `${indent}<${tagName}/>${newline}`;
+    if (suppressEmptyNode) {
+      return "";
+    }
+    return createSelfClosingTag(tagName, indent, newline);
   }
 
-  if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    const content = minimalEscaping
-      ? escapeXmlMinimalText(String(value))
-      : escapeXml(String(value));
-    if (content === "" && suppressEmptyNode) return "";
-    return `${indent}<${tagName}>${content}</${tagName}>${newline}`;
+  if (isPrimitive(value)) {
+    return stringifyPrimitive(tagName, value, context, indent, newline);
   }
 
   if (Array.isArray(value)) {
-    let result = "";
-    for (const item of value) {
-      result += stringifyValue(
-        tagName,
-        item,
-        depth,
-        format,
-        suppressEmptyNode,
-        minimalEscaping,
-        strictBooleanAttributes
-      );
-    }
-    return result;
+    return stringifyArray(tagName, value, context);
   }
 
   if (typeof value === "object") {
-    return stringifyObject(
-      tagName,
-      value as Record<string, unknown>,
-      depth,
-      format,
-      suppressEmptyNode,
-      minimalEscaping,
-      strictBooleanAttributes
-    );
+    return stringifyObject(tagName, value as Record<string, unknown>, context);
   }
 
   // Fallback for other types
-  const content = minimalEscaping
-    ? escapeXmlMinimalText(String(value))
-    : escapeXml(String(value));
-  if (content === "" && suppressEmptyNode) return "";
-  return `${indent}<${tagName}>${content}</${tagName}>${newline}`;
+  const content = escapeContent(String(value), minimalEscaping);
+  if (content === "" && suppressEmptyNode) {
+    return "";
+  }
+  return createTextElement(tagName, content, indent, newline);
+}
+
+interface ObjectParts {
+  attributes: Record<string, unknown>;
+  elements: Record<string, unknown>;
+  textContent: string | undefined;
 }
 
 /**
- * Stringify an object to XML
+ * Extract attributes, elements, and text content from an object
  */
-function stringifyObject(
-  tagName: string,
-  obj: Record<string, unknown>,
-  depth: number,
-  format: boolean,
-  suppressEmptyNode: boolean,
-  minimalEscaping: boolean,
-  strictBooleanAttributes: boolean
-): string {
-  const indent = format ? "  ".repeat(depth) : "";
-  const newline = format ? "\n" : "";
-  const childIndent = format ? "  ".repeat(depth + 1) : "";
-
-  // Extract attributes (properties starting with @)
+function extractObjectParts(obj: Record<string, unknown>): ObjectParts {
   const attributes: Record<string, unknown> = {};
   const elements: Record<string, unknown> = {};
   let textContent: string | undefined;
@@ -150,91 +192,172 @@ function stringifyObject(
     }
   }
 
-  // Build opening tag with attributes
+  return { attributes, elements, textContent };
+}
+
+/**
+ * Format a single attribute
+ */
+function formatAttribute(
+  attrName: string,
+  attrValue: unknown,
+  minimalEscaping: boolean,
+  strictBooleanAttributes: boolean
+): string {
+  if (attrValue === null) {
+    return strictBooleanAttributes
+      ? ` ${attrName}="${attrName}"`
+      : ` ${attrName}`;
+  }
+
+  const valueStr = String(attrValue);
+  // Attribute quoting strategy per XML 1.0:
+  // - 3.1 (AttValue [10]): attribute values MUST be quoted with ' or ".
+  //   If the same quote appears in the value, it MUST be escaped (via
+  //   predefined entities per 4.6). We choose the quote that minimizes
+  //   escaping: prefer " unless value contains ", otherwise use '.
+  //   See: https://www.w3.org/TR/2008/REC-xml-20081126/
+  if (valueStr.indexOf('"') === -1) {
+    const escaped = minimalEscaping
+      ? escapeXmlMinimalAttr(valueStr, '"')
+      : escapeXml(valueStr);
+    return ` ${attrName}="${escaped}"`;
+  }
+  
+  const escaped = minimalEscaping
+    ? escapeXmlMinimalAttr(valueStr, "'")
+    : escapeXml(valueStr);
+  return ` ${attrName}='${escaped}'`;
+}
+
+/**
+ * Build opening tag with attributes
+ */
+function buildOpeningTag(
+  tagName: string,
+  attributes: Record<string, unknown>,
+  context: StringifyContext
+): string {
   let openTag = `<${tagName}`;
+  const { minimalEscaping, strictBooleanAttributes } = context;
+  
   for (const [attrName, attrValue] of Object.entries(attributes)) {
-    if (attrValue === null) {
-      if (strictBooleanAttributes) {
-        openTag += ` ${attrName}="${attrName}"`;
-      } else {
-        openTag += ` ${attrName}`;
-      }
-    } else {
-      const valueStr = String(attrValue);
-      // Attribute quoting strategy per XML 1.0:
-      // - 3.1 (AttValue [10]): attribute values MUST be quoted with ' or ".
-      //   If the same quote appears in the value, it MUST be escaped (via
-      //   predefined entities per 4.6). We choose the quote that minimizes
-      //   escaping: prefer " unless value contains ", otherwise use '.
-      //   See: https://www.w3.org/TR/2008/REC-xml-20081126/
-      if (valueStr.indexOf('"') === -1) {
-        const escaped = minimalEscaping
-          ? escapeXmlMinimalAttr(valueStr, '"')
-          : escapeXml(valueStr);
-        openTag += ` ${attrName}="${escaped}"`;
-      } else {
-        const escaped = minimalEscaping
-          ? escapeXmlMinimalAttr(valueStr, "'")
-          : escapeXml(valueStr);
-        openTag += ` ${attrName}='${escaped}'`;
-      }
-    }
+    openTag += formatAttribute(attrName, attrValue, minimalEscaping, strictBooleanAttributes);
   }
+  
+  return openTag;
+}
 
-  // Check if we have any content
+/**
+ * Stringify text-only content
+ */
+function stringifyTextOnlyContent(
+  tagName: string,
+  textContent: string,
+  indent: string,
+  newline: string,
+  openTag: string,
+  minimalEscaping: boolean
+): string {
+  const content = escapeContent(textContent, minimalEscaping);
+  return `${indent}${openTag}${content}</${tagName}>${newline}`;
+}
+
+/**
+ * Stringify complex content (text + elements)
+ */
+function stringifyComplexContent(
+  tagName: string,
+  parts: ObjectParts,
+  context: StringifyContext,
+  indent: string,
+  newline: string,
+  childIndent: string,
+  openTag: string
+): string {
+  const { format, minimalEscaping, depth } = context;
+  const { textContent, elements } = parts;
   const hasElements = Object.keys(elements).length > 0;
-  const hasTextContent = textContent !== undefined && textContent !== "";
-
-  if (!(hasElements || hasTextContent)) {
-    if (suppressEmptyNode) return "";
-    return `${indent}${openTag}/>${newline}`;
-  }
-
-  openTag += ">";
-
-  // Handle text-only content
-  if (!hasElements && hasTextContent && textContent) {
-    // 2.4 Character Data and Markup: '<' and '&' MUST be escaped in content.
-    // Minimal vs conservative controlled by option.
-    const content = minimalEscaping
-      ? escapeXmlMinimalText(textContent)
-      : escapeXml(textContent);
-    return `${indent}${openTag}${content}</${tagName}>${newline}`;
-  }
-
-  // Handle complex content
+  
   let result = `${indent}${openTag}`;
 
-  if (hasTextContent && textContent) {
-    // See spec notes above (2.4, 4.6) for escaping rationale.
-    const content = minimalEscaping
-      ? escapeXmlMinimalText(textContent)
-      : escapeXml(textContent);
-    if (format) result += `${newline}${childIndent}${content}`;
-    else result += content;
+  if (textContent) {
+    const content = escapeContent(textContent, minimalEscaping);
+    result += format ? `${newline}${childIndent}${content}` : content;
   }
 
   if (hasElements) {
-    if (format) result += newline;
-
-    for (const [elementName, elementValue] of Object.entries(elements)) {
-      result += stringifyValue(
-        elementName,
-        elementValue,
-        depth + 1,
-        format,
-        suppressEmptyNode,
-        minimalEscaping,
-        strictBooleanAttributes
-      );
+    if (format) {
+      result += newline;
     }
 
-    if (format) result += indent;
+    for (const [elementName, elementValue] of Object.entries(elements)) {
+      result += stringifyValue(elementName, elementValue, {
+        ...context,
+        depth: depth + 1,
+      });
+    }
+
+    if (format) {
+      result += indent;
+    }
   }
 
   result += `</${tagName}>${newline}`;
-
   return result;
+}
+
+/**
+ * Stringify an object to XML
+ */
+function stringifyObject(
+  tagName: string,
+  obj: Record<string, unknown>,
+  context: StringifyContext
+): string {
+  const { depth, format, suppressEmptyNode } = context;
+  const indent = format ? "  ".repeat(depth) : "";
+  const newline = format ? "\n" : "";
+  const childIndent = format ? "  ".repeat(depth + 1) : "";
+
+  const parts = extractObjectParts(obj);
+  const openTag = buildOpeningTag(tagName, parts.attributes, context);
+
+  // Check if we have any content
+  const hasElements = Object.keys(parts.elements).length > 0;
+  const hasTextContent = parts.textContent !== undefined && parts.textContent !== "";
+
+  if (!(hasElements || hasTextContent)) {
+    if (suppressEmptyNode) {
+      return "";
+    }
+    return `${indent}${openTag}/>${newline}`;
+  }
+
+  const fullOpenTag = `${openTag}>`;
+
+  // Handle text-only content
+  if (!hasElements && hasTextContent && parts.textContent) {
+    return stringifyTextOnlyContent(
+      tagName,
+      parts.textContent,
+      indent,
+      newline,
+      fullOpenTag,
+      context.minimalEscaping
+    );
+  }
+
+  // Handle complex content
+  return stringifyComplexContent(
+    tagName,
+    parts,
+    context,
+    indent,
+    newline,
+    childIndent,
+    fullOpenTag
+  );
 }
 
 /**

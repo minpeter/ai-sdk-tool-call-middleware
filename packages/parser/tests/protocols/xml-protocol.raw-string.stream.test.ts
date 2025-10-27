@@ -11,7 +11,9 @@ async function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const reader = stream.getReader();
   while (true) {
     const { value, done } = await reader.read();
-    if (done) break;
+    if (done) {
+      break;
+    }
     out.push(value);
   }
   reader.releaseLock();
@@ -78,7 +80,9 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("write_file");
-    if (!tool) throw new Error("Expected tool-call part to be present");
+    if (!tool) {
+      throw new Error("Expected tool-call part to be present");
+    }
     const args = JSON.parse(tool.input) as {
       file_path: string;
       content: string;
@@ -205,7 +209,9 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("file_write");
-    if (!tool) throw new Error("Expected tool-call part to be present");
+    if (!tool) {
+      throw new Error("Expected tool-call part to be present");
+    }
     const args = JSON.parse(tool.input) as {
       path: string;
       content: string;
@@ -271,7 +277,9 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("file_write");
-    if (!tool) throw new Error("Expected tool-call part to be present");
+    if (!tool) {
+      throw new Error("Expected tool-call part to be present");
+    }
     const args = JSON.parse(tool.input) as { path: string; content: string };
     expect(args.path).toBe("index.html");
     expect(args.content).toBe(htmlRaw);
