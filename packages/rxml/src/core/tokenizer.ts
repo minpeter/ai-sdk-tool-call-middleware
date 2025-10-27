@@ -54,6 +54,38 @@ export class XMLTokenizer {
   }
 
   /**
+   * Check if we're at end of string and should throw unclosed tag error
+   */
+  private checkUnclosedTag(
+    tagName: string | undefined,
+    consumedToEnd: boolean
+  ): void {
+    if (tagName && this.pos >= this.xmlString.length && !consumedToEnd) {
+      const { line, column } = getLineColumn(this.xmlString, this.pos - 1);
+      throw new RXMLParseError(
+        `Unclosed tag at line ${line}, column ${column}. Expected closing tag </${tagName}>`,
+        undefined,
+        line,
+        column
+      );
+    }
+  }
+
+  /**
+   * Process special content (comments, CDATA, DOCTYPE) and track if we consumed to end
+   */
+  private processSpecialContent(
+    children: (RXMLNode | string)[]
+  ): boolean {
+    const prevPos = this.pos;
+    this.handleSpecialContent(children);
+    return (
+      this.pos >= this.xmlString.length &&
+      prevPos < this.xmlString.length
+    );
+  }
+
+  /**
    * Handle text content parsing
    */
   private handleTextContent(children: (RXMLNode | string)[]): void {
@@ -100,11 +132,12 @@ export class XMLTokenizer {
           if (result !== null) {
             return result;
           }
-        } else if (this.xmlString.charCodeAt(this.pos + 1) === CharCodes.EXCLAMATION) {
+        } else if (
+          this.xmlString.charCodeAt(this.pos + 1) === CharCodes.EXCLAMATION
+        ) {
           // Comment, CDATA, or DOCTYPE
-          const prevPos = this.pos;
-          this.handleSpecialContent(children);
-          if (this.pos >= this.xmlString.length && prevPos < this.xmlString.length) {
+          const wasConsumedToEnd = this.processSpecialContent(children);
+          if (wasConsumedToEnd) {
             consumedToEnd = true;
           }
         } else {
@@ -118,15 +151,7 @@ export class XMLTokenizer {
     }
 
     // Check for unclosed tags
-    if (tagName && this.pos >= this.xmlString.length && !consumedToEnd) {
-      const { line, column } = getLineColumn(this.xmlString, this.pos - 1);
-      throw new RXMLParseError(
-        `Unclosed tag at line ${line}, column ${column}. Expected closing tag </${tagName}>`,
-        undefined,
-        line,
-        column
-      );
-    }
+    this.checkUnclosedTag(tagName, consumedToEnd);
 
     return children;
   }
@@ -147,7 +172,10 @@ export class XMLTokenizer {
    * Skip whitespace characters
    */
   private skipWhitespace(): void {
-    while (this.pos < this.xmlString.length && this.isWhitespace(this.xmlString.charCodeAt(this.pos))) {
+    while (
+      this.pos < this.xmlString.length &&
+      this.isWhitespace(this.xmlString.charCodeAt(this.pos))
+    ) {
       this.pos++;
     }
   }
@@ -221,16 +249,19 @@ export class XMLTokenizer {
   /**
    * Parse special tag content (script, style)
    */
-  private parseSpecialTagContent(tagName: string, closingTag: string): (RXMLNode | string)[] {
+  private parseSpecialTagContent(
+    _tagName: string,
+    closingTag: string
+  ): (RXMLNode | string)[] {
     const start = this.pos + 1;
     this.pos = this.xmlString.indexOf(closingTag, this.pos);
-    
+
     if (this.pos === -1) {
       const children = [this.xmlString.slice(start)];
       this.pos = this.xmlString.length;
       return children;
     }
-    
+
     const children = [this.xmlString.slice(start, this.pos)];
     this.pos += closingTag.length;
     return children;

@@ -103,7 +103,7 @@ function handleStreamingToolCallEnd(
   options:
     | { onError?: (message: string, details?: unknown) => void }
     | undefined,
-  controller: TransformStreamDefaultController,
+  ctrl: TransformStreamDefaultController,
   flushText: (
     controller: TransformStreamDefaultController,
     text?: string
@@ -116,8 +116,8 @@ function handleStreamingToolCallEnd(
       noChildNodes: [],
     });
 
-    flushText(controller);
-    controller.enqueue({
+    flushText(ctrl);
+    ctrl.enqueue({
       type: "tool-call",
       toolCallId: generateId(),
       toolName: currentToolCall.name,
@@ -129,7 +129,7 @@ function handleStreamingToolCallEnd(
       currentToolCall,
       toolContent,
       options,
-      controller,
+      ctrl,
       flushText
     );
   }
@@ -142,7 +142,7 @@ function handleStreamingToolCallError(
   options:
     | { onError?: (message: string, details?: unknown) => void }
     | undefined,
-  controller: TransformStreamDefaultController,
+  ctrl: TransformStreamDefaultController,
   flushText: (
     controller: TransformStreamDefaultController,
     text?: string
@@ -166,7 +166,7 @@ function handleStreamingToolCallError(
     toolName: currentToolCall.name,
     error,
   });
-  flushText(controller, originalCallText);
+  flushText(ctrl, originalCallText);
 }
 
 function findEarliestToolTag(
@@ -210,6 +210,82 @@ function handleNoToolTagInBuffer(
     return { buffer: buffer.slice(safeLen), shouldContinue: true };
   }
   return { buffer, shouldContinue: false };
+}
+
+function processToolCallInBuffer(
+  buffer: string,
+  currentToolCall: { name: string; content: string },
+  tools: LanguageModelV2FunctionTool[],
+  options:
+    | { onError?: (message: string, details?: unknown) => void }
+    | undefined,
+  controller: TransformStreamDefaultController,
+  flushText: (
+    controller: TransformStreamDefaultController,
+    text?: string
+  ) => void
+): { buffer: string; currentToolCall: { name: string; content: string } | null; shouldBreak: boolean } {
+  const endTag = `</${currentToolCall.name}>`;
+  const endTagIndex = buffer.indexOf(endTag);
+
+  if (endTagIndex !== -1) {
+    const toolContent = buffer.substring(0, endTagIndex);
+    const newBuffer = buffer.substring(endTagIndex + endTag.length);
+
+    handleStreamingToolCallEnd(
+      toolContent,
+      currentToolCall,
+      tools,
+      options,
+      controller,
+      flushText
+    );
+    return { buffer: newBuffer, currentToolCall: null, shouldBreak: false };
+  }
+  return { buffer, currentToolCall, shouldBreak: true };
+}
+
+function processNoToolCallInBuffer(
+  buffer: string,
+  toolNames: string[],
+  maxStartTagLen: number,
+  controller: TransformStreamDefaultController,
+  flushText: (
+    controller: TransformStreamDefaultController,
+    text?: string
+  ) => void
+): { buffer: string; currentToolCall: { name: string; content: string } | null; shouldBreak: boolean; shouldContinue: boolean } {
+  const { index: earliestStartTagIndex, name: earliestToolName } =
+    findEarliestToolTag(buffer, toolNames);
+
+  if (earliestStartTagIndex !== -1) {
+    const textBeforeTag = buffer.substring(0, earliestStartTagIndex);
+    flushText(controller, textBeforeTag);
+
+    const startTag = `<${earliestToolName}>`;
+    const newBuffer = buffer.substring(
+      earliestStartTagIndex + startTag.length
+    );
+    return { 
+      buffer: newBuffer, 
+      currentToolCall: { name: earliestToolName, content: "" },
+      shouldBreak: false,
+      shouldContinue: false
+    };
+  }
+  
+  const result = handleNoToolTagInBuffer(
+    buffer,
+    maxStartTagLen,
+    controller,
+    flushText
+  );
+  return { 
+    buffer: result.buffer, 
+    currentToolCall: null,
+    shouldBreak: !result.shouldContinue,
+    shouldContinue: result.shouldContinue
+  };
 }
 
 export const morphXmlProtocol = (): ToolCallProtocol => ({
@@ -331,49 +407,33 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
         while (true) {
           if (currentToolCall) {
-            const endTag = `</${currentToolCall.name}>`;
-            const endTagIndex = buffer.indexOf(endTag);
-
-            if (endTagIndex !== -1) {
-              const toolContent = buffer.substring(0, endTagIndex);
-              buffer = buffer.substring(endTagIndex + endTag.length);
-
-              handleStreamingToolCallEnd(
-                toolContent,
-                currentToolCall,
-                tools,
-                options,
-                controller,
-                flushText
-              );
-              currentToolCall = null;
-            } else {
+            const result = processToolCallInBuffer(
+              buffer,
+              currentToolCall,
+              tools,
+              options,
+              controller,
+              flushText
+            );
+            buffer = result.buffer;
+            currentToolCall = result.currentToolCall;
+            if (result.shouldBreak) {
               break;
             }
           } else {
-            const { index: earliestStartTagIndex, name: earliestToolName } =
-              findEarliestToolTag(buffer, toolNames);
-
-            if (earliestStartTagIndex !== -1) {
-              const textBeforeTag = buffer.substring(0, earliestStartTagIndex);
-              flushText(controller, textBeforeTag);
-
-              const startTag = `<${earliestToolName}>`;
-              buffer = buffer.substring(
-                earliestStartTagIndex + startTag.length
-              );
-              currentToolCall = { name: earliestToolName, content: "" };
-            } else {
-              const result = handleNoToolTagInBuffer(
-                buffer,
-                maxStartTagLen,
-                controller,
-                flushText
-              );
-              buffer = result.buffer;
-              if (result.shouldContinue) {
-                continue;
-              }
+            const result = processNoToolCallInBuffer(
+              buffer,
+              toolNames,
+              maxStartTagLen,
+              controller,
+              flushText
+            );
+            buffer = result.buffer;
+            currentToolCall = result.currentToolCall;
+            if (result.shouldContinue) {
+              continue;
+            }
+            if (result.shouldBreak) {
               break;
             }
           }

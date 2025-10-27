@@ -30,21 +30,22 @@ function tryDirectParse(text: string): Json | undefined {
   try {
     return JSON.parse(text);
   } catch {
-    return undefined;
+    return;
   }
 }
 
 function tryCodeFenceParse(text: string): Json | undefined {
-  const fenceMatch = text.match(JSON_FENCE_REGEX) || text.match(CODE_FENCE_REGEX);
+  const fenceMatch =
+    text.match(JSON_FENCE_REGEX) || text.match(CODE_FENCE_REGEX);
   if (!fenceMatch) {
-    return undefined;
+    return;
   }
-  
+
   const inner = fenceMatch[1].trim();
   try {
     return JSON.parse(inner);
   } catch {
-    return undefined;
+    return;
   }
 }
 
@@ -54,15 +55,15 @@ function tryBracketScan(text: string): Json | undefined {
   const start = [startIdxObj, startIdxArr]
     .filter((i) => i >= 0)
     .sort((a, b) => a - b)[0];
-  
+
   if (start === undefined) {
-    return undefined;
+    return;
   }
 
   const open = text[start] === "{" ? "{" : "[";
   const close = open === "{" ? "}" : "]";
   let depth = 0;
-  
+
   for (let i = start; i < text.length; i++) {
     const ch = text[i];
     if (ch === open) {
@@ -70,18 +71,18 @@ function tryBracketScan(text: string): Json | undefined {
     } else if (ch === close) {
       depth--;
     }
-    
+
     if (depth === 0) {
       const candidate = text.slice(start, i + 1);
       try {
         return JSON.parse(candidate);
       } catch {
-        return undefined;
+        return;
       }
     }
   }
-  
-  return undefined;
+
+  return;
 }
 
 function extractFirstJsonBlock(text: string): Json | undefined {
@@ -157,17 +158,17 @@ async function loadDatasets(): Promise<DatasetLoadResult> {
       .split(NEWLINE_REGEX)
       .filter((line) => line.trim().length > 0)
       .map((line) => JSON.parse(line));
-    
+
     const expecteds: ExpectedRecord[] = expectedJsonl
       .split(NEWLINE_REGEX)
       .filter((line) => line.trim().length > 0)
       .map((line) => JSON.parse(line));
-    
+
     const expectedMap = new Map<string, ExpectedRecord>();
     for (const r of expecteds) {
       expectedMap.set(r.id, r);
     }
-    
+
     return { tests, expectedMap };
   } catch (e: unknown) {
     return {
@@ -215,7 +216,7 @@ function validateTestCase(
 ): ValidationResult {
   const validate = ajv.compile(tc.schema);
   const valid = validate(parsed) as boolean;
-  
+
   if (!valid) {
     logs.push(
       `[INFO] ${tc.id}: Schema validation errors: ${
@@ -232,7 +233,7 @@ function validateTestCase(
       `[WARN] ${tc.id}: No expected record found. Skipping value match.`
     );
   }
-  
+
   const valuesOk = expectedRec
     ? subsetMatch(expectedRec.expected, parsed)
     : false;
@@ -249,7 +250,7 @@ async function processTestCase(
   logs: string[]
 ): Promise<{ schemaValid: boolean; valueMatch: boolean; correct: boolean }> {
   const messages = buildMessages(tc);
-  
+
   const temp = config?.temperature;
   const temperature = typeof temp === "number" ? temp : undefined;
   const { text } = await generateText({
@@ -270,13 +271,11 @@ async function processTestCase(
     return { schemaValid: false, valueMatch: false, correct: false };
   }
 
-  const { valid, valuesOk, parsed: validatedParsed } = validateTestCase(
-    tc,
-    parsed,
-    expectedMap,
-    ajv,
-    logs
-  );
+  const {
+    valid,
+    valuesOk,
+    parsed: validatedParsed,
+  } = validateTestCase(tc, parsed, expectedMap, ajv, logs);
 
   const correct = valid && valuesOk;
   if (correct) {
@@ -325,7 +324,14 @@ export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
     // Process each test case
     for (const tc of tests) {
       try {
-        const result = await processTestCase(tc, model, config, expectedMap, ajv, logs);
+        const result = await processTestCase(
+          tc,
+          model,
+          config,
+          expectedMap,
+          ajv,
+          logs
+        );
         if (result.schemaValid) {
           schemaValidCount++;
         }

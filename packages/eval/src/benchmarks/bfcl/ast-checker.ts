@@ -1,12 +1,12 @@
 // Local ToolCall interface for type safety, as it's not exported from 'ai'.
-export interface ToolCall {
+export type ToolCall = {
   toolCallId: string;
   toolName: string;
   args: unknown;
-}
+};
 
 // --- Type Definitions ---
-export interface FunctionDescription {
+export type FunctionDescription = {
   name: string;
   description?: string;
   parameters: {
@@ -20,13 +20,15 @@ export interface FunctionDescription {
     };
     required: string[];
   };
-}
+};
 
 /**
  * Standardizes a string for comparison.
  */
 function standardizeString(input: string): string {
-  if (typeof input !== "string") return input;
+  if (typeof input !== "string") {
+    return input;
+  }
   const regex = /[ ,./\\-_*^]/g;
   return input.replace(regex, "").toLowerCase().replace(/'/g, '"');
 }
@@ -51,6 +53,139 @@ function checkStringValue(
         modelValue
       )}. Expected one of ${JSON.stringify(possibleAnswers)}.`,
       error_type: "value_error:string",
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Normalizes objects by unwrapping single-element arrays (BFCL dataset quirk)
+ */
+function normalizeObject(obj: unknown): unknown {
+  if (Array.isArray(obj)) {
+    return obj.map(normalizeObject);
+  }
+  if (obj && typeof obj === "object") {
+    const normalized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(
+      obj as Record<string, unknown>
+    )) {
+      // If value is a single-element array, unwrap it
+      if (
+        Array.isArray(value) &&
+        value.length === 1 &&
+        (typeof value[0] !== "object" || value[0] === null)
+      ) {
+        normalized[key] = value[0];
+      } else {
+        normalized[key] = normalizeObject(value);
+      }
+    }
+    return normalized;
+  }
+  return obj;
+}
+
+/**
+ * Checks if two values match, handling objects, numbers, and strings
+ */
+function valuesMatch(modelValue: unknown, possibleValue: unknown): boolean {
+  // Direct equality check first
+  if (modelValue === possibleValue) {
+    return true;
+  }
+
+  // For objects, perform deep comparison via JSON serialization
+  if (
+    typeof modelValue === "object" &&
+    modelValue !== null &&
+    typeof possibleValue === "object" &&
+    possibleValue !== null
+  ) {
+    try {
+      const normalizedModel = normalizeObject(modelValue);
+      const normalizedPossible = normalizeObject(possibleValue);
+      return (
+        JSON.stringify(normalizedModel) === JSON.stringify(normalizedPossible)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  // For numbers, handle string/number conversion
+  if (
+    typeof modelValue === "number" &&
+    typeof possibleValue === "string"
+  ) {
+    return modelValue.toString() === possibleValue;
+  }
+  if (
+    typeof modelValue === "string" &&
+    typeof possibleValue === "number"
+  ) {
+    return modelValue === possibleValue.toString();
+  }
+
+  return false;
+}
+
+/**
+ * Checks array parameter values
+ */
+function checkArrayValue(
+  paramName: string,
+  modelValue: unknown[],
+  possibleValues: unknown
+): { valid: boolean; error?: string; error_type?: string } {
+  const modelValueStr = JSON.stringify(
+    modelValue.map((v) => standardizeString(String(v))).sort()
+  );
+  const hasMatch = Array.isArray(possibleValues)
+    ? (possibleValues as unknown[]).some((p) => {
+        if (!Array.isArray(p)) {
+          return false;
+        }
+        return (
+          JSON.stringify(
+            p.map((v) => standardizeString(String(v))).sort()
+          ) === modelValueStr
+        );
+      })
+    : false;
+  if (!hasMatch) {
+    return {
+      valid: false,
+      error: `Invalid value for list parameter '${paramName}'. Got ${JSON.stringify(
+        modelValue
+      )}. Expected one of ${JSON.stringify(possibleValues)}.`,
+      error_type: "value_error:list",
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Checks object/other parameter values
+ */
+function checkObjectValue(
+  paramName: string,
+  modelValue: unknown,
+  possibleValues: unknown
+): { valid: boolean; error?: string; error_type?: string } {
+  const hasMatch = Array.isArray(possibleValues)
+    ? (possibleValues as unknown[]).some((possibleValue) =>
+        valuesMatch(modelValue, possibleValue)
+      )
+    : false;
+
+  if (!hasMatch) {
+    return {
+      valid: false,
+      error: `Invalid value for parameter '${paramName}'. Got ${JSON.stringify(
+        modelValue
+      )}. Expected one of ${JSON.stringify(possibleValues)}.`,
+      error_type: "value_error:other",
     };
   }
   return { valid: true };
@@ -117,124 +252,34 @@ export function simpleFunctionChecker(
           modelValue,
           (possibleValues as unknown[] | undefined) ?? []
         );
-        if (!result.valid) return result;
+        if (!result.valid) {
+          return result;
+        }
       } else if (Array.isArray(modelValue)) {
-        const modelValueStr = JSON.stringify(
-          modelValue.map((v) => standardizeString(String(v))).sort()
-        );
-        const hasMatch = Array.isArray(possibleValues)
-          ? (possibleValues as unknown[]).some((p) => {
-              if (!Array.isArray(p)) return false;
-              return (
-                JSON.stringify(
-                  p.map((v) => standardizeString(String(v))).sort()
-                ) === modelValueStr
-              );
-            })
-          : false;
-        if (!hasMatch) {
-          return {
-            valid: false,
-            error: `Invalid value for list parameter '${paramName}'. Got ${JSON.stringify(
-              modelValue
-            )}. Expected one of ${JSON.stringify(possibleValues)}.`,
-            error_type: "value_error:list",
-          };
+        const result = checkArrayValue(paramName, modelValue, possibleValues);
+        if (!result.valid) {
+          return result;
         }
       } else {
-        // Handle nested objects by comparing JSON representations
-        const hasMatch = Array.isArray(possibleValues)
-          ? (possibleValues as unknown[]).some((possibleValue) => {
-              // Direct equality check first
-              if (modelValue === possibleValue) return true;
-
-              // For objects, perform deep comparison via JSON serialization
-              if (
-                typeof modelValue === "object" &&
-                modelValue !== null &&
-                typeof possibleValue === "object" &&
-                possibleValue !== null
-              ) {
-                try {
-                  // Handle BFCL dataset quirk where object property values are wrapped in arrays
-                  // e.g. {"min": [300000], "max": [400000]} should match {"min": 300000, "max": 400000}
-                  const normalizeObject = (obj: unknown): unknown => {
-                    if (Array.isArray(obj)) {
-                      return obj.map(normalizeObject);
-                    }
-                    if (obj && typeof obj === "object") {
-                      const normalized: Record<string, unknown> = {};
-                      for (const [key, value] of Object.entries(
-                        obj as Record<string, unknown>
-                      )) {
-                        // If value is a single-element array, unwrap it
-                        if (
-                          Array.isArray(value) &&
-                          value.length === 1 &&
-                          (typeof value[0] !== "object" || value[0] === null)
-                        ) {
-                          normalized[key] = value[0];
-                        } else {
-                          normalized[key] = normalizeObject(value);
-                        }
-                      }
-                      return normalized;
-                    }
-                    return obj;
-                  };
-
-                  const normalizedModel = normalizeObject(modelValue);
-                  const normalizedPossible = normalizeObject(possibleValue);
-
-                  return (
-                    JSON.stringify(normalizedModel) ===
-                    JSON.stringify(normalizedPossible)
-                  );
-                } catch {
-                  return false;
-                }
-              }
-
-              // For numbers, handle string/number conversion
-              if (
-                typeof modelValue === "number" &&
-                typeof possibleValue === "string"
-              ) {
-                return modelValue.toString() === possibleValue;
-              }
-              if (
-                typeof modelValue === "string" &&
-                typeof possibleValue === "number"
-              ) {
-                return modelValue === possibleValue.toString();
-              }
-
-              return false;
-            })
-          : false;
-
-        if (!hasMatch) {
-          return {
-            valid: false,
-            error: `Invalid value for parameter '${paramName}'. Got ${JSON.stringify(
-              modelValue
-            )}. Expected one of ${JSON.stringify(possibleValues)}.`,
-            error_type: "value_error:other",
-          };
+        const result = checkObjectValue(paramName, modelValue, possibleValues);
+        if (!result.valid) {
+          return result;
         }
       }
     }
   }
 
   for (const paramName in possibleAnswerParams) {
-    const val = possibleAnswerParams[paramName] as unknown;
-    const isOptional = Array.isArray(val) && val.includes("");
-    if (!(paramName in argsObj || isOptional)) {
-      return {
-        valid: false,
-        error: `Missing optional parameter '${paramName}' which was not marked as optional.`,
-        error_type: "simple_function_checker:missing_optional",
-      };
+    if (Object.hasOwn(possibleAnswerParams, paramName)) {
+      const val = possibleAnswerParams[paramName] as unknown;
+      const isOptional = Array.isArray(val) && val.includes("");
+      if (!(paramName in argsObj || isOptional)) {
+        return {
+          valid: false,
+          error: `Missing optional parameter '${paramName}' which was not marked as optional.`,
+          error_type: "simple_function_checker:missing_optional",
+        };
+      }
     }
   }
 
@@ -274,7 +319,9 @@ export function parallelFunctionCheckerNoOrder(
 
     let foundMatch = false;
     for (let i = 0; i < modelToolCalls.length; i++) {
-      if (matchedModelCallIndices.has(i)) continue;
+      if (matchedModelCallIndices.has(i)) {
+        continue;
+      }
 
       const checkerResult = simpleFunctionChecker(
         funcDescription,
