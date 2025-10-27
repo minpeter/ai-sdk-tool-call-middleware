@@ -13,8 +13,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "path";
-import { fileURLToPath } from "url";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 function cleanup(app, url) {
   const appPath = join(fileURLToPath(url), app);
@@ -25,7 +25,7 @@ function cleanup(app, url) {
     const packageJsonPath = join(appPath, "package.json");
     const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
     packageJson.version = "0.0.0";
-    writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");
+    writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
 
     try {
       const changelogPath = join(appPath, "CHANGELOG.md");
