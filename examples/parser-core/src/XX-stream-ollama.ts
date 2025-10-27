@@ -3,6 +3,8 @@ import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
+const MAX_STEPS = 3;
+
 const ollama = createOpenAICompatible({
   name: "ollama",
   apiKey: "ollama",
@@ -16,18 +18,19 @@ async function main() {
       middleware: morphXmlToolMiddleware,
     }),
     prompt: "What is the weather in New York and Los Angeles?",
-    stopWhen: stepCountIs(3),
+    stopWhen: stepCountIs(MAX_STEPS),
     tools: {
       get_weather: {
         description:
           "Get the weather for a given city. " +
           "Example cities: 'New York', 'Los Angeles', 'Paris'.",
         inputSchema: z.object({ city: z.string() }),
-        execute: async ({ city }) => {
+        execute: ({ city }) => {
           // Simulate a weather API call
+          const MAX_TEMPERATURE = 100;
           return {
             city,
-            temperature: Math.floor(Math.random() * 100),
+            temperature: Math.floor(Math.random() * MAX_TEMPERATURE),
             condition: "sunny",
           };
         },

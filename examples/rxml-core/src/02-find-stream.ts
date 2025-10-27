@@ -1,9 +1,9 @@
+import { Readable } from "node:stream";
 import {
   findElementByIdStream,
   findElementsByClassStream,
   type RXMLNode,
 } from "@ai-sdk-tool/rxml";
-import { Readable } from "stream";
 
 function createChunkedStream(text: string, chunkSize = 8): Readable {
   let i = 0;
@@ -30,14 +30,15 @@ async function main() {
   </tool_call>
 </tools>`;
 
-  const streamForId = createChunkedStream(xml, 7);
+  const CHUNK_SIZE = 7;
+  const streamForId = createChunkedStream(xml, CHUNK_SIZE);
   console.log("Find by id=beta:");
   for await (const node of findElementByIdStream(streamForId, "beta")) {
     const n = node as RXMLNode;
     console.log(`<${n.tagName}>`, n.attributes);
   }
 
-  const streamForClass = createChunkedStream(xml, 7);
+  const streamForClass = createChunkedStream(xml, CHUNK_SIZE);
   console.log("\nFind by class=primary:");
   for await (const node of findElementsByClassStream(
     streamForClass,

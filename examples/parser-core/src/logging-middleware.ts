@@ -12,22 +12,24 @@ function invLog(...args: unknown[]) {
   if (isBrowser) {
     try {
       const text = args
-        .map((a) =>
-          typeof a === "string"
-            ? a
-            : a instanceof Error
-              ? a.message
-              : JSON.stringify(a, null, 2)
-        )
+        .map((a) => {
+          if (typeof a === "string") {
+            return a;
+          }
+          if (a instanceof Error) {
+            return a.message;
+          }
+          return JSON.stringify(a, null, 2);
+        })
         .join(" ");
       // Simulate inverted style in browser consoles via CSS
       console.log(
-        "%c" + text,
+        `%c${text}`,
         "background: #000; color: #fff; padding: 0 2px;"
       );
     } catch {
       console.log(
-        "%c" + String(args),
+        `%c${String(args)}`,
         "background: #000; color: #fff; padding: 0 2px;"
       );
     }
@@ -80,6 +82,10 @@ export const loggingMiddleware: LanguageModelV2Middleware = {
               `Text block ${chunk.id} completed:`,
               textBlocks.get(chunk.id)
             );
+            break;
+          }
+          default: {
+            // Handle any unexpected chunk types
             break;
           }
         }

@@ -8,6 +8,20 @@ import {
 } from "ai";
 import { z } from "zod";
 
+// Constants for magic numbers
+const MAX_STEP_COUNT = 6;
+const MAX_RUNS = 3;
+const CONTENT_PREVIEW_LENGTH = 120;
+const EXPECTED_PASS_COUNT = 3;
+const MIN_TRUNCATED_LENGTH = 50;
+
+// Regex patterns for HTML validation
+const HTML_DOCTYPE_REGEX = /<!DOCTYPE\s+html/i;
+const HTML_TAG_REGEX = /<html[\s>]/i;
+const HTML_END_REGEX = /<\/html>/i;
+const BODY_TAG_REGEX = /<body[\s>][\s\S]*?<\/body>/i;
+const H1_TAG_REGEX = /<h1[\s>]/i;
+
 // Provider: Friendli (same as XX-file-write example)
 const friendli = createOpenAICompatible({
   name: "friendli",
@@ -31,7 +45,7 @@ const file_write = {
         "Full UTF-8 file contents to write (overwrites existing file)."
       ),
   }),
-  execute: async ({ path, content }: { path: string; content: string }) => {
+  execute: ({ path, content }: { path: string; content: string }) => {
     // No-op execution; we only care about parsing the first tool call arguments
     return {
       ok: true,
@@ -67,7 +81,7 @@ async function runOnce(
     temperature: 0.0,
     messages,
     // Focus on the very first tool call in this turn
-    stopWhen: stepCountIs(6),
+    stopWhen: stepCountIs(MAX_STEP_COUNT),
     tools: { file_write },
   });
 
@@ -116,11 +130,11 @@ function analyzeFileWriteInput(input: unknown): {
 
   // Heuristics: ensure we didn't truncate to just "!DOCTYPE html"
   const looksLikeHtml =
-    /<!DOCTYPE\s+html/i.test(content) || /<html[\s>]/i.test(content);
-  const hasHtmlEnd = /<\/html>/i.test(content);
+    HTML_DOCTYPE_REGEX.test(content) || HTML_TAG_REGEX.test(content);
+  const hasHtmlEnd = HTML_END_REGEX.test(content);
   const hasMeaningfulBody =
-    /<body[\s>][\s\S]*?<\/body>/i.test(content) || /<h1[\s>]/i.test(content);
-  const notTruncated = content.trim().length > 50;
+    BODY_TAG_REGEX.test(content) || H1_TAG_REGEX.test(content);
+  const notTruncated = content.trim().length > MIN_TRUNCATED_LENGTH;
 
   const ok = looksLikeHtml && (hasHtmlEnd || hasMeaningfulBody) && notTruncated;
   const detail = ok
@@ -136,7 +150,7 @@ async function main() {
     detail: string;
     first?: FirstToolCall;
   }>;
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= MAX_RUNS; i++) {
     console.log(`\n--- Run ${i} ---`);
     const outcome = await runOnce(i);
     results.push(outcome);
@@ -144,7 +158,7 @@ async function main() {
       const input = outcome.first.input as Record<string, unknown>;
       const sample =
         typeof input?.content === "string"
-          ? (input.content as string).slice(0, 120)
+          ? (input.content as string).slice(0, CONTENT_PREVIEW_LENGTH)
           : String(input?.content);
       console.log(`First tool-call: ${outcome.first.toolName}`);
       console.log(`Path: ${String(input?.path)}`);
@@ -154,8 +168,8 @@ async function main() {
   }
 
   const passCount = results.filter((r) => r.ok).length;
-  console.log(`\nSummary: ${passCount}/3 runs passed.`);
-  process.exit(passCount === 3 ? 0 : 1);
+  console.log(`\nSummary: ${passCount}/${EXPECTED_PASS_COUNT} runs passed.`);
+  process.exit(passCount === EXPECTED_PASS_COUNT ? 0 : 1);
 }
 
 main().catch((err) => {

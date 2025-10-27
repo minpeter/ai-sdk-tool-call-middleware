@@ -28,7 +28,7 @@ const py_code = [
   "  else:",
   "    return 'error'",
   "",
-  "write_file('test.py', \"print('Hello, world!')\nreturn 'success'\")",
+  "write_file('test.py', \"print('Hello, world!')\\nreturn 'success'\")",
   "print('Hello, world!')",
   "",
   "return 'success'",
