@@ -339,7 +339,9 @@ function createProcessBufferHandler(
   getBuffer: () => string,
   setBuffer: (buffer: string) => void,
   getCurrentToolCall: () => { name: string; content: string } | null,
-  setCurrentToolCall: (toolCall: { name: string; content: string } | null) => void,
+  setCurrentToolCall: (
+    toolCall: { name: string; content: string } | null
+  ) => void,
   tools: LanguageModelV2FunctionTool[],
   options:
     | { onError?: (message: string, details?: unknown) => void }
@@ -467,9 +469,13 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
     const flushText = createFlushTextHandler(
       () => buffer,
-      (newBuffer: string) => { buffer = newBuffer; },
+      (newBuffer: string) => {
+        buffer = newBuffer;
+      },
       () => currentTextId,
-      (newId: string | null) => { currentTextId = newId; }
+      (newId: string | null) => {
+        currentTextId = newId;
+      }
     );
 
     const processChunk = (
@@ -490,9 +496,13 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
     const processBuffer = createProcessBufferHandler(
       () => buffer,
-      (newBuffer: string) => { buffer = newBuffer; },
+      (newBuffer: string) => {
+        buffer = newBuffer;
+      },
       () => currentToolCall,
-      (newToolCall: { name: string; content: string } | null) => { currentToolCall = newToolCall; },
+      (newToolCall: { name: string; content: string } | null) => {
+        currentToolCall = newToolCall;
+      },
       tools,
       options,
       toolNames,

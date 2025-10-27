@@ -265,7 +265,7 @@ describe("robust-xml parser", () => {
           path: "test.js",
           content: [
             "function greet(name) {",
-            `  console.log(\`Hello, \${name}!\`);`,
+            "  console.log(`Hello, ${name}!`);",
             "}",
             "greet('world');",
           ],

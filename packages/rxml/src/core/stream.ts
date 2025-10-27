@@ -22,7 +22,7 @@ export class XMLTransformStream extends Transform {
   private emittedCount = 0;
   private sawTagChar = false;
 
-  constructor(offset?: number | string, parseOptions: ParseOptions = {}) {
+  constructor(_offset?: number | string, parseOptions: ParseOptions = {}) {
     super({ readableObjectMode: true });
 
     this.parseOptions = {

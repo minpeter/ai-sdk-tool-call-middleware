@@ -146,7 +146,7 @@ describe("robust-xml integration", () => {
       const testCases = Object.values(schemaTestCases);
 
       for (const testCase of testCases) {
-        const result = RXML.parse(testCase.xml, testCase.schema);
+        const result = parse(testCase.xml, testCase.schema);
         expect(result).toEqual(testCase.expected);
       }
     });
@@ -294,7 +294,7 @@ describe("robust-xml integration", () => {
       );
 
       const startTime = Date.now();
-      const result = RXML.parse(mediumXml, schema);
+      const result = parse(mediumXml, schema);
       const endTime = Date.now();
 
       expect(endTime - startTime).toBeLessThan(1000); // Should complete within 1 second
