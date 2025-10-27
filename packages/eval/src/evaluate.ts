@@ -65,9 +65,11 @@ export async function evaluate(
     maxTokens,
   } = options;
 
-  const modelEntries: Array<[string | undefined, LanguageModel]> = [];
+  const modelEntries: [string | undefined, LanguageModel][] = [];
   if (Array.isArray(models)) {
-    for (const m of models) modelEntries.push([undefined, m]);
+    for (const m of models) {
+      modelEntries.push([undefined, m]);
+    }
   } else if (
     typeof models === "object" &&
     models !== null &&
@@ -86,8 +88,12 @@ export async function evaluate(
   for (const [modelKey, model] of modelEntries) {
     for (const benchmark of benchmarks) {
       const config: Record<string, unknown> = {};
-      if (temperature !== undefined) config.temperature = temperature;
-      if (maxTokens !== undefined) config.maxTokens = maxTokens;
+      if (temperature !== undefined) {
+        config.temperature = temperature;
+      }
+      if (maxTokens !== undefined) {
+        config.maxTokens = maxTokens;
+      }
 
       const evaluationResult = await runSingleBenchmark(
         model,

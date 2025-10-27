@@ -7,7 +7,14 @@
         "noConsole": "off"
       },
       "style": {
-        "noMagicNumbers": "warn"
+        "noMagicNumbers": "warn",
+        "useFilenamingConvention": "off"
+      },
+      "complexity": {
+        "noExcessiveCognitiveComplexity": "warn"
+      },
+      "performance": {
+        "noBarrelFile": "off"
       }
     }
   }

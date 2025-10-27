@@ -6,6 +6,9 @@ import {
   findFirstTopLevelRange,
 } from "@/index";
 
+// Constants
+const EXPECTED_TAG_COUNT = 3;
+
 describe("XML helper utilities", () => {
   describe("extractRawInner", () => {
     it("returns inner text for simple tag", () => {
@@ -48,15 +51,15 @@ describe("XML helper utilities", () => {
       const xml = `<content>${inner}</content>`;
       const r = findFirstTopLevelRange(xml, "content");
       expect(r).toBeDefined();
-      expect(xml.slice(r!.start, r!.end)).toBe(inner);
+      expect(xml.slice(r?.start ?? 0, r?.end ?? 0)).toBe(inner);
     });
 
     it("returns empty range for self-closing tag", () => {
       const xml = "<content/>";
       const r = findFirstTopLevelRange(xml, "content");
       expect(r).toBeDefined();
-      expect(r!.start).toBe(r!.end);
-      expect(xml.slice(r!.start, r!.end)).toBe("");
+      expect(r?.start).toBe(r?.end);
+      expect(xml.slice(r?.start ?? 0, r?.end ?? 0)).toBe("");
     });
 
     it("ignores nested occurrence and selects top-level sibling occurrence", () => {
@@ -64,7 +67,7 @@ describe("XML helper utilities", () => {
         "<outer><content>nested</content></outer><content>top</content>";
       const r = findFirstTopLevelRange(xml, "content");
       expect(r).toBeDefined();
-      expect(xml.slice(r!.start, r!.end)).toBe("top");
+      expect(xml.slice(r?.start ?? 0, r?.end ?? 0)).toBe("top");
     });
 
     it("handles attributes with quotes and '>'", () => {
@@ -72,7 +75,7 @@ describe("XML helper utilities", () => {
       const xml = `<content data=">" note='a > b'>${inner}</content>`;
       const r = findFirstTopLevelRange(xml, "content");
       expect(r).toBeDefined();
-      expect(xml.slice(r!.start, r!.end)).toBe(inner);
+      expect(xml.slice(r?.start ?? 0, r?.end ?? 0)).toBe(inner);
     });
 
     it("skips comments, CDATA, and processing instructions while searching", () => {
@@ -80,7 +83,7 @@ describe("XML helper utilities", () => {
       const xml = `<!-- c --><![CDATA[ z ]]><?pi?> <content>${inner}</content>`;
       const r = findFirstTopLevelRange(xml, "content");
       expect(r).toBeDefined();
-      expect(xml.slice(r!.start, r!.end)).toBe(inner);
+      expect(xml.slice(r?.start ?? 0, r?.end ?? 0)).toBe(inner);
     });
   });
 
@@ -93,7 +96,9 @@ describe("XML helper utilities", () => {
 
     it("counts all occurrences when skipFirst=false", () => {
       const xml = "<content>a</content><content>b</content><content/>";
-      expect(countTagOccurrences(xml, "content", undefined, false)).toBe(3);
+      expect(countTagOccurrences(xml, "content", undefined, false)).toBe(
+        EXPECTED_TAG_COUNT
+      );
     });
 
     it("excludes ranges, ignoring nested occurrence inside excluded sibling", () => {

@@ -109,7 +109,11 @@ async function main() {
 
   while (true) {
     const user = (await rl.question("You > ")).trim();
-    if (EXIT_COMMANDS.includes(user.toLowerCase() as typeof EXIT_COMMANDS[number])) {
+    if (
+      EXIT_COMMANDS.includes(
+        user.toLowerCase() as (typeof EXIT_COMMANDS)[number]
+      )
+    ) {
       break;
     }
     if (user.length === EMPTY_STRING_LENGTH) {
