@@ -4,7 +4,7 @@ import type {
   LanguageModelV2ToolCall,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import * as RXML from "@ai-sdk-tool/rxml";
+import { coerceBySchema } from "@ai-sdk-tool/rxml";
 
 import type { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
@@ -20,111 +20,120 @@ import {
   logRawChunk,
 } from "./utils/debug";
 
-export async function wrapGenerate({
-  protocol,
-  doGenerate,
-  params,
-}: {
-  protocol: ToolCallProtocol;
-  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
-  params: {
-    providerOptions?: ToolCallMiddlewareProviderOptions;
-  };
-}) {
-  if (isToolChoiceActive(params)) {
-    const result = await doGenerate();
-    let parsed: { name?: string; arguments?: Record<string, unknown> } = {};
-    const first = result.content?.[0];
-    if (first && first.type === "text") {
-      const debugLevel = getDebugLevel();
-      if (debugLevel === "parse") {
-        logRawChunk(first.text);
+function parseToolChoiceJson(
+  text: string,
+  providerOptions?: ToolCallMiddlewareProviderOptions
+): { name?: string; arguments?: Record<string, unknown> } {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const options = extractOnErrorOption(providerOptions);
+    options?.onError?.(
+      "Failed to parse toolChoice JSON from generated model output",
+      {
+        text,
+        error: error instanceof Error ? error.message : String(error),
       }
-      try {
-        parsed = JSON.parse(first.text);
-      } catch (error) {
-        const options = extractOnErrorOption(params.providerOptions);
-        options?.onError?.(
-          "Failed to parse toolChoice JSON from generated model output",
-          {
-            text: first.text,
-            error: error instanceof Error ? error.message : String(error),
-          }
-        );
-        parsed = {};
-      }
-      // Defer summary logging until toolCall object is constructed below
-    }
-
-    const toolCall: LanguageModelV2ToolCall = {
-      type: "tool-call",
-      toolCallId: generateId(),
-      toolName: parsed.name || "unknown",
-      input: JSON.stringify(parsed.arguments || {}),
-    };
-
-    // Use the same parse-summary shape as streaming path, preferring debugSummary
-    const debugLevelToolChoice = getDebugLevel();
-    const originText = first && first.type === "text" ? first.text : "";
-    const dbg = params.providerOptions?.toolCallMiddleware?.debugSummary;
-    if (dbg) {
-      dbg.originalText = originText;
-      try {
-        dbg.toolCalls = JSON.stringify([
-          { toolName: toolCall.toolName, input: toolCall.input },
-        ]);
-      } catch {
-        // ignore
-      }
-    } else if (debugLevelToolChoice === "parse") {
-      logParsedSummary({ toolCalls: [toolCall], originalText: originText });
-    }
-
-    return {
-      ...result,
-      content: [toolCall],
-    };
+    );
+    return {};
   }
+}
 
-  const tools = originalToolsSchema.decode(
-    params.providerOptions?.toolCallMiddleware?.originalTools
-  );
+function logDebugSummary(
+  debugSummary: { originalText?: string; toolCalls?: string } | undefined,
+  toolCall: LanguageModelV2ToolCall,
+  originText: string
+) {
+  if (debugSummary) {
+    debugSummary.originalText = originText;
+    try {
+      debugSummary.toolCalls = JSON.stringify([
+        { toolName: toolCall.toolName, input: toolCall.input },
+      ]);
+    } catch {
+      // ignore
+    }
+  } else if (getDebugLevel() === "parse") {
+    logParsedSummary({ toolCalls: [toolCall], originalText: originText });
+  }
+}
 
+async function handleToolChoice(
+  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>,
+  params: { providerOptions?: ToolCallMiddlewareProviderOptions }
+) {
   const result = await doGenerate();
+  const first = result.content?.[0];
 
-  if (result.content.length === 0) {
-    return result;
+  let parsed: { name?: string; arguments?: Record<string, unknown> } = {};
+  if (first && first.type === "text") {
+    if (getDebugLevel() === "parse") {
+      logRawChunk(first.text);
+    }
+    parsed = parseToolChoiceJson(first.text, params.providerOptions);
   }
 
-  const parsed = result.content.flatMap((contentItem) => {
+  const toolCall: LanguageModelV2ToolCall = {
+    type: "tool-call",
+    toolCallId: generateId(),
+    toolName: parsed.name || "unknown",
+    input: JSON.stringify(parsed.arguments || {}),
+  };
+
+  const originText = first && first.type === "text" ? first.text : "";
+  const debugSummary = params.providerOptions?.toolCallMiddleware?.debugSummary;
+  logDebugSummary(debugSummary, toolCall, originText);
+
+  return {
+    ...result,
+    content: [toolCall],
+  };
+}
+
+function parseContent(
+  content: LanguageModelV2Content[],
+  protocol: ToolCallProtocol,
+  tools: Array<{ name?: string; inputSchema?: unknown }>,
+  providerOptions?: ToolCallMiddlewareProviderOptions
+): LanguageModelV2Content[] {
+  const parsed = content.flatMap((contentItem) => {
     if (contentItem.type !== "text") {
       return [contentItem];
     }
-    const debugLevel = getDebugLevel();
-    if (debugLevel === "stream") {
-      // For generate flow with stream debug we show raw text and parsed parts
+    if (getDebugLevel() === "stream") {
       logRawChunk(contentItem.text);
     }
     return protocol.parseGeneratedText({
       text: contentItem.text,
       tools,
       options: {
-        ...extractOnErrorOption(params.providerOptions),
-        ...((
-          params.providerOptions as { toolCallMiddleware?: unknown } | undefined
-        )?.toolCallMiddleware as Record<string, unknown>),
+        ...extractOnErrorOption(providerOptions),
+        ...((providerOptions as { toolCallMiddleware?: unknown } | undefined)
+          ?.toolCallMiddleware as Record<string, unknown>),
       },
     });
   });
-  const newContent = parsed.map((part) =>
+
+  return parsed.map((part) =>
     fixToolCallWithSchema(part as LanguageModelV2Content, tools)
   );
+}
 
-  const debugLevel = getDebugLevel();
-  if (debugLevel === "stream") {
-    newContent.forEach((part) => logParsedChunk(part));
+function logParsedContent(content: LanguageModelV2Content[]) {
+  if (getDebugLevel() === "stream") {
+    for (const part of content) {
+      logParsedChunk(part);
+    }
   }
-  // Always compute a debug summary payload; only log to console if no container provided and parse-level
+}
+
+function computeDebugSummary(
+  result: { content: LanguageModelV2Content[] },
+  newContent: LanguageModelV2Content[],
+  protocol: ToolCallProtocol,
+  tools: Array<{ name?: string; inputSchema?: unknown }>,
+  providerOptions?: ToolCallMiddlewareProviderOptions
+) {
   const allText = result.content
     .filter(
       (c): c is Extract<LanguageModelV2Content, { type: "text" }> =>
@@ -132,16 +141,18 @@ export async function wrapGenerate({
     )
     .map((c) => c.text)
     .join("\n\n");
+
   const segments = protocol.extractToolCallSegments
     ? protocol.extractToolCallSegments({ text: allText, tools })
     : [];
   const originalText = segments.join("\n\n");
+
   const toolCalls = newContent.filter(
     (p): p is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
       (p as LanguageModelV2Content).type === "tool-call"
   );
 
-  const dbg = params.providerOptions?.toolCallMiddleware?.debugSummary;
+  const dbg = providerOptions?.toolCallMiddleware?.debugSummary;
   if (dbg) {
     dbg.originalText = originalText;
     try {
@@ -154,9 +165,45 @@ export async function wrapGenerate({
     } catch {
       // ignore JSON failure
     }
-  } else if (debugLevel === "parse") {
+  } else if (getDebugLevel() === "parse") {
     logParsedSummary({ toolCalls, originalText });
   }
+}
+
+export async function wrapGenerate({
+  protocol,
+  doGenerate,
+  params,
+}: {
+  protocol: ToolCallProtocol;
+  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
+  params: {
+    providerOptions?: ToolCallMiddlewareProviderOptions;
+  };
+}) {
+  if (isToolChoiceActive(params)) {
+    return handleToolChoice(doGenerate, params);
+  }
+
+  const tools = originalToolsSchema.decode(
+    params.providerOptions?.toolCallMiddleware?.originalTools
+  );
+
+  const result = await doGenerate();
+
+  if (result.content.length === 0) {
+    return result;
+  }
+
+  const newContent = parseContent(
+    result.content,
+    protocol,
+    tools,
+    params.providerOptions
+  );
+
+  logParsedContent(newContent);
+  computeDebugSummary(result, newContent, protocol, tools, params.providerOptions);
 
   return {
     ...result,
@@ -182,7 +229,7 @@ function fixToolCallWithSchema(
   }
   const schema = tools.find((t) => t.name === tc.toolName)
     ?.inputSchema as unknown;
-  const coerced = RXML.coerceBySchema(args, schema);
+  const coerced = coerceBySchema(args, schema);
   return {
     ...(part as Record<string, unknown>),
     input: JSON.stringify(coerced ?? {}),

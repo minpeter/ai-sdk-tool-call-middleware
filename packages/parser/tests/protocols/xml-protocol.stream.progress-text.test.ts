@@ -11,7 +11,9 @@ async function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const reader = stream.getReader();
   while (true) {
     const { value, done } = await reader.read();
-    if (done) break;
+    if (done) {
+      break;
+    }
     out.push(value);
   }
   reader.releaseLock();
@@ -85,7 +87,9 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
     for (const td of textDeltas) {
       // Stop at the moment we have already emitted the start tag (tool-call breaks text)
       beforeTool.push(td.delta);
-      if (td.delta.includes("<echo>")) break;
+      if (td.delta.includes("<echo>")) {
+        break;
+      }
     }
     const beforeCombined = beforeTool.join("");
     expect(beforeCombined.startsWith("Before ")).toBe(true);
@@ -116,14 +120,15 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
     const transformer = protocol.createStreamParser({ tools });
     const html = "<!DOCTYPE html>\n<html><body><h1>ok</h1></body></html>";
 
+    const CHUNK_SIZE = 9;
     const rs = new ReadableStream<LanguageModelV2StreamPart>({
       start(ctrl) {
         const src = `<file_write><path>index.html</path><content>${html}</content></file_write>`;
-        for (let i = 0; i < src.length; i += 9) {
+        for (let i = 0; i < src.length; i += CHUNK_SIZE) {
           ctrl.enqueue({
             type: "text-delta",
             id: "t",
-            delta: src.slice(i, i + 9),
+            delta: src.slice(i, i + CHUNK_SIZE),
           });
         }
         ctrl.enqueue({
@@ -141,7 +146,9 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("file_write");
-    if (!tool) throw new Error("Expected tool-call");
+    if (!tool) {
+      throw new Error("Expected tool-call");
+    }
     const args = JSON.parse(tool.input) as { path: string; content: string };
     expect(args.path).toBe("index.html");
     expect(args.content).toBe(html);

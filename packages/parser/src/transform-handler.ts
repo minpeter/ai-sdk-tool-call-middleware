@@ -88,9 +88,7 @@ function findProviderDefinedTool(
       return false;
     }
     const anyTool = t as unknown as { id?: string; name?: string };
-    return (
-      anyTool.id === selectedToolName || anyTool.name === selectedToolName
-    );
+    return anyTool.id === selectedToolName || anyTool.name === selectedToolName;
   });
 }
 

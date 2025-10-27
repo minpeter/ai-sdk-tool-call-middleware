@@ -58,10 +58,7 @@ async function runSingleBenchmark(
  * Normalize models input to array of [key, model] entries
  */
 function normalizeModels(
-  models:
-    | LanguageModel
-    | LanguageModel[]
-    | Record<string, LanguageModel>
+  models: LanguageModel | LanguageModel[] | Record<string, LanguageModel>
 ): [string | undefined, LanguageModel][] {
   const modelEntries: [string | undefined, LanguageModel][] = [];
 
@@ -106,10 +103,7 @@ function buildConfig(
 /**
  * Execute reporter with results
  */
-function executeReporter(
-  reporter: string,
-  results: EvaluationResult[]
-): void {
+function executeReporter(reporter: string, results: EvaluationResult[]): void {
   const report = reporters[reporter];
   if (report) {
     report(results);

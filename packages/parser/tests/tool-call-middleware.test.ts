@@ -45,12 +45,13 @@ describe("createToolMiddleware", () => {
         ],
       });
 
-      const result = await middleware.wrapGenerate!({
+      const result = await middleware.wrapGenerate?.({
         doGenerate,
         params: { prompt: [] },
       } as any);
 
-      expect(result.content).toHaveLength(3);
+      const EXPECTED_CONTENT_LENGTH = 3;
+      expect(result.content).toHaveLength(EXPECTED_CONTENT_LENGTH);
       expect(result.content[0]).toEqual({ type: "text", text: "Some text " });
       expect(result.content[1]).toMatchObject({
         type: "tool-call",
@@ -72,12 +73,13 @@ describe("createToolMiddleware", () => {
         content: [original],
       });
 
-      const result = await middleware.wrapGenerate!({
+      const result = await middleware.wrapGenerate?.({
         doGenerate,
         params: { prompt: [] },
       } as any);
 
-      expect(result.content).toHaveLength(1);
+      const EXPECTED_SINGLE_CONTENT = 1;
+      expect(result.content).toHaveLength(EXPECTED_SINGLE_CONTENT);
       expect(result.content[0]).toEqual(original);
     });
   });
@@ -102,7 +104,7 @@ describe("createToolMiddleware", () => {
         ],
       });
 
-      const result = await middleware.wrapGenerate!({
+      const result = await middleware.wrapGenerate?.({
         doGenerate,
         params: {
           prompt: [],
@@ -117,7 +119,8 @@ describe("createToolMiddleware", () => {
         },
       } as any);
 
-      expect(result.content).toHaveLength(3);
+      const EXPECTED_XML_CONTENT_LENGTH = 3;
+      expect(result.content).toHaveLength(EXPECTED_XML_CONTENT_LENGTH);
       expect(result.content[0]).toEqual({ type: "text", text: "Some text " });
       expect(result.content[1]).toMatchObject({
         type: "tool-call",
@@ -143,7 +146,7 @@ describe("createToolMiddleware positive paths", () => {
         },
       ],
     });
-    const result = await mw.wrapGenerate!({
+    const result = await mw.wrapGenerate?.({
       doGenerate,
       params: {
         prompt: [],

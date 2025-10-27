@@ -10,7 +10,9 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];
   return (async () => {
-    for await (const c of stream) out.push(c);
+    for await (const c of stream) {
+      out.push(c);
+    }
     return out;
   })();
 }
@@ -49,7 +51,7 @@ describe("dummyProtocol streaming behavior", () => {
     expect(
       out.slice(afterEndIndex + 1).some((c) => c.type === "tool-call")
     ).toBe(true);
-    expect(out[out.length - 1]).toMatchObject({ type: "finish" });
+    expect(out.at(-1)).toMatchObject({ type: "finish" });
   });
 
   it("flush emits text-end when stream closes with pending text", async () => {
