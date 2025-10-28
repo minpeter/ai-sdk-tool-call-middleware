@@ -150,7 +150,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
       let chunkCount = 0;
 
       // Test simple consumption without processXMLStream
-      for await (const chunk of stream) {
+      for await (const _chunk of stream) {
         chunkCount++;
       }
 
