@@ -10,4 +10,5 @@ export {
   stringify as stringifyRJSON,
   transform as transformRJSON,
 } from "./robust-json";
+export * as RJSON from "./robust-json";
 export * from "./type-guards";
