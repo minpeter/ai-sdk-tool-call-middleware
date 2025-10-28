@@ -25,8 +25,7 @@
     "build": "tsup --clean",
     "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "tsup src/run-test.ts --format esm --clean --out-dir dist --no-config && node dist/run-test.js",
-    "test": "pnpm run test:e2e"
+    "test:e2e": "tsup src/run-test.ts --format esm --clean --out-dir dist --no-config && node dist/run-test.js"
   },
   "dependencies": {
     "@ai-sdk/provider": "2.0.0",
