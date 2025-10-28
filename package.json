@@ -3,11 +3,11 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
+    "dev": "turbo run dev",
     "test": "turbo run test --parallel",
     "test:watch": "turbo run test:watch --parallel",
-    "dev": "turbo run dev",
     "check:biome": "biome check",
-    "check:types": "turbo run typecheck --parallel",
+    "check:types": "turbo run typecheck",
     "check": "run-p check:*",
     "fmt:biome": "biome check --write",
     "fmt": "run-p fmt:*",
