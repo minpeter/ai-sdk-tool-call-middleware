@@ -1217,19 +1217,19 @@ export const bfclParallelBenchmark = createBfclBenchmark(
   "bfcl-parallel",
   "BFCL Parallel Function Calling",
   "BFCL_v3_parallel.json",
-  "BFCL_v3_parallel_possible_answer.json"
+  "BFCL_v3_parallel_possible_answer.jsonl"
 );
 
 export const bfclMultipleBenchmark = createBfclBenchmark(
   "bfcl-multiple",
   "BFCL Multiple Function Calling",
   "BFCL_v3_multiple.json",
-  "BFCL_v3_multiple_possible_answer.json"
+  "BFCL_v3_multiple_possible_answer.jsonl"
 );
 
 export const bfclParallelMultipleBenchmark = createBfclBenchmark(
   "bfcl-parallel-multiple",
   "BFCL Parallel & Multiple Function Calling",
   "BFCL_v3_parallel_multiple.json",
-  "BFCL_v3_parallel_multiple_possible_answer.json"
+  "BFCL_v3_parallel_multiple_possible_answer.jsonl"
 );

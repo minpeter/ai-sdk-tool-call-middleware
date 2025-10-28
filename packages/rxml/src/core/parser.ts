@@ -124,11 +124,7 @@ function tryConvertToNumber(val: unknown): unknown {
  */
 function processItemValue(item: unknown, textNodeName: string): unknown {
   let currentVal: unknown = item;
-  if (
-    item &&
-    typeof item === "object" &&
-    Object.hasOwn(item, textNodeName)
-  ) {
+  if (item && typeof item === "object" && Object.hasOwn(item, textNodeName)) {
     currentVal = (item as Record<string, unknown>)[textNodeName];
   }
   const trimmed =
@@ -341,10 +337,7 @@ export function parse(
                   | undefined)
               : undefined;
 
-          if (
-            schemaProps &&
-            !Object.hasOwn(schemaProps, rootName)
-          ) {
+          if (schemaProps && !Object.hasOwn(schemaProps, rootName)) {
             actualXmlInner = s.slice(range.start, range.end);
           }
         }
@@ -541,11 +534,7 @@ export function parse(
     }
 
     // Extract text content from wrapped objects
-    if (
-      v &&
-      typeof v === "object" &&
-      Object.hasOwn(v, textNodeName)
-    ) {
+    if (v && typeof v === "object" && Object.hasOwn(v, textNodeName)) {
       val = (v as Record<string, unknown>)[textNodeName];
     }
 
@@ -580,11 +569,7 @@ export function parse(
         continue;
       }
       val = processArrayContent(v, propSchema, textNodeName);
-    } else if (
-      v &&
-      typeof v === "object" &&
-      !Object.hasOwn(v, textNodeName)
-    ) {
+    } else if (v && typeof v === "object" && !Object.hasOwn(v, textNodeName)) {
       const obj = v as Record<string, unknown>;
       const keys = Object.keys(obj);
 
@@ -637,10 +622,7 @@ export function parse(
       const schemaProps = (unwrapped as Record<string, unknown>).properties as
         | Record<string, unknown>
         | undefined;
-      if (
-        schemaProps &&
-        !Object.hasOwn(schemaProps, rootKey)
-      ) {
+      if (schemaProps && !Object.hasOwn(schemaProps, rootKey)) {
         // Schema doesn't expect the root key, so unwrap it before coercion
         dataToCoerce = rootValue as Record<string, unknown>;
       }

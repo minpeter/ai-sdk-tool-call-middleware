@@ -829,13 +829,14 @@ function parseManyInitialElement<T>(
 }
 
 // Helper to process a token in parseMany loop
-function parseManyProcessToken<T>(
-  token: Token,
-  tokens: Token[],
-  state: ParseState,
-  opts: ParseManyOpts<T>,
-  result: T
-): T | undefined {
+function parseManyProcessToken<T>(params: {
+  token: Token;
+  tokens: Token[];
+  state: ParseState;
+  opts: ParseManyOpts<T>;
+  result: T;
+}): T | undefined {
+  const { token, tokens, state, opts, result } = params;
   if (token.type !== opts.endSymbol && token.type !== ",") {
     const handledResult = handleInvalidToken(token, state, opts, result);
     if (handledResult !== null) {
@@ -878,17 +879,17 @@ function parseMany<T>(
     return initialResult;
   }
 
-    while (true) {
-      const token = popToken(tokens, state);
-      const processedResult = parseManyProcessToken(
-        token,
-        tokens,
-        state,
-        opts,
-        result
-      );
-      if (processedResult !== undefined) {
-        return processedResult;
+  while (true) {
+    const token = popToken(tokens, state);
+    const processedResult = parseManyProcessToken({
+      token,
+      tokens,
+      state,
+      opts,
+      result,
+    });
+    if (processedResult !== undefined) {
+      return processedResult;
     }
   }
 }
