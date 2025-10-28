@@ -319,8 +319,9 @@ function createBfclBenchmark(
           nameMap: Map<string, string>,
           transformedTools: TransformedTool[]
         ): unknown[] =>
-          (toolCalls || []).map((c: Record<string, unknown>) => {
-            const rawName = c.toolName ?? c.name;
+          (toolCalls || []).map((c: unknown) => {
+            const call = c as Record<string, unknown>;
+            const rawName = call.toolName ?? call.name;
             const sanitizedFromIndex = getSanitizedName(
               rawName,
               transformedTools
@@ -328,10 +329,10 @@ function createBfclBenchmark(
             const originalName =
               nameMap.get(sanitizedFromIndex as string) ?? sanitizedFromIndex;
             const extractedArgs =
-              c.args ?? c.arguments ?? c.input ?? c.params ?? c.parameters;
+              call.args ?? call.arguments ?? call.input ?? call.params ?? call.parameters;
             const parsedArgs = parseToolArgs(extractedArgs);
             return {
-              ...c,
+              ...call,
               toolName: originalName,
               name: originalName,
               args: parsedArgs ?? {},
@@ -442,7 +443,7 @@ function createBfclBenchmark(
           diff: string[]
         ): void => {
           for (const k of Object.keys(receivedArgs)) {
-            if (!Object.hasOwn(expectedParams, k)) {
+            if (!(k in expectedParams)) {
               diff.push(`+ unexpected param: ${k}`);
             }
           }
@@ -455,7 +456,7 @@ function createBfclBenchmark(
           diff: string[]
         ): void => {
           for (const k of Object.keys(receivedArgs)) {
-            if (Object.hasOwn(expectedParams, k)) {
+            if (k in expectedParams) {
               const allowed = (expectedParams as Record<string, unknown[]>)[k];
               const got = receivedArgs[k];
               if (!paramValueMatches(allowed, got)) {
@@ -509,12 +510,12 @@ function createBfclBenchmark(
               diff
             );
             checkUnexpectedParams(
-              expectedParams,
+              expectedParams as Record<string, unknown>,
               receivedArgs as Record<string, unknown>,
               diff
             );
             checkParamValueMismatches(
-              expectedParams,
+              expectedParams as Record<string, unknown>,
               receivedArgs as Record<string, unknown>,
               diff
             );
@@ -1061,7 +1062,7 @@ function createBfclBenchmark(
           }
 
           const restoredCalls = restoreToolCalls(
-            toolCalls || [],
+            (toolCalls as unknown[]) || [],
             nameMap,
             transformedTools
           );
@@ -1195,7 +1196,7 @@ function createBfclBenchmark(
           score: 0,
           success: false,
           metrics: {},
-          error: e,
+          error: e as Error,
           logs: [
             `[FATAL] Failed to run benchmark ${name}: ${(e as Error).message}`,
           ],
