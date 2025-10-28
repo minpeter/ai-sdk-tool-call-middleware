@@ -4,6 +4,7 @@ import type {
   EvaluateOptions,
   EvaluationResult,
   LanguageModelV2Benchmark,
+  ReporterType,
 } from "./interfaces";
 import { reporters } from "./reporters";
 
@@ -103,7 +104,10 @@ function buildConfig(
 /**
  * Execute reporter with results
  */
-function executeReporter(reporter: string, results: EvaluationResult[]): void {
+function executeReporter(
+  reporter: ReporterType,
+  results: EvaluationResult[]
+): void {
   const report = reporters[reporter];
   if (report) {
     report(results);
