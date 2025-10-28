@@ -8,7 +8,6 @@ This is a monorepo managed by pnpm workspaces and Turborepo:
 
 - `pnpm build` - Build all packages in parallel
 - `pnpm test` - Run all tests in parallel
-- `pnpm test:watch` - Run tests in watch mode
 - `pnpm dev` - Start development mode (watch builds)
 - `pnpm lint` - Lint all packages
 - `pnpm lint:fix` - Fix linting issues and format code

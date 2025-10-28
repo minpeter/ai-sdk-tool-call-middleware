@@ -5,7 +5,6 @@
   "description": "Examples demonstrating streaming XML parsing with @ai-sdk-tool/rxml",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"No tests for rxml-core example\" && exit 0",
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/00-stream-basic.ts"
   },

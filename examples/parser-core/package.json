@@ -5,7 +5,6 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"No tests for core package\" && exit 0",
     "typecheck": "tsc --noEmit",
     "debug:file-write": "tsx src/XX-debug-file-write.ts"
   },

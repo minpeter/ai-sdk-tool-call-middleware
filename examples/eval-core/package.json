@@ -5,7 +5,6 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"No tests for eval-core package\" && exit 0",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],

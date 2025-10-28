@@ -7,10 +7,7 @@
         "noConsole": "off"
       },
       "style": {
-        "noMagicNumbers": "off"
-      },
-      "complexity": {
-        "noExcessiveCognitiveComplexity": "warn"
+        "noMagicNumbers": "warn"
       },
       "performance": {
         "noBarrelFile": "off"
