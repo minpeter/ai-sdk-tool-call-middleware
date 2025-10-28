@@ -7,8 +7,7 @@
         "noConsole": "off"
       },
       "style": {
-        "noMagicNumbers": "off",
-        "useFilenamingConvention": "off"
+        "noMagicNumbers": "off"
       },
       "complexity": {
         "noExcessiveCognitiveComplexity": "warn"
