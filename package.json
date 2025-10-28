@@ -5,6 +5,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "test": "turbo run test --parallel",
+    "test:coverage": "turbo run test:coverage --parallel",
     "test:watch": "turbo run test:watch --parallel",
     "check:biome": "biome check",
     "check:types": "turbo run typecheck",

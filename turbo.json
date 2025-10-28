@@ -25,6 +25,16 @@
       ],
       "outputs": []
     },
+    "test:coverage": {
+      "dependsOn": ["^test:coverage"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "src/**/*.{ts,tsx}",
+        "test/**/*.{ts,tsx}",
+        "vitest.config.*"
+      ],
+      "outputs": ["coverage/**"]
+    },
     "test:watch": {
       "dependsOn": ["^test:watch"]
     }
