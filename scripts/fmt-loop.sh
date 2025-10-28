@@ -3,7 +3,7 @@ set -o pipefail
 
 while true; do
   echo "Running job -- --max-diagnostics 10..."
-  if ! output=$(pnpm check:types 2>&1); then
+  if ! output=$(pnpm check 2>&1); then
     status=$?
     printf 'job failed with exit code %d. Forwarding output to cursor-agent.\n' "$status"
     cursor-agent --model sonnet-4.5 -p <<EOF
