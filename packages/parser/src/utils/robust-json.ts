@@ -623,7 +623,7 @@ function checkDuplicates(
 
   // Only check for duplicates when duplicate checking is enabled
   // state.duplicate = false means "reject duplicates", so we check when !state.duplicate
-  if (!state.duplicate && Object.prototype.hasOwnProperty.call(obj, key)) {
+  if (!state.duplicate && Object.hasOwn(obj, key)) {
     raiseError(state, token, `Duplicate key: ${key}`);
     // Note: In tolerant mode, this adds a warning and continues parsing.
     // In strict mode, this throws immediately. Either way, last value wins for the duplicate key.
@@ -878,11 +878,17 @@ function parseMany<T>(
     return initialResult;
   }
 
-  while (true) {
-    const token = popToken(tokens, state);
-    const processedResult = parseManyProcessToken(token, tokens, state, opts, result);
-    if (processedResult !== undefined) {
-      return processedResult;
+    while (true) {
+      const token = popToken(tokens, state);
+      const processedResult = parseManyProcessToken(
+        token,
+        tokens,
+        state,
+        opts,
+        result
+      );
+      if (processedResult !== undefined) {
+        return processedResult;
     }
   }
 }

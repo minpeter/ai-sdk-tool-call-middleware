@@ -16,6 +16,7 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 // Regex constants for performance
 const REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
 const REGEX_TOOL_CALL_FENCE = /```tool_call/;
+const REGEX_TOOL_RESPONSE_FENCE = /```tool_response/;
 const REGEX_GET_WEATHER = /get_weather/;
 const REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
 const REGEX_TOOLS_TAG = /<tools>/;
@@ -253,7 +254,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
       .join("\n");
 
     // Gemma uses markdown code fences for tool_response, not XML tags
-    expect(userCombined).toMatch(/```tool_response/);
+    expect(userCombined).toMatch(REGEX_TOOL_RESPONSE_FENCE);
   });
 
   it("hermes: formats assistant tool-call (object input) and tool result into user text", async () => {

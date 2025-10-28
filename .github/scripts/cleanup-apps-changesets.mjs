@@ -44,9 +44,3 @@ const examplesUrl = new URL("../../examples", import.meta.url);
 for (const app of readdirSync(fileURLToPath(examplesUrl))) {
   cleanup(app, examplesUrl);
 }
-
-// apps
-const appsUrl = new URL("../../apps", import.meta.url);
-for (const app of readdirSync(fileURLToPath(appsUrl))) {
-  cleanup(app, appsUrl);
-}
