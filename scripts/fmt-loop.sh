@@ -1,19 +1,18 @@
 #!/usr/bin/env bash
 set -o pipefail
 
-# Infinite loop to run pnpm fmt and delegate failures to cursor-agent.
 while true; do
-  echo "Running pnpm fmt -- --max-diagnostics 10..."
-  if ! output=$(pnpm fmt -- --max-diagnostics 10 2>&1); then
+  echo "Running job -- --max-diagnostics 10..."
+  if ! output=$(pnpm check:types 2>&1); then
     status=$?
-    printf 'pnpm fmt failed with exit code %d. Forwarding output to cursor-agent.\n' "$status"
+    printf 'job failed with exit code %d. Forwarding output to cursor-agent.\n' "$status"
     cursor-agent --model sonnet-4.5 -p <<EOF
-Please fix the biome lint error below.
+Please fix the biome typecheck error below.
 
 $output
 EOF
   else
-    echo "pnpm fmt completed successfully."
+    echo "job completed successfully."
 
     # stop the loop
     exit 0
