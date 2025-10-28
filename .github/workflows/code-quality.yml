@@ -98,7 +98,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pnpm test -- --coverage
+          pnpm test:coverage
 
       # https://docs.codecov.com/docs/environment-specific-requirements#github-actions
       - name: Upload coverage to Codecov

@@ -486,7 +486,8 @@ function popToken(tokens: Token[], state: ParseState): Token {
 
   if (!token) {
     // If we are past the end of the token array, return an EOF token
-    const lastLine = tokens.length !== 0 ? (tokens[tokens.length - 1]?.line ?? 1) : 1;
+    const lastLine =
+      tokens.length !== 0 ? (tokens.at(-1)?.line ?? 1) : 1;
     return { type: "eof", match: "", value: undefined, line: lastLine };
   }
 
@@ -623,7 +624,7 @@ function checkDuplicates(
 
   // Only check for duplicates when duplicate checking is enabled
   // state.duplicate = false means "reject duplicates", so we check when !state.duplicate
-  if (!state.duplicate && Object.prototype.hasOwnProperty.call(obj, key)) {
+  if (!state.duplicate && Object.hasOwn(obj, key)) {
     raiseError(state, token, `Duplicate key: ${key}`);
     // Note: In tolerant mode, this adds a warning and continues parsing.
     // In strict mode, this throws immediately. Either way, last value wins for the duplicate key.
