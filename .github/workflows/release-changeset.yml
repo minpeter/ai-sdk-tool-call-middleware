@@ -67,9 +67,11 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Cleanup apps changesets
+        if: steps.changesets.outputs.hasChangesets == 'true'
         run: node .github/scripts/cleanup-apps-changesets.mjs
 
       - name: Commit cleanup changes
+        if: steps.changesets.outputs.hasChangesets == 'true'
         run: |
           git add .
           git diff --staged --quiet || git commit -m "chore: cleanup apps changesets"
