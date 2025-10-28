@@ -126,7 +126,9 @@ function handleStreamingToolCallEnd(params: StreamingToolCallEndParams): void {
       noChildNodes: [],
     });
 
+    // Close any open text segment before emitting tool-call
     flushText(ctrl);
+
     ctrl.enqueue({
       type: "tool-call",
       toolCallId: generateId(),
@@ -235,6 +237,7 @@ type ProcessToolCallInBufferParams = {
     | undefined;
   controller: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
+  setBuffer: (buffer: string) => void;
 };
 
 function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
@@ -242,14 +245,25 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
   currentToolCall: { name: string; content: string } | null;
   shouldBreak: boolean;
 } {
-  const { buffer, currentToolCall, tools, options, controller, flushText } =
-    params;
+  const {
+    buffer,
+    currentToolCall,
+    tools,
+    options,
+    controller,
+    flushText,
+    setBuffer,
+  } = params;
   const endTag = `</${currentToolCall.name}>`;
   const endTagIndex = buffer.indexOf(endTag);
 
   if (endTagIndex !== -1) {
     const toolContent = buffer.substring(0, endTagIndex);
     const newBuffer = buffer.substring(endTagIndex + endTag.length);
+
+    // Clear buffer BEFORE calling handleStreamingToolCallEnd
+    // so that flushText(ctrl) emits text-end without emitting buffer content
+    setBuffer("");
 
     handleStreamingToolCallEnd({
       toolContent,
@@ -259,6 +273,9 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
       ctrl: controller,
       flushText,
     });
+
+    // Restore buffer to content after tool call
+    setBuffer(newBuffer);
     return { buffer: newBuffer, currentToolCall: null, shouldBreak: false };
   }
   return { buffer, currentToolCall, shouldBreak: true };
@@ -387,6 +404,7 @@ function processBufferWithToolCall(
     options,
     controller,
     flushText,
+    setBuffer,
   });
   setBuffer(result.buffer);
   setCurrentToolCall(result.currentToolCall);
