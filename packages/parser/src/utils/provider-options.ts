@@ -47,16 +47,17 @@ export function decodeOriginalTools(
       }>
     | undefined
 ): LanguageModelV2FunctionTool[] {
-  const tools =
-    originalTools?.map(
-      (t) =>
-        ({
-          name: t.name,
-          inputSchema: JSON.parse(t.inputSchema) as JSONSchema7,
-        }) as LanguageModelV2FunctionTool
-    ) || [];
+  if (!originalTools) {
+    return [];
+  }
 
-  return tools;
+  return originalTools.map(
+    (t): LanguageModelV2FunctionTool => ({
+      type: "function",
+      name: t.name,
+      inputSchema: JSON.parse(t.inputSchema) as JSONSchema7,
+    })
+  );
 }
 
 export function extractToolNamesFromOriginalTools(

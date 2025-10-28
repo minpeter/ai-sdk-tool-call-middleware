@@ -1,6 +1,7 @@
 import type {
   LanguageModelV2,
   LanguageModelV2Content,
+  LanguageModelV2FunctionTool,
   LanguageModelV2ToolCall,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
@@ -93,7 +94,7 @@ async function handleToolChoice(
 function parseContent(
   content: LanguageModelV2Content[],
   protocol: ToolCallProtocol,
-  tools: Array<{ name?: string; inputSchema?: unknown }>,
+  tools: LanguageModelV2FunctionTool[],
   providerOptions?: ToolCallMiddlewareProviderOptions
 ): LanguageModelV2Content[] {
   const parsed = content.flatMap((contentItem) => {
@@ -131,7 +132,7 @@ function computeDebugSummary(options: {
   result: { content: LanguageModelV2Content[] };
   newContent: LanguageModelV2Content[];
   protocol: ToolCallProtocol;
-  tools: Array<{ name?: string; inputSchema?: unknown }>;
+  tools: LanguageModelV2FunctionTool[];
   providerOptions?: ToolCallMiddlewareProviderOptions;
 }) {
   const { result, newContent, protocol, tools, providerOptions } = options;
@@ -220,7 +221,7 @@ export async function wrapGenerate({
 
 function fixToolCallWithSchema(
   part: LanguageModelV2Content,
-  tools: Array<{ name?: string; inputSchema?: unknown }>
+  tools: LanguageModelV2FunctionTool[]
 ): LanguageModelV2Content {
   if ((part as { type?: string }).type !== "tool-call") {
     return part;

@@ -66,6 +66,10 @@ describe("index exports", () => {
         },
       } as any);
 
+      expect(result).toBeDefined();
+      if (!result) {
+        throw new Error("result is undefined");
+      }
       const toolCalls = result.content.filter(
         (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
           c.type === "tool-call"
@@ -112,6 +116,10 @@ describe("index exports", () => {
         },
       } as any);
 
+      expect(result).toBeDefined();
+      if (!result) {
+        throw new Error("result is undefined");
+      }
       const toolCalls = result.content.filter(
         (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
           c.type === "tool-call"

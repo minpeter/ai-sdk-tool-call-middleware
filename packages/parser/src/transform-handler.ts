@@ -1,8 +1,12 @@
 import type {
   JSONSchema7,
   LanguageModelV2Content,
+  LanguageModelV2FilePart,
   LanguageModelV2FunctionTool,
   LanguageModelV2Prompt,
+  LanguageModelV2ReasoningPart,
+  LanguageModelV2TextPart,
+  LanguageModelV2ToolCallPart,
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
 
@@ -14,7 +18,6 @@ import {
   createDynamicIfThenElseSchema,
   extractOnErrorOption,
   isToolCallContent,
-  isToolResultPart,
   originalToolsSchema,
   type ToolCallMiddlewareProviderOptions,
 } from "./utils";
@@ -315,22 +318,16 @@ function processAssistantContent(
  * Process tool message content
  */
 function processToolMessage(
-  content: LanguageModelV2Content[],
+  content: LanguageModelV2ToolResultPart[],
   resolvedProtocol: ToolCallProtocol
-) {
+): LanguageModelV2Prompt[number] {
   return {
     role: "user" as const,
     content: [
       {
         type: "text" as const,
         text: content
-          .map((toolResult) =>
-            isToolResultPart(toolResult)
-              ? resolvedProtocol.formatToolResponse(toolResult)
-              : resolvedProtocol.formatToolResponse(
-                  toolResult as LanguageModelV2ToolResultPart
-                )
-          )
+          .map((toolResult) => resolvedProtocol.formatToolResponse(toolResult))
           .join("\n"),
       },
     ],
@@ -349,11 +346,20 @@ function processMessage(
 ): LanguageModelV2Prompt[number] {
   if (message.role === "assistant") {
     const condensedContent = processAssistantContent(
-      message.content,
+      message.content as LanguageModelV2Content[],
       resolvedProtocol,
       providerOptions
     );
-    return { role: "assistant", content: condensedContent };
+    return {
+      role: "assistant" as const,
+      content: condensedContent as Array<
+        | LanguageModelV2TextPart
+        | LanguageModelV2FilePart
+        | LanguageModelV2ReasoningPart
+        | LanguageModelV2ToolCallPart
+        | LanguageModelV2ToolResultPart
+      >,
+    };
   }
   if (message.role === "tool") {
     return processToolMessage(message.content, resolvedProtocol);

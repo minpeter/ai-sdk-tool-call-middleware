@@ -85,6 +85,10 @@ describe("morphXmlProtocol stream parsing", () => {
 
     const result = await runMiddleware(mockStream);
 
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error("result is undefined");
+    }
     const chunks: LanguageModelV2StreamPart[] = [];
     for await (const chunk of result.stream) {
       chunks.push(chunk);
@@ -125,6 +129,10 @@ describe("morphXmlProtocol stream parsing", () => {
 
     const result = await runMiddleware(mockStream);
 
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error("result is undefined");
+    }
     const chunks: LanguageModelV2StreamPart[] = [];
     for await (const chunk of result.stream) {
       chunks.push(chunk);

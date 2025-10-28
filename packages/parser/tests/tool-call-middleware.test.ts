@@ -51,14 +51,15 @@ describe("createToolMiddleware", () => {
       } as any);
 
       const EXPECTED_CONTENT_LENGTH = 3;
-      expect(result.content).toHaveLength(EXPECTED_CONTENT_LENGTH);
-      expect(result.content[0]).toEqual({ type: "text", text: "Some text " });
-      expect(result.content[1]).toMatchObject({
+      expect(result).toBeDefined();
+      expect(result?.content).toHaveLength(EXPECTED_CONTENT_LENGTH);
+      expect(result?.content[0]).toEqual({ type: "text", text: "Some text " });
+      expect(result?.content[1]).toMatchObject({
         type: "tool-call",
         toolName: "getTool",
         input: '{"arg1":"value1"}',
       });
-      expect(result.content[2]).toEqual({ type: "text", text: " more text" });
+      expect(result?.content[2]).toEqual({ type: "text", text: " more text" });
     });
 
     it("should pass through non-text content unchanged", async () => {
@@ -79,8 +80,9 @@ describe("createToolMiddleware", () => {
       } as any);
 
       const EXPECTED_SINGLE_CONTENT = 1;
-      expect(result.content).toHaveLength(EXPECTED_SINGLE_CONTENT);
-      expect(result.content[0]).toEqual(original);
+      expect(result).toBeDefined();
+      expect(result?.content).toHaveLength(EXPECTED_SINGLE_CONTENT);
+      expect(result?.content[0]).toEqual(original);
     });
   });
 
@@ -120,14 +122,15 @@ describe("createToolMiddleware", () => {
       } as any);
 
       const EXPECTED_XML_CONTENT_LENGTH = 3;
-      expect(result.content).toHaveLength(EXPECTED_XML_CONTENT_LENGTH);
-      expect(result.content[0]).toEqual({ type: "text", text: "Some text " });
-      expect(result.content[1]).toMatchObject({
+      expect(result).toBeDefined();
+      expect(result?.content).toHaveLength(EXPECTED_XML_CONTENT_LENGTH);
+      expect(result?.content[0]).toEqual({ type: "text", text: "Some text " });
+      expect(result?.content[1]).toMatchObject({
         type: "tool-call",
         toolName: "getTool",
         input: '{"arg1":"value1"}',
       });
-      expect(result.content[2]).toEqual({ type: "text", text: " more text" });
+      expect(result?.content[2]).toEqual({ type: "text", text: " more text" });
     });
   });
 });
@@ -160,6 +163,7 @@ describe("createToolMiddleware positive paths", () => {
         ],
       },
     } as any);
-    expect(result.content.some((c: any) => c.type === "tool-call")).toBe(true);
+    expect(result).toBeDefined();
+    expect(result?.content.some((c: any) => c.type === "tool-call")).toBe(true);
   });
 });

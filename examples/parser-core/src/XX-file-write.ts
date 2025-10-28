@@ -7,6 +7,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import {
   type ModelMessage,
+  type StreamTextResult,
   stepCountIs,
   streamText,
   wrapLanguageModel,
@@ -25,7 +26,8 @@ const friendli = createOpenAICompatible({
 });
 
 async function processStreamResult(
-  result: Awaited<ReturnType<typeof streamText>>,
+  // biome-ignore lint/suspicious/noExplicitAny: Example code needs to handle any tool set
+  result: StreamTextResult<any, any>,
   messages: ModelMessage[]
 ): Promise<void> {
   let assistantText = "";
