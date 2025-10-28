@@ -51,7 +51,9 @@ type ProcessToolCallParams = {
   toolCall: ToolCallInfo;
   tools: LanguageModelV2FunctionTool[];
   options:
-    | { onError?: (message: string, metadata?: Record<string, unknown>) => void }
+    | {
+        onError?: (message: string, metadata?: Record<string, unknown>) => void;
+      }
     | undefined;
   text: string;
   processedElements: LanguageModelV2Content[];
@@ -106,7 +108,9 @@ type StreamingToolCallEndParams = {
   currentToolCall: { name: string; content: string };
   tools: LanguageModelV2FunctionTool[];
   options:
-    | { onError?: (message: string, metadata?: Record<string, unknown>) => void }
+    | {
+        onError?: (message: string, metadata?: Record<string, unknown>) => void;
+      }
     | undefined;
   ctrl: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
@@ -146,7 +150,9 @@ type StreamingToolCallErrorParams = {
   currentToolCall: { name: string; content: string };
   toolContent: string;
   options:
-    | { onError?: (message: string, metadata?: Record<string, unknown>) => void }
+    | {
+        onError?: (message: string, metadata?: Record<string, unknown>) => void;
+      }
     | undefined;
   ctrl: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
@@ -223,7 +229,9 @@ type ProcessToolCallInBufferParams = {
   currentToolCall: { name: string; content: string };
   tools: LanguageModelV2FunctionTool[];
   options:
-    | { onError?: (message: string, metadata?: Record<string, unknown>) => void }
+    | {
+        onError?: (message: string, metadata?: Record<string, unknown>) => void;
+      }
     | undefined;
   controller: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
@@ -344,7 +352,9 @@ type ProcessBufferHandlerParams = {
   ) => void;
   tools: LanguageModelV2FunctionTool[];
   options:
-    | { onError?: (message: string, metadata?: Record<string, unknown>) => void }
+    | {
+        onError?: (message: string, metadata?: Record<string, unknown>) => void;
+      }
     | undefined;
   toolNames: string[];
   maxStartTagLen: number;
