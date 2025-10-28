@@ -585,9 +585,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
     const out = await collect(rs.pipeThrough(transformer));
 
-    const eventTypes = out.map((e) => e.type);
     const textStarts = out.filter((e) => e.type === "text-start");
-    const textEnds = out.filter((e) => e.type === "text-end");
     const toolCalls = out.filter((e) => e.type === "tool-call");
 
     // Verify both tool calls were parsed

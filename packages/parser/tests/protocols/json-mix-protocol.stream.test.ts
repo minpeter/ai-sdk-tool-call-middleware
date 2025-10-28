@@ -330,7 +330,8 @@ describe("jsonMixProtocol content isolation", () => {
         ctrl.enqueue({
           type: "text-delta",
           id: "t",
-          delta: '<tool_call>{"name":"get_location","arguments":{}}</tool_call>',
+          delta:
+            '<tool_call>{"name":"get_location","arguments":{}}</tool_call>',
         });
         ctrl.enqueue({ type: "text-delta", id: "t", delta: " then " });
         ctrl.enqueue({
@@ -389,7 +390,8 @@ describe("jsonMixProtocol content isolation", () => {
         ctrl.enqueue({
           type: "text-delta",
           id: "t",
-          delta: '<tool_call>{"name":"test_tool","arguments":{"value":"test"}}</tool_call>',
+          delta:
+            '<tool_call>{"name":"test_tool","arguments":{"value":"test"}}</tool_call>',
         });
         ctrl.enqueue({
           type: "text-delta",
@@ -429,9 +431,15 @@ describe("jsonMixProtocol content isolation", () => {
     expect(textEndBeforeTool).toBeLessThan(toolCallIndex);
 
     // Verify text-start after tool-call if there's text after
-    const textDeltaAfterTool = eventTypes.indexOf("text-delta", toolCallIndex + 1);
+    const textDeltaAfterTool = eventTypes.indexOf(
+      "text-delta",
+      toolCallIndex + 1
+    );
     if (textDeltaAfterTool !== -1) {
-      const textStartAfterTool = eventTypes.indexOf("text-start", toolCallIndex + 1);
+      const textStartAfterTool = eventTypes.indexOf(
+        "text-start",
+        toolCallIndex + 1
+      );
       expect(textStartAfterTool).toBeGreaterThanOrEqual(0);
       expect(textStartAfterTool).toBeLessThan(textDeltaAfterTool);
     }
