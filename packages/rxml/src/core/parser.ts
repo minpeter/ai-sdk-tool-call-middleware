@@ -542,7 +542,11 @@ export function parse(
     if (Array.isArray(v)) {
       if (propType === "string") {
         const mapped = v.map((item) => {
-          if (item && typeof item === "object" && Object.hasOwn(item, textNodeName)) {
+          if (
+            item &&
+            typeof item === "object" &&
+            Object.hasOwn(item, textNodeName)
+          ) {
             const textVal = (item as Record<string, unknown>)[textNodeName];
             return typeof textVal === "string" ? textVal : String(textVal);
           }
