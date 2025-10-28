@@ -54,7 +54,7 @@ function getNodeValue(
  */
 function addAttributesToValue(
   value: unknown,
-  attributes: Record<string, string>,
+  attributes: Record<string, string | null>,
   textNodeName: string
 ): unknown {
   if (Object.keys(attributes).length === 0) {
