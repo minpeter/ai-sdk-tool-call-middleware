@@ -14,7 +14,7 @@ export type ToolCallMiddlewareProviderOptions = {
     };
 
     // INTERNAL: Set by transform-handler. Used for internal propagation of tool-choice.
-    toolChoice?: { type: string };
+    toolChoice?: { type: string; toolName?: string };
     // INTERNAL: Set by transform-handler. Used for internal propagation of params.tools.
     originalTools?: Array<{
       name: string;

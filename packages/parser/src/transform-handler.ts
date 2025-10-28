@@ -160,7 +160,7 @@ function handleToolChoiceTool(
             }
           ).toolCallMiddleware) ||
           {}),
-        toolChoice: params.toolChoice,
+        ...(params.toolChoice ? { toolChoice: params.toolChoice } : {}),
       },
     },
   };
@@ -200,7 +200,7 @@ function handleToolChoiceRequired(
             }
           ).toolCallMiddleware) ||
           {}),
-        toolChoice: { type: "required" },
+        toolChoice: { type: "required" as const },
       },
     },
   };
