@@ -486,8 +486,7 @@ function popToken(tokens: Token[], state: ParseState): Token {
 
   if (!token) {
     // If we are past the end of the token array, return an EOF token
-    const lastLine =
-      tokens.length !== 0 ? (tokens.at(-1)?.line ?? 1) : 1;
+    const lastLine = tokens.length !== 0 ? (tokens.at(-1)?.line ?? 1) : 1;
     return { type: "eof", match: "", value: undefined, line: lastLine };
   }
 
