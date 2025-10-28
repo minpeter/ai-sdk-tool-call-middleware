@@ -1,7 +1,6 @@
 export * from "./debug";
 export { createDynamicIfThenElseSchema } from "./dynamic-tool-schema";
 export { getPotentialStartIndex } from "./get-potential-start-index";
-export { getTextBeforeLastToolCall } from "./get-text-before-last-tool-call";
 export * from "./on-error";
 export * from "./provider-options";
 export { escapeRegExp } from "./regex";
