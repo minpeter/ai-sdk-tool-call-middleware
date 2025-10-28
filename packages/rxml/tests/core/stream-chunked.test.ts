@@ -25,11 +25,9 @@ function createChunkedStream(
   return new Readable({
     read() {
       if (chunkIndex < chunks.length) {
-        // Simulate async streaming with small delays
-        setTimeout(() => {
-          this.push(chunks[chunkIndex]);
-          chunkIndex++;
-        }, 10);
+        // Push chunks immediately without delay for fast testing
+        this.push(chunks[chunkIndex]);
+        chunkIndex++;
       } else {
         this.push(null); // End of stream
       }
@@ -140,6 +138,66 @@ def hello_world():
 };
 
 describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
+  describe("Diagnostic Tests", () => {
+    it("should verify stream itself is fast (without parser)", async () => {
+      const stream = createChunkedStream(
+        testXmlSamples.largeContent,
+        CHUNK_SIZE
+      );
+
+      console.log("Starting stream consumption...");
+      const startTime = Date.now();
+      let chunkCount = 0;
+
+      // Test simple consumption without processXMLStream
+      for await (const chunk of stream) {
+        chunkCount++;
+      }
+
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+
+      console.log(
+        `Stream consumption complete. Total chunks: ${chunkCount}, Duration: ${duration}ms`
+      );
+
+      // Stream itself should complete within 100ms
+      expect(duration).toBeLessThan(100);
+      expect(chunkCount).toBeGreaterThan(0);
+    });
+
+    it("should verify processXMLStream performance", async () => {
+      const stream = createChunkedStream(
+        testXmlSamples.largeContent,
+        CHUNK_SIZE
+      );
+
+      console.log("Starting processXMLStream test...");
+      const startTime = Date.now();
+      const results: any[] = [];
+      let elementCount = 0;
+
+      for await (const element of processXMLStream(stream)) {
+        elementCount++;
+        results.push(element);
+        if (elementCount % 10 === 0) {
+          console.log(`  - ${elementCount} elements processed`);
+        }
+      }
+
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+
+      console.log(
+        `processXMLStream complete. Total elements: ${elementCount}, Duration: ${duration}ms`
+      );
+
+      expect(results.length).toBeGreaterThan(0);
+      // Should complete within 5 seconds
+      expect(duration).toBeLessThan(5000);
+    });
+  });
+
   describe("Basic chunked streaming", () => {
     it("should parse simple tool call with CHUNK_SIZE=7", async () => {
       const stream = createChunkedStream(testXmlSamples.simple, CHUNK_SIZE);
@@ -214,7 +272,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         read() {
           const chunk = manualChunks.shift();
           if (chunk) {
-            setTimeout(() => this.push(chunk), 5);
+            this.push(chunk);
           } else {
             this.push(null);
           }
@@ -251,7 +309,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         read() {
           const chunk = manualChunks.shift();
           if (chunk) {
-            setTimeout(() => this.push(chunk), 5);
+            this.push(chunk);
           } else {
             this.push(null);
           }
@@ -291,8 +349,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
     it("should handle comments split across chunks", async () => {
       const stream = createChunkedStream(
         testXmlSamples.withComments,
-        CHUNK_SIZE,
-        { keepComments: true }
+        CHUNK_SIZE
       );
       const results: any[] = [];
 

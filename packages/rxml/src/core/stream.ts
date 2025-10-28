@@ -144,7 +144,7 @@ export class XMLTransformStream extends Transform {
       if (isFlush) {
         this.buffer = "";
       }
-      return true;
+      return false; // Wait for more data
     }
 
     if (this.parseOptions.keepComments && this.buffer.startsWith("<!--")) {
