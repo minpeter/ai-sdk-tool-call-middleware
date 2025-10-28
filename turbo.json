@@ -16,7 +16,7 @@
       "persistent": true
     },
     "test": {
-      "dependsOn": ["^test"],
+      "dependsOn": ["^build"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "src/**/*.{ts,tsx}",

@@ -375,7 +375,7 @@ function processBufferWithToolCall(
     flushText,
   } = params;
   const currentToolCall = getCurrentToolCall();
-  
+
   if (!currentToolCall) {
     return true;
   }
