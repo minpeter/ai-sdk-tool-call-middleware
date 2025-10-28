@@ -3,6 +3,7 @@ import { parseFromStream, type RXMLNode } from "@ai-sdk-tool/rxml";
 
 const DEFAULT_CHUNK_SIZE = 12;
 const PUSH_DELAY_MS = 10;
+const STREAM_CHUNK_SIZE = 9;
 
 function createAsyncChunkedStream(
   text: string,
@@ -35,7 +36,6 @@ async function main() {
   </parameters>
 </tool_call>`;
 
-  const STREAM_CHUNK_SIZE = 9;
   const stream = createAsyncChunkedStream(xml, STREAM_CHUNK_SIZE);
   const nodes = await parseFromStream(stream);
 

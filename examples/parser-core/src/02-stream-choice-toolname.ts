@@ -3,6 +3,10 @@ import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
+const BASE_TEMPERATURE = 72;
+const TEMPERATURE_RANGE = 21;
+const TEMPERATURE_OFFSET = 10;
+
 // A provider with supportsStructuredOutputs: true is required. Investigating....
 // createOpenAICompatible cannot be used here.
 const friendli = createOpenAI({
@@ -24,18 +28,13 @@ async function main() {
         inputSchema: z.object({
           location: z.string().describe("The location to get the weather for"),
         }),
-        execute: ({ location }) => {
-          const BASE_TEMPERATURE = 72;
-          const TEMPERATURE_RANGE = 21;
-          const TEMPERATURE_OFFSET = 10;
-          return {
-            location,
-            temperature:
-              BASE_TEMPERATURE +
-              Math.floor(Math.random() * TEMPERATURE_RANGE) -
-              TEMPERATURE_OFFSET,
-          };
-        },
+        execute: ({ location }) => ({
+          location,
+          temperature:
+            BASE_TEMPERATURE +
+            Math.floor(Math.random() * TEMPERATURE_RANGE) -
+            TEMPERATURE_OFFSET,
+        }),
       },
     },
     toolChoice: { type: "tool", toolName: "weather" },

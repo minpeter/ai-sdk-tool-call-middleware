@@ -4,6 +4,7 @@ import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
 const MAX_STEPS = 3;
+const MAX_TEMPERATURE = 100;
 
 const ollama = createOpenAICompatible({
   name: "ollama",
@@ -27,7 +28,6 @@ async function main() {
         inputSchema: z.object({ city: z.string() }),
         execute: ({ city }) => {
           // Simulate a weather API call
-          const MAX_TEMPERATURE = 100;
           return {
             city,
             temperature: Math.floor(Math.random() * MAX_TEMPERATURE),
