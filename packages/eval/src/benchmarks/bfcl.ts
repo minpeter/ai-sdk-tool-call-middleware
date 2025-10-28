@@ -329,7 +329,11 @@ function createBfclBenchmark(
             const originalName =
               nameMap.get(sanitizedFromIndex as string) ?? sanitizedFromIndex;
             const extractedArgs =
-              call.args ?? call.arguments ?? call.input ?? call.params ?? call.parameters;
+              call.args ??
+              call.arguments ??
+              call.input ??
+              call.params ??
+              call.parameters;
             const parsedArgs = parseToolArgs(extractedArgs);
             return {
               ...call,
