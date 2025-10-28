@@ -7,7 +7,7 @@
         "noConsole": "off"
       },
       "style": {
-        "noMagicNumbers": "warn"
+        "noMagicNumbers": "off"
       },
       "performance": {
         "noBarrelFile": "off"
