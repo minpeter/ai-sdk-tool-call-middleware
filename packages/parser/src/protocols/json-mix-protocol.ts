@@ -25,7 +25,9 @@ function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
   processedElements: LanguageModelV2Content[],
-  options?: { onError?: (message: string, details: unknown) => void }
+  options?: {
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  }
 ) {
   try {
     const parsedToolCall = parseRJSON(toolCallJson) as {
@@ -63,7 +65,9 @@ type ParseContext = {
   text: string;
   currentIndex: number;
   processedElements: LanguageModelV2Content[];
-  options?: { onError?: (message: string, details: unknown) => void };
+  options?: {
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  };
 };
 
 function processMatchedToolCall(context: ParseContext): number {
@@ -96,7 +100,7 @@ type StreamState = {
 type StreamController = TransformStreamDefaultController<unknown>;
 
 type StreamOptions = {
-  onError?: (message: string, details: unknown) => void;
+  onError?: (message: string, metadata?: Record<string, unknown>) => void;
 };
 
 type TagProcessingContext = {
