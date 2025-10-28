@@ -18,7 +18,7 @@ describe("morphXmlProtocol parseGeneratedText error path via malformed XML", () 
     const text = "prefix <a><arg>1</arg><unclosed>tag</a> suffix";
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
     const texts = out
-      .filter(c => c.type === "text")
+      .filter((c) => c.type === "text")
       .map((t: any) => t.text)
       .join("");
     expect(texts).toContain("<a><arg>1</arg><unclosed>tag</a>");

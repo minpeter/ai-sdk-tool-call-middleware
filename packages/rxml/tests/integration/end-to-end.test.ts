@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import * as RXML from "@/index";
+import {
+  countTagOccurrences,
+  extractRawInner,
+  filter,
+  findFirstTopLevelRange,
+  parse,
+  parseWithoutSchema,
+  RXMLCoercionError,
+  RXMLDuplicateStringTagError,
+  RXMLParseError,
+  RXMLStringifyError,
+  simplify,
+  stringify,
+} from "@/index";
 
 import { schemaTestCases } from "../fixtures/test-data";
 
@@ -32,7 +45,7 @@ describe("robust-xml integration", () => {
         })
       );
 
-      const result = RXML.parse(xml, schema);
+      const result = parse(xml, schema);
       expect(result).toEqual({
         name: "get_weather",
         parameters: {
@@ -57,7 +70,7 @@ describe("robust-xml integration", () => {
 
       // Should not throw but handle gracefully
       expect(() => {
-        const result = RXML.parseWithoutSchema(malformedXml);
+        const result = parseWithoutSchema(malformedXml);
         expect(result).toBeDefined();
       }).not.toThrow();
     });
@@ -77,7 +90,7 @@ describe("robust-xml integration", () => {
         })
       );
 
-      const result = RXML.parse(xml, schema);
+      const result = parse(xml, schema);
       expect(result.message).toBe(
         "Hello <em>world</em>! This has <strong>HTML</strong> content."
       );
@@ -101,12 +114,10 @@ describe("robust-xml integration", () => {
       );
 
       // Should throw by default
-      expect(() => RXML.parse(xml, schema)).toThrow(
-        RXML.RXMLDuplicateStringTagError
-      );
+      expect(() => parse(xml, schema)).toThrow(RXMLDuplicateStringTagError);
 
       // Should handle gracefully when configured
-      const result = RXML.parse(xml, schema, {
+      const result = parse(xml, schema, {
         throwOnDuplicateStringTags: false,
       });
       expect(result.description).toBe("First description");
@@ -124,7 +135,7 @@ describe("robust-xml integration", () => {
         },
       };
 
-      const xml = RXML.stringify("tool_call", original);
+      const xml = stringify("tool_call", original);
       expect(xml).toContain("<tool_call>");
       expect(xml).toContain("<tool_name>get_weather</tool_name>");
       expect(xml).toContain("<location>New York</location>");
@@ -135,7 +146,7 @@ describe("robust-xml integration", () => {
       const testCases = Object.values(schemaTestCases);
 
       for (const testCase of testCases) {
-        const result = RXML.parse(testCase.xml, testCase.schema);
+        const result = parse(testCase.xml, testCase.schema);
         expect(result).toEqual(testCase.expected);
       }
     });
@@ -150,11 +161,11 @@ describe("robust-xml integration", () => {
       `;
 
       try {
-        RXML.parseWithoutSchema(invalidXml);
+        parseWithoutSchema(invalidXml);
         expect.fail("Should have thrown an error");
       } catch (error) {
-        expect(error).toBeInstanceOf(RXML.RXMLParseError);
-        const err = error as RXML.RXMLParseError;
+        expect(error).toBeInstanceOf(RXMLParseError);
+        const err = error as RXMLParseError;
         expect(err.message).toContain("Unexpected close tag");
         expect(err.line).toBeGreaterThan(0);
         expect(err.column).toBeGreaterThan(0);
@@ -172,7 +183,7 @@ describe("robust-xml integration", () => {
         </root>
       `;
 
-      const result = RXML.parseWithoutSchema(edgeCaseXml);
+      const result = parseWithoutSchema(edgeCaseXml);
       expect(result).toHaveLength(1);
 
       const root = result[0] as any;
@@ -192,7 +203,7 @@ describe("robust-xml integration", () => {
         (_, i) => `<item id="${i}">Content for item ${i}</item>`
       ).join("")}</root>`;
 
-      const result = RXML.parseWithoutSchema(largeXml);
+      const result = parseWithoutSchema(largeXml);
       expect(result).toHaveLength(1);
 
       const root = result[0] as any;
@@ -205,44 +216,45 @@ describe("robust-xml integration", () => {
   describe("compatibility with existing code", () => {
     it("maintains API compatibility", () => {
       // Test that all expected exports are available
-      expect(typeof RXML.parse).toBe("function");
-      expect(typeof RXML.stringify).toBe("function");
-      expect(typeof RXML.parseWithoutSchema).toBe("function");
-      expect(typeof RXML.simplify).toBe("function");
-      expect(typeof RXML.filter).toBe("function");
+      expect(typeof parse).toBe("function");
+      expect(typeof stringify).toBe("function");
+      expect(typeof parseWithoutSchema).toBe("function");
+      expect(typeof simplify).toBe("function");
+      expect(typeof filter).toBe("function");
 
       // Test error classes
-      expect(RXML.RXMLParseError).toBeDefined();
-      expect(RXML.RXMLDuplicateStringTagError).toBeDefined();
-      expect(RXML.RXMLCoercionError).toBeDefined();
-      expect(RXML.RXMLStringifyError).toBeDefined();
+      expect(RXMLParseError).toBeDefined();
+      expect(RXMLDuplicateStringTagError).toBeDefined();
+      expect(RXMLCoercionError).toBeDefined();
+      expect(RXMLStringifyError).toBeDefined();
 
       // Test utility functions
-      expect(typeof RXML.extractRawInner).toBe("function");
-      expect(typeof RXML.findFirstTopLevelRange).toBe("function");
-      expect(typeof RXML.countTagOccurrences).toBe("function");
+      expect(typeof extractRawInner).toBe("function");
+      expect(typeof findFirstTopLevelRange).toBe("function");
+      expect(typeof countTagOccurrences).toBe("function");
     });
 
     it("works with the existing test cases", () => {
       // Test case from the original robust-xml tests
-      const xml = `<location>San Francisco</location>`;
+      const xml = "<location>San Francisco</location>";
       const schema = z.toJSONSchema(
         z.object({
           location: z.string(),
         })
       );
-      const result = RXML.parse(xml, schema);
+      const result = parse(xml, schema);
       expect(result).toEqual({ location: "San Francisco" });
     });
 
     it("handles the item list normalization pattern", () => {
-      const xml = `<numbers><item> 1 </item><item>2</item><item>1e2</item></numbers>`;
+      const xml =
+        "<numbers><item> 1 </item><item>2</item><item>1e2</item></numbers>";
       const schema = z.toJSONSchema(
         z.object({
           numbers: z.array(z.number()),
         })
       );
-      const result = RXML.parse(xml, schema);
+      const result = parse(xml, schema);
       expect(result).toEqual({ numbers: [1, 2, 100] });
     });
 
@@ -253,7 +265,7 @@ describe("robust-xml integration", () => {
           obj: z.object({ name: z.string() }).passthrough(),
         })
       );
-      const result = RXML.parse(xml, schema);
+      const result = parse(xml, schema);
       expect(result).toEqual({
         obj: { name: { "#text": "John Doe", "@_attr": "x" } },
       });
@@ -282,7 +294,7 @@ describe("robust-xml integration", () => {
       );
 
       const startTime = Date.now();
-      const result = RXML.parse(mediumXml, schema);
+      const result = parse(mediumXml, schema);
       const endTime = Date.now();
 
       expect(endTime - startTime).toBeLessThan(1000); // Should complete within 1 second
@@ -297,22 +309,22 @@ describe("robust-xml integration", () => {
 
   describe("TXML feature compatibility", () => {
     it("supports CDATA sections like TXML", () => {
-      const xml = `<xml><![CDATA[some data]]></xml>`;
-      const result = RXML.parseWithoutSchema(xml);
+      const xml = "<xml><![CDATA[some data]]></xml>";
+      const result = parseWithoutSchema(xml);
       const xmlNode = result[0] as any;
       expect(xmlNode.children[0]).toBe("some data");
     });
 
     it("supports comments when enabled", () => {
-      const xml = `<test><!-- test --></test>`;
-      const result = RXML.parseWithoutSchema(xml, { keepComments: true });
+      const xml = "<test><!-- test --></test>";
+      const result = parseWithoutSchema(xml, { keepComments: true });
       const testNode = result[0] as any;
       expect(testNode.children).toContain("<!-- test -->");
     });
 
     it("supports processing instructions", () => {
       const xml = `<?xml version="1.0" encoding="UTF-8"?><root></root>`;
-      const result = RXML.parseWithoutSchema(xml);
+      const result = parseWithoutSchema(xml);
       expect(result[0]).toMatchObject({
         tagName: "?xml",
         attributes: {
@@ -324,8 +336,8 @@ describe("robust-xml integration", () => {
 
     it("supports simplify functionality", () => {
       const xml = `<test><cc>one</cc>test<cc f="test"><sub>3</sub>two</cc><dd></dd></test>`;
-      const parsed = RXML.parseWithoutSchema(xml);
-      const simplified = RXML.simplify(parsed);
+      const parsed = parseWithoutSchema(xml);
+      const simplified = simplify(parsed);
 
       expect(simplified).toMatchObject({
         test: {
@@ -336,11 +348,11 @@ describe("robust-xml integration", () => {
     });
 
     it("supports filter functionality", () => {
-      const xml = `<test><cc></cc><cc></cc></test>`;
-      const parsed = RXML.parseWithoutSchema(xml);
-      const filtered = RXML.filter(
+      const xml = "<test><cc></cc><cc></cc></test>";
+      const parsed = parseWithoutSchema(xml);
+      const filtered = filter(
         parsed,
-        element => element.tagName.toLowerCase() === "cc"
+        (element) => element.tagName.toLowerCase() === "cc"
       );
 
       expect(filtered).toHaveLength(2);

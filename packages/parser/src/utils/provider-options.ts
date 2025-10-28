@@ -1,4 +1,7 @@
-import { JSONSchema7, LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONSchema7,
+  LanguageModelV2FunctionTool,
+} from "@ai-sdk/provider";
 
 export type ToolCallMiddlewareProviderOptions = {
   toolCallMiddleware?: {
@@ -11,7 +14,7 @@ export type ToolCallMiddlewareProviderOptions = {
     };
 
     // INTERNAL: Set by transform-handler. Used for internal propagation of tool-choice.
-    toolChoice?: { type: string };
+    toolChoice?: { type: string; toolName?: string };
     // INTERNAL: Set by transform-handler. Used for internal propagation of params.tools.
     originalTools?: Array<{
       name: string;
@@ -29,7 +32,7 @@ export function encodeOriginalTools(
   tools: LanguageModelV2FunctionTool[] | undefined
 ): Array<{ name: string; inputSchema: string }> {
   return (
-    tools?.map(t => ({
+    tools?.map((t) => ({
       name: t.name,
       inputSchema: JSON.stringify(t.inputSchema),
     })) || []
@@ -44,16 +47,17 @@ export function decodeOriginalTools(
       }>
     | undefined
 ): LanguageModelV2FunctionTool[] {
-  const tools =
-    originalTools?.map(
-      t =>
-        ({
-          name: t.name,
-          inputSchema: JSON.parse(t.inputSchema) as JSONSchema7,
-        }) as LanguageModelV2FunctionTool
-    ) || [];
+  if (!originalTools) {
+    return [];
+  }
 
-  return tools;
+  return originalTools.map(
+    (t): LanguageModelV2FunctionTool => ({
+      type: "function",
+      name: t.name,
+      inputSchema: JSON.parse(t.inputSchema) as JSONSchema7,
+    })
+  );
 }
 
 export function extractToolNamesFromOriginalTools(
@@ -64,7 +68,7 @@ export function extractToolNamesFromOriginalTools(
       }>
     | undefined
 ): string[] {
-  return originalTools?.map(t => t.name) || [];
+  return originalTools?.map((t) => t.name) || [];
 }
 
 export function isToolChoiceActive(params: {

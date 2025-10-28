@@ -1,5 +1,5 @@
+import { Readable } from "node:stream";
 import { processXMLStream, type RXMLNode } from "@ai-sdk-tool/rxml";
-import { Readable } from "stream";
 
 function createChunkedStream(text: string, chunkSize = 8): Readable {
   let i = 0;
@@ -41,7 +41,7 @@ async function main() {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

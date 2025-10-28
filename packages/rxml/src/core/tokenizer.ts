@@ -27,76 +27,39 @@ export class XMLTokenizer {
   }
 
   /**
-   * Parse XML children recursively
+   * Handle closing tag parsing
    */
-  public parseChildren(tagName?: string): (RXMLNode | string)[] {
-    const children: (RXMLNode | string)[] = [];
-    let consumedToEnd = false;
+  private handleClosingTag(
+    tagName: string | undefined,
+    children: (RXMLNode | string)[]
+  ): (RXMLNode | string)[] | null {
+    const closeStart = this.pos + 2;
+    this.pos = this.xmlString.indexOf(">", this.pos);
 
-    while (this.xmlString[this.pos]) {
-      if (this.xmlString.charCodeAt(this.pos) === CharCodes.OPEN_BRACKET) {
-        if (this.xmlString.charCodeAt(this.pos + 1) === CharCodes.SLASH) {
-          // Closing tag
-          const closeStart = this.pos + 2;
-          this.pos = this.xmlString.indexOf(">", this.pos);
-
-          const closeTag = this.xmlString.substring(closeStart, this.pos);
-          if (tagName && closeTag.trim() !== tagName) {
-            // Mismatched closing tag - throw error with context
-            const { line, column } = getLineColumn(this.xmlString, this.pos);
-            throw new RXMLParseError(
-              `Unexpected close tag at line ${line}, column ${column}. Expected </${tagName}>, found </${closeTag}>`,
-              undefined,
-              line,
-              column
-            );
-          }
-
-          if (this.pos !== -1) this.pos += 1;
-          return children;
-        } else if (
-          this.xmlString.charCodeAt(this.pos + 1) === CharCodes.EXCLAMATION
-        ) {
-          // Comment, CDATA, or DOCTYPE
-          const prevPos = this.pos;
-          this.handleSpecialContent(children);
-          // Check if handleSpecialContent consumed everything to the end
-          if (
-            this.pos >= this.xmlString.length &&
-            prevPos < this.xmlString.length
-          ) {
-            consumedToEnd = true;
-          }
-        } else {
-          // Regular element
-          const node = this.parseNode();
-          children.push(node);
-
-          // Handle processing instructions differently
-          if (node.tagName[0] === "?") {
-            children.push(...node.children);
-            node.children = [];
-          }
-        }
-      } else {
-        // Text content
-        const text = this.parseText();
-        if (this.options.keepWhitespace) {
-          if (text.length > 0) {
-            children.push(text);
-          }
-        } else {
-          const trimmed = text.trim();
-          if (trimmed.length > 0) {
-            children.push(trimmed);
-          }
-        }
-        this.pos++;
-      }
+    const closeTag = this.xmlString.substring(closeStart, this.pos);
+    if (tagName && closeTag.trim() !== tagName) {
+      const { line, column } = getLineColumn(this.xmlString, this.pos);
+      throw new RXMLParseError(
+        `Unexpected close tag at line ${line}, column ${column}. Expected </${tagName}>, found </${closeTag}>`,
+        undefined,
+        line,
+        column
+      );
     }
 
-    // Check for unclosed tags - if we've reached the end and still have a tagName, it's unclosed
-    // But don't throw if special content (like unclosed CDATA) consumed everything to the end
+    if (this.pos !== -1) {
+      this.pos += 1;
+    }
+    return children;
+  }
+
+  /**
+   * Check if we're at end of string and should throw unclosed tag error
+   */
+  private checkUnclosedTag(
+    tagName: string | undefined,
+    consumedToEnd: boolean
+  ): void {
     if (tagName && this.pos >= this.xmlString.length && !consumedToEnd) {
       const { line, column } = getLineColumn(this.xmlString, this.pos - 1);
       throw new RXMLParseError(
@@ -106,97 +69,269 @@ export class XMLTokenizer {
         column
       );
     }
+  }
+
+  /**
+   * Process special content (comments, CDATA, DOCTYPE) and track if we consumed to end
+   */
+  private processSpecialContent(children: (RXMLNode | string)[]): boolean {
+    const prevPos = this.pos;
+    this.handleSpecialContent(children);
+    return this.pos >= this.xmlString.length && prevPos < this.xmlString.length;
+  }
+
+  /**
+   * Handle text content parsing
+   */
+  private handleTextContent(children: (RXMLNode | string)[]): void {
+    const text = this.parseText();
+    if (this.options.keepWhitespace) {
+      if (text.length > 0) {
+        children.push(text);
+      }
+    } else {
+      const trimmed = text.trim();
+      if (trimmed.length > 0) {
+        children.push(trimmed);
+      }
+    }
+    this.pos++;
+  }
+
+  /**
+   * Handle regular element parsing
+   */
+  private handleRegularElement(children: (RXMLNode | string)[]): void {
+    const node = this.parseNode();
+    children.push(node);
+
+    // Handle processing instructions differently
+    if (node.tagName[0] === "?") {
+      children.push(...node.children);
+      node.children = [];
+    }
+  }
+
+  /**
+   * Process a single child element based on the current character
+   */
+  private processSingleChild(
+    children: (RXMLNode | string)[],
+    tagName: string | undefined
+  ): { shouldReturn: boolean; consumedToEnd: boolean } {
+    if (this.xmlString.charCodeAt(this.pos) !== CharCodes.OPEN_BRACKET) {
+      // Text content
+      this.handleTextContent(children);
+      return { shouldReturn: false, consumedToEnd: false };
+    }
+
+    const nextChar = this.xmlString.charCodeAt(this.pos + 1);
+
+    if (nextChar === CharCodes.SLASH) {
+      // Closing tag
+      const result = this.handleClosingTag(tagName, children);
+      if (result !== null) {
+        return { shouldReturn: true, consumedToEnd: false };
+      }
+      return { shouldReturn: false, consumedToEnd: false };
+    }
+
+    if (nextChar === CharCodes.EXCLAMATION) {
+      // Comment, CDATA, or DOCTYPE
+      const wasConsumedToEnd = this.processSpecialContent(children);
+      return { shouldReturn: false, consumedToEnd: wasConsumedToEnd };
+    }
+
+    // Regular element
+    this.handleRegularElement(children);
+    return { shouldReturn: false, consumedToEnd: false };
+  }
+
+  /**
+   * Parse XML children recursively
+   */
+  parseChildren(tagName?: string): (RXMLNode | string)[] {
+    const children: (RXMLNode | string)[] = [];
+    let consumedToEnd = false;
+
+    while (this.xmlString[this.pos]) {
+      const result = this.processSingleChild(children, tagName);
+      if (result.shouldReturn) {
+        return children;
+      }
+      if (result.consumedToEnd) {
+        consumedToEnd = true;
+      }
+    }
+
+    // Check for unclosed tags
+    this.checkUnclosedTag(tagName, consumedToEnd);
 
     return children;
   }
 
   /**
-   * Parse a single XML node
+   * Check if character is whitespace
    */
-  public parseNode(): RXMLNode {
-    this.pos++; // Skip opening <
+  private isWhitespace(code: number): boolean {
+    return (
+      code === CharCodes.SPACE ||
+      code === CharCodes.TAB ||
+      code === CharCodes.NEWLINE ||
+      code === CharCodes.CARRIAGE_RETURN
+    );
+  }
 
-    const { name: tagName, newPos } = parseName(this.xmlString, this.pos);
-    this.pos = newPos;
+  /**
+   * Skip whitespace characters
+   */
+  private skipWhitespace(): void {
+    while (
+      this.pos < this.xmlString.length &&
+      this.isWhitespace(this.xmlString.charCodeAt(this.pos))
+    ) {
+      this.pos++;
+    }
+  }
 
+  /**
+   * Parse attribute value
+   */
+  private parseAttributeValue(): string | null {
+    if (this.pos >= this.xmlString.length || this.xmlString[this.pos] !== "=") {
+      return null;
+    }
+
+    this.pos++; // Skip =
+    this.skipWhitespace();
+
+    const code = this.xmlString.charCodeAt(this.pos);
+    if (code === CharCodes.SINGLE_QUOTE || code === CharCodes.DOUBLE_QUOTE) {
+      const { value: parsedValue, newPos: valueEnd } = parseString(
+        this.xmlString,
+        this.pos
+      );
+      this.pos = valueEnd;
+      return parsedValue;
+    }
+
+    return null;
+  }
+
+  /**
+   * Parse single attribute
+   */
+  private parseAttribute(attributes: Record<string, string | null>): void {
+    const { name: attrName, newPos: nameEnd } = parseName(
+      this.xmlString,
+      this.pos
+    );
+    this.pos = nameEnd;
+    this.skipWhitespace();
+
+    const value = this.parseAttributeValue();
+    attributes[attrName] = value;
+  }
+
+  /**
+   * Parse all attributes
+   */
+  private parseAttributes(): Record<string, string | null> {
     const attributes: Record<string, string | null> = {};
-    let children: (RXMLNode | string)[] = [];
 
-    // Parse attributes
     while (
       this.xmlString.charCodeAt(this.pos) !== CharCodes.CLOSE_BRACKET &&
       this.xmlString[this.pos]
     ) {
       const c = this.xmlString.charCodeAt(this.pos);
 
-      // Skip whitespace
-      if (
-        c === CharCodes.SPACE ||
-        c === CharCodes.TAB ||
-        c === CharCodes.NEWLINE ||
-        c === CharCodes.CARRIAGE_RETURN
-      ) {
+      if (this.isWhitespace(c)) {
         this.pos++;
         continue;
       }
 
       if ((c > 64 && c < 91) || (c > 96 && c < 123)) {
-        // Attribute name
-        const { name: attrName, newPos: nameEnd } = parseName(
-          this.xmlString,
-          this.pos
-        );
-        this.pos = nameEnd;
-
-        // Skip whitespace before =
-        while (
-          this.pos < this.xmlString.length &&
-          (this.xmlString.charCodeAt(this.pos) === CharCodes.SPACE ||
-            this.xmlString.charCodeAt(this.pos) === CharCodes.TAB ||
-            this.xmlString.charCodeAt(this.pos) === CharCodes.NEWLINE ||
-            this.xmlString.charCodeAt(this.pos) === CharCodes.CARRIAGE_RETURN)
-        ) {
-          this.pos++;
-        }
-
-        let value: string | null = null;
-        if (
-          this.pos < this.xmlString.length &&
-          this.xmlString[this.pos] === "="
-        ) {
-          this.pos++; // Skip =
-
-          // Skip whitespace after =
-          while (
-            this.pos < this.xmlString.length &&
-            (this.xmlString.charCodeAt(this.pos) === CharCodes.SPACE ||
-              this.xmlString.charCodeAt(this.pos) === CharCodes.TAB ||
-              this.xmlString.charCodeAt(this.pos) === CharCodes.NEWLINE ||
-              this.xmlString.charCodeAt(this.pos) === CharCodes.CARRIAGE_RETURN)
-          ) {
-            this.pos++;
-          }
-
-          const code = this.xmlString.charCodeAt(this.pos);
-          if (
-            code === CharCodes.SINGLE_QUOTE ||
-            code === CharCodes.DOUBLE_QUOTE
-          ) {
-            const { value: parsedValue, newPos: valueEnd } = parseString(
-              this.xmlString,
-              this.pos
-            );
-            value = parsedValue;
-            this.pos = valueEnd;
-          }
-        }
-
-        attributes[attrName] = value;
+        this.parseAttribute(attributes);
       } else {
-        // Unknown character, skip it
         this.pos++;
       }
     }
+
+    return attributes;
+  }
+
+  /**
+   * Parse special tag content (script, style)
+   */
+  private parseSpecialTagContent(
+    _tagName: string,
+    closingTag: string
+  ): (RXMLNode | string)[] {
+    const start = this.pos + 1;
+    this.pos = this.xmlString.indexOf(closingTag, this.pos);
+
+    if (this.pos === -1) {
+      const children = [this.xmlString.slice(start)];
+      this.pos = this.xmlString.length;
+      return children;
+    }
+
+    const children = [this.xmlString.slice(start, this.pos)];
+    this.pos += closingTag.length;
+    return children;
+  }
+
+  /**
+   * Parse node children based on tag type
+   */
+  private parseNodeChildren(
+    tagName: string,
+    isSelfClosing: boolean
+  ): (RXMLNode | string)[] {
+    if (isSelfClosing) {
+      this.pos++;
+      return [];
+    }
+
+    if (tagName === "script") {
+      return this.parseSpecialTagContent(tagName, "</script>");
+    }
+
+    if (tagName === "style") {
+      return this.parseSpecialTagContent(tagName, "</style>");
+    }
+
+    if (this.options.noChildNodes?.indexOf(tagName) === -1) {
+      this.pos++;
+      return this.parseChildren(tagName);
+    }
+
+    // Tag is in noChildNodes
+    this.pos++;
+    if ((DEFAULT_NO_CHILD_NODES as readonly string[]).includes(tagName)) {
+      return [];
+    }
+
+    // Custom noChildNodes tags might have closing tags to skip
+    const closingTag = `</${tagName}>`;
+    const closingPos = this.xmlString.indexOf(closingTag, this.pos);
+    if (closingPos !== -1) {
+      this.pos = closingPos + closingTag.length;
+    }
+
+    return [];
+  }
+
+  /**
+   * Parse a single XML node
+   */
+  parseNode(): RXMLNode {
+    this.pos++; // Skip opening <
+
+    const { name: tagName, newPos } = parseName(this.xmlString, this.pos);
+    this.pos = newPos;
+
+    const attributes = this.parseAttributes();
 
     // Check for self-closing tag or processing instruction
     const isSelfClosing =
@@ -204,54 +339,7 @@ export class XMLTokenizer {
       (tagName[0] === "?" &&
         this.xmlString.charCodeAt(this.pos - 1) === CharCodes.QUESTION);
 
-    if (!isSelfClosing) {
-      if (tagName === "script") {
-        // Special handling for script tags
-        const start = this.pos + 1;
-        this.pos = this.xmlString.indexOf("</script>", this.pos);
-        if (this.pos === -1) {
-          // Unclosed script tag - extract content to end
-          children = [this.xmlString.slice(start)];
-          this.pos = this.xmlString.length;
-        } else {
-          children = [this.xmlString.slice(start, this.pos)];
-          this.pos += 9;
-        }
-      } else if (tagName === "style") {
-        // Special handling for style tags
-        const start = this.pos + 1;
-        this.pos = this.xmlString.indexOf("</style>", this.pos);
-        if (this.pos === -1) {
-          // Unclosed style tag - extract content to end
-          children = [this.xmlString.slice(start)];
-          this.pos = this.xmlString.length;
-        } else {
-          children = [this.xmlString.slice(start, this.pos)];
-          this.pos += 8;
-        }
-      } else if (this.options.noChildNodes?.indexOf(tagName) === -1) {
-        // Parse children for non-self-closing tags
-        this.pos++;
-        children = this.parseChildren(tagName);
-      } else {
-        // Tag is in noChildNodes - handle based on whether it's a default HTML self-closing tag
-        this.pos++;
-        if ((DEFAULT_NO_CHILD_NODES as readonly string[]).includes(tagName)) {
-          // HTML self-closing tags don't have closing tags
-          // Position is already correct
-        } else {
-          // Custom noChildNodes tags might have closing tags to skip
-          const closingTag = `</${tagName}>`;
-          const closingPos = this.xmlString.indexOf(closingTag, this.pos);
-          if (closingPos !== -1) {
-            this.pos = closingPos + closingTag.length;
-          }
-          // If no closing tag found, leave position as is
-        }
-      }
-    } else {
-      this.pos++;
-    }
+    const children = this.parseNodeChildren(tagName, isSelfClosing);
 
     return { tagName, attributes, children };
   }
@@ -367,14 +455,14 @@ export class XMLTokenizer {
   /**
    * Get current position
    */
-  public getPosition(): number {
+  getPosition(): number {
     return this.pos;
   }
 
   /**
    * Set position
    */
-  public setPosition(pos: number): void {
+  setPosition(pos: number): void {
     this.pos = pos;
   }
 }

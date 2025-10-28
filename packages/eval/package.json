@@ -24,21 +24,18 @@
     "dev": "tsup --watch",
     "build": "tsup --clean",
     "prepack": "pnpm run build",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx",
-    "lint:fix": "eslint src --ext .ts,.tsx --fix",
-    "test:e2e": "tsup src/run-test.ts --format esm --clean --out-dir dist --no-config && node dist/run-test.js",
-    "test": "pnpm run test:e2e"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "tsup src/run-test.ts --format esm --clean --out-dir dist --no-config && node dist/run-test.js"
   },
   "dependencies": {
     "@ai-sdk/provider": "2.0.0",
     "ajv": "^8.17.1",
-    "zod": "^4.1.5"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@types/node": "^24.3.0",
+    "@types/node": "^24.9.1",
     "tsup": "^8.5.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "ai": ">=3.0.0"

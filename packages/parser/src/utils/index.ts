@@ -1,15 +1,14 @@
-import { createDynamicIfThenElseSchema } from "./dynamic-tool-schema";
-import { getPotentialStartIndex } from "./get-potential-start-index";
-import { escapeRegExp } from "./regex";
-import * as RJSON from "./robust-json";
 export * from "./debug";
+export { createDynamicIfThenElseSchema } from "./dynamic-tool-schema";
+export { getPotentialStartIndex } from "./get-potential-start-index";
 export * from "./on-error";
 export * from "./provider-options";
-export * from "./type-guards";
-
+export { escapeRegExp } from "./regex";
+export type { ParseOptions as RJSONParseOptions } from "./robust-json";
+export * as RJSON from "./robust-json";
 export {
-  createDynamicIfThenElseSchema,
-  escapeRegExp,
-  getPotentialStartIndex,
-  RJSON,
-};
+  parse as parseRJSON,
+  stringify as stringifyRJSON,
+  transform as transformRJSON,
+} from "./robust-json";
+export * from "./type-guards";

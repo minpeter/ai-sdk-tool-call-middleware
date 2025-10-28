@@ -1,7 +1,14 @@
+import { Readable } from "node:stream";
 import { parseFromStream, type RXMLNode } from "@ai-sdk-tool/rxml";
-import { Readable } from "stream";
 
-function createAsyncChunkedStream(text: string, chunkSize = 12): Readable {
+const DEFAULT_CHUNK_SIZE = 12;
+const PUSH_DELAY_MS = 10;
+const STREAM_CHUNK_SIZE = 9;
+
+function createAsyncChunkedStream(
+  text: string,
+  chunkSize = DEFAULT_CHUNK_SIZE
+): Readable {
   let i = 0;
   return new Readable({
     read() {
@@ -11,7 +18,7 @@ function createAsyncChunkedStream(text: string, chunkSize = 12): Readable {
       }
       const next = text.slice(i, i + chunkSize);
       i += chunkSize;
-      setTimeout(() => this.push(next), 10);
+      setTimeout(() => this.push(next), PUSH_DELAY_MS);
     },
   });
 }
@@ -29,7 +36,7 @@ async function main() {
   </parameters>
 </tool_call>`;
 
-  const stream = createAsyncChunkedStream(xml, 9);
+  const stream = createAsyncChunkedStream(xml, STREAM_CHUNK_SIZE);
   const nodes = await parseFromStream(stream);
 
   console.log("Collected", nodes.length, "nodes");
@@ -43,7 +50,7 @@ async function main() {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

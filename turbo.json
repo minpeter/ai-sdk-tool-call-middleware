@@ -7,22 +7,16 @@
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": ["dist/**"]
     },
-    "lint": {
-      "dependsOn": ["^lint"]
-    },
-    "lint:fix": {
-      "dependsOn": ["^lint:fix"]
-    },
-    "check-types": {
-      "dependsOn": ["^build", "build", "^check-types"],
-      "inputs": ["$TURBO_DEFAULT$", "dist/**"]
-    },
     "dev": {
       "cache": false,
       "persistent": true
     },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "dist/**"]
+    },
     "test": {
-      "dependsOn": ["^test"],
+      "dependsOn": ["^build"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "src/**/*.{ts,tsx}",
@@ -30,9 +24,6 @@
         "vitest.config.*"
       ],
       "outputs": []
-    },
-    "test:watch": {
-      "dependsOn": ["^test:watch"]
     }
   }
 }

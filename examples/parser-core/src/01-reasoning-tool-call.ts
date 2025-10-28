@@ -8,6 +8,10 @@ import {
 } from "ai";
 import { z } from "zod";
 
+// Constants
+const MAX_STEPS = 4;
+const MAX_TEMPERATURE = 100;
+
 const friendli = createOpenAICompatible({
   name: "friendli",
   apiKey: process.env.FRIENDLI_TOKEN,
@@ -28,16 +32,16 @@ async function main() {
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
-    stopWhen: stepCountIs(4),
+    stopWhen: stepCountIs(MAX_STEPS),
     tools: {
       get_weather: {
         description:
           "Get the weather for a given city. " +
           "Example cities: 'New York', 'Los Angeles', 'Paris'.",
         inputSchema: z.object({ city: z.string() }),
-        execute: async ({ city }) => {
+        execute: ({ city }) => {
           // Simulate a weather API call
-          const temperature = Math.floor(Math.random() * 100);
+          const temperature = Math.floor(Math.random() * MAX_TEMPERATURE);
           return {
             city,
             temperature,
@@ -46,14 +50,15 @@ async function main() {
         },
       },
     },
-    onStepFinish: step => {
+    onStepFinish: (step) => {
       console.log({
         text: step.text,
         reasoning: step.reasoning,
         toolCalls: step.toolCalls.map(
-          call => `name: ${call.toolName}, input: ${JSON.stringify(call.input)}`
+          (call) =>
+            `name: ${call.toolName}, input: ${JSON.stringify(call.input)}`
         ),
-        toolResults: step.toolResults.map(result =>
+        toolResults: step.toolResults.map((result) =>
           JSON.stringify(result.output)
         ),
       });

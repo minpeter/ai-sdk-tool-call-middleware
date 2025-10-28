@@ -7,17 +7,49 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import {
   type ModelMessage,
+  type StreamTextResult,
   stepCountIs,
   streamText,
   wrapLanguageModel,
 } from "ai";
 import { z } from "zod";
 
+// Constants
+const MAX_TOOL_CALL_STEPS = 6;
+const EMPTY_STRING_LENGTH = 0;
+const EXIT_COMMANDS = ["exit", "quit"] as const;
+
 const friendli = createOpenAICompatible({
   name: "friendli",
   apiKey: process.env.FRIENDLI_TOKEN,
   baseURL: "https://api.friendli.ai/serverless/v1",
 });
+
+async function processStreamResult(
+  // biome-ignore lint/suspicious/noExplicitAny: Example code needs to handle any tool set
+  result: StreamTextResult<any, any>,
+  messages: ModelMessage[]
+): Promise<void> {
+  let assistantText = "";
+  process.stdout.write("Assistant > ");
+  for await (const part of result.fullStream) {
+    if (part.type === "text-delta") {
+      assistantText += part.text;
+      process.stdout.write(part.text);
+    } else if (part.type === "tool-result") {
+      // Log tool events succinctly
+      console.log(
+        `\n[tool-result] ${part.toolName} -> ${typeof part.output === "string" ? part.output : JSON.stringify(part.output)}\n`
+      );
+      process.stdout.write("Assistant > ");
+    }
+  }
+  process.stdout.write("\n\n");
+
+  if (assistantText.trim().length > EMPTY_STRING_LENGTH) {
+    messages.push({ role: "assistant", content: assistantText });
+  }
+}
 
 const file_write = {
   description:
@@ -79,8 +111,16 @@ async function main() {
 
   while (true) {
     const user = (await rl.question("You > ")).trim();
-    if (user.toLowerCase() === "exit" || user.toLowerCase() === "quit") break;
-    if (user.length === 0) continue;
+    if (
+      EXIT_COMMANDS.includes(
+        user.toLowerCase() as (typeof EXIT_COMMANDS)[number]
+      )
+    ) {
+      break;
+    }
+    if (user.length === EMPTY_STRING_LENGTH) {
+      continue;
+    }
     messages.push({ role: "user", content: user });
 
     const result = streamText({
@@ -94,36 +134,18 @@ async function main() {
       temperature: 0.0,
       messages,
       // Allow a few tool-call iterations per turn
-      stopWhen: stepCountIs(6),
+      stopWhen: stepCountIs(MAX_TOOL_CALL_STEPS),
       tools: { file_write },
     });
 
-    let assistantText = "";
-    process.stdout.write("Assistant > ");
-    for await (const part of result.fullStream) {
-      if (part.type === "text-delta") {
-        assistantText += part.text;
-        process.stdout.write(part.text);
-      } else if (part.type === "tool-result") {
-        // Log tool events succinctly
-        console.log(
-          `\n[tool-result] ${part.toolName} -> ${typeof part.output === "string" ? part.output : JSON.stringify(part.output)}\n`
-        );
-        process.stdout.write("Assistant > ");
-      }
-    }
-    process.stdout.write("\n\n");
-
-    if (assistantText.trim().length > 0) {
-      messages.push({ role: "assistant", content: assistantText });
-    }
+    await processStreamResult(result, messages);
   }
 
   rl.close();
   console.log("Goodbye!");
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

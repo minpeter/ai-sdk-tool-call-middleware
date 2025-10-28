@@ -1,7 +1,10 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
-import { stepCountIs, streamText, wrapLanguageModel } from "ai";
+import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
+
+const MAX_STEPS = 3;
+const MAX_TEMPERATURE = 100;
 
 const ollama = createOpenAICompatible({
   name: "ollama",
@@ -10,43 +13,42 @@ const ollama = createOpenAICompatible({
 });
 
 async function main() {
-  const result = streamText({
+  await generateText({
     model: wrapLanguageModel({
       model: ollama("phi-4"),
       middleware: morphXmlToolMiddleware,
     }),
     prompt: "What is the weather in New York and Los Angeles?",
-    stopWhen: stepCountIs(3),
+    stopWhen: stepCountIs(MAX_STEPS),
     tools: {
       get_weather: {
         description:
           "Get the weather for a given city. " +
           "Example cities: 'New York', 'Los Angeles', 'Paris'.",
         inputSchema: z.object({ city: z.string() }),
-        execute: async ({ city }) => {
+        execute: ({ city }) => {
           // Simulate a weather API call
           return {
             city,
-            temperature: Math.floor(Math.random() * 100),
+            temperature: Math.floor(Math.random() * MAX_TEMPERATURE),
             condition: "sunny",
           };
         },
       },
     },
-  });
-
-  for await (const part of result.fullStream) {
-    if (part.type === "text-delta") {
-      process.stdout.write(part.text);
-    } else if (part.type === "tool-result") {
+    onStepFinish: (step) => {
       console.log({
-        name: part.toolName,
-        input: part.input,
-        output: part.output,
+        text: step.text,
+        toolCalls: step.toolCalls.map(
+          (call) =>
+            `name: ${call.toolName}, input: ${JSON.stringify(call.input)}`
+        ),
+        toolResults: step.toolResults.map((result) =>
+          JSON.stringify(result.output)
+        ),
       });
-    }
-  }
-  console.log("\n\n<Complete>");
+    },
+  });
 }
 
 main().catch(console.error);

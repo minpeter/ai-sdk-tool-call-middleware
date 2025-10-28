@@ -32,7 +32,10 @@ describe("createToolMiddleware branches", () => {
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"name":"n","arguments":{}}' }],
     });
-    const result = await mw.wrapGenerate!({
+    if (!mw.wrapGenerate) {
+      throw new Error("wrapGenerate is not defined");
+    }
+    const result = await mw.wrapGenerate({
       doGenerate,
       params: {
         prompt: [],
@@ -67,7 +70,10 @@ describe("createToolMiddleware branches", () => {
 
     (toolChoiceStream as unknown as Mock).mockResolvedValueOnce(expected);
 
-    const result = await mw.wrapStream!({
+    if (!mw.wrapStream) {
+      throw new Error("wrapStream is not defined");
+    }
+    const result = await mw.wrapStream({
       doStream: vi.fn(),
       doGenerate,
       params: {
@@ -103,7 +109,7 @@ describe("createToolMiddleware branches", () => {
 
     (toolChoiceStream as unknown as Mock).mockResolvedValueOnce(expected);
 
-    const result = await mw.wrapStream!({
+    const result = await mw.wrapStream?.({
       doStream: vi.fn(),
       doGenerate,
       params: {

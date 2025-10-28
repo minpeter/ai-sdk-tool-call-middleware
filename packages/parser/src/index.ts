@@ -64,14 +64,9 @@ Available functions are listed inside <tools></tools>.
   },
 });
 
-export {
-  createToolMiddleware,
-  gemmaToolMiddleware,
-  hermesToolMiddleware,
-  jsonMixProtocol,
-  morphXmlProtocol,
-  morphXmlToolMiddleware,
-};
+export { jsonMixProtocol, morphXmlProtocol } from "./protocols";
+export { createToolMiddleware } from "./tool-call-middleware";
+export { gemmaToolMiddleware, hermesToolMiddleware, morphXmlToolMiddleware };
 
 // Export utilities
 export * from "./utils";

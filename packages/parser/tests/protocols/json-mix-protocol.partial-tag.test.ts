@@ -10,7 +10,9 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];
   return (async () => {
-    for await (const c of stream) out.push(c);
+    for await (const c of stream) {
+      out.push(c);
+    }
     return out;
   })();
 }
@@ -33,11 +35,11 @@ describe("jsonMixProtocol partial tag handling", () => {
     });
     const out = await collect(rs.pipeThrough(transformer));
     const text = out
-      .filter(c => c.type === "text-delta")
-      .map(c => (c as any).delta)
+      .filter((c) => c.type === "text-delta")
+      .map((c) => (c as any).delta)
       .join("");
     expect(text).toContain("before <tool_c");
     // No tool-call should be emitted
-    expect(out.some(c => c.type === "tool-call")).toBe(false);
+    expect(out.some((c) => c.type === "tool-call")).toBe(false);
   });
 });

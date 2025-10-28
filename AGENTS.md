@@ -8,13 +8,12 @@ This is a monorepo managed by pnpm workspaces and Turborepo:
 
 - `pnpm build` - Build all packages in parallel
 - `pnpm test` - Run all tests in parallel
-- `pnpm test:watch` - Run tests in watch mode
 - `pnpm dev` - Start development mode (watch builds)
 - `pnpm lint` - Lint all packages
 - `pnpm lint:fix` - Fix linting issues and format code
 - `pnpm fmt` - Check code formatting
 - `pnpm fmt:fix` - Fix formatting and linting issues
-- `pnpm check-types` - Type-check all packages
+- `pnpm typecheck` - Type-check all packages
 
 For single package development, run commands from within the package directory:
 

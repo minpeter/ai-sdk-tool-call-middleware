@@ -1,5 +1,4 @@
 // Core evaluation function
-export { evaluate } from "./evaluate";
 
 // Built-in benchmarks
 export {
@@ -12,6 +11,7 @@ export {
   jsonGenerationBenchmark,
   jsonGenerationSchemaOnlyBenchmark,
 } from "./benchmarks/json-generation";
+export { evaluate } from "./evaluate";
 
 // Core interfaces for custom benchmarks
 export type {

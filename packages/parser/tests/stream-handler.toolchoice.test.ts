@@ -21,7 +21,9 @@ describe("toolChoiceStream", () => {
     });
 
     const chunks: LanguageModelV2StreamPart[] = [];
-    for await (const chunk of stream) chunks.push(chunk);
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
 
     expect(chunks[0]).toMatchObject({
       type: "tool-call",
@@ -45,7 +47,9 @@ describe("toolChoiceStream", () => {
 
     const { stream } = await toolChoiceStream({ doGenerate });
     const chunks: LanguageModelV2StreamPart[] = [];
-    for await (const chunk of stream) chunks.push(chunk);
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
 
     expect(chunks[0]).toMatchObject({
       type: "tool-call",
@@ -61,7 +65,9 @@ describe("toolChoiceStream", () => {
 
     const { stream } = await toolChoiceStream({ doGenerate });
     const chunks: LanguageModelV2StreamPart[] = [];
-    for await (const chunk of stream) chunks.push(chunk);
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
 
     expect(chunks[0]).toMatchObject({
       type: "tool-call",

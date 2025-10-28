@@ -10,7 +10,9 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];
   return (async () => {
-    for await (const c of stream) out.push(c);
+    for await (const c of stream) {
+      out.push(c);
+    }
     return out;
   })();
 }
@@ -38,18 +40,18 @@ describe("dummyProtocol streaming behavior", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
-    const starts = out.filter(c => c.type === "text-start");
-    const deltas = out.filter(c => c.type === "text-delta");
-    const ends = out.filter(c => c.type === "text-end");
+    const starts = out.filter((c) => c.type === "text-start");
+    const deltas = out.filter((c) => c.type === "text-delta");
+    const ends = out.filter((c) => c.type === "text-end");
     expect(starts.length).toBe(1);
     expect(deltas.map((d: any) => d.delta).join("")).toBe("hello world");
     expect(ends.length).toBe(1);
     // tool-call and finish should pass through after text-end
-    const afterEndIndex = out.findIndex(c => c.type === "text-end");
-    expect(out.slice(afterEndIndex + 1).some(c => c.type === "tool-call")).toBe(
-      true
-    );
-    expect(out[out.length - 1]).toMatchObject({ type: "finish" });
+    const afterEndIndex = out.findIndex((c) => c.type === "text-end");
+    expect(
+      out.slice(afterEndIndex + 1).some((c) => c.type === "tool-call")
+    ).toBe(true);
+    expect(out.at(-1)).toMatchObject({ type: "finish" });
   });
 
   it("flush emits text-end when stream closes with pending text", async () => {
@@ -68,10 +70,10 @@ describe("dummyProtocol streaming behavior", () => {
     });
     const out = await collect(rs.pipeThrough(transformer));
     const text = out
-      .filter(c => c.type === "text-delta")
+      .filter((c) => c.type === "text-delta")
       .map((d: any) => d.delta)
       .join("");
     expect(text).toBe("partial");
-    expect(out.some(c => c.type === "text-end")).toBe(true);
+    expect(out.some((c) => c.type === "text-end")).toBe(true);
   });
 });

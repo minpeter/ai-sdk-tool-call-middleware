@@ -6,7 +6,9 @@ import { dummyProtocol } from "@/protocols/dummy-protocol";
 function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
   const out: LanguageModelV2StreamPart[] = [];
   return (async () => {
-    for await (const c of stream) out.push(c);
+    for await (const c of stream) {
+      out.push(c);
+    }
     return out;
   })();
 }
@@ -32,7 +34,7 @@ describe("dummyProtocol edge cases", () => {
     });
     const out = await collect(rs.pipeThrough(transformer));
     expect(out[0]).toMatchObject({ type: "tool-call" });
-    expect(out.some(c => c.type === "text-end")).toBe(false);
+    expect(out.some((c) => c.type === "text-end")).toBe(false);
   });
 
   it("flush without any prior text does not emit extra text-end", async () => {
@@ -48,6 +50,6 @@ describe("dummyProtocol edge cases", () => {
       },
     });
     const out = await collect(rs.pipeThrough(transformer));
-    expect(out.filter(c => c.type === "text-end").length).toBe(0);
+    expect(out.filter((c) => c.type === "text-end").length).toBe(0);
   });
 });

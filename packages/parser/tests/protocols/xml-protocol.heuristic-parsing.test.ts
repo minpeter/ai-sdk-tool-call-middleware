@@ -337,7 +337,7 @@ describe("XML Protocol Heuristic Parsing", () => {
 
       if (result[0].type === "tool-call") {
         const input = JSON.parse(result[0].input);
-        expect(input.coordinates).toEqual([46.603354, 1.888334]); // Note: automatic number conversion and precision
+        expect(input.coordinates).toEqual([46.603_354, 1.888_334]); // Note: automatic number conversion and precision
         expect(input.date).toBe("2023-12-25");
       }
     });
@@ -453,9 +453,9 @@ describe("XML Protocol Heuristic Parsing", () => {
 
       if (result[0].type === "tool-call") {
         const input = JSON.parse(result[0].input);
-        expect(input.values[0]).toBeCloseTo(1.23456789);
+        expect(input.values[0]).toBeCloseTo(1.234_567_89);
         expect(input.values[1]).toBeCloseTo(2.0);
-        expect(input.values[2]).toBeCloseTo(3.141592653589793);
+        expect(input.values[2]).toBeCloseTo(Math.PI);
       }
     });
 
@@ -491,9 +491,9 @@ describe("XML Protocol Heuristic Parsing", () => {
 
       if (result[0].type === "tool-call") {
         const input = JSON.parse(result[0].input);
-        expect(input.data[0]).toBeCloseTo(0.000123);
+        expect(input.data[0]).toBeCloseTo(0.000_123);
         expect(input.data[1]).toBeCloseTo(567);
-        expect(input.data[2]).toBeCloseTo(-0.000000000987);
+        expect(input.data[2]).toBeCloseTo(-0.000_000_000_987);
       }
     });
   });
@@ -744,7 +744,7 @@ describe("XML Protocol Heuristic Parsing", () => {
 
       if (result[0].type === "tool-call") {
         const input = JSON.parse(result[0].input);
-        expect(input.coordinates).toEqual([46.603354, 1.888334]);
+        expect(input.coordinates).toEqual([46.603_354, 1.888_334]);
         expect(input.dimensions).toEqual([100, 200, 300]);
         expect(input.colors).toEqual(["red", "green", "blue"]);
         expect(input.name).toBe("test");

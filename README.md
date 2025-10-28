@@ -84,7 +84,7 @@ pnpm install
 # build/lint/test all packages
 pnpm build
 pnpm test
-pnpm check-types
+pnpm typecheck
 pnpm lint
 pnpm lint:fix
 pnpm fmt

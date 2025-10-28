@@ -1,9 +1,9 @@
-import { LanguageModel } from "ai";
+import type { LanguageModel } from "ai";
 
 /**
  * The result of a single benchmark run.
  */
-export interface BenchmarkResult {
+export type BenchmarkResult = {
   /**
    * A numeric score for the benchmark.
    * The interpretation of this score is up to the benchmark author.
@@ -31,12 +31,12 @@ export interface BenchmarkResult {
    * An error object if the benchmark failed unexpectedly.
    */
   error?: Error;
-}
+};
 
 /**
  * The interface for defining a language model benchmark.
  */
-export interface LanguageModelV2Benchmark {
+export type LanguageModelV2Benchmark = {
   /**
    * A unique name for the benchmark.
    */
@@ -62,7 +62,7 @@ export interface LanguageModelV2Benchmark {
     model: LanguageModel,
     config?: Record<string, unknown>
   ): Promise<BenchmarkResult>;
-}
+};
 
 /**
  * The supported reporter types.
@@ -73,18 +73,18 @@ export type ReporterType = "console" | "json" | "console.debug";
  * The full result object for an evaluation run,
  * containing results for all model-benchmark combinations.
  */
-export interface EvaluationResult {
+export type EvaluationResult = {
   model: string; // A string identifier for the model
   /** Optional user-provided key when models are passed as a keyed map */
   modelKey?: string;
   benchmark: string; // The name of the benchmark
   result: BenchmarkResult;
-}
+};
 
 /**
  * Options for the `evaluate` function.
  */
-export interface EvaluateOptions {
+export type EvaluateOptions = {
   /**
    * The language model or models to evaluate.
    */
@@ -110,4 +110,4 @@ export interface EvaluateOptions {
    * Optional maximum number of tokens to generate during evaluation.
    */
   maxTokens?: number;
-}
+};

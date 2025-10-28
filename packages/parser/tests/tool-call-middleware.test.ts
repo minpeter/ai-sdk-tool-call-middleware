@@ -45,19 +45,21 @@ describe("createToolMiddleware", () => {
         ],
       });
 
-      const result = await middleware.wrapGenerate!({
+      const result = await middleware.wrapGenerate?.({
         doGenerate,
         params: { prompt: [] },
       } as any);
 
-      expect(result.content).toHaveLength(3);
-      expect(result.content[0]).toEqual({ type: "text", text: "Some text " });
-      expect(result.content[1]).toMatchObject({
+      const EXPECTED_CONTENT_LENGTH = 3;
+      expect(result).toBeDefined();
+      expect(result?.content).toHaveLength(EXPECTED_CONTENT_LENGTH);
+      expect(result?.content[0]).toEqual({ type: "text", text: "Some text " });
+      expect(result?.content[1]).toMatchObject({
         type: "tool-call",
         toolName: "getTool",
         input: '{"arg1":"value1"}',
       });
-      expect(result.content[2]).toEqual({ type: "text", text: " more text" });
+      expect(result?.content[2]).toEqual({ type: "text", text: " more text" });
     });
 
     it("should pass through non-text content unchanged", async () => {
@@ -72,13 +74,15 @@ describe("createToolMiddleware", () => {
         content: [original],
       });
 
-      const result = await middleware.wrapGenerate!({
+      const result = await middleware.wrapGenerate?.({
         doGenerate,
         params: { prompt: [] },
       } as any);
 
-      expect(result.content).toHaveLength(1);
-      expect(result.content[0]).toEqual(original);
+      const EXPECTED_SINGLE_CONTENT = 1;
+      expect(result).toBeDefined();
+      expect(result?.content).toHaveLength(EXPECTED_SINGLE_CONTENT);
+      expect(result?.content[0]).toEqual(original);
     });
   });
 
@@ -97,12 +101,12 @@ describe("createToolMiddleware", () => {
         content: [
           {
             type: "text",
-            text: `Some text <getTool><arg1>value1</arg1></getTool> more text`,
+            text: "Some text <getTool><arg1>value1</arg1></getTool> more text",
           },
         ],
       });
 
-      const result = await middleware.wrapGenerate!({
+      const result = await middleware.wrapGenerate?.({
         doGenerate,
         params: {
           prompt: [],
@@ -117,14 +121,16 @@ describe("createToolMiddleware", () => {
         },
       } as any);
 
-      expect(result.content).toHaveLength(3);
-      expect(result.content[0]).toEqual({ type: "text", text: "Some text " });
-      expect(result.content[1]).toMatchObject({
+      const EXPECTED_XML_CONTENT_LENGTH = 3;
+      expect(result).toBeDefined();
+      expect(result?.content).toHaveLength(EXPECTED_XML_CONTENT_LENGTH);
+      expect(result?.content[0]).toEqual({ type: "text", text: "Some text " });
+      expect(result?.content[1]).toMatchObject({
         type: "tool-call",
         toolName: "getTool",
         input: '{"arg1":"value1"}',
       });
-      expect(result.content[2]).toEqual({ type: "text", text: " more text" });
+      expect(result?.content[2]).toEqual({ type: "text", text: " more text" });
     });
   });
 });
@@ -143,7 +149,7 @@ describe("createToolMiddleware positive paths", () => {
         },
       ],
     });
-    const result = await mw.wrapGenerate!({
+    const result = await mw.wrapGenerate?.({
       doGenerate,
       params: {
         prompt: [],
@@ -157,6 +163,7 @@ describe("createToolMiddleware positive paths", () => {
         ],
       },
     } as any);
-    expect(result.content.some((c: any) => c.type === "tool-call")).toBe(true);
+    expect(result).toBeDefined();
+    expect(result?.content.some((c: any) => c.type === "tool-call")).toBe(true);
   });
 });

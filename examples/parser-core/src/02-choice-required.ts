@@ -3,6 +3,12 @@ import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { generateText, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
+// Constants
+const BASE_TEMPERATURE = 72;
+const TEMPERATURE_RANGE = 21;
+const TEMPERATURE_OFFSET = 10;
+const CONVERSION_RATE = 1.1;
+
 // A provider with supportsStructuredOutputs: true is required. Investigating....
 // createOpenAICompatible cannot be used here.
 const friendli = createOpenAI({
@@ -24,9 +30,12 @@ async function main() {
         inputSchema: z.object({
           location: z.string().describe("The location to get the weather for"),
         }),
-        execute: async ({ location }) => ({
+        execute: ({ location }) => ({
           location,
-          temperature: 72 + Math.floor(Math.random() * 21) - 10,
+          temperature:
+            BASE_TEMPERATURE +
+            Math.floor(Math.random() * TEMPERATURE_RANGE) -
+            TEMPERATURE_OFFSET,
         }),
       },
       currencyConverter: {
@@ -36,8 +45,8 @@ async function main() {
           from: z.string().describe("The currency code to convert from"),
           to: z.string().describe("The currency code to convert to"),
         }),
-        execute: async ({ amount, from, to }) => ({
-          convertedAmount: amount * 1.1, // Dummy conversion rate
+        execute: ({ amount, from, to }) => ({
+          convertedAmount: amount * CONVERSION_RATE, // Dummy conversion rate
           from,
           to,
         }),

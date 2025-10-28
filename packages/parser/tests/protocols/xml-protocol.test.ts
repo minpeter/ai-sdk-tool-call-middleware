@@ -1,4 +1,4 @@
-import {
+import type {
   LanguageModelV2FunctionTool,
   LanguageModelV2StreamPart,
 } from "@ai-sdk/provider";
@@ -29,7 +29,7 @@ describe("morphXmlProtocol stream parsing", () => {
 
   const runMiddleware = (stream: ReadableStream<LanguageModelV2StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
-    return middleware.wrapStream!({
+    return middleware.wrapStream?.({
       doStream: mockDoStream,
       params: {
         tools,
@@ -85,12 +85,16 @@ describe("morphXmlProtocol stream parsing", () => {
 
     const result = await runMiddleware(mockStream);
 
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error("result is undefined");
+    }
     const chunks: LanguageModelV2StreamPart[] = [];
     for await (const chunk of result.stream) {
       chunks.push(chunk);
     }
 
-    const toolCallChunks = chunks.filter(c => c.type === "tool-call");
+    const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
     expect(toolCallChunks).toHaveLength(1);
     expect(toolCallChunks[0]).toMatchObject({
       type: "tool-call",
@@ -125,12 +129,16 @@ describe("morphXmlProtocol stream parsing", () => {
 
     const result = await runMiddleware(mockStream);
 
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error("result is undefined");
+    }
     const chunks: LanguageModelV2StreamPart[] = [];
     for await (const chunk of result.stream) {
       chunks.push(chunk);
     }
 
-    const toolCallChunks = chunks.filter(c => c.type === "tool-call");
+    const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
     expect(toolCallChunks).toHaveLength(1);
     expect(toolCallChunks[0]).toMatchObject({
       type: "tool-call",

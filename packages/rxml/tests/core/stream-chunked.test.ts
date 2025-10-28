@@ -1,4 +1,4 @@
-import { Readable } from "stream";
+import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 import { processXMLStream, RXMLStreamError } from "@/index";
@@ -11,7 +11,7 @@ const CHUNK_SIZE = 7;
 function createChunkedStream(
   text: string,
   chunkSize: number = CHUNK_SIZE,
-  parseOptions?: any
+  _parseOptions?: any
 ): Readable {
   const chunks: string[] = [];
 
@@ -25,11 +25,9 @@ function createChunkedStream(
   return new Readable({
     read() {
       if (chunkIndex < chunks.length) {
-        // Simulate async streaming with small delays
-        setTimeout(() => {
-          this.push(chunks[chunkIndex]);
-          chunkIndex++;
-        }, 10);
+        // Push chunks immediately without delay for fast testing
+        this.push(chunks[chunkIndex]);
+        chunkIndex++;
       } else {
         this.push(null); // End of stream
       }
@@ -140,6 +138,66 @@ def hello_world():
 };
 
 describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
+  describe("Diagnostic Tests", () => {
+    it("should verify stream itself is fast (without parser)", async () => {
+      const stream = createChunkedStream(
+        testXmlSamples.largeContent,
+        CHUNK_SIZE
+      );
+
+      console.log("Starting stream consumption...");
+      const startTime = Date.now();
+      let chunkCount = 0;
+
+      // Test simple consumption without processXMLStream
+      for await (const _chunk of stream) {
+        chunkCount++;
+      }
+
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+
+      console.log(
+        `Stream consumption complete. Total chunks: ${chunkCount}, Duration: ${duration}ms`
+      );
+
+      // Stream itself should complete within 100ms
+      expect(duration).toBeLessThan(100);
+      expect(chunkCount).toBeGreaterThan(0);
+    });
+
+    it("should verify processXMLStream performance", async () => {
+      const stream = createChunkedStream(
+        testXmlSamples.largeContent,
+        CHUNK_SIZE
+      );
+
+      console.log("Starting processXMLStream test...");
+      const startTime = Date.now();
+      const results: any[] = [];
+      let elementCount = 0;
+
+      for await (const element of processXMLStream(stream)) {
+        elementCount++;
+        results.push(element);
+        if (elementCount % 10 === 0) {
+          console.log(`  - ${elementCount} elements processed`);
+        }
+      }
+
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+
+      console.log(
+        `processXMLStream complete. Total elements: ${elementCount}, Duration: ${duration}ms`
+      );
+
+      expect(results.length).toBeGreaterThan(0);
+      // Should complete within 5 seconds
+      expect(duration).toBeLessThan(5000);
+    });
+  });
+
   describe("Basic chunked streaming", () => {
     it("should parse simple tool call with CHUNK_SIZE=7", async () => {
       const stream = createChunkedStream(testXmlSamples.simple, CHUNK_SIZE);
@@ -173,14 +231,14 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         results.push(element);
       }
 
-      const toolCall = results.find(r => r.tagName === "tool_call");
+      const toolCall = results.find((r) => r.tagName === "tool_call");
       expect(toolCall).toBeDefined();
       expect(toolCall.attributes).toMatchObject({
         id: "call_1",
         type: "function",
       });
 
-      const nameElement = results.find(r => r.tagName === "name");
+      const nameElement = results.find((r) => r.tagName === "name");
       expect(nameElement.children[0]).toBe("calculate");
     });
 
@@ -195,7 +253,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         results.push(element);
       }
 
-      const toolCalls = results.filter(r => r.tagName === "tool_call");
+      const toolCalls = results.filter((r) => r.tagName === "tool_call");
       expect(toolCalls).toHaveLength(2);
       expect(toolCalls[0].attributes.id).toBe("1");
       expect(toolCalls[1].attributes.id).toBe("2");
@@ -205,7 +263,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
   describe("Edge cases with chunking", () => {
     it("should handle tag boundaries split across chunks", async () => {
       // This test specifically checks when tags are split across chunk boundaries
-      const xml = "<tool><name>test</name></tool>";
+      const _xml = "<tool><name>test</name></tool>";
 
       // Create chunks that deliberately split tags
       const manualChunks = ["<tool><", "name>te", "st</na", "me></t", "ool>"];
@@ -214,7 +272,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         read() {
           const chunk = manualChunks.shift();
           if (chunk) {
-            setTimeout(() => this.push(chunk), 5);
+            this.push(chunk);
           } else {
             this.push(null);
           }
@@ -233,7 +291,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
     });
 
     it("should handle attribute boundaries split across chunks", async () => {
-      const xml = '<tool id="test123" type="function">content</tool>';
+      const _xml = '<tool id="test123" type="function">content</tool>';
 
       // Split attributes across chunks
       const manualChunks = [
@@ -251,7 +309,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         read() {
           const chunk = manualChunks.shift();
           if (chunk) {
-            setTimeout(() => this.push(chunk), 5);
+            this.push(chunk);
           } else {
             this.push(null);
           }
@@ -282,7 +340,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         results.push(element);
       }
 
-      const codeElement = results.find(r => r.tagName === "code");
+      const codeElement = results.find((r) => r.tagName === "code");
       expect(codeElement).toBeDefined();
       expect(codeElement.children[0]).toContain("def hello_world():");
       expect(codeElement.children[0]).toContain('print("Hello, World!")');
@@ -291,8 +349,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
     it("should handle comments split across chunks", async () => {
       const stream = createChunkedStream(
         testXmlSamples.withComments,
-        CHUNK_SIZE,
-        { keepComments: true }
+        CHUNK_SIZE
       );
       const results: any[] = [];
 
@@ -303,7 +360,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
       }
 
       const comments = results.filter(
-        r => typeof r === "string" && r.includes("<!--")
+        (r) => typeof r === "string" && r.includes("<!--")
       );
       expect(comments.length).toBeGreaterThan(0);
       expect(comments[0]).toContain("<!-- Tool call response -->");
@@ -329,7 +386,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
       expect(endTime - startTime).toBeLessThan(5000); // Should complete within 5 seconds
 
       // Verify large data element exists
-      const dataElement = results.find(r => r.tagName === "data");
+      const dataElement = results.find((r) => r.tagName === "data");
       expect(dataElement).toBeDefined();
       expect(dataElement.children[0]).toHaveLength(500); // 500 'x' characters
     });
@@ -346,16 +403,18 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
       }
 
       // Verify nested structure is preserved
-      const userElement = results.find(r => r.tagName === "user");
-      const profileElement = results.find(r => r.tagName === "profile");
-      const preferencesElement = results.find(r => r.tagName === "preferences");
+      const userElement = results.find((r) => r.tagName === "user");
+      const profileElement = results.find((r) => r.tagName === "profile");
+      const preferencesElement = results.find(
+        (r) => r.tagName === "preferences"
+      );
 
       expect(userElement).toBeDefined();
       expect(profileElement).toBeDefined();
       expect(preferencesElement).toBeDefined();
 
       const nameElement = results.find(
-        r => r.tagName === "name" && r.children[0] === "John Doe"
+        (r) => r.tagName === "name" && r.children[0] === "John Doe"
       );
       expect(nameElement).toBeDefined();
       expect(nameElement.children[0]).toBe("John Doe");
@@ -377,8 +436,8 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         // Should have parsed some elements despite malformed content
         expect(results.length).toBeGreaterThan(0);
 
-        const toolCall = results.find(r => r.tagName === "tool_call");
-        const nameElement = results.find(r => r.tagName === "name");
+        const toolCall = results.find((r) => r.tagName === "tool_call");
+        const nameElement = results.find((r) => r.tagName === "name");
 
         // At least one of these should be defined for graceful handling
         expect(toolCall || nameElement).toBeTruthy();
@@ -405,7 +464,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         }
 
         // Should have parsed the complete elements
-        const nameElement = results.find(r => r.tagName === "name");
+        const nameElement = results.find((r) => r.tagName === "name");
         expect(nameElement).toBeDefined();
         expect(nameElement.children[0]).toBe("test");
       } catch (error) {
@@ -442,13 +501,13 @@ The search has been initiated successfully.`;
       }
 
       // Should extract the tool call from the mixed content
-      const toolCall = results.find(r => r.tagName === "tool_call");
+      const toolCall = results.find((r) => r.tagName === "tool_call");
       expect(toolCall).toBeDefined();
 
-      const nameElement = results.find(r => r.tagName === "name");
+      const nameElement = results.find((r) => r.tagName === "name");
       expect(nameElement.children[0]).toBe("search_database");
 
-      const filtersElement = results.find(r => r.tagName === "filters");
+      const filtersElement = results.find((r) => r.tagName === "filters");
       expect(filtersElement).toBeDefined();
     });
 
@@ -520,7 +579,7 @@ The search has been initiated successfully.`;
       expect(results.length).toBeGreaterThan(0);
       expect(endTime - startTime).toBeLessThan(1000); // Should be very fast
 
-      const toolCall = results.find(r => r.tagName === "tool_call");
+      const toolCall = results.find((r) => r.tagName === "tool_call");
       expect(toolCall.attributes.id).toBe("call_1");
     });
   });

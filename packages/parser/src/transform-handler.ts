@@ -1,25 +1,215 @@
-import type { JSONSchema7 } from "@ai-sdk/provider";
-import {
+import type {
+  JSONSchema7,
   LanguageModelV2Content,
+  LanguageModelV2FilePart,
   LanguageModelV2FunctionTool,
   LanguageModelV2Prompt,
+  LanguageModelV2ReasoningPart,
+  LanguageModelV2TextPart,
+  LanguageModelV2ToolCallPart,
   LanguageModelV2ToolResultPart,
 } from "@ai-sdk/provider";
 
 import {
   isProtocolFactory,
-  ToolCallProtocol,
+  type ToolCallProtocol,
 } from "./protocols/tool-call-protocol";
 import {
   createDynamicIfThenElseSchema,
   extractOnErrorOption,
   isToolCallContent,
-  isToolResultPart,
   originalToolsSchema,
-  ToolCallMiddlewareProviderOptions,
+  type ToolCallMiddlewareProviderOptions,
 } from "./utils";
 
-export async function transformParams({
+/**
+ * Build final prompt by merging system prompt with existing prompt
+ */
+function buildFinalPrompt(
+  systemPrompt: string,
+  processedPrompt: LanguageModelV2Prompt
+): LanguageModelV2Prompt {
+  if (processedPrompt[0]?.role === "system") {
+    return [
+      {
+        role: "system",
+        content: `${systemPrompt}\n\n${processedPrompt[0].content}`,
+      },
+      ...processedPrompt.slice(1),
+    ];
+  }
+  return [
+    {
+      role: "system",
+      content: systemPrompt,
+    },
+    ...processedPrompt,
+  ];
+}
+
+/**
+ * Build base return parameters with middleware options
+ */
+function buildBaseReturnParams(
+  params: {
+    prompt?: LanguageModelV2Prompt;
+    tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
+    providerOptions?: unknown;
+    toolChoice?: { type: string; toolName?: string };
+  },
+  finalPrompt: LanguageModelV2Prompt,
+  functionTools: LanguageModelV2FunctionTool[]
+) {
+  return {
+    ...params,
+    prompt: finalPrompt,
+    tools: [],
+    toolChoice: undefined,
+    providerOptions: {
+      ...(params.providerOptions || {}),
+      toolCallMiddleware: {
+        ...((params.providerOptions &&
+          typeof params.providerOptions === "object" &&
+          (params.providerOptions as { toolCallMiddleware?: unknown })
+            .toolCallMiddleware) ||
+          {}),
+        originalTools: originalToolsSchema.encode(functionTools),
+      } as ToolCallMiddlewareProviderOptions,
+    },
+  };
+}
+
+/**
+ * Find provider-defined tool matching the selected tool name
+ */
+function findProviderDefinedTool(
+  tools: Array<LanguageModelV2FunctionTool | { type: string }>,
+  selectedToolName: string
+) {
+  return tools.find((t) => {
+    if (t.type === "function") {
+      return false;
+    }
+    const anyTool = t as unknown as { id?: string; name?: string };
+    return anyTool.id === selectedToolName || anyTool.name === selectedToolName;
+  });
+}
+
+/**
+ * Handle tool choice type 'tool'
+ */
+function handleToolChoiceTool(
+  params: {
+    tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
+    toolChoice?: { type: string; toolName?: string };
+  },
+  baseReturnParams: ReturnType<typeof buildBaseReturnParams>
+) {
+  const selectedToolName = params.toolChoice?.toolName;
+  if (!selectedToolName) {
+    throw new Error("Tool name is required for 'tool' toolChoice type.");
+  }
+
+  const providerDefinedMatch = findProviderDefinedTool(
+    params.tools ?? [],
+    selectedToolName
+  );
+  if (providerDefinedMatch) {
+    throw new Error(
+      "Provider-defined tools are not supported by this middleware. Please use custom tools."
+    );
+  }
+
+  const selectedTool = (params.tools ?? []).find(
+    (t): t is LanguageModelV2FunctionTool =>
+      t.type === "function" &&
+      (t as LanguageModelV2FunctionTool).name === selectedToolName
+  );
+
+  if (!selectedTool) {
+    throw new Error(
+      `Tool with name '${selectedToolName}' not found in params.tools.`
+    );
+  }
+
+  return {
+    ...baseReturnParams,
+    responseFormat: {
+      type: "json" as const,
+      schema: {
+        type: "object",
+        properties: {
+          name: {
+            const: selectedTool.name,
+          },
+          arguments: selectedTool.inputSchema,
+        },
+        required: ["name", "arguments"],
+      } as JSONSchema7,
+      name: selectedTool.name,
+      description:
+        typeof selectedTool.description === "string"
+          ? selectedTool.description
+          : undefined,
+    },
+    providerOptions: {
+      ...(baseReturnParams.providerOptions || {}),
+      toolCallMiddleware: {
+        ...((baseReturnParams.providerOptions &&
+          typeof baseReturnParams.providerOptions === "object" &&
+          (
+            baseReturnParams.providerOptions as {
+              toolCallMiddleware?: unknown;
+            }
+          ).toolCallMiddleware) ||
+          {}),
+        ...(params.toolChoice ? { toolChoice: params.toolChoice } : {}),
+      },
+    },
+  };
+}
+
+/**
+ * Handle tool choice type 'required'
+ */
+function handleToolChoiceRequired(
+  params: {
+    tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
+    toolChoice?: { type: string; toolName?: string };
+  },
+  baseReturnParams: ReturnType<typeof buildBaseReturnParams>,
+  functionTools: LanguageModelV2FunctionTool[]
+) {
+  if (!params.tools || params.tools.length === 0) {
+    throw new Error(
+      "Tool choice type 'required' is set, but no tools are provided in params.tools."
+    );
+  }
+
+  return {
+    ...baseReturnParams,
+    responseFormat: {
+      type: "json" as const,
+      schema: createDynamicIfThenElseSchema(functionTools),
+    },
+    providerOptions: {
+      ...(baseReturnParams.providerOptions || {}),
+      toolCallMiddleware: {
+        ...((baseReturnParams.providerOptions &&
+          typeof baseReturnParams.providerOptions === "object" &&
+          (
+            baseReturnParams.providerOptions as {
+              toolCallMiddleware?: unknown;
+            }
+          ).toolCallMiddleware) ||
+          {}),
+        toolChoice: { type: "required" as const },
+      },
+    },
+  };
+}
+
+export function transformParams({
   params,
   protocol,
   toolSystemPromptTemplate,
@@ -54,152 +244,220 @@ export async function transformParams({
     extractOnErrorOption(params.providerOptions)
   );
 
-  const finalPrompt: LanguageModelV2Prompt =
-    processedPrompt[0]?.role === "system"
-      ? [
-          {
-            role: "system",
-            content: systemPrompt + "\n\n" + processedPrompt[0].content,
-          },
-          ...processedPrompt.slice(1),
-        ]
-      : [
-          {
-            role: "system",
-            content: systemPrompt,
-          },
-          ...processedPrompt,
-        ];
-
-  const baseReturnParams = {
-    ...params,
-    prompt: finalPrompt,
-    tools: [],
-    toolChoice: undefined,
-    providerOptions: {
-      ...(params.providerOptions || {}),
-      toolCallMiddleware: {
-        ...((params.providerOptions &&
-          typeof params.providerOptions === "object" &&
-          (params.providerOptions as { toolCallMiddleware?: unknown })
-            .toolCallMiddleware) ||
-          {}),
-
-        // INTERNAL: used by the middleware so downstream parsers can access
-        // the original tool schemas even if providers strip `params.tools`.
-        // Not a stable public API.
-        originalTools: originalToolsSchema.encode(functionTools),
-      } as ToolCallMiddlewareProviderOptions,
-    },
-  };
+  const finalPrompt = buildFinalPrompt(systemPrompt, processedPrompt);
+  const baseReturnParams = buildBaseReturnParams(
+    params,
+    finalPrompt,
+    functionTools
+  );
 
   if (params.toolChoice?.type === "none") {
-    // TODO: Support 'none' toolChoice type.
     throw new Error(
       "The 'none' toolChoice type is not supported by this middleware. Please use 'auto', 'required', or specify a tool name."
     );
   }
 
   if (params.toolChoice?.type === "tool") {
-    const selectedToolName = params.toolChoice.toolName;
-    // If a provider-defined tool matches the requested tool identifier, surface the specific error
-    const providerDefinedMatch = (params.tools ?? []).find(t => {
-      if (t.type === "function") return false;
-      const anyTool = t as unknown as { id?: string; name?: string };
-      return (
-        anyTool.id === selectedToolName || anyTool.name === selectedToolName
-      );
-    });
-    if (providerDefinedMatch) {
-      throw new Error(
-        "Provider-defined tools are not supported by this middleware. Please use custom tools."
-      );
-    }
-
-    const selectedTool = (params.tools ?? []).find(
-      (t): t is LanguageModelV2FunctionTool =>
-        t.type === "function" &&
-        (t as LanguageModelV2FunctionTool).name === selectedToolName
-    );
-
-    if (!selectedTool) {
-      throw new Error(
-        `Tool with name '${selectedToolName}' not found in params.tools.`
-      );
-    }
-
-    return {
-      ...baseReturnParams,
-      responseFormat: {
-        type: "json" as const,
-        schema: {
-          type: "object",
-          properties: {
-            name: {
-              const: selectedTool.name,
-            },
-            arguments: selectedTool.inputSchema,
-          },
-          required: ["name", "arguments"],
-        } as JSONSchema7,
-        name: selectedTool.name,
-        description:
-          typeof selectedTool.description === "string"
-            ? selectedTool.description
-            : undefined,
-      },
-      providerOptions: {
-        ...(baseReturnParams.providerOptions || {}),
-        toolCallMiddleware: {
-          ...((baseReturnParams.providerOptions &&
-            typeof baseReturnParams.providerOptions === "object" &&
-            (
-              baseReturnParams.providerOptions as {
-                toolCallMiddleware?: unknown;
-              }
-            ).toolCallMiddleware) ||
-            {}),
-          // INTERNAL: used by the middleware to activate the tool-choice
-          // fast-path in handlers. Not a stable public API.
-          toolChoice: params.toolChoice,
-        },
-      },
-    };
+    return handleToolChoiceTool(params, baseReturnParams);
   }
 
   if (params.toolChoice?.type === "required") {
-    if (!params.tools || params.tools.length === 0) {
-      throw new Error(
-        "Tool choice type 'required' is set, but no tools are provided in params.tools."
-      );
-    }
-
-    return {
-      ...baseReturnParams,
-      responseFormat: {
-        type: "json" as const,
-        schema: createDynamicIfThenElseSchema(functionTools),
-      },
-      providerOptions: {
-        ...(baseReturnParams.providerOptions || {}),
-        toolCallMiddleware: {
-          ...((baseReturnParams.providerOptions &&
-            typeof baseReturnParams.providerOptions === "object" &&
-            (
-              baseReturnParams.providerOptions as {
-                toolCallMiddleware?: unknown;
-              }
-            ).toolCallMiddleware) ||
-            {}),
-          // INTERNAL: used by the middleware to activate the tool-choice
-          // fast-path in handlers. Not a stable public API.
-          toolChoice: { type: "required" },
-        },
-      },
-    };
+    return handleToolChoiceRequired(params, baseReturnParams, functionTools);
   }
 
   return baseReturnParams;
+}
+
+/**
+ * Process assistant message content
+ */
+function processAssistantContent(
+  content: LanguageModelV2Content[],
+  resolvedProtocol: ToolCallProtocol,
+  providerOptions?: {
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  }
+): LanguageModelV2Content[] {
+  const newContent: LanguageModelV2Content[] = [];
+  for (const item of content) {
+    if (isToolCallContent(item)) {
+      newContent.push({
+        type: "text",
+        text: resolvedProtocol.formatToolCall(item),
+      });
+    } else if ((item as { type?: string }).type === "text") {
+      newContent.push(item as LanguageModelV2Content);
+    } else if ((item as { type?: string }).type === "reasoning") {
+      newContent.push(item as LanguageModelV2Content);
+    } else {
+      const options = extractOnErrorOption(providerOptions);
+      options?.onError?.(
+        "tool-call-middleware: unknown assistant content; stringifying for provider compatibility",
+        { content: item }
+      );
+      newContent.push({
+        type: "text",
+        text: JSON.stringify(item),
+      });
+    }
+  }
+
+  // Condense if all content is text
+  const onlyText = newContent.every((c) => c.type === "text");
+  return onlyText
+    ? [
+        {
+          type: "text" as const,
+          text: newContent.map((c) => (c as { text: string }).text).join("\n"),
+        },
+      ]
+    : newContent;
+}
+
+/**
+ * Process tool message content
+ */
+function processToolMessage(
+  content: LanguageModelV2ToolResultPart[],
+  resolvedProtocol: ToolCallProtocol
+): LanguageModelV2Prompt[number] {
+  return {
+    role: "user" as const,
+    content: [
+      {
+        type: "text" as const,
+        text: content
+          .map((toolResult) => resolvedProtocol.formatToolResponse(toolResult))
+          .join("\n"),
+      },
+    ],
+  };
+}
+
+/**
+ * Process a single message in the prompt
+ */
+function processMessage(
+  message: LanguageModelV2Prompt[number],
+  resolvedProtocol: ToolCallProtocol,
+  providerOptions?: {
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  }
+): LanguageModelV2Prompt[number] {
+  if (message.role === "assistant") {
+    const condensedContent = processAssistantContent(
+      message.content as LanguageModelV2Content[],
+      resolvedProtocol,
+      providerOptions
+    );
+    return {
+      role: "assistant" as const,
+      content: condensedContent as Array<
+        | LanguageModelV2TextPart
+        | LanguageModelV2FilePart
+        | LanguageModelV2ReasoningPart
+        | LanguageModelV2ToolCallPart
+        | LanguageModelV2ToolResultPart
+      >,
+    };
+  }
+  if (message.role === "tool") {
+    return processToolMessage(message.content, resolvedProtocol);
+  }
+  return message;
+}
+
+/**
+ * Check if all content parts are text
+ */
+function isAllTextContent(content: unknown): boolean {
+  if (!Array.isArray(content)) {
+    return false;
+  }
+  return (content as { type: string }[]).every(
+    (c: { type: string }) => c?.type === "text"
+  );
+}
+
+/**
+ * Join text content parts into a single string
+ */
+function joinTextContent(content: { text: string }[]): string {
+  return content.map((c) => c.text).join("\n");
+}
+
+/**
+ * Create condensed message based on role
+ */
+function createCondensedMessage(role: string, joinedText: string) {
+  if (role === "system") {
+    return {
+      role: "system" as const,
+      content: joinedText,
+    };
+  }
+
+  return {
+    role: role as "assistant" | "user",
+    content: [
+      {
+        type: "text" as const,
+        text: joinedText,
+      },
+    ],
+  };
+}
+
+/**
+ * Condense multi-part text content into single text part
+ */
+function condenseTextContent(
+  processedPrompt: LanguageModelV2Prompt
+): LanguageModelV2Prompt {
+  for (let i = 0; i < processedPrompt.length; i++) {
+    const msg = processedPrompt[i] as unknown as {
+      role: string;
+      content: unknown;
+    };
+
+    if (!Array.isArray(msg.content)) {
+      continue;
+    }
+
+    const shouldCondense =
+      isAllTextContent(msg.content) && msg.content.length > 1;
+    if (shouldCondense) {
+      const joinedText = joinTextContent(msg.content as { text: string }[]);
+      processedPrompt[i] = createCondensedMessage(msg.role, joinedText);
+    }
+  }
+  return processedPrompt;
+}
+
+/**
+ * Merge consecutive user messages
+ */
+function mergeConsecutiveUserMessages(
+  processedPrompt: LanguageModelV2Prompt
+): LanguageModelV2Prompt {
+  for (let i = processedPrompt.length - 1; i > 0; i--) {
+    const current = processedPrompt[i];
+    const prev = processedPrompt[i - 1];
+    if (current.role === "user" && prev.role === "user") {
+      const prevContent = prev.content
+        .map((c) => (c.type === "text" ? c.text : ""))
+        .join("\n");
+      const currentContent = current.content
+        .map((c) => (c.type === "text" ? c.text : ""))
+        .join("\n");
+      processedPrompt[i - 1] = {
+        role: "user",
+        content: [{ type: "text", text: `${prevContent}\n${currentContent}` }],
+      };
+      processedPrompt.splice(i, 1);
+    }
+  }
+  return processedPrompt;
 }
 
 function convertToolPrompt(
@@ -209,132 +467,11 @@ function convertToolPrompt(
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
 ): LanguageModelV2Prompt {
-  const processedPrompt = prompt.map(message => {
-    if (message.role === "assistant") {
-      const newContent: LanguageModelV2Content[] = [];
-      for (const content of message.content) {
-        if (isToolCallContent(content)) {
-          newContent.push({
-            type: "text",
-            text: resolvedProtocol.formatToolCall(content),
-          });
-        } else if ((content as { type?: string }).type === "text") {
-          newContent.push(content as LanguageModelV2Content);
-        } else if ((content as { type?: string }).type === "reasoning") {
-          // Pass through reasoning parts unchanged for providers that support it
-          newContent.push(content as LanguageModelV2Content);
-        } else {
-          // Prefer the onError callback for surfacing non-fatal warnings
-          const options = extractOnErrorOption(providerOptions);
-          options?.onError?.(
-            "tool-call-middleware: unknown assistant content; stringifying for provider compatibility",
-            { content }
-          );
-          newContent.push({
-            type: "text",
-            text: JSON.stringify(content),
-          });
-        }
-      }
-      // If assistant content consists solely of text parts, condense into a single text part
-      const onlyText = newContent.every(c => c.type === "text");
-      const condensedAssistant = onlyText
-        ? [
-            {
-              type: "text" as const,
-              text: newContent
-                .map(c => (c as { text: string }).text)
-                .join("\n"),
-            },
-          ]
-        : newContent;
-      return { role: "assistant", content: condensedAssistant };
-    }
-    if (message.role === "tool") {
-      return {
-        role: "user",
-        // Map tool results to text response blocks, then condense into a single text block
-        content: [
-          {
-            type: "text" as const,
-            text: message.content
-              .map(toolResult =>
-                isToolResultPart(toolResult)
-                  ? resolvedProtocol.formatToolResponse(toolResult)
-                  : resolvedProtocol.formatToolResponse(
-                      toolResult as LanguageModelV2ToolResultPart
-                    )
-              )
-              .join("\n"),
-          },
-        ],
-      };
-    }
-    return message;
-  });
+  let processedPrompt = prompt.map((message) =>
+    processMessage(message, resolvedProtocol, providerOptions)
+  );
 
-  // Condense any message that contains only text parts into a single text part
-  for (let i = 0; i < processedPrompt.length; i++) {
-    const msg = processedPrompt[i] as unknown as {
-      role: string;
-      content: unknown;
-    };
-    if (Array.isArray(msg.content)) {
-      const allText = (msg.content as { type: string }[]).every(
-        (c: { type: string }) => c?.type === "text"
-      );
-      if (allText && msg.content.length > 1) {
-        const joinedText = (msg.content as { text: string }[])
-          .map((c: { text: string }) => c.text)
-          .join("\n");
-        if (msg.role === "system") {
-          processedPrompt[i] = {
-            role: "system",
-            content: joinedText,
-          };
-        } else if (msg.role === "assistant") {
-          processedPrompt[i] = {
-            role: "assistant",
-            content: [
-              {
-                type: "text" as const,
-                text: joinedText,
-              },
-            ],
-          };
-        } else {
-          // Treat remaining roles (e.g., user) as user text content
-          processedPrompt[i] = {
-            role: "user",
-            content: [
-              {
-                type: "text" as const,
-                text: joinedText,
-              },
-            ],
-          };
-        }
-      }
-    }
-  }
-
-  // Merge consecutive text blocks
-  for (let i = processedPrompt.length - 1; i > 0; i--) {
-    const current = processedPrompt[i];
-    const prev = processedPrompt[i - 1];
-    if (current.role === "user" && prev.role === "user") {
-      const prevContent = prev.content
-        .map(c => (c.type === "text" ? c.text : ""))
-        .join("\n");
-      const currentContent = current.content
-        .map(c => (c.type === "text" ? c.text : ""))
-        .join("\n");
-      processedPrompt[i - 1] = {
-        role: "user",
-        content: [{ type: "text", text: prevContent + "\n" + currentContent }],
-      };
-      processedPrompt.splice(i, 1);
-    }
-  }
+  processedPrompt = condenseTextContent(processedPrompt);
+  processedPrompt = mergeConsecutiveUserMessages(processedPrompt);
   return processedPrompt as LanguageModelV2Prompt;
 }

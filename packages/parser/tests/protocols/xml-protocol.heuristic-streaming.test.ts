@@ -3,6 +3,21 @@ import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 
+const EXPECTED_NUMBER_1 = 1;
+const EXPECTED_NUMBER_2 = 2;
+const EXPECTED_NUMBER_3 = 3;
+const EXPECTED_NUMBER_5 = 5;
+const EXPECTED_NUMBER_7 = 7;
+const EXPECTED_NUMBER_100 = 100;
+const EXPECTED_NUMBER_200 = 200;
+const EXPECTED_COORD_10_5 = 10.5;
+const EXPECTED_COORD_20_3 = 20.3;
+const EXPECTED_COORD_1_5 = 1.5;
+const EXPECTED_COORD_2_5 = 2.5;
+const EXPECTED_COORD_46_603354 = 46.603_354;
+const EXPECTED_COORD_1_888334 = 1.888_334;
+const CHUNK_SIZE = 10;
+
 describe("XML Protocol Heuristic Streaming", () => {
   const protocol = morphXmlProtocol();
 
@@ -14,7 +29,7 @@ describe("XML Protocol Heuristic Streaming", () => {
     const readable = new ReadableStream({
       start(controller) {
         // Split text into smaller chunks to simulate streaming
-        const chunkSize = 10;
+        const chunkSize = CHUNK_SIZE;
         for (let i = 0; i < text.length; i += chunkSize) {
           const chunk = text.slice(i, i + chunkSize);
           controller.enqueue({
@@ -32,7 +47,9 @@ describe("XML Protocol Heuristic Streaming", () => {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         chunks.push(value);
       }
     } finally {
@@ -67,11 +84,15 @@ describe("XML Protocol Heuristic Streaming", () => {
       ];
 
       const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
-      expect(input.numbers).toEqual([3, 5, 7]);
+      expect(input.numbers).toEqual([
+        EXPECTED_NUMBER_3,
+        EXPECTED_NUMBER_5,
+        EXPECTED_NUMBER_7,
+      ]);
     });
   });
 
@@ -101,11 +122,14 @@ describe("XML Protocol Heuristic Streaming", () => {
       ];
 
       const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
-      expect(input.coordinates).toEqual([10.5, 20.3]);
+      expect(input.coordinates).toEqual([
+        EXPECTED_COORD_10_5,
+        EXPECTED_COORD_20_3,
+      ]);
     });
   });
 
@@ -135,11 +159,14 @@ describe("XML Protocol Heuristic Streaming", () => {
       ];
 
       const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
-      expect(input.position).toEqual([46.603354, 1.888334]);
+      expect(input.position).toEqual([
+        EXPECTED_COORD_46_603354,
+        EXPECTED_COORD_1_888334,
+      ]);
     });
   });
 
@@ -185,12 +212,18 @@ describe("XML Protocol Heuristic Streaming", () => {
       ];
 
       const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
-      expect(input.coordinates).toEqual([1.5, 2.5]);
-      expect(input.dimensions).toEqual([100, 200]);
+      expect(input.coordinates).toEqual([
+        EXPECTED_COORD_1_5,
+        EXPECTED_COORD_2_5,
+      ]);
+      expect(input.dimensions).toEqual([
+        EXPECTED_NUMBER_100,
+        EXPECTED_NUMBER_200,
+      ]);
       expect(input.tags).toEqual(["urgent", "important"]);
     });
 
@@ -222,8 +255,8 @@ describe("XML Protocol Heuristic Streaming", () => {
       ];
 
       const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
-      const textChunks = chunks.filter(chunk => chunk.type === "text-delta");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
+      const textChunks = chunks.filter((chunk) => chunk.type === "text-delta");
 
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
@@ -231,7 +264,7 @@ describe("XML Protocol Heuristic Streaming", () => {
 
       // Should also preserve text content
       expect(textChunks.length).toBeGreaterThan(0);
-      const allText = textChunks.map(chunk => chunk.delta).join("");
+      const allText = textChunks.map((chunk) => chunk.delta).join("");
       expect(allText).toContain("Some text before");
       expect(allText).toContain("Some text after");
     });
@@ -263,16 +296,17 @@ describe("XML Protocol Heuristic Streaming", () => {
       const chunks = await simulateStreaming(text, tools);
 
       // Should not produce a tool call for incomplete XML
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
       expect(toolCalls).toHaveLength(0);
 
       // Should preserve the incomplete content as text
-      const textChunks = chunks.filter(chunk => chunk.type === "text-delta");
+      const textChunks = chunks.filter((chunk) => chunk.type === "text-delta");
       expect(textChunks.length).toBeGreaterThan(0);
     });
 
     it("should handle streaming with very small chunks", async () => {
-      const text = `<tiny_chunks><data><item>1</item><item>2</item></data></tiny_chunks>`;
+      const text =
+        "<tiny_chunks><data><item>1</item><item>2</item></data></tiny_chunks>";
 
       const tools: LanguageModelV2FunctionTool[] = [
         {
@@ -312,17 +346,19 @@ describe("XML Protocol Heuristic Streaming", () => {
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            break;
+          }
           chunks.push(value);
         }
       } finally {
         reader.releaseLock();
       }
 
-      const toolCalls = chunks.filter(chunk => chunk.type === "tool-call");
+      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
       expect(toolCalls).toHaveLength(1);
       const input = JSON.parse(toolCalls[0].input);
-      expect(input.data).toEqual([1, 2]);
+      expect(input.data).toEqual([EXPECTED_NUMBER_1, EXPECTED_NUMBER_2]);
     });
   });
 });

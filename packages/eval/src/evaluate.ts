@@ -1,9 +1,10 @@
-import { LanguageModel } from "ai";
+import type { LanguageModel } from "ai";
 
-import {
+import type {
   EvaluateOptions,
   EvaluationResult,
   LanguageModelV2Benchmark,
+  ReporterType,
 } from "./interfaces";
 import { reporters } from "./reporters";
 
@@ -54,20 +55,18 @@ async function runSingleBenchmark(
   }
 }
 
-export async function evaluate(
-  options: EvaluateOptions
-): Promise<EvaluationResult[]> {
-  const {
-    models,
-    benchmarks,
-    reporter = "console",
-    temperature,
-    maxTokens,
-  } = options;
+/**
+ * Normalize models input to array of [key, model] entries
+ */
+function normalizeModels(
+  models: LanguageModel | LanguageModel[] | Record<string, LanguageModel>
+): [string | undefined, LanguageModel][] {
+  const modelEntries: [string | undefined, LanguageModel][] = [];
 
-  const modelEntries: Array<[string | undefined, LanguageModel]> = [];
   if (Array.isArray(models)) {
-    for (const m of models) modelEntries.push([undefined, m]);
+    for (const m of models) {
+      modelEntries.push([undefined, m]);
+    }
   } else if (
     typeof models === "object" &&
     models !== null &&
@@ -81,31 +80,70 @@ export async function evaluate(
       modelEntries.push([key, m]);
     }
   }
+
+  return modelEntries;
+}
+
+/**
+ * Build config object from optional parameters
+ */
+function buildConfig(
+  temperature?: number,
+  maxTokens?: number
+): Record<string, unknown> | undefined {
+  const config: Record<string, unknown> = {};
+  if (temperature !== undefined) {
+    config.temperature = temperature;
+  }
+  if (maxTokens !== undefined) {
+    config.maxTokens = maxTokens;
+  }
+  return Object.keys(config).length > 0 ? config : undefined;
+}
+
+/**
+ * Execute reporter with results
+ */
+function executeReporter(
+  reporter: ReporterType,
+  results: EvaluationResult[]
+): void {
+  const report = reporters[reporter];
+  if (report) {
+    report(results);
+  } else {
+    console.warn(`Unknown reporter: '${reporter}'. Defaulting to console.`);
+    reporters.console(results);
+  }
+}
+
+export async function evaluate(
+  options: EvaluateOptions
+): Promise<EvaluationResult[]> {
+  const {
+    models,
+    benchmarks,
+    reporter = "console",
+    temperature,
+    maxTokens,
+  } = options;
+
+  const modelEntries = normalizeModels(models);
+  const config = buildConfig(temperature, maxTokens);
   const allResults: EvaluationResult[] = [];
 
   for (const [modelKey, model] of modelEntries) {
     for (const benchmark of benchmarks) {
-      const config: Record<string, unknown> = {};
-      if (temperature !== undefined) config.temperature = temperature;
-      if (maxTokens !== undefined) config.maxTokens = maxTokens;
-
       const evaluationResult = await runSingleBenchmark(
         model,
         benchmark,
         modelKey,
-        Object.keys(config).length > 0 ? config : undefined
+        config
       );
       allResults.push(evaluationResult);
     }
   }
 
-  const report = reporters[reporter];
-  if (report) {
-    report(allResults);
-  } else {
-    console.warn(`Unknown reporter: '${reporter}'. Defaulting to console.`);
-    reporters.console(allResults);
-  }
-
+  executeReporter(reporter, allResults);
   return allResults;
 }

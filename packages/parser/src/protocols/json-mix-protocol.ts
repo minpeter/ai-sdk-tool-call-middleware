@@ -5,9 +5,14 @@ import type {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
-import { escapeRegExp, getPotentialStartIndex, RJSON } from "@/utils";
+import {
+  escapeRegExp,
+  getPotentialStartIndex,
+  parseRJSON,
+  RJSON,
+} from "@/utils";
 
-import { ToolCallProtocol } from "./tool-call-protocol";
+import type { ToolCallProtocol } from "./tool-call-protocol";
 
 type JsonMixOptions = {
   toolCallStart?: string;
@@ -15,6 +20,279 @@ type JsonMixOptions = {
   toolResponseStart?: string;
   toolResponseEnd?: string;
 };
+
+function processToolCallJson(
+  toolCallJson: string,
+  fullMatch: string,
+  processedElements: LanguageModelV2Content[],
+  options?: {
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  }
+) {
+  try {
+    const parsedToolCall = parseRJSON(toolCallJson) as {
+      name: string;
+      arguments: unknown;
+    };
+    processedElements.push({
+      type: "tool-call",
+      toolCallId: generateId(),
+      toolName: parsedToolCall.name,
+      input: JSON.stringify(parsedToolCall.arguments ?? {}),
+    });
+  } catch (error) {
+    if (options?.onError) {
+      options.onError(
+        "Could not process JSON tool call, keeping original text.",
+        { toolCall: fullMatch, error }
+      );
+    }
+    processedElements.push({ type: "text", text: fullMatch });
+  }
+}
+
+function addTextSegment(
+  text: string,
+  processedElements: LanguageModelV2Content[]
+) {
+  if (text.trim()) {
+    processedElements.push({ type: "text", text });
+  }
+}
+
+type ParseContext = {
+  match: RegExpExecArray;
+  text: string;
+  currentIndex: number;
+  processedElements: LanguageModelV2Content[];
+  options?: {
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  };
+};
+
+function processMatchedToolCall(context: ParseContext): number {
+  const { match, text, currentIndex, processedElements, options } = context;
+  const startIndex = match.index;
+  const toolCallJson = match[1];
+
+  // Add text before tool call if exists
+  if (startIndex > currentIndex) {
+    const textSegment = text.substring(currentIndex, startIndex);
+    addTextSegment(textSegment, processedElements);
+  }
+
+  // Process tool call
+  if (toolCallJson) {
+    processToolCallJson(toolCallJson, match[0], processedElements, options);
+  }
+
+  return startIndex + match[0].length;
+}
+
+type StreamState = {
+  isInsideToolCall: boolean;
+  buffer: string;
+  currentToolCallJson: string;
+  currentTextId: string | null;
+  hasEmittedTextStart: boolean;
+};
+
+type StreamController = TransformStreamDefaultController<unknown>;
+
+type StreamOptions = {
+  onError?: (message: string, metadata?: Record<string, unknown>) => void;
+};
+
+type TagProcessingContext = {
+  state: StreamState;
+  controller: StreamController;
+  toolCallStart: string;
+  toolCallEnd: string;
+  options?: StreamOptions;
+};
+
+function flushBuffer(
+  state: StreamState,
+  controller: StreamController,
+  toolCallStart: string
+) {
+  if (state.buffer.length === 0) {
+    return;
+  }
+
+  if (!state.currentTextId) {
+    state.currentTextId = generateId();
+    controller.enqueue({ type: "text-start", id: state.currentTextId });
+    state.hasEmittedTextStart = true;
+  }
+
+  const delta = state.isInsideToolCall
+    ? `${toolCallStart}${state.buffer}`
+    : state.buffer;
+
+  controller.enqueue({
+    type: "text-delta",
+    id: state.currentTextId,
+    delta,
+  });
+  state.buffer = "";
+}
+
+function closeTextBlock(state: StreamState, controller: StreamController) {
+  if (state.currentTextId && state.hasEmittedTextStart) {
+    controller.enqueue({ type: "text-end", id: state.currentTextId });
+    state.currentTextId = null;
+    state.hasEmittedTextStart = false;
+  }
+}
+
+function emitIncompleteToolCall(
+  state: StreamState,
+  controller: StreamController,
+  toolCallStart: string
+) {
+  if (!state.currentToolCallJson) {
+    return;
+  }
+
+  const errorId = generateId();
+  controller.enqueue({ type: "text-start", id: errorId });
+  controller.enqueue({
+    type: "text-delta",
+    id: errorId,
+    delta: `${toolCallStart}${state.currentToolCallJson}`,
+  });
+  controller.enqueue({ type: "text-end", id: errorId });
+  state.currentToolCallJson = "";
+}
+
+function handleFinishChunk(
+  state: StreamState,
+  controller: StreamController,
+  toolCallStart: string,
+  chunk: unknown
+) {
+  if (state.buffer.length > 0) {
+    flushBuffer(state, controller, toolCallStart);
+  }
+  closeTextBlock(state, controller);
+  emitIncompleteToolCall(state, controller, toolCallStart);
+  controller.enqueue(chunk);
+}
+
+function publishText(
+  text: string,
+  state: StreamState,
+  controller: StreamController
+) {
+  if (state.isInsideToolCall) {
+    closeTextBlock(state, controller);
+    state.currentToolCallJson += text;
+  } else if (text.length > 0) {
+    if (!state.currentTextId) {
+      state.currentTextId = generateId();
+      controller.enqueue({ type: "text-start", id: state.currentTextId });
+      state.hasEmittedTextStart = true;
+    }
+    controller.enqueue({
+      type: "text-delta",
+      id: state.currentTextId,
+      delta: text,
+    });
+  }
+}
+
+function emitToolCall(context: TagProcessingContext) {
+  const { state, controller, toolCallStart, toolCallEnd, options } = context;
+  try {
+    const parsedToolCall = RJSON.parse(state.currentToolCallJson) as {
+      name: string;
+      arguments: unknown;
+    };
+    closeTextBlock(state, controller);
+    controller.enqueue({
+      type: "tool-call",
+      toolCallId: generateId(),
+      toolName: parsedToolCall.name,
+      input: JSON.stringify(parsedToolCall.arguments ?? {}),
+    });
+  } catch {
+    const errorId = generateId();
+    controller.enqueue({ type: "text-start", id: errorId });
+    controller.enqueue({
+      type: "text-delta",
+      id: errorId,
+      delta: `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`,
+    });
+    controller.enqueue({ type: "text-end", id: errorId });
+    if (options?.onError) {
+      options.onError(
+        "Could not process streaming JSON tool call; emitting original text.",
+        {
+          toolCall: `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`,
+        }
+      );
+    }
+  }
+}
+
+function processTagMatch(context: TagProcessingContext) {
+  const { state } = context;
+  if (state.isInsideToolCall) {
+    emitToolCall(context);
+    state.currentToolCallJson = "";
+    state.isInsideToolCall = false;
+  } else {
+    state.currentToolCallJson = "";
+    state.isInsideToolCall = true;
+  }
+}
+
+function processBufferTags(context: TagProcessingContext) {
+  const { state, controller, toolCallStart, toolCallEnd } = context;
+  let startIndex = getPotentialStartIndex(
+    state.buffer,
+    state.isInsideToolCall ? toolCallEnd : toolCallStart
+  );
+
+  while (startIndex != null) {
+    const tag = state.isInsideToolCall ? toolCallEnd : toolCallStart;
+    if (startIndex + tag.length > state.buffer.length) {
+      break;
+    }
+
+    publishText(state.buffer.slice(0, startIndex), state, controller);
+    state.buffer = state.buffer.slice(startIndex + tag.length);
+    processTagMatch(context);
+
+    startIndex = getPotentialStartIndex(
+      state.buffer,
+      state.isInsideToolCall ? toolCallEnd : toolCallStart
+    );
+  }
+}
+
+function handlePartialTag(
+  state: StreamState,
+  controller: StreamController,
+  toolCallStart: string
+) {
+  if (state.isInsideToolCall) {
+    return;
+  }
+
+  const potentialIndex = getPotentialStartIndex(state.buffer, toolCallStart);
+  if (
+    potentialIndex != null &&
+    potentialIndex + toolCallStart.length > state.buffer.length
+  ) {
+    publishText(state.buffer.slice(0, potentialIndex), state, controller);
+    state.buffer = state.buffer.slice(potentialIndex);
+  } else {
+    publishText(state.buffer, state, controller);
+    state.buffer = "";
+  }
+}
 
 export const jsonMixProtocol = ({
   toolCallStart = "<tool_call>",
@@ -24,8 +302,8 @@ export const jsonMixProtocol = ({
 }: JsonMixOptions = {}): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt = (tools || [])
-      .filter(tool => tool.type === "function")
-      .map(tool => ({
+      .filter((tool) => tool.type === "function")
+      .map((tool) => ({
         name: tool.name,
         description:
           tool.type === "function" && typeof tool.description === "string"
@@ -66,112 +344,41 @@ export const jsonMixProtocol = ({
 
     const processedElements: LanguageModelV2Content[] = [];
     let currentIndex = 0;
-    let match: RegExpExecArray | null;
+    let match = toolCallRegex.exec(text);
 
-    while ((match = toolCallRegex.exec(text)) !== null) {
-      const startIndex = match.index;
-      const toolCallJson = match[1];
-
-      if (startIndex > currentIndex) {
-        const textSegment = text.substring(currentIndex, startIndex);
-        if (textSegment.trim()) {
-          processedElements.push({ type: "text", text: textSegment });
-        }
-      }
-
-      if (toolCallJson) {
-        try {
-          const parsedToolCall = RJSON.parse(toolCallJson) as {
-            name: string;
-            arguments: unknown;
-          };
-          processedElements.push({
-            type: "tool-call",
-            toolCallId: generateId(),
-            toolName: parsedToolCall.name,
-            input: JSON.stringify(parsedToolCall.arguments ?? {}),
-          });
-        } catch (error) {
-          if (options?.onError) {
-            options.onError(
-              "Could not process JSON tool call, keeping original text.",
-              { toolCall: match[0], error }
-            );
-          }
-          processedElements.push({ type: "text", text: match[0] });
-        }
-      }
-
-      currentIndex = startIndex + match[0].length;
+    while (match !== null) {
+      currentIndex = processMatchedToolCall({
+        match,
+        text,
+        currentIndex,
+        processedElements,
+        options,
+      });
+      match = toolCallRegex.exec(text);
     }
 
+    // Add remaining text
     if (currentIndex < text.length) {
       const remainingText = text.substring(currentIndex);
-      if (remainingText.trim()) {
-        processedElements.push({ type: "text", text: remainingText });
-      }
+      addTextSegment(remainingText, processedElements);
     }
 
     return processedElements;
   },
 
   createStreamParser({ tools: _tools, options } = { tools: [] }) {
-    let isInsideToolCall = false;
-    let buffer = "";
-    let currentToolCallJson = "";
-    let currentTextId: string | null = null;
-    let hasEmittedTextStart = false;
+    const state: StreamState = {
+      isInsideToolCall: false,
+      buffer: "",
+      currentToolCallJson: "",
+      currentTextId: null,
+      hasEmittedTextStart: false,
+    };
 
     return new TransformStream({
       transform(chunk, controller) {
         if (chunk.type === "finish") {
-          if (isInsideToolCall && buffer.length > 0) {
-            if (!currentTextId) {
-              currentTextId = generateId();
-              controller.enqueue({ type: "text-start", id: currentTextId });
-              hasEmittedTextStart = true;
-            }
-            controller.enqueue({
-              type: "text-delta",
-              id: currentTextId,
-              delta: `${toolCallStart}${buffer}`,
-            });
-            buffer = "";
-          } else if (!isInsideToolCall && buffer.length > 0) {
-            // Flush any remaining buffered text (e.g., partial start tag suffix)
-            if (!currentTextId) {
-              currentTextId = generateId();
-              controller.enqueue({ type: "text-start", id: currentTextId });
-              hasEmittedTextStart = true;
-            }
-            controller.enqueue({
-              type: "text-delta",
-              id: currentTextId,
-              delta: buffer,
-            });
-            buffer = "";
-          }
-
-          if (currentTextId && hasEmittedTextStart) {
-            controller.enqueue({ type: "text-end", id: currentTextId });
-            currentTextId = null;
-            hasEmittedTextStart = false;
-          }
-
-          // No pending calls should remain; if there is leftover, emit as text
-          if (currentToolCallJson) {
-            const errorId = generateId();
-            controller.enqueue({ type: "text-start", id: errorId });
-            controller.enqueue({
-              type: "text-delta",
-              id: errorId,
-              delta: `${toolCallStart}${currentToolCallJson}`,
-            });
-            controller.enqueue({ type: "text-end", id: errorId });
-            currentToolCallJson = "";
-          }
-
-          controller.enqueue(chunk);
+          handleFinishChunk(state, controller, toolCallStart, chunk);
           return;
         }
 
@@ -180,108 +387,15 @@ export const jsonMixProtocol = ({
           return;
         }
 
-        buffer += chunk.delta;
-
-        const publish = (text: string) => {
-          if (isInsideToolCall) {
-            if (currentTextId && hasEmittedTextStart) {
-              controller.enqueue({ type: "text-end", id: currentTextId });
-              currentTextId = null;
-              hasEmittedTextStart = false;
-            }
-            currentToolCallJson += text;
-          } else if (text.length > 0) {
-            if (!currentTextId) {
-              currentTextId = generateId();
-              controller.enqueue({ type: "text-start", id: currentTextId });
-              hasEmittedTextStart = true;
-            }
-            controller.enqueue({
-              type: "text-delta",
-              id: currentTextId,
-              delta: text,
-            });
-          }
-        };
-
-        let startIndex: number | null | undefined;
-        while (
-          (startIndex = getPotentialStartIndex(
-            buffer,
-            isInsideToolCall ? toolCallEnd : toolCallStart
-          )) != null
-        ) {
-          const tag = isInsideToolCall ? toolCallEnd : toolCallStart;
-          if (startIndex + tag.length > buffer.length) {
-            break;
-          }
-
-          publish(buffer.slice(0, startIndex));
-          buffer = buffer.slice(startIndex + tag.length);
-          // Toggle state and finalize/initialize as needed
-          if (!isInsideToolCall) {
-            // We just consumed a start tag; begin accumulating JSON
-            currentToolCallJson = "";
-            isInsideToolCall = true;
-          } else {
-            // We just consumed an end tag; parse and emit tool-call
-            try {
-              const parsedToolCall = RJSON.parse(currentToolCallJson) as {
-                name: string;
-                arguments: unknown;
-              };
-              // close any open text block before emitting tool-call
-              if (currentTextId && hasEmittedTextStart) {
-                controller.enqueue({ type: "text-end", id: currentTextId });
-                currentTextId = null;
-                hasEmittedTextStart = false;
-              }
-              controller.enqueue({
-                type: "tool-call",
-                toolCallId: generateId(),
-                toolName: parsedToolCall.name,
-                input: JSON.stringify(parsedToolCall.arguments ?? {}),
-              });
-            } catch {
-              const errorId = generateId();
-              controller.enqueue({ type: "text-start", id: errorId });
-              controller.enqueue({
-                type: "text-delta",
-                id: errorId,
-                delta: `${toolCallStart}${currentToolCallJson}${toolCallEnd}`,
-              });
-              controller.enqueue({ type: "text-end", id: errorId });
-              if (options?.onError) {
-                options.onError(
-                  "Could not process streaming JSON tool call; emitting original text.",
-                  {
-                    toolCall: `${toolCallStart}${currentToolCallJson}${toolCallEnd}`,
-                  }
-                );
-              }
-            }
-            currentToolCallJson = "";
-            isInsideToolCall = false;
-          }
-        }
-
-        if (!isInsideToolCall) {
-          // Avoid emitting a partial start tag that may be completed in the next chunk.
-          // If the buffer ends with a suffix that matches the beginning of the start tag,
-          // keep that suffix in the buffer and only emit the safe prefix.
-          const potentialIndex = getPotentialStartIndex(buffer, toolCallStart);
-          if (
-            potentialIndex != null &&
-            potentialIndex + toolCallStart.length > buffer.length
-          ) {
-            // Emit only the safe portion before the potential (incomplete) start tag.
-            publish(buffer.slice(0, potentialIndex));
-            buffer = buffer.slice(potentialIndex);
-          } else {
-            publish(buffer);
-            buffer = "";
-          }
-        }
+        state.buffer += chunk.delta;
+        processBufferTags({
+          state,
+          controller,
+          toolCallStart,
+          toolCallEnd,
+          options,
+        });
+        handlePartialTag(state, controller, toolCallStart);
       },
     });
   },
@@ -291,9 +405,10 @@ export const jsonMixProtocol = ({
     const endEsc = escapeRegExp(toolCallEnd);
     const regex = new RegExp(`${startEsc}([\u0000-\uFFFF]*?)${endEsc}`, "gs");
     const segments: string[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = regex.exec(text)) != null) {
+    let m = regex.exec(text);
+    while (m != null) {
       segments.push(m[0]);
+      m = regex.exec(text);
     }
     return segments;
   },

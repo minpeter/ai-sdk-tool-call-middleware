@@ -37,7 +37,7 @@ describe("index exports", () => {
           content: [
             {
               type: "text" as const,
-              text: `<get_weather><location>San Francisco</location></get_weather>`,
+              text: "<get_weather><location>San Francisco</location></get_weather>",
             },
           ] as LanguageModelV2Content[],
         });
@@ -51,7 +51,7 @@ describe("index exports", () => {
         },
       ];
 
-      const result = await morphXmlToolMiddleware.wrapGenerate!({
+      const result = await morphXmlToolMiddleware.wrapGenerate?.({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],
@@ -66,6 +66,10 @@ describe("index exports", () => {
         },
       } as any);
 
+      expect(result).toBeDefined();
+      if (!result) {
+        throw new Error("result is undefined");
+      }
       const toolCalls = result.content.filter(
         (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
           c.type === "tool-call"
@@ -83,7 +87,7 @@ describe("index exports", () => {
           content: [
             {
               type: "text" as const,
-              text: `<get_location></get_location>`,
+              text: "<get_location></get_location>",
             },
           ] as LanguageModelV2Content[],
         });
@@ -97,7 +101,7 @@ describe("index exports", () => {
         },
       ];
 
-      const result = await morphXmlToolMiddleware.wrapGenerate!({
+      const result = await morphXmlToolMiddleware.wrapGenerate?.({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],
@@ -112,6 +116,10 @@ describe("index exports", () => {
         },
       } as any);
 
+      expect(result).toBeDefined();
+      if (!result) {
+        throw new Error("result is undefined");
+      }
       const toolCalls = result.content.filter(
         (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
           c.type === "tool-call"

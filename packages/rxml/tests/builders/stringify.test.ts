@@ -8,6 +8,9 @@ import {
   toContentString,
 } from "@/index";
 
+const XML_DECLARATION_REGEX = /^<\?xml version="1\.0" encoding="UTF-8"\?>/;
+const XML_START_REGEX = /^<\?xml/;
+
 describe("stringify", () => {
   describe("basic stringify", () => {
     it("stringifies simple objects", () => {
@@ -20,12 +23,12 @@ describe("stringify", () => {
 
     it("stringifies with XML declaration when formatted", () => {
       const result = stringify("root", { item: "test" }, { format: true });
-      expect(result).toMatch(/^<\?xml version="1\.0" encoding="UTF-8"\?>/);
+      expect(result).toMatch(XML_DECLARATION_REGEX);
     });
 
     it("stringifies without XML declaration when not formatted", () => {
       const result = stringify("root", { item: "test" }, { format: false });
-      expect(result).not.toMatch(/^<\?xml/);
+      expect(result).not.toMatch(XML_START_REGEX);
     });
 
     it("handles null and undefined values", () => {

@@ -1,7 +1,7 @@
 import { describe, it } from "vitest";
 import { z } from "zod";
 
-import * as RXML from "@/index";
+import { parse } from "@/index";
 
 describe("html related", () => {
   it("todo_1", () => {
@@ -33,7 +33,7 @@ describe("html related", () => {
       })
     );
 
-    const result = RXML.parse(xml, schema);
+    const result = parse(xml, schema);
     console.log(result.content);
   });
 
@@ -57,7 +57,7 @@ describe("html related", () => {
       })
     );
 
-    const result = RXML.parse(xml, schema);
+    const result = parse(xml, schema);
     console.log(result.content);
   });
 });

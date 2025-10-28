@@ -4,18 +4,21 @@
 
 import { CharCodes, NAME_SPACER } from "../core/types";
 
+const NAME_START_CHAR_REGEX = /[A-Za-z_:]/;
+const NAME_CHAR_REGEX = /[A-Za-z0-9_.:-]/;
+
 /**
  * Check if a character is a valid XML name start character
  */
 export function isNameStartChar(ch: string): boolean {
-  return /[A-Za-z_:]/.test(ch);
+  return NAME_START_CHAR_REGEX.test(ch);
 }
 
 /**
  * Check if a character is a valid XML name character
  */
 export function isNameChar(ch: string): boolean {
-  return /[A-Za-z0-9_.:-]/.test(ch);
+  return NAME_CHAR_REGEX.test(ch);
 }
 
 /**
@@ -35,17 +38,19 @@ export function isWhitespace(charCode: number): boolean {
  */
 export function skipQuoted(s: string, i: number): number {
   const quote = s[i];
-  i++;
-  while (i < s.length) {
-    const ch = s[i];
+  let pos = i + 1;
+  while (pos < s.length) {
+    const ch = s[pos];
     if (ch === "\\") {
-      i += 2;
+      pos += 2;
       continue;
     }
-    if (ch === quote) return i + 1;
-    i++;
+    if (ch === quote) {
+      return pos + 1;
+    }
+    pos++;
   }
-  return i;
+  return pos;
 }
 
 /**
@@ -56,10 +61,11 @@ export function parseName(
   pos: number
 ): { name: string; newPos: number } {
   const start = pos;
-  while (NAME_SPACER.indexOf(s[pos]) === -1 && s[pos]) {
-    pos++;
+  let currentPos = pos;
+  while (NAME_SPACER.indexOf(s[currentPos]) === -1 && s[currentPos]) {
+    currentPos++;
   }
-  return { name: s.slice(start, pos), newPos: pos };
+  return { name: s.slice(start, currentPos), newPos: currentPos };
 }
 
 /**
@@ -98,7 +104,9 @@ export function findElementsByAttr(
 
   while (true) {
     const match = regex.exec(xmlString.slice(searchPos));
-    if (!match) break;
+    if (!match) {
+      break;
+    }
 
     const pos = xmlString.lastIndexOf("<", searchPos + match.index);
     if (pos !== -1) {

@@ -29,7 +29,10 @@ describe("morphXmlProtocol.extractToolCallSegments ordering", () => {
       "<beta><z>3</z></beta>",
     ].join("");
 
-    const segments = p.extractToolCallSegments!({ text, tools: tools as any });
+    if (!p.extractToolCallSegments) {
+      throw new Error("extractToolCallSegments is not defined");
+    }
+    const segments = p.extractToolCallSegments({ text, tools: tools as any });
 
     expect(segments).toEqual([
       "<beta><x>1</x></beta>",

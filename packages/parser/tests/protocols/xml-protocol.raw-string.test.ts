@@ -27,13 +27,13 @@ describe("morphXmlProtocol raw string handling by schema", () => {
       },
     ];
 
-    const html = `<html><body><h1>Title</h1><p>Para</p></body></html>`;
+    const html = "<html><body><h1>Title</h1><p>Para</p></body></html>";
     const text =
-      `<write_file>` +
-      `<file_path>/home/username/myfile.html</file_path>` +
+      "<write_file>" +
+      "<file_path>/home/username/myfile.html</file_path>" +
       `<content>${html}</content>` +
-      `<encoding>utf-8</encoding>` +
-      `</write_file>`;
+      "<encoding>utf-8</encoding>" +
+      "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -66,10 +66,10 @@ describe("morphXmlProtocol raw string handling by schema", () => {
 
     const html = `<!DOCTYPE html>\n<html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Simple HTML Page</title> </head> <body> <h1>Hello World!</h1> <p>This is a simple HTML file.</p> <button>Click Me</button> </body> </html>`;
     const text =
-      `<file_write>` +
-      `<path>index.html</path>` +
+      "<file_write>" +
+      "<path>index.html</path>" +
       `<content>${html}</content>` +
-      `</file_write>`;
+      "</file_write>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -98,7 +98,7 @@ describe("morphXmlProtocol raw string handling by schema", () => {
       },
     ];
 
-    const html = `<!DOCTYPE html>\n<html><body><h1>ok</h1></body></html>`;
+    const html = "<!DOCTYPE html>\n<html><body><h1>ok</h1></body></html>";
     const text = `<file_write><path>a.html</path><content>${html}</content></file_write>`;
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -129,10 +129,10 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     const htmlRaw = `<!DOCTYPE html>\n<html lang="ko"><head><title>테스트 페이지</title></head><body><h1>안녕</h1></body></html>`;
     const htmlEscaped = `&lt;!DOCTYPE html&gt;\n&lt;html lang="ko"&gt;&lt;head&gt;&lt;title&gt;테스트 페이지&lt;/title&gt;&lt;/head&gt;&lt;body&gt;&lt;h1&gt;안녕&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;`;
     const text =
-      `<file_write>` +
-      `<path>index.html</path>` +
+      "<file_write>" +
+      "<path>index.html</path>" +
       `<content>${htmlEscaped}</content>` +
-      `</file_write>`;
+      "</file_write>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -163,11 +163,11 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     ];
 
     const text =
-      `<write_file>` +
-      `<file_path>/tmp/file.txt</file_path>` +
-      `<content>part1</content>` +
-      `<content>part2</content>` +
-      `</write_file>`;
+      "<write_file>" +
+      "<file_path>/tmp/file.txt</file_path>" +
+      "<content>part1</content>" +
+      "<content>part2</content>" +
+      "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     // Entire tool call should be cancelled and returned as text
@@ -197,14 +197,14 @@ describe("morphXmlProtocol raw string handling by schema", () => {
       },
     ];
 
-    const htmlInner = `<div><h1>Title</h1><p>Para</p><em>italic</em></div>`;
+    const htmlInner = "<div><h1>Title</h1><p>Para</p><em>italic</em></div>";
     const text =
-      `<write_file>` +
-      `<file_path>/home/u/file.html</file_path>` +
+      "<write_file>" +
+      "<file_path>/home/u/file.html</file_path>" +
       // Attribute on the string-typed tag
       `<content type="html">${htmlInner}</content>` +
-      `<encoding>utf-8</encoding>` +
-      `</write_file>`;
+      "<encoding>utf-8</encoding>" +
+      "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -242,22 +242,22 @@ describe("morphXmlProtocol raw string handling by schema", () => {
 
     const htmlInner =
       `<html lang="en" encoding="utf-8">` +
-      ` <head>` +
-      `   <title>Title</title>` +
-      ` </head>` +
-      ` <body>` +
-      `   <h1>Title</h1>` +
-      `   <p>Para</p>` +
-      `   <em>italic</em>` +
-      ` </body>` +
-      `</html>`;
+      " <head>" +
+      "   <title>Title</title>" +
+      " </head>" +
+      " <body>" +
+      "   <h1>Title</h1>" +
+      "   <p>Para</p>" +
+      "   <em>italic</em>" +
+      " </body>" +
+      "</html>";
 
     const text =
-      `<write_file>` +
-      `<file_path>/home/u/file.html</file_path>` +
+      "<write_file>" +
+      "<file_path>/home/u/file.html</file_path>" +
       `<content>${htmlInner}</content>` +
-      `<encoding>utf-8</encoding>` +
-      `</write_file>`;
+      "<encoding>utf-8</encoding>" +
+      "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -294,13 +294,13 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     ];
 
     // Include markup that resembles another known tag name (<encoding>) inside content
-    const trickyInner = `Hello <encoding>not-a-sibling</encoding> World!`;
+    const trickyInner = "Hello <encoding>not-a-sibling</encoding> World!";
     const text =
-      `<write_file>` +
-      `<file_path>/tmp/file.txt</file_path>` +
+      "<write_file>" +
+      "<file_path>/tmp/file.txt</file_path>" +
       `<content>${trickyInner}</content>` +
-      `<encoding>utf-8</encoding>` +
-      `</write_file>`;
+      "<encoding>utf-8</encoding>" +
+      "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -334,11 +334,11 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     ];
 
     const text =
-      `<write_file>` +
-      `<file_path>/tmp/empty.txt</file_path>` +
-      `<content/>` +
-      `<encoding>utf-8</encoding>` +
-      `</write_file>`;
+      "<write_file>" +
+      "<file_path>/tmp/empty.txt</file_path>" +
+      "<content/>" +
+      "<encoding>utf-8</encoding>" +
+      "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -368,13 +368,13 @@ describe("morphXmlProtocol raw string handling by schema", () => {
       },
     ];
 
-    const inner = `Some text`;
+    const inner = "Some text";
     const text =
-      `<write_file>` +
-      `<file_path>/tmp/file.txt</file_path>` +
+      "<write_file>" +
+      "<file_path>/tmp/file.txt</file_path>" +
       `<content data="a > b" note="it's ok">${inner}</content>` +
-      `<encoding>utf-8</encoding>` +
-      `</write_file>`;
+      "<encoding>utf-8</encoding>" +
+      "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -403,11 +403,11 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     ];
 
     const text =
-      `<write_file>` +
-      `<file_path>/tmp/file.txt</file_path>` +
-      `<outer><content>nested</content></outer>` +
-      `<content>top</content>` +
-      `</write_file>`;
+      "<write_file>" +
+      "<file_path>/tmp/file.txt</file_path>" +
+      "<outer><content>nested</content></outer>" +
+      "<content>top</content>" +
+      "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const isText = (
@@ -436,11 +436,11 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     ];
 
     const text =
-      `<write_file>` +
-      `<file_path>/tmp/file.txt</file_path>` +
-      `<content/>` +
-      `<content>non-empty</content>` +
-      `</write_file>`;
+      "<write_file>" +
+      "<file_path>/tmp/file.txt</file_path>" +
+      "<content/>" +
+      "<content>non-empty</content>" +
+      "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const isText = (
@@ -468,12 +468,12 @@ describe("morphXmlProtocol raw string handling by schema", () => {
       },
     ];
 
-    const inner = `<![CDATA[<encoding>not-sibling</encoding>]]>`;
+    const inner = "<![CDATA[<encoding>not-sibling</encoding>]]>";
     const text =
-      `<write_file>` +
-      `<file_path>/tmp/file.txt</file_path>` +
+      "<write_file>" +
+      "<file_path>/tmp/file.txt</file_path>" +
       `<content>${inner}</content>` +
-      `</write_file>`;
+      "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -501,11 +501,11 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     ];
 
     const text =
-      `<write_file>` +
-      `<file_path>/tmp/file.txt</file_path>` +
-      `<content>A</content>` +
-      `<content>B</content>` +
-      `</write_file>`;
+      "<write_file>" +
+      "<file_path>/tmp/file.txt</file_path>" +
+      "<content>A</content>" +
+      "<content>B</content>" +
+      "</write_file>";
 
     const onError = vi.fn();
     const out = protocol.parseGeneratedText({
@@ -542,11 +542,11 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     ];
 
     const text =
-      `<nums>` +
-      `<data>` +
-      `<item>1</item><item>2.5</item><item>1.23e3</item><item>-4.56E-2</item>` +
-      `</data>` +
-      `</nums>`;
+      "<nums>" +
+      "<data>" +
+      "<item>1</item><item>2.5</item><item>1.23e3</item><item>-4.56E-2</item>" +
+      "</data>" +
+      "</nums>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);
@@ -573,12 +573,12 @@ describe("morphXmlProtocol raw string handling by schema", () => {
     ];
 
     const text =
-      `<nums>` +
-      `<data>` +
+      "<nums>" +
+      "<data>" +
       // Add attributes so fast-xml-parser represents nodes as objects with #text
       `<item kind="n"> 10.5 </item><item kind="n">3</item><item kind="n">1e2</item>` +
-      `</data>` +
-      `</nums>`;
+      "</data>" +
+      "</nums>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
     const tc = out.find(isToolCallContent);

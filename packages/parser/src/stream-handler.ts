@@ -7,12 +7,12 @@ import type {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
-import { ToolCallProtocol } from "./protocols/tool-call-protocol";
+import type { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
   extractOnErrorOption,
   isToolChoiceActive,
   originalToolsSchema,
-  ToolCallMiddlewareProviderOptions,
+  type ToolCallMiddlewareProviderOptions,
 } from "./utils";
 import {
   getDebugLevel,
@@ -20,6 +20,98 @@ import {
   logParsedSummary,
   logRawChunk,
 } from "./utils/debug";
+
+function extractToolCallSegments(
+  protocol: ToolCallProtocol,
+  fullRawText: string,
+  tools: ReturnType<typeof originalToolsSchema.decode>
+): string {
+  const segments = protocol.extractToolCallSegments
+    ? protocol.extractToolCallSegments({
+        text: fullRawText,
+        tools,
+      })
+    : [];
+  return segments.join("\n\n");
+}
+
+function serializeToolCalls(
+  parsedToolCalls: LanguageModelV2StreamPart[]
+): string {
+  const toolCallParts = parsedToolCalls.filter(
+    (p): p is LanguageModelV2StreamPart & { type: "tool-call" } =>
+      p.type === "tool-call"
+  );
+  return JSON.stringify(
+    toolCallParts.map((tc) => ({
+      toolName: tc.toolName,
+      input: tc.input,
+    }))
+  );
+}
+
+function handleDebugSummary(
+  parsedToolCalls: LanguageModelV2StreamPart[],
+  origin: string,
+  params: { providerOptions?: ToolCallMiddlewareProviderOptions }
+): void {
+  const dbg = params.providerOptions?.toolCallMiddleware?.debugSummary;
+  if (dbg) {
+    dbg.originalText = origin;
+    try {
+      dbg.toolCalls = serializeToolCalls(parsedToolCalls);
+    } catch {
+      // ignore
+    }
+  } else {
+    logParsedSummary({
+      toolCalls: parsedToolCalls,
+      originalText: origin,
+    });
+  }
+}
+
+function createDebugSummaryTransform({
+  protocol,
+  fullRawText,
+  tools,
+  params,
+}: {
+  protocol: ToolCallProtocol;
+  fullRawText: string;
+  tools: ReturnType<typeof originalToolsSchema.decode>;
+  params: { providerOptions?: ToolCallMiddlewareProviderOptions };
+}): TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart> {
+  return new TransformStream<
+    LanguageModelV2StreamPart,
+    LanguageModelV2StreamPart
+  >({
+    transform: (() => {
+      const parsedToolCalls: LanguageModelV2StreamPart[] = [];
+      return (
+        part: LanguageModelV2StreamPart,
+        controller: TransformStreamDefaultController<LanguageModelV2StreamPart>
+      ) => {
+        if (part.type === "tool-call") {
+          parsedToolCalls.push(part);
+        }
+        if (part.type === "finish") {
+          try {
+            const origin = extractToolCallSegments(
+              protocol,
+              fullRawText,
+              tools
+            );
+            handleDebugSummary(parsedToolCalls, origin, params);
+          } catch {
+            // ignore logging failures
+          }
+        }
+        controller.enqueue(part);
+      };
+    })(),
+  });
+}
 
 export async function wrapStream({
   protocol,
@@ -129,59 +221,11 @@ export async function wrapStream({
   );
 
   const withSummary = parsed.pipeThrough(
-    new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>({
-      transform: (() => {
-        const parsedToolCalls: LanguageModelV2StreamPart[] = [];
-        return (
-          part: LanguageModelV2StreamPart,
-          controller: TransformStreamDefaultController<LanguageModelV2StreamPart>
-        ) => {
-          if (part.type === "tool-call") {
-            parsedToolCalls.push(part);
-          }
-          if (part.type === "finish") {
-            try {
-              const segments = protocol.extractToolCallSegments
-                ? protocol.extractToolCallSegments({
-                    text: fullRawText,
-                    tools,
-                  })
-                : [];
-              const origin = segments.join("\n\n");
-              // Prefer JSON-safe debug container over console logs
-              const dbg =
-                params.providerOptions?.toolCallMiddleware?.debugSummary;
-              if (dbg) {
-                dbg.originalText = origin;
-                try {
-                  const toolCallParts = parsedToolCalls.filter(
-                    (
-                      p
-                    ): p is LanguageModelV2StreamPart & { type: "tool-call" } =>
-                      p.type === "tool-call"
-                  );
-                  dbg.toolCalls = JSON.stringify(
-                    toolCallParts.map(tc => ({
-                      toolName: tc.toolName,
-                      input: tc.input,
-                    }))
-                  );
-                } catch {
-                  // ignore
-                }
-              } else {
-                logParsedSummary({
-                  toolCalls: parsedToolCalls,
-                  originalText: origin,
-                });
-              }
-            } catch {
-              // ignore logging failures
-            }
-          }
-          controller.enqueue(part);
-        };
-      })(),
+    createDebugSummaryTransform({
+      protocol,
+      fullRawText,
+      tools,
+      params,
     })
   );
 
@@ -253,8 +297,7 @@ export async function toolChoiceStream({
 
   const debugLevel = getDebugLevel();
   const firstText =
-    (result?.content &&
-      result.content[0] &&
+    (result?.content?.[0] &&
       (result.content[0] as Extract<LanguageModelV2Content, { type: "text" }>)
         .type === "text" &&
       (result.content[0] as Extract<LanguageModelV2Content, { type: "text" }>)

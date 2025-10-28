@@ -13,12 +13,11 @@ export default defineConfig({
       "tests/**/*.spec.ts",
     ],
     coverage: {
-      provider: "istanbul",
+      provider: "v8",
       reporter: ["text", "lcov", "html"],
       reportsDirectory: "./coverage",
       enabled: true,
       clean: true,
-      all: true,
       include: ["src/**/*.ts"],
       exclude: ["src/**/*.test.ts", "src/**/*.spec.ts", "**/*.d.ts"],
     },

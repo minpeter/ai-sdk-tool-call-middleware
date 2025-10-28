@@ -4,7 +4,9 @@ import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 
 describe("morphXmlProtocol parseGeneratedText without onError", () => {
   it("does not warn to console and returns original text when parsing fails", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {
+      // Intentionally empty - we're mocking to suppress warnings
+    });
 
     const p = morphXmlProtocol();
     // Use malformed XML that will cause parsing to fail

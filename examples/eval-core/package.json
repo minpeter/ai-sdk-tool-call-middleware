@@ -1,14 +1,11 @@
 {
-  "name": "@ai-sdk-tool/examples/eval-core",
+  "name": "@ai-sdk-tool/examples-eval-core",
   "private": true,
   "version": "1.0.20",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"No tests for eval-core package\" && exit 0",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx",
-    "lint:fix": "eslint src --ext .ts,.tsx --fix"
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -16,12 +13,12 @@
   "dependencies": {
     "@ai-sdk-tool/eval": "workspace:*",
     "@ai-sdk-tool/parser": "workspace:*",
-    "@ai-sdk/openai": "2.0.23",
-    "@ai-sdk/openai-compatible": "1.0.13",
-    "ai": "5.0.28",
-    "tsx": "^4.20.5"
+    "@ai-sdk/openai": "2.0.56",
+    "@ai-sdk/openai-compatible": "1.0.23",
+    "ai": "5.0.81",
+    "tsx": "^4.20.6"
   },
   "devDependencies": {
-    "@types/node": "^24.3.0"
+    "@types/node": "^24.9.1"
   }
 }
