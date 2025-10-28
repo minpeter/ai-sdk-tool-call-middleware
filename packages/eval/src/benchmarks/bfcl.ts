@@ -904,8 +904,13 @@ function createBfclBenchmark(
           finishReason: unknown;
           debugSummaryRef: { originalText?: string; toolCalls?: string };
         }> => {
-          const { model: modelInstance, flatMessages, toolsMap, temperature, maxTokens } =
-            options;
+          const {
+            model: modelInstance,
+            flatMessages,
+            toolsMap,
+            temperature,
+            maxTokens,
+          } = options;
 
           type ProviderOptionsWithMiddleware = {
             toolCallMiddleware?: {
@@ -992,7 +997,9 @@ function createBfclBenchmark(
         };
 
         // Helper: Prepare test case data
-        const prepareTestCaseData = (testCase: TestCase): {
+        const prepareTestCaseData = (
+          testCase: TestCase
+        ): {
           flatMessages: Message[];
           transformedTools: TransformedTool[];
           nameMap: Map<string, string>;
