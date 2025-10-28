@@ -7,7 +7,7 @@ while true; do
     status=$?
     printf 'job failed with exit code %d. Forwarding output to cursor-agent.\n' "$status"
     cursor-agent --model sonnet-4.5 -p <<EOF
-Please fix the biome typecheck error below.
+Please fix the biome typecheck, lint error below.
 
 $output
 EOF

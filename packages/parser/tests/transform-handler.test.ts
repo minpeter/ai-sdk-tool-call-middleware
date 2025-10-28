@@ -252,7 +252,8 @@ describe("non-stream assistant->user merge formatting with object input", () => 
       )
       .join("\n");
 
-    expect(userCombined).toMatch(REGEX_TOOL_RESPONSE_TAG);
+    // Gemma uses markdown code fences for tool_response, not XML tags
+    expect(userCombined).toMatch(/```tool_response/);
   });
 
   it("hermes: formats assistant tool-call (object input) and tool result into user text", async () => {

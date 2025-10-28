@@ -442,7 +442,7 @@ function createBfclBenchmark(
           diff: string[]
         ): void => {
           for (const k of Object.keys(receivedArgs)) {
-            if (!Object.hasOwn(expectedParams, k)) {
+            if (!Object.prototype.hasOwnProperty.call(expectedParams, k)) {
               diff.push(`+ unexpected param: ${k}`);
             }
           }
@@ -455,7 +455,7 @@ function createBfclBenchmark(
           diff: string[]
         ): void => {
           for (const k of Object.keys(receivedArgs)) {
-            if (Object.hasOwn(expectedParams, k)) {
+            if (Object.prototype.hasOwnProperty.call(expectedParams, k)) {
               const allowed = (expectedParams as Record<string, unknown[]>)[k];
               const got = receivedArgs[k];
               if (!paramValueMatches(allowed, got)) {

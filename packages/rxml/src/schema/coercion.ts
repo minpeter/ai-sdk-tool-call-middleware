@@ -21,7 +21,7 @@ export function getPropertySchema(toolSchema: unknown, key: string): unknown {
   }
   const u = unwrapped as Record<string, unknown>;
   const props = u.properties as Record<string, unknown> | undefined;
-  if (props && Object.hasOwn(props, key)) {
+  if (props && Object.prototype.hasOwnProperty.call(props, key)) {
     return (props as Record<string, unknown>)[key];
   }
   return;

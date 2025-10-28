@@ -332,7 +332,7 @@ function checkOptionalParams(
   possibleAnswerParams: Record<string, unknown>
 ): CheckerResult {
   for (const paramName in possibleAnswerParams) {
-    if (Object.hasOwn(possibleAnswerParams, paramName)) {
+    if (Object.prototype.hasOwnProperty.call(possibleAnswerParams, paramName)) {
       const val = possibleAnswerParams[paramName] as unknown;
       const isOptional = Array.isArray(val) && val.includes("");
       if (!(paramName in argsObj || isOptional)) {
