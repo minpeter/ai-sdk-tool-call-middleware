@@ -1,5 +1,5 @@
 {
-  "name": "@ai-sdk-tool/examples/eval-core",
+  "name": "@ai-sdk-tool/examples-eval-core",
   "private": true,
   "version": "1.0.20",
   "description": "",
@@ -13,7 +13,7 @@
   "dependencies": {
     "@ai-sdk-tool/eval": "workspace:*",
     "@ai-sdk-tool/parser": "workspace:*",
-    "@ai-sdk/openai": "2.0.54",
+    "@ai-sdk/openai": "2.0.56",
     "@ai-sdk/openai-compatible": "1.0.23",
     "ai": "5.0.81",
     "tsx": "^4.20.6"

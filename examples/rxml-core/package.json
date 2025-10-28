@@ -1,5 +1,5 @@
 {
-  "name": "@ai-sdk-tool/examples/rxml-core",
+  "name": "@ai-sdk-tool/examples-rxml-core",
   "private": true,
   "version": "1.0.21",
   "description": "Examples demonstrating streaming XML parsing with @ai-sdk-tool/rxml",
