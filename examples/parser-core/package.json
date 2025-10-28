@@ -1,7 +1,7 @@
 {
   "name": "@ai-sdk-tool/examples-parser-core",
   "private": true,
-  "version": "1.0.20",
+  "version": "0.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
