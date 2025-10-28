@@ -124,7 +124,7 @@ function tryConvertToNumber(val: unknown): unknown {
  */
 function processItemValue(item: unknown, textNodeName: string): unknown {
   let currentVal: unknown = item;
-  if (item && typeof item === "object" && Object.prototype.hasOwnProperty.call(item, textNodeName)) {
+  if (item && typeof item === "object" && Object.hasOwn(item, textNodeName)) {
     currentVal = (item as Record<string, unknown>)[textNodeName];
   }
   const trimmed =
@@ -337,7 +337,7 @@ export function parse(
                   | undefined)
               : undefined;
 
-          if (schemaProps && !Object.prototype.hasOwnProperty.call(schemaProps, rootName)) {
+          if (schemaProps && !Object.hasOwn(schemaProps, rootName)) {
             actualXmlInner = s.slice(range.start, range.end);
           }
         }
@@ -501,7 +501,7 @@ export function parse(
         (typeof v === "string" && v.startsWith("__RXML_PLACEHOLDER_")) ||
         (v &&
           typeof v === "object" &&
-          Object.prototype.hasOwnProperty.call(v, textNodeName) &&
+          Object.hasOwn(v, textNodeName) &&
           typeof (v as Record<string, unknown>)[textNodeName] === "string" &&
           ((v as Record<string, unknown>)[textNodeName] as string).startsWith(
             "__RXML_PLACEHOLDER_"
@@ -534,7 +534,7 @@ export function parse(
     }
 
     // Extract text content from wrapped objects
-    if (v && typeof v === "object" && Object.prototype.hasOwnProperty.call(v, textNodeName)) {
+    if (v && typeof v === "object" && Object.hasOwn(v, textNodeName)) {
       val = (v as Record<string, unknown>)[textNodeName];
     }
 
@@ -545,7 +545,7 @@ export function parse(
           if (
             item &&
             typeof item === "object" &&
-            Object.prototype.hasOwnProperty.call(item, textNodeName)
+            Object.hasOwn(item, textNodeName)
           ) {
             const textVal = (item as Record<string, unknown>)[textNodeName];
             return typeof textVal === "string" ? textVal : String(textVal);
@@ -569,7 +569,7 @@ export function parse(
         continue;
       }
       val = processArrayContent(v, propSchema, textNodeName);
-    } else if (v && typeof v === "object" && !Object.prototype.hasOwnProperty.call(v, textNodeName)) {
+    } else if (v && typeof v === "object" && !Object.hasOwn(v, textNodeName)) {
       const obj = v as Record<string, unknown>;
       const keys = Object.keys(obj);
 
@@ -601,7 +601,7 @@ export function parse(
 
   // Ensure missing string-typed properties are populated from original XML
   for (const key of topLevelStringProps) {
-    if (!Object.prototype.hasOwnProperty.call(args, key)) {
+    if (!Object.hasOwn(args, key)) {
       const raw = extractRawInner(actualXmlInner, key);
       if (typeof raw === "string") {
         args[key] = raw;
@@ -622,7 +622,7 @@ export function parse(
       const schemaProps = (unwrapped as Record<string, unknown>).properties as
         | Record<string, unknown>
         | undefined;
-      if (schemaProps && !Object.prototype.hasOwnProperty.call(schemaProps, rootKey)) {
+      if (schemaProps && !Object.hasOwn(schemaProps, rootKey)) {
         // Schema doesn't expect the root key, so unwrap it before coercion
         dataToCoerce = rootValue as Record<string, unknown>;
       }
@@ -757,7 +757,7 @@ export function simplify(children: (RXMLNode | string)[]): unknown {
 
   // Flatten single-item arrays
   for (const key in out) {
-    if (!Object.prototype.hasOwnProperty.call(out, key)) {
+    if (!Object.hasOwn(out, key)) {
       continue;
     }
     const value = out[key];

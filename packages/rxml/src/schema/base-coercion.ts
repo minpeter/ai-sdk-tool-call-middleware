@@ -189,7 +189,7 @@ function coerceObjectToArray(
   prefixItems: unknown[] | undefined,
   itemsSchema: unknown
 ): unknown {
-  if (Object.prototype.hasOwnProperty.call(maybe, "item")) {
+  if (Object.hasOwn(maybe, "item")) {
     const items = maybe.item as unknown;
     const arr = Array.isArray(items) ? items : [items];
     return coerceArrayToArray(arr, prefixItems, itemsSchema);
