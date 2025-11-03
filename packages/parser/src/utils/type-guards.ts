@@ -1,11 +1,11 @@
 import type {
-  LanguageModelV2ToolCall,
-  LanguageModelV2ToolResultPart,
+  LanguageModelV3ToolCall,
+  LanguageModelV3ToolResultPart,
 } from "@ai-sdk/provider";
 
 export function isToolCallContent(
   content: unknown
-): content is LanguageModelV2ToolCall {
+): content is LanguageModelV3ToolCall {
   return (
     (content as { type?: string }).type === "tool-call" &&
     typeof (content as { toolName?: unknown }).toolName === "string" &&
@@ -17,7 +17,7 @@ export function isToolCallContent(
 
 export function isToolResultPart(
   content: unknown
-): content is LanguageModelV2ToolResultPart {
+): content is LanguageModelV3ToolResultPart {
   const c = content as {
     type?: string;
     toolName?: unknown;

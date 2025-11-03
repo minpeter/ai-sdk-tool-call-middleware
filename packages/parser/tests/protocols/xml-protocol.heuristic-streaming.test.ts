@@ -1,4 +1,4 @@
-import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
@@ -67,7 +67,7 @@ describe("XML Protocol Heuristic Streaming", () => {
         <numbers>7</numbers>
       </math_sum>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "math_sum",
@@ -105,7 +105,7 @@ describe("XML Protocol Heuristic Streaming", () => {
         </coordinates>
       </set_point>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "set_point",
@@ -142,7 +142,7 @@ describe("XML Protocol Heuristic Streaming", () => {
         </position>
       </get_coordinates>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "get_coordinates",
@@ -187,7 +187,7 @@ describe("XML Protocol Heuristic Streaming", () => {
         </tags>
       </complex_data>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "complex_data",
@@ -238,7 +238,7 @@ describe("XML Protocol Heuristic Streaming", () => {
       </process_list>
       Some text after`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "process_list",
@@ -277,7 +277,7 @@ describe("XML Protocol Heuristic Streaming", () => {
           <item>complete</item>
           <item>partial`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "incomplete_test",
@@ -308,7 +308,7 @@ describe("XML Protocol Heuristic Streaming", () => {
       const text =
         "<tiny_chunks><data><item>1</item><item>2</item></data></tiny_chunks>";
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "tiny_chunks",

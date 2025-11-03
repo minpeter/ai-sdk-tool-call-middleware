@@ -1,4 +1,4 @@
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
@@ -7,8 +7,8 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
-  const out: LanguageModelV2StreamPart[] = [];
+function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
+  const out: LanguageModelV3StreamPart[] = [];
   return (async () => {
     for await (const c of stream) {
       out.push(c);
@@ -30,7 +30,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("extracts tool call when start tag split across chunks", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "prefix <get_" });
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "weather>" });
@@ -64,7 +64,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -92,7 +92,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("flushes unfinished call content at flush", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -119,7 +119,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("handles multiple inner tags inside one function call", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "<get_weather>" });
         ctrl.enqueue({
@@ -154,7 +154,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("parses multiple function calls in a single stream", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -190,7 +190,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "<get_" });
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "weather>" });

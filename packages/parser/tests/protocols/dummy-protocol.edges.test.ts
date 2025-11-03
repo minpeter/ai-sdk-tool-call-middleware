@@ -1,10 +1,10 @@
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { dummyProtocol } from "@/protocols/dummy-protocol";
 
-function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
-  const out: LanguageModelV2StreamPart[] = [];
+function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
+  const out: LanguageModelV3StreamPart[] = [];
   return (async () => {
     for await (const c of stream) {
       out.push(c);
@@ -16,7 +16,7 @@ function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
 describe("dummyProtocol edge cases", () => {
   it("handles non-text first by passing through and not emitting text-end", async () => {
     const transformer = dummyProtocol().createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "tool-call",
@@ -39,7 +39,7 @@ describe("dummyProtocol edge cases", () => {
 
   it("flush without any prior text does not emit extra text-end", async () => {
     const transformer = dummyProtocol().createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "finish",

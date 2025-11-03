@@ -1,4 +1,4 @@
-import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
@@ -15,7 +15,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <multiples>5</multiples>
       </math_toolkit_sum_of_multiples>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "math_toolkit_sum_of_multiples",
@@ -54,7 +54,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <city>Marseille</city>
       </get_cities>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "get_cities",
@@ -93,7 +93,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </point>
       </set_coordinates>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "set_coordinates",
@@ -129,7 +129,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </coordinates>
       </set_position>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "set_position",
@@ -165,7 +165,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </values>
       </set_data>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "set_data",
@@ -201,7 +201,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </set_mixed>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "set_mixed",
@@ -239,7 +239,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </values>
       </get_numbers>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "get_numbers",
@@ -275,7 +275,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </palette>
       </get_colors>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "get_colors",
@@ -313,7 +313,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <date>2023-12-25</date>
       </weather_get_by_coordinates_date>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "weather_get_by_coordinates_date",
@@ -349,7 +349,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </get_single_value>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "get_single_value",
@@ -385,7 +385,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </point2>
       </calculate_distance>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "calculate_distance",
@@ -430,7 +430,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </values>
       </test_precision>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "test_precision",
@@ -468,7 +468,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </scientific_values>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "scientific_values",
@@ -504,7 +504,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <message>Hello World</message>
       </get_content>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "get_content",
@@ -536,7 +536,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </values>
       </format_text>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "format_text",
@@ -568,7 +568,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <values></values>
       </empty_data>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "empty_data",
@@ -602,7 +602,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </mixed_content>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "mixed_content",
@@ -639,7 +639,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </settings>
       </config>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "config",
@@ -669,7 +669,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </labels>
       </tags>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "tags",
@@ -712,7 +712,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <name>test</name>
       </complex_structure>`;
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "complex_structure",

@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV2Middleware,
-  LanguageModelV2StreamPart,
+  LanguageModelV3Middleware,
+  LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 
 const INV = "\x1b[7m"; // ANSI SGR: reverse video
@@ -39,7 +39,7 @@ function invLog(...args: unknown[]) {
   }
 }
 
-export const loggingMiddleware: LanguageModelV2Middleware = {
+export const loggingMiddleware: LanguageModelV3Middleware = {
   wrapGenerate: async ({ doGenerate, params }) => {
     invLog("doGenerate called");
     invLog(`params: ${JSON.stringify(params, null, 2)}`);
@@ -62,8 +62,8 @@ export const loggingMiddleware: LanguageModelV2Middleware = {
     const textBlocks = new Map<string, string>();
 
     const transformStream = new TransformStream<
-      LanguageModelV2StreamPart,
-      LanguageModelV2StreamPart
+      LanguageModelV3StreamPart,
+      LanguageModelV3StreamPart
     >({
       transform(chunk, controller) {
         switch (chunk.type) {

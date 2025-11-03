@@ -1,4 +1,4 @@
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { toolChoiceStream } from "@/stream-handler";
@@ -20,7 +20,7 @@ describe("toolChoiceStream", () => {
       doGenerate,
     });
 
-    const chunks: LanguageModelV2StreamPart[] = [];
+    const chunks: LanguageModelV3StreamPart[] = [];
     for await (const chunk of stream) {
       chunks.push(chunk);
     }
@@ -46,7 +46,7 @@ describe("toolChoiceStream", () => {
     });
 
     const { stream } = await toolChoiceStream({ doGenerate });
-    const chunks: LanguageModelV2StreamPart[] = [];
+    const chunks: LanguageModelV3StreamPart[] = [];
     for await (const chunk of stream) {
       chunks.push(chunk);
     }
@@ -64,7 +64,7 @@ describe("toolChoiceStream", () => {
     const doGenerate = vi.fn().mockResolvedValue({ content: [] });
 
     const { stream } = await toolChoiceStream({ doGenerate });
-    const chunks: LanguageModelV2StreamPart[] = [];
+    const chunks: LanguageModelV3StreamPart[] = [];
     for await (const chunk of stream) {
       chunks.push(chunk);
     }

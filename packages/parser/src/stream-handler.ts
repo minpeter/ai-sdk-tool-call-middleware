@@ -1,9 +1,9 @@
 import type {
-  LanguageModelV2,
-  LanguageModelV2Content,
-  LanguageModelV2FinishReason,
-  LanguageModelV2StreamPart,
-  LanguageModelV2Usage,
+  LanguageModelV3,
+  LanguageModelV3Content,
+  LanguageModelV3FinishReason,
+  LanguageModelV3StreamPart,
+  LanguageModelV3Usage,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
@@ -36,10 +36,10 @@ function extractToolCallSegments(
 }
 
 function serializeToolCalls(
-  parsedToolCalls: LanguageModelV2StreamPart[]
+  parsedToolCalls: LanguageModelV3StreamPart[]
 ): string {
   const toolCallParts = parsedToolCalls.filter(
-    (p): p is LanguageModelV2StreamPart & { type: "tool-call" } =>
+    (p): p is LanguageModelV3StreamPart & { type: "tool-call" } =>
       p.type === "tool-call"
   );
   return JSON.stringify(
@@ -51,7 +51,7 @@ function serializeToolCalls(
 }
 
 function handleDebugSummary(
-  parsedToolCalls: LanguageModelV2StreamPart[],
+  parsedToolCalls: LanguageModelV3StreamPart[],
   origin: string,
   params: { providerOptions?: ToolCallMiddlewareProviderOptions }
 ): void {
@@ -81,16 +81,16 @@ function createDebugSummaryTransform({
   fullRawText: string;
   tools: ReturnType<typeof originalToolsSchema.decode>;
   params: { providerOptions?: ToolCallMiddlewareProviderOptions };
-}): TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart> {
+}): TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart> {
   return new TransformStream<
-    LanguageModelV2StreamPart,
-    LanguageModelV2StreamPart
+    LanguageModelV3StreamPart,
+    LanguageModelV3StreamPart
   >({
     transform: (() => {
-      const parsedToolCalls: LanguageModelV2StreamPart[] = [];
+      const parsedToolCalls: LanguageModelV3StreamPart[] = [];
       return (
-        part: LanguageModelV2StreamPart,
-        controller: TransformStreamDefaultController<LanguageModelV2StreamPart>
+        part: LanguageModelV3StreamPart,
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
       ) => {
         if (part.type === "tool-call") {
           parsedToolCalls.push(part);
@@ -120,8 +120,8 @@ export async function wrapStream({
   params,
 }: {
   protocol: ToolCallProtocol;
-  doStream: () => ReturnType<LanguageModelV2["doStream"]>;
-  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
+  doStream: () => ReturnType<LanguageModelV3["doStream"]>;
+  doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>;
   params: {
     providerOptions?: ToolCallMiddlewareProviderOptions;
   };
@@ -161,7 +161,7 @@ export async function wrapStream({
 
   if (debugLevel === "stream") {
     const withRawTap = stream.pipeThrough(
-      new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>(
+      new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>(
         {
           transform(part, controller) {
             logRawChunk(part);
@@ -179,7 +179,7 @@ export async function wrapStream({
     );
 
     const withParsedTap = parsed.pipeThrough(
-      new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>(
+      new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>(
         {
           transform(part, controller) {
             logParsedChunk(part);
@@ -198,11 +198,11 @@ export async function wrapStream({
   // debugLevel === "parse"
   let fullRawText = "";
   const withRawTap = stream.pipeThrough(
-    new TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>({
+    new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>({
       transform(part, controller) {
         if (part.type === "text-delta") {
           const delta = (
-            part as Extract<LanguageModelV2StreamPart, { type: "text-delta" }>
+            part as Extract<LanguageModelV3StreamPart, { type: "text-delta" }>
           ).delta as string | undefined;
           if (typeof delta === "string" && delta.length > 0) {
             fullRawText += delta;
@@ -239,7 +239,7 @@ export async function toolChoiceStream({
   doGenerate,
   options,
 }: {
-  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
+  doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>;
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
@@ -267,14 +267,14 @@ export async function toolChoiceStream({
     }
   }
 
-  const toolCallChunk: LanguageModelV2StreamPart = {
+  const toolCallChunk: LanguageModelV3StreamPart = {
     type: "tool-call",
     toolCallId: generateId(),
     toolName: toolJson.name || "unknown",
     input: JSON.stringify(toolJson.arguments || {}),
   };
 
-  const finishChunk: LanguageModelV2StreamPart = {
+  const finishChunk: LanguageModelV3StreamPart = {
     type: "finish",
     usage:
       result?.usage ||
@@ -283,11 +283,11 @@ export async function toolChoiceStream({
         inputTokens: 0,
         outputTokens: 0,
         totalTokens: 0,
-      } as LanguageModelV2Usage),
-    finishReason: "tool-calls" as LanguageModelV2FinishReason,
+      } as LanguageModelV3Usage),
+    finishReason: "tool-calls" as LanguageModelV3FinishReason,
   };
 
-  const stream = new ReadableStream<LanguageModelV2StreamPart>({
+  const stream = new ReadableStream<LanguageModelV3StreamPart>({
     start(controller) {
       controller.enqueue(toolCallChunk);
       controller.enqueue(finishChunk);
@@ -298,17 +298,17 @@ export async function toolChoiceStream({
   const debugLevel = getDebugLevel();
   const firstText =
     (result?.content?.[0] &&
-      (result.content[0] as Extract<LanguageModelV2Content, { type: "text" }>)
+      (result.content[0] as Extract<LanguageModelV3Content, { type: "text" }>)
         .type === "text" &&
-      (result.content[0] as Extract<LanguageModelV2Content, { type: "text" }>)
+      (result.content[0] as Extract<LanguageModelV3Content, { type: "text" }>)
         .text) ||
     "";
   const streamWithSummary =
     debugLevel === "parse"
       ? stream.pipeThrough(
           new TransformStream<
-            LanguageModelV2StreamPart,
-            LanguageModelV2StreamPart
+            LanguageModelV3StreamPart,
+            LanguageModelV3StreamPart
           >({
             transform(part, controller) {
               if (part.type === "finish") {

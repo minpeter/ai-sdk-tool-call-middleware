@@ -14,7 +14,7 @@ It allows developers to:
 
 ## Core Concepts
 
-- **Benchmark (`LanguageModelV2Benchmark`)**: A standardized interface for creating an evaluation task. It has a `run` method that takes a `LanguageModel` and returns a `BenchmarkResult`.
+- **Benchmark (`LanguageModelV3Benchmark`)**: A standardized interface for creating an evaluation task. It has a `run` method that takes a `LanguageModel` and returns a `BenchmarkResult`.
 - **`evaluate` function**: The core function that runs a set of benchmarks against one or more models and provides a report on the results.
 - **Reporter**: Formats the evaluation results into different outputs, such as a human-readable console report or a machine-readable JSON object.
 
@@ -77,20 +77,20 @@ cd examples/eval-core && pnpm dlx tsx src/json-generation.ts
 
 ## Creating a Custom Benchmark
 
-You can easily create your own benchmark by implementing the `LanguageModelV2Benchmark` interface. This is useful for testing model performance on tasks specific to your application.
+You can easily create your own benchmark by implementing the `LanguageModelV3Benchmark` interface. This is useful for testing model performance on tasks specific to your application.
 
 **Example: A custom benchmark to test politeness.**
 
 ```typescript
 import {
-  LanguageModelV2Benchmark,
+  LanguageModelV3Benchmark,
   BenchmarkResult,
   EvaluateOptions,
 } from "@ai-sdk-tool/eval";
 import { LanguageModel, generateText } from "ai";
 
 // Define the benchmark object
-export const politenessBenchmark: LanguageModelV2Benchmark = {
+export const politenessBenchmark: LanguageModelV3Benchmark = {
   name: "politeness-check",
   version: "1.0.0",
   description: "Checks if the model's response is polite.",

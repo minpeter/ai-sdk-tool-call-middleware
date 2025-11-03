@@ -1,8 +1,8 @@
 import type {
-  LanguageModelV2,
-  LanguageModelV2Content,
-  LanguageModelV2FunctionTool,
-  LanguageModelV2ToolCall,
+  LanguageModelV3,
+  LanguageModelV3Content,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 import { coerceBySchema } from "@ai-sdk-tool/rxml";
@@ -42,7 +42,7 @@ function parseToolChoiceJson(
 
 function logDebugSummary(
   debugSummary: { originalText?: string; toolCalls?: string } | undefined,
-  toolCall: LanguageModelV2ToolCall,
+  toolCall: LanguageModelV3ToolCall,
   originText: string
 ) {
   if (debugSummary) {
@@ -60,7 +60,7 @@ function logDebugSummary(
 }
 
 async function handleToolChoice(
-  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>,
+  doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>,
   params: { providerOptions?: ToolCallMiddlewareProviderOptions }
 ) {
   const result = await doGenerate();
@@ -74,7 +74,7 @@ async function handleToolChoice(
     parsed = parseToolChoiceJson(first.text, params.providerOptions);
   }
 
-  const toolCall: LanguageModelV2ToolCall = {
+  const toolCall: LanguageModelV3ToolCall = {
     type: "tool-call",
     toolCallId: generateId(),
     toolName: parsed.name || "unknown",
@@ -92,11 +92,11 @@ async function handleToolChoice(
 }
 
 function parseContent(
-  content: LanguageModelV2Content[],
+  content: LanguageModelV3Content[],
   protocol: ToolCallProtocol,
-  tools: LanguageModelV2FunctionTool[],
+  tools: LanguageModelV3FunctionTool[],
   providerOptions?: ToolCallMiddlewareProviderOptions
-): LanguageModelV2Content[] {
+): LanguageModelV3Content[] {
   const parsed = content.flatMap((contentItem) => {
     if (contentItem.type !== "text") {
       return [contentItem];
@@ -116,11 +116,11 @@ function parseContent(
   });
 
   return parsed.map((part) =>
-    fixToolCallWithSchema(part as LanguageModelV2Content, tools)
+    fixToolCallWithSchema(part as LanguageModelV3Content, tools)
   );
 }
 
-function logParsedContent(content: LanguageModelV2Content[]) {
+function logParsedContent(content: LanguageModelV3Content[]) {
   if (getDebugLevel() === "stream") {
     for (const part of content) {
       logParsedChunk(part);
@@ -129,16 +129,16 @@ function logParsedContent(content: LanguageModelV2Content[]) {
 }
 
 function computeDebugSummary(options: {
-  result: { content: LanguageModelV2Content[] };
-  newContent: LanguageModelV2Content[];
+  result: { content: LanguageModelV3Content[] };
+  newContent: LanguageModelV3Content[];
   protocol: ToolCallProtocol;
-  tools: LanguageModelV2FunctionTool[];
+  tools: LanguageModelV3FunctionTool[];
   providerOptions?: ToolCallMiddlewareProviderOptions;
 }) {
   const { result, newContent, protocol, tools, providerOptions } = options;
   const allText = result.content
     .filter(
-      (c): c is Extract<LanguageModelV2Content, { type: "text" }> =>
+      (c): c is Extract<LanguageModelV3Content, { type: "text" }> =>
         c.type === "text"
     )
     .map((c) => c.text)
@@ -150,8 +150,8 @@ function computeDebugSummary(options: {
   const originalText = segments.join("\n\n");
 
   const toolCalls = newContent.filter(
-    (p): p is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
-      (p as LanguageModelV2Content).type === "tool-call"
+    (p): p is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
+      (p as LanguageModelV3Content).type === "tool-call"
   );
 
   const dbg = providerOptions?.toolCallMiddleware?.debugSummary;
@@ -178,7 +178,7 @@ export async function wrapGenerate({
   params,
 }: {
   protocol: ToolCallProtocol;
-  doGenerate: () => ReturnType<LanguageModelV2["doGenerate"]>;
+  doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>;
   params: {
     providerOptions?: ToolCallMiddlewareProviderOptions;
   };
@@ -220,9 +220,9 @@ export async function wrapGenerate({
 }
 
 function fixToolCallWithSchema(
-  part: LanguageModelV2Content,
-  tools: LanguageModelV2FunctionTool[]
-): LanguageModelV2Content {
+  part: LanguageModelV3Content,
+  tools: LanguageModelV3FunctionTool[]
+): LanguageModelV3Content {
   if ((part as { type?: string }).type !== "tool-call") {
     return part;
   }
@@ -243,5 +243,5 @@ function fixToolCallWithSchema(
   return {
     ...(part as Record<string, unknown>),
     input: JSON.stringify(coerced ?? {}),
-  } as LanguageModelV2Content;
+  } as LanguageModelV3Content;
 }

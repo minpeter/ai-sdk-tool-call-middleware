@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV2FunctionTool,
-  LanguageModelV2StreamPart,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, test, vi } from "vitest";
 
@@ -13,7 +13,7 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 }));
 
 describe("morphXmlProtocol stream parsing", () => {
-  const tools: LanguageModelV2FunctionTool[] = [
+  const tools: LanguageModelV3FunctionTool[] = [
     {
       type: "function",
       name: "get_weather",
@@ -27,7 +27,7 @@ describe("morphXmlProtocol stream parsing", () => {
     toolSystemPromptTemplate: () => "",
   });
 
-  const runMiddleware = (stream: ReadableStream<LanguageModelV2StreamPart>) => {
+  const runMiddleware = (stream: ReadableStream<LanguageModelV3StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
     return middleware.wrapStream?.({
       doStream: mockDoStream,
@@ -45,7 +45,7 @@ describe("morphXmlProtocol stream parsing", () => {
   };
 
   test("should handle standard XML tool calls correctly", async () => {
-    const mockStream = new ReadableStream<LanguageModelV2StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-start", id: "text-1" });
         controller.enqueue({
@@ -89,7 +89,7 @@ describe("morphXmlProtocol stream parsing", () => {
     if (!result) {
       throw new Error("result is undefined");
     }
-    const chunks: LanguageModelV2StreamPart[] = [];
+    const chunks: LanguageModelV3StreamPart[] = [];
     for await (const chunk of result.stream) {
       chunks.push(chunk);
     }
@@ -104,7 +104,7 @@ describe("morphXmlProtocol stream parsing", () => {
   });
 
   test("should handle argument-less XML tool calls correctly", async () => {
-    const mockStream = new ReadableStream<LanguageModelV2StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-start", id: "text-1" });
         controller.enqueue({
@@ -133,7 +133,7 @@ describe("morphXmlProtocol stream parsing", () => {
     if (!result) {
       throw new Error("result is undefined");
     }
-    const chunks: LanguageModelV2StreamPart[] = [];
+    const chunks: LanguageModelV3StreamPart[] = [];
     for await (const chunk of result.stream) {
       chunks.push(chunk);
     }

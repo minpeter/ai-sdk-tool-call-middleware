@@ -1,8 +1,8 @@
 import type {
-  LanguageModelV2Content,
-  LanguageModelV2FunctionTool,
-  LanguageModelV2ToolCall,
-  LanguageModelV2ToolResultPart,
+  LanguageModelV3Content,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3ToolCall,
+  LanguageModelV3ToolResultPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 import {
@@ -29,7 +29,7 @@ function processTextBeforeToolCall(
   text: string,
   currentIndex: number,
   toolCallStartIndex: number,
-  processedElements: LanguageModelV2Content[]
+  processedElements: LanguageModelV3Content[]
 ): number {
   if (toolCallStartIndex > currentIndex) {
     const textSegment = text.substring(currentIndex, toolCallStartIndex);
@@ -49,14 +49,14 @@ type ToolCallInfo = {
 
 type ProcessToolCallParams = {
   toolCall: ToolCallInfo;
-  tools: LanguageModelV2FunctionTool[];
+  tools: LanguageModelV3FunctionTool[];
   options:
     | {
         onError?: (message: string, metadata?: Record<string, unknown>) => void;
       }
     | undefined;
   text: string;
-  processedElements: LanguageModelV2Content[];
+  processedElements: LanguageModelV3Content[];
 };
 
 function processToolCall(params: ProcessToolCallParams): void {
@@ -93,7 +93,7 @@ function processToolCall(params: ProcessToolCallParams): void {
 function addRemainingText(
   text: string,
   currentIndex: number,
-  processedElements: LanguageModelV2Content[]
+  processedElements: LanguageModelV3Content[]
 ): void {
   if (currentIndex < text.length) {
     const remainingText = text.substring(currentIndex);
@@ -106,7 +106,7 @@ function addRemainingText(
 type StreamingToolCallEndParams = {
   toolContent: string;
   currentToolCall: { name: string; content: string };
-  tools: LanguageModelV2FunctionTool[];
+  tools: LanguageModelV3FunctionTool[];
   options:
     | {
         onError?: (message: string, metadata?: Record<string, unknown>) => void;
@@ -229,7 +229,7 @@ function handleNoToolTagInBuffer(
 type ProcessToolCallInBufferParams = {
   buffer: string;
   currentToolCall: { name: string; content: string };
-  tools: LanguageModelV2FunctionTool[];
+  tools: LanguageModelV3FunctionTool[];
   options:
     | {
         onError?: (message: string, metadata?: Record<string, unknown>) => void;
@@ -367,7 +367,7 @@ type ProcessBufferHandlerParams = {
   setCurrentToolCall: (
     toolCall: { name: string; content: string } | null
   ) => void;
-  tools: LanguageModelV2FunctionTool[];
+  tools: LanguageModelV3FunctionTool[];
   options:
     | {
         onError?: (message: string, metadata?: Record<string, unknown>) => void;
@@ -481,7 +481,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
   },
 
-  formatToolCall(toolCall: LanguageModelV2ToolCall): string {
+  formatToolCall(toolCall: LanguageModelV3ToolCall): string {
     let args: unknown = {};
     const inputValue = hasInputProperty(toolCall) ? toolCall.input : undefined;
 
@@ -500,7 +500,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     });
   },
 
-  formatToolResponse(toolResult: LanguageModelV2ToolResultPart): string {
+  formatToolResponse(toolResult: LanguageModelV3ToolResultPart): string {
     return stringify("tool_response", {
       tool_name: toolResult.toolName,
       result: toolResult.output,
@@ -513,7 +513,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       return [{ type: "text", text }];
     }
 
-    const processedElements: LanguageModelV2Content[] = [];
+    const processedElements: LanguageModelV3Content[] = [];
     let currentIndex = 0;
 
     // Find all tool calls using proper XML parsing
@@ -629,7 +629,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 });
 
 export function getToolSchema(
-  tools: LanguageModelV2FunctionTool[],
+  tools: LanguageModelV3FunctionTool[],
   toolName: string
 ) {
   return tools.find((t) => t.name === toolName)?.inputSchema;

@@ -3,7 +3,7 @@ import path from "node:path";
 import { generateText, type LanguageModel } from "ai";
 import Ajv, { type AnySchema } from "ajv";
 
-import type { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
+import type { BenchmarkResult, LanguageModelV3Benchmark } from "@/interfaces";
 import { resolveDataDir } from "@/utils/paths";
 
 type Json = unknown;
@@ -300,7 +300,7 @@ async function processTestCase(
   return { schemaValid: valid, valueMatch: valuesOk, correct };
 }
 
-export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
+export const jsonGenerationBenchmark: LanguageModelV3Benchmark = {
   name: "json-generation",
   version: "2.1.0",
   description:
@@ -490,7 +490,7 @@ async function runSchemaOnlyTests(
   return schemaValidCount;
 }
 
-export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV2Benchmark = {
+export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV3Benchmark = {
   name: "json-generation-schema-only",
   version: "1.0.1",
   description:

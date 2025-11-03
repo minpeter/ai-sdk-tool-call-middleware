@@ -8,7 +8,7 @@ import {
   tool,
 } from "ai";
 
-import type { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
+import type { BenchmarkResult, LanguageModelV3Benchmark } from "@/interfaces";
 import { resolveDataDir } from "@/utils/paths";
 
 import {
@@ -124,7 +124,7 @@ function createBfclBenchmark(
   description: string,
   testDataFile: string,
   answerDataFile: string
-): LanguageModelV2Benchmark {
+): LanguageModelV3Benchmark {
   return {
     name,
     version: "1.0.0",

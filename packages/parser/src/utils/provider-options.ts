@@ -1,6 +1,6 @@
 import type {
   JSONSchema7,
-  LanguageModelV2FunctionTool,
+  LanguageModelV3FunctionTool,
 } from "@ai-sdk/provider";
 
 export type ToolCallMiddlewareProviderOptions = {
@@ -29,7 +29,7 @@ export const originalToolsSchema = {
 };
 
 export function encodeOriginalTools(
-  tools: LanguageModelV2FunctionTool[] | undefined
+  tools: LanguageModelV3FunctionTool[] | undefined
 ): Array<{ name: string; inputSchema: string }> {
   return (
     tools?.map((t) => ({
@@ -46,13 +46,13 @@ export function decodeOriginalTools(
         inputSchema: string; // stringified JSONSchema7
       }>
     | undefined
-): LanguageModelV2FunctionTool[] {
+): LanguageModelV3FunctionTool[] {
   if (!originalTools) {
     return [];
   }
 
   return originalTools.map(
-    (t): LanguageModelV2FunctionTool => ({
+    (t): LanguageModelV3FunctionTool => ({
       type: "function",
       name: t.name,
       inputSchema: JSON.parse(t.inputSchema) as JSONSchema7,

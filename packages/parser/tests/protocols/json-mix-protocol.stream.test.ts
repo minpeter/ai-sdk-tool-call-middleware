@@ -1,10 +1,10 @@
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
 
-function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
-  const out: LanguageModelV2StreamPart[] = [];
+function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
+  const out: LanguageModelV3StreamPart[] = [];
   return (async () => {
     for await (const c of stream) {
       out.push(c);
@@ -17,7 +17,7 @@ describe("jsonMixProtocol streaming", () => {
   it("parses normal tool_call blocks into tool-call events", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "pre " });
         ctrl.enqueue({
@@ -43,7 +43,7 @@ describe("jsonMixProtocol streaming", () => {
   it("normalizes legacy <tool_call> tags and parses", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -70,7 +70,7 @@ describe("jsonMixProtocol streaming", () => {
       tools: [],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -101,7 +101,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
   it("parses tool call when content split across chunks", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -144,7 +144,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
   it("supports legacy <tool_call> tags mixed in chunks", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -172,7 +172,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
       tools: [],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -199,7 +199,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
   it("flushes buffered partial tool_call at finish as text", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -225,7 +225,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "<tool" });
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "_ca" });
@@ -271,7 +271,7 @@ describe("jsonMixProtocol content isolation", () => {
   it("does not expose JSON content inside tool_call tags in text output", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -324,7 +324,7 @@ describe("jsonMixProtocol content isolation", () => {
   it("handles multiple consecutive tool calls without exposing JSON content", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "First, " });
         ctrl.enqueue({
@@ -380,7 +380,7 @@ describe("jsonMixProtocol content isolation", () => {
   it("properly emits text-start and text-end events around tool calls", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -448,7 +448,7 @@ describe("jsonMixProtocol content isolation", () => {
   it("handles tool call split across chunks without exposing JSON in text", async () => {
     const protocol = jsonMixProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "Computing: " });
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "<tool_call>" });
