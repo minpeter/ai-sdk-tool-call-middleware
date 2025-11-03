@@ -414,7 +414,7 @@ function createCondensedMessage(role: string, joinedText: string) {
 function condenseTextContent(
   processedPrompt: LanguageModelV2Prompt
 ): LanguageModelV2Prompt {
-  for (let i = 0; i < processedPrompt.length; i++) {
+  for (let i = 0; i < processedPrompt.length; i += 1) {
     const msg = processedPrompt[i] as unknown as {
       role: string;
       content: unknown;
@@ -440,7 +440,7 @@ function condenseTextContent(
 function mergeConsecutiveUserMessages(
   processedPrompt: LanguageModelV2Prompt
 ): LanguageModelV2Prompt {
-  for (let i = processedPrompt.length - 1; i > 0; i--) {
+  for (let i = processedPrompt.length - 1; i > 0; i -= 1) {
     const current = processedPrompt[i];
     const prev = processedPrompt[i - 1];
     if (current.role === "user" && prev.role === "user") {

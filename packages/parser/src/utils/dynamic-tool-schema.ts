@@ -24,7 +24,7 @@ export function createDynamicIfThenElseSchema(
   let currentSchema: JSONSchema7 = {};
   const toolNames: string[] = [];
 
-  for (let i = tools.length - 1; i >= 0; i--) {
+  for (let i = tools.length - 1; i >= 0; i -= 1) {
     const tool = tools[i];
 
     if (tool.type === "provider-defined") {

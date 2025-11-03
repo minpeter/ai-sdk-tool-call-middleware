@@ -27,7 +27,7 @@ function createSyncChunkedStream(
       if (chunkIndex < chunks.length) {
         // Push immediately without delay for testing
         this.push(chunks[chunkIndex]);
-        chunkIndex++;
+        chunkIndex += 1;
       } else {
         this.push(null); // End of stream
       }

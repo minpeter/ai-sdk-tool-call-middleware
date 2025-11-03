@@ -25,7 +25,7 @@ function createChunkedStream(
     read() {
       if (chunkIndex < chunks.length) {
         this.push(chunks[chunkIndex]);
-        chunkIndex++;
+        chunkIndex += 1;
       } else {
         this.push(null); // End of stream
       }

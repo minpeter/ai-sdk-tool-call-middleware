@@ -379,7 +379,7 @@ export function parallelFunctionCheckerNoOrder(
     }
 
     let foundMatch = false;
-    for (let i = 0; i < modelToolCalls.length; i++) {
+    for (let i = 0; i < modelToolCalls.length; i += 1) {
       if (matchedModelCallIndices.has(i)) {
         continue;
       }

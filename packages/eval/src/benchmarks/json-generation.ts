@@ -65,12 +65,12 @@ function tryBracketScan(text: string): Json | undefined {
   const close = open === "{" ? "}" : "]";
   let depth = 0;
 
-  for (let i = start; i < text.length; i++) {
+  for (let i = start; i < text.length; i += 1) {
     const ch = text[i];
     if (ch === open) {
-      depth++;
+      depth += 1;
     } else if (ch === close) {
-      depth--;
+      depth -= 1;
     }
 
     if (depth === 0) {
@@ -114,7 +114,7 @@ function subsetMatch(expected: Json, actual: Json): boolean {
       return false;
     }
     // Require at least that expected elements (by index) match if provided
-    for (let i = 0; i < expected.length; i++) {
+    for (let i = 0; i < expected.length; i += 1) {
       if (!subsetMatch(expected[i], actual[i])) {
         return false;
       }
@@ -354,13 +354,13 @@ async function processAllTests(
     try {
       const result = await processTestCase(tc, context);
       if (result.schemaValid) {
-        schemaValidCount++;
+        schemaValidCount += 1;
       }
       if (result.valueMatch) {
-        valueMatchCount++;
+        valueMatchCount += 1;
       }
       if (result.correct) {
-        correctCount++;
+        correctCount += 1;
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -479,7 +479,7 @@ async function runSchemaOnlyTests(
     try {
       const isValid = await processSchemaOnlyTestCase(tc, context);
       if (isValid) {
-        schemaValidCount++;
+        schemaValidCount += 1;
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
