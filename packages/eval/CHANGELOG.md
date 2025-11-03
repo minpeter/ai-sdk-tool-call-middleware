@@ -1,5 +1,11 @@
 # @ai-sdk-tool/eval
 
+## 1.0.0-canary.0
+
+### Major Changes
+
+- df62ec5: bump ai v6 (middleware v3 not yet)
+
 ## 0.1.8
 
 ### Patch Changes

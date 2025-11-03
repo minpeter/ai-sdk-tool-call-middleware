@@ -1,5 +1,12 @@
 # @ai-sdk-tool/parser
 
+## 3.0.0-canary.0
+
+### Major Changes
+
+- c96c293: upgrade language model interfaces to V3
+- df62ec5: bump ai v6 (middleware v3 not yet)
+
 ## 2.1.7
 
 ### Patch Changes
