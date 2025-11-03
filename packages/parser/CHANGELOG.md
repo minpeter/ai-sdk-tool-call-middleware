@@ -1,11 +1,5 @@
 # @ai-sdk-tool/parser
 
-## 3.0.0-canary.0
-
-### Major Changes
-
-- 70a8d48: bump ai v6 (middleware v3 not yet)
-
 ## 2.1.7
 
 ### Patch Changes
