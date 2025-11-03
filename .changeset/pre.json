@@ -9,5 +9,8 @@
     "@ai-sdk-tool/parser": "2.1.7",
     "@ai-sdk-tool/rxml": "0.1.1"
   },
-  "changesets": []
+  "changesets": [
+    "late-ducks-think",
+    "spicy-ants-scream"
+  ]
 }
