@@ -1,0 +1,13 @@
+{
+  "mode": "pre",
+  "tag": "canary",
+  "initialVersions": {
+    "@ai-sdk-tool/examples-eval-core": "0.0.0",
+    "@ai-sdk-tool/examples-parser-core": "0.0.0",
+    "@ai-sdk-tool/examples-rxml-core": "0.0.0",
+    "@ai-sdk-tool/eval": "0.1.8",
+    "@ai-sdk-tool/parser": "2.1.7",
+    "@ai-sdk-tool/rxml": "0.1.1"
+  },
+  "changesets": []
+}
