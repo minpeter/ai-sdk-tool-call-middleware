@@ -55,7 +55,7 @@ function some<T, R>(
   f: (item: T, index: number, arr: T[]) => R | undefined | false
 ): R | false {
   let acc: R | false = false;
-  for (let i = 0; i < array.length; i++) {
+  for (let i = 0; i < array.length; i += 1) {
     // We assume R is a truthy type if the condition is met, or undefined/false otherwise.
     const result = f(array[i], i, array);
     acc = result === undefined ? false : result;
@@ -396,7 +396,7 @@ const strictLexer = makeLexer(makeTokenSpecs(false)); // Strict JSON lexer
 // :: array token -> nat -> nat?
 function previousNWSToken(tokens: Token[], index: number): number | undefined {
   let currentIndex = index;
-  for (; currentIndex >= 0; currentIndex--) {
+  for (; currentIndex >= 0; currentIndex -= 1) {
     if (tokens[currentIndex].type !== " ") {
       return currentIndex; // Return index of the non-whitespace token
     }

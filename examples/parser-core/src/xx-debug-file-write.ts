@@ -150,7 +150,7 @@ async function main() {
     detail: string;
     first?: FirstToolCall;
   }>;
-  for (let i = 1; i <= MAX_RUNS; i++) {
+  for (let i = 1; i <= MAX_RUNS; i += 1) {
     console.log(`\n--- Run ${i} ---`);
     const outcome = await runOnce(i);
     results.push(outcome);

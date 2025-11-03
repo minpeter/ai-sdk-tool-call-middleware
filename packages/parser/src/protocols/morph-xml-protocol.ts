@@ -645,7 +645,7 @@ function computeFullTagEnd(
   if (closeHead === contentEnd) {
     let p = closeHead + 2 + toolName.length;
     while (p < text.length && WHITESPACE_REGEX.test(text[p])) {
-      p++;
+      p += 1;
     }
     if (text[p] === ">") {
       fullTagEnd = p + 1;

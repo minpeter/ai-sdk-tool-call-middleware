@@ -26,7 +26,7 @@ function createChunkedStream(
       if (chunkIndex < chunks.length) {
         // Push immediately for testing
         this.push(chunks[chunkIndex]);
-        chunkIndex++;
+        chunkIndex += 1;
       } else {
         this.push(null); // End of stream
       }

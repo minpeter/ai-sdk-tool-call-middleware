@@ -563,7 +563,7 @@ function createBfclBenchmark(
           restoredCalls: Record<string, unknown>[],
           usedActual: Set<number>
         ): number => {
-          for (let i = 0; i < restoredCalls.length; i++) {
+          for (let i = 0; i < restoredCalls.length; i += 1) {
             if (usedActual.has(i)) {
               continue;
             }
@@ -1149,7 +1149,8 @@ function createBfclBenchmark(
             .fill(0)
             .map(async () => {
               while (true) {
-                const current = idx++;
+                const current = idx;
+                idx += 1;
                 if (current >= items.length) {
                   break;
                 }

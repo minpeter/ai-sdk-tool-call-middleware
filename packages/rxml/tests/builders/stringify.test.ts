@@ -420,7 +420,7 @@ describe("stringify", () => {
 
     it("handles very large objects", () => {
       const largeObject = {};
-      for (let i = 0; i < 1000; i++) {
+      for (let i = 0; i < 1000; i += 1) {
         (largeObject as any)[`item${i}`] = `value${i}`;
       }
 

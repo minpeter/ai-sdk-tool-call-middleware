@@ -27,7 +27,7 @@ function createChunkedStream(
       if (chunkIndex < chunks.length) {
         // Push chunks immediately without delay for fast testing
         this.push(chunks[chunkIndex]);
-        chunkIndex++;
+        chunkIndex += 1;
       } else {
         this.push(null); // End of stream
       }
@@ -151,7 +151,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
 
       // Test simple consumption without processXMLStream
       for await (const _chunk of stream) {
-        chunkCount++;
+        chunkCount += 1;
       }
 
       const endTime = Date.now();
@@ -178,7 +178,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
       let elementCount = 0;
 
       for await (const element of processXMLStream(stream)) {
-        elementCount++;
+        elementCount += 1;
         results.push(element);
         if (elementCount % 10 === 0) {
           console.log(`  - ${elementCount} elements processed`);
@@ -612,7 +612,7 @@ The search has been initiated successfully.`;
       const maxProcessed = 100; // Process only first 100 elements
 
       for await (const element of processXMLStream(stream)) {
-        processedCount++;
+        processedCount += 1;
 
         // Verify each element is properly formed
         if (typeof element === "object" && element.tagName === "item") {

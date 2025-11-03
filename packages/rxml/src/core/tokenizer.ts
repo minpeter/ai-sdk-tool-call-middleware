@@ -95,7 +95,7 @@ export class XMLTokenizer {
         children.push(trimmed);
       }
     }
-    this.pos++;
+    this.pos += 1;
   }
 
   /**
@@ -190,7 +190,7 @@ export class XMLTokenizer {
       this.pos < this.xmlString.length &&
       this.isWhitespace(this.xmlString.charCodeAt(this.pos))
     ) {
-      this.pos++;
+      this.pos += 1;
     }
   }
 
@@ -202,7 +202,7 @@ export class XMLTokenizer {
       return null;
     }
 
-    this.pos++; // Skip =
+    this.pos += 1; // Skip =
     this.skipWhitespace();
 
     const code = this.xmlString.charCodeAt(this.pos);
@@ -246,14 +246,14 @@ export class XMLTokenizer {
       const c = this.xmlString.charCodeAt(this.pos);
 
       if (this.isWhitespace(c)) {
-        this.pos++;
+        this.pos += 1;
         continue;
       }
 
       if ((c > 64 && c < 91) || (c > 96 && c < 123)) {
         this.parseAttribute(attributes);
       } else {
-        this.pos++;
+        this.pos += 1;
       }
     }
 
@@ -289,7 +289,7 @@ export class XMLTokenizer {
     isSelfClosing: boolean
   ): (RXMLNode | string)[] {
     if (isSelfClosing) {
-      this.pos++;
+      this.pos += 1;
       return [];
     }
 
@@ -302,12 +302,12 @@ export class XMLTokenizer {
     }
 
     if (this.options.noChildNodes?.indexOf(tagName) === -1) {
-      this.pos++;
+      this.pos += 1;
       return this.parseChildren(tagName);
     }
 
     // Tag is in noChildNodes
-    this.pos++;
+    this.pos += 1;
     if ((DEFAULT_NO_CHILD_NODES as readonly string[]).includes(tagName)) {
       return [];
     }
@@ -326,7 +326,7 @@ export class XMLTokenizer {
    * Parse a single XML node
    */
   parseNode(): RXMLNode {
-    this.pos++; // Skip opening <
+    this.pos += 1; // Skip opening <
 
     const { name: tagName, newPos } = parseName(this.xmlString, this.pos);
     this.pos = newPos;
@@ -404,7 +404,7 @@ export class XMLTokenizer {
       children.push(this.xmlString.substring(startCommentPos, this.pos + 1));
     }
 
-    this.pos++;
+    this.pos += 1;
   }
 
   /**
@@ -445,11 +445,11 @@ export class XMLTokenizer {
       ) {
         encapsulated = false;
       }
-      this.pos++;
+      this.pos += 1;
     }
 
     children.push(this.xmlString.substring(startDoctype, this.pos));
-    this.pos++;
+    this.pos += 1;
   }
 
   /**
