@@ -7,16 +7,28 @@ import { z } from "zod";
 const MAX_STEPS = 4;
 const MAX_TEMPERATURE = 100;
 
-const openrouter = createOpenAICompatible({
-  name: "openrouter",
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: "https://openrouter.ai/api/v1",
+// const openrouter = createOpenAICompatible({
+//   name: "openrouter",
+//   apiKey: process.env.OPENROUTER_API_KEY,
+//   baseURL: "https://openrouter.ai/api/v1",
+// });
+
+const friendli = createOpenAICompatible({
+  name: "friendli",
+  apiKey: process.env.FRIENDLI_TOKEN,
+  baseURL: "https://api.friendli.ai/serverless/v1",
+  includeUsage: true,
+  fetch: (url, options) => {
+    const body = options?.body ? JSON.parse(options.body as string) : {};
+    body.parse_reasoning = true;
+    return fetch(url, { ...options, body: JSON.stringify(body) });
+  },
 });
 
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: openrouter("z-ai/glm-4.5-air"),
+      model: friendli("zai-org/GLM-4.6"),
       middleware: sijawaraDetailedXmlToolMiddleware,
     }),
 
@@ -62,6 +74,9 @@ async function main() {
   for await (const part of result.fullStream) {
     if (part.type === "text-delta") {
       process.stdout.write(part.text);
+    } else if (part.type === "reasoning-delta") {
+      // Print reasoning text in a different color (e.g., yellow)
+      process.stdout.write(`\x1b[33m${part.text}\x1b[0m`);
     } else if (part.type === "tool-result") {
       console.log({
         name: part.toolName,

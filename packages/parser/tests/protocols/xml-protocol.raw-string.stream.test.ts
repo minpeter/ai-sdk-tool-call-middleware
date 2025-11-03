@@ -1,13 +1,13 @@
 import type {
-  LanguageModelV2FunctionTool,
-  LanguageModelV2StreamPart,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 
-async function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
-  const out: LanguageModelV2StreamPart[] = [];
+async function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
+  const out: LanguageModelV3StreamPart[] = [];
   const reader = stream.getReader();
   while (true) {
     const { value, done } = await reader.read();
@@ -24,7 +24,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
   it("captures raw inner XML for string-typed arg during streaming", async () => {
     const CHUNK_SIZE = 7;
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "write_file",
@@ -43,7 +43,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
 
     const transformer = protocol.createStreamParser({ tools });
     const html = "<html><body><h1>Hi</h1><p>World</p></body></html>";
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         const parts = [
           "<write_file>",
@@ -76,7 +76,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     const out = await collect(rs.pipeThrough(transformer));
 
     const tool = out.find(
-      (p): p is Extract<LanguageModelV2StreamPart, { type: "tool-call" }> =>
+      (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("write_file");
@@ -96,7 +96,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
   it("error policy cancels the tool call and emits original text in streaming", async () => {
     const CHUNK_SIZE = 5;
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "write_file",
@@ -112,7 +112,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         const parts = [
           "<write_file>",
@@ -141,7 +141,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     const out = await collect(rs.pipeThrough(transformer));
     // Entire tool call is cancelled and returned as text stream
     const textParts = out.filter(
-      (p): p is Extract<LanguageModelV2StreamPart, { type: "text-delta" }> =>
+      (p): p is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
         p.type === "text-delta"
     );
     const combined = textParts.map((p) => p.delta).join("");
@@ -157,7 +157,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
   it("captures DOCTYPE HTML inside string-typed <content> during streaming (user-reported)", async () => {
     const CHUNK_SIZE = 11;
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "file_write",
@@ -175,7 +175,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
 
     const transformer = protocol.createStreamParser({ tools });
     const html = `<!DOCTYPE html>\n<html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Simple HTML Page</title> </head> <body> <h1>Hello World!</h1> <p>This is a simple HTML file.</p> <button>Click Me</button> </body> </html>`;
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         const parts = [
           "<file_write>",
@@ -205,7 +205,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
 
     const out = await collect(rs.pipeThrough(transformer));
     const tool = out.find(
-      (p): p is Extract<LanguageModelV2StreamPart, { type: "tool-call" }> =>
+      (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("file_write");
@@ -223,7 +223,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
   it("decodes entity-escaped HTML inside string-typed <content> during streaming", async () => {
     const CHUNK_SIZE = 13;
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "file_write",
@@ -243,7 +243,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     const htmlRaw = "<!DOCTYPE html>\n<html><body><h1>안녕</h1></body></html>";
     const htmlEscaped =
       "&lt;!DOCTYPE html&gt;\n&lt;html&gt;&lt;body&gt;&lt;h1&gt;안녕&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;";
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         const parts = [
           "<file_write>",
@@ -273,7 +273,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
 
     const out = await collect(rs.pipeThrough(transformer));
     const tool = out.find(
-      (p): p is Extract<LanguageModelV2StreamPart, { type: "tool-call" }> =>
+      (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("file_write");

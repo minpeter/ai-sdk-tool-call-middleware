@@ -17,6 +17,6 @@ export { evaluate } from "./evaluate";
 export type {
   BenchmarkResult,
   EvaluateOptions,
-  LanguageModelV2Benchmark,
+  LanguageModelV3Benchmark,
   ReporterType,
 } from "./interfaces";

@@ -1,4 +1,4 @@
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { dummyProtocol } from "@/protocols/dummy-protocol";
@@ -7,8 +7,8 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
-  const out: LanguageModelV2StreamPart[] = [];
+function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
+  const out: LanguageModelV3StreamPart[] = [];
   return (async () => {
     for await (const c of stream) {
       out.push(c);
@@ -21,7 +21,7 @@ describe("dummyProtocol streaming behavior", () => {
   it("emits text-start only once and text-end when non-text arrives", async () => {
     const protocol = dummyProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "hello" });
         ctrl.enqueue({ type: "text-delta", id: "1", delta: " world" });
@@ -57,7 +57,7 @@ describe("dummyProtocol streaming behavior", () => {
   it("flush emits text-end when stream closes with pending text", async () => {
     const protocol = dummyProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "partial" });
         ctrl.enqueue({

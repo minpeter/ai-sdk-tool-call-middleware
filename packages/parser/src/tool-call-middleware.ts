@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV2CallOptions,
-  LanguageModelV2Middleware,
+  LanguageModelV3CallOptions,
+  LanguageModelV3Middleware,
 } from "@ai-sdk/provider";
 
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
@@ -21,11 +21,11 @@ export function createToolMiddleware({
 }: {
   protocol: ToolCallProtocol | (() => ToolCallProtocol);
   toolSystemPromptTemplate: (tools: string) => string;
-}): LanguageModelV2Middleware {
+}): LanguageModelV3Middleware {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
   return {
-    middlewareVersion: "v2",
+    specificationVersion: "v3",
     wrapStream: ({ doStream, doGenerate, params }) => {
       if (isToolChoiceActive(params)) {
         return toolChoiceStream({
@@ -46,7 +46,7 @@ export function createToolMiddleware({
         doGenerate,
         params,
       }),
-    transformParams: async ({ params }): Promise<LanguageModelV2CallOptions> =>
+    transformParams: async ({ params }): Promise<LanguageModelV3CallOptions> =>
       transformParams({
         protocol: resolvedProtocol,
         toolSystemPromptTemplate,

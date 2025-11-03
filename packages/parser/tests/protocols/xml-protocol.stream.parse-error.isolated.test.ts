@@ -1,13 +1,13 @@
 import type {
-  LanguageModelV2FunctionTool,
-  LanguageModelV2StreamPart,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 
-function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
-  const out: LanguageModelV2StreamPart[] = [];
+function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
+  const out: LanguageModelV3StreamPart[] = [];
   return (async () => {
     for await (const c of stream) {
       out.push(c);
@@ -19,7 +19,7 @@ function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
 describe("morphXmlProtocol streaming parse error with malformed XML", () => {
   it("invokes onError and emits original text on parser exception", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "a",
@@ -32,7 +32,7 @@ describe("morphXmlProtocol streaming parse error with malformed XML", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         // Use malformed XML that will cause parsing to fail
         ctrl.enqueue({

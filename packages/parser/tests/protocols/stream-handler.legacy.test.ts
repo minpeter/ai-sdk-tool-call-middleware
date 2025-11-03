@@ -1,4 +1,4 @@
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, test, vi } from "vitest";
 
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
@@ -14,7 +14,7 @@ describe("jsonMixProtocol stream parsing", () => {
     toolSystemPromptTemplate: () => "",
   });
 
-  const runMiddleware = (stream: ReadableStream<LanguageModelV2StreamPart>) => {
+  const runMiddleware = (stream: ReadableStream<LanguageModelV3StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
     if (!middleware.wrapStream) {
       throw new Error("wrapStream is not defined");
@@ -26,7 +26,7 @@ describe("jsonMixProtocol stream parsing", () => {
   };
 
   test("should handle tool calls correctly", async () => {
-    const mockStream = new ReadableStream<LanguageModelV2StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-start", id: "text-1" });
         controller.enqueue({
@@ -56,7 +56,7 @@ describe("jsonMixProtocol stream parsing", () => {
 
     const result = await runMiddleware(mockStream);
 
-    const chunks: LanguageModelV2StreamPart[] = [];
+    const chunks: LanguageModelV3StreamPart[] = [];
     for await (const chunk of result.stream) {
       chunks.push(chunk);
     }
@@ -71,7 +71,7 @@ describe("jsonMixProtocol stream parsing", () => {
   });
 
   test("should handle malformed tool calls gracefully", async () => {
-    const mockStream = new ReadableStream<LanguageModelV2StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-start", id: "text-1" });
         controller.enqueue({
@@ -90,7 +90,7 @@ describe("jsonMixProtocol stream parsing", () => {
     });
 
     const result = await runMiddleware(mockStream);
-    const chunks: LanguageModelV2StreamPart[] = [];
+    const chunks: LanguageModelV3StreamPart[] = [];
     for await (const chunk of result.stream) {
       chunks.push(chunk);
     }

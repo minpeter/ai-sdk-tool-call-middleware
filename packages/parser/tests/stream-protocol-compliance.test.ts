@@ -1,4 +1,4 @@
-import type { LanguageModelV2StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, test } from "vitest";
 
 import { dummyProtocol } from "@/protocols/dummy-protocol";
@@ -10,7 +10,7 @@ describe("AI SDK v5 stream protocol compliance", () => {
     toolSystemPromptTemplate: () => "",
   });
 
-  const runMiddleware = (stream: ReadableStream<LanguageModelV2StreamPart>) => {
+  const runMiddleware = (stream: ReadableStream<LanguageModelV3StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
     if (!middleware.wrapStream) {
       throw new Error("wrapStream is not defined");
@@ -22,7 +22,7 @@ describe("AI SDK v5 stream protocol compliance", () => {
   };
 
   test("should produce compliant start/delta/end pattern for text", async () => {
-    const mockStream = new ReadableStream<LanguageModelV2StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-delta", delta: "Hello world" } as any);
         controller.enqueue({
@@ -35,7 +35,7 @@ describe("AI SDK v5 stream protocol compliance", () => {
     });
 
     const result = await runMiddleware(mockStream);
-    const chunks: LanguageModelV2StreamPart[] = [];
+    const chunks: LanguageModelV3StreamPart[] = [];
     for await (const chunk of result.stream) {
       chunks.push(chunk);
     }
@@ -49,7 +49,7 @@ describe("AI SDK v5 stream protocol compliance", () => {
   });
 
   test("handles empty text chunks correctly", async () => {
-    const mockStream = new ReadableStream<LanguageModelV2StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-delta", delta: "" } as any);
         controller.enqueue({
@@ -62,7 +62,7 @@ describe("AI SDK v5 stream protocol compliance", () => {
     });
 
     const result = await runMiddleware(mockStream);
-    const chunks: LanguageModelV2StreamPart[] = [];
+    const chunks: LanguageModelV3StreamPart[] = [];
     for await (const chunk of result.stream) {
       chunks.push(chunk);
     }

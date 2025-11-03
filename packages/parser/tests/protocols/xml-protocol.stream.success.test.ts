@@ -1,13 +1,13 @@
 import type {
-  LanguageModelV2FunctionTool,
-  LanguageModelV2StreamPart,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
 
-function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
-  const out: LanguageModelV2StreamPart[] = [];
+function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
+  const out: LanguageModelV3StreamPart[] = [];
   return (async () => {
     for await (const c of stream) {
       out.push(c);
@@ -19,7 +19,7 @@ function collect(stream: ReadableStream<LanguageModelV2StreamPart>) {
 describe("morphXmlProtocol streaming success path", () => {
   it("parses <tool>...</tool> into tool-call and flushes pending text", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "calc",
@@ -28,7 +28,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "pre " });
         ctrl.enqueue({
@@ -64,7 +64,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("does not expose nested XML tags in text output", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -78,7 +78,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -129,7 +129,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("handles multiple consecutive tool calls without exposing XML tags", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "get_location",
@@ -147,7 +147,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "First, " });
         ctrl.enqueue({
@@ -199,7 +199,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("handles deeply nested XML parameters without exposing internal tags", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "send_email",
@@ -215,7 +215,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -268,7 +268,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("handles tool call split across multiple chunks without exposing tags", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "calculate",
@@ -284,7 +284,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "Computing: " });
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "<calculate>\n" });
@@ -330,7 +330,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("handles array parameters with repeated tags without exposing internal XML", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "send_messages",
@@ -345,7 +345,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -400,7 +400,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("exposes XML tags in output when parsing fails (error fallback)", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "bad_tool",
@@ -419,7 +419,7 @@ describe("morphXmlProtocol streaming success path", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "Calling tool:\n" });
         // Invalid XML with duplicate string tags (will cause RXMLDuplicateStringTagError)
@@ -463,7 +463,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("properly emits text-start and text-end events around tool calls", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "test_tool",
@@ -475,7 +475,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -544,7 +544,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("handles text-end correctly when multiple tool calls are present", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "tool_a",
@@ -559,7 +559,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "Start " });
         ctrl.enqueue({
@@ -609,7 +609,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("handles consecutive tool calls with no text between them", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "tool_a",
@@ -624,7 +624,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -656,7 +656,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("handles tool calls separated only by whitespace", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "tool_a",
@@ -671,7 +671,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -710,7 +710,7 @@ describe("morphXmlProtocol streaming success path", () => {
 
   it("handles empty tool call parameters", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "empty_tool",
@@ -719,7 +719,7 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV2StreamPart>({
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",

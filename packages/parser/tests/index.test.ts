@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV2Content,
-  LanguageModelV2FunctionTool,
+  LanguageModelV3Content,
+  LanguageModelV3FunctionTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
@@ -39,10 +39,10 @@ describe("index exports", () => {
               type: "text" as const,
               text: "<get_weather><location>San Francisco</location></get_weather>",
             },
-          ] as LanguageModelV2Content[],
+          ] as LanguageModelV3Content[],
         });
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "get_weather",
@@ -71,7 +71,7 @@ describe("index exports", () => {
         throw new Error("result is undefined");
       }
       const toolCalls = result.content.filter(
-        (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
+        (c): c is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
           c.type === "tool-call"
       );
       expect(toolCalls).toHaveLength(1);
@@ -89,10 +89,10 @@ describe("index exports", () => {
               type: "text" as const,
               text: "<get_location></get_location>",
             },
-          ] as LanguageModelV2Content[],
+          ] as LanguageModelV3Content[],
         });
 
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "get_location",
@@ -121,7 +121,7 @@ describe("index exports", () => {
         throw new Error("result is undefined");
       }
       const toolCalls = result.content.filter(
-        (c): c is Extract<LanguageModelV2Content, { type: "tool-call" }> =>
+        (c): c is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
           c.type === "tool-call"
       );
       expect(toolCalls).toHaveLength(1);
@@ -144,7 +144,7 @@ describe("index exports", () => {
       });
 
       expect(customMiddleware).toBeDefined();
-      expect(customMiddleware.middlewareVersion).toBe("v2");
+      expect(customMiddleware.specificationVersion).toBe("v3");
     });
   });
 });

@@ -1,7 +1,7 @@
 import type {
-  LanguageModelV2Content,
-  LanguageModelV2ToolCall,
-  LanguageModelV2ToolResultPart,
+  LanguageModelV3Content,
+  LanguageModelV3ToolCall,
+  LanguageModelV3ToolResultPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
@@ -24,7 +24,7 @@ type JsonMixOptions = {
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
-  processedElements: LanguageModelV2Content[],
+  processedElements: LanguageModelV3Content[],
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
@@ -53,7 +53,7 @@ function processToolCallJson(
 
 function addTextSegment(
   text: string,
-  processedElements: LanguageModelV2Content[]
+  processedElements: LanguageModelV3Content[]
 ) {
   if (text.trim()) {
     processedElements.push({ type: "text", text });
@@ -64,7 +64,7 @@ type ParseContext = {
   match: RegExpExecArray;
   text: string;
   currentIndex: number;
-  processedElements: LanguageModelV2Content[];
+  processedElements: LanguageModelV3Content[];
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
@@ -314,7 +314,7 @@ export const jsonMixProtocol = ({
     return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
   },
 
-  formatToolCall(toolCall: LanguageModelV2ToolCall) {
+  formatToolCall(toolCall: LanguageModelV3ToolCall) {
     let args: unknown = {};
     try {
       args = JSON.parse(toolCall.input);
@@ -327,7 +327,7 @@ export const jsonMixProtocol = ({
     })}${toolCallEnd}`;
   },
 
-  formatToolResponse(toolResult: LanguageModelV2ToolResultPart) {
+  formatToolResponse(toolResult: LanguageModelV3ToolResultPart) {
     return `${toolResponseStart}${JSON.stringify({
       toolName: toolResult.toolName,
       result: toolResult.output,
@@ -342,7 +342,7 @@ export const jsonMixProtocol = ({
       "gs"
     );
 
-    const processedElements: LanguageModelV2Content[] = [];
+    const processedElements: LanguageModelV3Content[] = [];
     let currentIndex = 0;
     let match = toolCallRegex.exec(text);
 

@@ -1,4 +1,4 @@
-import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ToolCallProtocol } from "@/protocols/tool-call-protocol";
@@ -32,7 +32,7 @@ describe("tool-call-middleware coercion (utils)", () => {
       toolSystemPromptTemplate: () => "",
     });
 
-    const tools: LanguageModelV2FunctionTool[] = [
+    const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
         name: "calc",

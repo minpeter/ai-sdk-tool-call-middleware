@@ -1,4 +1,4 @@
-import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -31,7 +31,7 @@ const REGEX_GET_WEATHER_TAG = /<get_weather>/;
 const REGEX_TOOL_CALL_WORD = /tool_call/;
 
 describe("index prompt templates", () => {
-  const tools: LanguageModelV2FunctionTool[] = [
+  const tools: LanguageModelV3FunctionTool[] = [
     {
       type: "function",
       name: "get_weather",

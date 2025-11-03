@@ -36,7 +36,7 @@ export type BenchmarkResult = {
 /**
  * The interface for defining a language model benchmark.
  */
-export type LanguageModelV2Benchmark = {
+export type LanguageModelV3Benchmark = {
   /**
    * A unique name for the benchmark.
    */
@@ -93,7 +93,7 @@ export type EvaluateOptions = {
   /**
    * An array of benchmarks to run against the models.
    */
-  benchmarks: LanguageModelV2Benchmark[];
+  benchmarks: LanguageModelV3Benchmark[];
 
   /**
    * The reporter to use for displaying results.

@@ -27,6 +27,7 @@
 
 - 49f5024: Added license to Apache 2.0
 - 02b32c0: Morph XML protocol and utils robustness tweaks.
+
   - Add `RXML` for safer XML extraction (raw string tags, duplicate checks) and use it in `morphXmlProtocol`.
   - Replace relaxed JSON helper with `RJSON`; export `RXML`/`RJSON` from utils.
   - Minor improvements to streaming parsing and XML stringify options.
@@ -88,6 +89,7 @@
 ### Patch Changes
 
 - 7358b9f: Add and configure development tooling and quality improvements:
+
   - add ESLint and Prettier configs
   - add code coverage reporting and CI-friendly setup
   - bump and align dev dependencies

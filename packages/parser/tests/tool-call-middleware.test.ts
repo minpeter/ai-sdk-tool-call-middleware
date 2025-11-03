@@ -1,4 +1,4 @@
-import type { LanguageModelV2FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
@@ -26,7 +26,7 @@ describe("createToolMiddleware", () => {
     it("should create middleware with correct properties", () => {
       const middleware = createJsonMiddleware();
       expect(middleware).toBeDefined();
-      expect(middleware.middlewareVersion).toBe("v2");
+      expect(middleware.specificationVersion).toBe("v3");
       expect(middleware.wrapGenerate).toBeDefined();
       expect(middleware.wrapStream).toBeDefined();
       expect(middleware.transformParams).toBeDefined();
@@ -89,7 +89,7 @@ describe("createToolMiddleware", () => {
   describe("wrapGenerate with morphXmlProtocol", () => {
     it("should parse XML tool calls from text content", async () => {
       const middleware = createXmlMiddleware();
-      const tools: LanguageModelV2FunctionTool[] = [
+      const tools: LanguageModelV3FunctionTool[] = [
         {
           type: "function",
           name: "getTool",
