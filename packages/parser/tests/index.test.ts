@@ -144,7 +144,7 @@ describe("index exports", () => {
       });
 
       expect(customMiddleware).toBeDefined();
-      expect(customMiddleware.middlewareVersion).toBe("v2");
+      expect(customMiddleware.specificationVersion).toBe("v3");
     });
   });
 });

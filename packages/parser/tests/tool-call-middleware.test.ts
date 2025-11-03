@@ -26,7 +26,7 @@ describe("createToolMiddleware", () => {
     it("should create middleware with correct properties", () => {
       const middleware = createJsonMiddleware();
       expect(middleware).toBeDefined();
-      expect(middleware.middlewareVersion).toBe("v2");
+      expect(middleware.specificationVersion).toBe("v3");
       expect(middleware.wrapGenerate).toBeDefined();
       expect(middleware.wrapStream).toBeDefined();
       expect(middleware.transformParams).toBeDefined();
