@@ -2,7 +2,7 @@
   "extends": "./node_modules/@ai-sdkx/tsconfig/ts-library.json",
   "compilerOptions": {
     "composite": true,
-    "rootDir": ".",
+    "rootDir": "src",
     "outDir": "dist"
   },
   "exclude": ["dist", "build", "node_modules", "tsup.config.ts"],
