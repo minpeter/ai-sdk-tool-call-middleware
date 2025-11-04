@@ -12,5 +12,9 @@
     "tsup.config.ts",
     "vitest.config.ts"
   ],
-  "references": []
+  "references": [
+    {
+      "path": "../rxml"
+    }
+  ]
 }
