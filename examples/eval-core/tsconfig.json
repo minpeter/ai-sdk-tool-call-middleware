@@ -16,6 +16,13 @@
     "skipLibCheck": true,
     "composite": true
   },
-  "references": [{ "path": "../../packages/eval" }],
+  "references": [
+    {
+      "path": "../../packages/eval"
+    },
+    {
+      "path": "../../packages/parser"
+    }
+  ],
   "include": ["src/**/*.ts"]
 }

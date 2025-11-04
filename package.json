@@ -5,6 +5,7 @@
     "build": "turbo run build",
     "dev": "turbo dev",
     "test": "turbo test",
+    "update-references": "update-ts-references",
     "check:biome": "biome check",
     "check:types": "turbo typecheck",
     "check": "run-p check:*",
@@ -25,6 +26,7 @@
     "turbo": "^2.6.0",
     "typescript": "5.9.3",
     "ultracite": "6.2.0",
+    "update-ts-references": "^4.0.0",
     "vitest": "^4.0.6"
   },
   "packageManager": "pnpm@9.14.4",
