@@ -40,6 +40,7 @@ function invLog(...args: unknown[]) {
 }
 
 export const loggingMiddleware: LanguageModelV3Middleware = {
+  specificationVersion: "v3",
   wrapGenerate: async ({ doGenerate, params }) => {
     invLog("doGenerate called");
     invLog(`params: ${JSON.stringify(params, null, 2)}`);
@@ -51,7 +52,6 @@ export const loggingMiddleware: LanguageModelV3Middleware = {
 
     return result;
   },
-
   wrapStream: async ({ doStream, params }) => {
     invLog("doStream called");
     invLog(`params: ${JSON.stringify(params, null, 2)}`);

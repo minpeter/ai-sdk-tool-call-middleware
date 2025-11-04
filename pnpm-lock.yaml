@@ -89,8 +89,8 @@ importers:
         version: 4.1.12
     devDependencies:
       '@ai-sdk/provider':
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 3.0.0-beta.14
+        version: 3.0.0-beta.14
       '@types/node':
         specifier: ^24.10.0
         version: 24.10.0

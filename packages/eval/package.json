@@ -38,6 +38,6 @@
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "ai": ">=3.0.0"
+    "ai": ">=5.0.0"
   }
 }
