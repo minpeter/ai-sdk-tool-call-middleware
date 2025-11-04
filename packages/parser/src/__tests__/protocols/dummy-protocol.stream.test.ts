@@ -36,7 +36,7 @@ describe("dummyProtocol streaming behavior", () => {
     // tool-call and finish should pass through after text-end
     const afterEndIndex = out.findIndex((c) => c.type === "text-end");
     expect(
-      out.slice(Math.max(0, afterEndIndex)).some((c) => c.type === "tool-call")
+      out.slice(afterEndIndex + 1).some((c) => c.type === "tool-call")
     ).toBe(true);
     expect(out.at(-1)).toMatchObject({ type: "finish" });
   });
