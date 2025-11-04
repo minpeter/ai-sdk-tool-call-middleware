@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
 
 // Test data constants
 const TEST_COORDS = [3, 4, 5];

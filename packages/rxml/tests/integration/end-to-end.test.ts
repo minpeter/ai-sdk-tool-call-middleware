@@ -14,7 +14,7 @@ import {
   RXMLStringifyError,
   simplify,
   stringify,
-} from "@/index";
+} from "../../src";
 
 import { schemaTestCases } from "../fixtures/test-data";
 

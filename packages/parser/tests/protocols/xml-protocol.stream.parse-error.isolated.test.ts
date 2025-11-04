@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
 
 function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
   const out: LanguageModelV3StreamPart[] = [];

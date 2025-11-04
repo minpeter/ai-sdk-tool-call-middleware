@@ -11,7 +11,7 @@ import {
   jsonMixProtocol,
   morphXmlToolMiddleware,
   originalToolsSchema,
-} from "@/index";
+} from "../src";
 
 describe("index exports", () => {
   describe("gemmaToolMiddleware", () => {

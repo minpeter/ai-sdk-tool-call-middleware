@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-
 import {
   filter,
   parse,
@@ -9,8 +8,7 @@ import {
   RXMLDuplicateStringTagError,
   RXMLParseError,
   simplify,
-} from "@/index";
-
+} from "../../src";
 import {
   duplicateTagSamples,
   malformedXmlSamples,

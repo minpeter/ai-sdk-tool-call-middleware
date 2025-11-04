@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { createDynamicIfThenElseSchema } from "@/utils/dynamic-tool-schema";
+import { createDynamicIfThenElseSchema } from "../../src/utils/dynamic-tool-schema";
 
 describe("createDynamicIfThenElseSchema", () => {
   it("should create schema for single tool", () => {

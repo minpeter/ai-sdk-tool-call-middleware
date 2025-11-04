@@ -4,9 +4,9 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, test, vi } from "vitest";
 
-import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
-import { createToolMiddleware } from "@/tool-call-middleware";
-import { originalToolsSchema } from "@/utils/provider-options";
+import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
+import { createToolMiddleware } from "../../src/tool-call-middleware";
+import { originalToolsSchema } from "../../src/utils/provider-options";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

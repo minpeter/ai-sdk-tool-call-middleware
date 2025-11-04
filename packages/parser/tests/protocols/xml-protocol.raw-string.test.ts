@@ -4,8 +4,8 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
-import { isToolCallContent } from "@/utils/type-guards";
+import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
+import { isToolCallContent } from "../../src/utils/type-guards";
 
 describe("morphXmlProtocol raw string handling by schema", () => {
   it("treats string-typed args as raw text, not nested XML", () => {

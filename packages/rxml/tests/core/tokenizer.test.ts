@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { RXMLParseError, XMLTokenizer } from "@/index";
+import { RXMLParseError, XMLTokenizer } from "../../src";
 
 const WHITESPACE_ONLY_REGEX = /^\s+$/;
 

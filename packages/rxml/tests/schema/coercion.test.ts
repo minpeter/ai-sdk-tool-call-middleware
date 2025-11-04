@@ -8,7 +8,7 @@ import {
   parseWithoutSchema,
   processArrayContent,
   processIndexedTuple,
-} from "@/index";
+} from "../../src";
 
 describe("schema coercion", () => {
   describe("getPropertySchema", () => {

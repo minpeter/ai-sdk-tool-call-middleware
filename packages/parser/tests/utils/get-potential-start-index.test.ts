@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getPotentialStartIndex } from "@/utils/get-potential-start-index";
+import { getPotentialStartIndex } from "../../src/utils/get-potential-start-index";
 
 // Test constants for expected indices
 const INDEX_0 = 0;

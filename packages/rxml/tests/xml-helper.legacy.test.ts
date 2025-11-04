@@ -4,7 +4,7 @@ import {
   countTagOccurrences,
   extractRawInner,
   findFirstTopLevelRange,
-} from "@/index";
+} from "../src";
 
 // Constants
 const EXPECTED_TAG_COUNT = 3;

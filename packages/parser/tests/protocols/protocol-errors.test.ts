@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
+import { jsonMixProtocol } from "../../src/protocols/json-mix-protocol";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

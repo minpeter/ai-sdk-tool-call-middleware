@@ -1,7 +1,7 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

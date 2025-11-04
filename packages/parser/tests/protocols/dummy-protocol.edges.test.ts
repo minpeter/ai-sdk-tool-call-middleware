@@ -1,7 +1,7 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { dummyProtocol } from "@/protocols/dummy-protocol";
+import { dummyProtocol } from "../../src/protocols/dummy-protocol";
 
 function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
   const out: LanguageModelV3StreamPart[] = [];

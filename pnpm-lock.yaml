@@ -119,9 +119,6 @@ importers:
       '@ai-sdk/provider':
         specifier: 3.0.0-beta.14
         version: 3.0.0-beta.14
-      '@ai-sdkx/tsconfig':
-        specifier: workspace:*
-        version: link:../../tools/tsconfig
       ai:
         specifier: 6.0.0-beta.92
         version: 6.0.0-beta.92(zod@4.1.12)
@@ -132,6 +129,9 @@ importers:
         specifier: ^4.1.12
         version: 4.1.12
     devDependencies:
+      '@ai-sdkx/tsconfig':
+        specifier: workspace:*
+        version: link:../../tools/tsconfig
       '@types/node':
         specifier: ^24.10.0
         version: 24.10.0
@@ -157,6 +157,9 @@ importers:
       '@ai-sdk/openai-compatible':
         specifier: 2.0.0-beta.31
         version: 2.0.0-beta.31(zod@4.1.12)
+      '@ai-sdkx/tsconfig':
+        specifier: workspace:*
+        version: link:../../tools/tsconfig
       '@types/node':
         specifier: ^24.10.0
         version: 24.10.0
@@ -172,6 +175,9 @@ importers:
 
   packages/rxml:
     devDependencies:
+      '@ai-sdkx/tsconfig':
+        specifier: workspace:*
+        version: link:../../tools/tsconfig
       '@types/node':
         specifier: ^24.10.0
         version: 24.10.0

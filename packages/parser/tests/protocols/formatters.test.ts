@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
-import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
+import { jsonMixProtocol } from "../../src/protocols/json-mix-protocol";
+import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
 
 describe("protocol formatters", () => {
   it("jsonMixProtocol formatToolCall/Response and formatTools", () => {

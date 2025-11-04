@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
-import { parseFromStream, processXMLStream } from "@/index";
+import { parseFromStream, processXMLStream } from "../../src";
 
 const CHUNK_SIZE = 7;
 

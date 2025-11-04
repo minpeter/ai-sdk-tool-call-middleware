@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -24,12 +22,5 @@ export default defineConfig({
     // Ensure proper module resolution
     environment: "node",
     globals: true,
-  },
-  // Ensure ESM compatibility
-  resolve: {
-    conditions: ["node", "import", "module", "require"],
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
   },
 });

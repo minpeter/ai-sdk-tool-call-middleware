@@ -1,7 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
 
 const EXPECTED_NUMBER_1 = 1;
 const EXPECTED_NUMBER_2 = 2;

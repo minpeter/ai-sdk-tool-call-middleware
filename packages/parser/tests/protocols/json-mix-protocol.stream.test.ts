@@ -1,7 +1,7 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
+import { jsonMixProtocol } from "../../src/protocols/json-mix-protocol";
 
 function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
   const out: LanguageModelV3StreamPart[] = [];

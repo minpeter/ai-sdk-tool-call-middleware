@@ -5,7 +5,7 @@ import {
   createXMLStream,
   parseWithoutSchema,
   XMLTransformStream,
-} from "@/index";
+} from "../../src";
 
 const CHUNK_SIZE = 7;
 const PROCESSING_DELAY_MS = 100;

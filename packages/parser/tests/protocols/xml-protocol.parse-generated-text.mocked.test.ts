@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "@/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
 
 describe("morphXmlProtocol parseGeneratedText error path via malformed XML", () => {
   it("calls onError and emits original text when parsing fails", () => {

@@ -1,19 +1,18 @@
 import type { Mock } from "vitest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { jsonMixProtocol } from "@/protocols/json-mix-protocol";
-import { toolChoiceStream } from "@/stream-handler";
-import { createToolMiddleware } from "@/tool-call-middleware";
+import { jsonMixProtocol } from "../src/protocols/json-mix-protocol";
+import { toolChoiceStream } from "../src/stream-handler";
+import { createToolMiddleware } from "../src/tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-vi.mock("@/stream-handler", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/stream-handler")>(
-      "@/stream-handler"
-    );
+vi.mock("../src/stream-handler", async () => {
+  const actual = await vi.importActual<typeof import("../src/stream-handler")>(
+    "../src/stream-handler"
+  );
   return {
     ...actual,
     toolChoiceStream: vi.fn(),

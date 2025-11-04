@@ -6,7 +6,7 @@ import {
   stringifyNode,
   stringifyNodes,
   toContentString,
-} from "@/index";
+} from "../../src";
 
 const XML_DECLARATION_REGEX = /^<\?xml version="1\.0" encoding="UTF-8"\?>/;
 const XML_START_REGEX = /^<\?xml/;

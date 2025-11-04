@@ -4,7 +4,7 @@ import {
   RXMLDuplicateStringTagError,
   parse as rxmlParse,
   stringify as rxmlStringify,
-} from "@/index";
+} from "../src";
 
 const VALUE_100 = 100;
 
