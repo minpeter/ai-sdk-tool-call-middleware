@@ -5,7 +5,12 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["dist", "build", "node_modules", "tsup.config.ts"],
+  "exclude": [
+    "dist",
+    "build",
+    "node_modules",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ],
   "references": []
 }
