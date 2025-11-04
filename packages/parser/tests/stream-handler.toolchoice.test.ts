@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
 import { toolChoiceStream } from "../src/stream-handler";
@@ -20,10 +20,7 @@ describe("toolChoiceStream", () => {
       doGenerate,
     });
 
-    const chunks: LanguageModelV3StreamPart[] = [];
-    for await (const chunk of stream) {
-      chunks.push(chunk);
-    }
+    const chunks = await convertReadableStreamToArray(stream);
 
     expect(chunks[0]).toMatchObject({
       type: "tool-call",
@@ -46,10 +43,7 @@ describe("toolChoiceStream", () => {
     });
 
     const { stream } = await toolChoiceStream({ doGenerate });
-    const chunks: LanguageModelV3StreamPart[] = [];
-    for await (const chunk of stream) {
-      chunks.push(chunk);
-    }
+    const chunks = await convertReadableStreamToArray(stream);
 
     expect(chunks[0]).toMatchObject({
       type: "tool-call",
@@ -64,10 +58,7 @@ describe("toolChoiceStream", () => {
     const doGenerate = vi.fn().mockResolvedValue({ content: [] });
 
     const { stream } = await toolChoiceStream({ doGenerate });
-    const chunks: LanguageModelV3StreamPart[] = [];
-    for await (const chunk of stream) {
-      chunks.push(chunk);
-    }
+    const chunks = await convertReadableStreamToArray(stream);
 
     expect(chunks[0]).toMatchObject({
       type: "tool-call",

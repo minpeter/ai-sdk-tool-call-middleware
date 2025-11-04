@@ -2,23 +2,10 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
-
-async function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
-  const out: LanguageModelV3StreamPart[] = [];
-  const reader = stream.getReader();
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-    out.push(value);
-  }
-  reader.releaseLock();
-  return out;
-}
 
 describe("morphXmlProtocol raw string handling in streaming", () => {
   it("captures raw inner XML for string-typed arg during streaming", async () => {
@@ -73,7 +60,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
       },
     });
 
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
 
     const tool = out.find(
       (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
@@ -138,7 +125,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     // Entire tool call is cancelled and returned as text stream
     const textParts = out.filter(
       (p): p is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
@@ -203,7 +190,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
       },
     });
 
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const tool = out.find(
       (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
         p.type === "tool-call"
@@ -271,7 +258,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
       },
     });
 
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const tool = out.find(
       (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
         p.type === "tool-call"

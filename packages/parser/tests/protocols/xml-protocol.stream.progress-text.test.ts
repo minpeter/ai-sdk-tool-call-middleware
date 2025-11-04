@@ -2,23 +2,10 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
-
-async function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
-  const out: LanguageModelV3StreamPart[] = [];
-  const reader = stream.getReader();
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-    out.push(value);
-  }
-  reader.releaseLock();
-  return out;
-}
 
 describe("morphXmlProtocol streaming: progressive text emission", () => {
   it("emits text-delta progressively when no tool tags are present", async () => {
@@ -42,7 +29,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
       },
     });
 
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const deltas = out.filter((p) => p.type === "text-delta");
     // Should have emitted each chunk (no coalescing into one big delta)
     expect(deltas.map((d) => d.delta)).toEqual(chunks);
@@ -78,7 +65,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
       },
     });
 
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     // Expect text-deltas for "Before " and then minimal holding for split tag
     const textDeltas = out.filter((p) => p.type === "text-delta");
 
@@ -140,7 +127,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
       },
     });
 
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const tool = out.find(
       (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
         p.type === "tool-call"

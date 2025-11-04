@@ -1,21 +1,8 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { describe, expect, it, vi } from "vitest";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import { describe, expect, it } from "vitest";
 
 import { jsonMixProtocol } from "../../src/protocols/json-mix-protocol";
-
-vi.mock("@ai-sdk/provider-utils", () => ({
-  generateId: vi.fn(() => "mock-id"),
-}));
-
-function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
-  const out: LanguageModelV3StreamPart[] = [];
-  return (async () => {
-    for await (const c of stream) {
-      out.push(c);
-    }
-    return out;
-  })();
-}
 
 describe("jsonMixProtocol partial end-tag handling", () => {
   it("breaks loop when only partial end tag present at end of buffer", async () => {
@@ -38,7 +25,7 @@ describe("jsonMixProtocol partial end-tag handling", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)

@@ -1,4 +1,5 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
 
 import { jsonMixProtocol } from "../../src/protocols/json-mix-protocol";
@@ -56,10 +57,7 @@ describe("jsonMixProtocol stream parsing", () => {
 
     const result = await runMiddleware(mockStream);
 
-    const chunks: LanguageModelV3StreamPart[] = [];
-    for await (const chunk of result.stream) {
-      chunks.push(chunk);
-    }
+    const chunks = await convertReadableStreamToArray(result.stream);
 
     const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
     expect(toolCallChunks).toHaveLength(1);
@@ -90,10 +88,7 @@ describe("jsonMixProtocol stream parsing", () => {
     });
 
     const result = await runMiddleware(mockStream);
-    const chunks: LanguageModelV3StreamPart[] = [];
-    for await (const chunk of result.stream) {
-      chunks.push(chunk);
-    }
+    const chunks = await convertReadableStreamToArray(result.stream);
 
     const textContent = chunks
       .filter((c) => c.type === "text-delta")

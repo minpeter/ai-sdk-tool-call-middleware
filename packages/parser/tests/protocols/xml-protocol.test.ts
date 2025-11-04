@@ -2,6 +2,7 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
 
 import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
@@ -89,10 +90,7 @@ describe("morphXmlProtocol stream parsing", () => {
     if (!result) {
       throw new Error("result is undefined");
     }
-    const chunks: LanguageModelV3StreamPart[] = [];
-    for await (const chunk of result.stream) {
-      chunks.push(chunk);
-    }
+    const chunks = await convertReadableStreamToArray(result.stream);
 
     const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
     expect(toolCallChunks).toHaveLength(1);
@@ -133,10 +131,7 @@ describe("morphXmlProtocol stream parsing", () => {
     if (!result) {
       throw new Error("result is undefined");
     }
-    const chunks: LanguageModelV3StreamPart[] = [];
-    for await (const chunk of result.stream) {
-      chunks.push(chunk);
-    }
+    const chunks = await convertReadableStreamToArray(result.stream);
 
     const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
     expect(toolCallChunks).toHaveLength(1);

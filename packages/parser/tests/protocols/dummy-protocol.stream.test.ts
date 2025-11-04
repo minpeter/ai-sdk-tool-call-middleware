@@ -1,21 +1,8 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { describe, expect, it, vi } from "vitest";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import { describe, expect, it } from "vitest";
 
 import { dummyProtocol } from "../../src/protocols/dummy-protocol";
-
-vi.mock("@ai-sdk/provider-utils", () => ({
-  generateId: vi.fn(() => "mock-id"),
-}));
-
-function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
-  const out: LanguageModelV3StreamPart[] = [];
-  return (async () => {
-    for await (const c of stream) {
-      out.push(c);
-    }
-    return out;
-  })();
-}
 
 describe("dummyProtocol streaming behavior", () => {
   it("emits text-start only once and text-end when non-text arrives", async () => {
@@ -39,7 +26,7 @@ describe("dummyProtocol streaming behavior", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const starts = out.filter((c) => c.type === "text-start");
     const deltas = out.filter((c) => c.type === "text-delta");
     const ends = out.filter((c) => c.type === "text-end");
@@ -49,7 +36,7 @@ describe("dummyProtocol streaming behavior", () => {
     // tool-call and finish should pass through after text-end
     const afterEndIndex = out.findIndex((c) => c.type === "text-end");
     expect(
-      out.slice(afterEndIndex + 1).some((c) => c.type === "tool-call")
+      out.slice(Math.max(0, afterEndIndex)).some((c) => c.type === "tool-call")
     ).toBe(true);
     expect(out.at(-1)).toMatchObject({ type: "finish" });
   });
@@ -68,7 +55,7 @@ describe("dummyProtocol streaming behavior", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((d: any) => d.delta)

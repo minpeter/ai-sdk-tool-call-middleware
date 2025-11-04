@@ -1,17 +1,8 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
-
-function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
-  const out: LanguageModelV3StreamPart[] = [];
-  return (async () => {
-    for await (const c of stream) {
-      out.push(c);
-    }
-    return out;
-  })();
-}
 
 describe("morphXmlProtocol streaming trailing text-end on flush", () => {
   it("emits text-end when there is open text at flush with no tags", async () => {
@@ -28,7 +19,7 @@ describe("morphXmlProtocol streaming trailing text-end on flush", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const types = out.map((c) => c.type);
     expect(types).toContain("text-start");
     expect(types).toContain("text-delta");

@@ -1,17 +1,8 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
 import { jsonMixProtocol } from "../../src/protocols/json-mix-protocol";
-
-function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
-  const out: LanguageModelV3StreamPart[] = [];
-  return (async () => {
-    for await (const c of stream) {
-      out.push(c);
-    }
-    return out;
-  })();
-}
 
 describe("jsonMixProtocol streaming", () => {
   it("parses normal tool_call blocks into tool-call events", async () => {
@@ -34,7 +25,7 @@ describe("jsonMixProtocol streaming", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const tool = out.find((c) => c.type === "tool-call") as any;
     expect(tool.toolName).toBe("x");
     expect(JSON.parse(tool.input)).toEqual({ a: 1 });
@@ -58,7 +49,7 @@ describe("jsonMixProtocol streaming", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const tool = out.find((c) => c.type === "tool-call") as any;
     expect(tool.toolName).toBe("y");
   });
@@ -85,7 +76,7 @@ describe("jsonMixProtocol streaming", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((c) => (c as any).delta)
@@ -126,7 +117,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toMatchObject({
       type: "tool-call",
@@ -160,7 +151,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toMatchObject({ type: "tool-call", toolName: "b" });
   });
@@ -187,7 +178,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
@@ -214,7 +205,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
@@ -259,7 +250,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const tool = out.find((c) => c.type === "tool-call") as any;
     expect(tool).toBeTruthy();
     expect(JSON.parse(tool.input).location).toBe("NY");
@@ -298,7 +289,7 @@ describe("jsonMixProtocol content isolation", () => {
       },
     });
 
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const tool = out.find((c) => c.type === "tool-call") as any;
     const textParts = out
       .filter((c) => c.type === "text-delta")
@@ -350,7 +341,7 @@ describe("jsonMixProtocol content isolation", () => {
       },
     });
 
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const toolCalls = out.filter((c) => c.type === "tool-call") as any[];
     const textParts = out
       .filter((c) => c.type === "text-delta")
@@ -407,7 +398,7 @@ describe("jsonMixProtocol content isolation", () => {
       },
     });
 
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
 
     // Extract events in order
     const eventTypes = out.map((e) => e.type);
@@ -470,7 +461,7 @@ describe("jsonMixProtocol content isolation", () => {
       },
     });
 
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const tool = out.find((c) => c.type === "tool-call") as any;
     const textParts = out
       .filter((c) => c.type === "text-delta")

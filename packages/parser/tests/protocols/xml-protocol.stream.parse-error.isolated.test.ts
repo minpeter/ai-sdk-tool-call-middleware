@@ -2,19 +2,10 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "../../src/protocols/morph-xml-protocol";
-
-function collect(stream: ReadableStream<LanguageModelV3StreamPart>) {
-  const out: LanguageModelV3StreamPart[] = [];
-  return (async () => {
-    for await (const c of stream) {
-      out.push(c);
-    }
-    return out;
-  })();
-}
 
 describe("morphXmlProtocol streaming parse error with malformed XML", () => {
   it("invokes onError and emits original text on parser exception", async () => {
@@ -48,7 +39,7 @@ describe("morphXmlProtocol streaming parse error with malformed XML", () => {
         ctrl.close();
       },
     });
-    const out = await collect(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((c) => (c as any).delta)

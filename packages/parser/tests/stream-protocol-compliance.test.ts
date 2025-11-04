@@ -1,4 +1,5 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test } from "vitest";
 
 import { dummyProtocol } from "../src/protocols/dummy-protocol";
@@ -35,10 +36,7 @@ describe("AI SDK v5 stream protocol compliance", () => {
     });
 
     const result = await runMiddleware(mockStream);
-    const chunks: LanguageModelV3StreamPart[] = [];
-    for await (const chunk of result.stream) {
-      chunks.push(chunk);
-    }
+    const chunks = await convertReadableStreamToArray(result.stream);
 
     const MINIMUM_EXPECTED_CHUNKS = 3;
     expect(chunks.length).toBeGreaterThanOrEqual(MINIMUM_EXPECTED_CHUNKS);
@@ -62,10 +60,7 @@ describe("AI SDK v5 stream protocol compliance", () => {
     });
 
     const result = await runMiddleware(mockStream);
-    const chunks: LanguageModelV3StreamPart[] = [];
-    for await (const chunk of result.stream) {
-      chunks.push(chunk);
-    }
+    const chunks = await convertReadableStreamToArray(result.stream);
 
     const textChunks = chunks.filter(
       (c) =>
