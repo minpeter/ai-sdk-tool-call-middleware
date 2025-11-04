@@ -16,7 +16,7 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "prettier.prettierPath": "./node_modules/prettier",
-  "cSpell.words": ["RJSON", "RXML", "ultracite"],
+  "cSpell.words": ["RJSON", "RXML", "sdkx", "ultracite"],
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "[javascript]": {
     "editor.defaultFormatter": "biomejs.biome"

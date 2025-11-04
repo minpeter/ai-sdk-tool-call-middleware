@@ -10,7 +10,7 @@ import {
   getPotentialStartIndex,
   parseRJSON,
   RJSON,
-} from "@/utils";
+} from "../utils";
 
 import type { ToolCallProtocol } from "./tool-call-protocol";
 

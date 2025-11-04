@@ -21,9 +21,9 @@
     "data"
   ],
   "scripts": {
-    "dev": "tsup --watch",
-    "build": "tsup --clean",
-    "prepack": "pnpm run build",
+    "build": "pnpm clean && tsup --tsconfig tsconfig.build.json",
+    "build:watch": "pnpm clean && tsup --watch --tsconfig tsconfig.build.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
     "test:e2e": "tsup src/run-test.ts --format esm --clean --out-dir dist --no-config && node dist/run-test.js"
   },
@@ -34,6 +34,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@ai-sdkx/tsconfig": "workspace:*",
     "@types/node": "^24.10.0",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3"

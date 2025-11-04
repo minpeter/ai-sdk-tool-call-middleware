@@ -1,5 +1,23 @@
 {
-  "compilerOptions": {
-    "strictNullChecks": true
-  }
+  "references": [
+    {
+      "path": "examples/eval-core"
+    },
+    {
+      "path": "examples/parser-core"
+    },
+    {
+      "path": "examples/rxml-core"
+    },
+    {
+      "path": "packages/eval"
+    },
+    {
+      "path": "packages/parser"
+    },
+    {
+      "path": "packages/rxml"
+    }
+  ],
+  "include": []
 }

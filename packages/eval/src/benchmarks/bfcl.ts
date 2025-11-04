@@ -8,9 +8,8 @@ import {
   tool,
 } from "ai";
 
-import type { BenchmarkResult, LanguageModelV3Benchmark } from "@/interfaces";
-import { resolveDataDir } from "@/utils/paths";
-
+import type { BenchmarkResult, LanguageModelV3Benchmark } from "../interfaces";
+import { resolveDataDir } from "../utils/paths";
 import {
   type FunctionDescription,
   multipleFunctionChecker,

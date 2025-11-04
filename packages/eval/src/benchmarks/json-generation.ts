@@ -3,8 +3,8 @@ import path from "node:path";
 import { generateText, type LanguageModel } from "ai";
 import Ajv, { type AnySchema } from "ajv";
 
-import type { BenchmarkResult, LanguageModelV3Benchmark } from "@/interfaces";
-import { resolveDataDir } from "@/utils/paths";
+import type { BenchmarkResult, LanguageModelV3Benchmark } from "../interfaces";
+import { resolveDataDir } from "../utils/paths";
 
 type Json = unknown;
 

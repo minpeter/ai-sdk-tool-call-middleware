@@ -21,18 +21,19 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "build": "pnpm clean && tsup --tsconfig tsconfig.build.json",
+    "build:watch": "pnpm clean && tsup --watch --tsconfig tsconfig.build.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
-  "keywords": [],
-  "author": "",
-  "license": "Apache-2.0",
-  "packageManager": "pnpm@9.14.4+sha1.64b6e81e79630419b675c555ef3b65607cfd6315",
   "devDependencies": {
+    "@ai-sdkx/tsconfig": "workspace:*",
     "@types/node": "^24.10.0",
     "tsup": "^8.5.0",
     "zod": "^4.1.12"
-  }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "Apache-2.0"
 }
