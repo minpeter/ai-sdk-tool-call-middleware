@@ -74,8 +74,8 @@ async function main() {
 - 단위 표기: **25°C**, **50,000원**, **2.5%** (일반 텍스트로)
 
 ### 예시
-✅ 좋은 응답: "서울의 현재 주가는 50,000원이며, 전일 대비 2.5% 상승했습니다."
-❌ 나쁜 응답: "<tool_response>...</tool_response> 서울의 현재 주가는..."`,
+좋은 응답: "서울의 현재 주가는 50,000원이며, 전일 대비 2.5% 상승했습니다."
+나쁜 응답: "<tool_response>...</tool_response> 서울의 현재 주가는..."`,
     prompt: "지금 내가 있는 위치의 날씨는 어떤가요?",
     stopWhen: stepCountIs(MAX_STEPS),
     tools: {
