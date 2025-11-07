@@ -2,6 +2,7 @@ import { generateResponseId, getCurrentTimestamp } from "./converters.js";
 import type {
   OpenAIChatResponse,
   OpenAIChoice,
+  OpenAIStreamingToolCall,
   OpenAIUsage,
   StreamChunk,
 } from "./types.js";
@@ -35,36 +36,6 @@ export function convertAISDKResultToOpenAI(
         content: aisdkResult.text,
       };
     }
-
-function splitToolCallArguments(
-  args: string,
-  desiredSegments = 7
-): string[] {
-  if (!args || desiredSegments <= 1) {
-    return args ? [args] : [];
-  }
-
-  const segments: string[] = [];
-  const firstSegmentLength = Math.min(2, args.length);
-  segments.push(args.slice(0, firstSegmentLength));
-
-  let remainder = args.slice(firstSegmentLength);
-  const remainingSlots = desiredSegments - 1;
-
-  for (let i = 0; i < remainingSlots && remainder.length > 0; i += 1) {
-    const slotsLeft = remainingSlots - i;
-    if (slotsLeft === 1) {
-      segments.push(remainder);
-      break;
-    }
-    const segmentLength = Math.max(1, Math.ceil(remainder.length / slotsLeft));
-    segments.push(remainder.slice(0, segmentLength));
-    remainder = remainder.slice(segmentLength);
-  }
-
-  return segments.filter((segment) => segment.length > 0);
-}
-
     choices.push(choice);
   }
 
@@ -189,6 +160,64 @@ function createFinishResponse(
   };
 }
 
+function splitToolCallArguments(args: string, desiredSegments = 7): string[] {
+  if (!args) {
+    return [""];
+  }
+
+  const segments: string[] = [];
+  const length = args.length;
+  const targetSegments = Math.max(desiredSegments, 1);
+  let cursor = 0;
+
+  const prefixLength = Math.min(2, length);
+  segments.push(args.slice(cursor, cursor + prefixLength));
+  cursor += prefixLength;
+
+  if (cursor >= length) {
+    return segments;
+  }
+
+  const keyEndQuote = args.indexOf("\"", cursor);
+  if (keyEndQuote > cursor) {
+    segments.push(args.slice(cursor, keyEndQuote));
+    cursor = keyEndQuote;
+  }
+
+  if (cursor >= length) {
+    return segments;
+  }
+
+  const colonIndex = args.indexOf(":", cursor);
+  if (colonIndex >= cursor) {
+    segments.push(args.slice(cursor, colonIndex + 1));
+    cursor = colonIndex + 1;
+  }
+
+  if (cursor >= length) {
+    return segments;
+  }
+
+  if (args[cursor] === "\"") {
+    segments.push(args.slice(cursor, cursor + 1));
+    cursor += 1;
+  }
+
+  while (cursor < length && segments.length < targetSegments) {
+    const segmentsLeft = targetSegments - segments.length;
+    const remainingLength = length - cursor;
+    const size = segmentsLeft === 1 ? remainingLength : Math.max(1, Math.ceil(remainingLength / segmentsLeft));
+    segments.push(args.slice(cursor, cursor + size));
+    cursor += size;
+  }
+
+  if (cursor < length) {
+    segments[segments.length - 1] += args.slice(cursor);
+  }
+
+  return segments.filter((segment, index) => segment.length > 0 || index === 0);
+}
+
 // Helper function to create content response
 function createContentResponse(
   model: string,
@@ -272,28 +301,30 @@ const chunkHandlers: Record<string, ChunkHandler> = {
     const argumentSegments = splitToolCallArguments(args, 7);
 
     return argumentSegments.map((segment, index) => {
-      const baseToolCall: Record<string, unknown> = {
+      const toolCallDelta: OpenAIStreamingToolCall = {
         index: 0,
-        type: "function" as const,
+        type: "function",
         function: {
           arguments: segment,
         },
       };
 
       if (index === 0) {
-        baseToolCall.id = toolCallId;
-        (baseToolCall.function as Record<string, unknown>).name = toolName;
+        toolCallDelta.id = toolCallId;
+        if (toolName) {
+          toolCallDelta.function.name = toolName;
+        }
       }
 
-      const delta: Record<string, unknown> = {
-        tool_calls: [baseToolCall],
+      const delta: NonNullable<OpenAIChoice["delta"]> = {
+        tool_calls: [toolCallDelta],
       };
 
       if (index === 0) {
-        delta.role = "assistant";
+        delta.role = "assistant" as const;
       }
 
-      const response = {
+      const response: OpenAIChatResponse = {
         id: generateResponseId(),
         object: "chat.completion.chunk",
         created: getCurrentTimestamp(),
