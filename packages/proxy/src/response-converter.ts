@@ -106,9 +106,6 @@ export function convertAISDKStreamChunkToOpenAI(
 ): StreamChunk[] {
   const chunks: StreamChunk[] = [];
 
-  // Debug: Log chunk structure to understand Friendli response format
-  console.log("🔍 AI SDK Chunk:", JSON.stringify(chunk, null, 2));
-
   // Handle reasoning content (Friendli-specific)
   if (chunk.type === "reasoning-delta" && chunk.text) {
     const response: OpenAIChatResponse = {
@@ -287,6 +284,29 @@ export function convertAISDKStreamChunkToOpenAI(
 
     chunks.push({ data: JSON.stringify(response) });
     chunks.push({ data: "[DONE]" });
+  }
+
+  // Universal fallback handler for unknown chunk types
+  // Ensures compatibility with any AI SDK model/provider
+  if (!chunks.length && chunk.type) {
+    // Log unknown chunk type for debugging (but don't break the stream)
+    console.warn(`⚠️ Unknown AI SDK chunk type: ${chunk.type}`, chunk);
+    
+    // Send empty delta to maintain stream continuity
+    const response: OpenAIChatResponse = {
+      id: generateResponseId(),
+      object: "chat.completion.chunk",
+      created: getCurrentTimestamp(),
+      model,
+      choices: [
+        {
+          index: 0,
+          delta: {},
+        },
+      ],
+    };
+
+    chunks.push({ data: JSON.stringify(response) });
   }
 
   return chunks;

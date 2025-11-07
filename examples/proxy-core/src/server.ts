@@ -1,29 +1,26 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { OpenAIProxyServer } from "@ai-sdk-tool/proxy";
 import { wrapLanguageModel } from "ai";
 
-// Create base model
-const friendli = createOpenAICompatible({
-  name: "friendli",
-  apiKey: process.env.FRIENDLI_TOKEN,
-  baseURL: "https://api.friendli.ai/serverless/v1",
-  includeUsage: true,
-  fetch: (url, options) => {
-    const body = options?.body ? JSON.parse(options.body as string) : {};
-    body.parse_reasoning = true;
-    return fetch(url, { ...options, body: JSON.stringify(body) });
-  },
-});
-
 // Wrap model with tool middleware (using empty array for native OpenAI compatibility)
-const wrappedModel = wrapLanguageModel({
-  model: friendli("Qwen/Qwen3-235B-A22B-Thinking-2507"),
-  middleware: [], // No middleware for native OpenAI compatibility
-});
 
 // Create and start proxy server
 const server = new OpenAIProxyServer({
-  model: wrappedModel,
+  model: wrapLanguageModel({
+    model: createOpenAICompatible({
+      name: "friendli",
+      apiKey: process.env.FRIENDLI_TOKEN,
+      baseURL: "https://api.friendli.ai/serverless/v1",
+      includeUsage: true,
+      fetch: (url, options) => {
+        const body = options?.body ? JSON.parse(options.body as string) : {};
+        body.parse_reasoning = true;
+        return fetch(url, { ...options, body: JSON.stringify(body) });
+      },
+    })("zai-org/GLM-4.6"),
+    middleware: hermesToolMiddleware,
+  }),
   port: 3005,
   host: "localhost",
   cors: true,
