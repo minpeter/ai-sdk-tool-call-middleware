@@ -15,10 +15,6 @@ import type { OpenAIChatRequest, ProxyConfig } from "./types.js";
 
 type ConvertedParams = ReturnType<typeof convertOpenAIRequestToAISDK>;
 
-function truncate(value: string, max = 120): string {
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
-}
-
 function serializeZodSchema(schema: ZodTypeAny | undefined): unknown {
   if (!schema) {
     return null;
@@ -126,20 +122,26 @@ function logIncomingRequest(openaiRequest: OpenAIChatRequest) {
   );
 }
 
+function serializeAISDKMessages(messages: ConvertedParams["messages"]) {
+  return messages?.map((message, index) => ({
+    index,
+    role: message.role,
+    content: message.content,
+  }));
+}
+
 function logRequestConversion(
   openaiRequest: OpenAIChatRequest,
   aisdkParams: ConvertedParams
 ) {
+  const messages = aisdkParams.messages ?? [];
   console.log(
     "[proxy] Converted AI SDK params",
     JSON.stringify(
       {
         model: openaiRequest.model,
-        systemIncluded: Boolean(aisdkParams.system),
-        promptPreview:
-          typeof aisdkParams.prompt === "string"
-            ? truncate(aisdkParams.prompt, 200)
-            : undefined,
+        hasSystemMessage: messages.some((message) => message.role === "system"),
+        messages: serializeAISDKMessages(messages),
         tools: Object.entries(aisdkParams.tools ?? {}).map(([name, tool]) => ({
           name,
           description: tool.description,

@@ -160,64 +160,6 @@ function createFinishResponse(
   };
 }
 
-function splitToolCallArguments(args: string, desiredSegments = 7): string[] {
-  if (!args) {
-    return [""];
-  }
-
-  const segments: string[] = [];
-  const length = args.length;
-  const targetSegments = Math.max(desiredSegments, 1);
-  let cursor = 0;
-
-  const prefixLength = Math.min(2, length);
-  segments.push(args.slice(cursor, cursor + prefixLength));
-  cursor += prefixLength;
-
-  if (cursor >= length) {
-    return segments;
-  }
-
-  const keyEndQuote = args.indexOf("\"", cursor);
-  if (keyEndQuote > cursor) {
-    segments.push(args.slice(cursor, keyEndQuote));
-    cursor = keyEndQuote;
-  }
-
-  if (cursor >= length) {
-    return segments;
-  }
-
-  const colonIndex = args.indexOf(":", cursor);
-  if (colonIndex >= cursor) {
-    segments.push(args.slice(cursor, colonIndex + 1));
-    cursor = colonIndex + 1;
-  }
-
-  if (cursor >= length) {
-    return segments;
-  }
-
-  if (args[cursor] === "\"") {
-    segments.push(args.slice(cursor, cursor + 1));
-    cursor += 1;
-  }
-
-  while (cursor < length && segments.length < targetSegments) {
-    const segmentsLeft = targetSegments - segments.length;
-    const remainingLength = length - cursor;
-    const size = segmentsLeft === 1 ? remainingLength : Math.max(1, Math.ceil(remainingLength / segmentsLeft));
-    segments.push(args.slice(cursor, cursor + size));
-    cursor += size;
-  }
-
-  if (cursor < length) {
-    segments[segments.length - 1] += args.slice(cursor);
-  }
-
-  return segments.filter((segment, index) => segment.length > 0 || index === 0);
-}
-
 // Helper function to create content response
 function createContentResponse(
   model: string,
@@ -249,7 +191,8 @@ function createContentResponse(
 // Helper function to create tool call response
 function createToolCallResponse(
   model: string,
-  toolCall: ToolCallDelta
+  toolCall: ToolCallDelta,
+  includeRole = false
 ): OpenAIChatResponse {
   return {
     id: generateResponseId(),
@@ -260,7 +203,7 @@ function createToolCallResponse(
       {
         index: 0,
         delta: {
-          role: "assistant",
+          ...(includeRole ? { role: "assistant" as const } : {}),
           tool_calls: [
             {
               index: toolCall.index || 0,
@@ -297,48 +240,23 @@ const chunkHandlers: Record<string, ChunkHandler> = {
   "tool-call": (chunk, model) => {
     const toolCallId = chunk.toolCallId || `call_${generateResponseId()}`;
     const toolName = chunk.toolName || "";
-    const args = JSON.stringify(chunk.input || {});
-    const argumentSegments = splitToolCallArguments(args, 7);
+    const argsString =
+      typeof chunk.input === "string"
+        ? chunk.input
+        : JSON.stringify(chunk.input ?? {});
 
-    return argumentSegments.map((segment, index) => {
-      const toolCallDelta: OpenAIStreamingToolCall = {
-        index: 0,
-        type: "function",
-        function: {
-          arguments: segment,
-        },
-      };
+    const toolCallDelta: OpenAIStreamingToolCall = {
+      index: 0,
+      id: toolCallId,
+      type: "function",
+      function: {
+        name: toolName,
+        arguments: argsString,
+      },
+    };
 
-      if (index === 0) {
-        toolCallDelta.id = toolCallId;
-        if (toolName) {
-          toolCallDelta.function.name = toolName;
-        }
-      }
-
-      const delta: NonNullable<OpenAIChoice["delta"]> = {
-        tool_calls: [toolCallDelta],
-      };
-
-      if (index === 0) {
-        delta.role = "assistant" as const;
-      }
-
-      const response: OpenAIChatResponse = {
-        id: generateResponseId(),
-        object: "chat.completion.chunk",
-        created: getCurrentTimestamp(),
-        model,
-        choices: [
-          {
-            index: 0,
-            delta,
-          },
-        ],
-      };
-
-      return { data: JSON.stringify(response) };
-    });
+    const response = createToolCallResponse(model, toolCallDelta, true);
+    return [{ data: JSON.stringify(response) }];
   },
 
   "reasoning-end": () => [],

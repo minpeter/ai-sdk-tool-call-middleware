@@ -1,5 +1,14 @@
+import type {
+  ModelMessage,
+  ToolContent,
+  ToolResultOutput,
+} from "@ai-sdk/provider-utils";
 import { z } from "zod";
-import type { OpenAIChatRequest } from "./types.js";
+import type {
+  OpenAIChatRequest,
+  OpenAICompleteToolCall,
+  OpenAIMessage,
+} from "./types.js";
 
 // Type definitions for OpenAI tool parameters
 type OpenAIToolProperty = {
@@ -18,18 +27,6 @@ type OpenAIToolParameters = {
 type AISDKTool = {
   description: string;
   inputSchema: z.ZodTypeAny;
-};
-
-// Type for message object
-type Message = {
-  role: string;
-  content?: string | null;
-  tool_calls?: Array<{
-    function: {
-      name: string;
-      arguments: string;
-    };
-  }>;
 };
 
 // Type for tool call object
@@ -84,28 +81,6 @@ function convertOpenAIToolToZod(
 }
 
 /**
- * Process message and add to prompt
- */
-function processMessage(message: Message, currentPrompt: string): string {
-  let updatedPrompt = currentPrompt;
-
-  if (message.role === "user") {
-    updatedPrompt += `User: ${message.content || ""}\n`;
-  } else if (message.role === "assistant") {
-    updatedPrompt += `Assistant: ${message.content || ""}\n`;
-    if (message.tool_calls) {
-      for (const toolCall of message.tool_calls) {
-        updatedPrompt += `[Tool call: ${toolCall.function.name} with args ${toolCall.function.arguments}]\n`;
-      }
-    }
-  } else if (message.role === "tool") {
-    updatedPrompt += `[Tool result: ${message.content}]\n`;
-  }
-
-  return updatedPrompt;
-}
-
-/**
  * Convert OpenAI tools to AI SDK format
  */
 function convertOpenAITools(
@@ -148,9 +123,221 @@ function convertStopToSequences(
   return Array.isArray(stop) ? stop : [stop];
 }
 
+type AITextPart = { type: "text"; text: string };
+type AIToolCallPart = {
+  type: "tool-call";
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+};
+type TextToolOutput = Extract<ToolResultOutput, { type: "text" }>;
+type JsonToolOutput = Extract<ToolResultOutput, { type: "json" }>;
+
 /**
  * Convert OpenAI chat completion request to AI SDK format
  */
+export function normalizeMessageContent(
+  content: OpenAIMessage["content"]
+): AITextPart[] {
+  if (typeof content === "string") {
+    return content ? [{ type: "text" as const, text: content }] : [];
+  }
+
+  if (Array.isArray(content)) {
+    const parts = content as Array<string | { text?: unknown }>;
+    return parts
+      .map((part) => {
+        if (typeof part === "string") {
+          return part;
+        }
+        if (part && typeof part === "object" && "text" in part) {
+          const textValue = part.text;
+          if (typeof textValue === "string") {
+            return textValue;
+          }
+          if (textValue !== undefined) {
+            return JSON.stringify(textValue);
+          }
+        }
+        return JSON.stringify(part);
+      })
+      .filter((text): text is string => Boolean(text))
+      .map((text) => ({ type: "text" as const, text }));
+  }
+
+  if (content === null || content === undefined) {
+    return [];
+  }
+
+  if (typeof content === "object") {
+    return [{ type: "text" as const, text: JSON.stringify(content) }];
+  }
+
+  return [{ type: "text" as const, text: String(content) }];
+}
+
+function buildToolCallParts(
+  toolCalls: OpenAICompleteToolCall[]
+): AIToolCallPart[] {
+  return toolCalls.map((toolCall) => {
+    let parsedArgs: unknown = toolCall.function.arguments;
+    if (typeof toolCall.function.arguments === "string") {
+      try {
+        parsedArgs = JSON.parse(toolCall.function.arguments || "{}");
+      } catch {
+        parsedArgs = toolCall.function.arguments;
+      }
+    }
+
+    return {
+      type: "tool-call" as const,
+      toolCallId: toolCall.id,
+      toolName: toolCall.function.name,
+      input: parsedArgs,
+    } satisfies AIToolCallPart;
+  });
+}
+
+function buildAssistantContent(
+  message: OpenAIMessage & { role: "assistant" }
+): Array<AITextPart | AIToolCallPart> | string {
+  const textParts = normalizeMessageContent(message.content);
+  const toolCallParts = message.tool_calls?.length
+    ? buildToolCallParts(message.tool_calls)
+    : [];
+
+  if (toolCallParts.length === 0) {
+    if (textParts.length === 0) {
+      return "";
+    }
+    if (textParts.length === 1) {
+      return textParts[0].text;
+    }
+    return textParts;
+  }
+
+  return [...textParts, ...toolCallParts];
+}
+
+function isJsonValue(value: unknown): value is JsonToolOutput["value"] {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every(isJsonValue);
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).every(isJsonValue);
+  }
+
+  return false;
+}
+
+function buildToolOutput(rawValue: string): ToolResultOutput {
+  if (!rawValue) {
+    return { type: "text", value: "" } satisfies TextToolOutput;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (isJsonValue(parsed)) {
+      return { type: "json", value: parsed } satisfies JsonToolOutput;
+    }
+  } catch {
+    // Fall through to text output below
+  }
+
+  return { type: "text", value: rawValue } satisfies TextToolOutput;
+}
+
+function buildToolContent(
+  message: OpenAIMessage & { role: "tool" },
+  toolNameLookup: Map<string, string>
+): ToolContent {
+  const textParts = normalizeMessageContent(message.content);
+  const combined = textParts.map((part) => part.text).join("\n");
+  const toolCallId = message.tool_call_id ?? "";
+  const toolName = toolCallId
+    ? (toolNameLookup.get(toolCallId) ?? toolCallId)
+    : "";
+
+  return [
+    {
+      type: "tool-result",
+      toolCallId,
+      toolName,
+      output: buildToolOutput(combined),
+    },
+  ];
+}
+
+function convertMessageToModelMessage(
+  message: OpenAIMessage,
+  toolNameLookup: Map<string, string>
+): ModelMessage {
+  if (message.role === "assistant") {
+    if (message.tool_calls?.length) {
+      for (const toolCall of message.tool_calls) {
+        toolNameLookup.set(toolCall.id, toolCall.function.name);
+      }
+    }
+
+    return {
+      role: "assistant",
+      content: buildAssistantContent(
+        message as OpenAIMessage & { role: "assistant" }
+      ),
+    };
+  }
+
+  if (message.role === "tool") {
+    return {
+      role: "tool",
+      content: buildToolContent(
+        message as OpenAIMessage & { role: "tool" },
+        toolNameLookup
+      ),
+    };
+  }
+
+  if (message.role === "system") {
+    const text = normalizeMessageContent(message.content)
+      .map((part) => part.text)
+      .join("\n");
+    return {
+      role: "system",
+      content: text,
+    };
+  }
+
+  const userParts = normalizeMessageContent(message.content);
+  if (userParts.length === 0) {
+    return {
+      role: "user",
+      content: "",
+    };
+  }
+
+  if (userParts.length === 1) {
+    return {
+      role: "user",
+      content: userParts[0].text,
+    };
+  }
+
+  return {
+    role: "user",
+    content: userParts,
+  };
+}
+
 export function convertOpenAIRequestToAISDK(openaiRequest: OpenAIChatRequest) {
   const {
     messages,
@@ -160,22 +347,17 @@ export function convertOpenAIRequestToAISDK(openaiRequest: OpenAIChatRequest) {
     stop,
   } = openaiRequest;
 
-  // Convert messages
-  const systemMessage = messages.find((msg) => msg.role === "system");
-  const conversationMessages = messages.filter((msg) => msg.role !== "system");
+  const toolNameLookup = new Map<string, string>();
 
-  // Build prompt from conversation
-  let currentPrompt = "";
-  for (const message of conversationMessages) {
-    currentPrompt = processMessage(message, currentPrompt);
-  }
+  const aiMessages: ModelMessage[] = messages.map((message) =>
+    convertMessageToModelMessage(message, toolNameLookup)
+  );
 
   // Convert OpenAI tools to AI SDK format dynamically
   const aisdkTools = convertOpenAITools(openaiTools);
 
   return {
-    system: systemMessage?.content || undefined,
-    prompt: currentPrompt.trim(),
+    messages: aiMessages,
     tools: aisdkTools,
     temperature,
     maxTokens: max_tokens,
