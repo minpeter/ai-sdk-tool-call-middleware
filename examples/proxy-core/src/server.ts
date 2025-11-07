@@ -1,5 +1,4 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { OpenAIProxyServer } from "@ai-sdk-tool/proxy";
 import { wrapLanguageModel } from "ai";
 
@@ -16,16 +15,16 @@ const friendli = createOpenAICompatible({
   },
 });
 
-// Wrap model with tool middleware
+// Wrap model with tool middleware (using empty array for native OpenAI compatibility)
 const wrappedModel = wrapLanguageModel({
-  model: friendli("zai-org/GLM-4.6"),
-  middleware: morphXmlToolMiddleware,
+  model: friendli("Qwen/Qwen3-235B-A22B-Thinking-2507"),
+  middleware: [], // No middleware for native OpenAI compatibility
 });
 
 // Create and start proxy server
 const server = new OpenAIProxyServer({
   model: wrappedModel,
-  port: 3000,
+  port: 3005,
   host: "localhost",
   cors: true,
 });

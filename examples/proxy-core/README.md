@@ -10,7 +10,7 @@ This example demonstrates how to use the `@ai-sdk-tool/proxy` package to create 
 pnpm install
 ```
 
-2. Set up environment variables:
+1. Set up environment variables:
 
 ```bash
 export OPENROUTER_API_KEY="your-openrouter-api-key"
@@ -24,7 +24,7 @@ export OPENROUTER_API_KEY="your-openrouter-api-key"
 pnpm start
 ```
 
-2. In another terminal, test the proxy:
+1. In another terminal, test the proxy:
 
 ```bash
 pnpm test
@@ -32,7 +32,7 @@ pnpm test
 
 ## Manual Testing with curl
 
-### Test simple chat (non-streaming):
+### Test simple chat (non-streaming)
 
 ```bash
 curl -X POST http://localhost:3000/v1/chat/completions \
@@ -46,10 +46,10 @@ curl -X POST http://localhost:3000/v1/chat/completions \
   }'
 ```
 
-### Test tool calling:
+### Test tool calling
 
 ```bash
-curl -X POST http://localhost:3000/v1/chat/completions \
+curl -X POST http://localhost:3004/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "wrapped-model",
@@ -72,11 +72,11 @@ curl -X POST http://localhost:3000/v1/chat/completions \
         }
       }
     ],
-    "stream": false
+    "stream": true
   }'
 ```
 
-### Test streaming:
+### Test streaming
 
 ```bash
 curl -X POST http://localhost:3000/v1/chat/completions \
@@ -90,13 +90,13 @@ curl -X POST http://localhost:3000/v1/chat/completions \
   }'
 ```
 
-### Test health endpoint:
+### Test health endpoint
 
 ```bash
 curl http://localhost:3000/health
 ```
 
-### Test models endpoint:
+### Test models endpoint
 
 ```bash
 curl http://localhost:3000/v1/models
