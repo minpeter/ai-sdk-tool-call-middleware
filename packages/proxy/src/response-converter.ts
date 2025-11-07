@@ -1,4 +1,4 @@
-import { generateResponseId, getCurrentTimestamp } from "./converters.js";
+import { generateResponseId, getCurrentTimestamp } from "./response-utils.js";
 import type {
   OpenAIChatResponse,
   OpenAIChoice,

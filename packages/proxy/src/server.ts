@@ -7,7 +7,7 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 import { ZodFirstPartyTypeKind, type ZodTypeAny } from "zod";
-import { convertOpenAIRequestToAISDK } from "./converters.js";
+import { convertOpenAIRequestToAISDK } from "./openai-request-converter.js";
 import {
   convertAISDKResultToOpenAI,
   createOpenAIStreamConverter,

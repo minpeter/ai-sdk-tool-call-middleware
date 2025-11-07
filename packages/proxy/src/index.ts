@@ -1,15 +1,14 @@
 export {
   convertAISDKToolCallsToOpenAI,
   convertOpenAIRequestToAISDK,
-  generateResponseId,
-  getCurrentTimestamp,
-} from "./converters.js";
+} from "./openai-request-converter.js";
 export {
   convertAISDKResultToOpenAI,
   convertAISDKStreamChunkToOpenAI,
   createOpenAIStreamConverter,
   createSSEResponse,
 } from "./response-converter.js";
+export { generateResponseId, getCurrentTimestamp } from "./response-utils.js";
 export { OpenAIProxyServer } from "./server.js";
 export type {
   AISDKTool,
