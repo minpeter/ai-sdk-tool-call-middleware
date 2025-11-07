@@ -36,6 +36,35 @@ export function convertAISDKResultToOpenAI(
       };
     }
 
+function splitToolCallArguments(
+  args: string,
+  desiredSegments = 7
+): string[] {
+  if (!args || desiredSegments <= 1) {
+    return args ? [args] : [];
+  }
+
+  const segments: string[] = [];
+  const firstSegmentLength = Math.min(2, args.length);
+  segments.push(args.slice(0, firstSegmentLength));
+
+  let remainder = args.slice(firstSegmentLength);
+  const remainingSlots = desiredSegments - 1;
+
+  for (let i = 0; i < remainingSlots && remainder.length > 0; i += 1) {
+    const slotsLeft = remainingSlots - i;
+    if (slotsLeft === 1) {
+      segments.push(remainder);
+      break;
+    }
+    const segmentLength = Math.max(1, Math.ceil(remainder.length / slotsLeft));
+    segments.push(remainder.slice(0, segmentLength));
+    remainder = remainder.slice(segmentLength);
+  }
+
+  return segments.filter((segment) => segment.length > 0);
+}
+
     choices.push(choice);
   }
 
@@ -240,36 +269,45 @@ const chunkHandlers: Record<string, ChunkHandler> = {
     const toolCallId = chunk.toolCallId || `call_${generateResponseId()}`;
     const toolName = chunk.toolName || "";
     const args = JSON.stringify(chunk.input || {});
-    
-    // OpenAI-compatible format: role + tool_calls in first chunk
-    const toolCall = {
-      index: 0,
-      id: toolCallId,
-      type: "function" as const,
-      function: {
-        name: toolName,
-        arguments: args,
-      },
-    };
-    
-    // Single chunk with role + complete tool call (practical approach)
-    const response = {
-      id: generateResponseId(),
-      object: "chat.completion.chunk",
-      created: getCurrentTimestamp(),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: {
-            role: "assistant",
-            tool_calls: [toolCall],
-          },
+    const argumentSegments = splitToolCallArguments(args, 7);
+
+    return argumentSegments.map((segment, index) => {
+      const baseToolCall: Record<string, unknown> = {
+        index: 0,
+        type: "function" as const,
+        function: {
+          arguments: segment,
         },
-      ],
-    };
-    
-    return [{ data: JSON.stringify(response) }];
+      };
+
+      if (index === 0) {
+        baseToolCall.id = toolCallId;
+        (baseToolCall.function as Record<string, unknown>).name = toolName;
+      }
+
+      const delta: Record<string, unknown> = {
+        tool_calls: [baseToolCall],
+      };
+
+      if (index === 0) {
+        delta.role = "assistant";
+      }
+
+      const response = {
+        id: generateResponseId(),
+        object: "chat.completion.chunk",
+        created: getCurrentTimestamp(),
+        model,
+        choices: [
+          {
+            index: 0,
+            delta,
+          },
+        ],
+      };
+
+      return { data: JSON.stringify(response) };
+    });
   },
 
   "reasoning-end": () => [],
