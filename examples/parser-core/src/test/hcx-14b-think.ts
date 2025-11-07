@@ -50,8 +50,8 @@ async function main() {
         execute: () => {
           // Simulate a location API call
           return {
-            city: "New York",
-            country: "USA",
+            city: "Busan",
+            country: "South Korea",
           };
         },
       },
