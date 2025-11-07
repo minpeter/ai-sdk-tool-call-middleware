@@ -13,6 +13,16 @@ const server = new OpenAIProxyServer({
       apiKey: process.env.FRIENDLI_TOKEN,
       baseURL: "https://api.friendli.ai/serverless/v1",
       includeUsage: true,
+      fetch: async (url, options) =>
+        await fetch(url, {
+          ...options,
+          body: JSON.stringify({
+            ...(options?.body ? JSON.parse(options.body as string) : {}),
+            chat_template_kwargs: {
+              enable_reasoning: true,
+            },
+          }),
+        }),
     })(
       "zai-org/GLM-4.6"
       // "deepseek-ai/DeepSeek-R1-0528"

@@ -22,10 +22,8 @@ const friendli = createOpenAICompatible({
     await fetch(url, {
       ...options,
       body: JSON.stringify({
-        ...JSON.parse(options?.body as string),
-        ...{
-          parse_reasoning: true,
-        },
+        ...(options?.body ? JSON.parse(options.body as string) : {}),
+        parse_reasoning: true,
       }),
     }),
 });
