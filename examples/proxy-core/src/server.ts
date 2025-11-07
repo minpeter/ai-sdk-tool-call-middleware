@@ -1,4 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { extractReasoningMiddleware } from "@ai-sdk-tool/middleware/reasoning-parser";
 import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { OpenAIProxyServer } from "@ai-sdk-tool/proxy";
 import { wrapLanguageModel } from "ai";
@@ -6,34 +7,62 @@ import { wrapLanguageModel } from "ai";
 // Wrap model with tool middleware (using empty array for native OpenAI compatibility)
 
 // Create and start proxy server
-const server = new OpenAIProxyServer({
-  model: wrapLanguageModel({
-    model: createOpenAICompatible({
-      name: "friendli",
-      apiKey: process.env.FRIENDLI_TOKEN,
-      baseURL: "https://api.friendli.ai/serverless/v1",
-      includeUsage: true,
-      fetch: async (url, options) =>
-        await fetch(url, {
-          ...options,
-          body: JSON.stringify({
-            ...(options?.body ? JSON.parse(options.body as string) : {}),
-            chat_template_kwargs: {
-              enable_reasoning: true,
-            },
-            parse_reasoning: true,
-          }),
-        }),
-    })(
-      // "zai-org/GLM-4.6"
-      "deepseek-ai/DeepSeek-R1-0528"
-    ),
+// const deepseek = wrapLanguageModel({
+//   model: createOpenAICompatible({
+//     name: "friendli",
+//     apiKey: process.env.FRIENDLI_TOKEN,
+//     baseURL: "https://api.friendli.ai/serverless/v1",
+//     includeUsage: true,
+//     fetch: async (url, options) =>
+//       await fetch(url, {
+//         ...options,
+//         body: JSON.stringify({
+//           ...(options?.body ? JSON.parse(options.body as string) : {}),
+//           chat_template_kwargs: {
+//             enable_reasoning: true,
+//           },
+//           parse_reasoning: true,
+//         }),
+//       }),
+//   })(
+//     // "zai-org/GLM-4.6"
+//     "deepseek-ai/DeepSeek-R1-0528"
+//   ),
+//   middleware: [
+//     hermesToolMiddleware,
+//     // extractReasoningMiddleware({ tagName: "think" }),
+//   ],
+// });
 
-    middleware: [
-      hermesToolMiddleware,
-      // extractReasoningMiddleware({ tagName: "think" }),
-    ],
-  }),
+const hcx = wrapLanguageModel({
+  model: createOpenAICompatible({
+    name: "friendli",
+    apiKey: process.env.FRIENDLI_TOKEN,
+    baseURL: "https://api.friendli.ai/serverless/v1",
+    fetch: async (url, options) =>
+      fetch(url, {
+        ...options,
+        body: JSON.stringify({
+          ...(options?.body ? JSON.parse(options.body as string) : {}),
+          parse_reasoning: false,
+          chat_template_kwargs: {
+            force_reasoning: true,
+          },
+        }),
+      }),
+  })("naver-hyperclovax/HyperCLOVAX-SEED-Think-14B"),
+  middleware: [
+    hermesToolMiddleware,
+    extractReasoningMiddleware({
+      openingTag: "/think\n",
+      closingTag: "\nassistant\n",
+      startWithReasoning: true,
+    }),
+  ],
+});
+
+const server = new OpenAIProxyServer({
+  model: hcx,
   port: 3005,
   host: "localhost",
   cors: true,

@@ -103,6 +103,9 @@ importers:
 
   examples/proxy-core:
     dependencies:
+      '@ai-sdk-tool/middleware':
+        specifier: workspace:*
+        version: link:../../packages/middleware
       '@ai-sdk-tool/parser':
         specifier: workspace:*
         version: link:../../packages/parser
