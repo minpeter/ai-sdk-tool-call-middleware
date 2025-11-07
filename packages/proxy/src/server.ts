@@ -12,6 +12,75 @@ import {
 } from "./response-converter.js";
 import type { OpenAIChatRequest, ProxyConfig } from "./types.js";
 
+type ConvertedParams = ReturnType<typeof convertOpenAIRequestToAISDK>;
+
+function truncate(value: string, max = 120): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+function summarizeMessages(messages: OpenAIChatRequest["messages"]) {
+  return messages.map((message, index) => ({
+    index,
+    role: message.role,
+    contentPreview:
+      typeof message.content === "string" && message.content
+        ? truncate(message.content)
+        : undefined,
+    toolCalls:
+      Array.isArray(message.tool_calls)
+        ? message.tool_calls.map((toolCall) => toolCall.function?.name).filter(Boolean)
+        : undefined,
+  }));
+}
+
+function logIncomingRequest(openaiRequest: OpenAIChatRequest) {
+  const toolNames = (openaiRequest.tools ?? [])
+    .map((tool) => ("function" in tool ? tool.function?.name : undefined))
+    .filter((name): name is string => Boolean(name));
+
+  console.log(
+    "[proxy] Incoming OpenAI request",
+    JSON.stringify(
+      {
+        model: openaiRequest.model,
+        stream: Boolean(openaiRequest.stream),
+        temperature: openaiRequest.temperature,
+        maxTokens: openaiRequest.max_tokens,
+        toolNames,
+        toolChoice: openaiRequest.tool_choice,
+        messages: summarizeMessages(openaiRequest.messages),
+      },
+      null,
+      2
+    )
+  );
+}
+
+function logRequestConversion(
+  openaiRequest: OpenAIChatRequest,
+  aisdkParams: ConvertedParams
+) {
+  console.log(
+    "[proxy] Converted AI SDK params",
+    JSON.stringify(
+      {
+        model: openaiRequest.model,
+        systemIncluded: Boolean(aisdkParams.system),
+        promptPreview:
+          typeof aisdkParams.prompt === "string"
+            ? truncate(aisdkParams.prompt, 200)
+            : undefined,
+        toolNames: Object.keys(aisdkParams.tools ?? {}),
+        temperature: aisdkParams.temperature,
+        maxTokens: aisdkParams.maxTokens,
+        stopSequences: aisdkParams.stopSequences,
+      },
+      null,
+      2
+    )
+  );
+}
+
 export class OpenAIProxyServer {
   private readonly fastify: FastifyInstance;
   private readonly config: ProxyConfig;
@@ -63,8 +132,11 @@ export class OpenAIProxyServer {
             });
           }
 
+          logIncomingRequest(openaiRequest);
+
           // Convert OpenAI request to AI SDK format
           const aisdkParams = convertOpenAIRequestToAISDK(openaiRequest);
+          logRequestConversion(openaiRequest, aisdkParams);
 
           // Handle streaming vs non-streaming
           if (openaiRequest.stream) {
