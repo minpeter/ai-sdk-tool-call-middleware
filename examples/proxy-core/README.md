@@ -49,7 +49,7 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 ### Test tool calling
 
 ```bash
-curl -X POST http://localhost:3004/v1/chat/completions \
+curl -X POST http://localhost:3005/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "wrapped-model",

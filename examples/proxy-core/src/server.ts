@@ -18,7 +18,7 @@ const server = new OpenAIProxyServer({
         body.parse_reasoning = true;
         return fetch(url, { ...options, body: JSON.stringify(body) });
       },
-    })("zai-org/GLM-4.6"),
+    })("google/gemma-3-27b-it"),
     middleware: hermesToolMiddleware,
   }),
   port: 3005,

@@ -99,6 +99,235 @@ export function convertAISDKResultToOpenAI(
 /**
  * Convert AI SDK stream chunk to OpenAI SSE format
  */
+
+// Type definitions for better type safety
+type ToolCallDelta = {
+  index?: number;
+  id?: string;
+  type?: "function";
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+};
+
+type AIStreamChunk = {
+  type: string;
+  id?: string;
+  text?: string;
+  toolCallId?: string;
+  toolName?: string;
+  args?: string;
+  input?: Record<string, unknown>;
+  finishReason?: string;
+  [key: string]: unknown;
+};
+
+type ChunkHandler = (chunk: AIStreamChunk, model: string) => StreamChunk[];
+
+// Helper function to create finish response
+function createFinishResponse(
+  model: string,
+  finishReason: string
+): OpenAIChatResponse {
+  // Ensure finish reason matches OpenAI's allowed types
+  let validFinishReason: "stop" | "length" | "tool_calls" | "content_filter";
+
+  if (finishReason === "tool_calls" || finishReason === "tool-calls") {
+    validFinishReason = "tool_calls";
+  } else if (finishReason === "stop") {
+    validFinishReason = "stop";
+  } else if (finishReason === "length") {
+    validFinishReason = "length";
+  } else if (finishReason === "content_filter") {
+    validFinishReason = "content_filter";
+  } else {
+    validFinishReason = "stop"; // fallback to "stop" for unknown reasons
+  }
+
+  return {
+    id: generateResponseId(),
+    object: "chat.completion.chunk",
+    created: getCurrentTimestamp(),
+    model,
+    choices: [
+      {
+        index: 0,
+        delta: {},
+        finish_reason: validFinishReason,
+      },
+    ],
+  };
+}
+
+// Helper function to create content response
+function createContentResponse(
+  model: string,
+  content: string,
+  isReasoning = false
+): OpenAIChatResponse {
+  const delta: Record<string, unknown> = { role: "assistant" };
+
+  if (isReasoning) {
+    delta.reasoning_content = content;
+  } else {
+    delta.content = content;
+  }
+
+  return {
+    id: generateResponseId(),
+    object: "chat.completion.chunk",
+    created: getCurrentTimestamp(),
+    model,
+    choices: [
+      {
+        index: 0,
+        delta,
+      },
+    ],
+  };
+}
+
+// Helper function to create tool call response
+function createToolCallResponse(
+  model: string,
+  toolCall: ToolCallDelta
+): OpenAIChatResponse {
+  return {
+    id: generateResponseId(),
+    object: "chat.completion.chunk",
+    created: getCurrentTimestamp(),
+    model,
+    choices: [
+      {
+        index: 0,
+        delta: {
+          role: "assistant",
+          tool_calls: [
+            {
+              index: toolCall.index || 0,
+              type: "function" as const,
+              function: {
+                name: toolCall.function?.name || "",
+                arguments: toolCall.function?.arguments || "",
+              },
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+// Handler functions for each chunk type
+const chunkHandlers: Record<string, ChunkHandler> = {
+
+  "reasoning-delta": (chunk, model) => {
+    if (!chunk.text) {
+      return [];
+    }
+    return [{ data: JSON.stringify(createContentResponse(model, chunk.text, true)) }];
+  },
+
+  "text-delta": (chunk, model) => {
+    if (!chunk.text) {
+      return [];
+    }
+    return [{ data: JSON.stringify(createContentResponse(model, chunk.text, false)) }];
+  },
+
+  "tool-call": (chunk, model) => {
+    const toolCallId = chunk.toolCallId || `call_${generateResponseId()}`;
+    const toolName = chunk.toolName || "";
+    const args = JSON.stringify(chunk.input || {});
+    
+    // OpenAI-compatible format: role + tool_calls in first chunk
+    const toolCall = {
+      index: 0,
+      id: toolCallId,
+      type: "function" as const,
+      function: {
+        name: toolName,
+        arguments: args,
+      },
+    };
+    
+    // Single chunk with role + complete tool call (practical approach)
+    const response = {
+      id: generateResponseId(),
+      object: "chat.completion.chunk",
+      created: getCurrentTimestamp(),
+      model,
+      choices: [
+        {
+          index: 0,
+          delta: {
+            role: "assistant",
+            tool_calls: [toolCall],
+          },
+        },
+      ],
+    };
+    
+    return [{ data: JSON.stringify(response) }];
+  },
+
+  "reasoning-end": () => [],
+
+  "text-end": () => [],
+
+  "finish-step": (chunk, model) => {
+    if (streamFinishSent) {
+      return [];
+    }
+    const hadToolCalls = streamHasToolCalls;
+    let finishReason = chunk.finishReason || "stop";
+    if (finishReason === "tool_calls" || finishReason === "tool-calls") {
+      finishReason = "tool_calls";
+    }
+    const resolvedReason = hadToolCalls ? "tool_calls" : finishReason;
+    streamFinishSent = true;
+    streamHasToolCalls = false;
+    return [{ data: JSON.stringify(createFinishResponse(model, resolvedReason)) }];
+  },
+
+  "tool-call-delta": (chunk, model) => {
+    const toolCall = {
+      index: chunk.toolCallId ? Number(chunk.toolCallId) : 0,
+      type: "function" as const,
+      function: {
+        name: chunk.toolName || "",
+        arguments: chunk.args || "",
+      },
+    };
+    return [{ data: JSON.stringify(createToolCallResponse(model, toolCall)) }];
+  },
+
+  "tool-result": (chunk, model) => {
+    const resultText = `\n[Tool: ${chunk.toolName} returned ${JSON.stringify(chunk.output)}]\n`;
+    return [{ data: JSON.stringify(createContentResponse(model, resultText, false)) }];
+  },
+
+  "finish": (chunk, model) => {
+    if (streamFinishSent) {
+      return [];
+    }
+    const hadToolCalls = streamHasToolCalls;
+    let finishReason = chunk.finishReason || "stop";
+    if (finishReason === "tool_calls" || finishReason === "tool-calls") {
+      finishReason = "tool_calls";
+    }
+    const resolvedReason = hadToolCalls ? "tool_calls" : finishReason;
+    streamFinishSent = true;
+    streamHasToolCalls = false;
+    return [{ data: JSON.stringify(createFinishResponse(model, resolvedReason)) }];
+  },
+};
+
+// Stream-level state for tracking tool calls across chunks
+let streamHasToolCalls = false;
+let streamFinishSent = false;
+
 export function convertAISDKStreamChunkToOpenAI(
   // biome-ignore lint/suspicious/noExplicitAny: o sdk integration boundary
   chunk: any,
@@ -106,210 +335,54 @@ export function convertAISDKStreamChunkToOpenAI(
 ): StreamChunk[] {
   const chunks: StreamChunk[] = [];
 
-  // Handle reasoning content (Friendli-specific)
-  if (chunk.type === "reasoning-delta" && chunk.text) {
-    const response: OpenAIChatResponse = {
-      id: generateResponseId(),
-      object: "chat.completion.chunk",
-      created: getCurrentTimestamp(),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: {
-            role: "assistant",
-            reasoning_content: chunk.text,
-          },
-        },
-      ],
-    };
+  // Debug: Log chunk structure to separate files for comparison analysis
+  const logType =
+    process.env.USE_MIDDLEWARE === "true" ? "middleware" : "native";
+  console.log(`🔍 AI SDK Chunk [${logType}]:`, JSON.stringify(chunk, null, 2));
 
-    chunks.push({ data: JSON.stringify(response) });
+  // Use handler map - dramatically reduces complexity!
+  if (chunk.type === "start") {
+    streamHasToolCalls = false;
+    streamFinishSent = false;
   }
 
-  // Handle tool input start (OpenAI streaming format)
-  if (chunk.type === "tool-input-start") {
-    const response: OpenAIChatResponse = {
-      id: generateResponseId(),
-      object: "chat.completion.chunk",
-      created: getCurrentTimestamp(),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: {
-            role: "assistant",
-            tool_calls: [
-              {
-                index: 0,
-                id: chunk.id,
-                type: "function" as const,
-                function: {
-                  name: chunk.toolName,
-                  arguments: "", // Start with empty arguments for streaming
-                },
-              },
-            ],
-          },
-        },
-      ],
-    };
+  const handler = chunkHandlers[chunk.type];
+  if (handler) {
+    const result = handler(chunk as AIStreamChunk, model);
 
-    chunks.push({ data: JSON.stringify(response) });
-  }
-
-  // Handle tool input delta (streaming arguments)
-  if (chunk.type === "tool-input-delta") {
-    const response: OpenAIChatResponse = {
-      id: generateResponseId(),
-      object: "chat.completion.chunk",
-      created: getCurrentTimestamp(),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: {
-            tool_calls: [
-              {
-                index: 0,
-                function: {
-                  arguments: chunk.delta, // Incremental argument content
-                },
-              },
-            ],
-          },
-        },
-      ],
-    };
-
-    chunks.push({ data: JSON.stringify(response) });
-  }
-
-  // Handle text delta
-  if (chunk.type === "text-delta" && chunk.text) {
-    const response: OpenAIChatResponse = {
-      id: generateResponseId(),
-      object: "chat.completion.chunk",
-      created: getCurrentTimestamp(),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: {
-            role: "assistant",
-            content: chunk.text,
-          },
-        },
-      ],
-    };
-
-    chunks.push({ data: JSON.stringify(response) });
-  }
-
-  // Handle tool call delta (OpenAI compatible format)
-  if (chunk.type === "tool-call-delta") {
-    const response: OpenAIChatResponse = {
-      id: generateResponseId(),
-      object: "chat.completion.chunk",
-      created: getCurrentTimestamp(),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: {
-            role: "assistant",
-            tool_calls: [
-              {
-                index: 0, // Required by OpenAI format
-                id: chunk.toolCallId,
-                type: "function" as const,
-                function: {
-                  name: chunk.toolName,
-                  arguments: chunk.argsText || "",
-                },
-              },
-            ],
-          },
-        },
-      ],
-    };
-
-    chunks.push({ data: JSON.stringify(response) });
-  }
-
-  // Handle tool result
-  if (chunk.type === "tool-result") {
-    // Tool results are typically not sent in OpenAI streaming format
-    // But we can include them as content for debugging
-    const resultText = `\n[Tool: ${chunk.toolName} returned ${JSON.stringify(chunk.output)}]\n`;
-    const response: OpenAIChatResponse = {
-      id: generateResponseId(),
-      object: "chat.completion.chunk",
-      created: getCurrentTimestamp(),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: {
-            content: resultText,
-          },
-        },
-      ],
-    };
-
-    chunks.push({ data: JSON.stringify(response) });
-  }
-
-  // Handle finish
-  if (chunk.type === "finish") {
-    // Convert Friendli finish reason to OpenAI format
-    let finishReason = chunk.finishReason || "stop";
-    if (finishReason === "tool-calls") {
-      finishReason = "tool_calls"; // OpenAI uses underscore, not hyphen
+    // Track tool calls for finish reason logic (stream-level state)
+    if (chunk.type === "tool-call" || chunk.type === "tool-call-delta") {
+      streamHasToolCalls = true;
     }
 
-    const response: OpenAIChatResponse = {
-      id: generateResponseId(),
-      object: "chat.completion.chunk",
-      created: getCurrentTimestamp(),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: {},
-          finish_reason: finishReason,
-        },
-      ],
-    };
-
-    chunks.push({ data: JSON.stringify(response) });
-    chunks.push({ data: "[DONE]" });
-  }
-
-  // Universal fallback handler for unknown chunk types
-  // Ensures compatibility with any AI SDK model/provider
-  if (!chunks.length && chunk.type) {
-    // Log unknown chunk type for debugging (but don't break the stream)
+    chunks.push(...result);
+  } else {
+    // Universal fallback handler for unknown chunk types
     console.warn(`⚠️ Unknown AI SDK chunk type: ${chunk.type}`, chunk);
-    
-    // Send empty delta to maintain stream continuity
-    const response: OpenAIChatResponse = {
-      id: generateResponseId(),
-      object: "chat.completion.chunk",
-      created: getCurrentTimestamp(),
-      model,
-      choices: [
-        {
-          index: 0,
-          delta: {},
-        },
-      ],
-    };
-
-    chunks.push({ data: JSON.stringify(response) });
   }
 
-  return chunks;
+  if (chunk.type === "finish-step" || chunk.type === "finish") {
+    streamHasToolCalls = false;
+  }
+
+  // Filter out empty delta chunks unless they have meaningful content
+  return chunks.filter((resultChunk) => {
+    try {
+      const parsed = JSON.parse(resultChunk.data);
+      const delta = parsed.choices?.[0]?.delta;
+
+      // Keep chunks with meaningful content
+      return delta && (
+        delta.role ||
+        delta.content ||
+        delta.reasoning_content ||
+        (delta.tool_calls && delta.tool_calls.length > 0) ||
+        parsed.choices?.[0]?.finish_reason
+      );
+    } catch {
+      return true; // Keep non-JSON chunks
+    }
+  });
 }
 
 /**

@@ -132,7 +132,7 @@ export class OpenAIProxyServer {
         );
 
         for (const openaiChunk of openaiChunks) {
-          reply.raw.write(`data: ${JSON.stringify(openaiChunk)}\n\n`);
+          reply.raw.write(`data: ${openaiChunk.data}\n\n`);
         }
       }
 
