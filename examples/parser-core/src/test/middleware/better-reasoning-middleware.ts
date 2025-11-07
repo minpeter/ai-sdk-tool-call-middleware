@@ -65,6 +65,46 @@ export function extractReasoningMiddleware({
   separator?: string;
   startWithReasoning?: boolean;
 }): LanguageModelV3Middleware {
+  function processTextPart(
+    text: string,
+    transformedContent: LanguageModelV3Content[]
+  ) {
+    const regexp = new RegExp(`${openingTag}(.*?)${closingTag}`, "gs");
+    const matches = Array.from(text.matchAll(regexp));
+
+    if (!matches.length) {
+      return;
+    }
+
+    const reasoningText = matches.map((match) => match[1]).join(separator);
+
+    let textWithoutReasoning = text;
+    for (let i = matches.length - 1; i >= 0; i -= 1) {
+      const match = matches[i];
+
+      const beforeMatch = textWithoutReasoning.slice(0, match.index);
+      const matchIndex = match.index ?? 0;
+      const afterMatch = textWithoutReasoning.slice(
+        matchIndex + match[0].length
+      );
+
+      textWithoutReasoning =
+        beforeMatch +
+        (beforeMatch.length > 0 && afterMatch.length > 0 ? separator : "") +
+        afterMatch;
+    }
+
+    transformedContent.push({
+      type: "reasoning",
+      text: reasoningText,
+    });
+
+    transformedContent.push({
+      type: "text",
+      text: textWithoutReasoning,
+    });
+  }
+
   return {
     specificationVersion: "v3",
     wrapGenerate: async ({ doGenerate }) => {
@@ -78,7 +118,6 @@ export function extractReasoningMiddleware({
         }
 
         const text = startWithReasoning ? openingTag + part.text : part.text;
-
         const regexp = new RegExp(`${openingTag}(.*?)${closingTag}`, "gs");
         const matches = Array.from(text.matchAll(regexp));
 
@@ -87,32 +126,7 @@ export function extractReasoningMiddleware({
           continue;
         }
 
-        const reasoningText = matches.map((match) => match[1]).join(separator);
-
-        let textWithoutReasoning = text;
-        for (let i = matches.length - 1; i >= 0; i -= 1 {
-          const match = matches[i];
-
-          const beforeMatch = textWithoutReasoning.slice(0, match.index);
-          const afterMatch = textWithoutReasoning.slice(
-            match.index! + match[0].length
-          );
-
-          textWithoutReasoning =
-            beforeMatch +
-            (beforeMatch.length > 0 && afterMatch.length > 0 ? separator : "") +
-            afterMatch;
-        }
-
-        transformedContent.push({
-          type: "reasoning",
-          text: reasoningText,
-        });
-
-        transformedContent.push({
-          type: "text",
-          text: textWithoutReasoning,
-        });
+        processTextPart(text, transformedContent);
       }
 
       return { content: transformedContent, ...rest };
@@ -121,18 +135,168 @@ export function extractReasoningMiddleware({
     wrapStream: async ({ doStream }) => {
       const { stream, ...rest } = await doStream();
 
-      const reasoningExtractions: Record<
-        string,
-        {
-          isFirstReasoning: boolean;
-          isFirstText: boolean;
-          afterSwitch: boolean;
-          isReasoning: boolean;
-          buffer: string;
-          idCounter: number;
-          textId: string;
+      type ExtractionState = {
+        isFirstReasoning: boolean;
+        isFirstText: boolean;
+        afterSwitch: boolean;
+        isReasoning: boolean;
+        buffer: string;
+        idCounter: number;
+        textId: string;
+      };
+
+      const reasoningExtractions: Record<string, ExtractionState> = {};
+
+      function createPublisher(
+        activeExtraction: ExtractionState,
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
+      ) {
+        return (text: string) => {
+          if (text.length === 0) {
+            return;
+          }
+
+          const prefix = getPrefix(activeExtraction);
+          enqueueReasoningStart(activeExtraction, controller);
+          enqueueDelta(activeExtraction, controller, prefix, text);
+          updateExtractionState(activeExtraction);
+        };
+      }
+
+      function getPrefix(activeExtraction: ExtractionState): string {
+        return activeExtraction.afterSwitch &&
+          (activeExtraction.isReasoning
+            ? !activeExtraction.isFirstReasoning
+            : !activeExtraction.isFirstText)
+          ? separator
+          : "";
+      }
+
+      function enqueueReasoningStart(
+        activeExtraction: ExtractionState,
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
+      ) {
+        if (
+          (activeExtraction.afterSwitch && activeExtraction.isReasoning) ||
+          activeExtraction.isFirstReasoning
+        ) {
+          controller.enqueue({
+            type: "reasoning-start",
+            id: `reasoning-${activeExtraction.idCounter}`,
+          });
         }
-      > = {};
+      }
+
+      function enqueueDelta(
+        activeExtraction: ExtractionState,
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+        prefix: string,
+        text: string
+      ) {
+        controller.enqueue(
+          activeExtraction.isReasoning
+            ? {
+                type: "reasoning-delta",
+                delta: prefix + text,
+                id: `reasoning-${activeExtraction.idCounter}`,
+              }
+            : {
+                type: "text-delta",
+                delta: prefix + text,
+                id: activeExtraction.textId,
+              }
+        );
+      }
+
+      function updateExtractionState(activeExtraction: ExtractionState) {
+        activeExtraction.afterSwitch = false;
+        if (activeExtraction.isReasoning) {
+          activeExtraction.isFirstReasoning = false;
+        } else {
+          activeExtraction.isFirstText = false;
+        }
+      }
+
+      function handleFullMatch(
+        activeExtraction: ExtractionState,
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+        startIndex: number,
+        nextTag: string
+      ) {
+        activeExtraction.buffer = activeExtraction.buffer.slice(
+          startIndex + nextTag.length
+        );
+
+        if (activeExtraction.isReasoning) {
+          controller.enqueue({
+            type: "reasoning-end",
+            id: `reasoning-${activeExtraction.idCounter}`,
+          });
+          activeExtraction.idCounter += 1;
+        }
+
+        activeExtraction.isReasoning = !activeExtraction.isReasoning;
+        activeExtraction.afterSwitch = true;
+      }
+
+      function processTagMatch({
+        activeExtraction,
+        controller,
+        publish,
+        startIndex,
+        nextTag,
+      }: {
+        activeExtraction: ExtractionState;
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
+        publish: (text: string) => void;
+        startIndex: number;
+        nextTag: string;
+      }): boolean {
+        publish(activeExtraction.buffer.slice(0, startIndex));
+
+        const foundFullMatch =
+          startIndex + nextTag.length <= activeExtraction.buffer.length;
+
+        if (foundFullMatch) {
+          handleFullMatch(activeExtraction, controller, startIndex, nextTag);
+          return true;
+        }
+
+        activeExtraction.buffer = activeExtraction.buffer.slice(startIndex);
+        return false;
+      }
+
+      function processBuffer(
+        activeExtraction: ExtractionState,
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
+      ) {
+        const publish = createPublisher(activeExtraction, controller);
+        let continueProcessing = true;
+
+        while (continueProcessing) {
+          const nextTag = activeExtraction.isReasoning
+            ? closingTag
+            : openingTag;
+          const startIndex = getPotentialStartIndex(
+            activeExtraction.buffer,
+            nextTag
+          );
+
+          if (startIndex == null) {
+            publish(activeExtraction.buffer);
+            activeExtraction.buffer = "";
+            break;
+          }
+
+          continueProcessing = processTagMatch({
+            activeExtraction,
+            controller,
+            publish,
+            startIndex,
+            nextTag,
+          });
+        }
+      }
 
       return {
         stream: stream.pipeThrough(
@@ -159,98 +323,8 @@ export function extractReasoningMiddleware({
               }
 
               const activeExtraction = reasoningExtractions[chunk.id];
-
               activeExtraction.buffer += chunk.delta;
-
-              function publish(text: string) {
-                if (text.length > 0) {
-                  const prefix =
-                    activeExtraction.afterSwitch &&
-                    (activeExtraction.isReasoning
-                      ? !activeExtraction.isFirstReasoning
-                      : !activeExtraction.isFirstText)
-                      ? separator
-                      : "";
-
-                  if (
-                    (activeExtraction.afterSwitch &&
-                      activeExtraction.isReasoning) ||
-                    activeExtraction.isFirstReasoning
-                  ) {
-                    controller.enqueue({
-                      type: "reasoning-start",
-                      id: `reasoning-${activeExtraction.idCounter}`,
-                    });
-                  }
-
-                  controller.enqueue(
-                    activeExtraction.isReasoning
-                      ? {
-                          type: "reasoning-delta",
-                          delta: prefix + text,
-                          id: `reasoning-${activeExtraction.idCounter}`,
-                        }
-                      : {
-                          type: "text-delta",
-                          delta: prefix + text,
-                          id: activeExtraction.textId,
-                        }
-                  );
-                  activeExtraction.afterSwitch = false;
-
-                  if (activeExtraction.isReasoning) {
-                    activeExtraction.isFirstReasoning = false;
-                  } else {
-                    activeExtraction.isFirstText = false;
-                  }
-                }
-              }
-
-              do {
-                const nextTag = activeExtraction.isReasoning
-                  ? closingTag
-                  : openingTag;
-
-                const startIndex = getPotentialStartIndex(
-                  activeExtraction.buffer,
-                  nextTag
-                );
-
-                // no opening or closing tag found, publish the buffer
-                if (startIndex == null) {
-                  publish(activeExtraction.buffer);
-                  activeExtraction.buffer = "";
-                  break;
-                }
-
-                // publish text before the tag
-                publish(activeExtraction.buffer.slice(0, startIndex));
-
-                const foundFullMatch =
-                  startIndex + nextTag.length <= activeExtraction.buffer.length;
-
-                if (foundFullMatch) {
-                  activeExtraction.buffer = activeExtraction.buffer.slice(
-                    startIndex + nextTag.length
-                  );
-
-                  // reasoning part finished:
-                  if (activeExtraction.isReasoning) {
-                    controller.enqueue({
-                      type: "reasoning-end",
-                      id: `reasoning-${activeExtraction.idCounter++}`,
-                    });
-                  }
-
-                  activeExtraction.isReasoning = !activeExtraction.isReasoning;
-                  activeExtraction.afterSwitch = true;
-                } else {
-                  activeExtraction.buffer =
-                    activeExtraction.buffer.slice(startIndex);
-                  break;
-                }
-                // eslint-disable-next-line no-constant-condition
-              } while (true);
+              processBuffer(activeExtraction, controller);
             },
           })
         ),
