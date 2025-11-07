@@ -1,6 +1,4 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { extractReasoningMiddleware } from "@ai-sdk-tool/middleware/reasoning-parser";
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { OpenAIProxyServer } from "@ai-sdk-tool/proxy";
 import { wrapLanguageModel } from "ai";
 
@@ -34,7 +32,34 @@ import { wrapLanguageModel } from "ai";
 //   ],
 // });
 
-const hcx = wrapLanguageModel({
+// const hcx = wrapLanguageModel({
+//   model: createOpenAICompatible({
+//     name: "friendli",
+//     apiKey: process.env.FRIENDLI_TOKEN,
+//     baseURL: "https://api.friendli.ai/serverless/v1",
+//     fetch: async (url, options) =>
+//       fetch(url, {
+//         ...options,
+//         body: JSON.stringify({
+//           ...(options?.body ? JSON.parse(options.body as string) : {}),
+//           parse_reasoning: false,
+//           chat_template_kwargs: {
+//             force_reasoning: true,
+//           },
+//         }),
+//       }),
+//   })("naver-hyperclovax/HyperCLOVAX-SEED-Think-14B"),
+//   middleware: [
+//     hermesToolMiddleware,
+//     extractReasoningMiddleware({
+//       openingTag: "/think\n",
+//       closingTag: "\nassistant\n",
+//       startWithReasoning: true,
+//     }),
+//   ],
+// });
+
+const qwen = wrapLanguageModel({
   model: createOpenAICompatible({
     name: "friendli",
     apiKey: process.env.FRIENDLI_TOKEN,
@@ -44,25 +69,15 @@ const hcx = wrapLanguageModel({
         ...options,
         body: JSON.stringify({
           ...(options?.body ? JSON.parse(options.body as string) : {}),
-          parse_reasoning: false,
-          chat_template_kwargs: {
-            force_reasoning: true,
-          },
+          parse_reasoning: true,
         }),
       }),
-  })("naver-hyperclovax/HyperCLOVAX-SEED-Think-14B"),
-  middleware: [
-    hermesToolMiddleware,
-    extractReasoningMiddleware({
-      openingTag: "/think\n",
-      closingTag: "\nassistant\n",
-      startWithReasoning: true,
-    }),
-  ],
+  })("Qwen/Qwen3-235B-A22B-Thinking-2507"),
+  middleware: [],
 });
 
 const server = new OpenAIProxyServer({
-  model: hcx,
+  model: qwen,
   port: 3005,
   host: "localhost",
   cors: true,

@@ -128,7 +128,8 @@ type ChunkHandler = (chunk: AIStreamChunk, model: string) => StreamChunk[];
 // Helper function to create finish response
 function createFinishResponse(
   model: string,
-  finishReason: string
+  finishReason: string,
+  responseId: string
 ): OpenAIChatResponse {
   // Ensure finish reason matches OpenAI's allowed types
   let validFinishReason: "stop" | "length" | "tool_calls" | "content_filter";
@@ -146,7 +147,7 @@ function createFinishResponse(
   }
 
   return {
-    id: generateResponseId(),
+    id: responseId,
     object: "chat.completion.chunk",
     created: getCurrentTimestamp(),
     model,
@@ -164,6 +165,7 @@ function createFinishResponse(
 function createContentResponse(
   model: string,
   content: string,
+  responseId: string,
   isReasoning = false
 ): OpenAIChatResponse {
   const delta: Record<string, unknown> = { role: "assistant" };
@@ -175,7 +177,7 @@ function createContentResponse(
   }
 
   return {
-    id: generateResponseId(),
+    id: responseId,
     object: "chat.completion.chunk",
     created: getCurrentTimestamp(),
     model,
@@ -192,10 +194,11 @@ function createContentResponse(
 function createToolCallResponse(
   model: string,
   toolCall: ToolCallDelta,
+  responseId: string,
   includeRole = false
 ): OpenAIChatResponse {
   return {
-    id: generateResponseId(),
+    id: responseId,
     object: "chat.completion.chunk",
     created: getCurrentTimestamp(),
     model,
@@ -225,6 +228,7 @@ function createToolCallResponse(
 export function createOpenAIStreamConverter(model: string) {
   let streamHasToolCalls = false;
   let streamFinishSent = false;
+  let streamResponseId = generateResponseId();
 
   const handlers: Record<string, ChunkHandler> = {
     start: () => [],
@@ -234,7 +238,9 @@ export function createOpenAIStreamConverter(model: string) {
       }
       return [
         {
-          data: JSON.stringify(createContentResponse(model, chunk.text, true)),
+          data: JSON.stringify(
+            createContentResponse(model, chunk.text, streamResponseId, true)
+          ),
         },
       ];
     },
@@ -244,7 +250,9 @@ export function createOpenAIStreamConverter(model: string) {
       }
       return [
         {
-          data: JSON.stringify(createContentResponse(model, chunk.text, false)),
+          data: JSON.stringify(
+            createContentResponse(model, chunk.text, streamResponseId, false)
+          ),
         },
       ];
     },
@@ -261,7 +269,12 @@ export function createOpenAIStreamConverter(model: string) {
         type: "function",
         function: { name: toolName, arguments: argsString },
       };
-      const response = createToolCallResponse(model, toolCallDelta, true);
+      const response = createToolCallResponse(
+        model,
+        toolCallDelta,
+        streamResponseId,
+        true
+      );
       return [{ data: JSON.stringify(response) }];
     },
     "reasoning-end": () => [],
@@ -279,7 +292,11 @@ export function createOpenAIStreamConverter(model: string) {
       streamFinishSent = true;
       streamHasToolCalls = false;
       return [
-        { data: JSON.stringify(createFinishResponse(model, resolvedReason)) },
+        {
+          data: JSON.stringify(
+            createFinishResponse(model, resolvedReason, streamResponseId)
+          ),
+        },
       ];
     },
     "tool-call-delta": (chunk) => {
@@ -292,14 +309,20 @@ export function createOpenAIStreamConverter(model: string) {
         },
       };
       return [
-        { data: JSON.stringify(createToolCallResponse(model, toolCall)) },
+        {
+          data: JSON.stringify(
+            createToolCallResponse(model, toolCall, streamResponseId)
+          ),
+        },
       ];
     },
     "tool-result": (chunk) => {
       const resultText = `\n[Tool: ${chunk.toolName} returned ${JSON.stringify(chunk.output)}]\n`;
       return [
         {
-          data: JSON.stringify(createContentResponse(model, resultText, false)),
+          data: JSON.stringify(
+            createContentResponse(model, resultText, streamResponseId, false)
+          ),
         },
       ];
     },
@@ -316,7 +339,11 @@ export function createOpenAIStreamConverter(model: string) {
       streamFinishSent = true;
       streamHasToolCalls = false;
       return [
-        { data: JSON.stringify(createFinishResponse(model, resolvedReason)) },
+        {
+          data: JSON.stringify(
+            createFinishResponse(model, resolvedReason, streamResponseId)
+          ),
+        },
       ];
     },
   };
@@ -337,6 +364,7 @@ export function createOpenAIStreamConverter(model: string) {
     if (chunk.type === "start") {
       streamHasToolCalls = false;
       streamFinishSent = false;
+      streamResponseId = chunk.id ?? generateResponseId();
     }
 
     const handler = handlers[chunk.type];

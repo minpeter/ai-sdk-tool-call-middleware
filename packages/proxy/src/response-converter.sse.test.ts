@@ -5,6 +5,7 @@ import {
 } from "./response-converter.js";
 
 type Parsed = {
+  id?: string;
   choices: Array<{ delta?: Record<string, unknown>; finish_reason?: string }>;
 };
 
@@ -33,6 +34,9 @@ describe("SSE formatting via createSSEResponse", () => {
     const sse = createSSEResponse(out);
     const frames = sse.split("\n\n").filter(Boolean);
     const parsed = frames.map(parseLine).filter(Boolean) as Parsed[];
+
+    const uniqueIds = new Set(parsed.map((p) => p.id));
+    expect(uniqueIds.size).toBe(1);
 
     const reasoning = parsed.find(
       (p) => p.choices?.[0]?.delta?.reasoning_content
