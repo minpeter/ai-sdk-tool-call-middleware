@@ -1,8 +1,8 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { extractReasoningMiddleware } from "@ai-sdk-tool/middleware/reasoning-parser";
 import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { extractReasoningMiddleware } from "./middleware/better-reasoning-middleware";
 
 // Constants
 const MAX_STEPS = 5;
