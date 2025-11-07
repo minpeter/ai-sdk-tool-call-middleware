@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
+import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { OpenAIProxyServer } from "@ai-sdk-tool/proxy";
-import { wrapLanguageModel } from "ai";
+import { extractReasoningMiddleware, wrapLanguageModel } from "ai";
 
 // Wrap model with tool middleware (using empty array for native OpenAI compatibility)
 
@@ -13,17 +13,15 @@ const server = new OpenAIProxyServer({
       apiKey: process.env.FRIENDLI_TOKEN,
       baseURL: "https://api.friendli.ai/serverless/v1",
       includeUsage: true,
-      fetch: (url, options) => {
-        const body = options?.body ? JSON.parse(options.body as string) : {};
-        body.parse_reasoning = true;
-        return fetch(url, { ...options, body: JSON.stringify(body) });
-      },
     })(
-      // "zai-org/GLM-4.6"
-      "deepseek-ai/DeepSeek-R1-0528"
+      "zai-org/GLM-4.6"
+      // "deepseek-ai/DeepSeek-R1-0528"
     ),
 
-    middleware: hermesToolMiddleware,
+    middleware: [
+      morphXmlToolMiddleware,
+      extractReasoningMiddleware({ tagName: "think" }),
+    ],
   }),
   port: 3005,
   host: "localhost",
