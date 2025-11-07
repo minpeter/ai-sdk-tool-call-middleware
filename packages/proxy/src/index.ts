@@ -7,11 +7,13 @@ export {
 export {
   convertAISDKResultToOpenAI,
   convertAISDKStreamChunkToOpenAI,
+  createOpenAIStreamConverter,
   createSSEResponse,
 } from "./response-converter.js";
 export { OpenAIProxyServer } from "./server.js";
 export type {
   AISDKTool,
+  Logger,
   OpenAIChatRequest,
   OpenAIChatResponse,
   OpenAIChoice,

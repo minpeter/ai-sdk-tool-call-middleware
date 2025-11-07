@@ -4,7 +4,9 @@ import type { z } from "zod";
 // OpenAI API request/response types
 export type OpenAIMessage = {
   role: "system" | "user" | "assistant" | "tool";
-  content?: string | null;
+  // Accept broader shapes: string, arrays of parts, objects, or null.
+  // The converter normalizes this at runtime.
+  content?: unknown;
   tool_calls?: OpenAICompleteToolCall[]; // Use complete type for internal processing
   tool_call_id?: string;
 };
@@ -91,7 +93,7 @@ export type OpenAIChatResponse = {
 // AI SDK tool configuration
 export type AISDKTool = {
   description: string;
-  parameters: z.ZodTypeAny;
+  inputSchema: z.ZodTypeAny;
   execute?: (params: unknown) => unknown | Promise<unknown>;
 };
 
@@ -101,6 +103,19 @@ export type ProxyConfig = {
   port?: number;
   host?: string;
   cors?: boolean;
+  // Optional server-registered tools with implementations.
+  tools?: Record<string, AISDKTool>;
+  // Optional max tool-calling steps to pass to AI SDK orchestrator.
+  maxSteps?: number;
+  // Optional structured logger
+  logger?: Logger;
+};
+
+export type Logger = {
+  debug: (...args: unknown[]) => void;
+  info: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
 };
 
 // Streaming chunk for SSE

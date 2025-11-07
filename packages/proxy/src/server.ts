@@ -1,3 +1,4 @@
+import { zodSchema } from "@ai-sdk/provider-utils";
 import cors from "@fastify/cors";
 import { generateText, streamText } from "ai";
 import Fastify, {
@@ -9,9 +10,14 @@ import { ZodFirstPartyTypeKind, type ZodTypeAny } from "zod";
 import { convertOpenAIRequestToAISDK } from "./converters.js";
 import {
   convertAISDKResultToOpenAI,
-  convertAISDKStreamChunkToOpenAI,
+  createOpenAIStreamConverter,
 } from "./response-converter.js";
-import type { OpenAIChatRequest, ProxyConfig } from "./types.js";
+import type {
+  AISDKTool,
+  Logger,
+  OpenAIChatRequest,
+  ProxyConfig,
+} from "./types.js";
 
 type ConvertedParams = ReturnType<typeof convertOpenAIRequestToAISDK>;
 
@@ -148,7 +154,7 @@ function logRequestConversion(
           inputSchema: serializeZodSchema(tool.inputSchema),
         })),
         temperature: aisdkParams.temperature,
-        maxTokens: aisdkParams.maxTokens,
+        maxOutputTokens: aisdkParams.maxOutputTokens,
         stopSequences: aisdkParams.stopSequences,
       },
       null,
@@ -160,6 +166,7 @@ function logRequestConversion(
 export class OpenAIProxyServer {
   private readonly fastify: FastifyInstance;
   private readonly config: ProxyConfig;
+  private readonly logger: Logger;
 
   constructor(config: ProxyConfig) {
     this.config = {
@@ -168,6 +175,7 @@ export class OpenAIProxyServer {
       cors: true,
       ...config,
     };
+    this.logger = (config.logger ?? console) as Logger;
 
     this.fastify = Fastify();
 
@@ -228,7 +236,7 @@ export class OpenAIProxyServer {
             reply
           );
         } catch (error) {
-          console.error("Request handling error:", error);
+          this.logger.error("Request handling error:", error);
           return reply.code(500).send({
             error: {
               message: "Internal server error",
@@ -253,6 +261,43 @@ export class OpenAIProxyServer {
     }));
   }
 
+  // Merge server-defined tools (with execute) and request-defined tools (schema-only)
+  // Server tools take precedence when names overlap.
+  private mergeTools(
+    serverTools?: Record<string, AISDKTool>,
+    requestTools?: Record<string, AISDKTool>
+  ) {
+    const toProviderTool = (tool: AISDKTool | undefined): unknown => {
+      if (!tool) {
+        return;
+      }
+
+      return {
+        description: tool.description,
+        inputSchema: zodSchema(tool.inputSchema),
+        ...(tool.execute ? { execute: tool.execute } : {}),
+      };
+    };
+
+    const merged: Record<string, unknown> = {};
+
+    for (const [name, t] of Object.entries(requestTools ?? {})) {
+      const pt = toProviderTool(t);
+      if (pt) {
+        merged[name] = pt;
+      }
+    }
+
+    for (const [name, t] of Object.entries(serverTools ?? {})) {
+      const pt = toProviderTool(t);
+      if (pt) {
+        merged[name] = pt; // override request tool
+      }
+    }
+
+    return Object.keys(merged).length > 0 ? merged : undefined;
+  }
+
   private async handleStreamingRequest(
     // biome-ignore lint/suspicious/noExplicitAny: o sdk integration boundary
     aisdkParams: any,
@@ -268,17 +313,16 @@ export class OpenAIProxyServer {
     });
 
     try {
+      const mergedTools = this.mergeTools(this.config.tools, aisdkParams.tools);
       const result = await streamText({
         model: this.config.model,
         ...aisdkParams,
+        ...(mergedTools ? { tools: mergedTools } : {}),
       });
 
+      const convert = createOpenAIStreamConverter(openaiRequest.model);
       for await (const chunk of result.fullStream) {
-        const openaiChunks = convertAISDKStreamChunkToOpenAI(
-          chunk,
-          openaiRequest.model
-        );
-
+        const openaiChunks = convert(chunk);
         for (const openaiChunk of openaiChunks) {
           reply.raw.write(`data: ${openaiChunk.data}\n\n`);
         }
@@ -287,7 +331,7 @@ export class OpenAIProxyServer {
       reply.raw.write("data: [DONE]\n\n");
       reply.raw.end();
     } catch (error) {
-      console.error("Streaming error:", error);
+      this.logger.error("Streaming error:", error);
       reply.raw.write('data: {"error": {"message": "Streaming error"}}\n\n');
       reply.raw.end();
     }
@@ -302,9 +346,11 @@ export class OpenAIProxyServer {
     reply: FastifyReply
   ): Promise<void> {
     try {
+      const mergedTools = this.mergeTools(this.config.tools, aisdkParams.tools);
       const result = await generateText({
         model: this.config.model,
         ...aisdkParams,
+        ...(mergedTools ? { tools: mergedTools } : {}),
       });
 
       const openaiResponse = convertAISDKResultToOpenAI(
@@ -315,7 +361,7 @@ export class OpenAIProxyServer {
 
       reply.send(openaiResponse);
     } catch (error) {
-      console.error("Generation error:", error);
+      this.logger.error("Generation error:", error);
       return reply.code(500).send({
         error: {
           message: "Generation failed",
@@ -332,17 +378,17 @@ export class OpenAIProxyServer {
         host: this.config.host || "localhost",
       });
 
-      console.log(
+      this.logger.info(
         `🚀 OpenAI Proxy Server running on http://${this.config.host}:${this.config.port}`
       );
-      console.log(
+      this.logger.info(
         `📡 Endpoint: http://${this.config.host}:${this.config.port}/v1/chat/completions`
       );
-      console.log(
+      this.logger.info(
         `🏥 Health: http://${this.config.host}:${this.config.port}/health`
       );
     } catch (error) {
-      console.error("Failed to start server:", error);
+      this.logger.error("Failed to start server:", error);
       process.exit(1);
     }
   }
@@ -350,9 +396,9 @@ export class OpenAIProxyServer {
   async stop(): Promise<void> {
     try {
       await this.fastify.close();
-      console.log("🛑 Server stopped");
+      this.logger.info("🛑 Server stopped");
     } catch (error) {
-      console.error("Error stopping server:", error);
+      this.logger.error("Error stopping server:", error);
     }
   }
 }

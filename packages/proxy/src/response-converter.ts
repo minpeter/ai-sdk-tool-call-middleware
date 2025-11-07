@@ -220,156 +220,165 @@ function createToolCallResponse(
   };
 }
 
-// Handler functions for each chunk type
-const chunkHandlers: Record<string, ChunkHandler> = {
+// (legacy stateless handler removed)
 
-  "reasoning-delta": (chunk, model) => {
-    if (!chunk.text) {
-      return [];
+export function createOpenAIStreamConverter(model: string) {
+  let streamHasToolCalls = false;
+  let streamFinishSent = false;
+
+  const handlers: Record<string, ChunkHandler> = {
+    "reasoning-delta": (chunk) => {
+      if (!chunk.text) {
+        return [];
+      }
+      return [
+        {
+          data: JSON.stringify(createContentResponse(model, chunk.text, true)),
+        },
+      ];
+    },
+    "text-delta": (chunk) => {
+      if (!chunk.text) {
+        return [];
+      }
+      return [
+        {
+          data: JSON.stringify(createContentResponse(model, chunk.text, false)),
+        },
+      ];
+    },
+    "tool-call": (chunk) => {
+      const toolCallId = chunk.toolCallId || `call_${generateResponseId()}`;
+      const toolName = chunk.toolName || "";
+      const argsString =
+        typeof chunk.input === "string"
+          ? chunk.input
+          : JSON.stringify(chunk.input ?? {});
+      const toolCallDelta: OpenAIStreamingToolCall = {
+        index: 0,
+        id: toolCallId,
+        type: "function",
+        function: { name: toolName, arguments: argsString },
+      };
+      const response = createToolCallResponse(model, toolCallDelta, true);
+      return [{ data: JSON.stringify(response) }];
+    },
+    "reasoning-end": () => [],
+    "text-end": () => [],
+    "finish-step": (chunk) => {
+      if (streamFinishSent) {
+        return [];
+      }
+      const hadToolCalls = streamHasToolCalls;
+      let finishReason = chunk.finishReason || "stop";
+      if (finishReason === "tool_calls" || finishReason === "tool-calls") {
+        finishReason = "tool_calls";
+      }
+      const resolvedReason = hadToolCalls ? "tool_calls" : finishReason;
+      streamFinishSent = true;
+      streamHasToolCalls = false;
+      return [
+        { data: JSON.stringify(createFinishResponse(model, resolvedReason)) },
+      ];
+    },
+    "tool-call-delta": (chunk) => {
+      const toolCall = {
+        index: chunk.toolCallId ? Number(chunk.toolCallId) : 0,
+        type: "function" as const,
+        function: {
+          name: chunk.toolName || "",
+          arguments: chunk.args || "",
+        },
+      };
+      return [
+        { data: JSON.stringify(createToolCallResponse(model, toolCall)) },
+      ];
+    },
+    "tool-result": (chunk) => {
+      const resultText = `\n[Tool: ${chunk.toolName} returned ${JSON.stringify(chunk.output)}]\n`;
+      return [
+        {
+          data: JSON.stringify(createContentResponse(model, resultText, false)),
+        },
+      ];
+    },
+    finish: (chunk) => {
+      if (streamFinishSent) {
+        return [];
+      }
+      const hadToolCalls = streamHasToolCalls;
+      let finishReason = chunk.finishReason || "stop";
+      if (finishReason === "tool_calls" || finishReason === "tool-calls") {
+        finishReason = "tool_calls";
+      }
+      const resolvedReason = hadToolCalls ? "tool_calls" : finishReason;
+      streamFinishSent = true;
+      streamHasToolCalls = false;
+      return [
+        { data: JSON.stringify(createFinishResponse(model, resolvedReason)) },
+      ];
+    },
+  };
+
+  return (
+    // biome-ignore lint/suspicious/noExplicitAny: ai sdk boundary
+    chunk: any
+  ): StreamChunk[] => {
+    const out: StreamChunk[] = [];
+
+    const logType =
+      process.env.USE_MIDDLEWARE === "true" ? "middleware" : "native";
+    console.log(
+      `🔍 AI SDK Chunk [${logType}]:`,
+      JSON.stringify(chunk, null, 2)
+    );
+
+    if (chunk.type === "start") {
+      streamHasToolCalls = false;
+      streamFinishSent = false;
     }
-    return [{ data: JSON.stringify(createContentResponse(model, chunk.text, true)) }];
-  },
 
-  "text-delta": (chunk, model) => {
-    if (!chunk.text) {
-      return [];
+    const handler = handlers[chunk.type];
+    if (handler) {
+      const result = handler(chunk as AIStreamChunk, model);
+      if (chunk.type === "tool-call" || chunk.type === "tool-call-delta") {
+        streamHasToolCalls = true;
+      }
+      out.push(...result);
+    } else {
+      console.warn(`⚠️ Unknown AI SDK chunk type: ${chunk.type}`, chunk);
     }
-    return [{ data: JSON.stringify(createContentResponse(model, chunk.text, false)) }];
-  },
 
-  "tool-call": (chunk, model) => {
-    const toolCallId = chunk.toolCallId || `call_${generateResponseId()}`;
-    const toolName = chunk.toolName || "";
-    const argsString =
-      typeof chunk.input === "string"
-        ? chunk.input
-        : JSON.stringify(chunk.input ?? {});
-
-    const toolCallDelta: OpenAIStreamingToolCall = {
-      index: 0,
-      id: toolCallId,
-      type: "function",
-      function: {
-        name: toolName,
-        arguments: argsString,
-      },
-    };
-
-    const response = createToolCallResponse(model, toolCallDelta, true);
-    return [{ data: JSON.stringify(response) }];
-  },
-
-  "reasoning-end": () => [],
-
-  "text-end": () => [],
-
-  "finish-step": (chunk, model) => {
-    if (streamFinishSent) {
-      return [];
+    if (chunk.type === "finish-step" || chunk.type === "finish") {
+      streamHasToolCalls = false;
     }
-    const hadToolCalls = streamHasToolCalls;
-    let finishReason = chunk.finishReason || "stop";
-    if (finishReason === "tool_calls" || finishReason === "tool-calls") {
-      finishReason = "tool_calls";
-    }
-    const resolvedReason = hadToolCalls ? "tool_calls" : finishReason;
-    streamFinishSent = true;
-    streamHasToolCalls = false;
-    return [{ data: JSON.stringify(createFinishResponse(model, resolvedReason)) }];
-  },
 
-  "tool-call-delta": (chunk, model) => {
-    const toolCall = {
-      index: chunk.toolCallId ? Number(chunk.toolCallId) : 0,
-      type: "function" as const,
-      function: {
-        name: chunk.toolName || "",
-        arguments: chunk.args || "",
-      },
-    };
-    return [{ data: JSON.stringify(createToolCallResponse(model, toolCall)) }];
-  },
-
-  "tool-result": (chunk, model) => {
-    const resultText = `\n[Tool: ${chunk.toolName} returned ${JSON.stringify(chunk.output)}]\n`;
-    return [{ data: JSON.stringify(createContentResponse(model, resultText, false)) }];
-  },
-
-  "finish": (chunk, model) => {
-    if (streamFinishSent) {
-      return [];
-    }
-    const hadToolCalls = streamHasToolCalls;
-    let finishReason = chunk.finishReason || "stop";
-    if (finishReason === "tool_calls" || finishReason === "tool-calls") {
-      finishReason = "tool_calls";
-    }
-    const resolvedReason = hadToolCalls ? "tool_calls" : finishReason;
-    streamFinishSent = true;
-    streamHasToolCalls = false;
-    return [{ data: JSON.stringify(createFinishResponse(model, resolvedReason)) }];
-  },
-};
-
-// Stream-level state for tracking tool calls across chunks
-let streamHasToolCalls = false;
-let streamFinishSent = false;
+    return out.filter((resultChunk) => {
+      try {
+        const parsed = JSON.parse(resultChunk.data);
+        const delta = parsed.choices?.[0]?.delta;
+        return (
+          delta &&
+          (delta.role ||
+            delta.content ||
+            (delta as NonNullable<OpenAIChoice["delta"]>).reasoning_content ||
+            (delta.tool_calls && delta.tool_calls.length > 0) ||
+            parsed.choices?.[0]?.finish_reason)
+        );
+      } catch {
+        return true;
+      }
+    });
+  };
+}
 
 export function convertAISDKStreamChunkToOpenAI(
   // biome-ignore lint/suspicious/noExplicitAny: o sdk integration boundary
   chunk: any,
   model: string
 ): StreamChunk[] {
-  const chunks: StreamChunk[] = [];
-
-  // Debug: Log chunk structure to separate files for comparison analysis
-  const logType =
-    process.env.USE_MIDDLEWARE === "true" ? "middleware" : "native";
-  console.log(`🔍 AI SDK Chunk [${logType}]:`, JSON.stringify(chunk, null, 2));
-
-  // Use handler map - dramatically reduces complexity!
-  if (chunk.type === "start") {
-    streamHasToolCalls = false;
-    streamFinishSent = false;
-  }
-
-  const handler = chunkHandlers[chunk.type];
-  if (handler) {
-    const result = handler(chunk as AIStreamChunk, model);
-
-    // Track tool calls for finish reason logic (stream-level state)
-    if (chunk.type === "tool-call" || chunk.type === "tool-call-delta") {
-      streamHasToolCalls = true;
-    }
-
-    chunks.push(...result);
-  } else {
-    // Universal fallback handler for unknown chunk types
-    console.warn(`⚠️ Unknown AI SDK chunk type: ${chunk.type}`, chunk);
-  }
-
-  if (chunk.type === "finish-step" || chunk.type === "finish") {
-    streamHasToolCalls = false;
-  }
-
-  // Filter out empty delta chunks unless they have meaningful content
-  return chunks.filter((resultChunk) => {
-    try {
-      const parsed = JSON.parse(resultChunk.data);
-      const delta = parsed.choices?.[0]?.delta;
-
-      // Keep chunks with meaningful content
-      return delta && (
-        delta.role ||
-        delta.content ||
-        delta.reasoning_content ||
-        (delta.tool_calls && delta.tool_calls.length > 0) ||
-        parsed.choices?.[0]?.finish_reason
-      );
-    } catch {
-      return true; // Keep non-JSON chunks
-    }
-  });
+  const convert = createOpenAIStreamConverter(model);
+  return convert(chunk);
 }
 
 /**

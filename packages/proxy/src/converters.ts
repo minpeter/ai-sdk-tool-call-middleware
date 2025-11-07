@@ -345,6 +345,7 @@ export function convertOpenAIRequestToAISDK(openaiRequest: OpenAIChatRequest) {
     temperature,
     max_tokens,
     stop,
+    tool_choice,
   } = openaiRequest;
 
   const toolNameLookup = new Map<string, string>();
@@ -360,9 +361,26 @@ export function convertOpenAIRequestToAISDK(openaiRequest: OpenAIChatRequest) {
     messages: aiMessages,
     tools: aisdkTools,
     temperature,
-    maxTokens: max_tokens,
+    maxOutputTokens: max_tokens,
     stopSequences: convertStopToSequences(stop),
+    toolChoice: mapOpenAIToolChoice(tool_choice),
   };
+}
+
+// Map OpenAI tool_choice to AI SDK toolChoice
+export function mapOpenAIToolChoice(
+  choice: OpenAIChatRequest["tool_choice"]
+): "auto" | "none" | { type: "tool"; toolName: string } | undefined {
+  if (!choice) {
+    return;
+  }
+  if (choice === "auto" || choice === "none") {
+    return choice;
+  }
+  if (typeof choice === "object" && choice.type === "function") {
+    return { type: "tool", toolName: choice.function.name };
+  }
+  return;
 }
 
 /**
