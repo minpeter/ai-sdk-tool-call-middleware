@@ -2,70 +2,34 @@
 
 This comprehensive test suite ensures the OpenAI Proxy Server works correctly across various scenarios including basic functionality, tool calling, performance, and error handling.
 
-## 🧪 Test Suites
+## 🧪 Test Suites (Colocated)
 
-### 1. Basic Functionality Tests (`basic-functionality.test.ts`)
-Tests core API functionality and OpenAI compatibility:
+This package uses colocated unit tests next to their respective modules. Current suites:
 
-- ✅ Health check endpoint
-- ✅ Models listing endpoint  
-- ✅ Non-streaming chat completions
-- ✅ Streaming chat completions with SSE
-- ✅ Request validation (missing messages, empty arrays)
-- ✅ Invalid JSON handling
-- ✅ CORS preflight requests
-
-### 2. Tool Calling Tests (`tool-calling.test.ts`)
-Tests dynamic tool calling capabilities:
-
-- ✅ Tool calls in non-streaming mode
-- ✅ Multiple tool calls
-- ✅ Tool calls in streaming mode
-- ✅ Tool result message handling
-- ✅ Invalid tool schema handling
-- ✅ Empty tools array handling
-
-### 3. Performance Tests (`performance.test.ts`)
-Tests performance under various conditions:
-
-- ✅ Concurrent request handling
-- ✅ Large message content processing
-- ✅ Streaming performance under load
-- ✅ Memory efficiency with repeated requests
-- ✅ Rate limiting behavior
-- ✅ Response time consistency
-
-### 4. Error Handling Tests (`error-handling.test.ts`)
-Tests robustness and edge cases:
-
-- ✅ Malformed JSON handling
-- ✅ Extremely large requests
-- ✅ Invalid model names and parameters
-- ✅ Invalid message roles and content
-- ✅ Invalid tool definitions
-- ✅ Connection interruption handling
-- ✅ Special characters and Unicode content
-- ✅ HTTP method validation
-- ✅ Server overload simulation
+- Request conversion (OpenAI → AI SDK)
+  - `src/openai-request-converter.test.ts`
+  - `src/openai-request-converter.normalize.test.ts`
+- Result conversion (AI SDK → OpenAI)
+  - `src/response-converter.result.test.ts`
+- Streaming conversion and state management
+  - `src/response-converter.stream.test.ts`
+- SSE formatting
+  - `src/response-converter.sse.test.ts`
 
 ## 🚀 Running Tests
 
 ### Quick Start
+
 ```bash
-# Install dependencies
-pnpm install
+# Run unit tests for this package only
+pnpm --filter @ai-sdk-tool/proxy test
 
-# Run all tests
-pnpm test
-
-# Run tests in watch mode
-pnpm test:watch
-
-# Run with UI interface
-pnpm test:ui
+# Watch mode (pass args through)
+pnpm --filter @ai-sdk-tool/proxy vitest -- --watch
 ```
 
 ### Individual Test Suites
+
 ```bash
 # Basic functionality
 pnpm test:basic
@@ -81,6 +45,7 @@ pnpm test:errors
 ```
 
 ### Comprehensive Testing
+
 ```bash
 # Run all tests with detailed reporting
 pnpm test:all
@@ -92,56 +57,41 @@ pnpm test:coverage
 pnpm test:dev
 ```
 
-## 📊 SSE Chunk Inspector
+## 📊 SSE Testing
 
-The `SSEChunkInspector` class provides detailed analysis of Server-Sent Events:
+SSE formatting is validated via unit tests using:
 
-```typescript
-import { SSEChunkInspector, testSSEStreaming } from './src/test/sse-chunk-inspector.js';
+- `createOpenAIStreamConverter(model)` to convert AI SDK stream parts
+- `createSSEResponse(chunks)` to format Server-Sent Events frames
 
-// Create inspector
-const inspector = new SSEChunkInspector();
-
-// Test streaming
-await testSSEStreaming('http://localhost:3001/v1/chat/completions', request, inspector);
-
-// Get detailed analysis
-const report = inspector.getAnalysisReport();
-console.log(report);
-```
-
-### Features
-- 📈 Real-time chunk parsing and analysis
-- 📝 Text content reconstruction
-- 🔧 Tool call detection and tracking
-- ⏱️ Timeline analysis with timestamps
-- 📊 Comprehensive reporting
+See `src/response-converter.sse.test.ts`.
 
 ## 🎯 Test Configuration
 
 ### Vitest Configuration (`vitest.config.ts`)
-- **Environment**: Node.js
-- **Timeout**: 30 seconds (network tests)
-- **Coverage**: 70% threshold
-- **Concurrency**: Enabled (max 4 threads)
-- **Reporters**: Verbose output
+
+- Include: `src/**/*.test.ts`
+- Exclude: `src/test/**` (legacy), `dist`, `node_modules`
+- Environment: Node.js
+- Coverage threshold: 70%
+- Reporters: Verbose
 
 ### Test Ports
-Tests use different ports to avoid conflicts:
-- Basic functionality: `3001`
-- Tool calling: `3002`
-- Performance: `3003`
-- Error handling: `3004`
+
+Unit tests do not require HTTP ports. For end-to-end (E2E) HTTP testing, use the example app in `examples/proxy-core` (default port `3005`).
 
 ## 📋 Test Reports
 
 ### Automated Reports
-Running `pnpm test:all` generates:
-- 📄 `test-report.json` - Detailed JSON report
-- 🌐 `test-report.html` - Interactive HTML report
-- 📊 Console summary with metrics
+
+You can generate coverage reports with:
+
+```bash
+pnpm --filter @ai-sdk-tool/proxy vitest -- --coverage
+```
 
 ### Report Contents
+
 - ✅ Pass/fail status for each test
 - ⏱️ Execution timing and performance metrics
 - 📈 Success rates and coverage statistics
@@ -150,15 +100,11 @@ Running `pnpm test:all` generates:
 ## 🔧 Development Testing
 
 ### Local Development
-```bash
-# Start development server
-pnpm dev
 
-# Run tests against development server
-pnpm test:dev
-```
+Unit tests are independent of a running server. For E2E manual tests, start the example server in `examples/proxy-core`.
 
 ### Manual Testing with curl
+
 ```bash
 # Health check
 curl http://localhost:3001/health
@@ -177,21 +123,21 @@ curl -X POST http://localhost:3001/v1/chat/completions \
 ## 🐛 Debugging Tests
 
 ### Common Issues
+
 1. **Port conflicts**: Ensure test ports (3001-3004) are available
 2. **Network timeouts**: Increase timeout for slow connections
 3. **API keys**: Set `OPENAI_API_KEY` environment variable
 4. **Memory issues**: Close unused applications during performance tests
 
 ### Debug Mode
-```bash
-# Run with verbose output
-pnpm test:basic --reporter=verbose
 
-# Run specific test in debug mode
-npx vitest run src/test/basic-functionality.test.ts --no-coverage --reporter=verbose
+```bash
+# Run a specific test file with verbose output
+pnpm --filter @ai-sdk-tool/proxy vitest -- src/response-converter.stream.test.ts --reporter=verbose
 ```
 
 ### Test Logs
+
 - Individual test logs: `vitest run --reporter=verbose`
 - Server logs: Check console output during tests
 - Error details: Review generated HTML report
@@ -199,12 +145,14 @@ npx vitest run src/test/basic-functionality.test.ts --no-coverage --reporter=ver
 ## 📈 Performance Benchmarks
 
 ### Expected Performance
+
 - **Response time**: < 5 seconds for simple requests
 - **Concurrent handling**: 10+ simultaneous requests
 - **Memory usage**: < 50MB peak per request
 - **Streaming latency**: < 1 second for first chunk
 
 ### Benchmarking
+
 ```bash
 # Run performance tests
 pnpm test:performance
@@ -219,12 +167,14 @@ open test-report.html
 ## 🔒 Security Testing
 
 ### Input Validation
+
 - ✅ JSON parsing safety
 - ✅ Size limits enforcement
 - ✅ Special character handling
 - ✅ Unicode support
 
 ### Network Security
+
 - ✅ CORS configuration
 - ✅ Method validation
 - ✅ Header validation
@@ -233,15 +183,17 @@ open test-report.html
 ## 🤝 Contributing Tests
 
 ### Adding New Tests
-1. Create test file in `src/test/`
+
+1. Place the test next to the module under test (e.g. `src/my-module.test.ts`)
 2. Follow naming pattern: `*.test.ts`
-3. Use descriptive test names
+3. Use descriptive test names and keep tests focused on single behaviors
 4. Include setup/teardown as needed
-5. Update this documentation
+5. Update this documentation as needed
 
 ### Test Structure
+
 ```typescript
-describe('Test Category', () => {
+describe("Test Category", () => {
   beforeAll(async () => {
     // Setup
   });
@@ -250,13 +202,14 @@ describe('Test Category', () => {
     // Cleanup
   });
 
-  it('should do something specific', async () => {
+  it("should do something specific", async () => {
     // Test implementation
   });
 });
 ```
 
 ### Best Practices
+
 - 🎯 Test one behavior per test
 - 📝 Use descriptive test names
 - 🔄 Cleanup resources in afterAll
@@ -266,6 +219,7 @@ describe('Test Category', () => {
 ## 📞 Support
 
 For test-related issues:
+
 1. Check this documentation
 2. Review generated test reports
 3. Examine console logs

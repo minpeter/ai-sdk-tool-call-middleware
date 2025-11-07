@@ -20,32 +20,32 @@ pnpm add @ai-sdk-tool/proxy
 ## Quick Start
 
 ```typescript
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { gemmaToolMiddleware } from '@ai-sdk-tool/parser';
-import { wrapLanguageModel } from 'ai';
-import { OpenAIProxyServer } from '@ai-sdk-tool/proxy';
-import { z } from 'zod';
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
+import { wrapLanguageModel } from "ai";
+import { OpenAIProxyServer } from "@ai-sdk-tool/proxy";
+import { z } from "zod";
 
 // Create your language model with middleware
 const baseModel = createOpenAICompatible({
-  name: 'openrouter',
+  name: "openrouter",
   apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1',
+  baseURL: "https://openrouter.ai/api/v1",
 });
 
 const wrappedModel = wrapLanguageModel({
-  model: baseModel('google/gemma-3-27b-it'),
+  model: baseModel("google/gemma-3-27b-it"),
   middleware: gemmaToolMiddleware,
 });
 
 // Configure tools
 const tools = {
   get_weather: {
-    description: 'Get the weather for a given city',
-    parameters: z.object({ city: z.string() }),
+    description: "Get the weather for a given city",
+    inputSchema: z.object({ city: z.string() }),
     execute: ({ city }) => {
       // Your weather API logic here
-      return { city, temperature: 22, condition: 'sunny' };
+      return { city, temperature: 22, condition: "sunny" };
     },
   },
 };
@@ -118,12 +118,13 @@ curl -X POST http://localhost:3000/v1/chat/completions \
 
 ```typescript
 interface ProxyConfig {
-  model: LanguageModel;           // Wrapped language model with middleware
-  port?: number;                  // Server port (default: 3000)
-  host?: string;                  // Server host (default: '0.0.0.0')
-  cors?: boolean;                 // Enable CORS (default: true)
-  tools?: Record<string, AISDKTool>; // Available tools
-  maxSteps?: number;              // Maximum tool call steps (default: 10)
+  model: LanguageModel; // Wrapped language model with middleware
+  port?: number; // Server port (default: 3000)
+  host?: string; // Server host (default: 'localhost')
+  cors?: boolean; // Enable CORS (default: true)
+  tools?: Record<string, AISDKTool>; // Available tools (server-registered)
+  maxSteps?: number; // Optional: maximum tool-calling steps (experimental)
+  logger?: { debug: Function; info: Function; warn: Function; error: Function }; // Optional structured logger
 }
 ```
 
@@ -132,10 +133,39 @@ interface ProxyConfig {
 ```typescript
 interface AISDKTool {
   description: string;
-  parameters: z.ZodSchema;
-  execute?: (params: any) => any | Promise<any>;
+  inputSchema: z.ZodTypeAny; // Zod schema for tool input
+  execute?: (params: unknown) => unknown | Promise<unknown>;
 }
 ```
+
+Notes:
+
+- Server merges request-provided tools (schema-only) with server tools (schema + optional execute). Server tools take precedence on name collision. Zod schemas are wrapped for provider compatibility internally.
+
+## Testing
+
+This package uses colocated unit tests next to source files. Key areas covered:
+
+- Request conversion (OpenAI → AI SDK): `openai-request-converter.test.ts`, `openai-request-converter.normalize.test.ts`
+- Result conversion (AI SDK → OpenAI): `response-converter.result.test.ts`
+- Streaming conversion with stateful handling: `response-converter.stream.test.ts`
+- SSE formatting: `response-converter.sse.test.ts`
+
+Run tests:
+
+```bash
+pnpm --filter @ai-sdk-tool/proxy test
+```
+
+Vitest config includes `src/**/*.test.ts` and excludes `src/test/**` (legacy).
+
+## Internals (Overview)
+
+- OpenAI request → AI SDK params: `src/openai-request-converter.ts`
+- AI SDK result/stream → OpenAI response/SSE: `src/response-converter.ts`
+- SSE helpers: `createSSEResponse`, `createOpenAIStreamConverter(model)`
+
+Each streaming request creates a single converter instance to maintain per-request state for correct `finish_reason` and tool-call handling.
 
 ## License
 

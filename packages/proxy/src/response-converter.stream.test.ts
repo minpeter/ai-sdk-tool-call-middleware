@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createOpenAIStreamConverter } from "../response-converter.js";
+import { createOpenAIStreamConverter } from "./response-converter.js";
 
 function parse(data: string) {
   return JSON.parse(data) as {
@@ -65,6 +65,78 @@ describe("createOpenAIStreamConverter - finish_reason semantics", () => {
       .map((p) => p.choices?.[0]?.finish_reason)
       .filter((r): r is string => Boolean(r));
 
+    expect(reasons).toEqual(["tool_calls"]);
+  });
+
+  it("handles finish chunk without prior finish-step", () => {
+    const convert = createOpenAIStreamConverter("wrapped-model");
+
+    const chunks = [
+      ...convert({ type: "start" }),
+      ...convert({ type: "finish", finishReason: "stop" }),
+    ];
+
+    const parsed = chunks.map((c) => parse(c.data));
+    const reasons = parsed
+      .map((p) => p.choices?.[0]?.finish_reason)
+      .filter((r): r is string => Boolean(r));
+
+    expect(reasons).toEqual(["stop"]);
+  });
+
+  it("handles finish-step chunk when no finish follows", () => {
+    const convert = createOpenAIStreamConverter("wrapped-model");
+
+    const chunks = [
+      ...convert({ type: "start" }),
+      ...convert({ type: "finish-step", finishReason: "stop" }),
+    ];
+
+    const parsed = chunks.map((c) => parse(c.data));
+    const reasons = parsed
+      .map((p) => p.choices?.[0]?.finish_reason)
+      .filter((r): r is string => Boolean(r));
+
+    expect(reasons).toEqual(["stop"]);
+  });
+
+  it("supports multiple tool-call deltas with distinct indexes", () => {
+    const convert = createOpenAIStreamConverter("wrapped-model");
+
+    const chunks = [
+      ...convert({ type: "start" }),
+      ...convert({
+        type: "tool-call-delta",
+        toolCallId: "0",
+        toolName: "alpha",
+        args: '{"value":1}',
+      }),
+      ...convert({
+        type: "tool-call-delta",
+        toolCallId: "1",
+        toolName: "beta",
+        args: '{"value":2}',
+      }),
+      ...convert({ type: "finish-step", finishReason: "tool_calls" }),
+    ];
+
+    const parsed = chunks.map((c) => parse(c.data));
+    const toolCallArrays = parsed
+      .map(
+        (p) => (p.choices?.[0]?.delta as any)?.tool_calls as any[] | undefined
+      )
+      .filter((calls): calls is any[] => Array.isArray(calls));
+    const allToolCalls = toolCallArrays.flat();
+
+    expect(allToolCalls.map((tc) => tc.index)).toEqual([0, 1]);
+    expect(allToolCalls.map((tc) => tc.function?.name)).toEqual([
+      "alpha",
+      "beta",
+    ]);
+
+    const reasons = parsed
+      .map((p) => p.choices?.[0]?.finish_reason)
+      .filter((r): r is string => Boolean(r));
     expect(reasons).toEqual(["tool_calls"]);
   });
 });

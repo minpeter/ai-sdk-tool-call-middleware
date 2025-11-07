@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { convertAISDKResultToOpenAI } from "../response-converter.js";
+import { convertAISDKResultToOpenAI } from "./response-converter.js";
 
 type ChoiceDeltaLike = {
   delta?: {

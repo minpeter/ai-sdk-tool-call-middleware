@@ -1,6 +1,6 @@
 {
   "name": "@ai-sdk-tool/proxy",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "OpenAI-compatible proxy server for AI SDK tool middleware",
   "type": "module",
   "main": "./dist/index.js",

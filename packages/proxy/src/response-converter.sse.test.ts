@@ -2,20 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   createOpenAIStreamConverter,
   createSSEResponse,
-} from "../response-converter.js";
+} from "./response-converter.js";
 
-function parseLine(line: string) {
+type Parsed = {
+  choices: Array<{ delta?: Record<string, unknown>; finish_reason?: string }>;
+};
+
+function parseLine(line: string): Parsed | undefined {
   const trimmed = line.trim();
   if (!trimmed.startsWith("data:")) {
     return;
   }
   try {
-    return JSON.parse(trimmed.slice(5).trim()) as {
-      choices: Array<{
-        delta?: Record<string, unknown>;
-        finish_reason?: string;
-      }>;
-    };
+    return JSON.parse(trimmed.slice(5).trim()) as Parsed;
   } catch {
     return;
   }
@@ -33,24 +32,18 @@ describe("SSE formatting via createSSEResponse", () => {
 
     const sse = createSSEResponse(out);
     const frames = sse.split("\n\n").filter(Boolean);
-    const parsed = frames.map(parseLine).filter(Boolean) as Array<{
-      choices: Array<{
-        delta?: Record<string, unknown>;
-        finish_reason?: string;
-      }>;
-    }>;
+    const parsed = frames.map(parseLine).filter(Boolean) as Parsed[];
 
-    // reasoning delta present
     const reasoning = parsed.find(
       (p) => p.choices?.[0]?.delta?.reasoning_content
     );
-    expect(reasoning?.choices?.[0]?.delta?.reasoning_content).toBe("thinking");
+    expect((reasoning?.choices?.[0]?.delta as any)?.reasoning_content).toBe(
+      "thinking"
+    );
 
-    // text delta present
     const content = parsed.find((p) => p.choices?.[0]?.delta?.content);
-    expect(content?.choices?.[0]?.delta?.content).toBe("answer");
+    expect((content?.choices?.[0]?.delta as any)?.content).toBe("answer");
 
-    // finish appears once and equals stop
     const reasons = parsed
       .map((p) => p.choices?.[0]?.finish_reason)
       .filter((r): r is string => Boolean(r));
@@ -72,17 +65,12 @@ describe("SSE formatting via createSSEResponse", () => {
 
     const sse = createSSEResponse(out);
     const frames = sse.split("\n\n").filter(Boolean);
-    const parsed = frames.map(parseLine).filter(Boolean) as Array<{
-      choices: Array<{
-        delta?: Record<string, unknown>;
-        finish_reason?: string;
-      }>;
-    }>;
+    const parsed = frames.map(parseLine).filter(Boolean) as Parsed[];
 
     const withToolCall = parsed.find((p) =>
-      Array.isArray(p.choices?.[0]?.delta?.tool_calls)
+      Array.isArray((p.choices?.[0]?.delta as any)?.tool_calls)
     );
-    const toolCalls = withToolCall?.choices?.[0]?.delta?.tool_calls as
+    const toolCalls = (withToolCall?.choices?.[0]?.delta as any)?.tool_calls as
       | Array<{ function?: { name?: string; arguments?: string } }>
       | undefined;
     expect(Array.isArray(toolCalls)).toBe(true);
