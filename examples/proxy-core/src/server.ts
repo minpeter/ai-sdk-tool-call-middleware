@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { OpenAIProxyServer } from "@ai-sdk-tool/proxy";
-import { extractReasoningMiddleware, wrapLanguageModel } from "ai";
+import { wrapLanguageModel } from "ai";
 
 // Wrap model with tool middleware (using empty array for native OpenAI compatibility)
 
@@ -20,17 +20,18 @@ const server = new OpenAIProxyServer({
             ...(options?.body ? JSON.parse(options.body as string) : {}),
             chat_template_kwargs: {
               enable_reasoning: true,
+              parse_reasoning: true,
             },
           }),
         }),
     })(
-      "zai-org/GLM-4.6"
-      // "deepseek-ai/DeepSeek-R1-0528"
+      // "zai-org/GLM-4.6"
+      "deepseek-ai/DeepSeek-R1-0528"
     ),
 
     middleware: [
       morphXmlToolMiddleware,
-      extractReasoningMiddleware({ tagName: "think" }),
+      // extractReasoningMiddleware({ tagName: "think" }),
     ],
   }),
   port: 3005,
