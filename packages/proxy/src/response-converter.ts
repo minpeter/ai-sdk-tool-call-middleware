@@ -227,6 +227,7 @@ export function createOpenAIStreamConverter(model: string) {
   let streamFinishSent = false;
 
   const handlers: Record<string, ChunkHandler> = {
+    start: () => [],
     "reasoning-delta": (chunk) => {
       if (!chunk.text) {
         return [];

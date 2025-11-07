@@ -25,8 +25,8 @@ const server = new OpenAIProxyServer({
           }),
         }),
     })(
-      // "zai-org/GLM-4.6"
-      "deepseek-ai/DeepSeek-R1-0528"
+      "zai-org/GLM-4.6"
+      // "deepseek-ai/DeepSeek-R1-0528"
     ),
 
     middleware: [
