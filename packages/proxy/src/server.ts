@@ -5,6 +5,7 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest,
 } from "fastify";
+import { ZodFirstPartyTypeKind, type ZodTypeAny } from "zod";
 import { convertOpenAIRequestToAISDK } from "./converters.js";
 import {
   convertAISDKResultToOpenAI,
@@ -18,18 +19,86 @@ function truncate(value: string, max = 120): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
-function summarizeMessages(messages: OpenAIChatRequest["messages"]) {
+function serializeZodSchema(schema: ZodTypeAny | undefined): unknown {
+  if (!schema) {
+    return null;
+  }
+
+  const { typeName } = schema._def;
+
+  switch (typeName) {
+    case ZodFirstPartyTypeKind.ZodObject: {
+      const shape = schema._def.shape() as Record<string, ZodTypeAny>;
+      const properties: Record<string, unknown> = {};
+      const required: string[] = [];
+
+      for (const [key, fieldSchema] of Object.entries(shape)) {
+        const fieldType = fieldSchema as ZodTypeAny;
+        if (fieldType._def.typeName === ZodFirstPartyTypeKind.ZodOptional) {
+          const inner = (fieldType._def as { innerType: ZodTypeAny }).innerType;
+          properties[key] = serializeZodSchema(inner);
+        } else {
+          properties[key] = serializeZodSchema(fieldType);
+          required.push(key);
+        }
+      }
+
+      return {
+        type: "object",
+        properties,
+        required: required.length > 0 ? required : undefined,
+      };
+    }
+    case ZodFirstPartyTypeKind.ZodString: {
+      return { type: "string" };
+    }
+    case ZodFirstPartyTypeKind.ZodNumber: {
+      return { type: "number" };
+    }
+    case ZodFirstPartyTypeKind.ZodBoolean: {
+      return { type: "boolean" };
+    }
+    case ZodFirstPartyTypeKind.ZodArray: {
+      return {
+        type: "array",
+        items: serializeZodSchema(schema._def.type),
+      };
+    }
+    case ZodFirstPartyTypeKind.ZodEnum: {
+      return {
+        type: "string",
+        enum: [...schema._def.values],
+      };
+    }
+    case ZodFirstPartyTypeKind.ZodLiteral: {
+      return {
+        const: schema._def.value,
+      };
+    }
+    case ZodFirstPartyTypeKind.ZodOptional: {
+      return {
+        optional: true,
+        schema: serializeZodSchema(schema._def.innerType),
+      };
+    }
+    case ZodFirstPartyTypeKind.ZodNullable: {
+      return {
+        nullable: true,
+        schema: serializeZodSchema(schema._def.innerType),
+      };
+    }
+    default: {
+      return { type: typeName };
+    }
+  }
+}
+
+function serializeMessages(messages: OpenAIChatRequest["messages"]) {
   return messages.map((message, index) => ({
     index,
     role: message.role,
-    contentPreview:
-      typeof message.content === "string" && message.content
-        ? truncate(message.content)
-        : undefined,
-    toolCalls:
-      Array.isArray(message.tool_calls)
-        ? message.tool_calls.map((toolCall) => toolCall.function?.name).filter(Boolean)
-        : undefined,
+    content: message.content,
+    toolCalls: message.tool_calls,
   }));
 }
 
@@ -48,7 +117,8 @@ function logIncomingRequest(openaiRequest: OpenAIChatRequest) {
         maxTokens: openaiRequest.max_tokens,
         toolNames,
         toolChoice: openaiRequest.tool_choice,
-        messages: summarizeMessages(openaiRequest.messages),
+        messages: serializeMessages(openaiRequest.messages),
+        tools: openaiRequest.tools,
       },
       null,
       2
@@ -70,7 +140,11 @@ function logRequestConversion(
           typeof aisdkParams.prompt === "string"
             ? truncate(aisdkParams.prompt, 200)
             : undefined,
-        toolNames: Object.keys(aisdkParams.tools ?? {}),
+        tools: Object.entries(aisdkParams.tools ?? {}).map(([name, tool]) => ({
+          name,
+          description: tool.description,
+          inputSchema: serializeZodSchema(tool.inputSchema),
+        })),
         temperature: aisdkParams.temperature,
         maxTokens: aisdkParams.maxTokens,
         stopSequences: aisdkParams.stopSequences,
