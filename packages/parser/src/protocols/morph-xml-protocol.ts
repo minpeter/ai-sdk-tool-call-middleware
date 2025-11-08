@@ -45,10 +45,15 @@ function tryParseSecondaryXml(
     | undefined
 ): unknown | null {
   try {
-    const secondary = MALFORMED_CLOSE_RE.test(content)
-      ? balanceTags(content)
-      : normalizeCloseTags(content);
-    let parsed: unknown = parse(secondary, toolSchema, {
+    const normalized = normalizeCloseTags(content);
+    const balanced = balanceTags(content);
+    // Allow balancing if there are malformed closing tags present.
+    // Otherwise, do not accept balancing that adds content (likely inserts missing closing tags).
+    const hasMalformedClose = MALFORMED_CLOSE_RE.test(content);
+    if (!hasMalformedClose && balanced.length > normalized.length) {
+      return null;
+    }
+    let parsed: unknown = parse(balanced, toolSchema, {
       onError: options?.onError,
       noChildNodes: [],
     });
@@ -147,9 +152,7 @@ function handleClosingTagSegment(
   const gt = src.indexOf(">", p);
   const closingText = gt === -1 ? src.slice(lt) : src.slice(lt, gt + 1);
   const idx = stack.lastIndexOf(name);
-  if (idx === -1) {
-    out.push(closingText);
-  } else {
+  if (idx !== -1) {
     for (let k = stack.length - 1; k > idx; k -= 1) {
       out.push(`</${stack[k]}>`);
       stack.pop();
@@ -890,10 +893,19 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
     const processedElements: LanguageModelV3Content[] = [];
     let currentIndex = 0;
 
-    let toolCalls = findToolCalls(text, toolNames);
-    if (toolCalls.length === 0) {
-      toolCalls = collectToolCallsFromNormalizedText(text, toolNames);
-    }
+    const toolCallsRaw = findToolCalls(text, toolNames);
+    const toolCallsNorm = collectToolCallsFromNormalizedText(text, toolNames);
+    const seen = new Set<string>();
+    const toolCalls = [...toolCallsRaw, ...toolCallsNorm]
+      .filter((tc) => {
+        const key = `${tc.toolName}:${tc.startIndex}:${tc.endIndex}`;
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => a.startIndex - b.startIndex);
 
     // Process text and tool calls in order
     for (const toolCall of toolCalls) {
@@ -1195,11 +1207,15 @@ function collectToolCallsFromNormalizedText(
       if (endNorm > contentStartNorm) {
         const tagStartOrig = text.indexOf(startTag, lastOrigIdx);
         const contentStartOrig = tagStartOrig + startTag.length;
-        const endOrig = findClosingTagEndFlexible(
+        let endOrig = findClosingTagEndFlexible(
           text,
           contentStartOrig,
           toolName
         );
+        if (endOrig === -1) {
+          const approxLen = endNorm - tagStartNorm;
+          endOrig = Math.min(text.length, tagStartOrig + approxLen);
+        }
         const segment = text.substring(tagStartOrig, endOrig);
         const inner =
           extractRawInner(segment, toolName) ??
