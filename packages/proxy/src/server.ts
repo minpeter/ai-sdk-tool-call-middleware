@@ -104,7 +104,13 @@ function serializeMessages(messages: OpenAIChatRequest["messages"]) {
   }));
 }
 
-function logIncomingRequest(openaiRequest: OpenAIChatRequest) {
+function logIncomingRequest(
+  openaiRequest: OpenAIChatRequest,
+  enabled: boolean
+) {
+  if (!enabled) {
+    return;
+  }
   const toolNames = (openaiRequest.tools ?? [])
     .map((tool) => ("function" in tool ? tool.function?.name : undefined))
     .filter((name): name is string => Boolean(name));
@@ -138,8 +144,12 @@ function serializeAISDKMessages(messages: ConvertedParams["messages"]) {
 
 function logRequestConversion(
   openaiRequest: OpenAIChatRequest,
-  aisdkParams: ConvertedParams
+  aisdkParams: ConvertedParams,
+  enabled: boolean
 ) {
+  if (!enabled) {
+    return;
+  }
   const messages = aisdkParams.messages ?? [];
   console.log(
     "[proxy] Converted AI SDK params",
@@ -216,11 +226,20 @@ export class OpenAIProxyServer {
             });
           }
 
-          logIncomingRequest(openaiRequest);
+          logIncomingRequest(
+            openaiRequest,
+            this.config.logging?.requests ?? true
+          );
 
           // Convert OpenAI request to AI SDK format
-          const aisdkParams = convertOpenAIRequestToAISDK(openaiRequest);
-          logRequestConversion(openaiRequest, aisdkParams);
+          const aisdkParams = convertOpenAIRequestToAISDK(openaiRequest, {
+            parserDebug: this.config.parserDebug,
+          });
+          logRequestConversion(
+            openaiRequest,
+            aisdkParams,
+            this.config.logging?.conversions ?? true
+          );
 
           // Handle streaming vs non-streaming
           if (openaiRequest.stream) {
@@ -320,7 +339,9 @@ export class OpenAIProxyServer {
         ...(mergedTools ? { tools: mergedTools } : {}),
       });
 
-      const convert = createOpenAIStreamConverter(openaiRequest.model);
+      const convert = createOpenAIStreamConverter(openaiRequest.model, {
+        logChunks: this.config.logging?.streamChunks ?? true,
+      });
       for await (const chunk of result.fullStream) {
         const openaiChunks = convert(chunk);
         for (const openaiChunk of openaiChunks) {

@@ -225,10 +225,27 @@ function createToolCallResponse(
 
 // (legacy stateless handler removed)
 
-export function createOpenAIStreamConverter(model: string) {
+export function createOpenAIStreamConverter(
+  model: string,
+  options?: {
+    logChunks?: boolean;
+  }
+) {
   let streamHasToolCalls = false;
   let streamFinishSent = false;
   let streamResponseId = generateResponseId();
+
+  const logChunk =
+    options?.logChunks === false
+      ? undefined
+      : (chunk: unknown) => {
+          const logType =
+            process.env.USE_MIDDLEWARE === "true" ? "middleware" : "native";
+          console.log(
+            `🔍 AI SDK Chunk [${logType}]:`,
+            JSON.stringify(chunk, null, 2)
+          );
+        };
 
   const handlers: Record<string, ChunkHandler> = {
     start: () => [],
@@ -354,12 +371,7 @@ export function createOpenAIStreamConverter(model: string) {
   ): StreamChunk[] => {
     const out: StreamChunk[] = [];
 
-    const logType =
-      process.env.USE_MIDDLEWARE === "true" ? "middleware" : "native";
-    console.log(
-      `🔍 AI SDK Chunk [${logType}]:`,
-      JSON.stringify(chunk, null, 2)
-    );
+    logChunk?.(chunk);
 
     if (chunk.type === "start") {
       streamHasToolCalls = false;

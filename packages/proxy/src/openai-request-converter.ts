@@ -8,6 +8,7 @@ import type {
   OpenAIChatRequest,
   OpenAICompleteToolCall,
   OpenAIMessage,
+  ProxyConfig,
 } from "./types.js";
 
 // Type definitions for OpenAI tool parameters
@@ -338,7 +339,10 @@ function convertMessageToModelMessage(
   };
 }
 
-export function convertOpenAIRequestToAISDK(openaiRequest: OpenAIChatRequest) {
+export function convertOpenAIRequestToAISDK(
+  openaiRequest: OpenAIChatRequest,
+  proxyConfig?: Pick<ProxyConfig, "parserDebug">
+) {
   const {
     messages,
     tools: openaiTools,
@@ -357,6 +361,16 @@ export function convertOpenAIRequestToAISDK(openaiRequest: OpenAIChatRequest) {
   // Convert OpenAI tools to AI SDK format dynamically
   const aisdkTools = convertOpenAITools(openaiTools);
 
+  const providerOptions = proxyConfig?.parserDebug
+    ? {
+        toolCallMiddleware: {
+          debugLevel: proxyConfig.parserDebug.level,
+          logErrors: proxyConfig.parserDebug.logErrors,
+          captureSummary: proxyConfig.parserDebug.captureSummary,
+        },
+      }
+    : undefined;
+
   return {
     messages: aiMessages,
     tools: aisdkTools,
@@ -364,6 +378,7 @@ export function convertOpenAIRequestToAISDK(openaiRequest: OpenAIChatRequest) {
     maxOutputTokens: max_tokens,
     stopSequences: convertStopToSequences(stop),
     toolChoice: mapOpenAIToolChoice(tool_choice),
+    ...(providerOptions ? { providerOptions } : {}),
   };
 }
 

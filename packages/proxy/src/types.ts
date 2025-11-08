@@ -109,6 +109,20 @@ export type ProxyConfig = {
   maxSteps?: number;
   // Optional structured logger
   logger?: Logger;
+  // Force-enable or disable SSE streaming regardless of client flag.
+  streaming?: boolean;
+  // Parser debug controls forwarded to the middleware layer.
+  parserDebug?: {
+    level?: "off" | "stream" | "parse";
+    logErrors?: boolean;
+    captureSummary?: boolean;
+  };
+  // Toggle proxy-side logging buckets.
+  logging?: {
+    requests?: boolean;
+    conversions?: boolean;
+    streamChunks?: boolean;
+  };
 };
 
 export type Logger = {

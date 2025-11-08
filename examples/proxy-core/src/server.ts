@@ -129,6 +129,11 @@ const server = new OpenAIProxyServer({
   port: 3005,
   host: "localhost",
   cors: true,
+  logging: {
+    requests: false,
+    conversions: false,
+    streamChunks: false,
+  },
 });
 
 async function startServer() {
