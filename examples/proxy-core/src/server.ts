@@ -3,7 +3,10 @@ import {
   defaultSystemPromptMiddleware,
   extractReasoningMiddleware,
 } from "@ai-sdk-tool/middleware";
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
+import {
+  hermesToolMiddleware,
+  morphXmlToolMiddleware,
+} from "@ai-sdk-tool/parser";
 import { OpenAIProxyServer } from "@ai-sdk-tool/proxy";
 import { defaultSettingsMiddleware, wrapLanguageModel } from "ai";
 
@@ -28,11 +31,11 @@ const deepseek = wrapLanguageModel({
         }),
       }),
   })(
-    // "zai-org/GLM-4.6"
-    "deepseek-ai/DeepSeek-R1-0528"
+    "zai-org/GLM-4.6"
+    // "deepseek-ai/DeepSeek-R1-0528"
   ),
   middleware: [
-    hermesToolMiddleware,
+    morphXmlToolMiddleware,
     // extractReasoningMiddleware({ tagName: "think" }),
   ],
 });
@@ -121,11 +124,11 @@ const qwen = wrapLanguageModel({
         }),
       }),
   })("Qwen/Qwen3-235B-A22B-Thinking-2507"),
-  middleware: [],
+  middleware: [hermesToolMiddleware],
 });
 
 const server = new OpenAIProxyServer({
-  model: hcx,
+  model: deepseek,
   port: 3005,
   host: "localhost",
   cors: true,

@@ -22,13 +22,6 @@ type JsonMixOptions = {
   toolResponseEnd?: string;
 };
 
-function truncateToolCall(segment: string, maxLength = 800): string {
-  if (segment.length <= maxLength) {
-    return segment;
-  }
-  return `${segment.slice(0, maxLength)}\n…[truncated ${segment.length - maxLength} chars]`;
-}
-
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
@@ -52,7 +45,7 @@ function processToolCallJson(
     logParseFailure({
       phase: "generated-text",
       reason: "Failed to parse tool call JSON segment",
-      snippet: truncateToolCall(fullMatch),
+      snippet: fullMatch,
       error,
     });
     if (options?.onError) {
@@ -172,7 +165,7 @@ function emitIncompleteToolCall(
   logParseFailure({
     phase: "stream",
     reason: "Incomplete streaming tool call segment emitted as text",
-    snippet: truncateToolCall(`${toolCallStart}${state.currentToolCallJson}`),
+    snippet: `${toolCallStart}${state.currentToolCallJson}`,
   });
 
   const errorId = generateId();
@@ -240,9 +233,7 @@ function emitToolCall(context: TagProcessingContext) {
     logParseFailure({
       phase: "stream",
       reason: "Failed to parse streaming tool call JSON segment",
-      snippet: truncateToolCall(
-        `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`
-      ),
+      snippet: `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`,
       error,
     });
     const errorId = generateId();
