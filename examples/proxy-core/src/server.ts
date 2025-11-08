@@ -13,7 +13,7 @@ import { defaultSettingsMiddleware, wrapLanguageModel } from "ai";
 // Wrap model with tool middleware (using empty array for native OpenAI compatibility)
 
 // Create and start proxy server
-const deepseek = wrapLanguageModel({
+const _deepseek = wrapLanguageModel({
   model: createOpenAICompatible({
     name: "friendli",
     apiKey: process.env.FRIENDLI_TOKEN,
@@ -40,7 +40,7 @@ const deepseek = wrapLanguageModel({
   ],
 });
 
-const hcx = wrapLanguageModel({
+const _hcx = wrapLanguageModel({
   model: createOpenAICompatible({
     name: "friendli",
     apiKey: process.env.FRIENDLI_TOKEN,
@@ -110,7 +110,7 @@ const hcx = wrapLanguageModel({
   ],
 });
 
-const qwen = wrapLanguageModel({
+const _qwen = wrapLanguageModel({
   model: createOpenAICompatible({
     name: "friendli",
     apiKey: process.env.FRIENDLI_TOKEN,
@@ -128,7 +128,7 @@ const qwen = wrapLanguageModel({
 });
 
 const server = new OpenAIProxyServer({
-  model: deepseek,
+  model: _deepseek,
   port: 3005,
   host: "localhost",
   cors: true,
