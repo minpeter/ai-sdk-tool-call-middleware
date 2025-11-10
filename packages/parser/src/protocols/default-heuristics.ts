@@ -28,10 +28,7 @@ export const normalizeCloseTagsHeuristic: ToolCallHeuristic = {
   phase: "pre-parse",
   applies: () => true, // Always applies
   run: (ctx: IntermediateCall): HeuristicResult => {
-    const normalized = ctx.rawSegment.replace(
-      MALFORMED_CLOSE_RE_G,
-      "</$1>"
-    );
+    const normalized = ctx.rawSegment.replace(MALFORMED_CLOSE_RE_G, "</$1>");
     if (normalized !== ctx.rawSegment) {
       return { rawSegment: normalized };
     }
@@ -42,7 +39,7 @@ export const normalizeCloseTagsHeuristic: ToolCallHeuristic = {
 /**
  * Fallback-reparse heuristic: Balances XML tags by inserting missing closing tags
  * and properly nesting open/close pairs. Only applied when initial parse fails.
- * 
+ *
  * Safety check: If there are no malformed closing tags and balancing adds content,
  * skip this heuristic to avoid over-fixing legitimate parse failures.
  */
@@ -55,7 +52,7 @@ export const balanceTagsHeuristic: ToolCallHeuristic = {
     const normalized = original.replace(MALFORMED_CLOSE_RE_G, "</$1>");
     const balanced = balanceTags(original);
     const hasMalformedClose = MALFORMED_CLOSE_RE.test(original);
-    
+
     // Safety check: Only apply if there are malformed close tags OR if balancing
     // doesn't add extra content
     if (!hasMalformedClose && balanced.length > normalized.length) {
@@ -69,7 +66,6 @@ export const balanceTagsHeuristic: ToolCallHeuristic = {
     const balanced = balanceTags(original);
     // Balance includes normalization, but we also need to escape
     // Import escapeInvalidLt would create circular dependency, so inline it
-    const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
     const len = balanced.length;
     let escaped = "";
     for (let i = 0; i < len; i += 1) {
@@ -102,9 +98,8 @@ export const balanceTagsHeuristic: ToolCallHeuristic = {
 export const dedupeShellStringTagsHeuristic: ToolCallHeuristic = {
   id: "dedupe-shell-string-tags",
   phase: "fallback-reparse",
-  applies: (ctx: IntermediateCall): boolean => {
-    return shouldDeduplicateStringTags(ctx.schema);
-  },
+  applies: (ctx: IntermediateCall): boolean =>
+    shouldDeduplicateStringTags(ctx.schema),
   run: (ctx: IntermediateCall): HeuristicResult => {
     const names = getStringPropertyNames(ctx.schema);
     let deduped = ctx.rawSegment;
@@ -125,9 +120,8 @@ export const dedupeShellStringTagsHeuristic: ToolCallHeuristic = {
 export const repairAgainstSchemaHeuristic: ToolCallHeuristic = {
   id: "repair-against-schema",
   phase: "post-parse",
-  applies: (ctx: IntermediateCall): boolean => {
-    return ctx.parsed !== null && typeof ctx.parsed === "object";
-  },
+  applies: (ctx: IntermediateCall): boolean =>
+    ctx.parsed !== null && typeof ctx.parsed === "object",
   run: (ctx: IntermediateCall): HeuristicResult => {
     const repaired = repairParsedAgainstSchema(
       ctx.parsed,
@@ -447,9 +441,9 @@ function coerceArrayItem(
 }
 
 function tryParseStringToSchemaObject(
-  xml: string,
-  itemSchema: unknown,
-  options?: {
+  _xml: string,
+  _itemSchema: unknown,
+  _options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
 ): unknown | null {

@@ -3,12 +3,9 @@
  */
 
 import { parse } from "@ai-sdk-tool/rxml";
-import type {
-  IntermediateCall,
-  PipelineConfig,
-} from "./heuristic-engine";
-import { applyHeuristicPipeline } from "./heuristic-engine";
 import { defaultPipelineConfig } from "./default-heuristics";
+import type { IntermediateCall, PipelineConfig } from "./heuristic-engine";
+import { applyHeuristicPipeline } from "./heuristic-engine";
 
 /**
  * Parse XML content using the heuristic pipeline.
@@ -51,12 +48,11 @@ export function parseWithHeuristics(
   };
 
   // Create parser function for the engine
-  const parseFunc = (xml: string, schema: unknown) => {
-    return parse(xml, schema, {
+  const parseFunc = (xml: string, schema: unknown) =>
+    parse(xml, schema, {
       onError: options?.onError,
       noChildNodes: [],
     });
-  };
 
   // Apply heuristic pipeline
   const result = applyHeuristicPipeline(initialCtx, pipelineConfig, {
@@ -72,8 +68,9 @@ export function parseWithHeuristics(
  * Escape invalid '<' characters that are not part of tags.
  * This is a pre-processing step before applying heuristics.
  */
+const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
+
 export function escapeInvalidLt(xml: string): string {
-  const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
   const len = xml.length;
   let out = "";
   for (let i = 0; i < len; i += 1) {

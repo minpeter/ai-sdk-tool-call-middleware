@@ -16,15 +16,14 @@ import {
 } from "@ai-sdk-tool/rxml";
 
 import { hasInputProperty } from "../utils";
-
-import type { ToolCallProtocol } from "./tool-call-protocol";
-import type { PipelineConfig, ToolCallHeuristic } from "./heuristic-engine";
 import { defaultPipelineConfig } from "./default-heuristics";
-import { parseWithHeuristics, escapeInvalidLt } from "./heuristic-integration";
+import type { PipelineConfig, ToolCallHeuristic } from "./heuristic-engine";
+import { parseWithHeuristics } from "./heuristic-integration";
+import type { ToolCallProtocol } from "./tool-call-protocol";
 
 // Regex constants for performance
 const WHITESPACE_REGEX = /\s/;
-const MALFORMED_CLOSE_RE = /<\/\s+([A-Za-z0-9_:-]+)\s*>/;
+const _MALFORMED_CLOSE_RE = /<\/\s+([A-Za-z0-9_:-]+)\s*>/;
 const MALFORMED_CLOSE_RE_G = /<\/\s+([A-Za-z0-9_:-]+)\s*>/g;
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
 const STATUS_TO_STEP_BOUNDARY_RE = /<\/status>\s*<step>/g;
@@ -38,72 +37,7 @@ function normalizeCloseTags(xml: string): string {
   return xml.replace(MALFORMED_CLOSE_RE_G, "</$1>");
 }
 
-function shouldDeduplicateStringTags(schema: unknown): boolean {
-  const unwrapped = unwrapJsonSchema(schema as unknown) as Record<
-    string,
-    unknown
-  >;
-  if (!unwrapped || typeof unwrapped !== "object") {
-    return false;
-  }
-  const props = (unwrapped as { properties?: Record<string, unknown> })
-    .properties as Record<string, unknown> | undefined;
-  if (!props) {
-    return false;
-  }
-  const commandRaw = (props as Record<string, unknown>).command as unknown;
-  if (!commandRaw) {
-    return false;
-  }
-  const command = unwrapJsonSchema(commandRaw) as { type?: string } | undefined;
-  return command?.type === "array";
-}
-
-function tryParseSecondaryXml(
-  content: string,
-  toolSchema: unknown,
-  options:
-    | {
-        onError?: (message: string, metadata?: Record<string, unknown>) => void;
-      }
-    | undefined
-): unknown | null {
-  const normalized = normalizeCloseTags(content);
-  const balanced = balanceTags(content);
-  const hasMalformedClose = MALFORMED_CLOSE_RE.test(content);
-  if (!hasMalformedClose && balanced.length > normalized.length) {
-    return null;
-  }
-  try {
-    let parsed: unknown = parse(balanced, toolSchema, {
-      onError: options?.onError,
-      noChildNodes: [],
-    });
-    parsed = repairParsedAgainstSchema(parsed, toolSchema, options);
-    return parsed;
-  } catch (_e) {
-    // Only attempt dedupe of duplicate string tags for shell-like tools
-    // where schema contains a 'command' array property.
-    if (shouldDeduplicateStringTags(toolSchema)) {
-      const deduped = dedupeStringTagsAgainstSchema(balanced, toolSchema);
-      if (deduped !== balanced) {
-        try {
-          let reparsed: unknown = parse(deduped, toolSchema, {
-            onError: options?.onError,
-            noChildNodes: [],
-          });
-          reparsed = repairParsedAgainstSchema(reparsed, toolSchema, options);
-          return reparsed;
-        } catch (_) {
-          return null;
-        }
-      }
-    }
-    return null;
-  }
-}
-
-function balanceTags(xml: string): string {
+function _balanceTags(xml: string): string {
   // Normalize malformed closings and insert a missing </step> boundary
   // when a new <step> starts right after </status>
   const src = normalizeCloseTags(xml).replace(
@@ -231,7 +165,7 @@ function handleOpeningTagSegment(
   return q + 1;
 }
 
-function repairParsedAgainstSchema(
+function _repairParsedAgainstSchema(
   input: unknown,
   schema: unknown,
   options?: {
@@ -280,7 +214,7 @@ function applySchemaProps(
     if (propType === "object") {
       const val = obj[key];
       if (val && typeof val === "object") {
-        obj[key] = repairParsedAgainstSchema(
+        obj[key] = _repairParsedAgainstSchema(
           val as unknown,
           prop,
           options
@@ -323,7 +257,7 @@ function coerceArrayItem(
     return v;
   }
   if (v && typeof v === "object" && itemType === "object") {
-    return repairParsedAgainstSchema(
+    return _repairParsedAgainstSchema(
       v as unknown,
       itemSchema,
       options
@@ -362,7 +296,7 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
 }
 
-function dedupeStringTagsAgainstSchema(xml: string, schema: unknown): string {
+function _dedupeStringTagsAgainstSchema(xml: string, schema: unknown): string {
   const names = getStringPropertyNames(schema);
   let out = xml;
   for (const key of names) {
@@ -462,7 +396,7 @@ function processToolCall(
 ): void {
   const { toolCall, tools, options, text, processedElements } = params;
   const toolSchema = getToolSchema(tools, toolCall.toolName);
-  
+
   // Use heuristic pipeline for parsing (includes normalization and escaping)
   const parsed = parseWithHeuristics(
     toolCall.content,
@@ -471,7 +405,7 @@ function processToolCall(
     pipelineConfig,
     options
   );
-  
+
   if (parsed !== null) {
     processedElements.push({
       type: "tool-call",
@@ -527,7 +461,7 @@ function handleStreamingToolCallEnd(
   const { toolContent, currentToolCall, tools, options, ctrl, flushText } =
     params;
   const toolSchema = getToolSchema(tools, currentToolCall.name);
-  
+
   // Use heuristic pipeline for parsing (includes normalization and escaping)
   const parsed = parseWithHeuristics(
     toolContent,
@@ -689,14 +623,17 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     // so that flushText(ctrl) emits text-end without emitting buffer content
     setBuffer("");
 
-    handleStreamingToolCallEnd({
-      toolContent,
-      currentToolCall,
-      tools,
-      options,
-      ctrl: controller,
-      flushText,
-    }, pipelineConfig);
+    handleStreamingToolCallEnd(
+      {
+        toolContent,
+        currentToolCall,
+        tools,
+        options,
+        ctrl: controller,
+        flushText,
+      },
+      pipelineConfig
+    );
 
     // Restore buffer to content after tool call
     setBuffer(newBuffer);
@@ -752,14 +689,17 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
         earliestStartTagIndex + selfTag.length
       );
       // Emit tool call immediately with empty content
-      handleStreamingToolCallEnd({
-        toolContent: "",
-        currentToolCall: { name: earliestToolName, content: "" },
-        tools,
-        options,
-        ctrl: controller,
-        flushText,
-      }, pipelineConfig);
+      handleStreamingToolCallEnd(
+        {
+          toolContent: "",
+          currentToolCall: { name: earliestToolName, content: "" },
+          tools,
+          options,
+          ctrl: controller,
+          flushText,
+        },
+        pipelineConfig
+      );
       return {
         buffer: newBuffer,
         currentToolCall: null,
@@ -950,18 +890,23 @@ export const morphXmlProtocol = (opts?: {
 }): ToolCallProtocol => {
   // Merge custom heuristics and pipeline config with defaults
   let pipelineConfig: PipelineConfig;
-  
+
   if (opts?.pipeline) {
     pipelineConfig = opts.pipeline;
   } else if (opts?.heuristics) {
     // Group custom heuristics by phase
-    const preParse = opts.heuristics.filter(h => h.phase === "pre-parse");
-    const fallbackReparse = opts.heuristics.filter(h => h.phase === "fallback-reparse");
-    const postParse = opts.heuristics.filter(h => h.phase === "post-parse");
-    
+    const preParse = opts.heuristics.filter((h) => h.phase === "pre-parse");
+    const fallbackReparse = opts.heuristics.filter(
+      (h) => h.phase === "fallback-reparse"
+    );
+    const postParse = opts.heuristics.filter((h) => h.phase === "post-parse");
+
     pipelineConfig = {
       preParse: [...(defaultPipelineConfig.preParse || []), ...preParse],
-      fallbackReparse: [...(defaultPipelineConfig.fallbackReparse || []), ...fallbackReparse],
+      fallbackReparse: [
+        ...(defaultPipelineConfig.fallbackReparse || []),
+        ...fallbackReparse,
+      ],
       postParse: [...(defaultPipelineConfig.postParse || []), ...postParse],
     };
   } else {
@@ -969,173 +914,178 @@ export const morphXmlProtocol = (opts?: {
   }
 
   return {
-  formatTools({ tools, toolSystemPromptTemplate }) {
-    const toolsForPrompt = (tools || []).map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: unwrapJsonSchema(tool.inputSchema),
-    }));
-    return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
-  },
+    formatTools({ tools, toolSystemPromptTemplate }) {
+      const toolsForPrompt = (tools || []).map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: unwrapJsonSchema(tool.inputSchema),
+      }));
+      return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
+    },
 
-  formatToolCall(toolCall: LanguageModelV3ToolCall): string {
-    let args: unknown = {};
-    const inputValue = hasInputProperty(toolCall) ? toolCall.input : undefined;
+    formatToolCall(toolCall: LanguageModelV3ToolCall): string {
+      let args: unknown = {};
+      const inputValue = hasInputProperty(toolCall)
+        ? toolCall.input
+        : undefined;
 
-    if (typeof inputValue === "string") {
-      try {
-        args = JSON.parse(inputValue);
-      } catch {
+      if (typeof inputValue === "string") {
+        try {
+          args = JSON.parse(inputValue);
+        } catch {
+          args = inputValue;
+        }
+      } else {
         args = inputValue;
       }
-    } else {
-      args = inputValue;
-    }
-    return stringify(toolCall.toolName, args, {
-      suppressEmptyNode: false,
-      format: false,
-    });
-  },
+      return stringify(toolCall.toolName, args, {
+        suppressEmptyNode: false,
+        format: false,
+      });
+    },
 
-  formatToolResponse(toolResult: LanguageModelV3ToolResultPart): string {
-    return stringify("tool_response", {
-      tool_name: toolResult.toolName,
-      result: toolResult.output,
-    });
-  },
+    formatToolResponse(toolResult: LanguageModelV3ToolResultPart): string {
+      return stringify("tool_response", {
+        tool_name: toolResult.toolName,
+        result: toolResult.output,
+      });
+    },
 
-  parseGeneratedText({ text, tools, options }) {
-    const toolNames = tools.map((t) => t.name).filter((name) => name != null);
-    if (toolNames.length === 0) {
-      return [{ type: "text", text }];
-    }
+    parseGeneratedText({ text, tools, options }) {
+      const toolNames = tools.map((t) => t.name).filter((name) => name != null);
+      if (toolNames.length === 0) {
+        return [{ type: "text", text }];
+      }
 
-    const processedElements: LanguageModelV3Content[] = [];
-    let currentIndex = 0;
+      const processedElements: LanguageModelV3Content[] = [];
+      let currentIndex = 0;
 
-    const toolCallsRaw = findToolCalls(text, toolNames);
-    const toolCallsNorm = collectToolCallsFromNormalizedText(text, toolNames);
-    const seen = new Set<string>();
-    const toolCalls = [...toolCallsRaw, ...toolCallsNorm]
-      .filter((tc) => {
-        const key = `${tc.toolName}:${tc.startIndex}:${tc.endIndex}`;
-        if (seen.has(key)) {
-          return false;
+      const toolCallsRaw = findToolCalls(text, toolNames);
+      const toolCallsNorm = collectToolCallsFromNormalizedText(text, toolNames);
+      const seen = new Set<string>();
+      const toolCalls = [...toolCallsRaw, ...toolCallsNorm]
+        .filter((tc) => {
+          const key = `${tc.toolName}:${tc.startIndex}:${tc.endIndex}`;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .sort((a, b) => a.startIndex - b.startIndex);
+
+      // Process text and tool calls in order
+      for (const toolCall of toolCalls) {
+        // Add text before this tool call
+        currentIndex = processTextBeforeToolCall(
+          text,
+          currentIndex,
+          toolCall.startIndex,
+          processedElements
+        );
+
+        // Process the tool call
+        processToolCall(
+          { toolCall, tools, options, text, processedElements },
+          pipelineConfig
+        );
+
+        currentIndex = toolCall.endIndex;
+      }
+
+      // Add remaining text
+      addRemainingText(text, currentIndex, processedElements);
+
+      return processedElements;
+    },
+
+    createStreamParser({ tools, options }) {
+      const toolNames = tools.map((t) => t.name).filter((name) => name != null);
+      const maxStartTagLen = toolNames.length
+        ? Math.max(...toolNames.map((n) => `<${n}>`.length))
+        : 0;
+      let buffer = "";
+      let currentToolCall: { name: string; content: string } | null = null;
+      let currentTextId: string | null = null;
+
+      const flushText = createFlushTextHandler(
+        () => buffer,
+        (newBuffer: string) => {
+          buffer = newBuffer;
+        },
+        () => currentTextId,
+        (newId: string | null) => {
+          currentTextId = newId;
         }
-        seen.add(key);
-        return true;
-      })
-      .sort((a, b) => a.startIndex - b.startIndex);
-
-    // Process text and tool calls in order
-    for (const toolCall of toolCalls) {
-      // Add text before this tool call
-      currentIndex = processTextBeforeToolCall(
-        text,
-        currentIndex,
-        toolCall.startIndex,
-        processedElements
       );
 
-      // Process the tool call
-      processToolCall({ toolCall, tools, options, text, processedElements }, pipelineConfig);
+      const processChunk = (
+        chunk: { type: string; delta?: string },
+        controller: TransformStreamDefaultController
+      ) => {
+        if (chunk.type !== "text-delta") {
+          if (buffer) {
+            flushText(controller);
+          }
+          controller.enqueue(chunk);
+          return;
+        }
 
-      currentIndex = toolCall.endIndex;
-    }
+        buffer += chunk.delta;
+        processBuffer(controller);
+      };
 
-    // Add remaining text
-    addRemainingText(text, currentIndex, processedElements);
+      const processBuffer = createProcessBufferHandler({
+        getBuffer: () => buffer,
+        setBuffer: (newBuffer: string) => {
+          buffer = newBuffer;
+        },
+        getCurrentToolCall: () => currentToolCall,
+        setCurrentToolCall: (
+          newToolCall: { name: string; content: string } | null
+        ) => {
+          currentToolCall = newToolCall;
+        },
+        tools,
+        options,
+        toolNames,
+        maxStartTagLen,
+        flushText,
+        pipelineConfig,
+      });
 
-    return processedElements;
-  },
-
-  createStreamParser({ tools, options }) {
-    const toolNames = tools.map((t) => t.name).filter((name) => name != null);
-    const maxStartTagLen = toolNames.length
-      ? Math.max(...toolNames.map((n) => `<${n}>`.length))
-      : 0;
-    let buffer = "";
-    let currentToolCall: { name: string; content: string } | null = null;
-    let currentTextId: string | null = null;
-
-    const flushText = createFlushTextHandler(
-      () => buffer,
-      (newBuffer: string) => {
-        buffer = newBuffer;
-      },
-      () => currentTextId,
-      (newId: string | null) => {
-        currentTextId = newId;
-      }
-    );
-
-    const processChunk = (
-      chunk: { type: string; delta?: string },
-      controller: TransformStreamDefaultController
-    ) => {
-      if (chunk.type !== "text-delta") {
-        if (buffer) {
+      const flushBuffer = (controller: TransformStreamDefaultController) => {
+        if (currentToolCall) {
+          const unfinishedCall = `<${currentToolCall.name}>${buffer}`;
+          flushText(controller, unfinishedCall);
+        } else if (buffer) {
           flushText(controller);
         }
-        controller.enqueue(chunk);
-        return;
+
+        if (currentTextId) {
+          controller.enqueue({ type: "text-end", id: currentTextId });
+        }
+      };
+
+      return new TransformStream({
+        transform(chunk, controller) {
+          processChunk(chunk, controller);
+        },
+        flush(controller) {
+          flushBuffer(controller);
+        },
+      });
+    },
+
+    extractToolCallSegments({ text, tools }) {
+      const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+      if (toolNames.length === 0) {
+        return [];
       }
 
-      buffer += chunk.delta;
-      processBuffer(controller);
-    };
-
-    const processBuffer = createProcessBufferHandler({
-      getBuffer: () => buffer,
-      setBuffer: (newBuffer: string) => {
-        buffer = newBuffer;
-      },
-      getCurrentToolCall: () => currentToolCall,
-      setCurrentToolCall: (
-        newToolCall: { name: string; content: string } | null
-      ) => {
-        currentToolCall = newToolCall;
-      },
-      tools,
-      options,
-      toolNames,
-      maxStartTagLen,
-      flushText,
-      pipelineConfig,
-    });
-
-    const flushBuffer = (controller: TransformStreamDefaultController) => {
-      if (currentToolCall) {
-        const unfinishedCall = `<${currentToolCall.name}>${buffer}`;
-        flushText(controller, unfinishedCall);
-      } else if (buffer) {
-        flushText(controller);
-      }
-
-      if (currentTextId) {
-        controller.enqueue({ type: "text-end", id: currentTextId });
-      }
-    };
-
-    return new TransformStream({
-      transform(chunk, controller) {
-        processChunk(chunk, controller);
-      },
-      flush(controller) {
-        flushBuffer(controller);
-      },
-    });
-  },
-
-  extractToolCallSegments({ text, tools }) {
-    const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
-    if (toolNames.length === 0) {
-      return [];
-    }
-
-    return findToolCalls(text, toolNames).map((tc) => tc.segment);
-  },
-};
+      return findToolCalls(text, toolNames).map((tc) => tc.segment);
+    },
+  };
 };
 
 export function getToolSchema(

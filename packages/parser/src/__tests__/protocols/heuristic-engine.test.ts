@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   applyHeuristicPipeline,
-  type HeuristicResult,
   type IntermediateCall,
   type PipelineConfig,
   type ToolCallHeuristic,
@@ -77,7 +76,7 @@ describe("Heuristic Engine", () => {
         id: "fallback-test",
         phase: "fallback-reparse",
         applies: () => true,
-        run: (ctx) => {
+        run: (_ctx) => {
           executionOrder.push("fallback-reparse");
           // Fix the content so reparse succeeds
           return { rawSegment: "FIXED", reparse: true };
@@ -258,7 +257,7 @@ describe("Heuristic Engine", () => {
       const heuristic: ToolCallHeuristic = {
         id: "conditional",
         phase: "pre-parse",
-        applies: (ctx) => ctx.rawSegment.includes("TARGET"),
+        applies: (_callCtx) => ctx.rawSegment.includes("TARGET"),
         run: () => {
           executed = true;
           return {};
@@ -288,7 +287,7 @@ describe("Heuristic Engine", () => {
       const heuristic: ToolCallHeuristic = {
         id: "conditional",
         phase: "pre-parse",
-        applies: (ctx) => ctx.rawSegment.includes("TARGET"),
+        applies: (_callCtx) => ctx.rawSegment.includes("TARGET"),
         run: () => {
           executed = true;
           return {};
