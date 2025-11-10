@@ -6,7 +6,7 @@ vi.spyOn(console, "warn").mockImplementation(() => {
   // suppress noisy console output during test
 });
 
-describe("morphXmlProtocol - shell tool malformed closing tag handling", () => {
+describe("morphXmlProtocol - shell tool", () => {
   const tools = [
     {
       type: "function",
@@ -45,7 +45,7 @@ describe("morphXmlProtocol - shell tool malformed closing tag handling", () => {
     },
   ] as any;
 
-  it("parses shell call with extra stray </command> and produces correct arguments", () => {
+  it("[malformed closing tag handling] parses shell call with extra stray </command> and produces correct arguments", () => {
     const p = morphXmlProtocol();
 
     const text =
@@ -81,5 +81,22 @@ describe("morphXmlProtocol - shell tool malformed closing tag handling", () => {
       true
     );
     expect(input.workdir.includes("minpeter.v2")).toBe(true);
+  });
+
+  it("TEST", () => {
+    const p = morphXmlProtocol();
+
+    const text =
+      "<shell><command>git</command><command>log</command><justification>oneline</justification><command>-10</" +
+      "command><justification>Examine recent commit history for commit message patterns</justification><timeout_ms>5000</" +
+      "timeout_ms><with_escalated_permissions>false</with_escalated_permissions><workdir>.</workdir></shell>";
+
+    const out = p.parseGeneratedText({ text, tools, options: {} });
+
+    console.log(out);
+
+    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    expect(tc).toBeTruthy();
+    expect(tc.toolName).toBe("shell");
   });
 });

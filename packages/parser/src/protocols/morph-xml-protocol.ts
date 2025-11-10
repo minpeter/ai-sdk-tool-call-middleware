@@ -35,6 +35,27 @@ function normalizeCloseTags(xml: string): string {
   return xml.replace(MALFORMED_CLOSE_RE_G, "</$1>");
 }
 
+function shouldDeduplicateStringTags(schema: unknown): boolean {
+  const unwrapped = unwrapJsonSchema(schema as unknown) as Record<
+    string,
+    unknown
+  >;
+  if (!unwrapped || typeof unwrapped !== "object") {
+    return false;
+  }
+  const props = (unwrapped as { properties?: Record<string, unknown> })
+    .properties as Record<string, unknown> | undefined;
+  if (!props) {
+    return false;
+  }
+  const commandRaw = (props as Record<string, unknown>).command as unknown;
+  if (!commandRaw) {
+    return false;
+  }
+  const command = unwrapJsonSchema(commandRaw) as { type?: string } | undefined;
+  return command?.type === "array";
+}
+
 function tryParseSecondaryXml(
   content: string,
   toolSchema: unknown,
@@ -44,15 +65,13 @@ function tryParseSecondaryXml(
       }
     | undefined
 ): unknown | null {
+  const normalized = normalizeCloseTags(content);
+  const balanced = balanceTags(content);
+  const hasMalformedClose = MALFORMED_CLOSE_RE.test(content);
+  if (!hasMalformedClose && balanced.length > normalized.length) {
+    return null;
+  }
   try {
-    const normalized = normalizeCloseTags(content);
-    const balanced = balanceTags(content);
-    // Allow balancing if there are malformed closing tags present.
-    // Otherwise, do not accept balancing that adds content (likely inserts missing closing tags).
-    const hasMalformedClose = MALFORMED_CLOSE_RE.test(content);
-    if (!hasMalformedClose && balanced.length > normalized.length) {
-      return null;
-    }
     let parsed: unknown = parse(balanced, toolSchema, {
       onError: options?.onError,
       noChildNodes: [],
@@ -60,6 +79,23 @@ function tryParseSecondaryXml(
     parsed = repairParsedAgainstSchema(parsed, toolSchema, options);
     return parsed;
   } catch (_e) {
+    // Only attempt dedupe of duplicate string tags for shell-like tools
+    // where schema contains a 'command' array property.
+    if (shouldDeduplicateStringTags(toolSchema)) {
+      const deduped = dedupeStringTagsAgainstSchema(balanced, toolSchema);
+      if (deduped !== balanced) {
+        try {
+          let reparsed: unknown = parse(deduped, toolSchema, {
+            onError: options?.onError,
+            noChildNodes: [],
+          });
+          reparsed = repairParsedAgainstSchema(reparsed, toolSchema, options);
+          return reparsed;
+        } catch (_) {
+          return null;
+        }
+      }
+    }
     return null;
   }
 }
@@ -291,6 +327,67 @@ function coerceArrayItem(
     ) as unknown;
   }
   return v;
+}
+
+function getStringPropertyNames(schema: unknown): string[] {
+  const unwrapped = unwrapJsonSchema(schema as unknown) as Record<
+    string,
+    unknown
+  >;
+  if (!unwrapped || typeof unwrapped !== "object") {
+    return [];
+  }
+  const props = (unwrapped as { properties?: Record<string, unknown> })
+    .properties;
+  if (!props) {
+    return [];
+  }
+  const names: string[] = [];
+  for (const key of Object.keys(props)) {
+    const prop = unwrapJsonSchema(
+      (props as Record<string, unknown>)[key] as unknown
+    ) as unknown;
+    const type = (prop as { type?: string }).type;
+    if (type === "string") {
+      names.push(key);
+    }
+  }
+  return names;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+}
+
+function dedupeStringTagsAgainstSchema(xml: string, schema: unknown): string {
+  const names = getStringPropertyNames(schema);
+  let out = xml;
+  for (const key of names) {
+    out = dedupeSingleTag(out, key);
+  }
+  return out;
+}
+
+function dedupeSingleTag(xml: string, key: string): string {
+  const escaped = escapeRegExp(key);
+  const re = new RegExp(`<${escaped}>([\\s\\S]*?)<\\/${escaped}>`, "g");
+  const matches = Array.from(xml.matchAll(re));
+  if (matches.length <= 1) {
+    return xml;
+  }
+  const last = matches.at(-1);
+  let result = "";
+  let cursor = 0;
+  for (const m of matches) {
+    const idx = m.index ?? 0;
+    result += xml.slice(cursor, idx);
+    if (last && idx === (last.index ?? -1)) {
+      result += m[0];
+    }
+    cursor = idx + m[0].length;
+  }
+  result += xml.slice(cursor);
+  return result;
 }
 
 function tryParseStringToSchemaObject(
