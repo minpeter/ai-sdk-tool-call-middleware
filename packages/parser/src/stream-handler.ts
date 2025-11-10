@@ -73,12 +73,12 @@ function handleDebugSummary(
 
 function createDebugSummaryTransform({
   protocol,
-  fullRawText,
+  getFullRawText,
   tools,
   params,
 }: {
   protocol: ToolCallProtocol;
-  fullRawText: string;
+  getFullRawText: () => string;
   tools: ReturnType<typeof originalToolsSchema.decode>;
   params: { providerOptions?: ToolCallMiddlewareProviderOptions };
 }): TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart> {
@@ -97,11 +97,9 @@ function createDebugSummaryTransform({
         }
         if (part.type === "finish") {
           try {
-            const origin = extractToolCallSegments(
-              protocol,
-              fullRawText,
-              tools
-            );
+            const raw = getFullRawText();
+            logRawChunk(raw);
+            const origin = extractToolCallSegments(protocol, raw, tools);
             handleDebugSummary(parsedToolCalls, origin, params);
           } catch {
             // ignore logging failures
@@ -223,7 +221,7 @@ export async function wrapStream({
   const withSummary = parsed.pipeThrough(
     createDebugSummaryTransform({
       protocol,
-      fullRawText,
+      getFullRawText: () => fullRawText,
       tools,
       params,
     })

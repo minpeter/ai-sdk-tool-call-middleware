@@ -8,6 +8,7 @@ import { generateId } from "@ai-sdk/provider-utils";
 import {
   escapeRegExp,
   getPotentialStartIndex,
+  logParseFailure,
   parseRJSON,
   RJSON,
 } from "../utils";
@@ -41,6 +42,12 @@ function processToolCallJson(
       input: JSON.stringify(parsedToolCall.arguments ?? {}),
     });
   } catch (error) {
+    logParseFailure({
+      phase: "generated-text",
+      reason: "Failed to parse tool call JSON segment",
+      snippet: fullMatch,
+      error,
+    });
     if (options?.onError) {
       options.onError(
         "Could not process JSON tool call, keeping original text.",
@@ -155,6 +162,12 @@ function emitIncompleteToolCall(
     return;
   }
 
+  logParseFailure({
+    phase: "stream",
+    reason: "Incomplete streaming tool call segment emitted as text",
+    snippet: `${toolCallStart}${state.currentToolCallJson}`,
+  });
+
   const errorId = generateId();
   controller.enqueue({ type: "text-start", id: errorId });
   controller.enqueue({
@@ -216,7 +229,13 @@ function emitToolCall(context: TagProcessingContext) {
       toolName: parsedToolCall.name,
       input: JSON.stringify(parsedToolCall.arguments ?? {}),
     });
-  } catch {
+  } catch (error) {
+    logParseFailure({
+      phase: "stream",
+      reason: "Failed to parse streaming tool call JSON segment",
+      snippet: `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`,
+      error,
+    });
     const errorId = generateId();
     controller.enqueue({ type: "text-start", id: errorId });
     controller.enqueue({

@@ -27,23 +27,54 @@ import {
  */
 function buildFinalPrompt(
   systemPrompt: string,
-  processedPrompt: LanguageModelV3Prompt
+  processedPrompt: LanguageModelV3Prompt,
+  placement: "first" | "last"
 ): LanguageModelV3Prompt {
-  if (processedPrompt[0]?.role === "system") {
+  const systemIndex = processedPrompt.findIndex((m) => m.role === "system");
+  if (systemIndex !== -1) {
+    const existing = processedPrompt[systemIndex].content as unknown;
+    let existingText = "";
+    if (typeof existing === "string") {
+      existingText = existing;
+    } else if (Array.isArray(existing)) {
+      existingText = (existing as { type?: string; text?: string }[])
+        .map((p) => (p?.type === "text" ? (p.text ?? "") : ""))
+        .filter(Boolean)
+        .join("\n");
+    } else {
+      existingText = String(existing ?? "");
+    }
+
+    const mergedContent =
+      placement === "first"
+        ? `${systemPrompt}\n\n${existingText}`
+        : `${existingText}\n\n${systemPrompt}`;
+
+    return processedPrompt.map((m, idx) =>
+      idx === systemIndex
+        ? {
+            ...m,
+            content: mergedContent,
+          }
+        : m
+    ) as LanguageModelV3Prompt;
+  }
+  if (placement === "first") {
     return [
       {
         role: "system",
-        content: `${systemPrompt}\n\n${processedPrompt[0].content}`,
+        content: systemPrompt,
       },
-      ...processedPrompt.slice(1),
+      ...processedPrompt,
     ];
   }
+  // placement === 'last'
   return [
+    ...processedPrompt,
     {
       role: "system",
       content: systemPrompt,
     },
-    ...processedPrompt,
   ];
 }
 
@@ -213,6 +244,7 @@ export function transformParams({
   params,
   protocol,
   toolSystemPromptTemplate,
+  placement = "first",
 }: {
   params: {
     prompt?: LanguageModelV3Prompt;
@@ -226,6 +258,7 @@ export function transformParams({
   };
   protocol: ToolCallProtocol | (() => ToolCallProtocol);
   toolSystemPromptTemplate: (tools: string) => string;
+  placement?: "first" | "last";
 }) {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
@@ -244,7 +277,11 @@ export function transformParams({
     extractOnErrorOption(params.providerOptions)
   );
 
-  const finalPrompt = buildFinalPrompt(systemPrompt, processedPrompt);
+  const finalPrompt = buildFinalPrompt(
+    systemPrompt,
+    processedPrompt,
+    placement
+  );
   const baseReturnParams = buildBaseReturnParams(
     params,
     finalPrompt,

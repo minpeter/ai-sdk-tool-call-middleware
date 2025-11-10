@@ -1,19 +1,21 @@
 {
-  "name": "@ai-sdk-tool/examples-parser-core",
+  "name": "@ai-sdk-tool/examples-proxy-core",
   "private": true,
   "version": "0.0.0",
-  "description": "",
+  "description": "Example usage of @ai-sdk-tool/proxy",
   "main": "index.js",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "debug:file-write": "tsx src/XX-debug-file-write.ts"
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
-    "@ai-sdk-tool/parser": "workspace:*",
     "@ai-sdk-tool/middleware": "workspace:*",
+    "@ai-sdk-tool/parser": "workspace:*",
+    "@ai-sdk-tool/proxy": "workspace:*",
+
     "@ai-sdk/openai": "3.0.0-beta.48",
     "@ai-sdk/openai-compatible": "2.0.0-beta.31",
     "ai": "6.0.0-beta.92",

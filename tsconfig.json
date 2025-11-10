@@ -13,7 +13,13 @@
       "path": "packages/eval"
     },
     {
+      "path": "packages/middleware"
+    },
+    {
       "path": "packages/parser"
+    },
+    {
+      "path": "packages/proxy"
     },
     {
       "path": "packages/rxml"
