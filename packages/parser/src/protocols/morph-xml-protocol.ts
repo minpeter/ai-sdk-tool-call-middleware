@@ -18,6 +18,9 @@ import {
 import { hasInputProperty } from "../utils";
 
 import type { ToolCallProtocol } from "./tool-call-protocol";
+import type { PipelineConfig, ToolCallHeuristic } from "./heuristic-engine";
+import { defaultPipelineConfig } from "./default-heuristics";
+import { parseWithHeuristics, escapeInvalidLt } from "./heuristic-integration";
 
 // Regex constants for performance
 const WHITESPACE_REGEX = /\s/;
@@ -33,30 +36,6 @@ const STATUS_TAG_RE = /<status>([\s\S]*?)<\/status>/i;
 function normalizeCloseTags(xml: string): string {
   // Normalize malformed closing tags like </ step> or </\n name   > to </name>
   return xml.replace(MALFORMED_CLOSE_RE_G, "</$1>");
-}
-
-function escapeInvalidLt(xml: string): string {
-  const len = xml.length;
-  let out = "";
-  for (let i = 0; i < len; i += 1) {
-    const ch = xml[i];
-    if (ch === "<") {
-      const next = i + 1 < len ? xml[i + 1] : "";
-      if (
-        !(
-          NAME_CHAR_RE.test(next) ||
-          next === "/" ||
-          next === "!" ||
-          next === "?"
-        )
-      ) {
-        out += "&lt;";
-        continue;
-      }
-    }
-    out += ch;
-  }
-  return out;
 }
 
 function shouldDeduplicateStringTags(schema: unknown): boolean {
@@ -477,38 +456,31 @@ type ProcessToolCallParams = {
   processedElements: LanguageModelV3Content[];
 };
 
-function processToolCall(params: ProcessToolCallParams): void {
+function processToolCall(
+  params: ProcessToolCallParams,
+  pipelineConfig?: PipelineConfig
+): void {
   const { toolCall, tools, options, text, processedElements } = params;
   const toolSchema = getToolSchema(tools, toolCall.toolName);
-  try {
-    const primary = escapeInvalidLt(normalizeCloseTags(toolCall.content));
-    let parsed: unknown = parse(primary, toolSchema, {
-      onError: options?.onError,
-      // Disable HTML self-closing tag behavior to allow base, meta, link etc. as regular tags
-      noChildNodes: [],
-    });
-    parsed = repairParsedAgainstSchema(parsed, toolSchema, options);
+  
+  // Use heuristic pipeline for parsing (includes normalization and escaping)
+  const parsed = parseWithHeuristics(
+    toolCall.content,
+    toolCall.toolName,
+    toolSchema,
+    pipelineConfig,
+    options
+  );
+  
+  if (parsed !== null) {
     processedElements.push({
       type: "tool-call",
       toolCallId: generateId(),
       toolName: toolCall.toolName,
       input: JSON.stringify(parsed),
     });
-  } catch (error) {
-    const reparsed = tryParseSecondaryXml(
-      toolCall.content,
-      toolSchema,
-      options
-    );
-    if (reparsed !== null) {
-      processedElements.push({
-        type: "tool-call",
-        toolCallId: generateId(),
-        toolName: toolCall.toolName,
-        input: JSON.stringify(reparsed),
-      });
-      return;
-    }
+  } else {
+    // Fallback to original text if parsing failed
     const originalCallText = text.substring(
       toolCall.startIndex,
       toolCall.endIndex
@@ -517,7 +489,6 @@ function processToolCall(params: ProcessToolCallParams): void {
     options?.onError?.(message, {
       toolCall: originalCallText,
       toolName: toolCall.toolName,
-      error,
     });
     processedElements.push({ type: "text", text: originalCallText });
   }
@@ -549,18 +520,24 @@ type StreamingToolCallEndParams = {
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
 };
 
-function handleStreamingToolCallEnd(params: StreamingToolCallEndParams): void {
+function handleStreamingToolCallEnd(
+  params: StreamingToolCallEndParams,
+  pipelineConfig?: PipelineConfig
+): void {
   const { toolContent, currentToolCall, tools, options, ctrl, flushText } =
     params;
   const toolSchema = getToolSchema(tools, currentToolCall.name);
-  try {
-    const primary = escapeInvalidLt(normalizeCloseTags(toolContent));
-    let parsed: unknown = parse(primary, toolSchema, {
-      onError: options?.onError,
-      noChildNodes: [],
-    });
-    parsed = repairParsedAgainstSchema(parsed, toolSchema, options);
+  
+  // Use heuristic pipeline for parsing (includes normalization and escaping)
+  const parsed = parseWithHeuristics(
+    toolContent,
+    currentToolCall.name,
+    toolSchema,
+    pipelineConfig,
+    options
+  );
 
+  if (parsed !== null) {
     // Close any open text segment before emitting tool-call
     flushText(ctrl);
 
@@ -570,20 +547,9 @@ function handleStreamingToolCallEnd(params: StreamingToolCallEndParams): void {
       toolName: currentToolCall.name,
       input: JSON.stringify(parsed),
     });
-  } catch (error) {
-    const parsed = tryParseSecondaryXml(toolContent, toolSchema, options);
-    if (parsed !== null) {
-      flushText(ctrl);
-      ctrl.enqueue({
-        type: "tool-call",
-        toolCallId: generateId(),
-        toolName: currentToolCall.name,
-        input: JSON.stringify(parsed),
-      });
-      return;
-    }
+  } else {
     handleStreamingToolCallError({
-      error,
+      error: new Error("Failed to parse tool call with heuristics"),
       currentToolCall,
       toolContent,
       options,
@@ -691,6 +657,7 @@ type ProcessToolCallInBufferParams = {
   controller: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
   setBuffer: (buffer: string) => void;
+  pipelineConfig?: PipelineConfig;
 };
 
 function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
@@ -706,6 +673,7 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     controller,
     flushText,
     setBuffer,
+    pipelineConfig,
   } = params;
   const endTag = `</${currentToolCall.name}>`;
   // Normalize malformed closings in buffer to enable detection
@@ -728,7 +696,7 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
       options,
       ctrl: controller,
       flushText,
-    });
+    }, pipelineConfig);
 
     // Restore buffer to content after tool call
     setBuffer(newBuffer);
@@ -749,6 +717,7 @@ type ProcessNoToolCallInBufferParams = {
         onError?: (message: string, metadata?: Record<string, unknown>) => void;
       }
     | undefined;
+  pipelineConfig?: PipelineConfig;
 };
 
 function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
@@ -765,6 +734,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     flushText,
     tools,
     options,
+    pipelineConfig,
   } = params;
   const {
     index: earliestStartTagIndex,
@@ -789,7 +759,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
         options,
         ctrl: controller,
         flushText,
-      });
+      }, pipelineConfig);
       return {
         buffer: newBuffer,
         currentToolCall: null,
@@ -870,6 +840,7 @@ type ProcessBufferHandlerParams = {
   toolNames: string[];
   maxStartTagLen: number;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
+  pipelineConfig?: PipelineConfig;
 };
 
 function processBufferWithToolCall(
@@ -884,6 +855,7 @@ function processBufferWithToolCall(
     tools,
     options,
     flushText,
+    pipelineConfig,
   } = params;
   const currentToolCall = getCurrentToolCall();
 
@@ -899,6 +871,7 @@ function processBufferWithToolCall(
     controller,
     flushText,
     setBuffer,
+    pipelineConfig,
   });
   setBuffer(result.buffer);
   setCurrentToolCall(result.currentToolCall);
@@ -918,6 +891,7 @@ function processBufferWithoutToolCall(
     toolNames,
     maxStartTagLen,
     flushText,
+    pipelineConfig,
   } = params;
 
   const result = processNoToolCallInBuffer({
@@ -928,6 +902,7 @@ function processBufferWithoutToolCall(
     flushText,
     tools,
     options,
+    pipelineConfig,
   });
   setBuffer(result.buffer);
   setCurrentToolCall(result.currentToolCall);
@@ -969,7 +944,31 @@ function createProcessBufferHandler(params: ProcessBufferHandlerParams) {
   };
 }
 
-export const morphXmlProtocol = (): ToolCallProtocol => ({
+export const morphXmlProtocol = (opts?: {
+  heuristics?: ToolCallHeuristic[];
+  pipeline?: PipelineConfig;
+}): ToolCallProtocol => {
+  // Merge custom heuristics and pipeline config with defaults
+  let pipelineConfig: PipelineConfig;
+  
+  if (opts?.pipeline) {
+    pipelineConfig = opts.pipeline;
+  } else if (opts?.heuristics) {
+    // Group custom heuristics by phase
+    const preParse = opts.heuristics.filter(h => h.phase === "pre-parse");
+    const fallbackReparse = opts.heuristics.filter(h => h.phase === "fallback-reparse");
+    const postParse = opts.heuristics.filter(h => h.phase === "post-parse");
+    
+    pipelineConfig = {
+      preParse: [...(defaultPipelineConfig.preParse || []), ...preParse],
+      fallbackReparse: [...(defaultPipelineConfig.fallbackReparse || []), ...fallbackReparse],
+      postParse: [...(defaultPipelineConfig.postParse || []), ...postParse],
+    };
+  } else {
+    pipelineConfig = defaultPipelineConfig;
+  }
+
+  return {
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt = (tools || []).map((tool) => ({
       name: tool.name,
@@ -1039,7 +1038,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       );
 
       // Process the tool call
-      processToolCall({ toolCall, tools, options, text, processedElements });
+      processToolCall({ toolCall, tools, options, text, processedElements }, pipelineConfig);
 
       currentIndex = toolCall.endIndex;
     }
@@ -1102,6 +1101,7 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
       toolNames,
       maxStartTagLen,
       flushText,
+      pipelineConfig,
     });
 
     const flushBuffer = (controller: TransformStreamDefaultController) => {
@@ -1135,7 +1135,8 @@ export const morphXmlProtocol = (): ToolCallProtocol => ({
 
     return findToolCalls(text, toolNames).map((tc) => tc.segment);
   },
-});
+};
+};
 
 export function getToolSchema(
   tools: LanguageModelV3FunctionTool[],
