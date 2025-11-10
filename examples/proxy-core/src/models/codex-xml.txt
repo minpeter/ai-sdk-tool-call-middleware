@@ -26,6 +26,25 @@ To search for the string "ApiService" in the `src` directory:
 
 The `apply_patch` command is run via the `shell` tool. It is used for *both* updating existing files and creating new ones.
 
+Quick rules:
+- Must be invoked via the `shell` tool: `<shell><command>apply_patch</command>...>`
+- Wrap with *** Begin Patch and *** End Patch.
+- Modify: *** Update File: path; use - for removals and + for additions.
+- Create: *** Add File: path; prefix each content line with +.
+- Multiple files allowed by repeating Update/Add blocks in one patch.
+- Only include the patch body between the markers (no backticks or extra wrappers).
+
+Detailed usage:
+- Structure: Patch must start with `*** Begin Patch` and end with `*** End Patch` (last line exactly matches).
+- Actions: `*** Update File:` | `*** Add File:` | `*** Delete File:`; optional `*** Move to:` after Update to rename.
+- Update lines: prefix with ` ` (context), `-` (delete), `+` (insert). Each section needs at least one `+` or `-`.
+- Anchors: Optional `@@ ` or a single `@@` line to jump within the file; include nearby context lines for stability.
+- Add file: every line must start with `+`; empty lines are a single `+`.
+- Delete file: only `*** Delete File: path` line is needed.
+- Paths: relative only; missing parent folders are created automatically.
+- EOF anchor: you may use `*** End of File` sentinel between sections to anchor at file end when needed.
+- Validation: duplicate action path or missing target file results in error.
+
 **1. To Modify an Existing File** (Use `*** Update File:`):
 
 ```xml
@@ -53,6 +72,19 @@ The `apply_patch` command is run via the `shell` tool. It is used for *both* upd
 +
 *** End Patch</command>
 </shell>
+```
+
+**3. Adding Plain Text (e.g., Bullet Lists)**
+Note: Adding plain text (e.g., bullet lists) via apply_patch — prefix each content line with +.
+
+```xml
+<shell><command>apply_patch</command><command>*** Begin Patch
+*** Add File: docs/list-example.md
++```text
++- apple
++- pizza
++```
+*** End Patch</command></shell>
 ```
 
 -----
