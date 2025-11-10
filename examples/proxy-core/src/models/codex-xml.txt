@@ -29,8 +29,12 @@ The `apply_patch` command is run via the `shell` tool. It is used for *both* upd
 **1. To Modify an Existing File** (Use `*** Update File:`):
 
 ```xml
-<shell>
-  <command>["apply_patch", "*** Begin Patch\n*** Update File: src/main.py\n@@ -12,1 +12,1 @@\n-    print(\"Hello\")\n+    print(\"Hello, World!\")\n*** End Patch"]</command>
+<shell><command>apply_patch</command><command>*** Begin Patch
+*** Update File: src/main.py
+@@ -12,1 +12,1 @@
+-    print("Hello")
++    print("Hello, World!")
+*** End Patch</command>
 </shell>
 ```
 
@@ -38,8 +42,16 @@ The `apply_patch` command is run via the `shell` tool. It is used for *both* upd
 (This is the correct syntax for creating a new file. Note `Add File`, not `Update File`.)
 
 ```xml
-<shell>
-  <command>["apply_patch", "*** Begin Patch\n*** Add File: docs/new_guide.md\n+New guide document.\n+\n+## Getting Started\n+This document...\n*** End Patch"]</command>
+<shell><command>apply_patch</command><command>*** Begin Patch
+*** Add File: docs/new_guide.md
++New guide document.
++
++## Getting Started
++
++This document...
++
++
+*** End Patch</command>
 </shell>
 ```
 

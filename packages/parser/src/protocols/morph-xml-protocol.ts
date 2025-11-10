@@ -35,6 +35,30 @@ function normalizeCloseTags(xml: string): string {
   return xml.replace(MALFORMED_CLOSE_RE_G, "</$1>");
 }
 
+function escapeInvalidLt(xml: string): string {
+  const len = xml.length;
+  let out = "";
+  for (let i = 0; i < len; i += 1) {
+    const ch = xml[i];
+    if (ch === "<") {
+      const next = i + 1 < len ? xml[i + 1] : "";
+      if (
+        !(
+          NAME_CHAR_RE.test(next) ||
+          next === "/" ||
+          next === "!" ||
+          next === "?"
+        )
+      ) {
+        out += "&lt;";
+        continue;
+      }
+    }
+    out += ch;
+  }
+  return out;
+}
+
 function shouldDeduplicateStringTags(schema: unknown): boolean {
   const unwrapped = unwrapJsonSchema(schema as unknown) as Record<
     string,
@@ -457,7 +481,7 @@ function processToolCall(params: ProcessToolCallParams): void {
   const { toolCall, tools, options, text, processedElements } = params;
   const toolSchema = getToolSchema(tools, toolCall.toolName);
   try {
-    const primary = normalizeCloseTags(toolCall.content);
+    const primary = escapeInvalidLt(normalizeCloseTags(toolCall.content));
     let parsed: unknown = parse(primary, toolSchema, {
       onError: options?.onError,
       // Disable HTML self-closing tag behavior to allow base, meta, link etc. as regular tags
@@ -530,7 +554,7 @@ function handleStreamingToolCallEnd(params: StreamingToolCallEndParams): void {
     params;
   const toolSchema = getToolSchema(tools, currentToolCall.name);
   try {
-    const primary = normalizeCloseTags(toolContent);
+    const primary = escapeInvalidLt(normalizeCloseTags(toolContent));
     let parsed: unknown = parse(primary, toolSchema, {
       onError: options?.onError,
       noChildNodes: [],

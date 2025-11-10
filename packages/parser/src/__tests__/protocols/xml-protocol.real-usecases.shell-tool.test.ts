@@ -83,13 +83,41 @@ describe("morphXmlProtocol - shell tool", () => {
     expect(input.workdir.includes("minpeter.v2")).toBe(true);
   });
 
-  it("TEST", () => {
+  it("[excessive tag call] case where justification tag appears excessively", () => {
     const p = morphXmlProtocol();
 
     const text =
       "<shell><command>git</command><command>log</command><justification>oneline</justification><command>-10</" +
       "command><justification>Examine recent commit history for commit message patterns</justification><timeout_ms>5000</" +
       "timeout_ms><with_escalated_permissions>false</with_escalated_permissions><workdir>.</workdir></shell>";
+
+    const out = p.parseGeneratedText({ text, tools, options: {} });
+
+    console.log(out);
+
+    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    expect(tc).toBeTruthy();
+    expect(tc.toolName).toBe("shell");
+
+    const input = JSON.parse(tc.input);
+
+    expect(input.command).toEqual(["git", "log", "-10"]);
+    expect(input.justification).toBe(
+      "Examine recent commit history for commit message patterns"
+    );
+    expect(input.timeout_ms).toBe(5000);
+    expect(input.with_escalated_permissions).toBe(false);
+    expect(input.workdir).toBe(".");
+  });
+
+  it("[Special character handling] Handling of special characters such as '>', '<<'", () => {
+    const p = morphXmlProtocol();
+
+    const text =
+      "<shell><command>cat > test.md << 'EOF'" +
+      "# Test File\n\n" +
+      "This is a test markdown file.\n" +
+      "EOF</command></shell>";
 
     const out = p.parseGeneratedText({ text, tools, options: {} });
 
