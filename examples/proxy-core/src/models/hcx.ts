@@ -6,14 +6,14 @@ import {
   defaultSystemPromptMiddleware,
   extractReasoningMiddleware,
 } from "@ai-sdk-tool/middleware";
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
+import { createToolMiddleware, morphXmlProtocol } from "@ai-sdk-tool/parser";
 import { defaultSettingsMiddleware, wrapLanguageModel } from "ai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const hcx_tool_prompt = fs.readFileSync(
-  path.join(__dirname, "hcx-tool-hermes.txt"),
+const extra_system_prompt = fs.readFileSync(
+  path.join(__dirname, "codex-xml.txt"),
   "utf8"
 );
 
@@ -40,11 +40,28 @@ export const hcx = wrapLanguageModel({
         temperature: 0.1,
       },
     }),
-    defaultSystemPromptMiddleware({
-      systemPrompt: hcx_tool_prompt,
-      placement: "after",
+    createToolMiddleware({
+      protocol: morphXmlProtocol,
+      placement: "last",
+      toolSystemPromptTemplate(tools: string) {
+        return `You are a function calling AI model.
+
+Available functions are listed inside <tools></tools>.
+<tools>${tools}</tools>
+
+# Rules
+- Use exactly one XML element whose tag name is the function name.
+- Put each parameter as a child element.
+- Values must follow the schema exactly (numbers, arrays, objects, enums → copy as-is).
+- Do not add or remove functions or parameters.
+- Each required parameter must appear once.
+- Output nothing before or after the function call.`;
+      },
     }),
-    hermesToolMiddleware,
+    defaultSystemPromptMiddleware({
+      systemPrompt: extra_system_prompt,
+      placement: "last",
+    }),
     extractReasoningMiddleware({
       openingTag: "/think\n",
       closingTag: "\nassistant\n",

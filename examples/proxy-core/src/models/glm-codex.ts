@@ -9,8 +9,8 @@ import { wrapLanguageModel } from "ai";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const glm_codex_xml_prompt = fs.readFileSync(
-  path.join(__dirname, "glm-codex-xml.txt"),
+const extra_system_prompt = fs.readFileSync(
+  path.join(__dirname, "codex-xml.txt"),
   "utf8"
 );
 
@@ -35,8 +35,8 @@ export const glm_codex = wrapLanguageModel({
   middleware: [
     morphXmlToolMiddleware,
     defaultSystemPromptMiddleware({
-      systemPrompt: glm_codex_xml_prompt,
-      placement: "after",
+      systemPrompt: extra_system_prompt,
+      placement: "last",
     }),
   ],
 });

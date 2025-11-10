@@ -5,7 +5,7 @@ import type {
   LanguageModelV3Prompt,
 } from "@ai-sdk/provider";
 
-type SystemPromptPlacement = "before" | "after";
+type SystemPromptPlacement = "first" | "last";
 
 type DefaultSystemPromptMiddlewareOptions = {
   systemPrompt: string;
@@ -57,7 +57,7 @@ function mergeSystemPrompts({
     return base;
   }
 
-  return placement === "before"
+  return placement === "first"
     ? `${addition}\n\n${base}`
     : `${base}\n\n${addition}`;
 }
@@ -74,7 +74,7 @@ function ensurePromptArray(
 
 export function defaultSystemPromptMiddleware({
   systemPrompt,
-  placement = "before",
+  placement = "first",
 }: DefaultSystemPromptMiddlewareOptions): LanguageModelV3Middleware {
   return {
     specificationVersion: "v3",
@@ -85,13 +85,22 @@ export function defaultSystemPromptMiddleware({
       );
 
       if (systemIndex === -1) {
-        const promptWithSystem = [
-          {
-            role: "system" as const,
-            content: systemPrompt,
-          },
-          ...prompt,
-        ] as LanguageModelV3Prompt;
+        const promptWithSystem =
+          placement === "first"
+            ? ([
+                {
+                  role: "system" as const,
+                  content: systemPrompt,
+                },
+                ...prompt,
+              ] as LanguageModelV3Prompt)
+            : ([
+                ...prompt,
+                {
+                  role: "system" as const,
+                  content: systemPrompt,
+                },
+              ] as LanguageModelV3Prompt);
 
         const nextParams: LanguageModelV3CallOptions = {
           ...params,

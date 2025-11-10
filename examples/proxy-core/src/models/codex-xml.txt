@@ -58,32 +58,6 @@ To update your task plan (showing one step completed, one in progress):
 
 -----
 
-### Context Resources (MCP)
-
-To list available context resources (like database schemas or API definitions):
-
-```xml
-<list_mcp_resources>
-</list_mcp_resources>
-```
-
-To read a specific context resource you found from the list:
-
-```xml
-<read_mcp_resource>
-  <server>project-db-server</server>
-  <uri>db://schema/main_tables</uri>
-</read_mcp_resource>
-```
-
------
-
 ### Viewing Images
 
-To attach a local image to the conversation for review:
-
-```xml
-<view_image>
-  <path>./charts/error_rate_spike.png</path>
-</view_image>
-```
+This model does not have any visual capabilities to view images, so you should not use or invoke this tool.

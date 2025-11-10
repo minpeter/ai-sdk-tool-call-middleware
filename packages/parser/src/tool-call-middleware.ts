@@ -18,9 +18,11 @@ import { extractOnErrorOption, isToolChoiceActive } from "./utils";
 export function createToolMiddleware({
   protocol,
   toolSystemPromptTemplate,
+  placement = "last",
 }: {
   protocol: ToolCallProtocol | (() => ToolCallProtocol);
   toolSystemPromptTemplate: (tools: string) => string;
+  placement?: "first" | "last";
 }): LanguageModelV3Middleware {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
@@ -50,6 +52,7 @@ export function createToolMiddleware({
       transformParams({
         protocol: resolvedProtocol,
         toolSystemPromptTemplate,
+        placement,
         params,
       }),
   };

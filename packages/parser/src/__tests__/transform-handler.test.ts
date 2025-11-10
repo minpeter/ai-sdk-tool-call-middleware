@@ -82,6 +82,87 @@ describe("index prompt templates", () => {
   });
 });
 
+describe("placement last behaviour (default)", () => {
+  it("default last: appends system at end when no system exists", async () => {
+    const mw = createToolMiddleware({
+      placement: "last",
+      protocol: jsonMixProtocol,
+      toolSystemPromptTemplate: (t) => `SYS:${t}`,
+    });
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "op",
+        description: "",
+        inputSchema: { type: "object" },
+      },
+    ];
+    const transformParams = mw.transformParams;
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
+    const out = await transformParams({
+      params: {
+        prompt: [
+          { role: "user", content: [{ type: "text", text: "A" }] },
+          { role: "user", content: [{ type: "text", text: "B" }] },
+        ],
+        tools,
+      },
+    } as any);
+    const last = out.prompt.at(-1);
+    expect(last?.role).toBe("system");
+    expect(String(last?.content)).toContain("SYS:");
+    // users merged regardless of placement
+    const userMsgs = out.prompt.filter((m: any) => m.role === "user");
+    expect(userMsgs).toHaveLength(1);
+    const mergedText = (userMsgs[0].content as any[])
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("");
+    expect(mergedText).toContain("A");
+    expect(mergedText).toContain("B");
+  });
+
+  it("last: merges with existing system at non-zero index (keeps one system)", async () => {
+    const mw = createToolMiddleware({
+      placement: "last",
+      protocol: jsonMixProtocol,
+      toolSystemPromptTemplate: (t) => `SYS:${t}`,
+    });
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "op",
+        description: "",
+        inputSchema: { type: "object" },
+      },
+    ];
+    const transformParams = mw.transformParams;
+
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
+
+    const out = await transformParams({
+      params: {
+        prompt: [
+          { role: "user", content: [{ type: "text", text: "hello" }] },
+          { role: "system", content: "BASE" },
+          { role: "user", content: [{ type: "text", text: "world" }] },
+        ],
+        tools,
+      },
+    } as any);
+    const systems = out.prompt.filter((m: any) => m.role === "system");
+    expect(systems).toHaveLength(1);
+    const system = systems[0];
+    const text = String(system.content);
+    expect(text.startsWith("BASE")).toBe(true);
+    expect(text).toContain("SYS:");
+  });
+});
+
 describe("createToolMiddleware error branches", () => {
   const mw = createToolMiddleware({
     protocol: jsonMixProtocol,
@@ -149,6 +230,7 @@ describe("createToolMiddleware positive paths", () => {
   it("transformParams injects system prompt and merges consecutive user texts", async () => {
     const mw = createToolMiddleware({
       protocol: jsonMixProtocol,
+      placement: "first",
       toolSystemPromptTemplate: (t) => `SYS:${t}`,
     });
     const tools = [
@@ -431,6 +513,7 @@ describe("transformParams merges adjacent user messages", () => {
   it("merges two consecutive user messages into one with newline", async () => {
     const mw = createToolMiddleware({
       protocol: jsonMixProtocol,
+      placement: "first",
       toolSystemPromptTemplate: (t) => `T:${t}`,
     });
 
@@ -460,6 +543,7 @@ describe("transformParams merges adjacent user messages", () => {
   it("condenses multiple tool_response messages into single user text content", async () => {
     const mw = createToolMiddleware({
       protocol: jsonMixProtocol,
+      placement: "first",
       toolSystemPromptTemplate: (t) => `T:${t}`,
     });
 
@@ -528,6 +612,7 @@ describe("transformParams merges adjacent user messages", () => {
 describe("transformParams convertToolPrompt mapping and merge", () => {
   const mw = createToolMiddleware({
     protocol: jsonMixProtocol,
+    placement: "first",
     toolSystemPromptTemplate: (t) => `TOOLS:${t}`,
   });
 

@@ -42,6 +42,7 @@ For each function call return a json object with function name and arguments wit
 
 const morphXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
+  placement: "last",
   toolSystemPromptTemplate(tools: string) {
     return `You are a function calling AI model.
 
