@@ -94,7 +94,6 @@ export {
 } from "./utils/provider-options";
 export { escapeRegExp } from "./utils/regex";
 export type { ParseOptions as RJSONParseOptions } from "./utils/robust-json";
-export * as RJSON from "./utils/robust-json";
 export {
   parse as parseRJSON,
   stringify as stringifyRJSON,
