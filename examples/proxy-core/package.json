@@ -16,14 +16,14 @@
     "@ai-sdk-tool/parser": "workspace:*",
     "@ai-sdk-tool/proxy": "workspace:*",
 
-    "@ai-sdk/openai": "3.0.0-beta.48",
-    "@ai-sdk/openai-compatible": "2.0.0-beta.31",
-    "ai": "6.0.0-beta.92",
-    "tsx": "^4.20.6",
-    "zod": "^4.1.12"
+    "@ai-sdk/openai": "3.0.0",
+    "@ai-sdk/openai-compatible": "2.0.0",
+    "ai": "6.0.1",
+    "tsx": "^4.21.0",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
-    "@ai-sdk/provider": "3.0.0-beta.14",
-    "@types/node": "^24.10.0"
+    "@ai-sdk/provider": "3.0.0",
+    "@types/node": "^25.0.3"
   }
 }

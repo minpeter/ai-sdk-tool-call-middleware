@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 
 import { dummyProtocol } from "../protocols/dummy-protocol";
 import { createToolMiddleware } from "../tool-call-middleware";
+import { mockUsage, stopFinishReason, zeroUsage } from "./test-helpers";
 
 describe("AI SDK v5 stream protocol compliance", () => {
   const middleware = createToolMiddleware({
@@ -28,8 +29,8 @@ describe("AI SDK v5 stream protocol compliance", () => {
         controller.enqueue({ type: "text-delta", delta: "Hello world" } as any);
         controller.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          finishReason: stopFinishReason,
+          usage: mockUsage(1, 1),
         } as any);
         controller.close();
       },
@@ -52,8 +53,8 @@ describe("AI SDK v5 stream protocol compliance", () => {
         controller.enqueue({ type: "text-delta", delta: "" } as any);
         controller.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         } as any);
         controller.close();
       },

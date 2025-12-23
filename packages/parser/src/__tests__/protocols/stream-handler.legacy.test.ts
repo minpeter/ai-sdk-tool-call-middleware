@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import { jsonMixProtocol } from "../../protocols/json-mix-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { mockUsage, stopFinishReason } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -48,8 +49,8 @@ describe("jsonMixProtocol stream parsing", () => {
         controller.enqueue({ type: "text-end", id: "text-1" });
         controller.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          finishReason: stopFinishReason,
+          usage: mockUsage(1, 1),
         });
         controller.close();
       },
@@ -80,8 +81,8 @@ describe("jsonMixProtocol stream parsing", () => {
         controller.enqueue({ type: "text-end", id: "text-1" });
         controller.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          finishReason: stopFinishReason,
+          usage: mockUsage(1, 1),
         });
         controller.close();
       },

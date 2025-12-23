@@ -1,8 +1,8 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-
 import { jsonMixProtocol } from "../../protocols/json-mix-protocol";
+import { mockUsage, stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("jsonMixProtocol streaming", () => {
   it("parses normal tool_call blocks into tool-call events", async () => {
@@ -19,8 +19,8 @@ describe("jsonMixProtocol streaming", () => {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: " post" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -43,8 +43,8 @@ describe("jsonMixProtocol streaming", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -70,8 +70,8 @@ describe("jsonMixProtocol streaming", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -111,8 +111,8 @@ describe("jsonMixProtocol streaming edge cases", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
+          finishReason: stopFinishReason,
+          usage: mockUsage(1, 2),
         });
         ctrl.close();
       },
@@ -145,8 +145,8 @@ describe("jsonMixProtocol streaming edge cases", () => {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "</tool_call>" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -172,8 +172,8 @@ describe("jsonMixProtocol streaming edge cases", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -199,8 +199,8 @@ describe("jsonMixProtocol streaming edge cases", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -244,8 +244,8 @@ describe("jsonMixProtocol streaming edge cases", () => {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "call>" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -282,8 +282,8 @@ describe("jsonMixProtocol content isolation", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -334,8 +334,8 @@ describe("jsonMixProtocol content isolation", () => {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: " done!" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -391,8 +391,8 @@ describe("jsonMixProtocol content isolation", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -454,8 +454,8 @@ describe("jsonMixProtocol content isolation", () => {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "\nResult ready!" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },

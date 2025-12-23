@@ -4,8 +4,8 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-
 import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("morphXmlProtocol raw string handling in streaming", () => {
   it("captures raw inner XML for string-typed arg during streaming", async () => {
@@ -53,8 +53,8 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
         }
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -119,8 +119,8 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
         }
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -183,8 +183,8 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
         }
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -251,8 +251,8 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
         }
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },

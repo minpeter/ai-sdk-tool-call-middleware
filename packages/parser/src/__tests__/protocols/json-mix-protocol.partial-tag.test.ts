@@ -3,6 +3,7 @@ import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { jsonMixProtocol } from "../../protocols/json-mix-protocol";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("jsonMixProtocol partial tag handling", () => {
   it("breaks inner loop when only partial start tag suffix present and publishes buffer", async () => {
@@ -10,12 +11,11 @@ describe("jsonMixProtocol partial tag handling", () => {
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
-        // End chunk with a partial start tag so getPotentialStartIndex finds a suffix
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "before <tool_c" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -26,7 +26,6 @@ describe("jsonMixProtocol partial tag handling", () => {
       .map((c) => (c as any).delta)
       .join("");
     expect(text).toContain("before <tool_c");
-    // No tool-call should be emitted
     expect(out.some((c) => c.type === "tool-call")).toBe(false);
   });
 });

@@ -13,10 +13,10 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@ai-sdk-tool/rxml": "workspace:*",
-    "tsx": "^4.20.6"
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0",
-    "zod": "^4.1.12"
+    "@types/node": "^25.0.3",
+    "zod": "^4.2.1"
   }
 }
