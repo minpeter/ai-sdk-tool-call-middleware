@@ -15,7 +15,7 @@ import {
   unwrapJsonSchema,
 } from "@ai-sdk-tool/rxml";
 
-import { hasInputProperty } from "../utils";
+import { hasInputProperty } from "../utils/type-guards";
 
 import type { ToolCallProtocol } from "./tool-call-protocol";
 

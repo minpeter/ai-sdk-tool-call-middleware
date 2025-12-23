@@ -5,13 +5,10 @@ import type {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
-import {
-  escapeRegExp,
-  getPotentialStartIndex,
-  logParseFailure,
-  parseRJSON,
-  RJSON,
-} from "../utils";
+import { logParseFailure } from "../utils/debug";
+import { getPotentialStartIndex } from "../utils/get-potential-start-index";
+import { escapeRegExp } from "../utils/regex";
+import { parse as parseRJSON } from "../utils/robust-json";
 
 import type { ToolCallProtocol } from "./tool-call-protocol";
 
@@ -218,7 +215,7 @@ function publishText(
 function emitToolCall(context: TagProcessingContext) {
   const { state, controller, toolCallStart, toolCallEnd, options } = context;
   try {
-    const parsedToolCall = RJSON.parse(state.currentToolCallJson) as {
+    const parsedToolCall = parseRJSON(state.currentToolCallJson) as {
       name: string;
       arguments: unknown;
     };

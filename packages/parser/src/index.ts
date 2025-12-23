@@ -1,4 +1,5 @@
-import { jsonMixProtocol, morphXmlProtocol } from "./protocols";
+import { jsonMixProtocol } from "./protocols/json-mix-protocol";
+import { morphXmlProtocol } from "./protocols/morph-xml-protocol";
 import { createToolMiddleware } from "./tool-call-middleware";
 
 const gemmaToolMiddleware = createToolMiddleware({
@@ -65,9 +66,42 @@ Available functions are listed inside <tools></tools>.
   },
 });
 
-export { jsonMixProtocol, morphXmlProtocol } from "./protocols";
+// biome-ignore lint/performance/noBarrelFile: Package entrypoint - must re-export for public API
+export { jsonMixProtocol } from "./protocols/json-mix-protocol";
+export { morphXmlProtocol } from "./protocols/morph-xml-protocol";
 export { createToolMiddleware } from "./tool-call-middleware";
 export { gemmaToolMiddleware, hermesToolMiddleware, morphXmlToolMiddleware };
 
+export {
+  getDebugLevel,
+  logParsedChunk,
+  logParsedSummary,
+  logParseFailure,
+  logRawChunk,
+} from "./utils/debug";
 // Export utilities
-export * from "./utils";
+export { createDynamicIfThenElseSchema } from "./utils/dynamic-tool-schema";
+export { getPotentialStartIndex } from "./utils/get-potential-start-index";
+export type { OnErrorFn } from "./utils/on-error";
+export { extractOnErrorOption } from "./utils/on-error";
+export type { ToolCallMiddlewareProviderOptions } from "./utils/provider-options";
+export {
+  decodeOriginalTools,
+  encodeOriginalTools,
+  extractToolNamesFromOriginalTools,
+  isToolChoiceActive,
+  originalToolsSchema,
+} from "./utils/provider-options";
+export { escapeRegExp } from "./utils/regex";
+export type { ParseOptions as RJSONParseOptions } from "./utils/robust-json";
+export * as RJSON from "./utils/robust-json";
+export {
+  parse as parseRJSON,
+  stringify as stringifyRJSON,
+  transform as transformRJSON,
+} from "./utils/robust-json";
+export {
+  hasInputProperty,
+  isToolCallContent,
+  isToolResultPart,
+} from "./utils/type-guards";

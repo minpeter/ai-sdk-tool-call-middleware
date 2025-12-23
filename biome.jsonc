@@ -11,9 +11,6 @@
       },
       "style": {
         "noMagicNumbers": "off"
-      },
-      "performance": {
-        "noBarrelFile": "off"
       }
     }
   }

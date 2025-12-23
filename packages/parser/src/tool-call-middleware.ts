@@ -13,7 +13,8 @@ import {
   wrapStream as wrapStreamHandler,
 } from "./stream-handler";
 import { transformParams } from "./transform-handler";
-import { extractOnErrorOption, isToolChoiceActive } from "./utils";
+import { extractOnErrorOption } from "./utils/on-error";
+import { isToolChoiceActive } from "./utils/provider-options";
 
 export function createToolMiddleware({
   protocol,

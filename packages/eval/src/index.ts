@@ -1,6 +1,4 @@
-// Core evaluation function
-
-// Built-in benchmarks
+// biome-ignore lint/performance/noBarrelFile: Package entrypoint - must re-export for public API
 export {
   bfclMultipleBenchmark,
   bfclParallelBenchmark,
