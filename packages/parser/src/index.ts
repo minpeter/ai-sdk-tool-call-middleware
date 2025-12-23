@@ -73,6 +73,7 @@ export { createToolMiddleware } from "./tool-call-middleware";
 export { gemmaToolMiddleware, hermesToolMiddleware, morphXmlToolMiddleware };
 
 export {
+  type DebugLevel,
   getDebugLevel,
   logParsedChunk,
   logParsedSummary,
