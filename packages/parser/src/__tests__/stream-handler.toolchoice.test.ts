@@ -32,6 +32,7 @@ describe("toolChoiceStream", () => {
     expect(chunks[1]).toMatchObject({
       type: "finish",
       finishReason: mockFinishReason("tool-calls"),
+      usage: mockUsage(3, 5),
     });
     expect(request).toEqual({ a: 1 });
     expect(response).toEqual({ b: 2 });
