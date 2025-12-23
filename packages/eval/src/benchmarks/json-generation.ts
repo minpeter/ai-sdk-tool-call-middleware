@@ -14,18 +14,18 @@ const CODE_FENCE_REGEX = /```\s*([\s\S]*?)```/i;
 const NEWLINE_REGEX = /\r?\n/;
 const LINE_SPLIT_REGEX = /\r?\n/;
 
-type SchemaTestCase = {
+interface SchemaTestCase {
   id: string;
   description: string;
   schema: AnySchema; // JSON Schema (draft 2020-12 subset supported by Ajv v8)
   promptFacts: string; // natural language facts to express desired values
   expected: Json; // subset of fields we expect to match exactly
-};
+}
 
-type ExpectedRecord = {
+interface ExpectedRecord {
   id: string;
   expected: Json;
-};
+}
 
 function tryDirectParse(text: string): Json | undefined {
   try {
@@ -137,11 +137,11 @@ function subsetMatch(expected: Json, actual: Json): boolean {
 
 // Test cases will be loaded from data files at runtime
 
-type DatasetLoadResult = {
+interface DatasetLoadResult {
   tests: Omit<SchemaTestCase, "expected">[];
   expectedMap: Map<string, ExpectedRecord>;
   error?: Error;
-};
+}
 
 async function loadDatasets(): Promise<DatasetLoadResult> {
   try {
@@ -202,17 +202,17 @@ function buildMessages(tc: Omit<SchemaTestCase, "expected">) {
   ];
 }
 
-type ValidationResult = {
+interface ValidationResult {
   valid: boolean;
   valuesOk: boolean;
   parsed: Json;
-};
+}
 
-type ValidationContext = {
+interface ValidationContext {
   expectedMap: Map<string, ExpectedRecord>;
   ajv: Ajv;
   logs: string[];
-};
+}
 
 function validateTestCase(
   tc: Omit<SchemaTestCase, "expected">,
@@ -246,11 +246,11 @@ function validateTestCase(
   return { valid, valuesOk, parsed };
 }
 
-type ProcessContext = {
+interface ProcessContext {
   model: LanguageModel;
   config: Record<string, unknown> | undefined;
   validation: ValidationContext;
-};
+}
 
 async function processTestCase(
   tc: Omit<SchemaTestCase, "expected">,
@@ -398,12 +398,12 @@ function buildBenchmarkResult(
 // A schema-only variant that validates structure/format without value matching
 type SchemaOnlyTestCase = Omit<SchemaTestCase, "expected">;
 
-type SchemaOnlyContext = {
+interface SchemaOnlyContext {
   model: LanguageModel;
   config: Record<string, unknown> | undefined;
   ajv: Ajv;
   logs: string[];
-};
+}
 
 async function loadSchemaOnlyTests(): Promise<{
   tests: SchemaOnlyTestCase[];

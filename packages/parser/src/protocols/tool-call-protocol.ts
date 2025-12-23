@@ -21,7 +21,7 @@ import type {
  *   model output back into structured `LanguageModelV3Content` parts, emitting
  *   `text` for regular content and `tool-call` for detected tool invocations.
  */
-export type ToolCallProtocol = {
+export interface ToolCallProtocol {
   /**
    * Produces a provider-facing string that describes all available tools.
    *
@@ -134,7 +134,7 @@ export type ToolCallProtocol = {
     text: string;
     tools: LanguageModelV3FunctionTool[];
   }) => string[];
-};
+}
 
 export function isProtocolFactory(
   protocol: ToolCallProtocol | (() => ToolCallProtocol)

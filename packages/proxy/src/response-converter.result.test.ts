@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { convertAISDKResultToOpenAI } from "./response-converter.js";
 
-type ChoiceDeltaLike = {
+interface ChoiceDeltaLike {
   delta?: {
     content?: string | null;
     tool_calls?: Array<{ function?: { name?: string; arguments?: string } }>;
@@ -13,7 +13,7 @@ type ChoiceDeltaLike = {
     }> | null;
   };
   finish_reason?: string;
-};
+}
 
 function extractChoices(json: unknown): ChoiceDeltaLike[] {
   const obj = json as { choices?: ChoiceDeltaLike[] };

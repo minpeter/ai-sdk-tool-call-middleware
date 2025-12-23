@@ -101,7 +101,7 @@ export function convertAISDKResultToOpenAI(
  */
 
 // Type definitions for better type safety
-type ToolCallDelta = {
+interface ToolCallDelta {
   index?: number;
   id?: string;
   type?: "function";
@@ -109,9 +109,9 @@ type ToolCallDelta = {
     name?: string;
     arguments?: string;
   };
-};
+}
 
-type AIStreamChunk = {
+interface AIStreamChunk {
   type: string;
   id?: string;
   text?: string;
@@ -121,7 +121,7 @@ type AIStreamChunk = {
   input?: Record<string, unknown>;
   finishReason?: string;
   [key: string]: unknown;
-};
+}
 
 type ChunkHandler = (chunk: AIStreamChunk, model: string) => StreamChunk[];
 

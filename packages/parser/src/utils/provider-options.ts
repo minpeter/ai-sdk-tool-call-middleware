@@ -3,7 +3,7 @@ import type {
   LanguageModelV3FunctionTool,
 } from "@ai-sdk/provider";
 
-export type ToolCallMiddlewareProviderOptions = {
+export interface ToolCallMiddlewareProviderOptions {
   toolCallMiddleware?: {
     // onError?: (message: string, metadata?: Record<string, unknown>) => void;
     // Optional debug summary container that middleware can populate.
@@ -21,7 +21,7 @@ export type ToolCallMiddlewareProviderOptions = {
       inputSchema: string; // Stringified JSONSchema7
     }>;
   };
-};
+}
 
 export const originalToolsSchema = {
   encode: encodeOriginalTools,

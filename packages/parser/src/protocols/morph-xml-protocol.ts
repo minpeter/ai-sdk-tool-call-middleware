@@ -458,14 +458,14 @@ function processTextBeforeToolCall(
   return currentIndex;
 }
 
-type ToolCallInfo = {
+interface ToolCallInfo {
   toolName: string;
   content: string;
   startIndex: number;
   endIndex: number;
-};
+}
 
-type ProcessToolCallParams = {
+interface ProcessToolCallParams {
   toolCall: ToolCallInfo;
   tools: LanguageModelV3FunctionTool[];
   options:
@@ -475,7 +475,7 @@ type ProcessToolCallParams = {
     | undefined;
   text: string;
   processedElements: LanguageModelV3Content[];
-};
+}
 
 function processToolCall(params: ProcessToolCallParams): void {
   const { toolCall, tools, options, text, processedElements } = params;
@@ -536,7 +536,7 @@ function addRemainingText(
   }
 }
 
-type StreamingToolCallEndParams = {
+interface StreamingToolCallEndParams {
   toolContent: string;
   currentToolCall: { name: string; content: string };
   tools: LanguageModelV3FunctionTool[];
@@ -547,7 +547,7 @@ type StreamingToolCallEndParams = {
     | undefined;
   ctrl: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
-};
+}
 
 function handleStreamingToolCallEnd(params: StreamingToolCallEndParams): void {
   const { toolContent, currentToolCall, tools, options, ctrl, flushText } =
@@ -593,7 +593,7 @@ function handleStreamingToolCallEnd(params: StreamingToolCallEndParams): void {
   }
 }
 
-type StreamingToolCallErrorParams = {
+interface StreamingToolCallErrorParams {
   error: unknown;
   currentToolCall: { name: string; content: string };
   toolContent: string;
@@ -604,7 +604,7 @@ type StreamingToolCallErrorParams = {
     | undefined;
   ctrl: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
-};
+}
 
 function handleStreamingToolCallError(
   params: StreamingToolCallErrorParams
@@ -679,7 +679,7 @@ function handleNoToolTagInBuffer(
   return { buffer, shouldContinue: false };
 }
 
-type ProcessToolCallInBufferParams = {
+interface ProcessToolCallInBufferParams {
   buffer: string;
   currentToolCall: { name: string; content: string };
   tools: LanguageModelV3FunctionTool[];
@@ -691,7 +691,7 @@ type ProcessToolCallInBufferParams = {
   controller: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
   setBuffer: (buffer: string) => void;
-};
+}
 
 function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
   buffer: string;
@@ -737,7 +737,7 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
   return { buffer: effectiveBuffer, currentToolCall, shouldBreak: true };
 }
 
-type ProcessNoToolCallInBufferParams = {
+interface ProcessNoToolCallInBufferParams {
   buffer: string;
   toolNames: string[];
   maxStartTagLen: number;
@@ -749,7 +749,7 @@ type ProcessNoToolCallInBufferParams = {
         onError?: (message: string, metadata?: Record<string, unknown>) => void;
       }
     | undefined;
-};
+}
 
 function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
   buffer: string;
@@ -854,7 +854,7 @@ function createFlushTextHandler(
   };
 }
 
-type ProcessBufferHandlerParams = {
+interface ProcessBufferHandlerParams {
   getBuffer: () => string;
   setBuffer: (buffer: string) => void;
   getCurrentToolCall: () => { name: string; content: string } | null;
@@ -870,7 +870,7 @@ type ProcessBufferHandlerParams = {
   toolNames: string[];
   maxStartTagLen: number;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
-};
+}
 
 function processBufferWithToolCall(
   params: ProcessBufferHandlerParams,

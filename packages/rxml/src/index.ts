@@ -57,8 +57,8 @@ export {
 export { unescapeXml } from "./utils/helpers";
 
 // Compatibility
-export type Options = {
+export interface Options {
   textNodeName?: string;
   throwOnDuplicateStringTags?: boolean;
   onError?: (message: string, context?: Record<string, unknown>) => void;
-};
+}

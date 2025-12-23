@@ -15,12 +15,12 @@ import {
 
 import type { ToolCallProtocol } from "./tool-call-protocol";
 
-type JsonMixOptions = {
+interface JsonMixOptions {
   toolCallStart?: string;
   toolCallEnd?: string;
   toolResponseStart?: string;
   toolResponseEnd?: string;
-};
+}
 
 function processToolCallJson(
   toolCallJson: string,
@@ -67,7 +67,7 @@ function addTextSegment(
   }
 }
 
-type ParseContext = {
+interface ParseContext {
   match: RegExpExecArray;
   text: string;
   currentIndex: number;
@@ -75,7 +75,7 @@ type ParseContext = {
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
-};
+}
 
 function processMatchedToolCall(context: ParseContext): number {
   const { match, text, currentIndex, processedElements, options } = context;
@@ -96,27 +96,27 @@ function processMatchedToolCall(context: ParseContext): number {
   return startIndex + match[0].length;
 }
 
-type StreamState = {
+interface StreamState {
   isInsideToolCall: boolean;
   buffer: string;
   currentToolCallJson: string;
   currentTextId: string | null;
   hasEmittedTextStart: boolean;
-};
+}
 
 type StreamController = TransformStreamDefaultController<unknown>;
 
-type StreamOptions = {
+interface StreamOptions {
   onError?: (message: string, metadata?: Record<string, unknown>) => void;
-};
+}
 
-type TagProcessingContext = {
+interface TagProcessingContext {
   state: StreamState;
   controller: StreamController;
   toolCallStart: string;
   toolCallEnd: string;
   options?: StreamOptions;
-};
+}
 
 function flushBuffer(
   state: StreamState,

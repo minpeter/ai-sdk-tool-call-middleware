@@ -2,17 +2,17 @@ import type { LanguageModel } from "ai";
 import type { z } from "zod";
 
 // OpenAI API request/response types
-export type OpenAIMessage = {
+export interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
   // Accept broader shapes: string, arrays of parts, objects, or null.
   // The converter normalizes this at runtime.
   content?: unknown;
   tool_calls?: OpenAICompleteToolCall[]; // Use complete type for internal processing
   tool_call_id?: string;
-};
+}
 
 // OpenAI streaming tool call (for deltas - optional fields)
-export type OpenAIStreamingToolCall = {
+export interface OpenAIStreamingToolCall {
   index: number; // Required by OpenAI streaming format
   id?: string; // Optional for streaming updates
   type?: "function"; // Optional for streaming updates
@@ -20,10 +20,10 @@ export type OpenAIStreamingToolCall = {
     name?: string; // Optional for streaming updates
     arguments: string;
   };
-};
+}
 
 // OpenAI complete tool call (for messages - all required)
-export type OpenAICompleteToolCall = {
+export interface OpenAICompleteToolCall {
   index: number; // Required by OpenAI streaming format
   id: string;
   type: "function";
@@ -31,21 +31,21 @@ export type OpenAICompleteToolCall = {
     name: string;
     arguments: string;
   };
-};
+}
 
 // For backward compatibility - use streaming type for responses
 export type OpenAIToolCall = OpenAIStreamingToolCall;
 
-export type OpenAITool = {
+export interface OpenAITool {
   type: "function";
   function: {
     name: string;
     description?: string;
     parameters: Record<string, unknown>;
   };
-};
+}
 
-export type OpenAIChatRequest = {
+export interface OpenAIChatRequest {
   model: string;
   messages: OpenAIMessage[];
   tools?: OpenAITool[];
@@ -57,9 +57,9 @@ export type OpenAIChatRequest = {
   max_tokens?: number;
   stream?: boolean;
   stop?: string | string[];
-};
+}
 
-export type OpenAIChoice = {
+export interface OpenAIChoice {
   index: number;
   message?: {
     role: "assistant";
@@ -73,32 +73,32 @@ export type OpenAIChoice = {
     tool_calls?: OpenAIToolCall[];
   };
   finish_reason?: "stop" | "length" | "tool_calls" | "content_filter";
-};
+}
 
-export type OpenAIUsage = {
+export interface OpenAIUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
-};
+}
 
-export type OpenAIChatResponse = {
+export interface OpenAIChatResponse {
   id: string;
   object: "chat.completion" | "chat.completion.chunk";
   created: number;
   model: string;
   choices: OpenAIChoice[];
   usage?: OpenAIUsage;
-};
+}
 
 // AI SDK tool configuration
-export type AISDKTool = {
+export interface AISDKTool {
   description: string;
   inputSchema: z.ZodTypeAny;
   execute?: (params: unknown) => unknown | Promise<unknown>;
-};
+}
 
 // Proxy configuration - only OpenAI-compatible and server settings
-export type ProxyConfig = {
+export interface ProxyConfig {
   model: LanguageModel;
   port?: number;
   host?: string;
@@ -123,16 +123,16 @@ export type ProxyConfig = {
     conversions?: boolean;
     streamChunks?: boolean;
   };
-};
+}
 
-export type Logger = {
+export interface Logger {
   debug: (...args: unknown[]) => void;
   info: (...args: unknown[]) => void;
   warn: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
-};
+}
 
 // Streaming chunk for SSE
-export type StreamChunk = {
+export interface StreamChunk {
   data: string;
-};
+}

@@ -6,7 +6,7 @@ import Fastify, {
   type FastifyReply,
   type FastifyRequest,
 } from "fastify";
-import { ZodFirstPartyTypeKind, type ZodTypeAny } from "zod";
+import { toJSONSchema, type ZodTypeAny } from "zod";
 import { convertOpenAIRequestToAISDK } from "./openai-request-converter.js";
 import {
   convertAISDKResultToOpenAI,
@@ -26,73 +26,18 @@ function serializeZodSchema(schema: ZodTypeAny | undefined): unknown {
     return null;
   }
 
-  const { typeName } = schema._def;
+  // Use Zod v4's built-in JSON Schema conversion
+  const jsonSchema = toJSONSchema(schema, {
+    unrepresentable: "any",
+  });
 
-  switch (typeName) {
-    case ZodFirstPartyTypeKind.ZodObject: {
-      const shape = schema._def.shape() as Record<string, ZodTypeAny>;
-      const properties: Record<string, unknown> = {};
-      const required: string[] = [];
-
-      for (const [key, fieldSchema] of Object.entries(shape)) {
-        const fieldType = fieldSchema as ZodTypeAny;
-        if (fieldType._def.typeName === ZodFirstPartyTypeKind.ZodOptional) {
-          const inner = (fieldType._def as { innerType: ZodTypeAny }).innerType;
-          properties[key] = serializeZodSchema(inner);
-        } else {
-          properties[key] = serializeZodSchema(fieldType);
-          required.push(key);
-        }
-      }
-
-      return {
-        type: "object",
-        properties,
-        required: required.length > 0 ? required : undefined,
-      };
-    }
-    case ZodFirstPartyTypeKind.ZodString: {
-      return { type: "string" };
-    }
-    case ZodFirstPartyTypeKind.ZodNumber: {
-      return { type: "number" };
-    }
-    case ZodFirstPartyTypeKind.ZodBoolean: {
-      return { type: "boolean" };
-    }
-    case ZodFirstPartyTypeKind.ZodArray: {
-      return {
-        type: "array",
-        items: serializeZodSchema(schema._def.type),
-      };
-    }
-    case ZodFirstPartyTypeKind.ZodEnum: {
-      return {
-        type: "string",
-        enum: [...schema._def.values],
-      };
-    }
-    case ZodFirstPartyTypeKind.ZodLiteral: {
-      return {
-        const: schema._def.value,
-      };
-    }
-    case ZodFirstPartyTypeKind.ZodOptional: {
-      return {
-        optional: true,
-        schema: serializeZodSchema(schema._def.innerType),
-      };
-    }
-    case ZodFirstPartyTypeKind.ZodNullable: {
-      return {
-        nullable: true,
-        schema: serializeZodSchema(schema._def.innerType),
-      };
-    }
-    default: {
-      return { type: typeName };
-    }
+  // Remove $schema field for cleaner output
+  if (typeof jsonSchema === "object" && jsonSchema !== null) {
+    const { $schema, ...rest } = jsonSchema as Record<string, unknown>;
+    return rest;
   }
+
+  return jsonSchema;
 }
 
 function serializeMessages(messages: OpenAIChatRequest["messages"]) {

@@ -4,10 +4,10 @@ import {
   createSSEResponse,
 } from "./response-converter.js";
 
-type Parsed = {
+interface Parsed {
   id?: string;
   choices: Array<{ delta?: Record<string, unknown>; finish_reason?: string }>;
-};
+}
 
 function parseLine(line: string): Parsed | undefined {
   const trimmed = line.trim();

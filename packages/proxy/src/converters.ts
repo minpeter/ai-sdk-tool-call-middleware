@@ -11,29 +11,29 @@ import type {
 } from "./types.js";
 
 // Type definitions for OpenAI tool parameters
-type OpenAIToolProperty = {
+interface OpenAIToolProperty {
   type: string;
   description?: string;
   enum?: string[];
-};
+}
 
-type OpenAIToolParameters = {
+interface OpenAIToolParameters {
   type: string;
   properties?: Record<string, OpenAIToolProperty>;
   required?: string[];
-};
+}
 
 // Type for AI SDK tool definition
-type AISDKTool = {
+interface AISDKTool {
   description: string;
   inputSchema: z.ZodTypeAny;
-};
+}
 
 // Type for tool call object
-type ToolCall = {
+interface ToolCall {
   toolName: string;
   args: unknown;
-};
+}
 
 /**
  * Create Zod schema for OpenAI tool property
@@ -123,13 +123,16 @@ function convertStopToSequences(
   return Array.isArray(stop) ? stop : [stop];
 }
 
-type AITextPart = { type: "text"; text: string };
-type AIToolCallPart = {
+interface AITextPart {
+  type: "text";
+  text: string;
+}
+interface AIToolCallPart {
   type: "tool-call";
   toolCallId: string;
   toolName: string;
   input: unknown;
-};
+}
 type TextToolOutput = Extract<ToolResultOutput, { type: "text" }>;
 type JsonToolOutput = Extract<ToolResultOutput, { type: "json" }>;
 

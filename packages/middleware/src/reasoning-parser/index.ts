@@ -135,7 +135,7 @@ export function extractReasoningMiddleware({
     wrapStream: async ({ doStream }) => {
       const { stream, ...rest } = await doStream();
 
-      type ExtractionState = {
+      interface ExtractionState {
         isFirstReasoning: boolean;
         isFirstText: boolean;
         afterSwitch: boolean;
@@ -143,7 +143,7 @@ export function extractReasoningMiddleware({
         buffer: string;
         idCounter: number;
         textId: string;
-      };
+      }
 
       const reasoningExtractions: Record<string, ExtractionState> = {};
 

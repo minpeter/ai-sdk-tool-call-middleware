@@ -3,7 +3,8 @@
   "compilerOptions": {
     "composite": true,
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "strictNullChecks": true
   },
   "exclude": ["dist", "build", "node_modules", "tsup.config.ts"],
   "references": []

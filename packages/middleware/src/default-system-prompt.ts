@@ -7,10 +7,10 @@ import type {
 
 type SystemPromptPlacement = "first" | "last";
 
-type DefaultSystemPromptMiddlewareOptions = {
+interface DefaultSystemPromptMiddlewareOptions {
   systemPrompt: string;
   placement?: SystemPromptPlacement;
-};
+}
 
 function extractSystemText(content: unknown): string | undefined {
   if (typeof content === "string") {

@@ -8,6 +8,7 @@ import type {
   LanguageModelV3TextPart,
   LanguageModelV3ToolCallPart,
   LanguageModelV3ToolResultPart,
+  SharedV3ProviderOptions,
 } from "@ai-sdk/provider";
 
 import {
@@ -19,7 +20,6 @@ import {
   extractOnErrorOption,
   isToolCallContent,
   originalToolsSchema,
-  type ToolCallMiddlewareProviderOptions,
 } from "./utils";
 
 /**
@@ -94,7 +94,7 @@ function buildBaseReturnParams(
   return {
     ...params,
     prompt: finalPrompt,
-    tools: [],
+    tools: [] as never[],
     toolChoice: undefined,
     providerOptions: {
       ...(params.providerOptions || {}),
@@ -105,8 +105,8 @@ function buildBaseReturnParams(
             .toolCallMiddleware) ||
           {}),
         originalTools: originalToolsSchema.encode(functionTools),
-      } as ToolCallMiddlewareProviderOptions,
-    },
+      },
+    } as unknown as SharedV3ProviderOptions,
   };
 }
 

@@ -3,11 +3,11 @@ export type OnErrorFn = (
   metadata?: Record<string, unknown>
 ) => void;
 
-type ProviderOptionsWithOnError = {
+interface ProviderOptionsWithOnError {
   toolCallMiddleware?: {
     onError?: OnErrorFn;
   };
-};
+}
 
 export function extractOnErrorOption(
   providerOptions?: unknown

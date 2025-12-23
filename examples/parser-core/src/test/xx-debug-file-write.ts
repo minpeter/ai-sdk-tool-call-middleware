@@ -56,10 +56,10 @@ const file_write = {
   },
 };
 
-type FirstToolCall = {
+interface FirstToolCall {
   toolName: string;
   input: unknown;
-};
+}
 
 async function runOnce(
   _runIndex: number

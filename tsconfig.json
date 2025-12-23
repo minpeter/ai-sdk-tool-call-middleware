@@ -25,5 +25,8 @@
       "path": "packages/rxml"
     }
   ],
-  "include": []
+  "include": [],
+  "compilerOptions": {
+    "strictNullChecks": true
+  }
 }

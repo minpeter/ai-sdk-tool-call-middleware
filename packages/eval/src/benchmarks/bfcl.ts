@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import type { JSONObject } from "@ai-sdk/provider";
 import {
   type CoreMessage,
   generateText,
@@ -25,39 +26,42 @@ const LINE_SPLIT_REGEX = /\r?\n/;
 const NUMERIC_STRING_REGEX = /^\d+$/;
 
 // --- Interfaces ---
-type ToolSchemaObject = {
+interface ToolSchemaObject {
   type: string;
   properties?: Record<string, unknown>;
   items?: unknown;
   required?: string[];
   [key: string]: unknown;
-};
+}
 
-type ToolSpec = {
+interface ToolSpec {
   name: string;
   description?: string;
   parameters: ToolSchemaObject;
-};
+}
 
-type Message = { role: string; content: string };
+interface Message {
+  role: string;
+  content: string;
+}
 
-type TestCase = {
+interface TestCase {
   id: string;
   question: Message[] | Message[][];
   function: ToolSpec[];
-};
+}
 
-type TransformedTool = {
+interface TransformedTool {
   type: "function";
   name: string;
   description?: string;
   inputSchema: ToolSchemaObject;
-};
+}
 
-type PossibleAnswer = {
+interface PossibleAnswer {
   id: string;
   ground_truth: unknown;
-};
+}
 
 // --- Generic Checker Dispatcher ---
 function check(
@@ -916,19 +920,11 @@ function createBfclBenchmark(
             maxTokens,
           } = options;
 
-          type ProviderOptionsWithMiddleware = {
-            toolCallMiddleware?: {
-              debugSummary?: {
-                originalText?: string;
-                toolCalls?: string;
-              };
-            };
-          };
           const debugSummaryRef: {
             originalText?: string;
             toolCalls?: string;
           } = {};
-          const providerOptions: ProviderOptionsWithMiddleware = {
+          const providerOptions: Record<string, JSONObject> = {
             toolCallMiddleware: {
               debugSummary: debugSummaryRef,
             },
