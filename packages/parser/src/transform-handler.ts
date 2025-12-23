@@ -15,12 +15,10 @@ import {
   isProtocolFactory,
   type ToolCallProtocol,
 } from "./protocols/tool-call-protocol";
-import {
-  createDynamicIfThenElseSchema,
-  extractOnErrorOption,
-  isToolCallContent,
-  originalToolsSchema,
-} from "./utils";
+import { createDynamicIfThenElseSchema } from "./utils/dynamic-tool-schema";
+import { extractOnErrorOption } from "./utils/on-error";
+import { originalToolsSchema } from "./utils/provider-options";
+import { isToolCallContent } from "./utils/type-guards";
 
 /**
  * Build final prompt by merging system prompt with existing prompt

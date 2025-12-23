@@ -9,17 +9,17 @@ import { coerceBySchema } from "@ai-sdk-tool/rxml";
 
 import type { ToolCallProtocol } from "./protocols/tool-call-protocol";
 import {
-  extractOnErrorOption,
-  isToolChoiceActive,
-  originalToolsSchema,
-  type ToolCallMiddlewareProviderOptions,
-} from "./utils";
-import {
   getDebugLevel,
   logParsedChunk,
   logParsedSummary,
   logRawChunk,
 } from "./utils/debug";
+import { extractOnErrorOption } from "./utils/on-error";
+import {
+  isToolChoiceActive,
+  originalToolsSchema,
+  type ToolCallMiddlewareProviderOptions,
+} from "./utils/provider-options";
 
 function parseToolChoiceJson(
   text: string,
