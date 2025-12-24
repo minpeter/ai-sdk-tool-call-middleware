@@ -1,7 +1,7 @@
 {
   "name": "@ai-sdk-tool/examples-proxy-core",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1-canary.0",
   "description": "Example usage of @ai-sdk-tool/proxy",
   "main": "index.js",
   "scripts": {
@@ -15,7 +15,6 @@
     "@ai-sdk-tool/middleware": "workspace:*",
     "@ai-sdk-tool/parser": "workspace:*",
     "@ai-sdk-tool/proxy": "workspace:*",
-
     "@ai-sdk/openai": "3.0.0",
     "@ai-sdk/openai-compatible": "2.0.0",
     "ai": "6.0.1",

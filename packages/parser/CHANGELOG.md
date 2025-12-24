@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 3.0.0-canary.1
+
+### Minor Changes
+
+- b48924c: Remove internal barrel files and enable noBarrelFile linting rule for better tree-shaking and build performance
+
 ## 3.0.0-canary.0
 
 ### Major Changes
