@@ -3,6 +3,11 @@
   "version": "0.0.0",
   "description": "OpenAI-compatible proxy server for AI SDK tool middleware",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware",
+    "directory": "packages/proxy"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

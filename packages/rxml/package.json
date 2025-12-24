@@ -1,8 +1,13 @@
 {
   "name": "@ai-sdk-tool/rxml",
   "version": "0.1.1",
-  "description": "",
+  "description": "Robust XML parser/streamer/builder for AI-generated XML",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware",
+    "directory": "packages/rxml"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

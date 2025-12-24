@@ -1,8 +1,14 @@
 {
   "name": "@ai-sdk-tool/eval",
   "version": "1.0.0-canary.0",
+  "description": "Benchmarking and evaluation tools for AI SDK",
   "license": "Apache-2.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware",
+    "directory": "packages/eval"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "publishConfig": {

@@ -1,8 +1,13 @@
 {
   "name": "@ai-sdk-tool/parser",
   "version": "3.0.0-canary.1",
-  "description": "",
+  "description": "AI SDK middleware for tool call parsing",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware",
+    "directory": "packages/parser"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
