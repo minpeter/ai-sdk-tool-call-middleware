@@ -3,6 +3,7 @@ import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { jsonMixProtocol } from "../../protocols/json-mix-protocol";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("jsonMixProtocol partial end-tag handling", () => {
   it("breaks loop when only partial end tag present at end of buffer", async () => {
@@ -15,12 +16,11 @@ describe("jsonMixProtocol partial end-tag handling", () => {
           id: "1",
           delta: '<tool_call>{"name":"t","arguments":{}',
         });
-        // Provide partial end tag so tag.length condition triggers break
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "</tool_" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -31,7 +31,6 @@ describe("jsonMixProtocol partial end-tag handling", () => {
       .map((c: any) => c.delta)
       .join("");
     expect(text).toContain('<tool_call>{"name":"t","arguments":{}');
-    // No tool-call emitted due to incomplete end tag
     expect(out.some((c) => c.type === "tool-call")).toBe(false);
   });
 });

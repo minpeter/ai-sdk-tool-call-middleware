@@ -1,8 +1,8 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-
 import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 const tools = [
   {
@@ -33,8 +33,8 @@ describe("morphXmlProtocol streaming edge cases", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -60,8 +60,8 @@ describe("morphXmlProtocol streaming edge cases", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -88,8 +88,8 @@ describe("morphXmlProtocol streaming edge cases", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -123,8 +123,8 @@ describe("morphXmlProtocol streaming edge cases", () => {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "</get_weather>" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -156,8 +156,8 @@ describe("morphXmlProtocol streaming edge cases", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -189,8 +189,8 @@ describe("morphXmlProtocol streaming edge cases", () => {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "ther>" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },

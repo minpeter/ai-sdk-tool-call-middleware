@@ -3,6 +3,7 @@ import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { dummyProtocol } from "../../protocols/dummy-protocol";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("dummyProtocol streaming behavior", () => {
   it("emits text-start only once and text-end when non-text arrives", async () => {
@@ -20,8 +21,8 @@ describe("dummyProtocol streaming behavior", () => {
         } as any);
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -33,7 +34,6 @@ describe("dummyProtocol streaming behavior", () => {
     expect(starts.length).toBe(1);
     expect(deltas.map((d: any) => d.delta).join("")).toBe("hello world");
     expect(ends.length).toBe(1);
-    // tool-call and finish should pass through after text-end
     const afterEndIndex = out.findIndex((c) => c.type === "text-end");
     expect(
       out.slice(afterEndIndex + 1).some((c) => c.type === "tool-call")
@@ -49,8 +49,8 @@ describe("dummyProtocol streaming behavior", () => {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "partial" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },

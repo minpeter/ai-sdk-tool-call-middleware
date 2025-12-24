@@ -2,10 +2,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { JSONObject } from "@ai-sdk/provider";
 import {
-  type CoreMessage,
   generateText,
   jsonSchema,
   type LanguageModel,
+  type ModelMessage,
   tool,
 } from "ai";
 
@@ -931,7 +931,7 @@ function createBfclBenchmark(
           };
           const { toolCalls, text, finishReason } = await generateText({
             model: modelInstance,
-            messages: flatMessages as unknown as CoreMessage[],
+            messages: flatMessages as unknown as ModelMessage[],
             tools: toolsMap,
             toolChoice: "auto",
             providerOptions,

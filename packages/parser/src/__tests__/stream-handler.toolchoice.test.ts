@@ -2,6 +2,7 @@ import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
 import { toolChoiceStream } from "../stream-handler";
+import { mockFinishReason, mockUsage, zeroUsage } from "./test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -11,7 +12,7 @@ describe("toolChoiceStream", () => {
   it("emits tool-call and finish chunks from valid JSON text", async () => {
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"name":"do","arguments":{"x":1}}' }],
-      usage: { inputTokens: 3, outputTokens: 5, totalTokens: 8 },
+      usage: mockUsage(3, 5),
       request: { a: 1 },
       response: { b: 2 },
     });
@@ -30,8 +31,8 @@ describe("toolChoiceStream", () => {
     });
     expect(chunks[1]).toMatchObject({
       type: "finish",
-      finishReason: "tool-calls",
-      usage: { inputTokens: 3, outputTokens: 5, totalTokens: 8 },
+      finishReason: mockFinishReason("tool-calls"),
+      usage: mockUsage(3, 5),
     });
     expect(request).toEqual({ a: 1 });
     expect(response).toEqual({ b: 2 });
@@ -67,7 +68,7 @@ describe("toolChoiceStream", () => {
     });
     expect(chunks[1]).toMatchObject({
       type: "finish",
-      usage: { totalTokens: 0 },
+      usage: zeroUsage,
     });
   });
 });

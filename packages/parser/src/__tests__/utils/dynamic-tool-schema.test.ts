@@ -1,6 +1,6 @@
 import type {
   LanguageModelV3FunctionTool,
-  LanguageModelV3ProviderDefinedTool,
+  LanguageModelV3ProviderTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
@@ -99,18 +99,18 @@ describe("createDynamicIfThenElseSchema", () => {
     expect(thirdCondition.properties.name.const).toBe("tool3");
   });
 
-  it("should throw error for provider-defined tools", () => {
+  it("should throw error for provider tools", () => {
     const tools = [
       {
-        type: "provider-defined" as const,
-        id: "provider.tool",
+        type: "provider" as const,
+        id: "provider.tool" as const,
         name: "provider-tool",
-        args: {} as any,
-      } as LanguageModelV3ProviderDefinedTool,
+        args: {} as Record<string, unknown>,
+      } satisfies LanguageModelV3ProviderTool,
     ];
 
     expect(() => createDynamicIfThenElseSchema(tools)).toThrow(
-      "Provider-defined tools are not supported by this middleware"
+      "Provider tools are not supported by this middleware"
     );
   });
 
@@ -214,15 +214,15 @@ describe("createDynamicIfThenElseSchema", () => {
         inputSchema: { type: "object" },
       },
       {
-        type: "provider-defined" as const,
-        id: "provider.tool",
+        type: "provider" as const,
+        id: "provider.tool" as const,
         name: "providerTool",
-        args: {} as any,
+        args: {} as Record<string, unknown>,
       },
-    ] as (LanguageModelV3FunctionTool | LanguageModelV3ProviderDefinedTool)[];
+    ] as (LanguageModelV3FunctionTool | LanguageModelV3ProviderTool)[];
 
     expect(() => createDynamicIfThenElseSchema(tools)).toThrow(
-      "Provider-defined tools are not supported by this middleware"
+      "Provider tools are not supported by this middleware"
     );
   });
 

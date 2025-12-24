@@ -1,9 +1,7 @@
 import type {
   LanguageModelV3,
   LanguageModelV3Content,
-  LanguageModelV3FinishReason,
   LanguageModelV3StreamPart,
-  LanguageModelV3Usage,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
@@ -274,15 +272,20 @@ export async function toolChoiceStream({
 
   const finishChunk: LanguageModelV3StreamPart = {
     type: "finish",
-    usage:
-      result?.usage ||
-      // TODO: If possible, try to return a certain amount of LLM usage.
-      ({
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-      } as LanguageModelV3Usage),
-    finishReason: "tool-calls" as LanguageModelV3FinishReason,
+    usage: result?.usage || {
+      inputTokens: {
+        total: 0,
+        noCache: undefined,
+        cacheRead: undefined,
+        cacheWrite: undefined,
+      },
+      outputTokens: {
+        total: 0,
+        text: undefined,
+        reasoning: undefined,
+      },
+    },
+    finishReason: { unified: "tool-calls", raw: undefined },
   };
 
   const stream = new ReadableStream<LanguageModelV3StreamPart>({

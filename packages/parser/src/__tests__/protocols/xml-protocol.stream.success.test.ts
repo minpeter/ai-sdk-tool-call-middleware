@@ -4,8 +4,8 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-
 import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("morphXmlProtocol streaming success path", () => {
   it("parses <tool>...</tool> into tool-call and flushes pending text", async () => {
@@ -30,8 +30,8 @@ describe("morphXmlProtocol streaming success path", () => {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: " post" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -88,8 +88,8 @@ describe("morphXmlProtocol streaming success path", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -155,8 +155,8 @@ describe("morphXmlProtocol streaming success path", () => {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: " done!" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -222,8 +222,8 @@ describe("morphXmlProtocol streaming success path", () => {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "\nEmail sent!" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -288,8 +288,8 @@ describe("morphXmlProtocol streaming success path", () => {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "\nResult ready!" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -356,8 +356,8 @@ describe("morphXmlProtocol streaming success path", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -422,8 +422,8 @@ describe("morphXmlProtocol streaming success path", () => {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "\nDone!" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -485,8 +485,8 @@ describe("morphXmlProtocol streaming success path", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -567,8 +567,8 @@ describe("morphXmlProtocol streaming success path", () => {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: " End" });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -624,8 +624,8 @@ describe("morphXmlProtocol streaming success path", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -671,8 +671,8 @@ describe("morphXmlProtocol streaming success path", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -719,8 +719,8 @@ describe("morphXmlProtocol streaming success path", () => {
         });
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },

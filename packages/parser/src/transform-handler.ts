@@ -397,7 +397,12 @@ function processMessage(
     };
   }
   if (message.role === "tool") {
-    return processToolMessage(message.content, resolvedProtocol);
+    // Filter out approval response parts - only process tool result parts
+    const toolResultParts = message.content.filter(
+      (part): part is LanguageModelV3ToolResultPart =>
+        part.type === "tool-result"
+    );
+    return processToolMessage(toolResultParts, resolvedProtocol);
   }
   return message;
 }

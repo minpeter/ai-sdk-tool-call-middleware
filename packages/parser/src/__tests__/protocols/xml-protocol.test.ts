@@ -4,10 +4,10 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
-
 import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { originalToolsSchema } from "../../utils/provider-options";
+import { mockUsage, stopFinishReason } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -77,8 +77,8 @@ describe("morphXmlProtocol stream parsing", () => {
         controller.enqueue({ type: "text-end", id: "text-1" });
         controller.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          finishReason: stopFinishReason,
+          usage: mockUsage(1, 1),
         });
         controller.close();
       },
@@ -118,8 +118,8 @@ describe("morphXmlProtocol stream parsing", () => {
         controller.enqueue({ type: "text-end", id: "text-1" });
         controller.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          finishReason: stopFinishReason,
+          usage: mockUsage(1, 1),
         });
         controller.close();
       },

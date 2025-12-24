@@ -4,8 +4,8 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-
 import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("morphXmlProtocol streaming: progressive text emission", () => {
   it("emits text-delta progressively when no tool tags are present", async () => {
@@ -22,8 +22,8 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
         }
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -58,8 +58,8 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
         }
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -120,8 +120,8 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
         }
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },

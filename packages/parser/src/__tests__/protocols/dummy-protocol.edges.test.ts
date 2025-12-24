@@ -3,6 +3,7 @@ import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { dummyProtocol } from "../../protocols/dummy-protocol";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("dummyProtocol edge cases", () => {
   it("handles non-text first by passing through and not emitting text-end", async () => {
@@ -17,8 +18,8 @@ describe("dummyProtocol edge cases", () => {
         } as any);
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
@@ -34,8 +35,8 @@ describe("dummyProtocol edge cases", () => {
       start(ctrl) {
         ctrl.enqueue({
           type: "finish",
-          finishReason: "stop",
-          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
         });
         ctrl.close();
       },
