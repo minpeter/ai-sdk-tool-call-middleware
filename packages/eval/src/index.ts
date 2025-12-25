@@ -5,6 +5,7 @@ export {
   bfclParallelMultipleBenchmark,
   bfclSimpleBenchmark,
 } from "./benchmarks/bfcl";
+export { complexFuncBenchBenchmark } from "./benchmarks/complex-func-bench";
 export {
   jsonGenerationBenchmark,
   jsonGenerationSchemaOnlyBenchmark,
