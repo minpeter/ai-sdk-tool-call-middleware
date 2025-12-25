@@ -118,7 +118,7 @@ function executePhase(
 ): IntermediateCall {
   let current = ctx;
   let reparseCount = 0;
-  const maxReparses = options.maxReparses ?? 1;
+  const maxReparses = options.maxReparses ?? 2;
 
   for (const heuristic of heuristics) {
     if (!heuristic.applies(current)) {

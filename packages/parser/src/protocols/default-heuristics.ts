@@ -16,6 +16,8 @@ const MALFORMED_CLOSE_RE = /<\/\s+([A-Za-z0-9_:-]+)\s*>/;
 const STATUS_TO_STEP_BOUNDARY_RE = /<\/status>\s*<step>/g;
 const WHITESPACE_REGEX = /\s/;
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
+// NameStartChar per XML 1.0 spec: letter, underscore, or colon (digits NOT allowed as first char)
+const NAME_START_CHAR_RE = /[A-Za-z_:]/;
 const STEP_TAG_RE = /<step>([\s\S]*?)<\/step>/i;
 const STATUS_TAG_RE = /<status>([\s\S]*?)<\/status>/i;
 
@@ -105,6 +107,13 @@ export const defaultPipelineConfig: PipelineConfig = {
   postParse: [repairAgainstSchemaHeuristic],
 };
 
+const INDEX_TAG_RE = /^<(\d+)(?:>|\/?>)/;
+
+function isIndexTagAt(xml: string, pos: number): boolean {
+  const remaining = xml.slice(pos);
+  return INDEX_TAG_RE.test(remaining);
+}
+
 function escapeInvalidLt(xml: string): string {
   const len = xml.length;
   let out = "";
@@ -112,14 +121,13 @@ function escapeInvalidLt(xml: string): string {
     const ch = xml[i];
     if (ch === "<") {
       const next = i + 1 < len ? xml[i + 1] : "";
-      if (
-        !(
-          NAME_CHAR_RE.test(next) ||
-          next === "/" ||
-          next === "!" ||
-          next === "?"
-        )
-      ) {
+      const isValidStart =
+        NAME_START_CHAR_RE.test(next) ||
+        next === "/" ||
+        next === "!" ||
+        next === "?";
+      const isIndexTag = !isValidStart && isIndexTagAt(xml, i);
+      if (!(isValidStart || isIndexTag)) {
         out += "&lt;";
         continue;
       }

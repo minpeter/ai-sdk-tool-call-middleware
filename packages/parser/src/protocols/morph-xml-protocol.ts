@@ -47,6 +47,7 @@ type ToolCallHeuristic = _ToolCallHeuristic;
 export interface MorphXmlProtocolOptions {
   heuristics?: ToolCallHeuristic[];
   pipeline?: PipelineConfig;
+  maxReparses?: number;
 }
 
 const WHITESPACE_REGEX = /\s/;

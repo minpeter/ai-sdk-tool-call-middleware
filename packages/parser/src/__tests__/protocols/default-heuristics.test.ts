@@ -161,17 +161,58 @@ describe("default-heuristics", () => {
   });
 
   describe("escapeInvalidLt utility", () => {
-    it("escapes < not followed by valid tag character", () => {
+    it("escapes < not followed by valid NameStartChar", () => {
       expect(escapeInvalidLt("a < b")).toBe("a &lt; b");
-      // Note: <2 is NOT escaped because 2 matches NAME_CHAR_RE (digits are allowed)
-      expect(escapeInvalidLt("1<2")).toBe("1<2");
+      // Per XML 1.0 spec, NameStartChar does NOT include digits
+      // So <2 is escaped because 2 is not a valid tag start
+      expect(escapeInvalidLt("1<2")).toBe("1&lt;2");
     });
 
-    it("preserves valid XML", () => {
+    it("escapes < followed by non-NameStartChar characters", () => {
+      // Dot and hyphen - valid in NameChar but NOT in NameStartChar
+      expect(escapeInvalidLt("x<.y")).toBe("x&lt;.y");
+      expect(escapeInvalidLt("a<-b")).toBe("a&lt;-b");
+
+      // Empty/EOF after <
+      expect(escapeInvalidLt("test<")).toBe("test&lt;");
+    });
+
+    it("preserves valid XML tags", () => {
       expect(escapeInvalidLt("<tag>")).toBe("<tag>");
       expect(escapeInvalidLt("</tag>")).toBe("</tag>");
       expect(escapeInvalidLt("<!DOCTYPE>")).toBe("<!DOCTYPE>");
       expect(escapeInvalidLt("<?xml?>")).toBe("<?xml?>");
+    });
+
+    it("preserves tags starting with NameStartChar (letters, underscore, colon)", () => {
+      expect(escapeInvalidLt("<_private>")).toBe("<_private>");
+      expect(escapeInvalidLt("<:namespaced>")).toBe("<:namespaced>");
+      expect(escapeInvalidLt("<ABC>")).toBe("<ABC>");
+      expect(escapeInvalidLt("<abc123>")).toBe("<abc123>"); // digits OK after first char
+    });
+
+    it("handles mixed content with valid and invalid <", () => {
+      expect(escapeInvalidLt("<tag>1 < 2 and 3 > 1</tag>")).toBe(
+        "<tag>1 &lt; 2 and 3 > 1</tag>"
+      );
+      expect(escapeInvalidLt("if (x<2 && y>3) { <action/> }")).toBe(
+        "if (x&lt;2 && y>3) { <action/> }"
+      );
+    });
+
+    it("preserves index tags (<0>, <1>, etc.) used for tuple/array representation", () => {
+      expect(escapeInvalidLt("<0>10.5</0>")).toBe("<0>10.5</0>");
+      expect(escapeInvalidLt("<1>20.3</1>")).toBe("<1>20.3</1>");
+      expect(escapeInvalidLt("<12/>")).toBe("<12/>");
+      expect(
+        escapeInvalidLt("<coordinates><0>10</0><1>20</1></coordinates>")
+      ).toBe("<coordinates><0>10</0><1>20</1></coordinates>");
+    });
+
+    it("escapes digit-start that is NOT an index tag pattern", () => {
+      expect(escapeInvalidLt("<0abc")).toBe("&lt;0abc");
+      expect(escapeInvalidLt("x<9y")).toBe("x&lt;9y");
+      expect(escapeInvalidLt("<2 ")).toBe("&lt;2 ");
     });
   });
 
