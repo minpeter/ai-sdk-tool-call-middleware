@@ -413,7 +413,7 @@ export function convertAISDKToolCallsToOpenAI(toolCalls: ToolCall[]): Array<{
   };
 }> {
   return toolCalls.map((call) => ({
-    id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
     type: "function" as const,
     function: {
       name: call.toolName,

@@ -68,9 +68,30 @@ Available functions are listed inside <tools></tools>.
 
 // biome-ignore lint/performance/noBarrelFile: Package entrypoint - must re-export for public API
 export { jsonMixProtocol } from "./protocols/json-mix-protocol";
+export type { MorphXmlProtocolOptions } from "./protocols/morph-xml-protocol";
 export { morphXmlProtocol } from "./protocols/morph-xml-protocol";
 export { createToolMiddleware } from "./tool-call-middleware";
 export { gemmaToolMiddleware, hermesToolMiddleware, morphXmlToolMiddleware };
+
+export type {
+  HeuristicEngineOptions,
+  HeuristicPhase,
+  HeuristicResult,
+  IntermediateCall,
+  PipelineConfig,
+  ToolCallHeuristic,
+} from "./heuristics";
+export {
+  applyHeuristicPipeline,
+  balanceTagsHeuristic,
+  createIntermediateCall,
+  dedupeShellStringTagsHeuristic,
+  defaultPipelineConfig,
+  escapeInvalidLtHeuristic,
+  mergePipelineConfigs,
+  normalizeCloseTagsHeuristic,
+  repairAgainstSchemaHeuristic,
+} from "./heuristics";
 
 export {
   type DebugLevel,

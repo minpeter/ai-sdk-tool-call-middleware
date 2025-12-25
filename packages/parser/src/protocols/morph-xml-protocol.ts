@@ -14,70 +14,43 @@ import {
   stringify,
   unwrapJsonSchema,
 } from "@ai-sdk-tool/rxml";
-
+import {
+  applyHeuristicPipeline as _applyHeuristicPipeline,
+  createIntermediateCall as _createIntermediateCall,
+  defaultPipelineConfig as _defaultPipelineConfig,
+  mergePipelineConfigs as _mergePipelineConfigs,
+  type PipelineConfig as _PipelineConfig,
+  type ToolCallHeuristic as _ToolCallHeuristic,
+  balanceTags,
+  dedupeSingleTag,
+  escapeInvalidLt,
+  getStringPropertyNames,
+  repairParsedAgainstSchema,
+  shouldDeduplicateStringTags,
+} from "../heuristics";
 import { hasInputProperty } from "../utils/type-guards";
-
 import type { ToolCallProtocol } from "./tool-call-protocol";
 
-// Regex constants for performance
+const defaultPipelineConfig = _defaultPipelineConfig;
+const applyHeuristicPipeline = _applyHeuristicPipeline;
+const createIntermediateCall = _createIntermediateCall;
+const mergePipelineConfigs = _mergePipelineConfigs;
+type PipelineConfig = _PipelineConfig;
+type ToolCallHeuristic = _ToolCallHeuristic;
+
+export interface MorphXmlProtocolOptions {
+  heuristics?: ToolCallHeuristic[];
+  pipeline?: PipelineConfig;
+  maxReparses?: number;
+}
+
 const WHITESPACE_REGEX = /\s/;
 const MALFORMED_CLOSE_RE = /<\/\s+([A-Za-z0-9_:-]+)\s*>/;
 const MALFORMED_CLOSE_RE_G = /<\/\s+([A-Za-z0-9_:-]+)\s*>/g;
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
-const STATUS_TO_STEP_BOUNDARY_RE = /<\/status>\s*<step>/g;
-const STEP_TAG_RE = /<step>([\s\S]*?)<\/step>/i;
-const STATUS_TAG_RE = /<status>([\s\S]*?)<\/status>/i;
-
-// Helper functions to reduce cognitive complexity
 
 function normalizeCloseTags(xml: string): string {
-  // Normalize malformed closing tags like </ step> or </\n name   > to </name>
   return xml.replace(MALFORMED_CLOSE_RE_G, "</$1>");
-}
-
-function escapeInvalidLt(xml: string): string {
-  const len = xml.length;
-  let out = "";
-  for (let i = 0; i < len; i += 1) {
-    const ch = xml[i];
-    if (ch === "<") {
-      const next = i + 1 < len ? xml[i + 1] : "";
-      if (
-        !(
-          NAME_CHAR_RE.test(next) ||
-          next === "/" ||
-          next === "!" ||
-          next === "?"
-        )
-      ) {
-        out += "&lt;";
-        continue;
-      }
-    }
-    out += ch;
-  }
-  return out;
-}
-
-function shouldDeduplicateStringTags(schema: unknown): boolean {
-  const unwrapped = unwrapJsonSchema(schema as unknown) as Record<
-    string,
-    unknown
-  >;
-  if (!unwrapped || typeof unwrapped !== "object") {
-    return false;
-  }
-  const props = (unwrapped as { properties?: Record<string, unknown> })
-    .properties as Record<string, unknown> | undefined;
-  if (!props) {
-    return false;
-  }
-  const commandRaw = (props as Record<string, unknown>).command as unknown;
-  if (!commandRaw) {
-    return false;
-  }
-  const command = unwrapJsonSchema(commandRaw) as { type?: string } | undefined;
-  return command?.type === "array";
 }
 
 function tryParseSecondaryXml(
@@ -100,11 +73,9 @@ function tryParseSecondaryXml(
       onError: options?.onError,
       noChildNodes: [],
     });
-    parsed = repairParsedAgainstSchema(parsed, toolSchema, options);
+    parsed = repairParsedAgainstSchema(parsed, toolSchema);
     return parsed;
-  } catch (_e) {
-    // Only attempt dedupe of duplicate string tags for shell-like tools
-    // where schema contains a 'command' array property.
+  } catch {
     if (shouldDeduplicateStringTags(toolSchema)) {
       const deduped = dedupeStringTagsAgainstSchema(balanced, toolSchema);
       if (deduped !== balanced) {
@@ -113,274 +84,15 @@ function tryParseSecondaryXml(
             onError: options?.onError,
             noChildNodes: [],
           });
-          reparsed = repairParsedAgainstSchema(reparsed, toolSchema, options);
+          reparsed = repairParsedAgainstSchema(reparsed, toolSchema);
           return reparsed;
-        } catch (_) {
+        } catch {
           return null;
         }
       }
     }
     return null;
   }
-}
-
-function balanceTags(xml: string): string {
-  // Normalize malformed closings and insert a missing </step> boundary
-  // when a new <step> starts right after </status>
-  const src = normalizeCloseTags(xml).replace(
-    STATUS_TO_STEP_BOUNDARY_RE,
-    "</status></step><step>"
-  );
-  let i = 0;
-  const len = src.length;
-  const out: string[] = [];
-  const stack: string[] = [];
-
-  while (i < len) {
-    const lt = src.indexOf("<", i);
-    if (lt === -1) {
-      out.push(src.slice(i));
-      break;
-    }
-    out.push(src.slice(i, lt));
-    if (lt + 1 >= len) {
-      break;
-    }
-    const next = src[lt + 1];
-    if (next === "!" || next === "?") {
-      i = handleSpecialTagSegment(src, lt, out);
-      continue;
-    }
-    if (next === "/") {
-      i = handleClosingTagSegment(src, lt, out, stack);
-      continue;
-    }
-    i = handleOpeningTagSegment(src, lt, out, stack);
-  }
-
-  for (let k = stack.length - 1; k >= 0; k -= 1) {
-    out.push(`</${stack[k]}>`);
-  }
-  return out.join("");
-}
-
-function skipWs(s: string, p: number, len: number): number {
-  let idx = p;
-  while (idx < len && WHITESPACE_REGEX.test(s[idx])) {
-    idx += 1;
-  }
-  return idx;
-}
-
-function parseTagNameAt(
-  s: string,
-  p: number,
-  len: number
-): { name: string; pos: number } {
-  let idx = p;
-  const start = idx;
-  while (idx < len && NAME_CHAR_RE.test(s[idx])) {
-    idx += 1;
-  }
-  return { name: s.slice(start, idx), pos: idx };
-}
-
-function handleSpecialTagSegment(
-  src: string,
-  lt: number,
-  out: string[]
-): number {
-  const gt = src.indexOf(">", lt + 1);
-  if (gt === -1) {
-    out.push(src.slice(lt));
-    return src.length;
-  }
-  out.push(src.slice(lt, gt + 1));
-  return gt + 1;
-}
-
-function handleClosingTagSegment(
-  src: string,
-  lt: number,
-  out: string[],
-  stack: string[]
-): number {
-  const len = src.length;
-  let p = skipWs(src, lt + 2, len);
-  const { name, pos } = parseTagNameAt(src, p, len);
-  p = pos;
-  const gt = src.indexOf(">", p);
-  const closingText = gt === -1 ? src.slice(lt) : src.slice(lt, gt + 1);
-  const idx = stack.lastIndexOf(name);
-  if (idx !== -1) {
-    for (let k = stack.length - 1; k > idx; k -= 1) {
-      out.push(`</${stack[k]}>`);
-      stack.pop();
-    }
-    out.push(closingText);
-    stack.pop();
-  }
-  return gt === -1 ? len : gt + 1;
-}
-
-function handleOpeningTagSegment(
-  src: string,
-  lt: number,
-  out: string[],
-  stack: string[]
-): number {
-  const len = src.length;
-  let p = skipWs(src, lt + 1, len);
-  const nameStart = p;
-  const parsed = parseTagNameAt(src, p, len);
-  p = parsed.pos;
-  const name = src.slice(nameStart, p);
-  const q = src.indexOf(">", p);
-  if (q === -1) {
-    out.push(src.slice(lt));
-    return len;
-  }
-  let r = q - 1;
-  while (r >= nameStart && WHITESPACE_REGEX.test(src[r])) {
-    r -= 1;
-  }
-  const selfClosing = src[r] === "/";
-  out.push(src.slice(lt, q + 1));
-  if (!selfClosing && name) {
-    stack.push(name);
-  }
-  return q + 1;
-}
-
-function repairParsedAgainstSchema(
-  input: unknown,
-  schema: unknown,
-  options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
-): unknown {
-  if (!input || typeof input !== "object") {
-    return input;
-  }
-  const unwrapped = unwrapJsonSchema(schema as unknown) as Record<
-    string,
-    unknown
-  >;
-  if (!unwrapped || typeof unwrapped !== "object") {
-    return input;
-  }
-  const properties = (unwrapped as { properties?: Record<string, unknown> })
-    .properties;
-  if (!properties) {
-    return input;
-  }
-  applySchemaProps(input as Record<string, unknown>, properties, options);
-  return input;
-}
-
-function applySchemaProps(
-  obj: Record<string, unknown>,
-  properties: Record<string, unknown>,
-  options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
-): void {
-  for (const key of Object.keys(obj)) {
-    const propSchema = (properties as Record<string, unknown>)[key];
-    if (!propSchema) {
-      continue;
-    }
-    const prop = unwrapJsonSchema(propSchema as unknown) as unknown;
-    const propType = (prop as { type?: string }).type;
-    if (propType === "array" && (prop as { items?: unknown }).items) {
-      const itemSchemaRaw = (prop as { items?: unknown }).items;
-      const itemSchema = unwrapJsonSchema(itemSchemaRaw) as unknown;
-      obj[key] = coerceArrayItems(obj[key], itemSchema, options) as unknown;
-      continue;
-    }
-    if (propType === "object") {
-      const val = obj[key];
-      if (val && typeof val === "object") {
-        obj[key] = repairParsedAgainstSchema(
-          val as unknown,
-          prop,
-          options
-        ) as unknown;
-      }
-    }
-  }
-}
-
-function coerceArrayItems(
-  val: unknown,
-  itemSchema: unknown,
-  options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
-): unknown[] | unknown {
-  if (!Array.isArray(val)) {
-    return val as unknown;
-  }
-  return (val as unknown[]).map((v) => coerceArrayItem(v, itemSchema, options));
-}
-
-function coerceArrayItem(
-  v: unknown,
-  itemSchema: unknown,
-  options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
-): unknown {
-  const itemType = (itemSchema as { type?: string })?.type;
-  if (typeof v === "string" && itemType === "object") {
-    const parsed = tryParseStringToSchemaObject(v, itemSchema, options);
-    if (parsed !== null) {
-      return parsed as unknown;
-    }
-    const fallback = extractStepStatusFromString(normalizeCloseTags(v));
-    if (fallback) {
-      return fallback as unknown;
-    }
-    return v;
-  }
-  if (v && typeof v === "object" && itemType === "object") {
-    return repairParsedAgainstSchema(
-      v as unknown,
-      itemSchema,
-      options
-    ) as unknown;
-  }
-  return v;
-}
-
-function getStringPropertyNames(schema: unknown): string[] {
-  const unwrapped = unwrapJsonSchema(schema as unknown) as Record<
-    string,
-    unknown
-  >;
-  if (!unwrapped || typeof unwrapped !== "object") {
-    return [];
-  }
-  const props = (unwrapped as { properties?: Record<string, unknown> })
-    .properties;
-  if (!props) {
-    return [];
-  }
-  const names: string[] = [];
-  for (const key of Object.keys(props)) {
-    const prop = unwrapJsonSchema(
-      (props as Record<string, unknown>)[key] as unknown
-    ) as unknown;
-    const type = (prop as { type?: string }).type;
-    if (type === "string") {
-      names.push(key);
-    }
-  }
-  return names;
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
 }
 
 function dedupeStringTagsAgainstSchema(xml: string, schema: unknown): string {
@@ -390,57 +102,6 @@ function dedupeStringTagsAgainstSchema(xml: string, schema: unknown): string {
     out = dedupeSingleTag(out, key);
   }
   return out;
-}
-
-function dedupeSingleTag(xml: string, key: string): string {
-  const escaped = escapeRegExp(key);
-  const re = new RegExp(`<${escaped}>([\\s\\S]*?)<\\/${escaped}>`, "g");
-  const matches = Array.from(xml.matchAll(re));
-  if (matches.length <= 1) {
-    return xml;
-  }
-  const last = matches.at(-1);
-  let result = "";
-  let cursor = 0;
-  for (const m of matches) {
-    const idx = m.index ?? 0;
-    result += xml.slice(cursor, idx);
-    if (last && idx === (last.index ?? -1)) {
-      result += m[0];
-    }
-    cursor = idx + m[0].length;
-  }
-  result += xml.slice(cursor);
-  return result;
-}
-
-function tryParseStringToSchemaObject(
-  xml: string,
-  itemSchema: unknown,
-  options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
-): unknown | null {
-  try {
-    const fixed = parse(normalizeCloseTags(xml), itemSchema, {
-      onError: options?.onError,
-      noChildNodes: [],
-    });
-    return typeof fixed === "string" ? null : (fixed as unknown);
-  } catch {
-    return null;
-  }
-}
-
-function extractStepStatusFromString(
-  normXml: string
-): Record<string, string> | null {
-  const stepMatch = normXml.match(STEP_TAG_RE);
-  const statusMatch = normXml.match(STATUS_TAG_RE);
-  if (stepMatch && statusMatch) {
-    return { step: stepMatch[1], status: statusMatch[1] };
-  }
-  return null;
 }
 
 function processTextBeforeToolCall(
@@ -475,6 +136,55 @@ interface ProcessToolCallParams {
     | undefined;
   text: string;
   processedElements: LanguageModelV3Content[];
+  pipelineConfig?: PipelineConfig;
+  maxReparses?: number;
+}
+
+function processToolCallWithPipeline(params: ProcessToolCallParams): void {
+  const {
+    toolCall,
+    tools,
+    options,
+    text,
+    processedElements,
+    pipelineConfig = defaultPipelineConfig,
+    maxReparses,
+  } = params;
+  const toolSchema = getToolSchema(tools, toolCall.toolName);
+
+  const ctx = createIntermediateCall(
+    toolCall.toolName,
+    toolCall.content,
+    toolSchema
+  );
+
+  const result = applyHeuristicPipeline(ctx, pipelineConfig, {
+    parse: (xml, schema) =>
+      parse(xml, schema, { onError: options?.onError, noChildNodes: [] }),
+    onError: options?.onError,
+    maxReparses,
+  });
+
+  if (result.parsed !== null) {
+    processedElements.push({
+      type: "tool-call",
+      toolCallId: generateId(),
+      toolName: toolCall.toolName,
+      input: JSON.stringify(result.parsed),
+    });
+  } else {
+    const originalCallText = text.substring(
+      toolCall.startIndex,
+      toolCall.endIndex
+    );
+    const message = `Could not process XML tool call, keeping original text: ${originalCallText}`;
+    options?.onError?.(message, {
+      toolCall: originalCallText,
+      toolName: toolCall.toolName,
+      error: result.errors[0],
+    });
+    processedElements.push({ type: "text", text: originalCallText });
+  }
 }
 
 function processToolCall(params: ProcessToolCallParams): void {
@@ -484,10 +194,9 @@ function processToolCall(params: ProcessToolCallParams): void {
     const primary = escapeInvalidLt(normalizeCloseTags(toolCall.content));
     let parsed: unknown = parse(primary, toolSchema, {
       onError: options?.onError,
-      // Disable HTML self-closing tag behavior to allow base, meta, link etc. as regular tags
       noChildNodes: [],
     });
-    parsed = repairParsedAgainstSchema(parsed, toolSchema, options);
+    parsed = repairParsedAgainstSchema(parsed, toolSchema);
     processedElements.push({
       type: "tool-call",
       toolCallId: generateId(),
@@ -547,6 +256,69 @@ interface StreamingToolCallEndParams {
     | undefined;
   ctrl: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
+  pipelineConfig?: PipelineConfig;
+  maxReparses?: number;
+}
+
+function handleStreamingToolCallEndWithPipeline(
+  params: StreamingToolCallEndParams
+): void {
+  const {
+    toolContent,
+    currentToolCall,
+    tools,
+    options,
+    ctrl,
+    flushText,
+    pipelineConfig = defaultPipelineConfig,
+    maxReparses,
+  } = params;
+  const toolSchema = getToolSchema(tools, currentToolCall.name);
+
+  const ctx = createIntermediateCall(
+    currentToolCall.name,
+    toolContent,
+    toolSchema
+  );
+
+  const result = applyHeuristicPipeline(ctx, pipelineConfig, {
+    parse: (xml, schema) =>
+      parse(xml, schema, { onError: options?.onError, noChildNodes: [] }),
+    onError: options?.onError,
+    maxReparses,
+  });
+
+  flushText(ctrl);
+
+  if (result.parsed !== null) {
+    ctrl.enqueue({
+      type: "tool-call",
+      toolCallId: generateId(),
+      toolName: currentToolCall.name,
+      input: JSON.stringify(result.parsed),
+    });
+  } else {
+    const endTag = `</${currentToolCall.name}>`;
+    const originalCallText = `<${currentToolCall.name}>${toolContent}${endTag}`;
+    const error = result.errors[0];
+    let message =
+      "Could not process streaming XML tool call; emitting original text.";
+
+    if (error instanceof RXMLDuplicateStringTagError) {
+      message = `Duplicate string tags detected in streaming tool call '${currentToolCall.name}'; emitting original text.`;
+    } else if (error instanceof RXMLCoercionError) {
+      message = `Failed to coerce arguments for streaming tool call '${currentToolCall.name}'; emitting original text.`;
+    } else if (error instanceof RXMLParseError) {
+      message = `Failed to parse XML for streaming tool call '${currentToolCall.name}'; emitting original text.`;
+    }
+
+    options?.onError?.(message, {
+      toolCall: originalCallText,
+      toolName: currentToolCall.name,
+      error,
+    });
+    flushText(ctrl, originalCallText);
+  }
 }
 
 function handleStreamingToolCallEnd(params: StreamingToolCallEndParams): void {
@@ -559,9 +331,8 @@ function handleStreamingToolCallEnd(params: StreamingToolCallEndParams): void {
       onError: options?.onError,
       noChildNodes: [],
     });
-    parsed = repairParsedAgainstSchema(parsed, toolSchema, options);
+    parsed = repairParsedAgainstSchema(parsed, toolSchema);
 
-    // Close any open text segment before emitting tool-call
     flushText(ctrl);
 
     ctrl.enqueue({
@@ -691,6 +462,8 @@ interface ProcessToolCallInBufferParams {
   controller: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
   setBuffer: (buffer: string) => void;
+  pipelineConfig?: PipelineConfig;
+  maxReparses?: number;
 }
 
 function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
@@ -706,9 +479,10 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     controller,
     flushText,
     setBuffer,
+    pipelineConfig,
+    maxReparses,
   } = params;
   const endTag = `</${currentToolCall.name}>`;
-  // Normalize malformed closings in buffer to enable detection
   const normalized = normalizeCloseTags(buffer);
   const effectiveBuffer = normalized;
   const endTagIndex = effectiveBuffer.indexOf(endTag);
@@ -717,20 +491,30 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     const toolContent = effectiveBuffer.substring(0, endTagIndex);
     const newBuffer = effectiveBuffer.substring(endTagIndex + endTag.length);
 
-    // Clear buffer BEFORE calling handleStreamingToolCallEnd
-    // so that flushText(ctrl) emits text-end without emitting buffer content
     setBuffer("");
 
-    handleStreamingToolCallEnd({
-      toolContent,
-      currentToolCall,
-      tools,
-      options,
-      ctrl: controller,
-      flushText,
-    });
+    if (pipelineConfig) {
+      handleStreamingToolCallEndWithPipeline({
+        toolContent,
+        currentToolCall,
+        tools,
+        options,
+        ctrl: controller,
+        flushText,
+        pipelineConfig,
+        maxReparses,
+      });
+    } else {
+      handleStreamingToolCallEnd({
+        toolContent,
+        currentToolCall,
+        tools,
+        options,
+        ctrl: controller,
+        flushText,
+      });
+    }
 
-    // Restore buffer to content after tool call
     setBuffer(newBuffer);
     return { buffer: newBuffer, currentToolCall: null, shouldBreak: false };
   }
@@ -749,6 +533,8 @@ interface ProcessNoToolCallInBufferParams {
         onError?: (message: string, metadata?: Record<string, unknown>) => void;
       }
     | undefined;
+  pipelineConfig?: PipelineConfig;
+  maxReparses?: number;
 }
 
 function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
@@ -765,6 +551,8 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     flushText,
     tools,
     options,
+    pipelineConfig,
+    maxReparses,
   } = params;
   const {
     index: earliestStartTagIndex,
@@ -781,15 +569,27 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
       const newBuffer = buffer.substring(
         earliestStartTagIndex + selfTag.length
       );
-      // Emit tool call immediately with empty content
-      handleStreamingToolCallEnd({
-        toolContent: "",
-        currentToolCall: { name: earliestToolName, content: "" },
-        tools,
-        options,
-        ctrl: controller,
-        flushText,
-      });
+      if (pipelineConfig) {
+        handleStreamingToolCallEndWithPipeline({
+          toolContent: "",
+          currentToolCall: { name: earliestToolName, content: "" },
+          tools,
+          options,
+          ctrl: controller,
+          flushText,
+          pipelineConfig,
+          maxReparses,
+        });
+      } else {
+        handleStreamingToolCallEnd({
+          toolContent: "",
+          currentToolCall: { name: earliestToolName, content: "" },
+          tools,
+          options,
+          ctrl: controller,
+          flushText,
+        });
+      }
       return {
         buffer: newBuffer,
         currentToolCall: null,
@@ -870,6 +670,8 @@ interface ProcessBufferHandlerParams {
   toolNames: string[];
   maxStartTagLen: number;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
+  pipelineConfig?: PipelineConfig;
+  maxReparses?: number;
 }
 
 function processBufferWithToolCall(
@@ -884,6 +686,8 @@ function processBufferWithToolCall(
     tools,
     options,
     flushText,
+    pipelineConfig,
+    maxReparses,
   } = params;
   const currentToolCall = getCurrentToolCall();
 
@@ -899,6 +703,8 @@ function processBufferWithToolCall(
     controller,
     flushText,
     setBuffer,
+    pipelineConfig,
+    maxReparses,
   });
   setBuffer(result.buffer);
   setCurrentToolCall(result.currentToolCall);
@@ -918,6 +724,8 @@ function processBufferWithoutToolCall(
     toolNames,
     maxStartTagLen,
     flushText,
+    pipelineConfig,
+    maxReparses,
   } = params;
 
   const result = processNoToolCallInBuffer({
@@ -928,6 +736,8 @@ function processBufferWithoutToolCall(
     flushText,
     tools,
     options,
+    pipelineConfig,
+    maxReparses,
   });
   setBuffer(result.buffer);
   setCurrentToolCall(result.currentToolCall);
@@ -969,173 +779,241 @@ function createProcessBufferHandler(params: ProcessBufferHandlerParams) {
   };
 }
 
-export const morphXmlProtocol = (): ToolCallProtocol => ({
-  formatTools({ tools, toolSystemPromptTemplate }) {
-    const toolsForPrompt = (tools || []).map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: unwrapJsonSchema(tool.inputSchema),
-    }));
-    return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
-  },
+interface ResolvedPipelineOptions {
+  pipelineConfig: PipelineConfig | undefined;
+  maxReparses: number | undefined;
+}
 
-  formatToolCall(toolCall: LanguageModelV3ToolCall): string {
-    let args: unknown = {};
-    const inputValue = hasInputProperty(toolCall) ? toolCall.input : undefined;
+function buildPipelineOptions(
+  protocolOptions?: MorphXmlProtocolOptions
+): ResolvedPipelineOptions {
+  const maxReparses = protocolOptions?.maxReparses;
 
-    if (typeof inputValue === "string") {
-      try {
-        args = JSON.parse(inputValue);
-      } catch {
+  if (protocolOptions?.pipeline) {
+    return {
+      pipelineConfig: mergePipelineConfigs(
+        defaultPipelineConfig,
+        protocolOptions.pipeline
+      ),
+      maxReparses,
+    };
+  }
+  if (protocolOptions?.heuristics) {
+    return {
+      pipelineConfig: {
+        ...defaultPipelineConfig,
+        preParse: [
+          ...(defaultPipelineConfig.preParse ?? []),
+          ...protocolOptions.heuristics.filter((h) => h.phase === "pre-parse"),
+        ],
+        fallbackReparse: [
+          ...(defaultPipelineConfig.fallbackReparse ?? []),
+          ...protocolOptions.heuristics.filter(
+            (h) => h.phase === "fallback-reparse"
+          ),
+        ],
+        postParse: [
+          ...(defaultPipelineConfig.postParse ?? []),
+          ...protocolOptions.heuristics.filter((h) => h.phase === "post-parse"),
+        ],
+      },
+      maxReparses,
+    };
+  }
+  return { pipelineConfig: undefined, maxReparses };
+}
+
+export const morphXmlProtocol = (
+  protocolOptions?: MorphXmlProtocolOptions
+): ToolCallProtocol => {
+  const { pipelineConfig, maxReparses } = buildPipelineOptions(protocolOptions);
+
+  return {
+    formatTools({ tools, toolSystemPromptTemplate }) {
+      const toolsForPrompt = (tools || []).map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: unwrapJsonSchema(tool.inputSchema),
+      }));
+      return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
+    },
+
+    formatToolCall(toolCall: LanguageModelV3ToolCall): string {
+      let args: unknown = {};
+      const inputValue = hasInputProperty(toolCall)
+        ? toolCall.input
+        : undefined;
+
+      if (typeof inputValue === "string") {
+        try {
+          args = JSON.parse(inputValue);
+        } catch {
+          args = inputValue;
+        }
+      } else {
         args = inputValue;
       }
-    } else {
-      args = inputValue;
-    }
-    return stringify(toolCall.toolName, args, {
-      suppressEmptyNode: false,
-      format: false,
-    });
-  },
+      return stringify(toolCall.toolName, args, {
+        suppressEmptyNode: false,
+        format: false,
+      });
+    },
 
-  formatToolResponse(toolResult: LanguageModelV3ToolResultPart): string {
-    return stringify("tool_response", {
-      tool_name: toolResult.toolName,
-      result: toolResult.output,
-    });
-  },
+    formatToolResponse(toolResult: LanguageModelV3ToolResultPart): string {
+      return stringify("tool_response", {
+        tool_name: toolResult.toolName,
+        result: toolResult.output,
+      });
+    },
 
-  parseGeneratedText({ text, tools, options }) {
-    const toolNames = tools.map((t) => t.name).filter((name) => name != null);
-    if (toolNames.length === 0) {
-      return [{ type: "text", text }];
-    }
+    parseGeneratedText({ text, tools, options }) {
+      const toolNames = tools.map((t) => t.name).filter((name) => name != null);
+      if (toolNames.length === 0) {
+        return [{ type: "text", text }];
+      }
 
-    const processedElements: LanguageModelV3Content[] = [];
-    let currentIndex = 0;
+      const processedElements: LanguageModelV3Content[] = [];
+      let currentIndex = 0;
 
-    const toolCallsRaw = findToolCalls(text, toolNames);
-    const toolCallsNorm = collectToolCallsFromNormalizedText(text, toolNames);
-    const seen = new Set<string>();
-    const toolCalls = [...toolCallsRaw, ...toolCallsNorm]
-      .filter((tc) => {
-        const key = `${tc.toolName}:${tc.startIndex}:${tc.endIndex}`;
-        if (seen.has(key)) {
-          return false;
+      const toolCallsRaw = findToolCalls(text, toolNames);
+      const toolCallsNorm = collectToolCallsFromNormalizedText(text, toolNames);
+      const seen = new Set<string>();
+      const toolCalls = [...toolCallsRaw, ...toolCallsNorm]
+        .filter((tc) => {
+          const key = `${tc.toolName}:${tc.startIndex}:${tc.endIndex}`;
+          if (seen.has(key)) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .sort((a, b) => a.startIndex - b.startIndex);
+
+      for (const toolCall of toolCalls) {
+        currentIndex = processTextBeforeToolCall(
+          text,
+          currentIndex,
+          toolCall.startIndex,
+          processedElements
+        );
+
+        if (pipelineConfig) {
+          processToolCallWithPipeline({
+            toolCall,
+            tools,
+            options,
+            text,
+            processedElements,
+            pipelineConfig,
+            maxReparses,
+          });
+        } else {
+          processToolCall({
+            toolCall,
+            tools,
+            options,
+            text,
+            processedElements,
+          });
         }
-        seen.add(key);
-        return true;
-      })
-      .sort((a, b) => a.startIndex - b.startIndex);
 
-    // Process text and tool calls in order
-    for (const toolCall of toolCalls) {
-      // Add text before this tool call
-      currentIndex = processTextBeforeToolCall(
-        text,
-        currentIndex,
-        toolCall.startIndex,
-        processedElements
+        currentIndex = toolCall.endIndex;
+      }
+
+      addRemainingText(text, currentIndex, processedElements);
+
+      return processedElements;
+    },
+
+    createStreamParser({ tools, options }) {
+      const toolNames = tools.map((t) => t.name).filter((name) => name != null);
+      const maxStartTagLen = toolNames.length
+        ? Math.max(...toolNames.map((n) => `<${n}>`.length))
+        : 0;
+      let buffer = "";
+      let currentToolCall: { name: string; content: string } | null = null;
+      let currentTextId: string | null = null;
+
+      const flushText = createFlushTextHandler(
+        () => buffer,
+        (newBuffer: string) => {
+          buffer = newBuffer;
+        },
+        () => currentTextId,
+        (newId: string | null) => {
+          currentTextId = newId;
+        }
       );
 
-      // Process the tool call
-      processToolCall({ toolCall, tools, options, text, processedElements });
+      const processChunk = (
+        chunk: { type: string; delta?: string },
+        controller: TransformStreamDefaultController
+      ) => {
+        if (chunk.type !== "text-delta") {
+          if (buffer) {
+            flushText(controller);
+          }
+          controller.enqueue(chunk);
+          return;
+        }
 
-      currentIndex = toolCall.endIndex;
-    }
+        buffer += chunk.delta;
+        processBuffer(controller);
+      };
 
-    // Add remaining text
-    addRemainingText(text, currentIndex, processedElements);
+      const processBuffer = createProcessBufferHandler({
+        getBuffer: () => buffer,
+        setBuffer: (newBuffer: string) => {
+          buffer = newBuffer;
+        },
+        getCurrentToolCall: () => currentToolCall,
+        setCurrentToolCall: (
+          newToolCall: { name: string; content: string } | null
+        ) => {
+          currentToolCall = newToolCall;
+        },
+        tools,
+        options,
+        toolNames,
+        maxStartTagLen,
+        flushText,
+        pipelineConfig,
+        maxReparses,
+      });
 
-    return processedElements;
-  },
-
-  createStreamParser({ tools, options }) {
-    const toolNames = tools.map((t) => t.name).filter((name) => name != null);
-    const maxStartTagLen = toolNames.length
-      ? Math.max(...toolNames.map((n) => `<${n}>`.length))
-      : 0;
-    let buffer = "";
-    let currentToolCall: { name: string; content: string } | null = null;
-    let currentTextId: string | null = null;
-
-    const flushText = createFlushTextHandler(
-      () => buffer,
-      (newBuffer: string) => {
-        buffer = newBuffer;
-      },
-      () => currentTextId,
-      (newId: string | null) => {
-        currentTextId = newId;
-      }
-    );
-
-    const processChunk = (
-      chunk: { type: string; delta?: string },
-      controller: TransformStreamDefaultController
-    ) => {
-      if (chunk.type !== "text-delta") {
-        if (buffer) {
+      const flushBuffer = (controller: TransformStreamDefaultController) => {
+        if (currentToolCall) {
+          const unfinishedCall = `<${currentToolCall.name}>${buffer}`;
+          flushText(controller, unfinishedCall);
+        } else if (buffer) {
           flushText(controller);
         }
-        controller.enqueue(chunk);
-        return;
+
+        if (currentTextId) {
+          controller.enqueue({ type: "text-end", id: currentTextId });
+        }
+      };
+
+      return new TransformStream({
+        transform(chunk, controller) {
+          processChunk(chunk, controller);
+        },
+        flush(controller) {
+          flushBuffer(controller);
+        },
+      });
+    },
+
+    extractToolCallSegments({ text, tools }) {
+      const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+      if (toolNames.length === 0) {
+        return [];
       }
 
-      buffer += chunk.delta;
-      processBuffer(controller);
-    };
-
-    const processBuffer = createProcessBufferHandler({
-      getBuffer: () => buffer,
-      setBuffer: (newBuffer: string) => {
-        buffer = newBuffer;
-      },
-      getCurrentToolCall: () => currentToolCall,
-      setCurrentToolCall: (
-        newToolCall: { name: string; content: string } | null
-      ) => {
-        currentToolCall = newToolCall;
-      },
-      tools,
-      options,
-      toolNames,
-      maxStartTagLen,
-      flushText,
-    });
-
-    const flushBuffer = (controller: TransformStreamDefaultController) => {
-      if (currentToolCall) {
-        const unfinishedCall = `<${currentToolCall.name}>${buffer}`;
-        flushText(controller, unfinishedCall);
-      } else if (buffer) {
-        flushText(controller);
-      }
-
-      if (currentTextId) {
-        controller.enqueue({ type: "text-end", id: currentTextId });
-      }
-    };
-
-    return new TransformStream({
-      transform(chunk, controller) {
-        processChunk(chunk, controller);
-      },
-      flush(controller) {
-        flushBuffer(controller);
-      },
-    });
-  },
-
-  extractToolCallSegments({ text, tools }) {
-    const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
-    if (toolNames.length === 0) {
-      return [];
-    }
-
-    return findToolCalls(text, toolNames).map((tc) => tc.segment);
-  },
-});
+      return findToolCalls(text, toolNames).map((tc) => tc.segment);
+    },
+  };
+};
 
 export function getToolSchema(
   tools: LanguageModelV3FunctionTool[],
@@ -1183,21 +1061,11 @@ function skipSpecialSegment(text: string, lt: number): number | null {
 function consumeClosingTag(
   text: string,
   lt: number,
-  toolName: string
+  _toolName: string
 ): { matched: boolean; endPos: number } {
   let p = lt + 2;
   while (p < text.length && WHITESPACE_REGEX.test(text[p])) {
     p += 1;
-  }
-  if (text.slice(p, p + toolName.length) === toolName) {
-    p += toolName.length;
-    while (p < text.length && WHITESPACE_REGEX.test(text[p])) {
-      p += 1;
-    }
-    if (text[p] === ">") {
-      const endPos = p + 1;
-      return { matched: true, endPos };
-    }
   }
   const gt = text.indexOf(">", lt + 1);
   const endPos = gt === -1 ? text.length : gt + 1;
@@ -1268,7 +1136,6 @@ function nextTagToken(
   }
   if (next === "/") {
     const closing = consumeClosingTag(text, lt, "");
-    // We still need the tag name; re-parse minimally here
     let p = lt + 2;
     while (p < text.length && WHITESPACE_REGEX.test(text[p])) {
       p += 1;
@@ -1453,7 +1320,6 @@ function findToolCallsForName(
   return toolCalls;
 }
 
-// Shared helper to find tool call ranges for a given set of tool names
 function findToolCalls(
   text: string,
   toolNames: string[]
@@ -1479,3 +1345,11 @@ function findToolCalls(
 
   return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
 }
+
+export {
+  defaultPipelineConfig,
+  applyHeuristicPipeline,
+  createIntermediateCall,
+  mergePipelineConfigs,
+};
+export type { PipelineConfig, ToolCallHeuristic };
