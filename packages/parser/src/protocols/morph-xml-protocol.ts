@@ -143,6 +143,7 @@ interface ProcessToolCallParams {
   text: string;
   processedElements: LanguageModelV3Content[];
   pipelineConfig?: PipelineConfig;
+  maxReparses?: number;
 }
 
 function processToolCallWithPipeline(params: ProcessToolCallParams): void {
@@ -153,6 +154,7 @@ function processToolCallWithPipeline(params: ProcessToolCallParams): void {
     text,
     processedElements,
     pipelineConfig = defaultPipelineConfig,
+    maxReparses,
   } = params;
   const toolSchema = getToolSchema(tools, toolCall.toolName);
 
@@ -166,6 +168,7 @@ function processToolCallWithPipeline(params: ProcessToolCallParams): void {
     parse: (xml, schema) =>
       parse(xml, schema, { onError: options?.onError, noChildNodes: [] }),
     onError: options?.onError,
+    maxReparses,
   });
 
   if (result.parsed !== null) {
@@ -260,6 +263,7 @@ interface StreamingToolCallEndParams {
   ctrl: TransformStreamDefaultController;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
   pipelineConfig?: PipelineConfig;
+  maxReparses?: number;
 }
 
 function handleStreamingToolCallEndWithPipeline(
@@ -273,6 +277,7 @@ function handleStreamingToolCallEndWithPipeline(
     ctrl,
     flushText,
     pipelineConfig = defaultPipelineConfig,
+    maxReparses,
   } = params;
   const toolSchema = getToolSchema(tools, currentToolCall.name);
 
@@ -286,6 +291,7 @@ function handleStreamingToolCallEndWithPipeline(
     parse: (xml, schema) =>
       parse(xml, schema, { onError: options?.onError, noChildNodes: [] }),
     onError: options?.onError,
+    maxReparses,
   });
 
   flushText(ctrl);
@@ -463,6 +469,7 @@ interface ProcessToolCallInBufferParams {
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
   setBuffer: (buffer: string) => void;
   pipelineConfig?: PipelineConfig;
+  maxReparses?: number;
 }
 
 function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
@@ -479,6 +486,7 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     flushText,
     setBuffer,
     pipelineConfig,
+    maxReparses,
   } = params;
   const endTag = `</${currentToolCall.name}>`;
   const normalized = normalizeCloseTags(buffer);
@@ -500,6 +508,7 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
         ctrl: controller,
         flushText,
         pipelineConfig,
+        maxReparses,
       });
     } else {
       handleStreamingToolCallEnd({
@@ -531,6 +540,7 @@ interface ProcessNoToolCallInBufferParams {
       }
     | undefined;
   pipelineConfig?: PipelineConfig;
+  maxReparses?: number;
 }
 
 function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
@@ -548,6 +558,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     tools,
     options,
     pipelineConfig,
+    maxReparses,
   } = params;
   const {
     index: earliestStartTagIndex,
@@ -573,6 +584,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
           ctrl: controller,
           flushText,
           pipelineConfig,
+          maxReparses,
         });
       } else {
         handleStreamingToolCallEnd({
@@ -665,6 +677,7 @@ interface ProcessBufferHandlerParams {
   maxStartTagLen: number;
   flushText: (ctrl: TransformStreamDefaultController, text?: string) => void;
   pipelineConfig?: PipelineConfig;
+  maxReparses?: number;
 }
 
 function processBufferWithToolCall(
@@ -680,6 +693,7 @@ function processBufferWithToolCall(
     options,
     flushText,
     pipelineConfig,
+    maxReparses,
   } = params;
   const currentToolCall = getCurrentToolCall();
 
@@ -696,6 +710,7 @@ function processBufferWithToolCall(
     flushText,
     setBuffer,
     pipelineConfig,
+    maxReparses,
   });
   setBuffer(result.buffer);
   setCurrentToolCall(result.currentToolCall);
@@ -716,6 +731,7 @@ function processBufferWithoutToolCall(
     maxStartTagLen,
     flushText,
     pipelineConfig,
+    maxReparses,
   } = params;
 
   const result = processNoToolCallInBuffer({
@@ -727,6 +743,7 @@ function processBufferWithoutToolCall(
     tools,
     options,
     pipelineConfig,
+    maxReparses,
   });
   setBuffer(result.buffer);
   setCurrentToolCall(result.currentToolCall);
@@ -768,41 +785,54 @@ function createProcessBufferHandler(params: ProcessBufferHandlerParams) {
   };
 }
 
-function buildPipelineConfig(
+interface ResolvedPipelineOptions {
+  pipelineConfig: PipelineConfig | undefined;
+  maxReparses: number | undefined;
+}
+
+function buildPipelineOptions(
   protocolOptions?: MorphXmlProtocolOptions
-): PipelineConfig | undefined {
+): ResolvedPipelineOptions {
+  const maxReparses = protocolOptions?.maxReparses;
+
   if (protocolOptions?.pipeline) {
-    return mergePipelineConfigs(
-      defaultPipelineConfig,
-      protocolOptions.pipeline
-    );
+    return {
+      pipelineConfig: mergePipelineConfigs(
+        defaultPipelineConfig,
+        protocolOptions.pipeline
+      ),
+      maxReparses,
+    };
   }
   if (protocolOptions?.heuristics) {
     return {
-      ...defaultPipelineConfig,
-      preParse: [
-        ...(defaultPipelineConfig.preParse ?? []),
-        ...protocolOptions.heuristics.filter((h) => h.phase === "pre-parse"),
-      ],
-      fallbackReparse: [
-        ...(defaultPipelineConfig.fallbackReparse ?? []),
-        ...protocolOptions.heuristics.filter(
-          (h) => h.phase === "fallback-reparse"
-        ),
-      ],
-      postParse: [
-        ...(defaultPipelineConfig.postParse ?? []),
-        ...protocolOptions.heuristics.filter((h) => h.phase === "post-parse"),
-      ],
+      pipelineConfig: {
+        ...defaultPipelineConfig,
+        preParse: [
+          ...(defaultPipelineConfig.preParse ?? []),
+          ...protocolOptions.heuristics.filter((h) => h.phase === "pre-parse"),
+        ],
+        fallbackReparse: [
+          ...(defaultPipelineConfig.fallbackReparse ?? []),
+          ...protocolOptions.heuristics.filter(
+            (h) => h.phase === "fallback-reparse"
+          ),
+        ],
+        postParse: [
+          ...(defaultPipelineConfig.postParse ?? []),
+          ...protocolOptions.heuristics.filter((h) => h.phase === "post-parse"),
+        ],
+      },
+      maxReparses,
     };
   }
-  return undefined;
+  return { pipelineConfig: undefined, maxReparses };
 }
 
 export const morphXmlProtocol = (
   protocolOptions?: MorphXmlProtocolOptions
 ): ToolCallProtocol => {
-  const pipelineConfig = buildPipelineConfig(protocolOptions);
+  const { pipelineConfig, maxReparses } = buildPipelineOptions(protocolOptions);
 
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
@@ -881,6 +911,7 @@ export const morphXmlProtocol = (
             text,
             processedElements,
             pipelineConfig,
+            maxReparses,
           });
         } else {
           processToolCall({
@@ -953,6 +984,7 @@ export const morphXmlProtocol = (
         maxStartTagLen,
         flushText,
         pipelineConfig,
+        maxReparses,
       });
 
       const flushBuffer = (controller: TransformStreamDefaultController) => {

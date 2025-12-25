@@ -253,6 +253,60 @@ describe("morphXmlProtocol pipeline integration", () => {
 
       expect(reparseCount).toBeLessThanOrEqual(3);
     });
+
+    it("should use maxReparses from protocol options", () => {
+      let heuristicRunCount = 0;
+      const trackingHeuristic: ToolCallHeuristic = {
+        id: "tracking",
+        phase: "pre-parse",
+        applies: () => true,
+        run: (ctx) => {
+          heuristicRunCount += 1;
+          return { rawSegment: ctx.rawSegment };
+        },
+      };
+
+      const protocolWithPipeline = morphXmlProtocol({
+        pipeline: {
+          preParse: [trackingHeuristic],
+          fallbackReparse: [],
+          postParse: [],
+        },
+        maxReparses: 1,
+      });
+
+      const text = "<get_weather><location>Seoul</location></get_weather>";
+      protocolWithPipeline.parseGeneratedText({ text, tools: simpleTools });
+
+      expect(heuristicRunCount).toBe(1);
+    });
+
+    it("should allow more reparses when maxReparses is increased", () => {
+      let heuristicRunCount = 0;
+      const trackingHeuristic: ToolCallHeuristic = {
+        id: "tracking",
+        phase: "pre-parse",
+        applies: () => true,
+        run: (ctx) => {
+          heuristicRunCount += 1;
+          return { rawSegment: ctx.rawSegment };
+        },
+      };
+
+      const protocol = morphXmlProtocol({
+        pipeline: {
+          preParse: [trackingHeuristic, trackingHeuristic],
+          fallbackReparse: [],
+          postParse: [],
+        },
+        maxReparses: 3,
+      });
+
+      const text = "<get_weather><location>Seoul</location></get_weather>";
+      protocol.parseGeneratedText({ text, tools: simpleTools });
+
+      expect(heuristicRunCount).toBe(2);
+    });
   });
 
   describe("backward compatibility with legacy code path", () => {
