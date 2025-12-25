@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   balanceTags,
   balanceTagsHeuristic,
+  createIntermediateCall,
   dedupeShellStringTagsHeuristic,
   dedupeSingleTag,
   defaultPipelineConfig,
@@ -12,8 +13,7 @@ import {
   repairAgainstSchemaHeuristic,
   repairParsedAgainstSchema,
   shouldDeduplicateStringTags,
-} from "../../protocols/default-heuristics";
-import { createIntermediateCall } from "../../protocols/heuristic-engine";
+} from "../../heuristics";
 
 describe("default-heuristics", () => {
   describe("normalizeCloseTagsHeuristic", () => {

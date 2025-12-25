@@ -5,12 +5,10 @@ import {
   defaultPipelineConfig,
   escapeInvalidLtHeuristic,
   normalizeCloseTagsHeuristic,
+  type PipelineConfig,
   repairAgainstSchemaHeuristic,
-} from "../../protocols/default-heuristics";
-import type {
-  PipelineConfig,
-  ToolCallHeuristic,
-} from "../../protocols/heuristic-engine";
+  type ToolCallHeuristic,
+} from "../../heuristics";
 import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
 
 describe("morphXmlProtocol pipeline integration", () => {

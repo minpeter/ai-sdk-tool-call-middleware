@@ -1,13 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  PipelineConfig,
-  ToolCallHeuristic,
-} from "../../protocols/heuristic-engine";
 import {
   applyHeuristicPipeline,
   createIntermediateCall,
   mergePipelineConfigs,
-} from "../../protocols/heuristic-engine";
+  type PipelineConfig,
+  type ToolCallHeuristic,
+} from "../../heuristics";
 
 describe("heuristic-engine", () => {
   describe("createIntermediateCall", () => {

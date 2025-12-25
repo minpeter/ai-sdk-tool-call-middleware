@@ -14,27 +14,21 @@ import {
   stringify,
   unwrapJsonSchema,
 } from "@ai-sdk-tool/rxml";
-
-import { hasInputProperty } from "../utils/type-guards";
-
 import {
+  applyHeuristicPipeline as _applyHeuristicPipeline,
+  createIntermediateCall as _createIntermediateCall,
   defaultPipelineConfig as _defaultPipelineConfig,
+  mergePipelineConfigs as _mergePipelineConfigs,
+  type PipelineConfig as _PipelineConfig,
+  type ToolCallHeuristic as _ToolCallHeuristic,
   balanceTags,
   dedupeSingleTag,
   escapeInvalidLt,
   getStringPropertyNames,
   repairParsedAgainstSchema,
   shouldDeduplicateStringTags,
-} from "./default-heuristics";
-import type {
-  PipelineConfig as _PipelineConfig,
-  ToolCallHeuristic as _ToolCallHeuristic,
-} from "./heuristic-engine";
-import {
-  applyHeuristicPipeline as _applyHeuristicPipeline,
-  createIntermediateCall as _createIntermediateCall,
-  mergePipelineConfigs as _mergePipelineConfigs,
-} from "./heuristic-engine";
+} from "../heuristics";
+import { hasInputProperty } from "../utils/type-guards";
 import type { ToolCallProtocol } from "./tool-call-protocol";
 
 const defaultPipelineConfig = _defaultPipelineConfig;

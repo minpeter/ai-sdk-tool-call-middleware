@@ -73,14 +73,6 @@ export { morphXmlProtocol } from "./protocols/morph-xml-protocol";
 export { createToolMiddleware } from "./tool-call-middleware";
 export { gemmaToolMiddleware, hermesToolMiddleware, morphXmlToolMiddleware };
 
-export {
-  balanceTagsHeuristic,
-  dedupeShellStringTagsHeuristic,
-  defaultPipelineConfig,
-  escapeInvalidLtHeuristic,
-  normalizeCloseTagsHeuristic,
-  repairAgainstSchemaHeuristic,
-} from "./protocols/default-heuristics";
 export type {
   HeuristicEngineOptions,
   HeuristicPhase,
@@ -88,12 +80,18 @@ export type {
   IntermediateCall,
   PipelineConfig,
   ToolCallHeuristic,
-} from "./protocols/heuristic-engine";
+} from "./heuristics";
 export {
   applyHeuristicPipeline,
+  balanceTagsHeuristic,
   createIntermediateCall,
+  dedupeShellStringTagsHeuristic,
+  defaultPipelineConfig,
+  escapeInvalidLtHeuristic,
   mergePipelineConfigs,
-} from "./protocols/heuristic-engine";
+  normalizeCloseTagsHeuristic,
+  repairAgainstSchemaHeuristic,
+} from "./heuristics";
 
 export {
   type DebugLevel,

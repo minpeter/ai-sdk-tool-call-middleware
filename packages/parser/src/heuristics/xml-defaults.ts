@@ -9,7 +9,7 @@ import type {
   IntermediateCall,
   PipelineConfig,
   ToolCallHeuristic,
-} from "./heuristic-engine";
+} from "./engine";
 
 const MALFORMED_CLOSE_RE_G = /<\/\s+([A-Za-z0-9_:-]+)\s*>/g;
 const MALFORMED_CLOSE_RE = /<\/\s+([A-Za-z0-9_:-]+)\s*>/;
