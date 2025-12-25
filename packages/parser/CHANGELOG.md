@@ -1,5 +1,16 @@
 # @ai-sdk-tool/parser
 
+## 3.0.0-canary.2
+
+### Minor Changes
+
+- 68a4248: feat(parser): implement pluggable heuristic pipeline for XML parsing
+
+  - Add 3-phase heuristic engine (pre-parse, fallback-reparse, post-parse)
+  - Add 5 default XML heuristics: normalizeCloseTags, escapeInvalidLt, balanceTags, dedupeShellStringTags, repairAgainstSchema
+  - Reorganize heuristics into dedicated `src/heuristics/` module
+  - Export heuristic APIs for custom pipeline configuration
+
 ## 3.0.0-canary.1
 
 ### Minor Changes
