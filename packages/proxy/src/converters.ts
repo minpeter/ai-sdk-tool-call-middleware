@@ -398,7 +398,7 @@ export function convertAISDKToolCallsToOpenAI(toolCalls: ToolCall[]): Array<{
   };
 }> {
   return toolCalls.map((call) => ({
-    id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    id: `call_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
     type: "function" as const,
     function: {
       name: call.toolName,
@@ -411,7 +411,7 @@ export function convertAISDKToolCallsToOpenAI(toolCalls: ToolCall[]): Array<{
  * Generate OpenAI-compatible response ID
  */
 export function generateResponseId(): string {
-  return `chatcmpl-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return `chatcmpl-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 /**
