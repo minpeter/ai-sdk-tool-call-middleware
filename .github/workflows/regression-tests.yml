@@ -173,26 +173,28 @@ jobs:
         if: steps.benchmark.outcome == 'success'
         run: |
           pnpm ci:compare
-          echo "report<<EOF" >> $GITHUB_OUTPUT
-          cat .benchmark-results/report.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
         continue-on-error: true
 
-      - name: Commit benchmark results
-        if: success()
+      - name: Commit and push benchmark results
+        if: steps.benchmark.outcome == 'success'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add .benchmark-results/
-          git diff --quiet && git diff --staged --quiet || git commit -m "ci: add regression benchmark results for ${{ github.sha }}"
-        continue-on-error: true
+          git add .benchmark-results/history.jsonl
 
-      - name: Push changes
-        if: success() && github.ref == 'refs/heads/main'
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.ref }}
+          if ! git diff --quiet --cached; then
+            git commit -m "ci: add benchmark results for ${{ github.sha }}"
+
+            # Push to appropriate branch
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              git push origin HEAD:${{ github.head_ref }}
+            elif [ "${{ github.event_name }}" = "issue_comment" ]; then
+              # Get PR branch from earlier step
+              git push origin HEAD:${{ steps.get-pr-ref.outputs.ref }}
+            elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              git push origin HEAD:main
+            fi
+          fi
         continue-on-error: true
 
       - name: Comment PR with benchmark failure
@@ -242,12 +244,22 @@ jobs:
       - name: Comment PR with results
         if: |
           (github.event_name == 'issue_comment' || github.event_name == 'pull_request') &&
-          steps.compare.outcome == 'success' &&
-          steps.compare.outputs.report != ''
+          steps.compare.outcome == 'success'
         uses: actions/github-script@v7
         with:
           script: |
-            const report = `${{ steps.compare.outputs.report }}`;
+            const fs = require('fs');
+            const path = require('path');
+
+            // Read report from file
+            const reportPath = path.join(process.cwd(), '.benchmark-results/report.md');
+            if (!fs.existsSync(reportPath)) {
+              console.log('No report file found');
+              return;
+            }
+
+            const report = fs.readFileSync(reportPath, 'utf8');
+
             const issueNumber = context.issue?.number ||
                                 context.payload.pull_request?.number ||
                                 ${{ needs.parse-comment.outputs.pr_number || 0 }};
@@ -266,15 +278,13 @@ jobs:
               comment.body.includes('Regression Benchmark Results')
             );
 
-            const body = report;
-
             if (botComment) {
               // Update existing comment
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 comment_id: botComment.id,
-                body: body,
+                body: report,
               });
             } else {
               // Create new comment
@@ -282,7 +292,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: body,
+                body: report,
               });
             }
 
