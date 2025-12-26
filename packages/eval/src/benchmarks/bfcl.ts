@@ -1,16 +1,16 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import type { JSONObject } from "@ai-sdk/provider";
 import {
-  type CoreMessage,
   generateText,
   jsonSchema,
   type LanguageModel,
+  type ModelMessage,
   tool,
 } from "ai";
 
-import type { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
-import { resolveDataDir } from "@/utils/paths";
-
+import type { BenchmarkResult, LanguageModelV3Benchmark } from "../interfaces";
+import { resolveDataDir } from "../utils/paths";
 import {
   type FunctionDescription,
   multipleFunctionChecker,
@@ -25,40 +25,75 @@ import {
 const LINE_SPLIT_REGEX = /\r?\n/;
 const NUMERIC_STRING_REGEX = /^\d+$/;
 
+// Helper function to convert ground truth to morphXML format
+function convertGroundTruthToXML(call: Record<string, unknown>): string {
+  const keys = Object.keys(call);
+  if (keys.length === 0) {
+    return "<empty_call />";
+  }
+  const funcName = keys[0];
+  if (!funcName) {
+    return "<undefined_function />";
+  }
+  const params = call[funcName] as Record<string, unknown>;
+  if (!params || typeof params !== "object") {
+    return `<${funcName} />`;
+  }
+  let xml = `<${funcName}>\n`;
+  for (const [key, value] of Object.entries(params)) {
+    // Value is typically an array [value, ...alternatives]
+    const displayValue = Array.isArray(value) ? value[0] : value;
+    let valueStr: string;
+    if (typeof displayValue === "string") {
+      valueStr = displayValue;
+    } else if (displayValue === null || displayValue === undefined) {
+      valueStr = "";
+    } else {
+      valueStr = JSON.stringify(displayValue);
+    }
+    xml += `  <${key}>${valueStr}</${key}>\n`;
+  }
+  xml += `</${funcName}>`;
+  return xml;
+}
+
 // --- Interfaces ---
-type ToolSchemaObject = {
+interface ToolSchemaObject {
   type: string;
   properties?: Record<string, unknown>;
   items?: unknown;
   required?: string[];
   [key: string]: unknown;
-};
+}
 
-type ToolSpec = {
+interface ToolSpec {
   name: string;
   description?: string;
   parameters: ToolSchemaObject;
-};
+}
 
-type Message = { role: string; content: string };
+interface Message {
+  role: string;
+  content: string;
+}
 
-type TestCase = {
+interface TestCase {
   id: string;
   question: Message[] | Message[][];
   function: ToolSpec[];
-};
+}
 
-type TransformedTool = {
+interface TransformedTool {
   type: "function";
   name: string;
   description?: string;
   inputSchema: ToolSchemaObject;
-};
+}
 
-type PossibleAnswer = {
+interface PossibleAnswer {
   id: string;
   ground_truth: unknown;
-};
+}
 
 // --- Generic Checker Dispatcher ---
 function check(
@@ -124,7 +159,7 @@ function createBfclBenchmark(
   description: string,
   testDataFile: string,
   answerDataFile: string
-): LanguageModelV2Benchmark {
+): LanguageModelV3Benchmark {
   return {
     name,
     version: "1.0.0",
@@ -563,7 +598,7 @@ function createBfclBenchmark(
           restoredCalls: Record<string, unknown>[],
           usedActual: Set<number>
         ): number => {
-          for (let i = 0; i < restoredCalls.length; i++) {
+          for (let i = 0; i < restoredCalls.length; i += 1) {
             if (usedActual.has(i)) {
               continue;
             }
@@ -687,12 +722,12 @@ function createBfclBenchmark(
           return { expected, actual, diff };
         };
 
-        // Concurrency control via env BFCL_CONCURRENCY (default 4)
+        // Concurrency control via env BFCL_CONCURRENCY (default 16)
         const concurrencyEnv = process.env.BFCL_CONCURRENCY;
         const concurrency =
           concurrencyEnv && Number.isFinite(Number(concurrencyEnv))
             ? Math.max(1, Number(concurrencyEnv))
-            : 4;
+            : 16;
         logs.push(
           `[INFO] Running ${testCases.length} test cases with concurrency=${concurrency}`
         );
@@ -917,26 +952,18 @@ function createBfclBenchmark(
             maxTokens,
           } = options;
 
-          type ProviderOptionsWithMiddleware = {
-            toolCallMiddleware?: {
-              debugSummary?: {
-                originalText?: string;
-                toolCalls?: string;
-              };
-            };
-          };
           const debugSummaryRef: {
             originalText?: string;
             toolCalls?: string;
           } = {};
-          const providerOptions: ProviderOptionsWithMiddleware = {
+          const providerOptions: Record<string, JSONObject> = {
             toolCallMiddleware: {
               debugSummary: debugSummaryRef,
             },
           };
           const { toolCalls, text, finishReason } = await generateText({
             model: modelInstance,
-            messages: flatMessages as unknown as CoreMessage[],
+            messages: flatMessages as unknown as ModelMessage[],
             tools: toolsMap,
             toolChoice: "auto",
             providerOptions,
@@ -1052,6 +1079,38 @@ function createBfclBenchmark(
             debugSummaryRef.toolCalls
           );
 
+          const possibleAnswer = possibleAnswersMap.get(testCase.id);
+          if (!possibleAnswer) {
+            throw new Error(`No possible answer for id: ${testCase.id}`);
+          }
+
+          // Enhanced debug logging: compare expected vs actual
+          if (process.env.DEBUG_PARSER_OUTPUT === "true") {
+            // Render expected output in morphXML format
+            const groundTruth = possibleAnswer.ground_truth as Record<
+              string,
+              unknown
+            >[];
+            const expectedXML = groundTruth
+              .map((call) => convertGroundTruthToXML(call))
+              .join("\n\n");
+
+            console.log("\n========== BFCL CASE DEBUG ==========");
+            console.log(`Test Case: ${testCase.id}`);
+            console.log(`Expected count: ${groundTruth.length} call(s)`);
+            console.log("\n--- EXPECTED OUTPUT (morphXML format) ---");
+            console.log(expectedXML);
+            console.log("\n--- ACTUAL MODEL OUTPUT (raw, with whitespace) ---");
+            console.log(mwOriginalText || text || "(empty)");
+            console.log(
+              "\n--- PARSED TOOL CALLS (count: " +
+                (Array.isArray(toolCalls) ? toolCalls.length : 0) +
+                ") ---"
+            );
+            console.log(JSON.stringify(toolCalls, null, 2));
+            console.log("======================================\n");
+          }
+
           logRawToolCalls({
             toolCalls,
             finishReason,
@@ -1059,11 +1118,6 @@ function createBfclBenchmark(
             testCaseId: testCase.id,
             caseLogs,
           });
-
-          const possibleAnswer = possibleAnswersMap.get(testCase.id);
-          if (!possibleAnswer) {
-            throw new Error(`No possible answer for id: ${testCase.id}`);
-          }
 
           const restoredCalls = restoreToolCalls(
             (toolCalls as unknown[]) || [],
@@ -1149,7 +1203,8 @@ function createBfclBenchmark(
             .fill(0)
             .map(async () => {
               while (true) {
-                const current = idx++;
+                const current = idx;
+                idx += 1;
                 if (current >= items.length) {
                   break;
                 }

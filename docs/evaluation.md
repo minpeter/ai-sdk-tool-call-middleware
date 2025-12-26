@@ -40,16 +40,16 @@ See runnable examples in `examples/eval-core/src/*`.
 
 ## [dev] Create a Custom Benchmark
 
-Implement `LanguageModelV2Benchmark` and pass it to `evaluate`.
+Implement `LanguageModelV3Benchmark` and pass it to `evaluate`.
 
 ```ts
 import { generateText } from "ai";
 import type {
-  LanguageModelV2Benchmark,
+  LanguageModelV3Benchmark,
   BenchmarkResult,
 } from "@ai-sdk-tool/eval";
 
-export const myBenchmark: LanguageModelV2Benchmark = {
+export const myBenchmark: LanguageModelV3Benchmark = {
   name: "my-benchmark",
   version: "1.0.0",
   description: "Minimal example",

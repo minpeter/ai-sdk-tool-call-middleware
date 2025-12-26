@@ -1,4 +1,4 @@
-import type { EvaluationResult } from "@/interfaces";
+import type { EvaluationResult } from "../interfaces";
 
 // Regex patterns at module level for performance
 const FAIL_ID_REGEX = /^\[FAIL\]\s+([^:]+):/;

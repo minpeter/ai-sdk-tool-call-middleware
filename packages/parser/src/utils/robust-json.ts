@@ -55,7 +55,7 @@ function some<T, R>(
   f: (item: T, index: number, arr: T[]) => R | undefined | false
 ): R | false {
   let acc: R | false = false;
-  for (let i = 0; i < array.length; i++) {
+  for (let i = 0; i < array.length; i += 1) {
     // We assume R is a truthy type if the condition is met, or undefined/false otherwise.
     const result = f(array[i], i, array);
     acc = result === undefined ? false : result;
@@ -69,11 +69,11 @@ function some<T, R>(
 // --- Type Definitions ---
 
 // Type for the specification of a single token type
-type TokenSpec = {
+interface TokenSpec {
   re: RegExp;
   // Function to process the regex match and return a RawToken
   f: (match: RegExpExecArray) => RawToken;
-};
+}
 
 // Literal types for possible token types
 type TokenType =
@@ -91,11 +91,11 @@ type TokenType =
 
 // Type for a token right after regex matching, before line number is added
 // Value is optional as punctuation/whitespace tokens might not have a semantic value
-type RawToken = {
+interface RawToken {
   type: TokenType;
   match: string; // The raw matched text
   value?: unknown; // The parsed value (for strings, numbers, atoms)
-};
+}
 
 // Type for a token including line number information
 type Token = RawToken & {
@@ -103,25 +103,25 @@ type Token = RawToken & {
 };
 
 // Type for parse warnings
-type ParseWarning = {
+interface ParseWarning {
   message: string;
   line: number;
-};
+}
 
 // Type for the state object used during parsing
-type ParseState = {
+interface ParseState {
   pos: number; // Current position in the token array
   warnings: ParseWarning[];
   // Options passed to the parser
   tolerant: boolean;
   duplicate: boolean; // true = allow duplicate keys (use last value), false = reject duplicate keys with error
   reviver?: (key: string, value: unknown) => unknown; // Optional JSON reviver function
-};
+}
 
 /**
  * Options for configuring JSON parsing behavior
  */
-type ParseOptions = {
+interface ParseOptions {
   /**
    * Enable relaxed JSON syntax parsing (unquoted keys, single quotes, trailing commas, comments)
    * @default true
@@ -157,15 +157,15 @@ type ParseOptions = {
    * @returns The transformed value
    */
   reviver?: (key: string, value: unknown) => unknown;
-};
+}
 
 // Type for options specific to the parseMany function
-type ParseManyOpts<T> = {
+interface ParseManyOpts<T> {
   skip: TokenType[]; // Token types to skip initially
   elementParser: (tokens: Token[], state: ParseState, obj: T) => void; // Function to parse an element/pair
   elementName: string; // Name of the expected element for error messages
   endSymbol: TokenType; // The token type that marks the end of the structure (']' or '}')
-};
+}
 
 // --- Lexer Implementation ---
 
@@ -396,7 +396,7 @@ const strictLexer = makeLexer(makeTokenSpecs(false)); // Strict JSON lexer
 // :: array token -> nat -> nat?
 function previousNWSToken(tokens: Token[], index: number): number | undefined {
   let currentIndex = index;
-  for (; currentIndex >= 0; currentIndex--) {
+  for (; currentIndex >= 0; currentIndex -= 1) {
     if (tokens[currentIndex].type !== " ") {
       return currentIndex; // Return index of the non-whitespace token
     }
@@ -785,13 +785,13 @@ function handleInvalidToken<T>(
 }
 
 // Helper to handle comma tokens in parseMany
-type HandleCommaTokenParams<T> = {
+interface HandleCommaTokenParams<T> {
   token: Token;
   tokens: Token[];
   state: ParseState;
   opts: ParseManyOpts<T>;
   result: T;
-};
+}
 
 function handleCommaToken<T>(params: HandleCommaTokenParams<T>): T | null {
   const { token, tokens, state, opts, result } = params;

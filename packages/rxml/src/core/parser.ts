@@ -304,7 +304,7 @@ export function parse(
         s[j] !== "/" &&
         s[j] !== ">"
       ) {
-        j++;
+        j += 1;
       }
       rootStart = lt;
       rootName = s.slice(lt + 1, j);
@@ -320,7 +320,7 @@ export function parse(
         if (closeHead === range.end) {
           let p = closeHead + 2 + rootName.length;
           while (p < s.length && WHITESPACE_REGEX.test(s[p])) {
-            p++;
+            p += 1;
           }
           if (s[p] === ">") {
             fullEnd = p + 1;
@@ -785,7 +785,7 @@ export function filter(
 ): RXMLNode[] {
   const out: RXMLNode[] = [];
 
-  for (let i = 0; i < children.length; i++) {
+  for (let i = 0; i < children.length; i += 1) {
     const child = children[i];
     if (typeof child === "object" && filterFn(child, i, depth, path)) {
       out.push(child);

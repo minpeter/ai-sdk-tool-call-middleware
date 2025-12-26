@@ -48,7 +48,7 @@ export function skipQuoted(s: string, i: number): number {
     if (ch === quote) {
       return pos + 1;
     }
-    pos++;
+    pos += 1;
   }
   return pos;
 }
@@ -63,7 +63,7 @@ export function parseName(
   const start = pos;
   let currentPos = pos;
   while (NAME_SPACER.indexOf(s[currentPos]) === -1 && s[currentPos]) {
-    currentPos++;
+    currentPos += 1;
   }
   return { name: s.slice(start, currentPos), newPos: currentPos };
 }
@@ -128,12 +128,12 @@ export function getLineColumn(
   let line = 1;
   let column = 1;
 
-  for (let i = 0; i < pos && i < s.length; i++) {
+  for (let i = 0; i < pos && i < s.length; i += 1) {
     if (s[i] === "\n") {
-      line++;
+      line += 1;
       column = 1;
     } else {
-      column++;
+      column += 1;
     }
   }
 

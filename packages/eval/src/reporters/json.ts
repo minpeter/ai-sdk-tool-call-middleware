@@ -1,4 +1,4 @@
-import type { EvaluationResult } from "@/interfaces";
+import type { EvaluationResult } from "../interfaces";
 
 export function jsonReporter(results: EvaluationResult[]): void {
   // Output the raw results array as a JSON string.

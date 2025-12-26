@@ -1,5 +1,29 @@
 # @ai-sdk-tool/parser
 
+## 3.0.0-canary.2
+
+### Minor Changes
+
+- 68a4248: feat(parser): implement pluggable heuristic pipeline for XML parsing
+
+  - Add 3-phase heuristic engine (pre-parse, fallback-reparse, post-parse)
+  - Add 5 default XML heuristics: normalizeCloseTags, escapeInvalidLt, balanceTags, dedupeShellStringTags, repairAgainstSchema
+  - Reorganize heuristics into dedicated `src/heuristics/` module
+  - Export heuristic APIs for custom pipeline configuration
+
+## 3.0.0-canary.1
+
+### Minor Changes
+
+- b48924c: Remove internal barrel files and enable noBarrelFile linting rule for better tree-shaking and build performance
+
+## 3.0.0-canary.0
+
+### Major Changes
+
+- c96c293: upgrade language model interfaces to V3
+- df62ec5: bump ai v6 (middleware v3 not yet)
+
 ## 2.1.7
 
 ### Patch Changes
@@ -27,6 +51,7 @@
 
 - 49f5024: Added license to Apache 2.0
 - 02b32c0: Morph XML protocol and utils robustness tweaks.
+
   - Add `RXML` for safer XML extraction (raw string tags, duplicate checks) and use it in `morphXmlProtocol`.
   - Replace relaxed JSON helper with `RJSON`; export `RXML`/`RJSON` from utils.
   - Minor improvements to streaming parsing and XML stringify options.
@@ -88,6 +113,7 @@
 ### Patch Changes
 
 - 7358b9f: Add and configure development tooling and quality improvements:
+
   - add ESLint and Prettier configs
   - add code coverage reporting and CI-friendly setup
   - bump and align dev dependencies

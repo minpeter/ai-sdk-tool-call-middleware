@@ -1,12 +1,12 @@
 // Local ToolCall interface for type safety, as it's not exported from 'ai'.
-export type ToolCall = {
+export interface ToolCall {
   toolCallId: string;
   toolName: string;
   args: unknown;
-};
+}
 
 // --- Type Definitions ---
-export type FunctionDescription = {
+export interface FunctionDescription {
   name: string;
   description?: string;
   parameters: {
@@ -20,7 +20,7 @@ export type FunctionDescription = {
     };
     required: string[];
   };
-};
+}
 
 /**
  * Standardizes a string for comparison.
@@ -182,9 +182,13 @@ function checkObjectValue(
   return { valid: true };
 }
 
-type CheckerResult = { valid: boolean; error?: string; error_type?: string };
+interface CheckerResult {
+  valid: boolean;
+  error?: string;
+  error_type?: string;
+}
 
-type CheckerContext = {
+interface CheckerContext {
   funcDescription: FunctionDescription;
   modelToolCall: ToolCall;
   possibleAnswerParams: Record<string, unknown>;
@@ -192,7 +196,7 @@ type CheckerContext = {
     string,
     { type: string; description?: string; items?: { type: string } }
   >;
-};
+}
 
 /**
  * Main checker for a single function call.
@@ -379,7 +383,7 @@ export function parallelFunctionCheckerNoOrder(
     }
 
     let foundMatch = false;
-    for (let i = 0; i < modelToolCalls.length; i++) {
+    for (let i = 0; i < modelToolCalls.length; i += 1) {
       if (matchedModelCallIndices.has(i)) {
         continue;
       }

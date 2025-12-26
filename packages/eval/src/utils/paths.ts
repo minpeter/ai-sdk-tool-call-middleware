@@ -68,7 +68,7 @@ function getStartDir(moduleUrl?: string): string {
 function findDataDirByTraversal(startDir: string): string | null {
   let dir = startDir;
   const MAX_PARENT_TRAVERSAL_DEPTH = 6;
-  for (let i = 0; i < MAX_PARENT_TRAVERSAL_DEPTH; i++) {
+  for (let i = 0; i < MAX_PARENT_TRAVERSAL_DEPTH; i += 1) {
     const dataCandidate = path.join(dir, "data");
     if (fs.existsSync(dataCandidate)) {
       return dataCandidate;

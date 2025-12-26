@@ -1,12 +1,11 @@
-// Core evaluation function
-
-// Built-in benchmarks
+// biome-ignore lint/performance/noBarrelFile: Package entrypoint - must re-export for public API
 export {
   bfclMultipleBenchmark,
   bfclParallelBenchmark,
   bfclParallelMultipleBenchmark,
   bfclSimpleBenchmark,
 } from "./benchmarks/bfcl";
+export { complexFuncBenchBenchmark } from "./benchmarks/complex-func-bench";
 export {
   jsonGenerationBenchmark,
   jsonGenerationSchemaOnlyBenchmark,
@@ -17,6 +16,6 @@ export { evaluate } from "./evaluate";
 export type {
   BenchmarkResult,
   EvaluateOptions,
-  LanguageModelV2Benchmark,
+  LanguageModelV3Benchmark,
   ReporterType,
 } from "./interfaces";

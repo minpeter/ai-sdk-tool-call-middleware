@@ -1,0 +1,169 @@
+Testing Llama 3.1 70B with morphXML...
+
+[meta-llama/Meta-Llama-3.1-70B-Instruct] (llama-3.1-70b) Running benchmark: bfcl-simple...
+[meta-llama/Meta-Llama-3.1-70B-Instruct] (llama-3.1-70b) Finished benchmark: bfcl-simple. Score: 0
+[meta-llama/Meta-Llama-3.1-70B-Instruct] (llama-3.1-70b) Running benchmark: bfcl-multiple...
+[meta-llama/Meta-Llama-3.1-70B-Instruct] (llama-3.1-70b) Finished benchmark: bfcl-multiple. Score: 0
+[meta-llama/Meta-Llama-3.1-70B-Instruct] (llama-3.1-70b) Running benchmark: bfcl-parallel...
+[meta-llama/Meta-Llama-3.1-70B-Instruct] (llama-3.1-70b) Finished benchmark: bfcl-parallel. Score: 0
+[meta-llama/Meta-Llama-3.1-70B-Instruct] (llama-3.1-70b) Running benchmark: bfcl-parallel-multiple...
+[meta-llama/Meta-Llama-3.1-70B-Instruct] (llama-3.1-70b) Finished benchmark: bfcl-parallel-multiple. Score: 0
+
+--- 📊 Evaluation Report ---
+
+ [36m[meta-llama/Meta-Llama-3.1-70B-Instruct][0m [90m(llama-3.1-70b)[0m - [35mbfcl-simple[0m
+  └ [31m✖ FAILURE[0m | Score: [33m0.00[0m
+    Metrics:
+      - correct_count: 0
+      - total_cases: 3
+      - accuracy: 0
+    Raw Logs (Sample):
+      [INFO] Using data dir: /Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/eval/data
+      [INFO] Limiting test cases to 3 due to BFCL_LIMIT.
+      [INFO] Running 3 test cases with concurrency=16
+      [DEBUG] simple_0: firstTool={"type":"function","name":"calculate_triangle_area","description":"Calculate the area of a triangle given its base and height.","inputSchema":{"type":"object","properties":{"base":{"type":"number","description":"The base of the triangle."},"height":{"type":"number","description":"The height of the triangle."},"unit":{"type":"string","description":"The unit of measure (defaults to 'units' if not specified)"}},"required":["base","height"]}}, schemaType=object
+      [ERROR] simple_0: Model generation failed: Not Found
+      [STACK] simple_0: AI_APICallError: Not Found
+    at <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/response-handler.ts:36:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async postToApi (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/post-to-api.ts:118:28)
+    at async OpenAICompatibleChatLanguageModel.doGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+openai-compatible@2.0.0_zod@4.2.1/node_modules/@ai-sdk/openai-compatible/src/chat/openai-compatible-chat-language-model.ts:225:9)
+    at async wrapGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/parser/src/generate-handler.ts:194:18)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:516:32)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+    at async _retryWithExponentialBackoff (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/util/retry-with-exponential-backoff.ts:96:12)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:467:34)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+      [DEBUG] simple_1: firstTool={"type":"function","name":"math_factorial","description":"Calculate the factorial of a given number.","inputSchema":{"type":"object","properties":{"number":{"type":"number","description":"The number for which factorial needs to be calculated."}},"required":["number"]}}, schemaType=object
+      [ERROR] simple_1: Model generation failed: Not Found
+      [STACK] simple_1: AI_APICallError: Not Found
+    at <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/response-handler.ts:36:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async postToApi (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/post-to-api.ts:118:28)
+    at async OpenAICompatibleChatLanguageModel.doGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+openai-compatible@2.0.0_zod@4.2.1/node_modules/@ai-sdk/openai-compatible/src/chat/openai-compatible-chat-language-model.ts:225:9)
+    at async wrapGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/parser/src/generate-handler.ts:194:18)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:516:32)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+    at async _retryWithExponentialBackoff (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/util/retry-with-exponential-backoff.ts:96:12)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:467:34)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+      [DEBUG] simple_2: firstTool={"type":"function","name":"math_hypot","description":"Calculate the Euclidean norm, sqrt(sum(squares)), the length of the vector from the origin to point (x, y) which is the hypotenuse of the right triangle.","inputSchema":{"type":"object","properties":{"x":{"type":"number","description":"The x-coordinate value."},"y":{"type":"number","description":"The y-coordinate value."},"z":{"type":"number","description":"Optional. The z-coordinate value. Default is 0."}},"required":["x","y"]}}, schemaType=object
+
+ [36m[meta-llama/Meta-Llama-3.1-70B-Instruct][0m [90m(llama-3.1-70b)[0m - [35mbfcl-multiple[0m
+  └ [31m✖ FAILURE[0m | Score: [33m0.00[0m
+    Metrics:
+      - correct_count: 0
+      - total_cases: 3
+      - accuracy: 0
+    Raw Logs (Sample):
+      [INFO] Using data dir: /Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/eval/data
+      [INFO] Limiting test cases to 3 due to BFCL_LIMIT.
+      [INFO] Running 3 test cases with concurrency=16
+      [DEBUG] multiple_0: firstTool={"type":"function","name":"triangle_properties_get","description":"Retrieve the dimensions, such as area and perimeter, of a triangle if lengths of three sides are given.","inputSchema":{"type":"object","properties":{"side1":{"type":"number","description":"The length of first side of the triangle."},"side2":{"type":"number","description":"The length of second side of the triangle."},"side3":{"type":"number","description":"The length of third side of the triangle."},"get_area":{"type":"boolean","description":"A flag to determine whether to calculate the area of triangle. Default is true.","default":true,"optional":true},"get_perimeter":{"type":"boolean","description":"A flag to determine whether to calculate the perimeter of triangle. Default is true.","default":true,"optional":true},"get_angles":{"type":"boolean","description":"A flag to determine whether to calculate the internal angles of triangle. Default is true.","default":true,"optional":true}},"required":["side1","side2","side3"]}}, schemaType=object
+      [ERROR] multiple_0: Model generation failed: Not Found
+      [STACK] multiple_0: AI_APICallError: Not Found
+    at <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/response-handler.ts:36:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async postToApi (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/post-to-api.ts:118:28)
+    at async OpenAICompatibleChatLanguageModel.doGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+openai-compatible@2.0.0_zod@4.2.1/node_modules/@ai-sdk/openai-compatible/src/chat/openai-compatible-chat-language-model.ts:225:9)
+    at async wrapGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/parser/src/generate-handler.ts:194:18)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:516:32)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+    at async _retryWithExponentialBackoff (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/util/retry-with-exponential-backoff.ts:96:12)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:467:34)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+      [DEBUG] multiple_1: firstTool={"type":"function","name":"math_triangle_area_heron","description":"Calculates the area of a triangle using Heron's formula, given the lengths of its three sides.","inputSchema":{"type":"object","properties":{"side1":{"type":"number","description":"Length of the first side of the triangle."},"side2":{"type":"number","description":"Length of the second side of the triangle."},"side3":{"type":"number","description":"Length of the third side of the triangle."}},"required":["side1","side2","side3"]}}, schemaType=object
+      [ERROR] multiple_1: Model generation failed: Not Found
+      [STACK] multiple_1: AI_APICallError: Not Found
+    at <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/response-handler.ts:36:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async postToApi (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/post-to-api.ts:118:28)
+    at async OpenAICompatibleChatLanguageModel.doGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+openai-compatible@2.0.0_zod@4.2.1/node_modules/@ai-sdk/openai-compatible/src/chat/openai-compatible-chat-language-model.ts:225:9)
+    at async wrapGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/parser/src/generate-handler.ts:194:18)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:516:32)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+    at async _retryWithExponentialBackoff (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/util/retry-with-exponential-backoff.ts:96:12)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:467:34)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+      [DEBUG] multiple_2: firstTool={"type":"function","name":"country_info_largest_city","description":"Fetch the largest city of a specified country.","inputSchema":{"type":"object","properties":{"country":{"type":"string","description":"Name of the country."}},"required":["country"]}}, schemaType=object
+
+ [36m[meta-llama/Meta-Llama-3.1-70B-Instruct][0m [90m(llama-3.1-70b)[0m - [35mbfcl-parallel[0m
+  └ [31m✖ FAILURE[0m | Score: [33m0.00[0m
+    Metrics:
+      - correct_count: 0
+      - total_cases: 3
+      - accuracy: 0
+    Raw Logs (Sample):
+      [INFO] Using data dir: /Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/eval/data
+      [INFO] Limiting test cases to 3 due to BFCL_LIMIT.
+      [INFO] Running 3 test cases with concurrency=16
+      [DEBUG] parallel_0: firstTool={"type":"function","name":"spotify_play","description":"Play specific tracks from a given artist for a specific time duration.","inputSchema":{"type":"object","properties":{"artist":{"type":"string","description":"The artist whose songs you want to play."},"duration":{"type":"number","description":"The duration for which the songs should be played, in minutes."}},"required":["artist","duration"]}}, schemaType=object
+      [ERROR] parallel_0: Model generation failed: Not Found
+      [STACK] parallel_0: AI_APICallError: Not Found
+    at <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/response-handler.ts:36:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async postToApi (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/post-to-api.ts:118:28)
+    at async OpenAICompatibleChatLanguageModel.doGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+openai-compatible@2.0.0_zod@4.2.1/node_modules/@ai-sdk/openai-compatible/src/chat/openai-compatible-chat-language-model.ts:225:9)
+    at async wrapGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/parser/src/generate-handler.ts:194:18)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:516:32)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+    at async _retryWithExponentialBackoff (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/util/retry-with-exponential-backoff.ts:96:12)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:467:34)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+      [DEBUG] parallel_1: firstTool={"type":"function","name":"calculate_em_force","description":"Calculate the induced electromagnetic force based on Faraday's Law of Electromagnetic Induction, given the magnetic field (in Tesla), change in magnetic field area (in square meters), and the change in time (in seconds).","inputSchema":{"type":"object","properties":{"b_field":{"type":"number","description":"The magnetic field in Tesla."},"area":{"type":"number","description":"The change in area of magnetic field in square meters."},"d_time":{"type":"number","description":"The change in time in seconds."}},"required":["b_field","area","d_time"]}}, schemaType=object
+      [ERROR] parallel_1: Model generation failed: Not Found
+      [STACK] parallel_1: AI_APICallError: Not Found
+    at <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/response-handler.ts:36:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async postToApi (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/post-to-api.ts:118:28)
+    at async OpenAICompatibleChatLanguageModel.doGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+openai-compatible@2.0.0_zod@4.2.1/node_modules/@ai-sdk/openai-compatible/src/chat/openai-compatible-chat-language-model.ts:225:9)
+    at async wrapGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/parser/src/generate-handler.ts:194:18)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:516:32)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+    at async _retryWithExponentialBackoff (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/util/retry-with-exponential-backoff.ts:96:12)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:467:34)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+      [DEBUG] parallel_2: firstTool={"type":"function","name":"calculate_resistance","description":"Calculate the resistance of a wire using resistivity, length, and cross-sectional area.","inputSchema":{"type":"object","properties":{"length":{"type":"number","description":"The length of the wire in meters."},"area":{"type":"number","description":"The cross-sectional area of the wire in square meters."},"resistivity":{"type":"string","description":"Resistivity of the material (Default: 'copper'). Allowed values: 'copper', 'aluminum'"}},"required":["length","area"]}}, schemaType=object
+
+ [36m[meta-llama/Meta-Llama-3.1-70B-Instruct][0m [90m(llama-3.1-70b)[0m - [35mbfcl-parallel-multiple[0m
+  └ [31m✖ FAILURE[0m | Score: [33m0.00[0m
+    Metrics:
+      - correct_count: 0
+      - total_cases: 3
+      - accuracy: 0
+    Raw Logs (Sample):
+      [INFO] Using data dir: /Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/eval/data
+      [INFO] Limiting test cases to 3 due to BFCL_LIMIT.
+      [INFO] Running 3 test cases with concurrency=16
+      [DEBUG] parallel_multiple_0: firstTool={"type":"function","name":"math_toolkit_sum_of_multiples","description":"Find the sum of all multiples of specified numbers within a specified range.","inputSchema":{"type":"object","properties":{"lower_limit":{"type":"number","description":"The start of the range (inclusive)."},"upper_limit":{"type":"number","description":"The end of the range (inclusive)."},"multiples":{"type":"array","items":{"type":"number"},"description":"The numbers to find multiples of."}},"required":["lower_limit","upper_limit","multiples"]}}, schemaType=object
+      [ERROR] parallel_multiple_0: Model generation failed: Not Found
+      [STACK] parallel_multiple_0: AI_APICallError: Not Found
+    at <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/response-handler.ts:36:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async postToApi (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/post-to-api.ts:118:28)
+    at async OpenAICompatibleChatLanguageModel.doGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+openai-compatible@2.0.0_zod@4.2.1/node_modules/@ai-sdk/openai-compatible/src/chat/openai-compatible-chat-language-model.ts:225:9)
+    at async wrapGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/parser/src/generate-handler.ts:194:18)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:516:32)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+    at async _retryWithExponentialBackoff (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/util/retry-with-exponential-backoff.ts:96:12)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:467:34)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+      [DEBUG] parallel_multiple_1: firstTool={"type":"function","name":"volume_cylinder_calculate","description":"Calculate the volume of a cylinder given the radius and the height.","inputSchema":{"type":"object","properties":{"radius":{"type":"number","description":"The radius of the cylinder."},"height":{"type":"number","description":"The height of the cylinder."}},"required":["radius","height"]}}, schemaType=object
+      [ERROR] parallel_multiple_1: Model generation failed: Not Found
+      [STACK] parallel_multiple_1: AI_APICallError: Not Found
+    at <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/response-handler.ts:36:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async postToApi (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+provider-utils@4.0.0_zod@4.2.1/node_modules/@ai-sdk/provider-utils/src/post-to-api.ts:118:28)
+    at async OpenAICompatibleChatLanguageModel.doGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/@ai-sdk+openai-compatible@2.0.0_zod@4.2.1/node_modules/@ai-sdk/openai-compatible/src/chat/openai-compatible-chat-language-model.ts:225:9)
+    at async wrapGenerate (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/parser/src/generate-handler.ts:194:18)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:516:32)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+    at async _retryWithExponentialBackoff (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/util/retry-with-exponential-backoff.ts:96:12)
+    at async fn (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/generate-text/generate-text.ts:467:34)
+    at async <anonymous> (/Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/node_modules/.pnpm/ai@6.0.1_zod@4.2.1/node_modules/ai/src/telemetry/record-span.ts:21:24)
+      [DEBUG] parallel_multiple_2: firstTool={"type":"function","name":"circle_calculate_circumference","description":"Calculate the circumference of a circle based on the diameter.","inputSchema":{"type":"object","properties":{"diameter":{"type":"number","description":"The diameter of the circle."}},"required":["diameter"]}}, schemaType=object
+
+---------------------------
+
+
+Evaluation complete!
