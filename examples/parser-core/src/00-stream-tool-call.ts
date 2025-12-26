@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { sijawaraDetailedXmlToolMiddleware } from "@ai-sdk-tool/parser/community";
+import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
@@ -32,7 +32,7 @@ async function main() {
   const result = streamText({
     model: wrapLanguageModel({
       model: friendli("zai-org/GLM-4.6"),
-      middleware: sijawaraDetailedXmlToolMiddleware,
+      middleware: morphXmlToolMiddleware,
     }),
 
     // model: wrapLanguageModel({
