@@ -889,6 +889,23 @@ export const morphXmlProtocol = (
         })
         .sort((a, b) => a.startIndex - b.startIndex);
 
+      // Debug logging for model output analysis
+      if (process.env.DEBUG_PARSER_OUTPUT === "true") {
+        console.log("\n=== PARSER DEBUG ===");
+        console.log(`Available tools: ${toolNames.join(", ")}`);
+        console.log(`Full text length: ${text.length}`);
+        console.log(`Full text:\n${text}\n`);
+        console.log(`Tool calls found: ${toolCalls.length}`);
+        for (let i = 0; i < toolCalls.length; i++) {
+          const tc = toolCalls[i];
+          console.log(`\n[Tool Call ${i + 1}] ${tc.toolName}`);
+          console.log(`Position: ${tc.startIndex} - ${tc.endIndex}`);
+          console.log(`Segment:\n${tc.segment}`);
+          console.log(`Content:\n${tc.content}`);
+        }
+        console.log("===================\n");
+      }
+
       for (const toolCall of toolCalls) {
         currentIndex = processTextBeforeToolCall(
           text,

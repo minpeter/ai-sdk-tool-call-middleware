@@ -416,7 +416,10 @@ async function runSingleCase(
       return {
         toolName: originalName,
         name: originalName,
-        args: (c as Record<string, unknown>).args ?? {},
+        args:
+          (c as Record<string, unknown>).input ??
+          (c as Record<string, unknown>).args ??
+          {},
       };
     });
 

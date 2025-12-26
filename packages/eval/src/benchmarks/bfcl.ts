@@ -25,6 +25,38 @@ import {
 const LINE_SPLIT_REGEX = /\r?\n/;
 const NUMERIC_STRING_REGEX = /^\d+$/;
 
+// Helper function to convert ground truth to morphXML format
+function convertGroundTruthToXML(call: Record<string, unknown>): string {
+  const keys = Object.keys(call);
+  if (keys.length === 0) {
+    return "<empty_call />";
+  }
+  const funcName = keys[0];
+  if (!funcName) {
+    return "<undefined_function />";
+  }
+  const params = call[funcName] as Record<string, unknown>;
+  if (!params || typeof params !== "object") {
+    return `<${funcName} />`;
+  }
+  let xml = `<${funcName}>\n`;
+  for (const [key, value] of Object.entries(params)) {
+    // Value is typically an array [value, ...alternatives]
+    const displayValue = Array.isArray(value) ? value[0] : value;
+    let valueStr: string;
+    if (typeof displayValue === "string") {
+      valueStr = displayValue;
+    } else if (displayValue === null || displayValue === undefined) {
+      valueStr = "";
+    } else {
+      valueStr = JSON.stringify(displayValue);
+    }
+    xml += `  <${key}>${valueStr}</${key}>\n`;
+  }
+  xml += `</${funcName}>`;
+  return xml;
+}
+
 // --- Interfaces ---
 interface ToolSchemaObject {
   type: string;
@@ -690,12 +722,12 @@ function createBfclBenchmark(
           return { expected, actual, diff };
         };
 
-        // Concurrency control via env BFCL_CONCURRENCY (default 4)
+        // Concurrency control via env BFCL_CONCURRENCY (default 16)
         const concurrencyEnv = process.env.BFCL_CONCURRENCY;
         const concurrency =
           concurrencyEnv && Number.isFinite(Number(concurrencyEnv))
             ? Math.max(1, Number(concurrencyEnv))
-            : 4;
+            : 16;
         logs.push(
           `[INFO] Running ${testCases.length} test cases with concurrency=${concurrency}`
         );
@@ -1047,6 +1079,38 @@ function createBfclBenchmark(
             debugSummaryRef.toolCalls
           );
 
+          const possibleAnswer = possibleAnswersMap.get(testCase.id);
+          if (!possibleAnswer) {
+            throw new Error(`No possible answer for id: ${testCase.id}`);
+          }
+
+          // Enhanced debug logging: compare expected vs actual
+          if (process.env.DEBUG_PARSER_OUTPUT === "true") {
+            // Render expected output in morphXML format
+            const groundTruth = possibleAnswer.ground_truth as Record<
+              string,
+              unknown
+            >[];
+            const expectedXML = groundTruth
+              .map((call) => convertGroundTruthToXML(call))
+              .join("\n\n");
+
+            console.log("\n========== BFCL CASE DEBUG ==========");
+            console.log(`Test Case: ${testCase.id}`);
+            console.log(`Expected count: ${groundTruth.length} call(s)`);
+            console.log("\n--- EXPECTED OUTPUT (morphXML format) ---");
+            console.log(expectedXML);
+            console.log("\n--- ACTUAL MODEL OUTPUT (raw, with whitespace) ---");
+            console.log(mwOriginalText || text || "(empty)");
+            console.log(
+              "\n--- PARSED TOOL CALLS (count: " +
+                (Array.isArray(toolCalls) ? toolCalls.length : 0) +
+                ") ---"
+            );
+            console.log(JSON.stringify(toolCalls, null, 2));
+            console.log("======================================\n");
+          }
+
           logRawToolCalls({
             toolCalls,
             finishReason,
@@ -1054,11 +1118,6 @@ function createBfclBenchmark(
             testCaseId: testCase.id,
             caseLogs,
           });
-
-          const possibleAnswer = possibleAnswersMap.get(testCase.id);
-          if (!possibleAnswer) {
-            throw new Error(`No possible answer for id: ${testCase.id}`);
-          }
 
           const restoredCalls = restoreToolCalls(
             (toolCalls as unknown[]) || [],
