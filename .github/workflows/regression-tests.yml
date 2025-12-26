@@ -212,18 +212,15 @@ jobs:
             const mode = '${{ steps.mode.outputs.mode }}';
             const logsUrl = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}';
 
-            const body = `## ❌ Benchmark Execution Failed
-
-**Commit:** \`${sha}\`
-**Mode:** ${mode}
-
-The benchmark execution failed. This could be due to:
-- Missing API token (FRIENDLI_TOKEN)
-- Network issues
-- Model availability issues
-- Code compilation errors
-
-Please check the [workflow logs](${logsUrl}) for more details.`;
+            const body = '## ❌ Benchmark Execution Failed\n\n' +
+              '**Commit:** `' + sha + '`\n' +
+              '**Mode:** ' + mode + '\n\n' +
+              'The benchmark execution failed. This could be due to:\n' +
+              '- Missing API token (FRIENDLI_TOKEN)\n' +
+              '- Network issues\n' +
+              '- Model availability issues\n' +
+              '- Code compilation errors\n\n' +
+              'Please check the [workflow logs](' + logsUrl + ') for more details.';
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
