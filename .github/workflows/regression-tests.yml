@@ -1,0 +1,132 @@
+name: Regression Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression-benchmarks:
+    name: Run Regression Benchmarks
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    # Only run if API token is available
+    if: vars.FRIENDLI_TOKEN != '' || secrets.FRIENDLI_TOKEN != ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # Full history for comparison
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Run regression benchmarks
+        env:
+          FRIENDLI_TOKEN: ${{ secrets.FRIENDLI_TOKEN || vars.FRIENDLI_TOKEN }}
+        run: |
+          pnpm tsx scripts/run-regression-benchmarks.ts
+        continue-on-error: true
+
+      - name: Compare with historical data
+        id: compare
+        run: |
+          pnpm tsx scripts/compare-benchmarks.ts
+          echo "report<<EOF" >> $GITHUB_OUTPUT
+          cat .benchmark-results/report.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Commit benchmark results
+        if: success()
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .benchmark-results/
+          git diff --quiet && git diff --staged --quiet || git commit -m "ci: add regression benchmark results for ${{ github.sha }}"
+        continue-on-error: true
+
+      - name: Push changes
+        if: success() && github.ref == 'refs/heads/main'
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+        continue-on-error: true
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && steps.compare.outputs.report != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const report = `${{ steps.compare.outputs.report }}`;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('Regression Benchmark Results')
+            );
+
+            const body = report;
+
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body,
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
+
+      - name: Upload benchmark results as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.sha }}
+          path: .benchmark-results/
+          retention-days: 90
+
+      - name: Fail if regression detected
+        if: steps.compare.outcome == 'failure'
+        run: |
+          echo "::error::Performance regression detected. See PR comment for details."
+          exit 1

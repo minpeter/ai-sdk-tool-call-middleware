@@ -37,3 +37,8 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Benchmark results (keep history.jsonl)
+.benchmark-results/*
+\!.benchmark-results/history.jsonl
+\!.benchmark-results/.gitkeep

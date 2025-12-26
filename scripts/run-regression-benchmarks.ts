@@ -1,0 +1,199 @@
+#!/usr/bin/env tsx
+/**
+ * Regression Benchmark Runner
+ *
+ * Runs benchmarks comparing native tool calling vs morphXML protocol
+ * with the same model, saves results with commit hash for historical comparison.
+ */
+
+import { execSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import {
+  bfclMultipleBenchmark,
+  bfclParallelBenchmark,
+  bfclSimpleBenchmark,
+  evaluate,
+} from "@ai-sdk-tool/eval";
+import { createToolMiddleware, morphXmlProtocol } from "@ai-sdk-tool/parser";
+import {
+  extractReasoningMiddleware,
+  type LanguageModel,
+  wrapLanguageModel,
+} from "ai";
+
+// Get commit hash and branch
+const commitHash = execSync("git rev-parse HEAD").toString().trim();
+const shortHash = commitHash.slice(0, 7);
+const branch = execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
+
+console.log(`🔍 Running regression benchmarks for commit ${shortHash}`);
+console.log(`📦 Branch: ${branch}\n`);
+
+// Setup model provider (using a commonly available model)
+const friendli = createOpenAICompatible({
+  name: "friendli.serverless",
+  apiKey: process.env.FRIENDLI_TOKEN,
+  baseURL: "https://api.friendli.ai/serverless/v1",
+});
+
+// Use GLM-4.6 as baseline model for regression testing
+const baseModel = friendli("zai-org/GLM-4.6");
+
+// Native tool calling (no middleware)
+const nativeModel: LanguageModel = wrapLanguageModel({
+  model: baseModel,
+  middleware: [extractReasoningMiddleware({ tagName: "think" })],
+});
+
+// morphXML protocol
+const morphXmlModel: LanguageModel = wrapLanguageModel({
+  model: baseModel,
+  middleware: [
+    createToolMiddleware({
+      protocol: morphXmlProtocol,
+      placement: "last",
+    }),
+    extractReasoningMiddleware({ tagName: "think" }),
+  ],
+});
+
+interface BenchmarkResult {
+  commit: string;
+  branch: string;
+  timestamp: string;
+  model: string;
+  results: {
+    native: Record<string, number>;
+    morphxml: Record<string, number>;
+  };
+}
+
+async function runBenchmarks(): Promise<BenchmarkResult> {
+  const timestamp = new Date().toISOString();
+
+  console.log("Running native tool calling benchmarks...\n");
+  const nativeResults = await evaluate({
+    models: { native: nativeModel },
+    benchmarks: [
+      bfclSimpleBenchmark,
+      bfclMultipleBenchmark,
+      bfclParallelBenchmark,
+    ],
+    reporter: "console",
+    temperature: 0.0,
+    maxTokens: 512,
+  });
+
+  console.log("\nRunning morphXML protocol benchmarks...\n");
+  const morphXmlResults = await evaluate({
+    models: { morphxml: morphXmlModel },
+    benchmarks: [
+      bfclSimpleBenchmark,
+      bfclMultipleBenchmark,
+      bfclParallelBenchmark,
+    ],
+    reporter: "console",
+    temperature: 0.0,
+    maxTokens: 512,
+  });
+
+  // Extract scores
+  const nativeScores: Record<string, number> = {};
+  for (const result of nativeResults) {
+    nativeScores[result.benchmark] = result.result.score;
+  }
+
+  const morphXmlScores: Record<string, number> = {};
+  for (const result of morphXmlResults) {
+    morphXmlScores[result.benchmark] = result.result.score;
+  }
+
+  return {
+    commit: commitHash,
+    branch,
+    timestamp,
+    model: "zai-org/GLM-4.6",
+    results: {
+      native: nativeScores,
+      morphxml: morphXmlScores,
+    },
+  };
+}
+
+function saveResults(results: BenchmarkResult) {
+  const resultsDir = path.join(process.cwd(), ".benchmark-results");
+  if (!fs.existsSync(resultsDir)) {
+    fs.mkdirSync(resultsDir, { recursive: true });
+  }
+
+  // Save individual result file
+  const filename = `benchmark-${shortHash}-${Date.now()}.json`;
+  const filepath = path.join(resultsDir, filename);
+  fs.writeFileSync(filepath, JSON.stringify(results, null, 2));
+
+  console.log(`\n💾 Results saved to ${filepath}`);
+
+  // Update history file
+  const historyFile = path.join(resultsDir, "history.jsonl");
+  fs.appendFileSync(historyFile, `${JSON.stringify(results)}\n`);
+
+  console.log(`📝 History updated in ${historyFile}`);
+}
+
+function generateReport(results: BenchmarkResult) {
+  console.log(`\n${"=".repeat(80)}`);
+  console.log("📊 REGRESSION TEST REPORT");
+  console.log("=".repeat(80));
+  console.log(`Commit: ${results.commit.slice(0, 7)}`);
+  console.log(`Branch: ${results.branch}`);
+  console.log(`Model: ${results.model}`);
+  console.log(`Time: ${new Date(results.timestamp).toLocaleString()}`);
+  console.log(`\n${"-".repeat(80)}`);
+  console.log("BENCHMARK RESULTS\n");
+
+  const benchmarks = Object.keys(results.results.native);
+  for (const benchmark of benchmarks) {
+    const nativeScore = results.results.native[benchmark];
+    const morphxmlScore = results.results.morphxml[benchmark];
+    const diff = ((morphxmlScore - nativeScore) / nativeScore) * 100;
+
+    console.log(`${benchmark}:`);
+    console.log(`  Native:     ${(nativeScore * 100).toFixed(1)}%`);
+    console.log(`  morphXML:   ${(morphxmlScore * 100).toFixed(1)}%`);
+    console.log(`  Difference: ${diff >= 0 ? "+" : ""}${diff.toFixed(1)}%`);
+    console.log();
+  }
+
+  // Calculate averages
+  const nativeAvg =
+    Object.values(results.results.native).reduce((a, b) => a + b, 0) /
+    benchmarks.length;
+  const morphxmlAvg =
+    Object.values(results.results.morphxml).reduce((a, b) => a + b, 0) /
+    benchmarks.length;
+  const avgDiff = ((morphxmlAvg - nativeAvg) / nativeAvg) * 100;
+
+  console.log("-".repeat(80));
+  console.log("OVERALL AVERAGE:\n");
+  console.log(`  Native:     ${(nativeAvg * 100).toFixed(1)}%`);
+  console.log(`  morphXML:   ${(morphxmlAvg * 100).toFixed(1)}%`);
+  console.log(`  Difference: ${avgDiff >= 0 ? "+" : ""}${avgDiff.toFixed(1)}%`);
+  console.log(`${"=".repeat(80)}\n`);
+}
+
+async function main() {
+  try {
+    const results = await runBenchmarks();
+    await saveResults(results);
+    await generateReport(results);
+
+    process.exit(0);
+  } catch (error) {
+    console.error("❌ Benchmark failed:", error);
+    process.exit(1);
+  }
+}
+
+main();
