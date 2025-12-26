@@ -1,49 +1,78 @@
 import type {
   JSONSchema7,
-  LanguageModelV2Content,
-  LanguageModelV2FilePart,
-  LanguageModelV2FunctionTool,
-  LanguageModelV2Prompt,
-  LanguageModelV2ReasoningPart,
-  LanguageModelV2TextPart,
-  LanguageModelV2ToolCallPart,
-  LanguageModelV2ToolResultPart,
+  LanguageModelV3Content,
+  LanguageModelV3FilePart,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3Prompt,
+  LanguageModelV3ReasoningPart,
+  LanguageModelV3TextPart,
+  LanguageModelV3ToolCallPart,
+  LanguageModelV3ToolResultPart,
+  SharedV3ProviderOptions,
 } from "@ai-sdk/provider";
 
 import {
   isProtocolFactory,
   type ToolCallProtocol,
 } from "./protocols/tool-call-protocol";
-import {
-  createDynamicIfThenElseSchema,
-  extractOnErrorOption,
-  isToolCallContent,
-  originalToolsSchema,
-  type ToolCallMiddlewareProviderOptions,
-} from "./utils";
+import { createDynamicIfThenElseSchema } from "./utils/dynamic-tool-schema";
+import { extractOnErrorOption } from "./utils/on-error";
+import { originalToolsSchema } from "./utils/provider-options";
+import { isToolCallContent } from "./utils/type-guards";
 
 /**
  * Build final prompt by merging system prompt with existing prompt
  */
 function buildFinalPrompt(
   systemPrompt: string,
-  processedPrompt: LanguageModelV2Prompt
-): LanguageModelV2Prompt {
-  if (processedPrompt[0]?.role === "system") {
+  processedPrompt: LanguageModelV3Prompt,
+  placement: "first" | "last"
+): LanguageModelV3Prompt {
+  const systemIndex = processedPrompt.findIndex((m) => m.role === "system");
+  if (systemIndex !== -1) {
+    const existing = processedPrompt[systemIndex].content as unknown;
+    let existingText = "";
+    if (typeof existing === "string") {
+      existingText = existing;
+    } else if (Array.isArray(existing)) {
+      existingText = (existing as { type?: string; text?: string }[])
+        .map((p) => (p?.type === "text" ? (p.text ?? "") : ""))
+        .filter(Boolean)
+        .join("\n");
+    } else {
+      existingText = String(existing ?? "");
+    }
+
+    const mergedContent =
+      placement === "first"
+        ? `${systemPrompt}\n\n${existingText}`
+        : `${existingText}\n\n${systemPrompt}`;
+
+    return processedPrompt.map((m, idx) =>
+      idx === systemIndex
+        ? {
+            ...m,
+            content: mergedContent,
+          }
+        : m
+    ) as LanguageModelV3Prompt;
+  }
+  if (placement === "first") {
     return [
       {
         role: "system",
-        content: `${systemPrompt}\n\n${processedPrompt[0].content}`,
+        content: systemPrompt,
       },
-      ...processedPrompt.slice(1),
+      ...processedPrompt,
     ];
   }
+  // placement === 'last'
   return [
+    ...processedPrompt,
     {
       role: "system",
       content: systemPrompt,
     },
-    ...processedPrompt,
   ];
 }
 
@@ -52,18 +81,18 @@ function buildFinalPrompt(
  */
 function buildBaseReturnParams(
   params: {
-    prompt?: LanguageModelV2Prompt;
-    tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
+    prompt?: LanguageModelV3Prompt;
+    tools?: Array<LanguageModelV3FunctionTool | { type: string }>;
     providerOptions?: unknown;
     toolChoice?: { type: string; toolName?: string };
   },
-  finalPrompt: LanguageModelV2Prompt,
-  functionTools: LanguageModelV2FunctionTool[]
+  finalPrompt: LanguageModelV3Prompt,
+  functionTools: LanguageModelV3FunctionTool[]
 ) {
   return {
     ...params,
     prompt: finalPrompt,
-    tools: [],
+    tools: [] as never[],
     toolChoice: undefined,
     providerOptions: {
       ...(params.providerOptions || {}),
@@ -74,8 +103,8 @@ function buildBaseReturnParams(
             .toolCallMiddleware) ||
           {}),
         originalTools: originalToolsSchema.encode(functionTools),
-      } as ToolCallMiddlewareProviderOptions,
-    },
+      },
+    } as unknown as SharedV3ProviderOptions,
   };
 }
 
@@ -83,7 +112,7 @@ function buildBaseReturnParams(
  * Find provider-defined tool matching the selected tool name
  */
 function findProviderDefinedTool(
-  tools: Array<LanguageModelV2FunctionTool | { type: string }>,
+  tools: Array<LanguageModelV3FunctionTool | { type: string }>,
   selectedToolName: string
 ) {
   return tools.find((t) => {
@@ -100,7 +129,7 @@ function findProviderDefinedTool(
  */
 function handleToolChoiceTool(
   params: {
-    tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
+    tools?: Array<LanguageModelV3FunctionTool | { type: string }>;
     toolChoice?: { type: string; toolName?: string };
   },
   baseReturnParams: ReturnType<typeof buildBaseReturnParams>
@@ -121,9 +150,9 @@ function handleToolChoiceTool(
   }
 
   const selectedTool = (params.tools ?? []).find(
-    (t): t is LanguageModelV2FunctionTool =>
+    (t): t is LanguageModelV3FunctionTool =>
       t.type === "function" &&
-      (t as LanguageModelV2FunctionTool).name === selectedToolName
+      (t as LanguageModelV3FunctionTool).name === selectedToolName
   );
 
   if (!selectedTool) {
@@ -174,11 +203,11 @@ function handleToolChoiceTool(
  */
 function handleToolChoiceRequired(
   params: {
-    tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
+    tools?: Array<LanguageModelV3FunctionTool | { type: string }>;
     toolChoice?: { type: string; toolName?: string };
   },
   baseReturnParams: ReturnType<typeof buildBaseReturnParams>,
-  functionTools: LanguageModelV2FunctionTool[]
+  functionTools: LanguageModelV3FunctionTool[]
 ) {
   if (!params.tools || params.tools.length === 0) {
     throw new Error(
@@ -213,10 +242,11 @@ export function transformParams({
   params,
   protocol,
   toolSystemPromptTemplate,
+  placement = "first",
 }: {
   params: {
-    prompt?: LanguageModelV2Prompt;
-    tools?: Array<LanguageModelV2FunctionTool | { type: string }>;
+    prompt?: LanguageModelV3Prompt;
+    tools?: Array<LanguageModelV3FunctionTool | { type: string }>;
     providerOptions?: {
       toolCallMiddleware?: {
         toolChoice?: { type: string };
@@ -226,11 +256,12 @@ export function transformParams({
   };
   protocol: ToolCallProtocol | (() => ToolCallProtocol);
   toolSystemPromptTemplate: (tools: string) => string;
+  placement?: "first" | "last";
 }) {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
   const functionTools = (params.tools ?? []).filter(
-    (t): t is LanguageModelV2FunctionTool => t.type === "function"
+    (t): t is LanguageModelV3FunctionTool => t.type === "function"
   );
 
   const systemPrompt = resolvedProtocol.formatTools({
@@ -244,7 +275,11 @@ export function transformParams({
     extractOnErrorOption(params.providerOptions)
   );
 
-  const finalPrompt = buildFinalPrompt(systemPrompt, processedPrompt);
+  const finalPrompt = buildFinalPrompt(
+    systemPrompt,
+    processedPrompt,
+    placement
+  );
   const baseReturnParams = buildBaseReturnParams(
     params,
     finalPrompt,
@@ -272,13 +307,13 @@ export function transformParams({
  * Process assistant message content
  */
 function processAssistantContent(
-  content: LanguageModelV2Content[],
+  content: LanguageModelV3Content[],
   resolvedProtocol: ToolCallProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
-): LanguageModelV2Content[] {
-  const newContent: LanguageModelV2Content[] = [];
+): LanguageModelV3Content[] {
+  const newContent: LanguageModelV3Content[] = [];
   for (const item of content) {
     if (isToolCallContent(item)) {
       newContent.push({
@@ -286,9 +321,9 @@ function processAssistantContent(
         text: resolvedProtocol.formatToolCall(item),
       });
     } else if ((item as { type?: string }).type === "text") {
-      newContent.push(item as LanguageModelV2Content);
+      newContent.push(item as LanguageModelV3Content);
     } else if ((item as { type?: string }).type === "reasoning") {
-      newContent.push(item as LanguageModelV2Content);
+      newContent.push(item as LanguageModelV3Content);
     } else {
       const options = extractOnErrorOption(providerOptions);
       options?.onError?.(
@@ -318,9 +353,9 @@ function processAssistantContent(
  * Process tool message content
  */
 function processToolMessage(
-  content: LanguageModelV2ToolResultPart[],
+  content: LanguageModelV3ToolResultPart[],
   resolvedProtocol: ToolCallProtocol
-): LanguageModelV2Prompt[number] {
+): LanguageModelV3Prompt[number] {
   return {
     role: "user" as const,
     content: [
@@ -338,31 +373,36 @@ function processToolMessage(
  * Process a single message in the prompt
  */
 function processMessage(
-  message: LanguageModelV2Prompt[number],
+  message: LanguageModelV3Prompt[number],
   resolvedProtocol: ToolCallProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
-): LanguageModelV2Prompt[number] {
+): LanguageModelV3Prompt[number] {
   if (message.role === "assistant") {
     const condensedContent = processAssistantContent(
-      message.content as LanguageModelV2Content[],
+      message.content as LanguageModelV3Content[],
       resolvedProtocol,
       providerOptions
     );
     return {
       role: "assistant" as const,
       content: condensedContent as Array<
-        | LanguageModelV2TextPart
-        | LanguageModelV2FilePart
-        | LanguageModelV2ReasoningPart
-        | LanguageModelV2ToolCallPart
-        | LanguageModelV2ToolResultPart
+        | LanguageModelV3TextPart
+        | LanguageModelV3FilePart
+        | LanguageModelV3ReasoningPart
+        | LanguageModelV3ToolCallPart
+        | LanguageModelV3ToolResultPart
       >,
     };
   }
   if (message.role === "tool") {
-    return processToolMessage(message.content, resolvedProtocol);
+    // Filter out approval response parts - only process tool result parts
+    const toolResultParts = message.content.filter(
+      (part): part is LanguageModelV3ToolResultPart =>
+        part.type === "tool-result"
+    );
+    return processToolMessage(toolResultParts, resolvedProtocol);
   }
   return message;
 }
@@ -412,9 +452,9 @@ function createCondensedMessage(role: string, joinedText: string) {
  * Condense multi-part text content into single text part
  */
 function condenseTextContent(
-  processedPrompt: LanguageModelV2Prompt
-): LanguageModelV2Prompt {
-  for (let i = 0; i < processedPrompt.length; i++) {
+  processedPrompt: LanguageModelV3Prompt
+): LanguageModelV3Prompt {
+  for (let i = 0; i < processedPrompt.length; i += 1) {
     const msg = processedPrompt[i] as unknown as {
       role: string;
       content: unknown;
@@ -438,9 +478,9 @@ function condenseTextContent(
  * Merge consecutive user messages
  */
 function mergeConsecutiveUserMessages(
-  processedPrompt: LanguageModelV2Prompt
-): LanguageModelV2Prompt {
-  for (let i = processedPrompt.length - 1; i > 0; i--) {
+  processedPrompt: LanguageModelV3Prompt
+): LanguageModelV3Prompt {
+  for (let i = processedPrompt.length - 1; i > 0; i -= 1) {
     const current = processedPrompt[i];
     const prev = processedPrompt[i - 1];
     if (current.role === "user" && prev.role === "user") {
@@ -461,17 +501,17 @@ function mergeConsecutiveUserMessages(
 }
 
 function convertToolPrompt(
-  prompt: LanguageModelV2Prompt,
+  prompt: LanguageModelV3Prompt,
   resolvedProtocol: ToolCallProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
-): LanguageModelV2Prompt {
+): LanguageModelV3Prompt {
   let processedPrompt = prompt.map((message) =>
     processMessage(message, resolvedProtocol, providerOptions)
   );
 
   processedPrompt = condenseTextContent(processedPrompt);
   processedPrompt = mergeConsecutiveUserMessages(processedPrompt);
-  return processedPrompt as LanguageModelV2Prompt;
+  return processedPrompt as LanguageModelV3Prompt;
 }

@@ -1,6 +1,6 @@
 # [dev] Middleware Architecture
 
-The middleware composes with AI SDK `LanguageModelV2Middleware` to provide tool calling for models without native support.
+The middleware composes with AI SDK `LanguageModelV3Middleware` to provide tool calling for models without native support.
 
 ## Responsibilities
 
@@ -22,6 +22,7 @@ See `packages/parser/src/tool-call-middleware.ts` and `packages/parser/src/proto
 ## How it works (end-to-end)
 
 1. `transformParams`
+
    - Extracts custom function tools (`type: "function"`) and renders a system prompt via `protocol.formatTools` and a provided `toolSystemPromptTemplate`.
    - Normalizes the existing prompt:
      - Assistant tool-call parts are converted to provider-friendly text with `protocol.formatToolCall`.
@@ -34,6 +35,7 @@ See `packages/parser/src/tool-call-middleware.ts` and `packages/parser/src/proto
      - `toolChoice: { type: "none" }`: not supported (throws). Use `auto` (default) instead.
 
 2. `wrapStream`
+
    - If tool-choice fast-path is active, performs a single `generate` call and emits a synthetic `tool-call` followed by `finish`.
    - Otherwise, pipes provider stream through `protocol.createStreamParser`, emitting normalized `tool-call` parts as they arrive.
 

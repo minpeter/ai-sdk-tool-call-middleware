@@ -3,8 +3,8 @@ import path from "node:path";
 import { generateText, type LanguageModel } from "ai";
 import Ajv, { type AnySchema } from "ajv";
 
-import type { BenchmarkResult, LanguageModelV2Benchmark } from "@/interfaces";
-import { resolveDataDir } from "@/utils/paths";
+import type { BenchmarkResult, LanguageModelV3Benchmark } from "../interfaces";
+import { resolveDataDir } from "../utils/paths";
 
 type Json = unknown;
 
@@ -14,18 +14,18 @@ const CODE_FENCE_REGEX = /```\s*([\s\S]*?)```/i;
 const NEWLINE_REGEX = /\r?\n/;
 const LINE_SPLIT_REGEX = /\r?\n/;
 
-type SchemaTestCase = {
+interface SchemaTestCase {
   id: string;
   description: string;
   schema: AnySchema; // JSON Schema (draft 2020-12 subset supported by Ajv v8)
   promptFacts: string; // natural language facts to express desired values
   expected: Json; // subset of fields we expect to match exactly
-};
+}
 
-type ExpectedRecord = {
+interface ExpectedRecord {
   id: string;
   expected: Json;
-};
+}
 
 function tryDirectParse(text: string): Json | undefined {
   try {
@@ -65,12 +65,12 @@ function tryBracketScan(text: string): Json | undefined {
   const close = open === "{" ? "}" : "]";
   let depth = 0;
 
-  for (let i = start; i < text.length; i++) {
+  for (let i = start; i < text.length; i += 1) {
     const ch = text[i];
     if (ch === open) {
-      depth++;
+      depth += 1;
     } else if (ch === close) {
-      depth--;
+      depth -= 1;
     }
 
     if (depth === 0) {
@@ -114,7 +114,7 @@ function subsetMatch(expected: Json, actual: Json): boolean {
       return false;
     }
     // Require at least that expected elements (by index) match if provided
-    for (let i = 0; i < expected.length; i++) {
+    for (let i = 0; i < expected.length; i += 1) {
       if (!subsetMatch(expected[i], actual[i])) {
         return false;
       }
@@ -137,11 +137,11 @@ function subsetMatch(expected: Json, actual: Json): boolean {
 
 // Test cases will be loaded from data files at runtime
 
-type DatasetLoadResult = {
+interface DatasetLoadResult {
   tests: Omit<SchemaTestCase, "expected">[];
   expectedMap: Map<string, ExpectedRecord>;
   error?: Error;
-};
+}
 
 async function loadDatasets(): Promise<DatasetLoadResult> {
   try {
@@ -202,17 +202,17 @@ function buildMessages(tc: Omit<SchemaTestCase, "expected">) {
   ];
 }
 
-type ValidationResult = {
+interface ValidationResult {
   valid: boolean;
   valuesOk: boolean;
   parsed: Json;
-};
+}
 
-type ValidationContext = {
+interface ValidationContext {
   expectedMap: Map<string, ExpectedRecord>;
   ajv: Ajv;
   logs: string[];
-};
+}
 
 function validateTestCase(
   tc: Omit<SchemaTestCase, "expected">,
@@ -246,11 +246,11 @@ function validateTestCase(
   return { valid, valuesOk, parsed };
 }
 
-type ProcessContext = {
+interface ProcessContext {
   model: LanguageModel;
   config: Record<string, unknown> | undefined;
   validation: ValidationContext;
-};
+}
 
 async function processTestCase(
   tc: Omit<SchemaTestCase, "expected">,
@@ -300,7 +300,7 @@ async function processTestCase(
   return { schemaValid: valid, valueMatch: valuesOk, correct };
 }
 
-export const jsonGenerationBenchmark: LanguageModelV2Benchmark = {
+export const jsonGenerationBenchmark: LanguageModelV3Benchmark = {
   name: "json-generation",
   version: "2.1.0",
   description:
@@ -354,13 +354,13 @@ async function processAllTests(
     try {
       const result = await processTestCase(tc, context);
       if (result.schemaValid) {
-        schemaValidCount++;
+        schemaValidCount += 1;
       }
       if (result.valueMatch) {
-        valueMatchCount++;
+        valueMatchCount += 1;
       }
       if (result.correct) {
-        correctCount++;
+        correctCount += 1;
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -398,12 +398,12 @@ function buildBenchmarkResult(
 // A schema-only variant that validates structure/format without value matching
 type SchemaOnlyTestCase = Omit<SchemaTestCase, "expected">;
 
-type SchemaOnlyContext = {
+interface SchemaOnlyContext {
   model: LanguageModel;
   config: Record<string, unknown> | undefined;
   ajv: Ajv;
   logs: string[];
-};
+}
 
 async function loadSchemaOnlyTests(): Promise<{
   tests: SchemaOnlyTestCase[];
@@ -479,7 +479,7 @@ async function runSchemaOnlyTests(
     try {
       const isValid = await processSchemaOnlyTestCase(tc, context);
       if (isValid) {
-        schemaValidCount++;
+        schemaValidCount += 1;
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -490,7 +490,7 @@ async function runSchemaOnlyTests(
   return schemaValidCount;
 }
 
-export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV2Benchmark = {
+export const jsonGenerationSchemaOnlyBenchmark: LanguageModelV3Benchmark = {
   name: "json-generation-schema-only",
   version: "1.0.1",
   description:

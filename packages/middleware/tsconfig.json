@@ -1,0 +1,16 @@
+{
+  "extends": "./node_modules/@ai-sdkx/tsconfig/ts-library.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "strictNullChecks": true
+  },
+  "exclude": [
+    "dist",
+    "build",
+    "node_modules",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ]
+}

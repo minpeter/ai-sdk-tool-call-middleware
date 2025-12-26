@@ -91,9 +91,9 @@ function parseTagName(
 ): { name: string; pos: number } {
   let j = i;
   if (j < len && isNameStartChar(xmlContent[j])) {
-    j++;
+    j += 1;
     while (j < len && isNameChar(xmlContent[j])) {
-      j++;
+      j += 1;
     }
   }
   return { name: xmlContent.slice(i, j), pos: j };
@@ -122,10 +122,10 @@ function skipToTagEnd(
     }
     if (c === "/" && xmlContent[k + 1] === ">") {
       isSelfClosing = true;
-      k++;
+      k += 1;
       break;
     }
-    k++;
+    k += 1;
   }
 
   return { pos: k, isSelfClosing };
@@ -686,9 +686,9 @@ function parseAndCountTag(options: {
   const { xmlContent, i, len, target, lt, excludeRanges } = options;
   let j = i;
   if (j < len && isNameStartChar(xmlContent[j])) {
-    j++;
+    j += 1;
     while (j < len && isNameChar(xmlContent[j])) {
-      j++;
+      j += 1;
     }
   }
   const name = xmlContent.slice(i, j);
@@ -703,10 +703,10 @@ function parseAndCountTag(options: {
       break;
     }
     if (c === "/" && xmlContent[k + 1] === ">") {
-      k++;
+      k += 1;
       break;
     }
-    k++;
+    k += 1;
   }
   const shouldCount = name === target && !isPositionExcluded(lt, excludeRanges);
   return { nextPos: k + 1, shouldCount };
@@ -757,7 +757,7 @@ export function countTagOccurrences(
       if (skipFirstLocal) {
         skipFirstLocal = false;
       } else {
-        count++;
+        count += 1;
       }
     }
     i = result.nextPos;
@@ -778,10 +778,10 @@ function skipAttributes(xmlContent: string, i: number, len: number): number {
       continue;
     }
     if (c === "/" && xmlContent[k + 1] === ">") {
-      k++;
+      k += 1;
       break;
     }
-    k++;
+    k += 1;
   }
   return k;
 }
@@ -853,7 +853,7 @@ function findClosingTagForRange(
     if (j === -1) {
       break;
     }
-    j++;
+    j += 1;
   }
 
   return closeDepth === 0 ? j : -1;
@@ -994,7 +994,7 @@ export function findAllTopLevelRanges(
     const k = skipAttributes(xmlContent, i, len);
 
     if (name === target && depth === 0) {
-      depth++;
+      depth += 1;
       const result = processTopLevelTarget({
         xmlContent,
         tagStart: lt,

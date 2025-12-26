@@ -3,14 +3,14 @@ import type { LanguageModel } from "ai";
 import type {
   EvaluateOptions,
   EvaluationResult,
-  LanguageModelV2Benchmark,
+  LanguageModelV3Benchmark,
   ReporterType,
 } from "./interfaces";
 import { reporters } from "./reporters";
 
 async function runSingleBenchmark(
   model: LanguageModel,
-  benchmark: LanguageModelV2Benchmark,
+  benchmark: LanguageModelV3Benchmark,
   modelKey?: string,
   config?: Record<string, unknown>
 ): Promise<EvaluationResult> {

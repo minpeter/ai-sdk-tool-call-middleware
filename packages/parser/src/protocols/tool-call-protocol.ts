@@ -1,9 +1,9 @@
 import type {
-  LanguageModelV2Content,
-  LanguageModelV2FunctionTool,
-  LanguageModelV2StreamPart,
-  LanguageModelV2ToolCall,
-  LanguageModelV2ToolResultPart,
+  LanguageModelV3Content,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3StreamPart,
+  LanguageModelV3ToolCall,
+  LanguageModelV3ToolResultPart,
 } from "@ai-sdk/provider";
 
 /**
@@ -18,10 +18,10 @@ import type {
  * - Static formatting helpers (`formatTools`, `formatToolCall`, `formatToolResponse`)
  *   are used to construct strings that the model will read.
  * - Parsing helpers (`parseGeneratedText`, `createStreamParser`) must convert
- *   model output back into structured `LanguageModelV2Content` parts, emitting
+ *   model output back into structured `LanguageModelV3Content` parts, emitting
  *   `text` for regular content and `tool-call` for detected tool invocations.
  */
-export type ToolCallProtocol = {
+export interface ToolCallProtocol {
   /**
    * Produces a provider-facing string that describes all available tools.
    *
@@ -40,7 +40,7 @@ export type ToolCallProtocol = {
     tools,
     toolSystemPromptTemplate,
   }: {
-    tools: LanguageModelV2FunctionTool[];
+    tools: LanguageModelV3FunctionTool[];
     toolSystemPromptTemplate: (tools: string) => string;
   }): string;
 
@@ -55,7 +55,7 @@ export type ToolCallProtocol = {
    * @param toolCall The tool call to format for the model.
    * @returns A textual representation of the tool call (e.g., an XML element).
    */
-  formatToolCall(toolCall: LanguageModelV2ToolCall): string;
+  formatToolCall(toolCall: LanguageModelV3ToolCall): string;
 
   /**
    * Formats a tool result payload so the model can consume it as plain text.
@@ -66,11 +66,11 @@ export type ToolCallProtocol = {
    * @param toolResult The result part produced after executing a tool.
    * @returns Textual representation of the tool result for the model.
    */
-  formatToolResponse(toolResult: LanguageModelV2ToolResultPart): string;
+  formatToolResponse(toolResult: LanguageModelV3ToolResultPart): string;
 
   /**
    * Parses a fully generated text (non-streaming) response from the model and
-   * converts it into a sequence of `LanguageModelV2Content` parts.
+   * converts it into a sequence of `LanguageModelV3Content` parts.
    *
    * Implementations should:
    * - Detect tool-call segments addressed to known `tools` and emit
@@ -90,15 +90,15 @@ export type ToolCallProtocol = {
     options,
   }: {
     text: string;
-    tools: LanguageModelV2FunctionTool[];
+    tools: LanguageModelV3FunctionTool[];
     options?: {
       onError?: (message: string, metadata?: Record<string, unknown>) => void;
     };
-  }): LanguageModelV2Content[];
+  }): LanguageModelV3Content[];
 
   /**
    * Creates a TransformStream that converts streaming model deltas
-   * (`LanguageModelV2StreamPart`) into a normalized sequence of stream parts,
+   * (`LanguageModelV3StreamPart`) into a normalized sequence of stream parts,
    * including `text-start`/`text-delta`/`text-end` and `tool-call` events.
    *
    * The stream parser should:
@@ -110,17 +110,17 @@ export type ToolCallProtocol = {
    *
    * @param tools The list of tools that may be invoked by the model.
    * @param options Optional error callback for non-fatal streaming issues.
-   * @returns A TransformStream that accepts and emits `LanguageModelV2StreamPart`s.
+   * @returns A TransformStream that accepts and emits `LanguageModelV3StreamPart`s.
    */
   createStreamParser({
     tools,
     options,
   }: {
-    tools: LanguageModelV2FunctionTool[];
+    tools: LanguageModelV3FunctionTool[];
     options?: {
       onError?: (message: string, metadata?: Record<string, unknown>) => void;
     };
-  }): TransformStream<LanguageModelV2StreamPart, LanguageModelV2StreamPart>;
+  }): TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>;
 
   /**
    * Optionally returns the exact substrings that would be parsed as tool-calls
@@ -132,9 +132,9 @@ export type ToolCallProtocol = {
     tools,
   }: {
     text: string;
-    tools: LanguageModelV2FunctionTool[];
+    tools: LanguageModelV3FunctionTool[];
   }) => string[];
-};
+}
 
 export function isProtocolFactory(
   protocol: ToolCallProtocol | (() => ToolCallProtocol)

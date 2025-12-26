@@ -1,8 +1,14 @@
 {
   "name": "@ai-sdk-tool/eval",
-  "version": "0.1.8",
+  "version": "1.0.0-canary.1",
+  "description": "Benchmarking and evaluation tools for AI SDK",
   "license": "Apache-2.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware",
+    "directory": "packages/eval"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "publishConfig": {
@@ -21,23 +27,22 @@
     "data"
   ],
   "scripts": {
-    "dev": "tsup --watch",
-    "build": "tsup --clean",
-    "prepack": "pnpm run build",
+    "build": "pnpm clean && tsup --tsconfig tsconfig.build.json",
+    "build:watch": "pnpm clean && tsup --watch --tsconfig tsconfig.build.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
     "test:e2e": "tsup src/run-test.ts --format esm --clean --out-dir dist --no-config && node dist/run-test.js"
   },
   "dependencies": {
-    "@ai-sdk/provider": "2.0.0",
+    "@ai-sdk/provider": "3.0.0",
+    "ai": "6.0.3",
     "ajv": "^8.17.1",
-    "zod": "^4.1.12"
+    "zod": "^4.2.1"
   },
   "devDependencies": {
-    "@types/node": "^24.9.1",
-    "tsup": "^8.5.0",
+    "@ai-sdkx/tsconfig": "workspace:*",
+    "@types/node": "^25.0.3",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3"
-  },
-  "peerDependencies": {
-    "ai": ">=3.0.0"
   }
 }

@@ -1,0 +1,38 @@
+🔥 ComplexFuncBench: Testing GLM-4.6
+
+This benchmark includes:
+  - Multi-step function calls
+  - Function calling with constraints
+  - Parameter value reasoning from implicit information
+  - Long parameter values (500+ tokens)
+  - Parallel function calls
+
+Testing with 50 cases (set COMPLEXFUNCBENCH_LIMIT to change)
+
+[zai-org/GLM-4.6] (glm-4.6) Running benchmark: complex-func-bench...
+[zai-org/GLM-4.6] (glm-4.6) Finished benchmark: complex-func-bench. Score: 0
+
+--- 📊 Evaluation Report ---
+
+ [36m[zai-org/GLM-4.6][0m [90m(glm-4.6)[0m - [35mcomplex-func-bench[0m
+  └ [31m✖ FAILURE[0m | Score: [33m0.00[0m
+    Metrics:
+      - correct_count: 0
+      - total_cases: 50
+      - accuracy: 0
+    Raw Logs (Sample):
+      [INFO] Using data dir: /Users/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/packages/eval/data
+      [INFO] Limiting test cases to 50
+      [INFO] Running 50 test cases with concurrency=4
+      [DEBUG] Car-Rental-0: toolCalls=[{"toolName":"Search_Car_Location","name":"Search_Car_Location","args":{}}], finishReason=stop
+      [FAIL] Car-Rental-0: Missing required parameter: 'query'
+      [DEBUG] Car-Rental-1: toolCalls=[{"toolName":"Search_Car_Location","name":"Search_Car_Location","args":{}}], finishReason=stop
+      [FAIL] Car-Rental-1: Missing required parameter: 'query'
+      [DEBUG] Car-Rental-2: toolCalls=[{"toolName":"Search_Car_Location","name":"Search_Car_Location","args":{}}], finishReason=stop
+      [FAIL] Car-Rental-2: Missing required parameter: 'query'
+      [DEBUG] Car-Rental-3: toolCalls=[{"toolName":"Search_Car_Location","name":"Search_Car_Location","args":{}}], finishReason=stop
+
+---------------------------
+
+
+✅ ComplexFuncBench evaluation complete!
