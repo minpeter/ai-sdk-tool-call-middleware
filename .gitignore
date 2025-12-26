@@ -38,7 +38,8 @@ yarn-error.log*
 .DS_Store
 *.pem
 
-# Benchmark results (keep history.jsonl)
+# Benchmark results (keep history.jsonl and README.md)
 .benchmark-results/*
-\!.benchmark-results/history.jsonl
-\!.benchmark-results/.gitkeep
+!.benchmark-results/history.jsonl
+!.benchmark-results/.gitkeep
+!.benchmark-results/README.md

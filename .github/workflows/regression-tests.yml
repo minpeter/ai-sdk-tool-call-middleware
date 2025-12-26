@@ -1,11 +1,38 @@
 name: Regression Tests
 
 on:
+  # 수동 트리거 (비용 절감)
+  workflow_dispatch:
+    inputs:
+      benchmark_mode:
+        description: 'Benchmark mode (quick/full)'
+        required: false
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+          - full
+
+  # PR에서는 라벨이 있을 때만 실행
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, labeled, reopened]
+    # parser, eval 패키지 변경시만 실행
+    paths:
+      - 'packages/parser/**'
+      - 'packages/eval/**'
+      - 'packages/middleware/**'
+      - 'scripts/run-regression-benchmarks.ts'
+      - 'scripts/compare-benchmarks.ts'
+      - '.github/workflows/regression-tests.yml'
+
+  # main에 머지될 때만 전체 벤치마크 실행
   push:
     branches:
       - main
+    paths:
+      - 'packages/parser/**'
+      - 'packages/eval/**'
+      - 'packages/middleware/**'
 
 permissions:
   contents: write
@@ -21,8 +48,12 @@ jobs:
     name: Run Regression Benchmarks
     timeout-minutes: 30
     runs-on: ubuntu-latest
-    # Only run if API token is available
-    if: vars.FRIENDLI_TOKEN != '' || secrets.FRIENDLI_TOKEN != ''
+    # PR에서는 'run-benchmarks' 라벨이 있을 때만 실행
+    # main 푸시나 수동 트리거는 항상 실행
+    if: |
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-benchmarks')) ||
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
@@ -48,7 +79,14 @@ jobs:
       - name: Run regression benchmarks
         env:
           FRIENDLI_TOKEN: ${{ secrets.FRIENDLI_TOKEN || vars.FRIENDLI_TOKEN }}
+          # PR에서는 quick 모드 (simple만), main이나 수동 full은 전체
+          BENCHMARK_MODE: ${{
+            github.event_name == 'workflow_dispatch' && github.event.inputs.benchmark_mode ||
+            (github.event_name == 'push' && 'full') ||
+            'quick'
+          }}
         run: |
+          echo "Running in $BENCHMARK_MODE mode"
           pnpm tsx scripts/run-regression-benchmarks.ts
         continue-on-error: true
 

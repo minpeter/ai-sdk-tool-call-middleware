@@ -73,14 +73,23 @@ interface BenchmarkResult {
 async function runBenchmarks(): Promise<BenchmarkResult> {
   const timestamp = new Date().toISOString();
 
+  // 환경변수로 quick/full 모드 결정 (기본값: quick)
+  const mode = process.env.BENCHMARK_MODE || "quick";
+  const isQuickMode = mode === "quick";
+
+  // quick 모드에서는 simple만, full 모드에서는 전체
+  const benchmarks = isQuickMode
+    ? [bfclSimpleBenchmark]
+    : [bfclSimpleBenchmark, bfclMultipleBenchmark, bfclParallelBenchmark];
+
+  console.log(
+    `Running in ${mode} mode (${benchmarks.length} benchmark${benchmarks.length > 1 ? "s" : ""})\n`
+  );
+
   console.log("Running native tool calling benchmarks...\n");
   const nativeResults = await evaluate({
     models: { native: nativeModel },
-    benchmarks: [
-      bfclSimpleBenchmark,
-      bfclMultipleBenchmark,
-      bfclParallelBenchmark,
-    ],
+    benchmarks,
     reporter: "console",
     temperature: 0.0,
     maxTokens: 512,
@@ -89,11 +98,7 @@ async function runBenchmarks(): Promise<BenchmarkResult> {
   console.log("\nRunning morphXML protocol benchmarks...\n");
   const morphXmlResults = await evaluate({
     models: { morphxml: morphXmlModel },
-    benchmarks: [
-      bfclSimpleBenchmark,
-      bfclMultipleBenchmark,
-      bfclParallelBenchmark,
-    ],
+    benchmarks,
     reporter: "console",
     temperature: 0.0,
     maxTokens: 512,
