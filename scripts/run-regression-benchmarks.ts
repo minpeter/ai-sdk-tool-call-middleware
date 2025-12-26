@@ -26,7 +26,11 @@ import {
 // Get commit hash and branch
 const commitHash = execSync("git rev-parse HEAD").toString().trim();
 const shortHash = commitHash.slice(0, 7);
-const branch = execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
+// GitHub Actions uses detached HEAD, so prefer environment variables
+const branch =
+  process.env.GITHUB_HEAD_REF || // PR source branch
+  process.env.GITHUB_REF_NAME || // Push target branch
+  execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
 
 console.log(`🔍 Running regression benchmarks for commit ${shortHash}`);
 console.log(`📦 Branch: ${branch}\n`);
