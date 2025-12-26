@@ -69,6 +69,8 @@ const morphXmlModel: LanguageModel = wrapLanguageModel({
   middleware: [
     createToolMiddleware({
       protocol: morphXmlProtocol,
+      toolSystemPromptTemplate: (tools) =>
+        `You have access to the following tools:\n\n${tools}\n\nRespond using XML tool calls.`,
       placement: "last",
     }),
     extractReasoningMiddleware({ tagName: "think" }),
