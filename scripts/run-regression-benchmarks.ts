@@ -31,6 +31,22 @@ const branch = execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
 console.log(`🔍 Running regression benchmarks for commit ${shortHash}`);
 console.log(`📦 Branch: ${branch}\n`);
 
+// Check for API token
+if (!process.env.FRIENDLI_TOKEN) {
+  console.error("❌ ERROR: FRIENDLI_TOKEN environment variable is not set");
+  console.error("");
+  console.error("Please set the FRIENDLI_TOKEN environment variable:");
+  console.error("  export FRIENDLI_TOKEN=your_api_token_here");
+  console.error("");
+  console.error("Or add it to GitHub Secrets:");
+  console.error(
+    "  Settings > Secrets and variables > Actions > New repository secret"
+  );
+  console.error("  Name: FRIENDLI_TOKEN");
+  console.error("");
+  process.exit(1);
+}
+
 // Setup model provider (using a commonly available model)
 const friendli = createOpenAICompatible({
   name: "friendli.serverless",
