@@ -1,5 +1,11 @@
 # @ai-sdk-tool/eval
 
+## 1.0.0-canary.1
+
+### Patch Changes
+
+- 1f36102: minor dependency version bump
+
 ## 1.0.0-canary.0
 
 ### Major Changes

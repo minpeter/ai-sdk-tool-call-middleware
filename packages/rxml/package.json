@@ -1,6 +1,6 @@
 {
   "name": "@ai-sdk-tool/rxml",
-  "version": "0.1.1",
+  "version": "0.1.2-canary.0",
   "description": "Robust XML parser/streamer/builder for AI-generated XML",
   "type": "module",
   "repository": {

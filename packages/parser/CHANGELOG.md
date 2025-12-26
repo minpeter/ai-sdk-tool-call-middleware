@@ -1,5 +1,13 @@
 # @ai-sdk-tool/parser
 
+## 3.0.0-canary.3
+
+### Patch Changes
+
+- 1f36102: minor dependency version bump
+- Updated dependencies [1f36102]
+  - @ai-sdk-tool/rxml@0.1.2-canary.0
+
 ## 3.0.0-canary.2
 
 ### Minor Changes
