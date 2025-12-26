@@ -208,10 +208,14 @@ jobs:
 
             if (!issueNumber) return;
 
+            const sha = '${{ github.sha }}';
+            const mode = '${{ steps.mode.outputs.mode }}';
+            const logsUrl = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}';
+
             const body = `## ❌ Benchmark Execution Failed
 
-**Commit:** \`${{ github.sha }}\`
-**Mode:** ${{ steps.mode.outputs.mode }}
+**Commit:** \`${sha}\`
+**Mode:** ${mode}
 
 The benchmark execution failed. This could be due to:
 - Missing API token (FRIENDLI_TOKEN)
@@ -219,7 +223,7 @@ The benchmark execution failed. This could be due to:
 - Model availability issues
 - Code compilation errors
 
-Please check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for more details.`;
+Please check the [workflow logs](${logsUrl}) for more details.`;
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
