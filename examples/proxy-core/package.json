@@ -15,9 +15,9 @@
     "@ai-sdk-tool/middleware": "workspace:*",
     "@ai-sdk-tool/parser": "workspace:*",
     "@ai-sdk-tool/proxy": "workspace:*",
-    "@ai-sdk/openai": "3.0.0",
-    "@ai-sdk/openai-compatible": "2.0.0",
-    "ai": "6.0.1",
+    "@ai-sdk/openai": "3.0.1",
+    "@ai-sdk/openai-compatible": "2.0.1",
+    "ai": "6.0.3",
     "tsx": "^4.21.0",
     "zod": "^4.2.1"
   },
