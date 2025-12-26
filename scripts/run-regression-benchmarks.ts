@@ -16,7 +16,7 @@ import {
   bfclSimpleBenchmark,
   evaluate,
 } from "@ai-sdk-tool/eval";
-import { createToolMiddleware, morphXmlProtocol } from "@ai-sdk-tool/parser";
+import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import {
   extractReasoningMiddleware,
   type LanguageModel,
@@ -71,12 +71,7 @@ const nativeModel: LanguageModel = wrapLanguageModel({
 const morphXmlModel: LanguageModel = wrapLanguageModel({
   model: baseModel,
   middleware: [
-    createToolMiddleware({
-      protocol: morphXmlProtocol,
-      toolSystemPromptTemplate: (tools) =>
-        `You have access to the following tools:\n\n${tools}\n\nRespond using XML tool calls.`,
-      placement: "last",
-    }),
+    morphXmlToolMiddleware,
     extractReasoningMiddleware({ tagName: "think" }),
   ],
 });
