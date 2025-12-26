@@ -2,3 +2,4 @@
 {"commit":"e9b2084751ce6571b66025d72a85de9dc182be48","branch":"HEAD","timestamp":"2025-12-26T08:47:05.158Z","model":"zai-org/GLM-4.6","mode":"quick","results":{"native":{"bfcl-simple":0.96},"morphxml":{"bfcl-simple":0.02}}}
 {"commit":"32f37cb1f4acb207d329557608a0a9ac1d71d551","branch":"v6","timestamp":"2025-12-26T09:28:34.192Z","model":"zai-org/GLM-4.6","mode":"quick","results":{"native":{"bfcl-simple":0.96},"morphxml":{"bfcl-simple":0.77}}}
 {"commit":"2a1c883b3baf389e48414c59f0751fc9393dc882","branch":"HEAD","timestamp":"2025-12-26T09:14:49.448Z","model":"zai-org/GLM-4.6","mode":"quick","results":{"native":{"bfcl-simple":0.96},"morphxml":{"bfcl-simple":0.03}}}
+{"commit":"1845ef79899f8f28024ba52d8c371038b5e8ab9e","branch":"v6","timestamp":"2025-12-26T09:31:28.648Z","model":"zai-org/GLM-4.6","mode":"quick","results":{"native":{"bfcl-simple":0.96},"morphxml":{"bfcl-simple":0.6}}}
