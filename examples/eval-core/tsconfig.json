@@ -1,20 +1,27 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "strict": true,
     "declaration": true,
     "sourceMap": true,
     "target": "es2022",
     "lib": ["es2022", "dom"],
-    "module": "NodeNext",
+    "module": "esnext",
     "types": ["node"],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "moduleResolution": "NodeNext",
+    "moduleResolution": "bundler",
     "rootDir": "./src",
     "outDir": "./build",
     "skipLibCheck": true,
     "composite": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../../packages/eval"
+    },
+    {
+      "path": "../../packages/parser"
+    }
+  ]
 }

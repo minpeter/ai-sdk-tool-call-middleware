@@ -1,7 +1,7 @@
 import type {
   JSONSchema7,
-  LanguageModelV2FunctionTool,
-  LanguageModelV2ProviderDefinedTool,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3ProviderTool,
 } from "@ai-sdk/provider";
 
 /**
@@ -12,30 +12,29 @@ import type {
  * matches exactly one of the provided tools based on its 'name' property,
  * and then applies the corresponding tool's 'parameters' schema to its 'arguments' property.
  *
- * @param tools An array of tool definitions (LanguageModelV2FunctionTool or LanguageModelV2ProviderDefinedTool).
+ * @param tools An array of tool definitions (LanguageModelV3FunctionTool or LanguageModelV3ProviderTool).
  * Each tool must have a unique 'name' and its 'parameters' must be a valid JSON Schema.
  * @returns A JSONSchema7 object representing the dynamic validation logic.
- * @throws Error if a 'provider-defined' tool is encountered, as they are not supported by this middleware.
+ * @throws Error if a 'provider' tool is encountered, as they are not supported by this middleware.
  */
 export function createDynamicIfThenElseSchema(
-  tools: (LanguageModelV2FunctionTool | LanguageModelV2ProviderDefinedTool)[]
+  tools: (LanguageModelV3FunctionTool | LanguageModelV3ProviderTool)[]
 ): JSONSchema7 {
   // Explicitly specify the return type as JSONSchema7
   let currentSchema: JSONSchema7 = {};
   const toolNames: string[] = [];
 
-  for (let i = tools.length - 1; i >= 0; i--) {
+  for (let i = tools.length - 1; i >= 0; i -= 1) {
     const tool = tools[i];
 
-    if (tool.type === "provider-defined") {
+    if (tool.type === "provider") {
       throw new Error(
-        "Provider-defined tools are not supported by this middleware. Please use custom tools."
+        "Provider tools are not supported by this middleware. Please use function tools."
       );
     }
 
     toolNames.unshift(tool.name);
 
-    // TODO: Support for parallel calls in required or toolname state
     const toolCondition: JSONSchema7 = {
       if: {
         properties: {

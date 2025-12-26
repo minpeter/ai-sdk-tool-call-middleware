@@ -1,4 +1,4 @@
-import type { EvaluationResult } from "@/interfaces";
+import type { EvaluationResult } from "../interfaces";
 
 // Basic ANSI color codes for console output
 const colors = {
@@ -9,7 +9,64 @@ const colors = {
   cyan: "\x1b[36m",
   magenta: "\x1b[35m",
   gray: "\x1b[90m",
+  white: "\x1b[37m",
+  bgRed: "\x1b[41m",
 };
+
+function formatDiff(diff: string[]): string {
+  if (!diff || diff.length === 0) {
+    return "";
+  }
+
+  return diff
+    .map((line) => {
+      if (line.startsWith("-")) {
+        return `${colors.red}${line}${colors.reset}`;
+      }
+      if (line.startsWith("+")) {
+        return `${colors.green}${line}${colors.reset}`;
+      }
+      if (line.startsWith("@@")) {
+        return `${colors.cyan}${line}${colors.reset}`;
+      }
+      return line;
+    })
+    .join("\n      ");
+}
+
+function printFailLogs(logs: string[]) {
+  const failLogs = logs.filter((l) => l.startsWith("[DEBUG-FAIL]"));
+
+  for (const log of failLogs) {
+    try {
+      const jsonStr = log.replace("[DEBUG-FAIL] ", "");
+      const data = JSON.parse(jsonStr);
+
+      console.log(`\n    ${colors.red}FAILED CASE: ${data.id}${colors.reset}`);
+      console.log(
+        `    Error Type: ${colors.yellow}${data.error_type || "unknown"}${colors.reset}`
+      );
+      console.log(`    Message: ${data.message}`);
+
+      if (data.diff && Array.isArray(data.diff)) {
+        console.log(`    Diff:\n      ${formatDiff(data.diff)}`);
+      }
+
+      // Expected vs Actual summary if diff is too complex or just to show quick view
+      if (data.expected && data.actual) {
+        // Simple one-line summary if possible
+        const expStr = JSON.stringify(data.expected);
+        const actStr = JSON.stringify(data.actual);
+        if (expStr.length < 100 && actStr.length < 100) {
+          console.log(`    Expected: ${colors.gray}${expStr}${colors.reset}`);
+          console.log(`    Actual:   ${colors.gray}${actStr}${colors.reset}`);
+        }
+      }
+    } catch (_e) {
+      console.log(`    Raw Log: ${log}`);
+    }
+  }
+}
 
 function printResult(result: EvaluationResult) {
   const { model, modelKey, benchmark, result: benchmarkResult } = result;
@@ -36,6 +93,22 @@ function printResult(result: EvaluationResult) {
     console.log(
       `    ${colors.red}Error: ${benchmarkResult.error.message}${colors.reset}`
     );
+  }
+
+  // Print failure details if any
+  if (!benchmarkResult.success && benchmarkResult.logs) {
+    printFailLogs(benchmarkResult.logs);
+
+    // Fallback: if printFailLogs found nothing, dump raw logs
+    const failLogs = benchmarkResult.logs.filter((l) =>
+      l.startsWith("[DEBUG-FAIL]")
+    );
+    if (failLogs.length === 0 && benchmarkResult.logs.length > 0) {
+      console.log("    Raw Logs (Sample):");
+      for (const l of benchmarkResult.logs.slice(0, 10)) {
+        console.log(`      ${l}`);
+      }
+    }
   }
 }
 
