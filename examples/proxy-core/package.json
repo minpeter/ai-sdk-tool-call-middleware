@@ -1,7 +1,7 @@
 {
   "name": "@ai-sdk-tool/examples-proxy-core",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1-canary.0",
   "description": "Example usage of @ai-sdk-tool/proxy",
   "main": "index.js",
   "scripts": {
