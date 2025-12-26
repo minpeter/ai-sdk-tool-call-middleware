@@ -165,14 +165,14 @@ jobs:
           FRIENDLI_TOKEN: ${{ secrets.FRIENDLI_TOKEN || vars.FRIENDLI_TOKEN }}
           BENCHMARK_MODE: ${{ steps.mode.outputs.mode }}
         run: |
-          pnpm tsx scripts/run-regression-benchmarks.ts
+          pnpm ci:benchmark
         continue-on-error: true
 
       - name: Compare with historical data
         id: compare
         if: steps.benchmark.outcome == 'success'
         run: |
-          pnpm tsx scripts/compare-benchmarks.ts
+          pnpm ci:compare
           echo "report<<EOF" >> $GITHUB_OUTPUT
           cat .benchmark-results/report.md >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT

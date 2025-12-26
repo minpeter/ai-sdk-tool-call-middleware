@@ -14,6 +14,8 @@
     "changeset": "changeset",
     "ci:release": "turbo build && changeset publish",
     "ci:version": "changeset version",
+    "ci:benchmark": "pnpm dlx tsx scripts/run-regression-benchmarks.ts",
+    "ci:compare": "pnpm dlx tsx scripts/compare-benchmarks.ts",
     "prepare": "husky"
   },
   "devDependencies": {
