@@ -14,6 +14,7 @@ interface BenchmarkResult {
   branch: string;
   timestamp: string;
   model: string;
+  mode: "ultra-quick" | "quick" | "full";
   results: {
     native: Record<string, number>;
     morphxml: Record<string, number>;
@@ -54,9 +55,9 @@ function loadCurrentResult(): BenchmarkResult {
 }
 
 function calculateTrend(history: BenchmarkResult[], current: BenchmarkResult) {
-  // Get last 5 results from main branch
+  // Get last 5 results from main branch with SAME MODE
   const mainBranchResults = history
-    .filter((r) => r.branch === "main")
+    .filter((r) => r.branch === "main" && r.mode === current.mode)
     .slice(-5);
 
   if (mainBranchResults.length === 0) {
@@ -178,11 +179,18 @@ function generateMarkdownReport(
   current: BenchmarkResult,
   trend: ReturnType<typeof calculateTrend>
 ): string {
+  const modeEmoji = {
+    "ultra-quick": "⚡",
+    quick: "🏃",
+    full: "🔥",
+  };
+
   let markdown = "## 📊 Regression Benchmark Results\n\n";
 
   markdown += `**Commit:** \`${current.commit.slice(0, 7)}\`\n`;
   markdown += `**Branch:** \`${current.branch}\`\n`;
   markdown += `**Model:** ${current.model}\n`;
+  markdown += `**Mode:** ${modeEmoji[current.mode]} ${current.mode}\n`;
   markdown += `**Time:** ${new Date(current.timestamp).toLocaleString()}\n\n`;
 
   markdown += "### Current Results\n\n";

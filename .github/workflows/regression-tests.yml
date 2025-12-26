@@ -1,29 +1,22 @@
 name: Regression Tests
 
 on:
-  # 수동 트리거 (비용 절감)
+  # 수동 트리거
   workflow_dispatch:
     inputs:
       benchmark_mode:
-        description: 'Benchmark mode (quick/full)'
+        description: 'Benchmark mode'
         required: false
         default: 'quick'
         type: choice
         options:
-          - quick
-          - full
+          - ultra-quick  # 50 cases (~2min)
+          - quick        # 100 cases (~5min)
+          - full         # all cases (~15min)
 
-  # PR에서는 라벨이 있을 때만 실행
-  pull_request:
-    types: [opened, labeled, reopened]
-    # parser, eval 패키지 변경시만 실행
-    paths:
-      - 'packages/parser/**'
-      - 'packages/eval/**'
-      - 'packages/middleware/**'
-      - 'scripts/run-regression-benchmarks.ts'
-      - 'scripts/compare-benchmarks.ts'
-      - '.github/workflows/regression-tests.yml'
+  # PR 댓글 트리거
+  issue_comment:
+    types: [created]
 
   # main에 머지될 때만 전체 벤치마크 실행
   push:
@@ -44,22 +37,90 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 댓글 파싱 및 모드 결정
+  parse-comment:
+    name: Parse Comment Command
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issue_comment'
+    outputs:
+      should_run: ${{ steps.parse.outputs.should_run }}
+      mode: ${{ steps.parse.outputs.mode }}
+      pr_number: ${{ steps.parse.outputs.pr_number }}
+    steps:
+      - name: Parse comment
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body.toLowerCase();
+            const isPR = !!context.payload.issue.pull_request;
+
+            // PR 댓글만 처리
+            if (!isPR) {
+              core.setOutput('should_run', 'false');
+              return;
+            }
+
+            // 명령어 파싱
+            let mode = 'quick';
+            let shouldRun = false;
+
+            if (comment.includes('/benchmark')) {
+              shouldRun = true;
+
+              if (comment.includes('ultra') || comment.includes('fast')) {
+                mode = 'ultra-quick';
+              } else if (comment.includes('full') || comment.includes('all')) {
+                mode = 'full';
+              } else {
+                mode = 'quick';
+              }
+
+              // 👀 이모지 리액션 추가
+              await github.rest.reactions.createForIssueComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content: 'eyes'
+              });
+            }
+
+            core.setOutput('should_run', shouldRun.toString());
+            core.setOutput('mode', mode);
+            core.setOutput('pr_number', context.issue.number.toString());
+
   regression-benchmarks:
     name: Run Regression Benchmarks
     timeout-minutes: 30
     runs-on: ubuntu-latest
-    # PR에서는 'run-benchmarks' 라벨이 있을 때만 실행
-    # main 푸시나 수동 트리거는 항상 실행
+    needs: [parse-comment]
     if: |
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-benchmarks')) ||
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch'
+      always() && (
+        github.event_name == 'push' ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'issue_comment' && needs.parse-comment.outputs.should_run == 'true')
+      )
 
     steps:
+      - name: Get PR ref (for comment trigger)
+        id: get-pr-ref
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            core.setOutput('ref', pr.data.head.ref);
+            core.setOutput('sha', pr.data.head.sha);
+
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0 # Full history for comparison
+          ref: ${{ github.event_name == 'issue_comment' && steps.get-pr-ref.outputs.ref || github.ref }}
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -76,17 +137,23 @@ jobs:
       - name: Build packages
         run: pnpm build
 
+      - name: Determine benchmark mode
+        id: mode
+        run: |
+          MODE="${{
+            github.event_name == 'workflow_dispatch' && github.event.inputs.benchmark_mode ||
+            (github.event_name == 'issue_comment' && needs.parse-comment.outputs.mode) ||
+            (github.event_name == 'push' && 'full') ||
+            'quick'
+          }}"
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
+          echo "Running in $MODE mode"
+
       - name: Run regression benchmarks
         env:
           FRIENDLI_TOKEN: ${{ secrets.FRIENDLI_TOKEN || vars.FRIENDLI_TOKEN }}
-          # PR에서는 quick 모드 (simple만), main이나 수동 full은 전체
-          BENCHMARK_MODE: ${{
-            github.event_name == 'workflow_dispatch' && github.event.inputs.benchmark_mode ||
-            (github.event_name == 'push' && 'full') ||
-            'quick'
-          }}
+          BENCHMARK_MODE: ${{ steps.mode.outputs.mode }}
         run: |
-          echo "Running in $BENCHMARK_MODE mode"
           pnpm tsx scripts/run-regression-benchmarks.ts
         continue-on-error: true
 
@@ -117,17 +184,22 @@ jobs:
         continue-on-error: true
 
       - name: Comment PR with results
-        if: github.event_name == 'pull_request' && steps.compare.outputs.report != ''
+        if: |
+          (github.event_name == 'issue_comment' || github.event_name == 'pull_request') &&
+          steps.compare.outputs.report != ''
         uses: actions/github-script@v7
         with:
           script: |
             const report = `${{ steps.compare.outputs.report }}`;
+            const issueNumber = context.issue?.number || ${{ needs.parse-comment.outputs.pr_number || 0 }};
+
+            if (!issueNumber) return;
 
             // Find existing comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: issueNumber,
             });
 
             const botComment = comments.find(comment =>
@@ -150,8 +222,18 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: issueNumber,
                 body: body,
+              });
+            }
+
+            // 성공 시 🚀 리액션 추가 (댓글 트리거인 경우)
+            if (context.event_name === 'issue_comment') {
+              await github.rest.reactions.createForIssueComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content: 'rocket'
               });
             }
 

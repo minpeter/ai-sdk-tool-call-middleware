@@ -64,6 +64,7 @@ interface BenchmarkResult {
   branch: string;
   timestamp: string;
   model: string;
+  mode: "ultra-quick" | "quick" | "full";
   results: {
     native: Record<string, number>;
     morphxml: Record<string, number>;
@@ -73,23 +74,46 @@ interface BenchmarkResult {
 async function runBenchmarks(): Promise<BenchmarkResult> {
   const timestamp = new Date().toISOString();
 
-  // 환경변수로 quick/full 모드 결정 (기본값: quick)
-  const mode = process.env.BENCHMARK_MODE || "quick";
-  const isQuickMode = mode === "quick";
+  // 환경변수로 모드 결정 (기본값: quick)
+  const mode = (process.env.BENCHMARK_MODE ||
+    "quick") as BenchmarkResult["mode"];
 
-  // quick 모드에서는 simple만, full 모드에서는 전체
-  const benchmarks = isQuickMode
-    ? [bfclSimpleBenchmark]
-    : [bfclSimpleBenchmark, bfclMultipleBenchmark, bfclParallelBenchmark];
+  // 모드별 벤치마크 설정
+  const benchmarkConfigs = {
+    "ultra-quick": {
+      benchmarks: [bfclSimpleBenchmark],
+      limit: 50,
+      desc: "50 cases, ~2min",
+    },
+    quick: {
+      benchmarks: [bfclSimpleBenchmark],
+      limit: 100,
+      desc: "100 cases, ~5min",
+    },
+    full: {
+      benchmarks: [
+        bfclSimpleBenchmark,
+        bfclMultipleBenchmark,
+        bfclParallelBenchmark,
+      ],
+      limit: undefined,
+      desc: "all cases, ~15min",
+    },
+  };
 
-  console.log(
-    `Running in ${mode} mode (${benchmarks.length} benchmark${benchmarks.length > 1 ? "s" : ""})\n`
-  );
+  const config = benchmarkConfigs[mode];
+
+  console.log(`Running in ${mode} mode (${config.desc})\n`);
+
+  // BFCL_LIMIT 환경변수 설정 (ultra-quick/quick인 경우)
+  if (config.limit) {
+    process.env.BFCL_LIMIT = config.limit.toString();
+  }
 
   console.log("Running native tool calling benchmarks...\n");
   const nativeResults = await evaluate({
     models: { native: nativeModel },
-    benchmarks,
+    benchmarks: config.benchmarks,
     reporter: "console",
     temperature: 0.0,
     maxTokens: 512,
@@ -98,7 +122,7 @@ async function runBenchmarks(): Promise<BenchmarkResult> {
   console.log("\nRunning morphXML protocol benchmarks...\n");
   const morphXmlResults = await evaluate({
     models: { morphxml: morphXmlModel },
-    benchmarks,
+    benchmarks: config.benchmarks,
     reporter: "console",
     temperature: 0.0,
     maxTokens: 512,
@@ -120,6 +144,7 @@ async function runBenchmarks(): Promise<BenchmarkResult> {
     branch,
     timestamp,
     model: "zai-org/GLM-4.6",
+    mode,
     results: {
       native: nativeScores,
       morphxml: morphXmlScores,
