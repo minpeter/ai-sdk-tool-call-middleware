@@ -39,19 +39,35 @@ Value: your_friendli_api_token_here
 
 ## 🎯 트리거 방식
 
-### 1. PR 댓글 트리거 (권장)
+### 1. PR 자동 실행 (기본)
 
-PR에 댓글로 다음 명령어를 입력:
+**PR 생성 또는 커밋 추가 시 자동으로 실행됩니다.**
+
+다음 파일 변경 시 자동 실행:
+- `packages/parser/**`
+- `packages/eval/**`
+- `packages/middleware/**`
+
+**모드**: Quick (100 케이스, ~5분)
+
+**동작 과정**:
+1. PR 생성 또는 커밋 푸시
+2. CI가 자동으로 벤치마크 실행
+3. 결과를 PR 코멘트로 게시
+
+### 2. PR 댓글 트리거 (모드 변경)
+
+자동 실행 외에 댓글로 다른 모드 실행 가능:
 
 ```bash
-# Quick 모드 (100 케이스, ~5분)
+# Quick 모드 (100 케이스, ~5분) - 자동 실행과 동일
 /benchmark
 
-# Ultra-quick 모드 (50 케이스, ~2분)
+# Ultra-quick 모드 (50 케이스, ~2분) - 빠른 검증
 /benchmark ultra
 /benchmark fast
 
-# Full 모드 (전체 케이스, ~15분)
+# Full 모드 (전체 케이스, ~15분) - 최종 검증
 /benchmark full
 /benchmark all
 ```
@@ -63,7 +79,7 @@ PR에 댓글로 다음 명령어를 입력:
 4. 결과를 PR 코멘트로 게시
 5. 성공 시 🚀 리액션 추가
 
-### 2. 수동 실행
+### 3. 수동 실행
 
 ```
 Actions > Regression Tests > Run workflow
@@ -73,7 +89,7 @@ Actions > Regression Tests > Run workflow
 - Mode: ultra-quick / quick / full
 ```
 
-### 3. Main 브랜치 자동 실행
+### 4. Main 브랜치 자동 실행
 
 다음 파일 변경 시 자동 실행:
 - `packages/parser/**`
@@ -198,21 +214,21 @@ All benchmarks are within expected performance range (±2%)
 
 ### PR 작성자
 
-1. **초기 검증**: `/benchmark` (quick 모드)
-2. **문제 발견 시**: 코드 수정 후 다시 `/benchmark`
-3. **최종 확인**: `/benchmark full` (머지 직전)
+1. **일반 작업**: PR 생성/커밋 푸시 → 자동으로 quick 모드 실행 (별도 작업 불필요)
+2. **빠른 검증 필요 시**: `/benchmark ultra` (50 케이스, ~2분)
+3. **최종 확인**: `/benchmark full` (머지 직전, 전체 벤치마크)
 
 ### 메인테이너
 
-1. **일반 PR**: 댓글 트리거로 필요시만 실행
-2. **중요 변경**: Actions UI에서 full 모드 수동 실행
-3. **Main 머지**: 자동 실행됨 (별도 작업 불필요)
+1. **일반 PR**: 자동 실행 결과 확인 (quick 모드)
+2. **중요 변경**: `/benchmark full` 댓글로 전체 벤치마크 요청
+3. **Main 머지**: 자동 실행됨 (full 모드, 별도 작업 불필요)
 
 ### 비용 관리
 
-- **Ultra-quick**: 일상적인 빠른 체크
-- **Quick**: 대부분의 PR 검증
-- **Full**: 릴리스 전, 중요 변경사항
+- **자동 실행**: Quick 모드로 기본 검증 (~200 API 호출)
+- **Ultra-quick**: 빠른 반복 개발 시 (`/benchmark ultra`)
+- **Full**: 릴리스 전, 중요 변경사항 (`/benchmark full`)
 
 ## 📞 지원
 

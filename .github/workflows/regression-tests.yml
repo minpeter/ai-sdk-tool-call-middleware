@@ -18,6 +18,14 @@ on:
   issue_comment:
     types: [created]
 
+  # PR 생성 및 커밋 추가 시 자동 실행 (quick 모드)
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'packages/parser/**'
+      - 'packages/eval/**'
+      - 'packages/middleware/**'
+
   # main에 머지될 때만 전체 벤치마크 실행
   push:
     branches:
@@ -98,6 +106,7 @@ jobs:
       always() && (
         github.event_name == 'push' ||
         github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'pull_request' ||
         (github.event_name == 'issue_comment' && needs.parse-comment.outputs.should_run == 'true')
       )
 
@@ -119,7 +128,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'issue_comment' && steps.get-pr-ref.outputs.ref || github.ref }}
+          ref: ${{ github.event_name == 'issue_comment' && steps.get-pr-ref.outputs.ref || '' }}
           fetch-depth: 0
 
       - name: Setup pnpm
@@ -144,6 +153,7 @@ jobs:
             github.event_name == 'workflow_dispatch' && github.event.inputs.benchmark_mode ||
             (github.event_name == 'issue_comment' && needs.parse-comment.outputs.mode) ||
             (github.event_name == 'push' && 'full') ||
+            (github.event_name == 'pull_request' && 'quick') ||
             'quick'
           }}"
           echo "mode=$MODE" >> $GITHUB_OUTPUT
@@ -191,7 +201,9 @@ jobs:
         with:
           script: |
             const report = `${{ steps.compare.outputs.report }}`;
-            const issueNumber = context.issue?.number || ${{ needs.parse-comment.outputs.pr_number || 0 }};
+            const issueNumber = context.issue?.number ||
+                                context.payload.pull_request?.number ||
+                                ${{ needs.parse-comment.outputs.pr_number || 0 }};
 
             if (!issueNumber) return;
 
