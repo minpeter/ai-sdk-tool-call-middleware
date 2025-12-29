@@ -57,7 +57,7 @@ jobs:
     steps:
       - name: Parse comment
         id: parse
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const comment = context.payload.comment.body.toLowerCase();
@@ -114,7 +114,7 @@ jobs:
       - name: Get PR ref (for comment trigger)
         id: get-pr-ref
         if: github.event_name == 'issue_comment'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const pr = await github.rest.pulls.get({
@@ -126,7 +126,7 @@ jobs:
             core.setOutput('sha', pr.data.head.sha);
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'issue_comment' && steps.get-pr-ref.outputs.ref || '' }}
           fetch-depth: 0
@@ -201,7 +201,7 @@ jobs:
         if: |
           (github.event_name == 'issue_comment' || github.event_name == 'pull_request') &&
           steps.benchmark.outcome == 'failure'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const issueNumber = context.issue?.number ||
@@ -245,7 +245,7 @@ jobs:
         if: |
           (github.event_name == 'issue_comment' || github.event_name == 'pull_request') &&
           steps.compare.outcome == 'success'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
@@ -308,7 +308,7 @@ jobs:
 
       - name: Upload benchmark results as artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: benchmark-results-${{ github.sha }}
           path: .benchmark-results/
