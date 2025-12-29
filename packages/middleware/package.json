@@ -1,0 +1,54 @@
+{
+  "name": "@ai-sdk-tool/middleware",
+  "version": "0.0.1-canary.0",
+  "description": "Collection of reusable AI SDK middlewares",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware",
+    "directory": "packages/middleware"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./reasoning-parser": {
+      "types": "./dist/reasoning-parser.d.ts",
+      "import": "./dist/reasoning-parser.js",
+      "require": "./dist/reasoning-parser.cjs"
+    }
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "pnpm clean && tsup --tsconfig tsconfig.build.json",
+    "build:watch": "pnpm clean && tsup --watch --tsconfig tsconfig.build.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/provider": "3.0.0"
+  },
+  "devDependencies": {
+    "@ai-sdkx/tsconfig": "workspace:*",
+    "@types/node": "^25.0.3",
+    "tsup": "^8.5.1"
+  },
+  "keywords": [
+    "ai",
+    "sdk",
+    "middleware"
+  ],
+  "author": "",
+  "license": "Apache-2.0"
+}

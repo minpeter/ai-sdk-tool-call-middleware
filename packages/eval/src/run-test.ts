@@ -9,7 +9,7 @@ const BASE_VALUE = 10;
 const HEIGHT_VALUE = 5;
 const TEST_NUMBER = 123;
 
-type FunctionDescription = {
+interface FunctionDescription {
   name: string;
   description: string;
   parameters: {
@@ -23,7 +23,7 @@ type FunctionDescription = {
     };
     required: string[];
   };
-};
+}
 
 function runSimpleCheckTest() {
   console.log("--- Running simpleFunctionChecker Test ---");

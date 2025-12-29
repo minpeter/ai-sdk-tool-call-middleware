@@ -1,30 +1,28 @@
 import type {
-  LanguageModelV2Content,
-  LanguageModelV2ToolCall,
-  LanguageModelV2ToolResultPart,
+  LanguageModelV3Content,
+  LanguageModelV3ToolCall,
+  LanguageModelV3ToolResultPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 
-import {
-  escapeRegExp,
-  getPotentialStartIndex,
-  parseRJSON,
-  RJSON,
-} from "@/utils";
+import { logParseFailure } from "../utils/debug";
+import { getPotentialStartIndex } from "../utils/get-potential-start-index";
+import { escapeRegExp } from "../utils/regex";
+import { parse as parseRJSON } from "../utils/robust-json";
 
 import type { ToolCallProtocol } from "./tool-call-protocol";
 
-type JsonMixOptions = {
+interface JsonMixOptions {
   toolCallStart?: string;
   toolCallEnd?: string;
   toolResponseStart?: string;
   toolResponseEnd?: string;
-};
+}
 
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
-  processedElements: LanguageModelV2Content[],
+  processedElements: LanguageModelV3Content[],
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
@@ -41,6 +39,12 @@ function processToolCallJson(
       input: JSON.stringify(parsedToolCall.arguments ?? {}),
     });
   } catch (error) {
+    logParseFailure({
+      phase: "generated-text",
+      reason: "Failed to parse tool call JSON segment",
+      snippet: fullMatch,
+      error,
+    });
     if (options?.onError) {
       options.onError(
         "Could not process JSON tool call, keeping original text.",
@@ -53,22 +57,22 @@ function processToolCallJson(
 
 function addTextSegment(
   text: string,
-  processedElements: LanguageModelV2Content[]
+  processedElements: LanguageModelV3Content[]
 ) {
   if (text.trim()) {
     processedElements.push({ type: "text", text });
   }
 }
 
-type ParseContext = {
+interface ParseContext {
   match: RegExpExecArray;
   text: string;
   currentIndex: number;
-  processedElements: LanguageModelV2Content[];
+  processedElements: LanguageModelV3Content[];
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
-};
+}
 
 function processMatchedToolCall(context: ParseContext): number {
   const { match, text, currentIndex, processedElements, options } = context;
@@ -89,27 +93,27 @@ function processMatchedToolCall(context: ParseContext): number {
   return startIndex + match[0].length;
 }
 
-type StreamState = {
+interface StreamState {
   isInsideToolCall: boolean;
   buffer: string;
   currentToolCallJson: string;
   currentTextId: string | null;
   hasEmittedTextStart: boolean;
-};
+}
 
 type StreamController = TransformStreamDefaultController<unknown>;
 
-type StreamOptions = {
+interface StreamOptions {
   onError?: (message: string, metadata?: Record<string, unknown>) => void;
-};
+}
 
-type TagProcessingContext = {
+interface TagProcessingContext {
   state: StreamState;
   controller: StreamController;
   toolCallStart: string;
   toolCallEnd: string;
   options?: StreamOptions;
-};
+}
 
 function flushBuffer(
   state: StreamState,
@@ -154,6 +158,12 @@ function emitIncompleteToolCall(
   if (!state.currentToolCallJson) {
     return;
   }
+
+  logParseFailure({
+    phase: "stream",
+    reason: "Incomplete streaming tool call segment emitted as text",
+    snippet: `${toolCallStart}${state.currentToolCallJson}`,
+  });
 
   const errorId = generateId();
   controller.enqueue({ type: "text-start", id: errorId });
@@ -205,7 +215,7 @@ function publishText(
 function emitToolCall(context: TagProcessingContext) {
   const { state, controller, toolCallStart, toolCallEnd, options } = context;
   try {
-    const parsedToolCall = RJSON.parse(state.currentToolCallJson) as {
+    const parsedToolCall = parseRJSON(state.currentToolCallJson) as {
       name: string;
       arguments: unknown;
     };
@@ -216,7 +226,13 @@ function emitToolCall(context: TagProcessingContext) {
       toolName: parsedToolCall.name,
       input: JSON.stringify(parsedToolCall.arguments ?? {}),
     });
-  } catch {
+  } catch (error) {
+    logParseFailure({
+      phase: "stream",
+      reason: "Failed to parse streaming tool call JSON segment",
+      snippet: `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`,
+      error,
+    });
     const errorId = generateId();
     controller.enqueue({ type: "text-start", id: errorId });
     controller.enqueue({
@@ -314,7 +330,7 @@ export const jsonMixProtocol = ({
     return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
   },
 
-  formatToolCall(toolCall: LanguageModelV2ToolCall) {
+  formatToolCall(toolCall: LanguageModelV3ToolCall) {
     let args: unknown = {};
     try {
       args = JSON.parse(toolCall.input);
@@ -327,7 +343,7 @@ export const jsonMixProtocol = ({
     })}${toolCallEnd}`;
   },
 
-  formatToolResponse(toolResult: LanguageModelV2ToolResultPart) {
+  formatToolResponse(toolResult: LanguageModelV3ToolResultPart) {
     return `${toolResponseStart}${JSON.stringify({
       toolName: toolResult.toolName,
       result: toolResult.output,
@@ -342,7 +358,7 @@ export const jsonMixProtocol = ({
       "gs"
     );
 
-    const processedElements: LanguageModelV2Content[] = [];
+    const processedElements: LanguageModelV3Content[] = [];
     let currentIndex = 0;
     let match = toolCallRegex.exec(text);
 

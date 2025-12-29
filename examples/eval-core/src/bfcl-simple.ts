@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   bfclMultipleBenchmark,
@@ -7,15 +9,15 @@ import {
   evaluate,
   type ReporterType,
 } from "@ai-sdk-tool/eval";
-import {
-  hermesToolMiddleware,
-  morphXmlToolMiddleware,
-} from "@ai-sdk-tool/parser";
-import {
-  sijawaraConciseXmlToolMiddleware,
-  sijawaraDetailedXmlToolMiddleware,
-} from "@ai-sdk-tool/parser/community";
+import { createToolMiddleware, morphXmlProtocol } from "@ai-sdk-tool/parser";
 import { wrapLanguageModel } from "ai";
+
+// Load system prompt from file
+const systemPromptPath = path.join(
+  __dirname,
+  "Llama-4-Maverick-morphXml-bfcl.txt"
+);
+const systemPromptTemplate = fs.readFileSync(systemPromptPath, "utf-8");
 
 const friendli = createOpenAICompatible({
   name: "friendli.serverless",
@@ -23,63 +25,33 @@ const friendli = createOpenAICompatible({
   baseURL: "https://api.friendli.ai/serverless/v1",
 });
 
-// const xmlGemma27b = wrapLanguageModel({
-//   model: friendli("google/gemma-3-27b-it"),
-//   // model: openrouter("z-ai/glm-4.5-air"),
-//   middleware: morphXmlToolMiddleware,
-// });
-
-// const jsonGemma27b = wrapLanguageModel({
-//   model: friendli("google/gemma-3-27b-it"),
-//   // model: openrouter("z-ai/glm-4.5-air"),
-//   middleware: gemmaToolMiddleware,
-// });
-
-// const morphXmlGemma27b = wrapLanguageModel({
-//   model: friendli("google/gemma-3-27b-it"),
-//   middleware: morphXmlToolMiddleware,
-// });
-
-// const compareDifferentMiddlewares = { xml: xmlGemma27b, morphXml: morphXmlGemma27b, json: jsonGemma27b };
-
 const testTargetModel = friendli(
   "meta-llama/Llama-4-Maverick-17B-128E-Instruct"
 );
-const hermes = wrapLanguageModel({
-  model: testTargetModel,
-  middleware: hermesToolMiddleware,
+
+// Create custom middleware with loaded system prompt
+const customMorphXmlMiddleware = createToolMiddleware({
+  protocol: morphXmlProtocol,
+  placement: "last",
+  toolSystemPromptTemplate(tools: string) {
+    return systemPromptTemplate.replace(/\$\{tools\}/g, tools);
+  },
 });
 
-const morphXml = wrapLanguageModel({
+const morphXmlModel = wrapLanguageModel({
   model: testTargetModel,
-  middleware: morphXmlToolMiddleware,
+  middleware: customMorphXmlMiddleware,
 });
-
-const sijawaraDetailed = wrapLanguageModel({
-  model: testTargetModel,
-  middleware: sijawaraDetailedXmlToolMiddleware,
-});
-
-const sijawaraConcise = wrapLanguageModel({
-  model: testTargetModel,
-  middleware: sijawaraConciseXmlToolMiddleware,
-});
-
-const compareWithNativeToolCalling = {
-  hermes,
-  morphXml,
-  sijawaraDetailed,
-  sijawaraConcise,
-  original: testTargetModel,
-};
 
 async function main() {
-  console.log("Starting model evaluation...");
+  console.log("Starting model evaluation with custom system prompt...");
 
   const reporterEnv = process.env.EVAL_REPORTER as ReporterType | undefined;
 
   await evaluate({
-    models: compareWithNativeToolCalling,
+    models: {
+      "llama-4-maverick-morph-xml": morphXmlModel,
+    },
     benchmarks: [
       bfclSimpleBenchmark,
       bfclMultipleBenchmark,
@@ -88,7 +60,7 @@ async function main() {
     ],
     reporter: reporterEnv ?? "console",
     temperature: 0.0,
-    maxTokens: 512,
+    maxTokens: 256,
   });
 
   console.log("Evaluation complete!");

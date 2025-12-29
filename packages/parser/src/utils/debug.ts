@@ -56,11 +56,56 @@ const cInverse = color(ANSI_INVERSE);
 const cUnderline = color(ANSI_UNDERLINE);
 const cBold = color(ANSI_BOLD);
 
+const MAX_SNIPPET_LENGTH = 800;
+
 function safeStringify(value: unknown): string {
   try {
     return `\n${typeof value === "string" ? value : JSON.stringify(value, null, 2)}`;
   } catch {
     return String(value);
+  }
+}
+
+function formatError(error: unknown): string {
+  if (error instanceof Error) {
+    const stack = error.stack ? `\n${error.stack}` : "";
+    return `\n${error.name}: ${error.message}${stack}`;
+  }
+  return safeStringify(error);
+}
+
+function truncateSnippet(snippet: string): string {
+  if (snippet.length <= MAX_SNIPPET_LENGTH) {
+    return snippet;
+  }
+  return `${snippet.slice(0, MAX_SNIPPET_LENGTH)}\n…[truncated ${snippet.length - MAX_SNIPPET_LENGTH} chars]`;
+}
+
+export function logParseFailure({
+  phase,
+  reason,
+  snippet,
+  error,
+}: {
+  phase: "generated-text" | "stream" | string;
+  reason: string;
+  snippet?: string;
+  error?: unknown;
+}) {
+  if (getDebugLevel() !== "parse") {
+    return;
+  }
+
+  const label = cBgBlue(`[${phase}]`);
+  console.log(cGray("[debug:mw:fail]"), label, cYellow(reason));
+
+  if (snippet) {
+    const formatted = truncateSnippet(snippet);
+    console.log(cGray("[debug:mw:fail:snippet]"), formatted);
+  }
+
+  if (error) {
+    console.log(cGray("[debug:mw:fail:error]"), cCyan(formatError(error)));
   }
 }
 

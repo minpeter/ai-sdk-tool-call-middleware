@@ -11,16 +11,16 @@ export type OnErrorFn = (
 /**
  * Represents a parsed XML node in the DOM tree
  */
-export type RXMLNode = {
+export interface RXMLNode {
   tagName: string;
   attributes: Record<string, string | null>;
   children: (RXMLNode | string)[];
-};
+}
 
 /**
  * Options for XML parsing
  */
-export type ParseOptions = {
+export interface ParseOptions {
   /** Position to start parsing from (for streaming) */
   pos?: number;
   /** Array of tag names that don't have children and don't need to be closed */
@@ -48,12 +48,12 @@ export type ParseOptions = {
   ) => boolean;
   /** Simplify the result structure */
   simplify?: boolean;
-};
+}
 
 /**
  * Options for XML stringification
  */
-export type StringifyOptions = {
+export interface StringifyOptions {
   /** Whether to format the output with indentation */
   format?: boolean;
   /** Whether to suppress empty nodes */
@@ -74,15 +74,15 @@ export type StringifyOptions = {
    * (e.g., <item checked>), for compatibility with existing outputs.
    */
   strictBooleanAttributes?: boolean;
-};
+}
 
 /**
  * Result of parsing with position information
  */
-export type ParseResult = {
+export interface ParseResult {
   result: (RXMLNode | string)[];
   pos: number;
-};
+}
 
 /**
  * Character code constants for efficient parsing

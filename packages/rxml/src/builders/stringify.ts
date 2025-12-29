@@ -45,13 +45,13 @@ export function stringify(
   }
 }
 
-type StringifyContext = {
+interface StringifyContext {
   depth: number;
   format: boolean;
   suppressEmptyNode: boolean;
   minimalEscaping: boolean;
   strictBooleanAttributes: boolean;
-};
+}
 
 /**
  * Escape content based on escaping mode
@@ -94,10 +94,10 @@ function isPrimitive(value: unknown): boolean {
   );
 }
 
-type FormatOptions = {
+interface FormatOptions {
   indent: string;
   newline: string;
-};
+}
 
 /**
  * Stringify a primitive value
@@ -172,11 +172,11 @@ function stringifyValue(
   return createTextElement(tagName, content, indent, newline);
 }
 
-type ObjectParts = {
+interface ObjectParts {
   attributes: Record<string, unknown>;
   elements: Record<string, unknown>;
   textContent: string | undefined;
-};
+}
 
 /**
  * Extract attributes, elements, and text content from an object
@@ -276,12 +276,12 @@ function stringifyTextOnlyContent(options: {
   return `${format.indent}${openTag}${content}</${tagName}>${format.newline}`;
 }
 
-type ComplexContentOptions = {
+interface ComplexContentOptions {
   indent: string;
   newline: string;
   childIndent: string;
   openTag: string;
-};
+}
 
 /**
  * Stringify complex content (text + elements)
@@ -400,12 +400,12 @@ export function stringifyNodes(
   return result;
 }
 
-type NodeStringifyOptions = {
+interface NodeStringifyOptions {
   minimalEscaping: boolean;
   strictBooleanAttributes: boolean;
   indent: string;
   newline: string;
-};
+}
 
 /**
  * Format a single node attribute

@@ -258,10 +258,10 @@ export class XMLTransformStream extends Transform {
       }
 
       if (nextOpen !== -1 && nextOpen < nextCloseStart) {
-        depth++;
+        depth += 1;
         searchStart = nextOpen + 1;
       } else {
-        depth--;
+        depth -= 1;
         const closeAdvance = this.advancePastClosingTag(
           tagName,
           nextCloseStart
@@ -301,7 +301,7 @@ export class XMLTransformStream extends Transform {
   ): number {
     let p = nextCloseStart + 2 + tagName.length;
     while (p < this.buffer.length && WHITESPACE_REGEX.test(this.buffer[p])) {
-      p++;
+      p += 1;
     }
     if (this.buffer[p] !== ">") {
       return -1;
@@ -317,14 +317,14 @@ export class XMLTransformStream extends Transform {
       // Emit comment nodes if requested
       if (this.parseOptions.keepComments && node.includes("<!--")) {
         this.push(node);
-        this.emittedCount++;
+        this.emittedCount += 1;
       }
       return;
     }
 
     // Emit the element itself
     this.push(node);
-    this.emittedCount++;
+    this.emittedCount += 1;
 
     // Recursively emit children
     for (const child of node.children) {
