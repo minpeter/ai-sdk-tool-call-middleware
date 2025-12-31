@@ -15,14 +15,14 @@
     "@ai-sdk-tool/middleware": "workspace:*",
     "@ai-sdk-tool/parser": "workspace:*",
     "@ai-sdk-tool/proxy": "workspace:*",
-    "@ai-sdk/openai": "3.0.1",
-    "@ai-sdk/openai-compatible": "2.0.1",
-    "ai": "6.0.3",
+    "@ai-sdk/openai": "3.0.2",
+    "@ai-sdk/openai-compatible": "2.0.2",
+    "ai": "6.0.5",
     "tsx": "^4.21.0",
     "zod": "^4.2.1"
   },
   "devDependencies": {
-    "@ai-sdk/provider": "3.0.0",
+    "@ai-sdk/provider": "3.0.1",
     "@types/node": "^25.0.3"
   }
 }
