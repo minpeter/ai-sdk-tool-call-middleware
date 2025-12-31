@@ -1,6 +1,9 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "extends": ["ultracite/core"],
+  "files": {
+    "includes": ["!!.changeset"]
+  },
   "linter": {
     "rules": {
       "suspicious": {
@@ -8,9 +11,6 @@
       },
       "style": {
         "noMagicNumbers": "off"
-      },
-      "performance": {
-        "noBarrelFile": "off"
       }
     }
   }

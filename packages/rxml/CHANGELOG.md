@@ -1,5 +1,11 @@
 # @ai-sdk-tool/rxml
 
+## 0.1.2-canary.0
+
+### Patch Changes
+
+- 1f36102: minor dependency version bump
+
 ## 0.1.1
 
 ### Patch Changes
@@ -11,6 +17,7 @@
 ### Minor Changes
 
 - 5e03e27: Initial release of RXML (Robust XML).
+
   - Safe XML parsing and streaming
   - JSON Schema-based coercion
   - Stringification
@@ -19,5 +26,6 @@
   - Examples
 
   Add RXML docs and README:
+
   - New comprehensive docs at `docs/rxml.md` and index link
   - Concise package README with install and quick usage

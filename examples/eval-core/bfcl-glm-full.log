@@ -1,0 +1,906 @@
+🔍 Full BFCL Benchmark: GLM-4.6 (ALL CASES)
+
+Testing all benchmark suites with DEBUG output enabled
+This will help identify if failures are parser or model issues
+
+[zai-org/GLM-4.6] (glm-4.6) Running benchmark: bfcl-simple...
+[zai-org/GLM-4.6] (glm-4.6) Finished benchmark: bfcl-simple. Score: 0.805
+[zai-org/GLM-4.6] (glm-4.6) Running benchmark: bfcl-multiple...
+[zai-org/GLM-4.6] (glm-4.6) Finished benchmark: bfcl-multiple. Score: 0.775
+[zai-org/GLM-4.6] (glm-4.6) Running benchmark: bfcl-parallel...
+[zai-org/GLM-4.6] (glm-4.6) Finished benchmark: bfcl-parallel. Score: 0.925
+[zai-org/GLM-4.6] (glm-4.6) Running benchmark: bfcl-parallel-multiple...
+[zai-org/GLM-4.6] (glm-4.6) Finished benchmark: bfcl-parallel-multiple. Score: 0.84
+
+--- 📊 Evaluation Report ---
+
+ [36m[zai-org/GLM-4.6][0m [90m(glm-4.6)[0m - [35mbfcl-simple[0m
+  └ [31m✖ FAILURE[0m | Score: [33m0.81[0m
+    Metrics:
+      - correct_count: 322
+      - total_cases: 400
+      - accuracy: 0.805
+
+    [31mFAILED CASE: simple_5[0m
+    Error Type: [33msimple_function_checker:missing_optional[0m
+    Message: Missing optional parameter 'root_type' which was not marked as optional.
+    Diff:
+      
+    Expected: [90m{"function":"solve_quadratic","params":{"a":[3],"b":[-11],"c":[-4],"root_type":["all"]}}[0m
+    Actual:   [90m{"function":"solve_quadratic","args":{"a":3,"b":-11,"c":-4}}[0m
+
+    [31mFAILED CASE: simple_55[0m
+    Error Type: [33mvalue_error:string[0m
+    Message: Invalid value for parameter 'cell_type': "human cell". Expected one of ["human"].
+    Diff:
+      [36m@@ param cell_type[0m
+      [31m- expected: "human"[0m
+      [32m+ got: "human cell"[0m
+    Expected: [90m{"function":"biology.get_cell_info","params":{"cell_type":["human"],"detailed":[true]}}[0m
+    Actual:   [90m{"function":"biology.get_cell_info","args":{"cell_type":"human cell","detailed":true}}[0m
+
+    [31mFAILED CASE: simple_65[0m
+    Error Type: [33mvalue_error:other[0m
+    Message: Invalid value for parameter 'population'. Got 213. Expected one of [213000000].
+    Diff:
+      [36m@@ param land_area[0m
+      [31m- expected: 8500000[0m
+      [32m+ got: 8.5[0m
+      [36m@@ param population[0m
+      [31m- expected: 213000000[0m
+      [32m+ got: 213[0m
+
+    [31mFAILED CASE: simple_89[0m
+    Error Type: [33mvalue_error:other[0m
+    Message: Invalid value for parameter 'conditions'. Got {"school":"Bluebird High School","department":"Science"}. Expected one of [{"department":["Science"],"school":["Bluebird High School","Bluebird HS"]}].
+    Diff:
+      
+
+    [31mFAILED CASE: simple_163[0m
+    Error Type: [33mvalue_error:string[0m
+    Message: Invalid value for parameter 'county': "Santa Clara county". Expected one of ["Santa Clara"].
+    Diff:
+      [36m@@ param county[0m
+      [31m- expected: "Santa Clara"[0m
+      [32m+ got: "Santa Clara county"[0m
+
+    [31mFAILED CASE: simple_224[0m
+    Error Type: [33mvalue_error:list[0m
+    Message: Invalid value for list parameter 'sub_topics'. Got ["behavior","group dynamics"]. Expected one of [["behaviour","group dynamics"]].
+    Diff:
+      [36m@@ param sub_topics[0m
+      [31m- expected: ["behaviour","group dynamics"][0m
+      [32m+ got: ["behavior","group dynamics"][0m
+
+    [31mFAILED CASE: simple_234[0m
+    Error Type: [33msimple:wrong_count[0m
+    Message: Expected 1 function call, but got 4.
+    Diff:
+      
+
+    [31mFAILED CASE: simple_244[0m
+    Error Type: [33mvalue_error:string[0m
+    Message: Invalid value for parameter 'work_title': "Philosophiæ Naturalis Principia Mathematica". Expected one of ["Law of Universal Gravitation","Universal Law of Gravitation","The law of universal gravitation"].
+    Diff:
+      [36m@@ param work_title[0m
+      [31m- expected one of: Law of Universal Gravitation, Universal Law of Gravitation, The law of universal gravitation[0m
+      [32m+ got: "Philosophiæ Naturalis Principia Mathematica"[0m
+
+    [31mFAILED CASE: simple_249[0m
+    Error Type: [33mvalue_error:other[0m
+    Message: Invalid value for parameter 'include_people'. Got true. Expected one of [false,""].
+    Diff:
+      [36m@@ param include_people[0m
+      [31m- expected one of: false, [0m
+      [32m+ got: true[0m
+
+    [31mFAILED CASE: simple_267[0m
+    Error Type: [33mvalue_error:string[0m
+    Message: Invalid value for parameter 'location': "New York". Expected one of ["New York City, NY"].
+    Diff:
+      [36m@@ param location[0m
+      [31m- expected: "New York City, NY"[0m
+      [32m+ got: "New York"[0m
+
+    [31mFAILED CASE: simple_277[0m
+    Error Type: [33msimple_function_checker:missing_optional[0m
+    Message: Missing optional parameter 'information' which was not marked as optional.
+    Diff:
+      
+
+    [31mFAILED CASE: simple_299[0m
+    Error Type: [33mvalue_error:string[0m
+    Message: Invalid value for parameter 'key': "C sharp major". Expected one of ["C#","C sharp"].
+    Diff:
+      [36m@@ param key[0m
+      [31m- expected one of: C#, C sharp[0m
+      [32m+ got: "C sharp major"[0m
+    Expected: [90m{"function":"musical_scale","params":{"key":["C#","C sharp"],"scale_type":["major",""]}}[0m
+    Actual:   [90m{"function":"musical_scale","args":{"key":"C sharp major"}}[0m
+
+    [31mFAILED CASE: simple_304[0m
+    Error Type: [33msimple:wrong_count[0m
+    Message: Expected 1 function call, but got 0.
+    Diff:
+      [36m@@ function name[0m
+      [31m- player_stats.getLastGame[0m
+      [32m+ undefined[0m
+
+    [31mFAILED CASE: simple_337[0m
+    Error Type: [33mvalue_error:other[0m
+    Message: Invalid value for parameter 'cards'. Got {"Alex":["A of spades","K of spades"],"Sam":["2 of diamonds","3 of clubs"],"Robert":["Q of hearts","10 of hearts"],"Steve":["4 of spades","5 of spades"]}. Expected one of [{"Alex":[["A of spades","K of spades"]],"Sam":[["2 of diamonds","3 of clubs"]],"Robert":[["Q of hearts","10 of hearts"]],"Steve":[["4 of spades","5 of spades"]]}].
+    Diff:
+      
+
+    [31mFAILED CASE: simple_355[0m
+    Error Type: [33mvalue_error:string[0m
+    Message: Invalid value for parameter 'recipe': "Beef Lasagna Recipe". Expected one of ["Beef Lasagna"].
+    Diff:
+      [36m@@ param recipe[0m
+      [31m- expected: "Beef Lasagna"[0m
+      [32m+ got: "Beef Lasagna Recipe"[0m
+
+ [36m[zai-org/GLM-4.6][0m [90m(glm-4.6)[0m - [35mbfcl-multiple[0m
+  └ [31m✖ FAILURE[0m | Score: [33m0.78[0m
+    Metrics:
+      - correct_count: 155
+      - total_cases: 200
+      - accuracy: 0.775
+
+    [31mFAILED CASE: multiple_25[0m
+    Error Type: [33mmultiple_function_checker:wrong_count[0m
+    Message: Wrong number of functions. Expected 1, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 1[0m
+      [32m+ got 2[0m
+      [32m+ unexpected function: video_games.on_sale[0m
+      [36m@@ function video_games.store_price[0m
+    Expected: [90m{"functions":["video_games.store_price"]}[0m
+    Actual:   [90m{"functions":["video_games.on_sale","video_games.store_price"]}[0m
+
+    [31mFAILED CASE: multiple_53[0m
+    Error Type: [33mvalue_error:string[0m
+    Message: Invalid value for parameter 'dependent_var': "house prices". Expected one of ["house_price","house price"].
+    Diff:
+      [36m@@ function linear_regression[0m
+      [36m@@ param dependent_var[0m
+      [31m- expected one of: house_price, house price[0m
+      [32m+ got: "house prices"[0m
+    Expected: [90m{"functions":["linear_regression"]}[0m
+    Actual:   [90m{"functions":["linear_regression"]}[0m
+
+    [31mFAILED CASE: multiple_54[0m
+    Error Type: [33mvalue_error:string[0m
+    Message: Invalid value for parameter 'frequency': "quarterly". Expected one of ["","annually"].
+    Diff:
+      [36m@@ function corporate_finance.dividend_data[0m
+      [36m@@ param frequency[0m
+      [31m- expected one of: , annually[0m
+      [32m+ got: "quarterly"[0m
+    Expected: [90m{"functions":["corporate_finance.dividend_data"]}[0m
+    Actual:   [90m{"functions":["corporate_finance.dividend_data"]}[0m
+
+    [31mFAILED CASE: multiple_76[0m
+    Error Type: [33mmultiple_function_checker:wrong_count[0m
+    Message: Wrong number of functions. Expected 1, got 0.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 1[0m
+      [32m+ got 0[0m
+      [31m- missing function: sculpture.create_custom[0m
+    Expected: [90m{"functions":["sculpture.create_custom"]}[0m
+    Actual:   [90m{"functions":[]}[0m
+
+    [31mFAILED CASE: multiple_136[0m
+    Error Type: [33mvalue_error:string[0m
+    Message: Invalid value for parameter 'type': "violent crime". Expected one of ["violent","Violent"].
+    Diff:
+      [36m@@ function get_crime_rate[0m
+      [36m@@ param type[0m
+      [31m- expected one of: violent, Violent[0m
+      [32m+ got: "violent crime"[0m
+    Expected: [90m{"functions":["get_crime_rate"]}[0m
+    Actual:   [90m{"functions":["get_crime_rate"]}[0m
+
+    [31mFAILED CASE: multiple_138[0m
+    Error Type: [33mmultiple_function_checker:wrong_count[0m
+    Message: Wrong number of functions. Expected 1, got 0.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 1[0m
+      [32m+ got 0[0m
+      [31m- missing function: legal_case.fetch[0m
+    Expected: [90m{"functions":["legal_case.fetch"]}[0m
+    Actual:   [90m{"functions":[]}[0m
+
+    [31mFAILED CASE: multiple_151[0m
+    Error Type: [33mvalue_error:list[0m
+    Message: Invalid value for list parameter 'sub_topics'. Got ["behavior","group dynamics"]. Expected one of [["behaviour","group dynamics"],["group dynamics","behaviour"]].
+    Diff:
+      [36m@@ function social_media_analytics.most_followed[0m
+      [36m@@ param sub_topics[0m
+      [31m- expected one of: ["behaviour","group dynamics"], ["group dynamics","behaviour"][0m
+      [32m+ got: ["behavior","group dynamics"][0m
+    Expected: [90m{"functions":["social_media_analytics.most_followed"]}[0m
+    Actual:   [90m{"functions":["social_media_analytics.most_followed"]}[0m
+
+ [36m[zai-org/GLM-4.6][0m [90m(glm-4.6)[0m - [35mbfcl-parallel[0m
+  └ [31m✖ FAILURE[0m | Score: [33m0.93[0m
+    Metrics:
+      - correct_count: 185
+      - total_cases: 200
+      - accuracy: 0.925
+
+    [31mFAILED CASE: parallel_3[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'protein_info.get_sequence_and_3D'.
+    Diff:
+      [36m@@ function protein_info.get_sequence_and_3D[0m
+      [36m@@ function protein_info.get_sequence_and_3D[0m
+      [36m@@ param protein_name[0m
+      [31m- expected: "normal hemoglobin"[0m
+      [32m+ got: "human hemoglobin"[0m
+      [36m@@ function protein_info.get_sequence_and_3D[0m
+
+    [31mFAILED CASE: parallel_9[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 2, got 1.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 2[0m
+      [32m+ got 1[0m
+      [36m@@ function find_movie_showing[0m
+      [36m@@ param movie[0m
+      [31m- expected: ["Tenet"][0m
+      [32m+ got: ["Tenet","No Time To Die"][0m
+      [36m@@ param time[0m
+      [31m- expected one of: ["5 pm"], ["17:00"][0m
+      [32m+ got: ["5 pm","7:30 pm"][0m
+    Expected: [90m{"functions":["find_movie_showing","find_movie_showing"]}[0m
+    Actual:   [90m{"functions":["find_movie_showing"]}[0m
+
+    [31mFAILED CASE: parallel_19[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'calculate_mortgage_payment'.
+    Diff:
+      [36m@@ function calculate_mortgage_payment[0m
+      [36m@@ param interest_rate[0m
+      [31m- expected: 0.04[0m
+      [32m+ got: 4[0m
+      [36m@@ function calculate_mortgage_payment[0m
+      [36m@@ param interest_rate[0m
+      [31m- expected: 0.04[0m
+      [32m+ got: 4[0m
+      [36m@@ function calculate_mortgage_payment[0m
+      [36m@@ param interest_rate[0m
+      [31m- expected: 0.04[0m
+      [32m+ got: 4[0m
+
+    [31mFAILED CASE: parallel_26[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 2[0m
+      [36m@@ function court_case.find[0m
+      [36m@@ param case_number[0m
+      [31m- expected: ["67813"][0m
+      [32m+ got: ["67813","71249"][0m
+      [36m@@ param location[0m
+      [31m- expected one of: New York District, NY District, New York, New York, NY, NY[0m
+      [32m+ got: "New York District court"[0m
+      [36m@@ function court_case.find[0m
+      [36m@@ param case_number[0m
+      [31m- expected: ["71249"][0m
+      [32m+ got: ["67813","71249"][0m
+      [36m@@ param location[0m
+      [31m- expected one of: New York District, NY District, New York, New York, NY, NY[0m
+      [32m+ got: "New York District court"[0m
+    Expected: [90m{"functions":["court_case.find","court_case.find","court_case.find","court_case.find"]}[0m
+    Actual:   [90m{"functions":["court_case.find","court_case.find"]}[0m
+
+    [31mFAILED CASE: parallel_38[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'calc_distance'.
+    Diff:
+      [36m@@ function calc_distance[0m
+      [36m@@ function calc_distance[0m
+    Expected: [90m{"functions":["calc_distance","calc_distance"]}[0m
+    Actual:   [90m{"functions":["calc_distance","calc_distance"]}[0m
+
+    [31mFAILED CASE: parallel_54[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'whole_foods.order'.
+    Diff:
+      [36m@@ function whole_foods.order[0m
+      [36m@@ param items[0m
+      [31m- expected one of: ["pepperoni pizza","chicken Caesar salad"], ["chicken Caesar salad","pepperoni pizza"][0m
+      [32m+ got: ["large pepperoni pizza","chicken Caesar salad"][0m
+      [36m@@ function whole_foods.order[0m
+      [36m@@ param items[0m
+      [31m- expected one of: ["pepperoni pizza","chicken Caesar salad"], ["chicken Caesar salad","pepperoni pizza"][0m
+      [32m+ got: ["large pepperoni pizza","chicken Caesar salad"][0m
+    Expected: [90m{"functions":["whole_foods.order","whole_foods.order"]}[0m
+    Actual:   [90m{"functions":["whole_foods.order","whole_foods.order"]}[0m
+
+    [31mFAILED CASE: parallel_71[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 2, got 0.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 2[0m
+      [32m+ got 0[0m
+      [31m- missing function: calculate_derivative[0m
+      [31m- missing function: calculate_derivative[0m
+    Expected: [90m{"functions":["calculate_derivative","calculate_derivative"]}[0m
+    Actual:   [90m{"functions":[]}[0m
+
+    [31mFAILED CASE: parallel_114[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 6, got 5.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 6[0m
+      [32m+ got 5[0m
+      [36m@@ function analyze_dna_sequence[0m
+      [36m@@ function analyze_dna_sequence[0m
+      [36m@@ function analyze_dna_sequence[0m
+      [36m@@ function analyze_dna_sequence[0m
+      [36m@@ function analyze_dna_sequence[0m
+
+    [31mFAILED CASE: parallel_117[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 2, got 1.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 2[0m
+      [32m+ got 1[0m
+      [36m@@ function calculate_density[0m
+    Expected: [90m{"functions":["calculate_density","calculate_density"]}[0m
+    Actual:   [90m{"functions":["calculate_density"]}[0m
+
+    [31mFAILED CASE: parallel_119[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'identify_bird'.
+    Diff:
+      [36m@@ function identify_bird[0m
+      [36m@@ param color[0m
+      [31m- expected: "blue"[0m
+      [32m+ got: "vibrant blue"[0m
+      [36m@@ function identify_bird[0m
+      [36m@@ function identify_bird[0m
+      [36m@@ function identify_bird[0m
+    Expected: [90m{"functions":["identify_bird","identify_bird","identify_bird","identify_bird"]}[0m
+    Actual:   [90m{"functions":["identify_bird","identify_bird","identify_bird","identify_bird"]}[0m
+
+    [31mFAILED CASE: parallel_124[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 8.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 8[0m
+      [36m@@ function population_projections[0m
+      [36m@@ function population_projections[0m
+      [36m@@ param years[0m
+      [31m- expected: 10[0m
+      [32m+ got: 20[0m
+      [36m@@ function population_projections[0m
+      [36m@@ param years[0m
+      [31m- expected: 20[0m
+      [32m+ got: 10[0m
+      [36m@@ function population_projections[0m
+
+    [31mFAILED CASE: parallel_158[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 2, got 4.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 2[0m
+      [32m+ got 4[0m
+      [36m@@ function random.normalvariate[0m
+      [36m@@ function random.normalvariate[0m
+      [36m@@ param mu[0m
+      [31m- expected: 10[0m
+      [32m+ got: 5[0m
+      [36m@@ param sigma[0m
+      [31m- expected: 3[0m
+      [32m+ got: 2[0m
+
+    [31mFAILED CASE: parallel_180[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 8, got 7.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 8[0m
+      [32m+ got 7[0m
+      [36m@@ function stock_price[0m
+      [36m@@ function stock_price[0m
+      [36m@@ function stock_price[0m
+      [36m@@ function stock_price[0m
+      [36m@@ function stock_price[0m
+      [36m@@ function stock_price[0m
+      [36m@@ function stock_price[0m
+
+    [31mFAILED CASE: parallel_183[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 3, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 3[0m
+      [32m+ got 2[0m
+      [36m@@ function math.hypot[0m
+      [36m@@ param y[0m
+      [31m- expected: 7[0m
+      [32m+ got: 8[0m
+      [36m@@ function math.hypot[0m
+      [36m@@ param y[0m
+      [31m- expected: 15[0m
+      [32m+ got: 10[0m
+    Expected: [90m{"functions":["math.hypot","math.hypot","math.hypot"]}[0m
+    Actual:   [90m{"functions":["math.hypot","math.hypot"]}[0m
+
+    [31mFAILED CASE: parallel_185[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'estimate_population'.
+    Diff:
+      [36m@@ function estimate_population[0m
+      [36m@@ function estimate_population[0m
+      [36m@@ function estimate_population[0m
+      [36m@@ param year[0m
+      [31m- expected: ""[0m
+      [32m+ got: 2023[0m
+      [36m@@ function estimate_population[0m
+
+ [36m[zai-org/GLM-4.6][0m [90m(glm-4.6)[0m - [35mbfcl-parallel-multiple[0m
+  └ [31m✖ FAILURE[0m | Score: [33m0.84[0m
+    Metrics:
+      - correct_count: 168
+      - total_cases: 200
+      - accuracy: 0.84
+
+    [31mFAILED CASE: parallel_multiple_2[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 2, got 1.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 2[0m
+      [32m+ got 1[0m
+      [31m- missing function: circle.calculate_circumference[0m
+      [36m@@ function circle.calculate_area[0m
+    Expected: [90m{"functions":["circle.calculate_area","circle.calculate_circumference"]}[0m
+    Actual:   [90m{"functions":["circle.calculate_area"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_6[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'get_fibonacci_sequence'.
+    Diff:
+      [36m@@ function find_prime_numbers[0m
+      [36m@@ function get_fibonacci_sequence[0m
+      [36m@@ param count[0m
+      [31m- expected: 150[0m
+      [32m+ got: 12[0m
+    Expected: [90m{"functions":["find_prime_numbers","get_fibonacci_sequence"]}[0m
+    Actual:   [90m{"functions":["find_prime_numbers","get_fibonacci_sequence"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_21[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 2, got 1.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 2[0m
+      [32m+ got 1[0m
+      [31m- missing function: linear_regression_fit[0m
+      [36m@@ function data_loading[0m
+    Expected: [90m{"functions":["data_loading","linear_regression_fit"]}[0m
+    Actual:   [90m{"functions":["data_loading"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_31[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 2[0m
+      [31m- missing function: lawsuit.judge[0m
+      [31m- missing function: lawsuit.judge[0m
+      [36m@@ function lawsuit.fetch_details[0m
+      [36m@@ function lawsuit.fetch_details[0m
+    Expected: [90m{"functions":["lawsuit.fetch_details","lawsuit.judge","lawsuit.fetch_details","lawsuit.judge"]}[0m
+    Actual:   [90m{"functions":["lawsuit.fetch_details","lawsuit.fetch_details"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_52[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'chess.play'.
+    Diff:
+      [36m@@ function game_of_life.play[0m
+      [36m@@ function chess.play[0m
+      [36m@@ param moves[0m
+      [31m- expected: ["e4","e5"][0m
+      [32m+ got: ["e4 e5"][0m
+    Expected: [90m{"functions":["game_of_life.play","chess.play"]}[0m
+    Actual:   [90m{"functions":["game_of_life.play","chess.play"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_54[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'GameGuideAPI.search_guide'.
+    Diff:
+      [36m@@ function BattleReignGameAPI.update_player_equipment[0m
+      [36m@@ function GameGuideAPI.search_guide[0m
+      [36m@@ param type[0m
+      [31m- expected: ""[0m
+      [32m+ got: "strategy"[0m
+      [36m@@ function GameGuideAPI.search_guide[0m
+
+    [31mFAILED CASE: parallel_multiple_55[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 3, got 1.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 3[0m
+      [32m+ got 1[0m
+      [31m- missing function: recipe_prep_time[0m
+      [31m- missing function: recipe_nutrition_info[0m
+      [36m@@ function recipe_search[0m
+    Expected: [90m{"functions":["recipe_search","recipe_prep_time","recipe_nutrition_info"]}[0m
+    Actual:   [90m{"functions":["recipe_search"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_64[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 3.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 3[0m
+      [36m@@ function wildlife_population.assess_growth[0m
+      [36m@@ function ecological_impact.analyze[0m
+      [36m@@ function ecological_impact.analyze[0m
+
+    [31mFAILED CASE: parallel_multiple_69[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'finance.property_depreciation'.
+    Diff:
+      [36m@@ function finance.property_depreciation[0m
+      [36m@@ param depreciation_rate[0m
+      [31m- expected: 0.02[0m
+      [32m+ got: 2[0m
+      [36m@@ param monthly[0m
+      [31m- expected: ""[0m
+      [32m+ got: false[0m
+      [36m@@ function finance.inflation_adjustment[0m
+      [36m@@ param inflation_rate[0m
+      [31m- expected: 0.03[0m
+      [32m+ got: 3[0m
+      [36m@@ function finance.loan_repayment[0m
+      [36m@@ param interest_rate[0m
+      [31m- expected: 0.04[0m
+      [32m+ got: 4[0m
+      [36m@@ function finance.property_depreciation[0m
+      [36m@@ param depreciation_rate[0m
+      [31m- expected: 0.02[0m
+      [32m+ got: 2[0m
+
+    [31mFAILED CASE: parallel_multiple_72[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 2[0m
+      [31m- missing function: play_sound_wave[0m
+      [31m- missing function: play_sound_wave[0m
+      [36m@@ function generate_sound_wave[0m
+      [36m@@ function generate_sound_wave[0m
+    Expected: [90m{"functions":["generate_sound_wave","generate_sound_wave","play_sound_wave","play_sound_wave"]}[0m
+    Actual:   [90m{"functions":["generate_sound_wave","generate_sound_wave"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_75[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'route_planner.calculate_route'.
+    Diff:
+      [36m@@ function route_planner.calculate_route[0m
+      [36m@@ param destination[0m
+      [31m- expected: "Boston"[0m
+      [32m+ got: "Knight Gambit, Boston"[0m
+      [36m@@ function chess_club_details.find[0m
+      [36m@@ function route_planner.calculate_route[0m
+      [36m@@ param destination[0m
+      [31m- expected: "Philadelphia"[0m
+      [32m+ got: "Rook Corner, Philadelphia"[0m
+      [36m@@ param start[0m
+      [31m- expected: "Boston"[0m
+      [32m+ got: "Knight Gambit, Boston"[0m
+      [36m@@ function chess_club_details.find[0m
+      [36m@@ function route_planner.calculate_route[0m
+      [36m@@ param start[0m
+      [31m- expected: "Philadelphia"[0m
+      [32m+ got: "Rook Corner, Philadelphia"[0m
+
+    [31mFAILED CASE: parallel_multiple_86[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 2, got 0.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 2[0m
+      [32m+ got 0[0m
+      [31m- missing function: kinematics.calculate_speed_from_rest[0m
+      [31m- missing function: kinematics.calculate_acceleration[0m
+    Expected: [90m{"functions":["kinematics.calculate_speed_from_rest","kinematics.calculate_acceleration"]}[0m
+    Actual:   [90m{"functions":[]}[0m
+
+    [31mFAILED CASE: parallel_multiple_89[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 2[0m
+      [36m@@ function ride_hailing.get_rides[0m
+      [36m@@ function grocery_delivery.order[0m
+
+    [31mFAILED CASE: parallel_multiple_91[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 3, got 1.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 3[0m
+      [32m+ got 1[0m
+      [31m- missing function: biological.calc_biomass[0m
+      [31m- missing function: physical.calc_work[0m
+      [36m@@ function biological.calc_energy[0m
+    Expected: [90m{"functions":["biological.calc_energy","biological.calc_biomass","physical.calc_work"]}[0m
+    Actual:   [90m{"functions":["biological.calc_energy"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_94[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 0.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 0[0m
+      [31m- missing function: sort_list[0m
+      [31m- missing function: filter_list[0m
+      [31m- missing function: sum_elements[0m
+      [31m- missing function: sort_list[0m
+    Expected: [90m{"functions":["sort_list","filter_list","sum_elements","sort_list"]}[0m
+    Actual:   [90m{"functions":[]}[0m
+
+    [31mFAILED CASE: parallel_multiple_95[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 2[0m
+      [36m@@ function cosine_similarity.calculate[0m
+      [36m@@ function correlation.calculate[0m
+
+    [31mFAILED CASE: parallel_multiple_97[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'calc_Simple_Interest'.
+    Diff:
+      [36m@@ function calc_Simple_Interest[0m
+      [36m@@ param annual_rate[0m
+      [31m- expected: 0.04[0m
+      [32m+ got: 4[0m
+      [36m@@ function calc_Compound_Interest[0m
+      [36m@@ param annual_rate[0m
+      [31m- expected: 0.035[0m
+      [32m+ got: 3.5[0m
+      [36m@@ function future_value[0m
+    Expected: [90m{"functions":["calc_Simple_Interest","calc_Compound_Interest","future_value"]}[0m
+    Actual:   [90m{"functions":["calc_Simple_Interest","calc_Compound_Interest","future_value"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_106[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'traffic_estimate'.
+    Diff:
+      [36m@@ function traffic_estimate[0m
+      [36m@@ param time_period[0m
+      [31m- expected: "weekday"[0m
+      [32m+ got: "now"[0m
+      [36m@@ function calculate_distance[0m
+      [36m@@ function traffic_estimate[0m
+      [36m@@ function weather_forecast[0m
+    Expected: [90m{"functions":["traffic_estimate","calculate_distance","traffic_estimate","weather_forecast"]}[0m
+    Actual:   [90m{"functions":["traffic_estimate","calculate_distance","traffic_estimate","weather_forecast"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_127[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 3.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 3[0m
+      [36m@@ function hotel.book[0m
+      [36m@@ param additional_services[0m
+      [31m- expected one of: ["breakfast","spa"], ["spa","breakfast"][0m
+      [32m+ got: ["breakfast","spa services"][0m
+      [36m@@ param roomType[0m
+      [31m- expected: "deluxe"[0m
+      [32m+ got: "deluxe room"[0m
+      [36m@@ function car.rental[0m
+      [36m@@ function hotel.book[0m
+    Expected: [90m{"functions":["hotel.book","car.rental","hotel.book","car.rental"]}[0m
+    Actual:   [90m{"functions":["hotel.book","car.rental","hotel.book"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_128[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'hotel_room_pricing.get'.
+    Diff:
+      [36m@@ function hotel_room_pricing.get[0m
+      [36m@@ param roomType[0m
+      [31m- expected: "deluxe"[0m
+      [32m+ got: "deluxe room"[0m
+      [36m@@ function car_rental_pricing.get[0m
+      [36m@@ function flight_ticket_pricing.get[0m
+      [36m@@ param flightClass[0m
+      [31m- expected: "business"[0m
+      [32m+ got: "business class"[0m
+    Expected: [90m{"functions":["hotel_room_pricing.get","car_rental_pricing.get","flight_ticket_pricing.get"]}[0m
+    Actual:   [90m{"functions":["hotel_room_pricing.get","car_rental_pricing.get","flight_ticket_pricing.get"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_135[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 3, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 3[0m
+      [32m+ got 2[0m
+      [31m- missing function: calculate_displacement[0m
+      [36m@@ function musical_scale[0m
+      [36m@@ function poker_game_winner[0m
+    Expected: [90m{"functions":["musical_scale","poker_game_winner","calculate_displacement"]}[0m
+    Actual:   [90m{"functions":["poker_game_winner","musical_scale"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_148[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 1.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 1[0m
+      [31m- missing function: calculate_bmi[0m
+      [31m- missing function: calculate_bmi[0m
+      [36m@@ function celebrity_net_worth.get[0m
+    Expected: [90m{"functions":["celebrity_net_worth.get","celebrity_net_worth.get","calculate_bmi","calculate_bmi"]}[0m
+    Actual:   [90m{"functions":["celebrity_net_worth.get"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_151[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 2[0m
+      [31m- missing function: safeway.order[0m
+      [31m- missing function: light_travel_time[0m
+      [36m@@ function book_hotel[0m
+      [36m@@ function latest_exchange_rate[0m
+    Expected: [90m{"functions":["book_hotel","latest_exchange_rate","safeway.order","light_travel_time"]}[0m
+    Actual:   [90m{"functions":["book_hotel","latest_exchange_rate"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_159[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 3.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 3[0m
+      [31m- missing function: public_library.find_nearby[0m
+      [36m@@ function calculate_return_on_equity[0m
+      [36m@@ function get_song_lyrics[0m
+      [36m@@ function law_case_search.find_historical[0m
+
+    [31mFAILED CASE: parallel_multiple_160[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'compound_interest'.
+    Diff:
+      [36m@@ function compound_interest[0m
+      [36m@@ param annual_rate[0m
+      [31m- expected: 0.05[0m
+      [32m+ got: 5[0m
+      [36m@@ function lawsuits_search[0m
+    Expected: [90m{"functions":["compound_interest","lawsuits_search"]}[0m
+    Actual:   [90m{"functions":["compound_interest","lawsuits_search"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_165[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 3, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 3[0m
+      [32m+ got 2[0m
+      [31m- missing function: walmart.check_price[0m
+      [36m@@ function event_finder.find_upcoming[0m
+      [36m@@ function lawsuit_search[0m
+    Expected: [90m{"functions":["event_finder.find_upcoming","lawsuit_search","walmart.check_price"]}[0m
+    Actual:   [90m{"functions":["event_finder.find_upcoming","lawsuit_search"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_176[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 3.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 3[0m
+      [31m- missing function: sentiment_analysis[0m
+      [36m@@ function hotel_booking[0m
+      [36m@@ function get_time_difference[0m
+      [36m@@ function calculate_bmi[0m
+    Expected: [90m{"functions":["hotel_booking","get_time_difference","calculate_bmi","sentiment_analysis"]}[0m
+    Actual:   [90m{"functions":["hotel_booking","get_time_difference","calculate_bmi"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_179[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 2[0m
+      [31m- missing function: US_president.in_year[0m
+      [31m- missing function: find_card_in_deck[0m
+      [36m@@ function update_user_info[0m
+      [36m@@ function soccer.get_last_match[0m
+
+    [31mFAILED CASE: parallel_multiple_184[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 3.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 3[0m
+      [36m@@ function analyze_structure[0m
+      [36m@@ function player_statistic[0m
+      [36m@@ function analyze_structure[0m
+    Expected: [90m{"functions":["analyze_structure","player_statistic","analyze_structure","player_statistic"]}[0m
+    Actual:   [90m{"functions":["analyze_structure","player_statistic","analyze_structure"]}[0m
+
+    [31mFAILED CASE: parallel_multiple_185[0m
+    Error Type: [33mparallel_function_checker_no_order:cannot_find_match[0m
+    Message: Could not find a matching function call for 'lawsuit_search'.
+    Diff:
+      [36m@@ function metropolitan_museum.get_top_artworks[0m
+      [36m@@ function metropolitan_museum.get_top_artworks[0m
+      [36m@@ function lawsuit_search[0m
+      [36m@@ param start_date[0m
+      [31m- expected one of: 2020-01-01, 01/01/2020, Jan 1, 2020[0m
+      [32m+ got: "January 1, 2020"[0m
+      [36m@@ function lawsuit_search[0m
+      [36m@@ param start_date[0m
+      [31m- expected one of: 2018-01-01, 01/01/2018, Jan 1, 2018[0m
+      [32m+ got: "January 1, 2018"[0m
+
+    [31mFAILED CASE: parallel_multiple_189[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 2.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 2[0m
+      [31m- missing function: sports_team.get_schedule[0m
+      [31m- missing function: find_card_in_deck[0m
+      [36m@@ function vegan_restaurant.find_nearby[0m
+      [36m@@ function hotel_booking[0m
+
+    [31mFAILED CASE: parallel_multiple_195[0m
+    Error Type: [33mparallel_function_checker_no_order:wrong_count[0m
+    Message: Wrong number of functions. Expected 4, got 3.
+    Diff:
+      [36m@@ call count[0m
+      [31m- expected 4[0m
+      [32m+ got 3[0m
+      [31m- missing function: send_email[0m
+      [36m@@ function multiplayer_game_finder[0m
+      [36m@@ function calculate_area_under_curve[0m
+      [36m@@ param function[0m
+      [31m- expected: "x**2"[0m
+      [32m+ got: "x^2"[0m
+      [36m@@ function geo_distance.calculate[0m
+
+---------------------------
+
+
+✅ Full BFCL evaluation complete!

@@ -1,6 +1,4 @@
-// Core functionality
-
-// Builders
+// biome-ignore lint/performance/noBarrelFile: Package entrypoint - must re-export for public API
 export {
   stringify,
   stringifyNode,
@@ -57,8 +55,8 @@ export {
 export { unescapeXml } from "./utils/helpers";
 
 // Compatibility
-export type Options = {
+export interface Options {
   textNodeName?: string;
   throwOnDuplicateStringTags?: boolean;
   onError?: (message: string, context?: Record<string, unknown>) => void;
-};
+}

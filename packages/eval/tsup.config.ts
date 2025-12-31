@@ -1,17 +1,19 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig([
+  // Universal APIs
   {
-    // Bundle the public entry so ESM output has no relative extensionless imports
-    bundle: true,
-    dts: true,
     entry: ["src/index.ts"],
     format: ["cjs", "esm"],
+    dts: true,
     sourcemap: true,
-    target: "es2022",
-    splitting: false,
-    clean: true,
-    outDir: "dist",
-    skipNodeModulesBundle: true,
+    target: "es2018",
+    platform: "node",
+    define: {
+      __PACKAGE_VERSION__: JSON.stringify(
+        (await import("./package.json", { with: { type: "json" } })).default
+          .version
+      ),
+    },
   },
 ]);
