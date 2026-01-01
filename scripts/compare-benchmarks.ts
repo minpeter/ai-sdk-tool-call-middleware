@@ -55,9 +55,14 @@ function loadCurrentResult(): BenchmarkResult {
 }
 
 function calculateTrend(history: BenchmarkResult[], current: BenchmarkResult) {
-  // Get last 5 results from main branch with SAME MODE
+  // Get last 5 results from main branch with SAME MODE and SAME MODEL
   const mainBranchResults = history
-    .filter((r) => r.branch === "main" && r.mode === current.mode)
+    .filter(
+      (r) =>
+        r.branch === "main" &&
+        r.mode === current.mode &&
+        r.model === current.model
+    )
     .slice(-5);
 
   if (mainBranchResults.length === 0) {
