@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parse, stringify, transform } from "../../utils/robust-json";
+import { parse, stringify, transform } from "../../core/utils/robust-json";
 
 const DUPLICATE_KEY_REGEX = /Duplicate key: key/;
 const PARSE_WARNINGS_REGEX = /parse warnings/;

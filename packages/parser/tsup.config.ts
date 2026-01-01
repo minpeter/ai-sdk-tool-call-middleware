@@ -5,6 +5,8 @@ export default defineConfig([
   {
     entry: {
       index: "src/index.ts",
+      v5: "src/v5/index.ts",
+      v6: "src/v6/index.ts",
       community: "src/community/index.ts",
     },
     format: ["cjs", "esm"],

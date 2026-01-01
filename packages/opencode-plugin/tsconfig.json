@@ -1,0 +1,15 @@
+{
+  "extends": "@ai-sdkx/tsconfig/ts-library.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "moduleResolution": "bundler",
+    "strictNullChecks": true
+  },
+  "include": ["src/**/*"],
+  "references": [
+    {
+      "path": "../parser"
+    }
+  ]
+}

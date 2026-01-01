@@ -16,6 +16,9 @@
       "path": "packages/middleware"
     },
     {
+      "path": "packages/opencode-plugin"
+    },
+    {
       "path": "packages/parser"
     },
     {

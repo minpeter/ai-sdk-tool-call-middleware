@@ -4,8 +4,12 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
-import { stopFinishReason, zeroUsage } from "../test-helpers";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import {
+  pipeWithTransformer,
+  stopFinishReason,
+  zeroUsage,
+} from "../test-helpers";
 
 describe("morphXmlProtocol streaming success path", () => {
   it("parses <tool>...</tool> into tool-call and flushes pending text", async () => {
@@ -37,7 +41,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const tool = out.find((c) => c.type === "tool-call") as any;
     const text = out
       .filter((c) => c.type === "text-delta")
@@ -95,7 +101,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const tool = out.find((c) => c.type === "tool-call") as any;
     const textParts = out
       .filter((c) => c.type === "text-delta")
@@ -162,7 +170,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const toolCalls = out.filter((c) => c.type === "tool-call") as any[];
     const textParts = out
       .filter((c) => c.type === "text-delta")
@@ -229,7 +239,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const tool = out.find((c) => c.type === "tool-call") as any;
     const textParts = out
       .filter((c) => c.type === "text-delta")
@@ -295,7 +307,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const tool = out.find((c) => c.type === "tool-call") as any;
     const textParts = out
       .filter((c) => c.type === "text-delta")
@@ -363,7 +377,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const tool = out.find((c) => c.type === "tool-call") as any;
     const textParts = out
       .filter((c) => c.type === "text-delta")
@@ -429,7 +445,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const toolCalls = out.filter((c) => c.type === "tool-call");
     const textParts = out
       .filter((c) => c.type === "text-delta")
@@ -492,7 +510,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
 
     // Extract events in order
     const eventTypes = out.map((e) => e.type);
@@ -574,7 +594,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
 
     const textStarts = out.filter((e) => e.type === "text-start");
     const toolCalls = out.filter((e) => e.type === "tool-call");
@@ -631,7 +653,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const toolCalls = out.filter((e) => e.type === "tool-call");
     const textDeltas = out.filter((e) => e.type === "text-delta");
 
@@ -678,7 +702,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const toolCalls = out.filter((e) => e.type === "tool-call");
     const textDeltas = out
       .filter((e) => e.type === "text-delta")
@@ -726,7 +752,9 @@ describe("morphXmlProtocol streaming success path", () => {
       },
     });
 
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const toolCall = out.find((e) => e.type === "tool-call") as any;
     const textDeltas = out
       .filter((e) => e.type === "text-delta")
