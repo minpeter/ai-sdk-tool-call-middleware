@@ -2,19 +2,18 @@ import type {
   LanguageModelV3CallOptions,
   LanguageModelV3Middleware,
 } from "@ai-sdk/provider";
-
-import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
 import {
   isProtocolFactory,
   type ToolCallProtocol,
-} from "./protocols/tool-call-protocol";
+} from "../core/protocols/tool-call-protocol";
+import { extractOnErrorOption } from "../core/utils/on-error";
+import { isToolChoiceActive } from "../core/utils/provider-options";
+import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
 import {
   toolChoiceStream,
   wrapStream as wrapStreamHandler,
 } from "./stream-handler";
 import { transformParams } from "./transform-handler";
-import { extractOnErrorOption } from "./utils/on-error";
-import { isToolChoiceActive } from "./utils/provider-options";
 
 export function createToolMiddleware({
   protocol,

@@ -2,7 +2,7 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
-import { dummyProtocol } from "../../protocols/dummy-protocol";
+import { dummyProtocol } from "../../core/protocols/dummy-protocol";
 import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("dummyProtocol streaming behavior", () => {

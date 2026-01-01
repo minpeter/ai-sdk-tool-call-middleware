@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { extractOnErrorOption } from "../../utils/on-error";
+import { extractOnErrorOption } from "../../core/utils/on-error";
 
 describe("extractOnErrorOption", () => {
   it("extracts onError when present", () => {

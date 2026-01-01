@@ -5,8 +5,8 @@ import {
   hermesToolMiddleware,
   morphXmlToolMiddleware,
 } from "..";
-import { jsonMixProtocol } from "../protocols/json-mix-protocol";
-import { createToolMiddleware } from "../tool-call-middleware";
+import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
+import { createToolMiddleware } from "../v6/tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

@@ -1,7 +1,7 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { jsonMixProtocol } from "../../protocols/json-mix-protocol";
+import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
 import { mockUsage, stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("jsonMixProtocol streaming", () => {

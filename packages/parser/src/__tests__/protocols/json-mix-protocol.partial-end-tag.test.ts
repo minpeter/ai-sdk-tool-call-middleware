@@ -2,7 +2,7 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
-import { jsonMixProtocol } from "../../protocols/json-mix-protocol";
+import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
 import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("jsonMixProtocol partial end-tag handling", () => {

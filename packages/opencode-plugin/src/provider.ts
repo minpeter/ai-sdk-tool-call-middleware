@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
+import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser/v5";
 import { type LanguageModel, wrapLanguageModel } from "ai";
 
 export interface FriendliGlmXmlProviderOptions {
@@ -26,7 +26,9 @@ export function createFriendliGlmXml(
       const baseModel = baseProvider.languageModel(modelId);
       return wrapLanguageModel({
         model: baseModel,
-        middleware: morphXmlToolMiddleware,
+        middleware: morphXmlToolMiddleware as unknown as Parameters<
+          typeof wrapLanguageModel
+        >[0]["middleware"],
       });
     },
 

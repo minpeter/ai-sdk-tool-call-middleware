@@ -1,7 +1,7 @@
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
-import { toolChoiceStream } from "../stream-handler";
+import { toolChoiceStream } from "../v6/stream-handler";
 import { mockFinishReason, mockUsage, zeroUsage } from "./test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({

@@ -17,6 +17,16 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./v5": {
+      "types": "./dist/v5.d.ts",
+      "import": "./dist/v5.js",
+      "require": "./dist/v5.cjs"
+    },
+    "./v6": {
+      "types": "./dist/v6.d.ts",
+      "import": "./dist/v6.js",
+      "require": "./dist/v6.cjs"
+    },
     "./community": {
       "types": "./dist/community.d.ts",
       "import": "./dist/community.js",
@@ -43,9 +53,13 @@
   },
   "devDependencies": {
     "@ai-sdk/openai-compatible": "2.0.2",
+    "@ai-sdk/provider-v5": "npm:@ai-sdk/provider@2",
+    "@ai-sdk/provider-v6": "npm:@ai-sdk/provider@3",
     "@ai-sdkx/tsconfig": "workspace:*",
     "@types/node": "^25.0.3",
     "ai": "6.0.5",
+    "ai-v5": "npm:ai@5",
+    "ai-v6": "npm:ai@6",
     "tsup": "^8.5.1",
     "zod": "^4.2.1"
   },

@@ -2,7 +2,7 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
-import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("morphXmlProtocol streaming trailing text-end on flush", () => {

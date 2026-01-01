@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isToolChoiceActive } from "../../utils/provider-options";
+import { isToolChoiceActive } from "../../core/utils/provider-options";
 
 describe("tools utils", () => {
   it("isToolChoiceActive detects required and tool types", () => {

@@ -7,19 +7,19 @@ import type {
 import { generateId } from "@ai-sdk/provider-utils";
 import { coerceBySchema } from "@ai-sdk-tool/rxml";
 
-import type { ToolCallProtocol } from "./protocols/tool-call-protocol";
+import type { ToolCallProtocol } from "../core/protocols/tool-call-protocol";
 import {
   getDebugLevel,
   logParsedChunk,
   logParsedSummary,
   logRawChunk,
-} from "./utils/debug";
-import { extractOnErrorOption } from "./utils/on-error";
+} from "../core/utils/debug";
+import { extractOnErrorOption } from "../core/utils/on-error";
 import {
   isToolChoiceActive,
   originalToolsSchema,
   type ToolCallMiddlewareProviderOptions,
-} from "./utils/provider-options";
+} from "../core/utils/provider-options";
 
 function parseToolChoiceJson(
   text: string,
