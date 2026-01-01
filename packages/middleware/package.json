@@ -21,6 +21,11 @@
       "types": "./dist/reasoning-parser.d.ts",
       "import": "./dist/reasoning-parser.js",
       "require": "./dist/reasoning-parser.cjs"
+    },
+    "./disk-cache": {
+      "types": "./dist/disk-cache.d.ts",
+      "import": "./dist/disk-cache.js",
+      "require": "./dist/disk-cache.cjs"
     }
   },
   "files": [
