@@ -9,19 +9,25 @@ import {
   zeroUsage,
 } from "../test-helpers";
 
+type MorphXmlTools = Parameters<
+  ReturnType<typeof morphXmlProtocol>["createStreamParser"]
+>[0]["tools"];
+
+function seededRandom(seed: number): () => number {
+  let current = seed;
+  return () => {
+    current = (current * 9301 + 49_297) % 233_280;
+    return current / 233_280;
+  };
+}
+
 function randomChunkSplit(
   text: string,
   minSize = 1,
   maxSize = 10,
   seed = 0
 ): string[] {
-  let state = seed;
-  const LCG_MODULUS = 2_147_483_647;
-  const random = () => {
-    state = Math.abs((state * 1_103_515_245 + 12_345) % LCG_MODULUS);
-    return state / LCG_MODULUS;
-  };
-
+  const random = seededRandom(seed);
   const chunks: string[] = [];
   let i = 0;
   while (i < text.length) {
@@ -58,17 +64,32 @@ function extractToolCalls(
   output: LanguageModelV3StreamPart[]
 ): Array<{ toolName: string; input: unknown }> {
   return output
-    .filter((c) => c.type === "tool-call")
+    .filter(
+      (
+        c
+      ): c is LanguageModelV3StreamPart & {
+        type: "tool-call";
+        toolName: string;
+        input: string;
+      } => c.type === "tool-call"
+    )
     .map((c) => ({
-      toolName: (c as { toolName: string }).toolName,
-      input: JSON.parse((c as { input: string }).input),
+      toolName: c.toolName,
+      input: JSON.parse(c.input),
     }));
 }
 
 function extractText(output: LanguageModelV3StreamPart[]): string {
   return output
-    .filter((c) => c.type === "text-delta")
-    .map((c) => (c as { delta: string }).delta)
+    .filter(
+      (
+        c
+      ): c is LanguageModelV3StreamPart & {
+        type: "text-delta";
+        delta: string;
+      } => c.type === "text-delta"
+    )
+    .map((c) => c.delta)
     .join("");
 }
 
@@ -142,20 +163,19 @@ describe("Random chunk boundary fuzzing", () => {
           const tools = extractToolCalls(output);
           expect(tools).toEqual(testCase.expectedTools);
 
+          const text = extractText(output);
+
           if (testCase.expectedText !== undefined) {
-            const text = extractText(output);
             expect(text.trim()).toBe(testCase.expectedText);
           }
 
           if (testCase.expectedTextContains) {
-            const text = extractText(output);
             for (const expected of testCase.expectedTextContains) {
               expect(text).toContain(expected);
             }
           }
 
           if (testCase.expectedTextNotContains) {
-            const text = extractText(output);
             for (const notExpected of testCase.expectedTextNotContains) {
               expect(text).not.toContain(notExpected);
             }
@@ -166,16 +186,14 @@ describe("Random chunk boundary fuzzing", () => {
   });
 
   describe("morphXmlProtocol", () => {
-    const tools = [
+    const tools: MorphXmlTools = [
       {
         type: "function",
         name: "get_weather",
         inputSchema: { type: "object" },
       },
       { type: "function", name: "search", inputSchema: { type: "object" } },
-    ] as Parameters<
-      ReturnType<typeof morphXmlProtocol>["createStreamParser"]
-    >[0]["tools"];
+    ];
 
     for (const testCase of xmlTestCases) {
       describe(testCase.name, () => {
@@ -266,16 +284,14 @@ describe("Single-character chunk streaming", () => {
   });
 
   describe("morphXmlProtocol", () => {
-    const tools = [
+    const tools: MorphXmlTools = [
       {
         type: "function",
         name: "get_weather",
         inputSchema: { type: "object" },
       },
       { type: "function", name: "search", inputSchema: { type: "object" } },
-    ] as Parameters<
-      ReturnType<typeof morphXmlProtocol>["createStreamParser"]
-    >[0]["tools"];
+    ];
 
     it("parses XML tool call when streamed char-by-char", async () => {
       const input = "<get_weather><city>Seoul</city></get_weather>";
@@ -436,13 +452,11 @@ describe("Unicode and special character boundary handling", () => {
   });
 
   describe("morphXmlProtocol", () => {
-    const tools = [
+    const tools: MorphXmlTools = [
       { type: "function", name: "search", inputSchema: { type: "object" } },
       { type: "function", name: "translate", inputSchema: { type: "object" } },
       { type: "function", name: "react", inputSchema: { type: "object" } },
-    ] as Parameters<
-      ReturnType<typeof morphXmlProtocol>["createStreamParser"]
-    >[0]["tools"];
+    ];
 
     it("handles Korean characters in XML content", async () => {
       const input = "<search><query>서울 맛집 추천</query></search>";
