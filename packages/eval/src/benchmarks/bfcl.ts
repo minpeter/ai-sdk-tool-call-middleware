@@ -129,46 +129,40 @@ function check(
   const category = extractCategory(testCase.id);
 
   try {
-    if (category === "simple") {
-      if (!Array.isArray(modelOutput) || modelOutput.length !== 1) {
-        return {
-          valid: false,
-          error: `Expected 1 function call, but got ${Array.isArray(modelOutput) ? modelOutput.length : 0}.`,
-          error_type: "simple:wrong_count",
-        };
+    switch (category) {
+      case "simple": {
+        if (!Array.isArray(modelOutput) || modelOutput.length !== 1) {
+          return {
+            valid: false,
+            error: `Expected 1 function call, but got ${Array.isArray(modelOutput) ? modelOutput.length : 0}.`,
+            error_type: "simple:wrong_count",
+          };
+        }
+        return simpleFunctionChecker(
+          testCase.function[0] as unknown as FunctionDescription,
+          modelOutput[0] as ToolCall,
+          (possibleAnswer.ground_truth as Record<string, unknown>[])[0]
+        );
       }
-      return simpleFunctionChecker(
-        testCase.function[0] as unknown as FunctionDescription,
-        modelOutput[0] as ToolCall,
-        (possibleAnswer.ground_truth as Record<string, unknown>[])[0]
-      );
+      case "multiple": {
+        return multipleFunctionChecker(
+          testCase.function as unknown as FunctionDescription[],
+          modelOutput as ToolCall[],
+          possibleAnswer.ground_truth as Record<string, unknown>[]
+        );
+      }
+      case "parallel":
+      case "parallel_multiple": {
+        return parallelFunctionCheckerNoOrder(
+          testCase.function as unknown as FunctionDescription[],
+          modelOutput as ToolCall[],
+          possibleAnswer.ground_truth as Record<string, unknown>[]
+        );
+      }
+      default: {
+        return { valid: true };
+      }
     }
-    if (category === "parallel") {
-      return parallelFunctionCheckerNoOrder(
-        testCase.function as unknown as FunctionDescription[],
-        modelOutput as ToolCall[],
-        possibleAnswer.ground_truth as Record<string, unknown>[]
-      );
-    }
-    if (category === "multiple") {
-      return multipleFunctionChecker(
-        testCase.function as unknown as FunctionDescription[],
-        modelOutput as ToolCall[],
-        possibleAnswer.ground_truth as Record<string, unknown>[]
-      );
-    }
-    if (category.includes("parallel-multiple")) {
-      // parallel-multiple is just a more complex parallel case
-      return parallelFunctionCheckerNoOrder(
-        testCase.function as unknown as FunctionDescription[],
-        modelOutput as ToolCall[],
-        possibleAnswer.ground_truth as Record<string, unknown>[]
-      );
-    }
-
-    // Default for unimplemented categories (like multi_turn)
-    // As per user request, we are deferring multi-turn.
-    return { valid: true }; // Pass to not fail the whole benchmark
   } catch (e: unknown) {
     return {
       valid: false,
