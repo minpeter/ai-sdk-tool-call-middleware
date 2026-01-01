@@ -4,7 +4,6 @@ export default defineConfig([
   {
     entry: {
       index: "src/index.ts",
-      "reasoning-parser": "src/reasoning-parser/index.ts",
     },
     format: ["cjs", "esm"],
     dts: true,
