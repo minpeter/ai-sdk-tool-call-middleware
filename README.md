@@ -1,4 +1,4 @@
-<img width="3168" height="1344" alt="tcm-banner" src="https://github.com/user-attachments/assets/9a002988-e535-42ac-8baf-56ec8754410f" />
+<img width="3168" height="1344" alt="AI SDK Tool monorepo banner" src="https://github.com/user-attachments/assets/9a002988-e535-42ac-8baf-56ec8754410f" />
 
 
 # `@ai-sdk-tool/` monorepo
