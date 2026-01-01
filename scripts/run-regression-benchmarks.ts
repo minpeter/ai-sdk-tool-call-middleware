@@ -17,12 +17,19 @@ import {
   bfclSimpleBenchmark,
   evaluate,
 } from "@ai-sdk-tool/eval";
+import { createDiskCacheMiddleware } from "@ai-sdk-tool/middleware";
 import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import {
   extractReasoningMiddleware,
   type LanguageModel,
   wrapLanguageModel,
 } from "ai";
+
+const MODEL_ID = "MiniMaxAI/MiniMax-M2";
+
+const diskCacheMiddleware = createDiskCacheMiddleware({
+  cacheDir: ".benchmark-results/cache",
+});
 
 // Get commit hash and branch
 const commitHash = execSync("git rev-parse HEAD").toString().trim();
@@ -59,13 +66,15 @@ const friendli = createOpenAICompatible({
   baseURL: "https://api.friendli.ai/serverless/v1",
 });
 
-// Use GLM-4.6 as baseline model for regression testing
-const baseModel = friendli("zai-org/GLM-4.6");
+const baseModel = friendli(MODEL_ID);
 
 // Native tool calling (no middleware)
 const nativeModel: LanguageModel = wrapLanguageModel({
   model: baseModel,
-  middleware: [extractReasoningMiddleware({ tagName: "think" })],
+  middleware: [
+    extractReasoningMiddleware({ tagName: "think" }),
+    diskCacheMiddleware,
+  ],
 });
 
 // morphXML protocol
@@ -74,6 +83,7 @@ const morphXmlModel: LanguageModel = wrapLanguageModel({
   middleware: [
     morphXmlToolMiddleware,
     extractReasoningMiddleware({ tagName: "think" }),
+    diskCacheMiddleware,
   ],
 });
 
@@ -195,7 +205,7 @@ async function runBenchmarks(): Promise<{
     commit: commitHash,
     branch,
     timestamp,
-    model: "zai-org/GLM-4.6",
+    model: MODEL_ID,
     mode,
     results: {
       native: nativeScores,
@@ -215,7 +225,7 @@ async function runBenchmarks(): Promise<{
       commit: commitHash,
       branch,
       timestamp,
-      model: "zai-org/GLM-4.6",
+      model: MODEL_ID,
       mode: "fast",
       results: {
         native: nativeFastScores,
