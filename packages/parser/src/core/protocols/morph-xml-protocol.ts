@@ -37,8 +37,6 @@ export interface MorphXmlProtocolOptions {
   maxReparses?: number;
 }
 
-const XML_DECLARATION_RE = /^<\?xml.*?\?>\n/;
-
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
 const WHITESPACE_REGEX = /\s/;
 
@@ -749,13 +747,15 @@ export const morphXmlProtocol = (
         result = (result as any).value;
       }
 
-      const xml = stringify("tool_response", {
-        tool_name: toolResult.toolName,
-        result,
-      });
-      // rxml stringify adds XML declaration by default when formatting is enabled.
-      // We strip it here to inject clean XML fragment into the conversation.
-      return xml.replace(XML_DECLARATION_RE, "");
+      const xml = stringify(
+        "tool_response",
+        {
+          tool_name: toolResult.toolName,
+          result,
+        },
+        { declaration: false }
+      );
+      return xml;
     },
 
     parseGeneratedText({ text, tools, options }) {
