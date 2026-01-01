@@ -1,7 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 describe("XML Protocol Heuristic Parsing", () => {
   const protocol = morphXmlProtocol();

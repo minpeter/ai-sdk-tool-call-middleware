@@ -4,9 +4,9 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
-import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
-import { createToolMiddleware } from "../../tool-call-middleware";
-import { originalToolsSchema } from "../../utils/provider-options";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { originalToolsSchema } from "../../core/utils/provider-options";
+import { createToolMiddleware } from "../../v6/tool-call-middleware";
 import { mockUsage, stopFinishReason } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({

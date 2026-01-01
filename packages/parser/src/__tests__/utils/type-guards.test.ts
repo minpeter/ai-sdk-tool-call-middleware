@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { isToolCallContent, isToolResultPart } from "../../utils/type-guards";
+import {
+  isToolCallContent,
+  isToolResultPart,
+} from "../../core/utils/type-guards";
 
 describe("type-guards", () => {
   it("isToolCallContent returns true for valid tool-call", () => {
