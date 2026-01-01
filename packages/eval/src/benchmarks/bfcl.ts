@@ -96,12 +96,37 @@ interface PossibleAnswer {
 }
 
 // --- Generic Checker Dispatcher ---
+function extractCategory(id: string): string {
+  if (id.startsWith("parallel_multiple")) {
+    return "parallel_multiple";
+  }
+  if (id.startsWith("simple_python")) {
+    return "simple";
+  }
+  if (id.startsWith("simple_java")) {
+    return "simple";
+  }
+  if (id.startsWith("simple_javascript")) {
+    return "simple";
+  }
+  if (id.startsWith("parallel")) {
+    return "parallel";
+  }
+  if (id.startsWith("multiple")) {
+    return "multiple";
+  }
+  if (id.startsWith("simple")) {
+    return "simple";
+  }
+  return id.split("_")[0];
+}
+
 function check(
   testCase: TestCase,
   modelOutput: unknown, // This is an array of tool_calls
   possibleAnswer: PossibleAnswer
 ): { valid: boolean; error?: string; error_type?: string } {
-  const category = testCase.id.split("_")[0];
+  const category = extractCategory(testCase.id);
 
   try {
     if (category === "simple") {
@@ -1268,28 +1293,28 @@ function createBfclBenchmark(
 // --- Exported Benchmark Instances ---
 export const bfclSimpleBenchmark = createBfclBenchmark(
   "bfcl-simple",
-  "BFCL Simple Function Calling",
-  "BFCL_v3_simple.jsonl",
-  "BFCL_v3_simple_possible_answer.jsonl"
+  "BFCL v4 Simple Function Calling",
+  "BFCL_v4_simple.jsonl",
+  "BFCL_v4_simple_possible_answer.jsonl"
 );
 
 export const bfclParallelBenchmark = createBfclBenchmark(
   "bfcl-parallel",
-  "BFCL Parallel Function Calling",
-  "BFCL_v3_parallel.jsonl",
-  "BFCL_v3_parallel_possible_answer.jsonl"
+  "BFCL v4 Parallel Function Calling",
+  "BFCL_v4_parallel.jsonl",
+  "BFCL_v4_parallel_possible_answer.jsonl"
 );
 
 export const bfclMultipleBenchmark = createBfclBenchmark(
   "bfcl-multiple",
-  "BFCL Multiple Function Calling",
-  "BFCL_v3_multiple.jsonl",
-  "BFCL_v3_multiple_possible_answer.jsonl"
+  "BFCL v4 Multiple Function Calling",
+  "BFCL_v4_multiple.jsonl",
+  "BFCL_v4_multiple_possible_answer.jsonl"
 );
 
 export const bfclParallelMultipleBenchmark = createBfclBenchmark(
   "bfcl-parallel-multiple",
-  "BFCL Parallel & Multiple Function Calling",
-  "BFCL_v3_parallel_multiple.jsonl",
-  "BFCL_v3_parallel_multiple_possible_answer.jsonl"
+  "BFCL v4 Parallel & Multiple Function Calling",
+  "BFCL_v4_parallel_multiple.jsonl",
+  "BFCL_v4_parallel_multiple_possible_answer.jsonl"
 );
