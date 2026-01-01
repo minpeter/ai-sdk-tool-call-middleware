@@ -139,7 +139,11 @@ function processMessage(
           type: "text",
           text: toolResultParts
             .map((toolResult: any) =>
-              resolvedProtocol.formatToolResponse(toolResult)
+              resolvedProtocol.formatToolResponse({
+                ...toolResult,
+                result:
+                  toolResult.result ?? toolResult.content ?? toolResult.output,
+              })
             )
             .join("\n"),
         },

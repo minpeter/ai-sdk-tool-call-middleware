@@ -1,9 +1,10 @@
 import type { ToolCallProtocol } from "../core/protocols/tool-call-protocol";
 import type { CoreFunctionTool, CoreStreamPart } from "../core/types";
+import { generateId } from "../core/utils/id";
 import { originalToolsSchema } from "../core/utils/provider-options";
 
 interface V5TransformerState {
-  textStarted: boolean;
+  textStarted: Set<string>;
   toolStarted: Set<string>;
   callCount: number;
 }
@@ -13,23 +14,25 @@ function processPartToV2(
   state: V5TransformerState,
   controller: TransformStreamDefaultController<unknown>
 ) {
-  const v2TextId = "txt-0";
+  // biome-ignore lint/suspicious/noExplicitAny: mapping for v2 provider compatibility
+  const partAny = p as any;
+  const partId = partAny.id || partAny.toolCallId || generateId();
 
   switch (p.type) {
     case "text-delta": {
-      if (!state.textStarted) {
-        controller.enqueue({ type: "text-start", id: v2TextId });
-        state.textStarted = true;
+      if (!state.textStarted.has(partId)) {
+        controller.enqueue({ type: "text-start", id: partId });
+        state.textStarted.add(partId);
       }
       controller.enqueue({
         type: "text-delta",
-        id: v2TextId,
+        id: partId,
         delta: p.textDelta,
       });
       break;
     }
     case "tool-call": {
-      const v2Id = `call-${state.callCount++}`;
+      const v2Id = p.toolCallId || `call-${state.callCount++}`;
       if (!state.toolStarted.has(v2Id)) {
         controller.enqueue({
           type: "tool-input-start",
@@ -47,10 +50,10 @@ function processPartToV2(
       break;
     }
     case "finish": {
-      if (state.textStarted) {
-        controller.enqueue({ type: "text-end", id: v2TextId });
-        state.textStarted = false;
+      for (const id of state.textStarted) {
+        controller.enqueue({ type: "text-end", id });
       }
+      state.textStarted.clear();
       controller.enqueue(p);
       break;
     }
@@ -65,7 +68,7 @@ export function createV5Transformer(): TransformStream<
   unknown
 > {
   const state: V5TransformerState = {
-    textStarted: false,
+    textStarted: new Set(),
     toolStarted: new Set(),
     callCount: 0,
   };
