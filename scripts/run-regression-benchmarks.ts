@@ -72,8 +72,8 @@ const baseModel = friendli(MODEL_ID);
 const nativeModel: LanguageModel = wrapLanguageModel({
   model: baseModel,
   middleware: [
-    diskCacheMiddleware,
     extractReasoningMiddleware({ tagName: "think" }),
+    diskCacheMiddleware,
   ],
 });
 
@@ -81,9 +81,9 @@ const nativeModel: LanguageModel = wrapLanguageModel({
 const morphXmlModel: LanguageModel = wrapLanguageModel({
   model: baseModel,
   middleware: [
-    diskCacheMiddleware,
     morphXmlToolMiddleware,
     extractReasoningMiddleware({ tagName: "think" }),
+    diskCacheMiddleware,
   ],
 });
 

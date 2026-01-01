@@ -1,4 +1,23 @@
+import type { LanguageModelV3Middleware } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
+
+/**
+ * Model configuration for evaluation.
+ * Allows specifying a base model with optional middleware for proper cache ordering.
+ */
+export interface ModelConfig {
+  /**
+   * The base language model (before any middleware is applied).
+   */
+  model: LanguageModel;
+
+  /**
+   * Optional middleware to apply to the model.
+   * When cache is enabled, the cache middleware will be applied BEFORE this middleware,
+   * ensuring that cache keys are generated from the final transformed params.
+   */
+  middleware?: LanguageModelV3Middleware | LanguageModelV3Middleware[];
+}
 
 /**
  * The result of a single benchmark run.
@@ -87,8 +106,20 @@ export interface EvaluationResult {
 export interface EvaluateOptions {
   /**
    * The language model or models to evaluate.
+   * Can be:
+   * - A single LanguageModel or ModelConfig
+   * - An array of LanguageModel or ModelConfig
+   * - A keyed record of LanguageModel or ModelConfig
+   *
+   * When using ModelConfig with middleware and cache enabled,
+   * the cache middleware is applied innermost (closest to the model),
+   * ensuring cache keys reflect the final transformed params.
    */
-  models: LanguageModel | LanguageModel[] | Record<string, LanguageModel>;
+  models:
+    | LanguageModel
+    | ModelConfig
+    | (LanguageModel | ModelConfig)[]
+    | Record<string, LanguageModel | ModelConfig>;
 
   /**
    * An array of benchmarks to run against the models.
