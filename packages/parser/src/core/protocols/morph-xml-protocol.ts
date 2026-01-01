@@ -89,21 +89,6 @@ function tryParseSecondaryXml(
   }
 }
 
-function processTextBeforeToolCall(
-  text: string,
-  currentIndex: number,
-  toolCallStartIndex: number,
-  processedElements: CoreContentPart[]
-): number {
-  if (toolCallStartIndex > currentIndex) {
-    const textSegment = text.substring(currentIndex, toolCallStartIndex);
-    if (textSegment.trim()) {
-      processedElements.push({ type: "text", text: textSegment });
-    }
-  }
-  return currentIndex;
-}
-
 interface ProcessToolCallParams {
   toolCall: {
     toolName: string;
@@ -161,66 +146,6 @@ function processToolCallWithPipeline(params: ProcessToolCallParams): void {
       { toolCall: originalCallText, error: result.errors[0] }
     );
     processedElements.push({ type: "text", text: originalCallText });
-  }
-}
-
-function processToolCall(params: ProcessToolCallParams): void {
-  const { toolCall, tools, options, text, processedElements } = params;
-  const toolSchema = getToolSchema(tools, toolCall.toolName);
-  try {
-    const primary = escapeInvalidLt(normalizeCloseTags(toolCall.content));
-    let parsed: unknown = parse(primary, toolSchema, {
-      onError: options?.onError,
-      noChildNodes: [],
-    });
-    parsed = repairParsedAgainstSchema(parsed, toolSchema);
-    processedElements.push({
-      type: "tool-call",
-      toolCallId: generateId(),
-      toolName: toolCall.toolName,
-      input: JSON.stringify(parsed),
-    });
-  } catch (error) {
-    const reparsed = tryParseSecondaryXml(
-      toolCall.content,
-      toolSchema,
-      options
-    );
-    if (reparsed !== null) {
-      processedElements.push({
-        type: "tool-call",
-        toolCallId: generateId(),
-        toolName: toolCall.toolName,
-        input: JSON.stringify(reparsed),
-      });
-      return;
-    }
-    const originalCallText = text.substring(
-      toolCall.startIndex,
-      toolCall.endIndex
-    );
-    options?.onError?.(
-      `Could not process XML tool call, keeping original text: ${originalCallText}`,
-      {
-        toolCall: originalCallText,
-        toolName: toolCall.toolName,
-        error,
-      }
-    );
-    processedElements.push({ type: "text", text: originalCallText });
-  }
-}
-
-function addRemainingText(
-  text: string,
-  currentIndex: number,
-  processedElements: CoreContentPart[]
-): void {
-  if (currentIndex < text.length) {
-    const remainingText = text.substring(currentIndex);
-    if (remainingText.trim()) {
-      processedElements.push({ type: "text", text: remainingText });
-    }
   }
 }
 
@@ -640,7 +565,6 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
 interface ProcessNoToolCallInBufferParams {
   buffer: string;
   toolNames: string[];
-  maxStartTagLen: number;
   controller: TransformStreamDefaultController<CoreStreamPart>;
   // biome-ignore lint/suspicious/noExplicitAny: complex function type
   flushText: any;
@@ -661,7 +585,6 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
   const {
     buffer,
     toolNames,
-    maxStartTagLen,
     controller,
     flushText,
     tools,
@@ -765,9 +688,6 @@ function createProcessBufferHandler(
         const result = processNoToolCallInBuffer({
           buffer: getBuffer(),
           toolNames,
-          maxStartTagLen: toolNames.length
-            ? Math.max(...toolNames.map((n) => `<${n}>`.length))
-            : 0,
           controller,
           flushText,
           tools,
@@ -816,9 +736,22 @@ export const morphXmlProtocol = (
     },
 
     formatToolResponse(toolResult: CoreToolResult): string {
+      let result = toolResult.result;
+
+      // Handle cases where the result is wrapped in { type: 'json', value: ... }
+      if (
+        result &&
+        typeof result === "object" &&
+        "type" in result &&
+        (result as any).type === "json" &&
+        "value" in result
+      ) {
+        result = (result as any).value;
+      }
+
       const xml = stringify("tool_response", {
         tool_name: toolResult.toolName,
-        result: toolResult.result,
+        result,
       });
       // rxml stringify adds XML declaration by default when formatting is enabled.
       // We strip it here to inject clean XML fragment into the conversation.
