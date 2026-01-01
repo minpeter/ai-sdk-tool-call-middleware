@@ -16,10 +16,10 @@ function randomChunkSplit(
   seed = 0
 ): string[] {
   let state = seed;
-  const MAX_INT = 2_147_483_647;
+  const LCG_MODULUS = 2_147_483_647;
   const random = () => {
-    state = Math.abs((state * 1_103_515_245 + 12_345) % MAX_INT);
-    return state / MAX_INT;
+    state = Math.abs((state * 1_103_515_245 + 12_345) % LCG_MODULUS);
+    return state / LCG_MODULUS;
   };
 
   const chunks: string[] = [];
