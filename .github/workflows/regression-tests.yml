@@ -25,7 +25,7 @@ on:
       - 'packages/eval/**'
       - 'packages/middleware/**'
 
-  # main에 머지될 때만 전체 벤치마크 실행
+  # main에 머지될 때 fast 모드로 벤치마크 실행 (베이스라인 축적)
   push:
     branches:
       - main
@@ -151,8 +151,6 @@ jobs:
           MODE="${{
             github.event_name == 'workflow_dispatch' && github.event.inputs.benchmark_mode ||
             (github.event_name == 'issue_comment' && needs.parse-comment.outputs.mode) ||
-            (github.event_name == 'push' && 'full') ||
-            (github.event_name == 'pull_request' && 'fast') ||
             'fast'
           }}"
           echo "mode=$MODE" >> $GITHUB_OUTPUT
