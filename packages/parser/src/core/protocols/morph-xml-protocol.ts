@@ -688,7 +688,6 @@ function createProcessBufferHandler(
   pipelineConfig?: PipelineConfig,
   maxReparses?: number
 ) {
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: stream parsing state machine requires complex control flow
   return (controller: TransformStreamDefaultController<TCMCoreStreamPart>) => {
     while (true) {
       const currentToolCall = getCurrentToolCall();
