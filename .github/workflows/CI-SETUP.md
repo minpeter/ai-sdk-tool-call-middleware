@@ -48,7 +48,7 @@ Value: your_friendli_api_token_here
 - `packages/eval/**`
 - `packages/middleware/**`
 
-**모드**: Quick (100 케이스, ~5분)
+**모드**: Fast (4 categories x 5 cases = 20 케이스, ~2분)
 
 **동작 과정**:
 1. PR 생성 또는 커밋 푸시
@@ -60,12 +60,8 @@ Value: your_friendli_api_token_here
 자동 실행 외에 댓글로 다른 모드 실행 가능:
 
 ```bash
-# Quick 모드 (100 케이스, ~5분) - 자동 실행과 동일
+# Fast 모드 (20 케이스, ~2분) - 기본 댓글 트리거
 /benchmark
-
-# Ultra-quick 모드 (50 케이스, ~2분) - 빠른 검증
-/benchmark ultra
-/benchmark fast
 
 # Full 모드 (전체 케이스, ~15분) - 최종 검증
 /benchmark full
@@ -86,7 +82,7 @@ Actions > Regression Tests > Run workflow
 
 선택:
 - Branch: 실행할 브랜치
-- Mode: ultra-quick / quick / full
+- Mode: fast / full
 ```
 
 ### 4. Main 브랜치 자동 실행
@@ -102,15 +98,13 @@ Actions > Regression Tests > Run workflow
 
 | 모드 | 케이스 수 | 소요 시간 | API 호출 | 비용 | 사용 시점 |
 |------|-----------|----------|---------|------|----------|
-| **ultra-quick** ⚡ | 50 | ~2분 | ~100 | 최소 | 빠른 검증 |
-| **quick** 🏃 | 100 | ~5분 | ~200 | 낮음 | PR 검토 |
+| **fast** ⚡ | 20 (4 categories x 5) | ~2분 | ~40 | 최소 | PR 자동, 빠른 검증 |
 | **full** 🔥 | 400+ | ~15분 | ~800 | 보통 | 최종 검증, 베이스라인 |
 
 ### 모드별 벤치마크
 
-- **ultra-quick**: bfcl-simple (50개)
-- **quick**: bfcl-simple (100개)
-- **full**: bfcl-simple + bfcl-multiple + bfcl-parallel (전체)
+- **fast**: bfcl-simple + bfcl-multiple + bfcl-parallel + bfcl-parallel-multiple (각 5개씩)
+- **full**: bfcl-simple + bfcl-multiple + bfcl-parallel + bfcl-parallel-multiple (전체)
 
 ## 📊 결과 해석
 
@@ -122,7 +116,7 @@ Actions > Regression Tests > Run workflow
 **Commit:** `abc1234`
 **Branch:** `feature/my-feature`
 **Model:** zai-org/GLM-4.6
-**Mode:** 🏃 quick
+**Mode:** ⚡ fast
 **Time:** 2024-12-26 10:00:00
 
 ### Current Results
@@ -143,8 +137,7 @@ All benchmarks are within expected performance range (±2%)
 
 ### 아이콘 의미
 
-- **⚡** ultra-quick 모드
-- **🏃** quick 모드
+- **⚡** fast 모드
 - **🔥** full 모드
 - **⚠️** 회귀 감지 (>2% 하락)
 - **✨** 개선 (>2% 향상)
@@ -162,7 +155,7 @@ All benchmarks are within expected performance range (±2%)
 
 **예시**:
 ```json
-{"commit":"abc1234","branch":"main","timestamp":"2024-12-26T10:00:00Z","model":"zai-org/GLM-4.6","mode":"quick","results":{"native":{"bfcl-simple":0.894},"morphxml":{"bfcl-simple":0.891}}}
+{"commit":"abc1234","branch":"main","timestamp":"2024-12-26T10:00:00Z","model":"zai-org/GLM-4.6","mode":"fast","results":{"native":{"bfcl-simple":0.894},"morphxml":{"bfcl-simple":0.891}}}
 ```
 
 ### 개별 결과 파일
@@ -204,9 +197,9 @@ All benchmarks are within expected performance range (±2%)
 
 ### 같은 모드끼리만 비교
 
-- **ultra-quick vs quick**: 비교 안 됨 ✅
-- **quick vs full**: 비교 안 됨 ✅
-- **quick vs quick**: 비교 가능 ✅
+- **fast vs full**: 비교 안 됨 ✅
+- **fast vs fast**: 비교 가능 ✅
+- **full vs full**: 비교 가능 ✅
 
 **이유**: 테스트 케이스 수가 다르면 점수가 달라질 수 있음
 
@@ -214,20 +207,18 @@ All benchmarks are within expected performance range (±2%)
 
 ### PR 작성자
 
-1. **일반 작업**: PR 생성/커밋 푸시 → 자동으로 quick 모드 실행 (별도 작업 불필요)
-2. **빠른 검증 필요 시**: `/benchmark ultra` (50 케이스, ~2분)
-3. **최종 확인**: `/benchmark full` (머지 직전, 전체 벤치마크)
+1. **일반 작업**: PR 생성/커밋 푸시 → 자동으로 fast 모드 실행 (별도 작업 불필요)
+2. **최종 확인**: `/benchmark full` (머지 직전, 전체 벤치마크)
 
 ### 메인테이너
 
-1. **일반 PR**: 자동 실행 결과 확인 (quick 모드)
+1. **일반 PR**: 자동 실행 결과 확인 (fast 모드)
 2. **중요 변경**: `/benchmark full` 댓글로 전체 벤치마크 요청
 3. **Main 머지**: 자동 실행됨 (full 모드, 별도 작업 불필요)
 
 ### 비용 관리
 
-- **자동 실행**: Quick 모드로 기본 검증 (~200 API 호출)
-- **Ultra-quick**: 빠른 반복 개발 시 (`/benchmark ultra`)
+- **자동 실행**: Fast 모드로 기본 검증 (~40 API 호출)
 - **Full**: 릴리스 전, 중요 변경사항 (`/benchmark full`)
 
 ## 📞 지원

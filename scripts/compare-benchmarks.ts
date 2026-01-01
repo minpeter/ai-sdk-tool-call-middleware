@@ -14,7 +14,7 @@ interface BenchmarkResult {
   branch: string;
   timestamp: string;
   model: string;
-  mode: "fast" | "quick" | "full";
+  mode: "fast" | "full";
   results: {
     native: Record<string, number>;
     morphxml: Record<string, number>;
@@ -181,7 +181,6 @@ function generateMarkdownReport(
 ): string {
   const modeEmoji = {
     fast: "⚡",
-    quick: "🏃",
     full: "🔥",
   };
 

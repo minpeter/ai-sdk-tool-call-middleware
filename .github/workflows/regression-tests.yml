@@ -7,11 +7,10 @@ on:
       benchmark_mode:
         description: 'Benchmark mode'
         required: false
-        default: 'quick'
+        default: 'fast'
         type: choice
         options:
           - fast           # 4 categories x 5 cases (~2min)
-          - quick          # 100 cases (~5min)
           - full           # all cases (~15min)
 
   # PR 댓글 트리거
@@ -54,6 +53,7 @@ jobs:
       should_run: ${{ steps.parse.outputs.should_run }}
       mode: ${{ steps.parse.outputs.mode }}
       pr_number: ${{ steps.parse.outputs.pr_number }}
+      comment_id: ${{ steps.parse.outputs.comment_id }}
     steps:
       - name: Parse comment
         id: parse
@@ -70,18 +70,16 @@ jobs:
             }
 
             // 명령어 파싱
-            let mode = 'quick';
+            let mode = 'fast';
             let shouldRun = false;
 
             if (comment.includes('/benchmark')) {
               shouldRun = true;
 
-              if (comment.includes('fast')) {
-                mode = 'fast';
-              } else if (comment.includes('full') || comment.includes('all')) {
+              if (comment.includes('full') || comment.includes('all')) {
                 mode = 'full';
               } else {
-                mode = 'quick';
+                mode = 'fast';
               }
 
               // 👀 이모지 리액션 추가
@@ -96,6 +94,7 @@ jobs:
             core.setOutput('should_run', shouldRun.toString());
             core.setOutput('mode', mode);
             core.setOutput('pr_number', context.issue.number.toString());
+            core.setOutput('comment_id', context.payload.comment.id.toString());
 
   regression-benchmarks:
     name: Run Regression Benchmarks
@@ -154,7 +153,7 @@ jobs:
             (github.event_name == 'issue_comment' && needs.parse-comment.outputs.mode) ||
             (github.event_name == 'push' && 'full') ||
             (github.event_name == 'pull_request' && 'fast') ||
-            'quick'
+            'fast'
           }}"
           echo "mode=$MODE" >> $GITHUB_OUTPUT
           echo "Running in $MODE mode"
@@ -232,11 +231,12 @@ jobs:
             });
 
             // 실패 시 ❌ 리액션 추가 (댓글 트리거인 경우)
-            if (context.event_name === 'issue_comment') {
+            const commentId = '${{ needs.parse-comment.outputs.comment_id }}';
+            if (commentId) {
               await github.rest.reactions.createForIssueComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: context.payload.comment.id,
+                comment_id: parseInt(commentId),
                 content: '-1'
               });
             }
@@ -297,11 +297,12 @@ jobs:
             }
 
             // 성공 시 🚀 리액션 추가 (댓글 트리거인 경우)
-            if (context.event_name === 'issue_comment') {
+            const commentId = '${{ needs.parse-comment.outputs.comment_id }}';
+            if (commentId) {
               await github.rest.reactions.createForIssueComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                comment_id: context.payload.comment.id,
+                comment_id: parseInt(commentId),
                 content: 'rocket'
               });
             }
