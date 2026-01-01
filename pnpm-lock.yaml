@@ -162,6 +162,9 @@ importers:
 
   packages/eval:
     dependencies:
+      '@ai-sdk-tool/middleware':
+        specifier: workspace:*
+        version: link:../middleware
       '@ai-sdk/provider':
         specifier: 3.0.1
         version: 3.0.1
