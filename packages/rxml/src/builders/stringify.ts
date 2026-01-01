@@ -40,6 +40,10 @@ export function stringify(
       strictBooleanAttributes,
     });
 
+    if (result.endsWith("\n")) {
+      return result.slice(0, -1);
+    }
+
     return result;
   } catch (error) {
     throw new RXMLStringifyError("Failed to stringify XML", error);
