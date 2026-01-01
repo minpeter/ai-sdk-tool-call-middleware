@@ -82,7 +82,7 @@ interface BenchmarkResult {
   branch: string;
   timestamp: string;
   model: string;
-  mode: "fast" | "quick" | "full";
+  mode: "fast" | "full";
   results: {
     native: Record<string, number>;
     morphxml: Record<string, number>;
@@ -100,24 +100,18 @@ const allBenchmarks = [
 async function runBenchmarks(): Promise<BenchmarkResult> {
   const timestamp = new Date().toISOString();
 
-  // 환경변수로 모드 결정 (기본값: quick)
+  // 환경변수로 모드 결정 (기본값: fast)
   const mode = (process.env.BENCHMARK_MODE ||
-    "quick") as BenchmarkResult["mode"];
+    "fast") as BenchmarkResult["mode"];
 
   // 모드별 벤치마크 설정
   // fast: 4개 카테고리 x 5개씩 = 20개 (x2 native/xml = 40개), ~2min
-  // quick: simple 카테고리 100개, ~5min
   // full: 4개 카테고리 전체, ~15min
   const benchmarkConfigs = {
     fast: {
       benchmarks: allBenchmarks,
       limit: 5,
       desc: "4 categories x 5 cases = 20 cases (x2 = 40 total), ~2min",
-    },
-    quick: {
-      benchmarks: [bfclSimpleBenchmark],
-      limit: 100,
-      desc: "100 cases, ~5min",
     },
     full: {
       benchmarks: allBenchmarks,
