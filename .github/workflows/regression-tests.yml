@@ -5,13 +5,13 @@ on:
   workflow_dispatch:
     inputs:
       benchmark_mode:
-        description: 'Benchmark mode'
+        description: "Benchmark mode"
         required: false
-        default: 'fast'
+        default: "fast"
         type: choice
         options:
-          - fast           # 4 categories x 5 cases (~2min)
-          - full           # all cases (~15min)
+          - fast # 4 categories x 5 cases (~2min)
+          - full # all cases (~15min)
 
   # PR 댓글 트리거
   issue_comment:
@@ -21,18 +21,18 @@ on:
   pull_request:
     types: [opened, synchronize]
     paths:
-      - 'packages/parser/**'
-      - 'packages/eval/**'
-      - 'packages/middleware/**'
+      - "packages/parser/**"
+      - "packages/eval/**"
+      - "packages/middleware/**"
 
   # main에 머지될 때 fast 모드로 벤치마크 실행 (베이스라인 축적)
   push:
     branches:
       - main
     paths:
-      - 'packages/parser/**'
-      - 'packages/eval/**'
-      - 'packages/middleware/**'
+      - "packages/parser/**"
+      - "packages/eval/**"
+      - "packages/middleware/**"
 
 permissions:
   contents: write
@@ -157,13 +157,12 @@ jobs:
       - name: Build packages
         run: pnpm build
 
-      - name: Restore benchmark API cache
-        uses: actions/cache/restore@v4
+      - name: Download benchmark API cache from artifact
+        uses: actions/download-artifact@v4
         with:
+          name: benchmark-api-cache
           path: .benchmark-results/cache
-          key: benchmark-api-cache-${{ runner.os }}-${{ hashFiles('packages/middleware/src/disk-cache.ts') }}
-          restore-keys: |
-            benchmark-api-cache-${{ runner.os }}-
+        continue-on-error: true
 
       - name: Determine benchmark mode
         id: mode
@@ -241,7 +240,7 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          
+
           git add .benchmark-results/history.jsonl
           if git diff --quiet --cached; then
             echo "No changes to commit"
@@ -249,14 +248,14 @@ jobs:
           fi
 
           BRANCH_NAME="ci/benchmark-results"
-          
+
           git checkout -B "$BRANCH_NAME"
           git commit -m "ci: add benchmark results for ${COMMIT_SHA} [skip benchmarks]"
           git push -f origin "$BRANCH_NAME"
-          
+
           EXISTING_PR=$(gh pr list --head "$BRANCH_NAME" --base main --state open --json number --jq '.[0].number' || echo "")
           TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          
+
           PR_BODY="## Benchmark Results Update
 
           This PR contains automatically generated benchmark results.
@@ -269,9 +268,9 @@ jobs:
 
           > **Note**: This PR is automatically managed by the regression test workflow.
           > Merging this PR will NOT trigger another benchmark run (protected by \`[skip benchmarks]\` token and path filters).
-          > 
+          >
           > The benchmark history will continue to accumulate even if this PR is not merged immediately."
-          
+
           if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
             echo "Existing PR #$EXISTING_PR found, updating..."
             echo "$PR_BODY" | gh pr edit "$EXISTING_PR" --body-file -
@@ -395,20 +394,14 @@ jobs:
               });
             }
 
-      - name: Upload benchmark results as artifact
+      - name: Upload benchmark API cache as artifact
         if: steps.benchmark.outcome == 'success'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results-${{ github.sha }}
-          path: .benchmark-results/
-          retention-days: 90
-
-      - name: Save benchmark API cache
-        if: steps.benchmark.outcome == 'success'
-        uses: actions/cache/save@v4
-        with:
+          name: benchmark-api-cache
           path: .benchmark-results/cache
-          key: benchmark-api-cache-${{ runner.os }}-${{ hashFiles('packages/middleware/src/disk-cache.ts') }}
+          retention-days: 90
+          overwrite: true
 
       - name: Fail if regression detected
         if: steps.benchmark.outcome == 'success' && steps.compare.outcome == 'failure'
