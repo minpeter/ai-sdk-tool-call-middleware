@@ -35,6 +35,7 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "3.0.1",
+    "@ai-sdk-tool/middleware": "workspace:*",
     "ai": "6.0.5",
     "ajv": "^8.17.1",
     "zod": "^4.3.4"

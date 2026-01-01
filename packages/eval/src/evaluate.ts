@@ -1,5 +1,5 @@
-import type { LanguageModel } from "ai";
-
+import { createDiskCacheMiddleware } from "@ai-sdk-tool/middleware";
+import { type LanguageModel, wrapLanguageModel } from "ai";
 import type {
   EvaluateOptions,
   EvaluationResult,
@@ -55,9 +55,6 @@ async function runSingleBenchmark(
   }
 }
 
-/**
- * Normalize models input to array of [key, model] entries
- */
 function normalizeModels(
   models: LanguageModel | LanguageModel[] | Record<string, LanguageModel>
 ): [string | undefined, LanguageModel][] {
@@ -84,9 +81,6 @@ function normalizeModels(
   return modelEntries;
 }
 
-/**
- * Build config object from optional parameters
- */
 function buildConfig(
   temperature?: number,
   maxTokens?: number
@@ -101,9 +95,6 @@ function buildConfig(
   return Object.keys(config).length > 0 ? config : undefined;
 }
 
-/**
- * Execute reporter with results
- */
 function executeReporter(
   reporter: ReporterType,
   results: EvaluationResult[]
@@ -117,6 +108,20 @@ function executeReporter(
   }
 }
 
+function wrapWithCache(
+  model: LanguageModel,
+  cacheOptions: NonNullable<EvaluateOptions["cache"]>
+): LanguageModel {
+  const middleware = createDiskCacheMiddleware({
+    cacheDir: cacheOptions.cacheDir ?? ".ai-cache",
+    enabled: cacheOptions.enabled ?? true,
+    debug: cacheOptions.debug ?? false,
+  });
+
+  // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5/v6 type mismatch - LanguageModel vs LanguageModelV3
+  return wrapLanguageModel({ model: model as any, middleware });
+}
+
 export async function evaluate(
   options: EvaluateOptions
 ): Promise<EvaluationResult[]> {
@@ -126,6 +131,7 @@ export async function evaluate(
     reporter = "console",
     temperature,
     maxTokens,
+    cache,
   } = options;
 
   const modelEntries = normalizeModels(models);
@@ -133,9 +139,12 @@ export async function evaluate(
   const allResults: EvaluationResult[] = [];
 
   for (const [modelKey, model] of modelEntries) {
+    const effectiveModel =
+      cache?.enabled === true ? wrapWithCache(model, cache) : model;
+
     for (const benchmark of benchmarks) {
       const evaluationResult = await runSingleBenchmark(
-        model,
+        effectiveModel,
         benchmark,
         modelKey,
         config

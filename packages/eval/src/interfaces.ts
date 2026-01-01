@@ -110,4 +110,28 @@ export interface EvaluateOptions {
    * Optional maximum number of tokens to generate during evaluation.
    */
   maxTokens?: number;
+
+  /**
+   * Options for disk-based response caching.
+   * When enabled, LLM responses are cached to disk to avoid redundant API calls.
+   */
+  cache?: {
+    /**
+     * Whether to enable disk caching.
+     * @default false
+     */
+    enabled?: boolean;
+
+    /**
+     * Directory to store cache files.
+     * @default '.ai-cache'
+     */
+    cacheDir?: string;
+
+    /**
+     * Whether to log cache hits/misses for debugging.
+     * @default false
+     */
+    debug?: boolean;
+  };
 }
