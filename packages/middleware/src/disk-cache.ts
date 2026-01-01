@@ -106,6 +106,17 @@ function createStreamFromParts(
   });
 }
 
+type FinishReasonLike = { unified?: string } | string | null | undefined;
+
+function isErrorFinishReason(finishReason: FinishReasonLike): boolean {
+  if (!finishReason) {
+    return false;
+  }
+  const unified =
+    typeof finishReason === "string" ? finishReason : finishReason.unified;
+  return unified === "error" || unified === "other";
+}
+
 export function createDiskCacheMiddleware(
   options: DiskCacheMiddlewareOptions = {}
 ): LanguageModelV3Middleware {
@@ -168,12 +179,8 @@ export function createDiskCacheMiddleware(
       );
       const result = await doGenerate();
 
-      const isError =
-        result.finishReason.unified === "error" ||
-        result.finishReason.unified === "other";
-
-      if (isError) {
-        log("SKIP cache (error response)", result.finishReason.unified);
+      if (isErrorFinishReason(result.finishReason)) {
+        log("SKIP cache (error response)", result.finishReason);
       } else {
         await writeCache(cachePath, {
           type: "generate",
@@ -228,12 +235,7 @@ export function createDiskCacheMiddleware(
           },
           flush() {
             const finishPart = collectedParts.find((p) => p.type === "finish");
-            const isError =
-              finishPart?.type === "finish" &&
-              (finishPart.finishReason.unified === "error" ||
-                finishPart.finishReason.unified === "other");
-
-            if (isError) {
+            if (finishPart && isErrorFinishReason(finishPart.finishReason)) {
               return;
             }
 
