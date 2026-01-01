@@ -5,7 +5,7 @@ import type {
 import { generateId } from "@ai-sdk/provider-utils";
 
 import type { ToolCallProtocol } from "../core/protocols/tool-call-protocol";
-import type { CoreStreamPart } from "../core/types";
+import type { TCMCoreStreamPart } from "../core/types";
 import {
   getDebugLevel,
   logParsedChunk,
@@ -18,7 +18,7 @@ import {
   type ToolCallMiddlewareProviderOptions,
 } from "../core/utils/provider-options";
 
-function mapCorePartToV3(part: CoreStreamPart): LanguageModelV3StreamPart {
+function mapCorePartToV3(part: TCMCoreStreamPart): LanguageModelV3StreamPart {
   switch (part.type) {
     case "text-delta":
       return {
@@ -56,7 +56,7 @@ function mapCorePartToV3(part: CoreStreamPart): LanguageModelV3StreamPart {
   }
 }
 
-function mapV3PartToCore(part: LanguageModelV3StreamPart): CoreStreamPart {
+function mapV3PartToCore(part: LanguageModelV3StreamPart): TCMCoreStreamPart {
   const p = part as Record<string, unknown>;
   switch (p.type) {
     case "text-delta":
@@ -89,7 +89,7 @@ function mapV3PartToCore(part: LanguageModelV3StreamPart): CoreStreamPart {
       };
     }
     default:
-      return p as CoreStreamPart;
+      return p as TCMCoreStreamPart;
   }
 }
 
@@ -126,7 +126,7 @@ export async function wrapStream({
 
   const coreStream = stream
     .pipeThrough(
-      new TransformStream<LanguageModelV3StreamPart, CoreStreamPart>({
+      new TransformStream<LanguageModelV3StreamPart, TCMCoreStreamPart>({
         transform(part, controller) {
           if (debugLevel === "stream") {
             logRawChunk(part);
@@ -138,7 +138,7 @@ export async function wrapStream({
     .pipeThrough(protocol.createStreamParser({ tools, options }));
 
   const v3Stream = coreStream.pipeThrough(
-    new TransformStream<CoreStreamPart, LanguageModelV3StreamPart>({
+    new TransformStream<TCMCoreStreamPart, LanguageModelV3StreamPart>({
       transform(part, controller) {
         const v3Part = mapCorePartToV3(part);
         if (debugLevel === "stream") {

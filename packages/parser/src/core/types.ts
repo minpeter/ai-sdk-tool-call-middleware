@@ -1,25 +1,25 @@
-export interface CoreToolCall {
+export interface TCMCoreToolCall {
   toolCallId: string;
   toolName: string;
   input: string;
 }
 
-export interface CoreToolResult {
+export interface TCMCoreToolResult {
   toolCallId: string;
   toolName: string;
   result: unknown;
 }
 
-export interface CoreTextPart {
+export interface TCMCoreTextPart {
   type: "text";
   text: string;
 }
 
-export type CoreContentPart =
-  | CoreTextPart
-  | (CoreToolCall & { type: "tool-call" });
+export type TCMCoreContentPart =
+  | TCMCoreTextPart
+  | (TCMCoreToolCall & { type: "tool-call" });
 
-export type CoreStreamPart =
+export type TCMCoreStreamPart =
   | { type: "text-start"; id: string }
   | { type: "text-delta"; textDelta: string; delta?: string; id?: string }
   | { type: "text-end"; id: string }
@@ -37,7 +37,7 @@ export type CoreStreamPart =
       usage?: { promptTokens: number; completionTokens: number };
     };
 
-export interface CoreFunctionTool {
+export interface TCMCoreFunctionTool {
   type: "function";
   name: string;
   description?: string;

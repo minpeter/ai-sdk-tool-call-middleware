@@ -1,9 +1,9 @@
 import type {
-  CoreContentPart,
-  CoreFunctionTool,
-  CoreStreamPart,
-  CoreToolCall,
-  CoreToolResult,
+  TCMCoreContentPart,
+  TCMCoreFunctionTool,
+  TCMCoreStreamPart,
+  TCMCoreToolCall,
+  TCMCoreToolResult,
 } from "../types";
 
 export interface ToolCallProtocol {
@@ -11,13 +11,13 @@ export interface ToolCallProtocol {
     tools,
     toolSystemPromptTemplate,
   }: {
-    tools: CoreFunctionTool[];
+    tools: TCMCoreFunctionTool[];
     toolSystemPromptTemplate: (tools: string) => string;
   }): string;
 
-  formatToolCall(toolCall: CoreToolCall): string;
+  formatToolCall(toolCall: TCMCoreToolCall): string;
 
-  formatToolResponse(toolResult: CoreToolResult): string;
+  formatToolResponse(toolResult: TCMCoreToolResult): string;
 
   parseGeneratedText({
     text,
@@ -25,28 +25,28 @@ export interface ToolCallProtocol {
     options,
   }: {
     text: string;
-    tools: CoreFunctionTool[];
+    tools: TCMCoreFunctionTool[];
     options?: {
       onError?: (message: string, metadata?: Record<string, unknown>) => void;
     };
-  }): CoreContentPart[];
+  }): TCMCoreContentPart[];
 
   createStreamParser({
     tools,
     options,
   }: {
-    tools: CoreFunctionTool[];
+    tools: TCMCoreFunctionTool[];
     options?: {
       onError?: (message: string, metadata?: Record<string, unknown>) => void;
     };
-  }): TransformStream<CoreStreamPart, CoreStreamPart>;
+  }): TransformStream<TCMCoreStreamPart, TCMCoreStreamPart>;
 
   extractToolCallSegments?: ({
     text,
     tools,
   }: {
     text: string;
-    tools: CoreFunctionTool[];
+    tools: TCMCoreFunctionTool[];
   }) => string[];
 }
 

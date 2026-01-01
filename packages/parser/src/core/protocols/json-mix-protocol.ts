@@ -1,8 +1,8 @@
 import type {
-  CoreContentPart,
-  CoreStreamPart,
-  CoreToolCall,
-  CoreToolResult,
+  TCMCoreContentPart,
+  TCMCoreStreamPart,
+  TCMCoreToolCall,
+  TCMCoreToolResult,
 } from "../types";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
@@ -21,7 +21,7 @@ interface JsonMixOptions {
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
-  processedElements: CoreContentPart[],
+  processedElements: TCMCoreContentPart[],
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
@@ -52,7 +52,7 @@ function processToolCallJson(
   }
 }
 
-function addTextSegment(text: string, processedElements: CoreContentPart[]) {
+function addTextSegment(text: string, processedElements: TCMCoreContentPart[]) {
   if (text.trim()) {
     processedElements.push({ type: "text", text });
   }
@@ -62,7 +62,7 @@ interface ParseContext {
   match: RegExpExecArray;
   text: string;
   currentIndex: number;
-  processedElements: CoreContentPart[];
+  processedElements: TCMCoreContentPart[];
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
@@ -93,7 +93,7 @@ interface StreamState {
   hasEmittedTextStart: boolean;
 }
 
-type StreamController = TransformStreamDefaultController<CoreStreamPart>;
+type StreamController = TransformStreamDefaultController<TCMCoreStreamPart>;
 
 interface TagProcessingContext {
   state: StreamState;
@@ -185,7 +185,7 @@ function handleFinishChunk(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
-  chunk: CoreStreamPart
+  chunk: TCMCoreStreamPart
 ) {
   if (state.buffer.length > 0) {
     flushBuffer(state, controller, toolCallStart);
@@ -345,7 +345,7 @@ export const jsonMixProtocol = ({
     return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
   },
 
-  formatToolCall(toolCall: CoreToolCall) {
+  formatToolCall(toolCall: TCMCoreToolCall) {
     let args: unknown = {};
     try {
       args = JSON.parse(toolCall.input);
@@ -358,7 +358,7 @@ export const jsonMixProtocol = ({
     })}${toolCallEnd}`;
   },
 
-  formatToolResponse(toolResult: CoreToolResult) {
+  formatToolResponse(toolResult: TCMCoreToolResult) {
     return `${toolResponseStart}${JSON.stringify({
       toolName: toolResult.toolName,
       result: toolResult.result,
@@ -373,7 +373,7 @@ export const jsonMixProtocol = ({
       "gs"
     );
 
-    const processedElements: CoreContentPart[] = [];
+    const processedElements: TCMCoreContentPart[] = [];
     let currentIndex = 0;
     let match = toolCallRegex.exec(text);
 
@@ -417,7 +417,7 @@ export const jsonMixProtocol = ({
           return;
         }
 
-        // Support both CoreStreamPart (textDelta) and LanguageModelV3StreamPart (delta)
+        // Support both TCMCoreStreamPart (textDelta) and LanguageModelV3StreamPart (delta)
         const textContent =
           chunk.textDelta ??
           (chunk as unknown as { delta?: string }).delta ??

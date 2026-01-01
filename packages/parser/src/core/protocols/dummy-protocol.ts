@@ -1,10 +1,10 @@
-import type { CoreStreamPart } from "../types";
+import type { TCMCoreStreamPart } from "../types";
 import { generateId } from "../utils/id";
 import type { ToolCallProtocol } from "./tool-call-protocol";
 
 function handleTextDelta(
   chunk: { type: string; textDelta?: string; delta?: string },
-  controller: TransformStreamDefaultController<CoreStreamPart>,
+  controller: TransformStreamDefaultController<TCMCoreStreamPart>,
   state: { currentTextId: string | null; hasEmittedText: boolean }
 ): void {
   const delta = chunk.textDelta ?? chunk.delta;
@@ -27,8 +27,8 @@ function handleTextDelta(
 }
 
 function handleNonTextDelta(
-  chunk: CoreStreamPart,
-  controller: TransformStreamDefaultController<CoreStreamPart>,
+  chunk: TCMCoreStreamPart,
+  controller: TransformStreamDefaultController<TCMCoreStreamPart>,
   state: { currentTextId: string | null; hasEmittedText: boolean }
 ): void {
   if (state.currentTextId && state.hasEmittedText) {

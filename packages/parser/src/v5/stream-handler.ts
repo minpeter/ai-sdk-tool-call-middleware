@@ -1,5 +1,5 @@
 import type { ToolCallProtocol } from "../core/protocols/tool-call-protocol";
-import type { CoreFunctionTool, CoreStreamPart } from "../core/types";
+import type { TCMCoreFunctionTool, TCMCoreStreamPart } from "../core/types";
 import { generateId } from "../core/utils/id";
 import { originalToolsSchema } from "../core/utils/provider-options";
 
@@ -10,7 +10,7 @@ interface V5TransformerState {
 }
 
 function processPartToV2(
-  p: CoreStreamPart,
+  p: TCMCoreStreamPart,
   state: V5TransformerState,
   controller: TransformStreamDefaultController<unknown>
 ) {
@@ -64,7 +64,7 @@ function processPartToV2(
 }
 
 export function createV5Transformer(): TransformStream<
-  CoreStreamPart,
+  TCMCoreStreamPart,
   unknown
 > {
   const state: V5TransformerState = {
@@ -73,7 +73,7 @@ export function createV5Transformer(): TransformStream<
     callCount: 0,
   };
 
-  return new TransformStream<CoreStreamPart, unknown>({
+  return new TransformStream<TCMCoreStreamPart, unknown>({
     transform(part, controller) {
       processPartToV2(part, state, controller);
     },
@@ -92,13 +92,13 @@ export async function wrapStreamV5({
 }) {
   const tools = originalToolsSchema.decode(
     params.providerOptions?.toolCallMiddleware?.originalTools
-  ) as CoreFunctionTool[];
+  ) as TCMCoreFunctionTool[];
   const options = params.providerOptions?.toolCallMiddleware || {};
 
   const { stream } = await doStream();
 
   const coreInput = (stream as ReadableStream<unknown>).pipeThrough(
-    new TransformStream<unknown, CoreStreamPart>({
+    new TransformStream<unknown, TCMCoreStreamPart>({
       transform(part, controller) {
         // biome-ignore lint/suspicious/noExplicitAny: complex stream part mapping
         const p = part as any;

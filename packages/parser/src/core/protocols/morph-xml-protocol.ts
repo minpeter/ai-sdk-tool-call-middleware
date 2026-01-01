@@ -18,11 +18,11 @@ import {
   shouldDeduplicateStringTags,
 } from "../heuristics";
 import type {
-  CoreContentPart,
-  CoreFunctionTool,
-  CoreStreamPart,
-  CoreToolCall,
-  CoreToolResult,
+  TCMCoreContentPart,
+  TCMCoreFunctionTool,
+  TCMCoreStreamPart,
+  TCMCoreToolCall,
+  TCMCoreToolResult,
 } from "../types";
 import { generateId } from "../utils/id";
 import type { ToolCallProtocol } from "./tool-call-protocol";
@@ -42,14 +42,14 @@ interface ParserOptions {
 }
 
 type FlushTextFn = (
-  controller: TransformStreamDefaultController<CoreStreamPart>,
+  controller: TransformStreamDefaultController<TCMCoreStreamPart>,
   text?: string
 ) => void;
 
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
 const WHITESPACE_REGEX = /\s/;
 
-function getToolSchema(tools: CoreFunctionTool[], toolName: string) {
+function getToolSchema(tools: TCMCoreFunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
 }
 
@@ -103,10 +103,10 @@ interface ProcessToolCallParams {
     startIndex: number;
     endIndex: number;
   };
-  tools: CoreFunctionTool[];
+  tools: TCMCoreFunctionTool[];
   options?: ParserOptions;
   text: string;
-  processedElements: CoreContentPart[];
+  processedElements: TCMCoreContentPart[];
   pipelineConfig?: PipelineConfig;
   maxReparses?: number;
 }
@@ -159,9 +159,9 @@ function processToolCallWithPipeline(params: ProcessToolCallParams): void {
 interface HandleStreamingToolCallEndParams {
   toolContent: string;
   currentToolCall: { name: string; content?: string };
-  tools: CoreFunctionTool[];
+  tools: TCMCoreFunctionTool[];
   options?: ParserOptions;
-  ctrl: TransformStreamDefaultController<CoreStreamPart>;
+  ctrl: TransformStreamDefaultController<TCMCoreStreamPart>;
   flushText: FlushTextFn;
   pipelineConfig?: PipelineConfig;
   maxReparses?: number;
@@ -494,7 +494,7 @@ function createFlushTextHandler(
   setHasEmittedTextStart: (value: boolean) => void
 ) {
   return (
-    controller: TransformStreamDefaultController<CoreStreamPart>,
+    controller: TransformStreamDefaultController<TCMCoreStreamPart>,
     text?: string
   ) => {
     const content = text;
@@ -533,9 +533,9 @@ function createFlushTextHandler(
 interface ProcessToolCallInBufferParams {
   buffer: string;
   currentToolCall: { name: string; content: string };
-  tools: CoreFunctionTool[];
+  tools: TCMCoreFunctionTool[];
   options?: ParserOptions;
-  controller: TransformStreamDefaultController<CoreStreamPart>;
+  controller: TransformStreamDefaultController<TCMCoreStreamPart>;
   flushText: FlushTextFn;
   setBuffer: (buffer: string) => void;
   pipelineConfig?: PipelineConfig;
@@ -589,9 +589,9 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
 interface ProcessNoToolCallInBufferParams {
   buffer: string;
   toolNames: string[];
-  controller: TransformStreamDefaultController<CoreStreamPart>;
+  controller: TransformStreamDefaultController<TCMCoreStreamPart>;
   flushText: FlushTextFn;
-  tools: CoreFunctionTool[];
+  tools: TCMCoreFunctionTool[];
   options?: ParserOptions;
   pipelineConfig?: PipelineConfig;
   maxReparses?: number;
@@ -681,7 +681,7 @@ function createProcessBufferHandler(
   setCurrentToolCall: (
     toolCall: { name: string; content: string } | null
   ) => void,
-  tools: CoreFunctionTool[],
+  tools: TCMCoreFunctionTool[],
   options: ParserOptions | undefined,
   toolNames: string[],
   flushText: FlushTextFn,
@@ -689,7 +689,7 @@ function createProcessBufferHandler(
   maxReparses?: number
 ) {
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: stream parsing state machine requires complex control flow
-  return (controller: TransformStreamDefaultController<CoreStreamPart>) => {
+  return (controller: TransformStreamDefaultController<TCMCoreStreamPart>) => {
     while (true) {
       const currentToolCall = getCurrentToolCall();
       if (currentToolCall) {
@@ -787,7 +787,7 @@ export const morphXmlProtocol = (
       return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
     },
 
-    formatToolCall(toolCall: CoreToolCall): string {
+    formatToolCall(toolCall: TCMCoreToolCall): string {
       let args: unknown = {};
       try {
         args = JSON.parse(toolCall.input);
@@ -800,7 +800,7 @@ export const morphXmlProtocol = (
       });
     },
 
-    formatToolResponse(toolResult: CoreToolResult): string {
+    formatToolResponse(toolResult: TCMCoreToolResult): string {
       let result = toolResult.result;
 
       // Handle cases where the result is wrapped in { type: 'json', value: ... }
@@ -831,7 +831,7 @@ export const morphXmlProtocol = (
         return [{ type: "text", text }];
       }
 
-      const processedElements: CoreContentPart[] = [];
+      const processedElements: TCMCoreContentPart[] = [];
       let currentIndex = 0;
 
       const toolCalls = findToolCalls(text, toolNames);
