@@ -82,6 +82,9 @@ async function main() {
     reporter: reporterEnv ?? "console",
     temperature: 0.0,
     maxTokens: 256,
+    cache: {
+      cacheDir: ".benchmark-results/cache",
+    },
   });
 
   console.log("\nEvaluation complete!");

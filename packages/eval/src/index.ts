@@ -17,5 +17,6 @@ export type {
   BenchmarkResult,
   EvaluateOptions,
   LanguageModelV3Benchmark,
+  ModelConfig,
   ReporterType,
 } from "./interfaces";

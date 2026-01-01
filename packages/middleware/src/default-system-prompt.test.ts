@@ -3,7 +3,8 @@ import type {
   LanguageModelV3Prompt,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { defaultSystemPromptMiddleware } from "../default-system-prompt";
+
+import { defaultSystemPromptMiddleware } from "./default-system-prompt";
 
 function callTransform(
   mw: ReturnType<typeof defaultSystemPromptMiddleware>,

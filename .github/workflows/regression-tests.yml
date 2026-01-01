@@ -156,6 +156,14 @@ jobs:
       - name: Build packages
         run: pnpm build
 
+      - name: Restore benchmark API cache
+        uses: actions/cache@v4
+        with:
+          path: .benchmark-results/cache
+          key: benchmark-api-cache-${{ runner.os }}-${{ hashFiles('packages/middleware/src/disk-cache.ts') }}
+          restore-keys: |
+            benchmark-api-cache-${{ runner.os }}-
+
       - name: Determine benchmark mode
         id: mode
         run: |
