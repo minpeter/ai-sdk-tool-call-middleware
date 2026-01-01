@@ -168,16 +168,24 @@ export function createDiskCacheMiddleware(
       );
       const result = await doGenerate();
 
-      await writeCache(cachePath, {
-        type: "generate",
-        content: result.content,
-        finishReason: result.finishReason,
-        usage: result.usage,
-        warnings: result.warnings,
-        response: result.response,
-        providerMetadata: result.providerMetadata,
-        request: result.request,
-      });
+      const isError =
+        result.finishReason.unified === "error" ||
+        result.finishReason.unified === "other";
+
+      if (isError) {
+        log("SKIP cache (error response)", result.finishReason.unified);
+      } else {
+        await writeCache(cachePath, {
+          type: "generate",
+          content: result.content,
+          finishReason: result.finishReason,
+          usage: result.usage,
+          warnings: result.warnings,
+          response: result.response,
+          providerMetadata: result.providerMetadata,
+          request: result.request,
+        });
+      }
 
       return result;
     },
@@ -219,6 +227,16 @@ export function createDiskCacheMiddleware(
             controller.enqueue(chunk);
           },
           flush() {
+            const finishPart = collectedParts.find((p) => p.type === "finish");
+            const isError =
+              finishPart?.type === "finish" &&
+              (finishPart.finishReason.unified === "error" ||
+                finishPart.finishReason.unified === "other");
+
+            if (isError) {
+              return;
+            }
+
             writeCache(cachePath, {
               type: "stream",
               parts: collectedParts,
