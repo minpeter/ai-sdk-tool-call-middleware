@@ -89,6 +89,42 @@ interface BenchmarkResult {
   };
 }
 
+interface CaseResult {
+  id: string;
+  valid: boolean;
+}
+
+interface EvalResultWithCases {
+  benchmark: string;
+  result: {
+    score: number;
+    metrics: {
+      case_results?: string;
+    };
+  };
+}
+
+const FAST_LIMIT = 5;
+
+function extractFastScores(
+  evalResults: EvalResultWithCases[]
+): Record<string, number> {
+  const scores: Record<string, number> = {};
+  for (const result of evalResults) {
+    const caseResultsJson = result.result.metrics.case_results;
+    if (!caseResultsJson) {
+      scores[result.benchmark] = result.result.score;
+      continue;
+    }
+    const caseResults: CaseResult[] = JSON.parse(caseResultsJson);
+    const first5 = caseResults.slice(0, FAST_LIMIT);
+    const correctCount = first5.filter((c) => c.valid).length;
+    scores[result.benchmark] =
+      first5.length > 0 ? correctCount / first5.length : 0;
+  }
+  return scores;
+}
+
 // All 4 BFCL benchmark categories
 const allBenchmarks = [
   bfclSimpleBenchmark,
@@ -97,16 +133,15 @@ const allBenchmarks = [
   bfclParallelMultipleBenchmark,
 ];
 
-async function runBenchmarks(): Promise<BenchmarkResult> {
+async function runBenchmarks(): Promise<{
+  fullResult: BenchmarkResult;
+  fastResult: BenchmarkResult | null;
+}> {
   const timestamp = new Date().toISOString();
 
-  // 환경변수로 모드 결정 (기본값: fast)
   const mode = (process.env.BENCHMARK_MODE ||
     "fast") as BenchmarkResult["mode"];
 
-  // 모드별 벤치마크 설정
-  // fast: 4개 카테고리 x 5개씩 = 20개 (x2 native/xml = 40개), ~2min
-  // full: 4개 카테고리 전체, ~15min
   const benchmarkConfigs = {
     fast: {
       benchmarks: allBenchmarks,
@@ -124,7 +159,6 @@ async function runBenchmarks(): Promise<BenchmarkResult> {
 
   console.log(`Running in ${mode} mode (${config.desc})\n`);
 
-  // BFCL_LIMIT 환경변수 설정 (fast/quick인 경우)
   if (config.limit) {
     process.env.BFCL_LIMIT = config.limit.toString();
   }
@@ -147,7 +181,6 @@ async function runBenchmarks(): Promise<BenchmarkResult> {
     maxTokens: 512,
   });
 
-  // Extract scores
   const nativeScores: Record<string, number> = {};
   for (const result of nativeResults) {
     nativeScores[result.benchmark] = result.result.score;
@@ -158,7 +191,7 @@ async function runBenchmarks(): Promise<BenchmarkResult> {
     morphXmlScores[result.benchmark] = result.result.score;
   }
 
-  return {
+  const fullResult: BenchmarkResult = {
     commit: commitHash,
     branch,
     timestamp,
@@ -169,26 +202,55 @@ async function runBenchmarks(): Promise<BenchmarkResult> {
       morphxml: morphXmlScores,
     },
   };
+
+  let fastResult: BenchmarkResult | null = null;
+  if (mode === "full") {
+    const nativeFastScores = extractFastScores(
+      nativeResults as EvalResultWithCases[]
+    );
+    const morphXmlFastScores = extractFastScores(
+      morphXmlResults as EvalResultWithCases[]
+    );
+    fastResult = {
+      commit: commitHash,
+      branch,
+      timestamp,
+      model: "zai-org/GLM-4.6",
+      mode: "fast",
+      results: {
+        native: nativeFastScores,
+        morphxml: morphXmlFastScores,
+      },
+    };
+  }
+
+  return { fullResult, fastResult };
 }
 
-function saveResults(results: BenchmarkResult) {
+function saveResults(
+  primaryResult: BenchmarkResult,
+  fastResult: BenchmarkResult | null
+) {
   const resultsDir = path.join(process.cwd(), ".benchmark-results");
   if (!fs.existsSync(resultsDir)) {
     fs.mkdirSync(resultsDir, { recursive: true });
   }
 
-  // Save individual result file
   const filename = `benchmark-${shortHash}-${Date.now()}.json`;
   const filepath = path.join(resultsDir, filename);
-  fs.writeFileSync(filepath, JSON.stringify(results, null, 2));
+  fs.writeFileSync(filepath, JSON.stringify(primaryResult, null, 2));
 
   console.log(`\n💾 Results saved to ${filepath}`);
 
-  // Update history file
   const historyFile = path.join(resultsDir, "history.jsonl");
-  fs.appendFileSync(historyFile, `${JSON.stringify(results)}\n`);
+  fs.appendFileSync(historyFile, `${JSON.stringify(primaryResult)}\n`);
 
-  console.log(`📝 History updated in ${historyFile}`);
+  if (fastResult) {
+    fs.appendFileSync(historyFile, `${JSON.stringify(fastResult)}\n`);
+    console.log("📝 History updated with both full and fast entries");
+  } else {
+    console.log(`📝 History updated in ${historyFile}`);
+  }
 }
 
 function generateReport(results: BenchmarkResult) {
@@ -234,9 +296,9 @@ function generateReport(results: BenchmarkResult) {
 
 async function main() {
   try {
-    const results = await runBenchmarks();
-    await saveResults(results);
-    await generateReport(results);
+    const { fullResult, fastResult } = await runBenchmarks();
+    await saveResults(fullResult, fastResult);
+    await generateReport(fullResult);
 
     process.exit(0);
   } catch (error) {

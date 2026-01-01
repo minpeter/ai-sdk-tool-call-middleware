@@ -1259,13 +1259,18 @@ function createBfclBenchmark(
         }
 
         const score = correctCount / testCases.length;
+        const caseResults = resultsPerCase.map((r, i) => ({
+          id: testCases[i].id,
+          valid: r.valid,
+        }));
         return {
           score,
-          success: score > 0.95, // High success threshold as requested
+          success: score > 0.95,
           metrics: {
             correct_count: correctCount,
             total_cases: testCases.length,
             accuracy: score,
+            case_results: JSON.stringify(caseResults),
           },
           logs,
         };
