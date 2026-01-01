@@ -1,0 +1,499 @@
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import { describe, expect, it } from "vitest";
+import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import {
+  pipeWithTransformer,
+  stopFinishReason,
+  zeroUsage,
+} from "../test-helpers";
+
+function randomChunkSplit(
+  text: string,
+  minSize = 1,
+  maxSize = 10,
+  seed = 0
+): string[] {
+  let state = seed;
+  const MAX_INT = 2_147_483_647;
+  const random = () => {
+    state = Math.abs((state * 1_103_515_245 + 12_345) % MAX_INT);
+    return state / MAX_INT;
+  };
+
+  const chunks: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const size = Math.floor(random() * (maxSize - minSize + 1)) + minSize;
+    chunks.push(text.slice(i, i + size));
+    i += size;
+  }
+  return chunks;
+}
+
+function charByCharSplit(text: string): string[] {
+  return text.split("");
+}
+
+function createChunkedStream(
+  chunks: string[]
+): ReadableStream<LanguageModelV3StreamPart> {
+  return new ReadableStream<LanguageModelV3StreamPart>({
+    start(ctrl) {
+      for (const chunk of chunks) {
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: chunk });
+      }
+      ctrl.enqueue({
+        type: "finish",
+        finishReason: stopFinishReason,
+        usage: zeroUsage,
+      });
+      ctrl.close();
+    },
+  });
+}
+
+function extractToolCalls(
+  output: LanguageModelV3StreamPart[]
+): Array<{ toolName: string; input: unknown }> {
+  return output
+    .filter((c) => c.type === "tool-call")
+    .map((c) => ({
+      toolName: (c as { toolName: string }).toolName,
+      input: JSON.parse((c as { input: string }).input),
+    }));
+}
+
+function extractText(output: LanguageModelV3StreamPart[]): string {
+  return output
+    .filter((c) => c.type === "text-delta")
+    .map((c) => (c as { delta: string }).delta)
+    .join("");
+}
+
+describe("Random chunk boundary fuzzing", () => {
+  const jsonMixTestCases = [
+    {
+      name: "simple tool call",
+      input:
+        '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool_call>',
+      expectedTools: [{ toolName: "get_weather", input: { city: "Seoul" } }],
+      expectedText: "",
+    },
+    {
+      name: "tool call with surrounding text",
+      input:
+        'Let me check. <tool_call>{"name":"search","arguments":{"q":"test"}}</tool_call> Done!',
+      expectedTools: [{ toolName: "search", input: { q: "test" } }],
+      expectedTextContains: ["Let me check.", "Done!"],
+      expectedTextNotContains: ["<tool_call>", "</tool_call>", '"name"'],
+    },
+    {
+      name: "multiple tool calls",
+      input:
+        '<tool_call>{"name":"a","arguments":{"x":1}}</tool_call> and <tool_call>{"name":"b","arguments":{"y":2}}</tool_call>',
+      expectedTools: [
+        { toolName: "a", input: { x: 1 } },
+        { toolName: "b", input: { y: 2 } },
+      ],
+    },
+  ];
+
+  const xmlTestCases = [
+    {
+      name: "simple XML tool call",
+      input: "<get_weather><city>Tokyo</city></get_weather>",
+      expectedTools: [{ toolName: "get_weather", input: { city: "Tokyo" } }],
+    },
+    {
+      name: "XML tool call with multiple params",
+      input: "<search><query>hello world</query><limit>10</limit></search>",
+      expectedTools: [
+        { toolName: "search", input: { query: "hello world", limit: 10 } },
+      ],
+    },
+    {
+      name: "XML with surrounding text",
+      input: "Checking... <get_weather><city>NYC</city></get_weather> found!",
+      expectedTools: [{ toolName: "get_weather", input: { city: "NYC" } }],
+      expectedTextContains: ["Checking...", "found!"],
+    },
+  ];
+
+  // Run each test case with 50 different random chunk splits
+  const FUZZ_ITERATIONS = 50;
+
+  describe("jsonMixProtocol", () => {
+    for (const testCase of jsonMixTestCases) {
+      describe(testCase.name, () => {
+        it.each(
+          Array.from({ length: FUZZ_ITERATIONS }, (_, i) => i)
+        )("produces consistent results with random split seed %i", async (seed) => {
+          const protocol = jsonMixProtocol();
+          const transformer = protocol.createStreamParser({ tools: [] });
+          const chunks = randomChunkSplit(testCase.input, 1, 8, seed);
+          const stream = createChunkedStream(chunks);
+
+          const output = await convertReadableStreamToArray(
+            pipeWithTransformer(stream, transformer)
+          );
+
+          const tools = extractToolCalls(output);
+          expect(tools).toEqual(testCase.expectedTools);
+
+          if (testCase.expectedText !== undefined) {
+            const text = extractText(output);
+            expect(text.trim()).toBe(testCase.expectedText);
+          }
+
+          if (testCase.expectedTextContains) {
+            const text = extractText(output);
+            for (const expected of testCase.expectedTextContains) {
+              expect(text).toContain(expected);
+            }
+          }
+
+          if (testCase.expectedTextNotContains) {
+            const text = extractText(output);
+            for (const notExpected of testCase.expectedTextNotContains) {
+              expect(text).not.toContain(notExpected);
+            }
+          }
+        });
+      });
+    }
+  });
+
+  describe("morphXmlProtocol", () => {
+    const tools = [
+      {
+        type: "function",
+        name: "get_weather",
+        inputSchema: { type: "object" },
+      },
+      { type: "function", name: "search", inputSchema: { type: "object" } },
+    ] as Parameters<
+      ReturnType<typeof morphXmlProtocol>["createStreamParser"]
+    >[0]["tools"];
+
+    for (const testCase of xmlTestCases) {
+      describe(testCase.name, () => {
+        it.each(
+          Array.from({ length: FUZZ_ITERATIONS }, (_, i) => i)
+        )("produces consistent results with random split seed %i", async (seed) => {
+          const protocol = morphXmlProtocol();
+          const transformer = protocol.createStreamParser({ tools });
+          const chunks = randomChunkSplit(testCase.input, 1, 8, seed);
+          const stream = createChunkedStream(chunks);
+
+          const output = await convertReadableStreamToArray(
+            pipeWithTransformer(stream, transformer)
+          );
+
+          const parsedTools = extractToolCalls(output);
+          expect(parsedTools).toEqual(testCase.expectedTools);
+
+          if (testCase.expectedTextContains) {
+            const text = extractText(output);
+            for (const expected of testCase.expectedTextContains) {
+              expect(text).toContain(expected);
+            }
+          }
+        });
+      });
+    }
+  });
+});
+
+describe("Single-character chunk streaming", () => {
+  describe("jsonMixProtocol", () => {
+    it("parses tool call when streamed char-by-char", async () => {
+      const input =
+        '<tool_call>{"name":"test","arguments":{"value":"hello"}}</tool_call>';
+      const protocol = jsonMixProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = charByCharSplit(input);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      expect(tools).toEqual([{ toolName: "test", input: { value: "hello" } }]);
+    });
+
+    it("handles text + tool call + text char-by-char", async () => {
+      const input =
+        'Before <tool_call>{"name":"x","arguments":{}}</tool_call> After';
+      const protocol = jsonMixProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = charByCharSplit(input);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      const text = extractText(output);
+
+      expect(tools).toEqual([{ toolName: "x", input: {} }]);
+      expect(text).toContain("Before");
+      expect(text).toContain("After");
+      expect(text).not.toContain("<tool_call>");
+    });
+
+    it("handles multiple tool calls char-by-char", async () => {
+      const input =
+        '<tool_call>{"name":"a","arguments":{"n":1}}</tool_call><tool_call>{"name":"b","arguments":{"n":2}}</tool_call>';
+      const protocol = jsonMixProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = charByCharSplit(input);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      expect(tools).toEqual([
+        { toolName: "a", input: { n: 1 } },
+        { toolName: "b", input: { n: 2 } },
+      ]);
+    });
+  });
+
+  describe("morphXmlProtocol", () => {
+    const tools = [
+      {
+        type: "function",
+        name: "get_weather",
+        inputSchema: { type: "object" },
+      },
+      { type: "function", name: "search", inputSchema: { type: "object" } },
+    ] as Parameters<
+      ReturnType<typeof morphXmlProtocol>["createStreamParser"]
+    >[0]["tools"];
+
+    it("parses XML tool call when streamed char-by-char", async () => {
+      const input = "<get_weather><city>Seoul</city></get_weather>";
+      const protocol = morphXmlProtocol();
+      const transformer = protocol.createStreamParser({ tools });
+      const chunks = charByCharSplit(input);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const parsedTools = extractToolCalls(output);
+      expect(parsedTools).toEqual([
+        { toolName: "get_weather", input: { city: "Seoul" } },
+      ]);
+    });
+
+    it("handles nested params char-by-char", async () => {
+      const input =
+        "<search><query>test query</query><limit>5</limit><offset>0</offset></search>";
+      const protocol = morphXmlProtocol();
+      const transformer = protocol.createStreamParser({ tools });
+      const chunks = charByCharSplit(input);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const parsedTools = extractToolCalls(output);
+      expect(parsedTools).toEqual([
+        {
+          toolName: "search",
+          input: { query: "test query", limit: 5, offset: 0 },
+        },
+      ]);
+    });
+  });
+});
+
+describe("Unicode and special character boundary handling", () => {
+  describe("jsonMixProtocol", () => {
+    it("handles Korean characters in arguments", async () => {
+      const input =
+        '<tool_call>{"name":"search","arguments":{"query":"서울 날씨"}}</tool_call>';
+      const protocol = jsonMixProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+
+      const chunks = randomChunkSplit(input, 1, 5, 42);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      expect(tools).toEqual([
+        { toolName: "search", input: { query: "서울 날씨" } },
+      ]);
+    });
+
+    it("handles Japanese characters in arguments", async () => {
+      const input =
+        '<tool_call>{"name":"translate","arguments":{"text":"こんにちは世界"}}</tool_call>';
+      const protocol = jsonMixProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = randomChunkSplit(input, 1, 4, 123);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      expect(tools).toEqual([
+        { toolName: "translate", input: { text: "こんにちは世界" } },
+      ]);
+    });
+
+    it("handles emoji in arguments", async () => {
+      const input =
+        '<tool_call>{"name":"react","arguments":{"emoji":"🎉🚀💻"}}</tool_call>';
+      const protocol = jsonMixProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = randomChunkSplit(input, 1, 3, 999);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      expect(tools).toEqual([
+        { toolName: "react", input: { emoji: "🎉🚀💻" } },
+      ]);
+    });
+
+    it("handles mixed unicode and ASCII", async () => {
+      const input =
+        '<tool_call>{"name":"search","arguments":{"query":"Hello 世界 🌍 Привет"}}</tool_call>';
+      const protocol = jsonMixProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = randomChunkSplit(input, 1, 6, 777);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      expect(tools).toEqual([
+        { toolName: "search", input: { query: "Hello 世界 🌍 Привет" } },
+      ]);
+    });
+
+    it("handles escaped characters in JSON", async () => {
+      const input =
+        '<tool_call>{"name":"code","arguments":{"snippet":"function() {\\n  return \\"test\\";\\n}"}}</tool_call>';
+      const protocol = jsonMixProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = randomChunkSplit(input, 1, 5, 555);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      expect(tools).toEqual([
+        {
+          toolName: "code",
+          input: { snippet: 'function() {\n  return "test";\n}' },
+        },
+      ]);
+    });
+
+    it("handles special XML-like characters in JSON strings", async () => {
+      const input =
+        '<tool_call>{"name":"html","arguments":{"content":"<div class=\\"test\\">Hello</div>"}}</tool_call>';
+      const protocol = jsonMixProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = randomChunkSplit(input, 1, 4, 333);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      expect(tools).toEqual([
+        {
+          toolName: "html",
+          input: { content: '<div class="test">Hello</div>' },
+        },
+      ]);
+    });
+  });
+
+  describe("morphXmlProtocol", () => {
+    const tools = [
+      { type: "function", name: "search", inputSchema: { type: "object" } },
+      { type: "function", name: "translate", inputSchema: { type: "object" } },
+      { type: "function", name: "react", inputSchema: { type: "object" } },
+    ] as Parameters<
+      ReturnType<typeof morphXmlProtocol>["createStreamParser"]
+    >[0]["tools"];
+
+    it("handles Korean characters in XML content", async () => {
+      const input = "<search><query>서울 맛집 추천</query></search>";
+      const protocol = morphXmlProtocol();
+      const transformer = protocol.createStreamParser({ tools });
+      const chunks = randomChunkSplit(input, 1, 4, 42);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const parsedTools = extractToolCalls(output);
+      expect(parsedTools).toEqual([
+        { toolName: "search", input: { query: "서울 맛집 추천" } },
+      ]);
+    });
+
+    it("handles Chinese characters in XML content", async () => {
+      const input = "<translate><text>你好世界</text><to>en</to></translate>";
+      const protocol = morphXmlProtocol();
+      const transformer = protocol.createStreamParser({ tools });
+      const chunks = randomChunkSplit(input, 1, 5, 88);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const parsedTools = extractToolCalls(output);
+      expect(parsedTools).toEqual([
+        { toolName: "translate", input: { text: "你好世界", to: "en" } },
+      ]);
+    });
+
+    it("handles emoji in XML content", async () => {
+      const input =
+        "<react><type>celebrate</type><emoji>🎊🎉✨</emoji></react>";
+      const protocol = morphXmlProtocol();
+      const transformer = protocol.createStreamParser({ tools });
+      const chunks = randomChunkSplit(input, 1, 3, 111);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const parsedTools = extractToolCalls(output);
+      expect(parsedTools).toEqual([
+        { toolName: "react", input: { type: "celebrate", emoji: "🎊🎉✨" } },
+      ]);
+    });
+  });
+});
