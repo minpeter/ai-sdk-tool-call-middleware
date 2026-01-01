@@ -18,7 +18,17 @@
             "context": 128000,
             "output": 8192
           }
-        },
+        }
+      }
+    },
+    "tcm-xml": {
+      "npm": "./plugin/friendli-tcm/provider.ts",
+      "name": "TCM Friendli XML",
+      "options": {
+        "baseURL": "https://api.friendli.ai/serverless/v1",
+        "apiKey": "{env:FRIENDLI_TOKEN}"
+      },
+      "models": {
         "glm-xml": {
           "id": "zai-org/GLM-4.6",
           "name": "GLM-4.6 (XML Tool Calling)",

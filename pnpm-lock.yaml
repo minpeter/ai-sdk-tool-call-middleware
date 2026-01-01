@@ -51,6 +51,28 @@ importers:
         specifier: ^4.0.16
         version: 4.0.16(@opentelemetry/api@1.9.0)(@types/node@25.0.3)(@vitest/ui@4.0.16)(jiti@2.6.1)(tsx@4.21.0)
 
+  .opencode/plugin/friendli-tcm:
+    dependencies:
+      '@ai-sdk-tool/parser':
+        specifier: workspace:*
+        version: link:../../../packages/parser
+      '@ai-sdk/openai-compatible':
+        specifier: ^2.0.0
+        version: 2.0.2(zod@4.2.1)
+      ai:
+        specifier: ^6.0.0
+        version: 6.0.5(zod@4.2.1)
+    devDependencies:
+      '@opencode-ai/plugin':
+        specifier: latest
+        version: 1.0.222
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.3
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   examples/eval-core:
     dependencies:
       '@ai-sdk-tool/eval':
@@ -692,6 +714,12 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
+  '@opencode-ai/plugin@1.0.222':
+    resolution: {integrity: sha512-PiAIAUfMGuotEUExpxF11qLd+uBMnfpaLa0IdOP4J1DTEwrR5JCR097TouWy8O3zJqhwwlrxHUkojmw1WgVwoQ==}
+
+  '@opencode-ai/sdk@1.0.222':
+    resolution: {integrity: sha512-t92owHoFYhYlbi7RgOlor+gUkji7wUk3jm7gtzJQC3tJCYNMSEaPhHUYVtYwhsZVAIZBzdbeR8/h9tgSlYNofw==}
+
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
     engines: {node: '>=8.0.0'}
@@ -831,6 +859,9 @@ packages:
 
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
+
+  '@types/node@22.19.3':
+    resolution: {integrity: sha512-1N9SBnWYOJTrNZCdh/yJE+t910Y128BoyY+zBLWhL3r0TYzlTmFdXrPwHL9DyFZmlEXNQQolTZh3KHV31QDhyA==}
 
   '@types/node@25.0.3':
     resolution: {integrity: sha512-W609buLVRVmeW693xKfzHeIV6nJGGz98uCPfeXI1ELMLXVeKYZ9m15fAMSaUPBHYLGFsVRcMmSCksQOrZV9BYA==}
@@ -2263,6 +2294,9 @@ packages:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
     engines: {node: '>= 0.4'}
 
+  undici-types@6.21.0:
+    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
@@ -2384,6 +2418,9 @@ packages:
 
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
+
+  zod@4.1.8:
+    resolution: {integrity: sha512-5R1P+WwQqmmMIEACyzSvo4JXHY5WiAFHRMg+zBZKgKS+Q1viRa0C1hmUKtHltoIFKtIdki3pRxkmpP74jnNYHQ==}
 
   zod@4.2.1:
     resolution: {integrity: sha512-0wZ1IRqGGhMP76gLqz8EyfBXKk0J2qo2+H3fi4mcUP/KtTocoX08nmIAHl1Z2kJIZbZee8KOpBCSNPRgauucjw==}
@@ -2788,6 +2825,13 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
+  '@opencode-ai/plugin@1.0.222':
+    dependencies:
+      '@opencode-ai/sdk': 1.0.222
+      zod: 4.1.8
+
+  '@opencode-ai/sdk@1.0.222': {}
+
   '@opentelemetry/api@1.9.0': {}
 
   '@pinojs/redact@0.4.0': {}
@@ -2876,6 +2920,10 @@ snapshots:
   '@types/estree@1.0.8': {}
 
   '@types/node@12.20.55': {}
+
+  '@types/node@22.19.3':
+    dependencies:
+      undici-types: 6.21.0
 
   '@types/node@25.0.3':
     dependencies:
@@ -4455,6 +4503,8 @@ snapshots:
       has-symbols: 1.1.0
       which-boxed-primitive: 1.1.1
 
+  undici-types@6.21.0: {}
+
   undici-types@7.16.0: {}
 
   universalify@0.1.2: {}
@@ -4580,5 +4630,7 @@ snapshots:
       stackback: 0.0.2
 
   wrappy@1.0.2: {}
+
+  zod@4.1.8: {}
 
   zod@4.2.1: {}
