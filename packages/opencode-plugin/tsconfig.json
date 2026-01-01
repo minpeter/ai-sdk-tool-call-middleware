@@ -6,5 +6,16 @@
     "moduleResolution": "bundler",
     "strictNullChecks": true
   },
-  "include": ["src/**/*"]
+<<<<<<< Updated upstream
+  "include": ["src/**/*"],
+=======
+  "include": [
+    "src/**/*"
+  ],
+>>>>>>> Stashed changes
+  "references": [
+    {
+      "path": "../parser"
+    }
+  ]
 }
