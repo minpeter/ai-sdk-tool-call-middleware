@@ -10,15 +10,15 @@ on:
         default: 'quick'
         type: choice
         options:
-          - ultra-quick  # 50 cases (~2min)
-          - quick        # 100 cases (~5min)
-          - full         # all cases (~15min)
+          - fast           # 4 categories x 5 cases (~2min)
+          - quick          # 100 cases (~5min)
+          - full           # all cases (~15min)
 
   # PR 댓글 트리거
   issue_comment:
     types: [created]
 
-  # PR 생성 및 커밋 추가 시 자동 실행 (quick 모드)
+  # PR 생성 및 커밋 추가 시 자동 실행 (fast 모드)
   pull_request:
     types: [opened, synchronize]
     paths:
@@ -76,8 +76,8 @@ jobs:
             if (comment.includes('/benchmark')) {
               shouldRun = true;
 
-              if (comment.includes('ultra') || comment.includes('fast')) {
-                mode = 'ultra-quick';
+              if (comment.includes('fast')) {
+                mode = 'fast';
               } else if (comment.includes('full') || comment.includes('all')) {
                 mode = 'full';
               } else {
@@ -153,7 +153,7 @@ jobs:
             github.event_name == 'workflow_dispatch' && github.event.inputs.benchmark_mode ||
             (github.event_name == 'issue_comment' && needs.parse-comment.outputs.mode) ||
             (github.event_name == 'push' && 'full') ||
-            (github.event_name == 'pull_request' && 'quick') ||
+            (github.event_name == 'pull_request' && 'fast') ||
             'quick'
           }}"
           echo "mode=$MODE" >> $GITHUB_OUTPUT
