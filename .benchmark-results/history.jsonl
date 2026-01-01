@@ -4,3 +4,5 @@
 {"commit":"2a1c883b3baf389e48414c59f0751fc9393dc882","branch":"HEAD","timestamp":"2025-12-26T09:14:49.448Z","model":"zai-org/GLM-4.6","mode":"quick","results":{"native":{"bfcl-simple":0.96},"morphxml":{"bfcl-simple":0.03}}}
 {"commit":"1845ef79899f8f28024ba52d8c371038b5e8ab9e","branch":"v6","timestamp":"2025-12-26T09:31:28.648Z","model":"zai-org/GLM-4.6","mode":"quick","results":{"native":{"bfcl-simple":0.96},"morphxml":{"bfcl-simple":0.6}}}
 {"commit":"947c671446d0b370f154bc73dede531759b28187","branch":"v6","timestamp":"2025-12-26T09:46:12.422Z","model":"zai-org/GLM-4.6","mode":"quick","results":{"native":{"bfcl-simple":0.96},"morphxml":{"bfcl-simple":0.04}}}
+{"commit":"008d494a8d54edd089bb767d59476eb6ab912ff6","branch":"feat/friendli-glm-plugin","timestamp":"2026-01-01T14:24:08.008Z","model":"zai-org/GLM-4.6","mode":"quick","results":{"native":{"bfcl-simple":0.65},"morphxml":{"bfcl-simple":0.54}}}
+{"commit":"94e488b394c259f0cc75af5810108755402b4b26","branch":"main","timestamp":"2026-01-01T14:26:48.147Z","model":"zai-org/GLM-4.6","mode":"ultra-quick","results":{"native":{"bfcl-simple":0.98},"morphxml":{"bfcl-simple":0.98}}}
