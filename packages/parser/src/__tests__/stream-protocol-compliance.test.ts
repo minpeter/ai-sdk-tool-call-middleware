@@ -2,8 +2,8 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test } from "vitest";
 
-import { dummyProtocol } from "../protocols/dummy-protocol";
-import { createToolMiddleware } from "../tool-call-middleware";
+import { dummyProtocol } from "../core/protocols/dummy-protocol";
+import { createToolMiddleware } from "../v6/tool-call-middleware";
 import { mockUsage, stopFinishReason, zeroUsage } from "./test-helpers";
 
 describe("AI SDK v5 stream protocol compliance", () => {

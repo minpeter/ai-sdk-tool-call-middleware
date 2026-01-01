@@ -30,7 +30,7 @@
     "tsx": "^4.21.0",
     "turbo": "^2.7.2",
     "typescript": "5.9.3",
-    "ultracite": "6.5.1",
+    "ultracite": "7.0.3",
     "update-ts-references": "^4.0.0",
     "vitest": "^4.0.16"
   },

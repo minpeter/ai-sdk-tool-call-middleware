@@ -1,0 +1,44 @@
+{
+  "name": "@ai-sdk-tool/opencode-plugin",
+  "version": "0.1.0",
+  "description": "OpenCode plugin for Friendli GLM with tool calling middleware",
+  "type": "module",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware",
+    "directory": "packages/opencode-plugin"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./provider": {
+      "types": "./dist/provider.d.ts",
+      "import": "./dist/provider.js"
+    }
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "scripts": {
+    "build": "pnpm clean && tsup --tsconfig tsconfig.build.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk-tool/parser": "workspace:*",
+    "@ai-sdk/openai-compatible": "npm:@ai-sdk/openai-compatible@1.0.30",
+    "ai": "npm:ai@5.0.117"
+  },
+  "devDependencies": {
+    "@ai-sdkx/tsconfig": "workspace:*",
+    "@opencode-ai/plugin": "^1.0.222",
+    "@types/node": "^25.0.3",
+    "tsup": "^8.5.1"
+  },
+  "license": "Apache-2.0"
+}

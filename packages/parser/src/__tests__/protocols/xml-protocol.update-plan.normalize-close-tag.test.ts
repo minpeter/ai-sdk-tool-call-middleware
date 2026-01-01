@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 vi.spyOn(console, "warn").mockImplementation(() => {
   // suppress console warnings in tests
