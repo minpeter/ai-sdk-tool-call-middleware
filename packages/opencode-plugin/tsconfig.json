@@ -3,7 +3,8 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    "strictNullChecks": true
   },
   "include": ["src/**/*"]
 }
