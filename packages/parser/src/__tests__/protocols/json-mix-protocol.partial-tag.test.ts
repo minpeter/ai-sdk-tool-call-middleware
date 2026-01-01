@@ -2,8 +2,12 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
-import { jsonMixProtocol } from "../../protocols/json-mix-protocol";
-import { stopFinishReason, zeroUsage } from "../test-helpers";
+import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import {
+  pipeWithTransformer,
+  stopFinishReason,
+  zeroUsage,
+} from "../test-helpers";
 
 describe("jsonMixProtocol partial tag handling", () => {
   it("breaks inner loop when only partial start tag suffix present and publishes buffer", async () => {
@@ -20,7 +24,9 @@ describe("jsonMixProtocol partial tag handling", () => {
         ctrl.close();
       },
     });
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((c) => (c as any).delta)

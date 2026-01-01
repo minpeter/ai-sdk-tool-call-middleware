@@ -2,8 +2,8 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
 
-import { jsonMixProtocol } from "../../protocols/json-mix-protocol";
-import { createToolMiddleware } from "../../tool-call-middleware";
+import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { createToolMiddleware } from "../../v6/tool-call-middleware";
 import { mockUsage, stopFinishReason } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({

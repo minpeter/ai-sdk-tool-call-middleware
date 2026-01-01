@@ -1,29 +1,41 @@
-import { generateId } from "@ai-sdk/provider-utils";
-
+import type { TCMCoreStreamPart } from "../types";
+import { generateId } from "../utils/id";
 import type { ToolCallProtocol } from "./tool-call-protocol";
 
 function handleTextDelta(
-  chunk: { type: string; delta?: string },
-  controller: TransformStreamDefaultController,
+  chunk: { type: string; textDelta?: string; delta?: string },
+  controller: TransformStreamDefaultController<TCMCoreStreamPart>,
   state: { currentTextId: string | null; hasEmittedText: boolean }
 ): void {
-  if (chunk.delta) {
+  const delta = chunk.textDelta ?? chunk.delta;
+  if (delta !== undefined && delta !== "") {
     if (!state.currentTextId) {
       state.currentTextId = generateId();
-      controller.enqueue({ type: "text-start", id: state.currentTextId });
+      controller.enqueue({
+        type: "text-start",
+        id: state.currentTextId,
+      });
     }
-    controller.enqueue({ ...chunk, id: state.currentTextId });
+    controller.enqueue({
+      type: "text-delta",
+      id: state.currentTextId,
+      textDelta: delta,
+      delta,
+    });
     state.hasEmittedText = true;
   }
 }
 
 function handleNonTextDelta(
-  chunk: unknown,
-  controller: TransformStreamDefaultController,
+  chunk: TCMCoreStreamPart,
+  controller: TransformStreamDefaultController<TCMCoreStreamPart>,
   state: { currentTextId: string | null; hasEmittedText: boolean }
 ): void {
   if (state.currentTextId && state.hasEmittedText) {
-    controller.enqueue({ type: "text-end", id: state.currentTextId });
+    controller.enqueue({
+      type: "text-end",
+      id: state.currentTextId,
+    });
   }
   state.currentTextId = null;
   state.hasEmittedText = false;
@@ -43,15 +55,12 @@ export const dummyProtocol = (): ToolCallProtocol => ({
 
     return new TransformStream({
       transform(chunk, controller) {
-        if (chunk.type === "text-delta") {
-          handleTextDelta(chunk, controller, state);
+        // biome-ignore lint/suspicious/noExplicitAny: complex core stream part mapping
+        const c = chunk as any;
+        if (c.type === "text-delta") {
+          handleTextDelta(c, controller, state);
         } else {
-          handleNonTextDelta(chunk, controller, state);
-        }
-      },
-      flush(controller) {
-        if (state.currentTextId && state.hasEmittedText) {
-          controller.enqueue({ type: "text-end", id: state.currentTextId });
+          handleNonTextDelta(c, controller, state);
         }
       },
     });

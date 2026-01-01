@@ -1,7 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { jsonMixProtocol } from "../protocols/json-mix-protocol";
-import { createToolMiddleware } from "../tool-call-middleware";
+import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
+import { createToolMiddleware } from "../v6/tool-call-middleware";
 
 describe("tool middleware placement option", () => {
   const tools: LanguageModelV3FunctionTool[] = [

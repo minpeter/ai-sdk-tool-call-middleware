@@ -5,8 +5,8 @@ import {
   hermesToolMiddleware,
   morphXmlToolMiddleware,
 } from "..";
-import { jsonMixProtocol } from "../protocols/json-mix-protocol";
-import { createToolMiddleware } from "../tool-call-middleware";
+import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
+import { createToolMiddleware } from "../v6/tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -18,6 +18,7 @@ const REGEX_TOOL_CALL_FENCE = /```tool_call/;
 const REGEX_TOOL_RESPONSE_FENCE = /```tool_response/;
 const REGEX_GET_WEATHER = /get_weather/;
 const REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
+const REGEX_MAY_CALL_FUNCTIONS = /You may call one or more functions/;
 const REGEX_TOOLS_TAG = /<tools>/;
 const REGEX_NONE = /none/;
 const REGEX_NOT_FOUND = /not found/;
@@ -76,7 +77,7 @@ describe("index prompt templates", () => {
     const system = out.prompt[0];
     expect(system.role).toBe("system");
     const text = String(system.content);
-    expect(text).toMatch(REGEX_FUNCTION_CALLING_MODEL);
+    expect(text).toMatch(REGEX_MAY_CALL_FUNCTIONS);
     expect(text).toMatch(REGEX_TOOLS_TAG);
     expect(text).toMatch(REGEX_GET_WEATHER);
   });

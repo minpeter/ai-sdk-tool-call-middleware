@@ -8,8 +8,8 @@ import {
   type PipelineConfig,
   repairAgainstSchemaHeuristic,
   type ToolCallHeuristic,
-} from "../../heuristics";
-import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
+} from "../../core/heuristics";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 describe("morphXmlProtocol pipeline integration", () => {
   const simpleTools: LanguageModelV3FunctionTool[] = [

@@ -1,8 +1,12 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
-import { stopFinishReason, zeroUsage } from "../test-helpers";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import {
+  pipeWithTransformer,
+  stopFinishReason,
+  zeroUsage,
+} from "../test-helpers";
 
 const tools = [
   {
@@ -39,7 +43,9 @@ describe("morphXmlProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toMatchObject({ type: "tool-call", toolName: "get_weather" });
   });
@@ -66,7 +72,9 @@ describe("morphXmlProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     // Either a text piece was emitted, or a tool-call was parsed; both are acceptable
     const text = out
       .filter((c) => c.type === "text-delta")
@@ -94,7 +102,9 @@ describe("morphXmlProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
@@ -129,7 +139,9 @@ describe("morphXmlProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const tool = out.find((c) => c.type === "tool-call") as any;
     expect(tool).toBeTruthy();
     const args = JSON.parse(tool.input);
@@ -162,7 +174,9 @@ describe("morphXmlProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const toolsOut = out.filter((c) => c.type === "tool-call") as any[];
     // Some providers may coalesce or delay parsing; accept >=1 and validate contents when present
     expect(toolsOut.length).toBeGreaterThanOrEqual(1);
@@ -195,7 +209,9 @@ describe("morphXmlProtocol streaming edge cases", () => {
         ctrl.close();
       },
     });
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const tool = out.find((c) => c.type === "tool-call") as any;
     expect(tool).toBeTruthy();
     expect(JSON.parse(tool.input).location).toBe("NY");

@@ -21,13 +21,14 @@ export function stringify(
 ): string {
   try {
     const format = options.format ?? true;
+    const declaration = options.declaration ?? false;
     const minimalEscaping = options.minimalEscaping ?? false;
     const suppressEmptyNode = options.suppressEmptyNode ?? false;
     const strictBooleanAttributes = options.strictBooleanAttributes ?? false;
 
     let result = "";
 
-    if (format) {
+    if (declaration) {
       result += '<?xml version="1.0" encoding="UTF-8"?>\n';
     }
 
@@ -38,6 +39,10 @@ export function stringify(
       minimalEscaping,
       strictBooleanAttributes,
     });
+
+    if (result.endsWith("\n")) {
+      return result.slice(0, -1);
+    }
 
     return result;
   } catch (error) {

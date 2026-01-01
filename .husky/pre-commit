@@ -34,10 +34,10 @@ if [ $STASHED -eq 0 ]; then
       fi
     done
   fi
-  
+
   # Restore unstaged changes
   git stash pop --quiet || true
-  
+
   # Restore partial staging if files were partially staged
   if [ -n "$PARTIALLY_STAGED" ]; then
     for file in $PARTIALLY_STAGED; do
