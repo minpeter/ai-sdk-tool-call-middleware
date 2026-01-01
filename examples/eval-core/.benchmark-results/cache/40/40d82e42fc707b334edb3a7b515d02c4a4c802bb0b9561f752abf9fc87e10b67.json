@@ -1,0 +1,88 @@
+{
+  "type": "generate",
+  "content": [
+    {
+      "type": "tool-call",
+      "toolCallId": "xp5gjsds6xk",
+      "toolName": "gcd",
+      "input": "{\"num1\":96,\"num2\":128}"
+    },
+    { "type": "text", "text": "\n" },
+    {
+      "type": "tool-call",
+      "toolCallId": "wvxlu5vebol",
+      "toolName": "lcm",
+      "input": "{\"num1\":15,\"num2\":25}"
+    },
+    { "type": "text", "text": "\n" },
+    {
+      "type": "tool-call",
+      "toolCallId": "lmizpxxb0na",
+      "toolName": "gcd",
+      "input": "{\"num1\":96,\"num2\":128}"
+    },
+    { "type": "text", "text": "\n" },
+    {
+      "type": "tool-call",
+      "toolCallId": "qs8alr1kcgo",
+      "toolName": "lcm",
+      "input": "{\"num1\":15,\"num2\":25}"
+    }
+  ],
+  "finishReason": { "unified": "stop", "raw": "stop" },
+  "usage": {
+    "inputTokens": { "total": 757, "noCache": 757, "cacheRead": 0 },
+    "outputTokens": { "total": 99, "text": 99, "reasoning": 0 },
+    "raw": {
+      "prompt_tokens": 757,
+      "completion_tokens": 99,
+      "total_tokens": 856
+    }
+  },
+  "warnings": [],
+  "response": {
+    "id": "chatcmpl-00fc2a5916ef46fd9b757bfc6e77210b",
+    "modelId": "meta-llama/Llama-4-Maverick-17B-128E-Instruct",
+    "timestamp": "2026-01-01T19:33:02.000Z",
+    "headers": {
+      "access-control-allow-credentials": "true",
+      "connection": "keep-alive",
+      "content-length": "525",
+      "content-type": "application/json",
+      "date": "Thu, 01 Jan 2026 19:33:02 GMT",
+      "server": "envoy",
+      "vary": "Origin",
+      "x-envoy-upstream-service-time": "1104",
+      "x-friendli-lb-weight": "2",
+      "x-ratelimit-limit-requests": "100",
+      "x-ratelimit-remaining-requests": "93",
+      "x-ratelimit-reset-requests": "52"
+    },
+    "body": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "<gcd>\n  <num1>96</num1>\n  <num2>128</num2>\n</gcd>\n<lcm>\n  <num1>15</num1>\n  <num2>25</num2>\n</lcm>\n<gcd><num1>96</num1><num2>128</num2></gcd>\n<lcm><num1>15</num1><num2>25</num2></lcm>",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 1767295982,
+      "id": "chatcmpl-00fc2a5916ef46fd9b757bfc6e77210b",
+      "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 99,
+        "prompt_tokens": 757,
+        "total_tokens": 856
+      }
+    }
+  },
+  "providerMetadata": { "friendli": {} },
+  "request": {
+    "body": "{\"model\":\"meta-llama/Llama-4-Maverick-17B-128E-Instruct\",\"max_tokens\":256,\"temperature\":0,\"messages\":[{\"role\":\"user\",\"content\":\"Calculate the Greatest Common Divisor (GCD) of 96 and 128, and the least common multiple (LCM) of 15 and 25.\"},{\"role\":\"system\",\"content\":\"You are an AI assistant capable of executing tool calls.\\n\\n# Tool Definitions\\nThe available tools are defined below in JSON Schema format.\\n<tools>\\n[{\\\"name\\\":\\\"primeFactors\\\",\\\"description\\\":\\\"Find all prime factors of an integer.\\\",\\\"parameters\\\":{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"num\\\":{\\\"type\\\":\\\"number\\\",\\\"description\\\":\\\"The integer.\\\"},\\\"withMultiplicity\\\":{\\\"type\\\":\\\"boolean\\\",\\\"description\\\":\\\"If true, includes the multiplicity of each factor.\\\",\\\"default\\\":\\\"false\\\"}},\\\"required\\\":[\\\"num\\\"]}},{\\\"name\\\":\\\"lcm\\\",\\\"description\\\":\\\"Calculate the least common multiple of two integers.\\\",\\\"parameters\\\":{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"num1\\\":{\\\"type\\\":\\\"number\\\",\\\"description\\\":\\\"The first integer.\\\"},\\\"num2\\\":{\\\"type\\\":\\\"number\\\",\\\"description\\\":\\\"The second integer.\\\"}},\\\"required\\\":[\\\"num1\\\",\\\"num2\\\"]}},{\\\"name\\\":\\\"gcd\\\",\\\"description\\\":\\\"Calculate the greatest common divisor of two integers.\\\",\\\"parameters\\\":{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"num1\\\":{\\\"type\\\":\\\"number\\\",\\\"description\\\":\\\"The first integer.\\\"},\\\"num2\\\":{\\\"type\\\":\\\"number\\\",\\\"description\\\":\\\"The second integer.\\\"}},\\\"required\\\":[\\\"num1\\\",\\\"num2\\\"]}}]\\n</tools>\\n\\n# Instructions\\n1. **Output Format**: Use XML.\\n   - `<tool_name><param1>value1</param1>...</tool_name>`\\n2. **Parameter Names**: You MUST use the **EXACT** parameter names from the JSON schema.\\n   - 🔴 BAD: `<turns_per_meter>...</turns_per_meter>` (if schema says `turnsPerMeter`)\\n   - 🟢 GOOD: `<turnsPerMeter>...</turnsPerMeter>`\\n   - 🔴 BAD: `<from>...</from>` (if schema says `_from`)\\n   - 🟢 GOOD: `<_from>...</_from>`\\n   - 🔴 BAD: `<airline>...</airline>` (if schema says `airlines`)\\n   - 🟢 GOOD: `<airlines>...</airlines>`\\n3. **Parameter Values**:\\n   - Keep numbers as numbers (e.g. `0.05` should not become `5`).\\n   - Keep strings as strings.\\n   - Do NOT wrap JSON objects in extra XML tags unless necessary.\\n4. **Call Count**:\\n   - Call ONLY the functions explicitly requested by the user.\\n   - Do NOT output multiple variations of the same call.\\n   - Do NOT output \\\"thought\\\" or \\\"reasoning\\\".\\n   - **STOP generating immediately after the closing tag of the last function call.**\\n\\n# Examples\\n\\n## CamelCase Parameter Preservation\\nSchema: `motor_control(speedInRPM, max_current)`\\nUser: Set speed to 1000 and max current to 5.\\nModel:\\n<motor_control>\\n  <speedInRPM>1000</speedInRPM>\\n  <max_current>5</max_current>\\n</motor_control>\\n\\n## Underscore Parameter Preservation\\nSchema: `search(_from, to)`\\nUser: Search from A to B.\\nModel:\\n<search>\\n  <_from>A</_from>\\n  <to>B</to>\\n</search>\\n\\n## Exact Number Preservation\\nSchema: `set_rate(rate)`\\nUser: Set rate to 5%.\\nModel:\\n<set_rate>\\n  <rate>0.05</rate>\\n</set_rate>\\n\\n## Multiple Calls (Sequential)\\nUser: Get weather in NY and LA.\\nModel:\\n<get_weather>\\n  <location>NY</location>\\n</get_weather>\\n<get_weather>\\n  <location>LA</location>\\n</get_weather>\\n\"}]}"
+  }
+}

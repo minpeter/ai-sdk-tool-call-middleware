@@ -4,6 +4,8 @@ export default defineConfig([
   {
     entry: {
       index: "src/index.ts",
+      "reasoning-parser": "src/reasoning-parser.ts",
+      "disk-cache": "src/disk-cache.ts",
     },
     format: ["cjs", "esm"],
     dts: true,
