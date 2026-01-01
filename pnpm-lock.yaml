@@ -42,8 +42,8 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       ultracite:
-        specifier: 6.5.0
-        version: 6.5.0(typescript@5.9.3)
+        specifier: 6.5.1
+        version: 6.5.1(typescript@5.9.3)
       update-ts-references:
         specifier: ^4.0.0
         version: 4.0.0
@@ -61,13 +61,13 @@ importers:
         version: link:../../packages/parser
       '@ai-sdk/openai':
         specifier: 3.0.2
-        version: 3.0.2(zod@4.2.1)
+        version: 3.0.2(zod@4.3.4)
       '@ai-sdk/openai-compatible':
         specifier: 2.0.2
-        version: 2.0.2(zod@4.2.1)
+        version: 2.0.2(zod@4.3.4)
       ai:
         specifier: 6.0.5
-        version: 6.0.5(zod@4.2.1)
+        version: 6.0.5(zod@4.3.4)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -76,8 +76,8 @@ importers:
         specifier: ^25.0.3
         version: 25.0.3
       zod:
-        specifier: ^4.2.1
-        version: 4.2.1
+        specifier: ^4.3.4
+        version: 4.3.4
 
   examples/parser-core:
     dependencies:
@@ -89,19 +89,19 @@ importers:
         version: link:../../packages/parser
       '@ai-sdk/openai':
         specifier: 3.0.2
-        version: 3.0.2(zod@4.2.1)
+        version: 3.0.2(zod@4.3.4)
       '@ai-sdk/openai-compatible':
         specifier: 2.0.2
-        version: 2.0.2(zod@4.2.1)
+        version: 2.0.2(zod@4.3.4)
       ai:
         specifier: 6.0.5
-        version: 6.0.5(zod@4.2.1)
+        version: 6.0.5(zod@4.3.4)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
       zod:
-        specifier: ^4.2.1
-        version: 4.2.1
+        specifier: ^4.3.4
+        version: 4.3.4
     devDependencies:
       '@ai-sdk/provider':
         specifier: 3.0.1
@@ -123,19 +123,19 @@ importers:
         version: link:../../packages/proxy
       '@ai-sdk/openai':
         specifier: 3.0.2
-        version: 3.0.2(zod@4.2.1)
+        version: 3.0.2(zod@4.3.4)
       '@ai-sdk/openai-compatible':
         specifier: 2.0.2
-        version: 2.0.2(zod@4.2.1)
+        version: 2.0.2(zod@4.3.4)
       ai:
         specifier: 6.0.5
-        version: 6.0.5(zod@4.2.1)
+        version: 6.0.5(zod@4.3.4)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
       zod:
-        specifier: ^4.2.1
-        version: 4.2.1
+        specifier: ^4.3.4
+        version: 4.3.4
     devDependencies:
       '@ai-sdk/provider':
         specifier: 3.0.1
@@ -157,8 +157,8 @@ importers:
         specifier: ^25.0.3
         version: 25.0.3
       zod:
-        specifier: ^4.2.1
-        version: 4.2.1
+        specifier: ^4.3.4
+        version: 4.3.4
 
   packages/eval:
     dependencies:
@@ -167,13 +167,13 @@ importers:
         version: 3.0.1
       ai:
         specifier: 6.0.5
-        version: 6.0.5(zod@4.2.1)
+        version: 6.0.5(zod@4.3.4)
       ajv:
         specifier: ^8.17.1
         version: 8.17.1
       zod:
-        specifier: ^4.2.1
-        version: 4.2.1
+        specifier: ^4.3.4
+        version: 4.3.4
     devDependencies:
       '@ai-sdkx/tsconfig':
         specifier: workspace:*
@@ -214,11 +214,11 @@ importers:
         version: 3.0.1
       '@ai-sdk/provider-utils':
         specifier: 4.0.2
-        version: 4.0.2(zod@4.2.1)
+        version: 4.0.2(zod@4.3.4)
     devDependencies:
       '@ai-sdk/openai-compatible':
         specifier: 2.0.2
-        version: 2.0.2(zod@4.2.1)
+        version: 2.0.2(zod@4.3.4)
       '@ai-sdkx/tsconfig':
         specifier: workspace:*
         version: link:../../tools/tsconfig
@@ -227,13 +227,13 @@ importers:
         version: 25.0.3
       ai:
         specifier: 6.0.5
-        version: 6.0.5(zod@4.2.1)
+        version: 6.0.5(zod@4.3.4)
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)
       zod:
-        specifier: ^4.2.1
-        version: 4.2.1
+        specifier: ^4.3.4
+        version: 4.3.4
 
   packages/proxy:
     dependencies:
@@ -242,26 +242,26 @@ importers:
         version: 3.0.1
       '@ai-sdk/provider-utils':
         specifier: 4.0.2
-        version: 4.0.2(zod@4.2.1)
+        version: 4.0.2(zod@4.3.4)
       '@fastify/cors':
         specifier: ^11.2.0
         version: 11.2.0
       ai:
         specifier: 6.0.5
-        version: 6.0.5(zod@4.2.1)
+        version: 6.0.5(zod@4.3.4)
       fastify:
         specifier: ^5.6.2
         version: 5.6.2
       zod:
-        specifier: ^4.2.1
-        version: 4.2.1
+        specifier: ^4.3.4
+        version: 4.3.4
     devDependencies:
       '@ai-sdk-tool/parser':
         specifier: workspace:*
         version: link:../parser
       '@ai-sdk/openai-compatible':
         specifier: 2.0.2
-        version: 2.0.2(zod@4.2.1)
+        version: 2.0.2(zod@4.3.4)
       '@ai-sdkx/tsconfig':
         specifier: workspace:*
         version: link:../../tools/tsconfig
@@ -293,8 +293,8 @@ importers:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)
       zod:
-        specifier: ^4.2.1
-        version: 4.2.1
+        specifier: ^4.3.4
+        version: 4.3.4
 
   tools/tsconfig: {}
 
@@ -2255,8 +2255,8 @@ packages:
   ufo@1.6.1:
     resolution: {integrity: sha512-9a4/uxlTWJ4+a5i0ooc1rU7C7YOw3wT+UGqdeNNHWnOF9qcMBgLRS+4IYUqbczewFx4mLEig6gawh7X6mFlEkA==}
 
-  ultracite@6.5.0:
-    resolution: {integrity: sha512-HrXvM0CX/S3t5HEoepWQ6kpMVD9mzNB5X0k/T7zvNObQ6X9+s1pAE4efDR3Nc4KwqDiemK/bwI7pgPApT7Fktw==}
+  ultracite@6.5.1:
+    resolution: {integrity: sha512-PeS2L9L4EDINVVUHW+H/pnmidCetWX2a9/baF+C7Foi3hF3lKLRn5oaBjaP7FGTURcTwfeoZg0ZaYB7ULDdtxQ==}
     hasBin: true
 
   unbox-primitive@1.1.0:
@@ -2385,36 +2385,36 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  zod@4.2.1:
-    resolution: {integrity: sha512-0wZ1IRqGGhMP76gLqz8EyfBXKk0J2qo2+H3fi4mcUP/KtTocoX08nmIAHl1Z2kJIZbZee8KOpBCSNPRgauucjw==}
+  zod@4.3.4:
+    resolution: {integrity: sha512-Zw/uYiiyF6pUT1qmKbZziChgNPRu+ZRneAsMUDU6IwmXdWt5JwcUfy2bvLOCUtz5UniaN/Zx5aFttZYbYc7O/A==}
 
 snapshots:
 
-  '@ai-sdk/gateway@3.0.4(zod@4.2.1)':
+  '@ai-sdk/gateway@3.0.4(zod@4.3.4)':
     dependencies:
       '@ai-sdk/provider': 3.0.1
-      '@ai-sdk/provider-utils': 4.0.2(zod@4.2.1)
+      '@ai-sdk/provider-utils': 4.0.2(zod@4.3.4)
       '@vercel/oidc': 3.0.5
-      zod: 4.2.1
+      zod: 4.3.4
 
-  '@ai-sdk/openai-compatible@2.0.2(zod@4.2.1)':
+  '@ai-sdk/openai-compatible@2.0.2(zod@4.3.4)':
     dependencies:
       '@ai-sdk/provider': 3.0.1
-      '@ai-sdk/provider-utils': 4.0.2(zod@4.2.1)
-      zod: 4.2.1
+      '@ai-sdk/provider-utils': 4.0.2(zod@4.3.4)
+      zod: 4.3.4
 
-  '@ai-sdk/openai@3.0.2(zod@4.2.1)':
+  '@ai-sdk/openai@3.0.2(zod@4.3.4)':
     dependencies:
       '@ai-sdk/provider': 3.0.1
-      '@ai-sdk/provider-utils': 4.0.2(zod@4.2.1)
-      zod: 4.2.1
+      '@ai-sdk/provider-utils': 4.0.2(zod@4.3.4)
+      zod: 4.3.4
 
-  '@ai-sdk/provider-utils@4.0.2(zod@4.2.1)':
+  '@ai-sdk/provider-utils@4.0.2(zod@4.3.4)':
     dependencies:
       '@ai-sdk/provider': 3.0.1
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.0.6
-      zod: 4.2.1
+      zod: 4.3.4
 
   '@ai-sdk/provider@3.0.1':
     dependencies:
@@ -2954,13 +2954,13 @@ snapshots:
 
   acorn@8.15.0: {}
 
-  ai@6.0.5(zod@4.2.1):
+  ai@6.0.5(zod@4.3.4):
     dependencies:
-      '@ai-sdk/gateway': 3.0.4(zod@4.2.1)
+      '@ai-sdk/gateway': 3.0.4(zod@4.3.4)
       '@ai-sdk/provider': 3.0.1
-      '@ai-sdk/provider-utils': 4.0.2(zod@4.2.1)
+      '@ai-sdk/provider-utils': 4.0.2(zod@4.3.4)
       '@opentelemetry/api': 1.9.0
-      zod: 4.2.1
+      zod: 4.3.4
 
   ajv-formats@3.0.1(ajv@8.17.1):
     optionalDependencies:
@@ -4322,12 +4322,12 @@ snapshots:
 
   tree-kill@1.2.2: {}
 
-  trpc-cli@0.12.1(@trpc/server@11.8.1(typescript@5.9.3))(zod@4.2.1):
+  trpc-cli@0.12.1(@trpc/server@11.8.1(typescript@5.9.3))(zod@4.3.4):
     dependencies:
       commander: 14.0.2
     optionalDependencies:
       '@trpc/server': 11.8.1(typescript@5.9.3)
-      zod: 4.2.1
+      zod: 4.3.4
 
   ts-interface-checker@0.1.13: {}
 
@@ -4430,7 +4430,7 @@ snapshots:
 
   ufo@1.6.1: {}
 
-  ultracite@6.5.0(typescript@5.9.3):
+  ultracite@6.5.1(typescript@5.9.3):
     dependencies:
       '@clack/prompts': 0.11.0
       '@trpc/server': 11.8.1(typescript@5.9.3)
@@ -4439,8 +4439,8 @@ snapshots:
       jsonc-parser: 3.3.1
       nypm: 0.6.2
       picocolors: 1.1.1
-      trpc-cli: 0.12.1(@trpc/server@11.8.1(typescript@5.9.3))(zod@4.2.1)
-      zod: 4.2.1
+      trpc-cli: 0.12.1(@trpc/server@11.8.1(typescript@5.9.3))(zod@4.3.4)
+      zod: 4.3.4
     transitivePeerDependencies:
       - '@orpc/server'
       - '@valibot/to-json-schema'
@@ -4581,4 +4581,4 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  zod@4.2.1: {}
+  zod@4.3.4: {}
