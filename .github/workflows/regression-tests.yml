@@ -157,12 +157,15 @@ jobs:
       - name: Build packages
         run: pnpm build
 
-      - name: Download benchmark API cache from artifact
-        uses: actions/download-artifact@v4
+      - name: Download benchmark API cache from previous run
+        uses: dawidd6/action-download-artifact@v6
         with:
+          github_token: ${{ github.token }}
+          workflow: regression-tests.yml
           name: benchmark-api-cache
           path: .benchmark-results/cache
-        continue-on-error: true
+          search_artifacts: true
+          if_no_artifact_found: ignore
 
       - name: Determine benchmark mode
         id: mode
