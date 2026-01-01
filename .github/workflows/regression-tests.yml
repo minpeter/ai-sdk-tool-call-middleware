@@ -157,7 +157,7 @@ jobs:
         run: pnpm build
 
       - name: Restore benchmark API cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .benchmark-results/cache
           key: benchmark-api-cache-${{ runner.os }}-${{ hashFiles('packages/middleware/src/disk-cache.ts') }}
@@ -331,7 +331,7 @@ jobs:
       - name: Comment PR with results
         if: |
           (github.event_name == 'issue_comment' || github.event_name == 'pull_request') &&
-          steps.compare.outcome == 'success'
+          steps.benchmark.outcome == 'success'
         uses: actions/github-script@v8
         with:
           script: |
@@ -395,12 +395,19 @@ jobs:
             }
 
       - name: Upload benchmark results as artifact
-        if: always()
+        if: steps.benchmark.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
           name: benchmark-results-${{ github.sha }}
           path: .benchmark-results/
           retention-days: 90
+
+      - name: Save benchmark API cache
+        if: steps.benchmark.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: .benchmark-results/cache
+          key: benchmark-api-cache-${{ runner.os }}-${{ hashFiles('packages/middleware/src/disk-cache.ts') }}
 
       - name: Fail if regression detected
         if: steps.benchmark.outcome == 'success' && steps.compare.outcome == 'failure'
