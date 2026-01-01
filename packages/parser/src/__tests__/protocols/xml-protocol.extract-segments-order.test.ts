@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 describe("morphXmlProtocol.extractToolCallSegments ordering", () => {
   const tools = [

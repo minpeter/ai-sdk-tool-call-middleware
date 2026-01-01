@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 const ADD_TAG_REGEX = /<add>/;
 const A_TAG_REGEX = /<a>1<\/a>/;

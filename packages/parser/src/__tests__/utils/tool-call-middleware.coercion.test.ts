@@ -1,9 +1,9 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ToolCallProtocol } from "../../protocols/tool-call-protocol";
-import { createToolMiddleware } from "../../tool-call-middleware";
-import { originalToolsSchema } from "../../utils/provider-options";
+import type { ToolCallProtocol } from "../../core/protocols/tool-call-protocol";
+import { originalToolsSchema } from "../../core/utils/provider-options";
+import { createToolMiddleware } from "../../v6/tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

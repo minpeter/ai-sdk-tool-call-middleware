@@ -13,6 +13,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   bfclMultipleBenchmark,
   bfclParallelBenchmark,
+  bfclParallelMultipleBenchmark,
   bfclSimpleBenchmark,
   evaluate,
 } from "@ai-sdk-tool/eval";
@@ -81,12 +82,20 @@ interface BenchmarkResult {
   branch: string;
   timestamp: string;
   model: string;
-  mode: "ultra-quick" | "quick" | "full";
+  mode: "fast" | "quick" | "full";
   results: {
     native: Record<string, number>;
     morphxml: Record<string, number>;
   };
 }
+
+// All 4 BFCL benchmark categories
+const allBenchmarks = [
+  bfclSimpleBenchmark,
+  bfclMultipleBenchmark,
+  bfclParallelBenchmark,
+  bfclParallelMultipleBenchmark,
+];
 
 async function runBenchmarks(): Promise<BenchmarkResult> {
   const timestamp = new Date().toISOString();
@@ -96,11 +105,14 @@ async function runBenchmarks(): Promise<BenchmarkResult> {
     "quick") as BenchmarkResult["mode"];
 
   // 모드별 벤치마크 설정
+  // fast: 4개 카테고리 x 5개씩 = 20개 (x2 native/xml = 40개), ~2min
+  // quick: simple 카테고리 100개, ~5min
+  // full: 4개 카테고리 전체, ~15min
   const benchmarkConfigs = {
-    "ultra-quick": {
-      benchmarks: [bfclSimpleBenchmark],
-      limit: 50,
-      desc: "50 cases, ~2min",
+    fast: {
+      benchmarks: allBenchmarks,
+      limit: 5,
+      desc: "4 categories x 5 cases = 20 cases (x2 = 40 total), ~2min",
     },
     quick: {
       benchmarks: [bfclSimpleBenchmark],
@@ -108,13 +120,9 @@ async function runBenchmarks(): Promise<BenchmarkResult> {
       desc: "100 cases, ~5min",
     },
     full: {
-      benchmarks: [
-        bfclSimpleBenchmark,
-        bfclMultipleBenchmark,
-        bfclParallelBenchmark,
-      ],
+      benchmarks: allBenchmarks,
       limit: undefined,
-      desc: "all cases, ~15min",
+      desc: "all 4 categories, all cases, ~15min",
     },
   };
 
@@ -122,7 +130,7 @@ async function runBenchmarks(): Promise<BenchmarkResult> {
 
   console.log(`Running in ${mode} mode (${config.desc})\n`);
 
-  // BFCL_LIMIT 환경변수 설정 (ultra-quick/quick인 경우)
+  // BFCL_LIMIT 환경변수 설정 (fast/quick인 경우)
   if (config.limit) {
     process.env.BFCL_LIMIT = config.limit.toString();
   }

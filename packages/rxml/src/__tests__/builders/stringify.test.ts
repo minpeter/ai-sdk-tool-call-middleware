@@ -21,14 +21,44 @@ describe("stringify", () => {
       expect(result).toContain("</root>");
     });
 
-    it("stringifies with XML declaration when formatted", () => {
+    it("stringifies without XML declaration by default even when formatted", () => {
       const result = stringify("root", { item: "test" }, { format: true });
-      expect(result).toMatch(XML_DECLARATION_REGEX);
+      expect(result).not.toMatch(XML_START_REGEX);
+      expect(result).toContain("<root>");
+      expect(result).toContain("\n");
     });
 
     it("stringifies without XML declaration when not formatted", () => {
       const result = stringify("root", { item: "test" }, { format: false });
       expect(result).not.toMatch(XML_START_REGEX);
+    });
+
+    it("stringifies without XML declaration when declaration is explicitly false (with format: true)", () => {
+      const result = stringify(
+        "root",
+        { item: "test" },
+        { format: true, declaration: false }
+      );
+      expect(result).not.toMatch(XML_START_REGEX);
+      expect(result).toContain("<root>");
+      expect(result).toContain("\n"); // Still formatted
+      expect(result.endsWith("\n")).toBe(false); // No trailing newline
+    });
+
+    it("removes trailing newline from formatted output", () => {
+      const result = stringify("root", { item: "test" }, { format: true });
+      expect(result.endsWith("\n")).toBe(false);
+    });
+
+    it("stringifies with XML declaration when declaration is explicitly true", () => {
+      const result = stringify(
+        "root",
+        { item: "test" },
+        { format: false, declaration: true }
+      );
+      expect(result).toMatch(XML_DECLARATION_REGEX);
+      expect(result).toContain("<root>");
+      expect(result.endsWith("\n")).toBe(false);
     });
 
     it("handles null and undefined values", () => {
