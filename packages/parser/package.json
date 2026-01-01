@@ -53,13 +53,13 @@
   },
   "devDependencies": {
     "@ai-sdk/openai-compatible": "2.0.2",
-    "@ai-sdk/provider-v5": "npm:@ai-sdk/provider@2",
-    "@ai-sdk/provider-v6": "npm:@ai-sdk/provider@3",
+    "@ai-sdk/provider-v5": "npm:@ai-sdk/provider@2.0.1",
+    "@ai-sdk/provider-v6": "npm:@ai-sdk/provider@3.0.1",
     "@ai-sdkx/tsconfig": "workspace:*",
     "@types/node": "^25.0.3",
     "ai": "6.0.5",
-    "ai-v5": "npm:ai@5",
-    "ai-v6": "npm:ai@6",
+    "ai-v5": "npm:ai@5.0.117",
+    "ai-v6": "npm:ai@6.0.5",
     "tsup": "^8.5.1",
     "zod": "^4.3.4"
   },

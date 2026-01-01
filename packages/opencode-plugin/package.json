@@ -31,8 +31,8 @@
   },
   "dependencies": {
     "@ai-sdk-tool/parser": "workspace:*",
-    "@ai-sdk/openai-compatible": "^1.0.0",
-    "ai": "^5.0.0"
+    "@ai-sdk/openai-compatible": "npm:@ai-sdk/openai-compatible@1.0.30",
+    "ai": "npm:ai@5.0.117"
   },
   "devDependencies": {
     "@ai-sdkx/tsconfig": "workspace:*",
