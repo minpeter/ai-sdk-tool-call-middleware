@@ -8,14 +8,19 @@ function handleTextDelta(
   state: { currentTextId: string | null; hasEmittedText: boolean }
 ): void {
   const delta = chunk.textDelta ?? chunk.delta;
-  if (delta !== undefined) {
+  if (delta !== undefined && delta !== "") {
     if (!state.currentTextId) {
       state.currentTextId = generateId();
+      controller.enqueue({
+        type: "text-start",
+        id: state.currentTextId,
+      });
     }
     controller.enqueue({
       type: "text-delta",
       id: state.currentTextId,
       textDelta: delta,
+      delta,
     });
     state.hasEmittedText = true;
   }
@@ -26,6 +31,12 @@ function handleNonTextDelta(
   controller: TransformStreamDefaultController<CoreStreamPart>,
   state: { currentTextId: string | null; hasEmittedText: boolean }
 ): void {
+  if (state.currentTextId && state.hasEmittedText) {
+    controller.enqueue({
+      type: "text-end",
+      id: state.currentTextId,
+    });
+  }
   state.currentTextId = null;
   state.hasEmittedText = false;
   controller.enqueue(chunk);

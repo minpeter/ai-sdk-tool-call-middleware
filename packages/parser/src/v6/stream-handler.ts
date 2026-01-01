@@ -25,77 +25,72 @@ function mapCorePartToV3(part: CoreStreamPart): LanguageModelV3StreamPart {
         type: "text-delta",
         id: part.id || generateId(),
         delta: part.textDelta,
-      } as any;
+      } as LanguageModelV3StreamPart;
     case "tool-call":
       return {
         type: "tool-call",
         toolCallId: part.toolCallId,
         toolName: part.toolName,
         input: part.input,
-      } as any;
+      } as LanguageModelV3StreamPart;
     case "tool-call-delta":
       return {
         type: "tool-call-delta",
         toolCallId: part.toolCallId,
         toolName: part.toolName,
         argsTextDelta: part.argsTextDelta,
-      } as any;
+      } as unknown as LanguageModelV3StreamPart;
     case "finish":
       return {
         type: "finish",
-        finishReason: part.finishReason as any,
-        usage: part.usage as any,
-      } as any;
+        finishReason: part.finishReason,
+        usage: part.usage,
+      } as unknown as LanguageModelV3StreamPart;
     case "error":
       return {
         type: "error",
         error: part.error,
-      } as any;
+      } as LanguageModelV3StreamPart;
     default:
-      return part as any;
+      return part as LanguageModelV3StreamPart;
   }
 }
 
 function mapV3PartToCore(part: LanguageModelV3StreamPart): CoreStreamPart {
-  // biome-ignore lint/suspicious/noExplicitAny: complex mapping
-  const p = part as any;
+  const p = part as Record<string, unknown>;
   switch (p.type) {
     case "text-delta":
       return {
         type: "text-delta",
-        id: p.id,
-        textDelta: p.delta || p.textDelta || "",
+        id: p.id as string | undefined,
+        textDelta: ((p.delta || p.textDelta) as string) || "",
       };
     case "tool-call":
       return {
         type: "tool-call",
-        toolCallId: p.toolCallId,
-        toolName: p.toolName,
-        input: p.input,
+        toolCallId: p.toolCallId as string,
+        toolName: p.toolName as string,
+        input: p.input as string,
       };
-    case "finish":
+    case "finish": {
+      const finishReason = p.finishReason as
+        | { unified?: string }
+        | string
+        | undefined;
       return {
         type: "finish",
-        finishReason: p.finishReason?.unified || p.finishReason || "stop",
-        usage: p.usage,
+        finishReason:
+          (typeof finishReason === "object"
+            ? finishReason?.unified
+            : finishReason) || "stop",
+        usage: p.usage as
+          | { promptTokens: number; completionTokens: number }
+          | undefined,
       };
+    }
     default:
-      return p as any;
+      return p as CoreStreamPart;
   }
-}
-
-function extractToolCallSegments(
-  protocol: ToolCallProtocol,
-  fullRawText: string,
-  tools: any[]
-): string {
-  const segments = protocol.extractToolCallSegments
-    ? protocol.extractToolCallSegments({
-        text: fullRawText,
-        tools,
-      })
-    : [];
-  return segments.join("\n\n");
 }
 
 export async function wrapStream({
@@ -125,14 +120,17 @@ export async function wrapStream({
   );
   const options = {
     ...extractOnErrorOption(params.providerOptions),
-    ...((params.providerOptions as any)?.toolCallMiddleware || {}),
+    ...((params.providerOptions as Record<string, unknown>)
+      ?.toolCallMiddleware || {}),
   };
 
   const coreStream = stream
     .pipeThrough(
       new TransformStream<LanguageModelV3StreamPart, CoreStreamPart>({
         transform(part, controller) {
-          if (debugLevel === "stream") logRawChunk(part);
+          if (debugLevel === "stream") {
+            logRawChunk(part);
+          }
           controller.enqueue(mapV3PartToCore(part));
         },
       })
@@ -143,7 +141,9 @@ export async function wrapStream({
     new TransformStream<CoreStreamPart, LanguageModelV3StreamPart>({
       transform(part, controller) {
         const v3Part = mapCorePartToV3(part);
-        if (debugLevel === "stream") logParsedChunk(v3Part);
+        if (debugLevel === "stream") {
+          logParsedChunk(v3Part);
+        }
         controller.enqueue(v3Part);
       },
     })
@@ -200,7 +200,7 @@ export async function toolChoiceStream({
           outputTokens: 0,
         },
         finishReason: "tool-calls",
-      } as any);
+      } as unknown as LanguageModelV3StreamPart);
       controller.close();
     },
   });

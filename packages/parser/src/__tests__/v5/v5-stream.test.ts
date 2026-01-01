@@ -1,4 +1,3 @@
-// biome-ignore lint/style/useImportType: test
 import { wrapLanguageModel } from "ai-v5";
 import { describe, expect, it } from "vitest";
 import { morphXmlToolMiddleware } from "../../v5/index";

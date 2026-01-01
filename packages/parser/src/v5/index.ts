@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noBarrelFile: intentional public API surface
 import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
 import { morphXmlProtocol } from "../core/protocols/morph-xml-protocol";
 import { createToolMiddlewareV5 } from "./tool-call-middleware";
@@ -40,9 +41,11 @@ export const morphXmlToolMiddleware = createToolMiddlewareV5({
   protocol: morphXmlProtocol,
   placement: "last",
   toolSystemPromptTemplate(tools: string) {
-    return `You are a function calling AI model.
+    return `# Tools
 
-Available functions are listed inside <tools></tools>.
+You may call one or more functions to assist with the user query.
+
+You are provided with function signatures within <tools></tools> XML tags:
 <tools>${tools}</tools>
 
 # Rules

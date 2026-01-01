@@ -117,27 +117,31 @@ function flushBuffer(
   if (!state.currentTextId) {
     state.currentTextId = generateId();
     controller.enqueue({
-      type: "text-delta",
+      type: "text-start",
       id: state.currentTextId,
-      textDelta: "",
     });
     state.hasEmittedTextStart = true;
   }
 
-  const delta = state.isInsideToolCall
+  const deltaContent = state.isInsideToolCall
     ? `${toolCallStart}${state.buffer}`
     : state.buffer;
 
   controller.enqueue({
     type: "text-delta",
     id: state.currentTextId,
-    textDelta: delta,
+    textDelta: deltaContent,
+    delta: deltaContent,
   });
   state.buffer = "";
 }
 
-function closeTextBlock(state: StreamState) {
+function closeTextBlock(state: StreamState, controller: StreamController) {
   if (state.currentTextId && state.hasEmittedTextStart) {
+    controller.enqueue({
+      type: "text-end",
+      id: state.currentTextId,
+    });
     state.currentTextId = null;
     state.hasEmittedTextStart = false;
   }
@@ -159,10 +163,20 @@ function emitIncompleteToolCall(
   });
 
   const errorId = generateId();
+  const errorContent = `${toolCallStart}${state.currentToolCallJson}`;
+  controller.enqueue({
+    type: "text-start",
+    id: errorId,
+  });
   controller.enqueue({
     type: "text-delta",
     id: errorId,
-    textDelta: `${toolCallStart}${state.currentToolCallJson}`,
+    textDelta: errorContent,
+    delta: errorContent,
+  });
+  controller.enqueue({
+    type: "text-end",
+    id: errorId,
   });
   state.currentToolCallJson = "";
 }
@@ -176,7 +190,7 @@ function handleFinishChunk(
   if (state.buffer.length > 0) {
     flushBuffer(state, controller, toolCallStart);
   }
-  closeTextBlock(state);
+  closeTextBlock(state, controller);
   emitIncompleteToolCall(state, controller, toolCallStart);
   controller.enqueue(chunk);
 }
@@ -187,16 +201,22 @@ function publishText(
   controller: StreamController
 ) {
   if (state.isInsideToolCall) {
-    closeTextBlock(state);
+    closeTextBlock(state, controller);
     state.currentToolCallJson += text;
   } else if (text.length > 0) {
     if (!state.currentTextId) {
       state.currentTextId = generateId();
+      controller.enqueue({
+        type: "text-start",
+        id: state.currentTextId,
+      });
+      state.hasEmittedTextStart = true;
     }
     controller.enqueue({
       type: "text-delta",
       id: state.currentTextId,
       textDelta: text,
+      delta: text,
     });
   }
 }
@@ -208,7 +228,7 @@ function emitToolCall(context: TagProcessingContext) {
       name: string;
       arguments: unknown;
     };
-    closeTextBlock(state);
+    closeTextBlock(state, controller);
     controller.enqueue({
       type: "tool-call",
       toolCallId: generateId(),
@@ -223,15 +243,25 @@ function emitToolCall(context: TagProcessingContext) {
       error,
     });
     const errorId = generateId();
+    const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
+    controller.enqueue({
+      type: "text-start",
+      id: errorId,
+    });
     controller.enqueue({
       type: "text-delta",
       id: errorId,
-      textDelta: `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`,
+      textDelta: errorContent,
+      delta: errorContent,
+    });
+    controller.enqueue({
+      type: "text-end",
+      id: errorId,
     });
     options?.onError?.(
       "Could not process streaming JSON tool call; emitting original text.",
       {
-        toolCall: `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`,
+        toolCall: errorContent,
       }
     );
   }
@@ -387,7 +417,12 @@ export const jsonMixProtocol = ({
           return;
         }
 
-        state.buffer += chunk.textDelta;
+        // Support both CoreStreamPart (textDelta) and LanguageModelV3StreamPart (delta)
+        const textContent =
+          chunk.textDelta ??
+          (chunk as unknown as { delta?: string }).delta ??
+          "";
+        state.buffer += textContent;
         processBufferTags({
           state,
           controller,

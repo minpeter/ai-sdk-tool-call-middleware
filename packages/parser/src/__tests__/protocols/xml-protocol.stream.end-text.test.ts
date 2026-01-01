@@ -3,7 +3,11 @@ import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
-import { stopFinishReason, zeroUsage } from "../test-helpers";
+import {
+  pipeWithTransformer,
+  stopFinishReason,
+  zeroUsage,
+} from "../test-helpers";
 
 describe("morphXmlProtocol streaming trailing text-end on flush", () => {
   it("emits text-end when there is open text at flush with no tags", async () => {
@@ -20,7 +24,9 @@ describe("morphXmlProtocol streaming trailing text-end on flush", () => {
         ctrl.close();
       },
     });
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const types = out.map((c) => c.type);
     expect(types).toContain("text-start");
     expect(types).toContain("text-delta");

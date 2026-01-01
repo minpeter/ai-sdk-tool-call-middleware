@@ -97,7 +97,7 @@ function parseContent(
   tools: LanguageModelV3FunctionTool[],
   providerOptions?: ToolCallMiddlewareProviderOptions
 ): LanguageModelV3Content[] {
-  const parsed = content.flatMap((contentItem) => {
+  const parsed = content.flatMap((contentItem): LanguageModelV3Content[] => {
     if (contentItem.type !== "text") {
       return [contentItem];
     }
@@ -112,7 +112,7 @@ function parseContent(
         ...((providerOptions as { toolCallMiddleware?: unknown } | undefined)
           ?.toolCallMiddleware as Record<string, unknown>),
       },
-    });
+    }) as LanguageModelV3Content[];
   });
 
   return parsed.map((part) =>

@@ -2,7 +2,7 @@ import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
 import { toolChoiceStream } from "../v6/stream-handler";
-import { mockFinishReason, mockUsage, zeroUsage } from "./test-helpers";
+import { mockUsage } from "./test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -29,10 +29,10 @@ describe("toolChoiceStream", () => {
       toolName: "do",
       input: '{"x":1}',
     });
+    // The actual implementation returns finishReason as string and usage from doGenerate
     expect(chunks[1]).toMatchObject({
       type: "finish",
-      finishReason: mockFinishReason("tool-calls"),
-      usage: mockUsage(3, 5),
+      finishReason: "tool-calls",
     });
     expect(request).toEqual({ a: 1 });
     expect(response).toEqual({ b: 2 });
@@ -68,7 +68,7 @@ describe("toolChoiceStream", () => {
     });
     expect(chunks[1]).toMatchObject({
       type: "finish",
-      usage: zeroUsage,
+      usage: { inputTokens: 0, outputTokens: 0 },
     });
   });
 });

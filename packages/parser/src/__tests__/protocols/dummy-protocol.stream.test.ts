@@ -3,7 +3,11 @@ import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { dummyProtocol } from "../../core/protocols/dummy-protocol";
-import { stopFinishReason, zeroUsage } from "../test-helpers";
+import {
+  pipeWithTransformer,
+  stopFinishReason,
+  zeroUsage,
+} from "../test-helpers";
 
 describe("dummyProtocol streaming behavior", () => {
   it("emits text-start only once and text-end when non-text arrives", async () => {
@@ -27,7 +31,9 @@ describe("dummyProtocol streaming behavior", () => {
         ctrl.close();
       },
     });
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const starts = out.filter((c) => c.type === "text-start");
     const deltas = out.filter((c) => c.type === "text-delta");
     const ends = out.filter((c) => c.type === "text-end");
@@ -55,7 +61,9 @@ describe("dummyProtocol streaming behavior", () => {
         ctrl.close();
       },
     });
-    const out = await convertReadableStreamToArray(rs.pipeThrough(transformer));
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((d: any) => d.delta)

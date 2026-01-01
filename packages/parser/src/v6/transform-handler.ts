@@ -362,15 +362,13 @@ function processToolMessage(
       {
         type: "text" as const,
         text: content
-          .map((toolResult) =>
-            resolvedProtocol.formatToolResponse({
+          .map((toolResult) => {
+            const tr = toolResult as unknown as Record<string, unknown>;
+            return resolvedProtocol.formatToolResponse({
               ...toolResult,
-              result:
-                (toolResult as any).result ??
-                (toolResult as any).content ??
-                (toolResult as any).output,
-            })
-          )
+              result: tr.result ?? tr.content ?? tr.output,
+            });
+          })
           .join("\n"),
       },
     ],

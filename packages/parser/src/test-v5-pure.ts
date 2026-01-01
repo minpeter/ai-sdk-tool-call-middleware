@@ -44,6 +44,7 @@ async function run() {
     // opencode uses: wrapLanguageModel({ model: baseModel, middleware: customMiddleware })
 
     const wrapped = wrapLanguageModel({
+      // biome-ignore lint/suspicious/noExplicitAny: test mock object doesn't implement full interface
       model: mockModel as any,
       middleware,
     });

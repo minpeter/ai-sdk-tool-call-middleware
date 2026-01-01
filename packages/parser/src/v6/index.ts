@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noBarrelFile: intentional public API surface
 import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
 import { morphXmlProtocol } from "../core/protocols/morph-xml-protocol";
 import { createToolMiddleware } from "./tool-call-middleware";
@@ -41,11 +42,13 @@ For each function call return a json object with function name and arguments wit
 
 export const morphXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
-  placement: "last",
+  placement: "first",
   toolSystemPromptTemplate(tools: string) {
-    return `You are a function calling AI model.
+    return `# Tools
 
-Available functions are listed inside <tools></tools>.
+You may call one or more functions to assist with the user query.
+
+You are provided with function signatures within <tools></tools> XML tags:
 <tools>${tools}</tools>
 
 # Rules
@@ -55,6 +58,7 @@ Available functions are listed inside <tools></tools>.
 - Do not add or remove functions or parameters.
 - Each required parameter must appear once.
 - Output nothing before or after the function call.
+- After calling a tool, you will receive a response in the format: <tool_response><tool_name>NAME</tool_name><result>RESULT</result></tool_response>. Use this result to answer the user.
 
 # Example
 <get_weather>

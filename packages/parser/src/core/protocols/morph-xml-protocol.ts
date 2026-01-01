@@ -37,6 +37,15 @@ export interface MorphXmlProtocolOptions {
   maxReparses?: number;
 }
 
+interface ParserOptions {
+  onError?: (message: string, metadata?: Record<string, unknown>) => void;
+}
+
+type FlushTextFn = (
+  controller: TransformStreamDefaultController<CoreStreamPart>,
+  text?: string
+) => void;
+
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
 const WHITESPACE_REGEX = /\s/;
 
@@ -95,7 +104,7 @@ interface ProcessToolCallParams {
     endIndex: number;
   };
   tools: CoreFunctionTool[];
-  options: any;
+  options?: ParserOptions;
   text: string;
   processedElements: CoreContentPart[];
   pipelineConfig?: PipelineConfig;
@@ -151,9 +160,9 @@ interface HandleStreamingToolCallEndParams {
   toolContent: string;
   currentToolCall: { name: string; content?: string };
   tools: CoreFunctionTool[];
-  options: any;
+  options?: ParserOptions;
   ctrl: TransformStreamDefaultController<CoreStreamPart>;
-  flushText: any;
+  flushText: FlushTextFn;
   pipelineConfig?: PipelineConfig;
   maxReparses?: number;
 }
@@ -196,7 +205,11 @@ function handleStreamingToolCallEnd(
       });
       parsedResult = repairParsedAgainstSchema(parsed, toolSchema);
     } catch {
-      parsedResult = tryParseSecondaryXml(toolContent, toolSchema, options);
+      parsedResult = tryParseSecondaryXml(
+        toolContent,
+        toolSchema,
+        options ?? {}
+      );
     }
   }
 
@@ -436,7 +449,7 @@ function findToolCalls(
   }> = [];
 
   for (const toolName of toolNames) {
-    const calls = findToolCallsForName(toolName, toolName);
+    const calls = findToolCallsForName(text, toolName);
     toolCalls.push(...calls);
   }
 
@@ -476,7 +489,9 @@ function findEarliestToolTag(
 
 function createFlushTextHandler(
   getCurrentTextId: () => string | null,
-  setCurrentTextId: (id: string | null) => void
+  setCurrentTextId: (id: string | null) => void,
+  getHasEmittedTextStart: () => boolean,
+  setHasEmittedTextStart: (value: boolean) => void
 ) {
   return (
     controller: TransformStreamDefaultController<CoreStreamPart>,
@@ -487,16 +502,29 @@ function createFlushTextHandler(
       if (!getCurrentTextId()) {
         const newId = generateId();
         setCurrentTextId(newId);
+        controller.enqueue({
+          type: "text-start",
+          id: newId,
+        });
+        setHasEmittedTextStart(true);
       }
       controller.enqueue({
         type: "text-delta",
         id: getCurrentTextId() as string,
         textDelta: content,
+        delta: content,
       });
     }
 
     const currentTextId = getCurrentTextId();
     if (currentTextId && !text) {
+      if (getHasEmittedTextStart()) {
+        controller.enqueue({
+          type: "text-end",
+          id: currentTextId,
+        });
+        setHasEmittedTextStart(false);
+      }
       setCurrentTextId(null);
     }
   };
@@ -506,11 +534,9 @@ interface ProcessToolCallInBufferParams {
   buffer: string;
   currentToolCall: { name: string; content: string };
   tools: CoreFunctionTool[];
-  // biome-ignore lint/suspicious/noExplicitAny: generic options type
-  options: any;
+  options?: ParserOptions;
   controller: TransformStreamDefaultController<CoreStreamPart>;
-  // biome-ignore lint/suspicious/noExplicitAny: complex function type
-  flushText: any;
+  flushText: FlushTextFn;
   setBuffer: (buffer: string) => void;
   pipelineConfig?: PipelineConfig;
   maxReparses?: number;
@@ -564,11 +590,9 @@ interface ProcessNoToolCallInBufferParams {
   buffer: string;
   toolNames: string[];
   controller: TransformStreamDefaultController<CoreStreamPart>;
-  // biome-ignore lint/suspicious/noExplicitAny: complex function type
-  flushText: any;
+  flushText: FlushTextFn;
   tools: CoreFunctionTool[];
-  // biome-ignore lint/suspicious/noExplicitAny: generic options type
-  options: any;
+  options?: ParserOptions;
   pipelineConfig?: PipelineConfig;
   maxReparses?: number;
   setBuffer: (buffer: string) => void;
@@ -646,7 +670,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     buffer: newBuffer,
     currentToolCall: { name: earliestToolName, content: "" },
     shouldBreak: false,
-    shouldContinue: false,
+    shouldContinue: true,
   };
 }
 
@@ -658,12 +682,13 @@ function createProcessBufferHandler(
     toolCall: { name: string; content: string } | null
   ) => void,
   tools: CoreFunctionTool[],
-  options: any,
+  options: ParserOptions | undefined,
   toolNames: string[],
-  flushText: any,
+  flushText: FlushTextFn,
   pipelineConfig?: PipelineConfig,
   maxReparses?: number
 ) {
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: stream parsing state machine requires complex control flow
   return (controller: TransformStreamDefaultController<CoreStreamPart>) => {
     while (true) {
       const currentToolCall = getCurrentToolCall();
@@ -681,7 +706,9 @@ function createProcessBufferHandler(
         });
         setBuffer(result.buffer);
         setCurrentToolCall(result.currentToolCall);
-        if (result.shouldBreak) break;
+        if (result.shouldBreak) {
+          break;
+        }
       } else {
         const result = processNoToolCallInBuffer({
           buffer: getBuffer(),
@@ -696,8 +723,12 @@ function createProcessBufferHandler(
         });
         setBuffer(result.buffer);
         setCurrentToolCall(result.currentToolCall);
-        if (result.shouldBreak) break;
-        if (result.shouldContinue) continue;
+        if (result.shouldBreak) {
+          break;
+        }
+        if (result.shouldContinue) {
+          continue;
+        }
         break;
       }
     }
@@ -706,9 +737,45 @@ function createProcessBufferHandler(
 
 export const morphXmlProtocol = (
   protocolOptions?: MorphXmlProtocolOptions
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: protocol factory with multiple parsing strategies
 ): ToolCallProtocol => {
-  const pipelineConfig = protocolOptions?.pipeline;
+  let pipelineConfig = protocolOptions?.pipeline;
   const maxReparses = protocolOptions?.maxReparses;
+
+  if (protocolOptions?.heuristics && protocolOptions.heuristics.length > 0) {
+    const heuristicsConfig: _PipelineConfig = {
+      preParse: [],
+      fallbackReparse: [],
+      postParse: [],
+    };
+    for (const h of protocolOptions.heuristics) {
+      if (h.phase === "pre-parse") {
+        heuristicsConfig.preParse?.push(h);
+      } else if (h.phase === "fallback-reparse") {
+        heuristicsConfig.fallbackReparse?.push(h);
+      } else if (h.phase === "post-parse") {
+        heuristicsConfig.postParse?.push(h);
+      }
+    }
+    if (pipelineConfig) {
+      pipelineConfig = {
+        preParse: [
+          ...(pipelineConfig.preParse ?? []),
+          ...(heuristicsConfig.preParse ?? []),
+        ],
+        fallbackReparse: [
+          ...(pipelineConfig.fallbackReparse ?? []),
+          ...(heuristicsConfig.fallbackReparse ?? []),
+        ],
+        postParse: [
+          ...(pipelineConfig.postParse ?? []),
+          ...(heuristicsConfig.postParse ?? []),
+        ],
+      };
+    } else {
+      pipelineConfig = heuristicsConfig;
+    }
+  }
 
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
@@ -741,10 +808,10 @@ export const morphXmlProtocol = (
         result &&
         typeof result === "object" &&
         "type" in result &&
-        (result as any).type === "json" &&
+        (result as { type: unknown }).type === "json" &&
         "value" in result
       ) {
-        result = (result as any).value;
+        result = (result as { value: unknown }).value;
       }
 
       const xml = stringify(
@@ -804,12 +871,16 @@ export const morphXmlProtocol = (
       // biome-ignore lint/suspicious/noExplicitAny: internal state
       let currentToolCall: any = null;
       let currentTextId: string | null = null;
+      let hasEmittedTextStart = false;
 
-      // biome-ignore lint/suspicious/noExplicitAny: complex controller type
       const flushText = createFlushTextHandler(
         () => currentTextId,
         (newId: string | null) => {
           currentTextId = newId;
+        },
+        () => hasEmittedTextStart,
+        (value: boolean) => {
+          hasEmittedTextStart = value;
         }
       );
 
@@ -841,12 +912,30 @@ export const morphXmlProtocol = (
             return;
           }
 
-          buffer += chunk.textDelta;
+          const textContent =
+            chunk.textDelta ??
+            (chunk as unknown as { delta?: string }).delta ??
+            "";
+          buffer += textContent;
           processBuffer(controller);
         },
         flush(controller) {
-          if (buffer) {
+          if (currentToolCall) {
+            const unfinishedContent = `<${currentToolCall.name}>${currentToolCall.content || ""}${buffer}`;
+            flushText(controller, unfinishedContent);
+            buffer = "";
+            currentToolCall = null;
+          } else if (buffer) {
             flushText(controller, buffer);
+            buffer = "";
+          }
+          if (currentTextId && hasEmittedTextStart) {
+            controller.enqueue({
+              type: "text-end",
+              id: currentTextId,
+            });
+            hasEmittedTextStart = false;
+            currentTextId = null;
           }
         },
       });

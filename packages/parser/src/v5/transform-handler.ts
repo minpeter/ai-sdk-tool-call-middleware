@@ -7,14 +7,14 @@ import { extractOnErrorOption } from "../core/utils/on-error";
 import { originalToolsSchema } from "../core/utils/provider-options";
 import { isToolCallContent } from "../core/utils/type-guards";
 
-/**
- * Build final prompt by merging system prompt with existing prompt
- */
+// biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 prompt message types
+type V5Message = any;
+
 function buildFinalPrompt(
   systemPrompt: string,
-  processedPrompt: any[],
+  processedPrompt: V5Message[],
   placement: "first" | "last"
-): any[] {
+): V5Message[] {
   const systemIndex = processedPrompt.findIndex((m) => m.role === "system");
   if (systemIndex !== -1) {
     const existing = processedPrompt[systemIndex].content;
@@ -64,22 +64,22 @@ function buildFinalPrompt(
   ];
 }
 
-/**
- * Process assistant message content
- */
+// biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 content item types
+type V5ContentItem = any;
+
 function processAssistantContent(
-  content: any[],
+  content: V5ContentItem[],
   resolvedProtocol: ToolCallProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
-): any[] {
-  const newContent: any[] = [];
+): V5ContentItem[] {
+  const newContent: V5ContentItem[] = [];
   for (const item of content) {
     if (isToolCallContent(item)) {
       newContent.push({
         type: "text",
-        text: resolvedProtocol.formatToolCall(item as any),
+        text: resolvedProtocol.formatToolCall(item as V5ContentItem),
       });
     } else if (item.type === "text") {
       newContent.push(item);
@@ -110,10 +110,11 @@ function processAssistantContent(
 }
 
 function processMessage(
-  message: any,
+  message: V5Message,
   resolvedProtocol: ToolCallProtocol,
+  // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 provider options
   providerOptions?: any
-): any {
+): V5Message {
   if (message.role === "assistant") {
     const content = Array.isArray(message.content)
       ? message.content
@@ -130,7 +131,7 @@ function processMessage(
   }
   if (message.role === "tool") {
     const toolResultParts = message.content.filter(
-      (part: any) => part.type === "tool-result"
+      (part: V5ContentItem) => part.type === "tool-result"
     );
     return {
       role: "user",
@@ -138,7 +139,7 @@ function processMessage(
         {
           type: "text",
           text: toolResultParts
-            .map((toolResult: any) =>
+            .map((toolResult: V5ContentItem) =>
               resolvedProtocol.formatToolResponse({
                 ...toolResult,
                 result:
@@ -153,13 +154,19 @@ function processMessage(
   return message;
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 params structure
+type V5Params = any;
+
+// biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 tool definition
+type V5Tool = any;
+
 export function transformParamsV5({
   params,
   protocol,
   toolSystemPromptTemplate,
   placement = "first",
 }: {
-  params: any;
+  params: V5Params;
   protocol: ToolCallProtocol | (() => ToolCallProtocol);
   toolSystemPromptTemplate: (tools: string) => string;
   placement?: "first" | "last";
@@ -167,7 +174,7 @@ export function transformParamsV5({
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
   const functionTools = (params.tools ?? []).filter(
-    (t: any) => t.type === "function"
+    (t: V5Tool) => t.type === "function"
   );
 
   const systemPrompt = resolvedProtocol.formatTools({
@@ -176,7 +183,7 @@ export function transformParamsV5({
   });
 
   const prompt = params.prompt ?? [];
-  const processedPrompt = prompt.map((message: any) =>
+  const processedPrompt = prompt.map((message: V5Message) =>
     processMessage(
       message,
       resolvedProtocol,
@@ -207,7 +214,7 @@ export function transformParamsV5({
   if (params.toolChoice?.type === "tool") {
     const selectedToolName = params.toolChoice.toolName;
     const selectedTool = functionTools.find(
-      (t: any) => t.name === selectedToolName
+      (t: V5Tool) => t.name === selectedToolName
     );
     if (selectedTool) {
       return {

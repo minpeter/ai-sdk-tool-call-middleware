@@ -20,7 +20,9 @@ export type CoreContentPart =
   | (CoreToolCall & { type: "tool-call" });
 
 export type CoreStreamPart =
-  | { type: "text-delta"; textDelta: string; id?: string }
+  | { type: "text-start"; id: string }
+  | { type: "text-delta"; textDelta: string; delta?: string; id?: string }
+  | { type: "text-end"; id: string }
   | { type: "tool-call"; toolCallId: string; toolName: string; input: string }
   | {
       type: "tool-call-delta";

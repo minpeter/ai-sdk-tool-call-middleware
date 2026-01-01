@@ -1,3 +1,5 @@
+// biome-ignore-all lint/performance/noBarrelFile: intentional public API surface
+
 // Core Protocols & Heuristics (Agnostic)
 
 export type {
