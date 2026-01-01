@@ -25,7 +25,7 @@ on:
       - 'packages/eval/**'
       - 'packages/middleware/**'
 
-  # main에 머지될 때만 전체 벤치마크 실행
+  # main에 머지될 때 fast 모드로 벤치마크 실행 (베이스라인 축적)
   push:
     branches:
       - main
@@ -39,9 +39,17 @@ permissions:
   pull-requests: write
   id-token: write
 
+# Concurrency 전략:
+# - PR 이벤트: 최신 커밋만 남기고 이전 실행 취소 (비용 절감)
+# - main push: 취소하지 않고 큐로 직렬 실행 (각 run이 history에 누적되도록)
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: >-
+    ${{ github.workflow }}-${{
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      && 'main-benchmark-queue'
+      || (github.event.pull_request.number || github.ref)
+    }}
+  cancel-in-progress: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
 
 jobs:
   # 댓글 파싱 및 모드 결정
@@ -101,9 +109,12 @@ jobs:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     needs: [parse-comment]
+    # 무한 루프 방지: [skip benchmarks] 토큰이 커밋 메시지에 있으면 push 이벤트 스킵
+    # paths 필터가 .benchmark-results를 포함하지 않으므로 1차 방어는 이미 되어 있음
+    # 이 조건은 2차 방어층으로, 혹시 paths가 변경되더라도 안전하게 동작
     if: |
       always() && (
-        github.event_name == 'push' ||
+        (github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip benchmarks]')) ||
         github.event_name == 'workflow_dispatch' ||
         github.event_name == 'pull_request' ||
         (github.event_name == 'issue_comment' && needs.parse-comment.outputs.should_run == 'true')
@@ -151,12 +162,25 @@ jobs:
           MODE="${{
             github.event_name == 'workflow_dispatch' && github.event.inputs.benchmark_mode ||
             (github.event_name == 'issue_comment' && needs.parse-comment.outputs.mode) ||
-            (github.event_name == 'push' && 'full') ||
-            (github.event_name == 'pull_request' && 'fast') ||
             'fast'
           }}"
           echo "mode=$MODE" >> $GITHUB_OUTPUT
           echo "Running in $MODE mode"
+
+      # main push 시: 기존 결과 브랜치의 history.jsonl을 먼저 가져와서 누적 보장
+      - name: Fetch existing benchmark history (main push only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          # 결과 브랜치가 존재하는지 확인
+          if git ls-remote --exit-code --heads origin ci/benchmark-results > /dev/null 2>&1; then
+            echo "Fetching existing history from ci/benchmark-results branch..."
+            git fetch origin ci/benchmark-results:ci/benchmark-results
+            # 기존 history.jsonl을 현재 워크스페이스에 복사
+            git show ci/benchmark-results:.benchmark-results/history.jsonl > .benchmark-results/history.jsonl 2>/dev/null || true
+            echo "Existing history fetched successfully"
+          else
+            echo "No existing benchmark results branch found, starting fresh"
+          fi
 
       - name: Run regression benchmarks
         id: benchmark
@@ -174,8 +198,11 @@ jobs:
           pnpm ci:compare
         continue-on-error: true
 
-      - name: Commit and push benchmark results
-        if: steps.benchmark.outcome == 'success'
+      # PR/issue_comment 이벤트: 기존처럼 해당 브랜치에 직접 push
+      - name: Commit and push benchmark results (PR/comment)
+        if: |
+          steps.benchmark.outcome == 'success' &&
+          (github.event_name == 'pull_request' || github.event_name == 'issue_comment')
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
@@ -184,17 +211,69 @@ jobs:
           if ! git diff --quiet --cached; then
             git commit -m "ci: add benchmark results for ${{ github.sha }}"
 
-            # Push to appropriate branch
             if [ "${{ github.event_name }}" = "pull_request" ]; then
               git push origin HEAD:${{ github.head_ref }}
             elif [ "${{ github.event_name }}" = "issue_comment" ]; then
-              # Get PR branch from earlier step
               git push origin HEAD:${{ steps.get-pr-ref.outputs.ref }}
-            elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-              git push origin HEAD:main
             fi
           fi
         continue-on-error: true
+
+      # main push 이벤트: PR을 통해 결과 저장 (브랜치 보호 규칙 준수)
+      - name: Create benchmark results PR (main push only)
+        if: |
+          steps.benchmark.outcome == 'success' &&
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ github.sha }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          git add .benchmark-results/history.jsonl
+          if git diff --quiet --cached; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          BRANCH_NAME="ci/benchmark-results"
+          
+          git checkout -B "$BRANCH_NAME"
+          git commit -m "ci: add benchmark results for ${COMMIT_SHA} [skip benchmarks]"
+          git push -f origin "$BRANCH_NAME"
+          
+          EXISTING_PR=$(gh pr list --head "$BRANCH_NAME" --base main --state open --json number --jq '.[0].number' || echo "")
+          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          PR_BODY="## Benchmark Results Update
+
+          This PR contains automatically generated benchmark results.
+
+          **Latest commit:** \`${COMMIT_SHA}\`
+          **Updated:** ${TIMESTAMP}
+          **Workflow run:** ${WORKFLOW_URL}
+
+          ---
+
+          > **Note**: This PR is automatically managed by the regression test workflow.
+          > Merging this PR will NOT trigger another benchmark run (protected by \`[skip benchmarks]\` token and path filters).
+          > 
+          > The benchmark history will continue to accumulate even if this PR is not merged immediately."
+          
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            echo "Existing PR #$EXISTING_PR found, updating..."
+            echo "$PR_BODY" | gh pr edit "$EXISTING_PR" --body-file -
+          else
+            echo "Creating new PR..."
+            echo "$PR_BODY" | gh pr create \
+              --title "ci: update benchmark history [skip benchmarks]" \
+              --body-file - \
+              --head "$BRANCH_NAME" \
+              --base main
+          fi
 
       - name: Comment PR with benchmark failure
         if: |
