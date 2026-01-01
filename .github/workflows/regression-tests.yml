@@ -77,11 +77,12 @@ jobs:
               return;
             }
 
-            // 명령어 파싱
+            // 명령어 파싱 - /benchmark 명령어만 매칭 (URL의 /benchmark-results 등 제외)
             let mode = 'fast';
             let shouldRun = false;
 
-            if (comment.includes('/benchmark')) {
+            const benchmarkMatch = comment.match(/(?:^|\s)\/benchmark(?:\s|$)/);
+            if (benchmarkMatch) {
               shouldRun = true;
 
               if (comment.includes('full') || comment.includes('all')) {
