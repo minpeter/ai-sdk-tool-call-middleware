@@ -17,10 +17,11 @@
 - **PR 생성/커밋 시**:
   - Fast 모드 (4 categories x 5 cases = 20개) - 빠르고 저렴
   - parser/eval/middleware 패키지 변경시만
+  - 결과는 해당 PR 브랜치에 직접 커밋
 - **main 브랜치 푸시 시**:
-  - Full 모드로 전체 벤치마크 실행
-  - 베이스라인 데이터 업데이트
+  - Fast 모드로 벤치마크 실행 (베이스라인 축적)
   - parser/eval/middleware 패키지 변경시만
+  - **결과는 별도 PR(`ci/benchmark-results`)로 생성** (브랜치 보호 규칙 준수)
 
 #### 댓글 트리거
 ```bash
@@ -125,7 +126,17 @@ pnpm tsx scripts/compare-benchmarks.ts
 
 - `history.jsonl`은 git으로 추적되어 프로젝트와 함께 버전 관리됨
 - 개별 벤치마크 파일은 무시되지만 CI 아티팩트로 90일간 보관됨
-- main 브랜치로 머지될 때 자동으로 히스토리 업데이트
+- **main push 시**: 별도 PR(`ci/benchmark-results` 브랜치)이 생성되어 결과 저장
+  - 기존 PR이 있으면 자동으로 업데이트됨
+  - PR을 머지하지 않아도 결과는 계속 누적됨
+
+### 무한 루프 방지
+
+벤치마크 PR이 머지되어도 다시 벤치마크가 실행되지 않도록 다중 방어 체계가 있습니다:
+
+1. **Path 필터 (1차 방어)**: `on.push.paths`가 `packages/*`만 포함하므로 `.benchmark-results/**` 변경은 트리거하지 않음
+2. **Skip 토큰 (2차 방어)**: 커밋 메시지에 `[skip benchmarks]` 토큰이 있으면 push 이벤트 스킵
+3. **PR 제목**: `ci: update benchmark history [skip benchmarks]` 형식으로 명시적 표시
 
 ## ⚠️ 주의사항
 
