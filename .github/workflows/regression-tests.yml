@@ -158,7 +158,7 @@ jobs:
         run: pnpm build
 
       - name: Download benchmark API cache from previous run
-        uses: dawidd6/action-download-artifact@v6
+        uses: dawidd6/action-download-artifact@v12
         with:
           github_token: ${{ github.token }}
           workflow: regression-tests.yml
@@ -399,7 +399,7 @@ jobs:
 
       - name: Upload benchmark API cache as artifact
         if: steps.benchmark.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: benchmark-api-cache
           path: .benchmark-results/cache
