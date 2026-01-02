@@ -279,14 +279,18 @@ function saveResults(
 
   console.log(`\n💾 Results saved to ${filepath}`);
 
-  const historyFile = path.join(resultsDir, "history.jsonl");
-  fs.appendFileSync(historyFile, `${JSON.stringify(primaryResult)}\n`);
+  if (process.env.CI) {
+    const historyFile = path.join(resultsDir, "history.jsonl");
+    fs.appendFileSync(historyFile, `${JSON.stringify(primaryResult)}\n`);
 
-  if (fastResult) {
-    fs.appendFileSync(historyFile, `${JSON.stringify(fastResult)}\n`);
-    console.log("📝 History updated with both full and fast entries");
+    if (fastResult) {
+      fs.appendFileSync(historyFile, `${JSON.stringify(fastResult)}\n`);
+      console.log("📝 History updated with both full and fast entries");
+    } else {
+      console.log(`📝 History updated in ${historyFile}`);
+    }
   } else {
-    console.log(`📝 History updated in ${historyFile}`);
+    console.log("⏭️  Skipping history.jsonl update (local run)");
   }
 }
 
