@@ -1,12 +1,4 @@
 #!/usr/bin/env tsx
-/**
- * Regression Benchmark Runner
- *
- * Runs specialized benchmarks for different models and protocols:
- * 1. Qwen/Qwen3-235B-A22B-Instruct-2507: Native vs Gemma vs Hermes
- * 2. zai-org/GLM-4.6: Native vs MorphXML vs YamlXML
- * 3. deepseek-ai/DeepSeek-R1-0528: MorphXML vs YamlXML vs Gemma vs Hermes (Native excluded)
- */
 
 import { execSync } from "node:child_process";
 import fs from "node:fs";
@@ -29,6 +21,7 @@ import {
 import {
   extractReasoningMiddleware,
   type LanguageModel,
+  type LanguageModelMiddleware,
   wrapLanguageModel,
 } from "ai";
 
@@ -42,10 +35,21 @@ const diskCacheMiddleware = createDiskCacheMiddleware({
 
 const commitHash = execSync("git rev-parse HEAD").toString().trim();
 const shortHash = commitHash.slice(0, 7);
-const branch =
-  process.env.GITHUB_HEAD_REF ||
-  process.env.GITHUB_REF_NAME ||
-  execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
+
+function getBranch(): string {
+  if (process.env.PR_BRANCH) {
+    return process.env.PR_BRANCH;
+  }
+  if (process.env.GITHUB_HEAD_REF) {
+    return process.env.GITHUB_HEAD_REF;
+  }
+  if (process.env.GITHUB_REF_NAME) {
+    return process.env.GITHUB_REF_NAME;
+  }
+  return execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
+}
+
+const branch = getBranch();
 
 console.log(
   `🔍 Running specialized regression benchmarks for commit ${shortHash}`
@@ -63,9 +67,11 @@ const friendli = createOpenAICompatible({
   baseURL: "https://api.friendli.ai/serverless/v1",
 });
 
+type MiddlewareArray = LanguageModelMiddleware[];
+
 function createWrappedModel(
   baseModel: LanguageModel,
-  middleware: any[] = []
+  middleware: MiddlewareArray = []
 ): LanguageModel {
   return wrapLanguageModel({
     model: baseModel,
@@ -99,7 +105,7 @@ const allBenchmarks = [
 async function runModelBenchmark(
   modelId: string,
   configs: Record<string, LanguageModel>,
-  benchmarks: any[]
+  benchmarks: typeof allBenchmarks
 ): Promise<Record<string, Record<string, number>>> {
   console.log(`\n🚀 Testing ${modelId}...`);
   const results = await evaluate({
@@ -198,8 +204,9 @@ async function main() {
     };
 
     const resultsDir = path.join(process.cwd(), ".benchmark-results");
-    if (!fs.existsSync(resultsDir))
+    if (!fs.existsSync(resultsDir)) {
       fs.mkdirSync(resultsDir, { recursive: true });
+    }
 
     const filename = `benchmark-${shortHash}-${Date.now()}.json`;
     fs.writeFileSync(
@@ -214,7 +221,7 @@ async function main() {
       );
     }
 
-    console.log("\n" + "═".repeat(80));
+    console.log(`\n${"═".repeat(80)}`);
     console.log("📊 SPECIALIZED REGRESSION TEST REPORT");
     console.log("═".repeat(80));
 
@@ -232,7 +239,9 @@ async function main() {
       console.log(`\n### ${title}`);
       const protocols = Object.keys(scores);
       const benchmarks = Object.keys(scores[protocols[0]] || {});
-      if (benchmarks.length === 0) return;
+      if (benchmarks.length === 0) {
+        return;
+      }
 
       const hasNative = protocols.includes("native");
       const colWidths = {
@@ -270,7 +279,9 @@ async function main() {
               const score = `${(scores[p][b] * 100).toFixed(1)}%`.padStart(
                 colWidths.protocol
               );
-              if (p === "native") return [score];
+              if (p === "native") {
+                return [score];
+              }
               const diff = scores[p][b] - nativeScore;
               const diffNum = (diff * 100).toFixed(0);
               let diffStr: string;

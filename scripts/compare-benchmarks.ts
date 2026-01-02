@@ -1,10 +1,4 @@
 #!/usr/bin/env tsx
-/**
- * Benchmark Comparison Script
- *
- * Compares current benchmark results with historical data
- * and generates a markdown report for PR comments.
- */
 
 import fs from "node:fs";
 import path from "node:path";
@@ -13,13 +7,23 @@ interface BenchmarkResult {
   commit: string;
   branch: string;
   timestamp: string;
-  model: string;
   mode: "fast" | "full";
   results: {
-    native: Record<string, number>;
-    morphxml: Record<string, number>;
+    qwen: Record<string, Record<string, number>>;
+    glm: Record<string, Record<string, number>>;
+    deepseek: Record<string, Record<string, number>>;
   };
 }
+
+type ModelKey = "qwen" | "glm" | "deepseek";
+
+const MODEL_KEYS: ModelKey[] = ["qwen", "glm", "deepseek"];
+
+const MODEL_DISPLAY_NAMES: Record<ModelKey, string> = {
+  qwen: "Qwen/Qwen3-235B-A22B-Instruct-2507",
+  glm: "zai-org/GLM-4.6",
+  deepseek: "deepseek-ai/DeepSeek-R1-0528",
+};
 
 function loadHistory(): BenchmarkResult[] {
   const historyFile = path.join(
@@ -54,15 +58,96 @@ function loadCurrentResult(): BenchmarkResult {
   return JSON.parse(fs.readFileSync(latestFile, "utf-8"));
 }
 
-function calculateTrend(history: BenchmarkResult[], current: BenchmarkResult) {
-  // Get last 5 results from main branch with SAME MODE and SAME MODEL
+interface ModelComparison {
+  protocol: string;
+  benchmark: string;
+  current: number;
+  baseline: number;
+  diff: number;
+  regression: boolean;
+}
+
+interface TrendResult {
+  hasBaseline: boolean;
+  message?: string;
+  baselineSampleSize?: number;
+  comparisons?: Record<ModelKey, ModelComparison[]>;
+  hasRegression?: boolean;
+}
+
+function calculateBaselineAverage(
+  mainBranchResults: BenchmarkResult[],
+  modelKey: ModelKey,
+  protocol: string,
+  benchmark: string
+): number | null {
+  let sum = 0;
+  let count = 0;
+  for (const result of mainBranchResults) {
+    const score = result.results[modelKey]?.[protocol]?.[benchmark];
+    if (score !== undefined) {
+      sum += score;
+      count++;
+    }
+  }
+  return count > 0 ? sum / count : null;
+}
+
+function processModelComparisons(
+  modelKey: ModelKey,
+  currentModelResults: Record<string, Record<string, number>>,
+  mainBranchResults: BenchmarkResult[]
+): { comparisons: ModelComparison[]; hasRegression: boolean } {
+  const comparisons: ModelComparison[] = [];
+  let hasRegression = false;
+
+  const protocols = Object.keys(currentModelResults);
+  const benchmarks = Object.keys(currentModelResults[protocols[0]] || {});
+
+  for (const protocol of protocols) {
+    for (const benchmark of benchmarks) {
+      const currentScore = currentModelResults[protocol]?.[benchmark];
+      if (currentScore === undefined) {
+        continue;
+      }
+
+      const baseline = calculateBaselineAverage(
+        mainBranchResults,
+        modelKey,
+        protocol,
+        benchmark
+      );
+      if (baseline === null) {
+        continue;
+      }
+
+      const diff = ((currentScore - baseline) / baseline) * 100;
+      const regression = diff < -2;
+
+      if (regression) {
+        hasRegression = true;
+      }
+
+      comparisons.push({
+        protocol,
+        benchmark,
+        current: currentScore,
+        baseline,
+        diff,
+        regression,
+      });
+    }
+  }
+
+  return { comparisons, hasRegression };
+}
+
+function calculateTrend(
+  history: BenchmarkResult[],
+  current: BenchmarkResult
+): TrendResult {
   const mainBranchResults = history
-    .filter(
-      (r) =>
-        r.branch === "main" &&
-        r.mode === current.mode &&
-        r.model === current.model
-    )
+    .filter((r) => r.branch === "main" && r.mode === current.mode)
     .slice(-5);
 
   if (mainBranchResults.length === 0) {
@@ -72,65 +157,36 @@ function calculateTrend(history: BenchmarkResult[], current: BenchmarkResult) {
     };
   }
 
-  // Calculate average scores from main branch
-  const mainAvgNative: Record<string, number> = {};
-  const mainAvgMorphxml: Record<string, number> = {};
+  const comparisons: Record<ModelKey, ModelComparison[]> = {
+    qwen: [],
+    glm: [],
+    deepseek: [],
+  };
 
-  const benchmarks = Object.keys(mainBranchResults[0].results.native);
-  for (const benchmark of benchmarks) {
-    let nativeSum = 0;
-    let morphxmlSum = 0;
-    for (const result of mainBranchResults) {
-      nativeSum += result.results.native[benchmark] || 0;
-      morphxmlSum += result.results.morphxml[benchmark] || 0;
+  let hasRegression = false;
+
+  for (const modelKey of MODEL_KEYS) {
+    const currentModelResults = current.results[modelKey];
+    if (!currentModelResults) {
+      continue;
     }
-    mainAvgNative[benchmark] = nativeSum / mainBranchResults.length;
-    mainAvgMorphxml[benchmark] = morphxmlSum / mainBranchResults.length;
-  }
 
-  // Compare current with main average
-  const comparisons: Array<{
-    benchmark: string;
-    currentNative: number;
-    currentMorphxml: number;
-    baselineNative: number;
-    baselineMorphxml: number;
-    nativeDiff: number;
-    morphxmlDiff: number;
-    regression: boolean;
-  }> = [];
-
-  for (const benchmark of benchmarks) {
-    const currentNative = current.results.native[benchmark];
-    const currentMorphxml = current.results.morphxml[benchmark];
-    const baselineNative = mainAvgNative[benchmark];
-    const baselineMorphxml = mainAvgMorphxml[benchmark];
-
-    const nativeDiff =
-      ((currentNative - baselineNative) / baselineNative) * 100;
-    const morphxmlDiff =
-      ((currentMorphxml - baselineMorphxml) / baselineMorphxml) * 100;
-
-    // Consider >2% drop as regression
-    const regression = nativeDiff < -2 || morphxmlDiff < -2;
-
-    comparisons.push({
-      benchmark,
-      currentNative,
-      currentMorphxml,
-      baselineNative,
-      baselineMorphxml,
-      nativeDiff,
-      morphxmlDiff,
-      regression,
-    });
+    const result = processModelComparisons(
+      modelKey,
+      currentModelResults,
+      mainBranchResults
+    );
+    comparisons[modelKey] = result.comparisons;
+    if (result.hasRegression) {
+      hasRegression = true;
+    }
   }
 
   return {
     hasBaseline: true,
     baselineSampleSize: mainBranchResults.length,
     comparisons,
-    hasRegression: comparisons.some((c) => c.regression),
+    hasRegression,
   };
 }
 
@@ -143,46 +199,120 @@ function formatDiff(diff: number): string {
   return `${sign}${diff.toFixed(1)}%`;
 }
 
-function generateComparisonTable(
-  comparisons: Array<{
-    benchmark: string;
-    currentNative: number;
-    currentMorphxml: number;
-    baselineNative: number;
-    baselineMorphxml: number;
-    nativeDiff: number;
-    morphxmlDiff: number;
-  }>
+function getDiffEmoji(diff: number): string {
+  if (diff < -2) {
+    return "⚠️";
+  }
+  if (diff > 2) {
+    return "✨";
+  }
+  return "";
+}
+
+function generateTableHeader(protocols: string[], hasNative: boolean): string {
+  if (hasNative) {
+    const otherProtocols = protocols.filter((p) => p !== "native");
+    const header = `| Benchmark | native | ${otherProtocols.map((p) => `${p} | Δ`).join(" | ")} |\n`;
+    const separator = `|-----------|--------|${otherProtocols.map(() => "--------|----").join("|")}|\n`;
+    return header + separator;
+  }
+  const header = `| Benchmark | ${protocols.join(" | ")} |\n`;
+  const separator = `|-----------|${protocols.map(() => "--------").join("|")}|\n`;
+  return header + separator;
+}
+
+function generateTableRow(
+  benchmark: string,
+  protocols: string[],
+  scores: Record<string, Record<string, number>>,
+  hasNative: boolean
 ): string {
-  let table =
-    "| Benchmark | Current Native | Baseline Native | Δ Native | Current morphXML | Baseline morphXML | Δ morphXML |\n";
-  table +=
-    "|-----------|----------------|-----------------|----------|------------------|-------------------|------------|\n";
+  if (hasNative) {
+    const nativeScore = scores.native[benchmark];
+    const cells = [formatPercentage(nativeScore)];
 
-  for (const comp of comparisons) {
-    let nativeEmoji = "";
-    if (comp.nativeDiff < -2) {
-      nativeEmoji = "⚠️";
-    } else if (comp.nativeDiff > 2) {
-      nativeEmoji = "✨";
+    for (const protocol of protocols.filter((p) => p !== "native")) {
+      const score = scores[protocol][benchmark];
+      const diff = ((score - nativeScore) / nativeScore) * 100;
+      const emoji = getDiffEmoji(diff);
+      cells.push(formatPercentage(score));
+      cells.push(`${emoji} ${formatDiff(diff)}`);
     }
 
-    let morphxmlEmoji = "";
-    if (comp.morphxmlDiff < -2) {
-      morphxmlEmoji = "⚠️";
-    } else if (comp.morphxmlDiff > 2) {
-      morphxmlEmoji = "✨";
-    }
+    return `| ${benchmark} | ${cells.join(" | ")} |\n`;
+  }
+  const cells = protocols.map((p) => formatPercentage(scores[p][benchmark]));
+  return `| ${benchmark} | ${cells.join(" | ")} |\n`;
+}
 
-    table += `| ${comp.benchmark} | ${formatPercentage(comp.currentNative)} | ${formatPercentage(comp.baselineNative)} | ${nativeEmoji} ${formatDiff(comp.nativeDiff)} | ${formatPercentage(comp.currentMorphxml)} | ${formatPercentage(comp.baselineMorphxml)} | ${morphxmlEmoji} ${formatDiff(comp.morphxmlDiff)} |\n`;
+function generateCurrentResultsTable(
+  modelKey: ModelKey,
+  scores: Record<string, Record<string, number>>
+): string {
+  const protocols = Object.keys(scores);
+  if (protocols.length === 0) {
+    return "";
   }
 
+  const benchmarks = Object.keys(scores[protocols[0]] || {});
+  if (benchmarks.length === 0) {
+    return "";
+  }
+
+  const hasNative = protocols.includes("native");
+
+  let table = `#### ${MODEL_DISPLAY_NAMES[modelKey]}\n\n`;
+  table += generateTableHeader(protocols, hasNative);
+
+  for (const benchmark of benchmarks) {
+    table += generateTableRow(benchmark, protocols, scores, hasNative);
+  }
+
+  table += "\n";
   return table;
+}
+
+function getComparisonEmoji(comp: ModelComparison): string {
+  if (comp.regression) {
+    return "⚠️";
+  }
+  if (comp.diff > 2) {
+    return "✨";
+  }
+  return "";
+}
+
+function generateComparisonSection(
+  comparisons: Record<ModelKey, ModelComparison[]>,
+  baselineSampleSize: number
+): string {
+  let markdown = "### 📈 Comparison with Main Branch\n\n";
+  markdown += `*Baseline: Average of last ${baselineSampleSize} results from main branch*\n\n`;
+
+  for (const modelKey of MODEL_KEYS) {
+    const modelComparisons = comparisons[modelKey];
+    if (!modelComparisons || modelComparisons.length === 0) {
+      continue;
+    }
+
+    markdown += `#### ${MODEL_DISPLAY_NAMES[modelKey]}\n\n`;
+    markdown += "| Protocol | Benchmark | Current | Baseline | Δ |\n";
+    markdown += "|----------|-----------|---------|----------|---|\n";
+
+    for (const comp of modelComparisons) {
+      const emoji = getComparisonEmoji(comp);
+      markdown += `| ${comp.protocol} | ${comp.benchmark} | ${formatPercentage(comp.current)} | ${formatPercentage(comp.baseline)} | ${emoji} ${formatDiff(comp.diff)} |\n`;
+    }
+
+    markdown += "\n";
+  }
+
+  return markdown;
 }
 
 function generateMarkdownReport(
   current: BenchmarkResult,
-  trend: ReturnType<typeof calculateTrend>
+  trend: TrendResult
 ): string {
   const modeEmoji = {
     fast: "⚡",
@@ -193,41 +323,23 @@ function generateMarkdownReport(
 
   markdown += `**Commit:** \`${current.commit.slice(0, 7)}\`\n`;
   markdown += `**Branch:** \`${current.branch}\`\n`;
-  markdown += `**Model:** ${current.model}\n`;
   markdown += `**Mode:** ${modeEmoji[current.mode]} ${current.mode}\n`;
   markdown += `**Time:** ${new Date(current.timestamp).toLocaleString()}\n\n`;
 
   markdown += "### Current Results\n\n";
-  markdown += "| Benchmark | Native | morphXML | Δ |\n";
-  markdown += "|-----------|--------|----------|---|\n";
 
-  const benchmarks = Object.keys(current.results.native);
-  for (const benchmark of benchmarks) {
-    const nativeScore = current.results.native[benchmark];
-    const morphxmlScore = current.results.morphxml[benchmark];
-    const diff = ((morphxmlScore - nativeScore) / nativeScore) * 100;
-
-    markdown += `| ${benchmark} | ${formatPercentage(nativeScore)} | ${formatPercentage(morphxmlScore)} | ${formatDiff(diff)} |\n`;
+  for (const modelKey of MODEL_KEYS) {
+    const scores = current.results[modelKey];
+    if (scores && Object.keys(scores).length > 0) {
+      markdown += generateCurrentResultsTable(modelKey, scores);
+    }
   }
 
-  // Calculate averages
-  const nativeAvg =
-    Object.values(current.results.native).reduce((a, b) => a + b, 0) /
-    benchmarks.length;
-  const morphxmlAvg =
-    Object.values(current.results.morphxml).reduce((a, b) => a + b, 0) /
-    benchmarks.length;
-  const avgDiff = ((morphxmlAvg - nativeAvg) / nativeAvg) * 100;
-
-  markdown += `| **Average** | **${formatPercentage(nativeAvg)}** | **${formatPercentage(morphxmlAvg)}** | **${formatDiff(avgDiff)}** |\n\n`;
-
-  // Comparison with main branch
-  if (trend.hasBaseline && "comparisons" in trend) {
-    markdown += "### 📈 Comparison with Main Branch\n\n";
-    markdown += `*Baseline: Average of last ${trend.baselineSampleSize} results from main branch*\n\n`;
-
-    markdown += generateComparisonTable(trend.comparisons);
-    markdown += "\n";
+  if (trend.hasBaseline && trend.comparisons && trend.baselineSampleSize) {
+    markdown += generateComparisonSection(
+      trend.comparisons,
+      trend.baselineSampleSize
+    );
 
     if (trend.hasRegression) {
       markdown += "### ⚠️ Regression Detected\n\n";
@@ -267,7 +379,6 @@ function main() {
 
     const markdown = generateMarkdownReport(current, trend);
 
-    // Save to file for CI
     const reportPath = path.join(process.cwd(), ".benchmark-results/report.md");
     fs.writeFileSync(reportPath, markdown);
 
@@ -276,8 +387,7 @@ function main() {
     console.log(markdown);
     console.log("=".repeat(80));
 
-    // Exit with error code if regression detected
-    if (trend.hasBaseline && "hasRegression" in trend && trend.hasRegression) {
+    if (trend.hasBaseline && trend.hasRegression) {
       console.log("\n⚠️ Regression detected! See report for details.");
       process.exit(1);
     }
