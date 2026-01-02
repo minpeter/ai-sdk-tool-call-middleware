@@ -42,8 +42,8 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       ultracite:
-        specifier: 7.0.4
-        version: 7.0.4(typescript@5.9.3)
+        specifier: 7.0.5
+        version: 7.0.5(typescript@5.9.3)
       update-ts-references:
         specifier: ^4.0.0
         version: 4.0.0
@@ -223,8 +223,8 @@ importers:
         specifier: workspace:*
         version: link:../../tools/tsconfig
       '@opencode-ai/plugin':
-        specifier: ^1.0.222
-        version: 1.0.223
+        specifier: ^1.0.224
+        version: 1.0.224
       '@types/node':
         specifier: ^25.0.3
         version: 25.0.3
@@ -757,11 +757,11 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@opencode-ai/plugin@1.0.223':
-    resolution: {integrity: sha512-ZQAB7woEWHTpDlZrr+WYwIFI/QrmPblGk1nYLRObtpdMFoP8e2zLwE61j0IL4eBrgWY23+Xc2MrALZnkWL4O2Q==}
+  '@opencode-ai/plugin@1.0.224':
+    resolution: {integrity: sha512-V2Su55FI6NGyabFHo853+8r9h66q//gsYWCIODbwRs47qi4VfbFylfddJxQDD+/M/H7w0++ojbQC9YCLNDXdKw==}
 
-  '@opencode-ai/sdk@1.0.223':
-    resolution: {integrity: sha512-oKJ6QjsviE+lt6cpGu0lL2kWuoj84ZkWvwieyqHEQ2pJunAJqUzhmIhzep0QyDax1/+UXhBWfrnciNt48ch66w==}
+  '@opencode-ai/sdk@1.0.224':
+    resolution: {integrity: sha512-gODyWLDTaz38qISxRdJKsEiFqvJNcFzu4/awoSICIl8j8gx6qDxLsYWVp/ToO4LKXTvHMn8yyZpM3ZEdGhDC+g==}
 
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
@@ -2382,8 +2382,8 @@ packages:
   ufo@1.6.1:
     resolution: {integrity: sha512-9a4/uxlTWJ4+a5i0ooc1rU7C7YOw3wT+UGqdeNNHWnOF9qcMBgLRS+4IYUqbczewFx4mLEig6gawh7X6mFlEkA==}
 
-  ultracite@7.0.4:
-    resolution: {integrity: sha512-mjbFUhFdM/nBR+XR2WylUJCmXqrErDyrFxyIy1F0TQAPzZvigjMxnhbtZjKKxg0t3pj5wNr6JISUnFbSX1OeGw==}
+  ultracite@7.0.5:
+    resolution: {integrity: sha512-xIFfACBEIbQd/kRClViwA87ZYCTiAHc1dOrp9WSGTWDe/DS32M23jFMvQiphI/vJu5GCHZTyS45ZES8DDHtXXA==}
     hasBin: true
 
   unbox-primitive@1.1.0:
@@ -2947,12 +2947,12 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
-  '@opencode-ai/plugin@1.0.223':
+  '@opencode-ai/plugin@1.0.224':
     dependencies:
-      '@opencode-ai/sdk': 1.0.223
+      '@opencode-ai/sdk': 1.0.224
       zod: 4.1.8
 
-  '@opencode-ai/sdk@1.0.223': {}
+  '@opencode-ai/sdk@1.0.224': {}
 
   '@opentelemetry/api@1.9.0': {}
 
@@ -4640,7 +4640,7 @@ snapshots:
 
   ufo@1.6.1: {}
 
-  ultracite@7.0.4(typescript@5.9.3):
+  ultracite@7.0.5(typescript@5.9.3):
     dependencies:
       '@clack/prompts': 0.11.0
       '@trpc/server': 11.8.1(typescript@5.9.3)

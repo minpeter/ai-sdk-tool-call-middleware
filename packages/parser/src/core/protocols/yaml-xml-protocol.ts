@@ -115,75 +115,76 @@ function findEarliestTagPosition(
 /**
  * Find all tool calls in the text for the given tool names.
  */
-function findToolCalls(
-  text: string,
-  toolNames: string[]
-): Array<{
+interface ToolCallMatch {
   toolName: string;
   startIndex: number;
   endIndex: number;
   content: string;
-}> {
-  const toolCalls: Array<{
-    toolName: string;
-    startIndex: number;
-    endIndex: number;
-    content: string;
-  }> = [];
+}
 
-  for (const toolName of toolNames) {
-    let searchIndex = 0;
-    const selfTagRegex = new RegExp(`<${toolName}\\s*/>`, "g");
+function collectToolCallsForName(
+  text: string,
+  toolName: string
+): ToolCallMatch[] {
+  const toolCalls: ToolCallMatch[] = [];
+  let searchIndex = 0;
+  const selfTagRegex = new RegExp(`<${toolName}\\s*/>`, "g");
 
-    while (searchIndex < text.length) {
-      const startTag = `<${toolName}>`;
-      const openIdx = text.indexOf(startTag, searchIndex);
+  while (searchIndex < text.length) {
+    const startTag = `<${toolName}>`;
+    const openIdx = text.indexOf(startTag, searchIndex);
 
-      selfTagRegex.lastIndex = searchIndex;
-      const selfMatch = selfTagRegex.exec(text);
-      const selfIdx = selfMatch ? selfMatch.index : -1;
-      const selfTagLength = selfMatch ? selfMatch[0].length : 0;
+    selfTagRegex.lastIndex = searchIndex;
+    const selfMatch = selfTagRegex.exec(text);
+    const selfIdx = selfMatch ? selfMatch.index : -1;
+    const selfTagLength = selfMatch ? selfMatch[0].length : 0;
 
-      if (openIdx === -1 && selfIdx === -1) {
-        break;
-      }
+    if (openIdx === -1 && selfIdx === -1) {
+      break;
+    }
 
-      const { tagStart, isSelfClosing } = findEarliestTagPosition(
-        openIdx,
-        selfIdx
-      );
+    const { tagStart, isSelfClosing } = findEarliestTagPosition(
+      openIdx,
+      selfIdx
+    );
 
-      if (isSelfClosing) {
-        const endIndex = tagStart + selfTagLength;
-        toolCalls.push({
-          toolName,
-          startIndex: tagStart,
-          endIndex,
-          content: "",
-        });
-        searchIndex = endIndex;
-        continue;
-      }
+    if (isSelfClosing) {
+      const endIndex = tagStart + selfTagLength;
+      toolCalls.push({
+        toolName,
+        startIndex: tagStart,
+        endIndex,
+        content: "",
+      });
+      searchIndex = endIndex;
+      continue;
+    }
 
-      const contentStart = tagStart + startTag.length;
-      const fullTagEnd = findClosingTagEnd(text, contentStart, toolName);
-      if (fullTagEnd !== -1 && fullTagEnd > contentStart) {
-        const endTag = `</${toolName}>`;
-        const endTagStart = fullTagEnd - endTag.length;
-        const content = text.substring(contentStart, endTagStart);
-        toolCalls.push({
-          toolName,
-          startIndex: tagStart,
-          endIndex: fullTagEnd,
-          content,
-        });
-        searchIndex = fullTagEnd;
-      } else {
-        searchIndex = contentStart;
-      }
+    const contentStart = tagStart + startTag.length;
+    const fullTagEnd = findClosingTagEnd(text, contentStart, toolName);
+    if (fullTagEnd !== -1 && fullTagEnd > contentStart) {
+      const endTag = `</${toolName}>`;
+      const endTagStart = fullTagEnd - endTag.length;
+      const content = text.substring(contentStart, endTagStart);
+      toolCalls.push({
+        toolName,
+        startIndex: tagStart,
+        endIndex: fullTagEnd,
+        content,
+      });
+      searchIndex = fullTagEnd;
+    } else {
+      searchIndex = contentStart;
     }
   }
 
+  return toolCalls;
+}
+
+function findToolCalls(text: string, toolNames: string[]): ToolCallMatch[] {
+  const toolCalls = toolNames.flatMap((toolName) =>
+    collectToolCallsForName(text, toolName)
+  );
   return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
 }
 
@@ -245,6 +246,53 @@ function parseYamlContent(
     options?.onError?.("Failed to parse YAML content", { error });
     return null;
   }
+}
+
+function appendTextPart(
+  processedElements: TCMCoreContentPart[],
+  textPart: string
+) {
+  if (textPart.trim()) {
+    processedElements.push({
+      type: "text",
+      text: textPart,
+    });
+  }
+}
+
+function processToolCallMatch(
+  text: string,
+  tc: ToolCallMatch,
+  currentIndex: number,
+  processedElements: TCMCoreContentPart[],
+  options?: ParserOptions
+): number {
+  if (tc.startIndex < currentIndex) {
+    return currentIndex;
+  }
+
+  appendTextPart(
+    processedElements,
+    text.substring(currentIndex, tc.startIndex)
+  );
+
+  const parsedArgs = parseYamlContent(tc.content, options);
+  if (parsedArgs !== null) {
+    processedElements.push({
+      type: "tool-call",
+      toolCallId: generateId(),
+      toolName: tc.toolName,
+      input: JSON.stringify(parsedArgs),
+    });
+  } else {
+    const originalText = text.substring(tc.startIndex, tc.endIndex);
+    options?.onError?.("Could not parse YAML tool call", {
+      toolCall: originalText,
+    });
+    processedElements.push({ type: "text", text: originalText });
+  }
+
+  return tc.endIndex;
 }
 
 function createFlushTextHandler(
@@ -389,48 +437,17 @@ export const yamlXmlProtocol = (
       const toolCalls = findToolCalls(text, toolNames);
 
       for (const tc of toolCalls) {
-        // Skip nested tool tags that appear inside a previous tool call's body
-        if (tc.startIndex < currentIndex) {
-          continue;
-        }
-
-        if (tc.startIndex > currentIndex) {
-          const textBefore = text.substring(currentIndex, tc.startIndex);
-          if (textBefore.trim()) {
-            processedElements.push({
-              type: "text",
-              text: textBefore,
-            });
-          }
-        }
-
-        const parsedArgs = parseYamlContent(tc.content, options);
-        if (parsedArgs !== null) {
-          processedElements.push({
-            type: "tool-call",
-            toolCallId: generateId(),
-            toolName: tc.toolName,
-            input: JSON.stringify(parsedArgs),
-          });
-        } else {
-          const originalText = text.substring(tc.startIndex, tc.endIndex);
-          options?.onError?.("Could not parse YAML tool call", {
-            toolCall: originalText,
-          });
-          processedElements.push({ type: "text", text: originalText });
-        }
-
-        currentIndex = tc.endIndex;
+        currentIndex = processToolCallMatch(
+          text,
+          tc,
+          currentIndex,
+          processedElements,
+          options
+        );
       }
 
       if (currentIndex < text.length) {
-        const remaining = text.substring(currentIndex);
-        if (remaining.trim()) {
-          processedElements.push({
-            type: "text",
-            text: remaining,
-          });
-        }
+        appendTextPart(processedElements, text.substring(currentIndex));
       }
 
       return processedElements;
