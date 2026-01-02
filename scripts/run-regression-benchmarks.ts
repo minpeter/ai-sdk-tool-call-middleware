@@ -13,10 +13,9 @@ import {
 } from "@ai-sdk-tool/eval";
 import { createDiskCacheMiddleware } from "@ai-sdk-tool/middleware";
 import {
-  gemmaToolMiddleware,
   hermesToolMiddleware,
-  morphXmlToolMiddleware,
-  orchestratorToolMiddleware,
+  xmlToolMiddleware,
+  ymlToolMiddleware,
 } from "@ai-sdk-tool/parser";
 import {
   extractReasoningMiddleware,
@@ -148,7 +147,6 @@ async function main() {
       QWEN_MODEL,
       {
         native: createWrappedModel(friendli(QWEN_MODEL)),
-        gemma: createWrappedModel(friendli(QWEN_MODEL), [gemmaToolMiddleware]),
         hermes: createWrappedModel(friendli(QWEN_MODEL), [
           hermesToolMiddleware,
         ]),
@@ -161,12 +159,8 @@ async function main() {
       GLM_MODEL,
       {
         native: createWrappedModel(friendli(GLM_MODEL)),
-        morphxml: createWrappedModel(friendli(GLM_MODEL), [
-          morphXmlToolMiddleware,
-        ]),
-        yamlxml: createWrappedModel(friendli(GLM_MODEL), [
-          orchestratorToolMiddleware,
-        ]),
+        morphxml: createWrappedModel(friendli(GLM_MODEL), [xmlToolMiddleware]),
+        yamlxml: createWrappedModel(friendli(GLM_MODEL), [ymlToolMiddleware]),
       },
       allBenchmarks
     );
@@ -176,14 +170,12 @@ async function main() {
       DEEPSEEK_MODEL,
       {
         morphxml: createWrappedModel(friendli(DEEPSEEK_MODEL), [
-          morphXmlToolMiddleware,
+          xmlToolMiddleware,
         ]),
         yamlxml: createWrappedModel(friendli(DEEPSEEK_MODEL), [
-          orchestratorToolMiddleware,
+          ymlToolMiddleware,
         ]),
-        gemma: createWrappedModel(friendli(DEEPSEEK_MODEL), [
-          gemmaToolMiddleware,
-        ]),
+        gemma: createWrappedModel(friendli(DEEPSEEK_MODEL), []),
         hermes: createWrappedModel(friendli(DEEPSEEK_MODEL), [
           hermesToolMiddleware,
         ]),

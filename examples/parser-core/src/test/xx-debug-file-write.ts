@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
+import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import {
   type ModelMessage,
   stepCountIs,
@@ -76,7 +76,7 @@ async function runOnce(
   const result = streamText({
     model: wrapLanguageModel({
       model: friendli("google/gemma-3-27b-it"),
-      middleware: morphXmlToolMiddleware,
+      middleware: xmlToolMiddleware,
     }),
     temperature: 0.0,
     messages,
