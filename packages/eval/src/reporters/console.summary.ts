@@ -277,16 +277,29 @@ function printModelOutput(failure: ParsedFailure, category: string): void {
   }
 }
 
+function shouldShowDiffByDefault(category: string): boolean {
+  return (
+    category === "PARAM_VALUE_MISMATCH" || category === "PARAM_VALUE_PERCENT"
+  );
+}
+
 function printSingleFailure(
   failure: ParsedFailure,
   category: string,
   verbose: boolean
 ): void {
   console.log(`\n  ${colors.bold}${failure.id}${colors.reset}`);
-  printExpectedActual(failure);
 
-  if (failure.diff && failure.diff.length > 0 && verbose) {
-    printDiff(failure.diff);
+  const hasDiff = failure.diff && failure.diff.length > 0;
+  const showDiffPrimarily = shouldShowDiffByDefault(category) && hasDiff;
+
+  if (showDiffPrimarily) {
+    printDiff(failure.diff as string[]);
+  } else {
+    printExpectedActual(failure);
+    if (hasDiff && verbose) {
+      printDiff(failure.diff as string[]);
+    }
   }
 
   printModelOutput(failure, category);
@@ -349,16 +362,14 @@ function printResultHeader(result: EvaluationResult): void {
   const statusIcon = benchmarkResult.success ? "✔" : "✖";
   const statusColor = benchmarkResult.success ? colors.green : colors.red;
 
+  const modelPart = `${colors.cyan}${model}${colors.reset}${modelKey ? ` ${colors.dim}(${modelKey})${colors.reset}` : ""}`;
+  const benchmarkPart = `${colors.magenta}${benchmark}${colors.reset}`;
+  const scorePart = `${statusColor}${statusIcon} ${scorePercent}%${colors.reset} (${passed ?? "?"}/${total ?? "?"} passed)`;
+
   console.log(
     `\n${colors.bold}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}`
   );
-  console.log(
-    `${colors.cyan}${model}${colors.reset}${modelKey ? ` ${colors.dim}(${modelKey})${colors.reset}` : ""}`
-  );
-  console.log(`${colors.magenta}${benchmark}${colors.reset}`);
-  console.log(
-    `${statusColor}${statusIcon} ${scorePercent}%${colors.reset} (${passed ?? "?"}/${total ?? "?"} passed)`
-  );
+  console.log(`${modelPart} │ ${benchmarkPart} │ ${scorePart}`);
 }
 
 function printFailureTable(groups: Map<string, CategoryGroup>): void {

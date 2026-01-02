@@ -442,7 +442,7 @@ function createBfclBenchmark(
             return `- expected one of: ${formatted}`;
           })();
           diffLines.push(expectedLine);
-          diffLines.push(`+ got: ${JSON.stringify(got)}`);
+          diffLines.push(`+      got: ${JSON.stringify(got)}`);
           return diffLines;
         };
 
