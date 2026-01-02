@@ -191,37 +191,57 @@ function calculateTrend(
 }
 
 function formatPercentage(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+  return `${(value * 100).toFixed(1)}%`.padStart(10);
 }
 
 function formatDiff(diff: number): string {
   const sign = diff >= 0 ? "+" : "";
-  return `${sign}${diff.toFixed(1)}%`;
+  return `${sign}${Math.round(diff)}%`.padStart(8);
 }
 
-function getDiffEmoji(diff: number): string {
-  if (diff < -2) {
-    return "⚠️";
-  }
-  if (diff > 2) {
-    return "✨";
-  }
-  return "";
+function padCell(str: string, width: number): string {
+  return str.padStart(width);
 }
 
-function generateTableHeader(protocols: string[], hasNative: boolean): string {
+const COL_WIDTH = 10;
+const BENCH_WIDTH = 23;
+
+function buildTableBorder(
+  left: string,
+  mid: string,
+  right: string,
+  protocols: string[],
+  hasNative: boolean
+): string {
+  let border = `${left}${"─".repeat(BENCH_WIDTH)}${mid}${"─".repeat(COL_WIDTH + 2)}`;
+  const count = hasNative ? protocols.length - 1 : protocols.length;
+  for (let i = 0; i < count; i++) {
+    if (hasNative) {
+      border += `${mid}${"─".repeat(COL_WIDTH + 2)}${mid}${"─".repeat(COL_WIDTH)}`;
+    } else {
+      border += `${mid}${"─".repeat(COL_WIDTH + 2)}`;
+    }
+  }
+  return `${border}${right}\n`;
+}
+
+function buildHeaderRow(protocols: string[], hasNative: boolean): string {
   if (hasNative) {
     const otherProtocols = protocols.filter((p) => p !== "native");
-    const header = `| Benchmark | native | ${otherProtocols.map((p) => `${p} | Δ`).join(" | ")} |\n`;
-    const separator = `|-----------|--------|${otherProtocols.map(() => "--------|----").join("|")}|\n`;
-    return header + separator;
+    let row = `│ ${"Benchmark".padEnd(BENCH_WIDTH - 1)}│${padCell("native", COL_WIDTH + 1)} `;
+    for (const p of otherProtocols) {
+      row += `│${padCell(p, COL_WIDTH + 1)} │${padCell("Δ", COL_WIDTH - 1)} `;
+    }
+    return `${row}│\n`;
   }
-  const header = `| Benchmark | ${protocols.join(" | ")} |\n`;
-  const separator = `|-----------|${protocols.map(() => "--------").join("|")}|\n`;
-  return header + separator;
+  let row = `│ ${"Benchmark".padEnd(BENCH_WIDTH - 1)}`;
+  for (const p of protocols) {
+    row += `│${padCell(p, COL_WIDTH + 1)} `;
+  }
+  return `${row}│\n`;
 }
 
-function generateTableRow(
+function buildDataRow(
   benchmark: string,
   protocols: string[],
   scores: Record<string, Record<string, number>>,
@@ -229,23 +249,22 @@ function generateTableRow(
 ): string {
   if (hasNative) {
     const nativeScore = scores.native[benchmark];
-    const cells = [formatPercentage(nativeScore)];
-
+    let row = `│ ${benchmark.padEnd(BENCH_WIDTH - 1)}│${formatPercentage(nativeScore)} `;
     for (const protocol of protocols.filter((p) => p !== "native")) {
       const score = scores[protocol][benchmark];
       const diff = ((score - nativeScore) / nativeScore) * 100;
-      const emoji = getDiffEmoji(diff);
-      cells.push(formatPercentage(score));
-      cells.push(`${emoji} ${formatDiff(diff)}`);
+      row += `│${formatPercentage(score)} │${formatDiff(diff)} `;
     }
-
-    return `| ${benchmark} | ${cells.join(" | ")} |\n`;
+    return `${row}│\n`;
   }
-  const cells = protocols.map((p) => formatPercentage(scores[p][benchmark]));
-  return `| ${benchmark} | ${cells.join(" | ")} |\n`;
+  let row = `│ ${benchmark.padEnd(BENCH_WIDTH - 1)}`;
+  for (const protocol of protocols) {
+    row += `│${formatPercentage(scores[protocol][benchmark])} `;
+  }
+  return `${row}│\n`;
 }
 
-function generateCurrentResultsTable(
+function generateAsciiTable(
   modelKey: ModelKey,
   scores: Record<string, Record<string, number>>
 ): string {
@@ -261,106 +280,41 @@ function generateCurrentResultsTable(
 
   const hasNative = protocols.includes("native");
 
-  let table = `#### ${MODEL_DISPLAY_NAMES[modelKey]}\n\n`;
-  table += generateTableHeader(protocols, hasNative);
+  let table = `### ${MODEL_DISPLAY_NAMES[modelKey]}\n${"```"}\n`;
+  table += buildTableBorder("┌", "┬", "┐", protocols, hasNative);
+  table += buildHeaderRow(protocols, hasNative);
+  table += buildTableBorder("├", "┼", "┤", protocols, hasNative);
 
   for (const benchmark of benchmarks) {
-    table += generateTableRow(benchmark, protocols, scores, hasNative);
+    table += buildDataRow(benchmark, protocols, scores, hasNative);
   }
 
-  table += "\n";
+  table += buildTableBorder("└", "┴", "┘", protocols, hasNative);
+  table += `${"```"}\n\n`;
   return table;
-}
-
-function getComparisonEmoji(comp: ModelComparison): string {
-  if (comp.regression) {
-    return "⚠️";
-  }
-  if (comp.diff > 2) {
-    return "✨";
-  }
-  return "";
-}
-
-function generateComparisonSection(
-  comparisons: Record<ModelKey, ModelComparison[]>,
-  baselineSampleSize: number
-): string {
-  let markdown = "### 📈 Comparison with Main Branch\n\n";
-  markdown += `*Baseline: Average of last ${baselineSampleSize} results from main branch*\n\n`;
-
-  for (const modelKey of MODEL_KEYS) {
-    const modelComparisons = comparisons[modelKey];
-    if (!modelComparisons || modelComparisons.length === 0) {
-      continue;
-    }
-
-    markdown += `#### ${MODEL_DISPLAY_NAMES[modelKey]}\n\n`;
-    markdown += "| Protocol | Benchmark | Current | Baseline | Δ |\n";
-    markdown += "|----------|-----------|---------|----------|---|\n";
-
-    for (const comp of modelComparisons) {
-      const emoji = getComparisonEmoji(comp);
-      markdown += `| ${comp.protocol} | ${comp.benchmark} | ${formatPercentage(comp.current)} | ${formatPercentage(comp.baseline)} | ${emoji} ${formatDiff(comp.diff)} |\n`;
-    }
-
-    markdown += "\n";
-  }
-
-  return markdown;
 }
 
 function generateMarkdownReport(
   current: BenchmarkResult,
   trend: TrendResult
 ): string {
-  const modeEmoji = {
-    fast: "⚡",
-    full: "🔥",
-  };
+  const modeEmoji = { fast: "⚡", full: "🔥" };
 
-  let markdown = "## 📊 Regression Benchmark Results\n\n";
-
-  markdown += `**Commit:** \`${current.commit.slice(0, 7)}\`\n`;
-  markdown += `**Branch:** \`${current.branch}\`\n`;
-  markdown += `**Mode:** ${modeEmoji[current.mode]} ${current.mode}\n`;
-  markdown += `**Time:** ${new Date(current.timestamp).toLocaleString()}\n\n`;
-
-  markdown += "### Current Results\n\n";
+  let markdown = "## 📊 Benchmark Results\n\n";
+  markdown += `\`${current.commit.slice(0, 7)}\` on \`${current.branch}\` ${modeEmoji[current.mode]}\n\n`;
 
   for (const modelKey of MODEL_KEYS) {
     const scores = current.results[modelKey];
     if (scores && Object.keys(scores).length > 0) {
-      markdown += generateCurrentResultsTable(modelKey, scores);
+      markdown += generateAsciiTable(modelKey, scores);
     }
   }
 
-  if (trend.hasBaseline && trend.comparisons && trend.baselineSampleSize) {
-    markdown += generateComparisonSection(
-      trend.comparisons,
-      trend.baselineSampleSize
-    );
-
-    if (trend.hasRegression) {
-      markdown += "### ⚠️ Regression Detected\n\n";
-      markdown +=
-        "Some benchmarks show >2% performance drop compared to main branch baseline.\n";
-      markdown += "Please review the changes to ensure this is expected.\n\n";
-    } else {
-      markdown += "### ✅ No Regression Detected\n\n";
-      markdown +=
-        "All benchmarks are within expected performance range (±2%) compared to main branch.\n\n";
-    }
-  } else {
-    markdown += "### ℹ️ No Baseline Data\n\n";
-    markdown +=
-      "This is the first benchmark run or there's no data from main branch yet.\n";
-    markdown += "Results will be used as baseline for future comparisons.\n\n";
+  if (trend.hasBaseline && trend.hasRegression) {
+    markdown += "⚠️ **Regression detected** (>2% drop vs main)\n";
+  } else if (trend.hasBaseline) {
+    markdown += "✅ No regression\n";
   }
-
-  markdown += "---\n";
-  markdown +=
-    "*Generated by [Claude Code](https://claude.com/claude-code) CI*\n";
 
   return markdown;
 }
