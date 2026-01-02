@@ -270,7 +270,11 @@ describe("morphXmlProtocol parseGeneratedText self-closing tags", () => {
       input: "{}",
     });
 
-    expect(textParts.length).toBeGreaterThanOrEqual(1);
+    expect(textParts).toHaveLength(2);
+    expect(textParts[0]).toMatchObject({
+      text: "Getting your location now... ",
+    });
+    expect(textParts[1]).toMatchObject({ text: " Done!" });
   });
 
   test("should parse multiple self-closing tool calls", () => {
@@ -309,7 +313,7 @@ describe("morphXmlProtocol parseGeneratedText self-closing tags", () => {
       type: "tool-call",
       toolName: "get_weather",
     });
-    const weatherArgs = JSON.parse((toolCalls[1] as any).input);
+    const weatherArgs = JSON.parse((toolCalls[1] as { input: string }).input);
     expect(weatherArgs.location).toBe("Seoul");
   });
 });
