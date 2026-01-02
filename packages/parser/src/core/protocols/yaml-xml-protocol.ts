@@ -100,6 +100,19 @@ function findClosingTagEnd(
   return -1;
 }
 
+function findEarliestTagPosition(
+  openIdx: number,
+  selfIdx: number
+): { tagStart: number; isSelfClosing: boolean } {
+  const hasSelf = selfIdx !== -1;
+  const hasOpen = openIdx !== -1;
+
+  if (hasSelf && (!hasOpen || selfIdx < openIdx)) {
+    return { tagStart: selfIdx, isSelfClosing: true };
+  }
+  return { tagStart: openIdx, isSelfClosing: false };
+}
+
 /**
  * Find all tool calls in the text for the given tool names.
  */
@@ -131,11 +144,10 @@ function findToolCalls(
         break;
       }
 
-      const tagStart =
-        selfIdx !== -1 && (openIdx === -1 || selfIdx < openIdx)
-          ? selfIdx
-          : openIdx;
-      const isSelfClosing = tagStart === selfIdx;
+      const { tagStart, isSelfClosing } = findEarliestTagPosition(
+        openIdx,
+        selfIdx
+      );
 
       if (isSelfClosing) {
         const endIndex = tagStart + selfTag.length;
@@ -231,9 +243,55 @@ function parseYamlContent(
   }
 }
 
-/**
- * Convert a JavaScript value to YAML string for tool call formatting.
- */
+function formatYamlString(value: string, indentStr: string): string {
+  if (value.includes("\n")) {
+    const lines = value.split("\n");
+    return `|\n${lines.map((line) => `${indentStr}  ${line}`).join("\n")}`;
+  }
+  if (
+    value === "" ||
+    value === "true" ||
+    value === "false" ||
+    value === "null" ||
+    NUMERIC_STRING_RE.test(value) ||
+    value.includes(":") ||
+    value.includes("#")
+  ) {
+    return `'${value.replace(/'/g, "''")}'`;
+  }
+  return value;
+}
+
+function formatYamlArray(
+  value: unknown[],
+  indentStr: string,
+  indent: number
+): string {
+  if (value.length === 0) {
+    return "[]";
+  }
+  return value
+    .map((item) => `\n${indentStr}- ${toYamlValue(item, indent + 1)}`)
+    .join("");
+}
+
+function formatYamlObject(
+  value: Record<string, unknown>,
+  indentStr: string,
+  indent: number
+): string {
+  const entries = Object.entries(value);
+  if (entries.length === 0) {
+    return "{}";
+  }
+  return entries
+    .map(([k, v]) => {
+      const valStr = toYamlValue(v, indent + 1);
+      return `\n${indentStr}${k}: ${valStr}`;
+    })
+    .join("");
+}
+
 function toYamlValue(value: unknown, indent = 0): string {
   const indentStr = "  ".repeat(indent);
 
@@ -242,22 +300,7 @@ function toYamlValue(value: unknown, indent = 0): string {
   }
 
   if (typeof value === "string") {
-    if (value.includes("\n")) {
-      const lines = value.split("\n");
-      return `|\n${lines.map((line) => `${indentStr}  ${line}`).join("\n")}`;
-    }
-    if (
-      value === "" ||
-      value === "true" ||
-      value === "false" ||
-      value === "null" ||
-      NUMERIC_STRING_RE.test(value) ||
-      value.includes(":") ||
-      value.includes("#")
-    ) {
-      return `'${value.replace(/'/g, "''")}'`;
-    }
-    return value;
+    return formatYamlString(value, indentStr);
   }
 
   if (typeof value === "number" || typeof value === "boolean") {
@@ -265,45 +308,25 @@ function toYamlValue(value: unknown, indent = 0): string {
   }
 
   if (Array.isArray(value)) {
-    if (value.length === 0) {
-      return "[]";
-    }
-    return value
-      .map((item) => `\n${indentStr}- ${toYamlValue(item, indent + 1)}`)
-      .join("");
+    return formatYamlArray(value, indentStr, indent);
   }
 
   if (typeof value === "object") {
-    const entries = Object.entries(value);
-    if (entries.length === 0) {
-      return "{}";
-    }
-    return entries
-      .map(([k, v]) => {
-        const valStr = toYamlValue(v, indent + 1);
-        if (valStr.startsWith("\n") || valStr.startsWith("|")) {
-          return `\n${indentStr}${k}: ${valStr}`;
-        }
-        return `\n${indentStr}${k}: ${valStr}`;
-      })
-      .join("");
+    return formatYamlObject(
+      value as Record<string, unknown>,
+      indentStr,
+      indent
+    );
   }
 
   return String(value);
 }
 
-/**
- * Format tool call arguments as YAML.
- */
 function formatArgsAsYaml(args: Record<string, unknown>): string {
   const lines: string[] = [];
   for (const [key, value] of Object.entries(args)) {
     const valStr = toYamlValue(value, 0);
-    if (valStr.startsWith("|") || valStr.startsWith("\n")) {
-      lines.push(`${key}: ${valStr}`);
-    } else {
-      lines.push(`${key}: ${valStr}`);
-    }
+    lines.push(`${key}: ${valStr}`);
   }
   return lines.join("\n");
 }

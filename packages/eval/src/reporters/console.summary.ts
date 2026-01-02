@@ -15,6 +15,8 @@ const colors = {
 
 const DEBUG_FAIL_REGEX = /^\[DEBUG-FAIL\] /;
 const ID_NUM_REGEX = /_(\d+)$/;
+const REASONING_TAG = "think";
+const MAX_FAILURES_TO_DISPLAY = 5;
 
 interface FailureContext {
   raw_model_text?: string;
@@ -225,15 +227,25 @@ function printExpectedActual(failure: ParsedFailure): void {
 
 function printDiff(diff: string[]): void {
   console.log(`    ${colors.gray}Diff:${colors.reset}`);
-  for (const line of diff.slice(0, 5)) {
+  for (const line of diff.slice(0, MAX_FAILURES_TO_DISPLAY)) {
     const lineColor = getLineColor(line);
     console.log(`      ${lineColor}${line}${colors.reset}`);
   }
 }
 
 function removeReasoningTags(text: string): string {
-  let result = text.replace(/<think>[\s\S]*?<\/think>/g, "");
-  result = result.replace(/<think>[\s\S]*/g, "");
+  const openTag = `<${REASONING_TAG}>`;
+  const closeTag = `</${REASONING_TAG}>`;
+  const closedTagPattern = new RegExp(
+    `${openTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?${closeTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+    "g"
+  );
+  const unclosedTagPattern = new RegExp(
+    `${openTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*`,
+    "g"
+  );
+  let result = text.replace(closedTagPattern, "");
+  result = result.replace(unclosedTagPattern, "");
   return result.trim();
 }
 
