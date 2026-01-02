@@ -2,8 +2,10 @@
 /**
  * Regression Benchmark Runner
  *
- * Runs benchmarks comparing native tool calling vs morphXML protocol
- * with the same model, saves results with commit hash for historical comparison.
+ * Runs specialized benchmarks for different models and protocols:
+ * 1. Qwen/Qwen3-235B-A22B-Instruct-2507: Native vs Gemma vs Hermes
+ * 2. zai-org/GLM-4.6: Native vs MorphXML vs YamlXML
+ * 3. deepseek-ai/DeepSeek-R1-0528: MorphXML vs YamlXML vs Gemma vs Hermes (Native excluded)
  */
 
 import { execSync } from "node:child_process";
@@ -18,124 +20,75 @@ import {
   evaluate,
 } from "@ai-sdk-tool/eval";
 import { createDiskCacheMiddleware } from "@ai-sdk-tool/middleware";
-import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
+import {
+  gemmaToolMiddleware,
+  hermesToolMiddleware,
+  morphXmlToolMiddleware,
+  orchestratorToolMiddleware,
+} from "@ai-sdk-tool/parser";
 import {
   extractReasoningMiddleware,
   type LanguageModel,
   wrapLanguageModel,
 } from "ai";
 
-const MODEL_ID = "MiniMaxAI/MiniMax-M2";
+const QWEN_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507";
+const GLM_MODEL = "zai-org/GLM-4.6";
+const DEEPSEEK_MODEL = "deepseek-ai/DeepSeek-R1-0528";
 
 const diskCacheMiddleware = createDiskCacheMiddleware({
   cacheDir: ".benchmark-results/cache",
 });
 
-// Get commit hash and branch
 const commitHash = execSync("git rev-parse HEAD").toString().trim();
 const shortHash = commitHash.slice(0, 7);
-// GitHub Actions uses detached HEAD, so prefer environment variables
 const branch =
-  process.env.GITHUB_HEAD_REF || // PR source branch
-  process.env.GITHUB_REF_NAME || // Push target branch
+  process.env.GITHUB_HEAD_REF ||
+  process.env.GITHUB_REF_NAME ||
   execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
 
-console.log(`🔍 Running regression benchmarks for commit ${shortHash}`);
+console.log(
+  `🔍 Running specialized regression benchmarks for commit ${shortHash}`
+);
 console.log(`📦 Branch: ${branch}\n`);
 
-// Check for API token
 if (!process.env.FRIENDLI_TOKEN) {
   console.error("❌ ERROR: FRIENDLI_TOKEN environment variable is not set");
-  console.error("");
-  console.error("Please set the FRIENDLI_TOKEN environment variable:");
-  console.error("  export FRIENDLI_TOKEN=your_api_token_here");
-  console.error("");
-  console.error("Or add it to GitHub Secrets:");
-  console.error(
-    "  Settings > Secrets and variables > Actions > New repository secret"
-  );
-  console.error("  Name: FRIENDLI_TOKEN");
-  console.error("");
   process.exit(1);
 }
 
-// Setup model provider (using a commonly available model)
 const friendli = createOpenAICompatible({
   name: "friendli.serverless",
   apiKey: process.env.FRIENDLI_TOKEN,
   baseURL: "https://api.friendli.ai/serverless/v1",
 });
 
-const baseModel = friendli(MODEL_ID);
-
-// Native tool calling (no middleware)
-const nativeModel: LanguageModel = wrapLanguageModel({
-  model: baseModel,
-  middleware: [
-    extractReasoningMiddleware({ tagName: "think" }),
-    diskCacheMiddleware,
-  ],
-});
-
-// morphXML protocol
-const morphXmlModel: LanguageModel = wrapLanguageModel({
-  model: baseModel,
-  middleware: [
-    morphXmlToolMiddleware,
-    extractReasoningMiddleware({ tagName: "think" }),
-    diskCacheMiddleware,
-  ],
-});
+function createWrappedModel(
+  baseModel: LanguageModel,
+  middleware: any[] = []
+): LanguageModel {
+  return wrapLanguageModel({
+    model: baseModel,
+    middleware: [
+      ...middleware,
+      extractReasoningMiddleware({ tagName: "think" }),
+      diskCacheMiddleware,
+    ],
+  });
+}
 
 interface BenchmarkResult {
   commit: string;
   branch: string;
   timestamp: string;
-  model: string;
   mode: "fast" | "full";
   results: {
-    native: Record<string, number>;
-    morphxml: Record<string, number>;
+    qwen: Record<string, Record<string, number>>;
+    glm: Record<string, Record<string, number>>;
+    deepseek: Record<string, Record<string, number>>;
   };
 }
 
-interface CaseResult {
-  id: string;
-  valid: boolean;
-}
-
-interface EvalResultWithCases {
-  benchmark: string;
-  result: {
-    score: number;
-    metrics: {
-      case_results?: string;
-    };
-  };
-}
-
-const FAST_LIMIT = 5;
-
-function extractFastScores(
-  evalResults: EvalResultWithCases[]
-): Record<string, number> {
-  const scores: Record<string, number> = {};
-  for (const result of evalResults) {
-    const caseResultsJson = result.result.metrics.case_results;
-    if (!caseResultsJson) {
-      scores[result.benchmark] = result.result.score;
-      continue;
-    }
-    const caseResults: CaseResult[] = JSON.parse(caseResultsJson);
-    const first5 = caseResults.slice(0, FAST_LIMIT);
-    const correctCount = first5.filter((c) => c.valid).length;
-    scores[result.benchmark] =
-      first5.length > 0 ? correctCount / first5.length : 0;
-  }
-  return scores;
-}
-
-// All 4 BFCL benchmark categories
 const allBenchmarks = [
   bfclSimpleBenchmark,
   bfclMultipleBenchmark,
@@ -143,172 +96,215 @@ const allBenchmarks = [
   bfclParallelMultipleBenchmark,
 ];
 
-async function runBenchmarks(): Promise<{
-  fullResult: BenchmarkResult;
-  fastResult: BenchmarkResult | null;
-}> {
-  const timestamp = new Date().toISOString();
-
-  const mode = (process.env.BENCHMARK_MODE ||
-    "fast") as BenchmarkResult["mode"];
-
-  const benchmarkConfigs = {
-    fast: {
-      benchmarks: allBenchmarks,
-      limit: 5,
-      desc: "4 categories x 5 cases = 20 cases (x2 = 40 total), ~2min",
-    },
-    full: {
-      benchmarks: allBenchmarks,
-      limit: undefined,
-      desc: "all 4 categories, all cases, ~15min",
-    },
-  };
-
-  const config = benchmarkConfigs[mode];
-
-  console.log(`Running in ${mode} mode (${config.desc})\n`);
-
-  if (config.limit) {
-    process.env.BFCL_LIMIT = config.limit.toString();
-  }
-
-  console.log("Running native tool calling benchmarks...\n");
-  const nativeResults = await evaluate({
-    models: { native: nativeModel },
-    benchmarks: config.benchmarks,
-    reporter: "console",
+async function runModelBenchmark(
+  modelId: string,
+  configs: Record<string, LanguageModel>,
+  benchmarks: any[]
+): Promise<Record<string, Record<string, number>>> {
+  console.log(`\n🚀 Testing ${modelId}...`);
+  const results = await evaluate({
+    models: configs,
+    benchmarks,
+    reporter: "console.summary",
     temperature: 0.0,
-    maxTokens: 512,
+    maxTokens: 4096,
   });
 
-  console.log("\nRunning morphXML protocol benchmarks...\n");
-  const morphXmlResults = await evaluate({
-    models: { morphxml: morphXmlModel },
-    benchmarks: config.benchmarks,
-    reporter: "console",
-    temperature: 0.0,
-    maxTokens: 512,
-  });
-
-  const nativeScores: Record<string, number> = {};
-  for (const result of nativeResults) {
-    nativeScores[result.benchmark] = result.result.score;
+  const scores: Record<string, Record<string, number>> = {};
+  for (const name of Object.keys(configs)) {
+    scores[name] = {};
   }
 
-  const morphXmlScores: Record<string, number> = {};
-  for (const result of morphXmlResults) {
-    morphXmlScores[result.benchmark] = result.result.score;
+  for (const result of results) {
+    const modelName = result.modelKey;
+    if (modelName && scores[modelName]) {
+      scores[modelName][result.benchmark] = result.result.score;
+    }
   }
 
-  const fullResult: BenchmarkResult = {
-    commit: commitHash,
-    branch,
-    timestamp,
-    model: MODEL_ID,
-    mode,
-    results: {
-      native: nativeScores,
-      morphxml: morphXmlScores,
-    },
-  };
-
-  let fastResult: BenchmarkResult | null = null;
-  if (mode === "full") {
-    const nativeFastScores = extractFastScores(
-      nativeResults as EvalResultWithCases[]
-    );
-    const morphXmlFastScores = extractFastScores(
-      morphXmlResults as EvalResultWithCases[]
-    );
-    fastResult = {
-      commit: commitHash,
-      branch,
-      timestamp,
-      model: MODEL_ID,
-      mode: "fast",
-      results: {
-        native: nativeFastScores,
-        morphxml: morphXmlFastScores,
-      },
-    };
-  }
-
-  return { fullResult, fastResult };
-}
-
-function saveResults(
-  primaryResult: BenchmarkResult,
-  fastResult: BenchmarkResult | null
-) {
-  const resultsDir = path.join(process.cwd(), ".benchmark-results");
-  if (!fs.existsSync(resultsDir)) {
-    fs.mkdirSync(resultsDir, { recursive: true });
-  }
-
-  const filename = `benchmark-${shortHash}-${Date.now()}.json`;
-  const filepath = path.join(resultsDir, filename);
-  fs.writeFileSync(filepath, JSON.stringify(primaryResult, null, 2));
-
-  console.log(`\n💾 Results saved to ${filepath}`);
-
-  const historyFile = path.join(resultsDir, "history.jsonl");
-  fs.appendFileSync(historyFile, `${JSON.stringify(primaryResult)}\n`);
-
-  if (fastResult) {
-    fs.appendFileSync(historyFile, `${JSON.stringify(fastResult)}\n`);
-    console.log("📝 History updated with both full and fast entries");
-  } else {
-    console.log(`📝 History updated in ${historyFile}`);
-  }
-}
-
-function generateReport(results: BenchmarkResult) {
-  console.log(`\n${"=".repeat(80)}`);
-  console.log("📊 REGRESSION TEST REPORT");
-  console.log("=".repeat(80));
-  console.log(`Commit: ${results.commit.slice(0, 7)}`);
-  console.log(`Branch: ${results.branch}`);
-  console.log(`Model: ${results.model}`);
-  console.log(`Time: ${new Date(results.timestamp).toLocaleString()}`);
-  console.log(`\n${"-".repeat(80)}`);
-  console.log("BENCHMARK RESULTS\n");
-
-  const benchmarks = Object.keys(results.results.native);
-  for (const benchmark of benchmarks) {
-    const nativeScore = results.results.native[benchmark];
-    const morphxmlScore = results.results.morphxml[benchmark];
-    const diff = ((morphxmlScore - nativeScore) / nativeScore) * 100;
-
-    console.log(`${benchmark}:`);
-    console.log(`  Native:     ${(nativeScore * 100).toFixed(1)}%`);
-    console.log(`  morphXML:   ${(morphxmlScore * 100).toFixed(1)}%`);
-    console.log(`  Difference: ${diff >= 0 ? "+" : ""}${diff.toFixed(1)}%`);
-    console.log();
-  }
-
-  // Calculate averages
-  const nativeAvg =
-    Object.values(results.results.native).reduce((a, b) => a + b, 0) /
-    benchmarks.length;
-  const morphxmlAvg =
-    Object.values(results.results.morphxml).reduce((a, b) => a + b, 0) /
-    benchmarks.length;
-  const avgDiff = ((morphxmlAvg - nativeAvg) / nativeAvg) * 100;
-
-  console.log("-".repeat(80));
-  console.log("OVERALL AVERAGE:\n");
-  console.log(`  Native:     ${(nativeAvg * 100).toFixed(1)}%`);
-  console.log(`  morphXML:   ${(morphxmlAvg * 100).toFixed(1)}%`);
-  console.log(`  Difference: ${avgDiff >= 0 ? "+" : ""}${avgDiff.toFixed(1)}%`);
-  console.log(`${"=".repeat(80)}\n`);
+  return scores;
 }
 
 async function main() {
+  const timestamp = new Date().toISOString();
+  const mode = (process.env.BENCHMARK_MODE || "fast") as "fast" | "full";
+  const limit = mode === "fast" ? 5 : undefined;
+
+  if (limit) {
+    process.env.BFCL_LIMIT = limit.toString();
+  } else {
+    process.env.BFCL_LIMIT = undefined;
+  }
+
   try {
-    const { fullResult, fastResult } = await runBenchmarks();
-    await saveResults(fullResult, fastResult);
-    await generateReport(fullResult);
+    // 1. Qwen Benchmarks
+    const qwenScores = await runModelBenchmark(
+      QWEN_MODEL,
+      {
+        native: createWrappedModel(friendli(QWEN_MODEL)),
+        gemma: createWrappedModel(friendli(QWEN_MODEL), [gemmaToolMiddleware]),
+        hermes: createWrappedModel(friendli(QWEN_MODEL), [
+          hermesToolMiddleware,
+        ]),
+      },
+      allBenchmarks
+    );
+
+    // 2. GLM Benchmarks
+    const glmScores = await runModelBenchmark(
+      GLM_MODEL,
+      {
+        native: createWrappedModel(friendli(GLM_MODEL)),
+        morphxml: createWrappedModel(friendli(GLM_MODEL), [
+          morphXmlToolMiddleware,
+        ]),
+        yamlxml: createWrappedModel(friendli(GLM_MODEL), [
+          orchestratorToolMiddleware,
+        ]),
+      },
+      allBenchmarks
+    );
+
+    // 3. DeepSeek Benchmarks
+    const deepseekScores = await runModelBenchmark(
+      DEEPSEEK_MODEL,
+      {
+        morphxml: createWrappedModel(friendli(DEEPSEEK_MODEL), [
+          morphXmlToolMiddleware,
+        ]),
+        yamlxml: createWrappedModel(friendli(DEEPSEEK_MODEL), [
+          orchestratorToolMiddleware,
+        ]),
+        gemma: createWrappedModel(friendli(DEEPSEEK_MODEL), [
+          gemmaToolMiddleware,
+        ]),
+        hermes: createWrappedModel(friendli(DEEPSEEK_MODEL), [
+          hermesToolMiddleware,
+        ]),
+      },
+      allBenchmarks
+    );
+
+    const fullResult: BenchmarkResult = {
+      commit: commitHash,
+      branch,
+      timestamp,
+      mode,
+      results: {
+        qwen: qwenScores,
+        glm: glmScores,
+        deepseek: deepseekScores,
+      },
+    };
+
+    const resultsDir = path.join(process.cwd(), ".benchmark-results");
+    if (!fs.existsSync(resultsDir))
+      fs.mkdirSync(resultsDir, { recursive: true });
+
+    const filename = `benchmark-${shortHash}-${Date.now()}.json`;
+    fs.writeFileSync(
+      path.join(resultsDir, filename),
+      JSON.stringify(fullResult, null, 2)
+    );
+
+    if (process.env.CI) {
+      fs.appendFileSync(
+        path.join(resultsDir, "history.jsonl"),
+        `${JSON.stringify(fullResult)}\n`
+      );
+    }
+
+    console.log("\n" + "═".repeat(80));
+    console.log("📊 SPECIALIZED REGRESSION TEST REPORT");
+    console.log("═".repeat(80));
+
+    const colors = {
+      green: "\x1b[32m",
+      red: "\x1b[31m",
+      gray: "\x1b[90m",
+      reset: "\x1b[0m",
+    };
+
+    const printTable = (
+      title: string,
+      scores: Record<string, Record<string, number>>
+    ) => {
+      console.log(`\n### ${title}`);
+      const protocols = Object.keys(scores);
+      const benchmarks = Object.keys(scores[protocols[0]] || {});
+      if (benchmarks.length === 0) return;
+
+      const hasNative = protocols.includes("native");
+      const colWidths = {
+        benchmark: 23,
+        protocol: 10,
+        diff: 8,
+      };
+
+      const headers = hasNative
+        ? protocols.flatMap((p) => (p === "native" ? [p] : [p, "Δ"]))
+        : protocols;
+
+      const headerWidths = hasNative
+        ? protocols.flatMap((p) =>
+            p === "native"
+              ? [colWidths.protocol]
+              : [colWidths.protocol, colWidths.diff]
+          )
+        : protocols.map(() => colWidths.protocol);
+
+      console.log(
+        `┌${"─".repeat(colWidths.benchmark + 2)}┬${headerWidths.map((w) => "─".repeat(w + 2)).join("┬")}┐`
+      );
+      console.log(
+        `│ ${"Benchmark".padEnd(colWidths.benchmark)} │ ${headers.map((h, i) => h.padEnd(headerWidths[i])).join(" │ ")} │`
+      );
+      console.log(
+        `├${"─".repeat(colWidths.benchmark + 2)}┼${headerWidths.map((w) => "─".repeat(w + 2)).join("┼")}┤`
+      );
+
+      for (const b of benchmarks) {
+        const nativeScore = hasNative ? scores.native[b] : 0;
+        const cells = hasNative
+          ? protocols.flatMap((p) => {
+              const score = `${(scores[p][b] * 100).toFixed(1)}%`.padStart(
+                colWidths.protocol
+              );
+              if (p === "native") return [score];
+              const diff = scores[p][b] - nativeScore;
+              const diffNum = (diff * 100).toFixed(0);
+              let diffStr: string;
+              if (diff > 0) {
+                diffStr = `${colors.green}+${diffNum}%${colors.reset}`.padStart(
+                  colWidths.diff + colors.green.length + colors.reset.length
+                );
+              } else if (diff < 0) {
+                diffStr = `${colors.red}${diffNum}%${colors.reset}`.padStart(
+                  colWidths.diff + colors.red.length + colors.reset.length
+                );
+              } else {
+                diffStr = `${colors.gray}0%${colors.reset}`.padStart(
+                  colWidths.diff + colors.gray.length + colors.reset.length
+                );
+              }
+              return [score, diffStr];
+            })
+          : protocols.map((p) =>
+              `${(scores[p][b] * 100).toFixed(1)}%`.padStart(colWidths.protocol)
+            );
+        console.log(
+          `│ ${b.padEnd(colWidths.benchmark)} │ ${cells.join(" │ ")} │`
+        );
+      }
+
+      console.log(
+        `└${"─".repeat(colWidths.benchmark + 2)}┴${headerWidths.map((w) => "─".repeat(w + 2)).join("┴")}┘`
+      );
+    };
+
+    printTable(`QWEN (${QWEN_MODEL})`, qwenScores);
+    printTable(`GLM (${GLM_MODEL})`, glmScores);
+    printTable(`DEEPSEEK (${DEEPSEEK_MODEL})`, deepseekScores);
 
     process.exit(0);
   } catch (error) {

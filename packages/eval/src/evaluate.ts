@@ -164,14 +164,13 @@ async function runSingleBenchmark(
       ? model.modelId
       : "unknown-model";
 
+  const prefix = `[${modelId}]${modelKey ? ` (${modelKey})` : ""} ${benchmark.name}`;
+
   try {
-    console.log(
-      `[${modelId}]${modelKey ? ` (${modelKey})` : ""} Running benchmark: ${benchmark.name}...`
-    );
+    process.stdout.write(`${prefix}: ...`);
     const result = await benchmark.run(model, config);
-    console.log(
-      `[${modelId}]${modelKey ? ` (${modelKey})` : ""} Finished benchmark: ${benchmark.name}. Score: ${result.score}`
-    );
+    const scoreDisplay = result.score.toFixed(2);
+    process.stdout.write(`\r${prefix}: .... Score: ${scoreDisplay}\n`);
     return {
       model: modelId,
       modelKey,
@@ -179,10 +178,8 @@ async function runSingleBenchmark(
       result,
     };
   } catch (error) {
-    console.error(
-      `[${modelId}]${modelKey ? ` (${modelKey})` : ""} Error running benchmark: ${benchmark.name}`,
-      error
-    );
+    process.stdout.write(`\r${prefix}: .... Score: ERROR\n`);
+    console.error(error);
     return {
       model: modelId,
       modelKey,

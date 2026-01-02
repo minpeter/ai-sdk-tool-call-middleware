@@ -1,8 +1,8 @@
 import type { EvaluationResult } from "../interfaces";
 
-// Basic ANSI color codes for console output
 const colors = {
   reset: "\x1b[0m",
+  bold: "\x1b[1m",
   green: "\x1b[32m",
   red: "\x1b[31m",
   yellow: "\x1b[33m",
@@ -10,8 +10,24 @@ const colors = {
   magenta: "\x1b[35m",
   gray: "\x1b[90m",
   white: "\x1b[37m",
-  bgRed: "\x1b[41m",
 };
+
+const DEBUG_FAIL_REGEX = /^\[DEBUG-FAIL\] /;
+
+interface ParsedFailure {
+  id: string;
+  category?: string;
+  message?: string;
+  error_type?: string;
+  expected?: Record<string, unknown>;
+  actual?: Record<string, unknown>;
+  diff?: string[];
+  context?: {
+    raw_model_text?: string;
+    expected_count?: number;
+    actual_count?: number;
+  };
+}
 
 function formatDiff(diff: string[]): string {
   if (!diff || diff.length === 0) {
@@ -19,6 +35,7 @@ function formatDiff(diff: string[]): string {
   }
 
   return diff
+    .slice(0, 8)
     .map((line) => {
       if (line.startsWith("-")) {
         return `${colors.red}${line}${colors.reset}`;
@@ -34,60 +51,113 @@ function formatDiff(diff: string[]): string {
     .join("\n      ");
 }
 
-function printFailLogs(logs: string[]) {
-  const failLogs = logs.filter((l) => l.startsWith("[DEBUG-FAIL]"));
+function parseFailures(logs: string[]): ParsedFailure[] {
+  const failures: ParsedFailure[] = [];
 
-  for (const log of failLogs) {
-    try {
-      const jsonStr = log.replace("[DEBUG-FAIL] ", "");
-      const data = JSON.parse(jsonStr);
-
-      console.log(`\n    ${colors.red}FAILED CASE: ${data.id}${colors.reset}`);
-      console.log(
-        `    Error Type: ${colors.yellow}${data.error_type || "unknown"}${colors.reset}`
-      );
-      console.log(`    Message: ${data.message}`);
-
-      if (data.diff && Array.isArray(data.diff)) {
-        console.log(`    Diff:\n      ${formatDiff(data.diff)}`);
-      }
-
-      // Expected vs Actual summary if diff is too complex or just to show quick view
-      if (data.expected && data.actual) {
-        // Simple one-line summary if possible
-        const expStr = JSON.stringify(data.expected);
-        const actStr = JSON.stringify(data.actual);
-        if (expStr.length < 100 && actStr.length < 100) {
-          console.log(`    Expected: ${colors.gray}${expStr}${colors.reset}`);
-          console.log(`    Actual:   ${colors.gray}${actStr}${colors.reset}`);
-        }
-      }
-    } catch (_e) {
-      console.log(`    Raw Log: ${log}`);
+  for (const log of logs) {
+    if (!DEBUG_FAIL_REGEX.test(log)) {
+      continue;
     }
+
+    try {
+      const jsonStr = log.replace(DEBUG_FAIL_REGEX, "");
+      const parsed = JSON.parse(jsonStr) as ParsedFailure;
+      failures.push(parsed);
+    } catch {
+      // Malformed JSON, skip
+    }
+  }
+
+  return failures;
+}
+
+function groupFailuresByCategory(
+  failures: ParsedFailure[]
+): Map<string, ParsedFailure[]> {
+  const groups = new Map<string, ParsedFailure[]>();
+
+  for (const failure of failures) {
+    const category = failure.category || "OTHER";
+    const existing = groups.get(category);
+
+    if (existing) {
+      existing.push(failure);
+    } else {
+      groups.set(category, [failure]);
+    }
+  }
+
+  return groups;
+}
+
+function printCompactFailure(failure: ParsedFailure): void {
+  console.log(
+    `\n    ${colors.red}${failure.id}${colors.reset} [${colors.yellow}${failure.category || "OTHER"}${colors.reset}]`
+  );
+
+  if (failure.message) {
+    console.log(`      ${failure.message}`);
+  }
+
+  if (failure.diff && failure.diff.length > 0) {
+    console.log(`      ${formatDiff(failure.diff)}`);
+  }
+
+  if (failure.context?.raw_model_text && failure.category === "PARSE_FAILURE") {
+    const text = failure.context.raw_model_text;
+    const truncated = text.length > 80 ? `${text.slice(0, 80)}...` : text;
+    console.log(`      ${colors.gray}Model: "${truncated}"${colors.reset}`);
   }
 }
 
-function printResult(result: EvaluationResult) {
+function printFailureSummary(failures: ParsedFailure[]): void {
+  const groups = groupFailuresByCategory(failures);
+  const sorted = [...groups.entries()].sort(
+    (a, b) => b[1].length - a[1].length
+  );
+
+  console.log(`\n    ${colors.bold}Failures by category:${colors.reset}`);
+
+  for (const [category, categoryFailures] of sorted) {
+    console.log(
+      `      ${colors.yellow}${category}${colors.reset}: ${categoryFailures.length}`
+    );
+  }
+
+  const maxToShow = 5;
+  const shown = failures.slice(0, maxToShow);
+
+  for (const failure of shown) {
+    printCompactFailure(failure);
+  }
+
+  if (failures.length > maxToShow) {
+    const remaining = failures.length - maxToShow;
+    const remainingIds = failures.slice(maxToShow).map((f) => f.id);
+    const idPreview = remainingIds.slice(0, 5).join(", ");
+    const more = remainingIds.length > 5 ? "..." : "";
+    console.log(
+      `\n    ${colors.gray}+${remaining} more: ${idPreview}${more}${colors.reset}`
+    );
+  }
+}
+
+function printResult(result: EvaluationResult): void {
   const { model, modelKey, benchmark, result: benchmarkResult } = result;
-  const status = benchmarkResult.success
-    ? `${colors.green}✔ SUCCESS${colors.reset}`
-    : `${colors.red}✖ FAILURE${colors.reset}`;
+
+  const passed = benchmarkResult.metrics.correct_count as number | undefined;
+  const total = benchmarkResult.metrics.total_cases as number | undefined;
+  const scorePercent = (benchmarkResult.score * 100).toFixed(1);
+
+  const statusIcon = benchmarkResult.success ? "✔" : "✖";
+  const statusColor = benchmarkResult.success ? colors.green : colors.red;
 
   console.log(
     `\n ${colors.cyan}[${model}]${colors.reset}${modelKey ? ` ${colors.gray}(${modelKey})${colors.reset}` : ""} - ${colors.magenta}${benchmark}${colors.reset}`
   );
   console.log(
-    `  └ ${status} | Score: ${colors.yellow}${benchmarkResult.score.toFixed(2)}${colors.reset}`
+    `  └ ${statusColor}${statusIcon} ${scorePercent}%${colors.reset} (${passed ?? "?"}/${total ?? "?"} passed)`
   );
-
-  const metrics = Object.entries(benchmarkResult.metrics);
-  if (metrics.length > 0) {
-    console.log("    Metrics:");
-    for (const [key, value] of metrics) {
-      console.log(`      - ${key}: ${value}`);
-    }
-  }
 
   if (benchmarkResult.error) {
     console.log(
@@ -95,17 +165,14 @@ function printResult(result: EvaluationResult) {
     );
   }
 
-  // Print failure details if any
   if (!benchmarkResult.success && benchmarkResult.logs) {
-    printFailLogs(benchmarkResult.logs);
+    const failures = parseFailures(benchmarkResult.logs);
 
-    // Fallback: if printFailLogs found nothing, dump raw logs
-    const failLogs = benchmarkResult.logs.filter((l) =>
-      l.startsWith("[DEBUG-FAIL]")
-    );
-    if (failLogs.length === 0 && benchmarkResult.logs.length > 0) {
-      console.log("    Raw Logs (Sample):");
-      for (const l of benchmarkResult.logs.slice(0, 10)) {
+    if (failures.length > 0) {
+      printFailureSummary(failures);
+    } else if (benchmarkResult.logs.length > 0) {
+      console.log(`    ${colors.gray}Raw Logs (Sample):${colors.reset}`);
+      for (const l of benchmarkResult.logs.slice(0, 5)) {
         console.log(`      ${l}`);
       }
     }

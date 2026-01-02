@@ -1,18 +1,19 @@
 // biome-ignore-all lint/performance/noBarrelFile: intentional public API surface
 import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
 import { morphXmlProtocol } from "../core/protocols/morph-xml-protocol";
+import {
+  orchestratorSystemPromptTemplate,
+  yamlXmlProtocol,
+} from "../core/protocols/yaml-xml-protocol";
 import { createToolMiddleware } from "./tool-call-middleware";
 
 export const gemmaToolMiddleware = createToolMiddleware({
-  protocol: jsonMixProtocol(
-    // Customize the tool call delimiters to use markdown code fences
-    {
-      toolCallStart: "```tool_call\n",
-      toolCallEnd: "\n```",
-      toolResponseStart: "```tool_response\n",
-      toolResponseEnd: "\n```",
-    }
-  ),
+  protocol: jsonMixProtocol({
+    toolCallStart: "```tool_call\n",
+    toolCallEnd: "\n```",
+    toolResponseStart: "```tool_response\n",
+    toolResponseEnd: "\n```",
+  }),
   toolSystemPromptTemplate(tools) {
     return `You have access to functions. If you decide to invoke any of the function(s),
 you MUST put it in the format of markdown code fence block with the language name of tool_call , e.g.
@@ -66,6 +67,12 @@ You are provided with function signatures within <tools></tools> XML tags:
   <unit>celsius</unit>
 </get_weather>`;
   },
+});
+
+export const orchestratorToolMiddleware = createToolMiddleware({
+  protocol: yamlXmlProtocol(),
+  placement: "first",
+  toolSystemPromptTemplate: orchestratorSystemPromptTemplate,
 });
 
 export { createToolMiddleware } from "./tool-call-middleware";
