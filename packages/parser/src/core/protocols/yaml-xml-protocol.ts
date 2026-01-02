@@ -24,7 +24,6 @@ interface ParserOptions {
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
 const WHITESPACE_REGEX = /\s/;
 const LEADING_WHITESPACE_RE = /^(\s*)/;
-const NUMERIC_STRING_RE = /^\d+$/;
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: XML tag parsing with nested tag tracking inherently requires complex state management
 function findClosingTagEnd(
@@ -134,11 +133,16 @@ function findToolCalls(
 
   for (const toolName of toolNames) {
     let searchIndex = 0;
+    const selfTagRegex = new RegExp(`<${toolName}\\s*/>`, "g");
+
     while (searchIndex < text.length) {
       const startTag = `<${toolName}>`;
-      const selfTag = `<${toolName}/>`;
       const openIdx = text.indexOf(startTag, searchIndex);
-      const selfIdx = text.indexOf(selfTag, searchIndex);
+
+      selfTagRegex.lastIndex = searchIndex;
+      const selfMatch = selfTagRegex.exec(text);
+      const selfIdx = selfMatch ? selfMatch.index : -1;
+      const selfTagLength = selfMatch ? selfMatch[0].length : 0;
 
       if (openIdx === -1 && selfIdx === -1) {
         break;
@@ -150,7 +154,7 @@ function findToolCalls(
       );
 
       if (isSelfClosing) {
-        const endIndex = tagStart + selfTag.length;
+        const endIndex = tagStart + selfTagLength;
         toolCalls.push({
           toolName,
           startIndex: tagStart,
@@ -243,94 +247,6 @@ function parseYamlContent(
   }
 }
 
-function formatYamlString(value: string, indentStr: string): string {
-  if (value.includes("\n")) {
-    const lines = value.split("\n");
-    return `|\n${lines.map((line) => `${indentStr}  ${line}`).join("\n")}`;
-  }
-  if (
-    value === "" ||
-    value === "true" ||
-    value === "false" ||
-    value === "null" ||
-    NUMERIC_STRING_RE.test(value) ||
-    value.includes(":") ||
-    value.includes("#")
-  ) {
-    return `'${value.replace(/'/g, "''")}'`;
-  }
-  return value;
-}
-
-function formatYamlArray(
-  value: unknown[],
-  indentStr: string,
-  indent: number
-): string {
-  if (value.length === 0) {
-    return "[]";
-  }
-  return value
-    .map((item) => `\n${indentStr}- ${toYamlValue(item, indent + 1)}`)
-    .join("");
-}
-
-function formatYamlObject(
-  value: Record<string, unknown>,
-  indentStr: string,
-  indent: number
-): string {
-  const entries = Object.entries(value);
-  if (entries.length === 0) {
-    return "{}";
-  }
-  return entries
-    .map(([k, v]) => {
-      const valStr = toYamlValue(v, indent + 1);
-      return `\n${indentStr}${k}: ${valStr}`;
-    })
-    .join("");
-}
-
-function toYamlValue(value: unknown, indent = 0): string {
-  const indentStr = "  ".repeat(indent);
-
-  if (value === null || value === undefined) {
-    return "null";
-  }
-
-  if (typeof value === "string") {
-    return formatYamlString(value, indentStr);
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-
-  if (Array.isArray(value)) {
-    return formatYamlArray(value, indentStr, indent);
-  }
-
-  if (typeof value === "object") {
-    return formatYamlObject(
-      value as Record<string, unknown>,
-      indentStr,
-      indent
-    );
-  }
-
-  return String(value);
-}
-
-function formatArgsAsYaml(args: Record<string, unknown>): string {
-  const lines: string[] = [];
-  for (const [key, value] of Object.entries(args)) {
-    const valStr = toYamlValue(value, 0);
-    lines.push(`${key}: ${valStr}`);
-  }
-  return lines.join("\n");
-}
-
 function createFlushTextHandler(
   getCurrentTextId: () => string | null,
   setCurrentTextId: (id: string | null) => void,
@@ -377,30 +293,39 @@ function createFlushTextHandler(
 function findEarliestToolTag(
   buffer: string,
   toolNames: string[]
-): { index: number; name: string; selfClosing: boolean } {
+): { index: number; name: string; selfClosing: boolean; tagLength: number } {
   let bestIndex = -1;
   let bestName = "";
   let bestSelfClosing = false;
+  let bestTagLength = 0;
 
   for (const name of toolNames) {
     const openTag = `<${name}>`;
-    const selfTag = `<${name}/>`;
+    const selfTagRegex = new RegExp(`<${name}\\s*/>`);
     const idxOpen = buffer.indexOf(openTag);
-    const idxSelf = buffer.indexOf(selfTag);
+    const selfMatch = selfTagRegex.exec(buffer);
+    const idxSelf = selfMatch ? selfMatch.index : -1;
 
     if (idxOpen !== -1 && (bestIndex === -1 || idxOpen < bestIndex)) {
       bestIndex = idxOpen;
       bestName = name;
       bestSelfClosing = false;
+      bestTagLength = openTag.length;
     }
     if (idxSelf !== -1 && (bestIndex === -1 || idxSelf < bestIndex)) {
       bestIndex = idxSelf;
       bestName = name;
       bestSelfClosing = true;
+      bestTagLength = selfMatch ? selfMatch[0].length : 0;
     }
   }
 
-  return { index: bestIndex, name: bestName, selfClosing: bestSelfClosing };
+  return {
+    index: bestIndex,
+    name: bestName,
+    selfClosing: bestSelfClosing,
+    tagLength: bestTagLength,
+  };
 }
 
 export const yamlXmlProtocol = (
@@ -424,8 +349,8 @@ export const yamlXmlProtocol = (
       } catch {
         args = { value: toolCall.input };
       }
-      const yamlContent = formatArgsAsYaml(args);
-      return `<${toolCall.toolName}>\n${yamlContent}\n</${toolCall.toolName}>`;
+      const yamlContent = YAML.stringify(args);
+      return `<${toolCall.toolName}>\n${yamlContent}</${toolCall.toolName}>`;
     },
 
     formatToolResponse(toolResult: TCMCoreToolResult): string {
@@ -464,6 +389,11 @@ export const yamlXmlProtocol = (
       const toolCalls = findToolCalls(text, toolNames);
 
       for (const tc of toolCalls) {
+        // Skip nested tool tags that appear inside a previous tool call's body
+        if (tc.startIndex < currentIndex) {
+          continue;
+        }
+
         if (tc.startIndex > currentIndex) {
           const textBefore = text.substring(currentIndex, tc.startIndex);
           if (textBefore.trim()) {
@@ -568,9 +498,8 @@ export const yamlXmlProtocol = (
       const flushSafeText = (
         controller: TransformStreamDefaultController<TCMCoreStreamPart>
       ): void => {
-        // Use self-closing tag length `<name/>` as max since it's longer than `<name>`
         const maxTagLen = toolNames.length
-          ? Math.max(...toolNames.map((n) => `<${n}/>`.length))
+          ? Math.max(...toolNames.map((n) => `<${n} />`.length))
           : 0;
         const tail = Math.max(0, maxTagLen - 1);
         const safeLen = Math.max(0, buffer.length - tail);
@@ -584,15 +513,15 @@ export const yamlXmlProtocol = (
         controller: TransformStreamDefaultController<TCMCoreStreamPart>,
         tagIndex: number,
         tagName: string,
-        selfClosing: boolean
+        selfClosing: boolean,
+        tagLength: number
       ): void => {
         if (tagIndex > 0) {
           flushText(controller, buffer.substring(0, tagIndex));
         }
 
         if (selfClosing) {
-          const selfTag = `<${tagName}/>`;
-          buffer = buffer.substring(tagIndex + selfTag.length);
+          buffer = buffer.substring(tagIndex + tagLength);
           processToolCallEnd(controller, "", tagName);
         } else {
           const startTag = `<${tagName}>`;
@@ -612,7 +541,7 @@ export const yamlXmlProtocol = (
               break;
             }
           } else {
-            const { index, name, selfClosing } = findEarliestToolTag(
+            const { index, name, selfClosing, tagLength } = findEarliestToolTag(
               buffer,
               toolNames
             );
@@ -622,7 +551,7 @@ export const yamlXmlProtocol = (
               break;
             }
 
-            handleNewToolTag(controller, index, name, selfClosing);
+            handleNewToolTag(controller, index, name, selfClosing, tagLength);
           }
         }
       };
