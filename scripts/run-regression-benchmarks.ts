@@ -116,8 +116,8 @@ async function runModelBenchmark(
   }
 
   for (const result of results) {
-    const modelName = result.modelId;
-    if (scores[modelName]) {
+    const modelName = result.modelKey;
+    if (modelName && scores[modelName]) {
       scores[modelName][result.benchmark] = result.result.score;
     }
   }
@@ -214,9 +214,16 @@ async function main() {
       );
     }
 
-    console.log("\n" + "=".repeat(80));
+    console.log("\n" + "═".repeat(80));
     console.log("📊 SPECIALIZED REGRESSION TEST REPORT");
-    console.log("=".repeat(80));
+    console.log("═".repeat(80));
+
+    const colors = {
+      green: "\x1b[32m",
+      red: "\x1b[31m",
+      gray: "\x1b[90m",
+      reset: "\x1b[0m",
+    };
 
     const printTable = (
       title: string,
@@ -224,22 +231,75 @@ async function main() {
     ) => {
       console.log(`\n### ${title}`);
       const protocols = Object.keys(scores);
-      const header =
-        "| Benchmark".padEnd(25) +
-        " | " +
-        protocols.map((p) => p.padEnd(10)).join(" | ") +
-        " |";
-      console.log(header);
-      console.log("|" + "-".repeat(header.length - 2) + "|");
+      const benchmarks = Object.keys(scores[protocols[0]] || {});
+      if (benchmarks.length === 0) return;
 
-      const benchmarks = Object.keys(scores[protocols[0]]);
+      const hasNative = protocols.includes("native");
+      const colWidths = {
+        benchmark: 23,
+        protocol: 10,
+        diff: 8,
+      };
+
+      const headers = hasNative
+        ? protocols.flatMap((p) => (p === "native" ? [p] : [p, "Δ"]))
+        : protocols;
+
+      const headerWidths = hasNative
+        ? protocols.flatMap((p) =>
+            p === "native"
+              ? [colWidths.protocol]
+              : [colWidths.protocol, colWidths.diff]
+          )
+        : protocols.map(() => colWidths.protocol);
+
+      console.log(
+        `┌${"─".repeat(colWidths.benchmark + 2)}┬${headerWidths.map((w) => "─".repeat(w + 2)).join("┬")}┐`
+      );
+      console.log(
+        `│ ${"Benchmark".padEnd(colWidths.benchmark)} │ ${headers.map((h, i) => h.padEnd(headerWidths[i])).join(" │ ")} │`
+      );
+      console.log(
+        `├${"─".repeat(colWidths.benchmark + 2)}┼${headerWidths.map((w) => "─".repeat(w + 2)).join("┼")}┤`
+      );
+
       for (const b of benchmarks) {
-        let line = `| ${b.padEnd(23)} | `;
-        for (const p of protocols) {
-          line += `${(scores[p][b] * 100).toFixed(1).padStart(8)}% | `;
-        }
-        console.log(line);
+        const nativeScore = hasNative ? scores.native[b] : 0;
+        const cells = hasNative
+          ? protocols.flatMap((p) => {
+              const score = `${(scores[p][b] * 100).toFixed(1)}%`.padStart(
+                colWidths.protocol
+              );
+              if (p === "native") return [score];
+              const diff = scores[p][b] - nativeScore;
+              const diffNum = (diff * 100).toFixed(0);
+              let diffStr: string;
+              if (diff > 0) {
+                diffStr = `${colors.green}+${diffNum}%${colors.reset}`.padStart(
+                  colWidths.diff + colors.green.length + colors.reset.length
+                );
+              } else if (diff < 0) {
+                diffStr = `${colors.red}${diffNum}%${colors.reset}`.padStart(
+                  colWidths.diff + colors.red.length + colors.reset.length
+                );
+              } else {
+                diffStr = `${colors.gray}0%${colors.reset}`.padStart(
+                  colWidths.diff + colors.gray.length + colors.reset.length
+                );
+              }
+              return [score, diffStr];
+            })
+          : protocols.map((p) =>
+              `${(scores[p][b] * 100).toFixed(1)}%`.padStart(colWidths.protocol)
+            );
+        console.log(
+          `│ ${b.padEnd(colWidths.benchmark)} │ ${cells.join(" │ ")} │`
+        );
       }
+
+      console.log(
+        `└${"─".repeat(colWidths.benchmark + 2)}┴${headerWidths.map((w) => "─".repeat(w + 2)).join("┴")}┘`
+      );
     };
 
     printTable(`QWEN (${QWEN_MODEL})`, qwenScores);

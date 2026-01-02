@@ -19,6 +19,7 @@ const ID_NUM_REGEX = /_(\d+)$/;
 interface FailureContext {
   raw_model_text?: string;
   raw_model_text_full?: string;
+  reasoning?: string;
   parsed_tool_calls?: unknown[];
   expected_count?: number;
   actual_count?: number;
@@ -189,10 +190,8 @@ function formatTable(
   columnWidths: number[]
 ): string[] {
   const lines: string[] = [];
-  const totalWidth =
-    columnWidths.reduce((a, b) => a + b, 0) + columnWidths.length * 3 + 1;
 
-  lines.push(`┌${"─".repeat(totalWidth - 2)}┐`);
+  lines.push(`┌${columnWidths.map((w) => "─".repeat(w + 2)).join("┬")}┐`);
   lines.push(formatTableRow(headers, columnWidths));
   lines.push(`├${columnWidths.map((w) => "─".repeat(w + 2)).join("┼")}┤`);
 
@@ -200,7 +199,7 @@ function formatTable(
     lines.push(formatTableRow(row, columnWidths));
   }
 
-  lines.push(`└${"─".repeat(totalWidth - 2)}┘`);
+  lines.push(`└${columnWidths.map((w) => "─".repeat(w + 2)).join("┴")}┘`);
   return lines;
 }
 
@@ -263,6 +262,13 @@ function printDiff(diff: string[]): void {
 }
 
 function printModelOutput(failure: ParsedFailure, category: string): void {
+  if (failure.context?.reasoning && category === "PARSE_FAILURE") {
+    const text = truncate(failure.context.reasoning, 100);
+    console.log(
+      `    ${colors.gray}Reasoning:${colors.reset}  "${colors.dim}${text}${colors.reset}"`
+    );
+  }
+
   if (failure.context?.raw_model_text && category === "PARSE_FAILURE") {
     const text = truncate(failure.context.raw_model_text, 100);
     console.log(
