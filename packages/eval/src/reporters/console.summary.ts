@@ -299,14 +299,16 @@ function printSingleFailure(
   printModelOutput(failure, category);
 }
 
+const MAX_SAMPLE_FAILURES = 2;
+
 function printRemainingIds(failures: ParsedFailure[]): void {
-  const remainingIds = failures.slice(2).map((f) => f.id);
+  const remainingIds = failures.slice(MAX_SAMPLE_FAILURES).map((f) => f.id);
   const idNums = remainingIds.map((id) => {
     const match = id.match(ID_NUM_REGEX);
     return match ? match[1] : id;
   });
   console.log(
-    `\n  ${colors.dim}+${failures.length - 2} more: ${idNums.join(", ")}${colors.reset}`
+    `\n  ${colors.dim}+${failures.length - MAX_SAMPLE_FAILURES} more: ${idNums.join(", ")}${colors.reset}`
   );
 }
 

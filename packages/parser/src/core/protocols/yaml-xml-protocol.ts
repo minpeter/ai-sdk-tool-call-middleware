@@ -404,6 +404,7 @@ function findEarliestToolTag(
 }
 
 export const yamlXmlProtocol = (
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future extensibility
   _protocolOptions?: YamlXmlProtocolOptions
 ): ToolCallProtocol => {
   return {
@@ -567,8 +568,9 @@ export const yamlXmlProtocol = (
       const flushSafeText = (
         controller: TransformStreamDefaultController<TCMCoreStreamPart>
       ): void => {
+        // Use self-closing tag length `<name/>` as max since it's longer than `<name>`
         const maxTagLen = toolNames.length
-          ? Math.max(...toolNames.map((n) => `<${n}>`.length))
+          ? Math.max(...toolNames.map((n) => `<${n}/>`.length))
           : 0;
         const tail = Math.max(0, maxTagLen - 1);
         const safeLen = Math.max(0, buffer.length - tail);
