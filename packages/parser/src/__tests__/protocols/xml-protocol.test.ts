@@ -141,4 +141,175 @@ describe("morphXmlProtocol stream parsing", () => {
       input: "{}",
     });
   });
+
+  test("should handle self-closing XML tool calls correctly (issue #84)", async () => {
+    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+      start(controller) {
+        controller.enqueue({ type: "text-start", id: "text-1" });
+        controller.enqueue({
+          type: "text-delta",
+          id: "text-1",
+          delta: "<get_weather/>",
+        });
+        controller.enqueue({ type: "text-end", id: "text-1" });
+        controller.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: mockUsage(1, 1),
+        });
+        controller.close();
+      },
+    });
+
+    const result = await runMiddleware(mockStream);
+
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error("result is undefined");
+    }
+    const chunks = await convertReadableStreamToArray(result.stream);
+
+    const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
+    expect(toolCallChunks).toHaveLength(1);
+    expect(toolCallChunks[0]).toMatchObject({
+      type: "tool-call",
+      toolName: "get_weather",
+      input: "{}",
+    });
+  });
+
+  test("should handle self-closing XML tool calls split across chunks (issue #84)", async () => {
+    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+      start(controller) {
+        controller.enqueue({ type: "text-start", id: "text-1" });
+        controller.enqueue({
+          type: "text-delta",
+          id: "text-1",
+          delta: "<get_wea",
+        });
+        controller.enqueue({
+          type: "text-delta",
+          id: "text-1",
+          delta: "ther/>",
+        });
+        controller.enqueue({ type: "text-end", id: "text-1" });
+        controller.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: mockUsage(1, 1),
+        });
+        controller.close();
+      },
+    });
+
+    const result = await runMiddleware(mockStream);
+
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error("result is undefined");
+    }
+    const chunks = await convertReadableStreamToArray(result.stream);
+
+    const toolCallChunks = chunks.filter((c) => c.type === "tool-call");
+    expect(toolCallChunks).toHaveLength(1);
+    expect(toolCallChunks[0]).toMatchObject({
+      type: "tool-call",
+      toolName: "get_weather",
+      input: "{}",
+    });
+  });
+});
+
+describe("morphXmlProtocol parseGeneratedText self-closing tags", () => {
+  const tools: LanguageModelV3FunctionTool[] = [
+    {
+      type: "function",
+      name: "get_location",
+      description: "Get the location",
+      inputSchema: { type: "object" },
+    },
+    {
+      type: "function",
+      name: "get_weather",
+      description: "Get the weather",
+      inputSchema: {
+        type: "object",
+        properties: {
+          location: { type: "string" },
+        },
+      },
+    },
+  ];
+
+  test("should parse self-closing tool call without arguments (issue #84)", () => {
+    const protocol = morphXmlProtocol();
+    const text = "<get_location/>";
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+
+    const toolCalls = out.filter((c) => c.type === "tool-call");
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0]).toMatchObject({
+      type: "tool-call",
+      toolName: "get_location",
+      input: "{}",
+    });
+  });
+
+  test("should parse self-closing tool call with surrounding text (issue #84)", () => {
+    const protocol = morphXmlProtocol();
+    const text = "Getting your location now... <get_location/> Done!";
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+
+    const toolCalls = out.filter((c) => c.type === "tool-call");
+    const textParts = out.filter((c) => c.type === "text");
+
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0]).toMatchObject({
+      type: "tool-call",
+      toolName: "get_location",
+      input: "{}",
+    });
+
+    expect(textParts.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("should parse multiple self-closing tool calls", () => {
+    const protocol = morphXmlProtocol();
+    const text = "<get_location/><get_location/>";
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+
+    const toolCalls = out.filter((c) => c.type === "tool-call");
+    expect(toolCalls).toHaveLength(2);
+    expect(toolCalls[0]).toMatchObject({
+      type: "tool-call",
+      toolName: "get_location",
+      input: "{}",
+    });
+    expect(toolCalls[1]).toMatchObject({
+      type: "tool-call",
+      toolName: "get_location",
+      input: "{}",
+    });
+  });
+
+  test("should parse mixed self-closing and regular tool calls", () => {
+    const protocol = morphXmlProtocol();
+    const text =
+      "<get_location/><get_weather><location>Seoul</location></get_weather>";
+    const out = protocol.parseGeneratedText({ text, tools, options: {} });
+
+    const toolCalls = out.filter((c) => c.type === "tool-call");
+    expect(toolCalls).toHaveLength(2);
+    expect(toolCalls[0]).toMatchObject({
+      type: "tool-call",
+      toolName: "get_location",
+      input: "{}",
+    });
+    expect(toolCalls[1]).toMatchObject({
+      type: "tool-call",
+      toolName: "get_weather",
+    });
+    const weatherArgs = JSON.parse((toolCalls[1] as any).input);
+    expect(weatherArgs.location).toBe("Seoul");
+  });
 });
