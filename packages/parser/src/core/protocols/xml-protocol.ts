@@ -17,6 +17,10 @@ import {
   repairParsedAgainstSchema,
   shouldDeduplicateStringTags,
 } from "../heuristics";
+import { formatToolResponseAsXml } from "../prompts/tool-response";
+
+const defaultToolResponseTemplate = formatToolResponseAsXml;
+
 import type {
   TCMCoreContentPart,
   TCMCoreFunctionTool,
@@ -36,6 +40,7 @@ export interface XmlProtocolOptions {
   heuristics?: ToolCallHeuristic[];
   pipeline?: PipelineConfig;
   maxReparses?: number;
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
 }
 
 interface ParserOptions {
@@ -741,6 +746,8 @@ export const xmlProtocol = (
 ): TCMCoreProtocol => {
   let pipelineConfig = protocolOptions?.pipeline;
   const maxReparses = protocolOptions?.maxReparses;
+  const toolResponsePromptTemplate =
+    protocolOptions?.toolResponsePromptTemplate ?? defaultToolResponseTemplate;
 
   if (protocolOptions?.heuristics && protocolOptions.heuristics.length > 0) {
     const heuristicsConfig: _PipelineConfig = {
@@ -805,28 +812,7 @@ export const xmlProtocol = (
     },
 
     formatToolResponse(toolResult: TCMCoreToolResult): string {
-      let result = toolResult.result;
-
-      // Handle cases where the result is wrapped in { type: 'json', value: ... }
-      if (
-        result &&
-        typeof result === "object" &&
-        "type" in result &&
-        (result as { type: unknown }).type === "json" &&
-        "value" in result
-      ) {
-        result = (result as { value: unknown }).value;
-      }
-
-      const xml = stringify(
-        "tool_response",
-        {
-          tool_name: toolResult.toolName,
-          result,
-        },
-        { declaration: false }
-      );
-      return xml;
+      return toolResponsePromptTemplate(toolResult);
     },
 
     parseGeneratedText({ text, tools, options }) {

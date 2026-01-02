@@ -1,6 +1,6 @@
 import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
 import { isTCMProtocolFactory } from "../core/protocols/protocol-interface";
-import type { TCMToolDefinition } from "../core/types";
+import type { TCMCoreToolResult, TCMToolDefinition } from "../core/types";
 import { createDynamicIfThenElseSchema } from "../core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "../core/utils/on-error";
 import { originalToolsSchema } from "../core/utils/provider-options";
@@ -112,7 +112,8 @@ function processMessage(
   message: V5Message,
   resolvedProtocol: TCMCoreProtocol,
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 provider options
-  providerOptions?: any
+  providerOptions?: any,
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string
 ): V5Message {
   if (message.role === "assistant") {
     const content = Array.isArray(message.content)
@@ -132,6 +133,9 @@ function processMessage(
     const toolResultParts = message.content.filter(
       (part: V5ContentItem) => part.type === "tool-result"
     );
+    const formatToolResponse =
+      toolResponseTemplate ??
+      resolvedProtocol.formatToolResponse.bind(resolvedProtocol);
     return {
       role: "user",
       content: [
@@ -139,7 +143,7 @@ function processMessage(
           type: "text",
           text: toolResultParts
             .map((toolResult: V5ContentItem) =>
-              resolvedProtocol.formatToolResponse({
+              formatToolResponse({
                 ...toolResult,
                 result:
                   toolResult.result ?? toolResult.content ?? toolResult.output,
@@ -232,12 +236,18 @@ function mergeConsecutiveUserMessages(
 function convertToolPrompt(
   prompt: V5Message[],
   resolvedProtocol: TCMCoreProtocol,
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
 ): V5Message[] {
   let processedPrompt = prompt.map((message: V5Message) =>
-    processMessage(message, resolvedProtocol, providerOptions)
+    processMessage(
+      message,
+      resolvedProtocol,
+      providerOptions,
+      toolResponsePromptTemplate
+    )
   );
 
   processedPrompt = condenseTextContent(processedPrompt);
@@ -255,11 +265,13 @@ export function transformParamsV5({
   params,
   protocol,
   toolSystemPromptTemplate,
+  toolResponsePromptTemplate,
   placement = "first",
 }: {
   params: V5Params;
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
   toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
   placement?: "first" | "last";
 }) {
   const resolvedProtocol = isTCMProtocolFactory(protocol)
@@ -279,6 +291,7 @@ export function transformParamsV5({
   const processedPrompt = convertToolPrompt(
     prompt,
     resolvedProtocol,
+    toolResponsePromptTemplate,
     extractOnErrorOption(params.providerOptions)
   );
 

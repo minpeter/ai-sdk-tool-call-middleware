@@ -1,3 +1,4 @@
+import { formatToolResponseAsJsonInXml } from "../prompts/tool-response";
 import type {
   TCMCoreContentPart,
   TCMCoreStreamPart,
@@ -15,8 +16,7 @@ import type { TCMCoreProtocol } from "./protocol-interface";
 interface JsonProtocolOptions {
   toolCallStart?: string;
   toolCallEnd?: string;
-  toolResponseStart?: string;
-  toolResponseEnd?: string;
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
 }
 
 function processToolCallJson(
@@ -329,8 +329,7 @@ function handlePartialTag(
 export const jsonProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
-  toolResponseStart = "<tool_response>",
-  toolResponseEnd = "</tool_response>",
+  toolResponsePromptTemplate = formatToolResponseAsJsonInXml,
 }: JsonProtocolOptions = {}): TCMCoreProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt: TCMToolDefinition[] = (tools || [])
@@ -361,10 +360,7 @@ export const jsonProtocol = ({
   },
 
   formatToolResponse(toolResult: TCMCoreToolResult) {
-    return `${toolResponseStart}${JSON.stringify({
-      toolName: toolResult.toolName,
-      result: toolResult.result,
-    })}${toolResponseEnd}`;
+    return toolResponsePromptTemplate(toolResult);
   },
 
   parseGeneratedText({ text, options }) {
