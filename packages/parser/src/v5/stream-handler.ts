@@ -1,5 +1,10 @@
 import type { ToolCallProtocol } from "../core/protocols/tool-call-protocol";
 import type { TCMCoreFunctionTool, TCMCoreStreamPart } from "../core/types";
+import {
+  getDebugLevel,
+  logParsedChunk,
+  logRawChunk,
+} from "../core/utils/debug";
 import { generateId } from "../core/utils/id";
 import { originalToolsSchema } from "../core/utils/provider-options";
 
@@ -63,10 +68,9 @@ function processPartToV2(
   }
 }
 
-export function createV5Transformer(): TransformStream<
-  TCMCoreStreamPart,
-  unknown
-> {
+export function createV5Transformer(
+  debugLevel: "off" | "stream" | "parse" = "off"
+): TransformStream<TCMCoreStreamPart, unknown> {
   const state: V5TransformerState = {
     textStarted: new Set(),
     toolStarted: new Set(),
@@ -75,6 +79,9 @@ export function createV5Transformer(): TransformStream<
 
   return new TransformStream<TCMCoreStreamPart, unknown>({
     transform(part, controller) {
+      if (debugLevel === "stream") {
+        logParsedChunk(part);
+      }
       processPartToV2(part, state, controller);
     },
   });
@@ -94,12 +101,16 @@ export async function wrapStreamV5({
     params.providerOptions?.toolCallMiddleware?.originalTools
   ) as TCMCoreFunctionTool[];
   const options = params.providerOptions?.toolCallMiddleware || {};
+  const debugLevel = getDebugLevel();
 
   const { stream } = await doStream();
 
   const coreInput = (stream as ReadableStream<unknown>).pipeThrough(
     new TransformStream<unknown, TCMCoreStreamPart>({
       transform(part, controller) {
+        if (debugLevel === "stream") {
+          logRawChunk(part);
+        }
         // biome-ignore lint/suspicious/noExplicitAny: complex stream part mapping
         const p = part as any;
         if (p.type === "text-delta") {
@@ -123,6 +134,6 @@ export async function wrapStreamV5({
   );
 
   return {
-    stream: parsedStream.pipeThrough(createV5Transformer()),
+    stream: parsedStream.pipeThrough(createV5Transformer(debugLevel)),
   };
 }
