@@ -107,7 +107,7 @@ async function runModelBenchmark(
     benchmarks,
     reporter: "console.summary",
     temperature: 0.0,
-    maxTokens: 512,
+    maxTokens: 1024,
   });
 
   const scores: Record<string, Record<string, number>> = {};
