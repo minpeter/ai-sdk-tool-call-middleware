@@ -98,21 +98,17 @@ const CATEGORY_DESCRIPTIONS: Record<string, CategoryInfo> = {
 };
 
 function parseFailureLogs(logs: string[]): ParsedFailure[] {
-  const failures: ParsedFailure[] = [];
-
-  for (const log of logs) {
-    if (!DEBUG_FAIL_REGEX.test(log)) {
-      continue;
-    }
-
-    try {
-      const jsonStr = log.replace(DEBUG_FAIL_REGEX, "");
-      const parsed = JSON.parse(jsonStr) as ParsedFailure;
-      failures.push(parsed);
-    } catch {}
-  }
-
-  return failures;
+  return logs
+    .filter((log) => DEBUG_FAIL_REGEX.test(log))
+    .map((log) => {
+      try {
+        const jsonStr = log.replace(DEBUG_FAIL_REGEX, "");
+        return JSON.parse(jsonStr) as ParsedFailure;
+      } catch {
+        return null;
+      }
+    })
+    .filter((parsed): parsed is ParsedFailure => parsed !== null);
 }
 
 function groupByCategory(
