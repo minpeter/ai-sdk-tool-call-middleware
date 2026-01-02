@@ -26,10 +26,8 @@ export type { MorphXmlProtocolOptions } from "./core/protocols/morph-xml-protoco
 export { morphXmlProtocol } from "./core/protocols/morph-xml-protocol";
 export * from "./core/protocols/tool-call-protocol";
 export type { YamlXmlProtocolOptions } from "./core/protocols/yaml-xml-protocol";
-export {
-  orchestratorSystemPromptTemplate,
-  yamlXmlProtocol,
-} from "./core/protocols/yaml-xml-protocol";
+export { yamlXmlProtocol } from "./core/protocols/yaml-xml-protocol";
+export type { TCMToolDefinition, TCMToolInputExample } from "./core/types";
 
 // Utilities (Agnostic)
 export * from "./core/utils/debug";

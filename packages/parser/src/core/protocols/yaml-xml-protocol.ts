@@ -5,11 +5,10 @@ import type {
   TCMCoreStreamPart,
   TCMCoreToolCall,
   TCMCoreToolResult,
+  TCMToolDefinition,
 } from "../types";
 import { generateId } from "../utils/id";
 import type { ToolCallProtocol } from "./tool-call-protocol";
-
-export { orchestratorSystemPromptTemplate } from "../prompts/orchestrator-prompt";
 
 export interface YamlXmlProtocolOptions {
   /**
@@ -384,12 +383,16 @@ export const yamlXmlProtocol = (
 ): ToolCallProtocol => {
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
-      const toolsForPrompt = (tools || []).map((tool) => ({
+      const toolsForPrompt: TCMToolDefinition[] = (tools || []).map((tool) => ({
         name: tool.name,
         description: tool.description,
-        parameters: unwrapJsonSchema(tool.inputSchema),
+        parameters: unwrapJsonSchema(tool.inputSchema) as Record<
+          string,
+          unknown
+        >,
+        inputExamples: tool.inputExamples,
       }));
-      return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
+      return toolSystemPromptTemplate(toolsForPrompt);
     },
 
     formatToolCall(toolCall: TCMCoreToolCall): string {

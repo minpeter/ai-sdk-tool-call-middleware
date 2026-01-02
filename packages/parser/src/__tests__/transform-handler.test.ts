@@ -474,7 +474,8 @@ describe("transformParams", () => {
   it("should transform params with tools into prompt", async () => {
     const middleware = createToolMiddleware({
       protocol: jsonMixProtocol({}),
-      toolSystemPromptTemplate: (tools: string) => `You have tools: ${tools}`,
+      toolSystemPromptTemplate: (tools) =>
+        `You have tools: ${JSON.stringify(tools)}`,
     });
 
     const params = {

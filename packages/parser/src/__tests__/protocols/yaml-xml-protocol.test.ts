@@ -4,10 +4,8 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import {
-  orchestratorSystemPromptTemplate,
-  yamlXmlProtocol,
-} from "../../core/protocols/yaml-xml-protocol";
+import { orchestratorSystemPromptTemplate } from "../../core/prompts/orchestrator-prompt";
+import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
@@ -774,7 +772,7 @@ describe("yamlXmlProtocol formatTools", () => {
     const protocol = yamlXmlProtocol();
     const formatted = protocol.formatTools({
       tools: basicTools,
-      toolSystemPromptTemplate: (tools) => `Tools: ${tools}`,
+      toolSystemPromptTemplate: (tools) => `Tools: ${JSON.stringify(tools)}`,
     });
 
     expect(formatted).toContain("get_weather");
@@ -818,28 +816,31 @@ location: Tokyo
 
 describe("orchestratorSystemPromptTemplate", () => {
   it("should include multiline example by default", () => {
-    const template = orchestratorSystemPromptTemplate('[{"name":"test"}]');
+    const testTools = [{ name: "test", parameters: {} }];
+    const template = orchestratorSystemPromptTemplate(testTools);
 
     expect(template).toContain("# Tools");
-    expect(template).toContain('<tools>[{"name":"test"}]</tools>');
+    expect(template).toContain(
+      '<tools>[{"name":"test","parameters":{}}]</tools>'
+    );
     expect(template).toContain("YAML's literal block syntax");
     expect(template).toContain("contents: |");
   });
 
   it("should exclude multiline example when disabled", () => {
-    const template = orchestratorSystemPromptTemplate(
-      '[{"name":"test"}]',
-      false
-    );
+    const testTools = [{ name: "test", parameters: {} }];
+    const template = orchestratorSystemPromptTemplate(testTools, false);
 
     expect(template).toContain("# Tools");
-    expect(template).toContain('<tools>[{"name":"test"}]</tools>');
+    expect(template).toContain(
+      '<tools>[{"name":"test","parameters":{}}]</tools>'
+    );
     expect(template).not.toContain("YAML's literal block syntax");
     expect(template).not.toContain("contents: |");
   });
 
   it("should include proper format instructions", () => {
-    const template = orchestratorSystemPromptTemplate("[]");
+    const template = orchestratorSystemPromptTemplate([]);
 
     expect(template).toContain("# Format");
     expect(template).toContain("XML element");

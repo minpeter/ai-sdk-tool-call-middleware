@@ -1,18 +1,13 @@
+import type { TCMToolDefinition } from "../core/types";
 import { createToolMiddleware, morphXmlProtocol } from "../index";
 
-/**
- * A community-contributed middleware that uses morphXmlProtocol
- * with a more detailed system prompt template for function calling.
- *
- * Originally contributed by: sijawara
- * Source: https://github.com/minpeter/ai-sdk-tool-call-middleware/issues/51#issuecomment-3234519376
- */
 export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
-  toolSystemPromptTemplate(tools: string) {
+  toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
+    const toolsJson = JSON.stringify(tools);
     return `You have access to callable functions (tools).
     Tool list/context:
-    ${tools}
+    ${toolsJson}
 
     ===============================
     TOOL CALLING FORMAT
@@ -64,19 +59,13 @@ export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
   },
 });
 
-/**
- * A community-contributed middleware that uses morphXmlProtocol
- * with a more concise system prompt template for function calling.
- *
- * Originally contributed by: sijawara
- * Source: https://github.com/minpeter/ai-sdk-tool-call-middleware/issues/51#issuecomment-3234519376
- */
 export const sijawaraConciseXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
-  toolSystemPromptTemplate(tools: string) {
+  toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
+    const toolsJson = JSON.stringify(tools);
     return `You have access to callable functions (tools).
     Tool list/context:
-    ${tools}
+    ${toolsJson}
 
     STRICT CALLING RULES:
     - Use the XML-like format for tool calls:

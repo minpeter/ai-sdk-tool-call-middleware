@@ -1,7 +1,10 @@
+import type { TCMToolDefinition } from "../types";
+
 export function orchestratorSystemPromptTemplate(
-  tools: string,
+  tools: TCMToolDefinition[],
   includeMultilineExample = true
 ): string {
+  const toolsJson = JSON.stringify(tools);
   const multilineExample = includeMultilineExample
     ? `
 
@@ -20,7 +23,7 @@ contents: |
 You may call one or more functions to assist with the user query.
 
 You are provided with function signatures within <tools></tools> XML tags:
-<tools>${tools}</tools>
+<tools>${toolsJson}</tools>
 
 # Format
 

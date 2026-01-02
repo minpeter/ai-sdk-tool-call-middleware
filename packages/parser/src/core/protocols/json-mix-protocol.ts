@@ -3,6 +3,7 @@ import type {
   TCMCoreStreamPart,
   TCMCoreToolCall,
   TCMCoreToolResult,
+  TCMToolDefinition,
 } from "../types";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
@@ -332,7 +333,7 @@ export const jsonMixProtocol = ({
   toolResponseEnd = "</tool_response>",
 }: JsonMixOptions = {}): ToolCallProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
-    const toolsForPrompt = (tools || [])
+    const toolsForPrompt: TCMToolDefinition[] = (tools || [])
       .filter((tool) => tool.type === "function")
       .map((tool) => ({
         name: tool.name,
@@ -340,9 +341,10 @@ export const jsonMixProtocol = ({
           tool.type === "function" && typeof tool.description === "string"
             ? tool.description
             : undefined,
-        parameters: tool.inputSchema,
+        parameters: tool.inputSchema as Record<string, unknown>,
+        inputExamples: tool.inputExamples,
       }));
-    return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
+    return toolSystemPromptTemplate(toolsForPrompt);
   },
 
   formatToolCall(toolCall: TCMCoreToolCall) {

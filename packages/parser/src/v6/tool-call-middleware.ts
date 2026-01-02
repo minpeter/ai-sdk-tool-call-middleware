@@ -6,6 +6,7 @@ import {
   isProtocolFactory,
   type ToolCallProtocol,
 } from "../core/protocols/tool-call-protocol";
+import type { TCMToolDefinition } from "../core/types";
 import { extractOnErrorOption } from "../core/utils/on-error";
 import { isToolChoiceActive } from "../core/utils/provider-options";
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
@@ -21,7 +22,7 @@ export function createToolMiddleware({
   placement = "last",
 }: {
   protocol: ToolCallProtocol | (() => ToolCallProtocol);
-  toolSystemPromptTemplate: (tools: string) => string;
+  toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
   placement?: "first" | "last";
 }): LanguageModelV3Middleware {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;

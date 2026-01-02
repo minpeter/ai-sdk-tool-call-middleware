@@ -2,6 +2,7 @@ import {
   isProtocolFactory,
   type ToolCallProtocol,
 } from "../core/protocols/tool-call-protocol";
+import type { TCMToolDefinition } from "../core/types";
 import { createDynamicIfThenElseSchema } from "../core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "../core/utils/on-error";
 import { originalToolsSchema } from "../core/utils/provider-options";
@@ -260,7 +261,7 @@ export function transformParamsV5({
 }: {
   params: V5Params;
   protocol: ToolCallProtocol | (() => ToolCallProtocol);
-  toolSystemPromptTemplate: (tools: string) => string;
+  toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
   placement?: "first" | "last";
 }) {
   const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;

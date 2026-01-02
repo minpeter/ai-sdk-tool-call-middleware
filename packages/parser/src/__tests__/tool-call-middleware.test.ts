@@ -7,8 +7,8 @@ import { originalToolsSchema } from "../core/utils/provider-options";
 import { createToolMiddleware } from "../v6/tool-call-middleware";
 
 describe("createToolMiddleware", () => {
-  const mockToolSystemPromptTemplate = (tools: string) =>
-    `You have tools: ${tools}`;
+  const mockToolSystemPromptTemplate = (tools: unknown[]) =>
+    `You have tools: ${JSON.stringify(tools)}`;
 
   const createJsonMiddleware = () =>
     createToolMiddleware({

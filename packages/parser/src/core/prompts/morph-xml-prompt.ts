@@ -1,10 +1,15 @@
-export function morphXmlSystemPromptTemplate(tools: string): string {
+import type { TCMToolDefinition } from "../types";
+
+export function morphXmlSystemPromptTemplate(
+  tools: TCMToolDefinition[]
+): string {
+  const toolsJson = JSON.stringify(tools);
   return `# Tools
 
 You may call one or more functions to assist with the user query.
 
 You are provided with function signatures within <tools></tools> XML tags:
-<tools>${tools}</tools>
+<tools>${toolsJson}</tools>
 
 # Rules
 - Use exactly one XML element whose tag name is the function name.

@@ -11,7 +11,7 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 
 // Minimal protocol that emits a fixed XML-like payload but routes through middleware coercion
 const dummyProtocol: ToolCallProtocol = {
-  formatTools: ({ toolSystemPromptTemplate }) => toolSystemPromptTemplate("[]"),
+  formatTools: ({ toolSystemPromptTemplate }) => toolSystemPromptTemplate([]),
   formatToolCall: () => "",
   formatToolResponse: () => "",
   parseGeneratedText: ({ tools }) => [

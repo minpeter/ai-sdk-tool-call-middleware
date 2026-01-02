@@ -139,8 +139,8 @@ describe("index exports", () => {
     it("should create custom middleware", () => {
       const customMiddleware = createToolMiddleware({
         protocol: jsonMixProtocol(), // or morphXmlProtocol
-        toolSystemPromptTemplate: (tools: string) =>
-          `Custom template: ${tools}`,
+        toolSystemPromptTemplate: (tools) =>
+          `Custom template: ${JSON.stringify(tools)}`,
       });
 
       expect(customMiddleware).toBeDefined();

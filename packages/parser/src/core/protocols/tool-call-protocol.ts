@@ -4,6 +4,7 @@ import type {
   TCMCoreStreamPart,
   TCMCoreToolCall,
   TCMCoreToolResult,
+  TCMToolDefinition,
 } from "../types";
 
 export interface ToolCallProtocol {
@@ -12,7 +13,7 @@ export interface ToolCallProtocol {
     toolSystemPromptTemplate,
   }: {
     tools: TCMCoreFunctionTool[];
-    toolSystemPromptTemplate: (tools: string) => string;
+    toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
   }): string;
 
   formatToolCall(toolCall: TCMCoreToolCall): string;
