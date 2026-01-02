@@ -24,6 +24,7 @@ import {
 // Regex constants for performance
 const LINE_SPLIT_REGEX = /\r?\n/;
 const NUMERIC_STRING_REGEX = /^\d+$/;
+const DIFF_NUMERIC_EXTRACT_REGEX = /:\s*([\d.]+)/;
 
 // Helper function to convert ground truth to morphXML format
 function convertGroundTruthToXML(call: Record<string, unknown>): string {
@@ -441,7 +442,7 @@ function createBfclBenchmark(
             return `- expected one of: ${formatted}`;
           })();
           diffLines.push(expectedLine);
-          diffLines.push(`+ got: ${JSON.stringify(got)}`);
+          diffLines.push(`+      got: ${JSON.stringify(got)}`);
           return diffLines;
         };
 
@@ -796,63 +797,163 @@ function createBfclBenchmark(
           }
         };
 
-        // Helper: Build failure context payload
-        const buildFailureContext = (options: {
-          testCase: TestCase;
-          tools: ToolSpec[];
-          flatMessages: Message[];
-          mwOriginalText: string | undefined;
-          text: unknown;
-          finishReason: unknown;
-          mwParsedToolCalls: Array<{ toolName?: string; input?: unknown }>;
-          restoredCalls: unknown[];
-          possibleAnswer: PossibleAnswer;
-        }): Record<string, unknown> => {
-          const {
-            testCase,
-            tools,
-            flatMessages,
-            mwOriginalText,
-            text,
-            finishReason,
-            mwParsedToolCalls,
-            restoredCalls,
-            possibleAnswer,
-          } = options;
-
-          const lastUser = (() => {
-            const reversed = [...flatMessages].reverse();
-            const found = reversed.find(
-              (m) => (m as Message).role === "user"
-            ) as Message | undefined;
-            return found?.content ?? undefined;
-          })();
-
-          const rawModelText = (() => {
-            if (mwOriginalText && mwOriginalText.length > 0) {
-              return mwOriginalText;
+        const hasPercentPattern = (diff: string[]): boolean => {
+          return diff.some((d) => {
+            if (!(d.startsWith("+ got:") || d.startsWith("- expected:"))) {
+              return false;
             }
-            if (typeof text === "string") {
-              return text;
+            const numMatch = d.match(DIFF_NUMERIC_EXTRACT_REGEX);
+            if (!numMatch) {
+              return false;
             }
-            return "";
-          })();
-
-          return {
-            id: testCase.id,
-            tool_schema: tools,
-            last_user_query: lastUser,
-            raw_model_text: rawModelText,
-            finish_reason: finishReason,
-            parsed_tool_calls: mwParsedToolCalls.length
-              ? mwParsedToolCalls
-              : restoredCalls,
-            ground_truth: (possibleAnswer as { ground_truth?: unknown })
-              .ground_truth,
-          };
+            const num = Number.parseFloat(numMatch[1]);
+            return num >= 1 && num <= 100;
+          });
         };
 
-        // Helper: Log failure details
+        const isValueError = (
+          errorType: string | undefined,
+          diff: string[]
+        ): boolean => {
+          return (
+            !!errorType?.includes("value_error") ||
+            diff.some((d) => d.startsWith("@@ param"))
+          );
+        };
+
+        const isFunctionNameError = (
+          errorType: string | undefined,
+          diff: string[]
+        ): boolean => {
+          return (
+            !!errorType?.includes("wrong_func_name") ||
+            diff.some((d) => d.includes("function name"))
+          );
+        };
+
+        const isMissingParamError = (
+          errorType: string | undefined,
+          diff: string[]
+        ): boolean => {
+          return (
+            !!errorType?.includes("missing_required") ||
+            diff.some((d) => d.includes("missing required param"))
+          );
+        };
+
+        const isUnexpectedParamError = (
+          errorType: string | undefined,
+          diff: string[]
+        ): boolean => {
+          return (
+            !!errorType?.includes("unexpected_param") ||
+            diff.some((d) => d.includes("unexpected param"))
+          );
+        };
+
+        type FailureClassifier = (
+          errorType: string | undefined,
+          diff: string[]
+        ) => boolean;
+
+        const classifyByErrorPatterns = (
+          errorType: string | undefined,
+          diff: string[]
+        ): string | null => {
+          const patterns: [FailureClassifier, string][] = [
+            [
+              isValueError,
+              hasPercentPattern(diff)
+                ? "PARAM_VALUE_PERCENT"
+                : "PARAM_VALUE_MISMATCH",
+            ],
+            [isFunctionNameError, "WRONG_FUNCTION"],
+            [isMissingParamError, "MISSING_PARAMS"],
+            [isUnexpectedParamError, "UNEXPECTED_PARAMS"],
+          ];
+
+          for (const [classifier, result] of patterns) {
+            if (classifier(errorType, diff)) {
+              return result;
+            }
+          }
+
+          if (errorType?.includes("cannot_find_match")) {
+            return "NO_MATCH";
+          }
+
+          return null;
+        };
+
+        const classifyByCallCount = (
+          actualCount: number,
+          expectedCount: number
+        ): string | null => {
+          if (actualCount === 0 && expectedCount > 0) {
+            return "PARSE_FAILURE";
+          }
+          if (actualCount > 0 && actualCount < expectedCount) {
+            return "PARTIAL_CALLS";
+          }
+          if (actualCount > expectedCount) {
+            return "EXTRA_CALLS";
+          }
+          return null;
+        };
+
+        const classifyFailureType = (options: {
+          errorType: string | undefined;
+          restoredCalls: unknown[];
+          expectedCount: number;
+          diff: string[];
+        }): string => {
+          const { errorType, restoredCalls, expectedCount, diff } = options;
+          const actualCount = Array.isArray(restoredCalls)
+            ? restoredCalls.length
+            : 0;
+
+          const countBasedResult = classifyByCallCount(
+            actualCount,
+            expectedCount
+          );
+          if (countBasedResult) {
+            return countBasedResult;
+          }
+
+          const patternBasedResult = classifyByErrorPatterns(errorType, diff);
+          if (patternBasedResult) {
+            return patternBasedResult;
+          }
+
+          return "OTHER";
+        };
+
+        const extractRawModelText = (
+          mwOriginalText: string | undefined,
+          text: unknown
+        ): string => {
+          if (mwOriginalText && mwOriginalText.length > 0) {
+            return mwOriginalText;
+          }
+          if (typeof text === "string") {
+            return text;
+          }
+          return "";
+        };
+
+        const extractLastUserQuery = (flatMessages: Message[]): string => {
+          const reversed = [...flatMessages].reverse();
+          const found = reversed.find((m) => (m as Message).role === "user") as
+            | Message
+            | undefined;
+          const content = found?.content ?? "";
+          return content.length > 200 ? `${content.slice(0, 200)}...` : content;
+        };
+
+        const truncateText = (text: string, maxLen: number): string => {
+          return text.length > maxLen ? `${text.slice(0, maxLen)}...` : text;
+        };
+
         const logFailureDetails = (options: {
           testCase: TestCase;
           tools: ToolSpec[];
@@ -867,7 +968,7 @@ function createBfclBenchmark(
           mwOriginalText: string | undefined;
           text: unknown;
           finishReason: unknown;
-          mwParsedToolCalls: Array<{ toolName?: string; input?: unknown }>;
+          mwParsedToolCalls: { toolName?: string; input?: unknown }[];
           caseLogs: string[];
         }): void => {
           const {
@@ -888,46 +989,47 @@ function createBfclBenchmark(
             const category = testCase.id.split("_")[0];
             const { expected, actual, diff } =
               category === "simple"
-                ? buildSimpleDiff(
-                    tools as ToolSpec[],
-                    possibleAnswer,
-                    restoredCalls
-                  )
-                : buildParallelDiff(
-                    tools as ToolSpec[],
-                    possibleAnswer,
-                    restoredCalls
-                  );
+                ? buildSimpleDiff(tools, possibleAnswer, restoredCalls)
+                : buildParallelDiff(tools, possibleAnswer, restoredCalls);
 
-            caseLogs.push(
-              `[DEBUG-FAIL] ${JSON.stringify({
-                id: testCase.id,
-                message: checkerResult.error,
-                error_type: checkerResult.error_type,
-                expected,
-                actual,
-                diff,
-              })}`
-            );
+            const gtArr = (possibleAnswer as { ground_truth?: unknown[] })
+              .ground_truth;
+            const expectedCount = Array.isArray(gtArr) ? gtArr.length : 1;
 
-            try {
-              const contextPayload = buildFailureContext({
-                testCase,
-                tools,
-                flatMessages,
-                mwOriginalText,
-                text,
-                finishReason,
-                mwParsedToolCalls,
+            const rawModelText = extractRawModelText(mwOriginalText, text);
+            const lastUserQuery = extractLastUserQuery(flatMessages);
+
+            const failurePayload = {
+              id: testCase.id,
+              category: classifyFailureType({
+                errorType: checkerResult.error_type,
                 restoredCalls,
-                possibleAnswer,
-              });
-              caseLogs.push(
-                `[DEBUG-FAIL-CONTEXT] ${JSON.stringify(contextPayload)}`
-              );
-            } catch {
-              // ignore context build failures
-            }
+                expectedCount,
+                diff,
+              }),
+              message: checkerResult.error,
+              error_type: checkerResult.error_type,
+              expected,
+              actual,
+              diff,
+              context: {
+                raw_model_text: truncateText(rawModelText, 500),
+                raw_model_text_full:
+                  rawModelText.length > 500 ? rawModelText : undefined,
+                parsed_tool_calls: mwParsedToolCalls.length
+                  ? mwParsedToolCalls
+                  : restoredCalls,
+                expected_count: expectedCount,
+                actual_count: Array.isArray(restoredCalls)
+                  ? restoredCalls.length
+                  : 0,
+                finish_reason: finishReason,
+                last_user_query: lastUserQuery,
+                tool_names: tools.map((t) => t.name),
+              },
+            };
+
+            caseLogs.push(`[DEBUG-FAIL] ${JSON.stringify(failurePayload)}`);
           } catch {
             caseLogs.push(`[DEBUG] ${testCase.id}: failed to build debug diff`);
           }
