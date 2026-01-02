@@ -19,6 +19,8 @@ import {
 } from "@ai-sdk-tool/eval";
 import { createDiskCacheMiddleware } from "@ai-sdk-tool/middleware";
 import {
+  gemmaToolMiddleware,
+  hermesToolMiddleware,
   morphXmlToolMiddleware,
   orchestratorToolMiddleware,
 } from "@ai-sdk-tool/parser";
@@ -93,6 +95,24 @@ const yamlXmlModel: LanguageModel = wrapLanguageModel({
   ],
 });
 
+const gemmaModel: LanguageModel = wrapLanguageModel({
+  model: baseModel,
+  middleware: [
+    gemmaToolMiddleware,
+    extractReasoningMiddleware({ tagName: "think" }),
+    diskCacheMiddleware,
+  ],
+});
+
+const hermesModel: LanguageModel = wrapLanguageModel({
+  model: baseModel,
+  middleware: [
+    hermesToolMiddleware,
+    extractReasoningMiddleware({ tagName: "think" }),
+    diskCacheMiddleware,
+  ],
+});
+
 interface BenchmarkResult {
   commit: string;
   branch: string;
@@ -103,6 +123,8 @@ interface BenchmarkResult {
     native: Record<string, number>;
     morphxml: Record<string, number>;
     yamlxml: Record<string, number>;
+    gemma: Record<string, number>;
+    hermes: Record<string, number>;
   };
 }
 
@@ -178,7 +200,7 @@ async function runBenchmarks(): Promise<{
   if (config.limit) {
     process.env.BFCL_LIMIT = config.limit.toString();
   } else {
-    delete process.env.BFCL_LIMIT;
+    process.env.BFCL_LIMIT = undefined;
   }
 
   console.log("Running native tool calling benchmarks...\n");
@@ -208,6 +230,24 @@ async function runBenchmarks(): Promise<{
     maxTokens: 512,
   });
 
+  console.log("\nRunning Gemma protocol benchmarks...\n");
+  const gemmaResults = await evaluate({
+    models: { gemma: gemmaModel },
+    benchmarks: config.benchmarks,
+    reporter: "console.summary",
+    temperature: 0.0,
+    maxTokens: 512,
+  });
+
+  console.log("\nRunning Hermes protocol benchmarks...\n");
+  const hermesResults = await evaluate({
+    models: { hermes: hermesModel },
+    benchmarks: config.benchmarks,
+    reporter: "console.summary",
+    temperature: 0.0,
+    maxTokens: 512,
+  });
+
   const nativeScores: Record<string, number> = {};
   for (const result of nativeResults) {
     nativeScores[result.benchmark] = result.result.score;
@@ -223,6 +263,16 @@ async function runBenchmarks(): Promise<{
     yamlXmlScores[result.benchmark] = result.result.score;
   }
 
+  const gemmaScores: Record<string, number> = {};
+  for (const result of gemmaResults) {
+    gemmaScores[result.benchmark] = result.result.score;
+  }
+
+  const hermesScores: Record<string, number> = {};
+  for (const result of hermesResults) {
+    hermesScores[result.benchmark] = result.result.score;
+  }
+
   const fullResult: BenchmarkResult = {
     commit: commitHash,
     branch,
@@ -233,6 +283,8 @@ async function runBenchmarks(): Promise<{
       native: nativeScores,
       morphxml: morphXmlScores,
       yamlxml: yamlXmlScores,
+      gemma: gemmaScores,
+      hermes: hermesScores,
     },
   };
 
@@ -247,6 +299,12 @@ async function runBenchmarks(): Promise<{
     const yamlXmlFastScores = extractFastScores(
       yamlXmlResults as EvalResultWithCases[]
     );
+    const gemmaFastScores = extractFastScores(
+      gemmaResults as EvalResultWithCases[]
+    );
+    const hermesFastScores = extractFastScores(
+      hermesResults as EvalResultWithCases[]
+    );
     fastResult = {
       commit: commitHash,
       branch,
@@ -257,6 +315,8 @@ async function runBenchmarks(): Promise<{
         native: nativeFastScores,
         morphxml: morphXmlFastScores,
         yamlxml: yamlXmlFastScores,
+        gemma: gemmaFastScores,
+        hermes: hermesFastScores,
       },
     };
   }
@@ -305,17 +365,23 @@ function generateReport(results: BenchmarkResult) {
   console.log(`\n${"-".repeat(80)}`);
   console.log("BENCHMARK RESULTS\n");
 
-  console.log("| Benchmark              | Native  | morphXML | YAML-XML |");
-  console.log("|------------------------|---------|----------|----------|");
+  console.log(
+    "| Benchmark              | Native  | morphXML | YAML-XML | Gemma   | Hermes  |"
+  );
+  console.log(
+    "|------------------------|---------|----------|----------|---------|---------|"
+  );
 
   const benchmarks = Object.keys(results.results.native);
   for (const benchmark of benchmarks) {
     const nativeScore = results.results.native[benchmark];
     const morphxmlScore = results.results.morphxml[benchmark];
     const yamlxmlScore = results.results.yamlxml[benchmark];
+    const gemmaScore = results.results.gemma[benchmark];
+    const hermesScore = results.results.hermes[benchmark];
 
     console.log(
-      `| ${benchmark.padEnd(22)} | ${(nativeScore * 100).toFixed(1).padStart(5)}%  | ${(morphxmlScore * 100).toFixed(1).padStart(6)}%  | ${(yamlxmlScore * 100).toFixed(1).padStart(6)}%  |`
+      `| ${benchmark.padEnd(22)} | ${(nativeScore * 100).toFixed(1).padStart(5)}%  | ${(morphxmlScore * 100).toFixed(1).padStart(6)}%  | ${(yamlxmlScore * 100).toFixed(1).padStart(6)}%  | ${(gemmaScore * 100).toFixed(1).padStart(5)}%  | ${(hermesScore * 100).toFixed(1).padStart(5)}%  |`
     );
   }
 
@@ -328,10 +394,18 @@ function generateReport(results: BenchmarkResult) {
   const yamlxmlAvg =
     Object.values(results.results.yamlxml).reduce((a, b) => a + b, 0) /
     benchmarks.length;
+  const gemmaAvg =
+    Object.values(results.results.gemma).reduce((a, b) => a + b, 0) /
+    benchmarks.length;
+  const hermesAvg =
+    Object.values(results.results.hermes).reduce((a, b) => a + b, 0) /
+    benchmarks.length;
 
-  console.log("|------------------------|---------|----------|----------|");
   console.log(
-    `| ${"AVERAGE".padEnd(22)} | ${(nativeAvg * 100).toFixed(1).padStart(5)}%  | ${(morphxmlAvg * 100).toFixed(1).padStart(6)}%  | ${(yamlxmlAvg * 100).toFixed(1).padStart(6)}%  |`
+    "|------------------------|---------|----------|----------|---------|---------|"
+  );
+  console.log(
+    `| ${"AVERAGE".padEnd(22)} | ${(nativeAvg * 100).toFixed(1).padStart(5)}%  | ${(morphxmlAvg * 100).toFixed(1).padStart(6)}%  | ${(yamlxmlAvg * 100).toFixed(1).padStart(6)}%  | ${(gemmaAvg * 100).toFixed(1).padStart(5)}%  | ${(hermesAvg * 100).toFixed(1).padStart(5)}%  |`
   );
 
   console.log(`\n${"-".repeat(80)}`);
@@ -341,11 +415,21 @@ function generateReport(results: BenchmarkResult) {
     nativeAvg > 0 ? ((morphxmlAvg - nativeAvg) / nativeAvg) * 100 : 0;
   const yamlDiff =
     nativeAvg > 0 ? ((yamlxmlAvg - nativeAvg) / nativeAvg) * 100 : 0;
+  const gemmaDiff =
+    nativeAvg > 0 ? ((gemmaAvg - nativeAvg) / nativeAvg) * 100 : 0;
+  const hermesDiff =
+    nativeAvg > 0 ? ((hermesAvg - nativeAvg) / nativeAvg) * 100 : 0;
 
   console.log(
     `  morphXML: ${morphDiff >= 0 ? "+" : ""}${morphDiff.toFixed(1)}%`
   );
   console.log(`  YAML-XML: ${yamlDiff >= 0 ? "+" : ""}${yamlDiff.toFixed(1)}%`);
+  console.log(
+    `  Gemma:    ${gemmaDiff >= 0 ? "+" : ""}${gemmaDiff.toFixed(1)}%`
+  );
+  console.log(
+    `  Hermes:   ${hermesDiff >= 0 ? "+" : ""}${hermesDiff.toFixed(1)}%`
+  );
   console.log(`${"=".repeat(80)}\n`);
 }
 
