@@ -185,7 +185,7 @@ async function runBenchmarks(): Promise<{
   const nativeResults = await evaluate({
     models: { native: nativeModel },
     benchmarks: config.benchmarks,
-    reporter: "console",
+    reporter: "console.summary",
     temperature: 0.0,
     maxTokens: 512,
   });
@@ -194,7 +194,7 @@ async function runBenchmarks(): Promise<{
   const morphXmlResults = await evaluate({
     models: { morphxml: morphXmlModel },
     benchmarks: config.benchmarks,
-    reporter: "console",
+    reporter: "console.summary",
     temperature: 0.0,
     maxTokens: 512,
   });
@@ -203,7 +203,7 @@ async function runBenchmarks(): Promise<{
   const yamlXmlResults = await evaluate({
     models: { yamlxml: yamlXmlModel },
     benchmarks: config.benchmarks,
-    reporter: "console",
+    reporter: "console.summary",
     temperature: 0.0,
     maxTokens: 512,
   });
