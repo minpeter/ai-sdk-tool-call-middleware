@@ -46,4 +46,7 @@ yarn-error.log*
 
 # Benchmark API cache (never commit, cached in CI)
 .benchmark-results/cache/
+
+# ai agent tool
 .opencode
+.sisyphus
