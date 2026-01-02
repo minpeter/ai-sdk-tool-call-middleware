@@ -1,5 +1,11 @@
 # @ai-sdk-tool/rxml
 
+## 0.1.2
+
+### Patch Changes
+
+- 537adc6: minor dependency version bump
+
 ## 0.1.2-canary.0
 
 ### Patch Changes
