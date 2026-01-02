@@ -180,36 +180,6 @@ function detectPatterns(group: CategoryGroup): void {
   }
 }
 
-function formatTableRow(cells: string[], widths: number[]): string {
-  return `│ ${cells.map((c, i) => c.padEnd(widths[i])).join(" │ ")} │`;
-}
-
-function formatTable(
-  headers: string[],
-  rows: string[][],
-  columnWidths: number[]
-): string[] {
-  const lines: string[] = [];
-
-  lines.push(`┌${columnWidths.map((w) => "─".repeat(w + 2)).join("┬")}┐`);
-  lines.push(formatTableRow(headers, columnWidths));
-  lines.push(`├${columnWidths.map((w) => "─".repeat(w + 2)).join("┼")}┤`);
-
-  for (const row of rows) {
-    lines.push(formatTableRow(row, columnWidths));
-  }
-
-  lines.push(`└${columnWidths.map((w) => "─".repeat(w + 2)).join("┴")}┘`);
-  return lines;
-}
-
-function truncate(str: string, maxLen: number): string {
-  if (str.length <= maxLen) {
-    return str;
-  }
-  return `${str.slice(0, maxLen - 3)}...`;
-}
-
 function getLineColor(line: string): string {
   if (line.startsWith("+")) {
     return colors.green;
@@ -261,18 +231,30 @@ function printDiff(diff: string[]): void {
   }
 }
 
+function removeReasoningTags(text: string): string {
+  let result = text.replace(/<think>[\s\S]*?<\/think>/g, "");
+  result = result.replace(/<think>[\s\S]*/g, "");
+  return result.trim();
+}
+
 function printModelOutput(failure: ParsedFailure, category: string): void {
-  if (failure.context?.reasoning && category === "PARSE_FAILURE") {
-    const text = truncate(failure.context.reasoning, 100);
-    console.log(
-      `    ${colors.gray}Reasoning:${colors.reset}  "${colors.dim}${text}${colors.reset}"`
-    );
+  if (category !== "PARSE_FAILURE") {
+    return;
   }
 
-  if (failure.context?.raw_model_text && category === "PARSE_FAILURE") {
-    const text = truncate(failure.context.raw_model_text, 100);
+  const rawText =
+    failure.context?.raw_model_text_full ||
+    failure.context?.raw_model_text ||
+    "";
+  const cleanedText = removeReasoningTags(rawText);
+
+  if (cleanedText) {
     console.log(
-      `    ${colors.gray}Model said:${colors.reset} "${colors.dim}${text}${colors.reset}"`
+      `    ${colors.gray}Model said:${colors.reset} "${colors.dim}${cleanedText}${colors.reset}"`
+    );
+  } else {
+    console.log(
+      `    ${colors.gray}Model said:${colors.reset} ${colors.dim}(only reasoning, no tool call output)${colors.reset}`
     );
   }
 }
@@ -372,26 +354,6 @@ function printResultHeader(result: EvaluationResult): void {
   console.log(`${modelPart} │ ${benchmarkPart} │ ${scorePart}`);
 }
 
-function printFailureTable(groups: Map<string, CategoryGroup>): void {
-  console.log(`\n${colors.bold}FAILURE SUMMARY${colors.reset}`);
-
-  const tableRows: string[][] = [];
-  const sortedCategories = [...groups.entries()].sort(
-    (a, b) => b[1].failures.length - a[1].failures.length
-  );
-
-  for (const [cat, group] of sortedCategories) {
-    const info = CATEGORY_DESCRIPTIONS[cat] || CATEGORY_DESCRIPTIONS.OTHER;
-    tableRows.push([info.label, String(group.failures.length)]);
-  }
-
-  const tableLines = formatTable(["Category", "Count"], tableRows, [22, 6]);
-
-  for (const line of tableLines) {
-    console.log(line);
-  }
-}
-
 function printResultSummary(result: EvaluationResult, verbose: boolean): void {
   const { result: benchmarkResult } = result;
 
@@ -417,8 +379,6 @@ function printResultSummary(result: EvaluationResult, verbose: boolean): void {
   for (const group of groups.values()) {
     detectPatterns(group);
   }
-
-  printFailureTable(groups);
 
   const sortedCategories = [...groups.entries()].sort(
     (a, b) => b[1].failures.length - a[1].failures.length
