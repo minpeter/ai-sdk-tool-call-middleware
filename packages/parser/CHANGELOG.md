@@ -1,5 +1,37 @@
 # @ai-sdk-tool/parser
 
+## 3.0.0
+
+### Major Changes
+
+- 537adc6: upgrade language model interfaces to V3
+- 537adc6: bump ai v6 (middleware v3 not yet)
+
+### Minor Changes
+
+- 537adc6: feat(parser): implement pluggable heuristic pipeline for XML parsing
+
+  - Add 3-phase heuristic engine (pre-parse, fallback-reparse, post-parse)
+  - Add 5 default XML heuristics: normalizeCloseTags, escapeInvalidLt, balanceTags, dedupeShellStringTags, repairAgainstSchema
+  - Reorganize heuristics into dedicated `src/heuristics/` module
+  - Export heuristic APIs for custom pipeline configuration
+
+- 537adc6: Remove internal barrel files and enable noBarrelFile linting rule for better tree-shaking and build performance
+- 1fc1810: Add YAML+XML mixed tool call protocol (Orchestrator-style)
+
+  - New `yamlXmlProtocol` for parsing tool calls with YAML content inside XML tags
+  - New `orchestratorToolMiddleware` pre-configured middleware
+  - New `orchestratorSystemPromptTemplate` for customizable system prompts
+  - Supports YAML multiline syntax (`|` and `>`)
+  - Full streaming support with proper text/tool-call separation
+  - Self-closing tags and empty bodies return `{}`
+
+### Patch Changes
+
+- 537adc6: minor dependency version bump
+- Updated dependencies [537adc6]
+  - @ai-sdk-tool/rxml@0.1.2
+
 ## 3.0.0-canary.3
 
 ### Patch Changes
