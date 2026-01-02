@@ -21,8 +21,8 @@ importers:
         specifier: ^4.0.16
         version: 4.0.16(vitest@4.0.16)
       globals:
-        specifier: ^16.5.0
-        version: 16.5.0
+        specifier: ^17.0.0
+        version: 17.0.0
       husky:
         specifier: ^9.1.7
         version: 9.1.7
@@ -42,8 +42,8 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       ultracite:
-        specifier: 7.0.3
-        version: 7.0.3(typescript@5.9.3)
+        specifier: 7.0.4
+        version: 7.0.4(typescript@5.9.3)
       update-ts-references:
         specifier: ^4.0.0
         version: 4.0.0
@@ -1416,8 +1416,8 @@ packages:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
     deprecated: Glob versions prior to v9 are no longer supported
 
-  globals@16.5.0:
-    resolution: {integrity: sha512-c/c15i26VrJ4IRt5Z89DnIzCGDn9EcebibhAOjw5ibqEHsE1wLUgkPn9RDmNcUKyU87GeaL633nyJ+pplFR2ZQ==}
+  globals@17.0.0:
+    resolution: {integrity: sha512-gv5BeD2EssA793rlFWVPMMCqefTlpusw6/2TbAVMy0FzcG8wKJn4O+NqJ4+XWmmwrayJgw5TzrmWjFgmz1XPqw==}
     engines: {node: '>=18'}
 
   globalthis@1.0.4:
@@ -2379,8 +2379,8 @@ packages:
   ufo@1.6.1:
     resolution: {integrity: sha512-9a4/uxlTWJ4+a5i0ooc1rU7C7YOw3wT+UGqdeNNHWnOF9qcMBgLRS+4IYUqbczewFx4mLEig6gawh7X6mFlEkA==}
 
-  ultracite@7.0.3:
-    resolution: {integrity: sha512-JOilJVpm+wPQTpbOiVX2Gt0u7fd/YY5Tjg9nRbwWaaKVNsbIIimIWQG8r06blxc3v5CJVMBMRCyKlljWYeUfQg==}
+  ultracite@7.0.4:
+    resolution: {integrity: sha512-mjbFUhFdM/nBR+XR2WylUJCmXqrErDyrFxyIy1F0TQAPzZvigjMxnhbtZjKKxg0t3pj5wNr6JISUnFbSX1OeGw==}
     hasBin: true
 
   unbox-primitive@1.1.0:
@@ -3667,7 +3667,7 @@ snapshots:
       once: 1.4.0
       path-is-absolute: 1.0.1
 
-  globals@16.5.0: {}
+  globals@17.0.0: {}
 
   globalthis@1.0.4:
     dependencies:
@@ -4631,7 +4631,7 @@ snapshots:
 
   ufo@1.6.1: {}
 
-  ultracite@7.0.3(typescript@5.9.3):
+  ultracite@7.0.4(typescript@5.9.3):
     dependencies:
       '@clack/prompts': 0.11.0
       '@trpc/server': 11.8.1(typescript@5.9.3)
