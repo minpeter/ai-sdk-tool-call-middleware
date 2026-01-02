@@ -1,5 +1,17 @@
 # @ai-sdk-tool/eval
 
+## 1.0.0
+
+### Major Changes
+
+- 537adc6: bump ai v6 (middleware v3 not yet)
+
+### Patch Changes
+
+- 537adc6: minor dependency version bump
+- Updated dependencies [537adc6]
+  - @ai-sdk-tool/middleware@0.0.1
+
 ## 1.0.0-canary.1
 
 ### Patch Changes
