@@ -1,5 +1,5 @@
 import { coerceBySchema } from "@ai-sdk-tool/rxml";
-import type { ToolCallProtocol } from "../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
 import {
   getDebugLevel,
   logParsedChunk,
@@ -14,7 +14,7 @@ type V5ContentItem = any;
 
 function parseContent(
   content: V5ContentItem[],
-  protocol: ToolCallProtocol,
+  protocol: TCMCoreProtocol,
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 tool schema compatibility
   tools: any[],
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 provider options
@@ -76,7 +76,7 @@ function logParsedContent(content: V5ContentItem[]) {
 function computeDebugSummary(options: {
   result: { content: V5ContentItem[] };
   newContent: V5ContentItem[];
-  protocol: ToolCallProtocol;
+  protocol: TCMCoreProtocol;
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 tool schema compatibility
   tools: any[];
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 provider options
@@ -120,7 +120,7 @@ export async function wrapGenerateV5({
   doGenerate,
   params,
 }: {
-  protocol: ToolCallProtocol;
+  protocol: TCMCoreProtocol;
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 generate result
   doGenerate: () => Promise<any>;
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 params structure

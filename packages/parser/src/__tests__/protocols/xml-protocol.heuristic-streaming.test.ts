@@ -1,7 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 
 const EXPECTED_NUMBER_1 = 1;
 const EXPECTED_NUMBER_2 = 2;
@@ -19,7 +19,7 @@ const EXPECTED_COORD_1_888334 = 1.888_334;
 const CHUNK_SIZE = 10;
 
 describe("XML Protocol Heuristic Streaming", () => {
-  const protocol = morphXmlProtocol();
+  const protocol = xmlProtocol();
 
   // Helper function to simulate streaming
   async function simulateStreaming(text: string, tools: any[]) {

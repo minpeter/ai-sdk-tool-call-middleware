@@ -1,8 +1,8 @@
 import type { TCMToolDefinition } from "../core/types";
-import { createToolMiddleware, morphXmlProtocol } from "../index";
+import { createToolMiddleware, xmlProtocol } from "../index";
 
 export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
-  protocol: morphXmlProtocol,
+  protocol: xmlProtocol,
   toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
     const toolsJson = JSON.stringify(tools);
     return `You have access to callable functions (tools).
@@ -60,7 +60,7 @@ export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
 });
 
 export const sijawaraConciseXmlToolMiddleware = createToolMiddleware({
-  protocol: morphXmlProtocol,
+  protocol: xmlProtocol,
   toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
     const toolsJson = JSON.stringify(tools);
     return `You have access to callable functions (tools).

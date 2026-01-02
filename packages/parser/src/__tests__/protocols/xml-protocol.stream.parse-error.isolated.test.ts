@@ -4,16 +4,16 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
   zeroUsage,
 } from "../test-helpers";
 
-describe("morphXmlProtocol streaming with malformed XML", () => {
+describe("xmlProtocol streaming with malformed XML", () => {
   it("gracefully recovers malformed XML by parsing available content", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",

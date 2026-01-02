@@ -8,9 +8,9 @@ import type {
   TCMToolDefinition,
 } from "../types";
 import { generateId } from "../utils/id";
-import type { ToolCallProtocol } from "./tool-call-protocol";
+import type { TCMCoreProtocol } from "./protocol-interface";
 
-export interface YamlXmlProtocolOptions {
+export interface YamlProtocolOptions {
   /**
    * Whether to include a system prompt example showing YAML multiline syntax.
    * @default true
@@ -377,10 +377,10 @@ function findEarliestToolTag(
   };
 }
 
-export const yamlXmlProtocol = (
+export const yamlProtocol = (
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future extensibility
-  _protocolOptions?: YamlXmlProtocolOptions
-): ToolCallProtocol => {
+  _protocolOptions?: YamlProtocolOptions
+): TCMCoreProtocol => {
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
       const toolsForPrompt: TCMToolDefinition[] = (tools || []).map((tool) => ({

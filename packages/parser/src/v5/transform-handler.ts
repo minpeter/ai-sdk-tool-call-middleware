@@ -1,7 +1,5 @@
-import {
-  isProtocolFactory,
-  type ToolCallProtocol,
-} from "../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
+import { isTCMProtocolFactory } from "../core/protocols/protocol-interface";
 import type { TCMToolDefinition } from "../core/types";
 import { createDynamicIfThenElseSchema } from "../core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "../core/utils/on-error";
@@ -70,7 +68,7 @@ type V5ContentItem = any;
 
 function processAssistantContent(
   content: V5ContentItem[],
-  resolvedProtocol: ToolCallProtocol,
+  resolvedProtocol: TCMCoreProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
@@ -112,7 +110,7 @@ function processAssistantContent(
 
 function processMessage(
   message: V5Message,
-  resolvedProtocol: ToolCallProtocol,
+  resolvedProtocol: TCMCoreProtocol,
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 provider options
   providerOptions?: any
 ): V5Message {
@@ -233,7 +231,7 @@ function mergeConsecutiveUserMessages(
 
 function convertToolPrompt(
   prompt: V5Message[],
-  resolvedProtocol: ToolCallProtocol,
+  resolvedProtocol: TCMCoreProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
@@ -260,11 +258,13 @@ export function transformParamsV5({
   placement = "first",
 }: {
   params: V5Params;
-  protocol: ToolCallProtocol | (() => ToolCallProtocol);
+  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
   toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
   placement?: "first" | "last";
 }) {
-  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
+  const resolvedProtocol = isTCMProtocolFactory(protocol)
+    ? protocol()
+    : protocol;
 
   const functionTools = (params.tools ?? []).filter(
     (t: V5Tool) => t.type === "function"

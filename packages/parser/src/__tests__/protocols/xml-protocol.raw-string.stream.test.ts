@@ -4,17 +4,17 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
   zeroUsage,
 } from "../test-helpers";
 
-describe("morphXmlProtocol raw string handling in streaming", () => {
+describe("xmlProtocol raw string handling in streaming", () => {
   it("captures raw inner XML for string-typed arg during streaming", async () => {
     const CHUNK_SIZE = 7;
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -88,7 +88,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
 
   it("error policy cancels the tool call and emits original text in streaming", async () => {
     const CHUNK_SIZE = 5;
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -151,7 +151,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
 
   it("captures DOCTYPE HTML inside string-typed <content> during streaming (user-reported)", async () => {
     const CHUNK_SIZE = 11;
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -219,7 +219,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
 
   it("decodes entity-escaped HTML inside string-typed <content> during streaming", async () => {
     const CHUNK_SIZE = 13;
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",

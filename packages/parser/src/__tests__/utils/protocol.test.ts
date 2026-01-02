@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { ToolCallProtocol } from "../../core/protocols/tool-call-protocol";
-import { isProtocolFactory } from "../../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
+import { isTCMProtocolFactory } from "../../core/protocols/protocol-interface";
 
-describe("utils/protocol - isProtocolFactory", () => {
+describe("utils/protocol - isTCMProtocolFactory", () => {
   it("returns true for a factory function", () => {
     const factory = () =>
       ({
@@ -12,18 +12,18 @@ describe("utils/protocol - isProtocolFactory", () => {
         formatToolResponse: () => "",
         parseGeneratedText: () => [],
         createStreamParser: () => new TransformStream(),
-      }) as ToolCallProtocol;
-    expect(isProtocolFactory(factory)).toBe(true);
+      }) as TCMCoreProtocol;
+    expect(isTCMProtocolFactory(factory)).toBe(true);
   });
 
   it("returns false for a protocol object", () => {
-    const obj: ToolCallProtocol = {
+    const obj: TCMCoreProtocol = {
       formatTools: () => "",
       formatToolCall: () => "",
       formatToolResponse: () => "",
       parseGeneratedText: () => [],
       createStreamParser: () => new TransformStream(),
     };
-    expect(isProtocolFactory(obj)).toBe(false);
+    expect(isTCMProtocolFactory(obj)).toBe(false);
   });
 });

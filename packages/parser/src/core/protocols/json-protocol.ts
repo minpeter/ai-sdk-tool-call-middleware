@@ -10,9 +10,9 @@ import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId } from "../utils/id";
 import { escapeRegExp } from "../utils/regex";
 import { parse as parseRJSON } from "../utils/robust-json";
-import type { ToolCallProtocol } from "./tool-call-protocol";
+import type { TCMCoreProtocol } from "./protocol-interface";
 
-interface JsonMixOptions {
+interface JsonProtocolOptions {
   toolCallStart?: string;
   toolCallEnd?: string;
   toolResponseStart?: string;
@@ -326,12 +326,12 @@ function handlePartialTag(
   }
 }
 
-export const jsonMixProtocol = ({
+export const jsonProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
   toolResponseStart = "<tool_response>",
   toolResponseEnd = "</tool_response>",
-}: JsonMixOptions = {}): ToolCallProtocol => ({
+}: JsonProtocolOptions = {}): TCMCoreProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     const toolsForPrompt: TCMToolDefinition[] = (tools || [])
       .filter((tool) => tool.type === "function")

@@ -1,4 +1,4 @@
-import type { ToolCallProtocol } from "../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
 import type { TCMCoreFunctionTool, TCMCoreStreamPart } from "../core/types";
 import {
   getDebugLevel,
@@ -92,7 +92,7 @@ export async function wrapStreamV5({
   doStream,
   params,
 }: {
-  protocol: ToolCallProtocol;
+  protocol: TCMCoreProtocol;
   doStream: () => Promise<{ stream: unknown }>;
   // biome-ignore lint/suspicious/noExplicitAny: complex provider options mapping
   params: { providerOptions?: { toolCallMiddleware?: any } };

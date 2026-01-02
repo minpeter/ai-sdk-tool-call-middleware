@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 
-describe("morphXmlProtocol parseGeneratedText without onError", () => {
+describe("xmlProtocol parseGeneratedText without onError", () => {
   it("does not warn to console and returns original text when parsing fails", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {
       // Intentionally empty - we're mocking to suppress warnings
     });
 
-    const p = morphXmlProtocol();
+    const p = xmlProtocol();
     // Use malformed XML that will cause parsing to fail
     const text = "<a><x>1</x>"; // Missing closing </a> tag
     const result = p.parseGeneratedText({

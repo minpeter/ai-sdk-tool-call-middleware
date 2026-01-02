@@ -1,8 +1,6 @@
 import type { TCMToolDefinition } from "../types";
 
-export function morphXmlSystemPromptTemplate(
-  tools: TCMToolDefinition[]
-): string {
+export function xmlSystemPromptTemplate(tools: TCMToolDefinition[]): string {
   const toolsJson = JSON.stringify(tools);
   return `# Tools
 

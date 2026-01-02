@@ -1,41 +1,30 @@
 // biome-ignore-all lint/performance/noBarrelFile: intentional public API surface
 
 import {
-  gemmaSystemPromptTemplate,
   hermesSystemPromptTemplate,
-  morphXmlSystemPromptTemplate,
-  orchestratorSystemPromptTemplate,
+  xmlSystemPromptTemplate,
+  ymlSystemPromptTemplate,
 } from "../core/prompts";
-import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
-import { morphXmlProtocol } from "../core/protocols/morph-xml-protocol";
-import { yamlXmlProtocol } from "../core/protocols/yaml-xml-protocol";
+import { jsonProtocol } from "../core/protocols/json-protocol";
+import { xmlProtocol } from "../core/protocols/xml-protocol";
+import { yamlProtocol } from "../core/protocols/yaml-protocol";
 import { createToolMiddlewareV5 } from "./tool-call-middleware";
 
-export const gemmaToolMiddleware = createToolMiddlewareV5({
-  protocol: jsonMixProtocol({
-    toolCallStart: "```tool_call\n",
-    toolCallEnd: "\n```",
-    toolResponseStart: "```tool_response\n",
-    toolResponseEnd: "\n```",
-  }),
-  toolSystemPromptTemplate: gemmaSystemPromptTemplate,
-});
-
 export const hermesToolMiddleware = createToolMiddlewareV5({
-  protocol: jsonMixProtocol,
+  protocol: jsonProtocol,
   toolSystemPromptTemplate: hermesSystemPromptTemplate,
 });
 
-export const morphXmlToolMiddleware = createToolMiddlewareV5({
-  protocol: morphXmlProtocol,
+export const xmlToolMiddleware = createToolMiddlewareV5({
+  protocol: xmlProtocol,
   placement: "first",
-  toolSystemPromptTemplate: morphXmlSystemPromptTemplate,
+  toolSystemPromptTemplate: xmlSystemPromptTemplate,
 });
 
-export const orchestratorToolMiddleware = createToolMiddlewareV5({
-  protocol: yamlXmlProtocol(),
+export const ymlToolMiddleware = createToolMiddlewareV5({
+  protocol: yamlProtocol(),
   placement: "first",
-  toolSystemPromptTemplate: orchestratorSystemPromptTemplate,
+  toolSystemPromptTemplate: ymlSystemPromptTemplate,
 });
 
 export { createToolMiddlewareV5 as createToolMiddleware } from "./tool-call-middleware";

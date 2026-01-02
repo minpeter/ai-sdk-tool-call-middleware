@@ -9,9 +9,9 @@ import {
   repairAgainstSchemaHeuristic,
   type ToolCallHeuristic,
 } from "../../core/heuristics";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 
-describe("morphXmlProtocol pipeline integration", () => {
+describe("xmlProtocol pipeline integration", () => {
   const simpleTools: LanguageModelV3FunctionTool[] = [
     {
       type: "function",
@@ -27,7 +27,7 @@ describe("morphXmlProtocol pipeline integration", () => {
 
   describe("default behavior (no options)", () => {
     it("should parse valid XML without pipeline", () => {
-      const protocol = morphXmlProtocol();
+      const protocol = xmlProtocol();
       const text = "<get_weather><location>Seoul</location></get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -40,7 +40,7 @@ describe("morphXmlProtocol pipeline integration", () => {
     });
 
     it("should recover malformed close tags without pipeline", () => {
-      const protocol = morphXmlProtocol();
+      const protocol = xmlProtocol();
       const text = "<get_weather><location>Seoul</ location></get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -61,7 +61,7 @@ describe("morphXmlProtocol pipeline integration", () => {
         }),
       };
 
-      const protocol = morphXmlProtocol({ heuristics: [customHeuristic] });
+      const protocol = xmlProtocol({ heuristics: [customHeuristic] });
       const text =
         "<get_weather><location>PLACEHOLDER</location></get_weather>";
 
@@ -84,7 +84,7 @@ describe("morphXmlProtocol pipeline integration", () => {
         }),
       };
 
-      const protocol = morphXmlProtocol({ heuristics: [customFallback] });
+      const protocol = xmlProtocol({ heuristics: [customFallback] });
       const text = "<get_weather><<<BROKEN</location></get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -111,7 +111,7 @@ describe("morphXmlProtocol pipeline integration", () => {
         },
       };
 
-      const protocol = morphXmlProtocol({ heuristics: [customPostParse] });
+      const protocol = xmlProtocol({ heuristics: [customPostParse] });
       const text = "<get_weather><location>Seoul</location></get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -133,7 +133,7 @@ describe("morphXmlProtocol pipeline integration", () => {
         postParse: [],
       };
 
-      const protocol = morphXmlProtocol({ pipeline: customPipeline });
+      const protocol = xmlProtocol({ pipeline: customPipeline });
       const text = "<get_weather><location>Seoul</ location></get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -149,7 +149,7 @@ describe("morphXmlProtocol pipeline integration", () => {
         postParse: [repairAgainstSchemaHeuristic],
       };
 
-      const protocol = morphXmlProtocol({ pipeline: noFallbackPipeline });
+      const protocol = xmlProtocol({ pipeline: noFallbackPipeline });
       const text = "<get_weather><location>Seoul</get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -178,7 +178,7 @@ describe("morphXmlProtocol pipeline integration", () => {
     ];
 
     it("should recover when balance fixes tags but creates duplicate string tags", () => {
-      const protocol = morphXmlProtocol({
+      const protocol = xmlProtocol({
         pipeline: defaultPipelineConfig,
       });
 
@@ -200,7 +200,7 @@ describe("morphXmlProtocol pipeline integration", () => {
     });
 
     it("should handle malformed close tags with duplicate string tags", () => {
-      const protocol = morphXmlProtocol({
+      const protocol = xmlProtocol({
         pipeline: defaultPipelineConfig,
       });
 
@@ -234,7 +234,7 @@ describe("morphXmlProtocol pipeline integration", () => {
         },
       };
 
-      const protocol = morphXmlProtocol({
+      const protocol = xmlProtocol({
         pipeline: {
           preParse: [],
           fallbackReparse: [
@@ -264,7 +264,7 @@ describe("morphXmlProtocol pipeline integration", () => {
         },
       };
 
-      const protocolWithPipeline = morphXmlProtocol({
+      const protocolWithPipeline = xmlProtocol({
         pipeline: {
           preParse: [trackingHeuristic],
           fallbackReparse: [],
@@ -291,7 +291,7 @@ describe("morphXmlProtocol pipeline integration", () => {
         },
       };
 
-      const protocol = morphXmlProtocol({
+      const protocol = xmlProtocol({
         pipeline: {
           preParse: [trackingHeuristic, trackingHeuristic],
           fallbackReparse: [],
@@ -309,8 +309,8 @@ describe("morphXmlProtocol pipeline integration", () => {
 
   describe("backward compatibility with legacy code path", () => {
     it("should produce same result for valid XML with or without pipeline", () => {
-      const withoutPipeline = morphXmlProtocol();
-      const withPipeline = morphXmlProtocol({
+      const withoutPipeline = xmlProtocol();
+      const withPipeline = xmlProtocol({
         pipeline: defaultPipelineConfig,
       });
 
@@ -339,8 +339,8 @@ describe("morphXmlProtocol pipeline integration", () => {
     });
 
     it("should produce same result for malformed close tags", () => {
-      const withoutPipeline = morphXmlProtocol();
-      const withPipeline = morphXmlProtocol({
+      const withoutPipeline = xmlProtocol();
+      const withPipeline = xmlProtocol({
         pipeline: defaultPipelineConfig,
       });
 
@@ -387,7 +387,7 @@ describe("morphXmlProtocol pipeline integration", () => {
     ];
 
     it("should preserve <0>, <1> index tags", () => {
-      const protocol = morphXmlProtocol({ pipeline: defaultPipelineConfig });
+      const protocol = xmlProtocol({ pipeline: defaultPipelineConfig });
       const text = `<set_coordinates>
         <coordinates>
           <0>10.5</0>

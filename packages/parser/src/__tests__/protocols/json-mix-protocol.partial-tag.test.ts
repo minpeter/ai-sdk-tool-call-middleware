@@ -2,16 +2,16 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
-import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { jsonProtocol } from "../../core/protocols/json-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
   zeroUsage,
 } from "../test-helpers";
 
-describe("jsonMixProtocol partial tag handling", () => {
+describe("jsonProtocol partial tag handling", () => {
   it("breaks inner loop when only partial start tag suffix present and publishes buffer", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = jsonProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {

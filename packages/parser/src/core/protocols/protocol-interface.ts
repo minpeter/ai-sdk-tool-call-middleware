@@ -7,7 +7,7 @@ import type {
   TCMToolDefinition,
 } from "../types";
 
-export interface ToolCallProtocol {
+export interface TCMCoreProtocol {
   formatTools({
     tools,
     toolSystemPromptTemplate,
@@ -51,8 +51,8 @@ export interface ToolCallProtocol {
   }) => string[];
 }
 
-export function isProtocolFactory(
-  protocol: ToolCallProtocol | (() => ToolCallProtocol)
-): protocol is () => ToolCallProtocol {
+export function isTCMProtocolFactory(
+  protocol: TCMCoreProtocol | (() => TCMCoreProtocol)
+): protocol is () => TCMCoreProtocol {
   return typeof protocol === "function";
 }

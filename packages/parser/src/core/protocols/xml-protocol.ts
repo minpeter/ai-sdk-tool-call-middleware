@@ -26,13 +26,13 @@ import type {
   TCMToolDefinition,
 } from "../types";
 import { generateId } from "../utils/id";
-import type { ToolCallProtocol } from "./tool-call-protocol";
+import type { TCMCoreProtocol } from "./protocol-interface";
 
 const defaultPipelineConfig = _defaultPipelineConfig;
 type PipelineConfig = _PipelineConfig;
 type ToolCallHeuristic = _ToolCallHeuristic;
 
-export interface MorphXmlProtocolOptions {
+export interface XmlProtocolOptions {
   heuristics?: ToolCallHeuristic[];
   pipeline?: PipelineConfig;
   maxReparses?: number;
@@ -735,10 +735,10 @@ function createProcessBufferHandler(
   };
 }
 
-export const morphXmlProtocol = (
-  protocolOptions?: MorphXmlProtocolOptions
+export const xmlProtocol = (
+  protocolOptions?: XmlProtocolOptions
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: protocol factory with multiple parsing strategies
-): ToolCallProtocol => {
+): TCMCoreProtocol => {
   let pipelineConfig = protocolOptions?.pipeline;
   const maxReparses = protocolOptions?.maxReparses;
 

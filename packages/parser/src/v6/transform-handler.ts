@@ -10,10 +10,8 @@ import type {
   LanguageModelV3ToolResultPart,
   SharedV3ProviderOptions,
 } from "@ai-sdk/provider";
-import {
-  isProtocolFactory,
-  type ToolCallProtocol,
-} from "../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
+import { isTCMProtocolFactory } from "../core/protocols/protocol-interface";
 import type { TCMToolDefinition } from "../core/types";
 import { createDynamicIfThenElseSchema } from "../core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "../core/utils/on-error";
@@ -254,11 +252,13 @@ export function transformParams({
     };
     toolChoice?: { type: string; toolName?: string };
   };
-  protocol: ToolCallProtocol | (() => ToolCallProtocol);
+  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
   toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
   placement?: "first" | "last";
 }) {
-  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
+  const resolvedProtocol = isTCMProtocolFactory(protocol)
+    ? protocol()
+    : protocol;
 
   const functionTools = (params.tools ?? []).filter(
     (t): t is LanguageModelV3FunctionTool => t.type === "function"
@@ -308,7 +308,7 @@ export function transformParams({
  */
 function processAssistantContent(
   content: LanguageModelV3Content[],
-  resolvedProtocol: ToolCallProtocol,
+  resolvedProtocol: TCMCoreProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
@@ -354,7 +354,7 @@ function processAssistantContent(
  */
 function processToolMessage(
   content: LanguageModelV3ToolResultPart[],
-  resolvedProtocol: ToolCallProtocol
+  resolvedProtocol: TCMCoreProtocol
 ): LanguageModelV3Prompt[number] {
   return {
     role: "user" as const,
@@ -380,7 +380,7 @@ function processToolMessage(
  */
 function processMessage(
   message: LanguageModelV3Prompt[number],
-  resolvedProtocol: ToolCallProtocol,
+  resolvedProtocol: TCMCoreProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
@@ -508,7 +508,7 @@ function mergeConsecutiveUserMessages(
 
 function convertToolPrompt(
   prompt: LanguageModelV3Prompt,
-  resolvedProtocol: ToolCallProtocol,
+  resolvedProtocol: TCMCoreProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }

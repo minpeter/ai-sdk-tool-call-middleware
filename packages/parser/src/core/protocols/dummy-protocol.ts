@@ -1,6 +1,6 @@
 import type { TCMCoreStreamPart } from "../types";
 import { generateId } from "../utils/id";
-import type { ToolCallProtocol } from "./tool-call-protocol";
+import type { TCMCoreProtocol } from "./protocol-interface";
 
 function handleTextDelta(
   chunk: { type: string; textDelta?: string; delta?: string },
@@ -42,7 +42,7 @@ function handleNonTextDelta(
   controller.enqueue(chunk);
 }
 
-export const dummyProtocol = (): ToolCallProtocol => ({
+export const dummyProtocol = (): TCMCoreProtocol => ({
   formatTools: () => "",
   formatToolCall: () => "",
   formatToolResponse: () => "",

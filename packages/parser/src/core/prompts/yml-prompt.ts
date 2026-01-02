@@ -1,6 +1,6 @@
 import type { TCMToolDefinition } from "../types";
 
-export function orchestratorSystemPromptTemplate(
+export function ymlSystemPromptTemplate(
   tools: TCMToolDefinition[],
   includeMultilineExample = true
 ): string {
