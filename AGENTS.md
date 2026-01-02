@@ -1,204 +1,121 @@
-# AGENTS.md
-
-This file provides guidance for agents and code assistants (such as Claude Code, Codex, and others) when working with code in this repository.
-
-## Development Commands
-
-This is a monorepo managed by pnpm workspaces and Turborepo:
-
-- `pnpm build` - Build all packages in parallel
-- `pnpm test` - Run all tests in parallel
-- `pnpm dev` - Start development mode (watch builds)
-- `pnpm lint` - Lint all packages
-- `pnpm lint:fix` - Fix linting issues and format code
-- `pnpm fmt` - Check code formatting
-- `pnpm fmt:fix` - Fix formatting and linting issues
-- `pnpm typecheck` - Type-check all packages
-
-For single package development, run commands from within the package directory:
-
-- `cd packages/parser && pnpm test:watch` - Watch tests for parser package only
-- `cd packages/eval && pnpm dev` - Develop eval package only
-
-## Architecture Overview
-
-This project provides middleware for AI SDK to enable tool calling with models that don't natively support OpenAI-style tool calling.
-
-### Core Packages
-
-**@ai-sdk-tool/parser** (`packages/parser/`):
-
-- Main middleware package for tool call parsing
-- Exports pre-configured middlewares: `gemmaToolMiddleware`, `hermesToolMiddleware`, `morphXmlToolMiddleware`
-- Core factory function: `createToolMiddleware()` for custom protocols
-- Protocol system with pluggable parsers for different model formats (JSON-mix, XML, etc.)
-
-**@ai-sdk-tool/eval** (`packages/eval/`):
-
-- Benchmarking and evaluation tools
-- BFCL (Berkeley Function Calling Leaderboard) benchmark implementations
-- JSON generation benchmarks
-- Custom benchmark creation utilities
-
-### Key Architecture Patterns
-
-**Protocol-Based Design**: The `ToolCallProtocol` interface defines how tools are:
-
-- Formatted for the model (`formatTools`, `formatToolCall`, `formatToolResponse`)
-- Parsed from model output (`parseGeneratedText`, `createStreamParser`)
-
-**Middleware Pattern**: Uses AI SDK middleware to intercept and transform:
-
-- `transformParams`: Converts tool definitions to system prompts
-- `wrapStream`: Handles streaming responses with tool call detection
-- `wrapGenerate`: Handles non-streaming responses
-
-**Handler Architecture**:
-
-- `stream-handler.ts`: Manages streaming tool call detection and parsing
-- `generate-handler.ts`: Handles batch/generate mode tool calls
-- `transform-handler.ts`: Transforms AI SDK parameters for provider compatibility
-
-### Protocol Implementations
-
-Located in `packages/parser/src/protocols/`:
-
-- `json-mix-protocol.ts`: Handles JSON tool calls within markdown code fences
-- `morph-xml-protocol.ts`: XML-based tool calling format
-- `dummy-protocol.ts`: Testing/fallback protocol
-
-## Testing Strategy
-
-Tests use Vitest and are organized by:
-
-- Unit tests in `tests/` directories
-- Protocol-specific edge case testing
-- Stream handling compliance tests
-- E2E examples in `scripts/` directories
-
-Run `pnpm test` from root or `pnpm test:watch` from individual package directories.
-
-
-# Ultracite Code Standards
-
-This project uses **Ultracite**, a zero-config Biome preset that enforces strict code quality standards through automated formatting and linting.
-
-## Quick Reference
-
-- **Format code**: `pnpm dlx ultracite fix`
-- **Check for issues**: `pnpm dlx ultracite check`
-- **Diagnose setup**: `pnpm dlx ultracite doctor`
-
-Biome (the underlying engine) provides extremely fast Rust-based linting and formatting. Most issues are automatically fixable.
-
----
-
-## Core Principles
-
-Write code that is **accessible, performant, type-safe, and maintainable**. Focus on clarity and explicit intent over brevity.
-
-### Type Safety & Explicitness
-
-- Use explicit types for function parameters and return values when they enhance clarity
-- Prefer `unknown` over `any` when the type is genuinely unknown
-- Use const assertions (`as const`) for immutable values and literal types
-- Leverage TypeScript's type narrowing instead of type assertions
-- Use meaningful variable names instead of magic numbers - extract constants with descriptive names
-
-### Modern JavaScript/TypeScript
-
-- Use arrow functions for callbacks and short functions
-- Prefer `for...of` loops over `.forEach()` and indexed `for` loops
-- Use optional chaining (`?.`) and nullish coalescing (`??`) for safer property access
-- Prefer template literals over string concatenation
-- Use destructuring for object and array assignments
-- Use `const` by default, `let` only when reassignment is needed, never `var`
-
-### Async & Promises
-
-- Always `await` promises in async functions - don't forget to use the return value
-- Use `async/await` syntax instead of promise chains for better readability
-- Handle errors appropriately in async code with try-catch blocks
-- Don't use async functions as Promise executors
-
-### React & JSX
-
-- Use function components over class components
-- Call hooks at the top level only, never conditionally
-- Specify all dependencies in hook dependency arrays correctly
-- Use the `key` prop for elements in iterables (prefer unique IDs over array indices)
-- Nest children between opening and closing tags instead of passing as props
-- Don't define components inside other components
-- Use semantic HTML and ARIA attributes for accessibility:
-  - Provide meaningful alt text for images
-  - Use proper heading hierarchy
-  - Add labels for form inputs
-  - Include keyboard event handlers alongside mouse events
-  - Use semantic elements (`<button>`, `<nav>`, etc.) instead of divs with roles
-
-### Error Handling & Debugging
-
-- Remove `console.log`, `debugger`, and `alert` statements from production code
-- Throw `Error` objects with descriptive messages, not strings or other values
-- Use `try-catch` blocks meaningfully - don't catch errors just to rethrow them
-- Prefer early returns over nested conditionals for error cases
-
-### Code Organization
-
-- Keep functions focused and under reasonable cognitive complexity limits
-- Extract complex conditions into well-named boolean variables
-- Use early returns to reduce nesting
-- Prefer simple conditionals over nested ternary operators
-- Group related code together and separate concerns
-
-### Security
-
-- Add `rel="noopener"` when using `target="_blank"` on links
-- Avoid `dangerouslySetInnerHTML` unless absolutely necessary
-- Don't use `eval()` or assign directly to `document.cookie`
-- Validate and sanitize user input
-
-### Performance
-
-- Avoid spread syntax in accumulators within loops
-- Use top-level regex literals instead of creating them in loops
-- Prefer specific imports over namespace imports
-- Avoid barrel files (index files that re-export everything)
-- Use proper image components (e.g., Next.js `<Image>`) over `<img>` tags
-
-### Framework-Specific Guidance
-
-**Next.js:**
-- Use Next.js `<Image>` component for images
-- Use `next/head` or App Router metadata API for head elements
-- Use Server Components for async data fetching instead of async Client Components
-
-**React 19+:**
-- Use ref as a prop instead of `React.forwardRef`
-
-**Solid/Svelte/Vue/Qwik:**
-- Use `class` and `for` attributes (not `className` or `htmlFor`)
-
----
-
-## Testing
-
-- Write assertions inside `it()` or `test()` blocks
-- Avoid done callbacks in async tests - use async/await instead
-- Don't use `.only` or `.skip` in committed code
-- Keep test suites reasonably flat - avoid excessive `describe` nesting
-
-## When Biome Can't Help
-
-Biome's linter will catch most issues automatically. Focus your attention on:
-
-1. **Business logic correctness** - Biome can't validate your algorithms
-2. **Meaningful naming** - Use descriptive names for functions, variables, and types
-3. **Architecture decisions** - Component structure, data flow, and API design
-4. **Edge cases** - Handle boundary conditions and error states
-5. **User experience** - Accessibility, performance, and usability considerations
-6. **Documentation** - Add comments for complex logic, but prefer self-documenting code
-
----
-
-Most formatting and common issues are automatically fixed by Biome. Run `pnpm dlx ultracite fix` before committing to ensure compliance.
+# PROJECT KNOWLEDGE BASE
+
+**Generated:** 2026-01-02
+**Commit:** 7d33b99
+**Branch:** feat/orchestrator-yaml-xml-protocol
+
+## OVERVIEW
+
+Middleware enabling tool calling for AI SDK v5 models lacking native `tools` support. pnpm monorepo with Turborepo orchestration.
+
+## STRUCTURE
+
+```
+ai-sdk-tool-call-middleware/
+├── packages/
+│   ├── parser/      # Core tool-call parsing middleware (main package)
+│   ├── eval/        # Benchmarking (BFCL, JSON generation)
+│   ├── rxml/        # XML parser/builder for AI-generated XML
+│   ├── proxy/       # OpenAI-compatible proxy server
+│   ├── middleware/  # Shared middleware utilities (disk cache)
+│   └── opencode-plugin/  # OpenCode integration
+├── examples/
+│   ├── parser-core/ # Parser usage examples
+│   ├── eval-core/   # Benchmark examples
+│   ├── rxml-core/   # RXML streaming examples
+│   └── proxy-core/  # Proxy server examples
+├── docs/            # Documentation site content
+├── scripts/         # CI benchmark scripts
+└── tools/tsconfig/  # Shared tsconfig presets
+```
+
+## WHERE TO LOOK
+
+| Task | Location | Notes |
+|------|----------|-------|
+| Add protocol | `packages/parser/src/core/protocols/` | Implement `ToolCallProtocol` interface |
+| Add middleware | `packages/parser/src/v6/` | v6 = AI SDK v5 (LanguageModelV3) |
+| Add benchmark | `packages/eval/src/benchmarks/` | Implement `LanguageModelV3Benchmark` |
+| XML parsing | `packages/rxml/src/core/` | parser.ts, stream.ts, tokenizer.ts |
+| Proxy endpoints | `packages/proxy/src/server.ts` | Fastify routes |
+| Heuristic repair | `packages/parser/src/core/heuristics/` | XML tag balancing, schema repair |
+
+## CODE MAP
+
+| Symbol | Type | Location | Role |
+|--------|------|----------|------|
+| `createToolMiddleware` | Factory | parser/v6/tool-call-middleware.ts | Main middleware factory |
+| `ToolCallProtocol` | Interface | parser/core/protocols/tool-call-protocol.ts | Protocol contract |
+| `jsonMixProtocol` | Protocol | parser/core/protocols/json-mix-protocol.ts | JSON in markdown fences |
+| `morphXmlProtocol` | Protocol | parser/core/protocols/morph-xml-protocol.ts | XML-based tool calls |
+| `yamlXmlProtocol` | Protocol | parser/core/protocols/yaml-xml-protocol.ts | YAML args in XML tags |
+| `evaluate` | Function | eval/src/evaluate.ts | Run benchmarks |
+| `OpenAIProxyServer` | Class | proxy/src/server.ts | Proxy server |
+| `parse` | Function | rxml/src/core/parser.ts | XML to object |
+
+## CONVENTIONS
+
+### Protocol Architecture
+- Each protocol implements 5 methods: `formatTools`, `formatToolCall`, `formatToolResponse`, `parseGeneratedText`, `createStreamParser`
+- Protocols can be factory functions `() => ToolCallProtocol` for per-request state
+
+### Version Directories
+- `v5/` = AI SDK v4 support (LanguageModelV1)
+- `v6/` = AI SDK v5 support (LanguageModelV3) - **default export**
+
+### Testing
+- Vitest with colocated tests (`*.test.ts` next to source)
+- Protocol tests in `__tests__/protocols/`
+- E2E tests in `__tests__/e2e/`
+
+### Biome/Ultracite
+- Extends `ultracite/biome/core`
+- `noConsole: off` - console allowed (CLI tools)
+- `noMagicNumbers: off` - numbers allowed
+
+## ANTI-PATTERNS (THIS PROJECT)
+
+- **NEVER** suppress types with `as any`, `@ts-ignore`, `@ts-expect-error`
+- **NEVER** use barrel files except package index.ts (biome-ignore comment required)
+- **NEVER** commit `.env` files - use `.env.example`
+- **NEVER** use `var` - use `const`/`let`
+
+## UNIQUE STYLES
+
+- Middleware wraps both streaming (`wrapStream`) and batch (`wrapGenerate`) modes
+- `providerOptions.toolCallMiddleware` for internal state propagation
+- Debug via `DEBUG_PARSER_MW=stream|parse` env var
+- Heuristic pipeline for XML repair before parsing
+
+## COMMANDS
+
+```bash
+# Development
+pnpm install          # Install all deps
+pnpm build            # Build all packages (turbo)
+pnpm dev              # Watch mode
+pnpm test             # Run all tests
+pnpm typecheck        # Type-check all
+
+# Single package
+cd packages/parser && pnpm test:watch
+
+# Formatting (Biome/Ultracite)
+pnpm fmt:biome        # Auto-fix
+pnpm check:biome      # Check only
+
+# Release
+pnpm changeset        # Create changeset
+pnpm ci:release       # Build + publish
+
+# Benchmarks
+pnpm ci:benchmark     # Run regression benchmarks
+pnpm ci:compare       # Compare benchmark results
+```
+
+## NOTES
+
+- Requires Node >= 18, pnpm 9.x
+- AI SDK v5 required. For v4, pin `@ai-sdk-tool/parser@1.0.0`
+- Examples require API keys in env (OPENROUTER_API_KEY, etc.)
+- Pre-commit hook runs Biome check via Husky

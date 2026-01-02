@@ -198,6 +198,7 @@ jobs:
         env:
           FRIENDLI_TOKEN: ${{ secrets.FRIENDLI_TOKEN || vars.FRIENDLI_TOKEN }}
           BENCHMARK_MODE: ${{ steps.mode.outputs.mode }}
+          PR_BRANCH: ${{ github.event_name == 'issue_comment' && steps.get-pr-ref.outputs.ref || github.head_ref || '' }}
         run: |
           pnpm ci:benchmark
         continue-on-error: true
