@@ -2,7 +2,7 @@
 /**
  * Regression Benchmark Runner
  *
- * Runs benchmarks comparing native tool calling vs morphXML protocol
+ * Runs benchmarks comparing native tool calling vs morphXML vs yamlXML protocols
  * with the same model, saves results with commit hash for historical comparison.
  */
 
@@ -18,7 +18,10 @@ import {
   evaluate,
 } from "@ai-sdk-tool/eval";
 import { createDiskCacheMiddleware } from "@ai-sdk-tool/middleware";
-import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
+import {
+  morphXmlToolMiddleware,
+  orchestratorToolMiddleware,
+} from "@ai-sdk-tool/parser";
 import {
   extractReasoningMiddleware,
   type LanguageModel,
@@ -31,19 +34,16 @@ const diskCacheMiddleware = createDiskCacheMiddleware({
   cacheDir: ".benchmark-results/cache",
 });
 
-// Get commit hash and branch
 const commitHash = execSync("git rev-parse HEAD").toString().trim();
 const shortHash = commitHash.slice(0, 7);
-// GitHub Actions uses detached HEAD, so prefer environment variables
 const branch =
-  process.env.GITHUB_HEAD_REF || // PR source branch
-  process.env.GITHUB_REF_NAME || // Push target branch
+  process.env.GITHUB_HEAD_REF ||
+  process.env.GITHUB_REF_NAME ||
   execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
 
 console.log(`🔍 Running regression benchmarks for commit ${shortHash}`);
 console.log(`📦 Branch: ${branch}\n`);
 
-// Check for API token
 if (!process.env.FRIENDLI_TOKEN) {
   console.error("❌ ERROR: FRIENDLI_TOKEN environment variable is not set");
   console.error("");
@@ -59,7 +59,6 @@ if (!process.env.FRIENDLI_TOKEN) {
   process.exit(1);
 }
 
-// Setup model provider (using a commonly available model)
 const friendli = createOpenAICompatible({
   name: "friendli.serverless",
   apiKey: process.env.FRIENDLI_TOKEN,
@@ -68,7 +67,6 @@ const friendli = createOpenAICompatible({
 
 const baseModel = friendli(MODEL_ID);
 
-// Native tool calling (no middleware)
 const nativeModel: LanguageModel = wrapLanguageModel({
   model: baseModel,
   middleware: [
@@ -77,11 +75,19 @@ const nativeModel: LanguageModel = wrapLanguageModel({
   ],
 });
 
-// morphXML protocol
 const morphXmlModel: LanguageModel = wrapLanguageModel({
   model: baseModel,
   middleware: [
     morphXmlToolMiddleware,
+    extractReasoningMiddleware({ tagName: "think" }),
+    diskCacheMiddleware,
+  ],
+});
+
+const yamlXmlModel: LanguageModel = wrapLanguageModel({
+  model: baseModel,
+  middleware: [
+    orchestratorToolMiddleware,
     extractReasoningMiddleware({ tagName: "think" }),
     diskCacheMiddleware,
   ],
@@ -96,6 +102,7 @@ interface BenchmarkResult {
   results: {
     native: Record<string, number>;
     morphxml: Record<string, number>;
+    yamlxml: Record<string, number>;
   };
 }
 
@@ -135,7 +142,6 @@ function extractFastScores(
   return scores;
 }
 
-// All 4 BFCL benchmark categories
 const allBenchmarks = [
   bfclSimpleBenchmark,
   bfclMultipleBenchmark,
@@ -156,12 +162,12 @@ async function runBenchmarks(): Promise<{
     fast: {
       benchmarks: allBenchmarks,
       limit: 5,
-      desc: "4 categories x 5 cases = 20 cases (x2 = 40 total), ~2min",
+      desc: "4 categories x 5 cases = 20 cases (x3 = 60 total), ~3min",
     },
     full: {
       benchmarks: allBenchmarks,
       limit: undefined,
-      desc: "all 4 categories, all cases, ~15min",
+      desc: "all 4 categories, all cases, ~20min",
     },
   };
 
@@ -171,6 +177,8 @@ async function runBenchmarks(): Promise<{
 
   if (config.limit) {
     process.env.BFCL_LIMIT = config.limit.toString();
+  } else {
+    delete process.env.BFCL_LIMIT;
   }
 
   console.log("Running native tool calling benchmarks...\n");
@@ -191,6 +199,15 @@ async function runBenchmarks(): Promise<{
     maxTokens: 512,
   });
 
+  console.log("\nRunning YAML-XML protocol benchmarks...\n");
+  const yamlXmlResults = await evaluate({
+    models: { yamlxml: yamlXmlModel },
+    benchmarks: config.benchmarks,
+    reporter: "console",
+    temperature: 0.0,
+    maxTokens: 512,
+  });
+
   const nativeScores: Record<string, number> = {};
   for (const result of nativeResults) {
     nativeScores[result.benchmark] = result.result.score;
@@ -199,6 +216,11 @@ async function runBenchmarks(): Promise<{
   const morphXmlScores: Record<string, number> = {};
   for (const result of morphXmlResults) {
     morphXmlScores[result.benchmark] = result.result.score;
+  }
+
+  const yamlXmlScores: Record<string, number> = {};
+  for (const result of yamlXmlResults) {
+    yamlXmlScores[result.benchmark] = result.result.score;
   }
 
   const fullResult: BenchmarkResult = {
@@ -210,6 +232,7 @@ async function runBenchmarks(): Promise<{
     results: {
       native: nativeScores,
       morphxml: morphXmlScores,
+      yamlxml: yamlXmlScores,
     },
   };
 
@@ -221,6 +244,9 @@ async function runBenchmarks(): Promise<{
     const morphXmlFastScores = extractFastScores(
       morphXmlResults as EvalResultWithCases[]
     );
+    const yamlXmlFastScores = extractFastScores(
+      yamlXmlResults as EvalResultWithCases[]
+    );
     fastResult = {
       commit: commitHash,
       branch,
@@ -230,6 +256,7 @@ async function runBenchmarks(): Promise<{
       results: {
         native: nativeFastScores,
         morphxml: morphXmlFastScores,
+        yamlxml: yamlXmlFastScores,
       },
     };
   }
@@ -274,33 +301,47 @@ function generateReport(results: BenchmarkResult) {
   console.log(`\n${"-".repeat(80)}`);
   console.log("BENCHMARK RESULTS\n");
 
+  console.log("| Benchmark              | Native  | morphXML | YAML-XML |");
+  console.log("|------------------------|---------|----------|----------|");
+
   const benchmarks = Object.keys(results.results.native);
   for (const benchmark of benchmarks) {
     const nativeScore = results.results.native[benchmark];
     const morphxmlScore = results.results.morphxml[benchmark];
-    const diff = ((morphxmlScore - nativeScore) / nativeScore) * 100;
+    const yamlxmlScore = results.results.yamlxml[benchmark];
 
-    console.log(`${benchmark}:`);
-    console.log(`  Native:     ${(nativeScore * 100).toFixed(1)}%`);
-    console.log(`  morphXML:   ${(morphxmlScore * 100).toFixed(1)}%`);
-    console.log(`  Difference: ${diff >= 0 ? "+" : ""}${diff.toFixed(1)}%`);
-    console.log();
+    console.log(
+      `| ${benchmark.padEnd(22)} | ${(nativeScore * 100).toFixed(1).padStart(5)}%  | ${(morphxmlScore * 100).toFixed(1).padStart(6)}%  | ${(yamlxmlScore * 100).toFixed(1).padStart(6)}%  |`
+    );
   }
 
-  // Calculate averages
   const nativeAvg =
     Object.values(results.results.native).reduce((a, b) => a + b, 0) /
     benchmarks.length;
   const morphxmlAvg =
     Object.values(results.results.morphxml).reduce((a, b) => a + b, 0) /
     benchmarks.length;
-  const avgDiff = ((morphxmlAvg - nativeAvg) / nativeAvg) * 100;
+  const yamlxmlAvg =
+    Object.values(results.results.yamlxml).reduce((a, b) => a + b, 0) /
+    benchmarks.length;
 
-  console.log("-".repeat(80));
-  console.log("OVERALL AVERAGE:\n");
-  console.log(`  Native:     ${(nativeAvg * 100).toFixed(1)}%`);
-  console.log(`  morphXML:   ${(morphxmlAvg * 100).toFixed(1)}%`);
-  console.log(`  Difference: ${avgDiff >= 0 ? "+" : ""}${avgDiff.toFixed(1)}%`);
+  console.log("|------------------------|---------|----------|----------|");
+  console.log(
+    `| ${"AVERAGE".padEnd(22)} | ${(nativeAvg * 100).toFixed(1).padStart(5)}%  | ${(morphxmlAvg * 100).toFixed(1).padStart(6)}%  | ${(yamlxmlAvg * 100).toFixed(1).padStart(6)}%  |`
+  );
+
+  console.log(`\n${"-".repeat(80)}`);
+  console.log("DIFFERENCE FROM NATIVE:\n");
+
+  const morphDiff =
+    nativeAvg > 0 ? ((morphxmlAvg - nativeAvg) / nativeAvg) * 100 : 0;
+  const yamlDiff =
+    nativeAvg > 0 ? ((yamlxmlAvg - nativeAvg) / nativeAvg) * 100 : 0;
+
+  console.log(
+    `  morphXML: ${morphDiff >= 0 ? "+" : ""}${morphDiff.toFixed(1)}%`
+  );
+  console.log(`  YAML-XML: ${yamlDiff >= 0 ? "+" : ""}${yamlDiff.toFixed(1)}%`);
   console.log(`${"=".repeat(80)}\n`);
 }
 
