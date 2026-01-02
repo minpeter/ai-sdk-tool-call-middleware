@@ -698,5 +698,7 @@ unit: celsius
 - Use proper YAML syntax for values (strings, numbers, booleans, arrays, objects).
 - Each required parameter must appear once.
 - Do not add functions or parameters not in the schema.
-- After calling a tool, you will receive a response. Use this result to answer the user.`;
+- After calling a tool, you will receive a response. Use this result to answer the user.
+- Do NOT ask clarifying questions. Use reasonable defaults for optional parameters.
+- If a task requires multiple function calls, make ALL of them at once.`;
 }
