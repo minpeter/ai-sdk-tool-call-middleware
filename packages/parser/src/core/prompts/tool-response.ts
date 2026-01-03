@@ -106,18 +106,57 @@ export function formatToolResponseAsJsonInXml(
 export function formatToolResponseAsXml(toolResult: ToolResultPart): string {
   const unwrappedResult = unwrapToolResult(toolResult.output);
 
-  // Simple XML formatting - could use a proper XML library if needed
-  const escapeXml = (str: string): string => {
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&apos;");
-  };
+  const toolNameXml = `<tool_name>${toolResult.toolName}</tool_name>`;
+  const resultLines = formatXmlNode("result", unwrappedResult, 1);
 
-  const toolNameXml = `<tool_name>${escapeXml(toolResult.toolName)}</tool_name>`;
-  const resultXml = `<result>${escapeXml(typeof unwrappedResult === "string" ? unwrappedResult : JSON.stringify(unwrappedResult))}</result>`;
+  return [
+    "<tool_response>",
+    `  ${toolNameXml}`,
+    ...resultLines,
+    "</tool_response>",
+  ].join("\n");
+}
 
-  return `<tool_response>${toolNameXml}${resultXml}</tool_response>`;
+function formatXmlNode(
+  tagName: string,
+  value: JSONValue,
+  depth: number
+): string[] {
+  const indent = "  ".repeat(depth);
+
+  if (value === null || value === undefined) {
+    return [`${indent}<${tagName}></${tagName}>`];
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return [`${indent}<${tagName}>${String(value)}</${tagName}>`];
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return [`${indent}<${tagName}></${tagName}>`];
+    }
+    const lines = [`${indent}<${tagName}>`];
+    for (const item of value) {
+      lines.push(...formatXmlNode("item", item as JSONValue, depth + 1));
+    }
+    lines.push(`${indent}</${tagName}>`);
+    return lines;
+  }
+
+  const entries = Object.entries(value as Record<string, JSONValue>);
+  if (entries.length === 0) {
+    return [`${indent}<${tagName}></${tagName}>`];
+  }
+
+  const lines = [`${indent}<${tagName}>`];
+  for (const [key, entryValue] of entries) {
+    lines.push(...formatXmlNode(key, entryValue, depth + 1));
+  }
+  lines.push(`${indent}</${tagName}>`);
+  return lines;
 }

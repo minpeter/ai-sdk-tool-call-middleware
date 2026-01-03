@@ -417,23 +417,55 @@ describe("tool-response", () => {
         toolName: "search",
         output: { type: "text", value: "found results" },
       } satisfies ToolResultPart);
-      expect(result).toContain("<tool_response>");
-      expect(result).toContain("<tool_name>search</tool_name>");
-      expect(result).toContain("<result>found results</result>");
-      expect(result).toContain("</tool_response>");
+      expect(result).toBe(
+        [
+          "<tool_response>",
+          "  <tool_name>search</tool_name>",
+          "  <result>found results</result>",
+          "</tool_response>",
+        ].join("\n")
+      );
     });
 
-    it("escapes XML special characters in tool name", () => {
+    it("formats full XML response with nested result", () => {
+      const result = formatToolResponseAsXml({
+        type: "tool-result",
+        toolCallId: "tc1",
+        toolName: "get_weather",
+        output: {
+          type: "json",
+          value: {
+            city: "New York",
+            temperature: 47,
+            condition: "sunny",
+          },
+        },
+      } satisfies ToolResultPart);
+      expect(result).toBe(
+        [
+          "<tool_response>",
+          "  <tool_name>get_weather</tool_name>",
+          "  <result>",
+          "    <city>New York</city>",
+          "    <temperature>47</temperature>",
+          "    <condition>sunny</condition>",
+          "  </result>",
+          "</tool_response>",
+        ].join("\n")
+      );
+    });
+
+    it("does not escape XML special characters in tool name", () => {
       const result = formatToolResponseAsXml({
         type: "tool-result",
         toolCallId: "tc1",
         toolName: "get<data>",
         output: { type: "text", value: "test" },
       } satisfies ToolResultPart);
-      expect(result).toContain("<tool_name>get&lt;data&gt;</tool_name>");
+      expect(result).toContain("<tool_name>get<data></tool_name>");
     });
 
-    it("escapes XML special characters in result", () => {
+    it("does not escape XML special characters in result", () => {
       const result = formatToolResponseAsXml({
         type: "tool-result",
         toolCallId: "tc1",
@@ -443,9 +475,9 @@ describe("tool-response", () => {
           value: 'Results for <query> with "quotes" & ampersand',
         },
       } satisfies ToolResultPart);
-      expect(result).toContain("&lt;query&gt;");
-      expect(result).toContain("&quot;quotes&quot;");
-      expect(result).toContain("&amp;");
+      expect(result).toContain(
+        '<result>Results for <query> with "quotes" & ampersand</result>'
+      );
     });
 
     it("unwraps json-typed result before formatting", () => {
@@ -455,10 +487,8 @@ describe("tool-response", () => {
         toolName: "get_data",
         output: { type: "json", value: { key: "value" } },
       } satisfies ToolResultPart);
-      // Quotes are XML-escaped to &quot;
-      expect(result).toContain("key");
-      expect(result).toContain("value");
-      expect(result).not.toContain("&quot;type&quot;:&quot;json&quot;");
+      expect(result).toContain("<key>value</key>");
+      expect(result).not.toContain('"type":"json"');
     });
 
     it("handles content type with images gracefully", () => {
@@ -478,17 +508,16 @@ describe("tool-response", () => {
       expect(result).toContain("[Image: image/png]");
     });
 
-    it("formats object result as JSON string", () => {
+    it("formats object result as XML", () => {
       const result = formatToolResponseAsXml({
         type: "tool-result",
         toolCallId: "tc1",
         toolName: "get_data",
         output: { type: "json", value: { nested: { data: true } } },
       } satisfies ToolResultPart);
-      // JSON is stringified and quotes are XML-escaped
-      expect(result).toContain("nested");
-      expect(result).toContain("data");
-      expect(result).toContain("true");
+      expect(result).toContain("<nested>");
+      expect(result).toContain("<data>true</data>");
+      expect(result).toContain("</nested>");
     });
 
     it("handles execution-denied result", () => {
