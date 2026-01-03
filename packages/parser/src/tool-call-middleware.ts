@@ -1,12 +1,13 @@
 import type {
   LanguageModelV3CallOptions,
+  LanguageModelV3FunctionTool,
   LanguageModelV3Middleware,
 } from "@ai-sdk/provider";
-import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
-import { isTCMProtocolFactory } from "../core/protocols/protocol-interface";
-import type { TCMCoreToolResult, TCMToolDefinition } from "../core/types";
-import { extractOnErrorOption } from "../core/utils/on-error";
-import { isToolChoiceActive } from "../core/utils/provider-options";
+import type { ToolResultPart } from "@ai-sdk/provider-utils";
+import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
+import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
+import { extractOnErrorOption } from "./core/utils/on-error";
+import { isToolChoiceActive } from "./core/utils/provider-options";
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
 import {
   toolChoiceStream,
@@ -21,8 +22,8 @@ export function createToolMiddleware({
   placement = "last",
 }: {
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
-  toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
-  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
+  toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
+  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string;
   placement?: "first" | "last";
 }): LanguageModelV3Middleware {
   const resolvedProtocol = isTCMProtocolFactory(protocol)

@@ -1,7 +1,7 @@
-import type { TCMToolDefinition } from "../types";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 
 export function yamlSystemPromptTemplate(
-  tools: TCMToolDefinition[],
+  tools: LanguageModelV3FunctionTool[],
   includeMultilineExample = true
 ): string {
   const toolsJson = JSON.stringify(tools);

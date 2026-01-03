@@ -3,94 +3,14 @@ import type {
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
-import type { TCMCoreStreamPart } from "../core/types";
-import {
-  getDebugLevel,
-  logParsedChunk,
-  logRawChunk,
-} from "../core/utils/debug";
-import { extractOnErrorOption } from "../core/utils/on-error";
+import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
+import { getDebugLevel, logParsedChunk, logRawChunk } from "./core/utils/debug";
+import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   isToolChoiceActive,
   originalToolsSchema,
   type ToolCallMiddlewareProviderOptions,
-} from "../core/utils/provider-options";
-
-function mapCorePartToV3(part: TCMCoreStreamPart): LanguageModelV3StreamPart {
-  switch (part.type) {
-    case "text-delta":
-      return {
-        type: "text-delta",
-        id: part.id || generateId(),
-        delta: part.textDelta,
-      } as LanguageModelV3StreamPart;
-    case "tool-call":
-      return {
-        type: "tool-call",
-        toolCallId: part.toolCallId,
-        toolName: part.toolName,
-        input: part.input,
-      } as LanguageModelV3StreamPart;
-    case "tool-call-delta":
-      return {
-        type: "tool-call-delta",
-        toolCallId: part.toolCallId,
-        toolName: part.toolName,
-        argsTextDelta: part.argsTextDelta,
-      } as unknown as LanguageModelV3StreamPart;
-    case "finish":
-      return {
-        type: "finish",
-        finishReason: part.finishReason,
-        usage: part.usage,
-      } as unknown as LanguageModelV3StreamPart;
-    case "error":
-      return {
-        type: "error",
-        error: part.error,
-      } as LanguageModelV3StreamPart;
-    default:
-      return part as LanguageModelV3StreamPart;
-  }
-}
-
-function mapV3PartToCore(part: LanguageModelV3StreamPart): TCMCoreStreamPart {
-  const p = part as Record<string, unknown>;
-  switch (p.type) {
-    case "text-delta":
-      return {
-        type: "text-delta",
-        id: p.id as string | undefined,
-        textDelta: ((p.delta || p.textDelta) as string) || "",
-      };
-    case "tool-call":
-      return {
-        type: "tool-call",
-        toolCallId: p.toolCallId as string,
-        toolName: p.toolName as string,
-        input: p.input as string,
-      };
-    case "finish": {
-      const finishReason = p.finishReason as
-        | { unified?: string }
-        | string
-        | undefined;
-      return {
-        type: "finish",
-        finishReason:
-          (typeof finishReason === "object"
-            ? finishReason?.unified
-            : finishReason) || "stop",
-        usage: p.usage as
-          | { promptTokens: number; completionTokens: number }
-          | undefined,
-      };
-    }
-    default:
-      return p as TCMCoreStreamPart;
-  }
-}
+} from "./core/utils/provider-options";
 
 export async function wrapStream({
   protocol,
@@ -125,25 +45,26 @@ export async function wrapStream({
 
   const coreStream = stream
     .pipeThrough(
-      new TransformStream<LanguageModelV3StreamPart, TCMCoreStreamPart>({
-        transform(part, controller) {
-          if (debugLevel === "stream") {
-            logRawChunk(part);
-          }
-          controller.enqueue(mapV3PartToCore(part));
-        },
-      })
+      new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>(
+        {
+          transform(part, controller) {
+            if (debugLevel === "stream") {
+              logRawChunk(part);
+            }
+            controller.enqueue(part);
+          },
+        }
+      )
     )
     .pipeThrough(protocol.createStreamParser({ tools, options }));
 
   const v3Stream = coreStream.pipeThrough(
-    new TransformStream<TCMCoreStreamPart, LanguageModelV3StreamPart>({
+    new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>({
       transform(part, controller) {
-        const v3Part = mapCorePartToV3(part);
         if (debugLevel === "stream") {
-          logParsedChunk(v3Part);
+          logParsedChunk(part);
         }
-        controller.enqueue(v3Part);
+        controller.enqueue(part);
       },
     })
   );

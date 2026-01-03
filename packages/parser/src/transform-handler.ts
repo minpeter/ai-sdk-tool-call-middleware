@@ -11,13 +11,17 @@ import type {
   LanguageModelV3ToolResultPart,
   SharedV3ProviderOptions,
 } from "@ai-sdk/provider";
-import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
-import { isTCMProtocolFactory } from "../core/protocols/protocol-interface";
-import type { TCMCoreToolResult, TCMToolDefinition } from "../core/types";
-import { createDynamicIfThenElseSchema } from "../core/utils/dynamic-tool-schema";
-import { extractOnErrorOption } from "../core/utils/on-error";
-import { originalToolsSchema } from "../core/utils/provider-options";
-import { isToolCallContent } from "../core/utils/type-guards";
+import type {
+  ToolApprovalResponse,
+  ToolContent,
+  ToolResultPart,
+} from "@ai-sdk/provider-utils";
+import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
+import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
+import { createDynamicIfThenElseSchema } from "./core/utils/dynamic-tool-schema";
+import { extractOnErrorOption } from "./core/utils/on-error";
+import { originalToolsSchema } from "./core/utils/provider-options";
+import { isToolCallContent } from "./core/utils/type-guards";
 
 /**
  * Build final prompt by merging system prompt with existing prompt
@@ -255,8 +259,8 @@ export function transformParams({
     toolChoice?: { type: string; toolName?: string };
   };
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
-  toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
-  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
+  toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
+  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string;
   placement?: "first" | "last";
 }) {
   const resolvedProtocol = isTCMProtocolFactory(protocol)
@@ -364,28 +368,31 @@ function processAssistantContent(
 /**
  * Process tool message content
  */
+function formatApprovalResponse(part: ToolApprovalResponse): string {
+  const status = part.approved ? "Approved" : "Denied";
+  const reason = part.reason ? `: ${part.reason}` : "";
+  return `[Tool Approval ${status}${reason}]`;
+}
+
 function processToolMessage(
-  content: LanguageModelV3ToolResultPart[],
-  resolvedProtocol: TCMCoreProtocol,
-  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string
+  toolResults: ToolResultPart[],
+  approvalResponses: ToolApprovalResponse[],
+  toolResponsePromptTemplate: (toolResult: ToolResultPart) => string
 ): LanguageModelV3Prompt[number] {
+  const resultTexts = toolResults.map((toolResult) => {
+    return toolResponsePromptTemplate(toolResult);
+  });
+
+  const approvalTexts = approvalResponses.map(formatApprovalResponse);
+
+  const allTexts = [...resultTexts, ...approvalTexts];
+
   return {
     role: "user" as const,
     content: [
       {
         type: "text" as const,
-        text: content
-          .map((toolResult) => {
-            const tr = toolResult as unknown as Record<string, unknown>;
-            const formatToolResponse =
-              toolResponsePromptTemplate ??
-              resolvedProtocol.formatToolResponse.bind(resolvedProtocol);
-            return formatToolResponse({
-              ...toolResult,
-              result: tr.result ?? tr.content ?? tr.output,
-            });
-          })
-          .join("\n"),
+        text: allTexts.join("\n"),
       },
     ],
   };
@@ -400,7 +407,7 @@ function processMessage(
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   },
-  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string
+  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string
 ): LanguageModelV3Prompt[number] {
   if (message.role === "assistant") {
     const condensedContent = processAssistantContent(
@@ -420,14 +427,25 @@ function processMessage(
     };
   }
   if (message.role === "tool") {
-    // Filter out approval response parts - only process tool result parts
-    const toolResultParts = message.content.filter(
-      (part): part is LanguageModelV3ToolResultPart =>
-        part.type === "tool-result"
+    const toolContent = message.content as ToolContent;
+    const toolResultParts = toolContent.filter(
+      (part): part is ToolResultPart => part.type === "tool-result"
     );
+    const approvalResponseParts = toolContent.filter(
+      (part): part is ToolApprovalResponse =>
+        part.type === "tool-approval-response"
+    );
+    if (!toolResponsePromptTemplate) {
+      throw new Error(
+        'toolResponsePromptTemplate is required when processing messages with role "tool". ' +
+          "This parameter is optional for other roles but is required here so tool-result content can be " +
+          "converted into a prompt. Ensure your middleware or transform configuration passes a toolResponsePromptTemplate " +
+          "when tool message processing is enabled."
+      );
+    }
     return processToolMessage(
       toolResultParts,
-      resolvedProtocol,
+      approvalResponseParts,
       toolResponsePromptTemplate
     );
   }
@@ -530,7 +548,7 @@ function mergeConsecutiveUserMessages(
 function convertToolPrompt(
   prompt: LanguageModelV3Message[],
   resolvedProtocol: TCMCoreProtocol,
-  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string,
+  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }

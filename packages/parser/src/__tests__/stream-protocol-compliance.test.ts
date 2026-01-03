@@ -3,10 +3,10 @@ import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test } from "vitest";
 
 import { dummyProtocol } from "../core/protocols/dummy-protocol";
-import { createToolMiddleware } from "../v6/tool-call-middleware";
+import { createToolMiddleware } from "../tool-call-middleware";
 import { mockUsage, stopFinishReason, zeroUsage } from "./test-helpers";
 
-describe("AI SDK v5 stream protocol compliance", () => {
+describe("AI SDK stream protocol compliance", () => {
   const middleware = createToolMiddleware({
     protocol: dummyProtocol,
     toolSystemPromptTemplate: () => "",
