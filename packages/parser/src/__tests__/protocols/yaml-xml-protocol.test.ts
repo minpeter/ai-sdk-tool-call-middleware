@@ -4,10 +4,8 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import {
-  orchestratorSystemPromptTemplate,
-  yamlXmlProtocol,
-} from "../../core/protocols/yaml-xml-protocol";
+import { yamlSystemPromptTemplate } from "../../core/prompts/yaml-system-prompt";
+import { yamlProtocol } from "../../core/protocols/yaml-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
@@ -66,10 +64,10 @@ const fileTools: LanguageModelV3FunctionTool[] = [
   },
 ];
 
-describe("yamlXmlProtocol parseGeneratedText", () => {
+describe("yamlProtocol parseGeneratedText", () => {
   describe("basic parsing", () => {
     it("should parse a single tool call with simple YAML parameters", () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = `<get_weather>
 location: New York
 unit: celsius
@@ -92,7 +90,7 @@ unit: celsius
     });
 
     it("should parse a tool call with no parameters (empty body)", () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = "<get_location>\n</get_location>";
       const out = protocol.parseGeneratedText({
         text,
@@ -111,7 +109,7 @@ unit: celsius
     });
 
     it("should parse a self-closing tool call", () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = "<get_location/>";
       const out = protocol.parseGeneratedText({
         text,
@@ -129,7 +127,7 @@ unit: celsius
     });
 
     it("should parse multiple tool calls", () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = `<get_location/>
 <get_weather>
 location: Seoul
@@ -158,7 +156,7 @@ location: Seoul
 
   describe("text and tool call mixing", () => {
     it("should handle text before and after tool call", () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = `Let me check the weather for you.
 <get_weather>
 location: Tokyo
@@ -184,7 +182,7 @@ The weather has been retrieved!`;
     });
 
     it("should handle only text when no tool names match", () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = "Just some regular text without any tool calls.";
       const out = protocol.parseGeneratedText({
         text,
@@ -202,7 +200,7 @@ The weather has been retrieved!`;
 
   describe("YAML multiline values", () => {
     it("should parse YAML literal block scalar (|)", () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = `<write_file>
 file_path: /tmp/test.txt
 contents: |
@@ -226,7 +224,7 @@ contents: |
     });
 
     it("should parse YAML folded block scalar (>)", () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = `<write_file>
 file_path: /tmp/test.txt
 contents: >
@@ -250,7 +248,7 @@ contents: >
 
   describe("indentation normalization", () => {
     it("should handle indented YAML content", () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = `<get_weather>
     location: Paris
     unit: celsius
@@ -272,7 +270,7 @@ contents: >
   describe("error handling", () => {
     it("should emit original text on invalid YAML and call onError", () => {
       const onError = vi.fn();
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = "<get_weather>\n[invalid: yaml: syntax:\n</get_weather>";
       const out = protocol.parseGeneratedText({
         text,
@@ -287,7 +285,7 @@ contents: >
 
     it("should emit original text when YAML is not a mapping", () => {
       const onError = vi.fn();
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text =
         "<get_weather>\n- just a list\n- not an object\n</get_weather>";
       const out = protocol.parseGeneratedText({
@@ -304,7 +302,7 @@ contents: >
 
   describe("nested tag handling", () => {
     it("should handle nested XML-like content within YAML values", () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const text = `<write_file>
 file_path: /tmp/test.html
 contents: |
@@ -327,10 +325,10 @@ contents: |
   });
 });
 
-describe("yamlXmlProtocol streaming", () => {
+describe("yamlProtocol streaming", () => {
   describe("basic streaming", () => {
     it("should parse a complete tool call in a single chunk", async () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const transformer = protocol.createStreamParser({ tools: basicTools });
       const rs = new ReadableStream<LanguageModelV3StreamPart>({
         start(ctrl) {
@@ -365,7 +363,7 @@ unit: celsius
     });
 
     it("should parse tool call split across multiple chunks", async () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const transformer = protocol.createStreamParser({ tools: basicTools });
       const rs = new ReadableStream<LanguageModelV3StreamPart>({
         start(ctrl) {
@@ -400,7 +398,7 @@ unit: celsius
     });
 
     it("should handle self-closing tag in stream", async () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const transformer = protocol.createStreamParser({ tools: basicTools });
       const rs = new ReadableStream<LanguageModelV3StreamPart>({
         start(ctrl) {
@@ -430,7 +428,7 @@ unit: celsius
     });
 
     it("should handle self-closing tag split across chunks", async () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const transformer = protocol.createStreamParser({ tools: basicTools });
       const rs = new ReadableStream<LanguageModelV3StreamPart>({
         start(ctrl) {
@@ -459,7 +457,7 @@ unit: celsius
 
   describe("text and tool call mixing in stream", () => {
     it("should emit text before and after tool call", async () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const transformer = protocol.createStreamParser({ tools: basicTools });
       const rs = new ReadableStream<LanguageModelV3StreamPart>({
         start(ctrl) {
@@ -503,7 +501,7 @@ unit: celsius
     });
 
     it("should handle multiple tool calls in stream", async () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const transformer = protocol.createStreamParser({ tools: basicTools });
       const rs = new ReadableStream<LanguageModelV3StreamPart>({
         start(ctrl) {
@@ -542,7 +540,7 @@ unit: celsius
 
   describe("streaming with multiline YAML", () => {
     it("should handle multiline YAML values split across chunks", async () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const transformer = protocol.createStreamParser({ tools: fileTools });
       const rs = new ReadableStream<LanguageModelV3StreamPart>({
         start(ctrl) {
@@ -587,7 +585,7 @@ unit: celsius
   describe("stream error handling", () => {
     it("should emit original text on YAML parse error", async () => {
       const onError = vi.fn();
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const transformer = protocol.createStreamParser({
         tools: basicTools,
         options: { onError },
@@ -626,7 +624,7 @@ unit: celsius
     });
 
     it("should flush incomplete tool call as text on finish", async () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const transformer = protocol.createStreamParser({ tools: basicTools });
       const rs = new ReadableStream<LanguageModelV3StreamPart>({
         start(ctrl) {
@@ -665,7 +663,7 @@ unit: celsius
 
   describe("text-start/text-end events", () => {
     it("should emit proper text-start and text-end events", async () => {
-      const protocol = yamlXmlProtocol();
+      const protocol = yamlProtocol();
       const transformer = protocol.createStreamParser({ tools: basicTools });
       const rs = new ReadableStream<LanguageModelV3StreamPart>({
         start(ctrl) {
@@ -697,9 +695,9 @@ unit: celsius
   });
 });
 
-describe("yamlXmlProtocol formatToolCall", () => {
+describe("yamlProtocol formatToolCall", () => {
   it("should format tool call with simple arguments", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const formatted = protocol.formatToolCall({
       toolCallId: "test-id",
       toolName: "get_weather",
@@ -713,7 +711,7 @@ describe("yamlXmlProtocol formatToolCall", () => {
   });
 
   it("should format tool call with empty arguments", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const formatted = protocol.formatToolCall({
       toolCallId: "test-id",
       toolName: "get_location",
@@ -725,7 +723,7 @@ describe("yamlXmlProtocol formatToolCall", () => {
   });
 
   it("should format multiline values with literal block syntax", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const formatted = protocol.formatToolCall({
       toolCallId: "test-id",
       toolName: "write_file",
@@ -742,9 +740,9 @@ describe("yamlXmlProtocol formatToolCall", () => {
   });
 });
 
-describe("yamlXmlProtocol formatToolResponse", () => {
+describe("yamlProtocol formatToolResponse", () => {
   it("should format tool response as XML", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const formatted = protocol.formatToolResponse({
       toolCallId: "test-id",
       toolName: "get_weather",
@@ -757,7 +755,7 @@ describe("yamlXmlProtocol formatToolResponse", () => {
   });
 
   it("should handle non-object results", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const formatted = protocol.formatToolResponse({
       toolCallId: "test-id",
       toolName: "get_location",
@@ -769,12 +767,12 @@ describe("yamlXmlProtocol formatToolResponse", () => {
   });
 });
 
-describe("yamlXmlProtocol formatTools", () => {
+describe("yamlProtocol formatTools", () => {
   it("should format tools using the template", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const formatted = protocol.formatTools({
       tools: basicTools,
-      toolSystemPromptTemplate: (tools) => `Tools: ${tools}`,
+      toolSystemPromptTemplate: (tools) => `Tools: ${JSON.stringify(tools)}`,
     });
 
     expect(formatted).toContain("get_weather");
@@ -782,9 +780,9 @@ describe("yamlXmlProtocol formatTools", () => {
   });
 });
 
-describe("yamlXmlProtocol extractToolCallSegments", () => {
+describe("yamlProtocol extractToolCallSegments", () => {
   it("should extract tool call segments from text", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const text = `Some text <get_weather>
 location: Tokyo
 </get_weather> more text <get_location/> end`;
@@ -804,7 +802,7 @@ location: Tokyo
   });
 
   it("should return empty array when no tools match", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const text = "No tool calls here";
     const segments = protocol.extractToolCallSegments?.({
       text,
@@ -816,30 +814,33 @@ location: Tokyo
   });
 });
 
-describe("orchestratorSystemPromptTemplate", () => {
+describe("yamlSystemPromptTemplate", () => {
   it("should include multiline example by default", () => {
-    const template = orchestratorSystemPromptTemplate('[{"name":"test"}]');
+    const testTools = [{ name: "test", parameters: {} }];
+    const template = yamlSystemPromptTemplate(testTools);
 
     expect(template).toContain("# Tools");
-    expect(template).toContain('<tools>[{"name":"test"}]</tools>');
+    expect(template).toContain(
+      '<tools>[{"name":"test","parameters":{}}]</tools>'
+    );
     expect(template).toContain("YAML's literal block syntax");
     expect(template).toContain("contents: |");
   });
 
   it("should exclude multiline example when disabled", () => {
-    const template = orchestratorSystemPromptTemplate(
-      '[{"name":"test"}]',
-      false
-    );
+    const testTools = [{ name: "test", parameters: {} }];
+    const template = yamlSystemPromptTemplate(testTools, false);
 
     expect(template).toContain("# Tools");
-    expect(template).toContain('<tools>[{"name":"test"}]</tools>');
+    expect(template).toContain(
+      '<tools>[{"name":"test","parameters":{}}]</tools>'
+    );
     expect(template).not.toContain("YAML's literal block syntax");
     expect(template).not.toContain("contents: |");
   });
 
   it("should include proper format instructions", () => {
-    const template = orchestratorSystemPromptTemplate("[]");
+    const template = yamlSystemPromptTemplate([]);
 
     expect(template).toContain("# Format");
     expect(template).toContain("XML element");
@@ -851,12 +852,12 @@ describe("orchestratorSystemPromptTemplate", () => {
   });
 });
 
-describe("yamlXmlProtocol options", () => {
+describe("yamlProtocol options", () => {
   it("should respect includeMultilineExample option", () => {
-    const protocolWithExample = yamlXmlProtocol({
+    const protocolWithExample = yamlProtocol({
       includeMultilineExample: true,
     });
-    const protocolWithoutExample = yamlXmlProtocol({
+    const protocolWithoutExample = yamlProtocol({
       includeMultilineExample: false,
     });
 
@@ -877,9 +878,9 @@ describe("yamlXmlProtocol options", () => {
   });
 });
 
-describe("yamlXmlProtocol self-closing tags with whitespace", () => {
+describe("yamlProtocol self-closing tags with whitespace", () => {
   it("should parse self-closing tag with space before slash", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const text = "<get_location />";
     const out = protocol.parseGeneratedText({
       text,
@@ -897,7 +898,7 @@ describe("yamlXmlProtocol self-closing tags with whitespace", () => {
   });
 
   it("should parse self-closing tag with multiple spaces", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const text = "<get_location   />";
     const out = protocol.parseGeneratedText({
       text,
@@ -915,7 +916,7 @@ describe("yamlXmlProtocol self-closing tags with whitespace", () => {
   });
 
   it("should handle self-closing tag with whitespace in stream", async () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -945,9 +946,9 @@ describe("yamlXmlProtocol self-closing tags with whitespace", () => {
   });
 });
 
-describe("yamlXmlProtocol nested tool tags", () => {
+describe("yamlProtocol nested tool tags", () => {
   it("should not parse tool tags inside YAML body", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const text = `<write_file>
 file_path: /tmp/test.txt
 contents: |
@@ -970,7 +971,7 @@ contents: |
   });
 
   it("should handle multiple tool calls where second appears after first ends", () => {
-    const protocol = yamlXmlProtocol();
+    const protocol = yamlProtocol();
     const text = `<write_file>
 file_path: test.txt
 contents: normal content

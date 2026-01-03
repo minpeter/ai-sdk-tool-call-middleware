@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 
 vi.spyOn(console, "warn").mockImplementation(() => {
   // suppress console warnings in tests
 });
 
-describe("morphXmlProtocol parseGeneratedText: lenient close tag normalization", () => {
+describe("xmlProtocol parseGeneratedText: lenient close tag normalization", () => {
   const tools = [
     {
       type: "function",
@@ -43,7 +43,7 @@ describe("morphXmlProtocol parseGeneratedText: lenient close tag normalization",
   ] as any;
 
   it("parses tool-call even when a closing tag is split across lines (e.g. </\n  step>)", () => {
-    const p = morphXmlProtocol();
+    const p = xmlProtocol();
 
     const text = `<update_plan><explanation>Using apply_patch to create AGENTS.md file with repository guidelines</explanation><plan><step><step>Analyze project
   structure and configuration files</step><status>completed</status><step><step>Create AGENTS.md file using apply_patch with comprehensive content</

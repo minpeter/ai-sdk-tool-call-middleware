@@ -2,7 +2,7 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
 
-import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { jsonProtocol } from "../../core/protocols/json-protocol";
 import { createToolMiddleware } from "../../v6/tool-call-middleware";
 import { mockUsage, stopFinishReason } from "../test-helpers";
 
@@ -10,9 +10,9 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-describe("jsonMixProtocol stream parsing", () => {
+describe("jsonProtocol stream parsing", () => {
   const middleware = createToolMiddleware({
-    protocol: jsonMixProtocol,
+    protocol: jsonProtocol,
     toolSystemPromptTemplate: () => "",
   });
 

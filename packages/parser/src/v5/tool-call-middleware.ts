@@ -1,7 +1,6 @@
-import {
-  isProtocolFactory,
-  type ToolCallProtocol,
-} from "../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
+import { isTCMProtocolFactory } from "../core/protocols/protocol-interface";
+import type { TCMCoreToolResult, TCMToolDefinition } from "../core/types";
 import { wrapGenerateV5 } from "./generate-handler";
 import { wrapStreamV5 } from "./stream-handler";
 import { transformParamsV5 } from "./transform-handler";
@@ -15,13 +14,17 @@ type V5Middleware = any;
 export function createToolMiddlewareV5({
   protocol,
   toolSystemPromptTemplate,
+  toolResponsePromptTemplate,
   placement = "last",
 }: {
-  protocol: ToolCallProtocol | (() => ToolCallProtocol);
-  toolSystemPromptTemplate: (tools: string) => string;
+  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
+  toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
   placement?: "first" | "last";
 }): V5Middleware {
-  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
+  const resolvedProtocol = isTCMProtocolFactory(protocol)
+    ? protocol()
+    : protocol;
 
   return {
     middlewareVersion: "v2",
@@ -42,6 +45,7 @@ export function createToolMiddlewareV5({
         params: args.params,
         protocol: resolvedProtocol,
         toolSystemPromptTemplate,
+        toolResponsePromptTemplate,
         placement,
       }),
   };

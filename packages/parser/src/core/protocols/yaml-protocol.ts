@@ -5,11 +5,12 @@ import type {
   TCMCoreStreamPart,
   TCMCoreToolCall,
   TCMCoreToolResult,
+  TCMToolDefinition,
 } from "../types";
 import { generateId } from "../utils/id";
-import type { ToolCallProtocol } from "./tool-call-protocol";
+import type { TCMCoreProtocol } from "./protocol-interface";
 
-export interface YamlXmlProtocolOptions {
+export interface YamlProtocolOptions {
   /**
    * Whether to include a system prompt example showing YAML multiline syntax.
    * @default true
@@ -376,18 +377,22 @@ function findEarliestToolTag(
   };
 }
 
-export const yamlXmlProtocol = (
+export const yamlProtocol = (
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future extensibility
-  _protocolOptions?: YamlXmlProtocolOptions
-): ToolCallProtocol => {
+  _protocolOptions?: YamlProtocolOptions
+): TCMCoreProtocol => {
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
-      const toolsForPrompt = (tools || []).map((tool) => ({
+      const toolsForPrompt: TCMToolDefinition[] = (tools || []).map((tool) => ({
         name: tool.name,
         description: tool.description,
-        parameters: unwrapJsonSchema(tool.inputSchema),
+        parameters: unwrapJsonSchema(tool.inputSchema) as Record<
+          string,
+          unknown
+        >,
+        inputExamples: tool.inputExamples,
       }));
-      return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
+      return toolSystemPromptTemplate(toolsForPrompt);
     },
 
     formatToolCall(toolCall: TCMCoreToolCall): string {
@@ -625,51 +630,3 @@ export const yamlXmlProtocol = (
     },
   };
 };
-
-/**
- * Default system prompt template for Orchestrator-style YAML+XML tool calling.
- */
-export function orchestratorSystemPromptTemplate(
-  tools: string,
-  includeMultilineExample = true
-): string {
-  const multilineExample = includeMultilineExample
-    ? `
-
-For multiline values, use YAML's literal block syntax:
-<write_file>
-file_path: /tmp/example.txt
-contents: |
-  First line
-  Second line
-  Third line
-</write_file>`
-    : "";
-
-  return `# Tools
-
-You may call one or more functions to assist with the user query.
-
-You are provided with function signatures within <tools></tools> XML tags:
-<tools>${tools}</tools>
-
-# Format
-
-Use exactly one XML element whose tag name is the function name.
-Inside the XML element, specify parameters using YAML syntax (key: value pairs).
-
-# Example
-<get_weather>
-location: New York
-unit: celsius
-</get_weather>${multilineExample}
-
-# Rules
-- Parameter names and values must follow the schema exactly.
-- Use proper YAML syntax for values (strings, numbers, booleans, arrays, objects).
-- Each required parameter must appear once.
-- Do not add functions or parameters not in the schema.
-- After calling a tool, you will receive a response. Use this result to answer the user.
-- Do NOT ask clarifying questions. Use reasonable defaults for optional parameters.
-- If a task requires multiple function calls, make ALL of them at once.`;
-}

@@ -10,7 +10,11 @@ import {
   evaluate,
   type ReporterType,
 } from "@ai-sdk-tool/eval";
-import { createToolMiddleware, morphXmlProtocol } from "@ai-sdk-tool/parser";
+import {
+  createToolMiddleware,
+  type TCMToolDefinition,
+  xmlProtocol,
+} from "@ai-sdk-tool/parser";
 import { type LanguageModel, wrapLanguageModel } from "ai";
 
 // Load system prompt from file
@@ -22,10 +26,11 @@ const systemPromptTemplate = fs.readFileSync(systemPromptPath, "utf-8");
 
 // Create custom middleware with loaded system prompt
 const customMorphXmlMiddleware = createToolMiddleware({
-  protocol: morphXmlProtocol,
+  protocol: xmlProtocol,
   placement: "last",
-  toolSystemPromptTemplate(tools: string) {
-    return systemPromptTemplate.replace(/\$\{tools\}/g, tools);
+  toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
+    const toolsString = JSON.stringify(tools);
+    return systemPromptTemplate.replace(/\$\{tools\}/g, toolsString);
   },
 });
 

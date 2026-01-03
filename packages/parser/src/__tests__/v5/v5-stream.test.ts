@@ -1,6 +1,6 @@
 import { wrapLanguageModel } from "ai-v5";
 import { describe, expect, it } from "vitest";
-import { morphXmlToolMiddleware } from "../../v5/index";
+import { xmlToolMiddleware } from "../../v5/index";
 
 describe("V5 Stream Compatibility", () => {
   it("should transform v3 stream to valid v2 stream", async () => {
@@ -26,7 +26,7 @@ describe("V5 Stream Compatibility", () => {
 
     const wrappedModel = wrapLanguageModel({
       model: mockModel,
-      middleware: morphXmlToolMiddleware as any,
+      middleware: xmlToolMiddleware as any,
     });
 
     const { stream } = await (wrappedModel as any).doStream({

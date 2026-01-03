@@ -1,7 +1,7 @@
 import type { Mock } from "vitest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
+import { jsonProtocol } from "../core/protocols/json-protocol";
 import { toolChoiceStream } from "../v6/stream-handler";
 import { createToolMiddleware } from "../v6/tool-call-middleware";
 
@@ -25,7 +25,7 @@ describe("createToolMiddleware branches", () => {
   });
   it("wrapGenerate returns tool-call content when toolChoice active", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const doGenerate = vi.fn().mockResolvedValue({
@@ -52,7 +52,7 @@ describe("createToolMiddleware branches", () => {
 
   it("wrapStream delegates to toolChoiceStream when toolChoice 'required' is active", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       toolSystemPromptTemplate: () => "",
     });
 
@@ -91,7 +91,7 @@ describe("createToolMiddleware branches", () => {
 
   it("wrapStream delegates to toolChoiceStream when toolChoice 'tool' is active", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       toolSystemPromptTemplate: () => "",
     });
 

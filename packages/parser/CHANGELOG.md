@@ -19,8 +19,8 @@
 - 537adc6: Remove internal barrel files and enable noBarrelFile linting rule for better tree-shaking and build performance
 - 1fc1810: Add YAML+XML mixed tool call protocol (Orchestrator-style)
 
-  - New `yamlXmlProtocol` for parsing tool calls with YAML content inside XML tags
-  - New `orchestratorToolMiddleware` pre-configured middleware
+  - New `yamlProtocol` for parsing tool calls with YAML content inside XML tags
+  - New `ymlToolMiddleware` pre-configured middleware
   - New `orchestratorSystemPromptTemplate` for customizable system prompts
   - Supports YAML multiline syntax (`|` and `>`)
   - Full streaming support with proper text/tool-call separation
@@ -92,7 +92,7 @@
 - 49f5024: Added license to Apache 2.0
 - 02b32c0: Morph XML protocol and utils robustness tweaks.
 
-  - Add `RXML` for safer XML extraction (raw string tags, duplicate checks) and use it in `morphXmlProtocol`.
+  - Add `RXML` for safer XML extraction (raw string tags, duplicate checks) and use it in `xmlProtocol`.
   - Replace relaxed JSON helper with `RJSON`; export `RXML`/`RJSON` from utils.
   - Minor improvements to streaming parsing and XML stringify options.
 
@@ -166,7 +166,6 @@
 
 ### Patch Changes
 
-- 780b01c: Fix gemma streaming matching issue
 - 1ff1177: # feat: upgrade dependencies to latest versions
   - Updated @ai-sdk dependencies to latest versions
   - Resolved zod peer dependency warnings
@@ -250,4 +249,3 @@
 
 ### Patch Changes
 
-- 2bc7fd4: Initial version released (gemma, hermes)

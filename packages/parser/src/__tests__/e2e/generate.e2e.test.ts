@@ -1,17 +1,12 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
-  extractReasoningMiddleware,
   generateText,
   type LanguageModel,
   stepCountIs,
   wrapLanguageModel,
 } from "ai";
 import { z } from "zod";
-import {
-  gemmaToolMiddleware,
-  hermesToolMiddleware,
-  morphXmlToolMiddleware,
-} from "../../index";
+import { hermesToolMiddleware, xmlToolMiddleware } from "../../index";
 
 const openrouter = createOpenAICompatible({
   name: "openrouter",
@@ -19,36 +14,25 @@ const openrouter = createOpenAICompatible({
   baseURL: "https://openrouter.ai/api/v1",
 });
 
-const friendli = createOpenAICompatible({
+const _friendli = createOpenAICompatible({
   name: "friendli",
   apiKey: process.env.FRIENDLI_TOKEN,
   baseURL: "https://api.friendli.ai/serverless/v1",
 });
 
+const MAX_STEPS = 4;
+const MAX_TEMPERATURE = 100;
+
 const testModels = {
-  gemma: wrapLanguageModel({
-    model: openrouter("google/gemma-3-27b-it"),
-    middleware: gemmaToolMiddleware,
-  }),
   hermes: wrapLanguageModel({
     model: openrouter("nousresearch/hermes-4-405b"),
     middleware: hermesToolMiddleware,
   }),
   xml: wrapLanguageModel({
     model: openrouter("z-ai/glm-4.5-air"),
-    middleware: morphXmlToolMiddleware,
-  }),
-  reasoning: wrapLanguageModel({
-    model: friendli("deepseek-ai/DeepSeek-R1-0528"),
-    middleware: [
-      hermesToolMiddleware,
-      extractReasoningMiddleware({ tagName: "think" }),
-    ],
+    middleware: xmlToolMiddleware,
   }),
 };
-
-const MAX_STEPS = 4;
-const MAX_TEMPERATURE = 100;
 
 async function main() {
   for (const model of Object.values(testModels)) {

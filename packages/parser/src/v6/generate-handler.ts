@@ -6,8 +6,7 @@ import type {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 import { coerceBySchema } from "@ai-sdk-tool/rxml";
-
-import type { ToolCallProtocol } from "../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
 import {
   getDebugLevel,
   logParsedChunk,
@@ -93,7 +92,7 @@ async function handleToolChoice(
 
 function parseContent(
   content: LanguageModelV3Content[],
-  protocol: ToolCallProtocol,
+  protocol: TCMCoreProtocol,
   tools: LanguageModelV3FunctionTool[],
   providerOptions?: ToolCallMiddlewareProviderOptions
 ): LanguageModelV3Content[] {
@@ -131,7 +130,7 @@ function logParsedContent(content: LanguageModelV3Content[]) {
 function computeDebugSummary(options: {
   result: { content: LanguageModelV3Content[] };
   newContent: LanguageModelV3Content[];
-  protocol: ToolCallProtocol;
+  protocol: TCMCoreProtocol;
   tools: LanguageModelV3FunctionTool[];
   providerOptions?: ToolCallMiddlewareProviderOptions;
 }) {
@@ -177,7 +176,7 @@ export async function wrapGenerate({
   doGenerate,
   params,
 }: {
-  protocol: ToolCallProtocol;
+  protocol: TCMCoreProtocol;
   doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>;
   params: {
     providerOptions?: ToolCallMiddlewareProviderOptions;

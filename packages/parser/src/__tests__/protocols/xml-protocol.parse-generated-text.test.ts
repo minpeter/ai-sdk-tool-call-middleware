@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 
 vi.spyOn(console, "warn").mockImplementation(() => {
   // Intentionally empty - suppressing console warnings in tests
 });
 
-describe("morphXmlProtocol parseGeneratedText branches", () => {
+describe("xmlProtocol parseGeneratedText branches", () => {
   const tools = [
     {
       type: "function",
@@ -17,7 +17,7 @@ describe("morphXmlProtocol parseGeneratedText branches", () => {
   ] as any;
 
   it("returns original text when tools list is empty", () => {
-    const p = morphXmlProtocol();
+    const p = xmlProtocol();
     const out = p.parseGeneratedText({
       text: "free text",
       tools: [],
@@ -27,7 +27,7 @@ describe("morphXmlProtocol parseGeneratedText branches", () => {
   });
 
   it("handles malformed inner XML gracefully (either falls back to text or parses)", () => {
-    const p = morphXmlProtocol();
+    const p = xmlProtocol();
     const text = "<a><x></y></a>";
     const out = p.parseGeneratedText({ text, tools, options: {} });
     const hasText = out.some((c) => c.type === "text");
