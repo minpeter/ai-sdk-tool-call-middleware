@@ -1,0 +1,523 @@
+import { describe, expect, it } from "vitest";
+import {
+  formatToolResponseAsJsonInXml,
+  formatToolResponseAsXml,
+  unwrapToolResult,
+} from "./tool-response";
+
+/**
+ * Test suite for tool-response.ts
+ *
+ * Tests cover all 6 AI SDK ToolResultOutput types:
+ * - text: { type: 'text', value: string }
+ * - json: { type: 'json', value: JSONValue }
+ * - execution-denied: { type: 'execution-denied', reason?: string }
+ * - error-text: { type: 'error-text', value: string }
+ * - error-json: { type: 'error-json', value: JSONValue }
+ * - content: { type: 'content', value: ContentPart[] }
+ *
+ * Plus backwards compatibility with raw values (no type wrapper)
+ */
+
+describe("tool-response", () => {
+  describe("unwrapToolResult", () => {
+    describe("backwards compatibility - raw values", () => {
+      it("passes through raw string as-is", () => {
+        expect(unwrapToolResult("hello")).toBe("hello");
+      });
+
+      it("passes through raw number as-is", () => {
+        expect(unwrapToolResult(42)).toBe(42);
+      });
+
+      it("passes through raw object as-is", () => {
+        const obj = { foo: "bar" };
+        expect(unwrapToolResult(obj)).toEqual(obj);
+      });
+
+      it("passes through null as-is", () => {
+        expect(unwrapToolResult(null)).toBe(null);
+      });
+
+      it("passes through undefined as-is", () => {
+        expect(unwrapToolResult(undefined)).toBe(undefined);
+      });
+
+      it("passes through array as-is", () => {
+        expect(unwrapToolResult([1, 2, 3])).toEqual([1, 2, 3]);
+      });
+
+      it("passes through object with unknown type field", () => {
+        const obj = { type: "custom-unknown", data: 123 };
+        expect(unwrapToolResult(obj)).toEqual(obj);
+      });
+
+      it("passes through object without type field", () => {
+        const obj = { result: { nested: true }, status: "ok" };
+        expect(unwrapToolResult(obj)).toEqual(obj);
+      });
+    });
+
+    describe("ToolResultOutput: text type", () => {
+      it("extracts value from text type", () => {
+        expect(unwrapToolResult({ type: "text", value: "hello world" })).toBe(
+          "hello world"
+        );
+      });
+
+      it("handles empty string value", () => {
+        expect(unwrapToolResult({ type: "text", value: "" })).toBe("");
+      });
+
+      it("ignores providerOptions", () => {
+        expect(
+          unwrapToolResult({
+            type: "text",
+            value: "test",
+            providerOptions: { custom: true },
+          })
+        ).toBe("test");
+      });
+    });
+
+    describe("ToolResultOutput: json type", () => {
+      it("extracts value from json type (object)", () => {
+        expect(
+          unwrapToolResult({ type: "json", value: { data: 123 } })
+        ).toEqual({ data: 123 });
+      });
+
+      it("extracts value from json type (array)", () => {
+        expect(unwrapToolResult({ type: "json", value: [1, 2, 3] })).toEqual([
+          1, 2, 3,
+        ]);
+      });
+
+      it("extracts value from json type (primitive string)", () => {
+        expect(unwrapToolResult({ type: "json", value: "string" })).toBe(
+          "string"
+        );
+      });
+
+      it("extracts value from json type (primitive number)", () => {
+        expect(unwrapToolResult({ type: "json", value: 42 })).toBe(42);
+      });
+
+      it("extracts null value from json type", () => {
+        expect(unwrapToolResult({ type: "json", value: null })).toBe(null);
+      });
+
+      it("extracts boolean value from json type", () => {
+        expect(unwrapToolResult({ type: "json", value: true })).toBe(true);
+        expect(unwrapToolResult({ type: "json", value: false })).toBe(false);
+      });
+    });
+
+    describe("ToolResultOutput: execution-denied type", () => {
+      it("formats execution-denied with reason", () => {
+        const result = unwrapToolResult({
+          type: "execution-denied",
+          reason: "User declined permission",
+        });
+        expect(result).toBe("[Execution Denied: User declined permission]");
+      });
+
+      it("formats execution-denied without reason", () => {
+        const result = unwrapToolResult({ type: "execution-denied" });
+        expect(result).toBe("[Execution Denied]");
+      });
+    });
+
+    describe("ToolResultOutput: error-text type", () => {
+      it("formats error-text as error message", () => {
+        const result = unwrapToolResult({
+          type: "error-text",
+          value: "Something went wrong",
+        });
+        expect(result).toBe("[Error: Something went wrong]");
+      });
+
+      it("handles empty error message", () => {
+        const result = unwrapToolResult({
+          type: "error-text",
+          value: "",
+        });
+        expect(result).toBe("[Error: ]");
+      });
+    });
+
+    describe("ToolResultOutput: error-json type", () => {
+      it("formats error-json as stringified error", () => {
+        const result = unwrapToolResult({
+          type: "error-json",
+          value: { code: 500, message: "Server error" },
+        });
+        expect(result).toBe('[Error: {"code":500,"message":"Server error"}]');
+      });
+
+      it("handles null error value", () => {
+        const result = unwrapToolResult({
+          type: "error-json",
+          value: null,
+        });
+        expect(result).toBe("[Error: null]");
+      });
+    });
+
+    describe("ToolResultOutput: content type - text parts", () => {
+      it("extracts single text part", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [{ type: "text", text: "hello" }],
+          })
+        ).toBe("hello");
+      });
+
+      it("joins multiple text parts with newlines", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [
+              { type: "text", text: "line 1" },
+              { type: "text", text: "line 2" },
+            ],
+          })
+        ).toBe("line 1\nline 2");
+      });
+
+      it("handles empty content array", () => {
+        expect(unwrapToolResult({ type: "content", value: [] })).toBe("");
+      });
+    });
+
+    describe("ToolResultOutput: content type - image parts (unsupported)", () => {
+      it("replaces image-data with placeholder", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [
+              { type: "image-data", data: "base64...", mediaType: "image/png" },
+            ],
+          })
+        ).toBe("[Image: image/png]");
+      });
+
+      it("includes image-url as reference", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [{ type: "image-url", url: "https://example.com/img.png" }],
+          })
+        ).toBe("[Image URL: https://example.com/img.png]");
+      });
+
+      it("replaces image-file-id with placeholder (string)", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [{ type: "image-file-id", fileId: "img-abc123" }],
+          })
+        ).toBe("[Image ID: img-abc123]");
+      });
+
+      it("replaces image-file-id with placeholder (object)", () => {
+        const result = unwrapToolResult({
+          type: "content",
+          value: [{ type: "image-file-id", fileId: { openai: "file-123" } }],
+        });
+        expect(result).toContain("[Image ID:");
+        expect(result).toContain("openai");
+      });
+    });
+
+    describe("ToolResultOutput: content type - file parts (unsupported)", () => {
+      it("replaces file-data with placeholder including filename", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [
+              {
+                type: "file-data",
+                data: "base64...",
+                mediaType: "application/pdf",
+                filename: "report.pdf",
+              },
+            ],
+          })
+        ).toBe("[File: report.pdf (application/pdf)]");
+      });
+
+      it("replaces file-data without filename", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [
+              {
+                type: "file-data",
+                data: "base64...",
+                mediaType: "application/pdf",
+              },
+            ],
+          })
+        ).toBe("[File: application/pdf]");
+      });
+
+      it("includes file-url as reference", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [{ type: "file-url", url: "https://example.com/doc.pdf" }],
+          })
+        ).toBe("[File URL: https://example.com/doc.pdf]");
+      });
+
+      it("replaces file-id with placeholder (string)", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [{ type: "file-id", fileId: "file-abc123" }],
+          })
+        ).toBe("[File ID: file-abc123]");
+      });
+
+      it("replaces file-id with placeholder (object)", () => {
+        const result = unwrapToolResult({
+          type: "content",
+          value: [{ type: "file-id", fileId: { openai: "file-123" } }],
+        });
+        expect(result).toContain("[File ID:");
+      });
+    });
+
+    describe("ToolResultOutput: content type - other parts", () => {
+      it("replaces deprecated media type with placeholder", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [
+              { type: "media", data: "base64...", mediaType: "audio/mp3" },
+            ],
+          })
+        ).toBe("[Media: audio/mp3]");
+      });
+
+      it("replaces custom type with placeholder", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [{ type: "custom", providerOptions: { foo: "bar" } }],
+          })
+        ).toBe("[Custom content]");
+      });
+
+      it("handles unknown content part type gracefully", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [{ type: "unknown-future-type" } as any],
+          })
+        ).toBe("[Unknown content]");
+      });
+    });
+
+    describe("ToolResultOutput: content type - mixed parts", () => {
+      it("combines text with placeholders for unsupported", () => {
+        expect(
+          unwrapToolResult({
+            type: "content",
+            value: [
+              { type: "text", text: "Here is the image:" },
+              { type: "image-url", url: "https://example.com/chart.png" },
+              { type: "text", text: "Analysis complete." },
+            ],
+          })
+        ).toBe(
+          "Here is the image:\n[Image URL: https://example.com/chart.png]\nAnalysis complete."
+        );
+      });
+
+      it("handles complex mixed content", () => {
+        const result = unwrapToolResult({
+          type: "content",
+          value: [
+            { type: "text", text: "Files attached:" },
+            {
+              type: "file-data",
+              data: "...",
+              mediaType: "text/csv",
+              filename: "data.csv",
+            },
+            { type: "image-data", data: "...", mediaType: "image/jpeg" },
+            { type: "text", text: "End of results" },
+          ],
+        });
+        expect(result).toBe(
+          "Files attached:\n[File: data.csv (text/csv)]\n[Image: image/jpeg]\nEnd of results"
+        );
+      });
+    });
+  });
+
+  describe("formatToolResponseAsJsonInXml", () => {
+    it("formats basic tool result", () => {
+      const result = formatToolResponseAsJsonInXml({
+        toolCallId: "tc1",
+        toolName: "get_weather",
+        result: { temp: 25 },
+      });
+      expect(result).toContain("<tool_response>");
+      expect(result).toContain("</tool_response>");
+      expect(result).toContain('"toolName":"get_weather"');
+      expect(result).toContain('"result":{"temp":25}');
+    });
+
+    it("unwraps json-typed result before formatting", () => {
+      const result = formatToolResponseAsJsonInXml({
+        toolCallId: "tc1",
+        toolName: "get_weather",
+        result: { type: "json", value: { temp: 25 } },
+      });
+      expect(result).toContain('"result":{"temp":25}');
+      expect(result).not.toContain('"type":"json"');
+    });
+
+    it("unwraps text-typed result before formatting", () => {
+      const result = formatToolResponseAsJsonInXml({
+        toolCallId: "tc1",
+        toolName: "echo",
+        result: { type: "text", value: "hello world" },
+      });
+      expect(result).toContain('"result":"hello world"');
+    });
+
+    it("handles execution-denied result", () => {
+      const result = formatToolResponseAsJsonInXml({
+        toolCallId: "tc1",
+        toolName: "delete_file",
+        result: { type: "execution-denied", reason: "Permission denied" },
+      });
+      expect(result).toContain("Execution Denied");
+      expect(result).toContain("Permission denied");
+    });
+
+    it("handles error-text result", () => {
+      const result = formatToolResponseAsJsonInXml({
+        toolCallId: "tc1",
+        toolName: "fetch_data",
+        result: { type: "error-text", value: "Network timeout" },
+      });
+      expect(result).toContain("Error");
+      expect(result).toContain("Network timeout");
+    });
+
+    it("handles content type with images", () => {
+      const result = formatToolResponseAsJsonInXml({
+        toolCallId: "tc1",
+        toolName: "screenshot",
+        result: {
+          type: "content",
+          value: [
+            { type: "text", text: "Screenshot captured" },
+            { type: "image-data", data: "base64...", mediaType: "image/png" },
+          ],
+        },
+      });
+      expect(result).toContain("Screenshot captured");
+      expect(result).toContain("[Image: image/png]");
+    });
+
+    it("handles string result", () => {
+      const result = formatToolResponseAsJsonInXml({
+        toolCallId: "tc1",
+        toolName: "echo",
+        result: "simple string",
+      });
+      expect(result).toContain('"result":"simple string"');
+    });
+  });
+
+  describe("formatToolResponseAsXml", () => {
+    it("formats basic tool result with XML tags", () => {
+      const result = formatToolResponseAsXml({
+        toolCallId: "tc1",
+        toolName: "search",
+        result: "found results",
+      });
+      expect(result).toContain("<tool_response>");
+      expect(result).toContain("<tool_name>search</tool_name>");
+      expect(result).toContain("<result>found results</result>");
+      expect(result).toContain("</tool_response>");
+    });
+
+    it("escapes XML special characters in tool name", () => {
+      const result = formatToolResponseAsXml({
+        toolCallId: "tc1",
+        toolName: "get<data>",
+        result: "test",
+      });
+      expect(result).toContain("<tool_name>get&lt;data&gt;</tool_name>");
+    });
+
+    it("escapes XML special characters in result", () => {
+      const result = formatToolResponseAsXml({
+        toolCallId: "tc1",
+        toolName: "search",
+        result: 'Results for <query> with "quotes" & ampersand',
+      });
+      expect(result).toContain("&lt;query&gt;");
+      expect(result).toContain("&quot;quotes&quot;");
+      expect(result).toContain("&amp;");
+    });
+
+    it("unwraps json-typed result before formatting", () => {
+      const result = formatToolResponseAsXml({
+        toolCallId: "tc1",
+        toolName: "get_data",
+        result: { type: "json", value: { key: "value" } },
+      });
+      // Quotes are XML-escaped to &quot;
+      expect(result).toContain("key");
+      expect(result).toContain("value");
+      expect(result).not.toContain("&quot;type&quot;:&quot;json&quot;");
+    });
+
+    it("handles content type with images gracefully", () => {
+      const result = formatToolResponseAsXml({
+        toolCallId: "tc1",
+        toolName: "screenshot",
+        result: {
+          type: "content",
+          value: [
+            { type: "text", text: "Screenshot captured" },
+            { type: "image-data", data: "base64...", mediaType: "image/png" },
+          ],
+        },
+      });
+      expect(result).toContain("Screenshot captured");
+      expect(result).toContain("[Image: image/png]");
+    });
+
+    it("formats object result as JSON string", () => {
+      const result = formatToolResponseAsXml({
+        toolCallId: "tc1",
+        toolName: "get_data",
+        result: { nested: { data: true } },
+      });
+      // JSON is stringified and quotes are XML-escaped
+      expect(result).toContain("nested");
+      expect(result).toContain("data");
+      expect(result).toContain("true");
+    });
+
+    it("handles execution-denied result", () => {
+      const result = formatToolResponseAsXml({
+        toolCallId: "tc1",
+        toolName: "delete",
+        result: { type: "execution-denied", reason: "Not authorized" },
+      });
+      expect(result).toContain("Execution Denied");
+      expect(result).toContain("Not authorized");
+    });
+  });
+});
