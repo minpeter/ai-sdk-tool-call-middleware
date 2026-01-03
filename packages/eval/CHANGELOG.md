@@ -1,5 +1,31 @@
 # @ai-sdk-tool/eval
 
+## 1.1.0
+
+### Minor Changes
+
+- b9b13bd: Remove gemma support and rename middleware functions
+
+  - Remove gemmaToolMiddleware and related code
+  - Rename morphXmlToolMiddleware to xmlToolMiddleware
+  - Rename orchestratorToolMiddleware to ymlToolMiddleware
+  - Update all imports, exports, and documentation
+
+### Patch Changes
+
+- b9b13bd: Improve benchmark report formatting by converting ASCII tables to native Markdown tables for better rendering in PR comments, and fix comment matching consistency.
+- b9b13bd: feat: Implement PR #141 review feedback - clean up gemma support and fix documentation
+
+  - Remove all gemma model references and configurations across codebase
+  - Fix broken README examples by adding proper model and middleware imports
+  - Change xmlToolMiddleware placement from "first" to "last" for consistency
+  - Fix yamlToolMiddleware import name in benchmark scripts
+  - Update ai dependency from 6.0.5 to 6.0.6
+  - Add missing transformParams to disk cache middleware
+
+- Updated dependencies [b9b13bd]
+  - @ai-sdk-tool/middleware@0.0.2
+
 ## 1.0.0
 
 ### Major Changes

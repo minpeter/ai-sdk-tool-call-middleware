@@ -1,5 +1,36 @@
 # @ai-sdk-tool/parser
 
+## 3.1.0
+
+### Minor Changes
+
+- b9b13bd: Major refactoring of tool call protocol interface and implementation.
+
+  - Renamed ToolCallProtocol to TCMCoreProtocol with TCM prefix consistency
+  - Renamed isProtocolFactory to isTCMProtocolFactory
+  - Renamed file tool-call-protocol.ts to protocol-interface.ts
+  - Reorganized protocol implementations with cleaner structure
+  - Updated all type references and imports across the codebase
+
+- b9b13bd: Change toolSystemPromptTemplate parameter type from string to TCMToolDefinition[] array and add TCM prefix to ToolDefinition and ToolInputExample types for better type safety and API clarity.
+
+### Patch Changes
+
+- b9b13bd: Simplify `formatToolResponseAsJsonInXml` signature to match `formatToolResponseAsXml` by removing optional tag parameters and hardcoding `<tool_response>` tags.
+- b9b13bd: feat: Implement PR #141 review feedback - clean up gemma support and fix documentation
+
+  - Remove all gemma model references and configurations across codebase
+  - Fix broken README examples by adding proper model and middleware imports
+  - Change xmlToolMiddleware placement from "first" to "last" for consistency
+  - Fix yamlToolMiddleware import name in benchmark scripts
+  - Update ai dependency from 6.0.5 to 6.0.6
+  - Add missing transformParams to disk cache middleware
+
+- b9b13bd: Fix type issues and variable references in tool response formatting refactoring
+- b9b13bd: Fixed prompt normalization in v5 transform handler to handle single message objects, preventing runtime errors when params.prompt is a single ModelMessage instead of an array.
+- b9b13bd: Fixed XML escaping in formatToolResponseAsXml to prevent invalid XML when tool results contain special characters like < and & in JSON-serialized objects.
+- b9b13bd: Sync v5 and v6 middleware implementations: extract shared prompts to `core/prompts/`, add orchestratorToolMiddleware to v5, unify morphXmlToolMiddleware placement, and add debug logging to v5 handlers
+
 ## 3.0.0
 
 ### Major Changes
@@ -248,4 +279,3 @@
 ## 1.0.1
 
 ### Patch Changes
-

@@ -1,6 +1,6 @@
 {
   "name": "@ai-sdk-tool/opencode-plugin",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "OpenCode plugin for Friendli GLM with tool calling middleware",
   "type": "module",
   "private": true,
