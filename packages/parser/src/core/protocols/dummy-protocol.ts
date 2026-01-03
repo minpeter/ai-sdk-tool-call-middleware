@@ -54,11 +54,7 @@ export const dummyProtocol = (): TCMProtocol => ({
     return new TransformStream({
       transform(chunk, controller) {
         if (chunk.type === "text-delta") {
-          handleTextDelta(
-            chunk as Extract<LanguageModelV3StreamPart, { type: "text-delta" }>,
-            controller,
-            state
-          );
+          handleTextDelta(chunk, controller, state);
         } else {
           handleNonTextDelta(chunk, controller, state);
         }

@@ -487,11 +487,7 @@ unit: celsius
       const toolCalls = out.filter((c) => c.type === "tool-call");
       const textDeltas = out
         .filter((c) => c.type === "text-delta")
-        .map(
-          (c) =>
-            (c as { delta?: string; textDelta?: string }).delta ??
-            (c as { delta?: string; textDelta?: string }).textDelta
-        )
+        .map((c) => (c as { delta?: string }).delta ?? "")
         .join("");
 
       expect(toolCalls).toHaveLength(1);
@@ -611,11 +607,7 @@ unit: celsius
       );
       const textDeltas = out
         .filter((c) => c.type === "text-delta")
-        .map(
-          (c) =>
-            (c as { delta?: string; textDelta?: string }).delta ??
-            (c as { delta?: string; textDelta?: string }).textDelta
-        )
+        .map((c) => (c as { delta?: string }).delta ?? "")
         .join("");
 
       expect(textDeltas).toContain("<get_weather>");
@@ -648,11 +640,7 @@ unit: celsius
       const toolCalls = out.filter((c) => c.type === "tool-call");
       const textDeltas = out
         .filter((c) => c.type === "text-delta")
-        .map(
-          (c) =>
-            (c as { delta?: string; textDelta?: string }).delta ??
-            (c as { delta?: string; textDelta?: string }).textDelta
-        )
+        .map((c) => (c as { delta?: string }).delta ?? "")
         .join("");
 
       expect(toolCalls).toHaveLength(0);
