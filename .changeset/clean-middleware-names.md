@@ -1,7 +1,7 @@
 ---
-"@ai-sdk-tool/eval": major
-"@ai-sdk-tool/opencode-plugin": major
-"@ai-sdk-tool/proxy": major
+"@ai-sdk-tool/eval": minor
+"@ai-sdk-tool/opencode-plugin": minor
+"@ai-sdk-tool/proxy": minor
 ---
 
 Remove gemma support and rename middleware functions

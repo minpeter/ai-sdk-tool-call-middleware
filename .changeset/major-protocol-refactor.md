@@ -1,5 +1,5 @@
 ---
-"@ai-sdk-tool/parser": major
+"@ai-sdk-tool/parser": minor
 ---
 
 Major refactoring of tool call protocol interface and implementation.
