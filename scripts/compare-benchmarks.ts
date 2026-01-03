@@ -48,8 +48,7 @@ function loadCurrentResult(): BenchmarkResult {
     throw new Error("No benchmark results found");
   }
 
-  // Get the most recent result (assuming it's the current branch)
-  return history[history.length - 1];
+  return history.at(-1);
 }
 
 interface ModelComparison {
@@ -261,10 +260,14 @@ function generateRegressionDetails(trend: TrendResult): string {
 
   for (const modelKey of MODEL_KEYS) {
     const comparisons = trend.comparisons[modelKey];
-    if (comparisons.length === 0) continue;
+    if (comparisons.length === 0) {
+      continue;
+    }
 
     const regressions = comparisons.filter((c) => c.regression);
-    if (regressions.length === 0) continue;
+    if (regressions.length === 0) {
+      continue;
+    }
 
     details += `**${MODEL_DISPLAY_NAMES[modelKey]}**\n\n`;
     details += "| Protocol | Benchmark | Current | Main Avg | Δ vs Main |\n";
