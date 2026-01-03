@@ -287,9 +287,16 @@ export function transformParamsV5({
     toolSystemPromptTemplate,
   });
 
-  const prompt = params.prompt ?? [];
+  let normalizedPrompt: V5Message[];
+  if (Array.isArray(params.prompt)) {
+    normalizedPrompt = params.prompt;
+  } else if (params.prompt) {
+    normalizedPrompt = [params.prompt];
+  } else {
+    normalizedPrompt = [];
+  }
   const processedPrompt = convertToolPrompt(
-    prompt,
+    normalizedPrompt,
     resolvedProtocol,
     toolResponsePromptTemplate,
     extractOnErrorOption(params.providerOptions)
