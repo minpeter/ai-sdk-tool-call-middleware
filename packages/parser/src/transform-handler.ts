@@ -437,7 +437,10 @@ function processMessage(
     );
     if (!toolResponsePromptTemplate) {
       throw new Error(
-        "toolResponsePromptTemplate is required for processing tool messages"
+        'toolResponsePromptTemplate is required when processing messages with role "tool". ' +
+          "This parameter is optional for other roles but is required here so tool-result content can be " +
+          "converted into a prompt. Ensure your middleware or transform configuration passes a toolResponsePromptTemplate " +
+          "when tool message processing is enabled."
       );
     }
     return processToolMessage(

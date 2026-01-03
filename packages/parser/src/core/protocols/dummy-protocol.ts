@@ -3,11 +3,11 @@ import { generateId } from "../utils/id";
 import type { TCMProtocol } from "./protocol-interface";
 
 function handleTextDelta(
-  chunk: { type: string; textDelta?: string; delta?: string },
+  chunk: Extract<LanguageModelV3StreamPart, { type: "text-delta" }>,
   controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
   state: { currentTextId: string | null; hasEmittedText: boolean }
 ): void {
-  const delta = chunk.textDelta ?? chunk.delta;
+  const delta = chunk.delta;
   if (delta !== undefined && delta !== "") {
     if (!state.currentTextId) {
       state.currentTextId = generateId();
@@ -55,7 +55,7 @@ export const dummyProtocol = (): TCMProtocol => ({
       transform(chunk, controller) {
         if (chunk.type === "text-delta") {
           handleTextDelta(
-            chunk as { type: string; textDelta?: string; delta?: string },
+            chunk as Extract<LanguageModelV3StreamPart, { type: "text-delta" }>,
             controller,
             state
           );

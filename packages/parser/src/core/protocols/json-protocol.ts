@@ -421,10 +421,7 @@ export const jsonProtocol = ({
           return;
         }
 
-        const textContent =
-          (chunk as { delta?: string }).delta ??
-          (chunk as { textDelta?: string }).textDelta ??
-          "";
+        const textContent = (chunk as { delta?: string }).delta ?? "";
         state.buffer += textContent;
         processBufferTags({
           state,

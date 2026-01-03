@@ -7,8 +7,13 @@ import type { ToolResultOutput, ToolResultPart } from "@ai-sdk/provider-utils";
  */
 
 /**
- * Unwraps tool result output into a display-friendly value.
- * Supports ToolResultOutput types and preserves raw values for compatibility.
+ * Unwraps tool result output into a display/serialization-friendly value.
+ *
+ * For successful outputs (e.g. "text", "json") the underlying value is preserved.
+ * For error/denial/content outputs (e.g. "execution-denied", "error-text",
+ * "error-json", "content") this function returns a human-readable string
+ * representation suitable for display or embedding in JSON/XML, rather than
+ * the original raw tool result.
  */
 export function unwrapToolResult(result: ToolResultOutput): JSONValue {
   switch (result.type) {
