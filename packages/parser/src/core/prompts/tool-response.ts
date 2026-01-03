@@ -1,4 +1,5 @@
-import type { ToolResultPart } from "@ai-sdk/provider-utils";
+import type { JSONValue } from "@ai-sdk/provider";
+import type { ToolResultOutput, ToolResultPart } from "@ai-sdk/provider-utils";
 
 /**
  * Common tool response to text conversion utilities
@@ -9,31 +10,22 @@ import type { ToolResultPart } from "@ai-sdk/provider-utils";
  * Unwraps tool result output into a display-friendly value.
  * Supports ToolResultOutput types and preserves raw values for compatibility.
  */
-export function unwrapToolResult(result: unknown): unknown {
-  if (!result || typeof result !== "object") {
-    return result;
-  }
-
-  const typed = result as { type?: string; value?: unknown };
-  switch (typed.type) {
+export function unwrapToolResult(result: ToolResultOutput): JSONValue {
+  switch (result.type) {
     case "text":
-      return typed.value ?? "";
+      return result.value ?? "";
     case "json":
-      return typed.value;
+      return result.value;
     case "execution-denied": {
-      const reason = (result as { reason?: string }).reason;
+      const reason = result.reason;
       return reason ? `[Execution Denied: ${reason}]` : "[Execution Denied]";
     }
     case "error-text":
-      return `[Error: ${typed.value ?? ""}]`;
+      return `[Error: ${result.value ?? ""}]`;
     case "error-json":
-      return `[Error: ${JSON.stringify(typed.value)}]`;
+      return `[Error: ${JSON.stringify(result.value)}]`;
     case "content": {
-      const parts = typed.value;
-      if (!Array.isArray(parts)) {
-        return "";
-      }
-      return parts
+      return result.value
         .map((part) => {
           const contentPart = part as { type?: string };
           switch (contentPart.type) {
@@ -81,10 +73,11 @@ export function unwrapToolResult(result: unknown): unknown {
         })
         .join("\n");
     }
-    default:
-      break;
+    default: {
+      const _exhaustive: never = result;
+      return _exhaustive;
+    }
   }
-  return result;
 }
 
 /**

@@ -4,7 +4,6 @@ import type {
   LanguageModelV3Middleware,
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
-import { formatToolResponseAsXml } from "./core/prompts/tool-response";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
 import { extractOnErrorOption } from "./core/utils/on-error";
@@ -19,7 +18,7 @@ import { transformParams } from "./transform-handler";
 export function createToolMiddleware({
   protocol,
   toolSystemPromptTemplate,
-  toolResponsePromptTemplate = formatToolResponseAsXml,
+  toolResponsePromptTemplate,
   placement = "last",
 }: {
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);

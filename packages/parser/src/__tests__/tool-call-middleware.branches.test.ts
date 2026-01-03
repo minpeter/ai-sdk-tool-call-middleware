@@ -9,10 +9,11 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-vi.mock("../v6/stream-handler", async () => {
-  const actual = await vi.importActual<typeof import("../stream-handler")>(
-    "../v6/stream-handler"
-  );
+vi.mock("../stream-handler", async () => {
+  const actual =
+    await vi.importActual<typeof import("../stream-handler")>(
+      "../stream-handler"
+    );
   return {
     ...actual,
     toolChoiceStream: vi.fn(),

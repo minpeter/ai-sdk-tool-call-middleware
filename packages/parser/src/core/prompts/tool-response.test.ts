@@ -16,49 +16,10 @@ import {
  * - error-text: { type: 'error-text', value: string }
  * - error-json: { type: 'error-json', value: JSONValue }
  * - content: { type: 'content', value: ContentPart[] }
- *
- * Plus backwards compatibility with raw values (no type wrapper)
  */
 
 describe("tool-response", () => {
   describe("unwrapToolResult", () => {
-    describe("backwards compatibility - raw values", () => {
-      it("passes through raw string as-is", () => {
-        expect(unwrapToolResult("hello")).toBe("hello");
-      });
-
-      it("passes through raw number as-is", () => {
-        expect(unwrapToolResult(42)).toBe(42);
-      });
-
-      it("passes through raw object as-is", () => {
-        const obj = { foo: "bar" };
-        expect(unwrapToolResult(obj)).toEqual(obj);
-      });
-
-      it("passes through null as-is", () => {
-        expect(unwrapToolResult(null)).toBe(null);
-      });
-
-      it("passes through undefined as-is", () => {
-        expect(unwrapToolResult(undefined)).toBe(undefined);
-      });
-
-      it("passes through array as-is", () => {
-        expect(unwrapToolResult([1, 2, 3])).toEqual([1, 2, 3]);
-      });
-
-      it("passes through object with unknown type field", () => {
-        const obj = { type: "custom-unknown", data: 123 };
-        expect(unwrapToolResult(obj)).toEqual(obj);
-      });
-
-      it("passes through object without type field", () => {
-        const obj = { result: { nested: true }, status: "ok" };
-        expect(unwrapToolResult(obj)).toEqual(obj);
-      });
-    });
-
     describe("ToolResultOutput: text type", () => {
       it("extracts value from text type", () => {
         expect(unwrapToolResult({ type: "text", value: "hello world" })).toBe(
@@ -75,7 +36,7 @@ describe("tool-response", () => {
           unwrapToolResult({
             type: "text",
             value: "test",
-            providerOptions: { custom: true },
+            providerOptions: { custom: { enabled: true } },
           })
         ).toBe("test");
       });
@@ -307,7 +268,9 @@ describe("tool-response", () => {
         expect(
           unwrapToolResult({
             type: "content",
-            value: [{ type: "custom", providerOptions: { foo: "bar" } }],
+            value: [
+              { type: "custom", providerOptions: { foo: { bar: "baz" } } },
+            ],
           })
         ).toBe("[Custom content]");
       });

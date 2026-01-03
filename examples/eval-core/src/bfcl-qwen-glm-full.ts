@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import {
   bfclMultipleBenchmark,
   bfclParallelBenchmark,
@@ -28,7 +27,7 @@ const systemPromptTemplate = fs.readFileSync(systemPromptPath, "utf-8");
 const customMorphXmlMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
   placement: "last",
-  toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
+  toolSystemPromptTemplate(tools) {
     const toolsString = JSON.stringify(tools);
     return systemPromptTemplate.replace(/\$\{tools\}/g, toolsString);
   },
