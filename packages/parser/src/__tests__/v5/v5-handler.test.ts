@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import { wrapStreamV5 } from "../../v5/stream-handler";
 
 describe("V5 Stream Handler Deep Dive", () => {
@@ -16,7 +16,7 @@ describe("V5 Stream Handler Deep Dive", () => {
       },
     });
 
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const parser = protocol.createStreamParser({ tools: [], options: {} });
 
     const parserReader = mockV3Stream.pipeThrough(parser).getReader();
@@ -45,7 +45,7 @@ describe("V5 Stream Handler Deep Dive", () => {
     });
 
     const result = await wrapStreamV5({
-      protocol: morphXmlProtocol(),
+      protocol: xmlProtocol(),
       doStream: async () => ({ stream: mockV3Stream2 }),
       params: { providerOptions: {} },
     });

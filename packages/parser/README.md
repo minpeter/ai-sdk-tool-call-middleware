@@ -31,7 +31,7 @@ pnpm add @ai-sdk-tool/parser
 ```typescript
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, stepCountIs, streamText } from "ai";
-import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
+import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 
 const openrouter = createOpenAICompatible({
   /* ... */
@@ -40,8 +40,8 @@ const openrouter = createOpenAICompatible({
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: openrouter("google/gemma-3-27b-it"),
-      middleware: gemmaToolMiddleware,
+      model: openrouter("your-model-name"),
+      middleware: xmlToolMiddleware,
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in my city?",
@@ -97,14 +97,13 @@ main().catch(console.error);
 
 ## Prebuilt middlewares
 
-- `gemmaToolMiddleware` — JSON‑mix format inside markdown fences (markdown code fences)
 - `hermesToolMiddleware` — JSON‑mix format wrapped in `<tool_call>` XML tags.
-- `morphXmlToolMiddleware` — XML format (Morph‑XML protocol).
+- `xmlToolMiddleware` — XML format (Morph‑XML protocol).
 
 ## Protocols
 
-- `jsonMixProtocol` — JSON function calls in flexible text wrappers.
-- `morphXmlProtocol` — XML element per call, robust to streaming.
+- `jsonProtocol` — JSON function calls in flexible text wrappers.
+- `xmlProtocol` — XML element per call, robust to streaming.
 
 ## Tool choice support
 
@@ -118,7 +117,6 @@ See `examples/parser-core/src/*` for runnable demos (streaming/non‑streaming, 
 
 ## [dev] Contributor notes
 
-- Exported API: `createToolMiddleware`, `gemmaToolMiddleware`, `hermesToolMiddleware`, `morphXmlToolMiddleware`, `jsonMixProtocol`, `morphXmlProtocol`.
 - Debugging:
   - Set `DEBUG_PARSER_MW=stream` to log raw/parsed chunks during runs.
   - Set `DEBUG_PARSER_MW=parse` to log original matched text and parsed summary.

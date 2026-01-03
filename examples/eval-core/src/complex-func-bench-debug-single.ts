@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createToolMiddleware, morphXmlProtocol } from "@ai-sdk-tool/parser";
+import {
+  createToolMiddleware,
+  type TCMToolDefinition,
+  xmlProtocol,
+} from "@ai-sdk-tool/parser";
 import {
   extractReasoningMiddleware,
   generateText,
@@ -18,10 +22,11 @@ const systemPromptPath = path.join(
 const systemPromptTemplate = fs.readFileSync(systemPromptPath, "utf-8");
 
 const customMorphXmlMiddleware = createToolMiddleware({
-  protocol: morphXmlProtocol,
+  protocol: xmlProtocol,
   placement: "last",
-  toolSystemPromptTemplate(tools: string) {
-    return systemPromptTemplate.replace(/\$\{tools\}/g, tools);
+  toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
+    const toolsString = JSON.stringify(tools);
+    return systemPromptTemplate.replace(/\$\{tools\}/g, toolsString);
   },
 });
 

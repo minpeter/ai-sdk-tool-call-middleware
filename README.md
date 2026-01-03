@@ -2,8 +2,6 @@
 
 [![npm - parser](https://img.shields.io/npm/v/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
 [![npm downloads - parser](https://img.shields.io/npm/dt/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
-[![npm - eval](https://img.shields.io/npm/v/@ai-sdk-tool/eval)](https://www.npmjs.com/package/@ai-sdk-tool/eval)
-[![npm downloads - eval](https://img.shields.io/npm/dt/@ai-sdk-tool/eval)](https://www.npmjs.com/package/@ai-sdk-tool/eval)
 [![codecov](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware/branch/main/graph/badge.svg)](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware)
 
 Tooling for Vercel AI SDK: enable tool calling with models lacking native `tools`, plus evaluation utilities.
@@ -16,7 +14,7 @@ Tooling for Vercel AI SDK: enable tool calling with models lacking native `tools
 ```ts
 import { wrapLanguageModel, streamText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
+import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 
 const client = createOpenAICompatible({
   /* baseURL, apiKey */
@@ -24,8 +22,8 @@ const client = createOpenAICompatible({
 
 const result = streamText({
   model: wrapLanguageModel({
-    model: client("google/gemma-3-27b-it"),
-    middleware: gemmaToolMiddleware,
+    model: client("your-model-name"),
+    middleware: xmlToolMiddleware,
   }),
   tools: {
     /* your tools */

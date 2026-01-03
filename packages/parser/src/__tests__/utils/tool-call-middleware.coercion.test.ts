@@ -1,7 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ToolCallProtocol } from "../../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
 import { originalToolsSchema } from "../../core/utils/provider-options";
 import { createToolMiddleware } from "../../v6/tool-call-middleware";
 
@@ -10,8 +10,8 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 }));
 
 // Minimal protocol that emits a fixed XML-like payload but routes through middleware coercion
-const dummyProtocol: ToolCallProtocol = {
-  formatTools: ({ toolSystemPromptTemplate }) => toolSystemPromptTemplate("[]"),
+const dummyProtocol: TCMCoreProtocol = {
+  formatTools: ({ toolSystemPromptTemplate }) => toolSystemPromptTemplate([]),
   formatToolCall: () => "",
   formatToolResponse: () => "",
   parseGeneratedText: ({ tools }) => [

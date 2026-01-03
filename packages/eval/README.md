@@ -33,15 +33,13 @@ import { evaluate, bfclSimpleBenchmark } from "@ai-sdk-tool/eval";
 import { openrouter } from "ai/providers/openrouter";
 
 // 1. Define the models you want to evaluate
-const gemma9b = openrouter("google/gemma-3-9b-it");
-const gemma27b = openrouter("google/gemma-3-27b-it");
 
 // 2. Run the evaluation
 async function runMyEvaluation() {
   console.log("Starting model evaluation...");
 
   const results = await evaluate({
-    models: [gemma9b, gemma27b],
+    models: [/* your models here */],
     benchmarks: [bfclSimpleBenchmark], // Use a built-in benchmark
     reporter: "console", // 'console' or 'json'
   });

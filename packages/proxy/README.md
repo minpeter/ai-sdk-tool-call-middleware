@@ -21,7 +21,6 @@ pnpm add @ai-sdk-tool/proxy
 
 ```typescript
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { gemmaToolMiddleware } from "@ai-sdk-tool/parser";
 import { wrapLanguageModel } from "ai";
 import { OpenAIProxyServer } from "@ai-sdk-tool/proxy";
 import { z } from "zod";
@@ -34,8 +33,6 @@ const baseModel = createOpenAICompatible({
 });
 
 const wrappedModel = wrapLanguageModel({
-  model: baseModel("google/gemma-3-27b-it"),
-  middleware: gemmaToolMiddleware,
 });
 
 // Configure tools

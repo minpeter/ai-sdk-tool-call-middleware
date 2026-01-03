@@ -199,72 +199,7 @@ function formatDiff(diff: number): string {
   return `${sign}${Math.round(diff)}%`.padStart(8);
 }
 
-function padCell(str: string, width: number): string {
-  return str.padStart(width);
-}
-
-const COL_WIDTH = 10;
-const BENCH_WIDTH = 23;
-
-function buildTableBorder(
-  left: string,
-  mid: string,
-  right: string,
-  protocols: string[],
-  hasNative: boolean
-): string {
-  let border = `${left}${"─".repeat(BENCH_WIDTH)}${mid}${"─".repeat(COL_WIDTH + 2)}`;
-  const count = hasNative ? protocols.length - 1 : protocols.length;
-  for (let i = 0; i < count; i++) {
-    if (hasNative) {
-      border += `${mid}${"─".repeat(COL_WIDTH + 2)}${mid}${"─".repeat(COL_WIDTH)}`;
-    } else {
-      border += `${mid}${"─".repeat(COL_WIDTH + 2)}`;
-    }
-  }
-  return `${border}${right}\n`;
-}
-
-function buildHeaderRow(protocols: string[], hasNative: boolean): string {
-  if (hasNative) {
-    const otherProtocols = protocols.filter((p) => p !== "native");
-    let row = `│ ${"Benchmark".padEnd(BENCH_WIDTH - 1)}│${padCell("native", COL_WIDTH + 1)} `;
-    for (const p of otherProtocols) {
-      row += `│${padCell(p, COL_WIDTH + 1)} │${padCell("Δ", COL_WIDTH - 1)} `;
-    }
-    return `${row}│\n`;
-  }
-  let row = `│ ${"Benchmark".padEnd(BENCH_WIDTH - 1)}`;
-  for (const p of protocols) {
-    row += `│${padCell(p, COL_WIDTH + 1)} `;
-  }
-  return `${row}│\n`;
-}
-
-function buildDataRow(
-  benchmark: string,
-  protocols: string[],
-  scores: Record<string, Record<string, number>>,
-  hasNative: boolean
-): string {
-  if (hasNative) {
-    const nativeScore = scores.native[benchmark];
-    let row = `│ ${benchmark.padEnd(BENCH_WIDTH - 1)}│${formatPercentage(nativeScore)} `;
-    for (const protocol of protocols.filter((p) => p !== "native")) {
-      const score = scores[protocol][benchmark];
-      const diff = ((score - nativeScore) / nativeScore) * 100;
-      row += `│${formatPercentage(score)} │${formatDiff(diff)} `;
-    }
-    return `${row}│\n`;
-  }
-  let row = `│ ${benchmark.padEnd(BENCH_WIDTH - 1)}`;
-  for (const protocol of protocols) {
-    row += `│${formatPercentage(scores[protocol][benchmark])} `;
-  }
-  return `${row}│\n`;
-}
-
-function generateAsciiTable(
+function generateMarkdownTable(
   modelKey: ModelKey,
   scores: Record<string, Record<string, number>>
 ): string {
@@ -280,17 +215,46 @@ function generateAsciiTable(
 
   const hasNative = protocols.includes("native");
 
-  let table = `### ${MODEL_DISPLAY_NAMES[modelKey]}\n${"```"}\n`;
-  table += buildTableBorder("┌", "┬", "┐", protocols, hasNative);
-  table += buildHeaderRow(protocols, hasNative);
-  table += buildTableBorder("├", "┼", "┤", protocols, hasNative);
+  let table = `### ${MODEL_DISPLAY_NAMES[modelKey]}\n\n`;
 
+  // Build header
+  let header = "| Benchmark |";
+  let separator = "|-----------|";
+  if (hasNative) {
+    header += " native |";
+    separator += "--------|";
+    for (const p of protocols.filter((p) => p !== "native")) {
+      header += ` ${p} | Δ |`;
+      separator += "--------|--------|";
+    }
+  } else {
+    for (const p of protocols) {
+      header += ` ${p} |`;
+      separator += "--------|";
+    }
+  }
+  table += `${header}\n${separator}\n`;
+
+  // Build data rows
   for (const benchmark of benchmarks) {
-    table += buildDataRow(benchmark, protocols, scores, hasNative);
+    let row = `| ${benchmark} |`;
+    if (hasNative) {
+      const nativeScore = scores.native[benchmark];
+      row += ` ${formatPercentage(nativeScore)} |`;
+      for (const protocol of protocols.filter((p) => p !== "native")) {
+        const score = scores[protocol][benchmark];
+        const diff = ((score - nativeScore) / nativeScore) * 100;
+        row += ` ${formatPercentage(score)} | ${formatDiff(diff)} |`;
+      }
+    } else {
+      for (const protocol of protocols) {
+        row += ` ${formatPercentage(scores[protocol][benchmark])} |`;
+      }
+    }
+    table += `${row}\n`;
   }
 
-  table += buildTableBorder("└", "┴", "┘", protocols, hasNative);
-  table += `${"```"}\n\n`;
+  table += "\n";
   return table;
 }
 
@@ -300,13 +264,13 @@ function generateMarkdownReport(
 ): string {
   const modeEmoji = { fast: "⚡", full: "🔥" };
 
-  let markdown = "## 📊 Benchmark Results\n\n";
+  let markdown = "## 📊 Regression Benchmark Results\n\n";
   markdown += `\`${current.commit.slice(0, 7)}\` on \`${current.branch}\` ${modeEmoji[current.mode]}\n\n`;
 
   for (const modelKey of MODEL_KEYS) {
     const scores = current.results[modelKey];
     if (scores && Object.keys(scores).length > 0) {
-      markdown += generateAsciiTable(modelKey, scores);
+      markdown += generateMarkdownTable(modelKey, scores);
     }
   }
 

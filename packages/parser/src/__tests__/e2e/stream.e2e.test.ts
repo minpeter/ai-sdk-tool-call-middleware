@@ -7,11 +7,7 @@ import {
   wrapLanguageModel,
 } from "ai";
 import { z } from "zod";
-import {
-  gemmaToolMiddleware,
-  hermesToolMiddleware,
-  morphXmlToolMiddleware,
-} from "../../index";
+import { hermesToolMiddleware, xmlToolMiddleware } from "../../index";
 
 const openrouter = createOpenAICompatible({
   name: "openrouter",
@@ -26,17 +22,13 @@ const friendli = createOpenAICompatible({
 });
 
 const testModels = {
-  gemma: wrapLanguageModel({
-    model: openrouter("google/gemma-3-27b-it"),
-    middleware: gemmaToolMiddleware,
-  }),
   hermes: wrapLanguageModel({
     model: openrouter("nousresearch/hermes-4-405b"),
     middleware: hermesToolMiddleware,
   }),
   xml: wrapLanguageModel({
     model: openrouter("z-ai/glm-4.5-air"),
-    middleware: morphXmlToolMiddleware,
+    middleware: xmlToolMiddleware,
   }),
   reasoning: wrapLanguageModel({
     model: friendli("deepseek-ai/DeepSeek-R1-0528"),

@@ -3,6 +3,7 @@ import type {
   LanguageModelV3Content,
   LanguageModelV3FilePart,
   LanguageModelV3FunctionTool,
+  LanguageModelV3Message,
   LanguageModelV3Prompt,
   LanguageModelV3ReasoningPart,
   LanguageModelV3TextPart,
@@ -10,11 +11,9 @@ import type {
   LanguageModelV3ToolResultPart,
   SharedV3ProviderOptions,
 } from "@ai-sdk/provider";
-
-import {
-  isProtocolFactory,
-  type ToolCallProtocol,
-} from "../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
+import { isTCMProtocolFactory } from "../core/protocols/protocol-interface";
+import type { TCMCoreToolResult, TCMToolDefinition } from "../core/types";
 import { createDynamicIfThenElseSchema } from "../core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "../core/utils/on-error";
 import { originalToolsSchema } from "../core/utils/provider-options";
@@ -242,6 +241,7 @@ export function transformParams({
   params,
   protocol,
   toolSystemPromptTemplate,
+  toolResponsePromptTemplate,
   placement = "first",
 }: {
   params: {
@@ -254,11 +254,14 @@ export function transformParams({
     };
     toolChoice?: { type: string; toolName?: string };
   };
-  protocol: ToolCallProtocol | (() => ToolCallProtocol);
-  toolSystemPromptTemplate: (tools: string) => string;
+  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
+  toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
   placement?: "first" | "last";
 }) {
-  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
+  const resolvedProtocol = isTCMProtocolFactory(protocol)
+    ? protocol()
+    : protocol;
 
   const functionTools = (params.tools ?? []).filter(
     (t): t is LanguageModelV3FunctionTool => t.type === "function"
@@ -269,9 +272,18 @@ export function transformParams({
     toolSystemPromptTemplate,
   });
 
+  let normalizedPrompt: LanguageModelV3Message[];
+  if (Array.isArray(params.prompt)) {
+    normalizedPrompt = params.prompt;
+  } else if (params.prompt) {
+    normalizedPrompt = [params.prompt];
+  } else {
+    normalizedPrompt = [];
+  }
   const processedPrompt = convertToolPrompt(
-    params.prompt ?? [],
+    normalizedPrompt,
     resolvedProtocol,
+    toolResponsePromptTemplate,
     extractOnErrorOption(params.providerOptions)
   );
 
@@ -308,7 +320,7 @@ export function transformParams({
  */
 function processAssistantContent(
   content: LanguageModelV3Content[],
-  resolvedProtocol: ToolCallProtocol,
+  resolvedProtocol: TCMCoreProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
@@ -354,7 +366,8 @@ function processAssistantContent(
  */
 function processToolMessage(
   content: LanguageModelV3ToolResultPart[],
-  resolvedProtocol: ToolCallProtocol
+  resolvedProtocol: TCMCoreProtocol,
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string
 ): LanguageModelV3Prompt[number] {
   return {
     role: "user" as const,
@@ -364,7 +377,10 @@ function processToolMessage(
         text: content
           .map((toolResult) => {
             const tr = toolResult as unknown as Record<string, unknown>;
-            return resolvedProtocol.formatToolResponse({
+            const formatToolResponse =
+              toolResponsePromptTemplate ??
+              resolvedProtocol.formatToolResponse.bind(resolvedProtocol);
+            return formatToolResponse({
               ...toolResult,
               result: tr.result ?? tr.content ?? tr.output,
             });
@@ -380,10 +396,11 @@ function processToolMessage(
  */
 function processMessage(
   message: LanguageModelV3Prompt[number],
-  resolvedProtocol: ToolCallProtocol,
+  resolvedProtocol: TCMCoreProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
+  },
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string
 ): LanguageModelV3Prompt[number] {
   if (message.role === "assistant") {
     const condensedContent = processAssistantContent(
@@ -408,7 +425,11 @@ function processMessage(
       (part): part is LanguageModelV3ToolResultPart =>
         part.type === "tool-result"
     );
-    return processToolMessage(toolResultParts, resolvedProtocol);
+    return processToolMessage(
+      toolResultParts,
+      resolvedProtocol,
+      toolResponsePromptTemplate
+    );
   }
   return message;
 }
@@ -507,14 +528,20 @@ function mergeConsecutiveUserMessages(
 }
 
 function convertToolPrompt(
-  prompt: LanguageModelV3Prompt,
-  resolvedProtocol: ToolCallProtocol,
+  prompt: LanguageModelV3Message[],
+  resolvedProtocol: TCMCoreProtocol,
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
-): LanguageModelV3Prompt {
-  let processedPrompt = prompt.map((message) =>
-    processMessage(message, resolvedProtocol, providerOptions)
+): LanguageModelV3Message[] {
+  let processedPrompt = prompt.map((message: LanguageModelV3Message) =>
+    processMessage(
+      message,
+      resolvedProtocol,
+      providerOptions,
+      toolResponsePromptTemplate
+    )
   );
 
   processedPrompt = condenseTextContent(processedPrompt);

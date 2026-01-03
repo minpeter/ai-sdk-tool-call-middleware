@@ -6,29 +6,22 @@ import { describe, expect, it } from "vitest";
 
 import {
   createToolMiddleware,
-  gemmaToolMiddleware,
   hermesToolMiddleware,
-  jsonMixProtocol,
-  morphXmlToolMiddleware,
+  jsonProtocol,
   originalToolsSchema,
+  xmlToolMiddleware,
 } from "..";
 
 describe("index exports", () => {
-  describe("gemmaToolMiddleware", () => {
-    it("should be defined", () => {
-      expect(gemmaToolMiddleware).toBeDefined();
-    });
-  });
-
   describe("hermesToolMiddleware", () => {
     it("should be defined", () => {
       expect(hermesToolMiddleware).toBeDefined();
     });
   });
 
-  describe("morphXmlToolMiddleware", () => {
+  describe("xmlToolMiddleware", () => {
     it("should be defined", () => {
-      expect(morphXmlToolMiddleware).toBeDefined();
+      expect(xmlToolMiddleware).toBeDefined();
     });
 
     it("should parse XML tool calls", async () => {
@@ -51,7 +44,7 @@ describe("index exports", () => {
         },
       ];
 
-      const result = await morphXmlToolMiddleware.wrapGenerate?.({
+      const result = await xmlToolMiddleware.wrapGenerate?.({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],
@@ -101,7 +94,7 @@ describe("index exports", () => {
         },
       ];
 
-      const result = await morphXmlToolMiddleware.wrapGenerate?.({
+      const result = await xmlToolMiddleware.wrapGenerate?.({
         doGenerate: mockDoGenerate,
         params: {
           prompt: [],
@@ -138,9 +131,9 @@ describe("index exports", () => {
 
     it("should create custom middleware", () => {
       const customMiddleware = createToolMiddleware({
-        protocol: jsonMixProtocol(), // or morphXmlProtocol
-        toolSystemPromptTemplate: (tools: string) =>
-          `Custom template: ${tools}`,
+        protocol: jsonProtocol(), // or xmlProtocol
+        toolSystemPromptTemplate: (tools) =>
+          `Custom template: ${JSON.stringify(tools)}`,
       });
 
       expect(customMiddleware).toBeDefined();

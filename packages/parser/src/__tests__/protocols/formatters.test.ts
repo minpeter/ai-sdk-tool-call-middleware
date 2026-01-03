@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { jsonProtocol } from "../../core/protocols/json-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 
 describe("protocol formatters", () => {
-  it("jsonMixProtocol formatToolCall/Response and formatTools", () => {
-    const p = jsonMixProtocol();
+  it("jsonProtocol formatToolCall/Response and formatTools", () => {
+    const p = jsonProtocol();
     const tools = [
       {
         type: "function",
@@ -35,8 +35,8 @@ describe("protocol formatters", () => {
     expect(resp).toContain("<tool_response>");
   });
 
-  it("morphXmlProtocol formatToolCall/Response and formatTools", () => {
-    const p = morphXmlProtocol();
+  it("xmlProtocol formatToolCall/Response and formatTools", () => {
+    const p = xmlProtocol();
     const tools = [
       {
         type: "function",
@@ -61,7 +61,7 @@ describe("protocol formatters", () => {
       type: "tool-result",
       toolName: "a",
       toolCallId: "id",
-      output: { ok: true },
+      result: { ok: true },
     } as any);
     expect(resp).toContain("<tool_response>");
   });
