@@ -66,8 +66,8 @@ importers:
         specifier: 2.0.2
         version: 2.0.2(zod@4.3.4)
       ai:
-        specifier: 6.0.5
-        version: 6.0.5(zod@4.3.4)
+        specifier: 6.0.6
+        version: 6.0.6(zod@4.3.4)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -94,8 +94,8 @@ importers:
         specifier: 2.0.2
         version: 2.0.2(zod@4.3.4)
       ai:
-        specifier: 6.0.5
-        version: 6.0.5(zod@4.3.4)
+        specifier: 6.0.6
+        version: 6.0.6(zod@4.3.4)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -128,8 +128,8 @@ importers:
         specifier: 2.0.2
         version: 2.0.2(zod@4.3.4)
       ai:
-        specifier: 6.0.5
-        version: 6.0.5(zod@4.3.4)
+        specifier: 6.0.6
+        version: 6.0.6(zod@4.3.4)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -169,8 +169,8 @@ importers:
         specifier: 3.0.1
         version: 3.0.1
       ai:
-        specifier: 6.0.5
-        version: 6.0.5(zod@4.3.4)
+        specifier: 6.0.6
+        version: 6.0.6(zod@4.3.4)
       ajv:
         specifier: ^8.17.1
         version: 8.17.1
@@ -263,14 +263,14 @@ importers:
         specifier: ^25.0.3
         version: 25.0.3
       ai:
-        specifier: 6.0.5
-        version: 6.0.5(zod@4.3.4)
+        specifier: 6.0.6
+        version: 6.0.6(zod@4.3.4)
       ai-v5:
         specifier: npm:ai@5.0.117
         version: ai@5.0.117(zod@4.3.4)
       ai-v6:
-        specifier: npm:ai@6.0.5
-        version: ai@6.0.5(zod@4.3.4)
+        specifier: npm:ai@6.0.6
+        version: ai@6.0.6(zod@4.3.4)
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
@@ -290,8 +290,8 @@ importers:
         specifier: ^11.2.0
         version: 11.2.0
       ai:
-        specifier: 6.0.5
-        version: 6.0.5(zod@4.3.4)
+        specifier: 6.0.6
+        version: 6.0.6(zod@4.3.4)
       fastify:
         specifier: ^5.6.2
         version: 5.6.2
@@ -349,8 +349,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  '@ai-sdk/gateway@3.0.4':
-    resolution: {integrity: sha512-OlccjNYZ5+4FaNyvs0kb3N5H6U/QCKlKPTGsgUo8IZkqfMQu8ALI1XD6l/BCuTKto+OO9xUPObT/W7JhbqJ5nA==}
+  '@ai-sdk/gateway@3.0.5':
+    resolution: {integrity: sha512-AtxA1wcoKTHr9uFoC5KZEXqJP4SMW4j3VbcliUECUYssbWbePJ9+b3AaCny1lxf1xhDK9EIyAgBOKhXoQSr9nA==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -1007,8 +1007,8 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
-  ai@6.0.5:
-    resolution: {integrity: sha512-CKL3dDHedWskC6EY67LrULonZBU9vL+Bwa+xQEcprBhJfxpogntG3utjiAkYuy5ZQatyWk+SmWG8HLvcnhvbRg==}
+  ai@6.0.6:
+    resolution: {integrity: sha512-LM0eAMWVn3RTj+0X5O1m/8g+7QiTeWG5aN5FsDbdmCkAQHVg93XxLbljFOLzi0NMjuJgf7fKLKmWoPsrdMyqfw==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -2532,7 +2532,7 @@ snapshots:
       '@vercel/oidc': 3.0.5
       zod: 4.3.4
 
-  '@ai-sdk/gateway@3.0.4(zod@4.3.4)':
+  '@ai-sdk/gateway@3.0.5(zod@4.3.4)':
     dependencies:
       '@ai-sdk/provider': 3.0.1
       '@ai-sdk/provider-utils': 4.0.2(zod@4.3.4)
@@ -3152,9 +3152,9 @@ snapshots:
       '@opentelemetry/api': 1.9.0
       zod: 4.3.4
 
-  ai@6.0.5(zod@4.3.4):
+  ai@6.0.6(zod@4.3.4):
     dependencies:
-      '@ai-sdk/gateway': 3.0.4(zod@4.3.4)
+      '@ai-sdk/gateway': 3.0.5(zod@4.3.4)
       '@ai-sdk/provider': 3.0.1
       '@ai-sdk/provider-utils': 4.0.2(zod@4.3.4)
       '@opentelemetry/api': 1.9.0

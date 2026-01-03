@@ -17,7 +17,7 @@ export const hermesToolMiddleware = createToolMiddlewareV5({
 
 export const xmlToolMiddleware = createToolMiddlewareV5({
   protocol: xmlProtocol,
-  placement: "first",
+  placement: "last",
   toolSystemPromptTemplate: xmlSystemPromptTemplate,
 });
 

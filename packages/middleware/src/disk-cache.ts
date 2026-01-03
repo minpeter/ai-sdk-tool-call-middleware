@@ -147,11 +147,16 @@ export function createDiskCacheMiddleware(
     : () => undefined;
 
   if (!enabled) {
-    return { specificationVersion: "v3" };
+    return {
+      specificationVersion: "v3",
+      transformParams: async ({ params }) => params,
+    };
   }
 
   return {
     specificationVersion: "v3",
+
+    transformParams: async ({ params }) => params,
 
     wrapGenerate: async ({ doGenerate, params, model }) => {
       const cacheKey = generateKey(model.modelId, params);

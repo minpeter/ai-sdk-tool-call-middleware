@@ -15,7 +15,7 @@ import { createDiskCacheMiddleware } from "@ai-sdk-tool/middleware";
 import {
   hermesToolMiddleware,
   xmlToolMiddleware,
-  ymlToolMiddleware,
+  yamlToolMiddleware,
 } from "@ai-sdk-tool/parser";
 import {
   extractReasoningMiddleware,
@@ -160,7 +160,7 @@ async function main() {
       {
         native: createWrappedModel(friendli(GLM_MODEL)),
         morphxml: createWrappedModel(friendli(GLM_MODEL), [xmlToolMiddleware]),
-        yamlxml: createWrappedModel(friendli(GLM_MODEL), [ymlToolMiddleware]),
+        yamlxml: createWrappedModel(friendli(GLM_MODEL), [yamlToolMiddleware]),
       },
       allBenchmarks
     );
@@ -173,9 +173,8 @@ async function main() {
           xmlToolMiddleware,
         ]),
         yamlxml: createWrappedModel(friendli(DEEPSEEK_MODEL), [
-          ymlToolMiddleware,
+          yamlToolMiddleware,
         ]),
-        gemma: createWrappedModel(friendli(DEEPSEEK_MODEL), []),
         hermes: createWrappedModel(friendli(DEEPSEEK_MODEL), [
           hermesToolMiddleware,
         ]),

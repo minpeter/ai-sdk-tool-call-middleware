@@ -24,10 +24,6 @@ const MAX_STEPS = 4;
 const MAX_TEMPERATURE = 100;
 
 const testModels = {
-  gemma: wrapLanguageModel({
-    model: openrouter("google/gemma-3-27b-it"),
-    middleware: xmlToolMiddleware,
-  }),
   hermes: wrapLanguageModel({
     model: openrouter("nousresearch/hermes-4-405b"),
     middleware: hermesToolMiddleware,

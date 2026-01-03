@@ -39,6 +39,7 @@ async function runMyEvaluation() {
   console.log("Starting model evaluation...");
 
   const results = await evaluate({
+    models: [/* your models here */],
     benchmarks: [bfclSimpleBenchmark], // Use a built-in benchmark
     reporter: "console", // 'console' or 'json'
   });

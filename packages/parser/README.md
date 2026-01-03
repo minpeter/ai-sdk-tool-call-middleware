@@ -31,6 +31,7 @@ pnpm add @ai-sdk-tool/parser
 ```typescript
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, stepCountIs, streamText } from "ai";
+import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 
 const openrouter = createOpenAICompatible({
   /* ... */
@@ -39,6 +40,8 @@ const openrouter = createOpenAICompatible({
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
+      model: openrouter("your-model-name"),
+      middleware: xmlToolMiddleware,
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in my city?",

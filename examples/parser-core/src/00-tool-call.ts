@@ -1,4 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
@@ -20,8 +21,8 @@ async function main() {
     // }),
 
     model: wrapLanguageModel({
-      model: openrouter("google/gemma-3-27b-it"),
-      middleware: [],
+      model: openrouter("z-ai/glm-4.5-air"),
+      middleware: xmlToolMiddleware,
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",

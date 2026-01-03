@@ -14,6 +14,7 @@ Tooling for Vercel AI SDK: enable tool calling with models lacking native `tools
 ```ts
 import { wrapLanguageModel, streamText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 
 const client = createOpenAICompatible({
   /* baseURL, apiKey */
@@ -21,6 +22,8 @@ const client = createOpenAICompatible({
 
 const result = streamText({
   model: wrapLanguageModel({
+    model: client("your-model-name"),
+    middleware: xmlToolMiddleware,
   }),
   tools: {
     /* your tools */

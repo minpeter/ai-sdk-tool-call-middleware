@@ -22,10 +22,6 @@ const friendli = createOpenAICompatible({
 });
 
 const testModels = {
-  gemma: wrapLanguageModel({
-    model: openrouter("google/gemma-3-27b-it"),
-    middleware: xmlToolMiddleware,
-  }),
   hermes: wrapLanguageModel({
     model: openrouter("nousresearch/hermes-4-405b"),
     middleware: hermesToolMiddleware,
