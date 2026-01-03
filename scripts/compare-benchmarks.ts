@@ -43,19 +43,13 @@ function loadHistory(): BenchmarkResult[] {
 }
 
 function loadCurrentResult(): BenchmarkResult {
-  const resultsDir = path.join(process.cwd(), ".benchmark-results");
-  const files = fs
-    .readdirSync(resultsDir)
-    .filter((f) => f.startsWith("benchmark-") && f.endsWith(".json"))
-    .sort()
-    .reverse();
-
-  if (files.length === 0) {
+  const history = loadHistory();
+  if (history.length === 0) {
     throw new Error("No benchmark results found");
   }
 
-  const latestFile = path.join(resultsDir, files[0]);
-  return JSON.parse(fs.readFileSync(latestFile, "utf-8"));
+  // Get the most recent result (assuming it's the current branch)
+  return history[history.length - 1];
 }
 
 interface ModelComparison {
@@ -258,6 +252,33 @@ function generateMarkdownTable(
   return table;
 }
 
+function generateRegressionDetails(trend: TrendResult): string {
+  if (!(trend.hasBaseline && trend.comparisons)) {
+    return "";
+  }
+
+  let details = "### 🔍 Regression Details (vs Main)\n\n";
+
+  for (const modelKey of MODEL_KEYS) {
+    const comparisons = trend.comparisons[modelKey];
+    if (comparisons.length === 0) continue;
+
+    const regressions = comparisons.filter((c) => c.regression);
+    if (regressions.length === 0) continue;
+
+    details += `**${MODEL_DISPLAY_NAMES[modelKey]}**\n\n`;
+    details += "| Protocol | Benchmark | Current | Main Avg | Δ vs Main |\n";
+    details += "|----------|-----------|---------|----------|-----------|\n";
+
+    for (const comp of regressions) {
+      details += `| ${comp.protocol} | ${comp.benchmark} | ${(comp.current * 100).toFixed(1)}% | ${(comp.baseline * 100).toFixed(1)}% | ${Math.round(comp.diff)}% |\n`;
+    }
+    details += "\n";
+  }
+
+  return details;
+}
+
 function generateMarkdownReport(
   current: BenchmarkResult,
   trend: TrendResult
@@ -275,7 +296,8 @@ function generateMarkdownReport(
   }
 
   if (trend.hasBaseline && trend.hasRegression) {
-    markdown += "⚠️ **Regression detected** (>2% drop vs main)\n";
+    markdown += "⚠️ **Regression detected** (>2% drop vs main)\n\n";
+    markdown += generateRegressionDetails(trend);
   } else if (trend.hasBaseline) {
     markdown += "✅ No regression\n";
   }
@@ -306,7 +328,6 @@ function main() {
     console.log("=".repeat(80));
 
     if (trend.hasBaseline && trend.hasRegression) {
-      console.log("\n⚠️ Regression detected! See report for details.");
       process.exit(1);
     }
 
