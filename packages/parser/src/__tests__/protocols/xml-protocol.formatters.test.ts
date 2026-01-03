@@ -34,7 +34,7 @@ describe("xmlProtocol formatters", () => {
       type: "tool-result",
       toolCallId: "id",
       toolName: "add",
-      output: { sum: 3 },
+      result: { sum: 3 },
     } as any);
     expect(xml).toMatch(TOOL_RESPONSE_REGEX);
     expect(xml).toMatch(TOOL_NAME_ADD_REGEX);

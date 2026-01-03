@@ -61,7 +61,7 @@ describe("protocol formatters", () => {
       type: "tool-result",
       toolName: "a",
       toolCallId: "id",
-      output: { ok: true },
+      result: { ok: true },
     } as any);
     expect(resp).toContain("<tool_response>");
   });
