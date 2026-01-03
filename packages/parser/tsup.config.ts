@@ -1,12 +1,9 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig([
-  // Universal APIs
   {
     entry: {
       index: "src/index.ts",
-      v5: "src/v5/index.ts",
-      v6: "src/v6/index.ts",
       community: "src/community/index.ts",
     },
     format: ["cjs", "esm"],

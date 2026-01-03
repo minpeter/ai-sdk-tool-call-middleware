@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import {
   bfclMultipleBenchmark,
   bfclParallelBenchmark,
@@ -9,11 +10,7 @@ import {
   evaluate,
   type ReporterType,
 } from "@ai-sdk-tool/eval";
-import {
-  createToolMiddleware,
-  type TCMToolDefinition,
-  xmlProtocol,
-} from "@ai-sdk-tool/parser";
+import { createToolMiddleware, xmlProtocol } from "@ai-sdk-tool/parser";
 import { wrapLanguageModel } from "ai";
 
 // Load system prompt from file
@@ -27,7 +24,7 @@ const systemPromptTemplate = fs.readFileSync(systemPromptPath, "utf-8");
 const customMorphXmlMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
   placement: "last",
-  toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
+  toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
     const toolsString = JSON.stringify(tools);
     return systemPromptTemplate.replace(/\$\{tools\}/g, toolsString);
   },

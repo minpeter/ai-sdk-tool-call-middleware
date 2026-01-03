@@ -2,7 +2,7 @@ import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesToolMiddleware, xmlToolMiddleware } from "..";
 import { jsonProtocol } from "../core/protocols/json-protocol";
-import { createToolMiddleware } from "../v6/tool-call-middleware";
+import { createToolMiddleware } from "../tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

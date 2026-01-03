@@ -1,6 +1,8 @@
-import type { TCMToolDefinition } from "../types";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 
-export function xmlSystemPromptTemplate(tools: TCMToolDefinition[]): string {
+export function xmlSystemPromptTemplate(
+  tools: LanguageModelV3FunctionTool[]
+): string {
   const toolsJson = JSON.stringify(tools);
   return `# Tools
 

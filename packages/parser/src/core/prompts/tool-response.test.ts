@@ -1,3 +1,4 @@
+import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
   formatToolResponseAsJsonInXml,
@@ -361,11 +362,13 @@ describe("tool-response", () => {
 
   describe("formatToolResponseAsJsonInXml", () => {
     it("formats basic tool result", () => {
-      const result = formatToolResponseAsJsonInXml({
+      const toolResult: ToolResultPart = {
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "get_weather",
-        result: { temp: 25 },
-      });
+        output: { type: "json", value: { temp: 25 } },
+      };
+      const result = formatToolResponseAsJsonInXml(toolResult);
       expect(result).toContain("<tool_response>");
       expect(result).toContain("</tool_response>");
       expect(result).toContain('"toolName":"get_weather"');
@@ -374,65 +377,71 @@ describe("tool-response", () => {
 
     it("unwraps json-typed result before formatting", () => {
       const result = formatToolResponseAsJsonInXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "get_weather",
-        result: { type: "json", value: { temp: 25 } },
-      });
+        output: { type: "json", value: { temp: 25 } },
+      } satisfies ToolResultPart);
       expect(result).toContain('"result":{"temp":25}');
       expect(result).not.toContain('"type":"json"');
     });
 
     it("unwraps text-typed result before formatting", () => {
       const result = formatToolResponseAsJsonInXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "echo",
-        result: { type: "text", value: "hello world" },
-      });
+        output: { type: "text", value: "hello world" },
+      } satisfies ToolResultPart);
       expect(result).toContain('"result":"hello world"');
     });
 
     it("handles execution-denied result", () => {
       const result = formatToolResponseAsJsonInXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "delete_file",
-        result: { type: "execution-denied", reason: "Permission denied" },
-      });
+        output: { type: "execution-denied", reason: "Permission denied" },
+      } satisfies ToolResultPart);
       expect(result).toContain("Execution Denied");
       expect(result).toContain("Permission denied");
     });
 
     it("handles error-text result", () => {
       const result = formatToolResponseAsJsonInXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "fetch_data",
-        result: { type: "error-text", value: "Network timeout" },
-      });
+        output: { type: "error-text", value: "Network timeout" },
+      } satisfies ToolResultPart);
       expect(result).toContain("Error");
       expect(result).toContain("Network timeout");
     });
 
     it("handles content type with images", () => {
       const result = formatToolResponseAsJsonInXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "screenshot",
-        result: {
+        output: {
           type: "content",
           value: [
             { type: "text", text: "Screenshot captured" },
             { type: "image-data", data: "base64...", mediaType: "image/png" },
           ],
         },
-      });
+      } satisfies ToolResultPart);
       expect(result).toContain("Screenshot captured");
       expect(result).toContain("[Image: image/png]");
     });
 
-    it("handles string result", () => {
+    it("handles string output", () => {
       const result = formatToolResponseAsJsonInXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "echo",
-        result: "simple string",
-      });
+        output: { type: "text", value: "simple string" },
+      } satisfies ToolResultPart);
       expect(result).toContain('"result":"simple string"');
     });
   });
@@ -440,10 +449,11 @@ describe("tool-response", () => {
   describe("formatToolResponseAsXml", () => {
     it("formats basic tool result with XML tags", () => {
       const result = formatToolResponseAsXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "search",
-        result: "found results",
-      });
+        output: { type: "text", value: "found results" },
+      } satisfies ToolResultPart);
       expect(result).toContain("<tool_response>");
       expect(result).toContain("<tool_name>search</tool_name>");
       expect(result).toContain("<result>found results</result>");
@@ -452,19 +462,24 @@ describe("tool-response", () => {
 
     it("escapes XML special characters in tool name", () => {
       const result = formatToolResponseAsXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "get<data>",
-        result: "test",
-      });
+        output: { type: "text", value: "test" },
+      } satisfies ToolResultPart);
       expect(result).toContain("<tool_name>get&lt;data&gt;</tool_name>");
     });
 
     it("escapes XML special characters in result", () => {
       const result = formatToolResponseAsXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "search",
-        result: 'Results for <query> with "quotes" & ampersand',
-      });
+        output: {
+          type: "text",
+          value: 'Results for <query> with "quotes" & ampersand',
+        },
+      } satisfies ToolResultPart);
       expect(result).toContain("&lt;query&gt;");
       expect(result).toContain("&quot;quotes&quot;");
       expect(result).toContain("&amp;");
@@ -472,10 +487,11 @@ describe("tool-response", () => {
 
     it("unwraps json-typed result before formatting", () => {
       const result = formatToolResponseAsXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "get_data",
-        result: { type: "json", value: { key: "value" } },
-      });
+        output: { type: "json", value: { key: "value" } },
+      } satisfies ToolResultPart);
       // Quotes are XML-escaped to &quot;
       expect(result).toContain("key");
       expect(result).toContain("value");
@@ -484,26 +500,28 @@ describe("tool-response", () => {
 
     it("handles content type with images gracefully", () => {
       const result = formatToolResponseAsXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "screenshot",
-        result: {
+        output: {
           type: "content",
           value: [
             { type: "text", text: "Screenshot captured" },
             { type: "image-data", data: "base64...", mediaType: "image/png" },
           ],
         },
-      });
+      } satisfies ToolResultPart);
       expect(result).toContain("Screenshot captured");
       expect(result).toContain("[Image: image/png]");
     });
 
     it("formats object result as JSON string", () => {
       const result = formatToolResponseAsXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "get_data",
-        result: { nested: { data: true } },
-      });
+        output: { type: "json", value: { nested: { data: true } } },
+      } satisfies ToolResultPart);
       // JSON is stringified and quotes are XML-escaped
       expect(result).toContain("nested");
       expect(result).toContain("data");
@@ -512,10 +530,11 @@ describe("tool-response", () => {
 
     it("handles execution-denied result", () => {
       const result = formatToolResponseAsXml({
+        type: "tool-result",
         toolCallId: "tc1",
         toolName: "delete",
-        result: { type: "execution-denied", reason: "Not authorized" },
-      });
+        output: { type: "execution-denied", reason: "Not authorized" },
+      } satisfies ToolResultPart);
       expect(result).toContain("Execution Denied");
       expect(result).toContain("Not authorized");
     });

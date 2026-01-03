@@ -1,28 +1,25 @@
-import { formatToolResponseAsJsonInXml } from "../prompts/tool-response";
 import type {
-  TCMCoreContentPart,
-  TCMCoreStreamPart,
-  TCMCoreToolCall,
-  TCMCoreToolResult,
-  TCMToolDefinition,
-} from "../types";
+  LanguageModelV3Content,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3StreamPart,
+  LanguageModelV3ToolCall,
+} from "@ai-sdk/provider";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId } from "../utils/id";
 import { escapeRegExp } from "../utils/regex";
 import { parse as parseRJSON } from "../utils/robust-json";
-import type { TCMCoreProtocol } from "./protocol-interface";
+import type { TCMProtocol } from "./protocol-interface";
 
 interface JsonProtocolOptions {
   toolCallStart?: string;
   toolCallEnd?: string;
-  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
 }
 
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
-  processedElements: TCMCoreContentPart[],
+  processedElements: LanguageModelV3Content[],
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
@@ -53,7 +50,10 @@ function processToolCallJson(
   }
 }
 
-function addTextSegment(text: string, processedElements: TCMCoreContentPart[]) {
+function addTextSegment(
+  text: string,
+  processedElements: LanguageModelV3Content[]
+) {
   if (text.trim()) {
     processedElements.push({ type: "text", text });
   }
@@ -63,7 +63,7 @@ interface ParseContext {
   match: RegExpExecArray;
   text: string;
   currentIndex: number;
-  processedElements: TCMCoreContentPart[];
+  processedElements: LanguageModelV3Content[];
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
@@ -94,7 +94,8 @@ interface StreamState {
   hasEmittedTextStart: boolean;
 }
 
-type StreamController = TransformStreamDefaultController<TCMCoreStreamPart>;
+type StreamController =
+  TransformStreamDefaultController<LanguageModelV3StreamPart>;
 
 interface TagProcessingContext {
   state: StreamState;
@@ -120,7 +121,7 @@ function flushBuffer(
     controller.enqueue({
       type: "text-start",
       id: state.currentTextId,
-    });
+    } as LanguageModelV3StreamPart);
     state.hasEmittedTextStart = true;
   }
 
@@ -131,9 +132,8 @@ function flushBuffer(
   controller.enqueue({
     type: "text-delta",
     id: state.currentTextId,
-    textDelta: deltaContent,
     delta: deltaContent,
-  });
+  } as LanguageModelV3StreamPart);
   state.buffer = "";
 }
 
@@ -142,7 +142,7 @@ function closeTextBlock(state: StreamState, controller: StreamController) {
     controller.enqueue({
       type: "text-end",
       id: state.currentTextId,
-    });
+    } as LanguageModelV3StreamPart);
     state.currentTextId = null;
     state.hasEmittedTextStart = false;
   }
@@ -168,17 +168,16 @@ function emitIncompleteToolCall(
   controller.enqueue({
     type: "text-start",
     id: errorId,
-  });
+  } as LanguageModelV3StreamPart);
   controller.enqueue({
     type: "text-delta",
     id: errorId,
-    textDelta: errorContent,
     delta: errorContent,
-  });
+  } as LanguageModelV3StreamPart);
   controller.enqueue({
     type: "text-end",
     id: errorId,
-  });
+  } as LanguageModelV3StreamPart);
   state.currentToolCallJson = "";
 }
 
@@ -186,7 +185,7 @@ function handleFinishChunk(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
-  chunk: TCMCoreStreamPart
+  chunk: LanguageModelV3StreamPart
 ) {
   if (state.buffer.length > 0) {
     flushBuffer(state, controller, toolCallStart);
@@ -210,15 +209,14 @@ function publishText(
       controller.enqueue({
         type: "text-start",
         id: state.currentTextId,
-      });
+      } as LanguageModelV3StreamPart);
       state.hasEmittedTextStart = true;
     }
     controller.enqueue({
       type: "text-delta",
       id: state.currentTextId,
-      textDelta: text,
       delta: text,
-    });
+    } as LanguageModelV3StreamPart);
   }
 }
 
@@ -235,7 +233,7 @@ function emitToolCall(context: TagProcessingContext) {
       toolCallId: generateId(),
       toolName: parsedToolCall.name,
       input: JSON.stringify(parsedToolCall.arguments ?? {}),
-    });
+    } as LanguageModelV3StreamPart);
   } catch (error) {
     logParseFailure({
       phase: "stream",
@@ -248,17 +246,16 @@ function emitToolCall(context: TagProcessingContext) {
     controller.enqueue({
       type: "text-start",
       id: errorId,
-    });
+    } as LanguageModelV3StreamPart);
     controller.enqueue({
       type: "text-delta",
       id: errorId,
-      textDelta: errorContent,
       delta: errorContent,
-    });
+    } as LanguageModelV3StreamPart);
     controller.enqueue({
       type: "text-end",
       id: errorId,
-    });
+    } as LanguageModelV3StreamPart);
     options?.onError?.(
       "Could not process streaming JSON tool call; emitting original text.",
       {
@@ -329,24 +326,18 @@ function handlePartialTag(
 export const jsonProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
-  toolResponsePromptTemplate = formatToolResponseAsJsonInXml,
-}: JsonProtocolOptions = {}): TCMCoreProtocol => ({
-  formatTools({ tools, toolSystemPromptTemplate }) {
-    const toolsForPrompt: TCMToolDefinition[] = (tools || [])
-      .filter((tool) => tool.type === "function")
-      .map((tool) => ({
-        name: tool.name,
-        description:
-          tool.type === "function" && typeof tool.description === "string"
-            ? tool.description
-            : undefined,
-        parameters: tool.inputSchema as Record<string, unknown>,
-        inputExamples: tool.inputExamples,
-      }));
-    return toolSystemPromptTemplate(toolsForPrompt);
+}: JsonProtocolOptions = {}): TCMProtocol => ({
+  formatTools({
+    tools,
+    toolSystemPromptTemplate,
+  }: {
+    tools: LanguageModelV3FunctionTool[];
+    toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
+  }) {
+    return toolSystemPromptTemplate(tools || []);
   },
 
-  formatToolCall(toolCall: TCMCoreToolCall) {
+  formatToolCall(toolCall: LanguageModelV3ToolCall) {
     let args: unknown = {};
     try {
       args = JSON.parse(toolCall.input);
@@ -359,11 +350,16 @@ export const jsonProtocol = ({
     })}${toolCallEnd}`;
   },
 
-  formatToolResponse(toolResult: TCMCoreToolResult) {
-    return toolResponsePromptTemplate(toolResult);
-  },
-
-  parseGeneratedText({ text, options }) {
+  parseGeneratedText({
+    text,
+    options,
+  }: {
+    text: string;
+    tools: LanguageModelV3FunctionTool[];
+    options?: {
+      onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    };
+  }) {
     const startEsc = escapeRegExp(toolCallStart);
     const endEsc = escapeRegExp(toolCallEnd);
     const toolCallRegex = new RegExp(
@@ -371,7 +367,7 @@ export const jsonProtocol = ({
       "gs"
     );
 
-    const processedElements: TCMCoreContentPart[] = [];
+    const processedElements: LanguageModelV3Content[] = [];
     let currentIndex = 0;
     let match = toolCallRegex.exec(text);
 
@@ -394,7 +390,14 @@ export const jsonProtocol = ({
     return processedElements;
   },
 
-  createStreamParser({ options }) {
+  createStreamParser({
+    options,
+  }: {
+    tools: LanguageModelV3FunctionTool[];
+    options?: {
+      onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    };
+  }) {
     const state: StreamState = {
       isInsideToolCall: false,
       buffer: "",
@@ -403,7 +406,10 @@ export const jsonProtocol = ({
       hasEmittedTextStart: false,
     };
 
-    return new TransformStream({
+    return new TransformStream<
+      LanguageModelV3StreamPart,
+      LanguageModelV3StreamPart
+    >({
       transform(chunk, controller) {
         if (chunk.type === "finish") {
           handleFinishChunk(state, controller, toolCallStart, chunk);
@@ -415,10 +421,9 @@ export const jsonProtocol = ({
           return;
         }
 
-        // Support both TCMCoreStreamPart (textDelta) and LanguageModelV3StreamPart (delta)
         const textContent =
-          chunk.textDelta ??
-          (chunk as unknown as { delta?: string }).delta ??
+          (chunk as { delta?: string }).delta ??
+          (chunk as { textDelta?: string }).textDelta ??
           "";
         state.buffer += textContent;
         processBufferTags({
@@ -433,7 +438,7 @@ export const jsonProtocol = ({
     });
   },
 
-  extractToolCallSegments({ text }) {
+  extractToolCallSegments({ text }: { text: string }) {
     const startEsc = escapeRegExp(toolCallStart);
     const endEsc = escapeRegExp(toolCallEnd);
     const regex = new RegExp(`${startEsc}([\u0000-\uFFFF]*?)${endEsc}`, "gs");

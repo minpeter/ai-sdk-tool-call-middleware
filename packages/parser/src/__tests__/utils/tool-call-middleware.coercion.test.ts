@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
 import { originalToolsSchema } from "../../core/utils/provider-options";
-import { createToolMiddleware } from "../../v6/tool-call-middleware";
+import { createToolMiddleware } from "../../tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -13,7 +13,6 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 const dummyProtocol: TCMCoreProtocol = {
   formatTools: ({ toolSystemPromptTemplate }) => toolSystemPromptTemplate([]),
   formatToolCall: () => "",
-  formatToolResponse: () => "",
   parseGeneratedText: ({ tools }) => [
     {
       type: "tool-call",
