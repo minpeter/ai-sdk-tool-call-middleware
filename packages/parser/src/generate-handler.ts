@@ -1,0 +1,246 @@
+import type {
+  LanguageModelV3,
+  LanguageModelV3Content,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3ToolCall,
+} from "@ai-sdk/provider";
+import { generateId } from "@ai-sdk/provider-utils";
+import { coerceBySchema } from "@ai-sdk-tool/rxml";
+import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
+import {
+  getDebugLevel,
+  logParsedChunk,
+  logParsedSummary,
+  logRawChunk,
+} from "./core/utils/debug";
+import { extractOnErrorOption } from "./core/utils/on-error";
+import {
+  isToolChoiceActive,
+  originalToolsSchema,
+  type ToolCallMiddlewareProviderOptions,
+} from "./core/utils/provider-options";
+
+function parseToolChoiceJson(
+  text: string,
+  providerOptions?: ToolCallMiddlewareProviderOptions
+): { name?: string; arguments?: Record<string, unknown> } {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const options = extractOnErrorOption(providerOptions);
+    options?.onError?.(
+      "Failed to parse toolChoice JSON from generated model output",
+      {
+        text,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    );
+    return {};
+  }
+}
+
+function logDebugSummary(
+  debugSummary: { originalText?: string; toolCalls?: string } | undefined,
+  toolCall: LanguageModelV3ToolCall,
+  originText: string
+) {
+  if (debugSummary) {
+    debugSummary.originalText = originText;
+    try {
+      debugSummary.toolCalls = JSON.stringify([
+        { toolName: toolCall.toolName, input: toolCall.input },
+      ]);
+    } catch {
+      // ignore
+    }
+  } else if (getDebugLevel() === "parse") {
+    logParsedSummary({ toolCalls: [toolCall], originalText: originText });
+  }
+}
+
+async function handleToolChoice(
+  doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>,
+  params: { providerOptions?: ToolCallMiddlewareProviderOptions }
+) {
+  const result = await doGenerate();
+  const first = result.content?.[0];
+
+  let parsed: { name?: string; arguments?: Record<string, unknown> } = {};
+  if (first && first.type === "text") {
+    if (getDebugLevel() === "parse") {
+      logRawChunk(first.text);
+    }
+    parsed = parseToolChoiceJson(first.text, params.providerOptions);
+  }
+
+  const toolCall: LanguageModelV3ToolCall = {
+    type: "tool-call",
+    toolCallId: generateId(),
+    toolName: parsed.name || "unknown",
+    input: JSON.stringify(parsed.arguments || {}),
+  };
+
+  const originText = first && first.type === "text" ? first.text : "";
+  const debugSummary = params.providerOptions?.toolCallMiddleware?.debugSummary;
+  logDebugSummary(debugSummary, toolCall, originText);
+
+  return {
+    ...result,
+    content: [toolCall],
+  };
+}
+
+function parseContent(
+  content: LanguageModelV3Content[],
+  protocol: TCMCoreProtocol,
+  tools: LanguageModelV3FunctionTool[],
+  providerOptions?: ToolCallMiddlewareProviderOptions
+): LanguageModelV3Content[] {
+  const parsed = content.flatMap((contentItem): LanguageModelV3Content[] => {
+    if (contentItem.type !== "text") {
+      return [contentItem];
+    }
+    if (getDebugLevel() === "stream") {
+      logRawChunk(contentItem.text);
+    }
+    return protocol.parseGeneratedText({
+      text: contentItem.text,
+      tools,
+      options: {
+        ...extractOnErrorOption(providerOptions),
+        ...((providerOptions as { toolCallMiddleware?: unknown } | undefined)
+          ?.toolCallMiddleware as Record<string, unknown>),
+      },
+    }) as LanguageModelV3Content[];
+  });
+
+  return parsed.map((part) =>
+    fixToolCallWithSchema(part as LanguageModelV3Content, tools)
+  );
+}
+
+function logParsedContent(content: LanguageModelV3Content[]) {
+  if (getDebugLevel() === "stream") {
+    for (const part of content) {
+      logParsedChunk(part);
+    }
+  }
+}
+
+function computeDebugSummary(options: {
+  result: { content: LanguageModelV3Content[] };
+  newContent: LanguageModelV3Content[];
+  protocol: TCMCoreProtocol;
+  tools: LanguageModelV3FunctionTool[];
+  providerOptions?: ToolCallMiddlewareProviderOptions;
+}) {
+  const { result, newContent, protocol, tools, providerOptions } = options;
+  const allText = result.content
+    .filter(
+      (c): c is Extract<LanguageModelV3Content, { type: "text" }> =>
+        c.type === "text"
+    )
+    .map((c) => c.text)
+    .join("\n\n");
+
+  const segments = protocol.extractToolCallSegments
+    ? protocol.extractToolCallSegments({ text: allText, tools })
+    : [];
+  const originalText = segments.join("\n\n");
+
+  const toolCalls = newContent.filter(
+    (p): p is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
+      (p as LanguageModelV3Content).type === "tool-call"
+  );
+
+  const dbg = providerOptions?.toolCallMiddleware?.debugSummary;
+  if (dbg) {
+    dbg.originalText = originalText;
+    try {
+      dbg.toolCalls = JSON.stringify(
+        toolCalls.map((tc) => ({
+          toolName: tc.toolName,
+          input: tc.input as unknown,
+        }))
+      );
+    } catch {
+      // ignore JSON failure
+    }
+  } else if (getDebugLevel() === "parse") {
+    logParsedSummary({ toolCalls, originalText });
+  }
+}
+
+export async function wrapGenerate({
+  protocol,
+  doGenerate,
+  params,
+}: {
+  protocol: TCMCoreProtocol;
+  doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>;
+  params: {
+    providerOptions?: ToolCallMiddlewareProviderOptions;
+  };
+}) {
+  if (isToolChoiceActive(params)) {
+    return handleToolChoice(doGenerate, params);
+  }
+
+  const tools = originalToolsSchema.decode(
+    params.providerOptions?.toolCallMiddleware?.originalTools
+  );
+
+  const result = await doGenerate();
+
+  if (result.content.length === 0) {
+    return result;
+  }
+
+  const newContent = parseContent(
+    result.content,
+    protocol,
+    tools,
+    params.providerOptions
+  );
+
+  logParsedContent(newContent);
+  computeDebugSummary({
+    result,
+    newContent,
+    protocol,
+    tools,
+    providerOptions: params.providerOptions,
+  });
+
+  return {
+    ...result,
+    content: newContent,
+  };
+}
+
+function fixToolCallWithSchema(
+  part: LanguageModelV3Content,
+  tools: LanguageModelV3FunctionTool[]
+): LanguageModelV3Content {
+  if ((part as { type?: string }).type !== "tool-call") {
+    return part;
+  }
+  const tc = part as unknown as { toolName: string; input: unknown };
+  let args: unknown = {};
+  if (typeof tc.input === "string") {
+    try {
+      args = JSON.parse(tc.input);
+    } catch {
+      return part;
+    }
+  } else if (tc.input && typeof tc.input === "object") {
+    args = tc.input;
+  }
+  const schema = tools.find((t) => t.name === tc.toolName)
+    ?.inputSchema as unknown;
+  const coerced = coerceBySchema(args, schema);
+  return {
+    ...(part as Record<string, unknown>),
+    input: JSON.stringify(coerced ?? {}),
+  } as LanguageModelV3Content;
+}
