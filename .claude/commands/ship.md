@@ -1,5 +1,5 @@
 ---
-description: Create changeset, verify code quality (pnpm check, pnpm test), fix issues if any, and commit
+description: Complete shipping cycle - create changeset (if needed), verify code quality (pnpm check, pnpm test), fix issues if any, commit, and push to remote
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
@@ -31,9 +31,11 @@ You are shipping changes for this monorepo. Follow these steps carefully.
    - In most cases, `patch` is appropriate even for new features
    - Don't be overly sensitive about version bumps - favor `patch` unless clearly a breaking change
 
-### Step 2: Create Changeset
+### Step 2: Create Changeset (Skip for PR fixes)
 
-Create a changeset file in `.changeset/` directory:
+Skip changeset creation if the changes are fixes for broken content within a PR (not new features or breaking changes).
+
+Otherwise, create a changeset file in `.changeset/` directory:
 - Filename: Use a random kebab-case name (e.g., `happy-tigers-dance.md`)
 - Format:
 ```markdown
@@ -65,7 +67,7 @@ After verification passes:
 1. **Selectively stage changes**: Only stage files related to the CURRENT task/context
    - Review the git diff carefully - there may be unrelated changes mixed in from other work
    - Use `git add <specific-files>` instead of `git add .`
-   - Only include the changeset file you just created
+   - Only include the changeset file you just created (if applicable)
    - If unclear which changes belong together, ask the user before committing
 2. Create a commit with a descriptive message following conventional commits:
    - `feat: ...` for new features
@@ -74,9 +76,17 @@ After verification passes:
    - `chore: ...` for maintenance
    - `refactor: ...` for refactoring
 
+### Step 5: Push
+
+After successful commit:
+
+1. Push the committed changes to the remote repository
+2. Ensure the push succeeds without conflicts
+
 ## Important Notes
 
 - NEVER skip verification steps
 - If issues are found, fix them before committing
 - Commit message should be in English
 - If you can't fix an issue after 3 attempts, stop and report to the user
+- The complete shipping cycle includes pushing to remote after commit, but push is handled separately unless explicitly requested
