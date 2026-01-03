@@ -3,6 +3,7 @@ import type {
   LanguageModelV3Content,
   LanguageModelV3FilePart,
   LanguageModelV3FunctionTool,
+  LanguageModelV3Message,
   LanguageModelV3Prompt,
   LanguageModelV3ReasoningPart,
   LanguageModelV3TextPart,
@@ -271,9 +272,18 @@ export function transformParams({
     toolSystemPromptTemplate,
   });
 
+  let normalizedPrompt: LanguageModelV3Message[];
+  if (Array.isArray(params.prompt)) {
+    normalizedPrompt = params.prompt;
+  } else if (params.prompt) {
+    normalizedPrompt = [params.prompt];
+  } else {
+    normalizedPrompt = [];
+  }
   const processedPrompt = convertToolPrompt(
-    params.prompt ?? [],
+    normalizedPrompt,
     resolvedProtocol,
+    toolResponsePromptTemplate,
     extractOnErrorOption(params.providerOptions)
   );
 
@@ -518,14 +528,14 @@ function mergeConsecutiveUserMessages(
 }
 
 function convertToolPrompt(
-  prompt: LanguageModelV3Prompt[],
+  prompt: LanguageModelV3Message[],
   resolvedProtocol: TCMCoreProtocol,
   toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
-): LanguageModelV3Prompt[] {
-  let processedPrompt = prompt.map((message: V5Message) =>
+): LanguageModelV3Message[] {
+  let processedPrompt = prompt.map((message: LanguageModelV3Message) =>
     processMessage(
       message,
       resolvedProtocol,

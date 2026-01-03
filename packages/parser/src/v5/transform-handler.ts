@@ -134,7 +134,7 @@ function processMessage(
       (part: V5ContentItem) => part.type === "tool-result"
     );
     const formatToolResponse =
-      toolResponseTemplate ??
+      toolResponsePromptTemplate ??
       resolvedProtocol.formatToolResponse.bind(resolvedProtocol);
     return {
       role: "user",
