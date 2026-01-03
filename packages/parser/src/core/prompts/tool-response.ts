@@ -54,7 +54,7 @@ export function formatToolResponseAsXml(toolResult: TCMCoreToolResult): string {
   };
 
   const toolNameXml = `<tool_name>${escapeXml(toolResult.toolName)}</tool_name>`;
-  const resultXml = `<result>${typeof unwrappedResult === "string" ? escapeXml(unwrappedResult) : JSON.stringify(unwrappedResult)}</result>`;
+  const resultXml = `<result>${escapeXml(typeof unwrappedResult === "string" ? unwrappedResult : JSON.stringify(unwrappedResult))}</result>`;
 
   return `<tool_response>${toolNameXml}${resultXml}</tool_response>`;
 }
