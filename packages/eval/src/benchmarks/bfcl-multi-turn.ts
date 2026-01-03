@@ -321,7 +321,17 @@ const parseToolArgs = (extractedArgs: unknown): unknown => {
   try {
     return JSON.parse(extractedArgs);
   } catch {
-    return extractedArgs;
+    // JSON.parse failed - might be due to unescaped control characters
+    // (actual newlines/tabs instead of \n/\t escape sequences)
+    try {
+      const escaped = extractedArgs
+        .replace(/\n/g, "\\n")
+        .replace(/\r/g, "\\r")
+        .replace(/\t/g, "\\t");
+      return JSON.parse(escaped);
+    } catch {
+      return extractedArgs;
+    }
   }
 };
 
@@ -706,11 +716,25 @@ const createBfclMultiTurnBenchmark = (
             record.input ??
             record.params ??
             record.parameters;
+          const parsedInput = parseToolArgs(extractedArgs) ?? {};
+
+          if (debugMode) {
+            console.log(`[DEBUG] Tool call ${idx} args processing:`);
+            console.log(`  record.args type: ${typeof record.args}`);
+            console.log(`  record.arguments type: ${typeof record.arguments}`);
+            console.log(
+              `  extractedArgs type: ${typeof extractedArgs}, value: ${JSON.stringify(extractedArgs)?.slice(0, 200)}`
+            );
+            console.log(
+              `  parsedInput type: ${typeof parsedInput}, value: ${JSON.stringify(parsedInput)?.slice(0, 200)}`
+            );
+          }
+
           return {
             type: "tool-call" as const,
             toolCallId,
             toolName,
-            input: parseToolArgs(extractedArgs) ?? {},
+            input: parsedInput,
           };
         });
 
