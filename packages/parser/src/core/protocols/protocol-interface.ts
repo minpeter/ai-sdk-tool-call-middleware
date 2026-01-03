@@ -1,24 +1,20 @@
 import type {
-  TCMCoreContentPart,
-  TCMCoreFunctionTool,
-  TCMCoreStreamPart,
-  TCMCoreToolCall,
-  TCMCoreToolResult,
-  TCMToolDefinition,
-} from "../types";
+  LanguageModelV3Content,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3StreamPart,
+  LanguageModelV3ToolCall,
+} from "@ai-sdk/provider";
 
-export interface TCMCoreProtocol {
+export interface TCMProtocol {
   formatTools({
     tools,
     toolSystemPromptTemplate,
   }: {
-    tools: TCMCoreFunctionTool[];
-    toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
+    tools: LanguageModelV3FunctionTool[];
+    toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
   }): string;
 
-  formatToolCall(toolCall: TCMCoreToolCall): string;
-
-  formatToolResponse(toolResult: TCMCoreToolResult): string;
+  formatToolCall(toolCall: LanguageModelV3ToolCall): string;
 
   parseGeneratedText({
     text,
@@ -26,33 +22,41 @@ export interface TCMCoreProtocol {
     options,
   }: {
     text: string;
-    tools: TCMCoreFunctionTool[];
+    tools: LanguageModelV3FunctionTool[];
     options?: {
       onError?: (message: string, metadata?: Record<string, unknown>) => void;
     };
-  }): TCMCoreContentPart[];
+  }): LanguageModelV3Content[];
 
   createStreamParser({
     tools,
     options,
   }: {
-    tools: TCMCoreFunctionTool[];
+    tools: LanguageModelV3FunctionTool[];
     options?: {
       onError?: (message: string, metadata?: Record<string, unknown>) => void;
     };
-  }): TransformStream<TCMCoreStreamPart, TCMCoreStreamPart>;
+  }): TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>;
 
   extractToolCallSegments?: ({
     text,
     tools,
   }: {
     text: string;
-    tools: TCMCoreFunctionTool[];
+    tools: LanguageModelV3FunctionTool[];
   }) => string[];
 }
 
+export type TCMCoreProtocol = TCMProtocol;
+
+export function isProtocolFactory(
+  protocol: TCMProtocol | (() => TCMProtocol)
+): protocol is () => TCMProtocol {
+  return typeof protocol === "function";
+}
+
 export function isTCMProtocolFactory(
-  protocol: TCMCoreProtocol | (() => TCMCoreProtocol)
-): protocol is () => TCMCoreProtocol {
+  protocol: TCMProtocol | (() => TCMProtocol)
+): protocol is () => TCMProtocol {
   return typeof protocol === "function";
 }

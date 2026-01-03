@@ -9,11 +9,7 @@ import {
   evaluate,
   type ReporterType,
 } from "@ai-sdk-tool/eval";
-import {
-  createToolMiddleware,
-  type TCMToolDefinition,
-  xmlProtocol,
-} from "@ai-sdk-tool/parser";
+import { createToolMiddleware, xmlProtocol } from "@ai-sdk-tool/parser";
 import {
   extractReasoningMiddleware,
   type LanguageModel,
@@ -31,7 +27,7 @@ const systemPromptTemplate = fs.readFileSync(systemPromptPath, "utf-8");
 const customMorphXmlMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
   placement: "last",
-  toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
+  toolSystemPromptTemplate(tools) {
     const toolsString = JSON.stringify(tools);
     return systemPromptTemplate.replace(/\$\{tools\}/g, toolsString);
   },

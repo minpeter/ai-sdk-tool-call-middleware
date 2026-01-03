@@ -27,7 +27,6 @@ export type { XmlProtocolOptions } from "./core/protocols/xml-protocol";
 export { xmlProtocol } from "./core/protocols/xml-protocol";
 export type { YamlProtocolOptions } from "./core/protocols/yaml-protocol";
 export { yamlProtocol } from "./core/protocols/yaml-protocol";
-export type { TCMToolDefinition, TCMToolInputExample } from "./core/types";
 
 // Utilities (Agnostic)
 export * from "./core/utils/debug";
@@ -38,6 +37,10 @@ export * from "./core/utils/provider-options";
 export * from "./core/utils/regex";
 export * from "./core/utils/robust-json";
 export * from "./core/utils/type-guards";
-
-// Default implementation is V6 (LanguageModelV3)
-export * from "./v6/index";
+export { wrapGenerate } from "./generate-handler";
+// Pre-configured Middleware
+export * from "./preconfigured-middleware";
+export { toolChoiceStream, wrapStream } from "./stream-handler";
+// Tool Call Middleware Implementation
+export { createToolMiddleware } from "./tool-call-middleware";
+export { transformParams } from "./transform-handler";

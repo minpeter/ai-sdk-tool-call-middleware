@@ -5,41 +5,21 @@ import { z } from "zod";
 
 // Constants
 const MAX_STEPS = 4;
-const MAX_TEMPERATURE = 100;
-
-// const openrouter = createOpenAICompatible({
-//   name: "openrouter",
-//   apiKey: process.env.OPENROUTER_API_KEY,
-//   baseURL: "https://openrouter.ai/api/v1",
-// });
+const WEATHER_TOOL_MAX_TEMPERATURE = 100;
 
 const friendli = createOpenAICompatible({
   name: "friendli",
   apiKey: process.env.FRIENDLI_TOKEN,
   baseURL: "https://api.friendli.ai/serverless/v1",
   includeUsage: true,
-  fetch: async (url, options) =>
-    await fetch(url, {
-      ...options,
-      body: JSON.stringify({
-        ...(options?.body ? JSON.parse(options.body as string) : {}),
-        parse_reasoning: true,
-      }),
-    }),
 });
 
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: friendli("zai-org/GLM-4.6"),
+      model: friendli("Qwen/Qwen3-235B-A22B-Instruct-2507"),
       middleware: xmlToolMiddleware,
     }),
-
-    // model: wrapLanguageModel({
-    //   model: openrouter("google/gemma-3-27b-it"),
-    // }),
-
-    temperature: 0.0,
     system: "You are a helpful assistant.",
     prompt: "What is the weather in my city?",
     stopWhen: stepCountIs(MAX_STEPS),
@@ -62,7 +42,9 @@ async function main() {
         inputSchema: z.object({ city: z.string() }),
         execute: ({ city }) => {
           // Simulate a weather API call
-          const temperature = Math.floor(Math.random() * MAX_TEMPERATURE);
+          const temperature = Math.floor(
+            Math.random() * WEATHER_TOOL_MAX_TEMPERATURE
+          );
           return {
             city,
             temperature,

@@ -6,7 +6,7 @@ import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import { originalToolsSchema } from "../../core/utils/provider-options";
-import { createToolMiddleware } from "../../v6/tool-call-middleware";
+import { createToolMiddleware } from "../../tool-call-middleware";
 import { mockUsage, stopFinishReason } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({

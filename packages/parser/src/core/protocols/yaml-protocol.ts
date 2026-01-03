@@ -1,12 +1,9 @@
-import { unwrapJsonSchema, stringify as xmlStringify } from "@ai-sdk-tool/rxml";
-import YAML from "yaml";
 import type {
-  TCMCoreContentPart,
-  TCMCoreStreamPart,
-  TCMCoreToolCall,
-  TCMCoreToolResult,
-  TCMToolDefinition,
-} from "../types";
+  LanguageModelV3Content,
+  LanguageModelV3StreamPart,
+  LanguageModelV3ToolCall,
+} from "@ai-sdk/provider";
+import YAML from "yaml";
 import { generateId } from "../utils/id";
 import type { TCMCoreProtocol } from "./protocol-interface";
 
@@ -250,7 +247,7 @@ function parseYamlContent(
 }
 
 function appendTextPart(
-  processedElements: TCMCoreContentPart[],
+  processedElements: LanguageModelV3Content[],
   textPart: string
 ) {
   if (textPart.trim()) {
@@ -265,7 +262,7 @@ function processToolCallMatch(
   text: string,
   tc: ToolCallMatch,
   currentIndex: number,
-  processedElements: TCMCoreContentPart[],
+  processedElements: LanguageModelV3Content[],
   options?: ParserOptions
 ): number {
   if (tc.startIndex < currentIndex) {
@@ -303,7 +300,7 @@ function createFlushTextHandler(
   setHasEmittedTextStart: (value: boolean) => void
 ) {
   return (
-    controller: TransformStreamDefaultController<TCMCoreStreamPart>,
+    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
     text?: string
   ) => {
     const content = text;
@@ -320,7 +317,6 @@ function createFlushTextHandler(
       controller.enqueue({
         type: "text-delta",
         id: getCurrentTextId() as string,
-        textDelta: content,
         delta: content,
       });
     }
@@ -383,19 +379,10 @@ export const yamlProtocol = (
 ): TCMCoreProtocol => {
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
-      const toolsForPrompt: TCMToolDefinition[] = (tools || []).map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: unwrapJsonSchema(tool.inputSchema) as Record<
-          string,
-          unknown
-        >,
-        inputExamples: tool.inputExamples,
-      }));
-      return toolSystemPromptTemplate(toolsForPrompt);
+      return toolSystemPromptTemplate(tools || []);
     },
 
-    formatToolCall(toolCall: TCMCoreToolCall): string {
+    formatToolCall(toolCall: LanguageModelV3ToolCall): string {
       let args: Record<string, unknown> = {};
       try {
         args = JSON.parse(toolCall.input) as Record<string, unknown>;
@@ -406,37 +393,13 @@ export const yamlProtocol = (
       return `<${toolCall.toolName}>\n${yamlContent}</${toolCall.toolName}>`;
     },
 
-    formatToolResponse(toolResult: TCMCoreToolResult): string {
-      let result = toolResult.result;
-
-      if (
-        result &&
-        typeof result === "object" &&
-        "type" in result &&
-        (result as { type: unknown }).type === "json" &&
-        "value" in result
-      ) {
-        result = (result as { value: unknown }).value;
-      }
-
-      const xml = xmlStringify(
-        "tool_response",
-        {
-          tool_name: toolResult.toolName,
-          result,
-        },
-        { declaration: false }
-      );
-      return xml;
-    },
-
     parseGeneratedText({ text, tools, options }) {
       const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
       if (toolNames.length === 0) {
         return [{ type: "text", text }];
       }
 
-      const processedElements: TCMCoreContentPart[] = [];
+      const processedElements: LanguageModelV3Content[] = [];
       let currentIndex = 0;
 
       const toolCalls = findToolCalls(text, toolNames);
@@ -477,7 +440,7 @@ export const yamlProtocol = (
       );
 
       const processToolCallEnd = (
-        controller: TransformStreamDefaultController<TCMCoreStreamPart>,
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
         toolContent: string,
         toolName: string
       ) => {
@@ -501,7 +464,7 @@ export const yamlProtocol = (
       };
 
       const handlePendingToolCall = (
-        controller: TransformStreamDefaultController<TCMCoreStreamPart>,
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
         endTag: string,
         toolName: string
       ): boolean => {
@@ -518,7 +481,7 @@ export const yamlProtocol = (
       };
 
       const flushSafeText = (
-        controller: TransformStreamDefaultController<TCMCoreStreamPart>
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
       ): void => {
         const maxTagLen = toolNames.length
           ? Math.max(...toolNames.map((n) => `<${n} />`.length))
@@ -532,7 +495,7 @@ export const yamlProtocol = (
       };
 
       const handleNewToolTag = (
-        controller: TransformStreamDefaultController<TCMCoreStreamPart>,
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
         tagIndex: number,
         tagName: string,
         selfClosing: boolean,
@@ -553,7 +516,7 @@ export const yamlProtocol = (
       };
 
       const processBuffer = (
-        controller: TransformStreamDefaultController<TCMCoreStreamPart>
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
       ) => {
         while (true) {
           if (currentToolCall) {
@@ -590,9 +553,7 @@ export const yamlProtocol = (
           }
 
           const textContent =
-            chunk.textDelta ??
-            (chunk as unknown as { delta?: string }).delta ??
-            "";
+            (chunk as unknown as { delta?: string }).delta ?? "";
           buffer += textContent;
           processBuffer(controller);
         },

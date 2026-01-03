@@ -3,16 +3,17 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3Usage,
 } from "@ai-sdk/provider";
-import type { TCMCoreStreamPart } from "../core/types";
 
 /**
  * Helper to pipe a ReadableStream through a transformer with relaxed types.
- * Needed because protocol transformers use TCMCoreStreamPart internally
- * but tests create LanguageModelV3StreamPart streams.
+ * Needed because tests create LanguageModelV3StreamPart streams.
  */
 export function pipeWithTransformer(
   stream: ReadableStream<LanguageModelV3StreamPart>,
-  transformer: TransformStream<TCMCoreStreamPart, TCMCoreStreamPart>
+  transformer: TransformStream<
+    LanguageModelV3StreamPart,
+    LanguageModelV3StreamPart
+  >
 ): ReadableStream<LanguageModelV3StreamPart> {
   return stream.pipeThrough(transformer as unknown as TransformStream);
 }

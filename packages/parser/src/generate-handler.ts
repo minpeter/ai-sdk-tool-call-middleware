@@ -6,19 +6,19 @@ import type {
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
 import { coerceBySchema } from "@ai-sdk-tool/rxml";
-import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
+import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import {
   getDebugLevel,
   logParsedChunk,
   logParsedSummary,
   logRawChunk,
-} from "../core/utils/debug";
-import { extractOnErrorOption } from "../core/utils/on-error";
+} from "./core/utils/debug";
+import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   isToolChoiceActive,
   originalToolsSchema,
   type ToolCallMiddlewareProviderOptions,
-} from "../core/utils/provider-options";
+} from "./core/utils/provider-options";
 
 function parseToolChoiceJson(
   text: string,

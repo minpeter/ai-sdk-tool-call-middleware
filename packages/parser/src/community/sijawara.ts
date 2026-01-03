@@ -1,9 +1,9 @@
-import type { TCMToolDefinition } from "../core/types";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { createToolMiddleware, xmlProtocol } from "../index";
 
 export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
-  toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
+  toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
     const toolsJson = JSON.stringify(tools);
     return `You have access to callable functions (tools).
     Tool list/context:
@@ -61,7 +61,7 @@ export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
 
 export const sijawaraConciseXmlToolMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
-  toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
+  toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
     const toolsJson = JSON.stringify(tools);
     return `You have access to callable functions (tools).
     Tool list/context:

@@ -1,8 +1,9 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesToolMiddleware, xmlToolMiddleware } from "..";
+import { formatToolResponseAsJsonInXml } from "../core/prompts/tool-response";
 import { jsonProtocol } from "../core/protocols/json-protocol";
-import { createToolMiddleware } from "../v6/tool-call-middleware";
+import { createToolMiddleware } from "../tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -460,6 +461,7 @@ describe("transformParams merges adjacent user messages", () => {
       protocol: jsonProtocol,
       placement: "first",
       toolSystemPromptTemplate: (t) => `T:${t}`,
+      toolResponsePromptTemplate: formatToolResponseAsJsonInXml,
     });
 
     const transformParams = mw.transformParams;
@@ -529,6 +531,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     protocol: jsonProtocol,
     placement: "first",
     toolSystemPromptTemplate: (t) => `TOOLS:${t}`,
+    toolResponsePromptTemplate: formatToolResponseAsJsonInXml,
   });
 
   it("converts assistant tool-call and tool role messages, merges adjacent user texts, and preserves providerOptions", async () => {

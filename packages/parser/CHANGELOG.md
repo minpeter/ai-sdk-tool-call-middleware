@@ -18,6 +18,7 @@
 
 - 537adc6: Remove internal barrel files and enable noBarrelFile linting rule for better tree-shaking and build performance
 - 1fc1810: Add YAML+XML mixed tool call protocol (Orchestrator-style)
+- Internal restructuring: consolidate v6 folder contents into main src directory, update all imports and exports accordingly
 
   - New `yamlProtocol` for parsing tool calls with YAML content inside XML tags
   - New `ymlToolMiddleware` pre-configured middleware
