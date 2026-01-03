@@ -3,7 +3,7 @@ description: Read PR reviews, apply fixes, ship changes, and resolve all review 
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Todowrite, Todoread
 ---
 
-# /review-and-ship
+# /review-resolve
 
 Handles the complete PR review workflow: reads reviews, applies fixes, ships changes, and resolves reviews.
 
