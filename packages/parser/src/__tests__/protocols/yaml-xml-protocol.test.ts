@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { ymlSystemPromptTemplate } from "../../core/prompts/yml-prompt";
+import { yamlSystemPromptTemplate } from "../../core/prompts/yaml-system-prompt";
 import { yamlProtocol } from "../../core/protocols/yaml-protocol";
 import {
   pipeWithTransformer,
@@ -814,10 +814,10 @@ location: Tokyo
   });
 });
 
-describe("ymlSystemPromptTemplate", () => {
+describe("yamlSystemPromptTemplate", () => {
   it("should include multiline example by default", () => {
     const testTools = [{ name: "test", parameters: {} }];
-    const template = ymlSystemPromptTemplate(testTools);
+    const template = yamlSystemPromptTemplate(testTools);
 
     expect(template).toContain("# Tools");
     expect(template).toContain(
@@ -829,7 +829,7 @@ describe("ymlSystemPromptTemplate", () => {
 
   it("should exclude multiline example when disabled", () => {
     const testTools = [{ name: "test", parameters: {} }];
-    const template = ymlSystemPromptTemplate(testTools, false);
+    const template = yamlSystemPromptTemplate(testTools, false);
 
     expect(template).toContain("# Tools");
     expect(template).toContain(
@@ -840,7 +840,7 @@ describe("ymlSystemPromptTemplate", () => {
   });
 
   it("should include proper format instructions", () => {
-    const template = ymlSystemPromptTemplate([]);
+    const template = yamlSystemPromptTemplate([]);
 
     expect(template).toContain("# Format");
     expect(template).toContain("XML element");

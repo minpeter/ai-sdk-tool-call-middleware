@@ -3,7 +3,7 @@
 import {
   hermesSystemPromptTemplate,
   xmlSystemPromptTemplate,
-  ymlSystemPromptTemplate,
+  yamlSystemPromptTemplate,
 } from "../core/prompts";
 import { jsonProtocol } from "../core/protocols/json-protocol";
 import { xmlProtocol } from "../core/protocols/xml-protocol";
@@ -21,10 +21,10 @@ export const xmlToolMiddleware = createToolMiddleware({
   toolSystemPromptTemplate: xmlSystemPromptTemplate,
 });
 
-export const ymlToolMiddleware = createToolMiddleware({
+export const yamlToolMiddleware = createToolMiddleware({
   protocol: yamlProtocol(),
   placement: "first",
-  toolSystemPromptTemplate: ymlSystemPromptTemplate,
+  toolSystemPromptTemplate: yamlSystemPromptTemplate,
 });
 
 export { createToolMiddleware } from "./tool-call-middleware";

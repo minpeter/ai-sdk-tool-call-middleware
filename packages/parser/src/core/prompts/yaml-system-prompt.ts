@@ -1,6 +1,6 @@
 import type { TCMToolDefinition } from "../types";
 
-export function ymlSystemPromptTemplate(
+export function yamlSystemPromptTemplate(
   tools: TCMToolDefinition[],
   includeMultilineExample = true
 ): string {
