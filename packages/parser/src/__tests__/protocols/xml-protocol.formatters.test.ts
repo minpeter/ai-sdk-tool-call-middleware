@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 
 const ADD_TAG_REGEX = /<add>/;
 const A_TAG_REGEX = /<a>1<\/a>/;
 const TOOL_RESPONSE_REGEX = /<tool_response>/;
 const TOOL_NAME_ADD_REGEX = /<tool_name>add<\/tool_name>/;
 
-describe("morphXmlProtocol formatters", () => {
+describe("xmlProtocol formatters", () => {
   it("formatToolCall handles JSON string input and object input", () => {
-    const p = morphXmlProtocol();
+    const p = xmlProtocol();
     const asString = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",
@@ -29,12 +29,12 @@ describe("morphXmlProtocol formatters", () => {
   });
 
   it("formatToolResponse builds response envelope", () => {
-    const p = morphXmlProtocol();
+    const p = xmlProtocol();
     const xml = p.formatToolResponse({
       type: "tool-result",
       toolCallId: "id",
       toolName: "add",
-      output: { sum: 3 },
+      result: { sum: 3 },
     } as any);
     expect(xml).toMatch(TOOL_RESPONSE_REGEX);
     expect(xml).toMatch(TOOL_NAME_ADD_REGEX);

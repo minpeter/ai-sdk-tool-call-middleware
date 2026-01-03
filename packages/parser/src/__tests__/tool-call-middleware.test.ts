@@ -1,24 +1,24 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
-import { morphXmlProtocol } from "../core/protocols/morph-xml-protocol";
+import { jsonProtocol } from "../core/protocols/json-protocol";
+import { xmlProtocol } from "../core/protocols/xml-protocol";
 import { originalToolsSchema } from "../core/utils/provider-options";
 import { createToolMiddleware } from "../v6/tool-call-middleware";
 
 describe("createToolMiddleware", () => {
-  const mockToolSystemPromptTemplate = (tools: string) =>
-    `You have tools: ${tools}`;
+  const mockToolSystemPromptTemplate = (tools: unknown[]) =>
+    `You have tools: ${JSON.stringify(tools)}`;
 
   const createJsonMiddleware = () =>
     createToolMiddleware({
-      protocol: jsonMixProtocol({}),
+      protocol: jsonProtocol({}),
       toolSystemPromptTemplate: mockToolSystemPromptTemplate,
     });
 
   const createXmlMiddleware = () =>
     createToolMiddleware({
-      protocol: morphXmlProtocol,
+      protocol: xmlProtocol,
       toolSystemPromptTemplate: mockToolSystemPromptTemplate,
     });
 
@@ -33,7 +33,7 @@ describe("createToolMiddleware", () => {
     });
   });
 
-  describe("wrapGenerate with jsonMixProtocol", () => {
+  describe("wrapGenerate with jsonProtocol", () => {
     it("should parse tool calls from text content", async () => {
       const middleware = createJsonMiddleware();
       const doGenerate = vi.fn().mockResolvedValue({
@@ -86,7 +86,7 @@ describe("createToolMiddleware", () => {
     });
   });
 
-  describe("wrapGenerate with morphXmlProtocol", () => {
+  describe("wrapGenerate with xmlProtocol", () => {
     it("should parse XML tool calls from text content", async () => {
       const middleware = createXmlMiddleware();
       const tools: LanguageModelV3FunctionTool[] = [
@@ -138,7 +138,7 @@ describe("createToolMiddleware", () => {
 describe("createToolMiddleware positive paths", () => {
   it("wrapGenerate parses text content via protocol parseGeneratedText", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const doGenerate = vi.fn().mockResolvedValue({

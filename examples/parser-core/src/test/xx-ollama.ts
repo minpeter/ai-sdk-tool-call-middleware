@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
+import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
@@ -16,7 +16,7 @@ async function main() {
   await generateText({
     model: wrapLanguageModel({
       model: ollama("phi-4"),
-      middleware: morphXmlToolMiddleware,
+      middleware: xmlToolMiddleware,
     }),
     prompt: "What is the weather in New York and Los Angeles?",
     stopWhen: stepCountIs(MAX_STEPS),

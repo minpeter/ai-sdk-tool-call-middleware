@@ -9,7 +9,7 @@ import {
   type LanguageModelV3Benchmark,
   type ReporterType,
 } from "@ai-sdk-tool/eval";
-import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
+import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { type LanguageModel, wrapLanguageModel } from "ai";
 
 const FRIENDLI_BASE_URL = "https://api.friendli.ai/serverless/v1";
@@ -76,7 +76,7 @@ function createModelWithMiddleware(
   if (modelConfig.needsMiddleware) {
     return wrapLanguageModel({
       model: baseModel,
-      middleware: morphXmlToolMiddleware,
+      middleware: xmlToolMiddleware,
     });
   }
 

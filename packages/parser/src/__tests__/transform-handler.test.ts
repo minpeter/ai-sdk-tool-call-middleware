@@ -1,11 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import {
-  gemmaToolMiddleware,
-  hermesToolMiddleware,
-  morphXmlToolMiddleware,
-} from "..";
-import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
+import { hermesToolMiddleware, xmlToolMiddleware } from "..";
+import { jsonProtocol } from "../core/protocols/json-protocol";
 import { createToolMiddleware } from "../v6/tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
@@ -13,9 +9,9 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 }));
 
 // Regex constants for performance
-const REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
-const REGEX_TOOL_CALL_FENCE = /```tool_call/;
-const REGEX_TOOL_RESPONSE_FENCE = /```tool_response/;
+const _REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
+const _REGEX_TOOL_CALL_FENCE = /```tool_call/;
+const _REGEX_TOOL_RESPONSE_FENCE = /```tool_response/;
 const REGEX_GET_WEATHER = /get_weather/;
 const REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
 const REGEX_MAY_CALL_FUNCTIONS = /You may call one or more functions/;
@@ -28,7 +24,7 @@ const REGEX_REQUIRED_NO_TOOLS =
 const REGEX_TOOL_CALL_TAG = /<tool_call>/;
 const REGEX_TOOL_RESPONSE_TAG = /<tool_response>/;
 const REGEX_GET_WEATHER_TAG = /<get_weather>/;
-const REGEX_TOOL_CALL_WORD = /tool_call/;
+const _REGEX_TOOL_CALL_WORD = /tool_call/;
 
 describe("index prompt templates", () => {
   const tools: LanguageModelV3FunctionTool[] = [
@@ -39,20 +35,6 @@ describe("index prompt templates", () => {
       inputSchema: { type: "object", properties: { city: { type: "string" } } },
     },
   ];
-
-  it("gemmaToolMiddleware template appears in system prompt", async () => {
-    const transformParams = gemmaToolMiddleware.transformParams as any;
-    const out = await transformParams({
-      params: { prompt: [], tools },
-    } as any);
-
-    const system = out.prompt[0];
-    expect(system.role).toBe("system");
-    const text = String(system.content);
-    expect(text).toMatch(REGEX_ACCESS_TO_FUNCTIONS);
-    expect(text).toMatch(REGEX_TOOL_CALL_FENCE);
-    expect(text).toMatch(REGEX_GET_WEATHER);
-  });
 
   it("hermesToolMiddleware template appears in system prompt", async () => {
     const transformParams = hermesToolMiddleware.transformParams as any;
@@ -68,8 +50,8 @@ describe("index prompt templates", () => {
     expect(text).toMatch(REGEX_GET_WEATHER);
   });
 
-  it("morphXmlToolMiddleware template appears in system prompt", async () => {
-    const transformParams = morphXmlToolMiddleware.transformParams as any;
+  it("xmlToolMiddleware template appears in system prompt", async () => {
+    const transformParams = xmlToolMiddleware.transformParams as any;
     const out = await transformParams({
       params: { prompt: [], tools },
     } as any);
@@ -87,7 +69,7 @@ describe("placement last behaviour (default)", () => {
   it("default last: appends system at end when no system exists", async () => {
     const mw = createToolMiddleware({
       placement: "last",
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       toolSystemPromptTemplate: (t) => `SYS:${t}`,
     });
     const tools: LanguageModelV3FunctionTool[] = [
@@ -128,7 +110,7 @@ describe("placement last behaviour (default)", () => {
   it("last: merges with existing system at non-zero index (keeps one system)", async () => {
     const mw = createToolMiddleware({
       placement: "last",
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       toolSystemPromptTemplate: (t) => `SYS:${t}`,
     });
     const tools: LanguageModelV3FunctionTool[] = [
@@ -166,7 +148,7 @@ describe("placement last behaviour (default)", () => {
 
 describe("createToolMiddleware error branches", () => {
   const mw = createToolMiddleware({
-    protocol: jsonMixProtocol,
+    protocol: jsonProtocol,
     toolSystemPromptTemplate: (t) => `T:${t}`,
   });
 
@@ -230,7 +212,7 @@ describe("createToolMiddleware error branches", () => {
 describe("createToolMiddleware positive paths", () => {
   it("transformParams injects system prompt and merges consecutive user texts", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       placement: "first",
       toolSystemPromptTemplate: (t) => `SYS:${t}`,
     });
@@ -270,75 +252,6 @@ describe("createToolMiddleware positive paths", () => {
 });
 
 describe("non-stream assistant->user merge formatting with object input", () => {
-  it("gemma: formats assistant tool-call (object input) and tool result into user text", async () => {
-    const mw = gemmaToolMiddleware;
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
-
-    const out = await transformParams({
-      params: {
-        prompt: [
-          { role: "user", content: [{ type: "text", text: "q" }] },
-          {
-            role: "assistant",
-            content: [
-              {
-                type: "tool-call",
-                toolCallId: "tc1",
-                toolName: "get_weather",
-                // simulate provider giving parsed object input
-                input: JSON.stringify({ city: "Seoul" }),
-              } as any,
-            ],
-          },
-          {
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolName: "get_weather",
-                toolCallId: "tc1",
-                output: { ok: true },
-              },
-            ],
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            name: "get_weather",
-            description: "",
-            inputSchema: { type: "object" },
-          },
-        ],
-      },
-    } as any);
-
-    // last message is the tool result
-    console.debug(out.prompt.at(-1));
-
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
-    if (!assistantMsg) {
-      throw new Error("assistant message not found");
-    }
-    const assistantText = (assistantMsg.content as any[])
-      .map((c: any) => (c.type === "text" ? c.text : ""))
-      .join("");
-    expect(assistantText).toMatch(REGEX_TOOL_CALL_WORD);
-
-    const userMsgs = out.prompt.filter((m: any) => m.role === "user");
-    const userCombined = userMsgs
-      .map((u: any) =>
-        u.content.map((c: any) => (c.type === "text" ? c.text : "")).join("")
-      )
-      .join("\n");
-
-    // Gemma uses markdown code fences for tool_response, not XML tags
-    expect(userCombined).toMatch(REGEX_TOOL_RESPONSE_FENCE);
-  });
-
   it("hermes: formats assistant tool-call (object input) and tool result into user text", async () => {
     const mw = hermesToolMiddleware;
     const transformParams = mw.transformParams;
@@ -405,7 +318,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
   });
 
   it("xml: formats assistant tool-call (object input) and tool result into user text", async () => {
-    const mw = morphXmlToolMiddleware;
+    const mw = xmlToolMiddleware;
     const transformParams = mw.transformParams;
     if (!transformParams) {
       throw new Error("transformParams is undefined");
@@ -473,8 +386,9 @@ describe("non-stream assistant->user merge formatting with object input", () => 
 describe("transformParams", () => {
   it("should transform params with tools into prompt", async () => {
     const middleware = createToolMiddleware({
-      protocol: jsonMixProtocol({}),
-      toolSystemPromptTemplate: (tools: string) => `You have tools: ${tools}`,
+      protocol: jsonProtocol({}),
+      toolSystemPromptTemplate: (tools) =>
+        `You have tools: ${JSON.stringify(tools)}`,
     });
 
     const params = {
@@ -513,7 +427,7 @@ describe("transformParams", () => {
 describe("transformParams merges adjacent user messages", () => {
   it("merges two consecutive user messages into one with newline", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       placement: "first",
       toolSystemPromptTemplate: (t) => `T:${t}`,
     });
@@ -543,7 +457,7 @@ describe("transformParams merges adjacent user messages", () => {
 
   it("condenses multiple tool_response messages into single user text content", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       placement: "first",
       toolSystemPromptTemplate: (t) => `T:${t}`,
     });
@@ -612,7 +526,7 @@ describe("transformParams merges adjacent user messages", () => {
 
 describe("transformParams convertToolPrompt mapping and merge", () => {
   const mw = createToolMiddleware({
-    protocol: jsonMixProtocol,
+    protocol: jsonProtocol,
     placement: "first",
     toolSystemPromptTemplate: (t) => `TOOLS:${t}`,
   });
@@ -794,7 +708,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
 describe(".....", () => {
   it("transformParams throws on toolChoice type none", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const transformParams = mw.transformParams;
@@ -810,7 +724,7 @@ describe(".....", () => {
 
   it("transformParams validates specific tool selection and builds JSON schema", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const tools = [
@@ -840,7 +754,7 @@ describe(".....", () => {
 
   it("transformParams required builds if/then/else schema", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: jsonProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const tools = [

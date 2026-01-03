@@ -50,3 +50,4 @@ yarn-error.log*
 # ai agent tool
 .opencode
 .sisyphus
+AGENTS.md

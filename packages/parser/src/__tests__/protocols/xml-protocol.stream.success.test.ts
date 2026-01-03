@@ -4,16 +4,16 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
   zeroUsage,
 } from "../test-helpers";
 
-describe("morphXmlProtocol streaming success path", () => {
+describe("xmlProtocol streaming success path", () => {
   it("parses <tool>...</tool> into tool-call and flushes pending text", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -60,7 +60,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("does not expose nested XML tags in text output", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -127,7 +127,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("handles multiple consecutive tool calls without exposing XML tags", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -199,7 +199,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("handles deeply nested XML parameters without exposing internal tags", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -270,7 +270,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("handles tool call split across multiple chunks without exposing tags", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -334,7 +334,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("handles array parameters with repeated tags without exposing internal XML", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -406,7 +406,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("exposes XML tags in output when parsing fails (error fallback)", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -471,7 +471,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("properly emits text-start and text-end events around tool calls", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -554,7 +554,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("handles text-end correctly when multiple tool calls are present", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -621,7 +621,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("handles consecutive tool calls with no text between them", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -670,7 +670,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("handles tool calls separated only by whitespace", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -726,7 +726,7 @@ describe("morphXmlProtocol streaming success path", () => {
   });
 
   it("handles empty tool call parameters", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",

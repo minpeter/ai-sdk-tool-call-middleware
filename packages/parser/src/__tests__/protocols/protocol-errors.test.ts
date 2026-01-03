@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { jsonProtocol } from "../../core/protocols/json-protocol";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
 describe("protocol error paths", () => {
-  it("jsonMixProtocol parseGeneratedText calls onError and preserves text on bad JSON", () => {
+  it("jsonProtocol parseGeneratedText calls onError and preserves text on bad JSON", () => {
     const onError = vi.fn();
-    const p = jsonMixProtocol();
+    const p = jsonProtocol();
     const text = "before <tool_call>{invalid}</tool_call> after";
     const out = p.parseGeneratedText({ text, tools: [], options: { onError } });
     expect(onError).toHaveBeenCalled();

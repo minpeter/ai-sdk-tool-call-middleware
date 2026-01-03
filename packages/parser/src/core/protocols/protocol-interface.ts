@@ -4,15 +4,16 @@ import type {
   TCMCoreStreamPart,
   TCMCoreToolCall,
   TCMCoreToolResult,
+  TCMToolDefinition,
 } from "../types";
 
-export interface ToolCallProtocol {
+export interface TCMCoreProtocol {
   formatTools({
     tools,
     toolSystemPromptTemplate,
   }: {
     tools: TCMCoreFunctionTool[];
-    toolSystemPromptTemplate: (tools: string) => string;
+    toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
   }): string;
 
   formatToolCall(toolCall: TCMCoreToolCall): string;
@@ -50,8 +51,8 @@ export interface ToolCallProtocol {
   }) => string[];
 }
 
-export function isProtocolFactory(
-  protocol: ToolCallProtocol | (() => ToolCallProtocol)
-): protocol is () => ToolCallProtocol {
+export function isTCMProtocolFactory(
+  protocol: TCMCoreProtocol | (() => TCMCoreProtocol)
+): protocol is () => TCMCoreProtocol {
   return typeof protocol === "function";
 }

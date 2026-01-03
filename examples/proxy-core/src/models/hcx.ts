@@ -6,7 +6,7 @@ import {
   defaultSystemPromptMiddleware,
   extractReasoningMiddleware,
 } from "@ai-sdk-tool/middleware";
-import { createToolMiddleware, morphXmlProtocol } from "@ai-sdk-tool/parser";
+import { createToolMiddleware, xmlProtocol } from "@ai-sdk-tool/parser";
 import { defaultSettingsMiddleware, wrapLanguageModel } from "ai";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -41,7 +41,7 @@ export const hcx = wrapLanguageModel({
       },
     }),
     createToolMiddleware({
-      protocol: morphXmlProtocol,
+      protocol: xmlProtocol,
       placement: "last",
       toolSystemPromptTemplate(tools: string) {
         return `You are a function calling AI model.

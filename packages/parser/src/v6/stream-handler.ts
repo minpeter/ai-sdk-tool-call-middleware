@@ -3,8 +3,7 @@ import type {
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-
-import type { ToolCallProtocol } from "../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
 import type { TCMCoreStreamPart } from "../core/types";
 import {
   getDebugLevel,
@@ -99,7 +98,7 @@ export async function wrapStream({
   doGenerate,
   params,
 }: {
-  protocol: ToolCallProtocol;
+  protocol: TCMCoreProtocol;
   doStream: () => ReturnType<LanguageModelV3["doStream"]>;
   doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>;
   params: {

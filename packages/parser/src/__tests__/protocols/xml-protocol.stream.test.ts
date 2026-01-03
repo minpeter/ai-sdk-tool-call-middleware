@@ -1,7 +1,7 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
@@ -17,9 +17,9 @@ const tools = [
   },
 ] as any;
 
-describe("morphXmlProtocol streaming edge cases", () => {
+describe("xmlProtocol streaming edge cases", () => {
   it("extracts tool call when start tag split across chunks", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -52,7 +52,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
 
   it("handles mismatched inner XML without crashing (may emit text or tool-call)", async () => {
     const onError = vi.fn();
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const transformer = protocol.createStreamParser({
       tools,
       options: { onError },
@@ -85,7 +85,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   });
 
   it("flushes unfinished call content at flush", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -114,7 +114,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   });
 
   it("handles multiple inner tags inside one function call", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -151,7 +151,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   });
 
   it("parses multiple function calls in a single stream", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -189,7 +189,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   });
 
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {
-    const protocol = morphXmlProtocol();
+    const protocol = xmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {

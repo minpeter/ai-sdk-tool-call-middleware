@@ -37,9 +37,21 @@ export type TCMCoreStreamPart =
       usage?: { promptTokens: number; completionTokens: number };
     };
 
+export interface TCMToolInputExample {
+  input: Record<string, unknown>;
+}
+
+export interface TCMToolDefinition {
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
+  inputExamples?: TCMToolInputExample[];
+}
+
 export interface TCMCoreFunctionTool {
   type: "function";
   name: string;
   description?: string;
   inputSchema: unknown;
+  inputExamples?: TCMToolInputExample[];
 }

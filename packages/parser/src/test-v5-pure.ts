@@ -1,5 +1,5 @@
 import { streamText, wrapLanguageModel } from "ai-v5";
-import { jsonMixProtocol } from "./core/protocols/json-mix-protocol";
+import { jsonProtocol } from "./core/protocols/json-protocol";
 import { createToolMiddleware } from "./v5/index";
 
 // Mock V2 Model that emits V2 stream parts
@@ -27,7 +27,7 @@ const mockModel = {
 
 // Middleware setup
 const middleware = createToolMiddleware({
-  protocol: jsonMixProtocol(),
+  protocol: jsonProtocol(),
   toolSystemPromptTemplate: (tools) => `Tools: ${tools}`,
 });
 

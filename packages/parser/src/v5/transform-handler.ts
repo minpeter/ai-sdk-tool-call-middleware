@@ -1,7 +1,6 @@
-import {
-  isProtocolFactory,
-  type ToolCallProtocol,
-} from "../core/protocols/tool-call-protocol";
+import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
+import { isTCMProtocolFactory } from "../core/protocols/protocol-interface";
+import type { TCMCoreToolResult, TCMToolDefinition } from "../core/types";
 import { createDynamicIfThenElseSchema } from "../core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "../core/utils/on-error";
 import { originalToolsSchema } from "../core/utils/provider-options";
@@ -69,7 +68,7 @@ type V5ContentItem = any;
 
 function processAssistantContent(
   content: V5ContentItem[],
-  resolvedProtocol: ToolCallProtocol,
+  resolvedProtocol: TCMCoreProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
@@ -111,9 +110,10 @@ function processAssistantContent(
 
 function processMessage(
   message: V5Message,
-  resolvedProtocol: ToolCallProtocol,
+  resolvedProtocol: TCMCoreProtocol,
   // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 provider options
-  providerOptions?: any
+  providerOptions?: any,
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string
 ): V5Message {
   if (message.role === "assistant") {
     const content = Array.isArray(message.content)
@@ -133,6 +133,9 @@ function processMessage(
     const toolResultParts = message.content.filter(
       (part: V5ContentItem) => part.type === "tool-result"
     );
+    const formatToolResponse =
+      toolResponsePromptTemplate ??
+      resolvedProtocol.formatToolResponse.bind(resolvedProtocol);
     return {
       role: "user",
       content: [
@@ -140,7 +143,7 @@ function processMessage(
           type: "text",
           text: toolResultParts
             .map((toolResult: V5ContentItem) =>
-              resolvedProtocol.formatToolResponse({
+              formatToolResponse({
                 ...toolResult,
                 result:
                   toolResult.result ?? toolResult.content ?? toolResult.output,
@@ -154,6 +157,104 @@ function processMessage(
   return message;
 }
 
+function isAllTextContent(content: unknown): boolean {
+  if (!Array.isArray(content)) {
+    return false;
+  }
+  return (content as { type: string }[]).every(
+    (c: { type: string }) => c?.type === "text"
+  );
+}
+
+function joinTextContent(content: { text: string }[]): string {
+  return content.map((c) => c.text).join("\n");
+}
+
+function createCondensedMessage(role: string, joinedText: string): V5Message {
+  if (role === "system") {
+    return {
+      role: "system",
+      content: joinedText,
+    };
+  }
+
+  return {
+    role,
+    content: [
+      {
+        type: "text",
+        text: joinedText,
+      },
+    ],
+  };
+}
+
+function condenseTextContent(processedPrompt: V5Message[]): V5Message[] {
+  for (let i = 0; i < processedPrompt.length; i += 1) {
+    const msg = processedPrompt[i] as {
+      role: string;
+      content: unknown;
+    };
+
+    if (!Array.isArray(msg.content)) {
+      continue;
+    }
+
+    const shouldCondense =
+      isAllTextContent(msg.content) && msg.content.length > 1;
+    if (shouldCondense) {
+      const joinedText = joinTextContent(msg.content as { text: string }[]);
+      processedPrompt[i] = createCondensedMessage(msg.role, joinedText);
+    }
+  }
+  return processedPrompt;
+}
+
+function mergeConsecutiveUserMessages(
+  processedPrompt: V5Message[]
+): V5Message[] {
+  for (let i = processedPrompt.length - 1; i > 0; i -= 1) {
+    const current = processedPrompt[i];
+    const prev = processedPrompt[i - 1];
+    if (current.role === "user" && prev.role === "user") {
+      const prevContent = prev.content
+        .map((c: V5ContentItem) => (c.type === "text" ? c.text : ""))
+        .join("\n");
+      const currentContent = current.content
+        .map((c: V5ContentItem) => (c.type === "text" ? c.text : ""))
+        .join("\n");
+      processedPrompt[i - 1] = {
+        role: "user",
+        content: [{ type: "text", text: `${prevContent}\n${currentContent}` }],
+      };
+      processedPrompt.splice(i, 1);
+    }
+  }
+  return processedPrompt;
+}
+
+function convertToolPrompt(
+  prompt: V5Message[],
+  resolvedProtocol: TCMCoreProtocol,
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string,
+  providerOptions?: {
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  }
+): V5Message[] {
+  let processedPrompt = prompt.map((message: V5Message) =>
+    processMessage(
+      message,
+      resolvedProtocol,
+      providerOptions,
+      toolResponsePromptTemplate
+    )
+  );
+
+  processedPrompt = condenseTextContent(processedPrompt);
+  processedPrompt = mergeConsecutiveUserMessages(processedPrompt);
+  return processedPrompt;
+}
+
 // biome-ignore lint/suspicious/noExplicitAny: AI SDK v5 params structure
 type V5Params = any;
 
@@ -164,14 +265,18 @@ export function transformParamsV5({
   params,
   protocol,
   toolSystemPromptTemplate,
+  toolResponsePromptTemplate,
   placement = "first",
 }: {
   params: V5Params;
-  protocol: ToolCallProtocol | (() => ToolCallProtocol);
-  toolSystemPromptTemplate: (tools: string) => string;
+  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
+  toolSystemPromptTemplate: (tools: TCMToolDefinition[]) => string;
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
   placement?: "first" | "last";
 }) {
-  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
+  const resolvedProtocol = isTCMProtocolFactory(protocol)
+    ? protocol()
+    : protocol;
 
   const functionTools = (params.tools ?? []).filter(
     (t: V5Tool) => t.type === "function"
@@ -182,13 +287,19 @@ export function transformParamsV5({
     toolSystemPromptTemplate,
   });
 
-  const prompt = params.prompt ?? [];
-  const processedPrompt = prompt.map((message: V5Message) =>
-    processMessage(
-      message,
-      resolvedProtocol,
-      extractOnErrorOption(params.providerOptions)
-    )
+  let normalizedPrompt: V5Message[];
+  if (Array.isArray(params.prompt)) {
+    normalizedPrompt = params.prompt;
+  } else if (params.prompt) {
+    normalizedPrompt = [params.prompt];
+  } else {
+    normalizedPrompt = [];
+  }
+  const processedPrompt = convertToolPrompt(
+    normalizedPrompt,
+    resolvedProtocol,
+    toolResponsePromptTemplate,
+    extractOnErrorOption(params.providerOptions)
   );
 
   const finalPrompt = buildFinalPrompt(
@@ -210,6 +321,12 @@ export function transformParamsV5({
       },
     },
   };
+
+  if (params.toolChoice?.type === "none") {
+    throw new Error(
+      "The 'none' toolChoice type is not supported by this middleware. Please use 'auto', 'required', or specify a tool name."
+    );
+  }
 
   if (params.toolChoice?.type === "tool") {
     const selectedToolName = params.toolChoice.toolName;

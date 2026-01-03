@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { defaultSystemPromptMiddleware } from "@ai-sdk-tool/middleware";
-import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
+import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { wrapLanguageModel } from "ai";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -33,7 +33,7 @@ export const glm_codex = wrapLanguageModel({
       }),
   })("zai-org/GLM-4.6"),
   middleware: [
-    morphXmlToolMiddleware,
+    xmlToolMiddleware,
     defaultSystemPromptMiddleware({
       systemPrompt: extra_system_prompt,
       placement: "last",

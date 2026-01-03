@@ -1,21 +1,22 @@
+import { formatToolResponseAsJsonInXml } from "../prompts/tool-response";
 import type {
   TCMCoreContentPart,
   TCMCoreStreamPart,
   TCMCoreToolCall,
   TCMCoreToolResult,
+  TCMToolDefinition,
 } from "../types";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId } from "../utils/id";
 import { escapeRegExp } from "../utils/regex";
 import { parse as parseRJSON } from "../utils/robust-json";
-import type { ToolCallProtocol } from "./tool-call-protocol";
+import type { TCMCoreProtocol } from "./protocol-interface";
 
-interface JsonMixOptions {
+interface JsonProtocolOptions {
   toolCallStart?: string;
   toolCallEnd?: string;
-  toolResponseStart?: string;
-  toolResponseEnd?: string;
+  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
 }
 
 function processToolCallJson(
@@ -325,14 +326,13 @@ function handlePartialTag(
   }
 }
 
-export const jsonMixProtocol = ({
+export const jsonProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
-  toolResponseStart = "<tool_response>",
-  toolResponseEnd = "</tool_response>",
-}: JsonMixOptions = {}): ToolCallProtocol => ({
+  toolResponsePromptTemplate = formatToolResponseAsJsonInXml,
+}: JsonProtocolOptions = {}): TCMCoreProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
-    const toolsForPrompt = (tools || [])
+    const toolsForPrompt: TCMToolDefinition[] = (tools || [])
       .filter((tool) => tool.type === "function")
       .map((tool) => ({
         name: tool.name,
@@ -340,9 +340,10 @@ export const jsonMixProtocol = ({
           tool.type === "function" && typeof tool.description === "string"
             ? tool.description
             : undefined,
-        parameters: tool.inputSchema,
+        parameters: tool.inputSchema as Record<string, unknown>,
+        inputExamples: tool.inputExamples,
       }));
-    return toolSystemPromptTemplate(JSON.stringify(toolsForPrompt));
+    return toolSystemPromptTemplate(toolsForPrompt);
   },
 
   formatToolCall(toolCall: TCMCoreToolCall) {
@@ -359,10 +360,7 @@ export const jsonMixProtocol = ({
   },
 
   formatToolResponse(toolResult: TCMCoreToolResult) {
-    return `${toolResponseStart}${JSON.stringify({
-      toolName: toolResult.toolName,
-      result: toolResult.result,
-    })}${toolResponseEnd}`;
+    return toolResponsePromptTemplate(toolResult);
   },
 
   parseGeneratedText({ text, options }) {
