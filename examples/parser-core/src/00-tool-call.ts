@@ -21,6 +21,7 @@ async function main() {
 
     model: wrapLanguageModel({
       model: openrouter("google/gemma-3-27b-it"),
+      middleware: [],
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",

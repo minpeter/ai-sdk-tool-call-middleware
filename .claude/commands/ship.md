@@ -25,6 +25,12 @@ You are shipping changes for this monorepo. Follow these steps carefully.
    - `minor`: New features, non-breaking changes
    - `major`: Breaking changes
 
+   **Version bump guidelines**:
+   - Use `patch` or `minor` freely based on the actual impact
+   - Only use `major` if the user explicitly mentions breaking changes
+   - In most cases, `patch` is appropriate even for new features
+   - Don't be overly sensitive about version bumps - favor `patch` unless clearly a breaking change
+
 ### Step 2: Create Changeset
 
 Create a changeset file in `.changeset/` directory:

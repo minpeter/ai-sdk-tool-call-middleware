@@ -9,7 +9,11 @@ import {
   evaluate,
   type ReporterType,
 } from "@ai-sdk-tool/eval";
-import { createToolMiddleware, xmlProtocol } from "@ai-sdk-tool/parser";
+import {
+  createToolMiddleware,
+  type TCMToolDefinition,
+  xmlProtocol,
+} from "@ai-sdk-tool/parser";
 import { wrapLanguageModel } from "ai";
 
 // Load system prompt from file
@@ -33,8 +37,9 @@ const testTargetModel = friendli(
 const customMorphXmlMiddleware = createToolMiddleware({
   protocol: xmlProtocol,
   placement: "last",
-  toolSystemPromptTemplate(tools: string) {
-    return systemPromptTemplate.replace(/\$\{tools\}/g, tools);
+  toolSystemPromptTemplate(tools: TCMToolDefinition[]) {
+    const toolsString = JSON.stringify(tools);
+    return systemPromptTemplate.replace(/\$\{tools\}/g, toolsString);
   },
 });
 

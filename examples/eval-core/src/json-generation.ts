@@ -13,9 +13,13 @@ const gemma27b = wrapLanguageModel({
     apiKey: process.env.OPENROUTER_API_KEY,
     baseURL: "https://openrouter.ai/api/v1",
   })("google/gemma-3-27b-it"),
+  middleware: [],
 });
 
-const gpt41nano = openai("gpt-4.1-nano");
+const gpt41nano = wrapLanguageModel({
+  model: openai("gpt-4.1-nano"),
+  middleware: [],
+});
 
 async function main() {
   console.log("Starting JSON generation benchmark...");
