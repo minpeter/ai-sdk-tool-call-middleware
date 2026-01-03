@@ -7,7 +7,7 @@
 [![codecov](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware/branch/main/graph/badge.svg)](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware)
 
 > [!NOTE]
-> Requires AI SDK v5. For AI SDK v4, pin `@ai-sdk-tool/parser@1.0.0`.
+> Requires AI SDK v6. For AI SDK v5, use `@ai-sdk-tool/parser@3.x`. For AI SDK v4, pin `@ai-sdk-tool/parser@1.0.0`.
 
 Middleware that enables tool calling with models that don’t natively support OpenAI‑style `tools`. Works with any provider (OpenRouter, vLLM, Ollama, etc.) via AI SDK middleware.
 

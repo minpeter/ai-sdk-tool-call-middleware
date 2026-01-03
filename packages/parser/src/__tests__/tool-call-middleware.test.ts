@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { jsonProtocol } from "../core/protocols/json-protocol";
 import { xmlProtocol } from "../core/protocols/xml-protocol";
 import { originalToolsSchema } from "../core/utils/provider-options";
-import { createToolMiddleware } from "../v6/tool-call-middleware";
+import { createToolMiddleware } from "../tool-call-middleware";
 
 describe("createToolMiddleware", () => {
   const mockToolSystemPromptTemplate = (tools: unknown[]) =>

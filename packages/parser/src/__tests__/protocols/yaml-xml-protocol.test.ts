@@ -487,11 +487,7 @@ unit: celsius
       const toolCalls = out.filter((c) => c.type === "tool-call");
       const textDeltas = out
         .filter((c) => c.type === "text-delta")
-        .map(
-          (c) =>
-            (c as { delta?: string; textDelta?: string }).delta ??
-            (c as { delta?: string; textDelta?: string }).textDelta
-        )
+        .map((c) => (c as { delta?: string }).delta ?? "")
         .join("");
 
       expect(toolCalls).toHaveLength(1);
@@ -611,11 +607,7 @@ unit: celsius
       );
       const textDeltas = out
         .filter((c) => c.type === "text-delta")
-        .map(
-          (c) =>
-            (c as { delta?: string; textDelta?: string }).delta ??
-            (c as { delta?: string; textDelta?: string }).textDelta
-        )
+        .map((c) => (c as { delta?: string }).delta ?? "")
         .join("");
 
       expect(textDeltas).toContain("<get_weather>");
@@ -648,11 +640,7 @@ unit: celsius
       const toolCalls = out.filter((c) => c.type === "tool-call");
       const textDeltas = out
         .filter((c) => c.type === "text-delta")
-        .map(
-          (c) =>
-            (c as { delta?: string; textDelta?: string }).delta ??
-            (c as { delta?: string; textDelta?: string }).textDelta
-        )
+        .map((c) => (c as { delta?: string }).delta ?? "")
         .join("");
 
       expect(toolCalls).toHaveLength(0);
@@ -699,6 +687,7 @@ describe("yamlProtocol formatToolCall", () => {
   it("should format tool call with simple arguments", () => {
     const protocol = yamlProtocol();
     const formatted = protocol.formatToolCall({
+      type: "tool-call",
       toolCallId: "test-id",
       toolName: "get_weather",
       input: JSON.stringify({ location: "NYC", unit: "celsius" }),
@@ -713,6 +702,7 @@ describe("yamlProtocol formatToolCall", () => {
   it("should format tool call with empty arguments", () => {
     const protocol = yamlProtocol();
     const formatted = protocol.formatToolCall({
+      type: "tool-call",
       toolCallId: "test-id",
       toolName: "get_location",
       input: "{}",
@@ -725,6 +715,7 @@ describe("yamlProtocol formatToolCall", () => {
   it("should format multiline values with literal block syntax", () => {
     const protocol = yamlProtocol();
     const formatted = protocol.formatToolCall({
+      type: "tool-call",
       toolCallId: "test-id",
       toolName: "write_file",
       input: JSON.stringify({
@@ -737,33 +728,6 @@ describe("yamlProtocol formatToolCall", () => {
     expect(formatted).toContain("</write_file>");
     expect(formatted).toContain("file_path: /tmp/test.txt");
     expect(formatted).toContain("|");
-  });
-});
-
-describe("yamlProtocol formatToolResponse", () => {
-  it("should format tool response as XML", () => {
-    const protocol = yamlProtocol();
-    const formatted = protocol.formatToolResponse({
-      toolCallId: "test-id",
-      toolName: "get_weather",
-      result: { type: "json", value: { temperature: 22, condition: "sunny" } },
-    });
-
-    expect(formatted).toContain("<tool_response>");
-    expect(formatted).toContain("</tool_response>");
-    expect(formatted).toContain("get_weather");
-  });
-
-  it("should handle non-object results", () => {
-    const protocol = yamlProtocol();
-    const formatted = protocol.formatToolResponse({
-      toolCallId: "test-id",
-      toolName: "get_location",
-      result: "New York",
-    });
-
-    expect(formatted).toContain("<tool_response>");
-    expect(formatted).toContain("</tool_response>");
   });
 });
 
@@ -816,24 +780,36 @@ location: Tokyo
 
 describe("yamlSystemPromptTemplate", () => {
   it("should include multiline example by default", () => {
-    const testTools = [{ name: "test", parameters: {} }];
+    const testTools = [
+      {
+        type: "function" as const,
+        name: "test",
+        inputSchema: { type: "object" },
+      },
+    ];
     const template = yamlSystemPromptTemplate(testTools);
 
     expect(template).toContain("# Tools");
     expect(template).toContain(
-      '<tools>[{"name":"test","parameters":{}}]</tools>'
+      '<tools>[{"type":"function","name":"test","inputSchema":{"type":"object"}}]</tools>'
     );
     expect(template).toContain("YAML's literal block syntax");
     expect(template).toContain("contents: |");
   });
 
   it("should exclude multiline example when disabled", () => {
-    const testTools = [{ name: "test", parameters: {} }];
+    const testTools = [
+      {
+        type: "function" as const,
+        name: "test",
+        inputSchema: { type: "object" },
+      },
+    ];
     const template = yamlSystemPromptTemplate(testTools, false);
 
     expect(template).toContain("# Tools");
     expect(template).toContain(
-      '<tools>[{"name":"test","parameters":{}}]</tools>'
+      '<tools>[{"type":"function","name":"test","inputSchema":{"type":"object"}}]</tools>'
     );
     expect(template).not.toContain("YAML's literal block syntax");
     expect(template).not.toContain("contents: |");

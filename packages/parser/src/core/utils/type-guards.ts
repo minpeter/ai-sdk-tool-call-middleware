@@ -1,7 +1,5 @@
-import type {
-  LanguageModelV3ToolCall,
-  LanguageModelV3ToolResultPart,
-} from "@ai-sdk/provider";
+import type { LanguageModelV3ToolCall } from "@ai-sdk/provider";
+import type { ToolResultPart } from "@ai-sdk/provider-utils";
 
 export function isToolCallContent(
   content: unknown
@@ -15,9 +13,7 @@ export function isToolCallContent(
   );
 }
 
-export function isToolResultPart(
-  content: unknown
-): content is LanguageModelV3ToolResultPart {
+export function isToolResultPart(content: unknown): content is ToolResultPart {
   const c = content as {
     type?: string;
     toolName?: unknown;

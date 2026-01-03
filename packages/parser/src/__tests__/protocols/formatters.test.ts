@@ -4,7 +4,7 @@ import { jsonProtocol } from "../../core/protocols/json-protocol";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 
 describe("protocol formatters", () => {
-  it("jsonProtocol formatToolCall/Response and formatTools", () => {
+  it("jsonProtocol formatToolCall and formatTools", () => {
     const p = jsonProtocol();
     const tools = [
       {
@@ -26,16 +26,9 @@ describe("protocol formatters", () => {
       input: "{}",
     } as any);
     expect(call).toContain("<tool_call>");
-    const resp = p.formatToolResponse({
-      type: "tool-result",
-      toolName: "a",
-      toolCallId: "id",
-      output: { ok: true },
-    } as any);
-    expect(resp).toContain("<tool_response>");
   });
 
-  it("xmlProtocol formatToolCall/Response and formatTools", () => {
+  it("xmlProtocol formatToolCall and formatTools", () => {
     const p = xmlProtocol();
     const tools = [
       {
@@ -57,12 +50,5 @@ describe("protocol formatters", () => {
       input: "{}",
     } as any);
     expect(call).toContain("<a");
-    const resp = p.formatToolResponse({
-      type: "tool-result",
-      toolName: "a",
-      toolCallId: "id",
-      result: { ok: true },
-    } as any);
-    expect(resp).toContain("<tool_response>");
   });
 });

@@ -20,7 +20,6 @@ describe("utils/protocol - isTCMProtocolFactory", () => {
     const obj: TCMCoreProtocol = {
       formatTools: () => "",
       formatToolCall: () => "",
-      formatToolResponse: () => "",
       parseGeneratedText: () => [],
       createStreamParser: () => new TransformStream(),
     };

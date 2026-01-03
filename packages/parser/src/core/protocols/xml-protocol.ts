@@ -1,9 +1,10 @@
-import {
-  extractRawInner,
-  parse,
-  stringify,
-  unwrapJsonSchema,
-} from "@ai-sdk-tool/rxml";
+import type {
+  LanguageModelV3Content,
+  LanguageModelV3FunctionTool,
+  LanguageModelV3StreamPart,
+  LanguageModelV3ToolCall,
+} from "@ai-sdk/provider";
+import { extractRawInner, parse, stringify } from "@ai-sdk-tool/rxml";
 import {
   applyHeuristicPipeline as _applyHeuristicPipeline,
   createIntermediateCall as _createIntermediateCall,
@@ -17,18 +18,6 @@ import {
   repairParsedAgainstSchema,
   shouldDeduplicateStringTags,
 } from "../heuristics";
-import { formatToolResponseAsXml } from "../prompts/tool-response";
-
-const defaultToolResponseTemplate = formatToolResponseAsXml;
-
-import type {
-  TCMCoreContentPart,
-  TCMCoreFunctionTool,
-  TCMCoreStreamPart,
-  TCMCoreToolCall,
-  TCMCoreToolResult,
-  TCMToolDefinition,
-} from "../types";
 import { generateId } from "../utils/id";
 import type { TCMCoreProtocol } from "./protocol-interface";
 
@@ -40,7 +29,6 @@ export interface XmlProtocolOptions {
   heuristics?: ToolCallHeuristic[];
   pipeline?: PipelineConfig;
   maxReparses?: number;
-  toolResponsePromptTemplate?: (toolResult: TCMCoreToolResult) => string;
 }
 
 interface ParserOptions {
@@ -48,14 +36,14 @@ interface ParserOptions {
 }
 
 type FlushTextFn = (
-  controller: TransformStreamDefaultController<TCMCoreStreamPart>,
+  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
   text?: string
 ) => void;
 
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
 const WHITESPACE_REGEX = /\s/;
 
-function getToolSchema(tools: TCMCoreFunctionTool[], toolName: string) {
+function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
 }
 
@@ -109,10 +97,10 @@ interface ProcessToolCallParams {
     startIndex: number;
     endIndex: number;
   };
-  tools: TCMCoreFunctionTool[];
+  tools: LanguageModelV3FunctionTool[];
   options?: ParserOptions;
   text: string;
-  processedElements: TCMCoreContentPart[];
+  processedElements: LanguageModelV3Content[];
   pipelineConfig?: PipelineConfig;
   maxReparses?: number;
 }
@@ -165,9 +153,9 @@ function processToolCallWithPipeline(params: ProcessToolCallParams): void {
 interface HandleStreamingToolCallEndParams {
   toolContent: string;
   currentToolCall: { name: string; content?: string };
-  tools: TCMCoreFunctionTool[];
+  tools: LanguageModelV3FunctionTool[];
   options?: ParserOptions;
-  ctrl: TransformStreamDefaultController<TCMCoreStreamPart>;
+  ctrl: TransformStreamDefaultController<LanguageModelV3StreamPart>;
   flushText: FlushTextFn;
   pipelineConfig?: PipelineConfig;
   maxReparses?: number;
@@ -500,7 +488,7 @@ function createFlushTextHandler(
   setHasEmittedTextStart: (value: boolean) => void
 ) {
   return (
-    controller: TransformStreamDefaultController<TCMCoreStreamPart>,
+    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
     text?: string
   ) => {
     const content = text;
@@ -517,7 +505,6 @@ function createFlushTextHandler(
       controller.enqueue({
         type: "text-delta",
         id: getCurrentTextId() as string,
-        textDelta: content,
         delta: content,
       });
     }
@@ -539,9 +526,9 @@ function createFlushTextHandler(
 interface ProcessToolCallInBufferParams {
   buffer: string;
   currentToolCall: { name: string; content: string };
-  tools: TCMCoreFunctionTool[];
+  tools: LanguageModelV3FunctionTool[];
   options?: ParserOptions;
-  controller: TransformStreamDefaultController<TCMCoreStreamPart>;
+  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
   flushText: FlushTextFn;
   setBuffer: (buffer: string) => void;
   pipelineConfig?: PipelineConfig;
@@ -595,9 +582,9 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
 interface ProcessNoToolCallInBufferParams {
   buffer: string;
   toolNames: string[];
-  controller: TransformStreamDefaultController<TCMCoreStreamPart>;
+  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
   flushText: FlushTextFn;
-  tools: TCMCoreFunctionTool[];
+  tools: LanguageModelV3FunctionTool[];
   options?: ParserOptions;
   pipelineConfig?: PipelineConfig;
   maxReparses?: number;
@@ -687,14 +674,16 @@ function createProcessBufferHandler(
   setCurrentToolCall: (
     toolCall: { name: string; content: string } | null
   ) => void,
-  tools: TCMCoreFunctionTool[],
+  tools: LanguageModelV3FunctionTool[],
   options: ParserOptions | undefined,
   toolNames: string[],
   flushText: FlushTextFn,
   pipelineConfig?: PipelineConfig,
   maxReparses?: number
 ) {
-  return (controller: TransformStreamDefaultController<TCMCoreStreamPart>) => {
+  return (
+    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
+  ) => {
     while (true) {
       const currentToolCall = getCurrentToolCall();
       if (currentToolCall) {
@@ -746,8 +735,6 @@ export const xmlProtocol = (
 ): TCMCoreProtocol => {
   let pipelineConfig = protocolOptions?.pipeline;
   const maxReparses = protocolOptions?.maxReparses;
-  const toolResponsePromptTemplate =
-    protocolOptions?.toolResponsePromptTemplate ?? defaultToolResponseTemplate;
 
   if (protocolOptions?.heuristics && protocolOptions.heuristics.length > 0) {
     const heuristicsConfig: _PipelineConfig = {
@@ -786,19 +773,10 @@ export const xmlProtocol = (
 
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
-      const toolsForPrompt: TCMToolDefinition[] = (tools || []).map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: unwrapJsonSchema(tool.inputSchema) as Record<
-          string,
-          unknown
-        >,
-        inputExamples: tool.inputExamples,
-      }));
-      return toolSystemPromptTemplate(toolsForPrompt);
+      return toolSystemPromptTemplate(tools || []);
     },
 
-    formatToolCall(toolCall: TCMCoreToolCall): string {
+    formatToolCall(toolCall: LanguageModelV3ToolCall): string {
       let args: unknown = {};
       try {
         args = JSON.parse(toolCall.input);
@@ -811,17 +789,13 @@ export const xmlProtocol = (
       });
     },
 
-    formatToolResponse(toolResult: TCMCoreToolResult): string {
-      return toolResponsePromptTemplate(toolResult);
-    },
-
     parseGeneratedText({ text, tools, options }) {
       const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
       if (toolNames.length === 0) {
         return [{ type: "text", text }];
       }
 
-      const processedElements: TCMCoreContentPart[] = [];
+      const processedElements: LanguageModelV3Content[] = [];
       let currentIndex = 0;
 
       const toolCalls = findToolCalls(text, toolNames);
@@ -903,9 +877,7 @@ export const xmlProtocol = (
           }
 
           const textContent =
-            chunk.textDelta ??
-            (chunk as unknown as { delta?: string }).delta ??
-            "";
+            (chunk as unknown as { delta?: string }).delta ?? "";
           buffer += textContent;
           processBuffer(controller);
         },

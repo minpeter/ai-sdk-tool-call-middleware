@@ -1,6 +1,8 @@
-import type { TCMToolDefinition } from "../types";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 
-export function hermesSystemPromptTemplate(tools: TCMToolDefinition[]): string {
+export function hermesSystemPromptTemplate(
+  tools: LanguageModelV3FunctionTool[]
+): string {
   const toolsJson = JSON.stringify(tools);
   return `You are a function calling AI model.
 You are provided with function signatures within <tools></tools> XML tags.
