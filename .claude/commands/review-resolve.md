@@ -28,12 +28,27 @@ Handles the complete PR review workflow: reads reviews, applies fixes, ships cha
 3. Run `lsp_diagnostics` on changed files to ensure no errors.
 4. Test the changes if possible.
 
-### Step 3: Ship Changes
+### Step 3: Verify and Ship Changes
 
-Follow the /ship workflow:
-1. Create appropriate changeset.
-2. Run `pnpm check` and `pnpm test`.
-3. Fix any issues found.
+**CRITICAL: Verification before proceeding**
+
+1. Run `pnpm check` and verify it passes completely.
+   - If `pnpm check` fails, FIX ALL ERRORS before continuing.
+   - Do NOT proceed if there are any lint, type, or other errors.
+   - Pre-existing errors unrelated to your changes should be noted but not block progress.
+
+2. Run `pnpm test` and verify all tests pass.
+   - If tests fail due to your changes, fix them.
+   - Pre-existing test failures should be noted.
+
+3. **Changeset decision (IMPORTANT)**:
+   - Only create a changeset if the review fixes introduce NEW functionality or breaking changes.
+   - Do NOT create a changeset for:
+     - Fixing issues that were already covered by existing changesets in the PR
+     - Minor comment additions or documentation clarifications
+     - Code style fixes that don't change behavior
+   - When in doubt, check existing changesets in `.changeset/` directory first.
+
 4. Commit the changes with descriptive message.
 
 ### Step 4: Resolve Reviews
