@@ -27,15 +27,13 @@ export function unwrapToolResult(result: unknown): unknown {
  * Used by JSON protocol for tool response formatting
  */
 export function formatToolResponseAsJsonInXml(
-  toolResult: TCMCoreToolResult,
-  toolResponseStart = "<tool_response>",
-  toolResponseEnd = "</tool_response>"
+  toolResult: TCMCoreToolResult
 ): string {
   const unwrappedResult = unwrapToolResult(toolResult.result);
-  return `${toolResponseStart}${JSON.stringify({
+  return `<tool_response>${JSON.stringify({
     toolName: toolResult.toolName,
     result: unwrappedResult,
-  })}${toolResponseEnd}`;
+  })}</tool_response>`;
 }
 
 /**
