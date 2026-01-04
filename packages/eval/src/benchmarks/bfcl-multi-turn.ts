@@ -717,43 +717,6 @@ const createBfclMultiTurnBenchmark = (
           },
         ];
 
-        // Check if all tool calls resulted in errors - if so, terminate conversation
-        // Note: "None" is a valid successful return value (e.g., from touch(), mkdir())
-        // and should NOT be treated as an error
-        const allErrors = executionResults.every(
-          (result) =>
-            result.includes("Error") ||
-            result.includes("error") ||
-            result === ""
-        );
-        if (allErrors && toolCallsArray.length > 0) {
-          console.log(
-            "[DEBUG] All tool calls resulted in errors, terminating conversation"
-          );
-          // Create history with tool results for early termination
-          const earlyToolResultParts = executionResults.map((result, idx) => ({
-            type: "tool-result" as const,
-            toolCallId: toolCallParts[idx].toolCallId,
-            toolName: toolCallParts[idx].toolName,
-            output: {
-              type: "text" as const,
-              value: result,
-            },
-          }));
-          const earlyHistoryWithToolResults: ModelMessage[] = [
-            ...historyWithToolCalls,
-            {
-              role: "tool",
-              content: earlyToolResultParts,
-            },
-          ];
-          return {
-            done: true,
-            history: earlyHistoryWithToolResults,
-            toolCalls: toolCallsForExecution,
-          };
-        }
-
         return {
           done: isLastStep,
           history: historyWithToolResults,
