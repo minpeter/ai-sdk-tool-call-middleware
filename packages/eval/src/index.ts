@@ -17,7 +17,6 @@ export {
   jsonGenerationSchemaOnlyBenchmark,
 } from "./benchmarks/json-generation";
 export { evaluate } from "./evaluate";
-
 // Core interfaces for custom benchmarks
 export type {
   BenchmarkResult,
@@ -26,3 +25,4 @@ export type {
   ModelConfig,
   ReporterType,
 } from "./interfaces";
+export { executeMultiTurnFuncCall } from "./multi-turn";

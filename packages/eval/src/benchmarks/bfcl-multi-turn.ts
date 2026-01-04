@@ -1,4 +1,3 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { JSONObject } from "@ai-sdk/provider";
@@ -11,6 +10,13 @@ import {
 } from "ai";
 
 import type { BenchmarkResult, LanguageModelV3Benchmark } from "../interfaces";
+import {
+  executeMultiTurnFuncCall,
+  globalMethodRegistry,
+  multiTurnChecker,
+  multiTurnIrrelevanceChecker,
+  resetTestInstances,
+} from "../multi-turn";
 import { resolveDataDir } from "../utils/paths";
 
 const LINE_SPLIT_REGEX = /\r?\n/;
@@ -18,6 +24,10 @@ const NUMERIC_STRING_REGEX = /^\d+$/;
 const MAXIMUM_STEP_LIMIT = 20;
 const DEFAULT_USER_PROMPT_FOR_ADDITIONAL_FUNCTION_FC =
   "I have updated some more functions you can choose from. What about now?";
+
+const MULTI_TURN_SYSTEM_PROMPT = `You are an expert in composing functions. You are given a question and a set of possible functions. Based on the question, you will need to make one or more function/tool calls to achieve the purpose. If none of the functions can be used, point it out. If the given question lacks the parameters required by the function, also point it out.
+
+At each turn, you should try your best to complete the tasks requested by the user within the current turn. Continue to output functions to call until you have fulfilled the user's request to the best of your ability. Once you have no more functions to call, the system will consider the current turn complete and proceed to the next turn or task.`;
 
 // Retry configuration for rate limit (429) errors
 const RETRY_MAX_ATTEMPTS = 5;
@@ -105,193 +115,6 @@ const MULTI_TURN_DOCS: Record<string, string> = {
 };
 
 const toolDocCache = new Map<string, ToolSpec[]>();
-
-class PythonRunner {
-  private proc: ChildProcessWithoutNullStreams | null = null;
-  private buffer = "";
-  private nextId = 0;
-  private readonly pending = new Map<
-    string,
-    { resolve: (value: unknown) => void; reject: (err: Error) => void }
-  >();
-  private readonly dataDir: string;
-  private stderrBuffer = "";
-  private closed = false;
-  private debugMode = process.env.BFCL_DEBUG === "true";
-
-  constructor(dataDir: string) {
-    this.dataDir = dataDir;
-    this.startProcess();
-  }
-
-  private startProcess(): void {
-    if (this.closed) return;
-
-    const runnerPath = path.join(this.dataDir, "bfcl_eval", "runner.py");
-    this.proc = spawn("python3", ["-u", runnerPath], {
-      env: {
-        ...process.env,
-        PYTHONPATH: this.dataDir,
-      },
-      stdio: "pipe",
-    });
-
-    this.buffer = "";
-    this.stderrBuffer = "";
-
-    this.proc.stdout.setEncoding("utf-8");
-    this.proc.stdout.on("data", (chunk: string) => {
-      this.buffer += chunk;
-      let idx = this.buffer.indexOf("\n");
-      while (idx >= 0) {
-        const line = this.buffer.slice(0, idx).trim();
-        this.buffer = this.buffer.slice(idx + 1);
-        if (line.length > 0) {
-          this.handleLine(line);
-        }
-        idx = this.buffer.indexOf("\n");
-      }
-    });
-
-    this.proc.stderr.on("data", (chunk) => {
-      // Buffer stderr instead of immediately rejecting
-      this.stderrBuffer += chunk.toString();
-      if (this.debugMode) {
-        console.error("[DEBUG] Python stderr:", chunk.toString().trim());
-      }
-    });
-
-    this.proc.on("exit", (code) => {
-      if (this.closed) return;
-
-      const err = new Error(
-        `Python runner exited with code ${code}${this.stderrBuffer ? `: ${this.stderrBuffer.slice(0, 200)}` : ""}`
-      );
-      // Reject all pending requests
-      for (const { reject } of this.pending.values()) {
-        reject(err);
-      }
-      this.pending.clear();
-      this.proc = null;
-
-      // Auto-restart if not intentionally closed
-      if (!this.closed) {
-        if (this.debugMode) {
-          console.log("[DEBUG] Python runner crashed, restarting...");
-        }
-        this.startProcess();
-      }
-    });
-  }
-
-  private handleLine(line: string) {
-    try {
-      const payload = JSON.parse(line) as { id?: string; error?: string };
-      if (!payload.id) {
-        return;
-      }
-      const pending = this.pending.get(payload.id);
-      if (!pending) {
-        return;
-      }
-      this.pending.delete(payload.id);
-      if (payload.error) {
-        pending.reject(new Error(payload.error));
-      } else {
-        pending.resolve(payload);
-      }
-    } catch (err) {
-      // Only reject the current parse attempt, not all pending
-      if (this.debugMode) {
-        console.error("[DEBUG] Failed to parse Python response:", line);
-      }
-    }
-  }
-
-  private async request<
-    T extends Record<string, unknown>,
-    R = Record<string, unknown>,
-  >(action: string, payload: T): Promise<R> {
-    // Ensure process is running
-    if (!this.proc || this.proc.killed) {
-      this.startProcess();
-      // Small delay to let process initialize
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
-    if (!this.proc) {
-      throw new Error("Failed to start Python runner");
-    }
-
-    const id = `req_${this.nextId++}`;
-    const message = JSON.stringify({ id, action, ...payload });
-
-    // Clear stderr buffer before new request
-    this.stderrBuffer = "";
-
-    return new Promise<unknown>((resolve, reject) => {
-      // Set timeout for request
-      const timeout = setTimeout(() => {
-        this.pending.delete(id);
-        reject(
-          new Error(
-            `Python request timeout${this.stderrBuffer ? `: ${this.stderrBuffer.slice(0, 200)}` : ""}`
-          )
-        );
-      }, 60_000); // 60 second timeout
-
-      this.pending.set(id, {
-        resolve: (value) => {
-          clearTimeout(timeout);
-          resolve(value);
-        },
-        reject: (err) => {
-          clearTimeout(timeout);
-          reject(err);
-        },
-      });
-
-      this.proc?.stdin.write(`${message}\n`);
-    }) as Promise<R>;
-  }
-
-  async execute(payload: {
-    func_call_list: string[];
-    initial_config: Record<string, unknown>;
-    involved_classes: string[];
-    model_name: string;
-    test_entry_id: string;
-    long_context: boolean;
-    is_eval_run: boolean;
-  }): Promise<string[]> {
-    const response = await this.request("execute", payload);
-    return (response.results as string[]) ?? [];
-  }
-
-  async check(payload: {
-    model_results: string[][][];
-    ground_truth: string[][];
-    test_entry: Record<string, unknown>;
-    test_category: string;
-    model_name: string;
-  }): Promise<Record<string, unknown>> {
-    const response = await this.request("check", payload);
-    return (response.result as Record<string, unknown>) ?? {};
-  }
-
-  async reset(payload: {
-    model_name: string;
-    test_entry_id: string;
-  }): Promise<void> {
-    await this.request("reset", payload);
-  }
-
-  close() {
-    this.closed = true;
-    this.proc?.kill();
-    this.proc = null;
-  }
-}
 
 const normalizeTurns = (question: Message[] | Message[][]): Message[][] => {
   if (Array.isArray(question) && question.some((m) => Array.isArray(m))) {
@@ -494,9 +317,13 @@ const loadToolsForClass = async (
   className: string,
   dataDir: string
 ): Promise<ToolSpec[]> => {
-  const cached = toolDocCache.get(className);
-  if (cached) {
-    return cached;
+  // Force cache refresh if BFCL_FORCE_CACHE_REFRESH is set
+  const forceRefresh = process.env.BFCL_FORCE_CACHE_REFRESH === "true";
+  if (!forceRefresh) {
+    const cached = toolDocCache.get(className);
+    if (cached) {
+      return cached;
+    }
   }
   const relPath = MULTI_TURN_DOCS[className];
   if (!relPath) {
@@ -508,9 +335,11 @@ const loadToolsForClass = async (
     .filter((line) => line.trim().length > 0)
     .map((line) => JSON.parse(line))
     .map((entry: Record<string, unknown>) => {
-      const name = typeof entry.name === "string" ? entry.name : "tool";
+      const methodName = typeof entry.name === "string" ? entry.name : "tool";
+      // Use ClassName.methodName format to match Python BFCL implementation
+      const fullName = `${className}.${methodName}`;
       return {
-        name,
+        name: fullName,
         description:
           typeof entry.description === "string" ? entry.description : undefined,
         parameters: (entry.parameters ?? {
@@ -604,13 +433,22 @@ const createBfclMultiTurnBenchmark = (
     model: LanguageModel,
     config?: Record<string, unknown>
   ): Promise<BenchmarkResult> {
+    console.log("Starting BFCL multi-turn benchmark...");
+
+    // Clear tool cache on each run to ensure fresh execution
+    toolDocCache.clear();
+
+    // Also clear method registry instances to ensure fresh state
+    globalMethodRegistry.reset();
+
     const logs: string[] = [];
     let correctCount = 0;
     let testCases: MultiTurnTestCase[] = [];
 
     const dataPath = resolveDataDir();
-    const pythonRunner = new PythonRunner(dataPath);
-    const runId = `bfcl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    // Include config in runId to ensure different cache for different settings
+    const configHash = JSON.stringify(config || {});
+    const runId = `bfcl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${configHash.slice(0, 10)}`;
 
     try {
       logs.push(`[INFO] Using data dir: ${dataPath}`);
@@ -677,6 +515,7 @@ const createBfclMultiTurnBenchmark = (
           () =>
             generateText({
               model,
+              system: MULTI_TURN_SYSTEM_PROMPT,
               messages,
               tools: toolsMap,
               toolChoice: "auto",
@@ -794,9 +633,19 @@ const createBfclMultiTurnBenchmark = (
         });
         const toolCallsArray = Array.isArray(toolCalls) ? toolCalls : [];
 
-        if (debugMode) {
+        console.log(`[DEBUG] TestCase ${testCaseId} Step ${stepCount}:`);
+        console.log(`  History length: ${history.length}`);
+        console.log("  Last message:", history[history.length - 1]);
+        console.log(`  Finish reason: ${finishReason}`);
+        console.log(`  Text response: "${text}"`);
+        console.log(`  Tool calls count: ${toolCallsArray.length}`);
+        if (toolCallsArray.length > 0) {
           console.log(
-            `[DEBUG] Step ${stepCount}: finishReason=${finishReason}, toolCalls.length=${toolCallsArray.length}`
+            "  Tool calls:",
+            toolCallsArray.map((tc) => ({
+              name: tc.toolName,
+              args: tc.args,
+            }))
           );
         }
 
@@ -880,15 +729,19 @@ const createBfclMultiTurnBenchmark = (
           buildPythonCall(call.toolName, call.args)
         );
 
-        const executionResults = await pythonRunner.execute({
-          func_call_list: pythonCallStrings,
-          initial_config: initialConfig,
-          involved_classes: involvedClasses,
-          model_name: runId,
-          test_entry_id: testCaseId,
-          long_context: isLongContext,
-          is_eval_run: false,
-        });
+        const executionResult = await executeMultiTurnFuncCall(
+          pythonCallStrings,
+          initialConfig,
+          involvedClasses,
+          runId,
+          testCaseId,
+          isLongContext,
+          false
+        );
+        const executionResults = executionResult.executionResults;
+
+        console.log("[DEBUG] Tool call execution results:", executionResults);
+        console.log("[DEBUG] Python call strings:", pythonCallStrings);
 
         const toolResultParts = executionResults.map((result, idx) => {
           const toolCallPart = toolCallParts[idx];
@@ -910,6 +763,43 @@ const createBfclMultiTurnBenchmark = (
             content: toolResultParts,
           },
         ];
+
+        // Check if all tool calls resulted in errors - if so, terminate conversation
+        // Note: "None" is a valid successful return value (e.g., from touch(), mkdir())
+        // and should NOT be treated as an error
+        const allErrors = executionResults.every(
+          (result) =>
+            result.includes("Error") ||
+            result.includes("error") ||
+            result === ""
+        );
+        if (allErrors && toolCallsArray.length > 0) {
+          console.log(
+            "[DEBUG] All tool calls resulted in errors, terminating conversation"
+          );
+          // Create history with tool results for early termination
+          const earlyToolResultParts = executionResults.map((result, idx) => ({
+            type: "tool-result" as const,
+            toolCallId: toolCallParts[idx].toolCallId,
+            toolName: toolCallParts[idx].toolName,
+            output: {
+              type: "text" as const,
+              value: result,
+            },
+          }));
+          const earlyHistoryWithToolResults: ModelMessage[] = [
+            ...historyWithToolCalls,
+            {
+              role: "tool",
+              content: earlyToolResultParts,
+            },
+          ];
+          return {
+            done: true,
+            history: earlyHistoryWithToolResults,
+            callStrings: pythonCallStrings,
+          };
+        }
 
         return {
           done: isLastStep,
@@ -1091,73 +981,114 @@ const createBfclMultiTurnBenchmark = (
         testCase: MultiTurnTestCase,
         modelResultsByTurn: string[][][],
         expectedGroundTruth: string[][]
-      ): Promise<Record<string, unknown>> =>
-        pythonRunner.check({
-          model_results: modelResultsByTurn,
-          ground_truth: expectedGroundTruth,
-          test_entry: testCase as unknown as Record<string, unknown>,
-          test_category: testCase.id.split("_").slice(0, -1).join("_"),
-          model_name: runId,
-        });
+      ): Promise<Record<string, unknown>> => {
+        const testCategory = testCase.id.split("_").slice(0, -1).join("_");
+        const checkResult = await multiTurnChecker(
+          modelResultsByTurn,
+          expectedGroundTruth,
+          testCase as any,
+          testCategory,
+          runId
+        );
+
+        // Also check irrelevance
+        const irrelevanceResult = multiTurnIrrelevanceChecker(
+          modelResultsByTurn,
+          expectedGroundTruth
+        );
+
+        return {
+          valid: checkResult.valid && irrelevanceResult.valid,
+          error_type: checkResult.error_type || irrelevanceResult.error_type,
+          details: checkResult.details || irrelevanceResult.details,
+        };
+      };
 
       const runSingleCase = async (
         testCase: MultiTurnTestCase
       ): Promise<{ valid: boolean; logs: string[] }> => {
-        const caseLogs: string[] = [];
-        const possibleAnswer = possibleAnswersMap.get(testCase.id);
-        if (!possibleAnswer) {
-          caseLogs.push(`[FAIL] ${testCase.id}: missing possible answer`);
-          return { valid: false, logs: caseLogs };
-        }
+        try {
+          const caseLogs: string[] = [];
+          const possibleAnswer = possibleAnswersMap.get(testCase.id);
+          if (!possibleAnswer) {
+            caseLogs.push(`[FAIL] ${testCase.id}: missing possible answer`);
+            return { valid: false, logs: caseLogs };
+          }
 
-        const context = await buildCaseContext(testCase, possibleAnswer);
+          const context = await buildCaseContext(testCase, possibleAnswer);
 
-        const conversationResult = await runConversation({
-          ...context,
-          testCase,
-        });
-        if (conversationResult.forceQuit) {
-          caseLogs.push(
-            `[FAIL] ${testCase.id}: force-terminated after ${MAXIMUM_STEP_LIMIT} steps`
+          const conversationResult = await runConversation({
+            ...context,
+            testCase,
+          });
+          if (conversationResult.forceQuit) {
+            caseLogs.push(
+              `[FAIL] ${testCase.id}: force-terminated after ${MAXIMUM_STEP_LIMIT} steps`
+            );
+            return { valid: false, logs: caseLogs };
+          }
+
+          const checkerResult = await checkCase(
+            testCase,
+            conversationResult.modelResultsByTurn,
+            context.expectedGroundTruth
           );
-          return { valid: false, logs: caseLogs };
-        }
 
-        const checkerResult = await checkCase(
-          testCase,
-          conversationResult.modelResultsByTurn,
-          context.expectedGroundTruth
-        );
-
-        if (debugMode) {
+          // Always log for debugging
           console.log(`[DEBUG] Test case: ${testCase.id}`);
           console.log(
-            `[DEBUG] Model results (${conversationResult.modelResultsByTurn.length} turns):`
+            `[DEBUG] Model results (${conversationResult.modelResultsByTurn.length} turns):`,
+            conversationResult.modelResultsByTurn
           );
-          conversationResult.modelResultsByTurn.forEach((turn, i) => {
-            console.log(`  Turn ${i}: ${JSON.stringify(turn)}`);
-          });
           console.log(
-            `[DEBUG] Ground truth (${context.expectedGroundTruth.length} turns):`
+            `[DEBUG] Ground truth (${context.expectedGroundTruth.length} turns):`,
+            context.expectedGroundTruth
           );
-          context.expectedGroundTruth.forEach((turn, i) => {
-            console.log(`  Turn ${i}: ${JSON.stringify(turn)}`);
-          });
+
+          // Compare results in detail
+          for (
+            let turn = 0;
+            turn <
+            Math.max(
+              conversationResult.modelResultsByTurn.length,
+              context.expectedGroundTruth.length
+            );
+            turn++
+          ) {
+            const modelTurn = conversationResult.modelResultsByTurn[turn] || [];
+            const gtTurn = context.expectedGroundTruth[turn] || [];
+            console.log(`[DEBUG] Turn ${turn}:`);
+            console.log(`  Model: ${JSON.stringify(modelTurn)}`);
+            console.log(`  Ground Truth: ${JSON.stringify(gtTurn)}`);
+            console.log(
+              `  Match: ${JSON.stringify(modelTurn) === JSON.stringify(gtTurn)}`
+            );
+          }
+
+          console.log("[DEBUG] Checker result:", checkerResult);
           console.log(
-            "[DEBUG] Checker result:",
-            JSON.stringify(checkerResult, null, 2)
+            `[DEBUG] Ground truth (${context.expectedGroundTruth.length} turns):`,
+            context.expectedGroundTruth
           );
-        }
+          console.log("[DEBUG] Checker result:", checkerResult);
 
-        if (checkerResult.valid === true) {
-          caseLogs.push(`[PASS] ${testCase.id}`);
-          return { valid: true, logs: caseLogs };
-        }
+          if (checkerResult.valid === true) {
+            caseLogs.push(`[PASS] ${testCase.id}`);
+            return { valid: true, logs: caseLogs };
+          }
 
-        caseLogs.push(
-          `[FAIL] ${testCase.id}: ${checkerResult.error_message ?? "unknown error"}`
-        );
-        return { valid: false, logs: caseLogs };
+          caseLogs.push(
+            `[FAIL] ${testCase.id}: ${checkerResult.error_type ?? "unknown error"}`
+          );
+          return { valid: false, logs: caseLogs };
+        } catch (e: unknown) {
+          const errorMsg =
+            e instanceof Error ? e.message : "unknown error in runSingleCase";
+          return {
+            valid: false,
+            logs: [`[FAIL] ${testCase.id}: ${errorMsg}`],
+          };
+        }
       };
 
       const runSingleCaseSafe = async (
@@ -1251,7 +1182,8 @@ const createBfclMultiTurnBenchmark = (
         ],
       };
     } finally {
-      pythonRunner.close();
+      // Clean up test instances
+      resetTestInstances("", runId);
     }
   },
 });

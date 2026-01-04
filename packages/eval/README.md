@@ -71,7 +71,9 @@ This package includes several pre-built benchmarks.
 - `bfclMultiTurnMissParamBenchmark`: Evaluates BFCL v4 multi-turn missing-parameter cases.
 - `jsonGenerationBenchmark`: Evaluates the model's ability to generate schema-compliant JSON.
 
-Note: Multi-turn benchmarks execute tool calls with the official BFCL simulator and require Python 3 at runtime.
+Note: Multi-turn benchmarks now execute tool calls with a native TypeScript implementation and do not require Python at runtime.
+
+BFCL evaluation data will be downloaded automatically on first run. For manual download, visit the [BFCL repository](https://github.com/ShishirPatil/gorilla/tree/main/berkeley-function-call-leaderboard).
 
 To try a JSON generation run locally:
 
