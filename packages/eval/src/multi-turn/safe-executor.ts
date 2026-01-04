@@ -87,28 +87,49 @@ export class SafeExecutor {
     return toolName.split(".").pop() ?? toolName;
   }
 
-  private static findInstance(
+  private static snakeToCamel(str: string): string {
+    return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  }
+
+  private static getMethodVariants(methodName: string): string[] {
+    const camelCase = SafeExecutor.snakeToCamel(methodName);
+    if (camelCase === methodName) {
+      return [methodName];
+    }
+    return [methodName, camelCase];
+  }
+
+  private static findInstanceAndMethod(
     methodName: string,
     involvedInstances?: Record<string, unknown>
-  ): unknown {
+  ): { instance: unknown; resolvedMethodName: string } | undefined {
+    const variants = SafeExecutor.getMethodVariants(methodName);
+
     if (involvedInstances) {
       for (const instance of Object.values(involvedInstances)) {
-        if (
-          instance &&
-          typeof instance === "object" &&
-          methodName in instance &&
-          typeof (instance as Record<string, unknown>)[methodName] ===
-            "function"
-        ) {
-          return instance;
+        if (instance && typeof instance === "object") {
+          for (const variant of variants) {
+            if (
+              variant in instance &&
+              typeof (instance as Record<string, unknown>)[variant] ===
+                "function"
+            ) {
+              return { instance, resolvedMethodName: variant };
+            }
+          }
         }
       }
     }
-    try {
-      return globalMethodRegistry.getInstanceByMethod(methodName);
-    } catch {
-      return undefined;
+
+    for (const variant of variants) {
+      try {
+        const instance = globalMethodRegistry.getInstanceByMethod(variant);
+        if (instance) {
+          return { instance, resolvedMethodName: variant };
+        }
+      } catch {}
     }
+    return undefined;
   }
 
   private static buildArgs(
@@ -142,15 +163,19 @@ export class SafeExecutor {
       };
     }
 
-    const instance = SafeExecutor.findInstance(methodName, involvedInstances);
-    if (!instance) {
+    const found = SafeExecutor.findInstanceAndMethod(
+      methodName,
+      involvedInstances
+    );
+    if (!found) {
       return {
         success: false,
         error: `Instance not found for method: ${methodName}`,
       };
     }
 
-    const method = (instance as Record<string, unknown>)[methodName];
+    const { instance, resolvedMethodName } = found;
+    const method = (instance as Record<string, unknown>)[resolvedMethodName];
     if (typeof method !== "function") {
       return {
         success: false,
