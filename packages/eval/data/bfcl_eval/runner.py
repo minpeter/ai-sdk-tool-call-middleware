@@ -11,6 +11,18 @@ from bfcl_eval.eval_checker.multi_turn_eval.multi_turn_utils import execute_mult
 from bfcl_eval.eval_checker.multi_turn_eval.multi_turn_checker import multi_turn_checker
 
 
+class SafeJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles non-serializable objects."""
+    def default(self, obj):
+        # Convert common non-serializable types to string representation
+        if hasattr(obj, '__dict__'):
+            return f"<{obj.__class__.__name__}>"
+        try:
+            return str(obj)
+        except Exception:
+            return f"<non-serializable: {type(obj).__name__}>"
+
+
 def _handle_execute(payload):
     results, _instances = execute_multi_turn_func_call(
         func_call_list=payload.get("func_call_list", []),
@@ -75,7 +87,7 @@ def main():
             response["id"] = payload.get("id")
         except Exception as e:
             response = {"id": payload.get("id") if 'payload' in locals() else None, "error": str(e)}
-        sys.stdout.write(json.dumps(response) + "\n")
+        sys.stdout.write(json.dumps(response, cls=SafeJSONEncoder) + "\n")
         sys.stdout.flush()
 
 

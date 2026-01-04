@@ -167,10 +167,19 @@ async function runSingleBenchmark(
   const prefix = `[${modelId}]${modelKey ? ` (${modelKey})` : ""} ${benchmark.name}`;
 
   try {
-    process.stdout.write(`${prefix}: ...`);
+    // Use console.log for reliable output in all environments
+    if (process.stdout.isTTY) {
+      process.stdout.write(`${prefix}: ...`);
+    } else {
+      console.log(`${prefix}: ...`);
+    }
     const result = await benchmark.run(model, config);
     const scoreDisplay = result.score.toFixed(2);
-    process.stdout.write(`\r${prefix}: .... Score: ${scoreDisplay}\n`);
+    if (process.stdout.isTTY) {
+      process.stdout.write(`\r${prefix}: .... Score: ${scoreDisplay}\n`);
+    } else {
+      console.log(`${prefix}: .... Score: ${scoreDisplay}`);
+    }
     return {
       model: modelId,
       modelKey,
@@ -178,7 +187,11 @@ async function runSingleBenchmark(
       result,
     };
   } catch (error) {
-    process.stdout.write(`\r${prefix}: .... Score: ERROR\n`);
+    if (process.stdout.isTTY) {
+      process.stdout.write(`\r${prefix}: .... Score: ERROR\n`);
+    } else {
+      console.log(`${prefix}: .... Score: ERROR`);
+    }
     console.error(error);
     return {
       model: modelId,

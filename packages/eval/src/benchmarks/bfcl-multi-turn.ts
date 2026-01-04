@@ -19,6 +19,12 @@ const MAXIMUM_STEP_LIMIT = 20;
 const DEFAULT_USER_PROMPT_FOR_ADDITIONAL_FUNCTION_FC =
   "I have updated some more functions you can choose from. What about now?";
 
+// Retry configuration for rate limit (429) errors
+const RETRY_MAX_ATTEMPTS = 5;
+const RETRY_INITIAL_DELAY_MS = 1000;
+const RETRY_MAX_DELAY_MS = 60_000;
+const RETRY_BACKOFF_MULTIPLIER = 2;
+
 interface ToolSchemaObject {
   type: string;
   properties?: Record<string, unknown>;
@@ -101,23 +107,37 @@ const MULTI_TURN_DOCS: Record<string, string> = {
 const toolDocCache = new Map<string, ToolSpec[]>();
 
 class PythonRunner {
-  private readonly proc: ChildProcessWithoutNullStreams;
+  private proc: ChildProcessWithoutNullStreams | null = null;
   private buffer = "";
   private nextId = 0;
   private readonly pending = new Map<
     string,
     { resolve: (value: unknown) => void; reject: (err: Error) => void }
   >();
+  private readonly dataDir: string;
+  private stderrBuffer = "";
+  private closed = false;
+  private debugMode = process.env.BFCL_DEBUG === "true";
 
   constructor(dataDir: string) {
-    const runnerPath = path.join(dataDir, "bfcl_eval", "runner.py");
+    this.dataDir = dataDir;
+    this.startProcess();
+  }
+
+  private startProcess(): void {
+    if (this.closed) return;
+
+    const runnerPath = path.join(this.dataDir, "bfcl_eval", "runner.py");
     this.proc = spawn("python3", ["-u", runnerPath], {
       env: {
         ...process.env,
-        PYTHONPATH: dataDir,
+        PYTHONPATH: this.dataDir,
       },
       stdio: "pipe",
     });
+
+    this.buffer = "";
+    this.stderrBuffer = "";
 
     this.proc.stdout.setEncoding("utf-8");
     this.proc.stdout.on("data", (chunk: string) => {
@@ -134,20 +154,33 @@ class PythonRunner {
     });
 
     this.proc.stderr.on("data", (chunk) => {
-      // Surface stderr as a rejected promise if any pending request exists.
-      const message = chunk.toString();
-      for (const { reject } of this.pending.values()) {
-        reject(new Error(message));
+      // Buffer stderr instead of immediately rejecting
+      this.stderrBuffer += chunk.toString();
+      if (this.debugMode) {
+        console.error("[DEBUG] Python stderr:", chunk.toString().trim());
       }
-      this.pending.clear();
     });
 
     this.proc.on("exit", (code) => {
-      const err = new Error(`Python runner exited with code ${code}`);
+      if (this.closed) return;
+
+      const err = new Error(
+        `Python runner exited with code ${code}${this.stderrBuffer ? `: ${this.stderrBuffer.slice(0, 200)}` : ""}`
+      );
+      // Reject all pending requests
       for (const { reject } of this.pending.values()) {
         reject(err);
       }
       this.pending.clear();
+      this.proc = null;
+
+      // Auto-restart if not intentionally closed
+      if (!this.closed) {
+        if (this.debugMode) {
+          console.log("[DEBUG] Python runner crashed, restarting...");
+        }
+        this.startProcess();
+      }
     });
   }
 
@@ -168,22 +201,57 @@ class PythonRunner {
         pending.resolve(payload);
       }
     } catch (err) {
-      for (const { reject } of this.pending.values()) {
-        reject(err as Error);
+      // Only reject the current parse attempt, not all pending
+      if (this.debugMode) {
+        console.error("[DEBUG] Failed to parse Python response:", line);
       }
-      this.pending.clear();
     }
   }
 
-  private request<
+  private async request<
     T extends Record<string, unknown>,
     R = Record<string, unknown>,
   >(action: string, payload: T): Promise<R> {
+    // Ensure process is running
+    if (!this.proc || this.proc.killed) {
+      this.startProcess();
+      // Small delay to let process initialize
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    if (!this.proc) {
+      throw new Error("Failed to start Python runner");
+    }
+
     const id = `req_${this.nextId++}`;
     const message = JSON.stringify({ id, action, ...payload });
+
+    // Clear stderr buffer before new request
+    this.stderrBuffer = "";
+
     return new Promise<unknown>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.proc.stdin.write(`${message}\n`);
+      // Set timeout for request
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(
+          new Error(
+            `Python request timeout${this.stderrBuffer ? `: ${this.stderrBuffer.slice(0, 200)}` : ""}`
+          )
+        );
+      }, 60_000); // 60 second timeout
+
+      this.pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timeout);
+          resolve(value);
+        },
+        reject: (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        },
+      });
+
+      this.proc?.stdin.write(`${message}\n`);
     }) as Promise<R>;
   }
 
@@ -219,7 +287,9 @@ class PythonRunner {
   }
 
   close() {
-    this.proc.kill();
+    this.closed = true;
+    this.proc?.kill();
+    this.proc = null;
   }
 }
 
@@ -467,6 +537,60 @@ const loadToolsForClasses = async (
 const getMethodName = (toolName: string): string =>
   toolName.split(".").pop() ?? toolName;
 
+const isRateLimitError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  if (message.includes("429") || message.includes("rate limit")) return true;
+  const anyError = error as unknown as Record<string, unknown>;
+  if (anyError.status === 429 || anyError.statusCode === 429) return true;
+  // Check nested cause
+  if (
+    anyError.cause &&
+    typeof anyError.cause === "object" &&
+    (anyError.cause as Record<string, unknown>).status === 429
+  )
+    return true;
+  return false;
+};
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const withRetry = async <T>(
+  fn: () => Promise<T>,
+  options: { debug?: boolean } = {}
+): Promise<T> => {
+  let lastError: unknown;
+  let delay = RETRY_INITIAL_DELAY_MS;
+
+  for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      if (!isRateLimitError(error)) {
+        throw error;
+      }
+
+      if (attempt === RETRY_MAX_ATTEMPTS) {
+        throw error;
+      }
+
+      if (options.debug) {
+        console.log(
+          `[DEBUG] Rate limit hit, retrying in ${delay}ms (attempt ${attempt}/${RETRY_MAX_ATTEMPTS})`
+        );
+      }
+
+      await sleep(delay);
+      delay = Math.min(delay * RETRY_BACKOFF_MULTIPLIER, RETRY_MAX_DELAY_MS);
+    }
+  }
+
+  throw lastError;
+};
+
 const createBfclMultiTurnBenchmark = (
   name: string,
   description: string,
@@ -549,15 +673,21 @@ const createBfclMultiTurnBenchmark = (
             debugSummary: {},
           },
         };
-        const { toolCalls, text, finishReason } = await generateText({
-          model,
-          messages,
-          tools: toolsMap,
-          toolChoice: "auto",
-          providerOptions,
-          ...(temperature !== undefined ? { temperature } : {}),
-          ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
-        });
+        const { toolCalls, text, finishReason } = await withRetry(
+          () =>
+            generateText({
+              model,
+              messages,
+              tools: toolsMap,
+              toolChoice: "auto",
+              providerOptions,
+              ...(temperature !== undefined ? { temperature } : {}),
+              ...(maxTokens !== undefined
+                ? { maxOutputTokens: maxTokens }
+                : {}),
+            }),
+          { debug: debugMode }
+        );
 
         if (debugMode) {
           console.log("[DEBUG] generateText response:");

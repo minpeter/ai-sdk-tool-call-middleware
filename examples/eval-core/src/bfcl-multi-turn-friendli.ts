@@ -1,9 +1,15 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   bfclMultiTurnBaseBenchmark,
   evaluate,
   type ReporterType,
 } from "@ai-sdk-tool/eval";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(__dirname, "../../..");
+const CACHE_DIR = path.join(REPO_ROOT, ".benchmark-results/cache");
 
 const friendli = createOpenAICompatible({
   name: "friendli",
@@ -41,6 +47,11 @@ async function main() {
     benchmarks: [bfclMultiTurnBaseBenchmark],
     reporter: reporterEnv ?? "console",
     maxTokens: 8192,
+    cache: {
+      enabled: true,
+      cacheDir: CACHE_DIR,
+      debug: process.env.CACHE_DEBUG === "true",
+    },
   });
 }
 
