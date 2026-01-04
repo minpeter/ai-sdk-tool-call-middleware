@@ -1,4 +1,4 @@
-class File {
+export class File {
   name: string;
   content: string;
 
@@ -16,7 +16,7 @@ class File {
   }
 }
 
-class Directory {
+export class Directory {
   name: string;
   parent: Directory | null;
   contents: Record<string, File | Directory>;

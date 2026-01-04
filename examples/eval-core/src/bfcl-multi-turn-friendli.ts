@@ -29,13 +29,8 @@ const friendli = createOpenAICompatible({
     }),
 });
 
-// NOTE: K-EXAONE native tool calling support is uncertain.
-// If tests fail with "force-terminated", the model may not support tool calling properly.
-// In that case, consider:
-// 1. Using a different model (e.g., Llama 3 70B which has proven tool calling support)
-// 2. Using morphXML prompt-based tool calling simulation
-// 3. Running with BFCL_DEBUG=true to inspect actual model responses
-const model = friendli("Qwen/Qwen3-235B-A22B-Instruct-2507");
+// GLM-4.6 has good function calling support
+const model = friendli("zai-org/GLM-4.6");
 
 async function main() {
   const reporterEnv = process.env.EVAL_REPORTER as ReporterType | undefined;

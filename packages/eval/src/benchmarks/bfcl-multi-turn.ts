@@ -16,6 +16,7 @@ import {
   multiTurnChecker,
   multiTurnIrrelevanceChecker,
   resetTestInstances,
+  type ToolCall,
 } from "../multi-turn";
 import { resolveDataDir } from "../utils/paths";
 
@@ -263,55 +264,6 @@ const restoreToolCalls = (
       args: parsedArgs ?? {},
     };
   });
-
-const toPythonLiteral = (value: unknown): string => {
-  if (value === null || value === undefined) {
-    return "None";
-  }
-  if (typeof value === "string") {
-    const escaped = value
-      .replace(/\\/g, "\\\\")
-      .replace(/'/g, "\\'")
-      .replace(/\n/g, "\\n")
-      .replace(/\r/g, "\\r")
-      .replace(/\t/g, "\\t");
-    return `'${escaped}'`;
-  }
-  if (typeof value === "number" || typeof value === "bigint") {
-    return String(value);
-  }
-  if (typeof value === "boolean") {
-    return value ? "True" : "False";
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((v) => toPythonLiteral(v)).join(", ")}]`;
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).map(
-      ([k, v]) => `'${k}': ${toPythonLiteral(v)}`
-    );
-    return `{${entries.join(", ")}}`;
-  }
-  return String(value);
-};
-
-const buildPythonCall = (toolName: string, args: unknown): string => {
-  const methodName = toolName.split(".").pop() ?? toolName;
-  if (args == null) {
-    return `${methodName}()`;
-  }
-  if (typeof args !== "object" || Array.isArray(args)) {
-    return `${methodName}(${toPythonLiteral(args)})`;
-  }
-  const entries = Object.entries(args as Record<string, unknown>);
-  if (entries.length === 0) {
-    return `${methodName}()`;
-  }
-  const formatted = entries
-    .map(([k, v]) => `${k}=${toPythonLiteral(v)}`)
-    .join(", ");
-  return `${methodName}(${formatted})`;
-};
 
 const loadToolsForClass = async (
   className: string,
@@ -612,7 +564,7 @@ const createBfclMultiTurnBenchmark = (
       }): Promise<{
         done: boolean;
         history: ModelMessage[];
-        callStrings: string[];
+        toolCalls: ToolCall[];
       }> => {
         const {
           history,
@@ -662,7 +614,7 @@ const createBfclMultiTurnBenchmark = (
                 },
               ]
             : history;
-          return { done: true, history: updatedHistory, callStrings: [] };
+          return { done: true, history: updatedHistory, toolCalls: [] };
         }
 
         // If finishReason indicates stop (not tool_calls), treat as done after this execution
@@ -725,12 +677,13 @@ const createBfclMultiTurnBenchmark = (
           },
         ];
 
-        const pythonCallStrings = restoredCalls.map((call) =>
-          buildPythonCall(call.toolName, call.args)
-        );
+        const toolCallsForExecution: ToolCall[] = restoredCalls.map((call) => ({
+          toolName: call.toolName,
+          args: (call.args ?? {}) as Record<string, unknown>,
+        }));
 
         const executionResult = await executeMultiTurnFuncCall(
-          pythonCallStrings,
+          toolCallsForExecution,
           initialConfig,
           involvedClasses,
           runId,
@@ -741,7 +694,7 @@ const createBfclMultiTurnBenchmark = (
         const executionResults = executionResult.executionResults;
 
         console.log("[DEBUG] Tool call execution results:", executionResults);
-        console.log("[DEBUG] Python call strings:", pythonCallStrings);
+        console.log("[DEBUG] Tool calls:", toolCallsForExecution);
 
         const toolResultParts = executionResults.map((result, idx) => {
           const toolCallPart = toolCallParts[idx];
@@ -797,14 +750,14 @@ const createBfclMultiTurnBenchmark = (
           return {
             done: true,
             history: earlyHistoryWithToolResults,
-            callStrings: pythonCallStrings,
+            toolCalls: toolCallsForExecution,
           };
         }
 
         return {
           done: isLastStep,
           history: historyWithToolResults,
-          callStrings: pythonCallStrings,
+          toolCalls: toolCallsForExecution,
         };
       };
 
@@ -820,7 +773,7 @@ const createBfclMultiTurnBenchmark = (
         isLongContext: boolean;
       }): Promise<{
         history: ModelMessage[];
-        turnResults: string[][];
+        turnResults: ToolCall[][];
         forceQuit: boolean;
       }> => {
         const {
@@ -843,7 +796,7 @@ const createBfclMultiTurnBenchmark = (
         const { transformedTools, nameMap } =
           buildTransformedTools(availableTools);
         const toolsMap = buildToolsMap(transformedTools);
-        const turnResults: string[][] = [];
+        const turnResults: ToolCall[][] = [];
         let stepCount = 0;
         let updatedHistory = history;
 
@@ -867,7 +820,7 @@ const createBfclMultiTurnBenchmark = (
               forceQuit: false,
             };
           }
-          turnResults.push(stepResult.callStrings);
+          turnResults.push(stepResult.toolCalls);
           updatedHistory = stepResult.history;
           stepCount += 1;
         }
@@ -924,7 +877,7 @@ const createBfclMultiTurnBenchmark = (
         missedFunctionMap: Record<string, string[]>;
         isLongContext: boolean;
       }): Promise<{
-        modelResultsByTurn: string[][][];
+        modelResultsByTurn: ToolCall[][][];
         forceQuit: boolean;
       }> => {
         const {
@@ -939,7 +892,7 @@ const createBfclMultiTurnBenchmark = (
           isLongContext,
         } = context;
         let history: ModelMessage[] = [];
-        const modelResultsByTurn: string[][][] = [];
+        const modelResultsByTurn: ToolCall[][][] = [];
 
         for (let turnIndex = 0; turnIndex < turns.length; turnIndex += 1) {
           const turnMessages = getTurnMessages(
@@ -979,7 +932,7 @@ const createBfclMultiTurnBenchmark = (
 
       const checkCase = async (
         testCase: MultiTurnTestCase,
-        modelResultsByTurn: string[][][],
+        modelResultsByTurn: ToolCall[][][],
         expectedGroundTruth: string[][]
       ): Promise<Record<string, unknown>> => {
         const testCategory = testCase.id.split("_").slice(0, -1).join("_");

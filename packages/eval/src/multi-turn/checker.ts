@@ -1,28 +1,30 @@
-// Main checker - orchestrates multi-turn validation
-// Ported from Python's multi_turn_checker function
-
 import {
   executeMultiTurnFuncCall,
   isEmptyExecuteResponse,
   resetInstancesForTest,
 } from "./execution-engine";
 import { responseChecker } from "./response-checker";
+import { SafeExecutor, type ToolCall } from "./safe-executor";
 import { stateChecker } from "./state-checker";
 
 export interface MultiTurnCheckResult {
   valid: boolean;
   error_type?: string;
-  details?: any;
+  details?: unknown;
 }
 
-/**
- * Main multi-turn checker that orchestrates the entire validation process
- * Ported from Python's multi_turn_checker function
- */
+function parseGroundTruth(pythonCalls: string[]): ToolCall[] {
+  return pythonCalls.map((call) => SafeExecutor.parsePythonCall(call));
+}
+
 export async function multiTurnChecker(
-  multiTurnModelResultListDecoded: string[][][],
-  multiTurnGroundTruthList: string[][],
-  testEntry: any,
+  modelToolCalls: ToolCall[][][],
+  groundTruthPythonCalls: string[][],
+  testEntry: {
+    id: string;
+    initial_config?: Record<string, unknown>;
+    involved_classes?: string[];
+  },
   testCategory: string,
   modelName: string
 ): Promise<MultiTurnCheckResult> {
@@ -52,24 +54,24 @@ export async function multiTurnChecker(
   );
 
   const allTurnModelExecutionResults: string[] = [];
-  let finalModelInstances: Record<string, any> = initResult.involvedInstances;
-  let finalGroundTruthInstances: Record<string, any> =
-    initGtResult.involvedInstances;
+  let finalModelInstances = initResult.involvedInstances;
+  let finalGroundTruthInstances = initGtResult.involvedInstances;
 
   for (
     let turnIndex = 0;
-    turnIndex < multiTurnGroundTruthList.length;
+    turnIndex < groundTruthPythonCalls.length;
     turnIndex++
   ) {
-    const singleTurnGroundTruthList = multiTurnGroundTruthList[turnIndex];
-    const singleTurnModelResponseList =
-      multiTurnModelResultListDecoded[turnIndex] || [];
+    const groundTruthCalls = parseGroundTruth(
+      groundTruthPythonCalls[turnIndex]
+    );
+    const modelSteps = modelToolCalls[turnIndex] || [];
 
     const singleTurnModelExecutionResults: string[] = [];
 
-    for (const singleStepModelResponse of singleTurnModelResponseList) {
+    for (const stepToolCalls of modelSteps) {
       const stepResult = await executeMultiTurnFuncCall(
-        singleStepModelResponse,
+        stepToolCalls,
         initialConfig,
         involvedClasses,
         modelName,
@@ -81,8 +83,8 @@ export async function multiTurnChecker(
       finalModelInstances = stepResult.involvedInstances;
     }
 
-    const groundTruthExecutionResult = await executeMultiTurnFuncCall(
-      singleTurnGroundTruthList,
+    const groundTruthResult = await executeMultiTurnFuncCall(
+      groundTruthCalls,
       initialConfig,
       involvedClasses,
       `${modelName}_ground_truth`,
@@ -92,9 +94,9 @@ export async function multiTurnChecker(
     );
 
     allTurnModelExecutionResults.push(...singleTurnModelExecutionResults);
-    finalGroundTruthInstances = groundTruthExecutionResult.involvedInstances;
+    finalGroundTruthInstances = groundTruthResult.involvedInstances;
 
-    if (singleTurnGroundTruthList.length === 0) {
+    if (groundTruthCalls.length === 0) {
       continue;
     }
 
@@ -112,7 +114,7 @@ export async function multiTurnChecker(
 
     const responseCheckResult = responseChecker(
       allTurnModelExecutionResults,
-      groundTruthExecutionResult.executionResults,
+      groundTruthResult.executionResults,
       turnIndex
     );
     if (!responseCheckResult.valid) {
@@ -127,32 +129,31 @@ export async function multiTurnChecker(
   return { valid: true };
 }
 
-/**
- * Check if the model's output are irrelevant when it should be
- * Ported from Python's multi_turn_irrelevance_checker
- */
 export function multiTurnIrrelevanceChecker(
-  multiTurnModelResultListDecoded: string[][][],
-  multiTurnGroundTruthList: string[][]
+  modelToolCalls: ToolCall[][][],
+  groundTruthPythonCalls: string[][]
 ): MultiTurnCheckResult {
   for (
     let turnIndex = 0;
-    turnIndex < multiTurnGroundTruthList.length;
+    turnIndex < groundTruthPythonCalls.length;
     turnIndex++
   ) {
-    const singleTurnGroundTruthList = multiTurnGroundTruthList[turnIndex];
-    const singleTurnModelResponseList =
-      multiTurnModelResultListDecoded[turnIndex] || [];
+    const groundTruthCalls = groundTruthPythonCalls[turnIndex];
+    const modelSteps = modelToolCalls[turnIndex] || [];
 
-    // If ground truth is empty, model should also be empty
+    const flatModelCalls = modelSteps.flat();
+    const modelCallStrings = flatModelCalls.map((tc) =>
+      tc.args ? JSON.stringify(tc) : "None"
+    );
+
     if (
-      singleTurnGroundTruthList.length === 0 &&
-      !isEmptyExecuteResponse(singleTurnModelResponseList.flat())
+      groundTruthCalls.length === 0 &&
+      !isEmptyExecuteResponse(modelCallStrings)
     ) {
       return {
         valid: false,
         error_type: "multi_turn:irrelevance_error:decoder_success",
-        details: { model_response_decoded: singleTurnModelResponseList },
+        details: { model_response_decoded: modelSteps },
       };
     }
   }
@@ -160,9 +161,6 @@ export function multiTurnIrrelevanceChecker(
   return { valid: true };
 }
 
-/**
- * Reset all instances for a test case
- */
 export function resetTestInstances(
   testEntryId: string,
   modelName: string

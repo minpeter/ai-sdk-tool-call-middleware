@@ -1,16 +1,28 @@
-// Safe executor for method invocation
-// Replaces Python's eval() with type-safe method calls
-
 import { globalMethodRegistry } from "./method-registry";
+
+export interface ToolCall {
+  toolName: string;
+  args: Record<string, unknown>;
+}
 
 export interface ExecutionResult {
   success: boolean;
-  result?: any;
+  result?: unknown;
   error?: string;
 }
 
 export class SafeExecutor {
-  static METHOD_PARAMS: Record<string, string[]> = {
+  private static readonly DANGEROUS_METHODS = new Set([
+    "kill",
+    "exit",
+    "quit",
+    "system",
+    "exec",
+    "eval",
+    "import",
+  ]);
+
+  private static readonly METHOD_PARAM_ORDER: Record<string, string[]> = {
     cd: ["folder"],
     mkdir: ["dir_name"],
     touch: ["file_name"],
@@ -52,61 +64,194 @@ export class SafeExecutor {
     ticket_get_login_status: [],
     logout: [],
     get_user_tickets: ["status"],
+    mean: ["numbers"],
+    std: ["numbers"],
+    add: ["a", "b"],
+    subtract: ["a", "b"],
+    multiply: ["a", "b"],
+    divide: ["a", "b"],
+    absolute: ["number"],
+    power: ["base", "exponent"],
+    logarithm: ["value", "base"],
+    log: ["value", "base"],
+    send_message: ["receiver_id", "message"],
+    view_messages_received: [],
+    view_messages_sent: [],
+    add_contact: ["user_name", "user_id"],
+    delete_contact: ["user_id"],
+    search_messages: ["keyword"],
+    get_message_stats: [],
   };
 
-  static parseFunctionCall(funcCall: string): {
-    methodName: string;
-    args: any[];
-  } {
-    const match = funcCall.match(/^(\w+(?:\.\w+)?)\((.*)\)$/s);
+  private static extractMethodName(toolName: string): string {
+    return toolName.split(".").pop() ?? toolName;
+  }
+
+  private static findInstance(
+    methodName: string,
+    involvedInstances?: Record<string, unknown>
+  ): unknown {
+    if (involvedInstances) {
+      for (const instance of Object.values(involvedInstances)) {
+        if (
+          instance &&
+          typeof instance === "object" &&
+          methodName in instance &&
+          typeof (instance as Record<string, unknown>)[methodName] ===
+            "function"
+        ) {
+          return instance;
+        }
+      }
+    }
+    try {
+      return globalMethodRegistry.getInstanceByMethod(methodName);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private static buildArgs(
+    methodName: string,
+    args: Record<string, unknown>
+  ): unknown[] {
+    const paramOrder = SafeExecutor.METHOD_PARAM_ORDER[methodName];
+    if (!paramOrder) {
+      return Object.values(args);
+    }
+    return paramOrder.map((param) => args[param]);
+  }
+
+  private static isDangerous(methodName: string): boolean {
+    return (
+      SafeExecutor.DANGEROUS_METHODS.has(methodName) ||
+      methodName.startsWith("__")
+    );
+  }
+
+  static async execute(
+    toolCall: ToolCall,
+    involvedInstances?: Record<string, unknown>
+  ): Promise<ExecutionResult> {
+    const methodName = SafeExecutor.extractMethodName(toolCall.toolName);
+
+    if (SafeExecutor.isDangerous(methodName)) {
+      return {
+        success: false,
+        error: `Dangerous method blocked: ${methodName}`,
+      };
+    }
+
+    const instance = SafeExecutor.findInstance(methodName, involvedInstances);
+    if (!instance) {
+      return {
+        success: false,
+        error: `Instance not found for method: ${methodName}`,
+      };
+    }
+
+    const method = (instance as Record<string, unknown>)[methodName];
+    if (typeof method !== "function") {
+      return {
+        success: false,
+        error: `Method not found: ${methodName}`,
+      };
+    }
+
+    try {
+      const args = SafeExecutor.buildArgs(methodName, toolCall.args);
+      const result = method.apply(instance, args);
+      const finalResult = result instanceof Promise ? await result : result;
+
+      return { success: true, result: finalResult };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Execution error: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  static async executeMany(
+    toolCalls: ToolCall[],
+    involvedInstances?: Record<string, unknown>
+  ): Promise<ExecutionResult[]> {
+    const results: ExecutionResult[] = [];
+    for (const toolCall of toolCalls) {
+      results.push(await SafeExecutor.execute(toolCall, involvedInstances));
+    }
+    return results;
+  }
+
+  static serializeResult(result: unknown): string {
+    if (result === null || result === undefined) {
+      return "None";
+    }
+    if (typeof result === "string") {
+      return result;
+    }
+    if (typeof result === "object") {
+      try {
+        return JSON.stringify(result);
+      } catch {
+        return String(result);
+      }
+    }
+    return String(result);
+  }
+
+  static parsePythonCall(pythonCall: string): ToolCall {
+    const match = pythonCall.match(/^(\w+(?:\.\w+)?)\((.*)\)$/s);
     if (!match) {
-      throw new Error(`Invalid function call format: ${funcCall}`);
+      throw new Error(`Invalid function call format: ${pythonCall}`);
     }
 
     const [, fullMethodName, argsString] = match;
     const methodName = fullMethodName.split(".").pop() || fullMethodName;
+    const args: Record<string, unknown> = {};
 
-    const args: any[] = [];
     if (!argsString.trim()) {
-      return { methodName, args };
+      return { toolName: methodName, args };
     }
 
     const parsedArgs = SafeExecutor.parseArgsString(argsString);
-    const paramOrder = SafeExecutor.METHOD_PARAMS[methodName];
+    const paramOrder = SafeExecutor.METHOD_PARAM_ORDER[methodName];
 
     if (paramOrder && parsedArgs.some((a) => a.key)) {
-      const argMap = new Map<string, any>();
-      const positional: any[] = [];
-
       for (const arg of parsedArgs) {
         if (arg.key) {
-          argMap.set(arg.key, arg.value);
-        } else {
-          positional.push(arg.value);
+          args[arg.key] = arg.value;
         }
       }
-
-      let posIdx = 0;
-      for (const paramName of paramOrder) {
-        if (argMap.has(paramName)) {
-          args.push(argMap.get(paramName));
-        } else if (posIdx < positional.length) {
-          args.push(positional[posIdx++]);
+    } else if (paramOrder) {
+      let idx = 0;
+      for (const arg of parsedArgs) {
+        if (arg.key) {
+          args[arg.key] = arg.value;
+        } else if (idx < paramOrder.length) {
+          args[paramOrder[idx]] = arg.value;
+          idx++;
         }
       }
     } else {
+      let idx = 0;
       for (const arg of parsedArgs) {
-        args.push(arg.value);
+        if (arg.key) {
+          args[arg.key] = arg.value;
+        } else {
+          args[`arg${idx}`] = arg.value;
+          idx++;
+        }
       }
     }
 
-    return { methodName, args };
+    return { toolName: methodName, args };
   }
 
-  static parseArgsString(
+  private static parseArgsString(
     argsString: string
-  ): Array<{ key?: string; value: any }> {
-    const results: Array<{ key?: string; value: any }> = [];
+  ): Array<{ key?: string; value: unknown }> {
+    const results: Array<{ key?: string; value: unknown }> = [];
     let i = 0;
     const s = argsString.trim();
 
@@ -134,10 +279,10 @@ export class SafeExecutor {
     return results;
   }
 
-  static parseValue(
+  private static parseValue(
     s: string,
     start: number
-  ): { value: any; endIndex: number } {
+  ): { value: unknown; endIndex: number } {
     let i = start;
     while (i < s.length && /\s/.test(s[i])) i++;
 
@@ -148,15 +293,10 @@ export class SafeExecutor {
       while (i < s.length && s[i] !== quote) {
         if (s[i] === "\\" && i + 1 < s.length) {
           const next = s[i + 1];
-          if (next === "n") {
-            value += "\n";
-          } else if (next === "t") {
-            value += "\t";
-          } else if (next === "r") {
-            value += "\r";
-          } else {
-            value += next;
-          }
+          if (next === "n") value += "\n";
+          else if (next === "t") value += "\t";
+          else if (next === "r") value += "\r";
+          else value += next;
           i += 2;
         } else {
           value += s[i];
@@ -189,11 +329,11 @@ export class SafeExecutor {
     return { value: token, endIndex: i };
   }
 
-  static parseList(
+  private static parseList(
     s: string,
     start: number
-  ): { value: any[]; endIndex: number } {
-    const items: any[] = [];
+  ): { value: unknown[]; endIndex: number } {
+    const items: unknown[] = [];
     let i = start + 1;
     while (i < s.length && s[i] !== "]") {
       while (i < s.length && /\s/.test(s[i])) i++;
@@ -207,11 +347,11 @@ export class SafeExecutor {
     return { value: items, endIndex: i + 1 };
   }
 
-  static parseDict(
+  private static parseDict(
     s: string,
     start: number
-  ): { value: Record<string, any>; endIndex: number } {
-    const obj: Record<string, any> = {};
+  ): { value: Record<string, unknown>; endIndex: number } {
+    const obj: Record<string, unknown> = {};
     let i = start + 1;
     while (i < s.length && s[i] !== "}") {
       while (i < s.length && /\s/.test(s[i])) i++;
@@ -227,133 +367,5 @@ export class SafeExecutor {
       if (s[i] === ",") i++;
     }
     return { value: obj, endIndex: i + 1 };
-  }
-
-  static findInstanceForMethod(
-    methodName: string,
-    involvedInstances?: Record<string, any>
-  ): any {
-    if (involvedInstances) {
-      for (const instance of Object.values(involvedInstances)) {
-        if (instance && typeof instance[methodName] === "function") {
-          return instance;
-        }
-      }
-    }
-    return globalMethodRegistry.getInstanceByMethod(methodName);
-  }
-
-  static async executeFunctionCall(
-    funcCall: string,
-    involvedInstances?: Record<string, any>
-  ): Promise<ExecutionResult> {
-    try {
-      const { methodName, args } = SafeExecutor.parseFunctionCall(funcCall);
-
-      const instance = SafeExecutor.findInstanceForMethod(
-        methodName,
-        involvedInstances
-      );
-
-      if (!instance) {
-        return {
-          success: false,
-          error: `Instance not found for method: ${methodName}`,
-        };
-      }
-
-      if (typeof instance[methodName] !== "function") {
-        return {
-          success: false,
-          error: `Method not found: ${methodName}`,
-        };
-      }
-
-      const result = instance[methodName](...args);
-
-      const finalResult = result instanceof Promise ? await result : result;
-
-      return {
-        success: true,
-        result: finalResult,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: `Execution error: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-  }
-
-  // Execute multiple function calls and return serialized results
-  static async executeFunctionCalls(funcCalls: string[]): Promise<string[]> {
-    const results: string[] = [];
-
-    for (const funcCall of funcCalls) {
-      const executionResult = await SafeExecutor.executeFunctionCall(funcCall);
-
-      if (executionResult.success) {
-        // Serialize result similar to Python implementation
-        const result = executionResult.result;
-        let serialized: string;
-
-        if (typeof result === "string") {
-          serialized = result;
-        } else if (result === null || result === undefined) {
-          serialized = "None";
-        } else if (typeof result === "object") {
-          try {
-            serialized = JSON.stringify(result);
-          } catch {
-            serialized = String(result);
-          }
-        } else {
-          serialized = String(result);
-        }
-
-        results.push(serialized);
-      } else {
-        results.push(`Error during execution: ${executionResult.error}`);
-      }
-    }
-
-    return results;
-  }
-
-  // Validate that dangerous operations are blocked
-  static validateFunctionCall(funcCall: string): boolean {
-    // Block dangerous operations (similar to Python implementation)
-    const dangerousPatterns = [
-      /\bkill\b/,
-      /\bexit\b/,
-      /\bquit\b/,
-      /\bsystem\b/,
-      /\bexec\b/,
-      /\beval\b/,
-      /\bimport\b/,
-      /__\w+__/, // Dunder methods
-    ];
-
-    for (const pattern of dangerousPatterns) {
-      if (pattern.test(funcCall)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  static async executeFunctionCallSafe(
-    funcCall: string,
-    involvedInstances?: Record<string, any>
-  ): Promise<ExecutionResult> {
-    if (!SafeExecutor.validateFunctionCall(funcCall)) {
-      return {
-        success: false,
-        error: `Dangerous function call blocked: ${funcCall}`,
-      };
-    }
-
-    return SafeExecutor.executeFunctionCall(funcCall, involvedInstances);
   }
 }

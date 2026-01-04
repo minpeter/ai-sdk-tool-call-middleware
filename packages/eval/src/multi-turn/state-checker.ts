@@ -1,6 +1,8 @@
 // State checker - validates instance states after execution
 // Ported from Python's state_checker function
 
+import { Directory, File } from "./classes/gorilla-file-system";
+
 export interface StateCheckResult {
   valid: boolean;
   error_type?: string;
@@ -40,6 +42,21 @@ export function stateChecker(
     );
 
     if (!comparisonResult.valid) {
+      // Debug: 더 자세한 상태 차이 출력
+      console.log("[DEBUG] State mismatch detected!");
+      console.log(
+        "[DEBUG] Differences:",
+        JSON.stringify(comparisonResult.differences, null, 2)
+      );
+      console.log(
+        "[DEBUG] Model instance state:",
+        JSON.stringify(serializeInstanceState(modelInstance), null, 2)
+      );
+      console.log(
+        "[DEBUG] Ground truth instance state:",
+        JSON.stringify(serializeInstanceState(groundTruthInstance), null, 2)
+      );
+
       return {
         valid: false,
         error_type: "multi_turn:instance_state_mismatch",
@@ -146,9 +163,16 @@ function serializeInstanceState(instance: any): Record<string, any> {
   for (const [key, value] of Object.entries(instance)) {
     if (!key.startsWith("_")) {
       try {
-        // Try to serialize, fallback to string representation
-        state[key] =
-          typeof value === "object" ? JSON.parse(JSON.stringify(value)) : value;
+        // 더 자세한 직렬화 시도
+        if (key === "root" && typeof value === "object") {
+          // GorillaFileSystem의 root 디렉토리 구조를 재귀적으로 직렬화
+          state[key] = serializeDirectory(value);
+        } else {
+          state[key] =
+            typeof value === "object"
+              ? JSON.parse(JSON.stringify(value))
+              : value;
+        }
       } catch {
         state[key] = String(value);
       }
@@ -156,4 +180,23 @@ function serializeInstanceState(instance: any): Record<string, any> {
   }
 
   return state;
+}
+
+function serializeDirectory(dir: any, depth = 0): any {
+  if (depth > 5) return "[Max depth reached]"; // 무한 재귀 방지
+
+  const result: any = {
+    name: dir.name,
+    contents: {},
+  };
+
+  for (const [name, item] of Object.entries(dir.contents || {})) {
+    if (item instanceof File) {
+      result.contents[name] = { type: "file", content: item.content };
+    } else if (item instanceof Directory) {
+      result.contents[name] = serializeDirectory(item, depth + 1);
+    }
+  }
+
+  return result;
 }
