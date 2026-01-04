@@ -23,7 +23,7 @@ const friendli = createOpenAICompatible({
         ...(options?.body ? JSON.parse(options.body as string) : {}),
         parse_reasoning: true,
         chat_template_kwargs: {
-          enable_thinking: false,
+          enable_thinking: true,
         },
       }),
     }),
