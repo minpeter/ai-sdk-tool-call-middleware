@@ -1,6 +1,6 @@
 {
   "name": "@ai-sdk-tool/middleware",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Collection of reusable AI SDK middlewares",
   "type": "module",
   "repository": {
