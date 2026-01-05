@@ -18,7 +18,7 @@
     "@ai-sdk/openai-compatible": "2.0.2",
     "ai": "6.0.6",
     "tsx": "^4.21.0",
-    "zod": "^4.3.4"
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@ai-sdk/provider": "3.0.1",
