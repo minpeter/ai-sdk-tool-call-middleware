@@ -3,4 +3,3 @@ packages:
   - "packages/*"
   - "packages/middleware"
   - "tools/*"
-  - ".opencode/plugin/*"

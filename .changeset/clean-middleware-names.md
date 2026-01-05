@@ -1,6 +1,5 @@
 ---
 "@ai-sdk-tool/eval": minor
-"@ai-sdk-tool/opencode-plugin": minor
 "@ai-sdk-tool/proxy": minor
 ---
 

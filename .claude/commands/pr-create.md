@@ -12,7 +12,7 @@ You are creating a pull request for the current branch against main. Follow thes
 - Current branch: !`git branch --show-current`
 - Git status: !`git status --short`
 - Diff from main: !`git diff --stat main..HEAD`
-- Available packages: @ai-sdk-tool/parser, @ai-sdk-tool/eval, @ai-sdk-tool/rxml, @ai-sdk-tool/proxy, @ai-sdk-tool/middleware, @ai-sdk-tool/opencode-plugin
+- Available packages: @ai-sdk-tool/parser, @ai-sdk-tool/eval, @ai-sdk-tool/rxml, @ai-sdk-tool/proxy, @ai-sdk-tool/middleware
 
 ## Instructions
 

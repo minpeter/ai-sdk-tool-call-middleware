@@ -11,7 +11,7 @@ You are shipping changes for this monorepo. Follow these steps carefully.
 
 - Git status: !`git status --short`
 - Changed packages: !`git diff --name-only HEAD | grep "^packages/" | cut -d'/' -f2 | sort -u`
-- Available packages: @ai-sdk-tool/parser, @ai-sdk-tool/eval, @ai-sdk-tool/rxml, @ai-sdk-tool/proxy, @ai-sdk-tool/middleware, @ai-sdk-tool/opencode-plugin
+- Available packages: @ai-sdk-tool/parser, @ai-sdk-tool/eval, @ai-sdk-tool/rxml, @ai-sdk-tool/proxy, @ai-sdk-tool/middleware
 - Changeset config: @.changeset/config.json
 
 ## Instructions
