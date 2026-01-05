@@ -29,8 +29,6 @@ export class TwitterAPI {
   private retweets: Record<string, number[]>;
   private followingList: string[];
   private tweetCounter: number;
-  private _apiDescription =
-    "This tool belongs to the TwitterAPI, which provides core functionality for posting tweets, retweeting, commenting, and following users on Twitter.";
 
   constructor() {
     this.username = "john";
@@ -43,7 +41,7 @@ export class TwitterAPI {
     this.tweetCounter = 0;
   }
 
-  _loadScenario(scenario: TwitterScenario, longContext = false): void {
+  _loadScenario(scenario: TwitterScenario, _longContext = false): void {
     const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_STATE));
     this.username = scenario.username || defaultCopy.username!;
     this.password = scenario.password || defaultCopy.password!;
@@ -51,7 +49,7 @@ export class TwitterAPI {
     this.tweets = scenario.tweets || defaultCopy.tweets!;
     // Convert tweet keys from string to int from loaded scenario
     this.tweets = Object.fromEntries(
-      Object.entries(this.tweets).map(([k, v]) => [Number.parseInt(k), v])
+      Object.entries(this.tweets).map(([k, v]) => [Number.parseInt(k, 10), v])
     );
     this.comments = scenario.comments || defaultCopy.comments!;
     this.retweets = scenario.retweets || defaultCopy.retweets!;

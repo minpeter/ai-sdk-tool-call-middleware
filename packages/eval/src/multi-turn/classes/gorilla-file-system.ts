@@ -36,7 +36,9 @@ export class Directory {
   }
 
   _getItem(itemName: string): File | Directory | null {
-    if (itemName === ".") return this;
+    if (itemName === ".") {
+      return this;
+    }
     return this.contents[itemName] || null;
   }
 
@@ -48,7 +50,6 @@ export class Directory {
 export class GorillaFileSystem {
   private root!: Directory;
   private _currentDir!: Directory;
-  private longContext = false;
 
   constructor() {
     this.root = new Directory("/", null);
@@ -59,7 +60,7 @@ export class GorillaFileSystem {
     this.longContext = longContext;
     this.root = new Directory("/", null);
 
-    if (scenario && scenario.root) {
+    if (scenario?.root) {
       const rootKeys = Object.keys(scenario.root);
       if (rootKeys.length > 0) {
         const rootDirName = rootKeys[0];
@@ -93,7 +94,7 @@ export class GorillaFileSystem {
       path.push(dir.name);
       dir = dir.parent;
     }
-    return { current_working_directory: "/" + path.reverse().join("/") };
+    return { current_working_directory: `/${path.reverse().join("/")}` };
   }
 
   ls(a = false): Record<string, string[]> {
@@ -106,7 +107,9 @@ export class GorillaFileSystem {
 
   cd(folder: string): Record<string, string> | null {
     folder = folder.replace(/\/+$/, "");
-    if (folder === "") folder = "/";
+    if (folder === "") {
+      folder = "/";
+    }
 
     if (
       folder !== "." &&
@@ -500,7 +503,9 @@ export class GorillaFileSystem {
   }
 
   equals(other: any): boolean {
-    if (!(other instanceof GorillaFileSystem)) return false;
+    if (!(other instanceof GorillaFileSystem)) {
+      return false;
+    }
     return JSON.stringify(this.root) === JSON.stringify(other.root);
   }
 }

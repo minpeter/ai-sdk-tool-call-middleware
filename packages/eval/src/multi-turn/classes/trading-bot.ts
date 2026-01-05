@@ -173,10 +173,7 @@ export class TradingBot {
   private stocks: Record<string, StockInfo>;
   private watchList: string[];
   private transactionHistory: TransactionInfo[];
-  private longContext = false;
   private _random: SeededRandom;
-  private _apiDescription =
-    "This tool belongs to the trading system, which allows users to trade stocks, manage their account, and view stock information.";
 
   constructor() {
     this.orders = {};
@@ -232,7 +229,9 @@ export class TradingBot {
   }
 
   equals(other: unknown): boolean {
-    if (!(other instanceof TradingBot)) return false;
+    if (!(other instanceof TradingBot)) {
+      return false;
+    }
     return (
       JSON.stringify(this.orders) === JSON.stringify(other.orders) &&
       JSON.stringify(this.accountInfo) === JSON.stringify(other.accountInfo) &&
@@ -386,7 +385,7 @@ export class TradingBot {
     return this.accountInfo;
   }
 
-  trading_login(username: string, password: string): Record<string, string> {
+  trading_login(_username: string, _password: string): Record<string, string> {
     if (this.authenticated) {
       return { status: "Already logged in" };
     }
@@ -496,7 +495,9 @@ export class TradingBot {
   ): Record<string, string[]> {
     const filteredStocks = stocks.filter((symbol) => {
       const stock = this.stocks[symbol];
-      if (!stock) return false;
+      if (!stock) {
+        return false;
+      }
       return stock.price >= min_price && stock.price <= max_price;
     });
     return { filtered_stocks: filteredStocks };
@@ -515,7 +516,9 @@ export class TradingBot {
   ): Record<string, string> {
     const changedStocks = stocks.filter((symbol) => {
       const stock = this.stocks[symbol];
-      if (!stock) return false;
+      if (!stock) {
+        return false;
+      }
       return Math.abs(stock.percent_change) >= threshold;
     });
 

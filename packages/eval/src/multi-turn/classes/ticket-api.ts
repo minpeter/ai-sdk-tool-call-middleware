@@ -1,5 +1,5 @@
 export interface TicketScenario {
-  ticket_queue?: Array<Record<string, any>>;
+  ticket_queue?: Record<string, any>[];
   ticket_counter?: number;
   current_user?: string | null;
 }
@@ -11,11 +11,9 @@ const DEFAULT_STATE: TicketScenario = {
 };
 
 export class TicketAPI {
-  private ticketQueue: Array<Record<string, any>>;
+  private ticketQueue: Record<string, any>[];
   private ticketCounter: number;
   private currentUser: string | null;
-  private _apiDescription =
-    "This tool belongs to the ticketing system that is part of a company, which allows users to create, view, and manage support business tickets.";
 
   constructor() {
     this.ticketQueue = [];
@@ -23,7 +21,7 @@ export class TicketAPI {
     this.currentUser = null;
   }
 
-  _loadScenario(scenario: TicketScenario, longContext = false): void {
+  _loadScenario(scenario: TicketScenario, _longContext = false): void {
     const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_STATE));
     this.ticketQueue = scenario.ticket_queue || defaultCopy.ticket_queue!;
     this.ticketCounter = scenario.ticket_counter || defaultCopy.ticket_counter!;
@@ -145,7 +143,7 @@ export class TicketAPI {
     return { success: false };
   }
 
-  get_user_tickets(status?: string): Array<Record<string, any>> {
+  get_user_tickets(status?: string): Record<string, any>[] {
     if (!this.currentUser) {
       return [
         { error: "User not authenticated. Please log in to view tickets." },

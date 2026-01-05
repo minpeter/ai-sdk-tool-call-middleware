@@ -97,7 +97,7 @@ export class VehicleControlAPI {
   private rearRightTirePressure: number;
   private longContext = false;
   private _random: SeededRandom;
-  private _apiDescription =
+  private readonly _apiDescription =
     "This tool belongs to the vehicle control system, which allows users to control various aspects of the car such as engine, doors, climate control, lights, and more.";
 
   constructor() {
@@ -175,9 +175,13 @@ export class VehicleControlAPI {
   }
 
   equals(other: unknown): boolean {
-    if (!(other instanceof VehicleControlAPI)) return false;
+    if (!(other instanceof VehicleControlAPI)) {
+      return false;
+    }
     for (const attrName of Object.keys(this) as (keyof VehicleControlAPI)[]) {
-      if (attrName.startsWith("_")) continue;
+      if (attrName.startsWith("_")) {
+        continue;
+      }
       const modelAttr = this[attrName];
       const groundTruthAttr = other[attrName];
       if (JSON.stringify(modelAttr) !== JSON.stringify(groundTruthAttr)) {
@@ -242,7 +246,9 @@ export class VehicleControlAPI {
   lockDoors(unlock: boolean, door: string[]): Record<string, unknown> {
     if (unlock) {
       for (const d of door) {
-        if (this.doorStatus[d] === "unlocked") continue;
+        if (this.doorStatus[d] === "unlocked") {
+          continue;
+        }
         this.doorStatus[d] = "unlocked";
         this.remainingUnlockedDoors += 1;
       }
@@ -252,7 +258,9 @@ export class VehicleControlAPI {
       };
     }
     for (const d of door) {
-      if (this.doorStatus[d] === "locked") continue;
+      if (this.doorStatus[d] === "locked") {
+        continue;
+      }
       this.doorStatus[d] = "locked";
       this.remainingUnlockedDoors -= 1;
     }

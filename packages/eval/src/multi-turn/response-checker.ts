@@ -18,7 +18,7 @@ export interface ResponseCheckResult {
 export function responseChecker(
   modelResponseList: any[],
   groundTruthResponseList: any[],
-  turnIndex: number
+  _turnIndex: number
 ): ResponseCheckResult {
   const isSubsequenceResult = isSubsequenceUnordered(
     groundTruthResponseList,
@@ -57,7 +57,7 @@ export function isSubsequenceUnordered(
   }
 
   // Create copies to avoid modifying originals
-  const remainingGroundTruth = [...groundTruthList];
+  const _remainingGroundTruth = [...groundTruthList];
   const remainingModel = [...modelList];
   const missingItems: any[] = [];
 
@@ -90,8 +90,12 @@ export function isSubsequenceUnordered(
  */
 function itemsEqual(a: any, b: any): boolean {
   // Handle null/undefined
-  if (a == null && b == null) return true;
-  if (a == null || b == null) return false;
+  if (a == null && b == null) {
+    return true;
+  }
+  if (a == null || b == null) {
+    return false;
+  }
 
   // Handle strings
   if (typeof a === "string" && typeof b === "string") {
@@ -126,9 +130,15 @@ function normalizeResponse(response: string): string {
  * Normalize object for comparison (remove undefined values, sort keys)
  */
 function normalizeObject(obj: any): any {
-  if (obj == null) return obj;
-  if (typeof obj !== "object") return obj;
-  if (Array.isArray(obj)) return obj.map(normalizeObject);
+  if (obj == null) {
+    return obj;
+  }
+  if (typeof obj !== "object") {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(normalizeObject);
+  }
 
   const normalized: any = {};
   for (const [key, value] of Object.entries(obj)) {

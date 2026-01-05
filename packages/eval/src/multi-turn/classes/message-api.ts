@@ -3,7 +3,7 @@ export interface MessageScenario {
   generated_ids?: number[];
   user_count?: number;
   user_map?: Record<string, string>;
-  inbox?: Array<Record<string, string>>;
+  inbox?: Record<string, string>[];
   message_count?: number;
   current_user?: string | null;
 }
@@ -30,12 +30,8 @@ export class MessageAPI {
   private generatedIds: Set<number>;
   private userCount: number;
   private userMap: Record<string, string>;
-  private inbox: Array<Record<string, string>>;
-  private messageCount: number;
+  private inbox: Record<string, string>[];
   private currentUser: string | null;
-  private _random: any;
-  private _apiDescription =
-    "This tool belongs to the Message API, which is used to manage user interactions in a workspace.";
 
   constructor() {
     // Initialize with defaults, will be overridden by _loadScenario
@@ -47,7 +43,7 @@ export class MessageAPI {
     this.currentUser = null;
   }
 
-  _loadScenario(scenario: MessageScenario, longContext = false): void {
+  _loadScenario(scenario: MessageScenario, _longContext = false): void {
     const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_STATE));
     this._random = Math.random; // Placeholder, would need proper seeding
 
@@ -67,7 +63,9 @@ export class MessageAPI {
 
     const excludeKeys = new Set(["_random", "_apiDescription"]);
     for (const key of Object.keys(this)) {
-      if (key.startsWith("_") || excludeKeys.has(key)) continue;
+      if (key.startsWith("_") || excludeKeys.has(key)) {
+        continue;
+      }
       if ((this as any)[key] !== (other as any)[key]) {
         return false;
       }

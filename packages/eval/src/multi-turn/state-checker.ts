@@ -116,27 +116,45 @@ function deepEqual(
   b: any,
   seen: WeakSet<object> = new WeakSet()
 ): boolean {
-  if (a === b) return true;
+  if (a === b) {
+    return true;
+  }
 
-  if (a == null || b == null) return a === b;
+  if (a == null || b == null) {
+    return a === b;
+  }
 
-  if (typeof a !== typeof b) return false;
+  if (typeof a !== typeof b) {
+    return false;
+  }
 
-  if (typeof a !== "object") return a === b;
+  if (typeof a !== "object") {
+    return a === b;
+  }
 
-  if (seen.has(a) || seen.has(b)) return true;
+  if (seen.has(a) || seen.has(b)) {
+    return true;
+  }
   seen.add(a);
-  if (typeof b === "object") seen.add(b);
+  if (typeof b === "object") {
+    seen.add(b);
+  }
 
   if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
+    if (a.length !== b.length) {
+      return false;
+    }
     for (let i = 0; i < a.length; i++) {
-      if (!deepEqual(a[i], b[i], seen)) return false;
+      if (!deepEqual(a[i], b[i], seen)) {
+        return false;
+      }
     }
     return true;
   }
 
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) {
+    return false;
+  }
 
   const keysA = Object.keys(a).filter(
     (k) => !(k.startsWith("_") || SKIP_KEYS.has(k))
@@ -145,11 +163,17 @@ function deepEqual(
     (k) => !(k.startsWith("_") || SKIP_KEYS.has(k))
   );
 
-  if (keysA.length !== keysB.length) return false;
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
 
   for (const key of keysA) {
-    if (!keysB.includes(key)) return false;
-    if (!deepEqual(a[key], b[key], seen)) return false;
+    if (!keysB.includes(key)) {
+      return false;
+    }
+    if (!deepEqual(a[key], b[key], seen)) {
+      return false;
+    }
   }
   return true;
 }
@@ -183,7 +207,9 @@ function serializeInstanceState(instance: any): Record<string, any> {
 }
 
 function serializeDirectory(dir: any, depth = 0): any {
-  if (depth > 5) return "[Max depth reached]"; // 무한 재귀 방지
+  if (depth > 5) {
+    return "[Max depth reached]"; // 무한 재귀 방지
+  }
 
   const result: any = {
     name: dir.name,

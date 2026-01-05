@@ -406,8 +406,12 @@ export class SafeExecutor {
     const s = argsString.trim();
 
     while (i < s.length) {
-      while (i < s.length && /\s/.test(s[i])) i++;
-      if (i >= s.length) break;
+      while (i < s.length && /\s/.test(s[i])) {
+        i++;
+      }
+      if (i >= s.length) {
+        break;
+      }
 
       let key: string | undefined;
       const keyMatch = s.slice(i).match(/^(\w+)\s*=/);
@@ -416,14 +420,20 @@ export class SafeExecutor {
         i += keyMatch[0].length;
       }
 
-      while (i < s.length && /\s/.test(s[i])) i++;
+      while (i < s.length && /\s/.test(s[i])) {
+        i++;
+      }
 
       const value = SafeExecutor.parseValue(s, i);
       i = value.endIndex;
       results.push({ key, value: value.value });
 
-      while (i < s.length && /\s/.test(s[i])) i++;
-      if (i < s.length && s[i] === ",") i++;
+      while (i < s.length && /\s/.test(s[i])) {
+        i++;
+      }
+      if (i < s.length && s[i] === ",") {
+        i++;
+      }
     }
 
     return results;
@@ -434,7 +444,9 @@ export class SafeExecutor {
     start: number
   ): { value: unknown; endIndex: number } {
     let i = start;
-    while (i < s.length && /\s/.test(s[i])) i++;
+    while (i < s.length && /\s/.test(s[i])) {
+      i++;
+    }
 
     if (s[i] === "'" || s[i] === '"') {
       const quote = s[i];
@@ -443,10 +455,15 @@ export class SafeExecutor {
       while (i < s.length && s[i] !== quote) {
         if (s[i] === "\\" && i + 1 < s.length) {
           const next = s[i + 1];
-          if (next === "n") value += "\n";
-          else if (next === "t") value += "\t";
-          else if (next === "r") value += "\r";
-          else value += next;
+          if (next === "n") {
+            value += "\n";
+          } else if (next === "t") {
+            value += "\t";
+          } else if (next === "r") {
+            value += "\r";
+          } else {
+            value += next;
+          }
           i += 2;
         } else {
           value += s[i];
@@ -471,11 +488,19 @@ export class SafeExecutor {
     }
     token = token.trim();
 
-    if (token === "True") return { value: true, endIndex: i };
-    if (token === "False") return { value: false, endIndex: i };
-    if (token === "None") return { value: null, endIndex: i };
+    if (token === "True") {
+      return { value: true, endIndex: i };
+    }
+    if (token === "False") {
+      return { value: false, endIndex: i };
+    }
+    if (token === "None") {
+      return { value: null, endIndex: i };
+    }
     const num = Number(token);
-    if (!Number.isNaN(num)) return { value: num, endIndex: i };
+    if (!Number.isNaN(num)) {
+      return { value: num, endIndex: i };
+    }
     return { value: token, endIndex: i };
   }
 
@@ -486,13 +511,21 @@ export class SafeExecutor {
     const items: unknown[] = [];
     let i = start + 1;
     while (i < s.length && s[i] !== "]") {
-      while (i < s.length && /\s/.test(s[i])) i++;
-      if (s[i] === "]") break;
+      while (i < s.length && /\s/.test(s[i])) {
+        i++;
+      }
+      if (s[i] === "]") {
+        break;
+      }
       const item = SafeExecutor.parseValue(s, i);
       items.push(item.value);
       i = item.endIndex;
-      while (i < s.length && /\s/.test(s[i])) i++;
-      if (s[i] === ",") i++;
+      while (i < s.length && /\s/.test(s[i])) {
+        i++;
+      }
+      if (s[i] === ",") {
+        i++;
+      }
     }
     return { value: items, endIndex: i + 1 };
   }
@@ -504,17 +537,29 @@ export class SafeExecutor {
     const obj: Record<string, unknown> = {};
     let i = start + 1;
     while (i < s.length && s[i] !== "}") {
-      while (i < s.length && /\s/.test(s[i])) i++;
-      if (s[i] === "}") break;
+      while (i < s.length && /\s/.test(s[i])) {
+        i++;
+      }
+      if (s[i] === "}") {
+        break;
+      }
       const keyResult = SafeExecutor.parseValue(s, i);
       i = keyResult.endIndex;
-      while (i < s.length && /\s/.test(s[i])) i++;
-      if (s[i] === ":") i++;
+      while (i < s.length && /\s/.test(s[i])) {
+        i++;
+      }
+      if (s[i] === ":") {
+        i++;
+      }
       const valResult = SafeExecutor.parseValue(s, i);
       obj[String(keyResult.value)] = valResult.value;
       i = valResult.endIndex;
-      while (i < s.length && /\s/.test(s[i])) i++;
-      if (s[i] === ",") i++;
+      while (i < s.length && /\s/.test(s[i])) {
+        i++;
+      }
+      if (s[i] === ",") {
+        i++;
+      }
     }
     return { value: obj, endIndex: i + 1 };
   }

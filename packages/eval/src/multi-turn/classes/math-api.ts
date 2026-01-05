@@ -1,9 +1,6 @@
 import { Decimal } from "decimal.js";
 
 export class MathAPI {
-  private _apiDescription =
-    "This tool belongs to the Math API, which provides various mathematical operations.";
-
   logarithm(
     value: number,
     base: number,
@@ -28,7 +25,7 @@ export class MathAPI {
     }
     try {
       return { result: numbers.reduce((a, b) => a + b, 0) / numbers.length };
-    } catch (e) {
+    } catch (_e) {
       return { error: "All elements in the list must be numbers" };
     }
   }
@@ -42,7 +39,7 @@ export class MathAPI {
       const variance =
         numbers.reduce((sum, x) => sum + (x - mean) ** 2, 0) / numbers.length;
       return { result: Math.sqrt(variance) };
-    } catch (e) {
+    } catch (_e) {
       return { error: "All elements in the list must be numbers" };
     }
   }
@@ -78,7 +75,7 @@ export class MathAPI {
       const valueInMeters = value * toMeters[unitIn];
       const result = valueInMeters * fromMeters[unitOut];
       return { result };
-    } catch (e) {
+    } catch (_e) {
       return { error: "Conversion resulted in a value too large to represent" };
     }
   }
@@ -129,7 +126,7 @@ export class MathAPI {
       }
 
       return { result };
-    } catch (e) {
+    } catch (_e) {
       return { error: "Conversion resulted in a value too large to represent" };
     }
   }
@@ -137,7 +134,7 @@ export class MathAPI {
   add(a: number, b: number): Record<string, any> {
     try {
       return { result: a + b };
-    } catch (e) {
+    } catch (_e) {
       return { error: "Both inputs must be numbers" };
     }
   }
@@ -145,7 +142,7 @@ export class MathAPI {
   subtract(a: number, b: number): Record<string, any> {
     try {
       return { result: a - b };
-    } catch (e) {
+    } catch (_e) {
       return { error: "Both inputs must be numbers" };
     }
   }
@@ -157,7 +154,7 @@ export class MathAPI {
 
     try {
       return { result: a * b };
-    } catch (e) {
+    } catch (_e) {
       return { error: "Both inputs must be numbers" };
     }
   }
@@ -168,7 +165,7 @@ export class MathAPI {
         return { error: "Cannot divide by zero" };
       }
       return { result: a / b };
-    } catch (e) {
+    } catch (_e) {
       return { error: "Both inputs must be numbers" };
     }
   }
@@ -176,7 +173,7 @@ export class MathAPI {
   power(base: number, exponent: number): Record<string, any> {
     try {
       return { result: base ** exponent };
-    } catch (e) {
+    } catch (_e) {
       return { error: "Both inputs must be numbers" };
     }
   }
@@ -195,7 +192,7 @@ export class MathAPI {
       const result = decimalNumber.sqrt();
 
       return { result: result.toNumber() };
-    } catch (e) {
+    } catch (_e) {
       return {
         error:
           "Input must be a number or computation resulted in an invalid operation",
@@ -206,7 +203,7 @@ export class MathAPI {
   absoluteValue(number: number): Record<string, any> {
     try {
       return { result: Math.abs(number) };
-    } catch (e) {
+    } catch (_e) {
       return { error: "Input must be a number" };
     }
   }
@@ -216,7 +213,7 @@ export class MathAPI {
       return {
         result: Math.round(number * 10 ** decimalPlaces) / 10 ** decimalPlaces,
       };
-    } catch (e) {
+    } catch (_e) {
       return {
         error: "First input must be a number, second input must be an integer",
       };
@@ -229,7 +226,7 @@ export class MathAPI {
         return { error: "Whole value cannot be zero" };
       }
       return { result: (part / whole) * 100 };
-    } catch (e) {
+    } catch (_e) {
       return { error: "Both inputs must be numbers" };
     }
   }
@@ -240,7 +237,7 @@ export class MathAPI {
     }
     try {
       return { result: Math.min(...numbers) };
-    } catch (e) {
+    } catch (_e) {
       return { error: "All elements in the list must be numbers" };
     }
   }
@@ -251,7 +248,7 @@ export class MathAPI {
     }
     try {
       return { result: Math.max(...numbers) };
-    } catch (e) {
+    } catch (_e) {
       return { error: "All elements in the list must be numbers" };
     }
   }
@@ -262,7 +259,7 @@ export class MathAPI {
     }
     try {
       return { result: numbers.reduce((a, b) => a + b, 0) };
-    } catch (e) {
+    } catch (_e) {
       return { error: "All elements in the list must be numbers" };
     }
   }

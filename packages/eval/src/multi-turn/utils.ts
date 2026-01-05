@@ -18,7 +18,9 @@ export function findInstanceDifferences(
 
   for (const key of allKeys) {
     // Skip private attributes
-    if (key.startsWith("_")) continue;
+    if (key.startsWith("_")) {
+      continue;
+    }
 
     const modelValue = modelInstance[key];
     const groundTruthValue = groundTruthInstance[key];
@@ -39,14 +41,22 @@ export function findInstanceDifferences(
  * Deep equality check for complex objects
  */
 export function deepEqual(a: any, b: any): boolean {
-  if (a === b) return true;
+  if (a === b) {
+    return true;
+  }
 
-  if (a == null || b == null) return a === b;
+  if (a == null || b == null) {
+    return a === b;
+  }
 
   if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
+    if (a.length !== b.length) {
+      return false;
+    }
     for (let i = 0; i < a.length; i++) {
-      if (!deepEqual(a[i], b[i])) return false;
+      if (!deepEqual(a[i], b[i])) {
+        return false;
+      }
     }
     return true;
   }
@@ -55,11 +65,17 @@ export function deepEqual(a: any, b: any): boolean {
     const keysA = Object.keys(a).filter((k) => !k.startsWith("_"));
     const keysB = Object.keys(b).filter((k) => !k.startsWith("_"));
 
-    if (keysA.length !== keysB.length) return false;
+    if (keysA.length !== keysB.length) {
+      return false;
+    }
 
     for (const key of keysA) {
-      if (!keysB.includes(key)) return false;
-      if (!deepEqual(a[key], b[key])) return false;
+      if (!keysB.includes(key)) {
+        return false;
+      }
+      if (!deepEqual(a[key], b[key])) {
+        return false;
+      }
     }
     return true;
   }

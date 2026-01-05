@@ -319,18 +319,25 @@ const getMethodName = (toolName: string): string =>
   toolName.split(".").pop() ?? toolName;
 
 const isRateLimitError = (error: unknown): boolean => {
-  if (!(error instanceof Error)) return false;
+  if (!(error instanceof Error)) {
+    return false;
+  }
   const message = error.message.toLowerCase();
-  if (message.includes("429") || message.includes("rate limit")) return true;
+  if (message.includes("429") || message.includes("rate limit")) {
+    return true;
+  }
   const anyError = error as unknown as Record<string, unknown>;
-  if (anyError.status === 429 || anyError.statusCode === 429) return true;
+  if (anyError.status === 429 || anyError.statusCode === 429) {
+    return true;
+  }
   // Check nested cause
   if (
     anyError.cause &&
     typeof anyError.cause === "object" &&
     (anyError.cause as Record<string, unknown>).status === 429
-  )
+  ) {
     return true;
+  }
   return false;
 };
 
@@ -587,7 +594,7 @@ const createBfclMultiTurnBenchmark = (
 
         console.log(`[DEBUG] TestCase ${testCaseId} Step ${stepCount}:`);
         console.log(`  History length: ${history.length}`);
-        console.log("  Last message:", history[history.length - 1]);
+        console.log("  Last message:", history.at(-1));
         console.log(`  Finish reason: ${finishReason}`);
         console.log(`  Text response: "${text}"`);
         console.log(`  Tool calls count: ${toolCallsArray.length}`);

@@ -16,8 +16,8 @@ const friendli = createOpenAICompatible({
   apiKey: process.env.FRIENDLI_TOKEN,
   baseURL: "https://api.friendli.ai/serverless/v1",
   includeUsage: true,
-  fetch: async (url, options) =>
-    await fetch(url, {
+  fetch: (url, options) =>
+    fetch(url, {
       ...options,
       body: JSON.stringify({
         ...(options?.body ? JSON.parse(options.body as string) : {}),

@@ -296,7 +296,7 @@ export class TravelAPI {
   budgetLimit?: number;
   longContext = false;
   private _random: SeededRandom;
-  private _flightCostLookup: Map<string, FlightCostEntry> = new Map();
+  private readonly _flightCostLookup: Map<string, FlightCostEntry> = new Map();
 
   constructor() {
     this.creditCardList = {};
@@ -326,9 +326,9 @@ export class TravelAPI {
   }
 
   authenticateTravel(
-    clientId: string,
-    clientSecret: string,
-    refreshToken: string,
+    _clientId: string,
+    _clientSecret: string,
+    _refreshToken: string,
     grantType: string,
     userFirstName: string,
     userLastName: string
@@ -354,8 +354,8 @@ export class TravelAPI {
   }
 
   getBudgetFiscalYear(
-    lastModifiedAfter?: string,
-    includeRemoved?: string
+    _lastModifiedAfter?: string,
+    _includeRemoved?: string
   ): Record<string, string> {
     return { budget_fiscal_year: "2018" };
   }
@@ -407,13 +407,17 @@ export class TravelAPI {
     }
 
     let factor = 1;
-    if (travelClass === "economy") factor = 1;
-    else if (travelClass === "business") factor = 2;
-    else if (travelClass === "first") factor = 5;
-    else
+    if (travelClass === "economy") {
+      factor = 1;
+    } else if (travelClass === "business") {
+      factor = 2;
+    } else if (travelClass === "first") {
+      factor = 5;
+    } else {
       throw new Error(
         "Invalid travel class. Options are: economy, business, first."
       );
+    }
 
     const digitSum = travelDate
       .split("")
@@ -574,7 +578,7 @@ export class TravelAPI {
   retrieveInvoice(
     accessToken: string,
     bookingId?: string,
-    insuranceId?: string
+    _insuranceId?: string
   ): Record<string, unknown> {
     if (this.tokenExpiresIn === 0) {
       return { error: "Token expired" };
@@ -722,7 +726,7 @@ export class TravelAPI {
 
   purchaseInsurance(
     accessToken: string,
-    insuranceType: string,
+    _insuranceType: string,
     bookingId: string,
     insuranceCost: number,
     cardId: string
@@ -751,7 +755,7 @@ export class TravelAPI {
 
   contactCustomerSupport(
     bookingId: string,
-    message: string
+    _message: string
   ): Record<string, string> {
     if (!(bookingId in this.bookingRecord)) {
       return { error: "Booking not found" };
