@@ -5,13 +5,18 @@ export {
   bfclParallelMultipleBenchmark,
   bfclSimpleBenchmark,
 } from "./benchmarks/bfcl";
+export {
+  bfclMultiTurnBaseBenchmark,
+  bfclMultiTurnLongContextBenchmark,
+  bfclMultiTurnMissFuncBenchmark,
+  bfclMultiTurnMissParamBenchmark,
+} from "./benchmarks/bfcl-multi-turn";
 export { complexFuncBenchBenchmark } from "./benchmarks/complex-func-bench";
 export {
   jsonGenerationBenchmark,
   jsonGenerationSchemaOnlyBenchmark,
 } from "./benchmarks/json-generation";
 export { evaluate } from "./evaluate";
-
 // Core interfaces for custom benchmarks
 export type {
   BenchmarkResult,
@@ -20,3 +25,4 @@ export type {
   ModelConfig,
   ReporterType,
 } from "./interfaces";
+export { executeMultiTurnFuncCall } from "./multi-turn";

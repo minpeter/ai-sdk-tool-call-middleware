@@ -13,6 +13,14 @@ const colors = {
 };
 
 const DEBUG_FAIL_REGEX = /^\[DEBUG-FAIL\] /;
+const PASS_REGEX = /^\[PASS\] (.+)$/;
+const FAIL_REGEX = /^\[FAIL\] ([^:]+)(?:: (.+))?$/;
+
+interface TestResult {
+  id: string;
+  passed: boolean;
+  reason?: string;
+}
 
 interface ParsedFailure {
   id: string;
@@ -142,6 +150,51 @@ function printFailureSummary(failures: ParsedFailure[]): void {
   }
 }
 
+function parseTestResults(logs: string[]): TestResult[] {
+  const results: TestResult[] = [];
+
+  for (const log of logs) {
+    const passMatch = log.match(PASS_REGEX);
+    if (passMatch) {
+      results.push({ id: passMatch[1], passed: true });
+      continue;
+    }
+
+    const failMatch = log.match(FAIL_REGEX);
+    if (failMatch) {
+      results.push({
+        id: failMatch[1],
+        passed: false,
+        reason: failMatch[2],
+      });
+    }
+  }
+
+  return results;
+}
+
+function printTestResults(testResults: TestResult[]): void {
+  const passed = testResults.filter((r) => r.passed);
+  const failed = testResults.filter((r) => !r.passed);
+
+  if (passed.length > 0) {
+    const passedIds = passed.map((r) => r.id).join(", ");
+    console.log(
+      `    ${colors.green}✔ Passed (${passed.length}):${colors.reset} ${passedIds}`
+    );
+  }
+
+  if (failed.length > 0) {
+    console.log(`    ${colors.red}✖ Failed (${failed.length}):${colors.reset}`);
+    for (const f of failed) {
+      const reason = f.reason
+        ? `: ${colors.gray}${f.reason}${colors.reset}`
+        : "";
+      console.log(`      ${colors.red}${f.id}${colors.reset}${reason}`);
+    }
+  }
+}
+
 function printResult(result: EvaluationResult): void {
   const { model, modelKey, benchmark, result: benchmarkResult } = result;
 
@@ -165,16 +218,18 @@ function printResult(result: EvaluationResult): void {
     );
   }
 
-  if (!benchmarkResult.success && benchmarkResult.logs) {
-    const failures = parseFailures(benchmarkResult.logs);
+  if (benchmarkResult.logs && benchmarkResult.logs.length > 0) {
+    const structuredFailures = parseFailures(benchmarkResult.logs);
+    const testResults = parseTestResults(benchmarkResult.logs);
 
-    if (failures.length > 0) {
-      printFailureSummary(failures);
-    } else if (benchmarkResult.logs.length > 0) {
-      console.log(`    ${colors.gray}Raw Logs (Sample):${colors.reset}`);
-      for (const l of benchmarkResult.logs.slice(0, 5)) {
-        console.log(`      ${l}`);
-      }
+    // Always show test results if available
+    if (testResults.length > 0) {
+      printTestResults(testResults);
+    }
+
+    // Show structured failure details if available
+    if (structuredFailures.length > 0) {
+      printFailureSummary(structuredFailures);
     }
   }
 }
