@@ -33,6 +33,8 @@ tsconfig.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
+**/*.log
 
 # Misc
 .DS_Store
@@ -51,3 +53,4 @@ yarn-error.log*
 .opencode
 .sisyphus
 AGENTS.md
+__pycache__

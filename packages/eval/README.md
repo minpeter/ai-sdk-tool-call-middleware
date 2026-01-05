@@ -65,7 +65,15 @@ This package includes several pre-built benchmarks.
 - `bfclParallelBenchmark`: Evaluates parallel (multi-tool) function calls.
 - `bfclMultipleBenchmark`: Evaluates multiple calls to the same function.
 - `bfclParallelMultipleBenchmark`: A combination of parallel and multiple function calls.
+- `bfclMultiTurnBaseBenchmark`: Evaluates BFCL v4 multi-turn base cases.
+- `bfclMultiTurnLongContextBenchmark`: Evaluates BFCL v4 multi-turn long-context cases.
+- `bfclMultiTurnMissFuncBenchmark`: Evaluates BFCL v4 multi-turn missing-function cases.
+- `bfclMultiTurnMissParamBenchmark`: Evaluates BFCL v4 multi-turn missing-parameter cases.
 - `jsonGenerationBenchmark`: Evaluates the model's ability to generate schema-compliant JSON.
+
+Note: Multi-turn benchmarks now execute tool calls with a native TypeScript implementation and do not require Python at runtime.
+
+BFCL evaluation data will be downloaded automatically on first run. For manual download, visit the [BFCL repository](https://github.com/ShishirPatil/gorilla/tree/main/berkeley-function-call-leaderboard).
 
 To try a JSON generation run locally:
 
