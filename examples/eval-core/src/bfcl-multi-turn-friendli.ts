@@ -30,7 +30,7 @@ const friendli = createOpenAICompatible({
 });
 
 // GLM-4.6 has good function calling support
-const model = friendli("zai-org/GLM-4.6");
+const model = friendli("LGAI-EXAONE/K-EXAONE-236B-A23B");
 
 async function main() {
   const reporterEnv = process.env.EVAL_REPORTER as ReporterType | undefined;
