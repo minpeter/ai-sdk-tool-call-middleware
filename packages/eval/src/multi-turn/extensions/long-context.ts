@@ -91,6 +91,7 @@ reputation as a socially responsible corporate entity.
 `,
 };
 
+// biome-ignore lint/suspicious/noExplicitAny: Test fixture data with dynamic structure
 export const CREDIT_CARD_EXTENSION: Record<string, any> = {
   "1234567812345678": {
     card_number: "1234567812345678",
@@ -109,6 +110,7 @@ export const CREDIT_CARD_EXTENSION: Record<string, any> = {
   // ... more credit card entries (simplified for brevity)
 };
 
+// biome-ignore lint/suspicious/noExplicitAny: Test fixture data with dynamic structure
 export const BOOKING_RECORD_EXTENSION: Record<string, any> = {
   booking_901: {
     card_id: "1234567812345678",

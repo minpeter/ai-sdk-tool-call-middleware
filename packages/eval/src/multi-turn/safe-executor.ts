@@ -1,5 +1,10 @@
 import { globalMethodRegistry } from "./method-registry";
 
+const WHITESPACE_REGEX = /\s/;
+const DELIMITER_REGEX = /[,)\]}]/;
+const FUNCTION_CALL_REGEX = /^(\w+(?:\.\w+)?)\((.*)\)$/s;
+const KEY_EQUALS_REGEX = /^(\w+)\s*=/;
+
 export interface ToolCall {
   toolName: string;
   args: Record<string, unknown>;
@@ -11,6 +16,7 @@ export interface ExecutionResult {
   error?: string;
 }
 
+// biome-ignore lint/complexity/noStaticOnlyClass: Namespace pattern for executor methods
 export class SafeExecutor {
   private static readonly DANGEROUS_METHODS = new Set([
     "kill",
@@ -224,6 +230,7 @@ export class SafeExecutor {
     return [methodName, camelCase];
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Method resolution requires nested loops
   private static findInstanceAndMethod(
     methodName: string,
     involvedInstances?: Record<string, unknown>
@@ -252,7 +259,9 @@ export class SafeExecutor {
         if (instance) {
           return { instance, resolvedMethodName: variant };
         }
-      } catch {}
+      } catch {
+        // Method not found in registry, continue searching
+      }
     }
     return undefined;
   }
@@ -350,8 +359,9 @@ export class SafeExecutor {
     return String(result);
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Python call parsing requires complex branching
   static parsePythonCall(pythonCall: string): ToolCall {
-    const match = pythonCall.match(/^(\w+(?:\.\w+)?)\((.*)\)$/s);
+    const match = pythonCall.match(FUNCTION_CALL_REGEX);
     if (!match) {
       throw new Error(`Invalid function call format: ${pythonCall}`);
     }
@@ -406,7 +416,7 @@ export class SafeExecutor {
     const s = argsString.trim();
 
     while (i < s.length) {
-      while (i < s.length && /\s/.test(s[i])) {
+      while (i < s.length && WHITESPACE_REGEX.test(s[i])) {
         i++;
       }
       if (i >= s.length) {
@@ -414,13 +424,13 @@ export class SafeExecutor {
       }
 
       let key: string | undefined;
-      const keyMatch = s.slice(i).match(/^(\w+)\s*=/);
+      const keyMatch = s.slice(i).match(KEY_EQUALS_REGEX);
       if (keyMatch) {
         key = keyMatch[1];
         i += keyMatch[0].length;
       }
 
-      while (i < s.length && /\s/.test(s[i])) {
+      while (i < s.length && WHITESPACE_REGEX.test(s[i])) {
         i++;
       }
 
@@ -428,7 +438,7 @@ export class SafeExecutor {
       i = value.endIndex;
       results.push({ key, value: value.value });
 
-      while (i < s.length && /\s/.test(s[i])) {
+      while (i < s.length && WHITESPACE_REGEX.test(s[i])) {
         i++;
       }
       if (i < s.length && s[i] === ",") {
@@ -439,12 +449,13 @@ export class SafeExecutor {
     return results;
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Python value parsing requires complex branching for strings, lists, dicts, etc.
   private static parseValue(
     s: string,
     start: number
   ): { value: unknown; endIndex: number } {
     let i = start;
-    while (i < s.length && /\s/.test(s[i])) {
+    while (i < s.length && WHITESPACE_REGEX.test(s[i])) {
       i++;
     }
 
@@ -482,7 +493,7 @@ export class SafeExecutor {
     }
 
     let token = "";
-    while (i < s.length && !/[,)\]}]/.test(s[i])) {
+    while (i < s.length && !DELIMITER_REGEX.test(s[i])) {
       token += s[i];
       i++;
     }
@@ -511,7 +522,7 @@ export class SafeExecutor {
     const items: unknown[] = [];
     let i = start + 1;
     while (i < s.length && s[i] !== "]") {
-      while (i < s.length && /\s/.test(s[i])) {
+      while (i < s.length && WHITESPACE_REGEX.test(s[i])) {
         i++;
       }
       if (s[i] === "]") {
@@ -520,7 +531,7 @@ export class SafeExecutor {
       const item = SafeExecutor.parseValue(s, i);
       items.push(item.value);
       i = item.endIndex;
-      while (i < s.length && /\s/.test(s[i])) {
+      while (i < s.length && WHITESPACE_REGEX.test(s[i])) {
         i++;
       }
       if (s[i] === ",") {
@@ -537,7 +548,7 @@ export class SafeExecutor {
     const obj: Record<string, unknown> = {};
     let i = start + 1;
     while (i < s.length && s[i] !== "}") {
-      while (i < s.length && /\s/.test(s[i])) {
+      while (i < s.length && WHITESPACE_REGEX.test(s[i])) {
         i++;
       }
       if (s[i] === "}") {
@@ -545,7 +556,7 @@ export class SafeExecutor {
       }
       const keyResult = SafeExecutor.parseValue(s, i);
       i = keyResult.endIndex;
-      while (i < s.length && /\s/.test(s[i])) {
+      while (i < s.length && WHITESPACE_REGEX.test(s[i])) {
         i++;
       }
       if (s[i] === ":") {
@@ -554,7 +565,7 @@ export class SafeExecutor {
       const valResult = SafeExecutor.parseValue(s, i);
       obj[String(keyResult.value)] = valResult.value;
       i = valResult.endIndex;
-      while (i < s.length && /\s/.test(s[i])) {
+      while (i < s.length && WHITESPACE_REGEX.test(s[i])) {
         i++;
       }
       if (s[i] === ",") {

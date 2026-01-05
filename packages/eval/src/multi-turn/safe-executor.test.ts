@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { globalMethodRegistry } from "./method-registry";
 import { SafeExecutor, type ToolCall } from "./safe-executor";
 
+const ROOT_PATH_REGEX = /^\/+$/;
+
 describe("SafeExecutor", () => {
   describe("parsePythonCall", () => {
     it("should parse simple function call with keyword args", () => {
@@ -169,7 +171,7 @@ describe("SafeExecutor", () => {
       expect(
         (result.result as { current_working_directory: string })
           .current_working_directory
-      ).toMatch(/^\/+$/);
+      ).toMatch(ROOT_PATH_REGEX);
     });
 
     it("should block dangerous methods", async () => {

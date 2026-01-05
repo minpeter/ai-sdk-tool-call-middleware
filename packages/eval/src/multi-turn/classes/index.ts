@@ -1,5 +1,4 @@
-// Index file for all classes
-
+// biome-ignore lint/performance/noBarrelFile: Module entrypoint for multi-turn API classes
 export { GorillaFileSystem } from "./gorilla-file-system";
 export { MathAPI } from "./math-api";
 export { MessageAPI } from "./message-api";

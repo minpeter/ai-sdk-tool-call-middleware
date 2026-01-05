@@ -131,6 +131,7 @@ export class VehicleControlAPI {
     this._random = new SeededRandom(141_053);
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Scenario loading requires many field initializations
   _loadScenario(scenario: VehicleScenario, longContext = false): void {
     const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_STATE));
     this._random = new SeededRandom(

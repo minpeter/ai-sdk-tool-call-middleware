@@ -18,12 +18,14 @@ interface OrderInfo {
   price: number;
   amount: number;
   status: string;
+  [key: string]: string | number;
 }
 
 interface AccountInfo {
   account_id: number;
   balance: number;
   binding_card: number;
+  [key: string]: number;
 }
 
 interface StockInfo {
@@ -32,6 +34,7 @@ interface StockInfo {
   volume: number;
   "MA(5)": number;
   "MA(20)": number;
+  [key: string]: number;
 }
 
 interface TransactionInfo {
@@ -187,7 +190,7 @@ export class TradingBot {
     this._random = new SeededRandom(1_053_520);
   }
 
-  _loadScenario(scenario: TradingScenario, longContext = false): void {
+  _loadScenario(scenario: TradingScenario, _longContext = false): void {
     const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_STATE));
     this.orders = { ...defaultCopy.orders, ...scenario.orders };
     // Convert string keys to numbers
@@ -211,7 +214,6 @@ export class TradingBot {
     this.watchList = scenario.watch_list ?? defaultCopy.watch_list;
     this.transactionHistory =
       scenario.transaction_history ?? defaultCopy.transaction_history;
-    this.longContext = longContext;
     this._random = new SeededRandom(
       scenario.random_seed ?? defaultCopy.random_seed
     );

@@ -1,23 +1,27 @@
 // Response checker - validates execution results
 // Ported from Python's response_checker function
 
+type ResponseItem =
+  | string
+  | number
+  | boolean
+  | null
+  | Record<string, unknown>
+  | unknown[];
+
 export interface ResponseCheckResult {
   valid: boolean;
   error_type?: string;
   details?: {
-    missing_items?: any[];
-    model_response?: any[];
-    ground_truth_response?: any[];
+    missing_items?: ResponseItem[];
+    model_response?: ResponseItem[];
+    ground_truth_response?: ResponseItem[];
   };
 }
 
-/**
- * Checks if the model_response is a subsequence of the ground_truth_response.
- * Order-independent matching for parallel operations.
- */
 export function responseChecker(
-  modelResponseList: any[],
-  groundTruthResponseList: any[],
+  modelResponseList: ResponseItem[],
+  groundTruthResponseList: ResponseItem[],
   _turnIndex: number
 ): ResponseCheckResult {
   const isSubsequenceResult = isSubsequenceUnordered(
@@ -40,14 +44,10 @@ export function responseChecker(
   return { valid: true };
 }
 
-/**
- * Check if list A is a subsequence of list B (order-independent)
- * This allows parallel function calls to be executed in any order
- */
 export function isSubsequenceUnordered(
-  groundTruthList: any[],
-  modelList: any[]
-): { isSubsequence: boolean; missingItems: any[] } {
+  groundTruthList: ResponseItem[],
+  modelList: ResponseItem[]
+): { isSubsequence: boolean; missingItems: ResponseItem[] } {
   if (groundTruthList.length === 0) {
     return { isSubsequence: true, missingItems: [] };
   }
@@ -56,18 +56,14 @@ export function isSubsequenceUnordered(
     return { isSubsequence: false, missingItems: [...groundTruthList] };
   }
 
-  // Create copies to avoid modifying originals
-  const _remainingGroundTruth = [...groundTruthList];
   const remainingModel = [...modelList];
-  const missingItems: any[] = [];
+  const missingItems: ResponseItem[] = [];
 
-  // Greedy matching algorithm
   for (const groundTruthItem of groundTruthList) {
     let found = false;
 
     for (let i = 0; i < remainingModel.length; i++) {
       if (itemsEqual(groundTruthItem, remainingModel[i])) {
-        // Remove the matched item from remaining lists
         remainingModel.splice(i, 1);
         found = true;
         break;
@@ -85,11 +81,7 @@ export function isSubsequenceUnordered(
   };
 }
 
-/**
- * Check if two items are equal (handles different types)
- */
-function itemsEqual(a: any, b: any): boolean {
-  // Handle null/undefined
+function itemsEqual(a: ResponseItem, b: ResponseItem): boolean {
   if (a == null && b == null) {
     return true;
   }
@@ -97,12 +89,10 @@ function itemsEqual(a: any, b: any): boolean {
     return false;
   }
 
-  // Handle strings
   if (typeof a === "string" && typeof b === "string") {
     return normalizeResponse(a) === normalizeResponse(b);
   }
 
-  // Handle objects (try JSON comparison)
   if (typeof a === "object" && typeof b === "object") {
     try {
       return (
@@ -114,7 +104,6 @@ function itemsEqual(a: any, b: any): boolean {
     }
   }
 
-  // Handle primitives
   return a === b;
 }
 
@@ -126,10 +115,7 @@ function normalizeResponse(response: string): string {
   return response.trim().replace(/\s+/g, " ");
 }
 
-/**
- * Normalize object for comparison (remove undefined values, sort keys)
- */
-function normalizeObject(obj: any): any {
+function normalizeObject(obj: ResponseItem): ResponseItem {
   if (obj == null) {
     return obj;
   }
@@ -137,18 +123,17 @@ function normalizeObject(obj: any): any {
     return obj;
   }
   if (Array.isArray(obj)) {
-    return obj.map(normalizeObject);
+    return obj.map((item) => normalizeObject(item as ResponseItem));
   }
 
-  const normalized: any = {};
+  const normalized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
-      normalized[key] = normalizeObject(value);
+      normalized[key] = normalizeObject(value as ResponseItem);
     }
   }
 
-  // Sort keys for consistent comparison
-  const sorted: any = {};
+  const sorted: Record<string, unknown> = {};
   for (const key of Object.keys(normalized).sort()) {
     sorted[key] = normalized[key];
   }

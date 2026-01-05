@@ -3,13 +3,27 @@
 
 import { Directory, File } from "./classes/gorilla-file-system";
 
+/**
+ * Represents serialized state of any value for comparison
+ */
+type SerializedValue =
+  | string
+  | number
+  | boolean
+  | null
+  | SerializedObject
+  | SerializedValue[];
+interface SerializedObject {
+  [key: string]: SerializedValue;
+}
+
 export interface StateCheckResult {
   valid: boolean;
   error_type?: string;
   details?: {
-    differences?: Record<string, any>;
-    model_instance_state?: Record<string, any>;
-    ground_truth_instance_state?: Record<string, any>;
+    differences?: Record<string, SerializedValue>;
+    model_instance_state?: Record<string, SerializedValue>;
+    ground_truth_instance_state?: Record<string, SerializedValue>;
   };
 }
 
@@ -18,7 +32,9 @@ export interface StateCheckResult {
  * has the same state (defined by the attributes) as the ground_truth_instance.
  */
 export function stateChecker(
+  // biome-ignore lint/suspicious/noExplicitAny: Runtime type comparison requires dynamic property access
   modelInstances: Record<string, any>,
+  // biome-ignore lint/suspicious/noExplicitAny: Runtime type comparison requires dynamic property access
   groundTruthInstances: Record<string, any>
 ): StateCheckResult {
   for (const [className, groundTruthInstance] of Object.entries(
@@ -73,17 +89,16 @@ export function stateChecker(
   return { valid: true };
 }
 
-/**
- * Compare all non-private attributes of two instances
- */
 function compareInstances(
+  // biome-ignore lint/suspicious/noExplicitAny: Dynamic property enumeration for runtime comparison
   modelObject: any,
+  // biome-ignore lint/suspicious/noExplicitAny: Dynamic property enumeration for runtime comparison
   groundTruthObject: any
 ): {
   valid: boolean;
-  differences: Record<string, any>;
+  differences: Record<string, SerializedValue>;
 } {
-  const differences: Record<string, any> = {};
+  const differences: Record<string, SerializedValue> = {};
 
   const SKIP_ATTRS = new Set(["parent", "_parent"]);
   for (const attrName of Object.keys(groundTruthObject)) {
@@ -111,57 +126,41 @@ function compareInstances(
 
 const SKIP_KEYS = new Set(["parent", "_parent"]);
 
-function deepEqual(
-  a: any,
-  b: any,
-  seen: WeakSet<object> = new WeakSet()
+function shouldSkipKey(key: string): boolean {
+  return key.startsWith("_") || SKIP_KEYS.has(key);
+}
+
+function getFilteredKeys(obj: object): string[] {
+  return Object.keys(obj).filter((k) => !shouldSkipKey(k));
+}
+
+function deepEqualArrays(
+  // biome-ignore lint/suspicious/noExplicitAny: Array element comparison
+  a: any[],
+  // biome-ignore lint/suspicious/noExplicitAny: Array element comparison
+  b: any[],
+  seen: WeakSet<object>
 ): boolean {
-  if (a === b) {
-    return true;
-  }
-
-  if (a == null || b == null) {
-    return a === b;
-  }
-
-  if (typeof a !== typeof b) {
+  if (a.length !== b.length) {
     return false;
   }
-
-  if (typeof a !== "object") {
-    return a === b;
-  }
-
-  if (seen.has(a) || seen.has(b)) {
-    return true;
-  }
-  seen.add(a);
-  if (typeof b === "object") {
-    seen.add(b);
-  }
-
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) {
+  for (let i = 0; i < a.length; i++) {
+    if (!deepEqual(a[i], b[i], seen)) {
       return false;
     }
-    for (let i = 0; i < a.length; i++) {
-      if (!deepEqual(a[i], b[i], seen)) {
-        return false;
-      }
-    }
-    return true;
   }
+  return true;
+}
 
-  if (Array.isArray(a) !== Array.isArray(b)) {
-    return false;
-  }
-
-  const keysA = Object.keys(a).filter(
-    (k) => !(k.startsWith("_") || SKIP_KEYS.has(k))
-  );
-  const keysB = Object.keys(b).filter(
-    (k) => !(k.startsWith("_") || SKIP_KEYS.has(k))
-  );
+function deepEqualObjects(
+  // biome-ignore lint/suspicious/noExplicitAny: Object property comparison
+  a: any,
+  // biome-ignore lint/suspicious/noExplicitAny: Object property comparison
+  b: any,
+  seen: WeakSet<object>
+): boolean {
+  const keysA = getFilteredKeys(a);
+  const keysB = getFilteredKeys(b);
 
   if (keysA.length !== keysB.length) {
     return false;
@@ -178,24 +177,60 @@ function deepEqual(
   return true;
 }
 
-/**
- * Serialize instance state for error reporting
- */
-function serializeInstanceState(instance: any): Record<string, any> {
-  const state: Record<string, any> = {};
+function deepEqual(
+  // biome-ignore lint/suspicious/noExplicitAny: Deep equality check on unknown runtime types
+  a: any,
+  // biome-ignore lint/suspicious/noExplicitAny: Deep equality check on unknown runtime types
+  b: any,
+  seen: WeakSet<object> = new WeakSet()
+): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a == null || b == null) {
+    return a === b;
+  }
+  if (typeof a !== typeof b) {
+    return false;
+  }
+  if (typeof a !== "object") {
+    return a === b;
+  }
+
+  if (seen.has(a) || seen.has(b)) {
+    return true;
+  }
+  seen.add(a);
+  if (typeof b === "object") {
+    seen.add(b);
+  }
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return deepEqualArrays(a, b, seen);
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) {
+    return false;
+  }
+
+  return deepEqualObjects(a, b, seen);
+}
+
+function serializeInstanceState(
+  // biome-ignore lint/suspicious/noExplicitAny: Serializes unknown instance types for error reporting
+  instance: any
+): Record<string, SerializedValue> {
+  const state: Record<string, SerializedValue> = {};
 
   for (const [key, value] of Object.entries(instance)) {
     if (!key.startsWith("_")) {
       try {
-        // 더 자세한 직렬화 시도
         if (key === "root" && typeof value === "object") {
-          // GorillaFileSystem의 root 디렉토리 구조를 재귀적으로 직렬화
           state[key] = serializeDirectory(value);
         } else {
           state[key] =
             typeof value === "object"
               ? JSON.parse(JSON.stringify(value))
-              : value;
+              : (value as SerializedValue);
         }
       } catch {
         state[key] = String(value);
@@ -206,21 +241,23 @@ function serializeInstanceState(instance: any): Record<string, any> {
   return state;
 }
 
-function serializeDirectory(dir: any, depth = 0): any {
+// biome-ignore lint/suspicious/noExplicitAny: Handles Directory instances with dynamic contents property
+function serializeDirectory(dir: any, depth = 0): SerializedObject {
   if (depth > 5) {
-    return "[Max depth reached]"; // 무한 재귀 방지
+    return { value: "[Max depth reached]" };
   }
 
-  const result: any = {
+  const result: SerializedObject = {
     name: dir.name,
     contents: {},
   };
 
+  const contents = result.contents as Record<string, SerializedObject>;
   for (const [name, item] of Object.entries(dir.contents || {})) {
     if (item instanceof File) {
-      result.contents[name] = { type: "file", content: item.content };
+      contents[name] = { type: "file", content: item.content };
     } else if (item instanceof Directory) {
-      result.contents[name] = serializeDirectory(item, depth + 1);
+      contents[name] = serializeDirectory(item, depth + 1);
     }
   }
 

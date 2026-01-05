@@ -3,9 +3,8 @@
 
 import { CLASS_NAME_TO_CLASS, STATELESS_CLASSES } from "./constants";
 
-export interface InstanceRegistry {
-  [key: string]: any;
-}
+// biome-ignore lint/suspicious/noExplicitAny: Dynamic instance storage for various class types
+export type InstanceRegistry = Record<string, any>;
 
 export class MethodRegistry {
   private instances: InstanceRegistry = {};
@@ -35,14 +34,15 @@ export class MethodRegistry {
     }
   }
 
-  // Get or create instance for stateful classes
   getOrCreateInstance(
     className: string,
     testEntryId: string,
     modelName: string,
+    // biome-ignore lint/suspicious/noExplicitAny: Dynamic scenario data from JSON
     scenario: any,
     longContext = false,
     isEvalRun = false
+    // biome-ignore lint/suspicious/noExplicitAny: Returns dynamically typed class instance
   ): any {
     const instanceKey = `${modelName}_${testEntryId}_${className}_${isEvalRun ? "eval" : "model"}_instance`;
 
@@ -80,7 +80,7 @@ export class MethodRegistry {
     return this.instances[instanceKey];
   }
 
-  // Get instance by method name
+  // biome-ignore lint/suspicious/noExplicitAny: Returns dynamically typed class instance
   getInstanceByMethod(methodName: string): any {
     const instanceKey = this.methodMapping[methodName];
     if (!instanceKey) {

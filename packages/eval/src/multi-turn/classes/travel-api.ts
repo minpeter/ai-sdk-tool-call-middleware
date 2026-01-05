@@ -1,3 +1,6 @@
+const DIGIT_REGEX = /\d/;
+const DATE_FORMAT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
 export interface TravelScenario {
   random_seed?: number;
   credit_card_list?: Record<string, CreditCard>;
@@ -275,6 +278,7 @@ class SeededRandom {
   }
 
   next(): number {
+    // biome-ignore lint/suspicious/noBitwiseOperators: Linear congruential generator requires bitwise AND for 32-bit overflow
     this.seed = (this.seed * 1_103_515_245 + 12_345) & 0x7f_ff_ff_ff;
     return this.seed;
   }
@@ -421,7 +425,7 @@ export class TravelAPI {
 
     const digitSum = travelDate
       .split("")
-      .filter((c) => /\d/.test(c))
+      .filter((c) => DIGIT_REGEX.test(c))
       .reduce((sum, c) => sum + Number.parseInt(c, 10), 0);
     const travelDateMultiplier = digitSum % 2 === 0 ? 2 : 1;
 
@@ -499,8 +503,7 @@ export class TravelAPI {
       };
     }
 
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(travelDate)) {
+    if (!DATE_FORMAT_REGEX.test(travelDate)) {
       return {
         booking_status: false,
         error: "Invalid date format. Use YYYY-MM-DD.",
@@ -645,13 +648,13 @@ export class TravelAPI {
     const forwardKey = `${baseCurrency}|${targetCurrency}`;
     const reverseKey = `${targetCurrency}|${baseCurrency}`;
 
-    if (EXCHANGE_RATES.has(forwardKey)) {
-      const rate = EXCHANGE_RATES.get(forwardKey)!;
-      return { exchanged_value: value * rate };
+    const forwardRate = EXCHANGE_RATES.get(forwardKey);
+    if (forwardRate !== undefined) {
+      return { exchanged_value: value * forwardRate };
     }
-    if (EXCHANGE_RATES.has(reverseKey)) {
-      const rate = EXCHANGE_RATES.get(reverseKey)!;
-      return { exchanged_value: Math.round((value / rate) * 100) / 100 };
+    const reverseRate = EXCHANGE_RATES.get(reverseKey);
+    if (reverseRate !== undefined) {
+      return { exchanged_value: Math.round((value / reverseRate) * 100) / 100 };
     }
     throw new Error("No available exchange rate for the given currencies.");
   }
@@ -669,8 +672,7 @@ export class TravelAPI {
       };
     }
 
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(dateOfBirth)) {
+    if (!DATE_FORMAT_REGEX.test(dateOfBirth)) {
       return {
         verification_status: false,
         verification_failure:

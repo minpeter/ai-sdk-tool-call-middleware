@@ -1,3 +1,7 @@
+const TRAILING_SLASHES_REGEX = /\/+$/;
+const PATH_TRAILING_SLASHES_REGEX = /\/+$/;
+const WHITESPACE_REGEX = /\s+/;
+
 export class File {
   name: string;
   content: string;
@@ -56,8 +60,8 @@ export class GorillaFileSystem {
     this._currentDir = this.root;
   }
 
-  _loadScenario(scenario: any, longContext = false): void {
-    this.longContext = longContext;
+  // biome-ignore lint/suspicious/noExplicitAny: Dynamic scenario loading from JSON
+  _loadScenario(scenario: any, _longContext = false): void {
     this.root = new Directory("/", null);
 
     if (scenario?.root) {
@@ -74,8 +78,17 @@ export class GorillaFileSystem {
     this._currentDir = this.root;
   }
 
-  private _loadDirectory(current: any, parent: Directory): Directory {
-    for (const [name, data] of Object.entries(current as Record<string, any>)) {
+  private _loadDirectory(
+    // biome-ignore lint/suspicious/noExplicitAny: Dynamic directory structure from JSON
+    current: any,
+    parent: Directory
+  ): Directory {
+    for (const [name, data] of Object.entries(
+      current as Record<
+        string,
+        { type: string; contents?: unknown; content?: string }
+      >
+    )) {
       if (data.type === "directory") {
         const newDir = new Directory(name, parent);
         const loadedDir = this._loadDirectory(data.contents || {}, newDir);
@@ -106,23 +119,23 @@ export class GorillaFileSystem {
   }
 
   cd(folder: string): Record<string, string> | null {
-    folder = folder.replace(/\/+$/, "");
-    if (folder === "") {
-      folder = "/";
+    let normalizedFolder = folder.replace(TRAILING_SLASHES_REGEX, "");
+    if (normalizedFolder === "") {
+      normalizedFolder = "/";
     }
 
     if (
-      folder !== "." &&
-      folder !== ".." &&
-      folder !== "/" &&
-      folder.includes("/")
+      normalizedFolder !== "." &&
+      normalizedFolder !== ".." &&
+      normalizedFolder !== "/" &&
+      normalizedFolder.includes("/")
     ) {
       return {
-        error: `cd: ${folder}: Unsupported path. Only one folder level at a time is supported.`,
+        error: `cd: ${normalizedFolder}: Unsupported path. Only one folder level at a time is supported.`,
       };
     }
 
-    if (folder === "..") {
+    if (normalizedFolder === "..") {
       if (this._currentDir.parent) {
         this._currentDir = this._currentDir.parent;
         return {};
@@ -135,7 +148,7 @@ export class GorillaFileSystem {
       return { error: "cd: ..: No such directory" };
     }
 
-    const targetDir = this._navigateToDirectory(folder);
+    const targetDir = this._navigateToDirectory(normalizedFolder);
     if (targetDir && "error" in targetDir) {
       return targetDir as Record<string, string>;
     }
@@ -143,7 +156,7 @@ export class GorillaFileSystem {
       this._currentDir = targetDir;
       return { current_working_directory: targetDir.name };
     }
-    return { error: `cd: ${folder}: No such file or directory` };
+    return { error: `cd: ${normalizedFolder}: No such file or directory` };
   }
 
   mkdir(dir_name: string): Record<string, string> | null {
@@ -216,7 +229,7 @@ export class GorillaFileSystem {
     };
 
     if (targetDir instanceof Directory) {
-      recursiveSearch(targetDir, path.replace(/\/+$/, ""));
+      recursiveSearch(targetDir, path.replace(PATH_TRAILING_SLASHES_REGEX, ""));
     }
     return { matches };
   }
@@ -235,7 +248,7 @@ export class GorillaFileSystem {
         }
         if (mode === "w") {
           return {
-            count: content.split(/\s+/).filter(Boolean).length,
+            count: content.split(WHITESPACE_REGEX).filter(Boolean).length,
             type: "words",
           };
         }
@@ -502,7 +515,7 @@ export class GorillaFileSystem {
     return tempDir;
   }
 
-  equals(other: any): boolean {
+  equals(other: unknown): boolean {
     if (!(other instanceof GorillaFileSystem)) {
       return false;
     }

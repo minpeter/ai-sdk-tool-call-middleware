@@ -1,5 +1,16 @@
+interface Ticket {
+  id: number;
+  title: string;
+  description: string;
+  status: string;
+  priority: number;
+  created_by: string;
+  resolution?: string;
+  [key: string]: string | number | undefined;
+}
+
 export interface TicketScenario {
-  ticket_queue?: Record<string, any>[];
+  ticket_queue?: Ticket[];
   ticket_counter?: number;
   current_user?: string | null;
 }
@@ -11,7 +22,7 @@ const DEFAULT_STATE: TicketScenario = {
 };
 
 export class TicketAPI {
-  private ticketQueue: Record<string, any>[];
+  private ticketQueue: Ticket[];
   private ticketCounter: number;
   private currentUser: string | null;
 
@@ -22,17 +33,21 @@ export class TicketAPI {
   }
 
   _loadScenario(scenario: TicketScenario, _longContext = false): void {
-    const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_STATE));
-    this.ticketQueue = scenario.ticket_queue || defaultCopy.ticket_queue!;
-    this.ticketCounter = scenario.ticket_counter || defaultCopy.ticket_counter!;
-    this.currentUser = scenario.current_user || defaultCopy.current_user;
+    const defaultCopy = JSON.parse(
+      JSON.stringify(DEFAULT_STATE)
+    ) as TicketScenario;
+    this.ticketQueue = scenario.ticket_queue ?? defaultCopy.ticket_queue ?? [];
+    this.ticketCounter =
+      scenario.ticket_counter ?? defaultCopy.ticket_counter ?? 1;
+    this.currentUser =
+      scenario.current_user ?? defaultCopy.current_user ?? null;
   }
 
   create_ticket(
     title: string,
     description = "",
     priority = 1
-  ): Record<string, any> {
+  ): Ticket | { error: string } {
     if (!this.currentUser) {
       return {
         error: "User not authenticated. Please log in to create a ticket.",
@@ -55,7 +70,7 @@ export class TicketAPI {
     return ticket;
   }
 
-  get_ticket(ticket_id: number): Record<string, any> {
+  get_ticket(ticket_id: number): Ticket | { error: string } {
     const ticket = this._findTicket(ticket_id);
     if (!ticket) {
       return { error: `Ticket with ID ${ticket_id} not found.` };
@@ -93,7 +108,7 @@ export class TicketAPI {
 
   edit_ticket(
     ticket_id: number,
-    updates: Record<string, any>
+    updates: Record<string, string | number | null>
   ): Record<string, string> {
     const ticket = this._findTicket(ticket_id);
     if (!ticket) {
@@ -119,8 +134,8 @@ export class TicketAPI {
     return { status: `Ticket ${ticket_id} has been updated successfully.` };
   }
 
-  private _findTicket(ticket_id: number): Record<string, any> | null {
-    return this.ticketQueue.find((ticket) => ticket.id === ticket_id) || null;
+  private _findTicket(ticket_id: number): Ticket | undefined {
+    return this.ticketQueue.find((ticket) => ticket.id === ticket_id);
   }
 
   ticket_login(username: string, password: string): Record<string, boolean> {
@@ -143,7 +158,7 @@ export class TicketAPI {
     return { success: false };
   }
 
-  get_user_tickets(status?: string): Record<string, any>[] {
+  get_user_tickets(status?: string): (Ticket | { error: string })[] {
     if (!this.currentUser) {
       return [
         { error: "User not authenticated. Please log in to view tickets." },

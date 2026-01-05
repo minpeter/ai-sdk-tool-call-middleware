@@ -1,5 +1,4 @@
-// Multi-turn evaluation exports
-
+// biome-ignore lint/performance/noBarrelFile: Module entrypoint for multi-turn evaluation
 export {
   multiTurnChecker,
   multiTurnIrrelevanceChecker,

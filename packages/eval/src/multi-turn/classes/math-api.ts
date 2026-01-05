@@ -1,11 +1,9 @@
 import { Decimal } from "decimal.js";
 
+type MathResult = { result: number } | { error: string };
+
 export class MathAPI {
-  logarithm(
-    value: number,
-    base: number,
-    precision: number
-  ): Record<string, any> {
+  logarithm(value: number, base: number, precision: number): MathResult {
     try {
       // Set precision for Decimal.js
       Decimal.set({ precision });
@@ -19,7 +17,7 @@ export class MathAPI {
     }
   }
 
-  mean(numbers: number[]): Record<string, any> {
+  mean(numbers: number[]): MathResult {
     if (!numbers.length) {
       return { error: "Cannot calculate mean of an empty list" };
     }
@@ -30,7 +28,7 @@ export class MathAPI {
     }
   }
 
-  standardDeviation(numbers: number[]): Record<string, any> {
+  standardDeviation(numbers: number[]): MathResult {
     if (!numbers.length) {
       return { error: "Cannot calculate standard deviation of an empty list" };
     }
@@ -44,12 +42,8 @@ export class MathAPI {
     }
   }
 
-  siUnitConversion(
-    value: number,
-    unitIn: string,
-    unitOut: string
-  ): Record<string, any> {
-    const toMeters: Record<string, any> = {
+  siUnitConversion(value: number, unitIn: string, unitOut: string): MathResult {
+    const toMeters: Record<string, number> = {
       km: 1000,
       m: 1,
       cm: 0.01,
@@ -84,8 +78,8 @@ export class MathAPI {
     value: number,
     unitIn: string,
     unitOut: string
-  ): Record<string, any> {
-    const conversion: Record<string, any> = {
+  ): MathResult {
+    const conversion: Record<string, number> = {
       cm_to_in: 0.393_701,
       in_to_cm: 2.54,
       m_to_ft: 3.280_84,
@@ -131,7 +125,7 @@ export class MathAPI {
     }
   }
 
-  add(a: number, b: number): Record<string, any> {
+  add(a: number, b: number): MathResult {
     try {
       return { result: a + b };
     } catch (_e) {
@@ -139,7 +133,7 @@ export class MathAPI {
     }
   }
 
-  subtract(a: number, b: number): Record<string, any> {
+  subtract(a: number, b: number): MathResult {
     try {
       return { result: a - b };
     } catch (_e) {
@@ -147,7 +141,7 @@ export class MathAPI {
     }
   }
 
-  multiply(a: number, b: number): Record<string, any> {
+  multiply(a: number, b: number): MathResult {
     if (typeof a !== "number" || typeof b !== "number") {
       return { error: "Both inputs must be numbers" };
     }
@@ -159,7 +153,7 @@ export class MathAPI {
     }
   }
 
-  divide(a: number, b: number): Record<string, any> {
+  divide(a: number, b: number): MathResult {
     try {
       if (b === 0) {
         return { error: "Cannot divide by zero" };
@@ -170,7 +164,7 @@ export class MathAPI {
     }
   }
 
-  power(base: number, exponent: number): Record<string, any> {
+  power(base: number, exponent: number): MathResult {
     try {
       return { result: base ** exponent };
     } catch (_e) {
@@ -178,7 +172,7 @@ export class MathAPI {
     }
   }
 
-  squareRoot(number: number, precision: number): Record<string, any> {
+  squareRoot(number: number, precision: number): MathResult {
     try {
       if (number < 0) {
         return { error: "Cannot calculate square root of a negative number" };
@@ -200,7 +194,7 @@ export class MathAPI {
     }
   }
 
-  absoluteValue(number: number): Record<string, any> {
+  absoluteValue(number: number): MathResult {
     try {
       return { result: Math.abs(number) };
     } catch (_e) {
@@ -208,7 +202,7 @@ export class MathAPI {
     }
   }
 
-  roundNumber(number: number, decimalPlaces = 0): Record<string, any> {
+  roundNumber(number: number, decimalPlaces = 0): MathResult {
     try {
       return {
         result: Math.round(number * 10 ** decimalPlaces) / 10 ** decimalPlaces,
@@ -220,7 +214,7 @@ export class MathAPI {
     }
   }
 
-  percentage(part: number, whole: number): Record<string, any> {
+  percentage(part: number, whole: number): MathResult {
     try {
       if (whole === 0) {
         return { error: "Whole value cannot be zero" };
@@ -231,7 +225,7 @@ export class MathAPI {
     }
   }
 
-  minValue(numbers: number[]): Record<string, any> {
+  minValue(numbers: number[]): MathResult {
     if (!numbers.length) {
       return { error: "Cannot find minimum of an empty list" };
     }
@@ -242,7 +236,7 @@ export class MathAPI {
     }
   }
 
-  maxValue(numbers: number[]): Record<string, any> {
+  maxValue(numbers: number[]): MathResult {
     if (!numbers.length) {
       return { error: "Cannot find maximum of an empty list" };
     }
@@ -253,7 +247,7 @@ export class MathAPI {
     }
   }
 
-  sumValues(numbers: number[]): Record<string, any> {
+  sumValues(numbers: number[]): MathResult {
     if (!numbers.length) {
       return { error: "Cannot calculate sum of an empty list" };
     }

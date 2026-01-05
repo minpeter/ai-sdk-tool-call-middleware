@@ -909,7 +909,7 @@ const createBfclMultiTurnBenchmark = (
         const checkResult = await multiTurnChecker(
           modelResultsByTurn,
           expectedGroundTruth,
-          testCase as any,
+          testCase,
           testCategory,
           runId
         );
@@ -929,6 +929,7 @@ const createBfclMultiTurnBenchmark = (
 
       const runSingleCase = async (
         testCase: MultiTurnTestCase
+        // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Multi-turn evaluation requires complex branching
       ): Promise<{ valid: boolean; logs: string[] }> => {
         try {
           const caseLogs: string[] = [];

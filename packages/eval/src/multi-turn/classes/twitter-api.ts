@@ -1,15 +1,28 @@
+export interface Tweet {
+  id: number;
+  username: string;
+  content: string;
+  tags: string[];
+  mentions: string[];
+}
+
+export interface Comment {
+  username: string;
+  content: string;
+}
+
 export interface TwitterScenario {
   username?: string;
   password?: string;
   authenticated?: boolean;
-  tweets?: Record<number, Record<string, any>>;
-  comments?: Record<number, any[]>;
+  tweets?: Record<number, Tweet>;
+  comments?: Record<number, Comment[]>;
   retweets?: Record<string, number[]>;
   following_list?: string[];
   tweet_counter?: number;
 }
 
-const DEFAULT_STATE: TwitterScenario = {
+const DEFAULT_STATE: Required<TwitterScenario> = {
   username: "john",
   password: "john123",
   authenticated: false,
@@ -24,8 +37,8 @@ export class TwitterAPI {
   private username: string;
   private password: string;
   private authenticated: boolean;
-  private tweets: Record<number, Record<string, any>>;
-  private comments: Record<number, any[]>;
+  private tweets: Record<number, Tweet>;
+  private comments: Record<number, Comment[]>;
   private retweets: Record<string, number[]>;
   private followingList: string[];
   private tweetCounter: number;
@@ -42,19 +55,21 @@ export class TwitterAPI {
   }
 
   _loadScenario(scenario: TwitterScenario, _longContext = false): void {
-    const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_STATE));
-    this.username = scenario.username || defaultCopy.username!;
-    this.password = scenario.password || defaultCopy.password!;
-    this.authenticated = scenario.authenticated || defaultCopy.authenticated!;
-    this.tweets = scenario.tweets || defaultCopy.tweets!;
+    const defaultCopy: Required<TwitterScenario> = JSON.parse(
+      JSON.stringify(DEFAULT_STATE)
+    );
+    this.username = scenario.username ?? defaultCopy.username;
+    this.password = scenario.password ?? defaultCopy.password;
+    this.authenticated = scenario.authenticated ?? defaultCopy.authenticated;
+    this.tweets = scenario.tweets ?? defaultCopy.tweets;
     // Convert tweet keys from string to int from loaded scenario
     this.tweets = Object.fromEntries(
       Object.entries(this.tweets).map(([k, v]) => [Number.parseInt(k, 10), v])
     );
-    this.comments = scenario.comments || defaultCopy.comments!;
-    this.retweets = scenario.retweets || defaultCopy.retweets!;
-    this.followingList = scenario.following_list || defaultCopy.following_list!;
-    this.tweetCounter = scenario.tweet_counter || defaultCopy.tweet_counter!;
+    this.comments = scenario.comments ?? defaultCopy.comments;
+    this.retweets = scenario.retweets ?? defaultCopy.retweets;
+    this.followingList = scenario.following_list ?? defaultCopy.following_list;
+    this.tweetCounter = scenario.tweet_counter ?? defaultCopy.tweet_counter;
   }
 
   authenticate_twitter(
@@ -76,7 +91,7 @@ export class TwitterAPI {
     content: string,
     tags: string[] = [],
     mentions: string[] = []
-  ): Record<string, any> {
+  ): Tweet | { error: string } {
     if (!this.authenticated) {
       return {
         error: "User not authenticated. Please authenticate before posting.",
@@ -154,7 +169,9 @@ export class TwitterAPI {
     return { mention_status: "Users mentioned successfully" };
   }
 
-  follow_user(username_to_follow: string): Record<string, any> {
+  follow_user(
+    username_to_follow: string
+  ): { error: string } | { follow_status: boolean } {
     if (!this.authenticated) {
       return {
         error: "User not authenticated. Please authenticate before following.",
@@ -169,17 +186,19 @@ export class TwitterAPI {
     return { follow_status: true };
   }
 
-  list_all_following(): Record<string, string[]> {
+  list_all_following(): { error: string } | { following_list: string[] } {
     if (!this.authenticated) {
       return {
         error:
           "User not authenticated. Please authenticate before listing following.",
-      } as any;
+      };
     }
     return { following_list: this.followingList };
   }
 
-  unfollow_user(username_to_unfollow: string): Record<string, any> {
+  unfollow_user(
+    username_to_unfollow: string
+  ): { error: string } | { unfollow_status: boolean } {
     if (!this.authenticated) {
       return {
         error:
@@ -197,7 +216,7 @@ export class TwitterAPI {
     return { unfollow_status: true };
   }
 
-  get_tweet(tweet_id: number): Record<string, any> {
+  get_tweet(tweet_id: number): Tweet | { error: string } {
     if (!(tweet_id in this.tweets)) {
       return { error: `Tweet with ID ${tweet_id} not found.` };
     }
@@ -205,13 +224,13 @@ export class TwitterAPI {
     return this.tweets[tweet_id];
   }
 
-  get_user_tweets(username: string): Record<string, any>[] {
+  get_user_tweets(username: string): Tweet[] {
     return Object.values(this.tweets).filter(
       (tweet) => tweet.username === username
     );
   }
 
-  search_tweets(keyword: string): Record<string, any>[] {
+  search_tweets(keyword: string): Tweet[] {
     const keywordLower = keyword.toLowerCase();
     return Object.values(this.tweets).filter(
       (tweet) =>
@@ -222,7 +241,7 @@ export class TwitterAPI {
     );
   }
 
-  get_tweet_comments(tweet_id: number): any[] {
+  get_tweet_comments(tweet_id: number): (Comment | { error: string })[] {
     if (!(tweet_id in this.tweets)) {
       return [{ error: `Tweet with ID ${tweet_id} not found.` }];
     }

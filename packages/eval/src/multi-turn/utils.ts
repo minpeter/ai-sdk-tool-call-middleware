@@ -1,14 +1,24 @@
-// Utility functions for multi-turn evaluation
-// Ported from Python's multi_turn_utils.py
+interface InstanceDifference {
+  model: unknown;
+  ground_truth: unknown;
+}
 
-/**
- * Find differences between two instances for error reporting
- */
+const DANGEROUS_PATTERNS = [
+  /\bkill\b/,
+  /\bexit\b/,
+  /\bquit\b/,
+  /\bsystem\b/,
+  /\bexec\b/,
+  /\beval\b/,
+  /\bimport\b/,
+  /__\w+__/,
+];
+
 export function findInstanceDifferences(
-  modelInstance: any,
-  groundTruthInstance: any
-): Record<string, { model: any; ground_truth: any }> {
-  const differences: Record<string, { model: any; ground_truth: any }> = {};
+  modelInstance: Record<string, unknown>,
+  groundTruthInstance: Record<string, unknown>
+): Record<string, InstanceDifference> {
+  const differences: Record<string, InstanceDifference> = {};
 
   // Get all keys from both instances
   const allKeys = new Set([
@@ -37,10 +47,8 @@ export function findInstanceDifferences(
   return differences;
 }
 
-/**
- * Deep equality check for complex objects
- */
-export function deepEqual(a: any, b: any): boolean {
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Deep equality check requires type-based branching
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) {
     return true;
   }
@@ -62,8 +70,10 @@ export function deepEqual(a: any, b: any): boolean {
   }
 
   if (typeof a === "object" && typeof b === "object") {
-    const keysA = Object.keys(a).filter((k) => !k.startsWith("_"));
-    const keysB = Object.keys(b).filter((k) => !k.startsWith("_"));
+    const objA = a as Record<string, unknown>;
+    const objB = b as Record<string, unknown>;
+    const keysA = Object.keys(objA).filter((k) => !k.startsWith("_"));
+    const keysB = Object.keys(objB).filter((k) => !k.startsWith("_"));
 
     if (keysA.length !== keysB.length) {
       return false;
@@ -73,7 +83,7 @@ export function deepEqual(a: any, b: any): boolean {
       if (!keysB.includes(key)) {
         return false;
       }
-      if (!deepEqual(a[key], b[key])) {
+      if (!deepEqual(objA[key], objB[key])) {
         return false;
       }
     }
@@ -95,19 +105,7 @@ export function sanitizeMethodName(methodName: string): string {
  * Validate that a function call string is safe to execute
  */
 export function validateFunctionCall(funcCall: string): boolean {
-  // Block dangerous operations
-  const dangerousPatterns = [
-    /\bkill\b/,
-    /\bexit\b/,
-    /\bquit\b/,
-    /\bsystem\b/,
-    /\bexec\b/,
-    /\beval\b/,
-    /\bimport\b/,
-    /__\w+__/, // Dunder methods
-  ];
-
-  for (const pattern of dangerousPatterns) {
+  for (const pattern of DANGEROUS_PATTERNS) {
     if (pattern.test(funcCall)) {
       return false;
     }

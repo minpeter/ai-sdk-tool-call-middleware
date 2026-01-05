@@ -10,8 +10,10 @@ import { TravelAPI } from "./classes/travel-api";
 import { TwitterAPI } from "./classes/twitter-api";
 import { VehicleControlAPI } from "./classes/vehicle-control-api";
 
-// Class name to constructor mapping
-export const CLASS_NAME_TO_CLASS: Record<string, any> = {
+// biome-ignore lint/suspicious/noExplicitAny: Dynamic class instantiation requires any for method access
+type ClassConstructor = new () => any;
+
+export const CLASS_NAME_TO_CLASS: Record<string, ClassConstructor> = {
   MathAPI,
   MessageAPI,
   TicketAPI,

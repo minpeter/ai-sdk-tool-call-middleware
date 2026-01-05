@@ -31,10 +31,10 @@ export class MessageAPI {
   private userCount: number;
   private userMap: Record<string, string>;
   private inbox: Record<string, string>[];
+  messageCount: number;
   private currentUser: string | null;
 
   constructor() {
-    // Initialize with defaults, will be overridden by _loadScenario
     this.generatedIds = new Set();
     this.userCount = 4;
     this.userMap = {};
@@ -45,7 +45,6 @@ export class MessageAPI {
 
   _loadScenario(scenario: MessageScenario, _longContext = false): void {
     const defaultCopy = JSON.parse(JSON.stringify(DEFAULT_STATE));
-    this._random = Math.random; // Placeholder, would need proper seeding
 
     const generatedIdsData = scenario.generated_ids || [];
     this.generatedIds = new Set(generatedIdsData);
@@ -56,7 +55,7 @@ export class MessageAPI {
     this.currentUser = scenario.current_user || defaultCopy.current_user;
   }
 
-  equals(other: any): boolean {
+  equals(other: unknown): boolean {
     if (!(other instanceof MessageAPI)) {
       return false;
     }
@@ -66,7 +65,9 @@ export class MessageAPI {
       if (key.startsWith("_") || excludeKeys.has(key)) {
         continue;
       }
-      if ((this as any)[key] !== (other as any)[key]) {
+      const thisValue = (this as unknown as Record<string, unknown>)[key];
+      const otherValue = (other as unknown as Record<string, unknown>)[key];
+      if (thisValue !== otherValue) {
         return false;
       }
     }
@@ -113,7 +114,16 @@ export class MessageAPI {
     return { login_status: !!this.currentUser };
   }
 
-  sendMessage(receiverId: string, message: string): Record<string, any> {
+  sendMessage(
+    receiverId: string,
+    message: string
+  ):
+    | { error: string }
+    | {
+        sent_status: boolean;
+        message_id: Record<string, number>;
+        message: string;
+      } {
     if (!this.currentUser) {
       return { error: "No user is currently logged in." };
     }
@@ -131,7 +141,11 @@ export class MessageAPI {
     };
   }
 
-  deleteMessage(receiverId: string): Record<string, any> {
+  deleteMessage(
+    receiverId: string
+  ):
+    | { error: string }
+    | { deleted_status: boolean; receiver_id: string; message: string } {
     if (!this.currentUser) {
       return { error: "No user is currently logged in." };
     }
@@ -151,7 +165,9 @@ export class MessageAPI {
     return { error: `Receiver ID ${receiverId} not found.` };
   }
 
-  viewMessagesSent(): Record<string, any> {
+  viewMessagesSent():
+    | { error: string }
+    | { messages: Record<string, string[]> } {
     if (!this.currentUser) {
       return { error: "No user is currently logged in." };
     }
@@ -167,7 +183,11 @@ export class MessageAPI {
     return { messages: sentMessages };
   }
 
-  addContact(userName: string): Record<string, any> {
+  addContact(
+    userName: string
+  ):
+    | { error: string }
+    | { added_status: boolean; user_id: string; message: string } {
     if (userName in this.userMap) {
       return { error: `User name '${userName}' already exists.` };
     }
@@ -184,12 +204,16 @@ export class MessageAPI {
     };
   }
 
-  searchMessages(keyword: string): Record<string, any> {
+  searchMessages(
+    keyword: string
+  ):
+    | { error: string }
+    | { results: Array<{ receiver_id: string; message: string }> } {
     if (!this.currentUser) {
       return { error: "No user is currently logged in." };
     }
     const keywordLower = keyword.toLowerCase();
-    const results = [];
+    const results: Array<{ receiver_id: string; message: string }> = [];
 
     for (const messageData of this.inbox) {
       const [receiverId, messageContent] = Object.entries(messageData)[0];
@@ -203,7 +227,9 @@ export class MessageAPI {
     return { results };
   }
 
-  getMessageStats(): Record<string, any> {
+  getMessageStats():
+    | { error: string }
+    | { stats: { received_count: number; total_contacts: number } } {
     if (!this.currentUser) {
       return { error: "No user is currently logged in." };
     }
