@@ -21,7 +21,6 @@ import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
 import { createDynamicIfThenElseSchema } from "./core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import { originalToolsSchema } from "./core/utils/provider-options";
-import { isToolCallContent } from "./core/utils/type-guards";
 
 /**
  * Build final prompt by merging system prompt with existing prompt
@@ -331,25 +330,28 @@ function processAssistantContent(
 ): LanguageModelV3Content[] {
   const newContent: LanguageModelV3Content[] = [];
   for (const item of content) {
-    if (isToolCallContent(item)) {
-      newContent.push({
-        type: "text",
-        text: resolvedProtocol.formatToolCall(item),
-      });
-    } else if ((item as { type?: string }).type === "text") {
-      newContent.push(item as LanguageModelV3Content);
-    } else if ((item as { type?: string }).type === "reasoning") {
-      newContent.push(item as LanguageModelV3Content);
-    } else {
-      const options = extractOnErrorOption(providerOptions);
-      options?.onError?.(
-        "tool-call-middleware: unknown assistant content; stringifying for provider compatibility",
-        { content: item }
-      );
-      newContent.push({
-        type: "text",
-        text: JSON.stringify(item),
-      });
+    switch (item.type) {
+      case "tool-call":
+        newContent.push({
+          type: "text",
+          text: resolvedProtocol.formatToolCall(item),
+        });
+        break;
+      case "text":
+      case "reasoning":
+        newContent.push(item);
+        break;
+      default: {
+        const options = extractOnErrorOption(providerOptions);
+        options?.onError?.(
+          "tool-call-middleware: unknown assistant content; stringifying for provider compatibility",
+          { content: item }
+        );
+        newContent.push({
+          type: "text",
+          text: JSON.stringify(item),
+        });
+      }
     }
   }
 
