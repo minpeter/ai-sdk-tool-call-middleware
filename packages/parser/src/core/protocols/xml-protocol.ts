@@ -787,7 +787,8 @@ export const xmlProtocol = (
       }
       return stringify(toolCall.toolName, args, {
         suppressEmptyNode: false,
-        format: false,
+        format: true,
+        minimalEscaping: true,
       });
     },
 
