@@ -315,8 +315,6 @@ describe("Bug: Tool call signatures disappear through middleware", () => {
         .map((c: any) => c.text)
         .join("");
 
-      console.log("Assistant text with object input:", assistantText);
-
       // Should contain the tool call, not be empty or just stringified JSON
       expect(assistantText).toMatch(REGEX_EDIT_FILE_TAG);
       expect(assistantText).toContain("path");
