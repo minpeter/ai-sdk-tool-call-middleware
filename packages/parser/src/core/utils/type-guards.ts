@@ -1,14 +1,11 @@
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 
 export function isToolResultPart(content: unknown): content is ToolResultPart {
-  const c = content as {
-    type?: string;
-    toolName?: unknown;
-    toolCallId?: unknown;
-    output?: unknown;
-  };
+  if (!content || typeof content !== "object") {
+    return false;
+  }
+  const c = content as Record<string, unknown>;
   return (
-    !!c &&
     c.type === "tool-result" &&
     typeof c.toolName === "string" &&
     typeof c.toolCallId === "string" &&

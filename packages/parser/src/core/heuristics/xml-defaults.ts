@@ -262,20 +262,26 @@ function handleOpeningTagSegment(
   return q + 1;
 }
 
-function shouldDeduplicateStringTags(schema: unknown): boolean {
-  const unwrapped = unwrapJsonSchema(schema as unknown) as Record<
-    string,
-    unknown
-  >;
+/**
+ * Extract properties from a JSON schema, handling $ref unwrapping.
+ * Returns undefined if schema is invalid or has no properties.
+ */
+function extractSchemaProperties(
+  schema: unknown
+): Record<string, unknown> | undefined {
+  const unwrapped = unwrapJsonSchema(schema);
   if (!unwrapped || typeof unwrapped !== "object") {
-    return false;
+    return undefined;
   }
-  const props = (unwrapped as { properties?: Record<string, unknown> })
-    .properties as Record<string, unknown> | undefined;
+  return (unwrapped as { properties?: Record<string, unknown> }).properties;
+}
+
+function shouldDeduplicateStringTags(schema: unknown): boolean {
+  const props = extractSchemaProperties(schema);
   if (!props) {
     return false;
   }
-  const commandRaw = (props as Record<string, unknown>).command as unknown;
+  const commandRaw = props.command;
   if (!commandRaw) {
     return false;
   }
@@ -284,25 +290,14 @@ function shouldDeduplicateStringTags(schema: unknown): boolean {
 }
 
 function getStringPropertyNames(schema: unknown): string[] {
-  const unwrapped = unwrapJsonSchema(schema as unknown) as Record<
-    string,
-    unknown
-  >;
-  if (!unwrapped || typeof unwrapped !== "object") {
-    return [];
-  }
-  const props = (unwrapped as { properties?: Record<string, unknown> })
-    .properties;
+  const props = extractSchemaProperties(schema);
   if (!props) {
     return [];
   }
   const names: string[] = [];
   for (const key of Object.keys(props)) {
-    const prop = unwrapJsonSchema(
-      (props as Record<string, unknown>)[key] as unknown
-    ) as unknown;
-    const type = (prop as { type?: string }).type;
-    if (type === "string") {
+    const prop = unwrapJsonSchema(props[key]) as { type?: string } | undefined;
+    if (prop?.type === "string") {
       names.push(key);
     }
   }
@@ -339,15 +334,7 @@ function repairParsedAgainstSchema(input: unknown, schema: unknown): unknown {
   if (!input || typeof input !== "object") {
     return input;
   }
-  const unwrapped = unwrapJsonSchema(schema as unknown) as Record<
-    string,
-    unknown
-  >;
-  if (!unwrapped || typeof unwrapped !== "object") {
-    return input;
-  }
-  const properties = (unwrapped as { properties?: Record<string, unknown> })
-    .properties;
+  const properties = extractSchemaProperties(schema);
   if (!properties) {
     return input;
   }
@@ -355,27 +342,30 @@ function repairParsedAgainstSchema(input: unknown, schema: unknown): unknown {
   return input;
 }
 
+interface PropSchema {
+  type?: string;
+  items?: unknown;
+}
+
 function applySchemaProps(
   obj: Record<string, unknown>,
   properties: Record<string, unknown>
 ): void {
   for (const key of Object.keys(obj)) {
-    const propSchema = (properties as Record<string, unknown>)[key];
+    const propSchema = properties[key];
     if (!propSchema) {
       continue;
     }
-    const prop = unwrapJsonSchema(propSchema as unknown) as unknown;
-    const propType = (prop as { type?: string }).type;
-    if (propType === "array" && (prop as { items?: unknown }).items) {
-      const itemSchemaRaw = (prop as { items?: unknown }).items;
-      const itemSchema = unwrapJsonSchema(itemSchemaRaw) as unknown;
-      obj[key] = coerceArrayItems(obj[key], itemSchema) as unknown;
+    const prop = unwrapJsonSchema(propSchema) as PropSchema | undefined;
+    if (prop?.type === "array" && prop.items) {
+      const itemSchema = unwrapJsonSchema(prop.items);
+      obj[key] = coerceArrayItems(obj[key], itemSchema);
       continue;
     }
-    if (propType === "object") {
+    if (prop?.type === "object") {
       const val = obj[key];
       if (val && typeof val === "object") {
-        obj[key] = repairParsedAgainstSchema(val as unknown, prop) as unknown;
+        obj[key] = repairParsedAgainstSchema(val, prop);
       }
     }
   }
@@ -386,9 +376,9 @@ function coerceArrayItems(
   itemSchema: unknown
 ): unknown[] | unknown {
   if (!Array.isArray(val)) {
-    return val as unknown;
+    return val;
   }
-  return (val as unknown[]).map((v) => coerceArrayItem(v, itemSchema));
+  return val.map((v) => coerceArrayItem(v, itemSchema));
 }
 
 function coerceArrayItem(v: unknown, itemSchema: unknown): unknown {
@@ -396,18 +386,18 @@ function coerceArrayItem(v: unknown, itemSchema: unknown): unknown {
   if (typeof v === "string" && itemType === "object") {
     const parsed = tryParseStringToSchemaObject(v, itemSchema);
     if (parsed !== null) {
-      return parsed as unknown;
+      return parsed;
     }
     const fallback = extractStepStatusFromString(
       v.replace(MALFORMED_CLOSE_RE_G, "</$1>")
     );
     if (fallback) {
-      return fallback as unknown;
+      return fallback;
     }
     return v;
   }
   if (v && typeof v === "object" && itemType === "object") {
-    return repairParsedAgainstSchema(v as unknown, itemSchema) as unknown;
+    return repairParsedAgainstSchema(v, itemSchema);
   }
   return v;
 }
