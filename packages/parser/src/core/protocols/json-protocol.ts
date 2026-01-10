@@ -339,10 +339,12 @@ export const jsonProtocol = ({
 
   formatToolCall(toolCall: LanguageModelV3ToolCall) {
     let args: unknown = {};
-    try {
-      args = JSON.parse(toolCall.input);
-    } catch {
-      args = toolCall.input;
+    if (toolCall.input != null) {
+      try {
+        args = JSON.parse(toolCall.input);
+      } catch {
+        args = toolCall.input;
+      }
     }
     return `${toolCallStart}${JSON.stringify({
       name: toolCall.toolName,
