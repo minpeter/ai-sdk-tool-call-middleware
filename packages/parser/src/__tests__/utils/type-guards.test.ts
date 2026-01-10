@@ -15,10 +15,15 @@ describe("type-guards", () => {
     expect(isToolCallContent(content)).toBe(true);
   });
 
-  it("isToolCallContent returns false for invalid shapes", () => {
+  it("isToolCallContent returns false for non-tool-call types", () => {
     expect(isToolCallContent({})).toBe(false);
-    expect(isToolCallContent({ type: "tool-call", toolName: 1 })).toBe(false);
     expect(isToolCallContent({ type: "text", text: "hi" })).toBe(false);
+    expect(isToolCallContent({ type: "tool-result" })).toBe(false);
+  });
+
+  it("isToolCallContent returns false when toolName is missing or invalid", () => {
+    expect(isToolCallContent({ type: "tool-call" })).toBe(false);
+    expect(isToolCallContent({ type: "tool-call", toolName: 123 })).toBe(false);
   });
 
   it("isToolResultPart returns true for valid tool-result", () => {
