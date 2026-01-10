@@ -42,8 +42,8 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
       ultracite:
-        specifier: 7.0.9
-        version: 7.0.9(typescript@5.9.3)
+        specifier: 7.0.10
+        version: 7.0.10(typescript@5.9.3)
       update-ts-references:
         specifier: ^4.0.0
         version: 4.0.0
@@ -66,8 +66,8 @@ importers:
         specifier: 2.0.4
         version: 2.0.4(zod@4.3.5)
       ai:
-        specifier: 6.0.19
-        version: 6.0.19(zod@4.3.5)
+        specifier: 6.0.23
+        version: 6.0.23(zod@4.3.5)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -94,8 +94,8 @@ importers:
         specifier: 2.0.4
         version: 2.0.4(zod@4.3.5)
       ai:
-        specifier: 6.0.19
-        version: 6.0.19(zod@4.3.5)
+        specifier: 6.0.23
+        version: 6.0.23(zod@4.3.5)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -128,8 +128,8 @@ importers:
         specifier: 2.0.4
         version: 2.0.4(zod@4.3.5)
       ai:
-        specifier: 6.0.19
-        version: 6.0.19(zod@4.3.5)
+        specifier: 6.0.23
+        version: 6.0.23(zod@4.3.5)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -169,8 +169,8 @@ importers:
         specifier: 3.0.2
         version: 3.0.2
       ai:
-        specifier: 6.0.19
-        version: 6.0.19(zod@4.3.5)
+        specifier: 6.0.23
+        version: 6.0.23(zod@4.3.5)
       ajv:
         specifier: ^8.17.1
         version: 8.17.1
@@ -235,8 +235,8 @@ importers:
         specifier: ^25.0.3
         version: 25.0.3
       ai:
-        specifier: 6.0.19
-        version: 6.0.19(zod@4.3.5)
+        specifier: 6.0.23
+        version: 6.0.23(zod@4.3.5)
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
@@ -256,8 +256,8 @@ importers:
         specifier: ^11.2.0
         version: 11.2.0
       ai:
-        specifier: 6.0.19
-        version: 6.0.19(zod@4.3.5)
+        specifier: 6.0.23
+        version: 6.0.23(zod@4.3.5)
       fastify:
         specifier: ^5.6.2
         version: 5.6.2
@@ -939,8 +939,8 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
-  ai@6.0.19:
-    resolution: {integrity: sha512-LCqc4/ecL2jNvUfJ3vwz+UPuZvtPDONEjZJSw9XtYCjI6FuyBu9oJKlPMK2Mlj/10bWaNoJ+PnI+tDZLl4y06A==}
+  ai@6.0.23:
+    resolution: {integrity: sha512-IV8hqp6sQvZ0XVlu8bCnFlwG7+2d40ff26RZ1k4yw/zVuk2F6SXlONURtTo9vwPOPYeF7auXvyPA+dMDoepWxg==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -2317,8 +2317,8 @@ packages:
   ufo@1.6.1:
     resolution: {integrity: sha512-9a4/uxlTWJ4+a5i0ooc1rU7C7YOw3wT+UGqdeNNHWnOF9qcMBgLRS+4IYUqbczewFx4mLEig6gawh7X6mFlEkA==}
 
-  ultracite@7.0.9:
-    resolution: {integrity: sha512-D/Y5VVKy970FY1Ze5KkMLcWET7FQikEqTrYZzBJrcGCMBLPqN5a6H6zJenwhGjeXuSAOQXQ8Qg5LA8SHA4LHnA==}
+  ultracite@7.0.10:
+    resolution: {integrity: sha512-rA3uaic0tuwr9iQHqb3P2OPkluGakZGMgrcXKR/qb68uXNQ+rl3oZ+oPvJMB+qOxi4Au/E2qZjWblj1q9U+/Qg==}
     hasBin: true
 
   unbox-primitive@1.1.0:
@@ -3045,7 +3045,7 @@ snapshots:
 
   acorn@8.15.0: {}
 
-  ai@6.0.19(zod@4.3.5):
+  ai@6.0.23(zod@4.3.5):
     dependencies:
       '@ai-sdk/gateway': 3.0.10(zod@4.3.5)
       '@ai-sdk/provider': 3.0.2
@@ -4535,7 +4535,7 @@ snapshots:
 
   ufo@1.6.1: {}
 
-  ultracite@7.0.9(typescript@5.9.3):
+  ultracite@7.0.10(typescript@5.9.3):
     dependencies:
       '@clack/prompts': 0.11.0
       '@trpc/server': 11.8.1(typescript@5.9.3)
