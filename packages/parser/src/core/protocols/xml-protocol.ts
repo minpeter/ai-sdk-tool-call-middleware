@@ -778,10 +778,12 @@ export const xmlProtocol = (
 
     formatToolCall(toolCall: LanguageModelV3ToolCall): string {
       let args: unknown = {};
-      try {
-        args = JSON.parse(toolCall.input);
-      } catch {
-        args = toolCall.input;
+      if (toolCall.input != null) {
+        try {
+          args = JSON.parse(toolCall.input);
+        } catch {
+          args = toolCall.input;
+        }
       }
       return stringify(toolCall.toolName, args, {
         suppressEmptyNode: false,

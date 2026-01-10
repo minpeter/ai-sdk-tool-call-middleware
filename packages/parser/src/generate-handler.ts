@@ -150,7 +150,7 @@ function computeDebugSummary(options: {
 
   const toolCalls = newContent.filter(
     (p): p is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
-      (p as LanguageModelV3Content).type === "tool-call"
+      p.type === "tool-call"
   );
 
   const dbg = providerOptions?.toolCallMiddleware?.debugSummary;
@@ -222,25 +222,23 @@ function fixToolCallWithSchema(
   part: LanguageModelV3Content,
   tools: LanguageModelV3FunctionTool[]
 ): LanguageModelV3Content {
-  if ((part as { type?: string }).type !== "tool-call") {
+  if (part.type !== "tool-call") {
     return part;
   }
-  const tc = part as unknown as { toolName: string; input: unknown };
   let args: unknown = {};
-  if (typeof tc.input === "string") {
+  if (typeof part.input === "string") {
     try {
-      args = JSON.parse(tc.input);
+      args = JSON.parse(part.input);
     } catch {
       return part;
     }
-  } else if (tc.input && typeof tc.input === "object") {
-    args = tc.input;
+  } else if (part.input && typeof part.input === "object") {
+    args = part.input;
   }
-  const schema = tools.find((t) => t.name === tc.toolName)
-    ?.inputSchema as unknown;
+  const schema = tools.find((t) => t.name === part.toolName)?.inputSchema;
   const coerced = coerceBySchema(args, schema);
   return {
-    ...(part as Record<string, unknown>),
+    ...part,
     input: JSON.stringify(coerced ?? {}),
-  } as LanguageModelV3Content;
+  };
 }

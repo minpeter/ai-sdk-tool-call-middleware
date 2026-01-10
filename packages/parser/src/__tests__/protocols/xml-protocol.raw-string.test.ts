@@ -5,7 +5,9 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
-import { isToolCallContent } from "../../core/utils/type-guards";
+
+// Simple helper to find tool-call content in parsed output
+const isToolCall = (c: LanguageModelV3Content) => c.type === "tool-call";
 
 describe("xmlProtocol raw string handling by schema", () => {
   it("treats string-typed args as raw text, not nested XML", () => {
@@ -36,7 +38,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     expect(tc?.toolName).toBe("write_file");
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
@@ -72,7 +74,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</file_write>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     expect(tc?.toolName).toBe("file_write");
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
@@ -101,7 +103,7 @@ describe("xmlProtocol raw string handling by schema", () => {
     const html = "<!DOCTYPE html>\n<html><body><h1>ok</h1></body></html>";
     const text = `<file_write><path>a.html</path><content>${html}</content></file_write>`;
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
     expect(args.path).toBe("a.html");
@@ -135,7 +137,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</file_write>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     expect(tc?.toolName).toBe("file_write");
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
@@ -207,7 +209,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     expect(tc?.toolName).toBe("write_file");
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
@@ -260,7 +262,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     expect(tc?.toolName).toBe("write_file");
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
@@ -303,7 +305,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     expect(tc?.toolName).toBe("write_file");
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
@@ -341,7 +343,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
     expect(args.file_path).toBe("/tmp/empty.txt");
@@ -377,7 +379,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
     expect(args.content).toBe(inner);
@@ -476,7 +478,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</write_file>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
     expect(args.content).toBe(inner);
@@ -549,7 +551,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</nums>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
     expect(args.data).toEqual([1, 2.5, 1230, -0.0456]);
@@ -581,7 +583,7 @@ describe("xmlProtocol raw string handling by schema", () => {
       "</nums>";
 
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
-    const tc = out.find(isToolCallContent);
+    const tc = out.find(isToolCall);
     const args =
       typeof tc?.input === "string" ? JSON.parse(tc.input) : tc?.input;
     expect(args.data).toEqual([10.5, 3, 100]);
