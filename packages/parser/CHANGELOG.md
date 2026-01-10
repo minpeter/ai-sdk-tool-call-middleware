@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 3.1.2
+
+### Patch Changes
+
+- ec30a4d: Improve formatToolCall XML output: add proper indentation/newlines and preserve quotes without HTML entity escaping
+
 ## 3.1.1
 
 ### Patch Changes
