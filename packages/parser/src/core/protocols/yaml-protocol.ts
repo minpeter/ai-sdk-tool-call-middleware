@@ -384,10 +384,12 @@ export const yamlProtocol = (
 
     formatToolCall(toolCall: LanguageModelV3ToolCall): string {
       let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(toolCall.input) as Record<string, unknown>;
-      } catch {
-        args = { value: toolCall.input };
+      if (toolCall.input != null) {
+        try {
+          args = JSON.parse(toolCall.input) as Record<string, unknown>;
+        } catch {
+          args = { value: toolCall.input };
+        }
       }
       const yamlContent = YAML.stringify(args);
       return `<${toolCall.toolName}>\n${yamlContent}</${toolCall.toolName}>`;
