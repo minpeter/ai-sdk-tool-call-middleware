@@ -13,13 +13,13 @@
   "dependencies": {
     "@ai-sdk-tool/eval": "workspace:*",
     "@ai-sdk-tool/parser": "workspace:*",
-    "@ai-sdk/openai": "3.0.7",
-    "@ai-sdk/openai-compatible": "2.0.4",
-    "ai": "6.0.27",
+    "@ai-sdk/openai": "3.0.9",
+    "@ai-sdk/openai-compatible": "2.0.7",
+    "ai": "6.0.30",
     "tsx": "^4.21.0"
   },
   "devDependencies": {
-    "@types/node": "^25.0.6",
+    "@types/node": "^25.0.7",
     "zod": "^4.3.5"
   }
 }
