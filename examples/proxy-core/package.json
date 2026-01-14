@@ -16,13 +16,13 @@
     "@ai-sdk-tool/parser": "workspace:*",
     "@ai-sdk-tool/proxy": "workspace:*",
     "@ai-sdk/openai": "3.0.9",
-    "@ai-sdk/openai-compatible": "2.0.7",
-    "ai": "6.0.30",
+    "@ai-sdk/openai-compatible": "2.0.9",
+    "ai": "6.0.33",
     "tsx": "^4.21.0",
     "zod": "^4.3.5"
   },
   "devDependencies": {
     "@ai-sdk/provider": "3.0.2",
-    "@types/node": "^25.0.7"
+    "@types/node": "^25.0.8"
   }
 }

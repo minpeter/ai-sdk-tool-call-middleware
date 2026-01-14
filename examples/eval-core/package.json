@@ -14,12 +14,12 @@
     "@ai-sdk-tool/eval": "workspace:*",
     "@ai-sdk-tool/parser": "workspace:*",
     "@ai-sdk/openai": "3.0.9",
-    "@ai-sdk/openai-compatible": "2.0.7",
-    "ai": "6.0.30",
+    "@ai-sdk/openai-compatible": "2.0.9",
+    "ai": "6.0.33",
     "tsx": "^4.21.0"
   },
   "devDependencies": {
-    "@types/node": "^25.0.7",
+    "@types/node": "^25.0.8",
     "zod": "^4.3.5"
   }
 }
