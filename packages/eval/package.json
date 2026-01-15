@@ -34,16 +34,16 @@
     "test:e2e": "tsup src/run-test.ts --format esm --clean --out-dir dist --no-config && node dist/run-test.js"
   },
   "dependencies": {
-    "@ai-sdk/provider": "3.0.2",
+    "@ai-sdk/provider": "3.0.3",
     "@ai-sdk-tool/middleware": "workspace:*",
-    "ai": "6.0.30",
+    "ai": "6.0.35",
     "ajv": "^8.17.1",
     "decimal.js": "^10.4.3",
     "zod": "^4.3.5"
   },
   "devDependencies": {
     "@ai-sdkx/tsconfig": "workspace:*",
-    "@types/node": "^25.0.7",
+    "@types/node": "^25.0.8",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   }

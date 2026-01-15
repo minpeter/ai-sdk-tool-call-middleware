@@ -42,11 +42,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ai-sdk/provider": "3.0.2"
+    "@ai-sdk/provider": "3.0.3"
   },
   "devDependencies": {
     "@ai-sdkx/tsconfig": "workspace:*",
-    "@types/node": "^25.0.7",
+    "@types/node": "^25.0.8",
     "tsup": "^8.5.1"
   },
   "keywords": [
