@@ -33,7 +33,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@ai-sdkx/tsconfig": "workspace:*",
+    "@ai-sdk-tool/tsconfig": "workspace:*",
     "@types/node": "^25.0.9",
     "tsup": "^8.5.1"
   },

@@ -1,5 +1,5 @@
 {
-  "extends": "./node_modules/@ai-sdkx/tsconfig/ts-library.json",
+  "extends": "./node_modules/@ai-sdk-tool/tsconfig/ts-library.json",
   "compilerOptions": {
     "composite": true,
     "rootDir": "src",
