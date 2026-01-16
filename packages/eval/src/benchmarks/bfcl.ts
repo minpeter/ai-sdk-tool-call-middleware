@@ -1059,6 +1059,7 @@ function createBfclBenchmark(
           toolsMap: Record<string, ReturnType<typeof tool>>;
           temperature: number | undefined;
           maxTokens: number | undefined;
+          externalProviderOptions?: Record<string, Record<string, unknown>>;
         }): Promise<{
           toolCalls: unknown;
           text: unknown;
@@ -1071,23 +1072,28 @@ function createBfclBenchmark(
             toolsMap,
             temperature,
             maxTokens,
+            externalProviderOptions,
           } = options;
 
           const debugSummaryRef: {
             originalText?: string;
             toolCalls?: string;
           } = {};
-          const providerOptions: Record<string, JSONObject> = {
+          const internalProviderOptions: Record<string, JSONObject> = {
             toolCallMiddleware: {
               debugSummary: debugSummaryRef,
             },
+          };
+          const mergedProviderOptions: Record<string, JSONObject> = {
+            ...(externalProviderOptions as Record<string, JSONObject>),
+            ...internalProviderOptions,
           };
           const { toolCalls, text, finishReason } = await generateText({
             model: modelInstance,
             messages: flatMessages as unknown as ModelMessage[],
             tools: toolsMap,
             toolChoice: "auto",
-            providerOptions,
+            providerOptions: mergedProviderOptions,
             ...(temperature !== undefined ? { temperature } : {}),
             ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
           });
@@ -1273,6 +1279,9 @@ function createBfclBenchmark(
           const temperature = typeof temp === "number" ? temp : undefined;
           const maxTok = config?.maxTokens;
           const maxTokens = typeof maxTok === "number" ? maxTok : undefined;
+          const externalProviderOptions = config?.providerOptions as
+            | Record<string, Record<string, unknown>>
+            | undefined;
 
           try {
             const { flatMessages, transformedTools, nameMap, toolsMap } =
@@ -1287,6 +1296,7 @@ function createBfclBenchmark(
                 toolsMap,
                 temperature,
                 maxTokens,
+                externalProviderOptions,
               });
 
             return processModelResponse({

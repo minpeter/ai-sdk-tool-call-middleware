@@ -385,7 +385,8 @@ async function runSingleCase(
   model: LanguageModel,
   possibleAnswersMap: Map<string, PossibleAnswer>,
   temperature: number | undefined,
-  maxTokens: number | undefined
+  maxTokens: number | undefined,
+  externalProviderOptions?: Record<string, Record<string, unknown>>
 ): Promise<{ valid: boolean; logs: string[] }> {
   const caseLogs: string[] = [];
   const { function: tools, question: messages } = testCase;
@@ -394,8 +395,12 @@ async function runSingleCase(
     const { nameMap, toolsMap } = buildTools(tools);
 
     const debugSummaryRef: { originalText?: string; toolCalls?: string } = {};
-    const providerOptions: Record<string, JSONObject> = {
+    const internalProviderOptions: Record<string, JSONObject> = {
       toolCallMiddleware: { debugSummary: debugSummaryRef },
+    };
+    const mergedProviderOptions: Record<string, JSONObject> = {
+      ...(externalProviderOptions as Record<string, JSONObject>),
+      ...internalProviderOptions,
     };
 
     const { toolCalls, finishReason } = await generateText({
@@ -403,7 +408,7 @@ async function runSingleCase(
       messages: messages as unknown as ModelMessage[],
       tools: toolsMap,
       toolChoice: "auto",
-      providerOptions,
+      providerOptions: mergedProviderOptions,
       ...(temperature !== undefined ? { temperature } : {}),
       ...(maxTokens !== undefined ? { maxOutputTokens: maxTokens } : {}),
     });
@@ -489,8 +494,17 @@ function getConfigValues(config?: Record<string, unknown>) {
     typeof config?.temperature === "number" ? config.temperature : undefined;
   const maxTokens =
     typeof config?.maxTokens === "number" ? config.maxTokens : undefined;
+  const externalProviderOptions = config?.providerOptions as
+    | Record<string, Record<string, unknown>>
+    | undefined;
 
-  return { limit, concurrency, temperature, maxTokens };
+  return {
+    limit,
+    concurrency,
+    temperature,
+    maxTokens,
+    externalProviderOptions,
+  };
 }
 
 function aggregateResults(
@@ -556,8 +570,13 @@ function createComplexFuncBenchBenchmark(
           answerDataFile
         );
 
-        const { limit, concurrency, temperature, maxTokens } =
-          getConfigValues(config);
+        const {
+          limit,
+          concurrency,
+          temperature,
+          maxTokens,
+          externalProviderOptions,
+        } = getConfigValues(config);
 
         if (limit && Number.isFinite(limit) && limit > 0) {
           testCases = testCases.slice(0, limit);
@@ -572,7 +591,14 @@ function createComplexFuncBenchBenchmark(
           testCases,
           concurrency,
           (tc) =>
-            runSingleCase(tc, model, possibleAnswersMap, temperature, maxTokens)
+            runSingleCase(
+              tc,
+              model,
+              possibleAnswersMap,
+              temperature,
+              maxTokens,
+              externalProviderOptions
+            )
         );
 
         const result = aggregateResults(resultsPerCase, testCases);

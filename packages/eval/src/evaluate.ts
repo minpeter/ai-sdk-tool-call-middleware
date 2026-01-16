@@ -75,7 +75,8 @@ function normalizeModels(models: EvaluateOptions["models"]): ModelEntry[] {
 
 function buildConfig(
   temperature?: number,
-  maxTokens?: number
+  maxTokens?: number,
+  providerOptions?: Record<string, Record<string, unknown>>
 ): Record<string, unknown> | undefined {
   const config: Record<string, unknown> = {};
   if (temperature !== undefined) {
@@ -83,6 +84,9 @@ function buildConfig(
   }
   if (maxTokens !== undefined) {
     config.maxTokens = maxTokens;
+  }
+  if (providerOptions !== undefined) {
+    config.providerOptions = providerOptions;
   }
   return Object.keys(config).length > 0 ? config : undefined;
 }
@@ -217,10 +221,11 @@ export async function evaluate(
     temperature,
     maxTokens,
     cache,
+    providerOptions,
   } = options;
 
   const modelEntries = normalizeModels(models);
-  const config = buildConfig(temperature, maxTokens);
+  const config = buildConfig(temperature, maxTokens, providerOptions);
   const allResults: EvaluationResult[] = [];
 
   for (const [modelKey, baseModel, userMiddleware] of modelEntries) {

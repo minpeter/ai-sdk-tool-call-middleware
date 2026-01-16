@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import type { JSONObject } from "@ai-sdk/provider";
 import { generateText, type LanguageModel } from "ai";
 import Ajv, { type AnySchema } from "ajv";
 
@@ -260,10 +261,16 @@ async function processTestCase(
 
   const temp = context.config?.temperature;
   const temperature = typeof temp === "number" ? temp : undefined;
+  const externalProviderOptions = context.config?.providerOptions as
+    | Record<string, JSONObject>
+    | undefined;
   const { text } = await generateText({
     model: context.model,
     messages,
     ...(temperature !== undefined ? { temperature } : {}),
+    ...(externalProviderOptions !== undefined
+      ? { providerOptions: externalProviderOptions }
+      : {}),
   });
 
   let parsed: Json | undefined;
@@ -433,10 +440,16 @@ async function processSchemaOnlyTestCase(
 
   const temp = context.config?.temperature;
   const temperature = typeof temp === "number" ? temp : undefined;
+  const externalProviderOptions = context.config?.providerOptions as
+    | Record<string, JSONObject>
+    | undefined;
   const { text } = await generateText({
     model: context.model,
     messages,
     ...(temperature !== undefined ? { temperature } : {}),
+    ...(externalProviderOptions !== undefined
+      ? { providerOptions: externalProviderOptions }
+      : {}),
   });
 
   let parsed: Json | undefined;

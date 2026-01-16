@@ -90,7 +90,8 @@ export type ReporterType =
   | "console"
   | "json"
   | "console.debug"
-  | "console.summary";
+  | "console.summary"
+  | "none";
 
 /**
  * The full result object for an evaluation run,
@@ -169,4 +170,20 @@ export interface EvaluateOptions {
      */
     debug?: boolean;
   };
+
+  /**
+   * Provider-specific options to pass to generateText calls.
+   * These options are passed directly to the underlying model provider.
+   *
+   * @example
+   * ```ts
+   * // Enable reasoning for OpenRouter models that support it
+   * providerOptions: {
+   *   openrouter: {
+   *     reasoning: { enabled: true }
+   *   }
+   * }
+   * ```
+   */
+  providerOptions?: Record<string, Record<string, unknown>>;
 }

@@ -15,15 +15,17 @@ const openrouter = createOpenAICompatible({
 
 async function main() {
   await generateText({
-    // model: wrapLanguageModel({
-    //   model: openrouter("z-ai/glm-4.5-air"),
-    //   middleware: xmlToolMiddleware,
-    // }),
-
     model: wrapLanguageModel({
-      model: openrouter("z-ai/glm-4.5-air"),
+      model: openrouter("xiaomi/mimo-v2-flash:free"),
       middleware: xmlToolMiddleware,
     }),
+    providerOptions: {
+      openrouter: {
+        reasoning: {
+          enabled: true,
+        },
+      },
+    },
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
     stopWhen: stepCountIs(MAX_STEPS),
@@ -46,6 +48,7 @@ async function main() {
     },
     onStepFinish: (step) => {
       console.log({
+        reasoning: step.reasoningText,
         text: step.text,
         toolCalls: step.toolCalls.map(
           (call) =>
