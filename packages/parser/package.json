@@ -39,15 +39,15 @@
   "dependencies": {
     "@ai-sdk-tool/rjson": "workspace:*",
     "@ai-sdk-tool/rxml": "workspace:*",
-    "@ai-sdk/provider": "3.0.3",
-    "@ai-sdk/provider-utils": "4.0.7",
-    "yaml": "^2.7.0"
+    "@ai-sdk/provider": "3.0.4",
+    "@ai-sdk/provider-utils": "4.0.8",
+    "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "@ai-sdk/openai-compatible": "2.0.12",
     "@ai-sdk-tool/tsconfig": "workspace:*",
+    "@ai-sdk/openai-compatible": "2.0.13",
     "@types/node": "^25.0.9",
-    "ai": "6.0.37",
+    "ai": "6.0.38",
     "tsup": "^8.5.1",
     "zod": "^4.3.5"
   },
