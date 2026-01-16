@@ -10,6 +10,9 @@
       "path": "packages/parser"
     },
     {
+      "path": "packages/rjson"
+    },
+    {
       "path": "packages/rxml"
     }
   ],

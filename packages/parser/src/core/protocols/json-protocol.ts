@@ -4,11 +4,11 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
+import { parse as parseRJSON } from "@ai-sdk-tool/rjson";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId } from "../utils/id";
 import { escapeRegExp } from "../utils/regex";
-import { parse as parseRJSON } from "../utils/robust-json";
 import type { TCMProtocol } from "./protocol-interface";
 
 interface JsonProtocolOptions {

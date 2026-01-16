@@ -2,6 +2,7 @@
 
 // Core Protocols & Heuristics (Agnostic)
 
+export * from "@ai-sdk-tool/rjson";
 export type {
   HeuristicEngineOptions,
   HeuristicPhase,
@@ -27,7 +28,6 @@ export type { XmlProtocolOptions } from "./core/protocols/xml-protocol";
 export { xmlProtocol } from "./core/protocols/xml-protocol";
 export type { YamlProtocolOptions } from "./core/protocols/yaml-protocol";
 export { yamlProtocol } from "./core/protocols/yaml-protocol";
-
 // Utilities (Agnostic)
 export * from "./core/utils/debug";
 export * from "./core/utils/dynamic-tool-schema";
@@ -35,7 +35,6 @@ export * from "./core/utils/get-potential-start-index";
 export * from "./core/utils/on-error";
 export * from "./core/utils/provider-options";
 export * from "./core/utils/regex";
-export * from "./core/utils/robust-json";
 export * from "./core/utils/type-guards";
 export { wrapGenerate } from "./generate-handler";
 // Pre-configured Middleware
