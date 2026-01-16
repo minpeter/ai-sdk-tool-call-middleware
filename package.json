@@ -13,10 +13,7 @@
     "fmt": "run-p fmt:*",
     "changeset": "changeset",
     "ci:release": "turbo build && changeset publish",
-    "ci:version": "changeset version",
-    "ci:benchmark": "tsx scripts/run-regression-benchmarks.ts",
-    "ci:compare": "tsx scripts/compare-benchmarks.ts",
-    "prepare": "husky"
+    "ci:version": "changeset version"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.11",
