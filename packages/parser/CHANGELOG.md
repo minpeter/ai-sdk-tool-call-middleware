@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 3.1.3
+
+### Patch Changes
+
+- aa0b37b: Update AI SDK dependencies to latest versions
+
 ## 3.1.2
 
 ### Patch Changes
