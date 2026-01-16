@@ -26,7 +26,6 @@ multiple lines</example_parameter_2>
 - Do not add or remove functions or parameters.
 - Each required parameter must appear once.
 - Output nothing before or after the function call.
-- After calling a tool, you will receive a response in the format: <tool_response><tool_name>NAME</tool_name><result>RESULT</result></tool_response>. Use this result to answer the user.
 - It is also possible to call multiple types of functions in one turn or to call a single function multiple times.
 </rules>`;
 }
