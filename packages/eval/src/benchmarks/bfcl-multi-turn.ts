@@ -453,6 +453,9 @@ const createBfclMultiTurnBenchmark = (
       const temperature = typeof temp === "number" ? temp : undefined;
       const maxTok = config?.maxTokens;
       const maxTokens = typeof maxTok === "number" ? maxTok : undefined;
+      const externalProviderOptions = config?.providerOptions as
+        | Record<string, Record<string, unknown>>
+        | undefined;
 
       const debugMode = process.env.BFCL_DEBUG === "true";
 
@@ -465,10 +468,14 @@ const createBfclMultiTurnBenchmark = (
         finishReason: unknown;
       }> => {
         const { messages, toolsMap } = options;
-        const providerOptions: Record<string, JSONObject> = {
+        const internalProviderOptions: Record<string, JSONObject> = {
           toolCallMiddleware: {
             debugSummary: {},
           },
+        };
+        const mergedProviderOptions: Record<string, JSONObject> = {
+          ...(externalProviderOptions as Record<string, JSONObject>),
+          ...internalProviderOptions,
         };
         const { toolCalls, text, finishReason } = await withRetry(
           () =>
@@ -478,7 +485,7 @@ const createBfclMultiTurnBenchmark = (
               messages,
               tools: toolsMap,
               toolChoice: "auto",
-              providerOptions,
+              providerOptions: mergedProviderOptions,
               ...(temperature !== undefined ? { temperature } : {}),
               ...(maxTokens !== undefined
                 ? { maxOutputTokens: maxTokens }

@@ -16,10 +16,17 @@ async function main() {
         model: openrouter("xiaomi/mimo-v2-flash:free"),
         middleware: xmlToolMiddleware,
       }),
+      providerOptions: {
+        openrouter: {
+          reasoning: {
+            enabled: true,
+          },
+        },
+      },
       benchmarks: [bfclParallelMultipleBenchmark],
       reporter: "none",
       temperature: 0.0,
-      maxTokens: 256,
+      maxTokens: 32_000,
       cache: {
         cacheDir: ".benchmark-results/cache",
       },
