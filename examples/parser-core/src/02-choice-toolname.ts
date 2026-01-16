@@ -8,19 +8,16 @@ const BASE_TEMPERATURE = 72;
 const TEMPERATURE_RANGE = 21;
 const TEMPERATURE_OFFSET = 10;
 
-// A provider with supportsStructuredOutputs: true is required. Investigating....
-// createOpenAICompatible cannot be used here.
-const friendli = createOpenAI({
-  name: "friendli",
-  apiKey: process.env.FRIENDLI_TOKEN,
-  baseURL: "https://api.friendli.ai/serverless/v1",
+const openrouter = createOpenAI({
+  name: "openrouter",
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: "https://openrouter.ai/api/v1",
 });
 
 async function main() {
   const result = await generateText({
     model: wrapLanguageModel({
-      // NOTE: All models of friendli serverless are supported by the tool, but can be overridden via middleware.
-      model: friendli.chat("Qwen/Qwen3-32B"),
+      model: openrouter.chat("xiaomi/mimo-v2-flash:free"),
       middleware: hermesToolMiddleware,
     }),
     tools: {

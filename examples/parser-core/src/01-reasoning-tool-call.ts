@@ -12,16 +12,16 @@ import { z } from "zod";
 const MAX_STEPS = 4;
 const MAX_TEMPERATURE = 100;
 
-const friendli = createOpenAICompatible({
-  name: "friendli",
-  apiKey: process.env.FRIENDLI_TOKEN,
-  baseURL: "https://api.friendli.ai/serverless/v1",
+const openrouter = createOpenAICompatible({
+  name: "openrouter",
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: "https://openrouter.ai/api/v1",
 });
 
 async function main() {
   await generateText({
     model: wrapLanguageModel({
-      model: friendli("deepseek-ai/DeepSeek-R1-0528"),
+      model: openrouter("xiaomi/mimo-v2-flash:free"),
 
       middleware: [
         // The order is important, extractReasoningMiddleware is called first and then hermesToolMiddleware,
@@ -30,6 +30,9 @@ async function main() {
         extractReasoningMiddleware({ tagName: "think" }),
       ],
     }),
+    providerOptions: {
+      openrouter: { reasoning: { enabled: true } },
+    },
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
     stopWhen: stepCountIs(MAX_STEPS),

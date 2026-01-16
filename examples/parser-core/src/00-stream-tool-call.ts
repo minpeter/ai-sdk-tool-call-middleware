@@ -7,17 +7,16 @@ import { z } from "zod";
 const MAX_STEPS = 4;
 const WEATHER_TOOL_MAX_TEMPERATURE = 100;
 
-const friendli = createOpenAICompatible({
-  name: "friendli",
-  apiKey: process.env.FRIENDLI_TOKEN,
-  baseURL: "https://api.friendli.ai/serverless/v1",
-  includeUsage: true,
+const openrouter = createOpenAICompatible({
+  name: "openrouter",
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: "https://openrouter.ai/api/v1",
 });
 
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: friendli("Qwen/Qwen3-235B-A22B-Instruct-2507"),
+      model: openrouter("xiaomi/mimo-v2-flash:free"),
       middleware: xmlToolMiddleware,
     }),
     system: "You are a helpful assistant.",

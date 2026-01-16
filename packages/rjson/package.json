@@ -1,26 +1,22 @@
 {
-  "name": "@ai-sdk-tool/parser",
-  "version": "3.1.2",
-  "description": "AI SDK middleware for tool call parsing",
+  "name": "@ai-sdk-tool/rjson",
+  "version": "0.1.0",
+  "description": "Relaxed JSON parser with tolerant mode, duplicate key handling, and JSON5-like syntax support",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware",
-    "directory": "packages/parser"
+    "directory": "packages/rjson"
   },
   "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    },
-    "./community": {
-      "types": "./dist/community.d.ts",
-      "import": "./dist/community.js",
-      "require": "./dist/community.cjs"
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
     }
   },
   "files": [
@@ -36,22 +32,18 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@ai-sdk-tool/rjson": "workspace:*",
-    "@ai-sdk-tool/rxml": "workspace:*",
-    "@ai-sdk/provider": "3.0.3",
-    "@ai-sdk/provider-utils": "4.0.7",
-    "yaml": "^2.7.0"
-  },
   "devDependencies": {
-    "@ai-sdk/openai-compatible": "2.0.12",
     "@ai-sdk-tool/tsconfig": "workspace:*",
     "@types/node": "^25.0.9",
-    "ai": "6.0.37",
-    "tsup": "^8.5.1",
-    "zod": "^4.3.5"
+    "tsup": "^8.5.1"
   },
-  "keywords": [],
+  "keywords": [
+    "json",
+    "parser",
+    "relaxed",
+    "tolerant",
+    "json5"
+  ],
   "author": "",
   "license": "Apache-2.0"
 }

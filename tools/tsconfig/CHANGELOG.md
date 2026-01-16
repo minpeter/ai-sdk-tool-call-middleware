@@ -1,4 +1,4 @@
-# @ai-sdkx/tsconfig
+# @ai-sdk-tool/tsconfig
 
 ## 0.0.1
 
