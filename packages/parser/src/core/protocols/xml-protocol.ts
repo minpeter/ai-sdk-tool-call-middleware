@@ -4,16 +4,17 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
-import {
-  extractRawInner,
-  parseXmlFragment,
-  stringify,
-} from "@ai-sdk-tool/rxml";
+import { parse, stringify } from "@ai-sdk-tool/rxml";
 import { generateId } from "../utils/id";
 import type { TCMCoreProtocol } from "./protocol-interface";
 
 export interface XmlProtocolOptions {
-  parseOptions?: Record<string, unknown>;
+  parseOptions?: {
+    repair?: boolean;
+    maxReparses?: number;
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    [key: string]: unknown;
+  };
 }
 
 interface ParserOptions {
@@ -51,29 +52,30 @@ function processToolCall(params: ProcessToolCallParams): void {
     params;
   const toolSchema = getToolSchema(tools, toolCall.toolName);
 
-  const result = parseXmlFragment(toolCall.content, toolSchema, {
+  const parseConfig = {
     ...(parseOptions ?? {}),
     onError:
       options?.onError ??
       (parseOptions as { onError?: ParserOptions["onError"] } | undefined)
         ?.onError,
-  });
+  };
 
-  if (result.parsed !== null) {
+  try {
+    const parsed = parse(toolCall.content, toolSchema, parseConfig);
     processedElements.push({
       type: "tool-call",
       toolCallId: generateId(),
       toolName: toolCall.toolName,
-      input: JSON.stringify(result.parsed),
+      input: JSON.stringify(parsed),
     });
-  } else {
+  } catch (error) {
     const originalCallText = text.substring(
       toolCall.startIndex,
       toolCall.endIndex
     );
     options?.onError?.(
       `Could not process XML tool call: ${toolCall.toolName}`,
-      { toolCall: originalCallText, error: result.errors[0] }
+      { toolCall: originalCallText, error }
     );
     processedElements.push({ type: "text", text: originalCallText });
   }
@@ -102,27 +104,28 @@ function handleStreamingToolCallEnd(
     parseOptions,
   } = params;
   const toolSchema = getToolSchema(tools, currentToolCall.name);
-  const result = parseXmlFragment(toolContent, toolSchema, {
+  const parseConfig = {
     ...(parseOptions ?? {}),
     onError:
       options?.onError ??
       (parseOptions as { onError?: ParserOptions["onError"] } | undefined)
         ?.onError,
-  });
-  const parsedResult = result.parsed;
+  };
 
   flushText(ctrl);
-  if (parsedResult !== null) {
+  try {
+    const parsedResult = parse(toolContent, toolSchema, parseConfig);
     ctrl.enqueue({
       type: "tool-call",
       toolCallId: generateId(),
       toolName: currentToolCall.name,
       input: JSON.stringify(parsedResult),
     });
-  } else {
+  } catch (error) {
     const original = `<${currentToolCall.name}>${toolContent}</${currentToolCall.name}>`;
     options?.onError?.("Could not process streaming XML tool call", {
       toolCall: original,
+      error,
     });
     flushText(ctrl, original);
   }
@@ -309,9 +312,11 @@ function findToolCallsForName(
     const fullTagEnd = findClosingTagEndFlexible(text, contentStart, toolName);
     if (fullTagEnd !== -1 && fullTagEnd > contentStart) {
       const segment = text.substring(tagStart, fullTagEnd);
+      const closeTagStart = segment.lastIndexOf(`</${toolName}`);
       const inner =
-        extractRawInner(segment, toolName) ??
-        segment.substring(startTag.length, segment.lastIndexOf("<"));
+        closeTagStart === -1
+          ? segment.slice(startTag.length)
+          : segment.slice(startTag.length, closeTagStart);
       toolCalls.push({
         toolName,
         startIndex: tagStart,
@@ -627,7 +632,10 @@ function createProcessBufferHandler(
 export const xmlProtocol = (
   protocolOptions?: XmlProtocolOptions
 ): TCMCoreProtocol => {
-  const parseOptions = protocolOptions?.parseOptions;
+  const parseOptions = {
+    repair: true,
+    ...(protocolOptions?.parseOptions ?? {}),
+  };
 
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {

@@ -11,14 +11,12 @@ const schema = z.toJSONSchema(
 );
 
 const text = `  <path>test.c</path>
-  <content>
-#include <stdio.h>
+  <content>#include <stdio.h>
 
 int main() {
     printf("Hello, World!\\n");
     return 0;
-}
-  </content>`;
+}</content>`;
 const result = parse(text, schema);
 
 console.log(result);

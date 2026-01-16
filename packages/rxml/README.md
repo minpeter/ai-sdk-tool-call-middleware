@@ -1,6 +1,6 @@
 # @ai-sdk-tool/rxml
 
-Robust XML parser/streamer/builder for AI-generated and real-world XML. RXML focuses on resilience (lenient parsing when possible), JSON Schema–based coercion, efficient streaming, and clean stringification.
+Robust XML parser/builder for AI-generated and real-world XML. RXML focuses on resilience (lenient parsing when possible), JSON Schema–based coercion, and clean stringification.
 
 ## Install
 
@@ -26,18 +26,6 @@ const schema = {
 
 const out = parse("<title>Hello</title>", schema);
 // => { title: "Hello" }
-```
-
-- Stream large XML
-
-```ts
-import { createReadStream } from "node:fs";
-import { processXMLStream } from "@ai-sdk-tool/rxml";
-
-const stream = createReadStream("./large.xml", "utf8");
-for await (const node of processXMLStream(stream)) {
-  // node is an RXMLNode or a comment string
-}
 ```
 
 - Stringify objects to XML

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  parseWithoutSchema,
   stringify,
   stringifyNode,
   stringifyNodes,
   toContentString,
-} from "../..";
+} from "../../builders/stringify";
+import { parseWithoutSchema } from "../../core/parser";
 
 const XML_DECLARATION_REGEX = /^<\?xml version="1\.0" encoding="UTF-8"\?>/;
 const XML_START_REGEX = /^<\?xml/;

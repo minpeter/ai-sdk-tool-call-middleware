@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { parse, XMLTokenizer } from "../..";
+import { XMLTokenizer } from "../../core/tokenizer";
+import { parse } from "../../parse";
 
 describe("XML snippets coverage", () => {
   describe("1. declaration + DOCTYPE basic", () => {

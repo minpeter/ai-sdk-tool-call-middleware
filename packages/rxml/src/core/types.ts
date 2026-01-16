@@ -37,6 +37,13 @@ export interface ParseOptions {
   throwOnDuplicateStringTags?: boolean;
   /** Error handling callback */
   onError?: OnErrorFn;
+  /**
+   * Apply internal repair heuristics for fragment parsing.
+   * When enabled, parsing attempts normalization/repair before throwing.
+   */
+  repair?: boolean;
+  /** Maximum reparses when repair heuristics are enabled */
+  maxReparses?: number;
   /** Whether to parse a single node instead of children */
   parseNode?: boolean;
   /** Filter function for nodes */

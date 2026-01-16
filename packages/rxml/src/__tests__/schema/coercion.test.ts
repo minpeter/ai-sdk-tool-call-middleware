@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import { parseWithoutSchema } from "../../core/parser";
 import {
   coerceDomBySchema,
   domToObject,
   getPropertySchema,
   getStringTypedProperties,
-  parseWithoutSchema,
   processArrayContent,
   processIndexedTuple,
-} from "../..";
+} from "../../schema/coercion";
 
 describe("schema coercion", () => {
   describe("getPropertySchema", () => {

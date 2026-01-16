@@ -1,6 +1,6 @@
 RXML Core Examples
 
-Streaming XML parsing examples using `@ai-sdk-tool/rxml`.
+Parsing examples using the public `@ai-sdk-tool/rxml` API.
 
 Scripts
 
@@ -8,6 +8,6 @@ Scripts
 
 Demos
 
-- `00-stream-basic.ts`: Stream parse XML and log each node as it arrives.
-- `01-parse-from-stream.ts`: Collect results using `parseFromStream`.
-- `02-find-stream.ts`: Stream filter by `id` and `class` attributes.
+- `00-stream-basic.ts`: Parse a basic tool-call payload with a schema.
+- `01-parse-from-stream.ts`: Collect stream chunks and parse the full XML.
+- `02-find-stream.ts`: Parse a tool-call and access nested fields.

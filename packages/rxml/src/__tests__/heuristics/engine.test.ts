@@ -5,7 +5,7 @@ import {
   mergePipelineConfigs,
   type PipelineConfig,
   type ToolCallHeuristic,
-} from "../..";
+} from "../../heuristics";
 
 describe("heuristic-engine", () => {
   describe("createIntermediateCall", () => {
