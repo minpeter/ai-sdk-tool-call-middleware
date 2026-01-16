@@ -5,10 +5,10 @@
 [![npm downloads - parser](https://img.shields.io/npm/dt/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
 [![codecov](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware/branch/main/graph/badge.svg)](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware)
 
-Tooling for Vercel AI SDK: enable tool calling with models lacking native `tools`, plus evaluation utilities.
+Tooling for Vercel AI SDK: enable tool calling with models lacking native `tools`.
 
 - **@ai-sdk-tool/parser**: add tool-calling via middleware; works with any provider supported by AI SDK `wrapLanguageModel`.
-- **@ai-sdk-tool/eval**: benchmarks and evaluation helpers (BFCL, JSON generation).
+- **@ai-sdk-tool/rxml**: robust XML parser/streamer/builder for AI-generated XML.
 
 ## Usage at a glance
 
