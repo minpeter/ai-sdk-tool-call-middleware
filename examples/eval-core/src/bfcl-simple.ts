@@ -10,30 +10,29 @@ const openrouter = createOpenAICompatible({
 });
 
 async function main() {
-  for (let i = 0; i < 8; i++) {
-    const result = await evaluate({
-      models: wrapLanguageModel({
-        model: openrouter("xiaomi/mimo-v2-flash:free"),
-        middleware: xmlToolMiddleware,
-      }),
-      providerOptions: {
-        openrouter: {
-          reasoning: {
-            enabled: true,
-          },
+  const result = await evaluate({
+    models: wrapLanguageModel({
+      model: openrouter("xiaomi/mimo-v2-flash:free"),
+      middleware: xmlToolMiddleware,
+    }),
+    providerOptions: {
+      openrouter: {
+        temperature: 0.3,
+        top_p: 0.95,
+        reasoning: {
+          enabled: true,
         },
       },
-      benchmarks: [bfclParallelMultipleBenchmark],
-      reporter: "none",
-      temperature: 0.0,
-      maxTokens: 32_000,
-      cache: {
-        cacheDir: ".benchmark-results/cache",
-      },
-    });
+    },
+    benchmarks: [bfclParallelMultipleBenchmark],
+    reporter: "console.debug",
+    maxTokens: 32_000,
+    cache: {
+      cacheDir: ".benchmark-results/cache",
+    },
+  });
 
-    console.log(result[0].result.metrics);
-  }
+  console.log(result[0].result.metrics);
 }
 
 main();
