@@ -8,7 +8,6 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "@ai-sdk-tool/examples-eval-core",
     "@ai-sdk-tool/examples-parser-core",
     "@ai-sdk-tool/examples-rxml-core"
   ]
