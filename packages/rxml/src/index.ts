@@ -31,12 +31,33 @@ export {
   RXMLStreamError,
   RXMLStringifyError,
 } from "./errors/types";
-// Schema integration
+// Heuristics
+export type {
+  HeuristicEngineOptions,
+  HeuristicPhase,
+  HeuristicResult,
+  IntermediateCall,
+  PipelineConfig,
+  ToolCallHeuristic,
+} from "./heuristics";
 export {
-  coerceBySchema,
-  getSchemaType,
-  unwrapJsonSchema,
-} from "./schema/base-coercion";
+  applyHeuristicPipeline,
+  balanceTags,
+  balanceTagsHeuristic,
+  createIntermediateCall,
+  dedupeShellStringTagsHeuristic,
+  dedupeSingleTag,
+  defaultPipelineConfig,
+  escapeInvalidLt,
+  escapeInvalidLtHeuristic,
+  getStringPropertyNames,
+  mergePipelineConfigs,
+  normalizeCloseTagsHeuristic,
+  repairAgainstSchemaHeuristic,
+  repairParsedAgainstSchema,
+  shouldDeduplicateStringTags,
+} from "./heuristics";
+// Schema integration
 export {
   coerceDomBySchema,
   domToObject,
@@ -53,6 +74,12 @@ export {
 } from "./schema/extraction";
 // Utils
 export { unescapeXml } from "./utils/helpers";
+// XML fragment parsing
+export type {
+  XmlFragmentParseOptions,
+  XmlFragmentParseResult,
+} from "./xml-fragment";
+export { parseXmlFragment } from "./xml-fragment";
 
 // Compatibility
 export interface Options {

@@ -13,7 +13,7 @@ import {
   repairAgainstSchemaHeuristic,
   repairParsedAgainstSchema,
   shouldDeduplicateStringTags,
-} from "../../core/heuristics";
+} from "../..";
 
 describe("default-heuristics", () => {
   describe("normalizeCloseTagsHeuristic", () => {

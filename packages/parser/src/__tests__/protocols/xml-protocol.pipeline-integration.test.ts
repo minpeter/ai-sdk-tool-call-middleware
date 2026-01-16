@@ -1,6 +1,4 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
-import { describe, expect, it } from "vitest";
-
 import {
   defaultPipelineConfig,
   escapeInvalidLtHeuristic,
@@ -8,7 +6,8 @@ import {
   type PipelineConfig,
   repairAgainstSchemaHeuristic,
   type ToolCallHeuristic,
-} from "../../core/heuristics";
+} from "@ai-sdk-tool/rxml";
+import { describe, expect, it } from "vitest";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 
 describe("xmlProtocol pipeline integration", () => {
@@ -61,7 +60,9 @@ describe("xmlProtocol pipeline integration", () => {
         }),
       };
 
-      const protocol = xmlProtocol({ heuristics: [customHeuristic] });
+      const protocol = xmlProtocol({
+        parseOptions: { heuristics: [customHeuristic] },
+      });
       const text =
         "<get_weather><location>PLACEHOLDER</location></get_weather>";
 
@@ -84,7 +85,9 @@ describe("xmlProtocol pipeline integration", () => {
         }),
       };
 
-      const protocol = xmlProtocol({ heuristics: [customFallback] });
+      const protocol = xmlProtocol({
+        parseOptions: { heuristics: [customFallback] },
+      });
       const text = "<get_weather><<<BROKEN</location></get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -111,7 +114,9 @@ describe("xmlProtocol pipeline integration", () => {
         },
       };
 
-      const protocol = xmlProtocol({ heuristics: [customPostParse] });
+      const protocol = xmlProtocol({
+        parseOptions: { heuristics: [customPostParse] },
+      });
       const text = "<get_weather><location>Seoul</location></get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -133,7 +138,9 @@ describe("xmlProtocol pipeline integration", () => {
         postParse: [],
       };
 
-      const protocol = xmlProtocol({ pipeline: customPipeline });
+      const protocol = xmlProtocol({
+        parseOptions: { pipeline: customPipeline },
+      });
       const text = "<get_weather><location>Seoul</ location></get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -149,7 +156,9 @@ describe("xmlProtocol pipeline integration", () => {
         postParse: [repairAgainstSchemaHeuristic],
       };
 
-      const protocol = xmlProtocol({ pipeline: noFallbackPipeline });
+      const protocol = xmlProtocol({
+        parseOptions: { pipeline: noFallbackPipeline },
+      });
       const text = "<get_weather><location>Seoul</get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -179,7 +188,7 @@ describe("xmlProtocol pipeline integration", () => {
 
     it("should recover when balance fixes tags but creates duplicate string tags", () => {
       const protocol = xmlProtocol({
-        pipeline: defaultPipelineConfig,
+        parseOptions: { pipeline: defaultPipelineConfig },
       });
 
       const text = `<shell>
@@ -201,7 +210,7 @@ describe("xmlProtocol pipeline integration", () => {
 
     it("should handle malformed close tags with duplicate string tags", () => {
       const protocol = xmlProtocol({
-        pipeline: defaultPipelineConfig,
+        parseOptions: { pipeline: defaultPipelineConfig },
       });
 
       const text = `<shell>
@@ -235,14 +244,16 @@ describe("xmlProtocol pipeline integration", () => {
       };
 
       const protocol = xmlProtocol({
-        pipeline: {
-          preParse: [],
-          fallbackReparse: [
-            countingHeuristic,
-            countingHeuristic,
-            countingHeuristic,
-          ],
-          postParse: [],
+        parseOptions: {
+          pipeline: {
+            preParse: [],
+            fallbackReparse: [
+              countingHeuristic,
+              countingHeuristic,
+              countingHeuristic,
+            ],
+            postParse: [],
+          },
         },
       });
 
@@ -265,12 +276,14 @@ describe("xmlProtocol pipeline integration", () => {
       };
 
       const protocolWithPipeline = xmlProtocol({
-        pipeline: {
-          preParse: [trackingHeuristic],
-          fallbackReparse: [],
-          postParse: [],
+        parseOptions: {
+          pipeline: {
+            preParse: [trackingHeuristic],
+            fallbackReparse: [],
+            postParse: [],
+          },
+          maxReparses: 1,
         },
-        maxReparses: 1,
       });
 
       const text = "<get_weather><location>Seoul</location></get_weather>";
@@ -292,12 +305,14 @@ describe("xmlProtocol pipeline integration", () => {
       };
 
       const protocol = xmlProtocol({
-        pipeline: {
-          preParse: [trackingHeuristic, trackingHeuristic],
-          fallbackReparse: [],
-          postParse: [],
+        parseOptions: {
+          pipeline: {
+            preParse: [trackingHeuristic, trackingHeuristic],
+            fallbackReparse: [],
+            postParse: [],
+          },
+          maxReparses: 3,
         },
-        maxReparses: 3,
       });
 
       const text = "<get_weather><location>Seoul</location></get_weather>";
@@ -311,7 +326,7 @@ describe("xmlProtocol pipeline integration", () => {
     it("should produce same result for valid XML with or without pipeline", () => {
       const withoutPipeline = xmlProtocol();
       const withPipeline = xmlProtocol({
-        pipeline: defaultPipelineConfig,
+        parseOptions: { pipeline: defaultPipelineConfig },
       });
 
       const text = "<get_weather><location>Seoul</location></get_weather>";
@@ -341,7 +356,7 @@ describe("xmlProtocol pipeline integration", () => {
     it("should produce same result for malformed close tags", () => {
       const withoutPipeline = xmlProtocol();
       const withPipeline = xmlProtocol({
-        pipeline: defaultPipelineConfig,
+        parseOptions: { pipeline: defaultPipelineConfig },
       });
 
       const text = "<get_weather><location>Seoul</ location></get_weather>";
@@ -387,7 +402,9 @@ describe("xmlProtocol pipeline integration", () => {
     ];
 
     it("should preserve <0>, <1> index tags", () => {
-      const protocol = xmlProtocol({ pipeline: defaultPipelineConfig });
+      const protocol = xmlProtocol({
+        parseOptions: { pipeline: defaultPipelineConfig },
+      });
       const text = `<set_coordinates>
         <coordinates>
           <0>10.5</0>

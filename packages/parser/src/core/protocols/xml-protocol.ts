@@ -4,31 +4,16 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
-import { extractRawInner, parse, stringify } from "@ai-sdk-tool/rxml";
 import {
-  applyHeuristicPipeline as _applyHeuristicPipeline,
-  createIntermediateCall as _createIntermediateCall,
-  defaultPipelineConfig as _defaultPipelineConfig,
-  type PipelineConfig as _PipelineConfig,
-  type ToolCallHeuristic as _ToolCallHeuristic,
-  balanceTags,
-  dedupeSingleTag,
-  escapeInvalidLt,
-  getStringPropertyNames,
-  repairParsedAgainstSchema,
-  shouldDeduplicateStringTags,
-} from "../heuristics";
+  extractRawInner,
+  parseXmlFragment,
+  stringify,
+} from "@ai-sdk-tool/rxml";
 import { generateId } from "../utils/id";
 import type { TCMCoreProtocol } from "./protocol-interface";
 
-const defaultPipelineConfig = _defaultPipelineConfig;
-type PipelineConfig = _PipelineConfig;
-type ToolCallHeuristic = _ToolCallHeuristic;
-
 export interface XmlProtocolOptions {
-  heuristics?: ToolCallHeuristic[];
-  pipeline?: PipelineConfig;
-  maxReparses?: number;
+  parseOptions?: Record<string, unknown>;
 }
 
 interface ParserOptions {
@@ -47,49 +32,6 @@ function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
 }
 
-function normalizeCloseTags(xml: string): string {
-  return xml.replace(/<\/\s+([A-Za-z0-9_:-]+)\s*>/g, "</$1>");
-}
-
-function tryParseSecondaryXml(
-  content: string,
-  toolSchema: unknown,
-  options: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
-): unknown | null {
-  const balanced = balanceTags(content);
-  try {
-    let parsed: unknown = parse(balanced, toolSchema, {
-      onError: options?.onError,
-      noChildNodes: [],
-    });
-    parsed = repairParsedAgainstSchema(parsed, toolSchema);
-    return parsed;
-  } catch {
-    if (shouldDeduplicateStringTags(toolSchema)) {
-      const names = getStringPropertyNames(toolSchema);
-      let deduped = balanced;
-      for (const key of names) {
-        deduped = dedupeSingleTag(deduped, key);
-      }
-      if (deduped !== balanced) {
-        try {
-          let reparsed: unknown = parse(deduped, toolSchema, {
-            onError: options?.onError,
-            noChildNodes: [],
-          });
-          reparsed = repairParsedAgainstSchema(reparsed, toolSchema);
-          return reparsed;
-        } catch {
-          return null;
-        }
-      }
-    }
-    return null;
-  }
-}
-
 interface ProcessToolCallParams {
   toolCall: {
     toolName: string;
@@ -101,33 +43,20 @@ interface ProcessToolCallParams {
   options?: ParserOptions;
   text: string;
   processedElements: LanguageModelV3Content[];
-  pipelineConfig?: PipelineConfig;
-  maxReparses?: number;
+  parseOptions?: Record<string, unknown>;
 }
 
-function processToolCallWithPipeline(params: ProcessToolCallParams): void {
-  const {
-    toolCall,
-    tools,
-    options,
-    text,
-    processedElements,
-    pipelineConfig = defaultPipelineConfig,
-    maxReparses,
-  } = params;
+function processToolCall(params: ProcessToolCallParams): void {
+  const { toolCall, tools, options, text, processedElements, parseOptions } =
+    params;
   const toolSchema = getToolSchema(tools, toolCall.toolName);
 
-  const ctx = _createIntermediateCall(
-    toolCall.toolName,
-    toolCall.content,
-    toolSchema
-  );
-
-  const result = _applyHeuristicPipeline(ctx, pipelineConfig, {
-    parse: (xml: string, schema: unknown) =>
-      parse(xml, schema, { onError: options?.onError, noChildNodes: [] }),
-    onError: options?.onError,
-    maxReparses,
+  const result = parseXmlFragment(toolCall.content, toolSchema, {
+    ...(parseOptions ?? {}),
+    onError:
+      options?.onError ??
+      (parseOptions as { onError?: ParserOptions["onError"] } | undefined)
+        ?.onError,
   });
 
   if (result.parsed !== null) {
@@ -157,8 +86,7 @@ interface HandleStreamingToolCallEndParams {
   options?: ParserOptions;
   ctrl: TransformStreamDefaultController<LanguageModelV3StreamPart>;
   flushText: FlushTextFn;
-  pipelineConfig?: PipelineConfig;
-  maxReparses?: number;
+  parseOptions?: Record<string, unknown>;
 }
 
 function handleStreamingToolCallEnd(
@@ -171,41 +99,17 @@ function handleStreamingToolCallEnd(
     options,
     ctrl,
     flushText,
-    pipelineConfig,
-    maxReparses,
+    parseOptions,
   } = params;
   const toolSchema = getToolSchema(tools, currentToolCall.name);
-  let parsedResult: unknown | null = null;
-
-  if (pipelineConfig) {
-    const ctx = _createIntermediateCall(
-      currentToolCall.name,
-      toolContent,
-      toolSchema
-    );
-    const result = _applyHeuristicPipeline(ctx, pipelineConfig, {
-      parse: (xml: string, schema: unknown) =>
-        parse(xml, schema, { onError: options?.onError, noChildNodes: [] }),
-      onError: options?.onError,
-      maxReparses,
-    });
-    parsedResult = result.parsed;
-  } else {
-    try {
-      const primary = escapeInvalidLt(normalizeCloseTags(toolContent));
-      const parsed = parse(primary, toolSchema, {
-        onError: options?.onError,
-        noChildNodes: [],
-      });
-      parsedResult = repairParsedAgainstSchema(parsed, toolSchema);
-    } catch {
-      parsedResult = tryParseSecondaryXml(
-        toolContent,
-        toolSchema,
-        options ?? {}
-      );
-    }
-  }
+  const result = parseXmlFragment(toolContent, toolSchema, {
+    ...(parseOptions ?? {}),
+    onError:
+      options?.onError ??
+      (parseOptions as { onError?: ParserOptions["onError"] } | undefined)
+        ?.onError,
+  });
+  const parsedResult = result.parsed;
 
   flushText(ctrl);
   if (parsedResult !== null) {
@@ -531,8 +435,7 @@ interface ProcessToolCallInBufferParams {
   controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
   flushText: FlushTextFn;
   setBuffer: (buffer: string) => void;
-  pipelineConfig?: PipelineConfig;
-  maxReparses?: number;
+  parseOptions?: Record<string, unknown>;
 }
 
 function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
@@ -548,8 +451,7 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     controller,
     flushText,
     setBuffer,
-    pipelineConfig,
-    maxReparses,
+    parseOptions,
   } = params;
   const endTag = `</${currentToolCall.name}>`;
   const endIdx = buffer.indexOf(endTag);
@@ -568,8 +470,7 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     options,
     ctrl: controller,
     flushText,
-    pipelineConfig,
-    maxReparses,
+    parseOptions,
   });
 
   return {
@@ -586,8 +487,7 @@ interface ProcessNoToolCallInBufferParams {
   flushText: FlushTextFn;
   tools: LanguageModelV3FunctionTool[];
   options?: ParserOptions;
-  pipelineConfig?: PipelineConfig;
-  maxReparses?: number;
+  parseOptions?: Record<string, unknown>;
   setBuffer: (buffer: string) => void;
 }
 
@@ -604,8 +504,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     flushText,
     tools,
     options,
-    pipelineConfig,
-    maxReparses,
+    parseOptions,
     setBuffer,
   } = params;
   const {
@@ -645,8 +544,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
       options,
       ctrl: controller,
       flushText,
-      pipelineConfig,
-      maxReparses,
+      parseOptions,
     });
     return {
       buffer: newBuffer,
@@ -678,8 +576,7 @@ function createProcessBufferHandler(
   options: ParserOptions | undefined,
   toolNames: string[],
   flushText: FlushTextFn,
-  pipelineConfig?: PipelineConfig,
-  maxReparses?: number
+  parseOptions?: Record<string, unknown>
 ) {
   return (
     controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
@@ -695,8 +592,7 @@ function createProcessBufferHandler(
           controller,
           flushText,
           setBuffer,
-          pipelineConfig,
-          maxReparses,
+          parseOptions,
         });
         setBuffer(result.buffer);
         setCurrentToolCall(result.currentToolCall);
@@ -711,8 +607,7 @@ function createProcessBufferHandler(
           flushText,
           tools,
           options,
-          pipelineConfig,
-          maxReparses,
+          parseOptions,
           setBuffer,
         });
         setBuffer(result.buffer);
@@ -731,45 +626,8 @@ function createProcessBufferHandler(
 
 export const xmlProtocol = (
   protocolOptions?: XmlProtocolOptions
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: protocol factory with multiple parsing strategies
 ): TCMCoreProtocol => {
-  let pipelineConfig = protocolOptions?.pipeline;
-  const maxReparses = protocolOptions?.maxReparses;
-
-  if (protocolOptions?.heuristics && protocolOptions.heuristics.length > 0) {
-    const heuristicsConfig: _PipelineConfig = {
-      preParse: [],
-      fallbackReparse: [],
-      postParse: [],
-    };
-    for (const h of protocolOptions.heuristics) {
-      if (h.phase === "pre-parse") {
-        heuristicsConfig.preParse?.push(h);
-      } else if (h.phase === "fallback-reparse") {
-        heuristicsConfig.fallbackReparse?.push(h);
-      } else if (h.phase === "post-parse") {
-        heuristicsConfig.postParse?.push(h);
-      }
-    }
-    if (pipelineConfig) {
-      pipelineConfig = {
-        preParse: [
-          ...(pipelineConfig.preParse ?? []),
-          ...(heuristicsConfig.preParse ?? []),
-        ],
-        fallbackReparse: [
-          ...(pipelineConfig.fallbackReparse ?? []),
-          ...(heuristicsConfig.fallbackReparse ?? []),
-        ],
-        postParse: [
-          ...(pipelineConfig.postParse ?? []),
-          ...(heuristicsConfig.postParse ?? []),
-        ],
-      };
-    } else {
-      pipelineConfig = heuristicsConfig;
-    }
-  }
+  const parseOptions = protocolOptions?.parseOptions;
 
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
@@ -810,14 +668,13 @@ export const xmlProtocol = (
             text: text.substring(currentIndex, tc.startIndex),
           });
         }
-        processToolCallWithPipeline({
+        processToolCall({
           toolCall: tc,
           tools,
           options,
           text,
           processedElements,
-          pipelineConfig,
-          maxReparses,
+          parseOptions,
         });
         currentIndex = tc.endIndex;
       }
@@ -864,8 +721,7 @@ export const xmlProtocol = (
         options,
         toolNames,
         flushText,
-        pipelineConfig,
-        maxReparses
+        parseOptions
       );
 
       return new TransformStream({

@@ -5,7 +5,7 @@ import type {
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 import { generateId } from "@ai-sdk/provider-utils";
-import { coerceBySchema } from "@ai-sdk-tool/rxml";
+import { coerceBySchema } from "@ai-sdk-tool/schema-coerce";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import {
   getDebugLevel,

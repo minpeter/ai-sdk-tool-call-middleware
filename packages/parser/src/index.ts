@@ -1,27 +1,8 @@
 // biome-ignore-all lint/performance/noBarrelFile: intentional public API surface
 
-// Core Protocols & Heuristics (Agnostic)
+// Core Protocols (Agnostic)
 
 export * from "@ai-sdk-tool/rjson";
-export type {
-  HeuristicEngineOptions,
-  HeuristicPhase,
-  HeuristicResult,
-  IntermediateCall,
-  PipelineConfig,
-  ToolCallHeuristic,
-} from "./core/heuristics";
-export {
-  applyHeuristicPipeline,
-  balanceTagsHeuristic,
-  createIntermediateCall,
-  dedupeShellStringTagsHeuristic,
-  defaultPipelineConfig,
-  escapeInvalidLtHeuristic,
-  mergePipelineConfigs,
-  normalizeCloseTagsHeuristic,
-  repairAgainstSchemaHeuristic,
-} from "./core/heuristics";
 export * from "./core/protocols/json-protocol";
 export * from "./core/protocols/protocol-interface";
 export type { XmlProtocolOptions } from "./core/protocols/xml-protocol";

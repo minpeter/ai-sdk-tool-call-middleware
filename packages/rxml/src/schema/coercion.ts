@@ -3,13 +3,13 @@
  * Integrates with the existing coercion system but adds XML-specific handling
  */
 
-import type { RXMLNode } from "../core/types";
-import { RXMLCoercionError } from "../errors/types";
 import {
   coerceBySchema as baseCoerceBySchema,
   getSchemaType,
   unwrapJsonSchema,
-} from "./base-coercion";
+} from "@ai-sdk-tool/schema-coerce";
+import type { RXMLNode } from "../core/types";
+import { RXMLCoercionError } from "../errors/types";
 
 /**
  * Get property schema from a parent schema

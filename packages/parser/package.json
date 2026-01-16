@@ -37,6 +37,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk-tool/schema-coerce": "workspace:*",
     "@ai-sdk-tool/rjson": "workspace:*",
     "@ai-sdk-tool/rxml": "workspace:*",
     "@ai-sdk/provider": "3.0.4",
