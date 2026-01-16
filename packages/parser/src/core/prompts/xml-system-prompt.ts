@@ -20,7 +20,7 @@ multiple lines</example_parameter_2>
 </example_function_name>
 
 <rules>
-- Use exactly XML element whose tag name is the function name.
+- Use exactly one XML element whose tag name is the function name.
 - Put each parameter as a child element.
 - Values must follow the schema exactly (numbers, arrays, objects, enums → copy as-is).
 - Do not add or remove functions or parameters.
