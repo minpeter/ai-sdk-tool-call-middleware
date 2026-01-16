@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@ai-sdkx/tsconfig": "workspace:*",
-    "@types/node": "^25.0.8",
+    "@types/node": "^25.0.9",
     "tsup": "^8.5.1",
     "zod": "^4.3.5"
   },
