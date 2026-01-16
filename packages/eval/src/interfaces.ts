@@ -90,7 +90,8 @@ export type ReporterType =
   | "console"
   | "json"
   | "console.debug"
-  | "console.summary";
+  | "console.summary"
+  | "none";
 
 /**
  * The full result object for an evaluation run,

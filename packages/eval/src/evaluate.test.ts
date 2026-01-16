@@ -218,4 +218,19 @@ describe("evaluate with cache and middleware", () => {
     expect(result).toHaveLength(1);
     expect(result[0].model).toBe("legacy-model");
   });
+
+  it("should work with none reporter", async () => {
+    const benchmark = createSimpleBenchmark();
+    const model = createMockModel("none-test-model");
+
+    // Should not throw any errors with none reporter
+    const result = await evaluate({
+      models: model,
+      benchmarks: [benchmark],
+      reporter: "none",
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].model).toBe("none-test-model");
+  });
 });
