@@ -5,10 +5,12 @@ import {
   parse,
   parseNode,
   parseWithoutSchema,
+  simplify,
+} from "../../core/parser";
+import {
   RXMLDuplicateStringTagError,
   RXMLParseError,
-  simplify,
-} from "../..";
+} from "../../errors/types";
 import {
   duplicateTagSamples,
   malformedXmlSamples,

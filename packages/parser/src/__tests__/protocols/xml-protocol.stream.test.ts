@@ -50,6 +50,32 @@ describe("xmlProtocol streaming edge cases", () => {
     expect(tool).toMatchObject({ type: "tool-call", toolName: "get_weather" });
   });
 
+  it("accepts whitespace in the closing tag name while streaming", async () => {
+    const protocol = xmlProtocol();
+    const transformer = protocol.createStreamParser({ tools });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: "<get_weather><location>SF</location></ get_weather>",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(JSON.parse(tool.input).location).toBe("SF");
+  });
+
   it("handles mismatched inner XML without crashing (may emit text or tool-call)", async () => {
     const onError = vi.fn();
     const protocol = xmlProtocol();

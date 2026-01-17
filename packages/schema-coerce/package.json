@@ -1,12 +1,13 @@
 {
-  "name": "@ai-sdk-tool/rxml",
-  "version": "0.1.2",
-  "description": "Robust XML parser/streamer/builder for AI-generated XML",
+  "name": "@ai-sdk-tool/schema-coerce",
+  "version": "0.1.0",
+  "description": "Schema-driven coercion utilities for AI tool inputs",
+  "private": true,
   "type": "module",
   "repository": {
     "type": "git",
     "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware",
-    "directory": "packages/rxml"
+    "directory": "packages/schema-coerce"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -22,9 +23,6 @@
   "files": [
     "dist/**/*"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "pnpm clean && tsup --tsconfig tsconfig.build.json",
     "build:watch": "pnpm clean && tsup --watch --tsconfig tsconfig.build.json",
@@ -35,13 +33,14 @@
   "devDependencies": {
     "@ai-sdk-tool/tsconfig": "workspace:*",
     "@types/node": "^25.0.9",
-    "tsup": "^8.5.1",
-    "zod": "^4.3.5"
+    "tsup": "^8.5.1"
   },
-  "dependencies": {
-    "@ai-sdk-tool/schema-coerce": "workspace:*"
-  },
-  "keywords": [],
+  "keywords": [
+    "schema",
+    "coercion",
+    "jsonschema",
+    "validation"
+  ],
   "author": "",
   "license": "Apache-2.0"
 }

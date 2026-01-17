@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import { stringify } from "../../builders/stringify";
+import { filter, parseWithoutSchema, simplify } from "../../core/parser";
 import {
-  countTagOccurrences,
-  extractRawInner,
-  filter,
-  findFirstTopLevelRange,
-  parse,
-  parseWithoutSchema,
   RXMLCoercionError,
   RXMLDuplicateStringTagError,
   RXMLParseError,
   RXMLStringifyError,
-  simplify,
-  stringify,
-} from "../..";
+} from "../../errors/types";
+import { parse } from "../../parse";
+import {
+  countTagOccurrences,
+  extractRawInner,
+  findFirstTopLevelRange,
+} from "../../schema/extraction";
 
 import { schemaTestCases } from "../fixtures/test-data";
 

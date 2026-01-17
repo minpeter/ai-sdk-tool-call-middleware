@@ -15,10 +15,16 @@
   ],
   "references": [
     {
+      "path": "../../tools/tsconfig"
+    },
+    {
       "path": "../rjson"
     },
     {
       "path": "../rxml"
+    },
+    {
+      "path": "../schema-coerce"
     }
   ]
 }

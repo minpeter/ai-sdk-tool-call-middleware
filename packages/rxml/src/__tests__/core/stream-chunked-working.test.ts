@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { parseFromStream, RXMLStreamError } from "../..";
+import { parseFromStream } from "../../core/stream";
+import { RXMLStreamError } from "../../errors/types";
 
 const CHUNK_SIZE = 7;
 

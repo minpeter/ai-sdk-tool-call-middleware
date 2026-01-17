@@ -1,7 +1,8 @@
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
-import { createXMLStream, parseWithoutSchema, XMLTransformStream } from "../..";
+import { parseWithoutSchema } from "../../core/parser";
+import { createXMLStream, XMLTransformStream } from "../../core/stream";
 
 const CHUNK_SIZE = 7;
 const PROCESSING_DELAY_MS = 100;

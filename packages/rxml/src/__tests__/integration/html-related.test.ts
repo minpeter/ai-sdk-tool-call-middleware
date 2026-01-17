@@ -1,7 +1,7 @@
 import { describe, it } from "vitest";
 import { z } from "zod";
 
-import { parse } from "../..";
+import { parse } from "../../parse";
 
 describe("html related", () => {
   it("todo_1", () => {

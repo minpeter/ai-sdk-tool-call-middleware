@@ -1,14 +1,5 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-
-import {
-  defaultPipelineConfig,
-  escapeInvalidLtHeuristic,
-  normalizeCloseTagsHeuristic,
-  type PipelineConfig,
-  repairAgainstSchemaHeuristic,
-  type ToolCallHeuristic,
-} from "../../core/heuristics";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 
 describe("xmlProtocol pipeline integration", () => {
@@ -41,7 +32,7 @@ describe("xmlProtocol pipeline integration", () => {
 
     it("should recover malformed close tags without pipeline", () => {
       const protocol = xmlProtocol();
-      const text = "<get_weather><location>Seoul</ location></get_weather>";
+      const text = "<get_weather><location>Seoul</get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
 
@@ -50,112 +41,32 @@ describe("xmlProtocol pipeline integration", () => {
     });
   });
 
-  describe("with custom heuristics option", () => {
-    it("should apply custom pre-parse heuristic", () => {
-      const customHeuristic: ToolCallHeuristic = {
-        id: "custom-replace",
-        phase: "pre-parse",
-        applies: () => true,
-        run: (ctx) => ({
-          rawSegment: ctx.rawSegment.replace("PLACEHOLDER", "Tokyo"),
-        }),
-      };
-
-      const protocol = xmlProtocol({ heuristics: [customHeuristic] });
-      const text =
-        "<get_weather><location>PLACEHOLDER</location></get_weather>";
-
-      const result = protocol.parseGeneratedText({ text, tools: simpleTools });
-
-      expect(result).toHaveLength(1);
-      if (result[0].type === "tool-call") {
-        expect(JSON.parse(result[0].input)).toEqual({ location: "Tokyo" });
-      }
-    });
-
-    it("should apply custom fallback-reparse heuristic after parse failure", () => {
-      const customFallback: ToolCallHeuristic = {
-        id: "custom-fallback",
-        phase: "fallback-reparse",
-        applies: (ctx) => ctx.errors.length > 0,
-        run: (ctx) => ({
-          rawSegment: ctx.rawSegment.replace("<<<BROKEN", "<location>Fixed"),
-          reparse: true,
-        }),
-      };
-
-      const protocol = xmlProtocol({ heuristics: [customFallback] });
-      const text = "<get_weather><<<BROKEN</location></get_weather>";
-
-      const result = protocol.parseGeneratedText({ text, tools: simpleTools });
-
-      expect(result).toHaveLength(1);
-      if (result[0].type === "tool-call") {
-        expect(JSON.parse(result[0].input)).toEqual({ location: "Fixed" });
-      }
-    });
-
-    it("should apply custom post-parse heuristic to modify parsed result", () => {
-      const customPostParse: ToolCallHeuristic = {
-        id: "custom-post",
-        phase: "post-parse",
-        applies: (ctx) => ctx.parsed !== null,
-        run: (ctx) => {
-          const parsed = ctx.parsed as Record<string, unknown>;
-          return {
-            parsed: {
-              ...parsed,
-              location: `${parsed.location} (modified)`,
-            },
-          };
-        },
-      };
-
-      const protocol = xmlProtocol({ heuristics: [customPostParse] });
-      const text = "<get_weather><location>Seoul</location></get_weather>";
-
-      const result = protocol.parseGeneratedText({ text, tools: simpleTools });
-
-      expect(result).toHaveLength(1);
-      if (result[0].type === "tool-call") {
-        expect(JSON.parse(result[0].input)).toEqual({
-          location: "Seoul (modified)",
-        });
-      }
-    });
-  });
-
-  describe("with custom pipeline option", () => {
-    it("should use only specified pipeline heuristics", () => {
-      const customPipeline: PipelineConfig = {
-        preParse: [normalizeCloseTagsHeuristic],
-        fallbackReparse: [],
-        postParse: [],
-      };
-
-      const protocol = xmlProtocol({ pipeline: customPipeline });
-      const text = "<get_weather><location>Seoul</ location></get_weather>";
-
-      const result = protocol.parseGeneratedText({ text, tools: simpleTools });
-
-      expect(result).toHaveLength(1);
-      expect(result[0].type).toBe("tool-call");
-    });
-
-    it("should disable fallback when fallbackReparse is empty", () => {
-      const noFallbackPipeline: PipelineConfig = {
-        preParse: [normalizeCloseTagsHeuristic, escapeInvalidLtHeuristic],
-        fallbackReparse: [],
-        postParse: [repairAgainstSchemaHeuristic],
-      };
-
-      const protocol = xmlProtocol({ pipeline: noFallbackPipeline });
+  describe("repair toggle", () => {
+    it("should not repair malformed XML when repair=false", () => {
+      const protocol = xmlProtocol({
+        parseOptions: { repair: false },
+      });
       const text = "<get_weather><location>Seoul</get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
 
       expect(result).toHaveLength(1);
       expect(result[0].type).toBe("text");
+    });
+
+    it("should still parse valid XML when repair=false", () => {
+      const protocol = xmlProtocol({
+        parseOptions: { repair: false },
+      });
+      const text = "<get_weather><location>Seoul</location></get_weather>";
+
+      const result = protocol.parseGeneratedText({ text, tools: simpleTools });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe("tool-call");
+      if (result[0].type === "tool-call") {
+        expect(JSON.parse(result[0].input)).toEqual({ location: "Seoul" });
+      }
     });
   });
 
@@ -178,9 +89,7 @@ describe("xmlProtocol pipeline integration", () => {
     ];
 
     it("should recover when balance fixes tags but creates duplicate string tags", () => {
-      const protocol = xmlProtocol({
-        pipeline: defaultPipelineConfig,
-      });
+      const protocol = xmlProtocol();
 
       const text = `<shell>
         <command>echo "hello"</command>
@@ -200,9 +109,7 @@ describe("xmlProtocol pipeline integration", () => {
     });
 
     it("should handle malformed close tags with duplicate string tags", () => {
-      const protocol = xmlProtocol({
-        pipeline: defaultPipelineConfig,
-      });
+      const protocol = xmlProtocol();
 
       const text = `<shell>
         <command>ls -la</command>
@@ -222,150 +129,108 @@ describe("xmlProtocol pipeline integration", () => {
   });
 
   describe("maxReparses behavior", () => {
-    it("should respect maxReparses limit", () => {
-      let reparseCount = 0;
-      const countingHeuristic: ToolCallHeuristic = {
-        id: "counting",
-        phase: "fallback-reparse",
-        applies: () => true,
-        run: () => {
-          reparseCount += 1;
-          return { rawSegment: "<invalid", reparse: true };
+    const shellTools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "shell",
+        inputSchema: {
+          type: "object",
+          properties: {
+            command: {
+              type: "array",
+              items: { type: "string" },
+            },
+            description: { type: "string" },
+          },
         },
-      };
+      },
+    ];
 
+    const duplicateDescription = `<shell>
+      <command>echo "hello"</command>
+      <description>First</description>
+      <description>Second</description>
+    </shell>`;
+
+    it("should fail to repair when maxReparses is 0", () => {
       const protocol = xmlProtocol({
-        pipeline: {
-          preParse: [],
-          fallbackReparse: [
-            countingHeuristic,
-            countingHeuristic,
-            countingHeuristic,
-          ],
-          postParse: [],
-        },
+        parseOptions: { maxReparses: 0 },
       });
 
-      const text = "<get_weather><broken</get_weather>";
-      protocol.parseGeneratedText({ text, tools: simpleTools });
+      const result = protocol.parseGeneratedText({
+        text: duplicateDescription,
+        tools: shellTools,
+      });
 
-      expect(reparseCount).toBeLessThanOrEqual(3);
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe("text");
     });
 
-    it("should use maxReparses from protocol options", () => {
-      let heuristicRunCount = 0;
-      const trackingHeuristic: ToolCallHeuristic = {
-        id: "tracking",
-        phase: "pre-parse",
-        applies: () => true,
-        run: (ctx) => {
-          heuristicRunCount += 1;
-          return { rawSegment: ctx.rawSegment };
-        },
-      };
-
-      const protocolWithPipeline = xmlProtocol({
-        pipeline: {
-          preParse: [trackingHeuristic],
-          fallbackReparse: [],
-          postParse: [],
-        },
-        maxReparses: 1,
-      });
-
-      const text = "<get_weather><location>Seoul</location></get_weather>";
-      protocolWithPipeline.parseGeneratedText({ text, tools: simpleTools });
-
-      expect(heuristicRunCount).toBe(1);
-    });
-
-    it("should allow more reparses when maxReparses is increased", () => {
-      let heuristicRunCount = 0;
-      const trackingHeuristic: ToolCallHeuristic = {
-        id: "tracking",
-        phase: "pre-parse",
-        applies: () => true,
-        run: (ctx) => {
-          heuristicRunCount += 1;
-          return { rawSegment: ctx.rawSegment };
-        },
-      };
-
+    it("should repair duplicates when maxReparses allows reparsing", () => {
       const protocol = xmlProtocol({
-        pipeline: {
-          preParse: [trackingHeuristic, trackingHeuristic],
-          fallbackReparse: [],
-          postParse: [],
-        },
-        maxReparses: 3,
+        parseOptions: { maxReparses: 2 },
       });
 
-      const text = "<get_weather><location>Seoul</location></get_weather>";
-      protocol.parseGeneratedText({ text, tools: simpleTools });
+      const result = protocol.parseGeneratedText({
+        text: duplicateDescription,
+        tools: shellTools,
+      });
 
-      expect(heuristicRunCount).toBe(2);
+      expect(result).toHaveLength(1);
+      expect(result[0].type).toBe("tool-call");
+      if (result[0].type === "tool-call") {
+        const input = JSON.parse(result[0].input);
+        expect(input.description).toBe("Second");
+      }
     });
   });
 
-  describe("backward compatibility with legacy code path", () => {
-    it("should produce same result for valid XML with or without pipeline", () => {
-      const withoutPipeline = xmlProtocol();
-      const withPipeline = xmlProtocol({
-        pipeline: defaultPipelineConfig,
-      });
+  describe("repair vs strict parsing", () => {
+    it("should produce same result for valid XML with or without repair", () => {
+      const strict = xmlProtocol({ parseOptions: { repair: false } });
+      const repaired = xmlProtocol();
 
       const text = "<get_weather><location>Seoul</location></get_weather>";
 
-      const resultWithout = withoutPipeline.parseGeneratedText({
+      const resultStrict = strict.parseGeneratedText({
         text,
         tools: simpleTools,
       });
-      const resultWith = withPipeline.parseGeneratedText({
+      const resultRepaired = repaired.parseGeneratedText({
         text,
         tools: simpleTools,
       });
 
-      expect(resultWithout).toHaveLength(1);
-      expect(resultWith).toHaveLength(1);
+      expect(resultStrict).toHaveLength(1);
+      expect(resultRepaired).toHaveLength(1);
 
       if (
-        resultWithout[0].type === "tool-call" &&
-        resultWith[0].type === "tool-call"
+        resultStrict[0].type === "tool-call" &&
+        resultRepaired[0].type === "tool-call"
       ) {
-        expect(JSON.parse(resultWithout[0].input)).toEqual(
-          JSON.parse(resultWith[0].input)
+        expect(JSON.parse(resultStrict[0].input)).toEqual(
+          JSON.parse(resultRepaired[0].input)
         );
       }
     });
 
-    it("should produce same result for malformed close tags", () => {
-      const withoutPipeline = xmlProtocol();
-      const withPipeline = xmlProtocol({
-        pipeline: defaultPipelineConfig,
-      });
+    it("should recover malformed close tags only when repair is enabled", () => {
+      const strict = xmlProtocol({ parseOptions: { repair: false } });
+      const repaired = xmlProtocol();
 
-      const text = "<get_weather><location>Seoul</ location></get_weather>";
+      const text = "<get_weather><location>Seoul</get_weather>";
 
-      const resultWithout = withoutPipeline.parseGeneratedText({
+      const resultStrict = strict.parseGeneratedText({
         text,
         tools: simpleTools,
       });
-      const resultWith = withPipeline.parseGeneratedText({
+      const resultRepaired = repaired.parseGeneratedText({
         text,
         tools: simpleTools,
       });
 
-      expect(resultWithout[0].type).toBe("tool-call");
-      expect(resultWith[0].type).toBe("tool-call");
-
-      if (
-        resultWithout[0].type === "tool-call" &&
-        resultWith[0].type === "tool-call"
-      ) {
-        expect(JSON.parse(resultWithout[0].input)).toEqual(
-          JSON.parse(resultWith[0].input)
-        );
-      }
+      expect(resultStrict[0].type).toBe("text");
+      expect(resultRepaired[0].type).toBe("tool-call");
     });
   });
 
@@ -387,7 +252,7 @@ describe("xmlProtocol pipeline integration", () => {
     ];
 
     it("should preserve <0>, <1> index tags", () => {
-      const protocol = xmlProtocol({ pipeline: defaultPipelineConfig });
+      const protocol = xmlProtocol();
       const text = `<set_coordinates>
         <coordinates>
           <0>10.5</0>

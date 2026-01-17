@@ -4,7 +4,7 @@ import {
   countTagOccurrences,
   extractRawInner,
   findFirstTopLevelRange,
-} from "..";
+} from "../schema/extraction";
 
 // Constants
 const EXPECTED_TAG_COUNT = 3;

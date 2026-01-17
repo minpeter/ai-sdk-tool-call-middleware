@@ -1,9 +1,10 @@
 /**
- * Default heuristics for XML tool-call parsing.
+ * Default heuristics for XML fragment parsing.
  * Modular, reusable versions of normalization/repair logic from morph-xml-protocol.
  */
 
-import { parse, unwrapJsonSchema } from "@ai-sdk-tool/rxml";
+import { unwrapJsonSchema } from "@ai-sdk-tool/schema-coerce";
+import { parse } from "../core/parser";
 import type {
   HeuristicResult,
   IntermediateCall,
@@ -56,7 +57,11 @@ export const balanceTagsHeuristic: ToolCallHeuristic = {
     const balanced = balanceTags(original);
     const hasMalformedClose = MALFORMED_CLOSE_RE.test(original);
 
-    if (!hasMalformedClose && balanced.length > normalized.length) {
+    if (
+      !hasMalformedClose &&
+      balanced.length > normalized.length &&
+      ctx.errors.length === 0
+    ) {
       return false;
     }
     return balanced !== normalized;

@@ -14,6 +14,12 @@
     },
     {
       "path": "packages/rxml"
+    },
+    {
+      "path": "packages/schema-coerce"
+    },
+    {
+      "path": "tools/tsconfig"
     }
   ],
   "include": [],
