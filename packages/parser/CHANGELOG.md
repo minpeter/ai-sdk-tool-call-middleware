@@ -1,5 +1,18 @@
 # @ai-sdk-tool/parser
 
+## 3.2.0
+
+### Minor Changes
+
+- ef6536e: Refactor XML tool-call parsing to use rxml repair parsing options and more robust tag handling.
+  Move XML repair heuristics into @ai-sdk-tool/rxml and add schema-coerce utilities for schema-driven coercion.
+
+### Patch Changes
+
+- cf61516: Simplify wrapStream by removing separate toolChoice branch handling
+- Updated dependencies [ef6536e]
+  - @ai-sdk-tool/rxml@0.2.0
+
 ## 3.1.3
 
 ### Patch Changes
