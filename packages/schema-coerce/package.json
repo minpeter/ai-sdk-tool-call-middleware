@@ -2,6 +2,7 @@
   "name": "@ai-sdk-tool/schema-coerce",
   "version": "0.1.0",
   "description": "Schema-driven coercion utilities for AI tool inputs",
+  "private": true,
   "type": "module",
   "repository": {
     "type": "git",
@@ -22,9 +23,6 @@
   "files": [
     "dist/**/*"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "pnpm clean && tsup --tsconfig tsconfig.build.json",
     "build:watch": "pnpm clean && tsup --watch --tsconfig tsconfig.build.json",
