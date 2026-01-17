@@ -6,13 +6,8 @@ import type {
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
-import { extractOnErrorOption } from "./core/utils/on-error";
-import { isToolChoiceActive } from "./core/utils/provider-options";
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
-import {
-  toolChoiceStream,
-  wrapStream as wrapStreamHandler,
-} from "./stream-handler";
+import { wrapStream as wrapStreamHandler } from "./stream-handler";
 import { transformParams } from "./transform-handler";
 
 export function createToolMiddleware({
@@ -32,20 +27,13 @@ export function createToolMiddleware({
 
   return {
     specificationVersion: "v3",
-    wrapStream: ({ doStream, doGenerate, params }) => {
-      if (isToolChoiceActive(params)) {
-        return toolChoiceStream({
-          doGenerate,
-          options: extractOnErrorOption(params.providerOptions),
-        });
-      }
-      return wrapStreamHandler({
+    wrapStream: ({ doStream, doGenerate, params }) =>
+      wrapStreamHandler({
         protocol: resolvedProtocol,
         doStream,
         doGenerate,
         params,
-      });
-    },
+      }),
     wrapGenerate: async ({ doGenerate, params }) =>
       wrapGenerateHandler({
         protocol: resolvedProtocol,
