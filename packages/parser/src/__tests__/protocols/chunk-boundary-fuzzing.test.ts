@@ -1,3 +1,4 @@
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { jsonProtocol } from "../../core/protocols/json-protocol";

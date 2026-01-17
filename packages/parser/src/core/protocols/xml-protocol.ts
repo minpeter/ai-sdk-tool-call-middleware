@@ -339,10 +339,7 @@ function findSelfClosingTag(
   toolName: string,
   fromIndex: number
 ): { index: number; length: number } | null {
-  const pattern = new RegExp(
-    `<\\s*${escapeRegExp(toolName)}\\s*/>`,
-    "g"
-  );
+  const pattern = new RegExp(`<\\s*${escapeRegExp(toolName)}\\s*/>`, "g");
   pattern.lastIndex = fromIndex;
   const match = pattern.exec(text);
   if (!match || match.index === undefined) {
