@@ -13,6 +13,7 @@ export interface XmlProtocolOptions {
     repair?: boolean;
     maxReparses?: number;
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    noChildNodes?: string[];
     [key: string]: unknown;
   };
 }
@@ -28,6 +29,11 @@ type FlushTextFn = (
 
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
 const WHITESPACE_REGEX = /\s/;
+const REGEX_ESCAPE_RE = /[.*+?^${}()|[\]\\]/g;
+
+function escapeRegExp(value: string): string {
+  return value.replace(REGEX_ESCAPE_RE, "\\$&");
+}
 
 function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
@@ -312,9 +318,20 @@ function findToolCallsForName(
     const fullTagEnd = findClosingTagEndFlexible(text, contentStart, toolName);
     if (fullTagEnd !== -1 && fullTagEnd > contentStart) {
       const segment = text.substring(tagStart, fullTagEnd);
-      const closeTagStart = segment.lastIndexOf(`</${toolName}`);
+      const closeTagPattern = new RegExp(
+        `</\\s*${escapeRegExp(toolName)}\\s*>`,
+        "g"
+      );
+      let closeTagStart = -1;
+      let match: RegExpExecArray | null = null;
+      while ((match = closeTagPattern.exec(segment)) !== null) {
+        closeTagStart = match.index;
+      }
+      if (closeTagStart === -1) {
+        closeTagStart = segment.lastIndexOf("<");
+      }
       const inner =
-        closeTagStart === -1
+        closeTagStart === -1 || closeTagStart <= startTag.length
           ? segment.slice(startTag.length)
           : segment.slice(startTag.length, closeTagStart);
       toolCalls.push({
@@ -458,15 +475,19 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     setBuffer,
     parseOptions,
   } = params;
-  const endTag = `</${currentToolCall.name}>`;
-  const endIdx = buffer.indexOf(endTag);
-
-  if (endIdx === -1) {
+  const endTagPattern = new RegExp(
+    `</\\s*${escapeRegExp(currentToolCall.name)}\\s*>`
+  );
+  const endMatch = endTagPattern.exec(buffer);
+  if (!endMatch || endMatch.index === undefined) {
     return { buffer, currentToolCall, shouldBreak: true };
   }
 
+  const endIdx = endMatch.index;
+  const endPos = endIdx + endMatch[0].length;
   const content = buffer.substring(0, endIdx);
-  setBuffer(buffer.substring(endIdx + endTag.length));
+  const remainder = buffer.substring(endPos);
+  setBuffer(remainder);
 
   handleStreamingToolCallEnd({
     toolContent: content,
@@ -479,7 +500,7 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
   });
 
   return {
-    buffer: buffer.substring(endIdx + endTag.length),
+    buffer: remainder,
     currentToolCall: null,
     shouldBreak: false,
   };
@@ -634,6 +655,7 @@ export const xmlProtocol = (
 ): TCMCoreProtocol => {
   const parseOptions = {
     repair: true,
+    noChildNodes: [],
     ...(protocolOptions?.parseOptions ?? {}),
   };
 
