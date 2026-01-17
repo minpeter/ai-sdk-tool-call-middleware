@@ -22,4 +22,4 @@ const schema = {
 
 const result = parse(xml, schema);
 console.log("Tool name:", result.name);
-console.log("Text:", (result.parameters as { text?: string }).text);
+console.log("Text:", (result.parameters as { text: string }).text);

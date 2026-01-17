@@ -19,7 +19,6 @@ export function parse(
   const baseOptions: ParseOptions = {
     ...options,
     repair: false,
-    noChildNodes: options.noChildNodes ?? [],
   };
 
   const ctx = createIntermediateCall("", xml, schema);
@@ -34,8 +33,5 @@ export function parse(
   }
 
   const error = result.errors[0];
-  if (error instanceof Error) {
-    throw error;
-  }
   throw new RXMLParseError("Failed to parse XML with repair heuristics", error);
 }
