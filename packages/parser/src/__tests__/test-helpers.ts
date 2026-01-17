@@ -52,3 +52,23 @@ export function mockFinishReason(
 export const zeroUsage = mockUsage(0, 0);
 
 export const stopFinishReason = mockFinishReason("stop");
+
+export function createChunkedStream(
+  input: string | string[],
+  id = "1"
+): ReadableStream<LanguageModelV3StreamPart> {
+  const chunks = typeof input === "string" ? input.split("") : input;
+  return new ReadableStream<LanguageModelV3StreamPart>({
+    start(ctrl) {
+      for (const chunk of chunks) {
+        ctrl.enqueue({ type: "text-delta", id, delta: chunk });
+      }
+      ctrl.enqueue({
+        type: "finish",
+        finishReason: stopFinishReason,
+        usage: zeroUsage,
+      });
+      ctrl.close();
+    },
+  });
+}

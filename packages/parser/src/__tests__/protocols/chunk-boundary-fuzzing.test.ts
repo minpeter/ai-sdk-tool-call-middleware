@@ -1,13 +1,8 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { jsonProtocol } from "../../core/protocols/json-protocol";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
-import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../test-helpers";
+import { createChunkedStream, pipeWithTransformer } from "../test-helpers";
 
 type MorphXmlTools = Parameters<
   ReturnType<typeof xmlProtocol>["createStreamParser"]
@@ -40,24 +35,6 @@ function randomChunkSplit(
 
 function charByCharSplit(text: string): string[] {
   return text.split("");
-}
-
-function createChunkedStream(
-  chunks: string[]
-): ReadableStream<LanguageModelV3StreamPart> {
-  return new ReadableStream<LanguageModelV3StreamPart>({
-    start(ctrl) {
-      for (const chunk of chunks) {
-        ctrl.enqueue({ type: "text-delta", id: "1", delta: chunk });
-      }
-      ctrl.enqueue({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-      });
-      ctrl.close();
-    },
-  });
 }
 
 function extractToolCalls(

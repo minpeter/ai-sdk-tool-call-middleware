@@ -270,16 +270,18 @@ function nextTagToken(
 interface ToolTagMatch {
   tagStart: number;
   isSelfClosing: boolean;
+  tagLength: number;
 }
 
 function findNextToolTag(
   text: string,
   searchIndex: number,
-  startTag: string,
-  selfTag: string
+  toolName: string
 ): ToolTagMatch | null {
+  const startTag = `<${toolName}>`;
   const openIdx = text.indexOf(startTag, searchIndex);
-  const selfIdx = text.indexOf(selfTag, searchIndex);
+  const selfMatch = findSelfClosingTag(text, toolName, searchIndex);
+  const selfIdx = selfMatch?.index ?? -1;
   if (openIdx === -1 && selfIdx === -1) {
     return null;
   }
@@ -287,6 +289,7 @@ function findNextToolTag(
   return {
     tagStart: isSelfClosing ? selfIdx : openIdx,
     isSelfClosing,
+    tagLength: isSelfClosing ? (selfMatch?.length ?? 0) : startTag.length,
   };
 }
 
@@ -318,9 +321,9 @@ function pushSelfClosingToolCall(
   toolName: string,
   text: string,
   tagStart: number,
-  selfTag: string
+  tagLength: number
 ): number {
-  const endIndex = tagStart + selfTag.length;
+  const endIndex = tagStart + tagLength;
   toolCalls.push({
     toolName,
     startIndex: tagStart,
@@ -329,6 +332,23 @@ function pushSelfClosingToolCall(
     segment: text.substring(tagStart, endIndex),
   });
   return endIndex;
+}
+
+function findSelfClosingTag(
+  text: string,
+  toolName: string,
+  fromIndex: number
+): { index: number; length: number } | null {
+  const pattern = new RegExp(
+    `<\\s*${escapeRegExp(toolName)}\\s*/>`,
+    "g"
+  );
+  pattern.lastIndex = fromIndex;
+  const match = pattern.exec(text);
+  if (!match || match.index === undefined) {
+    return null;
+  }
+  return { index: match.index, length: match[0].length };
 }
 
 function appendOpenToolCallIfComplete(
@@ -383,11 +403,10 @@ function findToolCallsForName(
     segment: string;
   }> = [];
   const startTag = `<${toolName}>`;
-  const selfTag = `<${toolName}/>`;
   let searchIndex = 0;
 
   while (searchIndex < text.length) {
-    const match = findNextToolTag(text, searchIndex, startTag, selfTag);
+    const match = findNextToolTag(text, searchIndex, toolName);
     if (match === null) {
       break;
     }
@@ -397,7 +416,7 @@ function findToolCallsForName(
         toolName,
         text,
         match.tagStart,
-        selfTag
+        match.tagLength
       );
       continue;
     }
@@ -442,32 +461,40 @@ function findToolCalls(
 function findEarliestToolTag(
   buffer: string,
   toolNames: string[]
-): { index: number; name: string; selfClosing: boolean } {
+): { index: number; name: string; selfClosing: boolean; tagLength: number } {
   let bestIndex = -1;
   let bestName = "";
   let bestSelfClosing = false;
+  let bestTagLength = 0;
 
   if (toolNames.length > 0) {
     for (const name of toolNames) {
       const openTag = `<${name}>`;
-      const selfTag = `<${name}/>`;
       const idxOpen = buffer.indexOf(openTag);
-      const idxSelf = buffer.indexOf(selfTag);
+      const selfMatch = findSelfClosingTag(buffer, name, 0);
+      const idxSelf = selfMatch?.index ?? -1;
 
       if (idxOpen !== -1 && (bestIndex === -1 || idxOpen < bestIndex)) {
         bestIndex = idxOpen;
         bestName = name;
         bestSelfClosing = false;
+        bestTagLength = openTag.length;
       }
       if (idxSelf !== -1 && (bestIndex === -1 || idxSelf < bestIndex)) {
         bestIndex = idxSelf;
         bestName = name;
         bestSelfClosing = true;
+        bestTagLength = selfMatch?.length ?? 0;
       }
     }
   }
 
-  return { index: bestIndex, name: bestName, selfClosing: bestSelfClosing };
+  return {
+    index: bestIndex,
+    name: bestName,
+    selfClosing: bestSelfClosing,
+    tagLength: bestTagLength,
+  };
 }
 
 function createFlushTextHandler(
@@ -600,11 +627,18 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     index: earliestStartTagIndex,
     name: earliestToolName,
     selfClosing,
+    tagLength,
   } = findEarliestToolTag(buffer, toolNames);
 
   if (earliestStartTagIndex === -1) {
     const maxTagLen = toolNames.length
-      ? Math.max(...toolNames.map((n) => `<${n}>`.length))
+      ? Math.max(
+          ...toolNames.flatMap((n) => [
+            `<${n}>`.length,
+            `<${n}/>`.length,
+            `<${n} />`.length,
+          ])
+        )
       : 0;
     const tail = Math.max(0, maxTagLen - 1);
     const safeLen = Math.max(0, buffer.length - tail);
@@ -623,8 +657,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
   flushText(controller, buffer.substring(0, earliestStartTagIndex));
 
   if (selfClosing) {
-    const selfTag = `<${earliestToolName}/>`;
-    const newBuffer = buffer.substring(earliestStartTagIndex + selfTag.length);
+    const newBuffer = buffer.substring(earliestStartTagIndex + tagLength);
     setBuffer(newBuffer);
     handleStreamingToolCallEnd({
       toolContent: "",
