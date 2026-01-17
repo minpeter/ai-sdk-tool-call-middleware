@@ -73,7 +73,10 @@ describe("createToolMiddleware branches", () => {
       toolSystemPromptTemplate: () => "",
     });
 
-    const result = await mw.wrapStream?.({
+    if (!mw.wrapStream) {
+      throw new Error("wrapStream is not defined");
+    }
+    const result = await mw.wrapStream({
       doStream: vi.fn().mockResolvedValue({
         stream: new ReadableStream({
           start(c) {
@@ -90,6 +93,6 @@ describe("createToolMiddleware branches", () => {
         },
       },
     } as any);
-    expect(result?.stream).toBeDefined();
+    expect(result.stream).toBeDefined();
   });
 });
