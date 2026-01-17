@@ -16,7 +16,7 @@ export function xmlSystemPromptTemplate(
 
   const rules = dedent`
     <rules>
-    - Use exactly one XML element whose tag name is the function name. 1Code has comments. Press enter to view.
+    - Use exactly one XML element whose tag name is the function name.
     - Put each parameter as a child element.
     - Values must follow the schema exactly (numbers, arrays, objects, enums → copy as-is).
     - Do not add or remove functions or parameters.
