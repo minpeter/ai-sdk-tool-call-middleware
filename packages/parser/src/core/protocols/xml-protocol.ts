@@ -267,6 +267,104 @@ function nextTagToken(
   };
 }
 
+interface ToolTagMatch {
+  tagStart: number;
+  isSelfClosing: boolean;
+}
+
+function findNextToolTag(
+  text: string,
+  searchIndex: number,
+  startTag: string,
+  selfTag: string
+): ToolTagMatch | null {
+  const openIdx = text.indexOf(startTag, searchIndex);
+  const selfIdx = text.indexOf(selfTag, searchIndex);
+  if (openIdx === -1 && selfIdx === -1) {
+    return null;
+  }
+  const isSelfClosing = selfIdx !== -1 && (openIdx === -1 || selfIdx < openIdx);
+  return {
+    tagStart: isSelfClosing ? selfIdx : openIdx,
+    isSelfClosing,
+  };
+}
+
+function findLastCloseTagStart(segment: string, toolName: string): number {
+  const closeTagPattern = new RegExp(
+    `</\\s*${escapeRegExp(toolName)}\\s*>`,
+    "g"
+  );
+  let closeTagStart = -1;
+  let match = closeTagPattern.exec(segment);
+  while (match !== null) {
+    closeTagStart = match.index;
+    match = closeTagPattern.exec(segment);
+  }
+  if (closeTagStart === -1) {
+    return segment.lastIndexOf("<");
+  }
+  return closeTagStart;
+}
+
+function pushSelfClosingToolCall(
+  toolCalls: Array<{
+    toolName: string;
+    startIndex: number;
+    endIndex: number;
+    content: string;
+    segment: string;
+  }>,
+  toolName: string,
+  text: string,
+  tagStart: number,
+  selfTag: string
+): number {
+  const endIndex = tagStart + selfTag.length;
+  toolCalls.push({
+    toolName,
+    startIndex: tagStart,
+    endIndex,
+    content: "",
+    segment: text.substring(tagStart, endIndex),
+  });
+  return endIndex;
+}
+
+function appendOpenToolCallIfComplete(
+  toolCalls: Array<{
+    toolName: string;
+    startIndex: number;
+    endIndex: number;
+    content: string;
+    segment: string;
+  }>,
+  text: string,
+  toolName: string,
+  tagStart: number,
+  startTag: string
+): number {
+  const contentStart = tagStart + startTag.length;
+  const fullTagEnd = findClosingTagEndFlexible(text, contentStart, toolName);
+  if (fullTagEnd === -1 || fullTagEnd <= contentStart) {
+    return contentStart;
+  }
+  const segment = text.substring(tagStart, fullTagEnd);
+  const closeTagStart = findLastCloseTagStart(segment, toolName);
+  const inner =
+    closeTagStart === -1
+      ? segment.slice(startTag.length)
+      : segment.slice(startTag.length, closeTagStart);
+  toolCalls.push({
+    toolName,
+    startIndex: tagStart,
+    endIndex: fullTagEnd,
+    content: inner,
+    segment,
+  });
+  return fullTagEnd;
+}
+
 function findToolCallsForName(
   text: string,
   toolName: string
@@ -284,67 +382,32 @@ function findToolCallsForName(
     content: string;
     segment: string;
   }> = [];
+  const startTag = `<${toolName}>`;
+  const selfTag = `<${toolName}/>`;
   let searchIndex = 0;
 
   while (searchIndex < text.length) {
-    const startTag = `<${toolName}>`;
-    const selfTag = `<${toolName}/>`;
-    const openIdx = text.indexOf(startTag, searchIndex);
-    const selfIdx = text.indexOf(selfTag, searchIndex);
-
-    if (openIdx === -1 && selfIdx === -1) {
+    const match = findNextToolTag(text, searchIndex, startTag, selfTag);
+    if (match === null) {
       break;
     }
-
-    const tagStart =
-      selfIdx !== -1 && (openIdx === -1 || selfIdx < openIdx)
-        ? selfIdx
-        : openIdx;
-    const isSelfClosing = tagStart === selfIdx;
-    if (isSelfClosing) {
-      const endIndex = tagStart + selfTag.length;
-      const segment = text.substring(tagStart, endIndex);
-      toolCalls.push({
+    if (match.isSelfClosing) {
+      searchIndex = pushSelfClosingToolCall(
+        toolCalls,
         toolName,
-        startIndex: tagStart,
-        endIndex,
-        content: "",
-        segment,
-      });
-      searchIndex = endIndex;
+        text,
+        match.tagStart,
+        selfTag
+      );
       continue;
     }
-    const contentStart = tagStart + startTag.length;
-    const fullTagEnd = findClosingTagEndFlexible(text, contentStart, toolName);
-    if (fullTagEnd !== -1 && fullTagEnd > contentStart) {
-      const segment = text.substring(tagStart, fullTagEnd);
-      const closeTagPattern = new RegExp(
-        `</\\s*${escapeRegExp(toolName)}\\s*>`,
-        "g"
-      );
-      let closeTagStart = -1;
-      let match: RegExpExecArray | null = null;
-      while ((match = closeTagPattern.exec(segment)) !== null) {
-        closeTagStart = match.index;
-      }
-      if (closeTagStart === -1) {
-        closeTagStart = segment.lastIndexOf("<");
-      }
-      const inner =
-        closeTagStart === -1
-          ? segment.slice(startTag.length)
-          : segment.slice(startTag.length, closeTagStart);
-      toolCalls.push({
-        toolName,
-        startIndex: tagStart,
-        endIndex: fullTagEnd,
-        content: inner,
-        segment,
-      });
-      searchIndex = fullTagEnd;
-    } else {
-      searchIndex = contentStart;
-    }
+    searchIndex = appendOpenToolCallIfComplete(
+      toolCalls,
+      text,
+      toolName,
+      match.tagStart,
+      startTag
+    );
   }
 
   return toolCalls;
