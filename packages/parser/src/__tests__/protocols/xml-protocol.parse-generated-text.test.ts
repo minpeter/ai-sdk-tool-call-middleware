@@ -43,6 +43,18 @@ describe("xmlProtocol parseGeneratedText branches", () => {
     expect(tool).toBeTruthy();
   });
 
+  it("parses empty tool call bodies when repair is disabled", () => {
+    const p = xmlProtocol({ parseOptions: { repair: false } });
+    const text = "<a></a>";
+    const out = p.parseGeneratedText({ text, tools, options: {} });
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      type: "tool-call",
+      toolName: "a",
+      input: "{}",
+    });
+  });
+
   it("treats HTML-void tag names like <input> as normal XML nodes", () => {
     const p = xmlProtocol();
     const localTools = [

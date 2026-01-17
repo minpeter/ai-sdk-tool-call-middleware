@@ -331,7 +331,7 @@ function findToolCallsForName(
         closeTagStart = segment.lastIndexOf("<");
       }
       const inner =
-        closeTagStart === -1 || closeTagStart <= startTag.length
+        closeTagStart === -1
           ? segment.slice(startTag.length)
           : segment.slice(startTag.length, closeTagStart);
       toolCalls.push({
