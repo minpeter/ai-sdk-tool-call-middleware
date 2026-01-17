@@ -2,7 +2,9 @@
   "extends": "./node_modules/@ai-sdk-tool/tsconfig/ts-library.json",
   "compilerOptions": {
     "composite": true,
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "rootDir": "src",
     "outDir": "dist",
     "strictNullChecks": true
@@ -14,5 +16,9 @@
     "tsup.config.ts",
     "vitest.config.ts"
   ],
-  "references": []
+  "references": [
+    {
+      "path": "../../tools/tsconfig"
+    }
+  ]
 }
