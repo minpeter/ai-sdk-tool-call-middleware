@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-
-import { coerceBySchema } from "..";
+import { coerceBySchema } from ".";
 
 describe("Coercion Heuristic Handling", () => {
   describe("Single key array extraction", () => {
@@ -70,6 +69,27 @@ describe("Coercion Heuristic Handling", () => {
       expect(singleResult).toEqual([{ name: "Alice" }]);
       // Multiple elements: [{ name: "Alice" }, { name: "Bob" }]
       expect(multiResult).toEqual([{ name: "Alice" }, { name: "Bob" }]);
+    });
+
+    it("should not unwrap single key objects when items schema expects that key", () => {
+      const input = { user: { name: "Alice" } };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            user: {
+              type: "object",
+              properties: { name: { type: "string" } },
+            },
+          },
+          required: ["user"],
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([{ user: { name: "Alice" } }]);
     });
 
     it("should handle nested single key object extraction", () => {

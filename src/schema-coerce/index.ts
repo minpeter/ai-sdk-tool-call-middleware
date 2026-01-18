@@ -54,6 +54,39 @@ export function getSchemaType(schema: unknown): string | undefined {
   return;
 }
 
+function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
+  if (depth > 5) {
+    return false;
+  }
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!unwrapped || typeof unwrapped !== "object") {
+    return false;
+  }
+  const s = unwrapped as Record<string, unknown>;
+  const props = s.properties;
+  if (props && typeof props === "object" && !Array.isArray(props)) {
+    if (Object.hasOwn(props as Record<string, unknown>, key)) {
+      return true;
+    }
+  }
+  const required = s.required;
+  if (Array.isArray(required) && required.includes(key)) {
+    return true;
+  }
+  const combinators = ["anyOf", "oneOf", "allOf"] as const;
+  for (const comb of combinators) {
+    const values = s[comb];
+    if (Array.isArray(values)) {
+      for (const sub of values) {
+        if (schemaHasProperty(sub, key, depth + 1)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Coerce string value without schema information
  */
@@ -206,13 +239,16 @@ function coerceObjectToArray(
   // Check for single field that contains an array or object (common XML pattern)
   // This handles both: { user: [{ name: "A" }, { name: "B" }] } and { user: { name: "A" } }
   if (keys.length === 1) {
-    const singleValue = maybe[keys[0]];
-    if (Array.isArray(singleValue)) {
-      return singleValue.map((v) => coerceBySchema(v, itemsSchema));
-    }
-    // Also extract when single key's value is an object and wrap in array (single/multiple element consistency)
-    if (singleValue && typeof singleValue === "object") {
-      return [coerceBySchema(singleValue, itemsSchema)];
+    const singleKey = keys[0];
+    if (!schemaHasProperty(itemsSchema, singleKey)) {
+      const singleValue = maybe[singleKey];
+      if (Array.isArray(singleValue)) {
+        return singleValue.map((v) => coerceBySchema(v, itemsSchema));
+      }
+      // Also extract when single key's value is an object and wrap in array (single/multiple element consistency)
+      if (singleValue && typeof singleValue === "object") {
+        return [coerceBySchema(singleValue, itemsSchema)];
+      }
     }
   }
 
