@@ -54,51 +54,11 @@ export function getSchemaType(schema: unknown): string | undefined {
   return;
 }
 
-function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
-  if (depth > 5) {
-    return false;
-  }
-  const unwrapped = unwrapJsonSchema(schema);
-  if (!unwrapped || typeof unwrapped !== "object") {
-    return false;
-  }
-  const s = unwrapped as Record<string, unknown>;
-  const props = s.properties;
-  if (props && typeof props === "object" && !Array.isArray(props)) {
-    if (Object.hasOwn(props as Record<string, unknown>, key)) {
-      return true;
-    }
-  }
-  const required = s.required;
-  if (Array.isArray(required) && required.includes(key)) {
-    return true;
-  }
-  const patternProperties = s.patternProperties;
-  const patternSchemas = getPatternSchemasForKey(patternProperties, key);
-  if (patternSchemas.length > 0) {
-    return true;
-  }
-  const additional = s.additionalProperties;
-  if (
-    additional === true ||
-    (additional && typeof additional === "object" && !Array.isArray(additional))
-  ) {
-    return true;
-  }
-  if (!Object.hasOwn(s, "additionalProperties")) {
-    const type = s.type;
-    const isObjectType =
-      type === "object" || (Array.isArray(type) && type.includes("object"));
-    const hasObjectKeywords =
-      (props && typeof props === "object" && !Array.isArray(props)) ||
-      (patternProperties &&
-        typeof patternProperties === "object" &&
-        !Array.isArray(patternProperties)) ||
-      Array.isArray(required);
-    if (isObjectType || hasObjectKeywords) {
-      return true;
-    }
-  }
+function schemaHasPropertyInCombinators(
+  s: Record<string, unknown>,
+  key: string,
+  depth: number
+): boolean {
   const combinators = ["anyOf", "oneOf", "allOf"] as const;
   for (const comb of combinators) {
     const values = s[comb];
@@ -111,6 +71,71 @@ function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
     }
   }
   return false;
+}
+
+function schemaHasPropertyDirectly(
+  s: Record<string, unknown>,
+  key: string
+): boolean {
+  const props = s.properties;
+  if (
+    props &&
+    typeof props === "object" &&
+    !Array.isArray(props) &&
+    Object.hasOwn(props, key)
+  ) {
+    return true;
+  }
+  const required = s.required;
+  if (Array.isArray(required) && required.includes(key)) {
+    return true;
+  }
+  const patternSchemas = getPatternSchemasForKey(s.patternProperties, key);
+  return patternSchemas.length > 0;
+}
+
+function schemaHasPropertyViaAdditional(s: Record<string, unknown>): boolean {
+  const additional = s.additionalProperties;
+  if (
+    additional === true ||
+    (additional && typeof additional === "object" && !Array.isArray(additional))
+  ) {
+    return true;
+  }
+  if (Object.hasOwn(s, "additionalProperties")) {
+    return false;
+  }
+  const type = s.type;
+  const isObjectType =
+    type === "object" || (Array.isArray(type) && type.includes("object"));
+  const hasObjectKeywords =
+    (s.properties &&
+      typeof s.properties === "object" &&
+      !Array.isArray(s.properties)) ||
+    (s.patternProperties &&
+      typeof s.patternProperties === "object" &&
+      !Array.isArray(s.patternProperties)) ||
+    (Array.isArray(s.required) && s.required.length > 0);
+  return !!(isObjectType || hasObjectKeywords);
+}
+
+function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
+  if (depth > 5) {
+    return false;
+  }
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!unwrapped || typeof unwrapped !== "object") {
+    return false;
+  }
+  const s = unwrapped as Record<string, unknown>;
+
+  if (schemaHasPropertyDirectly(s, key)) {
+    return true;
+  }
+  if (schemaHasPropertyViaAdditional(s)) {
+    return true;
+  }
+  return schemaHasPropertyInCombinators(s, key, depth);
 }
 
 function getPatternSchemasForKey(
@@ -148,7 +173,7 @@ function coerceValueForKey(
   const schemas: unknown[] = [];
   const props = unwrapped.properties as Record<string, unknown> | undefined;
   if (props && Object.hasOwn(props, key)) {
-    schemas.push((props as Record<string, unknown>)[key]);
+    schemas.push(props[key]);
   }
   const patternSchemas = getPatternSchemasForKey(
     unwrapped.patternProperties,
@@ -431,7 +456,11 @@ function coerceArrayValue(
     if (result !== null) {
       return result;
     }
-    // Wrap in array even if object couldn't be converted to array
+    // To prevent infinite recursion, check if the itemsSchema is also for an array.
+    // If so, just wrap the object. Otherwise, coerce it against the itemsSchema.
+    if (getSchemaType(itemsSchema) === "array") {
+      return [value];
+    }
     return [coerceBySchema(value, itemsSchema)];
   }
 
