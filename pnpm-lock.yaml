@@ -112,6 +112,9 @@ importers:
       '@ai-sdk/provider-utils':
         specifier: 4.0.8
         version: 4.0.8(zod@4.3.5)
+      dedent:
+        specifier: ^1.7.1
+        version: 1.7.1
       yaml:
         specifier: ^2.8.2
         version: 2.8.2
@@ -976,6 +979,14 @@ packages:
       supports-color: '*'
     peerDependenciesMeta:
       supports-color:
+        optional: true
+
+  dedent@1.7.1:
+    resolution: {integrity: sha512-9JmrhGZpOlEgOLdQgSm0zxFaYoQon408V1v49aqTWuXENVlnCuY9JBZcXZiCsZQWDjTm5Qf/nIvAy77mXDAjEg==}
+    peerDependencies:
+      babel-plugin-macros: ^3.1.0
+    peerDependenciesMeta:
+      babel-plugin-macros:
         optional: true
 
   deepmerge@4.3.1:
@@ -2928,6 +2939,8 @@ snapshots:
   debug@4.4.3:
     dependencies:
       ms: 2.1.3
+
+  dedent@1.7.1: {}
 
   deepmerge@4.3.1: {}
 

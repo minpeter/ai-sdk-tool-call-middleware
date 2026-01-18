@@ -2,6 +2,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
+import { printComplete, printStepLikeStream } from "./console-output";
 
 // Constants
 const MAX_STEPS = 4;
@@ -40,18 +41,11 @@ async function main() {
       },
     },
     onStepFinish: (step) => {
-      console.log({
-        text: step.text,
-        toolCalls: step.toolCalls.map(
-          (call) =>
-            `name: ${call.toolName}, input: ${JSON.stringify(call.input)}`
-        ),
-        toolResults: step.toolResults.map((result) =>
-          JSON.stringify(result.output)
-        ),
-      });
+      printStepLikeStream(step);
     },
   });
+
+  printComplete();
 }
 
 main().catch(console.error);

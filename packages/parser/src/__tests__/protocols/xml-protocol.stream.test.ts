@@ -50,6 +50,56 @@ describe("xmlProtocol streaming edge cases", () => {
     expect(tool).toMatchObject({ type: "tool-call", toolName: "get_weather" });
   });
 
+  it("preserves self-closing tags with leading whitespace split across chunks", async () => {
+    const protocol = xmlProtocol();
+    const whitespaceTools = [
+      {
+        type: "function",
+        name: "get_location",
+        description: "",
+        inputSchema: { type: "object" },
+      },
+    ] as any;
+    const transformer = protocol.createStreamParser({ tools: whitespaceTools });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: "prefix < get_loc",
+        });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: "ation/> suffix",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool).toMatchObject({
+      type: "tool-call",
+      toolName: "get_location",
+      input: "{}",
+    });
+    const text = out
+      .filter((c) => c.type === "text-delta")
+      .map((c: any) => c.delta)
+      .join("");
+    expect(text).toContain("prefix ");
+    expect(text).toContain(" suffix");
+    expect(text).not.toContain("< get_loc");
+  });
+
   it("accepts whitespace in the closing tag name while streaming", async () => {
     const protocol = xmlProtocol();
     const transformer = protocol.createStreamParser({ tools });

@@ -2,6 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { generateText, wrapLanguageModel } from "ai";
 import { z } from "zod";
+import { printComplete, printStepLikeStream } from "./console-output";
 
 // Constants
 const BASE_TEMPERATURE = 72;
@@ -15,7 +16,7 @@ const openrouter = createOpenAI({
 });
 
 async function main() {
-  const result = await generateText({
+  await generateText({
     model: wrapLanguageModel({
       model: openrouter.chat("xiaomi/mimo-v2-flash:free"),
       middleware: hermesToolMiddleware,
@@ -37,13 +38,12 @@ async function main() {
     },
     toolChoice: { type: "tool", toolName: "weather" },
     prompt: "Tell me a joke about programming", // inrrelevant to the tool
+    onStepFinish: (step) => {
+      printStepLikeStream(step);
+    },
   });
 
-  console.log(JSON.stringify(result, null, 2));
-  console.log({
-    finishReason: result.finishReason,
-    content: result.content,
-  });
+  printComplete();
 }
 
 main().catch(console.error);

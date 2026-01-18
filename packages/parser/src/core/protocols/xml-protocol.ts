@@ -6,6 +6,7 @@ import type {
 } from "@ai-sdk/provider";
 import { parse, stringify } from "@ai-sdk-tool/rxml";
 import { generateId } from "../utils/id";
+import { escapeRegExp } from "../utils/regex";
 import type { TCMCoreProtocol } from "./protocol-interface";
 
 export interface XmlProtocolOptions {
@@ -29,11 +30,6 @@ type FlushTextFn = (
 
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
 const WHITESPACE_REGEX = /\s/;
-const REGEX_ESCAPE_RE = /[.*+?^${}()|[\]\\]/g;
-
-function escapeRegExp(value: string): string {
-  return value.replace(REGEX_ESCAPE_RE, "\\$&");
-}
 
 function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
@@ -270,16 +266,18 @@ function nextTagToken(
 interface ToolTagMatch {
   tagStart: number;
   isSelfClosing: boolean;
+  tagLength: number;
 }
 
 function findNextToolTag(
   text: string,
   searchIndex: number,
-  startTag: string,
-  selfTag: string
+  toolName: string
 ): ToolTagMatch | null {
+  const startTag = `<${toolName}>`;
   const openIdx = text.indexOf(startTag, searchIndex);
-  const selfIdx = text.indexOf(selfTag, searchIndex);
+  const selfMatch = findSelfClosingTag(text, toolName, searchIndex);
+  const selfIdx = selfMatch?.index ?? -1;
   if (openIdx === -1 && selfIdx === -1) {
     return null;
   }
@@ -287,6 +285,7 @@ function findNextToolTag(
   return {
     tagStart: isSelfClosing ? selfIdx : openIdx,
     isSelfClosing,
+    tagLength: isSelfClosing ? (selfMatch?.length ?? 0) : startTag.length,
   };
 }
 
@@ -318,9 +317,9 @@ function pushSelfClosingToolCall(
   toolName: string,
   text: string,
   tagStart: number,
-  selfTag: string
+  tagLength: number
 ): number {
-  const endIndex = tagStart + selfTag.length;
+  const endIndex = tagStart + tagLength;
   toolCalls.push({
     toolName,
     startIndex: tagStart,
@@ -329,6 +328,36 @@ function pushSelfClosingToolCall(
     segment: text.substring(tagStart, endIndex),
   });
   return endIndex;
+}
+
+/**
+ * Cache for self-closing tag regex patterns.
+ * This cache grows with the number of unique tool names but is bounded
+ * in practice since tools are defined at configuration time, not dynamically.
+ */
+const selfClosingTagCache = new Map<string, RegExp>();
+
+function getSelfClosingTagPattern(toolName: string): RegExp {
+  let pattern = selfClosingTagCache.get(toolName);
+  if (!pattern) {
+    pattern = new RegExp(`<\\s*${escapeRegExp(toolName)}\\s*/>`, "g");
+    selfClosingTagCache.set(toolName, pattern);
+  }
+  return pattern;
+}
+
+function findSelfClosingTag(
+  text: string,
+  toolName: string,
+  fromIndex: number
+): { index: number; length: number } | null {
+  const pattern = getSelfClosingTagPattern(toolName);
+  pattern.lastIndex = fromIndex;
+  const match = pattern.exec(text);
+  if (!match || match.index === undefined) {
+    return null;
+  }
+  return { index: match.index, length: match[0].length };
 }
 
 function appendOpenToolCallIfComplete(
@@ -383,11 +412,10 @@ function findToolCallsForName(
     segment: string;
   }> = [];
   const startTag = `<${toolName}>`;
-  const selfTag = `<${toolName}/>`;
   let searchIndex = 0;
 
   while (searchIndex < text.length) {
-    const match = findNextToolTag(text, searchIndex, startTag, selfTag);
+    const match = findNextToolTag(text, searchIndex, toolName);
     if (match === null) {
       break;
     }
@@ -397,7 +425,7 @@ function findToolCallsForName(
         toolName,
         text,
         match.tagStart,
-        selfTag
+        match.tagLength
       );
       continue;
     }
@@ -442,32 +470,149 @@ function findToolCalls(
 function findEarliestToolTag(
   buffer: string,
   toolNames: string[]
-): { index: number; name: string; selfClosing: boolean } {
+): { index: number; name: string; selfClosing: boolean; tagLength: number } {
   let bestIndex = -1;
   let bestName = "";
   let bestSelfClosing = false;
+  let bestTagLength = 0;
 
   if (toolNames.length > 0) {
     for (const name of toolNames) {
       const openTag = `<${name}>`;
-      const selfTag = `<${name}/>`;
       const idxOpen = buffer.indexOf(openTag);
-      const idxSelf = buffer.indexOf(selfTag);
+      const selfMatch = findSelfClosingTag(buffer, name, 0);
+      const idxSelf = selfMatch?.index ?? -1;
 
       if (idxOpen !== -1 && (bestIndex === -1 || idxOpen < bestIndex)) {
         bestIndex = idxOpen;
         bestName = name;
         bestSelfClosing = false;
+        bestTagLength = openTag.length;
       }
       if (idxSelf !== -1 && (bestIndex === -1 || idxSelf < bestIndex)) {
         bestIndex = idxSelf;
         bestName = name;
         bestSelfClosing = true;
+        bestTagLength = selfMatch?.length ?? 0;
       }
     }
   }
 
-  return { index: bestIndex, name: bestName, selfClosing: bestSelfClosing };
+  return {
+    index: bestIndex,
+    name: bestName,
+    selfClosing: bestSelfClosing,
+    tagLength: bestTagLength,
+  };
+}
+
+function isOpenTagPrefix(suffix: string, toolName: string): boolean {
+  return `${toolName}>`.startsWith(suffix);
+}
+
+function consumeWhitespace(text: string, index: number): number {
+  let i = index;
+  while (i < text.length && WHITESPACE_REGEX.test(text.charAt(i))) {
+    i += 1;
+  }
+  return i;
+}
+
+function consumeToolNamePrefix(
+  text: string,
+  index: number,
+  toolName: string
+): { index: number; done: boolean; valid: boolean } {
+  let i = index;
+  let nameIndex = 0;
+
+  while (i < text.length && nameIndex < toolName.length) {
+    if (text.charAt(i) !== toolName.charAt(nameIndex)) {
+      return { index: i, done: false, valid: false };
+    }
+    i += 1;
+    nameIndex += 1;
+  }
+
+  return { index: i, done: nameIndex === toolName.length, valid: true };
+}
+
+/**
+ * Checks if the remainder of text at index is a valid self-closing tag suffix.
+ * Returns true if:
+ * - text[index] is "/" and we're at the end (incomplete "/")
+ * - text[index..] is "/>" at the end of the string
+ */
+function isSelfClosingSuffixRemainder(text: string, index: number): boolean {
+  if (text.charAt(index) !== "/") {
+    return false;
+  }
+  if (index + 1 >= text.length) {
+    return true;
+  }
+  return index + 1 === text.length - 1 && text.charAt(index + 1) === ">";
+}
+
+function isSelfClosingTagPrefix(suffix: string, toolName: string): boolean {
+  let i = consumeWhitespace(suffix, 0);
+  if (i >= suffix.length) {
+    return true;
+  }
+
+  const nameRemainder = suffix.slice(i);
+  if (toolName.startsWith(nameRemainder)) {
+    return true;
+  }
+
+  const nameResult = consumeToolNamePrefix(suffix, i, toolName);
+  if (!nameResult.valid) {
+    return false;
+  }
+
+  i = nameResult.index;
+  if (i >= suffix.length) {
+    return true;
+  }
+  if (!nameResult.done) {
+    return false;
+  }
+
+  i = consumeWhitespace(suffix, i);
+  if (i >= suffix.length) {
+    return true;
+  }
+
+  return isSelfClosingSuffixRemainder(suffix, i);
+}
+
+function findPotentialToolTagStart(
+  buffer: string,
+  toolNames: string[]
+): number {
+  if (toolNames.length === 0 || buffer.length === 0) {
+    return -1;
+  }
+
+  const lastGt = buffer.lastIndexOf(">");
+  const offset = lastGt === -1 ? 0 : lastGt + 1;
+  const trailing = buffer.slice(offset);
+
+  for (let i = trailing.length - 1; i >= 0; i -= 1) {
+    if (trailing.charAt(i) !== "<") {
+      continue;
+    }
+    const suffix = trailing.slice(i + 1);
+    for (const name of toolNames) {
+      if (
+        isOpenTagPrefix(suffix, name) ||
+        isSelfClosingTagPrefix(suffix, name)
+      ) {
+        return offset + i;
+      }
+    }
+  }
+
+  return -1;
 }
 
 function createFlushTextHandler(
@@ -600,20 +745,22 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     index: earliestStartTagIndex,
     name: earliestToolName,
     selfClosing,
+    tagLength,
   } = findEarliestToolTag(buffer, toolNames);
 
   if (earliestStartTagIndex === -1) {
-    const maxTagLen = toolNames.length
-      ? Math.max(...toolNames.map((n) => `<${n}>`.length))
-      : 0;
-    const tail = Math.max(0, maxTagLen - 1);
-    const safeLen = Math.max(0, buffer.length - tail);
+    const potentialStart = findPotentialToolTagStart(buffer, toolNames);
+    const safeLen = Math.max(
+      0,
+      potentialStart === -1 ? buffer.length : potentialStart
+    );
+    const remaining = buffer.slice(safeLen);
     if (safeLen > 0) {
       flushText(controller, buffer.slice(0, safeLen));
-      setBuffer(buffer.slice(safeLen));
+      setBuffer(remaining);
     }
     return {
-      buffer: buffer.slice(safeLen),
+      buffer: remaining,
       currentToolCall: null,
       shouldBreak: true,
       shouldContinue: false,
@@ -623,8 +770,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
   flushText(controller, buffer.substring(0, earliestStartTagIndex));
 
   if (selfClosing) {
-    const selfTag = `<${earliestToolName}/>`;
-    const newBuffer = buffer.substring(earliestStartTagIndex + selfTag.length);
+    const newBuffer = buffer.substring(earliestStartTagIndex + tagLength);
     setBuffer(newBuffer);
     handleStreamingToolCallEnd({
       toolContent: "",
