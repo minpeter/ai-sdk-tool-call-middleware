@@ -160,6 +160,17 @@ function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
   return schemaHasPropertyInCombinators(s, key, depth);
 }
 
+function schemaIsUnconstrained(schema: unknown): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (unwrapped == null || unwrapped === true) {
+    return true;
+  }
+  if (typeof unwrapped !== "object" || Array.isArray(unwrapped)) {
+    return false;
+  }
+  return Object.keys(unwrapped).length === 0;
+}
+
 function getPatternSchemasForKey(
   patternProperties: unknown,
   key: string
@@ -374,7 +385,10 @@ function coerceObjectToArray(
   // This handles both: { user: [{ name: "A" }, { name: "B" }] } and { user: { name: "A" } }
   if (keys.length === 1) {
     const singleKey = keys[0];
-    if (!schemaHasProperty(itemsSchema, singleKey)) {
+    if (
+      !schemaIsUnconstrained(itemsSchema) &&
+      !schemaHasProperty(itemsSchema, singleKey)
+    ) {
       const singleValue = maybe[singleKey];
       if (Array.isArray(singleValue)) {
         return singleValue.map((v) => coerceBySchema(v, itemsSchema));
