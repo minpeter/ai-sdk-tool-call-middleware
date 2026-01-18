@@ -559,6 +559,11 @@ function isSelfClosingTagPrefix(suffix: string, toolName: string): boolean {
     return true;
   }
 
+  const nameRemainder = suffix.slice(i);
+  if (toolName.startsWith(nameRemainder)) {
+    return true;
+  }
+
   const nameResult = consumeToolNamePrefix(suffix, i, toolName);
   if (!nameResult.valid) {
     return false;
