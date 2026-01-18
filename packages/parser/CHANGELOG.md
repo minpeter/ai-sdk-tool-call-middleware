@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 3.2.1
+
+### Patch Changes
+
+- 4cdd469: Improve XML protocol self-closing tag parsing to handle whitespace variations and enhance system prompt template with dedent for cleaner formatting
+
 ## 3.2.0
 
 ### Minor Changes
