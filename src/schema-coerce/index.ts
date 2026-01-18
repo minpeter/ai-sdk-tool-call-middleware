@@ -166,6 +166,10 @@ function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
     return false;
   }
   const unwrapped = unwrapJsonSchema(schema);
+  // Unconstrained schemas (true, null, {}) allow any property
+  if (schemaIsUnconstrained(unwrapped)) {
+    return true;
+  }
   if (!unwrapped || typeof unwrapped !== "object") {
     return false;
   }
@@ -409,8 +413,10 @@ function coerceObjectToArray(
   if (keys.length === 1) {
     const singleKey = keys[0];
     if (
-      !schemaIsUnconstrained(itemsSchema) &&
-      !schemaHasProperty(itemsSchema, singleKey)
+      !(
+        schemaIsUnconstrained(itemsSchema) ||
+        schemaHasProperty(itemsSchema, singleKey)
+      )
     ) {
       const singleValue = maybe[singleKey];
       if (Array.isArray(singleValue)) {
