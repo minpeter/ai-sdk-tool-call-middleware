@@ -163,6 +163,24 @@ describe("Coercion Heuristic Handling", () => {
       expect(result).toEqual([{ "x-id": "1" }]);
     });
 
+    it("should unwrap single key objects when patternProperties explicitly disallow the key", () => {
+      const input = { wrapper: { id: "1" } };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          patternProperties: {
+            "^wrapper$": false,
+          },
+          additionalProperties: true,
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([{ id: "1" }]);
+    });
+
     it("should handle nested single key object extraction", () => {
       const input = {
         wrapper: {

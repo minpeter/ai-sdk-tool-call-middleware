@@ -82,7 +82,8 @@ function schemaHasPropertyDirectly(
     props &&
     typeof props === "object" &&
     !Array.isArray(props) &&
-    Object.hasOwn(props, key)
+    Object.hasOwn(props, key) &&
+    (props as Record<string, unknown>)[key] !== false
   ) {
     return true;
   }
@@ -91,7 +92,7 @@ function schemaHasPropertyDirectly(
     return true;
   }
   const patternSchemas = getPatternSchemasForKey(s.patternProperties, key);
-  return patternSchemas.length > 0;
+  return patternSchemas.some((schema) => schema !== false);
 }
 
 function schemaHasPropertyViaAdditional(s: Record<string, unknown>): boolean {
@@ -119,6 +120,24 @@ function schemaHasPropertyViaAdditional(s: Record<string, unknown>): boolean {
   return !!(isObjectType || hasObjectKeywords);
 }
 
+function schemaDisallowsPropertyDirectly(
+  s: Record<string, unknown>,
+  key: string
+): boolean {
+  const props = s.properties;
+  if (
+    props &&
+    typeof props === "object" &&
+    !Array.isArray(props) &&
+    Object.hasOwn(props, key) &&
+    (props as Record<string, unknown>)[key] === false
+  ) {
+    return true;
+  }
+  const patternSchemas = getPatternSchemasForKey(s.patternProperties, key);
+  return patternSchemas.some((schema) => schema === false);
+}
+
 function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
   if (depth > 5) {
     return false;
@@ -129,6 +148,9 @@ function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
   }
   const s = unwrapped as Record<string, unknown>;
 
+  if (schemaDisallowsPropertyDirectly(s, key)) {
+    return false;
+  }
   if (schemaHasPropertyDirectly(s, key)) {
     return true;
   }
