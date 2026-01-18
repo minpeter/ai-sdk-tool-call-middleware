@@ -302,6 +302,38 @@ describe("Coercion Heuristic Handling", () => {
       const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual([123, "hello", 45.67]); // "hello" stays as string
     });
+
+    it("should prioritize 'item' key over numeric keys when both present", () => {
+      // 'item' key takes precedence over numeric keys pattern
+      const input = {
+        item: "value",
+        "0": "other",
+      };
+
+      const schema = {
+        type: "array",
+        items: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual(["value"]);
+    });
+
+    it("should prioritize 'item' key over numeric keys when item is array", () => {
+      const input = {
+        item: ["a", "b"],
+        "0": "x",
+        "1": "y",
+      };
+
+      const schema = {
+        type: "array",
+        items: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual(["a", "b"]);
+    });
   });
 
   describe("Object property coercion", () => {
@@ -346,6 +378,48 @@ describe("Coercion Heuristic Handling", () => {
 
       const result = coerceBySchema(input, schema) as any;
       expect(result).toEqual({ a: 1, b: 2 });
+    });
+
+    it("should apply both properties and patternProperties schemas sequentially when both match", () => {
+      // When a key matches both properties and patternProperties,
+      // both schemas are applied sequentially (properties first, then patternProperties)
+      const input = { foo: "123" };
+
+      const schema = {
+        type: "object",
+        properties: {
+          foo: { type: "string" },
+        },
+        patternProperties: {
+          "^f": { type: "number" },
+        },
+      };
+
+      // "123" -> coerced as string (properties) -> coerced as number (patternProperties)
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({ foo: 123 });
+      expect(typeof result.foo).toBe("number");
+    });
+
+    it("should handle conflicting properties and patternProperties schemas gracefully", () => {
+      // When schemas conflict (one expects string, other expects number),
+      // the final result depends on the order of application
+      const input = { foo: "hello" };
+
+      const schema = {
+        type: "object",
+        properties: {
+          foo: { type: "string" },
+        },
+        patternProperties: {
+          "^f": { type: "number" },
+        },
+      };
+
+      // "hello" -> string (properties) -> can't coerce to number, stays as "hello"
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({ foo: "hello" });
+      expect(typeof result.foo).toBe("string");
     });
   });
 

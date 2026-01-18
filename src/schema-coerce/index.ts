@@ -118,6 +118,25 @@ function schemaHasPropertyDirectly(
   return patternSchemas.some((schema) => schema !== false);
 }
 
+/**
+ * Checks if a schema allows additional properties beyond those explicitly defined.
+ *
+ * JSON Schema behavior for additionalProperties:
+ * - `additionalProperties: true` or `additionalProperties: { schema }`: Explicitly allows additional properties
+ * - `additionalProperties: false`: Explicitly disallows additional properties
+ * - `additionalProperties` not specified: Defaults to allowing additional properties (JSON Schema spec)
+ *
+ * When `additionalProperties` is not explicitly set, this function returns `true` if the schema
+ * appears to be an object schema (has `type: "object"`, `properties`, `patternProperties`, or `required`).
+ * This follows the JSON Schema specification where omitting `additionalProperties` is equivalent to `true`.
+ *
+ * **Important**: This means schemas like `{ type: "object", properties: { foo: ... } }` without
+ * `additionalProperties: false` will be treated as allowing any additional property, which affects
+ * single-key object unwrapping behavior in array coercion.
+ *
+ * @param s - The schema object to check
+ * @returns `true` if the schema allows additional properties, `false` otherwise
+ */
 function schemaHasPropertyViaAdditional(s: Record<string, unknown>): boolean {
   const additional = s.additionalProperties;
   if (
@@ -161,6 +180,23 @@ function schemaDisallowsPropertyDirectly(
   return patternSchemas.some((schema) => schema === false);
 }
 
+/**
+ * Checks if a schema allows a specific property key.
+ *
+ * Recursively checks through schema combinators (allOf, anyOf, oneOf) to determine
+ * if the given key is allowed by the schema.
+ *
+ * @param schema - The JSON Schema to check
+ * @param key - The property key to check for
+ * @param depth - Current recursion depth (default: 0)
+ * @returns `true` if the schema allows the property, `false` otherwise
+ *
+ * @remarks
+ * The depth limit of 5 prevents infinite recursion in deeply nested or circular
+ * schema references. This limit is sufficient for most real-world schemas while
+ * protecting against pathological cases. When the limit is exceeded, the function
+ * conservatively returns `false`, meaning the property is treated as disallowed.
+ */
 function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
   if (depth > 5) {
     return false;
