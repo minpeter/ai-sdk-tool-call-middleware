@@ -1,10 +1,14 @@
-RXML Core Examples
+# RXML Core Examples
 
-Parsing examples using the public `@ai-sdk-tool/rxml` API.
+Parsing examples using the public `@ai-sdk-tool/parser/rxml` API.
 
-Scripts
+Run
 
-- `pnpm dev` from this folder to run the basic stream demo.
+From repo root after `pnpm install`:
+
+```bash
+cd examples/rxml-core && pnpm dlx tsx src/00-stream-basic.ts
+```
 
 Demos
 

@@ -12,6 +12,7 @@
 
 - ef6536e: Refactor XML tool-call parsing to use rxml repair parsing options and more robust tag handling.
   Move XML repair heuristics into @ai-sdk-tool/rxml and add schema-coerce utilities for schema-driven coercion.
+- ef6536e: RXML 0.2.0 released (same commit; XML repair heuristics and schema-coerce utilities).
 
 ### Patch Changes
 
@@ -98,6 +99,7 @@
 ### Patch Changes
 
 - 537adc6: minor dependency version bump
+- 537adc6: RXML 0.1.2 released (minor dependency version bump)
 - Updated dependencies [537adc6]
   - @ai-sdk-tool/rxml@0.1.2
 
@@ -106,6 +108,7 @@
 ### Patch Changes
 
 - 1f36102: minor dependency version bump
+- 1f36102: RXML 0.1.2-canary.0 released (minor dependency version bump)
 - Updated dependencies [1f36102]
   - @ai-sdk-tool/rxml@0.1.2-canary.0
 
@@ -151,6 +154,7 @@
 
 - c25f1d4: `ToolCallMiddlewareProviderOptions` stability improvements and refactoring
 - c25f1d4: Apply `noChildNodes: []` to the RXML parser to treat self-closing tags as regular tags
+- c25f1d4: RXML 0.1.1 released (improved parsing stability with inner tags)
 - Updated dependencies [c25f1d4]
   - @ai-sdk-tool/rxml@0.1.1
 
@@ -164,6 +168,20 @@
   - Add `RXML` for safer XML extraction (raw string tags, duplicate checks) and use it in `xmlProtocol`.
   - Replace relaxed JSON helper with `RJSON`; export `RXML`/`RJSON` from utils.
   - Minor improvements to streaming parsing and XML stringify options.
+
+- 5e03e27: RXML 0.1.0 released (initial Robust XML implementation).
+
+  - Safe XML parsing and streaming
+  - JSON Schema-based coercion
+  - Stringification
+  - Error types
+  - Options
+  - Examples
+
+  Add RXML docs and README:
+
+  - New comprehensive docs at `docs/rxml.md` and index link
+  - Concise package README with install and quick usage
 
 - Updated dependencies [5e03e27]
   - @ai-sdk-tool/rxml@0.1.0

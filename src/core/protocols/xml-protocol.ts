@@ -4,7 +4,7 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
-import { parse, stringify } from "@ai-sdk-tool/rxml";
+import { parse, stringify } from "../../rxml";
 import { generateId } from "../utils/id";
 import { escapeRegExp } from "../utils/regex";
 import type { TCMCoreProtocol } from "./protocol-interface";

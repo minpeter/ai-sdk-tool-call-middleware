@@ -7,7 +7,7 @@ import {
   coerceBySchema as baseCoerceBySchema,
   getSchemaType,
   unwrapJsonSchema,
-} from "@ai-sdk-tool/schema-coerce";
+} from "../../schema-coerce";
 import type { RXMLNode } from "../core/types";
 import { RXMLCoercionError } from "../errors/types";
 

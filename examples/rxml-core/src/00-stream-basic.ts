@@ -1,4 +1,4 @@
-import { parse } from "@ai-sdk-tool/rxml";
+import { parse } from "@ai-sdk-tool/parser/rxml";
 
 const xml = `<tool_call>
   <name>search</name>

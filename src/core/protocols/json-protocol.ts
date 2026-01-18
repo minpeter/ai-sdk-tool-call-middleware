@@ -4,7 +4,7 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
-import { parse as parseRJSON } from "@ai-sdk-tool/rjson";
+import { parse as parseRJSON } from "../../rjson";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId } from "../utils/id";

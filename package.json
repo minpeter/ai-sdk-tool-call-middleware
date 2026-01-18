@@ -1,35 +1,86 @@
 {
-  "name": "ai-sdk-tool",
-  "private": true,
+  "name": "@ai-sdk-tool/parser",
+  "version": "3.2.1",
+  "description": "AI SDK middleware for tool call parsing",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./community": {
+      "types": "./dist/community.d.ts",
+      "import": "./dist/community.js",
+      "require": "./dist/community.cjs"
+    },
+    "./rxml": {
+      "types": "./dist/rxml.d.ts",
+      "import": "./dist/rxml.js",
+      "require": "./dist/rxml.cjs"
+    },
+    "./rjson": {
+      "types": "./dist/rjson.d.ts",
+      "import": "./dist/rjson.js",
+      "require": "./dist/rjson.cjs"
+    },
+    "./schema-coerce": {
+      "types": "./dist/schema-coerce.d.ts",
+      "import": "./dist/schema-coerce.js",
+      "require": "./dist/schema-coerce.cjs"
+    }
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo dev",
-    "test": "turbo test",
-    "update-references": "update-ts-references",
+    "build": "pnpm clean && tsup --tsconfig tsconfig.build.json",
+    "build:watch": "pnpm clean && tsup --watch --tsconfig tsconfig.build.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "check:biome": "biome check",
-    "check:types": "turbo typecheck",
+    "check:types": "tsc --noEmit",
     "check": "run-p check:*",
     "fmt:biome": "biome check --write",
     "fmt": "run-p fmt:*",
     "changeset": "changeset",
-    "ci:release": "turbo build && changeset publish",
+    "ci:release": "pnpm build && changeset publish",
     "ci:version": "changeset version"
   },
+  "dependencies": {
+    "@ai-sdk/provider": "3.0.4",
+    "@ai-sdk/provider-utils": "4.0.8",
+    "dedent": "^1.7.1",
+    "yaml": "^2.8.2"
+  },
   "devDependencies": {
+    "@ai-sdk/openai-compatible": "2.0.13",
     "@biomejs/biome": "2.3.11",
     "@changesets/cli": "2.29.8",
     "@types/node": "^25.0.9",
     "@vitest/coverage-v8": "^4.0.17",
+    "ai": "6.0.38",
     "globals": "^17.0.0",
     "husky": "^9.1.7",
     "jiti": "^2.6.1",
     "npm-run-all": "^4.1.5",
+    "tsup": "^8.5.1",
     "tsx": "^4.21.0",
-    "turbo": "^2.7.5",
     "typescript": "5.9.3",
     "ultracite": "7.0.11",
-    "update-ts-references": "^4.0.0",
-    "vitest": "^4.0.17"
+    "vitest": "^4.0.17",
+    "zod": "^4.3.5"
   },
   "packageManager": "pnpm@9.14.4",
   "engines": {

@@ -3,7 +3,7 @@
  * This replaces the fast-xml-parser dependency with a TXML-based implementation
  */
 
-import { getSchemaType, unwrapJsonSchema } from "@ai-sdk-tool/schema-coerce";
+import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
 import {
   RXMLCoercionError,
   RXMLDuplicateStringTagError,

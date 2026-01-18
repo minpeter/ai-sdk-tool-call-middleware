@@ -3,7 +3,7 @@
  * Modular, reusable versions of normalization/repair logic from morph-xml-protocol.
  */
 
-import { unwrapJsonSchema } from "@ai-sdk-tool/schema-coerce";
+import { unwrapJsonSchema } from "../../schema-coerce";
 import { parse } from "../core/parser";
 import type {
   HeuristicResult,

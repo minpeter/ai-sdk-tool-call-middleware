@@ -1,5 +1,5 @@
 import { Readable } from "node:stream";
-import { parse } from "@ai-sdk-tool/rxml";
+import { parse } from "@ai-sdk-tool/parser/rxml";
 
 const DEFAULT_CHUNK_SIZE = 12;
 const PUSH_DELAY_MS = 10;
