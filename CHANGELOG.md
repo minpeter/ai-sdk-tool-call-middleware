@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 3.3.0
+
+### Minor Changes
+
+- d7f6ba0: Convert monorepo structure to single package with subpath exports. All internal packages (rxml, rjson, schema-coerce) are now accessible via subpath imports (e.g., `@ai-sdk-tool/parser/rxml`).
+
 ## 3.2.1
 
 ### Patch Changes
