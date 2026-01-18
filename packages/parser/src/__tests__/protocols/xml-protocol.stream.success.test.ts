@@ -16,6 +16,8 @@ describe("xmlProtocol streaming success path", () => {
   it.each([
     { name: "self-closing", tag: "<get_location/>" },
     { name: "self-closing with space", tag: "<get_location />" },
+    { name: "self-closing with lot of space", tag: "<get_location    />" },
+    { name: "self-closing with newline", tag: "<get_location \n />" },
     { name: "open/close with newline", tag: "<get_location>\n</get_location>" },
     { name: "open/close", tag: "<get_location></get_location>" },
   ])("parses $name tool call in stream", async ({ tag }) => {

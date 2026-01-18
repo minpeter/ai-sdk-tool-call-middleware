@@ -494,6 +494,104 @@ function findEarliestToolTag(
   };
 }
 
+function isOpenTagPrefix(suffix: string, toolName: string): boolean {
+  return `${toolName}>`.startsWith(suffix);
+}
+
+function consumeWhitespace(text: string, index: number): number {
+  let i = index;
+  while (i < text.length && WHITESPACE_REGEX.test(text.charAt(i))) {
+    i += 1;
+  }
+  return i;
+}
+
+function consumeToolNamePrefix(
+  text: string,
+  index: number,
+  toolName: string
+): { index: number; done: boolean; valid: boolean } {
+  let i = index;
+  let nameIndex = 0;
+
+  while (i < text.length && nameIndex < toolName.length) {
+    if (text.charAt(i) !== toolName.charAt(nameIndex)) {
+      return { index: i, done: false, valid: false };
+    }
+    i += 1;
+    nameIndex += 1;
+  }
+
+  return { index: i, done: nameIndex === toolName.length, valid: true };
+}
+
+function isSelfClosingSuffixRemainder(text: string, index: number): boolean {
+  if (text.charAt(index) !== "/") {
+    return false;
+  }
+  if (index + 1 >= text.length) {
+    return true;
+  }
+  return index + 1 === text.length - 1 && text.charAt(index + 1) === ">";
+}
+
+function isSelfClosingTagPrefix(suffix: string, toolName: string): boolean {
+  let i = consumeWhitespace(suffix, 0);
+  if (i >= suffix.length) {
+    return true;
+  }
+
+  const nameResult = consumeToolNamePrefix(suffix, i, toolName);
+  if (!nameResult.valid) {
+    return false;
+  }
+
+  i = nameResult.index;
+  if (i >= suffix.length) {
+    return true;
+  }
+  if (!nameResult.done) {
+    return false;
+  }
+
+  i = consumeWhitespace(suffix, i);
+  if (i >= suffix.length) {
+    return true;
+  }
+
+  return isSelfClosingSuffixRemainder(suffix, i);
+}
+
+function findPotentialToolTagStart(
+  buffer: string,
+  toolNames: string[]
+): number {
+  if (toolNames.length === 0 || buffer.length === 0) {
+    return -1;
+  }
+
+  const lastGt = buffer.lastIndexOf(">");
+  const offset = lastGt === -1 ? 0 : lastGt + 1;
+  const trailing = buffer.slice(offset);
+
+  for (let i = trailing.length - 1; i >= 0; i -= 1) {
+    if (trailing.charAt(i) !== "<") {
+      continue;
+    }
+    const suffix = trailing.slice(i + 1);
+    for (const name of toolNames) {
+      if (
+        isOpenTagPrefix(suffix, name) ||
+        isSelfClosingTagPrefix(suffix, name)
+      ) {
+        return offset + i;
+      }
+    }
+  }
+
+  return -1;
+}
+
 function createFlushTextHandler(
   getCurrentTextId: () => string | null,
   setCurrentTextId: (id: string | null) => void,
@@ -628,23 +726,18 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
   } = findEarliestToolTag(buffer, toolNames);
 
   if (earliestStartTagIndex === -1) {
-    const maxTagLen = toolNames.length
-      ? Math.max(
-          ...toolNames.flatMap((n) => [
-            `<${n}>`.length,
-            `<${n}/>`.length,
-            `<${n} />`.length,
-          ])
-        )
-      : 0;
-    const tail = Math.max(0, maxTagLen - 1);
-    const safeLen = Math.max(0, buffer.length - tail);
+    const potentialStart = findPotentialToolTagStart(buffer, toolNames);
+    const safeLen = Math.max(
+      0,
+      potentialStart === -1 ? buffer.length : potentialStart
+    );
+    const remaining = buffer.slice(safeLen);
     if (safeLen > 0) {
       flushText(controller, buffer.slice(0, safeLen));
-      setBuffer(buffer.slice(safeLen));
+      setBuffer(remaining);
     }
     return {
-      buffer: buffer.slice(safeLen),
+      buffer: remaining,
       currentToolCall: null,
       shouldBreak: true,
       shouldContinue: false,
