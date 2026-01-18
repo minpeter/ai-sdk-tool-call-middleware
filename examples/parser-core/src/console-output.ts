@@ -1,29 +1,28 @@
 const REASONING_COLOR = "\x1b[33m";
 const RESET_COLOR = "\x1b[0m";
 
-type ToolCallLike = {
+interface ToolCallLike {
   toolCallId?: string;
   toolName?: string;
   input?: unknown;
-};
+}
 
-type ToolResultLike = {
+interface ToolResultLike {
   toolCallId?: string;
   toolName?: string;
   input?: unknown;
   output?: unknown;
-};
+}
 
-type StepLike = {
+interface StepLike {
   text?: unknown;
   reasoning?: unknown;
   reasoningText?: unknown;
   toolCalls?: ToolCallLike[];
   toolResults?: ToolResultLike[];
-};
+}
 
-const hasOwn = (value: object, key: string) =>
-  Object.prototype.hasOwnProperty.call(value, key);
+const hasOwn = (value: object, key: string) => Object.hasOwn(value, key);
 
 const stringifyUnknown = (value: unknown) => {
   try {
@@ -55,6 +54,51 @@ const extractText = (value: unknown): string => {
   return stringifyUnknown(value);
 };
 
+const formatContentPart = (part: unknown): string => {
+  if (!part || typeof part !== "object") {
+    return "[Unknown content]";
+  }
+  const contentPart = part as Record<string, unknown>;
+  switch (contentPart.type) {
+    case "text":
+      return typeof contentPart.text === "string" ? contentPart.text : "";
+    case "image-data":
+      return `[Image: ${contentPart.mediaType ?? "unknown"}]`;
+    case "image-url":
+      return `[Image URL: ${contentPart.url ?? "unknown"}]`;
+    case "image-file-id":
+      return `[Image ID: ${stringifyUnknown(contentPart.fileId)}]`;
+    case "file-data": {
+      const filename =
+        typeof contentPart.filename === "string" ? contentPart.filename : "";
+      const mediaType =
+        typeof contentPart.mediaType === "string"
+          ? contentPart.mediaType
+          : "unknown";
+      return filename
+        ? `[File: ${filename} (${mediaType})]`
+        : `[File: ${mediaType}]`;
+    }
+    case "file-url":
+      return `[File URL: ${contentPart.url ?? "unknown"}]`;
+    case "file-id":
+      return `[File ID: ${stringifyUnknown(contentPart.fileId)}]`;
+    case "media":
+      return `[Media: ${contentPart.mediaType ?? "unknown"}]`;
+    case "custom":
+      return "[Custom content]";
+    default:
+      return "[Unknown content]";
+  }
+};
+
+const formatContentValue = (value: unknown): string => {
+  if (!Array.isArray(value)) {
+    return "[Unknown content]";
+  }
+  return value.map(formatContentPart).join("\n");
+};
+
 const unwrapToolOutput = (output: unknown): unknown => {
   if (!output || typeof output !== "object") {
     return output;
@@ -77,55 +121,8 @@ const unwrapToolOutput = (output: unknown): unknown => {
       return `[Error: ${typed.value ?? ""}]`;
     case "error-json":
       return `[Error: ${stringifyUnknown(typed.value)}]`;
-    case "content": {
-      const value = typed.value;
-      if (!Array.isArray(value)) {
-        return "[Unknown content]";
-      }
-      return value
-        .map((part) => {
-          if (!part || typeof part !== "object") {
-            return "[Unknown content]";
-          }
-          const contentPart = part as Record<string, unknown>;
-          switch (contentPart.type) {
-            case "text":
-              return typeof contentPart.text === "string"
-                ? contentPart.text
-                : "";
-            case "image-data":
-              return `[Image: ${contentPart.mediaType ?? "unknown"}]`;
-            case "image-url":
-              return `[Image URL: ${contentPart.url ?? "unknown"}]`;
-            case "image-file-id":
-              return `[Image ID: ${stringifyUnknown(contentPart.fileId)}]`;
-            case "file-data": {
-              const filename =
-                typeof contentPart.filename === "string"
-                  ? contentPart.filename
-                  : "";
-              const mediaType =
-                typeof contentPart.mediaType === "string"
-                  ? contentPart.mediaType
-                  : "unknown";
-              return filename
-                ? `[File: ${filename} (${mediaType})]`
-                : `[File: ${mediaType}]`;
-            }
-            case "file-url":
-              return `[File URL: ${contentPart.url ?? "unknown"}]`;
-            case "file-id":
-              return `[File ID: ${stringifyUnknown(contentPart.fileId)}]`;
-            case "media":
-              return `[Media: ${contentPart.mediaType ?? "unknown"}]`;
-            case "custom":
-              return "[Custom content]";
-            default:
-              return "[Unknown content]";
-          }
-        })
-        .join("\n");
-    }
+    case "content":
+      return formatContentValue(typed.value);
     default:
       return output;
   }
