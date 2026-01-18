@@ -73,6 +73,11 @@ function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
   if (Array.isArray(required) && required.includes(key)) {
     return true;
   }
+  const patternProperties = s.patternProperties;
+  const patternSchemas = getPatternSchemasForKey(patternProperties, key);
+  if (patternSchemas.length > 0) {
+    return true;
+  }
   const additional = s.additionalProperties;
   if (
     additional === true ||
@@ -80,14 +85,19 @@ function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
   ) {
     return true;
   }
-  const patternProperties = s.patternProperties;
-  if (
-    patternProperties &&
-    typeof patternProperties === "object" &&
-    !Array.isArray(patternProperties) &&
-    Object.keys(patternProperties as Record<string, unknown>).length > 0
-  ) {
-    return true;
+  if (!Object.hasOwn(s, "additionalProperties")) {
+    const type = s.type;
+    const isObjectType =
+      type === "object" || (Array.isArray(type) && type.includes("object"));
+    const hasObjectKeywords =
+      (props && typeof props === "object" && !Array.isArray(props)) ||
+      (patternProperties &&
+        typeof patternProperties === "object" &&
+        !Array.isArray(patternProperties)) ||
+      Array.isArray(required);
+    if (isObjectType || hasObjectKeywords) {
+      return true;
+    }
   }
   const combinators = ["anyOf", "oneOf", "allOf"] as const;
   for (const comb of combinators) {
