@@ -54,7 +54,25 @@ export function getSchemaType(schema: unknown): string | undefined {
   return;
 }
 
-function schemaHasPropertyInCombinators(
+/**
+ * Checks if a property is allowed through schema combinators (anyOf, oneOf, allOf).
+ *
+ * @param s - The schema object to check
+ * @param key - The property key to look for
+ * @param depth - Current recursion depth
+ * @returns `true` if at least one combinator exists AND allows the property;
+ *          `false` if no combinators exist OR none allow the property.
+ *          When no combinators are present, returns `false` so the caller can
+ *          fall back to other property-checking methods.
+ *
+ * **oneOf semantics**: JSON Schema's `oneOf` requires exactly one schema to match,
+ * but for coercion heuristics we treat it like `anyOf` (at least one allows).
+ * This is intentional because:
+ * 1. We're determining if a property CAN exist, not validating exact matches
+ * 2. Coercion should be permissive - if any branch allows the property, we allow it
+ * 3. Strict oneOf validation would require runtime value inspection, not just schema analysis
+ */
+function schemaAllowsPropertyViaCombinators(
   s: Record<string, unknown>,
   key: string,
   depth: number
@@ -195,11 +213,12 @@ function schemaDisallowsPropertyDirectly(
  * The depth limit of 5 prevents infinite recursion in deeply nested or circular
  * schema references. This limit is sufficient for most real-world schemas while
  * protecting against pathological cases. When the limit is exceeded, the function
- * conservatively returns `false`, meaning the property is treated as disallowed.
+ * conservatively returns `true` to prevent unwrapping - it's safer to keep a
+ * wrapper key than to incorrectly remove it and lose data.
  */
 function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
   if (depth > 5) {
-    return false;
+    return true;
   }
   const unwrapped = unwrapJsonSchema(schema);
   // Unconstrained schemas (true, null, {}) allow any property
@@ -220,7 +239,7 @@ function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
   if (schemaHasPropertyViaAdditional(s)) {
     return true;
   }
-  return schemaHasPropertyInCombinators(s, key, depth);
+  return schemaAllowsPropertyViaCombinators(s, key, depth);
 }
 
 function schemaIsUnconstrained(schema: unknown): boolean {
@@ -234,6 +253,20 @@ function schemaIsUnconstrained(schema: unknown): boolean {
   return Object.keys(unwrapped).length === 0;
 }
 
+/**
+ * Gets all schemas from patternProperties that match the given key.
+ *
+ * @param patternProperties - The patternProperties object from a JSON Schema
+ * @param key - The property key to match against patterns
+ * @returns Array of schemas whose patterns match the key
+ *
+ * @remarks
+ * **Security consideration**: This function executes regex patterns from the schema.
+ * In typical usage (AI SDK tool parsing), schemas come from trusted application code.
+ * However, if schemas can originate from untrusted sources, be aware of potential
+ * ReDoS (Regular Expression Denial of Service) with malicious patterns like `(a+)+$`.
+ * Consider adding regex timeout or safe-regex validation if processing untrusted schemas.
+ */
 function getPatternSchemasForKey(
   patternProperties: unknown,
   key: string
