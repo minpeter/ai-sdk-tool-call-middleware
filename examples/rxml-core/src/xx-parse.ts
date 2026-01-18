@@ -1,4 +1,4 @@
-import { parse } from "@ai-sdk-tool/rxml";
+import { parse } from "@ai-sdk-tool/parser/rxml";
 import { z } from "zod";
 
 const schema = z.toJSONSchema(

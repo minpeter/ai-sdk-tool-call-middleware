@@ -8,7 +8,8 @@
 Tooling for Vercel AI SDK: enable tool calling with models lacking native `tools`.
 
 - **@ai-sdk-tool/parser**: add tool-calling via middleware; works with any provider supported by AI SDK `wrapLanguageModel`.
-- **@ai-sdk-tool/rxml**: robust XML parser/streamer/builder for AI-generated XML.
+- **@ai-sdk-tool/parser/rxml**: robust XML parser/streamer/builder for AI-generated XML.
+- **@ai-sdk-tool/parser/rjson**: relaxed JSON parser with tolerant mode and JSON5-like syntax support.
 
 ## Usage at a glance
 

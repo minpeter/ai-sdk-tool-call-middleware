@@ -150,7 +150,7 @@
 ### Patch Changes
 
 - c25f1d4: `ToolCallMiddlewareProviderOptions` stability improvements and refactoring
-- c25f1d4: Apply `noChildNodes: []` to the RXML parser to treat self-closing tags as regular tags
+- c25f1d4: Apply `noChildNodes: []` to the RXML parser to treat self-closing tags as regular tags; RXML 0.1.1 released (improved parsing stability with inner tags)
 - Updated dependencies [c25f1d4]
   - @ai-sdk-tool/rxml@0.1.1
 
@@ -164,6 +164,20 @@
   - Add `RXML` for safer XML extraction (raw string tags, duplicate checks) and use it in `xmlProtocol`.
   - Replace relaxed JSON helper with `RJSON`; export `RXML`/`RJSON` from utils.
   - Minor improvements to streaming parsing and XML stringify options.
+
+- 5e03e27: RXML 0.1.0 released (initial Robust XML implementation).
+
+  - Safe XML parsing and streaming
+  - JSON Schema-based coercion
+  - Stringification
+  - Error types
+  - Options
+  - Examples
+
+  Add RXML docs and README:
+
+  - New comprehensive docs at `docs/rxml.md` and index link
+  - Concise package README with install and quick usage
 
 - Updated dependencies [5e03e27]
   - @ai-sdk-tool/rxml@0.1.0

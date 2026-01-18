@@ -2,7 +2,6 @@
 
 // Core Protocols (Agnostic)
 
-export * from "@ai-sdk-tool/rjson";
 export * from "./core/protocols/json-protocol";
 export * from "./core/protocols/protocol-interface";
 export type { XmlProtocolOptions } from "./core/protocols/xml-protocol";
@@ -20,6 +19,7 @@ export * from "./core/utils/type-guards";
 export { wrapGenerate } from "./generate-handler";
 // Pre-configured Middleware
 export * from "./preconfigured-middleware";
+export * from "./rjson";
 export { toolChoiceStream, wrapStream } from "./stream-handler";
 // Tool Call Middleware Implementation
 export { createToolMiddleware } from "./tool-call-middleware";
