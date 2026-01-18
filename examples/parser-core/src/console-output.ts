@@ -30,7 +30,12 @@ const stringifyUnknown = (value: unknown) => {
   }
 };
 
-const extractText = (value: unknown): string => {
+const MAX_EXTRACT_DEPTH = 10;
+
+const extractText = (value: unknown, depth = 0): string => {
+  if (depth > MAX_EXTRACT_DEPTH) {
+    return "[max depth exceeded]";
+  }
   if (value === null || value === undefined) {
     return "";
   }
@@ -38,7 +43,7 @@ const extractText = (value: unknown): string => {
     return value;
   }
   if (Array.isArray(value)) {
-    return value.map(extractText).join("");
+    return value.map((item) => extractText(item, depth + 1)).join("");
   }
   if (typeof value === "object") {
     const record = value as Record<string, unknown>;

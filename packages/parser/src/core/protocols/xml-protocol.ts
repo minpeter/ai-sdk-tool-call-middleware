@@ -330,6 +330,11 @@ function pushSelfClosingToolCall(
   return endIndex;
 }
 
+/**
+ * Cache for self-closing tag regex patterns.
+ * This cache grows with the number of unique tool names but is bounded
+ * in practice since tools are defined at configuration time, not dynamically.
+ */
 const selfClosingTagCache = new Map<string, RegExp>();
 
 function getSelfClosingTagPattern(toolName: string): RegExp {
