@@ -22,8 +22,6 @@ interface StepLike {
   toolResults?: ToolResultLike[];
 }
 
-const hasOwn = (value: object, key: string) => Object.hasOwn(value, key);
-
 const stringifyUnknown = (value: unknown) => {
   try {
     return JSON.stringify(value);
@@ -103,7 +101,7 @@ const unwrapToolOutput = (output: unknown): unknown => {
   if (!output || typeof output !== "object") {
     return output;
   }
-  if (!hasOwn(output, "type")) {
+  if (!Object.hasOwn(output, "type")) {
     return output;
   }
   const typed = output as Record<string, unknown>;
@@ -129,9 +127,8 @@ const unwrapToolOutput = (output: unknown): unknown => {
 };
 
 export function printStepLikeStream(step: StepLike) {
-  const explicitReasoning =
+  const reasoningText =
     typeof step.reasoningText === "string" ? step.reasoningText : "";
-  const reasoningText = explicitReasoning || "";
   const text = extractText(step.text);
   if (reasoningText && reasoningText !== text) {
     process.stdout.write(`${REASONING_COLOR}${reasoningText}${RESET_COLOR}`);
@@ -152,7 +149,7 @@ export function printStepLikeStream(step: StepLike) {
       ? toolCallsById.get(result.toolCallId)
       : undefined;
     const name = result.toolName ?? call?.toolName ?? "unknown";
-    const input = hasOwn(result, "input") ? result.input : call?.input;
+    const input = Object.hasOwn(result, "input") ? result.input : call?.input;
 
     console.log({
       name,

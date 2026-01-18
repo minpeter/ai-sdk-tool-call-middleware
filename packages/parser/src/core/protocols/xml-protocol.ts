@@ -532,6 +532,12 @@ function consumeToolNamePrefix(
   return { index: i, done: nameIndex === toolName.length, valid: true };
 }
 
+/**
+ * Checks if the remainder of text at index is a valid self-closing tag suffix.
+ * Returns true if:
+ * - text[index] is "/" and we're at the end (incomplete "/")
+ * - text[index..] is "/>" at the end of the string
+ */
 function isSelfClosingSuffixRemainder(text: string, index: number): boolean {
   if (text.charAt(index) !== "/") {
     return false;
