@@ -59,18 +59,41 @@ function schemaHasPropertyInCombinators(
   key: string,
   depth: number
 ): boolean {
-  const combinators = ["anyOf", "oneOf", "allOf"] as const;
-  for (const comb of combinators) {
-    const values = s[comb];
-    if (Array.isArray(values)) {
-      for (const sub of values) {
-        if (schemaHasProperty(sub, key, depth + 1)) {
-          return true;
-        }
-      }
-    }
+  const anyOfValues = s.anyOf;
+  const oneOfValues = s.oneOf;
+  const allOfValues = s.allOf;
+
+  let hasCombinator = false;
+  let anyOfAllows = true;
+  let oneOfAllows = true;
+  let allOfAllows = true;
+
+  if (Array.isArray(anyOfValues)) {
+    hasCombinator = true;
+    anyOfAllows = anyOfValues.some((sub) =>
+      schemaHasProperty(sub, key, depth + 1)
+    );
   }
-  return false;
+
+  if (Array.isArray(oneOfValues)) {
+    hasCombinator = true;
+    oneOfAllows = oneOfValues.some((sub) =>
+      schemaHasProperty(sub, key, depth + 1)
+    );
+  }
+
+  if (Array.isArray(allOfValues)) {
+    hasCombinator = true;
+    allOfAllows = allOfValues.every((sub) =>
+      schemaHasProperty(sub, key, depth + 1)
+    );
+  }
+
+  if (!hasCombinator) {
+    return false;
+  }
+
+  return anyOfAllows && oneOfAllows && allOfAllows;
 }
 
 function schemaHasPropertyDirectly(

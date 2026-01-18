@@ -181,6 +181,35 @@ describe("Coercion Heuristic Handling", () => {
       expect(result).toEqual([{ id: "1" }]);
     });
 
+    it("should unwrap single key objects when allOf disallows the wrapper key", () => {
+      const input = { wrapper: { id: "1" } };
+
+      const schema = {
+        type: "array",
+        items: {
+          allOf: [
+            {
+              type: "object",
+              properties: { id: { type: "string" } },
+              additionalProperties: false,
+            },
+            {
+              type: "object",
+              properties: {
+                wrapper: {
+                  type: "object",
+                  properties: { id: { type: "string" } },
+                },
+              },
+            },
+          ],
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([{ id: "1" }]);
+    });
+
     it("should handle nested single key object extraction", () => {
       const input = {
         wrapper: {
