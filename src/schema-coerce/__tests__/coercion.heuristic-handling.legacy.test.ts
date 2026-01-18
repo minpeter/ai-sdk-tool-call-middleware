@@ -50,7 +50,56 @@ describe("Coercion Heuristic Handling", () => {
       expect(result).toEqual(["123", "hello", "45.67", "true"]);
     });
 
-    it("should NOT extract from multiple key objects", () => {
+    it("should extract object from single key (single/multiple element consistency)", () => {
+      // Single and multiple elements should be processed with same structure
+      const singleItem = { user: { name: "Alice" } };
+      const multiItems = { user: [{ name: "Alice" }, { name: "Bob" }] };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { name: { type: "string" } },
+        },
+      };
+
+      const singleResult = coerceBySchema(singleItem, schema) as any[];
+      const multiResult = coerceBySchema(multiItems, schema) as any[];
+
+      // Single element: [{ name: "Alice" }]
+      expect(singleResult).toEqual([{ name: "Alice" }]);
+      // Multiple elements: [{ name: "Alice" }, { name: "Bob" }]
+      expect(multiResult).toEqual([{ name: "Alice" }, { name: "Bob" }]);
+    });
+
+    it("should handle nested single key object extraction", () => {
+      const input = {
+        wrapper: {
+          items: { id: "1", value: "test" },
+        },
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          wrapper: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                value: { type: "string" },
+              },
+            },
+          },
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result.wrapper).toEqual([{ id: "1", value: "test" }]);
+    });
+
+    it("should wrap multiple key objects in array when not extractable", () => {
       const input = {
         number: ["3", "5"],
         color: ["red", "blue"],
@@ -61,9 +110,11 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "string" },
       };
 
-      // Should not extract when there are multiple keys
+      // Should wrap in array when multiple keys exist (can't extract)
       const result = coerceBySchema(input, schema) as any[];
-      expect(result).toEqual(input); // Should return original
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual(input);
     });
   });
 
@@ -166,7 +217,7 @@ describe("Coercion Heuristic Handling", () => {
       expect(result).toEqual(["first", "third", "sixth"]);
     });
 
-    it("should handle mixed key types (should not convert)", () => {
+    it("should wrap mixed key type objects in array", () => {
       const input = {
         "0": "zero",
         name: "test",
@@ -177,9 +228,11 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "string" },
       };
 
-      // Mixed keys should not be converted
-      const result = coerceBySchema(input, schema);
-      expect(result).toEqual(input); // Should return original
+      // Mixed keys should be wrapped in array
+      const result = coerceBySchema(input, schema) as any[];
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual(input);
     });
   });
 
@@ -226,6 +279,21 @@ describe("Coercion Heuristic Handling", () => {
       expect(typeof result[0]).toBe("number");
       expect(typeof result[1]).toBe("string");
       expect(typeof result[2]).toBe("number");
+    });
+
+    it("should handle single numeric key with prefixItems", () => {
+      const input = {
+        "0": "123",
+      };
+
+      const schema = {
+        type: "array",
+        prefixItems: [{ type: "number" }],
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([123]);
+      expect(typeof result[0]).toBe("number");
     });
 
     it("should fall back to items schema when prefixItems length mismatch", () => {
@@ -303,7 +371,7 @@ describe("Coercion Heuristic Handling", () => {
   });
 
   describe("Edge cases and error handling", () => {
-    it("should handle empty input gracefully", () => {
+    it("should wrap empty object in array", () => {
       const input = {};
 
       const schema = {
@@ -311,8 +379,10 @@ describe("Coercion Heuristic Handling", () => {
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema);
-      expect(result).toEqual({}); // Should return original when no matching patterns
+      const result = coerceBySchema(input, schema) as any[];
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({});
     });
 
     it("should handle null and undefined values", () => {
@@ -423,6 +493,127 @@ describe("Coercion Heuristic Handling", () => {
 
       const result = coerceBySchema(input, schema) as any;
       expect(result.level1.level2.level3).toEqual([1, 2, 3]);
+    });
+  });
+
+  describe("Object to array wrapping", () => {
+    it("should wrap single object in array when schema expects array", () => {
+      const input = {
+        id: "1",
+        content: "test",
+        status: "completed",
+        priority: "medium",
+      };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            content: { type: "string" },
+            status: { type: "string" },
+            priority: { type: "string" },
+          },
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        id: "1",
+        content: "test",
+        status: "completed",
+        priority: "medium",
+      });
+    });
+
+    it("should wrap nested object in array when parent property expects array", () => {
+      const input = {
+        todos: {
+          id: "1",
+          content: "test",
+          status: "completed",
+          priority: "medium",
+        },
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          todos: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                content: { type: "string" },
+                status: { type: "string" },
+                priority: { type: "string" },
+              },
+            },
+          },
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(Array.isArray(result.todos)).toBe(true);
+      expect(result.todos).toHaveLength(1);
+      expect(result.todos[0]).toEqual({
+        id: "1",
+        content: "test",
+        status: "completed",
+        priority: "medium",
+      });
+    });
+
+    it("should preserve array when schema expects array and input is already array", () => {
+      const input = [{ id: "1" }, { id: "2" }];
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+          },
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toHaveLength(2);
+    });
+
+    it("should handle complex objects that don't match item/numeric patterns", () => {
+      const input = {
+        name: "Task 1",
+        nested: {
+          value: "test",
+        },
+      };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            nested: {
+              type: "object",
+              properties: {
+                value: { type: "string" },
+              },
+            },
+          },
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(Array.isArray(result)).toBe(true);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual(input);
     });
   });
 });

@@ -197,18 +197,23 @@ function coerceObjectToArray(
 
   const keys = Object.keys(maybe);
 
-  // Check for single field that contains an array (common XML pattern)
+  // Check for numeric keys (traditional tuple handling)
+  if (keys.length > 0 && keys.every((k) => DIGIT_KEY_REGEX.test(k))) {
+    const arr = keys.sort((a, b) => Number(a) - Number(b)).map((k) => maybe[k]);
+    return coerceArrayToArray(arr, prefixItems, itemsSchema);
+  }
+
+  // Check for single field that contains an array or object (common XML pattern)
+  // This handles both: { user: [{ name: "A" }, { name: "B" }] } and { user: { name: "A" } }
   if (keys.length === 1) {
     const singleValue = maybe[keys[0]];
     if (Array.isArray(singleValue)) {
       return singleValue.map((v) => coerceBySchema(v, itemsSchema));
     }
-  }
-
-  // Check for numeric keys (traditional tuple handling)
-  if (keys.length > 0 && keys.every((k) => DIGIT_KEY_REGEX.test(k))) {
-    const arr = keys.sort((a, b) => Number(a) - Number(b)).map((k) => maybe[k]);
-    return coerceArrayToArray(arr, prefixItems, itemsSchema);
+    // Also extract when single key's value is an object and wrap in array (single/multiple element consistency)
+    if (singleValue && typeof singleValue === "object") {
+      return [coerceBySchema(singleValue, itemsSchema)];
+    }
   }
 
   return null;
@@ -303,6 +308,8 @@ function coerceArrayValue(
     if (result !== null) {
       return result;
     }
+    // Wrap in array even if object couldn't be converted to array
+    return [coerceBySchema(value, itemsSchema)];
   }
 
   if (
@@ -314,7 +321,7 @@ function coerceArrayValue(
     return coercePrimitiveToArray(value, prefixItems, itemsSchema);
   }
 
-  return value;
+  return [value];
 }
 
 export function coerceBySchema(value: unknown, schema?: unknown): unknown {
