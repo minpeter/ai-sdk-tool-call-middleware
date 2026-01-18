@@ -6,6 +6,7 @@ import type {
 } from "@ai-sdk/provider";
 import { parse, stringify } from "@ai-sdk-tool/rxml";
 import { generateId } from "../utils/id";
+import { escapeRegExp } from "../utils/regex";
 import type { TCMCoreProtocol } from "./protocol-interface";
 
 export interface XmlProtocolOptions {
@@ -29,11 +30,6 @@ type FlushTextFn = (
 
 const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
 const WHITESPACE_REGEX = /\s/;
-const REGEX_ESCAPE_RE = /[.*+?^${}()|[\]\\]/g;
-
-function escapeRegExp(value: string): string {
-  return value.replace(REGEX_ESCAPE_RE, "\\$&");
-}
 
 function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
@@ -334,12 +330,23 @@ function pushSelfClosingToolCall(
   return endIndex;
 }
 
+const selfClosingTagCache = new Map<string, RegExp>();
+
+function getSelfClosingTagPattern(toolName: string): RegExp {
+  let pattern = selfClosingTagCache.get(toolName);
+  if (!pattern) {
+    pattern = new RegExp(`<\\s*${escapeRegExp(toolName)}\\s*/>`, "g");
+    selfClosingTagCache.set(toolName, pattern);
+  }
+  return pattern;
+}
+
 function findSelfClosingTag(
   text: string,
   toolName: string,
   fromIndex: number
 ): { index: number; length: number } | null {
-  const pattern = new RegExp(`<\\s*${escapeRegExp(toolName)}\\s*/>`, "g");
+  const pattern = getSelfClosingTagPattern(toolName);
   pattern.lastIndex = fromIndex;
   const match = pattern.exec(text);
   if (!match || match.index === undefined) {

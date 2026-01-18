@@ -244,12 +244,17 @@ function summarizeType(schema: JSONSchema7 | boolean | undefined): string {
   return baseType;
 }
 
+const ENUM_MAX_INLINE = 6;
+const ENUM_PREVIEW_LIMIT = 5;
+
 function formatEnumForSummary(values: unknown[]): string {
-  if (values.length <= 6) {
+  if (values.length <= ENUM_MAX_INLINE) {
     return formatValue(values);
   }
 
-  const preview = values.slice(0, 5).map((value) => formatValue(value));
+  const preview = values
+    .slice(0, ENUM_PREVIEW_LIMIT)
+    .map((value) => formatValue(value));
   return `[${preview.join(", ")}, ... (${values.length} total)]`;
 }
 
