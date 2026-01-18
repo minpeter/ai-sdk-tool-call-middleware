@@ -73,6 +73,22 @@ function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
   if (Array.isArray(required) && required.includes(key)) {
     return true;
   }
+  const additional = s.additionalProperties;
+  if (
+    additional === true ||
+    (additional && typeof additional === "object" && !Array.isArray(additional))
+  ) {
+    return true;
+  }
+  const patternProperties = s.patternProperties;
+  if (
+    patternProperties &&
+    typeof patternProperties === "object" &&
+    !Array.isArray(patternProperties) &&
+    Object.keys(patternProperties as Record<string, unknown>).length > 0
+  ) {
+    return true;
+  }
   const combinators = ["anyOf", "oneOf", "allOf"] as const;
   for (const comb of combinators) {
     const values = s[comb];
@@ -85,6 +101,77 @@ function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
     }
   }
   return false;
+}
+
+function getPatternSchemasForKey(
+  patternProperties: unknown,
+  key: string
+): unknown[] {
+  if (
+    !patternProperties ||
+    typeof patternProperties !== "object" ||
+    Array.isArray(patternProperties)
+  ) {
+    return [];
+  }
+  const schemas: unknown[] = [];
+  for (const [pattern, schema] of Object.entries(
+    patternProperties as Record<string, unknown>
+  )) {
+    try {
+      const regex = new RegExp(pattern);
+      if (regex.test(key)) {
+        schemas.push(schema);
+      }
+    } catch {
+      // Ignore invalid regex patterns.
+    }
+  }
+  return schemas;
+}
+
+function coerceValueForKey(
+  value: unknown,
+  key: string,
+  unwrapped: Record<string, unknown>
+): unknown {
+  const schemas: unknown[] = [];
+  const props = unwrapped.properties as Record<string, unknown> | undefined;
+  if (props && Object.hasOwn(props, key)) {
+    schemas.push((props as Record<string, unknown>)[key]);
+  }
+  const patternSchemas = getPatternSchemasForKey(
+    unwrapped.patternProperties,
+    key
+  );
+  if (patternSchemas.length > 0) {
+    schemas.push(...patternSchemas);
+  }
+
+  if (schemas.length > 0) {
+    let out = value;
+    for (const schema of schemas) {
+      if (typeof schema === "boolean") {
+        continue;
+      }
+      out = coerceBySchema(out, schema);
+    }
+    return out;
+  }
+
+  const additional = unwrapped.additionalProperties;
+  if (
+    additional &&
+    typeof additional === "object" &&
+    !Array.isArray(additional)
+  ) {
+    return coerceBySchema(value, additional);
+  }
+  if (additional === true || additional === false) {
+    return value;
+  }
+
+  return coerceBySchema(value, undefined);
 }
 
 /**
@@ -134,14 +221,7 @@ function coerceStringToObject(
 
     const obj = JSON.parse(normalized);
     if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      const props = unwrapped.properties as Record<string, unknown> | undefined;
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        const propSchema = props ? (props[k] as unknown) : undefined;
-        out[k] =
-          typeof propSchema === "boolean" ? v : coerceBySchema(v, propSchema);
-      }
-      return out;
+      return coerceObjectToObject(obj as Record<string, unknown>, unwrapped);
     }
   } catch {
     // fallthrough
@@ -191,11 +271,8 @@ function coerceObjectToObject(
   unwrapped: Record<string, unknown>
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  const props = unwrapped.properties as Record<string, unknown> | undefined;
   for (const [k, v] of Object.entries(value)) {
-    const propSchema = props ? (props[k] as unknown) : undefined;
-    out[k] =
-      typeof propSchema === "boolean" ? v : coerceBySchema(v, propSchema);
+    out[k] = coerceValueForKey(v, k, unwrapped);
   }
   return out;
 }

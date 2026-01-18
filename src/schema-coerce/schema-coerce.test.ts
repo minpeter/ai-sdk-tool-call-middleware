@@ -92,6 +92,44 @@ describe("Coercion Heuristic Handling", () => {
       expect(result).toEqual([{ user: { name: "Alice" } }]);
     });
 
+    it("should not unwrap single key objects when items schema allows additionalProperties", () => {
+      const input = { foo: { bar: "1" } };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            properties: { bar: { type: "string" } },
+          },
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([{ foo: { bar: "1" } }]);
+    });
+
+    it("should not unwrap single key objects when items schema uses patternProperties", () => {
+      const input = { foo: { bar: "1" } };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          patternProperties: {
+            "^f": {
+              type: "object",
+              properties: { bar: { type: "string" } },
+            },
+          },
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([{ foo: { bar: "1" } }]);
+    });
+
     it("should handle nested single key object extraction", () => {
       const input = {
         wrapper: {
@@ -182,6 +220,51 @@ describe("Coercion Heuristic Handling", () => {
 
       const result = coerceBySchema(input, schema) as any[];
       expect(result).toEqual([123, "hello", 45.67]); // "hello" stays as string
+    });
+  });
+
+  describe("Object property coercion", () => {
+    it("should coerce additionalProperties values using schema", () => {
+      const input = { a: "1", b: "2" };
+
+      const schema = {
+        type: "object",
+        additionalProperties: { type: "number" },
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({ a: 1, b: 2 });
+      expect(typeof result.a).toBe("number");
+      expect(typeof result.b).toBe("number");
+    });
+
+    it("should apply patternProperties before additionalProperties", () => {
+      const input = { foo: "1", bar: "2" };
+
+      const schema = {
+        type: "object",
+        patternProperties: {
+          "^f": { type: "number" },
+        },
+        additionalProperties: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({ foo: 1, bar: "2" });
+      expect(typeof result.foo).toBe("number");
+      expect(typeof result.bar).toBe("string");
+    });
+
+    it("should coerce values from stringified objects using additionalProperties", () => {
+      const input = '{"a":"1","b":"2"}';
+
+      const schema = {
+        type: "object",
+        additionalProperties: { type: "number" },
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({ a: 1, b: 2 });
     });
   });
 
