@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 3.3.1
+
+### Patch Changes
+
+- bc17084: Improve object-to-array coercion heuristics: consistently wrap objects in arrays when schema expects array type, handle single-key object extraction for XML patterns
+
 ## 3.3.0
 
 ### Minor Changes
