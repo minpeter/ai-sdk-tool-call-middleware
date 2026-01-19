@@ -331,6 +331,40 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
     expect(JSON.parse(tc.input)).toEqual({ arr: [], obj: {} });
   });
 
+  it("preserves wrapper key for unconstrained array items", () => {
+    const p = xmlProtocol();
+    const tools = [
+      {
+        type: "function",
+        name: "wrap",
+        description: "",
+        inputSchema: {
+          type: "object",
+          properties: {
+            arr: { type: "array", items: {} },
+          },
+        },
+      },
+    ] as any;
+
+    const out = p.parseGeneratedText({
+      text:
+        "<wrap>" +
+        "<arr>" +
+        "<user><name>A</name></user>" +
+        "</arr>" +
+        "</wrap>",
+      tools,
+      options: {},
+    });
+
+    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    expect(tc).toBeTruthy();
+    expect(JSON.parse(tc.input)).toEqual({
+      arr: [{ user: { name: "A" } }],
+    });
+  });
+
   it("coerces array items when item-wrapped contains object strings", () => {
     const p = xmlProtocol();
     const tools = [

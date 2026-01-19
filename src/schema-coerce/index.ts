@@ -55,6 +55,290 @@ export function getSchemaType(schema: unknown): string | undefined {
 }
 
 /**
+ * Checks if a property is allowed through schema combinators (anyOf, oneOf, allOf).
+ *
+ * @param s - The schema object to check
+ * @param key - The property key to look for
+ * @param depth - Current recursion depth
+ * @returns `true` if at least one combinator exists AND allows the property;
+ *          `false` if no combinators exist OR none allow the property.
+ *          When no combinators are present, returns `false` so the caller can
+ *          fall back to other property-checking methods.
+ *
+ * **oneOf semantics**: JSON Schema's `oneOf` requires exactly one schema to match,
+ * but for coercion heuristics we treat it like `anyOf` (at least one allows).
+ * This is intentional because:
+ * 1. We're determining if a property CAN exist, not validating exact matches
+ * 2. Coercion should be permissive - if any branch allows the property, we allow it
+ * 3. Strict oneOf validation would require runtime value inspection, not just schema analysis
+ */
+function schemaAllowsPropertyViaCombinators(
+  s: Record<string, unknown>,
+  key: string,
+  depth: number
+): boolean {
+  const anyOfValues = s.anyOf;
+  const oneOfValues = s.oneOf;
+  const allOfValues = s.allOf;
+
+  let hasCombinator = false;
+  let anyOfAllows = true;
+  let oneOfAllows = true;
+  let allOfAllows = true;
+
+  if (Array.isArray(anyOfValues)) {
+    hasCombinator = true;
+    anyOfAllows = anyOfValues.some((sub) =>
+      schemaHasProperty(sub, key, depth + 1)
+    );
+  }
+
+  if (Array.isArray(oneOfValues)) {
+    hasCombinator = true;
+    oneOfAllows = oneOfValues.some((sub) =>
+      schemaHasProperty(sub, key, depth + 1)
+    );
+  }
+
+  if (Array.isArray(allOfValues)) {
+    hasCombinator = true;
+    allOfAllows = allOfValues.every((sub) =>
+      schemaHasProperty(sub, key, depth + 1)
+    );
+  }
+
+  if (!hasCombinator) {
+    return false;
+  }
+
+  return anyOfAllows && oneOfAllows && allOfAllows;
+}
+
+function schemaHasPropertyDirectly(
+  s: Record<string, unknown>,
+  key: string
+): boolean {
+  const props = s.properties;
+  if (
+    props &&
+    typeof props === "object" &&
+    !Array.isArray(props) &&
+    Object.hasOwn(props, key) &&
+    (props as Record<string, unknown>)[key] !== false
+  ) {
+    return true;
+  }
+  const required = s.required;
+  if (Array.isArray(required) && required.includes(key)) {
+    return true;
+  }
+  const patternSchemas = getPatternSchemasForKey(s.patternProperties, key);
+  return patternSchemas.some((schema) => schema !== false);
+}
+
+/**
+ * Checks if a schema allows additional properties beyond those explicitly defined.
+ *
+ * JSON Schema behavior for additionalProperties:
+ * - `additionalProperties: true` or `additionalProperties: { schema }`: Explicitly allows additional properties
+ * - `additionalProperties: false`: Explicitly disallows additional properties
+ * - `additionalProperties` not specified: Defaults to allowing additional properties (JSON Schema spec)
+ *
+ * When `additionalProperties` is not explicitly set, this function returns `true` if the schema
+ * appears to be an object schema (has `type: "object"`, `properties`, `patternProperties`, or `required`).
+ * This follows the JSON Schema specification where omitting `additionalProperties` is equivalent to `true`.
+ *
+ * **Important**: This means schemas like `{ type: "object", properties: { foo: ... } }` without
+ * `additionalProperties: false` will be treated as allowing any additional property, which affects
+ * single-key object unwrapping behavior in array coercion.
+ *
+ * @param s - The schema object to check
+ * @returns `true` if the schema allows additional properties, `false` otherwise
+ */
+function schemaHasPropertyViaAdditional(s: Record<string, unknown>): boolean {
+  const additional = s.additionalProperties;
+  if (
+    additional === true ||
+    (additional && typeof additional === "object" && !Array.isArray(additional))
+  ) {
+    return true;
+  }
+  if (Object.hasOwn(s, "additionalProperties")) {
+    return false;
+  }
+  const type = s.type;
+  const isObjectType =
+    type === "object" || (Array.isArray(type) && type.includes("object"));
+  const hasObjectKeywords =
+    (s.properties &&
+      typeof s.properties === "object" &&
+      !Array.isArray(s.properties)) ||
+    (s.patternProperties &&
+      typeof s.patternProperties === "object" &&
+      !Array.isArray(s.patternProperties)) ||
+    (Array.isArray(s.required) && s.required.length > 0);
+  return !!(isObjectType || hasObjectKeywords);
+}
+
+function schemaDisallowsPropertyDirectly(
+  s: Record<string, unknown>,
+  key: string
+): boolean {
+  const props = s.properties;
+  if (
+    props &&
+    typeof props === "object" &&
+    !Array.isArray(props) &&
+    Object.hasOwn(props, key) &&
+    (props as Record<string, unknown>)[key] === false
+  ) {
+    return true;
+  }
+  const patternSchemas = getPatternSchemasForKey(s.patternProperties, key);
+  return patternSchemas.some((schema) => schema === false);
+}
+
+/**
+ * Checks if a schema allows a specific property key.
+ *
+ * Recursively checks through schema combinators (allOf, anyOf, oneOf) to determine
+ * if the given key is allowed by the schema.
+ *
+ * @param schema - The JSON Schema to check
+ * @param key - The property key to check for
+ * @param depth - Current recursion depth (default: 0)
+ * @returns `true` if the schema allows the property, `false` otherwise
+ *
+ * @remarks
+ * The depth limit of 5 prevents infinite recursion in deeply nested or circular
+ * schema references. This limit is sufficient for most real-world schemas while
+ * protecting against pathological cases. When the limit is exceeded, the function
+ * conservatively returns `true` to prevent unwrapping - it's safer to keep a
+ * wrapper key than to incorrectly remove it and lose data.
+ */
+function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
+  if (depth > 5) {
+    return true;
+  }
+  const unwrapped = unwrapJsonSchema(schema);
+  // Unconstrained schemas (true, null, {}) allow any property
+  if (schemaIsUnconstrained(unwrapped)) {
+    return true;
+  }
+  if (!unwrapped || typeof unwrapped !== "object") {
+    return false;
+  }
+  const s = unwrapped as Record<string, unknown>;
+
+  if (schemaDisallowsPropertyDirectly(s, key)) {
+    return false;
+  }
+  if (schemaHasPropertyDirectly(s, key)) {
+    return true;
+  }
+  if (schemaHasPropertyViaAdditional(s)) {
+    return true;
+  }
+  return schemaAllowsPropertyViaCombinators(s, key, depth);
+}
+
+function schemaIsUnconstrained(schema: unknown): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (unwrapped == null || unwrapped === true) {
+    return true;
+  }
+  if (typeof unwrapped !== "object" || Array.isArray(unwrapped)) {
+    return false;
+  }
+  return Object.keys(unwrapped).length === 0;
+}
+
+/**
+ * Gets all schemas from patternProperties that match the given key.
+ *
+ * @param patternProperties - The patternProperties object from a JSON Schema
+ * @param key - The property key to match against patterns
+ * @returns Array of schemas whose patterns match the key
+ *
+ * @remarks
+ * **Security consideration**: This function executes regex patterns from the schema.
+ * In typical usage (AI SDK tool parsing), schemas come from trusted application code.
+ * However, if schemas can originate from untrusted sources, be aware of potential
+ * ReDoS (Regular Expression Denial of Service) with malicious patterns like `(a+)+$`.
+ * Consider adding regex timeout or safe-regex validation if processing untrusted schemas.
+ */
+function getPatternSchemasForKey(
+  patternProperties: unknown,
+  key: string
+): unknown[] {
+  if (
+    !patternProperties ||
+    typeof patternProperties !== "object" ||
+    Array.isArray(patternProperties)
+  ) {
+    return [];
+  }
+  const schemas: unknown[] = [];
+  for (const [pattern, schema] of Object.entries(
+    patternProperties as Record<string, unknown>
+  )) {
+    try {
+      const regex = new RegExp(pattern);
+      if (regex.test(key)) {
+        schemas.push(schema);
+      }
+    } catch {
+      // Ignore invalid regex patterns.
+    }
+  }
+  return schemas;
+}
+
+function coerceValueForKey(
+  value: unknown,
+  key: string,
+  unwrapped: Record<string, unknown>
+): unknown {
+  const schemas: unknown[] = [];
+  const props = unwrapped.properties as Record<string, unknown> | undefined;
+  if (props && Object.hasOwn(props, key)) {
+    schemas.push(props[key]);
+  }
+  const patternSchemas = getPatternSchemasForKey(
+    unwrapped.patternProperties,
+    key
+  );
+  if (patternSchemas.length > 0) {
+    schemas.push(...patternSchemas);
+  }
+
+  if (schemas.length > 0) {
+    let out = value;
+    for (const schema of schemas) {
+      if (typeof schema === "boolean") {
+        continue;
+      }
+      out = coerceBySchema(out, schema);
+    }
+    return out;
+  }
+
+  const additional = unwrapped.additionalProperties;
+  if (
+    additional &&
+    typeof additional === "object" &&
+    !Array.isArray(additional)
+  ) {
+    return coerceBySchema(value, additional);
+  }
+  if (additional === true || additional === false) {
+    return value;
+  }
+
+  return coerceBySchema(value, undefined);
+}
+
+/**
  * Coerce string value without schema information
  */
 function coerceStringWithoutSchema(value: string): unknown {
@@ -101,14 +385,7 @@ function coerceStringToObject(
 
     const obj = JSON.parse(normalized);
     if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      const props = unwrapped.properties as Record<string, unknown> | undefined;
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        const propSchema = props ? (props[k] as unknown) : undefined;
-        out[k] =
-          typeof propSchema === "boolean" ? v : coerceBySchema(v, propSchema);
-      }
-      return out;
+      return coerceObjectToObject(obj as Record<string, unknown>, unwrapped);
     }
   } catch {
     // fallthrough
@@ -158,11 +435,8 @@ function coerceObjectToObject(
   unwrapped: Record<string, unknown>
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  const props = unwrapped.properties as Record<string, unknown> | undefined;
   for (const [k, v] of Object.entries(value)) {
-    const propSchema = props ? (props[k] as unknown) : undefined;
-    out[k] =
-      typeof propSchema === "boolean" ? v : coerceBySchema(v, propSchema);
+    out[k] = coerceValueForKey(v, k, unwrapped);
   }
   return out;
 }
@@ -197,18 +471,31 @@ function coerceObjectToArray(
 
   const keys = Object.keys(maybe);
 
-  // Check for single field that contains an array (common XML pattern)
-  if (keys.length === 1) {
-    const singleValue = maybe[keys[0]];
-    if (Array.isArray(singleValue)) {
-      return singleValue.map((v) => coerceBySchema(v, itemsSchema));
-    }
-  }
-
   // Check for numeric keys (traditional tuple handling)
   if (keys.length > 0 && keys.every((k) => DIGIT_KEY_REGEX.test(k))) {
     const arr = keys.sort((a, b) => Number(a) - Number(b)).map((k) => maybe[k]);
     return coerceArrayToArray(arr, prefixItems, itemsSchema);
+  }
+
+  // Check for single field that contains an array or object (common XML pattern)
+  // This handles both: { user: [{ name: "A" }, { name: "B" }] } and { user: { name: "A" } }
+  if (keys.length === 1) {
+    const singleKey = keys[0];
+    if (
+      !(
+        schemaIsUnconstrained(itemsSchema) ||
+        schemaHasProperty(itemsSchema, singleKey)
+      )
+    ) {
+      const singleValue = maybe[singleKey];
+      if (Array.isArray(singleValue)) {
+        return singleValue.map((v) => coerceBySchema(v, itemsSchema));
+      }
+      // Also extract when single key's value is an object and wrap in array (single/multiple element consistency)
+      if (singleValue && typeof singleValue === "object") {
+        return [coerceBySchema(singleValue, itemsSchema)];
+      }
+    }
   }
 
   return null;
@@ -303,6 +590,12 @@ function coerceArrayValue(
     if (result !== null) {
       return result;
     }
+    // To prevent infinite recursion, check if the itemsSchema is also for an array.
+    // If so, just wrap the object. Otherwise, coerce it against the itemsSchema.
+    if (getSchemaType(itemsSchema) === "array") {
+      return [value];
+    }
+    return [coerceBySchema(value, itemsSchema)];
   }
 
   if (
@@ -314,7 +607,7 @@ function coerceArrayValue(
     return coercePrimitiveToArray(value, prefixItems, itemsSchema);
   }
 
-  return value;
+  return [value];
 }
 
 export function coerceBySchema(value: unknown, schema?: unknown): unknown {
