@@ -37,8 +37,8 @@ importers:
         specifier: ^4.0.17
         version: 4.0.17(vitest@4.0.17)
       ai:
-        specifier: 6.0.39
-        version: 6.0.39(zod@4.3.5)
+        specifier: 6.0.41
+        version: 6.0.41(zod@4.3.5)
       globals:
         specifier: ^17.0.0
         version: 17.0.0
@@ -687,8 +687,8 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
-  ai@6.0.39:
-    resolution: {integrity: sha512-hF05gF4H+IxuilA8kNANVVHQXduTJsJaH74jmlmy8mcQt3NZgPYe2zZNyGBV4DPDYTUDt1h31hbLgQqJTn5LGA==}
+  ai@6.0.41:
+    resolution: {integrity: sha512-FaFKBiqOX3RKEz7PJ/K6d9+1JnHilzR4ID2elRzZ/yVGC5vM4RvVRyYHlhFso/gyQRXrQZtOSbqbBchAwcTDXg==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -2572,7 +2572,7 @@ snapshots:
 
   acorn@8.15.0: {}
 
-  ai@6.0.39(zod@4.3.5):
+  ai@6.0.41(zod@4.3.5):
     dependencies:
       '@ai-sdk/gateway': 3.0.16(zod@4.3.5)
       '@ai-sdk/provider': 3.0.4
