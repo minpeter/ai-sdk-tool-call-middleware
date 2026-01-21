@@ -65,12 +65,12 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "@ai-sdk/openai-compatible": "2.0.13",
+    "@ai-sdk/openai-compatible": "2.0.16",
     "@biomejs/biome": "2.3.11",
     "@changesets/cli": "2.29.8",
     "@types/node": "^25.0.9",
     "@vitest/coverage-v8": "^4.0.17",
-    "ai": "6.0.41",
+    "ai": "6.0.42",
     "globals": "^17.0.0",
     "husky": "^9.1.7",
     "jiti": "^2.6.1",
@@ -79,7 +79,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "5.9.3",
-    "ultracite": "7.0.11",
+    "ultracite": "7.0.12",
     "vitest": "^4.0.17",
     "zod": "^4.3.5"
   },
