@@ -59,18 +59,18 @@
     "ci:version": "changeset version"
   },
   "dependencies": {
-    "@ai-sdk/provider": "3.0.4",
-    "@ai-sdk/provider-utils": "4.0.8",
+    "@ai-sdk/provider": "3.0.5",
+    "@ai-sdk/provider-utils": "4.0.9",
     "dedent": "^1.7.1",
     "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "@ai-sdk/openai-compatible": "2.0.16",
+    "@ai-sdk/openai-compatible": "2.0.18",
     "@biomejs/biome": "2.3.11",
     "@changesets/cli": "2.29.8",
     "@types/node": "^25.0.10",
-    "@vitest/coverage-v8": "^4.0.17",
-    "ai": "6.0.44",
+    "@vitest/coverage-v8": "^4.0.18",
+    "ai": "6.0.48",
     "globals": "^17.0.0",
     "husky": "^9.1.7",
     "jiti": "^2.6.1",
@@ -80,8 +80,8 @@
     "tsx": "^4.21.0",
     "typescript": "5.9.3",
     "ultracite": "7.0.12",
-    "vitest": "^4.0.17",
-    "zod": "^4.3.5"
+    "vitest": "^4.0.18",
+    "zod": "^4.3.6"
   },
   "packageManager": "pnpm@9.14.4",
   "engines": {
