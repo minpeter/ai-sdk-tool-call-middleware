@@ -16,7 +16,7 @@ const openrouter = createOpenAICompatible({
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: openrouter("xiaomi/mimo-v2-flash:free"),
+      model: openrouter("arcee-ai/trinity-large-preview:free"),
       middleware: xmlToolMiddleware,
     }),
     system: "You are a helpful assistant.",

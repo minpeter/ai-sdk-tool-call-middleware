@@ -59,6 +59,7 @@
     "ci:version": "changeset version"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.25",
     "@ai-sdk/provider": "3.0.7",
     "@ai-sdk/provider-utils": "4.0.13",
     "dedent": "^1.7.1",
