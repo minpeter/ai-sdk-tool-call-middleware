@@ -18,7 +18,7 @@ const openrouter = createOpenAI({
 async function main() {
   await generateText({
     model: wrapLanguageModel({
-      model: openrouter.chat("xiaomi/mimo-v2-flash:free"),
+      model: openrouter.chat("arcee-ai/trinity-large-preview:free"),
       middleware: hermesToolMiddleware,
     }),
     tools: {
