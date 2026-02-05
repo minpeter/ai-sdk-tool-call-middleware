@@ -7,6 +7,7 @@ import type {
 import { parse, stringify } from "../../rxml";
 import { generateId } from "../utils/id";
 import { escapeRegExp } from "../utils/regex";
+import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import type { TCMCoreProtocol } from "./protocol-interface";
 
 export interface XmlProtocolOptions {
@@ -27,9 +28,6 @@ type FlushTextFn = (
   controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
   text?: string
 ) => void;
-
-const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
-const WHITESPACE_REGEX = /\s/;
 
 function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;

@@ -5,6 +5,7 @@ import type {
 } from "@ai-sdk/provider";
 import YAML from "yaml";
 import { generateId } from "../utils/id";
+import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import type { TCMCoreProtocol } from "./protocol-interface";
 
 export interface YamlProtocolOptions {
@@ -19,8 +20,6 @@ interface ParserOptions {
   onError?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 
-const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
-const WHITESPACE_REGEX = /\s/;
 const LEADING_WHITESPACE_RE = /^(\s*)/;
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: XML tag parsing with nested tag tracking inherently requires complex state management
