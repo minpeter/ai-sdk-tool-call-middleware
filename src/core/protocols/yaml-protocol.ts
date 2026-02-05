@@ -5,8 +5,9 @@ import type {
 } from "@ai-sdk/provider";
 import YAML from "yaml";
 import { generateId } from "../utils/id";
+import { addTextSegment } from "../utils/protocol-utils";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
-import type { TCMCoreProtocol } from "./protocol-interface";
+import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
 export interface YamlProtocolOptions {
   /**
@@ -14,10 +15,6 @@ export interface YamlProtocolOptions {
    * @default true
    */
   includeMultilineExample?: boolean;
-}
-
-interface ParserOptions {
-  onError?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 
 const LEADING_WHITESPACE_RE = /^(\s*)/;
@@ -245,18 +242,6 @@ function parseYamlContent(
   }
 }
 
-function appendTextPart(
-  processedElements: LanguageModelV3Content[],
-  textPart: string
-) {
-  if (textPart.trim()) {
-    processedElements.push({
-      type: "text",
-      text: textPart,
-    });
-  }
-}
-
 function processToolCallMatch(
   text: string,
   tc: ToolCallMatch,
@@ -268,9 +253,9 @@ function processToolCallMatch(
     return currentIndex;
   }
 
-  appendTextPart(
-    processedElements,
-    text.substring(currentIndex, tc.startIndex)
+  addTextSegment(
+    text.substring(currentIndex, tc.startIndex),
+    processedElements
   );
 
   const parsedArgs = parseYamlContent(tc.content, options);
@@ -416,7 +401,7 @@ export const yamlProtocol = (
       }
 
       if (currentIndex < text.length) {
-        appendTextPart(processedElements, text.substring(currentIndex));
+        addTextSegment(text.substring(currentIndex), processedElements);
       }
 
       return processedElements;

@@ -8,7 +8,7 @@ import { parse, stringify } from "../../rxml";
 import { generateId } from "../utils/id";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
-import type { TCMCoreProtocol } from "./protocol-interface";
+import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
 export interface XmlProtocolOptions {
   parseOptions?: {
@@ -18,10 +18,6 @@ export interface XmlProtocolOptions {
     noChildNodes?: string[];
     [key: string]: unknown;
   };
-}
-
-interface ParserOptions {
-  onError?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 
 type FlushTextFn = (

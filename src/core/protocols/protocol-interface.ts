@@ -5,6 +5,13 @@ import type {
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 
+/**
+ * Options for parsing tool calls and handling errors
+ */
+export interface ParserOptions {
+  onError?: (message: string, metadata?: Record<string, unknown>) => void;
+}
+
 export interface TCMProtocol {
   formatTools({
     tools,
