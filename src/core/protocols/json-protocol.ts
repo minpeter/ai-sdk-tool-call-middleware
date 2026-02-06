@@ -8,6 +8,7 @@ import { parse as parseRJSON } from "../../rjson";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId } from "../utils/id";
+import { addTextSegment } from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import type { TCMProtocol } from "./protocol-interface";
 
@@ -47,15 +48,6 @@ function processToolCallJson(
       { toolCall: fullMatch, error }
     );
     processedElements.push({ type: "text", text: fullMatch });
-  }
-}
-
-function addTextSegment(
-  text: string,
-  processedElements: LanguageModelV3Content[]
-) {
-  if (text.trim()) {
-    processedElements.push({ type: "text", text });
   }
 }
 

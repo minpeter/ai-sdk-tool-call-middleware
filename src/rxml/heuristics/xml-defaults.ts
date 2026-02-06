@@ -3,6 +3,7 @@
  * Modular, reusable versions of normalization/repair logic from morph-xml-protocol.
  */
 
+import { escapeRegExp } from "../../core/utils/regex";
 import { unwrapJsonSchema } from "../../schema-coerce";
 import { parse } from "../core/parser";
 import type {
@@ -307,10 +308,6 @@ function getStringPropertyNames(schema: unknown): string[] {
     }
   }
   return names;
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function dedupeSingleTag(xml: string, key: string): string {
