@@ -16,7 +16,7 @@ const openrouter = createOpenAICompatible({
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: openrouter("arcee-ai/trinity-large-preview:free"),
+      model: openrouter("openrouter/pony-alpha"),
       middleware: xmlToolMiddleware,
     }),
     system: "You are a helpful assistant.",

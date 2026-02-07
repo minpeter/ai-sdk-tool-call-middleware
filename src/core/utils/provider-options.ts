@@ -3,6 +3,8 @@ import type {
   LanguageModelV3FunctionTool,
 } from "@ai-sdk/provider";
 
+type OnErrorFn = (message: string, metadata?: Record<string, unknown>) => void;
+
 export interface ToolCallMiddlewareProviderOptions {
   toolCallMiddleware?: {
     // onError?: (message: string, metadata?: Record<string, unknown>) => void;
@@ -28,6 +30,15 @@ export const originalToolsSchema = {
   decode: decodeOriginalTools,
 };
 
+interface EncodedOriginalTool {
+  name: string;
+  inputSchema: string; // stringified JSONSchema7
+}
+
+interface DecodeOriginalToolsOptions {
+  onError?: OnErrorFn;
+}
+
 export function encodeOriginalTools(
   tools: LanguageModelV3FunctionTool[] | undefined
 ): Array<{ name: string; inputSchema: string }> {
@@ -40,24 +51,60 @@ export function encodeOriginalTools(
 }
 
 export function decodeOriginalTools(
-  originalTools:
-    | Array<{
-        name: string;
-        inputSchema: string; // stringified JSONSchema7
-      }>
-    | undefined
+  originalTools: EncodedOriginalTool[] | undefined,
+  options?: DecodeOriginalToolsOptions
 ): LanguageModelV3FunctionTool[] {
   if (!originalTools) {
     return [];
   }
 
-  return originalTools.map(
-    (t): LanguageModelV3FunctionTool => ({
-      type: "function",
-      name: t.name,
-      inputSchema: JSON.parse(t.inputSchema) as JSONSchema7,
-    })
-  );
+  const decodedTools: LanguageModelV3FunctionTool[] = [];
+
+  for (const [index, tool] of originalTools.entries()) {
+    if (!tool || typeof tool.name !== "string") {
+      options?.onError?.("Invalid originalTools entry: missing tool name", {
+        index,
+        tool,
+      });
+      continue;
+    }
+
+    if (typeof tool.inputSchema !== "string") {
+      options?.onError?.(
+        "Invalid originalTools entry: inputSchema must be a string",
+        {
+          index,
+          toolName: tool.name,
+        }
+      );
+      continue;
+    }
+
+    try {
+      decodedTools.push({
+        type: "function",
+        name: tool.name,
+        inputSchema: JSON.parse(tool.inputSchema) as JSONSchema7,
+      });
+    } catch (error) {
+      options?.onError?.(
+        "Failed to decode originalTools input schema, using permissive fallback schema",
+        {
+          index,
+          toolName: tool.name,
+          inputSchema: tool.inputSchema,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      );
+      decodedTools.push({
+        type: "function",
+        name: tool.name,
+        inputSchema: { type: "object" },
+      });
+    }
+  }
+
+  return decodedTools;
 }
 
 export function extractToolNamesFromOriginalTools(

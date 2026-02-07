@@ -925,8 +925,7 @@ export const xmlProtocol = (
     createStreamParser({ tools, options }) {
       const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
       let buffer = "";
-      // biome-ignore lint/suspicious/noExplicitAny: internal state
-      let currentToolCall: any = null;
+      let currentToolCall: { name: string; content: string } | null = null;
       let currentTextId: string | null = null;
       let hasEmittedTextStart = false;
 
@@ -959,6 +958,21 @@ export const xmlProtocol = (
 
       return new TransformStream({
         transform(chunk, controller) {
+          if (chunk.type === "finish") {
+            if (currentToolCall) {
+              const unfinishedContent = `<${currentToolCall.name}>${currentToolCall.content}${buffer}`;
+              flushText(controller, unfinishedContent);
+              buffer = "";
+              currentToolCall = null;
+            } else if (buffer) {
+              flushText(controller, buffer);
+              buffer = "";
+            }
+            flushText(controller);
+            controller.enqueue(chunk);
+            return;
+          }
+
           if (chunk.type !== "text-delta") {
             if (buffer) {
               flushText(controller, buffer);
