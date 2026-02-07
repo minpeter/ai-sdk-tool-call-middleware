@@ -461,6 +461,60 @@ function findToolCalls(
   return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
 }
 
+function findLinePrefixedToolCall(
+  text: string,
+  toolNames: string[]
+): {
+  toolName: string;
+  startIndex: number;
+  endIndex: number;
+  content: string;
+  segment: string;
+} | null {
+  let best: {
+    toolName: string;
+    startIndex: number;
+    endIndex: number;
+    content: string;
+    segment: string;
+  } | null = null;
+
+  for (const toolName of toolNames) {
+    const linePattern = new RegExp(
+      `(^|\\n)[\\t ]*${escapeRegExp(toolName)}[\\t ]*:?[\\t ]*(?:\\r?\\n|$)`,
+      "g"
+    );
+
+    let match = linePattern.exec(text);
+    while (match !== null) {
+      const prefix = match[1] ?? "";
+      const startIndex = match.index + prefix.length;
+      const contentStart = linePattern.lastIndex;
+      const content = text.slice(contentStart).trimStart();
+
+      // Only treat this as a tool call when XML-like body follows.
+      if (!content.startsWith("<")) {
+        match = linePattern.exec(text);
+        continue;
+      }
+
+      const candidate = {
+        toolName,
+        startIndex,
+        endIndex: text.length,
+        content,
+        segment: text.slice(startIndex),
+      };
+      if (best === null || candidate.startIndex < best.startIndex) {
+        best = candidate;
+      }
+      break;
+    }
+  }
+
+  return best;
+}
+
 function findEarliestToolTag(
   buffer: string,
   toolNames: string[]
@@ -893,6 +947,12 @@ export const xmlProtocol = (
       let currentIndex = 0;
 
       const toolCalls = findToolCalls(text, toolNames);
+      if (toolCalls.length === 0) {
+        const fallbackToolCall = findLinePrefixedToolCall(text, toolNames);
+        if (fallbackToolCall !== null) {
+          toolCalls.push(fallbackToolCall);
+        }
+      }
 
       for (const tc of toolCalls) {
         if (tc.startIndex > currentIndex) {

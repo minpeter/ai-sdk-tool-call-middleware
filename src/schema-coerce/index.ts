@@ -501,6 +501,10 @@ function coercePrimitiveWrappedObject(
   }
 
   const singleValue = value[keys[0]];
+  if (singleValue && typeof singleValue === "object") {
+    return null;
+  }
+
   const coerced = coerceBySchema(singleValue, itemsSchema);
   return isPrimitiveMatchForSchemaType(coerced, schemaType) ? coerced : null;
 }
@@ -600,6 +604,28 @@ function coerceStringToPrimitive(
   return null;
 }
 
+function coerceObjectToPrimitive(
+  value: Record<string, unknown>,
+  schemaType: string | undefined
+): unknown {
+  if (!isPrimitiveSchemaType(schemaType)) {
+    return null;
+  }
+
+  const keys = Object.keys(value);
+  if (keys.length !== 1) {
+    return null;
+  }
+
+  const singleValue = value[keys[0]];
+  if (singleValue && typeof singleValue === "object") {
+    return null;
+  }
+
+  const coerced = coerceBySchema(singleValue, { type: schemaType });
+  return isPrimitiveMatchForSchemaType(coerced, schemaType) ? coerced : null;
+}
+
 function coerceStringValue(
   value: string,
   schemaType: string | undefined,
@@ -692,6 +718,22 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
     !Array.isArray(value)
   ) {
     return coerceObjectToObject(value as Record<string, unknown>, u);
+  }
+
+  // Handle object wrappers when schema expects a primitive value.
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    isPrimitiveSchemaType(schemaType)
+  ) {
+    const primitiveResult = coerceObjectToPrimitive(
+      value as Record<string, unknown>,
+      schemaType
+    );
+    if (primitiveResult !== null) {
+      return primitiveResult;
+    }
   }
 
   // Handle array coercion

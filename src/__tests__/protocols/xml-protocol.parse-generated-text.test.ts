@@ -78,4 +78,44 @@ describe("xmlProtocol parseGeneratedText branches", () => {
     const args = JSON.parse(tool.input);
     expect(args.input).toBe("hello");
   });
+
+  it("parses line-prefixed tool name followed by XML body", () => {
+    const p = xmlProtocol();
+    const localTools = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+            unit: { type: "string" },
+          },
+        },
+      },
+    ] as any;
+    const text = "get_weather\n<city>Seoul</city>\n<unit>celsius</unit>";
+    const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    const args = JSON.parse(tool.input);
+    expect(args.city).toBe("Seoul");
+    expect(args.unit).toBe("celsius");
+  });
+
+  it("does not treat line-prefixed tool name without XML body as tool-call", () => {
+    const p = xmlProtocol();
+    const localTools = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "",
+        inputSchema: { type: "object" },
+      },
+    ] as any;
+    const text = "get_weather\nI can help with weather details.";
+    const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
+    expect(out).toEqual([{ type: "text", text }]);
+  });
 });

@@ -97,6 +97,30 @@ describe("Coercion Heuristic Handling", () => {
       expect(result).toEqual([{ value: { nested: "x" } }]);
     });
 
+    it("should unwrap wrapped primitive objects inside arrays", () => {
+      const input = [{ element: "legal@corp.com" }];
+
+      const schema = {
+        type: "array",
+        items: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual(["legal@corp.com"]);
+    });
+
+    it("should unwrap wrapped primitive objects for tags array", () => {
+      const input = [{ tag: "refund" }];
+
+      const schema = {
+        type: "array",
+        items: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual(["refund"]);
+    });
+
     it("should extract object from single key (single/multiple element consistency)", () => {
       // Single and multiple elements should be processed with same structure
       const singleItem = { user: { name: "Alice" } };
@@ -1060,6 +1084,56 @@ describe("Coercion Heuristic Handling", () => {
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual(input);
+    });
+  });
+
+  describe("Primitive wrapper extraction", () => {
+    it("should unwrap single-key object when schema expects string", () => {
+      const input = { element: "hello" };
+      const schema = { type: "string" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toBe("hello");
+    });
+
+    it("should unwrap and coerce single-key object when schema expects number", () => {
+      const input = { value: "42.5" };
+      const schema = { type: "number" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toBe(42.5);
+    });
+
+    it("should unwrap and coerce single-key object when schema expects boolean", () => {
+      const input = { value: "true" };
+      const schema = { type: "boolean" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toBe(true);
+    });
+
+    it("should not unwrap when integer coercion fails", () => {
+      const input = { value: "42.5" };
+      const schema = { type: "integer" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toEqual({ value: "42.5" });
+    });
+
+    it("should not unwrap when wrapped value is an object", () => {
+      const input = { value: { nested: "x" } };
+      const schema = { type: "string" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toEqual({ value: { nested: "x" } });
+    });
+
+    it("should not unwrap multi-key object when schema expects string", () => {
+      const input = { first: "hello", second: "world" };
+      const schema = { type: "string" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toEqual({ first: "hello", second: "world" });
     });
   });
 });
