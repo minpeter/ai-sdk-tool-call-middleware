@@ -92,11 +92,12 @@ export async function toolChoiceStream({
   options,
 }: {
   doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>;
-  tools: LanguageModelV3FunctionTool[];
+  tools?: LanguageModelV3FunctionTool[];
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
 }) {
+  const normalizedTools = Array.isArray(tools) ? tools : [];
   const result = await doGenerate();
   let toolName = "unknown";
   let input = "{}";
@@ -107,7 +108,7 @@ export async function toolChoiceStream({
   ) {
     const parsed = parseToolChoicePayload({
       text: result.content[0].text,
-      tools,
+      tools: normalizedTools,
       onError: options?.onError,
       errorMessage:
         "Failed to parse toolChoice JSON from streamed model output",
@@ -157,13 +158,24 @@ const ZERO_USAGE: LanguageModelV3Usage = {
 function normalizeToolCallsFinishReason(
   finishReason: unknown
 ): LanguageModelV3FinishReason {
-  const raw =
+  let raw = "tool-calls";
+  if (typeof finishReason === "string") {
+    raw = finishReason;
+  } else if (
     finishReason &&
     typeof finishReason === "object" &&
     "raw" in finishReason &&
     typeof (finishReason as { raw?: unknown }).raw === "string"
-      ? (finishReason as { raw: string }).raw
-      : "tool-calls";
+  ) {
+    raw = (finishReason as { raw: string }).raw;
+  } else if (
+    finishReason &&
+    typeof finishReason === "object" &&
+    "unified" in finishReason &&
+    typeof (finishReason as { unified?: unknown }).unified === "string"
+  ) {
+    raw = (finishReason as { unified: string }).unified;
+  }
 
   return {
     unified: "tool-calls",
@@ -186,6 +198,22 @@ function normalizeUsage(usage: unknown): LanguageModelV3Usage {
     typeof output === "object"
   ) {
     return usage as LanguageModelV3Usage;
+  }
+
+  if (typeof input === "number" && typeof output === "number") {
+    return {
+      inputTokens: {
+        total: input,
+        noCache: undefined,
+        cacheRead: undefined,
+        cacheWrite: undefined,
+      },
+      outputTokens: {
+        total: output,
+        text: undefined,
+        reasoning: undefined,
+      },
+    };
   }
 
   return ZERO_USAGE;

@@ -9,6 +9,22 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 }));
 
 describe("toolChoiceStream", () => {
+  it("works when called without tools for backwards compatibility", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"name":"do","arguments":{"x":1}}' }],
+    });
+
+    const { stream } = await toolChoiceStream({ doGenerate });
+    const chunks = await convertReadableStreamToArray(stream);
+
+    expect(chunks[0]).toMatchObject({
+      type: "tool-call",
+      toolName: "do",
+      input: '{"x":1}',
+    });
+    expect(chunks[1]).toMatchObject({ type: "finish" });
+  });
+
   it("emits tool-call and finish chunks from valid JSON text", async () => {
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"name":"do","arguments":{"x":1}}' }],
@@ -123,7 +139,7 @@ describe("toolChoiceStream", () => {
     });
   });
 
-  it("normalizes finish reason to tool-calls while preserving raw value when present", async () => {
+  it("normalizes finish reason to tool-calls and preserves legacy object reason", async () => {
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],
       finishReason: mockFinishReason("stop"),
@@ -137,8 +153,41 @@ describe("toolChoiceStream", () => {
       type: "finish",
       finishReason: {
         unified: "tool-calls",
-        raw: "tool-calls",
+        raw: "stop",
       },
+    });
+  });
+
+  it("preserves string finish reason as raw value", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],
+      finishReason: "length",
+    });
+
+    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
+    const chunks = await convertReadableStreamToArray(stream);
+
+    expect(chunks[1]).toMatchObject({
+      type: "finish",
+      finishReason: {
+        unified: "tool-calls",
+        raw: "length",
+      },
+    });
+  });
+
+  it("converts legacy numeric usage shape instead of zeroing usage", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],
+      usage: { inputTokens: 7, outputTokens: 11 },
+    });
+
+    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
+    const chunks = await convertReadableStreamToArray(stream);
+
+    expect(chunks[1]).toMatchObject({
+      type: "finish",
+      usage: mockUsage(7, 11),
     });
   });
 });
