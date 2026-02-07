@@ -529,6 +529,21 @@ export const yamlProtocol = (
 
       return new TransformStream({
         transform(chunk, controller) {
+          if (chunk.type === "finish") {
+            if (currentToolCall) {
+              const unfinishedContent = `<${currentToolCall.name}>${buffer}`;
+              flushText(controller, unfinishedContent);
+              buffer = "";
+              currentToolCall = null;
+            } else if (buffer) {
+              flushText(controller, buffer);
+              buffer = "";
+            }
+            flushText(controller);
+            controller.enqueue(chunk);
+            return;
+          }
+
           if (chunk.type !== "text-delta") {
             if (buffer) {
               flushText(controller, buffer);

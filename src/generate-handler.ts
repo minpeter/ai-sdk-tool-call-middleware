@@ -18,26 +18,8 @@ import {
   originalToolsSchema,
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
-import { coerceBySchema } from "./schema-coerce";
-
-function parseToolChoiceJson(
-  text: string,
-  providerOptions?: ToolCallMiddlewareProviderOptions
-): { name?: string; arguments?: Record<string, unknown> } {
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    const options = extractOnErrorOption(providerOptions);
-    options?.onError?.(
-      "Failed to parse toolChoice JSON from generated model output",
-      {
-        text,
-        error: error instanceof Error ? error.message : String(error),
-      }
-    );
-    return {};
-  }
-}
+import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
+import { parseToolChoicePayload } from "./core/utils/tool-choice";
 
 function logDebugSummary(
   debugSummary: { originalText?: string; toolCalls?: string } | undefined,
@@ -60,24 +42,35 @@ function logDebugSummary(
 
 async function handleToolChoice(
   doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>,
-  params: { providerOptions?: ToolCallMiddlewareProviderOptions }
+  params: { providerOptions?: ToolCallMiddlewareProviderOptions },
+  tools: LanguageModelV3FunctionTool[]
 ) {
   const result = await doGenerate();
   const first = result.content?.[0];
+  const onError = extractOnErrorOption(params.providerOptions)?.onError;
 
-  let parsed: { name?: string; arguments?: Record<string, unknown> } = {};
+  let toolName = "unknown";
+  let input = "{}";
   if (first && first.type === "text") {
     if (getDebugLevel() === "parse") {
       logRawChunk(first.text);
     }
-    parsed = parseToolChoiceJson(first.text, params.providerOptions);
+    const parsed = parseToolChoicePayload({
+      text: first.text,
+      tools,
+      onError,
+      errorMessage:
+        "Failed to parse toolChoice JSON from generated model output",
+    });
+    toolName = parsed.toolName;
+    input = parsed.input;
   }
 
   const toolCall: LanguageModelV3ToolCall = {
     type: "tool-call",
     toolCallId: generateId(),
-    toolName: parsed.name || "unknown",
-    input: JSON.stringify(parsed.arguments || {}),
+    toolName,
+    input,
   };
 
   const originText = first && first.type === "text" ? first.text : "";
@@ -115,7 +108,7 @@ function parseContent(
   });
 
   return parsed.map((part) =>
-    fixToolCallWithSchema(part as LanguageModelV3Content, tools)
+    part.type === "tool-call" ? coerceToolCallPart(part, tools) : part
   );
 }
 
@@ -182,13 +175,15 @@ export async function wrapGenerate({
     providerOptions?: ToolCallMiddlewareProviderOptions;
   };
 }) {
-  if (isToolChoiceActive(params)) {
-    return handleToolChoice(doGenerate, params);
-  }
-
+  const onError = extractOnErrorOption(params.providerOptions);
   const tools = originalToolsSchema.decode(
-    params.providerOptions?.toolCallMiddleware?.originalTools
+    params.providerOptions?.toolCallMiddleware?.originalTools,
+    onError
   );
+
+  if (isToolChoiceActive(params)) {
+    return handleToolChoice(doGenerate, params, tools);
+  }
 
   const result = await doGenerate();
 
@@ -215,30 +210,5 @@ export async function wrapGenerate({
   return {
     ...result,
     content: newContent,
-  };
-}
-
-function fixToolCallWithSchema(
-  part: LanguageModelV3Content,
-  tools: LanguageModelV3FunctionTool[]
-): LanguageModelV3Content {
-  if (part.type !== "tool-call") {
-    return part;
-  }
-  let args: unknown = {};
-  if (typeof part.input === "string") {
-    try {
-      args = JSON.parse(part.input);
-    } catch {
-      return part;
-    }
-  } else if (part.input && typeof part.input === "object") {
-    args = part.input;
-  }
-  const schema = tools.find((t) => t.name === part.toolName)?.inputSchema;
-  const coerced = coerceBySchema(args, schema);
-  return {
-    ...part,
-    input: JSON.stringify(coerced ?? {}),
   };
 }

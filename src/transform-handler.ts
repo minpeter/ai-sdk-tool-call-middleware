@@ -216,6 +216,11 @@ function handleToolChoiceRequired(
       "Tool choice type 'required' is set, but no tools are provided in params.tools."
     );
   }
+  if (functionTools.length === 0) {
+    throw new Error(
+      "Tool choice type 'required' is set, but no function tools are provided. Provider-defined tools are not supported by this middleware."
+    );
+  }
 
   return {
     ...baseReturnParams,
