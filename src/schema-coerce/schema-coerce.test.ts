@@ -49,6 +49,54 @@ describe("Coercion Heuristic Handling", () => {
       expect(result).toEqual(["123", "hello", "45.67", "true"]);
     });
 
+    it("should unwrap primitive wrapper objects for array item schemas", () => {
+      const input = {
+        to: {
+          element: "legal@corp.com",
+        },
+      };
+
+      const schema = {
+        type: "array",
+        items: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual(["legal@corp.com"]);
+    });
+
+    it("should coerce primitive wrapper object values by item schema type", () => {
+      const input = {
+        number: {
+          value: "42",
+        },
+      };
+
+      const schema = {
+        type: "array",
+        items: { type: "integer" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([42]);
+    });
+
+    it("should keep object value when primitive wrapper coercion is not possible", () => {
+      const input = {
+        payload: {
+          value: { nested: "x" },
+        },
+      };
+
+      const schema = {
+        type: "array",
+        items: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([{ value: { nested: "x" } }]);
+    });
+
     it("should extract object from single key (single/multiple element consistency)", () => {
       // Single and multiple elements should be processed with same structure
       const singleItem = { user: { name: "Alice" } };

@@ -455,6 +455,56 @@ function coerceArrayToArray(
   return value.map((v) => coerceBySchema(v, itemsSchema));
 }
 
+function isPrimitiveSchemaType(
+  schemaType: string | undefined
+): schemaType is "string" | "number" | "integer" | "boolean" {
+  return (
+    schemaType === "string" ||
+    schemaType === "number" ||
+    schemaType === "integer" ||
+    schemaType === "boolean"
+  );
+}
+
+function isPrimitiveMatchForSchemaType(
+  value: unknown,
+  schemaType: "string" | "number" | "integer" | "boolean"
+): boolean {
+  if (schemaType === "string") {
+    return typeof value === "string";
+  }
+  if (schemaType === "number") {
+    return typeof value === "number" && Number.isFinite(value);
+  }
+  if (schemaType === "integer") {
+    return (
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      Number.isInteger(value)
+    );
+  }
+  return typeof value === "boolean";
+}
+
+function coercePrimitiveWrappedObject(
+  value: Record<string, unknown>,
+  itemsSchema: unknown
+): unknown {
+  const schemaType = getSchemaType(itemsSchema);
+  if (!isPrimitiveSchemaType(schemaType)) {
+    return null;
+  }
+
+  const keys = Object.keys(value);
+  if (keys.length !== 1) {
+    return null;
+  }
+
+  const singleValue = value[keys[0]];
+  const coerced = coerceBySchema(singleValue, itemsSchema);
+  return isPrimitiveMatchForSchemaType(coerced, schemaType) ? coerced : null;
+}
+
 /**
  * Coerce object to array using schema
  */
@@ -493,6 +543,13 @@ function coerceObjectToArray(
       }
       // Also extract when single key's value is an object and wrap in array (single/multiple element consistency)
       if (singleValue && typeof singleValue === "object") {
+        const primitiveWrapped = coercePrimitiveWrappedObject(
+          singleValue as Record<string, unknown>,
+          itemsSchema
+        );
+        if (primitiveWrapped !== null) {
+          return [primitiveWrapped];
+        }
         return [coerceBySchema(singleValue, itemsSchema)];
       }
     }
