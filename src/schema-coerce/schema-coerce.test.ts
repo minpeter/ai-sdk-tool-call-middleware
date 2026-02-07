@@ -1085,6 +1085,56 @@ describe("Coercion Heuristic Handling", () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual(input);
     });
+
+    it("expands strict object-of-parallel-arrays into array-of-objects", () => {
+      const input = {
+        field: ["status", "amount"],
+        op: ["=", ">"],
+        value: ["paid", "100"],
+      };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            field: { type: "string" },
+            op: { type: "string" },
+            value: { type: "string" },
+          },
+          required: ["field", "op", "value"],
+          additionalProperties: false,
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([
+        { field: "status", op: "=", value: "paid" },
+        { field: "amount", op: ">", value: "100" },
+      ]);
+    });
+
+    it("does not expand parallel arrays when additionalProperties is not false", () => {
+      const input = {
+        field: ["status", "amount"],
+        op: ["=", ">"],
+      };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            field: { type: "string" },
+            op: { type: "string" },
+          },
+          additionalProperties: true,
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([{ field: ["status", "amount"], op: ["=", ">"] }]);
+    });
   });
 
   describe("Primitive wrapper extraction", () => {
@@ -1134,6 +1184,74 @@ describe("Coercion Heuristic Handling", () => {
 
       const result = coerceBySchema(input, schema);
       expect(result).toEqual({ first: "hello", second: "world" });
+    });
+  });
+
+  describe("Primitive to string coercion", () => {
+    it("coerces booleans into strings when schema expects string", () => {
+      const result = coerceBySchema(false, { type: "string" });
+      expect(result).toBe("false");
+    });
+
+    it("coerces numbers into strings when schema expects string", () => {
+      const result = coerceBySchema(42, { type: "string" });
+      expect(result).toBe("42");
+    });
+
+    it("coerces nested object properties into strings for string-typed keys", () => {
+      const input = {
+        op: true,
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          op: { type: "string" },
+        },
+        required: ["op"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({ op: "true" });
+    });
+  });
+
+  describe("Enum whitespace canonicalization", () => {
+    it("canonicalizes quoted enum tokens when quote removal yields a unique match", () => {
+      const result = coerceBySchema("'high'", {
+        type: "string",
+        enum: ["low", "normal", "high"],
+      });
+
+      expect(result).toBe("high");
+    });
+
+    it("canonicalizes spaced enum tokens when there is exactly one match", () => {
+      const result = coerceBySchema("1 d", {
+        type: "string",
+        enum: ["1d", "1w", "1m"],
+      });
+
+      expect(result).toBe("1d");
+    });
+
+    it("does not canonicalize ambiguous enum matches", () => {
+      const result = coerceBySchema("a b", {
+        type: "string",
+        enum: ["ab", "a b"],
+      });
+
+      expect(result).toBe("a b");
+    });
+
+    it("does not canonicalize when enum includes non-string values", () => {
+      const result = coerceBySchema("1 d", {
+        type: "string",
+        enum: [1, "1d"],
+      });
+
+      expect(result).toBe("1 d");
     });
   });
 });
