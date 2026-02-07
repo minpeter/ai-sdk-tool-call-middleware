@@ -22,6 +22,7 @@ const REGEX_NOT_FOUND = /not found/;
 const REGEX_PROVIDER_DEFINED = /Provider-defined tools/;
 const REGEX_REQUIRED_NO_TOOLS =
   /Tool choice type 'required' is set, but no tools are provided/;
+const REGEX_REQUIRED_NO_FUNCTION_TOOLS = /no function tools are provided/;
 const REGEX_TOOL_CALL_TAG = /<tool_call>/;
 const REGEX_TOOL_RESPONSE_TAG = /<tool_response>/;
 const REGEX_GET_WEATHER_TAG = /<get_weather>/;
@@ -207,6 +208,22 @@ describe("createToolMiddleware error branches", () => {
         params: { prompt: [], tools: [], toolChoice: { type: "required" } },
       } as any)
     ).rejects.toThrow(REGEX_REQUIRED_NO_TOOLS);
+  });
+
+  it("throws when required toolChoice is set but tools are provider-defined only", async () => {
+    const transformParams = mw.transformParams;
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
+    await expect(
+      transformParams({
+        params: {
+          prompt: [],
+          tools: [{ type: "provider-defined", id: "x" } as any],
+          toolChoice: { type: "required" },
+        },
+      } as any)
+    ).rejects.toThrow(REGEX_REQUIRED_NO_FUNCTION_TOOLS);
   });
 });
 
