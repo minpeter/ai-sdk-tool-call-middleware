@@ -84,6 +84,147 @@ describe("createToolMiddleware", () => {
       expect(result?.content).toHaveLength(EXPECTED_SINGLE_CONTENT);
       expect(result?.content[0]).toEqual(original);
     });
+
+    it("recovers bare JSON tool payload when protocol parsing returns no tool-call", async () => {
+      const middleware = createJsonMiddleware();
+      const tools: LanguageModelV3FunctionTool[] = [
+        {
+          type: "function",
+          name: "get_weather",
+          description: "",
+          inputSchema: {
+            type: "object",
+            properties: {
+              city: { type: "string" },
+              unit: { type: "string" },
+            },
+            required: ["city"],
+            additionalProperties: false,
+          },
+        },
+      ];
+      const doGenerate = vi.fn().mockResolvedValue({
+        content: [
+          {
+            type: "text",
+            text: '{"name":"get_weather","arguments":{"city":"Seoul","unit":"celsius"}}',
+          },
+        ],
+      });
+
+      const result = await middleware.wrapGenerate?.({
+        doGenerate,
+        params: {
+          prompt: [],
+          tools,
+          providerOptions: {
+            toolCallMiddleware: {
+              originalTools: originalToolsSchema.encode(tools),
+            },
+          },
+        },
+      } as any);
+
+      const toolCall = result?.content.find(
+        (part: any) => part.type === "tool-call"
+      ) as any;
+      expect(toolCall).toBeTruthy();
+      expect(toolCall.toolName).toBe("get_weather");
+      expect(JSON.parse(toolCall.input)).toEqual({
+        city: "Seoul",
+        unit: "celsius",
+      });
+    });
+
+    it("recovers arguments-only JSON object for single strict tool schema", async () => {
+      const middleware = createJsonMiddleware();
+      const tools: LanguageModelV3FunctionTool[] = [
+        {
+          type: "function",
+          name: "get_weather",
+          description: "",
+          inputSchema: {
+            type: "object",
+            properties: {
+              city: { type: "string" },
+              unit: { type: "string" },
+            },
+            required: ["city"],
+            additionalProperties: false,
+          },
+        },
+      ];
+      const doGenerate = vi.fn().mockResolvedValue({
+        content: [
+          {
+            type: "text",
+            text: '{"city":"Busan","unit":"celsius"}',
+          },
+        ],
+      });
+
+      const result = await middleware.wrapGenerate?.({
+        doGenerate,
+        params: {
+          prompt: [],
+          tools,
+          providerOptions: {
+            toolCallMiddleware: {
+              originalTools: originalToolsSchema.encode(tools),
+            },
+          },
+        },
+      } as any);
+
+      const toolCall = result?.content.find(
+        (part: any) => part.type === "tool-call"
+      ) as any;
+      expect(toolCall).toBeTruthy();
+      expect(toolCall.toolName).toBe("get_weather");
+      expect(JSON.parse(toolCall.input)).toEqual({
+        city: "Busan",
+        unit: "celsius",
+      });
+    });
+
+    it("does not recover arguments-only JSON when keys do not match strict schema", async () => {
+      const middleware = createJsonMiddleware();
+      const tools: LanguageModelV3FunctionTool[] = [
+        {
+          type: "function",
+          name: "get_weather",
+          description: "",
+          inputSchema: {
+            type: "object",
+            properties: {
+              city: { type: "string" },
+            },
+            required: ["city"],
+            additionalProperties: false,
+          },
+        },
+      ];
+      const doGenerate = vi.fn().mockResolvedValue({
+        content: [{ type: "text", text: '{"foo":"bar"}' }],
+      });
+
+      const result = await middleware.wrapGenerate?.({
+        doGenerate,
+        params: {
+          prompt: [],
+          tools,
+          providerOptions: {
+            toolCallMiddleware: {
+              originalTools: originalToolsSchema.encode(tools),
+            },
+          },
+        },
+      } as any);
+
+      expect(result?.content).toEqual([
+        { type: "text", text: '{"foo":"bar"}' },
+      ]);
+    });
   });
 
   describe("wrapGenerate with xmlProtocol", () => {

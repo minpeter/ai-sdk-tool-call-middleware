@@ -118,4 +118,30 @@ describe("xmlProtocol parseGeneratedText branches", () => {
     const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
     expect(out).toEqual([{ type: "text", text }]);
   });
+
+  it("repairs malformed self-closing root with body-style payload", () => {
+    const p = xmlProtocol();
+    const localTools = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+            unit: { type: "string" },
+          },
+        },
+      },
+    ] as any;
+    const text =
+      "<get_weather\n  <city>Seoul</city>\n  <unit>celsius</unit>\n/>";
+    const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    const args = JSON.parse(tool.input);
+    expect(args.city).toBe("Seoul");
+    expect(args.unit).toBe("celsius");
+  });
 });

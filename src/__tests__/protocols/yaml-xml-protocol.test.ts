@@ -126,6 +126,29 @@ unit: celsius
       });
     });
 
+    it("should repair malformed self-closing root with body-style YAML payload", () => {
+      const protocol = yamlProtocol();
+      const text = `<get_weather
+location: Seoul
+unit: celsius
+/>`;
+      const out = protocol.parseGeneratedText({
+        text,
+        tools: basicTools,
+        options: {},
+      });
+
+      const toolCalls = out.filter((c) => c.type === "tool-call");
+      expect(toolCalls).toHaveLength(1);
+      expect(toolCalls[0]).toMatchObject({
+        type: "tool-call",
+        toolName: "get_weather",
+      });
+      const args = JSON.parse((toolCalls[0] as { input: string }).input);
+      expect(args.location).toBe("Seoul");
+      expect(args.unit).toBe("celsius");
+    });
+
     it("should parse multiple tool calls", () => {
       const protocol = yamlProtocol();
       const text = `<get_location/>

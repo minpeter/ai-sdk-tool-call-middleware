@@ -7,6 +7,7 @@ import YAML from "yaml";
 import { generateId } from "../utils/id";
 import { addTextSegment } from "../utils/protocol-utils";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
+import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
 export interface YamlProtocolOptions {
@@ -387,12 +388,26 @@ export const yamlProtocol = (
 
       const processedElements: LanguageModelV3Content[] = [];
       let currentIndex = 0;
+      let parseText = text;
 
-      const toolCalls = findToolCalls(text, toolNames);
+      let toolCalls = findToolCalls(parseText, toolNames);
+      if (toolCalls.length === 0) {
+        const repaired = tryRepairXmlSelfClosingRootWithBody(
+          parseText,
+          toolNames
+        );
+        if (repaired) {
+          const repairedCalls = findToolCalls(repaired, toolNames);
+          if (repairedCalls.length > 0) {
+            parseText = repaired;
+            toolCalls = repairedCalls;
+          }
+        }
+      }
 
       for (const tc of toolCalls) {
         currentIndex = processToolCallMatch(
-          text,
+          parseText,
           tc,
           currentIndex,
           processedElements,
@@ -400,8 +415,8 @@ export const yamlProtocol = (
         );
       }
 
-      if (currentIndex < text.length) {
-        addTextSegment(text.substring(currentIndex), processedElements);
+      if (currentIndex < parseText.length) {
+        addTextSegment(parseText.substring(currentIndex), processedElements);
       }
 
       return processedElements;

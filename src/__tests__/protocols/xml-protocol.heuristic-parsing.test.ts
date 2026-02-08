@@ -625,8 +625,8 @@ describe("XML Protocol Heuristic Parsing", () => {
 
       if (result[0].type === "tool-call") {
         const input = JSON.parse(result[0].input);
-        // When schema expects strings but we get numbers, we should still try to convert numbers
-        expect(input.data).toEqual([123, "hello", 45.67, "true"]);
+        // Schema-first coercion: keep string-typed array items as strings.
+        expect(input.data).toEqual(["123", "hello", "45.67", "true"]);
       }
     });
 

@@ -8,6 +8,7 @@ import { parse, stringify } from "../../rxml";
 import { generateId } from "../utils/id";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
+import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
 export interface XmlProtocolOptions {
@@ -945,12 +946,26 @@ export const xmlProtocol = (
 
       const processedElements: LanguageModelV3Content[] = [];
       let currentIndex = 0;
+      let parseText = text;
 
-      const toolCalls = findToolCalls(text, toolNames);
+      let toolCalls = findToolCalls(parseText, toolNames);
       if (toolCalls.length === 0) {
-        const fallbackToolCall = findLinePrefixedToolCall(text, toolNames);
+        const fallbackToolCall = findLinePrefixedToolCall(parseText, toolNames);
         if (fallbackToolCall !== null) {
           toolCalls.push(fallbackToolCall);
+        }
+      }
+      if (toolCalls.length === 0) {
+        const repaired = tryRepairXmlSelfClosingRootWithBody(
+          parseText,
+          toolNames
+        );
+        if (repaired) {
+          const repairedCalls = findToolCalls(repaired, toolNames);
+          if (repairedCalls.length > 0) {
+            parseText = repaired;
+            toolCalls = repairedCalls;
+          }
         }
       }
 
@@ -958,24 +973,24 @@ export const xmlProtocol = (
         if (tc.startIndex > currentIndex) {
           processedElements.push({
             type: "text",
-            text: text.substring(currentIndex, tc.startIndex),
+            text: parseText.substring(currentIndex, tc.startIndex),
           });
         }
         processToolCall({
           toolCall: tc,
           tools,
           options,
-          text,
+          text: parseText,
           processedElements,
           parseOptions,
         });
         currentIndex = tc.endIndex;
       }
 
-      if (currentIndex < text.length) {
+      if (currentIndex < parseText.length) {
         processedElements.push({
           type: "text",
-          text: text.substring(currentIndex),
+          text: parseText.substring(currentIndex),
         });
       }
 
