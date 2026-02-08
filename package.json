@@ -55,11 +55,6 @@
     "fmt:biome": "biome check --write",
     "fmt": "run-p fmt:*",
     "changeset": "changeset",
-    "experiment:openrouter": "tsx experiments/openrouter/cli.ts",
-    "experiment:openrouter:plan": "tsx experiments/openrouter/cli.ts --phase=free-burn-in --dry-run",
-    "experiment:openrouter:free-burn-in": "tsx experiments/openrouter/cli.ts --phase=free-burn-in",
-    "experiment:openrouter:free-expansion": "tsx experiments/openrouter/cli.ts --phase=free-expansion",
-    "experiment:openrouter:paid-main": "tsx experiments/openrouter/cli.ts --phase=paid-main --budget-usd=20 --reserve-budget-usd=4 --exclude-top-expensive=10",
     "ci:release": "pnpm build && changeset publish",
     "ci:version": "changeset version"
   },
