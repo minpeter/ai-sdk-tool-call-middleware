@@ -462,6 +462,60 @@ function findToolCalls(
   return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
 }
 
+function findLinePrefixedXmlBodyEnd(
+  text: string,
+  bodyStartIndex: number
+): number {
+  let cursor = bodyStartIndex;
+  let depth = 0;
+  let lastCompleteEnd = -1;
+
+  while (cursor < text.length) {
+    if (depth === 0) {
+      cursor = consumeWhitespace(text, cursor);
+      if (cursor >= text.length || text.charAt(cursor) !== "<") {
+        break;
+      }
+    }
+
+    const token = nextTagToken(text, cursor);
+    if (token.kind === "eof") {
+      break;
+    }
+
+    if (token.kind === "special") {
+      if (depth === 0) {
+        break;
+      }
+      cursor = token.nextPos;
+      continue;
+    }
+
+    if (token.kind === "open") {
+      cursor = token.nextPos;
+      if (token.selfClosing) {
+        if (depth === 0) {
+          lastCompleteEnd = token.nextPos;
+        }
+      } else {
+        depth += 1;
+      }
+      continue;
+    }
+
+    if (depth <= 0) {
+      break;
+    }
+    depth -= 1;
+    cursor = token.nextPos;
+    if (depth === 0) {
+      lastCompleteEnd = token.nextPos;
+    }
+  }
+
+  return lastCompleteEnd;
+}
+
 function findLinePrefixedToolCall(
   text: string,
   toolNames: string[]
@@ -490,21 +544,24 @@ function findLinePrefixedToolCall(
     while (match !== null) {
       const prefix = match[1] ?? "";
       const startIndex = match.index + prefix.length;
-      const contentStart = linePattern.lastIndex;
-      const content = text.slice(contentStart).trimStart();
-
-      // Only treat this as a tool call when XML-like body follows.
-      if (!content.startsWith("<")) {
+      const contentStart = consumeWhitespace(text, linePattern.lastIndex);
+      if (contentStart >= text.length || text.charAt(contentStart) !== "<") {
         match = linePattern.exec(text);
         continue;
       }
+      const contentEnd = findLinePrefixedXmlBodyEnd(text, contentStart);
+      if (contentEnd === -1 || contentEnd <= contentStart) {
+        match = linePattern.exec(text);
+        continue;
+      }
+      const content = text.slice(contentStart, contentEnd);
 
       const candidate = {
         toolName,
         startIndex,
-        endIndex: text.length,
+        endIndex: contentEnd,
         content,
-        segment: text.slice(startIndex),
+        segment: text.slice(startIndex, contentEnd),
       };
       if (best === null || candidate.startIndex < best.startIndex) {
         best = candidate;

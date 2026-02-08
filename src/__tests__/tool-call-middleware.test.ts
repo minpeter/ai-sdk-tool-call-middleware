@@ -136,6 +136,68 @@ describe("createToolMiddleware", () => {
       });
     });
 
+    it("preserves surrounding text when JSON fallback recovers from fenced payload", async () => {
+      const middleware = createJsonMiddleware();
+      const tools: LanguageModelV3FunctionTool[] = [
+        {
+          type: "function",
+          name: "get_weather",
+          description: "",
+          inputSchema: {
+            type: "object",
+            properties: {
+              city: { type: "string" },
+              unit: { type: "string" },
+            },
+            required: ["city"],
+            additionalProperties: false,
+          },
+        },
+      ];
+      const doGenerate = vi.fn().mockResolvedValue({
+        content: [
+          {
+            type: "text",
+            text: [
+              "Before",
+              "```json",
+              '{"name":"get_weather","arguments":{"city":"Seoul","unit":"celsius"}}',
+              "```",
+              "After",
+            ].join("\n"),
+          },
+        ],
+      });
+
+      const result = await middleware.wrapGenerate?.({
+        doGenerate,
+        params: {
+          prompt: [],
+          tools,
+          providerOptions: {
+            toolCallMiddleware: {
+              originalTools: originalToolsSchema.encode(tools),
+            },
+          },
+        },
+      } as any);
+
+      const EXPECTED_CONTENT_LENGTH = 3;
+      expect(result?.content).toHaveLength(EXPECTED_CONTENT_LENGTH);
+
+      const [before, toolCall, after] = result?.content as any[];
+      expect(before).toEqual({ type: "text", text: "Before\n" });
+      expect(toolCall).toMatchObject({
+        type: "tool-call",
+        toolName: "get_weather",
+      });
+      expect(JSON.parse(toolCall.input)).toEqual({
+        city: "Seoul",
+        unit: "celsius",
+      });
+      expect(after).toEqual({ type: "text", text: "\nAfter" });
+    });
+
     it("recovers arguments-only JSON object for single strict tool schema", async () => {
       const middleware = createJsonMiddleware();
       const tools: LanguageModelV3FunctionTool[] = [

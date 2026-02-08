@@ -104,6 +104,34 @@ describe("xmlProtocol parseGeneratedText branches", () => {
     expect(args.unit).toBe("celsius");
   });
 
+  it("preserves trailing text after line-prefixed XML fallback payload", () => {
+    const p = xmlProtocol();
+    const localTools = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+          },
+        },
+      },
+    ] as any;
+    const text = "get_weather\n<city>Seoul</city>\nThanks";
+    const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
+
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(JSON.parse(tool.input)).toEqual({ city: "Seoul" });
+
+    const trailing = out
+      .filter((c) => c.type === "text")
+      .map((c: any) => c.text);
+    expect(trailing.join("")).toContain("Thanks");
+  });
+
   it("does not treat line-prefixed tool name without XML body as tool-call", () => {
     const p = xmlProtocol();
     const localTools = [

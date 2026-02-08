@@ -11,6 +11,12 @@ interface ToolCallCandidate {
   input: string;
 }
 
+interface JsonCandidate {
+  text: string;
+  startIndex: number;
+  endIndex: number;
+}
+
 interface JsonScanState {
   depth: number;
   inString: boolean;
@@ -37,9 +43,9 @@ function parseJsonCandidate(candidateText: string): unknown {
   }
 }
 
-function extractCodeBlockCandidates(text: string): string[] {
+function extractCodeBlockCandidates(text: string): JsonCandidate[] {
   const codeBlockRegex = /```(?:json|yaml|xml)?\s*([\s\S]*?)```/gi;
-  const candidates: string[] = [];
+  const candidates: JsonCandidate[] = [];
   let match: RegExpExecArray | null;
   while (true) {
     match = codeBlockRegex.exec(text);
@@ -48,7 +54,13 @@ function extractCodeBlockCandidates(text: string): string[] {
     }
     const body = match[1]?.trim();
     if (body) {
-      candidates.push(body);
+      const startIndex = match.index ?? 0;
+      const endIndex = startIndex + match[0].length;
+      candidates.push({
+        text: body,
+        startIndex,
+        endIndex,
+      });
     }
   }
   return candidates;
@@ -84,7 +96,7 @@ function extractBalancedCandidateAt(
   text: string,
   start: number,
   maxCandidateLength: number
-): string | null {
+): JsonCandidate | null {
   let state: JsonScanState = {
     depth: 0,
     inString: false,
@@ -96,14 +108,19 @@ function extractBalancedCandidateAt(
     state = scanJsonChar(state, char);
 
     if (state.depth === 0) {
-      const candidate = text.slice(start, end + 1).trim();
+      const endIndex = end + 1;
+      const candidate = text.slice(start, endIndex);
       if (
         candidate.length > 1 &&
         candidate.length <= maxCandidateLength &&
         candidate.startsWith("{") &&
         candidate.endsWith("}")
       ) {
-        return candidate;
+        return {
+          text: candidate,
+          startIndex: start,
+          endIndex,
+        };
       }
       return null;
     }
@@ -114,9 +131,9 @@ function extractBalancedCandidateAt(
   return null;
 }
 
-function extractBalancedJsonObjects(text: string): string[] {
+function extractBalancedJsonObjects(text: string): JsonCandidate[] {
   const maxCandidateLength = 10_000;
-  const candidates = new Set<string>();
+  const candidates = new Map<string, JsonCandidate>();
 
   for (let start = 0; start < text.length; start += 1) {
     if (text[start] !== "{") {
@@ -128,19 +145,42 @@ function extractBalancedJsonObjects(text: string): string[] {
       maxCandidateLength
     );
     if (candidate) {
-      candidates.add(candidate);
+      candidates.set(
+        `${candidate.startIndex}:${candidate.endIndex}`,
+        candidate
+      );
     }
   }
 
-  return [...candidates];
+  return [...candidates.values()];
 }
 
-function extractJsonLikeCandidates(rawText: string): string[] {
-  const taggedMatches = [
-    ...rawText.matchAll(/<tool_call>([\s\S]*?)<\/tool_call>/gi),
-  ]
-    .map((match) => match[1]?.trim())
-    .filter((item): item is string => Boolean(item));
+function extractTaggedToolCallCandidates(rawText: string): JsonCandidate[] {
+  const toolCallRegex = /<tool_call>([\s\S]*?)<\/tool_call>/gi;
+  const candidates: JsonCandidate[] = [];
+  let match: RegExpExecArray | null;
+  while (true) {
+    match = toolCallRegex.exec(rawText);
+    if (!match) {
+      break;
+    }
+    const body = match[1]?.trim();
+    if (!body) {
+      continue;
+    }
+    const startIndex = match.index ?? 0;
+    const endIndex = startIndex + match[0].length;
+    candidates.push({
+      text: body,
+      startIndex,
+      endIndex,
+    });
+  }
+  return candidates;
+}
+
+function extractJsonLikeCandidates(rawText: string): JsonCandidate[] {
+  const taggedMatches = extractTaggedToolCallCandidates(rawText);
 
   const codeBlocks = extractCodeBlockCandidates(rawText);
   const balancedObjects = extractBalancedJsonObjects(rawText);
@@ -155,6 +195,26 @@ function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV3Content {
     toolName: candidate.toolName,
     input: candidate.input,
   };
+}
+
+function toRecoveredParts(
+  text: string,
+  candidate: JsonCandidate,
+  toolCallPart: LanguageModelV3Content
+): LanguageModelV3Content[] {
+  const out: LanguageModelV3Content[] = [];
+  const prefix = text.slice(0, candidate.startIndex);
+  if (prefix.length > 0) {
+    out.push({ type: "text", text: prefix });
+  }
+
+  out.push(toolCallPart);
+
+  const suffix = text.slice(candidate.endIndex);
+  if (suffix.length > 0) {
+    out.push({ type: "text", text: suffix });
+  }
+  return out;
 }
 
 function parseAsToolPayload(
@@ -259,20 +319,20 @@ export function recoverToolCallFromJsonCandidates(
   }
 
   const jsonCandidates = extractJsonLikeCandidates(text);
-  for (const candidateText of jsonCandidates) {
-    const parsed = parseJsonCandidate(candidateText);
+  for (const jsonCandidate of jsonCandidates) {
+    const parsed = parseJsonCandidate(jsonCandidate.text);
     if (parsed === undefined) {
       continue;
     }
 
     const toolPayload = parseAsToolPayload(parsed, tools);
     if (toolPayload) {
-      return [toToolCallPart(toolPayload)];
+      return toRecoveredParts(text, jsonCandidate, toToolCallPart(toolPayload));
     }
 
     const argsPayload = parseAsArgumentsOnly(parsed, tools);
     if (argsPayload) {
-      return [toToolCallPart(argsPayload)];
+      return toRecoveredParts(text, jsonCandidate, toToolCallPart(argsPayload));
     }
   }
 
