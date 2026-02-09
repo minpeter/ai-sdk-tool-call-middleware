@@ -87,7 +87,7 @@ function scanJsonChar(state: JsonScanState, char: string): JsonScanState {
     return { ...state, depth: state.depth + 1 };
   }
   if (char === "}") {
-    return { ...state, depth: state.depth - 1 };
+    return { ...state, depth: Math.max(0, state.depth - 1) };
   }
   return state;
 }
@@ -162,19 +162,69 @@ function extractTaggedToolCallCandidates(rawText: string): JsonCandidate[] {
 }
 
 function extractJsonLikeCandidates(rawText: string): JsonCandidate[] {
-  const taggedMatches = extractTaggedToolCallCandidates(rawText);
-
-  const codeBlocks = extractCodeBlockCandidates(rawText);
-  const balancedObjects = extractBalancedJsonObjects(rawText);
-
-  return [...taggedMatches, ...codeBlocks, ...balancedObjects].sort(
-    (left, right) => {
-      if (left.startIndex !== right.startIndex) {
-        return left.startIndex - right.startIndex;
-      }
-      return left.endIndex - right.endIndex;
-    }
+  return mergeJsonCandidatesByStart(
+    extractTaggedToolCallCandidates(rawText),
+    extractCodeBlockCandidates(rawText),
+    extractBalancedJsonObjects(rawText)
   );
+}
+
+function mergeJsonCandidatesByStart(
+  tagged: JsonCandidate[],
+  codeBlocks: JsonCandidate[],
+  balanced: JsonCandidate[]
+): JsonCandidate[] {
+  const merged: JsonCandidate[] = [];
+  let taggedIndex = 0;
+  let codeIndex = 0;
+  let balancedIndex = 0;
+
+  while (
+    taggedIndex < tagged.length ||
+    codeIndex < codeBlocks.length ||
+    balancedIndex < balanced.length
+  ) {
+    const taggedCandidate =
+      taggedIndex < tagged.length ? tagged[taggedIndex] : null;
+    const codeCandidate =
+      codeIndex < codeBlocks.length ? codeBlocks[codeIndex] : null;
+    const balancedCandidate =
+      balancedIndex < balanced.length ? balanced[balancedIndex] : null;
+
+    let nextCandidate = taggedCandidate;
+    if (
+      codeCandidate &&
+      (!nextCandidate ||
+        codeCandidate.startIndex < nextCandidate.startIndex ||
+        (codeCandidate.startIndex === nextCandidate.startIndex &&
+          codeCandidate.endIndex < nextCandidate.endIndex))
+    ) {
+      nextCandidate = codeCandidate;
+    }
+    if (
+      balancedCandidate &&
+      (!nextCandidate ||
+        balancedCandidate.startIndex < nextCandidate.startIndex ||
+        (balancedCandidate.startIndex === nextCandidate.startIndex &&
+          balancedCandidate.endIndex < nextCandidate.endIndex))
+    ) {
+      nextCandidate = balancedCandidate;
+    }
+
+    if (nextCandidate === taggedCandidate) {
+      taggedIndex += 1;
+    } else if (nextCandidate === codeCandidate) {
+      codeIndex += 1;
+    } else if (nextCandidate === balancedCandidate) {
+      balancedIndex += 1;
+    }
+
+    if (nextCandidate) {
+      merged.push(nextCandidate);
+    }
+  }
+
+  return merged;
 }
 
 function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV3Content {

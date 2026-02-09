@@ -60,4 +60,23 @@ describe("recoverToolCallFromJsonCandidates", () => {
 
     expect(recovered).toBeNull();
   });
+
+  it("recovers tool calls even if stray braces appear before JSON", () => {
+    const text = "} prefix {\"name\":\"calc\",\"arguments\":{\"a\":3}} suffix";
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    expect(recovered).not.toBeNull();
+    const tool = recovered?.find((part) => part.type === "tool-call") as any;
+
+    expect(tool.toolName).toBe("calc");
+    expect(JSON.parse(tool.input)).toEqual({ a: 3 });
+
+    const textOut = recovered
+      ?.filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(textOut).toContain("} prefix ");
+    expect(textOut).toContain(" suffix");
+  });
 });
