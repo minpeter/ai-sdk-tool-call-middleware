@@ -4,6 +4,13 @@ const EMPTY_OBJECT_REGEX = /^\{\s*\}$/s;
 const NEWLINE_SPLIT_REGEX = /\n+/;
 const COMMA_SPLIT_REGEX = /,\s*/;
 const DIGIT_KEY_REGEX = /^\d+$/;
+const WHITESPACE_REGEX = /\s+/g;
+const HAS_WHITESPACE_REGEX = /\s/;
+const SINGLE_QUOTE = "'";
+const DOUBLE_QUOTE = '"';
+const SNAKE_SEGMENT_REGEX = /_([a-zA-Z0-9])/g;
+const CAMEL_BOUNDARY_REGEX = /([a-z0-9])([A-Z])/g;
+const LEADING_UNDERSCORES_REGEX = /^_+/;
 
 export function unwrapJsonSchema(schema: unknown): unknown {
   if (!schema || typeof schema !== "object") {
@@ -427,6 +434,220 @@ function coerceStringToArray(
   return null;
 }
 
+interface StrictObjectSchemaInfo {
+  properties: Record<string, unknown>;
+  required: string[];
+  patternProperties?: Record<string, unknown>;
+}
+
+function getStrictObjectSchemaInfo(
+  unwrapped: Record<string, unknown>
+): StrictObjectSchemaInfo | null {
+  if (getSchemaType(unwrapped) !== "object") {
+    return null;
+  }
+  if (unwrapped.additionalProperties !== false) {
+    return null;
+  }
+
+  const properties = unwrapped.properties;
+  if (
+    !properties ||
+    typeof properties !== "object" ||
+    Array.isArray(properties)
+  ) {
+    return null;
+  }
+
+  const propertyMap = properties as Record<string, unknown>;
+  const required = Array.isArray(unwrapped.required)
+    ? unwrapped.required.filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0
+      )
+    : [];
+
+  const patternProps = unwrapped.patternProperties;
+  const patternProperties =
+    patternProps &&
+    typeof patternProps === "object" &&
+    !Array.isArray(patternProps)
+      ? (patternProps as Record<string, unknown>)
+      : undefined;
+
+  return {
+    properties: propertyMap,
+    required,
+    patternProperties,
+  };
+}
+
+function isSingularPluralPair(left: string, right: string): boolean {
+  return (
+    left.length > 1 &&
+    right.length > 1 &&
+    (left === `${right}s` || right === `${left}s`)
+  );
+}
+
+function snakeToCamel(value: string): string {
+  const trimmed = value.replace(LEADING_UNDERSCORES_REGEX, "");
+  if (trimmed.length === 0) {
+    return value;
+  }
+  const camelized = trimmed.replace(SNAKE_SEGMENT_REGEX, (_, c: string) =>
+    c.toUpperCase()
+  );
+  return camelized.charAt(0).toLowerCase() + camelized.slice(1);
+}
+
+function camelToSnake(value: string): string {
+  return value.replace(CAMEL_BOUNDARY_REGEX, "$1_$2").toLowerCase();
+}
+
+function isCaseStylePair(targetKey: string, sourceKey: string): boolean {
+  if (targetKey === sourceKey) {
+    return false;
+  }
+  const sourceLooksSnake = sourceKey.includes("_");
+  const targetLooksSnake = targetKey.includes("_");
+
+  if (sourceLooksSnake && snakeToCamel(sourceKey) === targetKey) {
+    return true;
+  }
+  if (
+    !sourceLooksSnake &&
+    targetLooksSnake &&
+    camelToSnake(sourceKey) === targetKey
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isUnexpectedKey(
+  key: string,
+  schemaInfo: StrictObjectSchemaInfo
+): boolean {
+  if (Object.hasOwn(schemaInfo.properties, key)) {
+    return false;
+  }
+  const patternSchemas = getPatternSchemasForKey(
+    schemaInfo.patternProperties,
+    key
+  );
+  if (patternSchemas.length > 0) {
+    return patternSchemas.every((schema) => schema === false);
+  }
+  return true;
+}
+
+function computeMissingAndUnexpectedKeys(
+  input: Record<string, unknown>,
+  schemaInfo: StrictObjectSchemaInfo
+): { missingRequired: string[]; unexpectedKeys: string[] } {
+  const missingRequired = schemaInfo.required.filter(
+    (key) => !Object.hasOwn(input, key)
+  );
+  const unexpectedKeys = Object.keys(input).filter((key) =>
+    isUnexpectedKey(key, schemaInfo)
+  );
+  return { missingRequired, unexpectedKeys };
+}
+
+function applySingularPluralRequiredKeyRename(
+  input: Record<string, unknown>,
+  schemaInfo: StrictObjectSchemaInfo
+): Record<string, unknown> | null {
+  const { missingRequired, unexpectedKeys } = computeMissingAndUnexpectedKeys(
+    input,
+    schemaInfo
+  );
+
+  if (missingRequired.length !== 1 || unexpectedKeys.length !== 1) {
+    return null;
+  }
+
+  const targetKey = missingRequired[0];
+  const sourceKey = unexpectedKeys[0];
+  if (!Object.hasOwn(schemaInfo.properties, targetKey)) {
+    return null;
+  }
+  if (!isSingularPluralPair(targetKey, sourceKey)) {
+    return null;
+  }
+  if (getSchemaType(schemaInfo.properties[targetKey]) !== "array") {
+    return null;
+  }
+  if (!Array.isArray(input[sourceKey])) {
+    return null;
+  }
+  if (!Object.hasOwn(input, sourceKey) || Object.hasOwn(input, targetKey)) {
+    return null;
+  }
+
+  const output: Record<string, unknown> = { ...input };
+  output[targetKey] = output[sourceKey];
+  delete output[sourceKey];
+  return output;
+}
+
+function applyCaseStyleRequiredKeyRename(
+  input: Record<string, unknown>,
+  schemaInfo: StrictObjectSchemaInfo
+): Record<string, unknown> | null {
+  const { missingRequired, unexpectedKeys } = computeMissingAndUnexpectedKeys(
+    input,
+    schemaInfo
+  );
+
+  if (missingRequired.length !== 1 || unexpectedKeys.length !== 1) {
+    return null;
+  }
+
+  const targetKey = missingRequired[0];
+  const sourceKey = unexpectedKeys[0];
+  if (!Object.hasOwn(schemaInfo.properties, targetKey)) {
+    return null;
+  }
+  if (!isCaseStylePair(targetKey, sourceKey)) {
+    return null;
+  }
+  if (!Object.hasOwn(input, sourceKey) || Object.hasOwn(input, targetKey)) {
+    return null;
+  }
+
+  const output: Record<string, unknown> = { ...input };
+  output[targetKey] = output[sourceKey];
+  delete output[sourceKey];
+  return output;
+}
+
+function applyStrictRequiredKeyRename(
+  input: Record<string, unknown>,
+  unwrapped: Record<string, unknown>
+): Record<string, unknown> {
+  const schemaInfo = getStrictObjectSchemaInfo(unwrapped);
+  if (!schemaInfo) {
+    return input;
+  }
+
+  const singularPlural = applySingularPluralRequiredKeyRename(
+    input,
+    schemaInfo
+  );
+  if (singularPlural) {
+    return singularPlural;
+  }
+
+  const caseStyle = applyCaseStyleRequiredKeyRename(input, schemaInfo);
+  if (caseStyle) {
+    return caseStyle;
+  }
+
+  return input;
+}
+
 /**
  * Coerce object to object using schema
  */
@@ -434,8 +655,9 @@ function coerceObjectToObject(
   value: Record<string, unknown>,
   unwrapped: Record<string, unknown>
 ): Record<string, unknown> {
+  const normalizedInput = applyStrictRequiredKeyRename(value, unwrapped);
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value)) {
+  for (const [k, v] of Object.entries(normalizedInput)) {
     out[k] = coerceValueForKey(v, k, unwrapped);
   }
   return out;
@@ -453,6 +675,174 @@ function coerceArrayToArray(
     return value.map((v, i) => coerceBySchema(v, prefixItems[i]));
   }
   return value.map((v) => coerceBySchema(v, itemsSchema));
+}
+
+function isPrimitiveSchemaType(
+  schemaType: string | undefined
+): schemaType is "string" | "number" | "integer" | "boolean" {
+  return (
+    schemaType === "string" ||
+    schemaType === "number" ||
+    schemaType === "integer" ||
+    schemaType === "boolean"
+  );
+}
+
+function isPrimitiveMatchForSchemaType(
+  value: unknown,
+  schemaType: "string" | "number" | "integer" | "boolean"
+): boolean {
+  if (schemaType === "string") {
+    return typeof value === "string";
+  }
+  if (schemaType === "number") {
+    return typeof value === "number" && Number.isFinite(value);
+  }
+  if (schemaType === "integer") {
+    return (
+      typeof value === "number" &&
+      Number.isFinite(value) &&
+      Number.isInteger(value)
+    );
+  }
+  return typeof value === "boolean";
+}
+
+function coercePrimitiveWrappedObject(
+  value: Record<string, unknown>,
+  itemsSchema: unknown
+): unknown {
+  const schemaType = getSchemaType(itemsSchema);
+  if (!isPrimitiveSchemaType(schemaType)) {
+    return null;
+  }
+
+  const keys = Object.keys(value);
+  if (keys.length !== 1) {
+    return null;
+  }
+
+  const singleValue = value[keys[0]];
+  if (singleValue && typeof singleValue === "object") {
+    return null;
+  }
+
+  const coerced = coerceBySchema(singleValue, itemsSchema);
+  return isPrimitiveMatchForSchemaType(coerced, schemaType) ? coerced : null;
+}
+
+/**
+ * Expand object-of-parallel-arrays into array-of-objects when schema is strict.
+ *
+ * Example:
+ * { field: ["status","amount"], op: ["=",">"], value: ["paid","100"] }
+ * -> [
+ *   { field: "status", op: "=", value: "paid" },
+ *   { field: "amount", op: ">", value: "100" }
+ * ]
+ *
+ * Safety boundary:
+ * - items schema must be an object schema with explicit `properties`
+ * - `additionalProperties` must be `false`
+ * - all input keys must be explicit properties
+ * - each mapped property must be primitive-like (not array/object)
+ * - all values must be arrays with identical length >= 2
+ */
+function coerceParallelArraysObjectToArray(
+  maybe: Record<string, unknown>,
+  prefixItems: unknown[] | undefined,
+  itemsSchema: unknown
+): unknown[] | null {
+  if (prefixItems && prefixItems.length > 0) {
+    return null;
+  }
+
+  const unwrappedItems = unwrapJsonSchema(itemsSchema);
+  if (
+    !unwrappedItems ||
+    typeof unwrappedItems !== "object" ||
+    Array.isArray(unwrappedItems)
+  ) {
+    return null;
+  }
+  const itemSchema = unwrappedItems as Record<string, unknown>;
+  if (getSchemaType(itemSchema) !== "object") {
+    return null;
+  }
+  if (itemSchema.additionalProperties !== false) {
+    return null;
+  }
+
+  const properties = itemSchema.properties;
+  if (
+    !properties ||
+    typeof properties !== "object" ||
+    Array.isArray(properties)
+  ) {
+    return null;
+  }
+  const propertyMap = properties as Record<string, unknown>;
+
+  const entries = Object.entries(maybe);
+  if (entries.length < 2) {
+    return null;
+  }
+  if (!entries.every(([, value]) => Array.isArray(value))) {
+    return null;
+  }
+  if (!entries.every(([key]) => Object.hasOwn(propertyMap, key))) {
+    return null;
+  }
+  if (
+    !entries.every(([key]) => {
+      const schemaType = getSchemaType(propertyMap[key]);
+      return schemaType !== "array" && schemaType !== "object";
+    })
+  ) {
+    return null;
+  }
+
+  const lengths = [
+    ...new Set(entries.map(([, value]) => (value as unknown[]).length)),
+  ];
+  if (lengths.length !== 1) {
+    return null;
+  }
+  const length = lengths[0];
+  if (length < 2) {
+    return null;
+  }
+
+  const zipped: Record<string, unknown>[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const item: Record<string, unknown> = {};
+    for (const [key, value] of entries) {
+      item[key] = (value as unknown[])[index];
+    }
+    zipped.push(item);
+  }
+
+  return coerceArrayToArray(zipped, prefixItems, itemsSchema);
+}
+
+function coerceSingleKeyObjectToArray(
+  singleValue: unknown,
+  itemsSchema: unknown
+): unknown[] | null {
+  if (Array.isArray(singleValue)) {
+    return singleValue.map((v) => coerceBySchema(v, itemsSchema));
+  }
+  if (singleValue && typeof singleValue === "object") {
+    const primitiveWrapped = coercePrimitiveWrappedObject(
+      singleValue as Record<string, unknown>,
+      itemsSchema
+    );
+    if (primitiveWrapped !== null) {
+      return [primitiveWrapped];
+    }
+    return [coerceBySchema(singleValue, itemsSchema)];
+  }
+  return null;
 }
 
 /**
@@ -477,6 +867,15 @@ function coerceObjectToArray(
     return coerceArrayToArray(arr, prefixItems, itemsSchema);
   }
 
+  const parallelArrays = coerceParallelArraysObjectToArray(
+    maybe,
+    prefixItems,
+    itemsSchema
+  );
+  if (parallelArrays !== null) {
+    return parallelArrays;
+  }
+
   // Check for single field that contains an array or object (common XML pattern)
   // This handles both: { user: [{ name: "A" }, { name: "B" }] } and { user: { name: "A" } }
   if (keys.length === 1) {
@@ -487,13 +886,12 @@ function coerceObjectToArray(
         schemaHasProperty(itemsSchema, singleKey)
       )
     ) {
-      const singleValue = maybe[singleKey];
-      if (Array.isArray(singleValue)) {
-        return singleValue.map((v) => coerceBySchema(v, itemsSchema));
-      }
-      // Also extract when single key's value is an object and wrap in array (single/multiple element consistency)
-      if (singleValue && typeof singleValue === "object") {
-        return [coerceBySchema(singleValue, itemsSchema)];
+      const result = coerceSingleKeyObjectToArray(
+        maybe[singleKey],
+        itemsSchema
+      );
+      if (result !== null) {
+        return result;
       }
     }
   }
@@ -543,6 +941,118 @@ function coerceStringToPrimitive(
   return null;
 }
 
+function coercePrimitiveToString(
+  value: unknown,
+  schemaType: string | undefined
+): string | null {
+  if (schemaType !== "string") {
+    return null;
+  }
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
+/**
+ * Conservative enum canonicalization for whitespace-only differences.
+ *
+ * Some reasoning-heavy models (for example, ERNIE-4.5-21B-A3B-Thinking) can
+ * output spaced enum tokens such as "1 d" while the schema enum is "1d".
+ *
+ * Safety boundary:
+ * - Only runs for string-only enum lists.
+ * - Only runs when the model output contains whitespace.
+ * - Only rewrites when whitespace-normalized comparison yields exactly one match.
+ */
+function coerceStringByEnumWhitespace(
+  rawValue: string,
+  unwrapped: Record<string, unknown>
+): string | null {
+  const enumValues = unwrapped.enum;
+  if (!Array.isArray(enumValues) || enumValues.length === 0) {
+    return null;
+  }
+  if (!enumValues.every((item) => typeof item === "string")) {
+    return null;
+  }
+  const normalizedEnumValues = enumValues as string[];
+  if (normalizedEnumValues.includes(rawValue)) {
+    return null;
+  }
+
+  const unquoted = unwrapMatchingQuotes(rawValue);
+  if (unquoted !== null) {
+    const exactMatches = normalizedEnumValues.filter(
+      (item) => item === unquoted
+    );
+    if (exactMatches.length === 1) {
+      return exactMatches[0];
+    }
+  }
+
+  const candidates = [rawValue, unquoted].filter(
+    (item): item is string => item !== null
+  );
+  for (const candidate of candidates) {
+    if (!HAS_WHITESPACE_REGEX.test(candidate)) {
+      continue;
+    }
+    const normalizedInput = candidate.replace(WHITESPACE_REGEX, "");
+    const matches = normalizedEnumValues.filter(
+      (item) => item.replace(WHITESPACE_REGEX, "") === normalizedInput
+    );
+    if (matches.length === 1) {
+      return matches[0];
+    }
+  }
+
+  return null;
+}
+
+function unwrapMatchingQuotes(value: string): string | null {
+  if (value.length < 2) {
+    return null;
+  }
+  const first = value[0];
+  const last = value.at(-1);
+  const isQuote =
+    (first === SINGLE_QUOTE || first === DOUBLE_QUOTE) && first === last;
+  if (!isQuote) {
+    return null;
+  }
+  return value.slice(1, -1);
+}
+
+function coerceObjectToPrimitive(
+  value: Record<string, unknown>,
+  schemaType: string | undefined,
+  fullSchema?: Record<string, unknown>
+): unknown {
+  if (!isPrimitiveSchemaType(schemaType)) {
+    return null;
+  }
+
+  const keys = Object.keys(value);
+  if (keys.length !== 1) {
+    return null;
+  }
+
+  const singleValue = value[keys[0]];
+  if (singleValue && typeof singleValue === "object") {
+    return null;
+  }
+
+  const coerced = coerceBySchema(
+    singleValue,
+    fullSchema ?? { type: schemaType }
+  );
+  return isPrimitiveMatchForSchemaType(coerced, schemaType) ? coerced : null;
+}
+
 function coerceStringValue(
   value: string,
   schemaType: string | undefined,
@@ -567,6 +1077,11 @@ function coerceStringValue(
   const primitiveResult = coerceStringToPrimitive(s, schemaType);
   if (primitiveResult !== null) {
     return primitiveResult;
+  }
+
+  const enumWhitespaceCanonical = coerceStringByEnumWhitespace(s, u);
+  if (enumWhitespaceCanonical !== null) {
+    return enumWhitespaceCanonical;
   }
 
   return value;
@@ -627,6 +1142,12 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
     return coerceStringValue(value, schemaType, u);
   }
 
+  // Coerce primitive scalars to string when schema explicitly expects a string.
+  const primitiveString = coercePrimitiveToString(value, schemaType);
+  if (primitiveString !== null) {
+    return primitiveString;
+  }
+
   // Handle object to object coercion
   if (
     schemaType === "object" &&
@@ -635,6 +1156,23 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
     !Array.isArray(value)
   ) {
     return coerceObjectToObject(value as Record<string, unknown>, u);
+  }
+
+  // Handle object wrappers when schema expects a primitive value.
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    isPrimitiveSchemaType(schemaType)
+  ) {
+    const primitiveResult = coerceObjectToPrimitive(
+      value as Record<string, unknown>,
+      schemaType,
+      u
+    );
+    if (primitiveResult !== null) {
+      return primitiveResult;
+    }
   }
 
   // Handle array coercion

@@ -8,6 +8,7 @@ import { parse, stringify } from "../../rxml";
 import { generateId } from "../utils/id";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
+import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
 export interface XmlProtocolOptions {
@@ -461,6 +462,146 @@ function findToolCalls(
   return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
 }
 
+interface TokenHandlerResult {
+  depth: number;
+  lastCompleteEnd: number;
+  shouldBreak: boolean;
+}
+
+function handleSpecialToken(depth: number): TokenHandlerResult {
+  return { depth, lastCompleteEnd: -1, shouldBreak: false };
+}
+
+function handleOpenToken(
+  token: { selfClosing: boolean; nextPos: number },
+  depth: number,
+  lastCompleteEnd: number
+): TokenHandlerResult {
+  if (token.selfClosing) {
+    return {
+      depth,
+      lastCompleteEnd: depth === 0 ? token.nextPos : lastCompleteEnd,
+      shouldBreak: false,
+    };
+  }
+  return { depth: depth + 1, lastCompleteEnd, shouldBreak: false };
+}
+
+function handleCloseToken(
+  token: { nextPos: number },
+  depth: number
+): TokenHandlerResult {
+  if (depth <= 0) {
+    return { depth, lastCompleteEnd: -1, shouldBreak: true };
+  }
+  const newDepth = depth - 1;
+  return {
+    depth: newDepth,
+    lastCompleteEnd: newDepth === 0 ? token.nextPos : -1,
+    shouldBreak: false,
+  };
+}
+
+function findLinePrefixedXmlBodyEnd(
+  text: string,
+  bodyStartIndex: number
+): number {
+  let cursor = bodyStartIndex;
+  let depth = 0;
+  let lastCompleteEnd = -1;
+
+  while (cursor < text.length) {
+    if (depth === 0) {
+      cursor = consumeWhitespace(text, cursor);
+      if (cursor >= text.length || text.charAt(cursor) !== "<") {
+        break;
+      }
+    }
+
+    const token = nextTagToken(text, cursor);
+    if (token.kind === "eof") {
+      break;
+    }
+
+    let result: TokenHandlerResult;
+    if (token.kind === "special") {
+      result = handleSpecialToken(depth);
+    } else if (token.kind === "open") {
+      result = handleOpenToken(token, depth, lastCompleteEnd);
+    } else {
+      result = handleCloseToken(token, depth);
+    }
+
+    depth = result.depth;
+    if (result.lastCompleteEnd !== -1) {
+      lastCompleteEnd = result.lastCompleteEnd;
+    }
+    if (result.shouldBreak) {
+      break;
+    }
+    cursor = token.nextPos;
+  }
+
+  return lastCompleteEnd;
+}
+
+function findLinePrefixedToolCall(
+  text: string,
+  toolNames: string[]
+): {
+  toolName: string;
+  startIndex: number;
+  endIndex: number;
+  content: string;
+  segment: string;
+} | null {
+  let best: {
+    toolName: string;
+    startIndex: number;
+    endIndex: number;
+    content: string;
+    segment: string;
+  } | null = null;
+
+  for (const toolName of toolNames) {
+    const linePattern = new RegExp(
+      `(^|\\n)[\\t ]*${escapeRegExp(toolName)}[\\t ]*:?[\\t ]*(?:\\r?\\n|$)`,
+      "g"
+    );
+
+    let match = linePattern.exec(text);
+    while (match !== null) {
+      const prefix = match[1] ?? "";
+      const startIndex = match.index + prefix.length;
+      const contentStart = consumeWhitespace(text, linePattern.lastIndex);
+      if (contentStart >= text.length || text.charAt(contentStart) !== "<") {
+        match = linePattern.exec(text);
+        continue;
+      }
+      const contentEnd = findLinePrefixedXmlBodyEnd(text, contentStart);
+      if (contentEnd === -1 || contentEnd <= contentStart) {
+        match = linePattern.exec(text);
+        continue;
+      }
+      const content = text.slice(contentStart, contentEnd);
+
+      const candidate = {
+        toolName,
+        startIndex,
+        endIndex: contentEnd,
+        content,
+        segment: text.slice(startIndex, contentEnd),
+      };
+      if (best === null || candidate.startIndex < best.startIndex) {
+        best = candidate;
+      }
+      break;
+    }
+  }
+
+  return best;
+}
+
 function findEarliestToolTag(
   buffer: string,
   toolNames: string[]
@@ -853,6 +994,34 @@ function createProcessBufferHandler(
   };
 }
 
+function findToolCallsWithFallbacks(
+  text: string,
+  toolNames: string[]
+): { parseText: string; toolCalls: ReturnType<typeof findToolCalls> } {
+  let parseText = text;
+  let toolCalls = findToolCalls(parseText, toolNames);
+
+  if (toolCalls.length === 0) {
+    const fallbackToolCall = findLinePrefixedToolCall(parseText, toolNames);
+    if (fallbackToolCall !== null) {
+      toolCalls.push(fallbackToolCall);
+    }
+  }
+
+  if (toolCalls.length === 0) {
+    const repaired = tryRepairXmlSelfClosingRootWithBody(parseText, toolNames);
+    if (repaired) {
+      const repairedCalls = findToolCalls(repaired, toolNames);
+      if (repairedCalls.length > 0) {
+        parseText = repaired;
+        toolCalls = repairedCalls;
+      }
+    }
+  }
+
+  return { parseText, toolCalls };
+}
+
 export const xmlProtocol = (
   protocolOptions?: XmlProtocolOptions
 ): TCMCoreProtocol => {
@@ -892,30 +1061,33 @@ export const xmlProtocol = (
       const processedElements: LanguageModelV3Content[] = [];
       let currentIndex = 0;
 
-      const toolCalls = findToolCalls(text, toolNames);
+      const { parseText, toolCalls } = findToolCallsWithFallbacks(
+        text,
+        toolNames
+      );
 
       for (const tc of toolCalls) {
         if (tc.startIndex > currentIndex) {
           processedElements.push({
             type: "text",
-            text: text.substring(currentIndex, tc.startIndex),
+            text: parseText.substring(currentIndex, tc.startIndex),
           });
         }
         processToolCall({
           toolCall: tc,
           tools,
           options,
-          text,
+          text: parseText,
           processedElements,
           parseOptions,
         });
         currentIndex = tc.endIndex;
       }
 
-      if (currentIndex < text.length) {
+      if (currentIndex < parseText.length) {
         processedElements.push({
           type: "text",
-          text: text.substring(currentIndex),
+          text: parseText.substring(currentIndex),
         });
       }
 
