@@ -288,7 +288,14 @@ function parseAsArgumentsOnly(
   if (!isRecord(payload)) {
     return null;
   }
-  if (Object.hasOwn(payload, "name") || Object.hasOwn(payload, "arguments")) {
+  const hasNameEnvelope =
+    Object.hasOwn(payload, "name") &&
+    typeof payload.name === "string" &&
+    payload.name.length > 0;
+  const hasArgumentsEnvelope =
+    Object.hasOwn(payload, "arguments") &&
+    (typeof payload.arguments === "string" || isRecord(payload.arguments));
+  if (hasNameEnvelope || hasArgumentsEnvelope) {
     return null;
   }
 

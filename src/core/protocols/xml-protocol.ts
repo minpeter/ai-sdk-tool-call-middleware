@@ -469,7 +469,7 @@ interface TokenHandlerResult {
 }
 
 function handleSpecialToken(depth: number): TokenHandlerResult {
-  return { depth, lastCompleteEnd: -1, shouldBreak: depth === 0 };
+  return { depth, lastCompleteEnd: -1, shouldBreak: false };
 }
 
 function handleOpenToken(

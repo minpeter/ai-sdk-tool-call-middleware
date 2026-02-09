@@ -532,16 +532,12 @@ function isUnexpectedKey(
   if (Object.hasOwn(schemaInfo.properties, key)) {
     return false;
   }
-  if (schemaInfo.patternProperties) {
-    for (const pattern of Object.keys(schemaInfo.patternProperties)) {
-      try {
-        if (new RegExp(pattern).test(key)) {
-          return false;
-        }
-      } catch {
-        // Ignore invalid regex patterns
-      }
-    }
+  const patternSchemas = getPatternSchemasForKey(
+    schemaInfo.patternProperties,
+    key
+  );
+  if (patternSchemas.length > 0) {
+    return patternSchemas.every((schema) => schema === false);
   }
   return true;
 }
@@ -1033,7 +1029,8 @@ function unwrapMatchingQuotes(value: string): string | null {
 
 function coerceObjectToPrimitive(
   value: Record<string, unknown>,
-  schemaType: string | undefined
+  schemaType: string | undefined,
+  fullSchema?: Record<string, unknown>
 ): unknown {
   if (!isPrimitiveSchemaType(schemaType)) {
     return null;
@@ -1049,7 +1046,10 @@ function coerceObjectToPrimitive(
     return null;
   }
 
-  const coerced = coerceBySchema(singleValue, { type: schemaType });
+  const coerced = coerceBySchema(
+    singleValue,
+    fullSchema ?? { type: schemaType }
+  );
   return isPrimitiveMatchForSchemaType(coerced, schemaType) ? coerced : null;
 }
 
@@ -1167,7 +1167,8 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
   ) {
     const primitiveResult = coerceObjectToPrimitive(
       value as Record<string, unknown>,
-      schemaType
+      schemaType,
+      u
     );
     if (primitiveResult !== null) {
       return primitiveResult;
