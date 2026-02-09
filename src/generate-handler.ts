@@ -12,6 +12,7 @@ import {
   logParsedSummary,
   logRawChunk,
 } from "./core/utils/debug";
+import { recoverToolCallFromJsonCandidates } from "./core/utils/generated-text-json-recovery";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   isToolChoiceActive,
@@ -96,7 +97,7 @@ function parseContent(
     if (getDebugLevel() === "stream") {
       logRawChunk(contentItem.text);
     }
-    return protocol.parseGeneratedText({
+    const parsedByProtocol = protocol.parseGeneratedText({
       text: contentItem.text,
       tools,
       options: {
@@ -105,6 +106,20 @@ function parseContent(
           ?.toolCallMiddleware as Record<string, unknown>),
       },
     }) as LanguageModelV3Content[];
+
+    const hasToolCall = parsedByProtocol.some(
+      (part): part is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
+        part.type === "tool-call"
+    );
+    if (hasToolCall) {
+      return parsedByProtocol;
+    }
+
+    const recoveredFromJson = recoverToolCallFromJsonCandidates(
+      contentItem.text,
+      tools
+    );
+    return recoveredFromJson ?? parsedByProtocol;
   });
 
   return parsed.map((part) =>

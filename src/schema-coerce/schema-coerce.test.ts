@@ -49,6 +49,78 @@ describe("Coercion Heuristic Handling", () => {
       expect(result).toEqual(["123", "hello", "45.67", "true"]);
     });
 
+    it("should unwrap primitive wrapper objects for array item schemas", () => {
+      const input = {
+        to: {
+          element: "legal@corp.com",
+        },
+      };
+
+      const schema = {
+        type: "array",
+        items: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual(["legal@corp.com"]);
+    });
+
+    it("should coerce primitive wrapper object values by item schema type", () => {
+      const input = {
+        number: {
+          value: "42",
+        },
+      };
+
+      const schema = {
+        type: "array",
+        items: { type: "integer" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([42]);
+    });
+
+    it("should keep object value when primitive wrapper coercion is not possible", () => {
+      const input = {
+        payload: {
+          value: { nested: "x" },
+        },
+      };
+
+      const schema = {
+        type: "array",
+        items: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([{ value: { nested: "x" } }]);
+    });
+
+    it("should unwrap wrapped primitive objects inside arrays", () => {
+      const input = [{ element: "legal@corp.com" }];
+
+      const schema = {
+        type: "array",
+        items: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual(["legal@corp.com"]);
+    });
+
+    it("should unwrap wrapped primitive objects for tags array", () => {
+      const input = [{ tag: "refund" }];
+
+      const schema = {
+        type: "array",
+        items: { type: "string" },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual(["refund"]);
+    });
+
     it("should extract object from single key (single/multiple element consistency)", () => {
       // Single and multiple elements should be processed with same structure
       const singleItem = { user: { name: "Alice" } };
@@ -420,6 +492,193 @@ describe("Coercion Heuristic Handling", () => {
       const result = coerceBySchema(input, schema) as any;
       expect(result).toEqual({ foo: "hello" });
       expect(typeof result.foo).toBe("string");
+    });
+  });
+
+  describe("Strict object key normalization", () => {
+    it("renames singular key into required plural array key", () => {
+      const input = {
+        table: "orders",
+        filter: [
+          {
+            field: "status",
+            op: "=",
+            value: "paid",
+          },
+        ],
+        limit: "50",
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          table: { type: "string" },
+          filters: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                field: { type: "string" },
+                op: { type: "string" },
+                value: { type: "string" },
+              },
+              required: ["field", "op", "value"],
+              additionalProperties: false,
+            },
+          },
+          limit: { type: "integer" },
+        },
+        required: ["table", "filters", "limit"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({
+        table: "orders",
+        filters: [
+          {
+            field: "status",
+            op: "=",
+            value: "paid",
+          },
+        ],
+        limit: 50,
+      });
+    });
+
+    it("renames snake_case key into required camelCase key", () => {
+      const input = {
+        text: "Let's ship this today.",
+        target_language: "fr",
+        formality: "casual",
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          text: { type: "string" },
+          targetLanguage: { type: "string" },
+          formality: { type: "string", enum: ["casual", "formal"] },
+        },
+        required: ["text", "targetLanguage", "formality"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({
+        text: "Let's ship this today.",
+        targetLanguage: "fr",
+        formality: "casual",
+      });
+    });
+
+    it("normalizes leading underscores when matching snake_case keys", () => {
+      const input = {
+        _target_language: "es",
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          targetLanguage: { type: "string" },
+        },
+        required: ["targetLanguage"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({
+        targetLanguage: "es",
+      });
+    });
+
+    it("renames camelCase key into required snake_case key", () => {
+      const input = {
+        targetLanguage: "ko",
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          target_language: { type: "string" },
+        },
+        required: ["target_language"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({
+        target_language: "ko",
+      });
+    });
+
+    it("does not rename when strict-object constraints are not met", () => {
+      const input = {
+        text: "hello",
+        target_language: "fr",
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          text: { type: "string" },
+          targetLanguage: { type: "string" },
+        },
+        required: ["text", "targetLanguage"],
+        additionalProperties: true,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({
+        text: "hello",
+        target_language: "fr",
+      });
+    });
+
+    it("does not apply semantic alias renames", () => {
+      const input = {
+        location: "Seoul",
+        unit: "celsius",
+        includeForecast: "true",
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          city: { type: "string" },
+          unit: { type: "string" },
+          includeForecast: { type: "boolean" },
+        },
+        required: ["city", "unit", "includeForecast"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({
+        location: "Seoul",
+        unit: "celsius",
+        includeForecast: true,
+      });
+    });
+
+    it("does not apply singular/plural rename when target is not an array schema", () => {
+      const input = {
+        filter: ["paid"],
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          filters: { type: "string" },
+        },
+        required: ["filters"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({
+        filter: ["paid"],
+      });
     });
   });
 
@@ -1012,6 +1271,174 @@ describe("Coercion Heuristic Handling", () => {
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual(input);
+    });
+
+    it("expands strict object-of-parallel-arrays into array-of-objects", () => {
+      const input = {
+        field: ["status", "amount"],
+        op: ["=", ">"],
+        value: ["paid", "100"],
+      };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            field: { type: "string" },
+            op: { type: "string" },
+            value: { type: "string" },
+          },
+          required: ["field", "op", "value"],
+          additionalProperties: false,
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([
+        { field: "status", op: "=", value: "paid" },
+        { field: "amount", op: ">", value: "100" },
+      ]);
+    });
+
+    it("does not expand parallel arrays when additionalProperties is not false", () => {
+      const input = {
+        field: ["status", "amount"],
+        op: ["=", ">"],
+      };
+
+      const schema = {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            field: { type: "string" },
+            op: { type: "string" },
+          },
+          additionalProperties: true,
+        },
+      };
+
+      const result = coerceBySchema(input, schema) as any[];
+      expect(result).toEqual([{ field: ["status", "amount"], op: ["=", ">"] }]);
+    });
+  });
+
+  describe("Primitive wrapper extraction", () => {
+    it("should unwrap single-key object when schema expects string", () => {
+      const input = { element: "hello" };
+      const schema = { type: "string" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toBe("hello");
+    });
+
+    it("should unwrap and coerce single-key object when schema expects number", () => {
+      const input = { value: "42.5" };
+      const schema = { type: "number" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toBe(42.5);
+    });
+
+    it("should unwrap and coerce single-key object when schema expects boolean", () => {
+      const input = { value: "true" };
+      const schema = { type: "boolean" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toBe(true);
+    });
+
+    it("should not unwrap when integer coercion fails", () => {
+      const input = { value: "42.5" };
+      const schema = { type: "integer" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toEqual({ value: "42.5" });
+    });
+
+    it("should not unwrap when wrapped value is an object", () => {
+      const input = { value: { nested: "x" } };
+      const schema = { type: "string" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toEqual({ value: { nested: "x" } });
+    });
+
+    it("should not unwrap multi-key object when schema expects string", () => {
+      const input = { first: "hello", second: "world" };
+      const schema = { type: "string" };
+
+      const result = coerceBySchema(input, schema);
+      expect(result).toEqual({ first: "hello", second: "world" });
+    });
+  });
+
+  describe("Primitive to string coercion", () => {
+    it("coerces booleans into strings when schema expects string", () => {
+      const result = coerceBySchema(false, { type: "string" });
+      expect(result).toBe("false");
+    });
+
+    it("coerces numbers into strings when schema expects string", () => {
+      const result = coerceBySchema(42, { type: "string" });
+      expect(result).toBe("42");
+    });
+
+    it("coerces nested object properties into strings for string-typed keys", () => {
+      const input = {
+        op: true,
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          op: { type: "string" },
+        },
+        required: ["op"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({ op: "true" });
+    });
+  });
+
+  describe("Enum whitespace canonicalization", () => {
+    it("canonicalizes quoted enum tokens when quote removal yields a unique match", () => {
+      const result = coerceBySchema("'high'", {
+        type: "string",
+        enum: ["low", "normal", "high"],
+      });
+
+      expect(result).toBe("high");
+    });
+
+    it("canonicalizes spaced enum tokens when there is exactly one match", () => {
+      const result = coerceBySchema("1 d", {
+        type: "string",
+        enum: ["1d", "1w", "1m"],
+      });
+
+      expect(result).toBe("1d");
+    });
+
+    it("does not canonicalize ambiguous enum matches", () => {
+      const result = coerceBySchema("a b", {
+        type: "string",
+        enum: ["ab", "a b"],
+      });
+
+      expect(result).toBe("a b");
+    });
+
+    it("does not canonicalize when enum includes non-string values", () => {
+      const result = coerceBySchema("1 d", {
+        type: "string",
+        enum: [1, "1d"],
+      });
+
+      expect(result).toBe("1 d");
     });
   });
 });
