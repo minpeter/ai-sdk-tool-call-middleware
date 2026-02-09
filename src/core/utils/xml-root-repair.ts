@@ -1,5 +1,5 @@
 const XML_SELF_CLOSING_ROOT_WITH_BODY_REGEX =
-  /^<([A-Za-z_][A-Za-z0-9_-]*)\s*\n([\s\S]+?)\n\s*\/>\s*$/;
+  /^<([A-Za-z_][A-Za-z0-9_-]*)\s*\r?\n([\s\S]+?)\r?\n\s*\/>\s*$/;
 
 export function tryRepairXmlSelfClosingRootWithBody(
   rawText: string,

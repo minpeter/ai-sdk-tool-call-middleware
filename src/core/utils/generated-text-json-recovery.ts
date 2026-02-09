@@ -102,19 +102,19 @@ function extractBalancedJsonObjects(text: string): JsonCandidate[] {
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index];
 
-    if (!state.inString && char === "{") {
-      if (state.depth === 0) {
-        currentStart = index;
-        ignoreCurrent = false;
-      }
+    if (!state.inString && char === "{" && state.depth === 0) {
+      currentStart = index;
+      ignoreCurrent = false;
     }
 
     state = scanJsonChar(state, char);
 
-    if (currentStart !== null && !ignoreCurrent) {
-      if (index - currentStart + 1 > maxCandidateLength) {
-        ignoreCurrent = true;
-      }
+    if (
+      currentStart !== null &&
+      !ignoreCurrent &&
+      index - currentStart + 1 > maxCandidateLength
+    ) {
+      ignoreCurrent = true;
     }
 
     if (!state.inString && char === "}" && state.depth === 0) {
@@ -174,57 +174,11 @@ function mergeJsonCandidatesByStart(
   codeBlocks: JsonCandidate[],
   balanced: JsonCandidate[]
 ): JsonCandidate[] {
-  const merged: JsonCandidate[] = [];
-  let taggedIndex = 0;
-  let codeIndex = 0;
-  let balancedIndex = 0;
-
-  while (
-    taggedIndex < tagged.length ||
-    codeIndex < codeBlocks.length ||
-    balancedIndex < balanced.length
-  ) {
-    const taggedCandidate =
-      taggedIndex < tagged.length ? tagged[taggedIndex] : null;
-    const codeCandidate =
-      codeIndex < codeBlocks.length ? codeBlocks[codeIndex] : null;
-    const balancedCandidate =
-      balancedIndex < balanced.length ? balanced[balancedIndex] : null;
-
-    let nextCandidate = taggedCandidate;
-    if (
-      codeCandidate &&
-      (!nextCandidate ||
-        codeCandidate.startIndex < nextCandidate.startIndex ||
-        (codeCandidate.startIndex === nextCandidate.startIndex &&
-          codeCandidate.endIndex < nextCandidate.endIndex))
-    ) {
-      nextCandidate = codeCandidate;
-    }
-    if (
-      balancedCandidate &&
-      (!nextCandidate ||
-        balancedCandidate.startIndex < nextCandidate.startIndex ||
-        (balancedCandidate.startIndex === nextCandidate.startIndex &&
-          balancedCandidate.endIndex < nextCandidate.endIndex))
-    ) {
-      nextCandidate = balancedCandidate;
-    }
-
-    if (nextCandidate === taggedCandidate) {
-      taggedIndex += 1;
-    } else if (nextCandidate === codeCandidate) {
-      codeIndex += 1;
-    } else if (nextCandidate === balancedCandidate) {
-      balancedIndex += 1;
-    }
-
-    if (nextCandidate) {
-      merged.push(nextCandidate);
-    }
-  }
-
-  return merged;
+  return [...tagged, ...codeBlocks, ...balanced].sort((a, b) =>
+    a.startIndex !== b.startIndex
+      ? a.startIndex - b.startIndex
+      : b.endIndex - a.endIndex
+  );
 }
 
 function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV3Content {

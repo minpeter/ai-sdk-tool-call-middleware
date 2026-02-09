@@ -104,6 +104,28 @@ describe("xmlProtocol parseGeneratedText branches", () => {
     expect(args.unit).toBe("celsius");
   });
 
+  it("parses line-prefixed tool name with colon separator", () => {
+    const p = xmlProtocol();
+    const localTools = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+          },
+        },
+      },
+    ] as any;
+    const text = "get_weather:\n<city>Busan</city>";
+    const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(JSON.parse(tool.input)).toEqual({ city: "Busan" });
+  });
+
   it("preserves trailing text after line-prefixed XML fallback payload", () => {
     const p = xmlProtocol();
     const localTools = [

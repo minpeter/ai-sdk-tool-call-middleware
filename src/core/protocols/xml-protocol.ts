@@ -462,6 +462,46 @@ function findToolCalls(
   return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
 }
 
+interface TokenHandlerResult {
+  depth: number;
+  lastCompleteEnd: number;
+  shouldBreak: boolean;
+}
+
+function handleSpecialToken(depth: number): TokenHandlerResult {
+  return { depth, lastCompleteEnd: -1, shouldBreak: depth === 0 };
+}
+
+function handleOpenToken(
+  token: { selfClosing: boolean; nextPos: number },
+  depth: number,
+  lastCompleteEnd: number
+): TokenHandlerResult {
+  if (token.selfClosing) {
+    return {
+      depth,
+      lastCompleteEnd: depth === 0 ? token.nextPos : lastCompleteEnd,
+      shouldBreak: false,
+    };
+  }
+  return { depth: depth + 1, lastCompleteEnd, shouldBreak: false };
+}
+
+function handleCloseToken(
+  token: { nextPos: number },
+  depth: number
+): TokenHandlerResult {
+  if (depth <= 0) {
+    return { depth, lastCompleteEnd: -1, shouldBreak: true };
+  }
+  const newDepth = depth - 1;
+  return {
+    depth: newDepth,
+    lastCompleteEnd: newDepth === 0 ? token.nextPos : -1,
+    shouldBreak: false,
+  };
+}
+
 function findLinePrefixedXmlBodyEnd(
   text: string,
   bodyStartIndex: number
@@ -483,34 +523,23 @@ function findLinePrefixedXmlBodyEnd(
       break;
     }
 
+    let result: TokenHandlerResult;
     if (token.kind === "special") {
-      if (depth === 0) {
-        break;
-      }
-      cursor = token.nextPos;
-      continue;
+      result = handleSpecialToken(depth);
+    } else if (token.kind === "open") {
+      result = handleOpenToken(token, depth, lastCompleteEnd);
+    } else {
+      result = handleCloseToken(token, depth);
     }
 
-    if (token.kind === "open") {
-      cursor = token.nextPos;
-      if (token.selfClosing) {
-        if (depth === 0) {
-          lastCompleteEnd = token.nextPos;
-        }
-      } else {
-        depth += 1;
-      }
-      continue;
+    depth = result.depth;
+    if (result.lastCompleteEnd !== -1) {
+      lastCompleteEnd = result.lastCompleteEnd;
     }
-
-    if (depth <= 0) {
+    if (result.shouldBreak) {
       break;
     }
-    depth -= 1;
     cursor = token.nextPos;
-    if (depth === 0) {
-      lastCompleteEnd = token.nextPos;
-    }
   }
 
   return lastCompleteEnd;
@@ -965,6 +994,34 @@ function createProcessBufferHandler(
   };
 }
 
+function findToolCallsWithFallbacks(
+  text: string,
+  toolNames: string[]
+): { parseText: string; toolCalls: ReturnType<typeof findToolCalls> } {
+  let parseText = text;
+  let toolCalls = findToolCalls(parseText, toolNames);
+
+  if (toolCalls.length === 0) {
+    const fallbackToolCall = findLinePrefixedToolCall(parseText, toolNames);
+    if (fallbackToolCall !== null) {
+      toolCalls.push(fallbackToolCall);
+    }
+  }
+
+  if (toolCalls.length === 0) {
+    const repaired = tryRepairXmlSelfClosingRootWithBody(parseText, toolNames);
+    if (repaired) {
+      const repairedCalls = findToolCalls(repaired, toolNames);
+      if (repairedCalls.length > 0) {
+        parseText = repaired;
+        toolCalls = repairedCalls;
+      }
+    }
+  }
+
+  return { parseText, toolCalls };
+}
+
 export const xmlProtocol = (
   protocolOptions?: XmlProtocolOptions
 ): TCMCoreProtocol => {
@@ -1003,28 +1060,11 @@ export const xmlProtocol = (
 
       const processedElements: LanguageModelV3Content[] = [];
       let currentIndex = 0;
-      let parseText = text;
 
-      let toolCalls = findToolCalls(parseText, toolNames);
-      if (toolCalls.length === 0) {
-        const fallbackToolCall = findLinePrefixedToolCall(parseText, toolNames);
-        if (fallbackToolCall !== null) {
-          toolCalls.push(fallbackToolCall);
-        }
-      }
-      if (toolCalls.length === 0) {
-        const repaired = tryRepairXmlSelfClosingRootWithBody(
-          parseText,
-          toolNames
-        );
-        if (repaired) {
-          const repairedCalls = findToolCalls(repaired, toolNames);
-          if (repairedCalls.length > 0) {
-            parseText = repaired;
-            toolCalls = repairedCalls;
-          }
-        }
-      }
+      const { parseText, toolCalls } = findToolCallsWithFallbacks(
+        text,
+        toolNames
+      );
 
       for (const tc of toolCalls) {
         if (tc.startIndex > currentIndex) {

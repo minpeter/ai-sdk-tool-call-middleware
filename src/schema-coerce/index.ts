@@ -10,6 +10,7 @@ const SINGLE_QUOTE = "'";
 const DOUBLE_QUOTE = '"';
 const SNAKE_SEGMENT_REGEX = /_([a-zA-Z0-9])/g;
 const CAMEL_BOUNDARY_REGEX = /([a-z0-9])([A-Z])/g;
+const LEADING_UNDERSCORES_REGEX = /^_+/;
 
 export function unwrapJsonSchema(schema: unknown): unknown {
   if (!schema || typeof schema !== "object") {
@@ -436,6 +437,7 @@ function coerceStringToArray(
 interface StrictObjectSchemaInfo {
   properties: Record<string, unknown>;
   required: string[];
+  patternProperties?: Record<string, unknown>;
 }
 
 function getStrictObjectSchemaInfo(
@@ -465,9 +467,18 @@ function getStrictObjectSchemaInfo(
       )
     : [];
 
+  const patternProps = unwrapped.patternProperties;
+  const patternProperties =
+    patternProps &&
+    typeof patternProps === "object" &&
+    !Array.isArray(patternProps)
+      ? (patternProps as Record<string, unknown>)
+      : undefined;
+
   return {
     properties: propertyMap,
     required,
+    patternProperties,
   };
 }
 
@@ -480,7 +491,14 @@ function isSingularPluralPair(left: string, right: string): boolean {
 }
 
 function snakeToCamel(value: string): string {
-  return value.replace(SNAKE_SEGMENT_REGEX, (_, c: string) => c.toUpperCase());
+  const trimmed = value.replace(LEADING_UNDERSCORES_REGEX, "");
+  if (trimmed.length === 0) {
+    return value;
+  }
+  const camelized = trimmed.replace(SNAKE_SEGMENT_REGEX, (_, c: string) =>
+    c.toUpperCase()
+  );
+  return camelized.charAt(0).toLowerCase() + camelized.slice(1);
 }
 
 function camelToSnake(value: string): string {
@@ -507,15 +525,47 @@ function isCaseStylePair(targetKey: string, sourceKey: string): boolean {
   return false;
 }
 
+function isUnexpectedKey(
+  key: string,
+  schemaInfo: StrictObjectSchemaInfo
+): boolean {
+  if (Object.hasOwn(schemaInfo.properties, key)) {
+    return false;
+  }
+  if (schemaInfo.patternProperties) {
+    for (const pattern of Object.keys(schemaInfo.patternProperties)) {
+      try {
+        if (new RegExp(pattern).test(key)) {
+          return false;
+        }
+      } catch {
+        // Ignore invalid regex patterns
+      }
+    }
+  }
+  return true;
+}
+
+function computeMissingAndUnexpectedKeys(
+  input: Record<string, unknown>,
+  schemaInfo: StrictObjectSchemaInfo
+): { missingRequired: string[]; unexpectedKeys: string[] } {
+  const missingRequired = schemaInfo.required.filter(
+    (key) => !Object.hasOwn(input, key)
+  );
+  const unexpectedKeys = Object.keys(input).filter((key) =>
+    isUnexpectedKey(key, schemaInfo)
+  );
+  return { missingRequired, unexpectedKeys };
+}
+
 function applySingularPluralRequiredKeyRename(
   input: Record<string, unknown>,
   schemaInfo: StrictObjectSchemaInfo
 ): Record<string, unknown> | null {
-  const missingRequired = schemaInfo.required.filter(
-    (key) => !Object.hasOwn(input, key)
-  );
-  const unexpectedKeys = Object.keys(input).filter(
-    (key) => !Object.hasOwn(schemaInfo.properties, key)
+  const { missingRequired, unexpectedKeys } = computeMissingAndUnexpectedKeys(
+    input,
+    schemaInfo
   );
 
   if (missingRequired.length !== 1 || unexpectedKeys.length !== 1) {
@@ -550,11 +600,9 @@ function applyCaseStyleRequiredKeyRename(
   input: Record<string, unknown>,
   schemaInfo: StrictObjectSchemaInfo
 ): Record<string, unknown> | null {
-  const missingRequired = schemaInfo.required.filter(
-    (key) => !Object.hasOwn(input, key)
-  );
-  const unexpectedKeys = Object.keys(input).filter(
-    (key) => !Object.hasOwn(schemaInfo.properties, key)
+  const { missingRequired, unexpectedKeys } = computeMissingAndUnexpectedKeys(
+    input,
+    schemaInfo
   );
 
   if (missingRequired.length !== 1 || unexpectedKeys.length !== 1) {
@@ -781,6 +829,26 @@ function coerceParallelArraysObjectToArray(
   return coerceArrayToArray(zipped, prefixItems, itemsSchema);
 }
 
+function coerceSingleKeyObjectToArray(
+  singleValue: unknown,
+  itemsSchema: unknown
+): unknown[] | null {
+  if (Array.isArray(singleValue)) {
+    return singleValue.map((v) => coerceBySchema(v, itemsSchema));
+  }
+  if (singleValue && typeof singleValue === "object") {
+    const primitiveWrapped = coercePrimitiveWrappedObject(
+      singleValue as Record<string, unknown>,
+      itemsSchema
+    );
+    if (primitiveWrapped !== null) {
+      return [primitiveWrapped];
+    }
+    return [coerceBySchema(singleValue, itemsSchema)];
+  }
+  return null;
+}
+
 /**
  * Coerce object to array using schema
  */
@@ -822,20 +890,12 @@ function coerceObjectToArray(
         schemaHasProperty(itemsSchema, singleKey)
       )
     ) {
-      const singleValue = maybe[singleKey];
-      if (Array.isArray(singleValue)) {
-        return singleValue.map((v) => coerceBySchema(v, itemsSchema));
-      }
-      // Also extract when single key's value is an object and wrap in array (single/multiple element consistency)
-      if (singleValue && typeof singleValue === "object") {
-        const primitiveWrapped = coercePrimitiveWrappedObject(
-          singleValue as Record<string, unknown>,
-          itemsSchema
-        );
-        if (primitiveWrapped !== null) {
-          return [primitiveWrapped];
-        }
-        return [coerceBySchema(singleValue, itemsSchema)];
+      const result = coerceSingleKeyObjectToArray(
+        maybe[singleKey],
+        itemsSchema
+      );
+      if (result !== null) {
+        return result;
       }
     }
   }
@@ -962,7 +1022,7 @@ function unwrapMatchingQuotes(value: string): string | null {
     return null;
   }
   const first = value[0];
-  const last = value[value.length - 1];
+  const last = value.at(-1);
   const isQuote =
     (first === SINGLE_QUOTE || first === DOUBLE_QUOTE) && first === last;
   if (!isQuote) {

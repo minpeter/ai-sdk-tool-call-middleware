@@ -572,6 +572,26 @@ describe("Coercion Heuristic Handling", () => {
       });
     });
 
+    it("normalizes leading underscores when matching snake_case keys", () => {
+      const input = {
+        _target_language: "es",
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          targetLanguage: { type: "string" },
+        },
+        required: ["targetLanguage"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({
+        targetLanguage: "es",
+      });
+    });
+
     it("renames camelCase key into required snake_case key", () => {
       const input = {
         targetLanguage: "ko",
