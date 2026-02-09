@@ -117,16 +117,26 @@ interface ToolCallMatch {
   content: string;
 }
 
+interface CompiledTool {
+  name: string;
+  openTag: string;
+  selfTagRegex: RegExp;
+  selfTagGlobalRegex: RegExp;
+}
+
 function collectToolCallsForName(
   text: string,
-  toolName: string
+  tool: CompiledTool
 ): ToolCallMatch[] {
   const toolCalls: ToolCallMatch[] = [];
   let searchIndex = 0;
-  const selfTagRegex = new RegExp(`<${toolName}\\s*/>`, "g");
+  const {
+    name: toolName,
+    openTag: startTag,
+    selfTagGlobalRegex: selfTagRegex,
+  } = tool;
 
   while (searchIndex < text.length) {
-    const startTag = `<${toolName}>`;
     const openIdx = text.indexOf(startTag, searchIndex);
 
     selfTagRegex.lastIndex = searchIndex;
@@ -176,9 +186,9 @@ function collectToolCallsForName(
   return toolCalls;
 }
 
-function findToolCalls(text: string, toolNames: string[]): ToolCallMatch[] {
-  const toolCalls = toolNames.flatMap((toolName) =>
-    collectToolCallsForName(text, toolName)
+function findToolCalls(text: string, tools: CompiledTool[]): ToolCallMatch[] {
+  const toolCalls = tools.flatMap((tool) =>
+    collectToolCallsForName(text, tool)
   );
   return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
 }
@@ -322,29 +332,27 @@ function createFlushTextHandler(
 
 function findEarliestToolTag(
   buffer: string,
-  toolNames: string[]
+  compiledTools: CompiledTool[]
 ): { index: number; name: string; selfClosing: boolean; tagLength: number } {
   let bestIndex = -1;
   let bestName = "";
   let bestSelfClosing = false;
   let bestTagLength = 0;
 
-  for (const name of toolNames) {
-    const openTag = `<${name}>`;
-    const selfTagRegex = new RegExp(`<${name}\\s*/>`);
-    const idxOpen = buffer.indexOf(openTag);
-    const selfMatch = selfTagRegex.exec(buffer);
+  for (const tool of compiledTools) {
+    const idxOpen = buffer.indexOf(tool.openTag);
+    const selfMatch = tool.selfTagRegex.exec(buffer);
     const idxSelf = selfMatch ? selfMatch.index : -1;
 
     if (idxOpen !== -1 && (bestIndex === -1 || idxOpen < bestIndex)) {
       bestIndex = idxOpen;
-      bestName = name;
+      bestName = tool.name;
       bestSelfClosing = false;
-      bestTagLength = openTag.length;
+      bestTagLength = tool.openTag.length;
     }
     if (idxSelf !== -1 && (bestIndex === -1 || idxSelf < bestIndex)) {
       bestIndex = idxSelf;
-      bestName = name;
+      bestName = tool.name;
       bestSelfClosing = true;
       bestTagLength = selfMatch ? selfMatch[0].length : 0;
     }
@@ -386,18 +394,25 @@ export const yamlProtocol = (
         return [{ type: "text", text }];
       }
 
+      const compiledTools: CompiledTool[] = toolNames.map((name) => ({
+        name,
+        openTag: `<${name}>`,
+        selfTagRegex: new RegExp(`<${name}\\s*/>`),
+        selfTagGlobalRegex: new RegExp(`<${name}\\s*/>`, "g"),
+      }));
+
       const processedElements: LanguageModelV3Content[] = [];
       let currentIndex = 0;
       let parseText = text;
 
-      let toolCalls = findToolCalls(parseText, toolNames);
+      let toolCalls = findToolCalls(parseText, compiledTools);
       if (toolCalls.length === 0) {
         const repaired = tryRepairXmlSelfClosingRootWithBody(
           parseText,
           toolNames
         );
         if (repaired) {
-          const repairedCalls = findToolCalls(repaired, toolNames);
+          const repairedCalls = findToolCalls(repaired, compiledTools);
           if (repairedCalls.length > 0) {
             parseText = repaired;
             toolCalls = repairedCalls;
@@ -424,6 +439,14 @@ export const yamlProtocol = (
 
     createStreamParser({ tools, options }) {
       const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+
+      const compiledTools: CompiledTool[] = toolNames.map((name) => ({
+        name,
+        openTag: `<${name}>`,
+        selfTagRegex: new RegExp(`<${name}\\s*/>`),
+        selfTagGlobalRegex: new RegExp(`<${name}\\s*/>`, "g"),
+      }));
+
       let buffer = "";
       let currentToolCall: { name: string; content: string } | null = null;
       let currentTextId: string | null = null;
@@ -529,7 +552,7 @@ export const yamlProtocol = (
           } else {
             const { index, name, selfClosing, tagLength } = findEarliestToolTag(
               buffer,
-              toolNames
+              compiledTools
             );
 
             if (index === -1) {
@@ -601,7 +624,14 @@ export const yamlProtocol = (
         return [];
       }
 
-      return findToolCalls(text, toolNames).map(
+      const compiledTools: CompiledTool[] = toolNames.map((name) => ({
+        name,
+        openTag: `<${name}>`,
+        selfTagRegex: new RegExp(`<${name}\\s*/>`),
+        selfTagGlobalRegex: new RegExp(`<${name}\\s*/>`, "g"),
+      }));
+
+      return findToolCalls(text, compiledTools).map(
         (tc) => `<${tc.toolName}>${tc.content}</${tc.toolName}>`
       );
     },
