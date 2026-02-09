@@ -92,67 +92,49 @@ function scanJsonChar(state: JsonScanState, char: string): JsonScanState {
   return state;
 }
 
-function extractBalancedCandidateAt(
-  text: string,
-  start: number,
-  maxCandidateLength: number
-): JsonCandidate | null {
-  let state: JsonScanState = {
-    depth: 0,
-    inString: false,
-    escaping: false,
-  };
-
-  for (let end = start; end < text.length; end += 1) {
-    const char = text[end];
-    state = scanJsonChar(state, char);
-
-    if (state.depth === 0) {
-      const endIndex = end + 1;
-      const candidate = text.slice(start, endIndex);
-      if (
-        candidate.length > 1 &&
-        candidate.length <= maxCandidateLength &&
-        candidate.startsWith("{") &&
-        candidate.endsWith("}")
-      ) {
-        return {
-          text: candidate,
-          startIndex: start,
-          endIndex,
-        };
-      }
-      return null;
-    }
-    if (end - start + 1 > maxCandidateLength) {
-      return null;
-    }
-  }
-  return null;
-}
-
 function extractBalancedJsonObjects(text: string): JsonCandidate[] {
   const maxCandidateLength = 10_000;
-  const candidates = new Map<string, JsonCandidate>();
+  const candidates: JsonCandidate[] = [];
+  let state: JsonScanState = { depth: 0, inString: false, escaping: false };
+  let currentStart: number | null = null;
+  let ignoreCurrent = false;
 
-  for (let start = 0; start < text.length; start += 1) {
-    if (text[start] !== "{") {
-      continue;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (!state.inString && char === "{") {
+      if (state.depth === 0) {
+        currentStart = index;
+        ignoreCurrent = false;
+      }
     }
-    const candidate = extractBalancedCandidateAt(
-      text,
-      start,
-      maxCandidateLength
-    );
-    if (candidate) {
-      candidates.set(
-        `${candidate.startIndex}:${candidate.endIndex}`,
-        candidate
-      );
+
+    state = scanJsonChar(state, char);
+
+    if (currentStart !== null && !ignoreCurrent) {
+      if (index - currentStart + 1 > maxCandidateLength) {
+        ignoreCurrent = true;
+      }
+    }
+
+    if (!state.inString && char === "}" && state.depth === 0) {
+      if (currentStart !== null && !ignoreCurrent) {
+        const endIndex = index + 1;
+        const candidate = text.slice(currentStart, endIndex);
+        if (candidate.length > 1) {
+          candidates.push({
+            text: candidate,
+            startIndex: currentStart,
+            endIndex,
+          });
+        }
+      }
+      currentStart = null;
+      ignoreCurrent = false;
     }
   }
 
-  return [...candidates.values()];
+  return candidates;
 }
 
 function extractTaggedToolCallCandidates(rawText: string): JsonCandidate[] {
@@ -185,7 +167,14 @@ function extractJsonLikeCandidates(rawText: string): JsonCandidate[] {
   const codeBlocks = extractCodeBlockCandidates(rawText);
   const balancedObjects = extractBalancedJsonObjects(rawText);
 
-  return [...taggedMatches, ...codeBlocks, ...balancedObjects];
+  return [...taggedMatches, ...codeBlocks, ...balancedObjects].sort(
+    (left, right) => {
+      if (left.startIndex !== right.startIndex) {
+        return left.startIndex - right.startIndex;
+      }
+      return left.endIndex - right.endIndex;
+    }
+  );
 }
 
 function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV3Content {
