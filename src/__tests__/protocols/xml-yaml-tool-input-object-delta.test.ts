@@ -3,7 +3,8 @@ import type {
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import YAML from "yaml";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import { yamlProtocol } from "../../core/protocols/yaml-protocol";
 import {
@@ -50,6 +51,19 @@ const weatherTool: LanguageModelV3FunctionTool = {
   },
 };
 
+const strictNameTool: LanguageModelV3FunctionTool = {
+  type: "function",
+  name: "bad_tool",
+  description: "Strict tool for malformed stream edge tests",
+  inputSchema: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+    },
+    required: ["name"],
+  },
+};
+
 function createTextDeltaStream(chunks: string[]) {
   return new ReadableStream<LanguageModelV3StreamPart>({
     start(controller) {
@@ -81,6 +95,18 @@ function extractToolInputDeltas(parts: LanguageModelV3StreamPart[]): string[] {
       > => part.type === "tool-input-delta"
     )
     .map((part) => part.delta);
+}
+
+function extractTextDeltas(parts: LanguageModelV3StreamPart[]): string {
+  return parts
+    .filter(
+      (
+        part
+      ): part is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
+        part.type === "text-delta"
+    )
+    .map((part) => part.delta)
+    .join("");
 }
 
 function findToolCall(
@@ -243,5 +269,134 @@ describe("XML/YAML object delta streaming", () => {
     expect(yamlStarts.length).toBe(yamlEnds.length);
     expect(xmlOut.some((part) => part.type === "finish")).toBe(true);
     expect(yamlOut.some((part) => part.type === "finish")).toBe(true);
+  });
+
+  it("xml finish on unclosed malformed tool call closes stream without raw fallback by default", async () => {
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "<bad_tool><name>first</name><name>second</name>",
+        ]),
+        xmlProtocol().createStreamParser({
+          tools: [strictNameTool],
+        })
+      )
+    );
+
+    const starts = out.filter((part) => part.type === "tool-input-start");
+    const ends = out.filter((part) => part.type === "tool-input-end");
+    const text = extractTextDeltas(out);
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(text).not.toContain("<bad_tool>");
+  });
+
+  it("xml finish on unclosed malformed tool call can emit raw fallback when enabled", async () => {
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "<bad_tool><name>first</name><name>second</name>",
+        ]),
+        xmlProtocol().createStreamParser({
+          tools: [strictNameTool],
+          options: { emitRawToolCallTextOnError: true },
+        })
+      )
+    );
+
+    const starts = out.filter((part) => part.type === "tool-input-start");
+    const ends = out.filter((part) => part.type === "tool-input-end");
+    const text = extractTextDeltas(out);
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(text).toContain("<bad_tool>");
+    expect(text).toContain("<name>first</name>");
+  });
+
+  it("yaml progress parse with single-line malformed body emits no unstable deltas and no tool-call", async () => {
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream(["<get_weather>\n["]),
+        yamlProtocol().createStreamParser({
+          tools: [weatherTool],
+        })
+      )
+    );
+
+    const starts = out.filter((part) => part.type === "tool-input-start");
+    const ends = out.filter((part) => part.type === "tool-input-end");
+    const deltas = extractToolInputDeltas(out);
+    const text = extractTextDeltas(out);
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(deltas).toHaveLength(0);
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(text).not.toContain("<get_weather>");
+  });
+
+  it("yaml finish on malformed unclosed tool call can emit raw fallback when enabled", async () => {
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream(["<get_weather>\n["]),
+        yamlProtocol().createStreamParser({
+          tools: [weatherTool],
+          options: { emitRawToolCallTextOnError: true },
+        })
+      )
+    );
+
+    const starts = out.filter((part) => part.type === "tool-input-start");
+    const ends = out.filter((part) => part.type === "tool-input-end");
+    const text = extractTextDeltas(out);
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(text).toContain("<get_weather>");
+  });
+
+  it("yaml progress incomplete-tail branch suppresses deltas when truncated reparse fails", async () => {
+    const parseSpy = vi.spyOn(YAML, "parseDocument");
+    let calls = 0;
+    parseSpy.mockImplementation(
+      () =>
+        ({
+          errors:
+            ++calls === 1 || calls === 3
+              ? []
+              : [{ message: "mock reparsing/final parse failure" }],
+          toJSON: () => ({ location: "Seoul", unit: null }),
+        }) as unknown as ReturnType<typeof YAML.parseDocument>
+    );
+
+    try {
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(
+          createTextDeltaStream(["<get_weather>\nlocation: Seoul\nunit:\n"]),
+          yamlProtocol().createStreamParser({
+            tools: [weatherTool],
+          })
+        )
+      );
+
+      const starts = out.filter((part) => part.type === "tool-input-start");
+      const ends = out.filter((part) => part.type === "tool-input-end");
+      const deltas = extractToolInputDeltas(out);
+      const text = extractTextDeltas(out);
+
+      expect(starts).toHaveLength(1);
+      expect(ends).toHaveLength(1);
+      expect(deltas).toHaveLength(0);
+      expect(out.some((part) => part.type === "tool-call")).toBe(false);
+      expect(text).not.toContain("<get_weather>");
+      expect(parseSpy.mock.calls.length).toBeGreaterThanOrEqual(3);
+    } finally {
+      parseSpy.mockRestore();
+    }
   });
 });
