@@ -1,0 +1,55 @@
+{
+  "caseId": "simple-calendar",
+  "samples": [
+    {
+      "id": "json-generate-well-formed-tool-call",
+      "protocol": "json",
+      "mode": "generate",
+      "modelOutput": "<tool_call>{\"name\":\"create_event\",\"arguments\":{\"title\":\"team sync\",\"start_iso\":\"2026-02-11T10:00:00+09:00\",\"timezone\":\"Asia/Seoul\"}}</tool_call>",
+      "expected": {
+        "shouldParse": true,
+        "toolCalls": [
+          {
+            "toolName": "create_event",
+            "input": {
+              "title": "team sync",
+              "start_iso": "2026-02-11T10:00:00+09:00",
+              "timezone": "Asia/Seoul"
+            }
+          }
+        ],
+        "expectedToolNames": ["create_event"],
+        "expectedFailureMode": "NONE"
+      }
+    },
+    {
+      "id": "json-generate-prose-intent-only",
+      "protocol": "json",
+      "mode": "generate",
+      "modelOutput": "I'll create the calendar event for your team sync meeting. I have all the required information from your request. Let me make that call now.",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "PROSE_ONLY_NO_TOOL_CALL",
+        "preserveTextIncludes": [
+          "I'll create the calendar event",
+          "Let me make that call now"
+        ]
+      }
+    },
+    {
+      "id": "xml-stream-self-closing-create-event-unsupported",
+      "protocol": "xml",
+      "mode": "stream",
+      "modelOutput": "<create_event\n  start_iso=\"2026-02-11T10:00:00+09:00\"\n  timezone=\"Asia/Seoul\"\n  title=\"Team Sync\"\n/>",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "UNSUPPORTED_XML_SELF_CLOSING",
+        "preserveTextIncludes": ["<create_event", "title=\"Team Sync\""]
+      }
+    }
+  ]
+}

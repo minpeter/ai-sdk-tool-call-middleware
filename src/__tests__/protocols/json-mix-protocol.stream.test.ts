@@ -232,6 +232,70 @@ describe("jsonProtocol streaming edge cases", () => {
     expect(text).toContain('<tool_call>{"name":"c"');
   });
 
+  it("recovers unclosed tool_call at finish when envelope JSON is complete", async () => {
+    const protocol = jsonProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"recover","arguments":{"ok":true}}',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("recover");
+    expect(JSON.parse(tool.input)).toEqual({ ok: true });
+    const text = out
+      .filter((c) => c.type === "text-delta")
+      .map((c: any) => c.delta)
+      .join("");
+    expect(text).not.toContain("<tool_call>");
+  });
+
+  it("recovers unclosed tool_call at finish with partial closing-tag suffix", async () => {
+    const protocol = jsonProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"recover2","arguments":{"x":1}}</tool_',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("recover2");
+    expect(JSON.parse(tool.input)).toEqual({ x: 1 });
+    const text = out
+      .filter((c) => c.type === "text-delta")
+      .map((c: any) => c.delta)
+      .join("");
+    expect(text).not.toContain("<tool_call>");
+  });
+
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {
     const protocol = jsonProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });

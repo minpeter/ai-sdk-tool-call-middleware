@@ -17,6 +17,244 @@ interface JsonProtocolOptions {
   toolCallEnd?: string;
 }
 
+interface ToolCallEnvelope {
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+interface ParsedToolCallPayload {
+  toolName: string;
+  input: string;
+}
+
+const WHITESPACE_CHAR_REGEX = /\s/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isValidToolCallEnvelope(
+  payload: unknown
+): payload is ToolCallEnvelope {
+  if (!isRecord(payload)) {
+    return false;
+  }
+  if (typeof payload.name !== "string" || payload.name.trim().length === 0) {
+    return false;
+  }
+  if (!isRecord(payload.arguments)) {
+    return false;
+  }
+  return true;
+}
+
+function isAllowedTrailingAfterJson(
+  trailing: string,
+  toolCallEnd: string
+): boolean {
+  const normalized = trailing.trim();
+  if (normalized.length === 0) {
+    return true;
+  }
+  return toolCallEnd.startsWith(normalized);
+}
+
+function splitUnclosedToolCallCandidate(
+  text: string,
+  toolCallStart: string,
+  toolCallEnd: string
+): { prefix: string; body: string } | null {
+  const startIndex = text.indexOf(toolCallStart);
+  if (startIndex < 0) {
+    return null;
+  }
+  const contentStartIndex = startIndex + toolCallStart.length;
+  if (text.indexOf(toolCallStart, contentStartIndex) >= 0) {
+    return null;
+  }
+  if (text.indexOf(toolCallEnd, contentStartIndex) >= 0) {
+    return null;
+  }
+  return {
+    prefix: text.slice(0, startIndex),
+    body: text.slice(contentStartIndex),
+  };
+}
+
+function findLeadingJsonObjectStartIndex(text: string): number {
+  let index = 0;
+  while (index < text.length && WHITESPACE_CHAR_REGEX.test(text[index])) {
+    index += 1;
+  }
+  if (index >= text.length || text[index] !== "{") {
+    return -1;
+  }
+  return index;
+}
+
+function scanQuotedJsonChar(
+  char: string,
+  state: { inString: boolean; escaping: boolean }
+) {
+  if (state.escaping) {
+    state.escaping = false;
+    return;
+  }
+  if (char === "\\") {
+    state.escaping = true;
+    return;
+  }
+  if (char === '"') {
+    state.inString = false;
+  }
+}
+
+function scanJsonStructureChar(
+  char: string,
+  state: { depth: number; inString: boolean }
+): boolean {
+  if (char === '"') {
+    state.inString = true;
+    return false;
+  }
+  if (char === "{") {
+    state.depth += 1;
+    return false;
+  }
+  if (char === "}") {
+    state.depth -= 1;
+    return state.depth === 0;
+  }
+  return false;
+}
+
+function extractLeadingBalancedJsonObject(
+  text: string
+): { jsonText: string; trailing: string } | null {
+  const startIndex = findLeadingJsonObjectStartIndex(text);
+  if (startIndex < 0) {
+    return null;
+  }
+
+  const scanState = {
+    depth: 0,
+    inString: false,
+    escaping: false,
+  };
+
+  for (let i = startIndex; i < text.length; i += 1) {
+    const char = text[i];
+    if (scanState.inString) {
+      scanQuotedJsonChar(char, scanState);
+      continue;
+    }
+
+    if (scanJsonStructureChar(char, scanState)) {
+      return {
+        jsonText: text.slice(startIndex, i + 1),
+        trailing: text.slice(i + 1),
+      };
+    }
+  }
+
+  return null;
+}
+
+function parseStrictToolCallPayload(
+  jsonText: string
+): ParsedToolCallPayload | null {
+  try {
+    const parsedPayload = parseRJSON(jsonText);
+    if (!isValidToolCallEnvelope(parsedPayload)) {
+      return null;
+    }
+    return {
+      toolName: parsedPayload.name.trim(),
+      input: JSON.stringify(parsedPayload.arguments),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function recoverUnclosedToolCallFromBody(
+  body: string,
+  toolCallEnd: string
+): ParsedToolCallPayload | null {
+  const leadingJson = extractLeadingBalancedJsonObject(body);
+  if (!leadingJson) {
+    return null;
+  }
+  if (!isAllowedTrailingAfterJson(leadingJson.trailing, toolCallEnd)) {
+    return null;
+  }
+  return parseStrictToolCallPayload(leadingJson.jsonText);
+}
+
+function recoverUnclosedToolCallInGeneratedText(options: {
+  text: string;
+  toolCallStart: string;
+  toolCallEnd: string;
+}): LanguageModelV3Content[] | null {
+  const { text, toolCallStart, toolCallEnd } = options;
+  const candidate = splitUnclosedToolCallCandidate(
+    text,
+    toolCallStart,
+    toolCallEnd
+  );
+  if (!candidate) {
+    return null;
+  }
+
+  const recovered = recoverUnclosedToolCallFromBody(
+    candidate.body,
+    toolCallEnd
+  );
+  if (!recovered) {
+    return null;
+  }
+
+  const output: LanguageModelV3Content[] = [];
+  addTextSegment(candidate.prefix, output);
+  output.push({
+    type: "tool-call",
+    toolCallId: generateId(),
+    toolName: recovered.toolName,
+    input: recovered.input,
+  });
+  return output;
+}
+
+function tryRecoverIncompleteToolCallAtFinish(options: {
+  state: StreamState;
+  controller: StreamController;
+  toolCallEnd: string;
+}): boolean {
+  const { state, controller, toolCallEnd } = options;
+  if (!state.isInsideToolCall) {
+    return false;
+  }
+
+  const body = `${state.currentToolCallJson}${state.buffer}`;
+  const recovered = recoverUnclosedToolCallFromBody(body, toolCallEnd);
+  if (!recovered) {
+    return false;
+  }
+
+  closeTextBlock(state, controller);
+  controller.enqueue({
+    type: "tool-call",
+    toolCallId: generateId(),
+    toolName: recovered.toolName,
+    input: recovered.input,
+  } as LanguageModelV3StreamPart);
+
+  state.currentToolCallJson = "";
+  state.buffer = "";
+  state.isInsideToolCall = false;
+  return true;
+}
+
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
@@ -177,8 +415,19 @@ function handleFinishChunk(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
+  toolCallEnd: string,
   chunk: LanguageModelV3StreamPart
 ) {
+  if (
+    tryRecoverIncompleteToolCallAtFinish({
+      state,
+      controller,
+      toolCallEnd,
+    })
+  ) {
+    controller.enqueue(chunk);
+    return;
+  }
   if (state.buffer.length > 0) {
     flushBuffer(state, controller, toolCallStart);
   }
@@ -381,6 +630,20 @@ export const jsonProtocol = ({
       addTextSegment(remainingText, processedElements);
     }
 
+    const hasToolCall = processedElements.some(
+      (part) => part.type === "tool-call"
+    );
+    if (!hasToolCall) {
+      const recovered = recoverUnclosedToolCallInGeneratedText({
+        text,
+        toolCallStart,
+        toolCallEnd,
+      });
+      if (recovered) {
+        return recovered;
+      }
+    }
+
     return processedElements;
   },
 
@@ -406,7 +669,13 @@ export const jsonProtocol = ({
     >({
       transform(chunk, controller) {
         if (chunk.type === "finish") {
-          handleFinishChunk(state, controller, toolCallStart, chunk);
+          handleFinishChunk(
+            state,
+            controller,
+            toolCallStart,
+            toolCallEnd,
+            chunk
+          );
           return;
         }
 

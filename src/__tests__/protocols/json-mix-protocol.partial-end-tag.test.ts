@@ -10,7 +10,7 @@ import {
 } from "../test-helpers";
 
 describe("jsonProtocol partial end-tag handling", () => {
-  it("breaks loop when only partial end tag present at end of buffer", async () => {
+  it("keeps text when partial end tag remains but JSON envelope is incomplete", async () => {
     const protocol = jsonProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
@@ -32,11 +32,11 @@ describe("jsonProtocol partial end-tag handling", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
+    expect(out.some((c) => c.type === "tool-call")).toBe(false);
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
       .join("");
     expect(text).toContain('<tool_call>{"name":"t","arguments":{}');
-    expect(out.some((c) => c.type === "tool-call")).toBe(false);
   });
 });

@@ -1,0 +1,51 @@
+{
+  "caseId": "agent-shell",
+  "samples": [
+    {
+      "id": "json-generate-well-formed-tool-call",
+      "protocol": "json",
+      "mode": "generate",
+      "modelOutput": "<tool_call>{\"name\":\"shell\",\"arguments\":{\"command\":[\"ls\",\"-la\",\"src\",\"tests\"],\"timeout_ms\":5000}}</tool_call>",
+      "expected": {
+        "shouldParse": true,
+        "toolCalls": [
+          {
+            "toolName": "shell",
+            "input": {
+              "command": ["ls", "-la", "src", "tests"],
+              "timeout_ms": 5000
+            }
+          }
+        ],
+        "expectedToolNames": ["shell"],
+        "expectedFailureMode": "NONE"
+      }
+    },
+    {
+      "id": "json-stream-xml-function-parameter-wrapper",
+      "protocol": "json",
+      "mode": "stream",
+      "modelOutput": "<tool_call>\n<function=shell>\n<parameter=command>\n[\"ls\", \"-la\", \"src\", \"tests\"]\n</parameter>\n<parameter=timeout_ms>\n5000\n</parameter>\n</function>\n</tool_call>",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "JSON_WRAPPER_XML_FUNCTION_PARAMETER",
+        "preserveTextIncludes": ["<function=shell>", "<parameter=command>"]
+      }
+    },
+    {
+      "id": "yaml-stream-xml-tag-style",
+      "protocol": "yaml",
+      "mode": "stream",
+      "modelOutput": "<shell>\n<command>[\"ls\", \"-la\", \"src\", \"tests\"]</command>\n<timeout_ms>5000</timeout_ms>\n</shell>",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "YAML_PROTOCOL_XML_TAG_STYLE",
+        "preserveTextIncludes": ["<shell>", "<timeout_ms>5000</timeout_ms>"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "caseId": "multi-tool-weather-calendar",
+  "samples": [
+    {
+      "id": "json-generate-two-well-formed-tool-calls",
+      "protocol": "json",
+      "mode": "generate",
+      "modelOutput": "<tool_call>{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Seoul\",\"unit\":\"celsius\"}}</tool_call><tool_call>{\"name\":\"create_event\",\"arguments\":{\"title\":\"Seoul weather brief\",\"start_iso\":\"2026-02-11T09:00:00+09:00\",\"timezone\":\"Asia/Seoul\"}}</tool_call>",
+      "expected": {
+        "shouldParse": true,
+        "toolCalls": [
+          {
+            "toolName": "get_weather",
+            "input": {
+              "city": "Seoul",
+              "unit": "celsius"
+            }
+          },
+          {
+            "toolName": "create_event",
+            "input": {
+              "title": "Seoul weather brief",
+              "start_iso": "2026-02-11T09:00:00+09:00",
+              "timezone": "Asia/Seoul"
+            }
+          }
+        ],
+        "expectedToolNames": ["get_weather", "create_event"],
+        "expectedFailureMode": "NONE"
+      }
+    },
+    {
+      "id": "json-stream-unclosed-multi-object-inside-single-tool-call",
+      "protocol": "json",
+      "mode": "stream",
+      "modelOutput": "<tool_call>\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Seoul\", \"unit\": \"celsius\"}}\n{\"name\": \"create_event\", \"arguments\": {\"title\": \"Seoul weather brief\", \"start_iso\": \"2026-02-11T09:00:00+09:00\", \"timezone\": \"Asia/Seoul\"}}\n",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "UNSUPPORTED_MULTI_OBJECT_IN_SINGLE_TOOL_CALL",
+        "preserveTextIncludes": ["<tool_call>", "\"name\": \"create_event\""]
+      }
+    },
+    {
+      "id": "json-stream-xml-function-parameter-multi-call-wrapper",
+      "protocol": "json",
+      "mode": "stream",
+      "modelOutput": "<tool_call>\n<function=get_weather>\n<parameter=city>\nSeoul\n</parameter>\n<parameter=unit>\ncelsius\n</parameter>\n</function>\n</tool_call><tool_call>\n<function=create_event>\n<parameter=title>\nSeoul weather brief\n</parameter>\n<parameter=start_iso>\n2026-02-11T09:00:00+09:00\n</parameter>\n<parameter=timezone>\nAsia/Seoul\n</parameter>\n</function>\n</tool_call>",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "JSON_WRAPPER_XML_FUNCTION_PARAMETER",
+        "preserveTextIncludes": [
+          "<function=get_weather>",
+          "<function=create_event>"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "caseId": "simple-weather",
+  "samples": [
+    {
+      "id": "json-generate-unclosed-tool-call-recovers",
+      "protocol": "json",
+      "mode": "generate",
+      "modelOutput": "prefix <tool_call>{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Seoul\",\"unit\":\"celsius\"}}",
+      "expected": {
+        "shouldParse": true,
+        "toolCalls": [
+          {
+            "toolName": "get_weather",
+            "input": {
+              "city": "Seoul",
+              "unit": "celsius"
+            }
+          }
+        ],
+        "expectedToolNames": ["get_weather"],
+        "expectedFailureMode": "NONE"
+      }
+    },
+    {
+      "id": "json-stream-unclosed-with-partial-close-recovers",
+      "protocol": "json",
+      "mode": "stream",
+      "modelOutput": "<tool_call>{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Seoul\",\"unit\":\"celsius\"}}</tool_",
+      "expected": {
+        "shouldParse": true,
+        "toolCalls": [
+          {
+            "toolName": "get_weather",
+            "input": {
+              "city": "Seoul",
+              "unit": "celsius"
+            }
+          }
+        ],
+        "expectedToolNames": ["get_weather"],
+        "expectedFailureMode": "NONE"
+      }
+    },
+    {
+      "id": "xml-stream-self-closing-attribute-style-unsupported",
+      "protocol": "xml",
+      "mode": "stream",
+      "modelOutput": "<get_weather city=\"Seoul\" unit=\"celsius\"/>",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "UNSUPPORTED_XML_SELF_CLOSING",
+        "preserveTextIncludes": ["<get_weather", "unit=\"celsius\""]
+      }
+    }
+  ]
+}
