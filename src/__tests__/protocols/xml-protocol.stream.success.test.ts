@@ -438,7 +438,7 @@ describe("xmlProtocol streaming success path", () => {
     expect(fullText).toContain("Messages sent!");
   });
 
-  it("exposes XML tags in output when parsing fails (error fallback)", async () => {
+  it("suppresses raw XML tags in output when parsing fails by default", async () => {
     const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
@@ -493,12 +493,65 @@ describe("xmlProtocol streaming success path", () => {
     // Verify onError was called
     expect(onError).toHaveBeenCalled();
 
-    // Verify XML tags ARE exposed as fallback when error occurs
+    // Verify malformed tool XML is not leaked in text fallback by default
+    expect(fullText).not.toContain("<bad_tool>");
+    expect(fullText).not.toContain("</bad_tool>");
+    expect(fullText).not.toContain("<name>");
+
+    // Verify surrounding text is also present
+    expect(fullText).toContain("Calling tool:");
+    expect(fullText).toContain("Done!");
+  });
+
+  it("can expose raw XML fallback when explicitly enabled", async () => {
+    const protocol = xmlProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "bad_tool",
+        description: "Tool with strict schema",
+        inputSchema: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+          },
+          required: ["name"],
+        },
+      },
+    ];
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { emitRawToolCallTextOnError: true },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({ type: "text-delta", id: "t", delta: "Calling tool:\n" });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "t",
+          delta: "<bad_tool><name>first</name><name>second</name></bad_tool>",
+        });
+        ctrl.enqueue({ type: "text-delta", id: "t", delta: "\nDone!" });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const fullText = out
+      .filter((c) => c.type === "text-delta")
+      .map((c) => (c as { delta?: string }).delta ?? "")
+      .join("");
+
     expect(fullText).toContain("<bad_tool>");
     expect(fullText).toContain("</bad_tool>");
     expect(fullText).toContain("<name>");
-
-    // Verify surrounding text is also present
     expect(fullText).toContain("Calling tool:");
     expect(fullText).toContain("Done!");
   });

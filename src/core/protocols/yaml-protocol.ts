@@ -4,9 +4,14 @@ import type {
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 import YAML from "yaml";
-import { generateId } from "../utils/id";
+import { generateId, generateToolCallId } from "../utils/id";
 import { addTextSegment } from "../utils/protocol-utils";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
+import {
+  emitFinalRemainder,
+  emitPrefixDelta,
+  toIncompleteJsonPrefix,
+} from "../utils/streamed-tool-input-delta";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
@@ -18,7 +23,97 @@ export interface YamlProtocolOptions {
   includeMultilineExample?: boolean;
 }
 
+function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
+  return options?.emitRawToolCallTextOnError === true;
+}
+
 const LEADING_WHITESPACE_RE = /^(\s*)/;
+const INCOMPLETE_MAPPING_TAIL_RE = /^[^:[\]{}-][^:]*:\s*$/;
+
+function normalizeYamlContent(yamlContent: string): {
+  normalized: string;
+  nonEmptyLines: string[];
+} {
+  let normalized = yamlContent;
+  if (normalized.startsWith("\n")) {
+    normalized = normalized.slice(1);
+  }
+
+  const lines = normalized.split("\n");
+  const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
+  if (nonEmptyLines.length === 0) {
+    return { normalized: "", nonEmptyLines };
+  }
+
+  const minIndent = Math.min(
+    ...nonEmptyLines.map((line) => {
+      const match = line.match(LEADING_WHITESPACE_RE);
+      return match ? match[1].length : 0;
+    })
+  );
+  if (minIndent > 0) {
+    normalized = lines.map((line) => line.slice(minIndent)).join("\n");
+  }
+
+  return { normalized, nonEmptyLines };
+}
+
+function parseYamlDocumentAsMapping(normalized: string): {
+  value: Record<string, unknown> | null;
+  errors: string[];
+} {
+  try {
+    const doc = YAML.parseDocument(normalized);
+    const errors = doc.errors.map((e: { message: string }) => e.message);
+    const result = doc.toJSON();
+
+    if (result === null) {
+      return { value: {}, errors };
+    }
+    if (typeof result !== "object" || Array.isArray(result)) {
+      return { value: null, errors };
+    }
+    return { value: result as Record<string, unknown>, errors };
+  } catch (error) {
+    return {
+      value: null,
+      errors: [
+        error instanceof Error ? error.message : "Unknown YAML parsing error",
+      ],
+    };
+  }
+}
+
+function dropLastMeaningfulLine(input: string): string | null {
+  const lines = input.split("\n");
+  let index = lines.length - 1;
+  while (index >= 0) {
+    const trimmed = lines[index]?.trim() ?? "";
+    if (trimmed.length > 0 && !trimmed.startsWith("#")) {
+      break;
+    }
+    index -= 1;
+  }
+
+  if (index < 0) {
+    return null;
+  }
+
+  return lines.slice(0, index).join("\n").trimEnd();
+}
+
+function hasIncompleteMappingTail(normalized: string): boolean {
+  const lines = normalized.split("\n");
+  let index = lines.length - 1;
+  while (index >= 0) {
+    const trimmed = lines[index]?.trim() ?? "";
+    if (trimmed.length > 0 && !trimmed.startsWith("#")) {
+      return INCOMPLETE_MAPPING_TAIL_RE.test(trimmed);
+    }
+    index -= 1;
+  }
+  return false;
+}
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: XML tag parsing with nested tag tracking inherently requires complex state management
 function findClosingTagEnd(
@@ -191,56 +286,74 @@ function parseYamlContent(
   yamlContent: string,
   options?: ParserOptions
 ): Record<string, unknown> | null {
-  let normalized = yamlContent;
-  if (normalized.startsWith("\n")) {
-    normalized = normalized.slice(1);
-  }
-
-  const lines = normalized.split("\n");
-  const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
-
+  const { normalized, nonEmptyLines } = normalizeYamlContent(yamlContent);
   if (nonEmptyLines.length === 0) {
     return {};
   }
 
-  const minIndent = Math.min(
-    ...nonEmptyLines.map((line) => {
-      const match = line.match(LEADING_WHITESPACE_RE);
-      return match ? match[1].length : 0;
-    })
-  );
-  if (minIndent > 0) {
-    normalized = lines.map((line) => line.slice(minIndent)).join("\n");
-  }
-
-  try {
-    const doc = YAML.parseDocument(normalized);
-
-    if (doc.errors && doc.errors.length > 0) {
-      options?.onError?.("YAML parse error", {
-        errors: doc.errors.map((e: { message: string }) => e.message),
-      });
-      return null;
-    }
-
-    const result = doc.toJSON();
-
-    if (result === null) {
-      return {};
-    }
-
-    if (typeof result !== "object" || Array.isArray(result)) {
-      options?.onError?.("YAML content must be a key-value mapping", {
-        got: typeof result,
-      });
-      return null;
-    }
-
-    return result as Record<string, unknown>;
-  } catch (error) {
-    options?.onError?.("Failed to parse YAML content", { error });
+  const parsed = parseYamlDocumentAsMapping(normalized);
+  if (parsed.errors.length > 0) {
+    options?.onError?.("YAML parse error", {
+      errors: parsed.errors,
+    });
     return null;
   }
+
+  if (parsed.value === null) {
+    options?.onError?.("YAML content must be a key-value mapping", {
+      got: "non-mapping",
+    });
+    return null;
+  }
+
+  return parsed.value;
+}
+
+function parseYamlContentForStreamProgress(
+  yamlContent: string
+): Record<string, unknown> | null {
+  const { normalized, nonEmptyLines } = normalizeYamlContent(yamlContent);
+  if (nonEmptyLines.length === 0) {
+    return {};
+  }
+
+  const parsed = parseYamlDocumentAsMapping(normalized);
+  if (parsed.errors.length === 0) {
+    if (hasIncompleteMappingTail(normalized)) {
+      const truncated = dropLastMeaningfulLine(normalized);
+      if (truncated == null || truncated.length === 0) {
+        return {};
+      }
+      const reparsed = parseYamlDocumentAsMapping(truncated);
+      if (reparsed.errors.length > 0) {
+        return null;
+      }
+      return reparsed.value;
+    }
+    return parsed.value;
+  }
+
+  const lines = normalized.split("\n");
+  if (lines.length < 2) {
+    return null;
+  }
+  const lastLine = lines.at(-1) ?? "";
+  const trimmedLastLine = lastLine.trim();
+  const looksLikeSplitKey =
+    trimmedLastLine.length > 0 &&
+    !trimmedLastLine.includes(":") &&
+    !trimmedLastLine.startsWith("-") &&
+    !trimmedLastLine.startsWith("#");
+  if (!looksLikeSplitKey) {
+    return null;
+  }
+
+  const truncated = lines.slice(0, -1).join("\n");
+  const reparsed = parseYamlDocumentAsMapping(truncated);
+  if (reparsed.errors.length > 0) {
+    return null;
+  }
+  return reparsed.value;
 }
 
 function processToolCallMatch(
@@ -263,7 +376,7 @@ function processToolCallMatch(
   if (parsedArgs !== null) {
     processedElements.push({
       type: "tool-call",
-      toolCallId: generateId(),
+      toolCallId: generateToolCallId(),
       toolName: tc.toolName,
       input: JSON.stringify(parsedArgs),
     });
@@ -425,7 +538,11 @@ export const yamlProtocol = (
     createStreamParser({ tools, options }) {
       const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
       let buffer = "";
-      let currentToolCall: { name: string; content: string } | null = null;
+      let currentToolCall: {
+        name: string;
+        toolCallId: string;
+        emittedInput: string;
+      } | null = null;
       let currentTextId: string | null = null;
       let hasEmittedTextStart = false;
 
@@ -440,28 +557,119 @@ export const yamlProtocol = (
         }
       );
 
+      const emitToolInputProgress = (
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+        toolContent: string
+      ) => {
+        if (!currentToolCall) {
+          return;
+        }
+        const parsedArgs = parseYamlContentForStreamProgress(toolContent);
+        if (parsedArgs === null) {
+          return;
+        }
+        const fullInput = JSON.stringify(parsedArgs);
+        if (fullInput === "{}" && toolContent.trim().length === 0) {
+          return;
+        }
+        const prefixCandidate = toIncompleteJsonPrefix(fullInput);
+        emitPrefixDelta({
+          controller,
+          id: currentToolCall.toolCallId,
+          state: currentToolCall,
+          candidate: prefixCandidate,
+        });
+      };
+
       const processToolCallEnd = (
         controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
         toolContent: string,
-        toolName: string
+        toolName: string,
+        toolCallId: string
       ) => {
         const parsedArgs = parseYamlContent(toolContent, options);
         flushText(controller);
-
         if (parsedArgs !== null) {
+          const finalInput = JSON.stringify(parsedArgs);
+          if (currentToolCall && currentToolCall.toolCallId === toolCallId) {
+            emitFinalRemainder({
+              controller,
+              id: toolCallId,
+              state: currentToolCall,
+              finalFullJson: finalInput,
+            });
+          }
+          controller.enqueue({
+            type: "tool-input-end",
+            id: toolCallId,
+          });
           controller.enqueue({
             type: "tool-call",
-            toolCallId: generateId(),
+            toolCallId,
             toolName,
-            input: JSON.stringify(parsedArgs),
+            input: finalInput,
           });
         } else {
+          controller.enqueue({
+            type: "tool-input-end",
+            id: toolCallId,
+          });
           const original = `<${toolName}>${toolContent}</${toolName}>`;
           options?.onError?.("Could not parse streaming YAML tool call", {
             toolCall: original,
           });
-          flushText(controller, original);
+          if (shouldEmitRawToolCallTextOnError(options)) {
+            flushText(controller, original);
+          }
         }
+      };
+
+      const finalizeUnclosedToolCall = (
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
+      ) => {
+        if (!currentToolCall) {
+          return;
+        }
+
+        emitToolInputProgress(controller, buffer);
+        const { name: toolName, toolCallId } = currentToolCall;
+        const parsedArgs = parseYamlContent(buffer, options);
+        flushText(controller);
+        if (parsedArgs !== null) {
+          const finalInput = JSON.stringify(parsedArgs);
+          emitFinalRemainder({
+            controller,
+            id: toolCallId,
+            state: currentToolCall,
+            finalFullJson: finalInput,
+          });
+          controller.enqueue({
+            type: "tool-input-end",
+            id: toolCallId,
+          });
+          controller.enqueue({
+            type: "tool-call",
+            toolCallId,
+            toolName,
+            input: finalInput,
+          });
+        } else {
+          controller.enqueue({
+            type: "tool-input-end",
+            id: toolCallId,
+          });
+          const unfinishedContent = `<${toolName}>${buffer}`;
+          options?.onError?.(
+            "Could not complete streaming YAML tool call at finish.",
+            { toolCall: unfinishedContent }
+          );
+          if (shouldEmitRawToolCallTextOnError(options)) {
+            flushText(controller, unfinishedContent);
+          }
+        }
+
+        buffer = "";
+        currentToolCall = null;
       };
 
       const handlePendingToolCall = (
@@ -471,12 +679,19 @@ export const yamlProtocol = (
       ): boolean => {
         const endIdx = buffer.indexOf(endTag);
         if (endIdx === -1) {
+          emitToolInputProgress(controller, buffer);
           return false;
         }
 
         const content = buffer.substring(0, endIdx);
+        emitToolInputProgress(controller, content);
         buffer = buffer.substring(endIdx + endTag.length);
-        processToolCallEnd(controller, content, toolName);
+        processToolCallEnd(
+          controller,
+          content,
+          toolName,
+          currentToolCall?.toolCallId ?? generateToolCallId()
+        );
         currentToolCall = null;
         return true;
       };
@@ -508,11 +723,26 @@ export const yamlProtocol = (
 
         if (selfClosing) {
           buffer = buffer.substring(tagIndex + tagLength);
-          processToolCallEnd(controller, "", tagName);
+          const toolCallId = generateToolCallId();
+          controller.enqueue({
+            type: "tool-input-start",
+            id: toolCallId,
+            toolName: tagName,
+          });
+          processToolCallEnd(controller, "", tagName, toolCallId);
         } else {
           const startTag = `<${tagName}>`;
           buffer = buffer.substring(tagIndex + startTag.length);
-          currentToolCall = { name: tagName, content: "" };
+          currentToolCall = {
+            name: tagName,
+            toolCallId: generateToolCallId(),
+            emittedInput: "",
+          };
+          controller.enqueue({
+            type: "tool-input-start",
+            id: currentToolCall.toolCallId,
+            toolName: tagName,
+          });
         }
       };
 
@@ -543,13 +773,11 @@ export const yamlProtocol = (
       };
 
       return new TransformStream({
+        // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Stateful stream parsing requires branching over chunk lifecycle and parser states.
         transform(chunk, controller) {
           if (chunk.type === "finish") {
             if (currentToolCall) {
-              const unfinishedContent = `<${currentToolCall.name}>${buffer}`;
-              flushText(controller, unfinishedContent);
-              buffer = "";
-              currentToolCall = null;
+              finalizeUnclosedToolCall(controller);
             } else if (buffer) {
               flushText(controller, buffer);
               buffer = "";
@@ -560,7 +788,9 @@ export const yamlProtocol = (
           }
 
           if (chunk.type !== "text-delta") {
-            if (buffer) {
+            if (currentToolCall) {
+              finalizeUnclosedToolCall(controller);
+            } else if (buffer) {
               flushText(controller, buffer);
               buffer = "";
             }
@@ -575,10 +805,7 @@ export const yamlProtocol = (
         },
         flush(controller) {
           if (currentToolCall) {
-            const unfinishedContent = `<${currentToolCall.name}>${buffer}`;
-            flushText(controller, unfinishedContent);
-            buffer = "";
-            currentToolCall = null;
+            finalizeUnclosedToolCall(controller);
           } else if (buffer) {
             flushText(controller, buffer);
             buffer = "";

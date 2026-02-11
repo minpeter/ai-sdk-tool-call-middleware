@@ -7,7 +7,7 @@ import type {
 import { parse as parseRJSON } from "../../rjson";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
-import { generateId } from "../utils/id";
+import { generateId, generateToolCallId } from "../utils/id";
 import { addTextSegment } from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import type { TCMProtocol } from "./protocol-interface";
@@ -32,7 +32,7 @@ function processToolCallJson(
     };
     processedElements.push({
       type: "tool-call",
-      toolCallId: generateId(),
+      toolCallId: generateToolCallId(),
       toolName: parsedToolCall.name,
       input: JSON.stringify(parsedToolCall.arguments ?? {}),
     });
@@ -84,6 +84,11 @@ interface StreamState {
   currentToolCallJson: string;
   currentTextId: string | null;
   hasEmittedTextStart: boolean;
+  activeToolInput: {
+    id: string;
+    toolName: string;
+    emittedInput: string;
+  } | null;
 }
 
 type StreamController =
@@ -97,6 +102,346 @@ interface TagProcessingContext {
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
+}
+
+const WHITESPACE_JSON_REGEX = /\s/;
+
+function skipJsonWhitespace(text: string, fromIndex: number): number {
+  let index = fromIndex;
+  while (index < text.length && WHITESPACE_JSON_REGEX.test(text[index])) {
+    index += 1;
+  }
+  return index;
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Streaming JSON key/value scanning requires explicit string-depth state tracking.
+function findTopLevelPropertyValueStart(
+  text: string,
+  property: string
+): number | null {
+  const objectStart = skipJsonWhitespace(text, 0);
+  if (objectStart >= text.length || text.charAt(objectStart) !== "{") {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = objectStart; index < text.length; index += 1) {
+    const char = text.charAt(index);
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char === "}") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+
+    if (char !== '"' || depth !== 1) {
+      continue;
+    }
+
+    const keyStart = index + 1;
+    let keyEnd = keyStart;
+    let keyEscaped = false;
+    while (keyEnd < text.length) {
+      const keyChar = text.charAt(keyEnd);
+      if (keyEscaped) {
+        keyEscaped = false;
+      } else if (keyChar === "\\") {
+        keyEscaped = true;
+      } else if (keyChar === '"') {
+        break;
+      }
+      keyEnd += 1;
+    }
+
+    if (keyEnd >= text.length || text.charAt(keyEnd) !== '"') {
+      return null;
+    }
+
+    const key = text.slice(keyStart, keyEnd);
+    let valueCursor = skipJsonWhitespace(text, keyEnd + 1);
+    if (valueCursor >= text.length || text.charAt(valueCursor) !== ":") {
+      index = keyEnd;
+      continue;
+    }
+
+    valueCursor = skipJsonWhitespace(text, valueCursor + 1);
+    if (key === property) {
+      return valueCursor < text.length ? valueCursor : null;
+    }
+
+    index = valueCursor - 1;
+  }
+
+  return null;
+}
+
+function extractTopLevelStringProperty(
+  text: string,
+  property: string
+): string | undefined {
+  const valueStart = findTopLevelPropertyValueStart(text, property);
+  if (valueStart == null || valueStart >= text.length) {
+    return undefined;
+  }
+  if (text.charAt(valueStart) !== '"') {
+    return undefined;
+  }
+
+  let valueEnd = valueStart + 1;
+  let escaped = false;
+  while (valueEnd < text.length) {
+    const char = text.charAt(valueEnd);
+    if (escaped) {
+      escaped = false;
+    } else if (char === "\\") {
+      escaped = true;
+    } else if (char === '"') {
+      return text.slice(valueStart + 1, valueEnd);
+    }
+    valueEnd += 1;
+  }
+
+  return undefined;
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Streaming JSON value slicing must handle nested arrays/objects and escaped strings.
+function extractJsonValueSlice(
+  text: string,
+  valueStart: number
+): {
+  text: string;
+  complete: boolean;
+} | null {
+  if (valueStart >= text.length) {
+    return null;
+  }
+
+  const first = text.charAt(valueStart);
+  if (first === "{" || first === "[") {
+    const stack: string[] = [first];
+    let inString = false;
+    let escaped = false;
+
+    for (let index = valueStart + 1; index < text.length; index += 1) {
+      const char = text.charAt(index);
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+
+      if (char === "{" || char === "[") {
+        stack.push(char);
+        continue;
+      }
+
+      if (char === "}" || char === "]") {
+        const open = stack.at(-1);
+        if ((open === "{" && char === "}") || (open === "[" && char === "]")) {
+          stack.pop();
+          if (stack.length === 0) {
+            return {
+              text: text.slice(valueStart, index + 1),
+              complete: true,
+            };
+          }
+        }
+      }
+    }
+
+    return {
+      text: text.slice(valueStart),
+      complete: false,
+    };
+  }
+
+  if (first === '"') {
+    let escaped = false;
+    for (let index = valueStart + 1; index < text.length; index += 1) {
+      const char = text.charAt(index);
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        return {
+          text: text.slice(valueStart, index + 1),
+          complete: true,
+        };
+      }
+    }
+    return {
+      text: text.slice(valueStart),
+      complete: false,
+    };
+  }
+
+  let index = valueStart;
+  while (index < text.length) {
+    const char = text.charAt(index);
+    if (char === "," || char === "}" || WHITESPACE_JSON_REGEX.test(char)) {
+      break;
+    }
+    index += 1;
+  }
+
+  return {
+    text: text.slice(valueStart, index),
+    complete: index < text.length,
+  };
+}
+
+function extractStreamingToolCallProgress(toolCallJson: string): {
+  toolName: string | undefined;
+  argumentsText: string | undefined;
+  argumentsComplete: boolean;
+} {
+  const toolName = extractTopLevelStringProperty(toolCallJson, "name");
+  const argsValueStart = findTopLevelPropertyValueStart(
+    toolCallJson,
+    "arguments"
+  );
+  if (argsValueStart == null) {
+    return {
+      toolName,
+      argumentsText: undefined,
+      argumentsComplete: false,
+    };
+  }
+
+  const argsSlice = extractJsonValueSlice(toolCallJson, argsValueStart);
+  return {
+    toolName,
+    argumentsText: argsSlice?.text,
+    argumentsComplete: argsSlice?.complete ?? false,
+  };
+}
+
+function ensureToolInputStart(
+  state: StreamState,
+  controller: StreamController,
+  toolName: string
+) {
+  if (!state.activeToolInput) {
+    const id = generateToolCallId();
+    state.activeToolInput = {
+      id,
+      toolName,
+      emittedInput: "",
+    };
+    controller.enqueue({
+      type: "tool-input-start",
+      id,
+      toolName,
+    } as LanguageModelV3StreamPart);
+  }
+}
+
+function emitToolInputDelta(
+  state: StreamState,
+  controller: StreamController,
+  fullInput: string
+) {
+  const active = state.activeToolInput;
+  if (!active) {
+    return;
+  }
+
+  if (!fullInput.startsWith(active.emittedInput)) {
+    return;
+  }
+
+  const delta = fullInput.slice(active.emittedInput.length);
+  if (delta.length === 0) {
+    return;
+  }
+
+  controller.enqueue({
+    type: "tool-input-delta",
+    id: active.id,
+    delta,
+  } as LanguageModelV3StreamPart);
+  active.emittedInput = fullInput;
+}
+
+function closeToolInput(state: StreamState, controller: StreamController) {
+  if (!state.activeToolInput) {
+    return;
+  }
+  controller.enqueue({
+    type: "tool-input-end",
+    id: state.activeToolInput.id,
+  } as LanguageModelV3StreamPart);
+  state.activeToolInput = null;
+}
+
+function emitToolCallFromParsed(
+  state: StreamState,
+  controller: StreamController,
+  parsedToolCall: { name: string; arguments: unknown }
+) {
+  closeTextBlock(state, controller);
+  const toolName =
+    typeof parsedToolCall.name === "string"
+      ? parsedToolCall.name
+      : (state.activeToolInput?.toolName ?? "unknown");
+  const input = JSON.stringify(parsedToolCall.arguments ?? {});
+  ensureToolInputStart(state, controller, toolName);
+  emitToolInputDelta(state, controller, input);
+  const toolCallId = state.activeToolInput?.id ?? generateToolCallId();
+  closeToolInput(state, controller);
+  controller.enqueue({
+    type: "tool-call",
+    toolCallId,
+    toolName,
+    input,
+  } as LanguageModelV3StreamPart);
+}
+
+function emitToolInputProgress(
+  state: StreamState,
+  controller: StreamController
+) {
+  if (!(state.isInsideToolCall && state.currentToolCallJson)) {
+    return;
+  }
+
+  const progress = extractStreamingToolCallProgress(state.currentToolCallJson);
+  if (!progress.toolName) {
+    return;
+  }
+
+  ensureToolInputStart(state, controller, progress.toolName);
+  if (progress.argumentsText !== undefined) {
+    emitToolInputDelta(state, controller, progress.argumentsText);
+  }
 }
 
 function flushBuffer(
@@ -143,10 +488,25 @@ function closeTextBlock(state: StreamState, controller: StreamController) {
 function emitIncompleteToolCall(
   state: StreamState,
   controller: StreamController,
-  toolCallStart: string
+  toolCallStart: string,
+  options?: {
+    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  }
 ) {
   if (!state.currentToolCallJson) {
     return;
+  }
+
+  try {
+    const parsedToolCall = parseRJSON(state.currentToolCallJson) as {
+      name: string;
+      arguments: unknown;
+    };
+    emitToolCallFromParsed(state, controller, parsedToolCall);
+    state.currentToolCallJson = "";
+    return;
+  } catch {
+    // fall through to text fallback
   }
 
   logParseFailure({
@@ -170,6 +530,11 @@ function emitIncompleteToolCall(
     type: "text-end",
     id: errorId,
   } as LanguageModelV3StreamPart);
+  closeToolInput(state, controller);
+  options?.onError?.(
+    "Could not complete streaming JSON tool call at finish; emitting original text.",
+    { toolCall: errorContent }
+  );
   state.currentToolCallJson = "";
 }
 
@@ -177,13 +542,18 @@ function handleFinishChunk(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
+  options:
+    | {
+        onError?: (message: string, metadata?: Record<string, unknown>) => void;
+      }
+    | undefined,
   chunk: LanguageModelV3StreamPart
 ) {
   if (state.buffer.length > 0) {
     flushBuffer(state, controller, toolCallStart);
   }
   closeTextBlock(state, controller);
-  emitIncompleteToolCall(state, controller, toolCallStart);
+  emitIncompleteToolCall(state, controller, toolCallStart, options);
   controller.enqueue(chunk);
 }
 
@@ -195,6 +565,7 @@ function publishText(
   if (state.isInsideToolCall) {
     closeTextBlock(state, controller);
     state.currentToolCallJson += text;
+    emitToolInputProgress(state, controller);
   } else if (text.length > 0) {
     if (!state.currentTextId) {
       state.currentTextId = generateId();
@@ -219,13 +590,7 @@ function emitToolCall(context: TagProcessingContext) {
       name: string;
       arguments: unknown;
     };
-    closeTextBlock(state, controller);
-    controller.enqueue({
-      type: "tool-call",
-      toolCallId: generateId(),
-      toolName: parsedToolCall.name,
-      input: JSON.stringify(parsedToolCall.arguments ?? {}),
-    } as LanguageModelV3StreamPart);
+    emitToolCallFromParsed(state, controller, parsedToolCall);
   } catch (error) {
     logParseFailure({
       phase: "stream",
@@ -248,6 +613,7 @@ function emitToolCall(context: TagProcessingContext) {
       type: "text-end",
       id: errorId,
     } as LanguageModelV3StreamPart);
+    closeToolInput(state, controller);
     options?.onError?.(
       "Could not process streaming JSON tool call; emitting original text.",
       {
@@ -266,6 +632,7 @@ function processTagMatch(context: TagProcessingContext) {
   } else {
     state.currentToolCallJson = "";
     state.isInsideToolCall = true;
+    state.activeToolInput = null;
   }
 }
 
@@ -296,9 +663,21 @@ function processBufferTags(context: TagProcessingContext) {
 function handlePartialTag(
   state: StreamState,
   controller: StreamController,
-  toolCallStart: string
+  toolCallStart: string,
+  toolCallEnd: string
 ) {
   if (state.isInsideToolCall) {
+    const potentialEndIndex = getPotentialStartIndex(state.buffer, toolCallEnd);
+    if (
+      potentialEndIndex != null &&
+      potentialEndIndex + toolCallEnd.length > state.buffer.length
+    ) {
+      publishText(state.buffer.slice(0, potentialEndIndex), state, controller);
+      state.buffer = state.buffer.slice(potentialEndIndex);
+    } else {
+      publishText(state.buffer, state, controller);
+      state.buffer = "";
+    }
     return;
   }
 
@@ -398,6 +777,7 @@ export const jsonProtocol = ({
       currentToolCallJson: "",
       currentTextId: null,
       hasEmittedTextStart: false,
+      activeToolInput: null,
     };
 
     return new TransformStream<
@@ -406,7 +786,7 @@ export const jsonProtocol = ({
     >({
       transform(chunk, controller) {
         if (chunk.type === "finish") {
-          handleFinishChunk(state, controller, toolCallStart, chunk);
+          handleFinishChunk(state, controller, toolCallStart, options, chunk);
           return;
         }
 
@@ -424,7 +804,7 @@ export const jsonProtocol = ({
           toolCallEnd,
           options,
         });
-        handlePartialTag(state, controller, toolCallStart);
+        handlePartialTag(state, controller, toolCallStart, toolCallEnd);
       },
     });
   },

@@ -5,9 +5,9 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3Usage,
 } from "@ai-sdk/provider";
-import { generateId } from "@ai-sdk/provider-utils";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { getDebugLevel, logParsedChunk, logRawChunk } from "./core/utils/debug";
+import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   isToolChoiceActive,
@@ -67,11 +67,30 @@ export async function wrapStream({
     )
     .pipeThrough(protocol.createStreamParser({ tools, options }));
 
+  let seenToolCall = false;
   const v3Stream = coreStream.pipeThrough(
     new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>({
       transform(part, controller) {
-        const normalizedPart =
+        let normalizedPart =
           part.type === "tool-call" ? coerceToolCallPart(part, tools) : part;
+
+        if (normalizedPart.type === "tool-call") {
+          seenToolCall = true;
+        }
+
+        if (
+          normalizedPart.type === "finish" &&
+          seenToolCall &&
+          normalizedPart.finishReason.unified === "stop"
+        ) {
+          normalizedPart = {
+            ...normalizedPart,
+            finishReason: normalizeToolCallsFinishReason(
+              normalizedPart.finishReason
+            ),
+          };
+        }
+
         if (debugLevel === "stream") {
           logParsedChunk(normalizedPart);
         }
@@ -121,7 +140,7 @@ export async function toolChoiceStream({
     start(controller) {
       controller.enqueue({
         type: "tool-call",
-        toolCallId: generateId(),
+        toolCallId: generateToolCallId(),
         toolName,
         input,
       });
