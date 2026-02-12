@@ -67,12 +67,16 @@ describe("getPotentialStartIndex", () => {
       expect(getPotentialStartIndex("abcab", "abcd")).toBe(INDEX_3);
     });
 
-    it("should find the longest potential match (largest suffix matches prefix)", () => {
-      // "ababa" suffixes: "a", "ba", "aba", "baba", "ababa"
-      // "abac" prefixes: "a", "ab", "aba", "abac"
-      // Common: "a", "aba"
-      // Longest is "aba" at index 2
-      expect(getPotentialStartIndex("ababa", "abac")).toBe(INDEX_2);
+    it("should find the LARGEST suffix when multiple suffixes are prefixes", () => {
+      // "banana" ends with both "na" and "nana" which are prefixes of "nanax"
+      // Largest suffix is "nana" at index 2
+      expect(getPotentialStartIndex("banana", "nanax")).toBe(INDEX_2);
+    });
+
+    it("should find largest suffix for repeated characters", () => {
+      // "aaaaa" ends with "a", "aa", "aaa" which are prefixes of "aaax"
+      // Largest suffix is "aaa" at index 2
+      expect(getPotentialStartIndex("aaaaa", "aaax")).toBe(INDEX_2);
     });
   });
 

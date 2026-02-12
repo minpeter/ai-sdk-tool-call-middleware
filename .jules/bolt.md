@@ -9,3 +9,8 @@
 ## 2025-02-14 - O(N²) Bottleneck in Streaming Buffer Search
 **Learning:** The `getPotentialStartIndex` utility, used for finding partial tags in streaming buffers, had an O(N²) complexity because it scanned the entire buffer (which grows as streaming progresses) for every possible suffix. By limiting the search loop to only check suffixes shorter than the target string, the complexity is reduced to O(N + M²), where N is the buffer length and M is the tag length.
 **Action:** Always limit suffix-matching loops to the length of the search target when scanning large/growing buffers.
+
+## 2025-05-14 - [getPotentialStartIndex O(N²) Bottleneck]
+**Learning:** Naive implementations of `getPotentialStartIndex` that search the entire buffer for potential matches at the end lead to O(N²) complexity in streaming scenarios as the buffer grows. Since a potential match must be a prefix of the searched text, the search loop only needs to check the last `searchedText.length - 1` characters of the buffer.
+
+**Action:** Always limit suffix/prefix matching in streaming buffers to the length of the search target. Additionally, ensure the search finds the *largest* suffix first (earliest start index) to properly handle potential overlapping matches.
