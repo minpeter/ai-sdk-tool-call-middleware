@@ -66,6 +66,18 @@ describe("getPotentialStartIndex", () => {
     it("should handle overlapping patterns", () => {
       expect(getPotentialStartIndex("abcab", "abcd")).toBe(INDEX_3);
     });
+
+    it("should find the LARGEST suffix when multiple suffixes are prefixes", () => {
+      // "banana" ends with both "na" and "nana" which are prefixes of "nanax"
+      // Largest suffix is "nana" at index 2
+      expect(getPotentialStartIndex("banana", "nanax")).toBe(INDEX_2);
+    });
+
+    it("should find largest suffix for repeated characters", () => {
+      // "aaaaa" ends with "a", "aa", "aaa" which are prefixes of "aaax"
+      // Largest suffix is "aaa" at index 2
+      expect(getPotentialStartIndex("aaaaa", "aaax")).toBe(INDEX_2);
+    });
   });
 
   describe("no matches", () => {
