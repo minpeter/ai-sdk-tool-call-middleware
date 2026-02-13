@@ -432,7 +432,7 @@ describe("tool-input streaming events", () => {
             toolCallId: "passthrough-xml",
             toolName: "passthrough_marker",
             input: "{}",
-          } as any,
+          } satisfies LanguageModelV3StreamPart,
           {
             type: "text-delta",
             id: "fixture",
@@ -595,7 +595,7 @@ describe("tool-input streaming events", () => {
             toolCallId: "passthrough-yaml",
             toolName: "passthrough_marker",
             input: "{}",
-          } as any,
+          } satisfies LanguageModelV3StreamPart,
           {
             type: "text-delta",
             id: "fixture",
