@@ -104,6 +104,23 @@ const mathSumTool: LanguageModelV3FunctionTool = {
   },
 };
 
+const mathSumWithUnitTool: LanguageModelV3FunctionTool = {
+  type: "function",
+  name: "math_sum_with_unit",
+  description: "Sum numbers with unit",
+  inputSchema: {
+    type: "object",
+    properties: {
+      numbers: {
+        type: "array",
+        items: { type: "number" },
+      },
+      unit: { type: "string" },
+    },
+    required: ["numbers", "unit"],
+  },
+};
+
 function createTextDeltaStream(chunks: string[]) {
   return new ReadableStream<LanguageModelV3StreamPart>({
     start(controller) {
@@ -447,6 +464,31 @@ describe("XML/YAML object delta streaming", () => {
 
     expect(joined).toBe(toolCall.input);
     expect(JSON.parse(toolCall.input)).toEqual({ numbers: [3, 5, 7] });
+    expect(deltas.some((delta) => delta.includes('"numbers":"'))).toBe(false);
+  });
+
+  it("xml protocol keeps deltas prefix-safe when array tags repeat after sibling top-level fields", async () => {
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "<math_sum_with_unit>\n<numbers>3</numbers>\n<unit>celsius</unit>\n",
+          "<numbers>5</numbers>\n</math_sum_with_unit>",
+        ]),
+        xmlProtocol().createStreamParser({
+          tools: [mathSumWithUnitTool],
+        })
+      )
+    );
+
+    const toolCall = findToolCall(out);
+    const deltas = extractToolInputDeltas(out);
+    const joined = deltas.join("");
+
+    expect(joined).toBe(toolCall.input);
+    expect(JSON.parse(toolCall.input)).toEqual({
+      numbers: [3, 5],
+      unit: "celsius",
+    });
     expect(deltas.some((delta) => delta.includes('"numbers":"'))).toBe(false);
   });
 

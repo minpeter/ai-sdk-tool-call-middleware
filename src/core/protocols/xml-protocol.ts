@@ -392,23 +392,31 @@ function isStableXmlProgressCandidate(options: {
     return false;
   }
 
+  const schemaProperties = getObjectSchemaPropertyNames(toolSchema);
+  if (schemaProperties && schemaProperties.size > 0) {
+    const parsedObject = parsed as Record<string, unknown>;
+    const uniqueTopLevelTags = new Set(structure.topLevelTagNames);
+    for (const tagName of uniqueTopLevelTags) {
+      if (!schemaProperties.has(tagName)) {
+        continue;
+      }
+      const schemaProperty = getSchemaObjectProperty(toolSchema, tagName);
+      if (
+        schemaProperty &&
+        schemaAllowsArrayType(schemaProperty) &&
+        !Array.isArray(parsedObject[tagName])
+      ) {
+        return false;
+      }
+    }
+  }
+
   if (structure.topLevelTagNames.length === 1) {
     const onlyTopLevelTag = structure.topLevelTagNames[0];
-    const schemaProperties = getObjectSchemaPropertyNames(toolSchema);
     if (
       !schemaProperties ||
       schemaProperties.size === 0 ||
       !schemaProperties.has(onlyTopLevelTag)
-    ) {
-      return false;
-    }
-
-    const parsedValue = (parsed as Record<string, unknown>)[onlyTopLevelTag];
-    const schemaProperty = getSchemaObjectProperty(toolSchema, onlyTopLevelTag);
-    if (
-      schemaProperty &&
-      schemaAllowsArrayType(schemaProperty) &&
-      !Array.isArray(parsedValue)
     ) {
       return false;
     }

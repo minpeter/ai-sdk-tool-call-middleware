@@ -1,5 +1,5 @@
 ---
-"@ai-sdk-tool/parser": minor
+"@ai-sdk-tool/parser": major
 ---
 
 Change XML/YAML streaming `tool-input-delta` semantics to emit parsed JSON argument prefixes instead of raw XML/YAML fragments.
