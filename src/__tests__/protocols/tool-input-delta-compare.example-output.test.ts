@@ -12,7 +12,7 @@ describe("tool-input delta compare example output", () => {
     const output = execFileSync(
       "pnpm",
       [
-        "dlx",
+        "exec",
         "tsx",
         "examples/parser-core/src/03-stream-tool-input-delta-compare.ts",
       ],

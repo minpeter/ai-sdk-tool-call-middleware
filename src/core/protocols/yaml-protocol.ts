@@ -9,6 +9,7 @@ import {
   addTextSegment,
   createFlushTextHandler,
 } from "../utils/protocol-utils";
+import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
   emitFinalRemainder,
@@ -35,7 +36,7 @@ const selfClosingTagCache = new Map<string, RegExp>();
 function getSelfClosingTagPattern(toolName: string): RegExp {
   let pattern = selfClosingTagCache.get(toolName);
   if (!pattern) {
-    pattern = new RegExp(`<${toolName}\\s*/>`, "g");
+    pattern = new RegExp(`<\\s*${escapeRegExp(toolName)}\\s*/>`, "g");
     selfClosingTagCache.set(toolName, pattern);
   }
   return pattern;
