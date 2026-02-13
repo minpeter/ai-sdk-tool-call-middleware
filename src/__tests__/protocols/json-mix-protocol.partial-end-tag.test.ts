@@ -12,7 +12,10 @@ import {
 describe("jsonProtocol partial end-tag handling", () => {
   it("breaks loop when only partial end tag present at end of buffer", async () => {
     const protocol = jsonProtocol();
-    const transformer = protocol.createStreamParser({ tools: [] });
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { emitRawToolCallTextOnError: true },
+    });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
         ctrl.enqueue({

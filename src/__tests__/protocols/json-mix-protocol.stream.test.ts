@@ -63,12 +63,48 @@ describe("jsonProtocol streaming", () => {
     expect(tool.toolName).toBe("y");
   });
 
-  it("on parse error emits original text via text-start/delta/end and calls onError", async () => {
+  it("on parse error suppresses raw fallback text by default and calls onError", async () => {
     const onError = vi.fn();
     const protocol = jsonProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
       options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: "<tool_call>{bad}</tool_call>",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const text = out
+      .filter((c) => c.type === "text-delta")
+      .map((c) => (c as any).delta)
+      .join("");
+    expect(text).not.toContain("<tool_call>");
+    expect(text).not.toContain("</tool_call>");
+    expect(out.some((c) => c.type === "text-start")).toBe(false);
+    expect(out.some((c) => c.type === "text-end")).toBe(false);
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("on parse error emits raw fallback text when explicitly enabled", async () => {
+    const onError = vi.fn();
+    const protocol = jsonProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError, emitRawToolCallTextOnError: true },
     });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -171,12 +207,12 @@ describe("jsonProtocol streaming edge cases", () => {
     expect(tool).toMatchObject({ type: "tool-call", toolName: "b" });
   });
 
-  it("emits original text on malformed JSON and calls onError", async () => {
+  it("emits original text on malformed JSON when raw fallback is enabled", async () => {
     const onError = vi.fn();
     const protocol = jsonProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
-      options: { onError },
+      options: { onError, emitRawToolCallTextOnError: true },
     });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -204,7 +240,38 @@ describe("jsonProtocol streaming edge cases", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("flushes buffered partial tool_call at finish as text", async () => {
+  it("flushes buffered partial tool_call at finish as text when enabled", async () => {
+    const protocol = jsonProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { emitRawToolCallTextOnError: true },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"c"',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const text = out
+      .filter((c) => c.type === "text-delta")
+      .map((c: any) => c.delta)
+      .join("");
+    expect(text).toContain('<tool_call>{"name":"c"');
+  });
+
+  it("suppresses buffered partial tool_call at finish by default", async () => {
     const protocol = jsonProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
@@ -229,7 +296,8 @@ describe("jsonProtocol streaming edge cases", () => {
       .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
       .join("");
-    expect(text).toContain('<tool_call>{"name":"c"');
+    expect(text).not.toContain("<tool_call>");
+    expect(out.some((c) => c.type === "tool-call")).toBe(false);
   });
 
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {

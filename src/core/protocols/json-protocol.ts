@@ -10,11 +10,15 @@ import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
 import { addTextSegment } from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
-import type { TCMProtocol } from "./protocol-interface";
+import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
 interface JsonProtocolOptions {
   toolCallStart?: string;
   toolCallEnd?: string;
+}
+
+function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
+  return options?.emitRawToolCallTextOnError === true;
 }
 
 function canonicalizeToolInput(argumentsValue: unknown): string {
@@ -25,9 +29,7 @@ function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
   processedElements: LanguageModelV3Content[],
-  options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
+  options?: ParserOptions
 ) {
   try {
     const parsedToolCall = parseRJSON(toolCallJson) as {
@@ -60,9 +62,7 @@ interface ParseContext {
   text: string;
   currentIndex: number;
   processedElements: LanguageModelV3Content[];
-  options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  };
+  options?: ParserOptions;
 }
 
 function processMatchedToolCall(context: ParseContext): number {
@@ -103,9 +103,7 @@ interface TagProcessingContext {
   controller: StreamController;
   toolCallStart: string;
   toolCallEnd: string;
-  options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  };
+  options?: ParserOptions;
 }
 
 const WHITESPACE_JSON_REGEX = /\s/;
@@ -498,9 +496,7 @@ function emitIncompleteToolCall(
   controller: StreamController,
   toolCallStart: string,
   trailingBuffer: string,
-  options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
+  options?: ParserOptions
 ) {
   if (!state.currentToolCallJson && trailingBuffer.length === 0) {
     state.isInsideToolCall = false;
@@ -523,31 +519,38 @@ function emitIncompleteToolCall(
   }
 
   const rawToolCallContent = `${state.currentToolCallJson}${trailingBuffer}`;
+  const errorContent = `${toolCallStart}${rawToolCallContent}`;
+  const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
 
   logParseFailure({
     phase: "stream",
-    reason: "Incomplete streaming tool call segment emitted as text",
-    snippet: `${toolCallStart}${rawToolCallContent}`,
+    reason: shouldEmitRawFallback
+      ? "Incomplete streaming tool call segment emitted as text"
+      : "Incomplete streaming tool call segment suppressed without raw text fallback",
+    snippet: errorContent,
   });
 
-  const errorId = generateId();
-  const errorContent = `${toolCallStart}${rawToolCallContent}`;
-  controller.enqueue({
-    type: "text-start",
-    id: errorId,
-  } as LanguageModelV3StreamPart);
-  controller.enqueue({
-    type: "text-delta",
-    id: errorId,
-    delta: errorContent,
-  } as LanguageModelV3StreamPart);
-  controller.enqueue({
-    type: "text-end",
-    id: errorId,
-  } as LanguageModelV3StreamPart);
+  if (shouldEmitRawFallback) {
+    const errorId = generateId();
+    controller.enqueue({
+      type: "text-start",
+      id: errorId,
+    } as LanguageModelV3StreamPart);
+    controller.enqueue({
+      type: "text-delta",
+      id: errorId,
+      delta: errorContent,
+    } as LanguageModelV3StreamPart);
+    controller.enqueue({
+      type: "text-end",
+      id: errorId,
+    } as LanguageModelV3StreamPart);
+  }
   closeToolInput(state, controller);
   options?.onError?.(
-    "Could not complete streaming JSON tool call at finish; emitting original text.",
+    shouldEmitRawFallback
+      ? "Could not complete streaming JSON tool call at finish; emitting original text."
+      : "Could not complete streaming JSON tool call at finish.",
     { toolCall: errorContent }
   );
   state.currentToolCallJson = "";
@@ -558,11 +561,7 @@ function handleFinishChunk(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
-  options:
-    | {
-        onError?: (message: string, metadata?: Record<string, unknown>) => void;
-      }
-    | undefined,
+  options: ParserOptions | undefined,
   chunk: LanguageModelV3StreamPart
 ) {
   if (state.isInsideToolCall) {
@@ -617,30 +616,36 @@ function emitToolCall(context: TagProcessingContext) {
     };
     emitToolCallFromParsed(state, controller, parsedToolCall);
   } catch (error) {
+    const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
+    const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
+
     logParseFailure({
       phase: "stream",
       reason: "Failed to parse streaming tool call JSON segment",
-      snippet: `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`,
+      snippet: errorContent,
       error,
     });
-    const errorId = generateId();
-    const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
-    controller.enqueue({
-      type: "text-start",
-      id: errorId,
-    } as LanguageModelV3StreamPart);
-    controller.enqueue({
-      type: "text-delta",
-      id: errorId,
-      delta: errorContent,
-    } as LanguageModelV3StreamPart);
-    controller.enqueue({
-      type: "text-end",
-      id: errorId,
-    } as LanguageModelV3StreamPart);
+    if (shouldEmitRawFallback) {
+      const errorId = generateId();
+      controller.enqueue({
+        type: "text-start",
+        id: errorId,
+      } as LanguageModelV3StreamPart);
+      controller.enqueue({
+        type: "text-delta",
+        id: errorId,
+        delta: errorContent,
+      } as LanguageModelV3StreamPart);
+      controller.enqueue({
+        type: "text-end",
+        id: errorId,
+      } as LanguageModelV3StreamPart);
+    }
     closeToolInput(state, controller);
     options?.onError?.(
-      "Could not process streaming JSON tool call; emitting original text.",
+      shouldEmitRawFallback
+        ? "Could not process streaming JSON tool call; emitting original text."
+        : "Could not process streaming JSON tool call.",
       {
         toolCall: errorContent,
       }
@@ -754,9 +759,7 @@ export const jsonProtocol = ({
   }: {
     text: string;
     tools: LanguageModelV3FunctionTool[];
-    options?: {
-      onError?: (message: string, metadata?: Record<string, unknown>) => void;
-    };
+    options?: ParserOptions;
   }) {
     const startEsc = escapeRegExp(toolCallStart);
     const endEsc = escapeRegExp(toolCallEnd);
@@ -792,9 +795,7 @@ export const jsonProtocol = ({
     options,
   }: {
     tools: LanguageModelV3FunctionTool[];
-    options?: {
-      onError?: (message: string, metadata?: Record<string, unknown>) => void;
-    };
+    options?: ParserOptions;
   }) {
     const state: StreamState = {
       isInsideToolCall: false,

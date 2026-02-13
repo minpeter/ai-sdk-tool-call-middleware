@@ -440,6 +440,43 @@ describe("tool-input streaming events", () => {
     expect(toolCall.input).toBe(fixture.expectedFinishInput);
   });
 
+  it("yaml finish reconciliation ignores trailing partial close-tag and still emits tool-call", async () => {
+    const fixture = toolInputStreamFixtures.yaml;
+    const protocol = yamlProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "<get_weather>\nlocation: Seoul\nunit: celsius\n</get_wea",
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as
+      | {
+          type: "tool-call";
+          toolCallId: string;
+          input: string;
+        }
+      | undefined;
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(toolCall).toBeTruthy();
+    expect(toolCall?.toolCallId).toBe(starts[0].id);
+    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({
+      location: "Seoul",
+      unit: "celsius",
+    });
+    expect(leakedText).not.toContain("</get_wea");
+  });
+
   it("yaml protocol does not prematurely finalize tool call when non-text chunks are interleaved", async () => {
     const fixture = toolInputStreamFixtures.yaml;
     const protocol = yamlProtocol();

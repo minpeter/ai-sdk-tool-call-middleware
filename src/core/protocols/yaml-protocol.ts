@@ -584,6 +584,42 @@ function findEarliestToolTag(
   };
 }
 
+function stripTrailingPartialCloseTag(
+  content: string,
+  toolName: string
+): string {
+  const closeTag = `</${toolName}>`;
+  const lastLineBreakIndex = Math.max(
+    content.lastIndexOf("\n"),
+    content.lastIndexOf("\r")
+  );
+  const lineStartIndex = lastLineBreakIndex === -1 ? 0 : lastLineBreakIndex + 1;
+  const trailingLine = content.slice(lineStartIndex);
+  const trimmedTrailingLine = trailingLine.trim();
+
+  if (
+    trimmedTrailingLine.length === 0 ||
+    !trimmedTrailingLine.startsWith("</") ||
+    trimmedTrailingLine === closeTag ||
+    !closeTag.startsWith(trimmedTrailingLine)
+  ) {
+    return content;
+  }
+
+  const leadingWhitespaceLength =
+    trailingLine.length - trailingLine.trimStart().length;
+  const preservedLeadingWhitespace = trailingLine.slice(
+    0,
+    leadingWhitespaceLength
+  );
+  const contentWithoutPartial = `${content.slice(
+    0,
+    lineStartIndex
+  )}${preservedLeadingWhitespace}`;
+
+  return contentWithoutPartial.trimEnd();
+}
+
 export const yamlProtocol = (
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future extensibility
   _protocolOptions?: YamlProtocolOptions
@@ -747,7 +783,8 @@ export const yamlProtocol = (
 
         emitToolInputProgress(controller, buffer);
         const { name: toolName, toolCallId } = currentToolCall;
-        const parsedArgs = parseYamlContent(buffer, options);
+        const reconciledBuffer = stripTrailingPartialCloseTag(buffer, toolName);
+        const parsedArgs = parseYamlContent(reconciledBuffer, options);
         flushText(controller);
         if (parsedArgs !== null) {
           const finalInput = JSON.stringify(parsedArgs);
