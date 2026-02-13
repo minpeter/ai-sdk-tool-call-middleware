@@ -43,11 +43,7 @@ export const toolInputStreamFixtures = {
       "lsius</unit>\n",
       "</get_weather>",
     ],
-    expectedProgressDeltas: [
-      '{"location":"Seoul',
-      '","unit":"celsius',
-      '"}',
-    ],
+    expectedProgressDeltas: ['{"location":"Seoul', '","unit":"celsius', '"}'],
     finishReconcileChunks: [
       "<get_weather>\n<location>Bus",
       "an</location>\n<unit>celsius</unit>\n",

@@ -555,6 +555,46 @@ unit: celsius
         "get_weather"
       );
     });
+
+    it("should parse trailing self-closing tags after another tool call in the same chunk", async () => {
+      const protocol = yamlProtocol();
+      const transformer = protocol.createStreamParser({ tools: basicTools });
+      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+        start(ctrl) {
+          ctrl.enqueue({
+            type: "text-delta",
+            id: "1",
+            delta: `<get_weather>
+location: Madrid
+</get_weather><get_location/>`,
+          });
+          ctrl.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          ctrl.close();
+        },
+      });
+
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(rs, transformer)
+      );
+      const toolCalls = out.filter((c) => c.type === "tool-call") as {
+        toolName: string;
+        input: string;
+      }[];
+
+      expect(toolCalls).toHaveLength(2);
+      expect(toolCalls[0].toolName).toBe("get_weather");
+      expect(JSON.parse(toolCalls[0].input)).toMatchObject({
+        location: "Madrid",
+      });
+      expect(toolCalls[1]).toMatchObject({
+        toolName: "get_location",
+        input: "{}",
+      });
+    });
   });
 
   describe("streaming with multiline YAML", () => {

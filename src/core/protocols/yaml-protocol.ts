@@ -4,8 +4,11 @@ import type {
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 import YAML from "yaml";
-import { generateId, generateToolCallId } from "../utils/id";
-import { addTextSegment } from "../utils/protocol-utils";
+import { generateToolCallId } from "../utils/id";
+import {
+  addTextSegment,
+  createFlushTextHandler,
+} from "../utils/protocol-utils";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
   emitFinalRemainder,
@@ -25,6 +28,17 @@ export interface YamlProtocolOptions {
 
 function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
   return options?.emitRawToolCallTextOnError === true;
+}
+
+const selfClosingTagCache = new Map<string, RegExp>();
+
+function getSelfClosingTagPattern(toolName: string): RegExp {
+  let pattern = selfClosingTagCache.get(toolName);
+  if (!pattern) {
+    pattern = new RegExp(`<${toolName}\\s*/>`, "g");
+    selfClosingTagCache.set(toolName, pattern);
+  }
+  return pattern;
 }
 
 const LEADING_WHITESPACE_RE = /^(\s*)/;
@@ -95,7 +109,9 @@ function parseYamlDocumentAsMapping(normalized: string): {
   }
 }
 
-function getLastMeaningfulLineInfo(input: string): LastMeaningfulLineInfo | null {
+function getLastMeaningfulLineInfo(
+  input: string
+): LastMeaningfulLineInfo | null {
   const lines = input.split("\n");
   let index = lines.length - 1;
   while (index >= 0) {
@@ -120,11 +136,7 @@ function dropLastMeaningfulLine(input: string): string | null {
     return null;
   }
 
-  return input
-    .split("\n")
-    .slice(0, lineInfo.index)
-    .join("\n")
-    .trimEnd();
+  return input.split("\n").slice(0, lineInfo.index).join("\n").trimEnd();
 }
 
 function hasIncompleteMappingTail(normalized: string): boolean {
@@ -266,10 +278,7 @@ function trimTrailingNewlineInUnknown(value: unknown): unknown {
   return value;
 }
 
-function stabilizeParsedValueForStreamProgress<T>(
-  value: T,
-  source: string
-): T {
+function stabilizeParsedValueForStreamProgress<T>(value: T, source: string): T {
   if (source.endsWith("\n")) {
     return value;
   }
@@ -380,7 +389,7 @@ function collectToolCallsForName(
 ): ToolCallMatch[] {
   const toolCalls: ToolCallMatch[] = [];
   let searchIndex = 0;
-  const selfTagRegex = new RegExp(`<${toolName}\\s*/>`, "g");
+  const selfTagRegex = getSelfClosingTagPattern(toolName);
 
   while (searchIndex < text.length) {
     const startTag = `<${toolName}>`;
@@ -535,48 +544,6 @@ function processToolCallMatch(
   return tc.endIndex;
 }
 
-function createFlushTextHandler(
-  getCurrentTextId: () => string | null,
-  setCurrentTextId: (id: string | null) => void,
-  getHasEmittedTextStart: () => boolean,
-  setHasEmittedTextStart: (value: boolean) => void
-) {
-  return (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    text?: string
-  ) => {
-    const content = text;
-    if (content) {
-      if (!getCurrentTextId()) {
-        const newId = generateId();
-        setCurrentTextId(newId);
-        controller.enqueue({
-          type: "text-start",
-          id: newId,
-        });
-        setHasEmittedTextStart(true);
-      }
-      controller.enqueue({
-        type: "text-delta",
-        id: getCurrentTextId() as string,
-        delta: content,
-      });
-    }
-
-    const currentTextId = getCurrentTextId();
-    if (currentTextId && !text) {
-      if (getHasEmittedTextStart()) {
-        controller.enqueue({
-          type: "text-end",
-          id: currentTextId,
-        });
-        setHasEmittedTextStart(false);
-      }
-      setCurrentTextId(null);
-    }
-  };
-}
-
 function findEarliestToolTag(
   buffer: string,
   toolNames: string[]
@@ -588,8 +555,9 @@ function findEarliestToolTag(
 
   for (const name of toolNames) {
     const openTag = `<${name}>`;
-    const selfTagRegex = new RegExp(`<${name}\\s*/>`);
+    const selfTagRegex = getSelfClosingTagPattern(name);
     const idxOpen = buffer.indexOf(openTag);
+    selfTagRegex.lastIndex = 0;
     const selfMatch = selfTagRegex.exec(buffer);
     const idxSelf = selfMatch ? selfMatch.index : -1;
 

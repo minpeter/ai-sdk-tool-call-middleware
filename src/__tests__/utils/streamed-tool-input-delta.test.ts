@@ -30,10 +30,10 @@ describe("streamed-tool-input-delta", () => {
     expect(toIncompleteJsonPrefix("{}")).toBe("{");
   });
 
-  it("toIncompleteJsonPrefix returns '{' when trimming collapses to empty", () => {
-    // Defensive edge case: not a valid JSON object by itself, but this confirms
-    // the empty-collapse guard branch.
-    expect(toIncompleteJsonPrefix('"}')).toBe("{");
+  it("toIncompleteJsonPrefix returns appropriate starter when trimming collapses to empty", () => {
+    expect(toIncompleteJsonPrefix('"}')).toBe('"');
+    expect(toIncompleteJsonPrefix("]}")).toBe("[");
+    expect(toIncompleteJsonPrefix("}}")).toBe("{");
   });
 
   it("emitPrefixDelta emits only monotonic suffix deltas", () => {

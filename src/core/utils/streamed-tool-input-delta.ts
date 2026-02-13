@@ -44,6 +44,10 @@ function emitDelta({
   return true;
 }
 
+/**
+ * Converts a complete JSON string to an incomplete prefix suitable for streaming.
+ * Handles object, array, and string root types correctly.
+ */
 export function toIncompleteJsonPrefix(fullJson: string): string {
   let prefix = fullJson;
 
@@ -56,6 +60,13 @@ export function toIncompleteJsonPrefix(fullJson: string): string {
   }
 
   if (prefix.length === 0) {
+    const trimmed = fullJson.trim();
+    if (trimmed.startsWith("[") || trimmed.startsWith("]")) {
+      return "[";
+    }
+    if (trimmed.startsWith('"')) {
+      return '"';
+    }
     return "{";
   }
 
@@ -70,8 +81,19 @@ export function emitPrefixDelta(params: EmitPrefixDeltaParams): boolean {
 }
 
 export function emitFinalRemainder(params: EmitFinalRemainderParams): boolean {
-  return emitDelta({
+  const result = emitDelta({
     ...params,
     nextInput: params.finalFullJson,
   });
+
+  if (!result && params.state.emittedInput.length > 0) {
+    console.warn(
+      "[ai-sdk-tool] emitFinalRemainder: final JSON does not extend emitted prefix. " +
+        "Streaming deltas may not sum to final input. " +
+        `emitted="${params.state.emittedInput.slice(0, 50)}${params.state.emittedInput.length > 50 ? "..." : ""}", ` +
+        `final="${params.finalFullJson.slice(0, 50)}${params.finalFullJson.length > 50 ? "..." : ""}"`
+    );
+  }
+
+  return result;
 }

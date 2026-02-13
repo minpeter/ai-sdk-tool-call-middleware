@@ -194,6 +194,64 @@ describe("tool-input streaming events", () => {
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 
+  it("json protocol does not emit non-canonical partial literal prefixes for split null arguments", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = jsonProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          '<tool_call>{"name":"get_weather","arguments":n',
+          "ull}</tool_call>",
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, deltas, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as {
+      type: "tool-call";
+      toolCallId: string;
+      input: string;
+    };
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(toolCall.input).toBe("{}");
+    expect(deltas.map((delta) => delta.delta)).toEqual(["{}"]);
+    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+  });
+
+  it("json protocol canonicalizes pretty-printed arguments progress before emitting deltas", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = jsonProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          '<tool_call>{"name":"get_weather","arguments":{\n  "location": "Seoul",',
+          '\n  "unit": "celsius"\n}}</tool_call>',
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, deltas, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as {
+      type: "tool-call";
+      toolCallId: string;
+      input: string;
+    };
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(toolCall.input).toBe('{"location":"Seoul","unit":"celsius"}');
+    expect(deltas.map((delta) => delta.delta)).toEqual([
+      '{"location":"Seoul","unit":"celsius"}',
+    ]);
+    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+  });
+
   it("xml protocol streams tool input deltas and emits matching tool-call id", async () => {
     const fixture = toolInputStreamFixtures.xml;
     const protocol = xmlProtocol();

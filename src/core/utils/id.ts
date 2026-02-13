@@ -1,5 +1,5 @@
 export function generateId(): string {
-  return Math.random().toString(36).substring(2, 15);
+  return crypto.randomUUID().replace(/-/g, "").slice(0, 13);
 }
 
 const TOOL_CALL_ID_PREFIX = "call_";
@@ -8,9 +8,12 @@ const TOOL_CALL_ID_ALPHANUM =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 function randomAlphaNumeric(length: number): string {
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
   let out = "";
   for (let i = 0; i < length; i += 1) {
-    const index = Math.floor(Math.random() * TOOL_CALL_ID_ALPHANUM.length);
+    const byte = bytes[i];
+    const index = (byte ?? 0) % TOOL_CALL_ID_ALPHANUM.length;
     out += TOOL_CALL_ID_ALPHANUM[index] ?? "0";
   }
   return out;

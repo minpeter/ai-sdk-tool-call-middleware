@@ -5,7 +5,8 @@ import type {
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 import { parse, stringify } from "../../rxml";
-import { generateId, generateToolCallId } from "../utils/id";
+import { generateToolCallId } from "../utils/id";
+import { createFlushTextHandler } from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
@@ -103,11 +104,17 @@ interface HandleStreamingToolCallEndParams {
 
 function parseXmlTagName(rawTagBody: string): string {
   let index = 0;
-  while (index < rawTagBody.length && WHITESPACE_REGEX.test(rawTagBody[index])) {
+  while (
+    index < rawTagBody.length &&
+    WHITESPACE_REGEX.test(rawTagBody[index])
+  ) {
     index += 1;
   }
   const nameStart = index;
-  while (index < rawTagBody.length && NAME_CHAR_RE.test(rawTagBody.charAt(index))) {
+  while (
+    index < rawTagBody.length &&
+    NAME_CHAR_RE.test(rawTagBody.charAt(index))
+  ) {
     index += 1;
   }
   return rawTagBody.slice(nameStart, index);
@@ -314,7 +321,9 @@ function getObjectSchemaPropertyNames(schema: unknown): Set<string> | null {
     return new Set<string>();
   }
 
-  return new Set(Object.keys(schemaObject.properties as Record<string, unknown>));
+  return new Set(
+    Object.keys(schemaObject.properties as Record<string, unknown>)
+  );
 }
 
 function isStableXmlProgressCandidate(options: {
@@ -1085,48 +1094,6 @@ function findPotentialToolTagStart(
   }
 
   return -1;
-}
-
-function createFlushTextHandler(
-  getCurrentTextId: () => string | null,
-  setCurrentTextId: (id: string | null) => void,
-  getHasEmittedTextStart: () => boolean,
-  setHasEmittedTextStart: (value: boolean) => void
-) {
-  return (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    text?: string
-  ) => {
-    const content = text;
-    if (content) {
-      if (!getCurrentTextId()) {
-        const newId = generateId();
-        setCurrentTextId(newId);
-        controller.enqueue({
-          type: "text-start",
-          id: newId,
-        });
-        setHasEmittedTextStart(true);
-      }
-      controller.enqueue({
-        type: "text-delta",
-        id: getCurrentTextId() as string,
-        delta: content,
-      });
-    }
-
-    const currentTextId = getCurrentTextId();
-    if (currentTextId && !text) {
-      if (getHasEmittedTextStart()) {
-        controller.enqueue({
-          type: "text-end",
-          id: currentTextId,
-        });
-        setHasEmittedTextStart(false);
-      }
-      setCurrentTextId(null);
-    }
-  };
 }
 
 interface StreamingToolCallState {

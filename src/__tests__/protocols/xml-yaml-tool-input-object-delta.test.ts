@@ -270,10 +270,7 @@ describe("XML/YAML object delta streaming", () => {
   it("yaml protocol treats split scalar tokens as unstable until the scalar is complete", async () => {
     const protocol = yamlProtocol();
     const transformer = protocol.createStreamParser({ tools: [nestedTool] });
-    const chunks = [
-      "<plan_trip>\nk0_1: t",
-      "rue\nk0_2: done\n</plan_trip>",
-    ];
+    const chunks = ["<plan_trip>\nk0_1: t", "rue\nk0_2: done\n</plan_trip>"];
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(createTextDeltaStream(chunks), transformer)
     );
@@ -339,7 +336,9 @@ describe("XML/YAML object delta streaming", () => {
 
   it("yaml protocol keeps block-scalar progress deltas prefix-safe while a heading line is still streaming", async () => {
     const protocol = yamlProtocol();
-    const transformer = protocol.createStreamParser({ tools: [writeMarkdownTool] });
+    const transformer = protocol.createStreamParser({
+      tools: [writeMarkdownTool],
+    });
     const chunks = [
       "<write_markdown_file>\nfile_path: stream-tool-input-visual-demo.md\ncontent: |\n #",
       " Stream",

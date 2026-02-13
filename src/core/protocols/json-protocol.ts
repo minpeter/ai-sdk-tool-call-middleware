@@ -17,6 +17,10 @@ interface JsonProtocolOptions {
   toolCallEnd?: string;
 }
 
+function canonicalizeToolInput(argumentsValue: unknown): string {
+  return JSON.stringify(argumentsValue ?? {});
+}
+
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
@@ -34,7 +38,7 @@ function processToolCallJson(
       type: "tool-call",
       toolCallId: generateToolCallId(),
       toolName: parsedToolCall.name,
-      input: JSON.stringify(parsedToolCall.arguments ?? {}),
+      input: canonicalizeToolInput(parsedToolCall.arguments),
     });
   } catch (error) {
     logParseFailure({
@@ -412,7 +416,7 @@ function emitToolCallFromParsed(
     typeof parsedToolCall.name === "string"
       ? parsedToolCall.name
       : (state.activeToolInput?.toolName ?? "unknown");
-  const input = JSON.stringify(parsedToolCall.arguments ?? {});
+  const input = canonicalizeToolInput(parsedToolCall.arguments);
   ensureToolInputStart(state, controller, toolName);
   emitToolInputDelta(state, controller, input);
   const toolCallId = state.activeToolInput?.id ?? generateToolCallId();
@@ -425,8 +429,20 @@ function emitToolCallFromParsed(
   } as LanguageModelV3StreamPart);
 }
 
-function normalizeArgumentsProgressText(argumentsText: string): string {
-  return argumentsText.trim() === "null" ? "{}" : argumentsText;
+function canonicalizeArgumentsProgressInput(progress: {
+  argumentsText: string | undefined;
+  argumentsComplete: boolean;
+}): string | undefined {
+  if (progress.argumentsText === undefined || !progress.argumentsComplete) {
+    return undefined;
+  }
+
+  try {
+    const parsedArguments = parseRJSON(progress.argumentsText);
+    return canonicalizeToolInput(parsedArguments);
+  } catch {
+    return undefined;
+  }
 }
 
 function emitToolInputProgress(
@@ -443,12 +459,9 @@ function emitToolInputProgress(
   }
 
   ensureToolInputStart(state, controller, progress.toolName);
-  if (progress.argumentsText !== undefined) {
-    emitToolInputDelta(
-      state,
-      controller,
-      normalizeArgumentsProgressText(progress.argumentsText)
-    );
+  const canonicalProgressInput = canonicalizeArgumentsProgressInput(progress);
+  if (canonicalProgressInput !== undefined) {
+    emitToolInputDelta(state, controller, canonicalProgressInput);
   }
 }
 
