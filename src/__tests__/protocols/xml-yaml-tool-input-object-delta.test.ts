@@ -492,6 +492,31 @@ describe("XML/YAML object delta streaming", () => {
     expect(deltas.some((delta) => delta.includes('"numbers":"'))).toBe(false);
   });
 
+  it("xml protocol avoids scalar-to-array prefix mismatch deltas for permissive schemas", async () => {
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "<shape_shift><numbers>3</numbers><unit>celsius</unit>",
+          "<numbers>5</numbers></shape_shift>",
+        ]),
+        xmlProtocol().createStreamParser({
+          tools: [permissiveObjectTool],
+        })
+      )
+    );
+
+    const toolCall = findToolCall(out);
+    const deltas = extractToolInputDeltas(out);
+    const joined = deltas.join("");
+
+    expect(joined).toBe(toolCall.input);
+    expect(JSON.parse(toolCall.input)).toEqual({
+      numbers: ["3", "5"],
+      unit: "celsius",
+    });
+    expect(deltas.some((delta) => delta.includes('"numbers":"3"'))).toBe(false);
+  });
+
   it("malformed xml/yaml do not leave dangling tool-input streams", async () => {
     const [xmlOut, yamlOut] = await Promise.all([
       convertReadableStreamToArray(

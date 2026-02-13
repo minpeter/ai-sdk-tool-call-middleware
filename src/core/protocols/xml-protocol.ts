@@ -393,21 +393,23 @@ function isStableXmlProgressCandidate(options: {
   }
 
   const schemaProperties = getObjectSchemaPropertyNames(toolSchema);
-  if (schemaProperties && schemaProperties.size > 0) {
-    const parsedObject = parsed as Record<string, unknown>;
-    const uniqueTopLevelTags = new Set(structure.topLevelTagNames);
-    for (const tagName of uniqueTopLevelTags) {
-      if (!schemaProperties.has(tagName)) {
-        continue;
-      }
-      const schemaProperty = getSchemaObjectProperty(toolSchema, tagName);
-      if (
-        schemaProperty &&
-        schemaAllowsArrayType(schemaProperty) &&
-        !Array.isArray(parsedObject[tagName])
-      ) {
-        return false;
-      }
+  if (!schemaProperties || schemaProperties.size === 0) {
+    return false;
+  }
+
+  const parsedObject = parsed as Record<string, unknown>;
+  const uniqueTopLevelTags = new Set(structure.topLevelTagNames);
+  for (const tagName of uniqueTopLevelTags) {
+    if (!schemaProperties.has(tagName)) {
+      continue;
+    }
+    const schemaProperty = getSchemaObjectProperty(toolSchema, tagName);
+    if (
+      schemaProperty &&
+      schemaAllowsArrayType(schemaProperty) &&
+      !Array.isArray(parsedObject[tagName])
+    ) {
+      return false;
     }
   }
 
