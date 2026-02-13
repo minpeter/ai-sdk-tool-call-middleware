@@ -31,6 +31,22 @@ function createTextDeltaStream(chunks: string[]) {
   });
 }
 
+function createInterleavedStream(parts: LanguageModelV3StreamPart[]) {
+  return new ReadableStream<LanguageModelV3StreamPart>({
+    start(controller) {
+      for (const part of parts) {
+        controller.enqueue(part);
+      }
+      controller.enqueue({
+        type: "finish",
+        finishReason: stopFinishReason,
+        usage: zeroUsage,
+      });
+      controller.close();
+    },
+  });
+}
+
 function extractToolInputTimeline(parts: LanguageModelV3StreamPart[]) {
   const starts = parts.filter(
     (part) => part.type === "tool-input-start"
@@ -166,6 +182,52 @@ describe("tool-input streaming events", () => {
     expect(toolCall.input).toBe(fixture.expectedFinishInput);
   });
 
+  it("xml protocol does not prematurely finalize tool call when non-text chunks are interleaved", async () => {
+    const fixture = toolInputStreamFixtures.xml;
+    const protocol = xmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createInterleavedStream([
+          {
+            type: "text-delta",
+            id: "fixture",
+            delta: "<get_weather>\n<location>Seo",
+          },
+          {
+            type: "tool-call",
+            toolCallId: "passthrough-xml",
+            toolName: "passthrough_marker",
+            input: "{}",
+          } as any,
+          {
+            type: "text-delta",
+            id: "fixture",
+            delta: "ul</location>\n<unit>celsius</unit>\n</get_weather>",
+          },
+        ]),
+        transformer
+      )
+    );
+
+    const parsedCalls = out.filter(
+      (part) => part.type === "tool-call" && part.toolName === "get_weather"
+    ) as Array<{
+      type: "tool-call";
+      toolName: string;
+      input: string;
+    }>;
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(parsedCalls).toHaveLength(1);
+    expect(parsedCalls[0].input).toBe('{"location":"Seoul","unit":"celsius"}');
+    expect(leakedText).not.toContain("<get_weather>");
+    expect(leakedText).not.toContain("</get_weather>");
+  });
+
   it("yaml protocol streams tool input deltas and emits matching tool-call id", async () => {
     const fixture = toolInputStreamFixtures.yaml;
     const protocol = yamlProtocol();
@@ -218,6 +280,52 @@ describe("tool-input streaming events", () => {
     expect(ends).toHaveLength(1);
     expect(toolCall.toolCallId).toBe(starts[0].id);
     expect(toolCall.input).toBe(fixture.expectedFinishInput);
+  });
+
+  it("yaml protocol does not prematurely finalize tool call when non-text chunks are interleaved", async () => {
+    const fixture = toolInputStreamFixtures.yaml;
+    const protocol = yamlProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createInterleavedStream([
+          {
+            type: "text-delta",
+            id: "fixture",
+            delta: "<get_weather>\nlocation: Seo",
+          },
+          {
+            type: "tool-call",
+            toolCallId: "passthrough-yaml",
+            toolName: "passthrough_marker",
+            input: "{}",
+          } as any,
+          {
+            type: "text-delta",
+            id: "fixture",
+            delta: "ul\nunit: celsius\n</get_weather>",
+          },
+        ]),
+        transformer
+      )
+    );
+
+    const parsedCalls = out.filter(
+      (part) => part.type === "tool-call" && part.toolName === "get_weather"
+    ) as Array<{
+      type: "tool-call";
+      toolName: string;
+      input: string;
+    }>;
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(parsedCalls).toHaveLength(1);
+    expect(parsedCalls[0].input).toBe('{"location":"Seoul","unit":"celsius"}');
+    expect(leakedText).not.toContain("<get_weather>");
+    expect(leakedText).not.toContain("</get_weather>");
   });
 
   it("json malformed fixture does not leave dangling tool-input stream", async () => {

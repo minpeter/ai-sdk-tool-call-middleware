@@ -823,9 +823,7 @@ export const yamlProtocol = (
           }
 
           if (chunk.type !== "text-delta") {
-            if (currentToolCall) {
-              finalizeUnclosedToolCall(controller);
-            } else if (buffer) {
+            if (!currentToolCall && buffer) {
               flushText(controller, buffer);
               buffer = "";
             }
