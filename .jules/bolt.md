@@ -14,3 +14,7 @@
 **Learning:** Naive implementations of `getPotentialStartIndex` that search the entire buffer for potential matches at the end lead to O(N²) complexity in streaming scenarios as the buffer grows. Since a potential match must be a prefix of the searched text, the search loop only needs to check the last `searchedText.length - 1` characters of the buffer.
 
 **Action:** Always limit suffix/prefix matching in streaming buffers to the length of the search target. Additionally, ensure the search finds the *largest* suffix first (earliest start index) to properly handle potential overlapping matches.
+
+## 2025-05-14 - [getPotentialStartIndex Optimization]
+**Learning:** Utilities that search for potential starts of tags in streaming buffers can easily become O(N²) bottlenecks if they scan the entire buffer for every new chunk. Additionally, returning the shortest suffix (latest index) instead of the longest (earliest index) can lead to missed matches with overlapping patterns (e.g., "ababa" search for "ababax").
+**Action:** Always limit suffix search loops to the length of the target string minus one. Iterate from the earliest possible index to find the longest suffix first. Use character-by-character comparison to avoid substring allocations.
