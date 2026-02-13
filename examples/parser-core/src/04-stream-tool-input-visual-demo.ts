@@ -1,10 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { xmlToolMiddleware } from "../../../src/preconfigured-middleware";
+import { yamlToolMiddleware } from "../../../src/preconfigured-middleware";
 
 const TOOL_COLOR = "\x1b[36m";
 const INFO_COLOR = "\x1b[90m";
@@ -16,29 +15,23 @@ const OUTPUT_DIR = path.resolve(
   "examples/parser-core/.demo-output"
 );
 
-const openaiApiKey = process.env.OPENAI_API_KEY;
 const openrouterApiKey = process.env.OPENROUTER_API_KEY;
 
-if (!(openaiApiKey || openrouterApiKey)) {
-  throw new Error(
-    "Set OPENAI_API_KEY or OPENROUTER_API_KEY before running this demo."
-  );
+if (!openrouterApiKey) {
+  throw new Error("Set OPENROUTER_API_KEY before running this demo.");
 }
 
-const model = openaiApiKey
-  ? createOpenAI({ apiKey: openaiApiKey }).chat(
-      process.env.OPENAI_MODEL ?? "gpt-4o-mini"
-    )
-  : createOpenAICompatible({
-      name: "openrouter",
-      apiKey: openrouterApiKey,
-      baseURL: "https://openrouter.ai/api/v1",
-    })("openrouter/pony-alpha");
+const model = createOpenAICompatible({
+  name: "openrouter",
+  apiKey: openrouterApiKey,
+  baseURL: "https://openrouter.ai/api/v1",
+})(process.env.OPENROUTER_MODEL ?? "arcee-ai/trinity-large-preview:free");
 
 const prompt = [
   "Call write_markdown_file exactly once.",
   "Use file_path: stream-tool-input-visual-demo.md",
-  "Create long markdown content (at least 16 headings), with bullet lists and two fenced code blocks.",
+  "Create medium-length markdown content with 8 headings, two bullet lists, and two fenced code blocks.",
+  "Keep the content around 320 to 420 words.",
   "Do not call the tool more than once.",
 ].join("\n");
 
@@ -46,9 +39,8 @@ interface ToolInputState {
   toolName: string;
   inputText: string;
 }
-interface StreamMetrics {
-  suppressedTextDeltaChunks: number;
-  suppressedTextDeltaBytes: number;
+interface StreamState {
+  sawToolInput: boolean;
 }
 
 type FullStreamPart =
@@ -72,8 +64,10 @@ function summarizeToolInput(inputText: string): string {
 
 function handleToolInputStart(
   part: Extract<FullStreamPart, { type: "tool-input-start" }>,
-  toolInputById: Map<string, ToolInputState>
+  toolInputById: Map<string, ToolInputState>,
+  state: StreamState
 ) {
+  state.sawToolInput = true;
   toolInputById.set(part.id, { toolName: part.toolName, inputText: "" });
   printSection(`tool-input-start: ${part.toolName}`);
   process.stdout.write(`${INFO_COLOR}id=${part.id}${RESET_COLOR}\n`);
@@ -111,32 +105,27 @@ function handleToolInputEnd(
 
 function handleToolCall(
   part: Extract<FullStreamPart, { type: "tool-call" }>,
-  toolInputById: Map<string, ToolInputState>
+  toolInputById: Map<string, ToolInputState>,
+  state: StreamState
 ) {
+  state.sawToolInput = true;
   printSection(`tool-call: ${part.toolName}`);
-  const state = toolInputById.get(part.toolCallId);
+  const toolState = toolInputById.get(part.toolCallId);
   console.log({
     toolCallId: part.toolCallId,
     toolName: part.toolName,
-    inputBytes: state?.inputText.length,
+    inputBytes: toolState?.inputText.length,
   });
 }
 
 function handleStreamPart(
   part: FullStreamPart,
   toolInputById: Map<string, ToolInputState>,
-  metrics: StreamMetrics
+  state: StreamState
 ) {
   switch (part.type) {
-    case "text-delta": {
-      // This demo focuses on tool-input streaming only. Hide assistant text
-      // to prevent exposing protocol/internal markup in user-facing output.
-      metrics.suppressedTextDeltaChunks += 1;
-      metrics.suppressedTextDeltaBytes += part.text.length;
-      return;
-    }
     case "tool-input-start": {
-      handleToolInputStart(part, toolInputById);
+      handleToolInputStart(part, toolInputById, state);
       return;
     }
     case "tool-input-delta": {
@@ -148,7 +137,7 @@ function handleStreamPart(
       return;
     }
     case "tool-call": {
-      handleToolCall(part, toolInputById);
+      handleToolCall(part, toolInputById, state);
       return;
     }
     case "tool-result": {
@@ -179,13 +168,13 @@ function handleStreamPart(
 async function main() {
   printSection("Streaming Tool Input Visual Demo");
   console.log(
-    `${INFO_COLOR}Watching live tool-input-delta stream for a long file-write tool call...${RESET_COLOR}`
+    `${INFO_COLOR}Watching tool-input stream for a file-write tool call...${RESET_COLOR}`
   );
 
   const result = streamText({
     model: wrapLanguageModel({
       model,
-      middleware: xmlToolMiddleware,
+      middleware: yamlToolMiddleware,
     }),
     stopWhen: stepCountIs(MAX_STEPS),
     prompt,
@@ -215,20 +204,33 @@ async function main() {
   });
 
   const toolInputById = new Map<string, ToolInputState>();
-  const metrics: StreamMetrics = {
-    suppressedTextDeltaChunks: 0,
-    suppressedTextDeltaBytes: 0,
+  const state: StreamState = {
+    sawToolInput: false,
   };
-  for await (const part of result.fullStream) {
-    handleStreamPart(part, toolInputById, metrics);
+  let didPrintAssistantText = false;
+
+  const fullStreamTask = (async () => {
+    for await (const part of result.fullStream) {
+      handleStreamPart(part, toolInputById, state);
+    }
+  })();
+
+  const textStreamTask = (async () => {
+    for await (const textPart of result.textStream) {
+      if (!didPrintAssistantText) {
+        printSection("Assistant Text");
+        didPrintAssistantText = true;
+      }
+      process.stdout.write(textPart);
+    }
+  })();
+
+  await Promise.all([fullStreamTask, textStreamTask]);
+  if (didPrintAssistantText) {
+    process.stdout.write("\n");
   }
 
   printSection("Complete");
-  if (metrics.suppressedTextDeltaChunks > 0) {
-    console.log(
-      `${INFO_COLOR}suppressed text-delta chunks: ${metrics.suppressedTextDeltaChunks} (${metrics.suppressedTextDeltaBytes} bytes)${RESET_COLOR}`
-    );
-  }
   console.log(`${INFO_COLOR}Demo output folder: ${OUTPUT_DIR}${RESET_COLOR}`);
 }
 

@@ -115,6 +115,41 @@ function hasIncompleteMappingTail(normalized: string): boolean {
   return false;
 }
 
+function trimTrailingNewlineInUnknown(value: unknown): unknown {
+  if (typeof value === "string") {
+    if (value.endsWith("\n")) {
+      return value.slice(0, -1);
+    }
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => trimTrailingNewlineInUnknown(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        trimTrailingNewlineInUnknown(item),
+      ])
+    );
+  }
+
+  return value;
+}
+
+function stabilizeParsedValueForStreamProgress<T>(
+  value: T,
+  source: string
+): T {
+  if (source.endsWith("\n")) {
+    return value;
+  }
+
+  return trimTrailingNewlineInUnknown(value) as T;
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: XML tag parsing with nested tag tracking inherently requires complex state management
 function findClosingTagEnd(
   text: string,
@@ -328,9 +363,9 @@ function parseYamlContentForStreamProgress(
       if (reparsed.errors.length > 0) {
         return null;
       }
-      return reparsed.value;
+      return stabilizeParsedValueForStreamProgress(reparsed.value, truncated);
     }
-    return parsed.value;
+    return stabilizeParsedValueForStreamProgress(parsed.value, normalized);
   }
 
   const lines = normalized.split("\n");
@@ -353,7 +388,7 @@ function parseYamlContentForStreamProgress(
   if (reparsed.errors.length > 0) {
     return null;
   }
-  return reparsed.value;
+  return stabilizeParsedValueForStreamProgress(reparsed.value, truncated);
 }
 
 function processToolCallMatch(

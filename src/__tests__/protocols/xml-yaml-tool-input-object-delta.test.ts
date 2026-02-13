@@ -64,6 +64,20 @@ const strictNameTool: LanguageModelV3FunctionTool = {
   },
 };
 
+const writeMarkdownTool: LanguageModelV3FunctionTool = {
+  type: "function",
+  name: "write_markdown_file",
+  description: "Write markdown file",
+  inputSchema: {
+    type: "object",
+    properties: {
+      file_path: { type: "string" },
+      content: { type: "string" },
+    },
+    required: ["file_path", "content"],
+  },
+};
+
 function createTextDeltaStream(chunks: string[]) {
   return new ReadableStream<LanguageModelV3StreamPart>({
     start(controller) {
@@ -191,6 +205,38 @@ describe("XML/YAML object delta streaming", () => {
     expect(joined).toBe(toolCall.input);
     expect(joined).toBe('{"location":"Seoul","unit":"celsius"}');
     expect(deltas.some((delta) => delta.includes("null"))).toBe(false);
+  });
+
+  it("yaml protocol keeps block-scalar progress deltas prefix-safe while a heading line is still streaming", async () => {
+    const protocol = yamlProtocol();
+    const transformer = protocol.createStreamParser({ tools: [writeMarkdownTool] });
+    const chunks = [
+      "<write_markdown_file>\nfile_path: stream-tool-input-visual-demo.md\ncontent: |\n #",
+      " Stream",
+      " Tool",
+      " Visual",
+      " Demo",
+      "\n paragraph line\n",
+      "</write_markdown_file>",
+    ];
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
+    );
+
+    const deltas = extractToolInputDeltas(out);
+    const toolCall = findToolCall(out);
+    const joined = deltas.join("");
+
+    expect(toolCall.input).toBe(
+      JSON.stringify({
+        file_path: "stream-tool-input-visual-demo.md",
+        content: "# Stream Tool Visual Demo\nparagraph line\n",
+      })
+    );
+    expect(joined).toBe(toolCall.input);
+    expect(joined).toContain("Stream Tool Visual Demo");
+    expect(deltas.length).toBeGreaterThan(1);
   });
 
   it("xml/yaml finish reconciliation emits final suffix so joined deltas equal final tool input", async () => {
