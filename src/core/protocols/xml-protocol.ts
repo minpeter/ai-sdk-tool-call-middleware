@@ -1178,6 +1178,8 @@ interface StreamingToolCallState {
   name: string;
   toolCallId: string;
   emittedInput: string;
+  lastProgressGtIndex: number | null;
+  lastProgressFullInput: string | null;
 }
 
 interface ProcessToolCallInBufferParams {
@@ -1531,6 +1533,8 @@ export const xmlProtocol = (
           name: toolName,
           toolCallId: generateToolCallId(),
           emittedInput: "",
+          lastProgressGtIndex: null,
+          lastProgressFullInput: null,
         };
         controller.enqueue({
           type: "tool-input-start",
@@ -1545,12 +1549,33 @@ export const xmlProtocol = (
         toolCall: StreamingToolCallState,
         toolContent: string
       ) => {
+        const progressGtIndex = toolContent.lastIndexOf(">");
+        if (toolCall.lastProgressGtIndex === progressGtIndex) {
+          const cached = toolCall.lastProgressFullInput;
+          if (cached == null) {
+            return;
+          }
+          if (cached === "{}" && toolContent.trim().length === 0) {
+            return;
+          }
+          const prefixCandidate = toIncompleteJsonPrefix(cached);
+          emitPrefixDelta({
+            controller,
+            id: toolCall.toolCallId,
+            state: toolCall,
+            candidate: prefixCandidate,
+          });
+          return;
+        }
+
         const toolSchema = getToolSchema(tools, toolCall.name);
         const fullInput = parseXmlContentForStreamProgress({
           toolContent,
           toolSchema,
           parseOptions,
         });
+        toolCall.lastProgressGtIndex = progressGtIndex;
+        toolCall.lastProgressFullInput = fullInput;
         if (fullInput == null) {
           return;
         }
