@@ -18,11 +18,31 @@ export function getPotentialStartIndex(
     return directIndex;
   }
 
-  // Otherwise, look for the largest suffix of "text" that matches
-  // a prefix of "searchedText". We go from the end of text inward.
-  for (let i = text.length - 1; i >= 0; i -= 1) {
-    const suffix = text.substring(i);
-    if (searchedText.startsWith(suffix)) {
+  const textLength = text.length;
+  const searchedTextLength = searchedText.length;
+
+  // Performance optimization:
+  // 1. Limit the loop to searchedTextLength - 1. Any suffix longer than this
+  //    cannot be a prefix of searchedText (and full matches were caught by indexOf).
+  //    This prevents O(N²) complexity in growing buffers.
+  // 2. Use character-by-character comparison to avoid string allocation overhead
+  //    from substring() or startsWith().
+  // 3. Find the longest suffix (earliest index) first, which is more correct
+  //    for streaming overlapping patterns (e.g., text "ababa", search "ababax").
+  const startAt = Math.max(0, textLength - searchedTextLength + 1);
+
+  for (let i = startAt; i < textLength; i++) {
+    let match = true;
+    const currentSuffixLength = textLength - i;
+
+    for (let j = 0; j < currentSuffixLength; j++) {
+      if (text[i + j] !== searchedText[j]) {
+        match = false;
+        break;
+      }
+    }
+
+    if (match) {
       return i;
     }
   }

@@ -1,0 +1,3 @@
+## 2025-05-14 - [getPotentialStartIndex Optimization]
+**Learning:** Utilities that search for potential starts of tags in streaming buffers can easily become O(N²) bottlenecks if they scan the entire buffer for every new chunk. Additionally, returning the shortest suffix (latest index) instead of the longest (earliest index) can lead to missed matches with overlapping patterns (e.g., "ababa" search for "ababax").
+**Action:** Always limit suffix search loops to the length of the target string minus one. Iterate from the earliest possible index to find the longest suffix first. Use character-by-character comparison to avoid substring allocations.
