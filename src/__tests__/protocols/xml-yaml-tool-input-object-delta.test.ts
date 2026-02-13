@@ -88,6 +88,22 @@ const writeMarkdownTool: LanguageModelV3FunctionTool = {
   },
 };
 
+const mathSumTool: LanguageModelV3FunctionTool = {
+  type: "function",
+  name: "math_sum",
+  description: "Sum numbers",
+  inputSchema: {
+    type: "object",
+    properties: {
+      numbers: {
+        type: "array",
+        items: { type: "number" },
+      },
+    },
+    required: ["numbers"],
+  },
+};
+
 function createTextDeltaStream(chunks: string[]) {
   return new ReadableStream<LanguageModelV3StreamPart>({
     start(controller) {
@@ -411,6 +427,27 @@ describe("XML/YAML object delta streaming", () => {
       location: "Busan",
       unit: "celsius",
     });
+  });
+
+  it("xml protocol keeps delta stream prefix-safe when repeated tags later coerce to arrays", async () => {
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "<math_sum>\n<numbers>3</numbers>\n<numbers>5</numbers>\n<numbers>7</numbers>\n",
+        ]),
+        xmlProtocol().createStreamParser({
+          tools: [mathSumTool],
+        })
+      )
+    );
+
+    const toolCall = findToolCall(out);
+    const deltas = extractToolInputDeltas(out);
+    const joined = deltas.join("");
+
+    expect(joined).toBe(toolCall.input);
+    expect(JSON.parse(toolCall.input)).toEqual({ numbers: [3, 5, 7] });
+    expect(deltas.some((delta) => delta.includes('"numbers":"'))).toBe(false);
   });
 
   it("malformed xml/yaml do not leave dangling tool-input streams", async () => {

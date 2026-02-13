@@ -16,6 +16,7 @@ interface EmitPrefixDeltaParams extends EmitToolInputDeltaBaseParams {
 
 interface EmitFinalRemainderParams extends EmitToolInputDeltaBaseParams {
   finalFullJson: string;
+  onMismatch?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 
 function emitDelta({
@@ -49,20 +50,28 @@ function emitDelta({
  * Handles object, array, and string root types correctly.
  */
 export function toIncompleteJsonPrefix(fullJson: string): string {
-  let prefix = fullJson;
+  const trimmed = fullJson.trim();
+  let prefix = trimmed;
 
   while (prefix.endsWith("}") || prefix.endsWith("]")) {
     prefix = prefix.slice(0, -1);
   }
+
+  prefix = prefix.trimEnd();
 
   if (prefix.endsWith('"')) {
     prefix = prefix.slice(0, -1);
   }
 
   if (prefix.length === 0) {
-    const trimmed = fullJson.trim();
-    if (trimmed.startsWith("[") || trimmed.startsWith("]")) {
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      return trimmed.startsWith("{") ? "{" : "[";
+    }
+    if (trimmed.startsWith("]")) {
       return "[";
+    }
+    if (trimmed.startsWith("}")) {
+      return "{";
     }
     if (trimmed.startsWith('"')) {
       return '"';
@@ -87,11 +96,12 @@ export function emitFinalRemainder(params: EmitFinalRemainderParams): boolean {
   });
 
   if (!result && params.state.emittedInput.length > 0) {
-    console.warn(
-      "[ai-sdk-tool] emitFinalRemainder: final JSON does not extend emitted prefix. " +
-        "Streaming deltas may not sum to final input. " +
-        `emitted="${params.state.emittedInput.slice(0, 50)}${params.state.emittedInput.length > 50 ? "..." : ""}", ` +
-        `final="${params.finalFullJson.slice(0, 50)}${params.finalFullJson.length > 50 ? "..." : ""}"`
+    params.onMismatch?.(
+      "Final JSON does not extend emitted tool-input prefix",
+      {
+        emittedLength: params.state.emittedInput.length,
+        finalLength: params.finalFullJson.length,
+      }
     );
   }
 

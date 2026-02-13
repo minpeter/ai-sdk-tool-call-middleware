@@ -323,6 +323,23 @@ describe("tool-input streaming events", () => {
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
   });
 
+  it("xml finish reconciliation rejects unclosed payloads with tagless plain text body", async () => {
+    const fixture = toolInputStreamFixtures.xml;
+    const protocol = xmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream(["<get_weather>hello"]),
+        transformer
+      )
+    );
+
+    const { starts, ends } = extractToolInputTimeline(out);
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+  });
+
   it("xml protocol does not prematurely finalize tool call when non-text chunks are interleaved", async () => {
     const fixture = toolInputStreamFixtures.xml;
     const protocol = xmlProtocol();

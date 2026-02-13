@@ -709,6 +709,7 @@ export const yamlProtocol = (
               id: toolCallId,
               state: currentToolCall,
               finalFullJson: finalInput,
+              onMismatch: options?.onError,
             });
           }
           controller.enqueue({
@@ -754,6 +755,7 @@ export const yamlProtocol = (
             id: toolCallId,
             state: currentToolCall,
             finalFullJson: finalInput,
+            onMismatch: options?.onError,
           });
           controller.enqueue({
             type: "tool-input-end",

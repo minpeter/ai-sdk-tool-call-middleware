@@ -120,6 +120,7 @@ function parseXmlTagName(rawTagBody: string): string {
   return rawTagBody.slice(nameStart, index);
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: XML fragment stability scan requires branching over tag token variants.
 function analyzeXmlFragmentForProgress(
   fragment: string
 ): { topLevelTagNames: string[] } | null {
@@ -213,9 +214,10 @@ function analyzeXmlFragmentForProgress(
   return { topLevelTagNames };
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Top-level text detection must track nested tag boundaries and special XML sections.
 function hasNonWhitespaceTopLevelText(fragment: string): boolean {
   if (!fragment.includes("<")) {
-    return false;
+    return fragment.trim().length > 0;
   }
 
   const stack: string[] = [];
@@ -326,6 +328,55 @@ function getObjectSchemaPropertyNames(schema: unknown): Set<string> | null {
   );
 }
 
+function schemaAllowsArrayType(schema: unknown): boolean {
+  if (!schema || typeof schema !== "object") {
+    return false;
+  }
+
+  const schemaRecord = schema as Record<string, unknown>;
+  const typeValue = schemaRecord.type;
+  if (typeValue === "array") {
+    return true;
+  }
+  if (Array.isArray(typeValue) && typeValue.includes("array")) {
+    return true;
+  }
+
+  const unions = [schemaRecord.anyOf, schemaRecord.oneOf, schemaRecord.allOf];
+  for (const union of unions) {
+    if (!Array.isArray(union)) {
+      continue;
+    }
+    if (union.some((entry) => schemaAllowsArrayType(entry))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getSchemaObjectProperty(
+  schema: unknown,
+  propertyName: string
+): unknown | null {
+  if (!schema || typeof schema !== "object") {
+    return null;
+  }
+
+  const schemaObject = schema as Record<string, unknown>;
+  const properties = schemaObject.properties;
+  if (!properties || typeof properties !== "object") {
+    return null;
+  }
+
+  const property = (properties as Record<string, unknown>)[propertyName];
+  if (!property) {
+    return null;
+  }
+
+  return property;
+}
+
 function isStableXmlProgressCandidate(options: {
   candidate: string;
   parsed: unknown;
@@ -348,6 +399,16 @@ function isStableXmlProgressCandidate(options: {
       !schemaProperties ||
       schemaProperties.size === 0 ||
       !schemaProperties.has(onlyTopLevelTag)
+    ) {
+      return false;
+    }
+
+    const parsedValue = (parsed as Record<string, unknown>)[onlyTopLevelTag];
+    const schemaProperty = getSchemaObjectProperty(toolSchema, onlyTopLevelTag);
+    if (
+      schemaProperty &&
+      schemaAllowsArrayType(schemaProperty) &&
+      !Array.isArray(parsedValue)
     ) {
       return false;
     }
@@ -447,6 +508,7 @@ function handleStreamingToolCallEnd(
       id: currentToolCall.toolCallId,
       state: currentToolCall,
       finalFullJson: finalInput,
+      onMismatch: options?.onError,
     });
     ctrl.enqueue({
       type: "tool-input-end",
@@ -1519,6 +1581,7 @@ export const xmlProtocol = (
             id: currentToolCall.toolCallId,
             state: currentToolCall,
             finalFullJson: finalInput,
+            onMismatch: options?.onError,
           });
           controller.enqueue({
             type: "tool-input-end",
