@@ -206,6 +206,98 @@ function analyzeXmlFragmentForProgress(
   return { topLevelTagNames };
 }
 
+function hasNonWhitespaceTopLevelText(fragment: string): boolean {
+  if (!fragment.includes("<")) {
+    return false;
+  }
+
+  const stack: string[] = [];
+  let position = 0;
+
+  while (position < fragment.length) {
+    const ltIndex = fragment.indexOf("<", position);
+    if (ltIndex === -1) {
+      const trailingText = fragment.slice(position);
+      return stack.length === 0 && trailingText.trim().length > 0;
+    }
+
+    const textBetweenTags = fragment.slice(position, ltIndex);
+    if (stack.length === 0 && textBetweenTags.trim().length > 0) {
+      return true;
+    }
+
+    if (fragment.startsWith("<!--", ltIndex)) {
+      const commentEnd = fragment.indexOf("-->", ltIndex + 4);
+      if (commentEnd === -1) {
+        return false;
+      }
+      position = commentEnd + 3;
+      continue;
+    }
+    if (fragment.startsWith("<![CDATA[", ltIndex)) {
+      const cdataEnd = fragment.indexOf("]]>", ltIndex + 9);
+      if (cdataEnd === -1) {
+        return false;
+      }
+      position = cdataEnd + 3;
+      continue;
+    }
+    if (fragment.startsWith("<?", ltIndex)) {
+      const processingEnd = fragment.indexOf("?>", ltIndex + 2);
+      if (processingEnd === -1) {
+        return false;
+      }
+      position = processingEnd + 2;
+      continue;
+    }
+    if (fragment.startsWith("<!", ltIndex)) {
+      const declarationEnd = fragment.indexOf(">", ltIndex + 2);
+      if (declarationEnd === -1) {
+        return false;
+      }
+      position = declarationEnd + 1;
+      continue;
+    }
+
+    const gtIndex = fragment.indexOf(">", ltIndex + 1);
+    if (gtIndex === -1) {
+      return false;
+    }
+
+    const tagBody = fragment.slice(ltIndex + 1, gtIndex).trim();
+    if (tagBody.length === 0) {
+      return false;
+    }
+
+    if (tagBody.startsWith("/")) {
+      const closeName = parseXmlTagName(tagBody.slice(1));
+      if (closeName.length === 0) {
+        return false;
+      }
+      const openName = stack.pop();
+      if (!openName || openName !== closeName) {
+        return false;
+      }
+      position = gtIndex + 1;
+      continue;
+    }
+
+    const selfClosing = tagBody.endsWith("/");
+    const openBody = selfClosing ? tagBody.slice(0, -1).trimEnd() : tagBody;
+    const openName = parseXmlTagName(openBody);
+    if (openName.length === 0) {
+      return false;
+    }
+    if (!selfClosing) {
+      stack.push(openName);
+    }
+
+    position = gtIndex + 1;
+  }
+
+  return false;
+}
+
 function getObjectSchemaPropertyNames(schema: unknown): Set<string> | null {
   if (!schema || typeof schema !== "object") {
     return null;
@@ -1448,6 +1540,11 @@ export const xmlProtocol = (
         const toolSchema = getToolSchema(tools, currentToolCall.name);
         flushText(controller);
         try {
+          if (hasNonWhitespaceTopLevelText(buffer)) {
+            throw new Error(
+              "Cannot reconcile unclosed XML tool call with top-level plain text."
+            );
+          }
           const parsedResult = parse(buffer, toolSchema, parseConfig);
           const finalInput = JSON.stringify(parsedResult);
           emitFinalRemainder({

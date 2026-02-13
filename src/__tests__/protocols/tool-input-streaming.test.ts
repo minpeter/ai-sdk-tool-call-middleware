@@ -128,6 +128,42 @@ describe("tool-input streaming events", () => {
     });
   });
 
+  it("json finish reconciliation does not leak partial end-tag text when recovery succeeds", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = jsonProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          '<tool_call>{"name":"get_weather","arguments":{"location":"Busan","unit":"celsius"}}',
+          "</tool_",
+        ]),
+        transformer
+      )
+    );
+
+    const toolCall = out.find((part) => part.type === "tool-call") as
+      | {
+          type: "tool-call";
+          toolName: string;
+          input: string;
+        }
+      | undefined;
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(toolCall).toBeTruthy();
+    expect(toolCall?.toolName).toBe("get_weather");
+    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({
+      location: "Busan",
+      unit: "celsius",
+    });
+    expect(leakedText).not.toContain("<tool_call>");
+    expect(leakedText).not.toContain("</tool_");
+  });
+
   it("json protocol normalizes streamed arguments:null progress to match final tool-call input", async () => {
     const fixture = toolInputStreamFixtures.json;
     const protocol = jsonProtocol();
@@ -210,6 +246,23 @@ describe("tool-input streaming events", () => {
     expect(ends).toHaveLength(1);
     expect(toolCall.toolCallId).toBe(starts[0].id);
     expect(toolCall.input).toBe(fixture.expectedFinishInput);
+  });
+
+  it("xml finish reconciliation rejects unclosed payloads with trailing plain text", async () => {
+    const fixture = toolInputStreamFixtures.xml;
+    const protocol = xmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream(["<get_weather><location>Seoul</location> done"]),
+        transformer
+      )
+    );
+
+    const { starts, ends } = extractToolInputTimeline(out);
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
   });
 
   it("xml protocol does not prematurely finalize tool call when non-text chunks are interleaved", async () => {

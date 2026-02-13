@@ -497,34 +497,41 @@ function emitIncompleteToolCall(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
+  trailingBuffer: string,
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
 ) {
-  if (!state.currentToolCallJson) {
+  if (!state.currentToolCallJson && trailingBuffer.length === 0) {
+    state.isInsideToolCall = false;
     return;
   }
 
-  try {
-    const parsedToolCall = parseRJSON(state.currentToolCallJson) as {
-      name: string;
-      arguments: unknown;
-    };
-    emitToolCallFromParsed(state, controller, parsedToolCall);
-    state.currentToolCallJson = "";
-    return;
-  } catch {
-    // fall through to text fallback
+  if (state.currentToolCallJson) {
+    try {
+      const parsedToolCall = parseRJSON(state.currentToolCallJson) as {
+        name: string;
+        arguments: unknown;
+      };
+      emitToolCallFromParsed(state, controller, parsedToolCall);
+      state.currentToolCallJson = "";
+      state.isInsideToolCall = false;
+      return;
+    } catch {
+      // fall through to text fallback
+    }
   }
+
+  const rawToolCallContent = `${state.currentToolCallJson}${trailingBuffer}`;
 
   logParseFailure({
     phase: "stream",
     reason: "Incomplete streaming tool call segment emitted as text",
-    snippet: `${toolCallStart}${state.currentToolCallJson}`,
+    snippet: `${toolCallStart}${rawToolCallContent}`,
   });
 
   const errorId = generateId();
-  const errorContent = `${toolCallStart}${state.currentToolCallJson}`;
+  const errorContent = `${toolCallStart}${rawToolCallContent}`;
   controller.enqueue({
     type: "text-start",
     id: errorId,
@@ -544,6 +551,7 @@ function emitIncompleteToolCall(
     { toolCall: errorContent }
   );
   state.currentToolCallJson = "";
+  state.isInsideToolCall = false;
 }
 
 function handleFinishChunk(
@@ -557,11 +565,20 @@ function handleFinishChunk(
     | undefined,
   chunk: LanguageModelV3StreamPart
 ) {
-  if (state.buffer.length > 0) {
+  if (state.isInsideToolCall) {
+    const trailingBuffer = state.buffer;
+    state.buffer = "";
+    emitIncompleteToolCall(
+      state,
+      controller,
+      toolCallStart,
+      trailingBuffer,
+      options
+    );
+  } else if (state.buffer.length > 0) {
     flushBuffer(state, controller, toolCallStart);
   }
   closeTextBlock(state, controller);
-  emitIncompleteToolCall(state, controller, toolCallStart, options);
   controller.enqueue(chunk);
 }
 
