@@ -51,6 +51,16 @@ const weatherTool: LanguageModelV3FunctionTool = {
   },
 };
 
+const permissiveObjectTool: LanguageModelV3FunctionTool = {
+  type: "function",
+  name: "shape_shift",
+  description: "Permissive schema for streaming stability checks",
+  inputSchema: {
+    type: "object",
+    properties: {},
+  },
+};
+
 const strictNameTool: LanguageModelV3FunctionTool = {
   type: "function",
   name: "bad_tool",
@@ -164,6 +174,56 @@ describe("XML/YAML object delta streaming", () => {
     });
   });
 
+  it("xml protocol does not emit non-prefix string placeholders when nested tags are split across chunks", async () => {
+    const protocol = xmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: [nestedTool] });
+    const chunks = [
+      "<plan_trip>\n<location>Seoul</location>\n<options>",
+      "<unit>celsius</unit></options>\n</plan_trip>",
+    ];
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
+    );
+
+    const deltas = extractToolInputDeltas(out);
+    const toolCall = findToolCall(out);
+    const joined = deltas.join("");
+
+    expect(deltas.some((delta) => delta.includes('"options":"'))).toBe(false);
+    expect(joined).toBe(toolCall.input);
+    expect(JSON.parse(toolCall.input)).toEqual({
+      location: "Seoul",
+      options: { unit: "celsius" },
+    });
+  });
+
+  it("xml protocol suppresses unstable single-root progress deltas for permissive schemas", async () => {
+    const protocol = xmlProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [permissiveObjectTool],
+    });
+    const chunks = [
+      "<shape_shift><person><name>Alice</name></person>",
+      "<city>Seoul</city></shape_shift>",
+    ];
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
+    );
+
+    const deltas = extractToolInputDeltas(out);
+    const toolCall = findToolCall(out);
+    const joined = deltas.join("");
+
+    expect(joined.startsWith('"')).toBe(false);
+    expect(joined.startsWith("{")).toBe(true);
+    expect((deltas[0] ?? "").startsWith('{"name"')).toBe(false);
+    expect(joined).toBe(toolCall.input);
+    expect(JSON.parse(toolCall.input)).toEqual({
+      person: { name: "Alice" },
+      city: "Seoul",
+    });
+  });
+
   it("yaml protocol handles key-split chunks and still emits parsed JSON deltas", async () => {
     const protocol = yamlProtocol();
     const transformer = protocol.createStreamParser({ tools: [weatherTool] });
@@ -181,7 +241,7 @@ describe("XML/YAML object delta streaming", () => {
     const deltas = extractToolInputDeltas(out);
     const toolCall = findToolCall(out);
 
-    expect(deltas).toEqual(['{"location":"Seoul', '","unit":"celsius', '"}']);
+    expect(deltas).toEqual(['{"location":"Seoul","unit":"celsius', '"}']);
     expect(deltas.join("")).toBe(toolCall.input);
     expect(toolCall.input).toBe('{"location":"Seoul","unit":"celsius"}');
   });
@@ -205,6 +265,76 @@ describe("XML/YAML object delta streaming", () => {
     expect(joined).toBe(toolCall.input);
     expect(joined).toBe('{"location":"Seoul","unit":"celsius"}');
     expect(deltas.some((delta) => delta.includes("null"))).toBe(false);
+  });
+
+  it("yaml protocol treats split scalar tokens as unstable until the scalar is complete", async () => {
+    const protocol = yamlProtocol();
+    const transformer = protocol.createStreamParser({ tools: [nestedTool] });
+    const chunks = [
+      "<plan_trip>\nk0_1: t",
+      "rue\nk0_2: done\n</plan_trip>",
+    ];
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
+    );
+
+    const deltas = extractToolInputDeltas(out);
+    const toolCall = findToolCall(out);
+    const joined = deltas.join("");
+
+    expect(deltas.some((delta) => delta.includes('"k0_1":"t'))).toBe(false);
+    expect(joined).toBe(toolCall.input);
+    expect(JSON.parse(toolCall.input)).toEqual({
+      k0_1: true,
+      k0_2: "done",
+    });
+  });
+
+  it("yaml protocol avoids emitting transient nested scalar placeholders from split nested keys", async () => {
+    const protocol = yamlProtocol();
+    const transformer = protocol.createStreamParser({ tools: [nestedTool] });
+    const chunks = [
+      "<plan_trip>\nlocation: Seoul\noptions:\n  u",
+      "nit: celsius\n</plan_trip>",
+    ];
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
+    );
+
+    const deltas = extractToolInputDeltas(out);
+    const toolCall = findToolCall(out);
+    const joined = deltas.join("");
+
+    expect(deltas.some((delta) => delta.includes('"options":"'))).toBe(false);
+    expect(joined).toBe(toolCall.input);
+    expect(JSON.parse(toolCall.input)).toEqual({
+      location: "Seoul",
+      options: { unit: "celsius" },
+    });
+  });
+
+  it("yaml protocol avoids emitting transient null array items when a list item is split", async () => {
+    const protocol = yamlProtocol();
+    const transformer = protocol.createStreamParser({ tools: [nestedTool] });
+    const chunks = [
+      "<plan_trip>\nlocation: Seoul\ndays:\n  -",
+      " mon\n  - tue\n",
+      "</plan_trip>",
+    ];
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
+    );
+
+    const deltas = extractToolInputDeltas(out);
+    const toolCall = findToolCall(out);
+    const joined = deltas.join("");
+
+    expect(deltas.some((delta) => delta.includes("[null"))).toBe(false);
+    expect(joined).toBe(toolCall.input);
+    expect(JSON.parse(toolCall.input)).toEqual({
+      location: "Seoul",
+      days: ["mon", "tue"],
+    });
   });
 
   it("yaml protocol keeps block-scalar progress deltas prefix-safe while a heading line is still streaming", async () => {

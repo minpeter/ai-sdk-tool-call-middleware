@@ -425,6 +425,10 @@ function emitToolCallFromParsed(
   } as LanguageModelV3StreamPart);
 }
 
+function normalizeArgumentsProgressText(argumentsText: string): string {
+  return argumentsText.trim() === "null" ? "{}" : argumentsText;
+}
+
 function emitToolInputProgress(
   state: StreamState,
   controller: StreamController
@@ -440,7 +444,11 @@ function emitToolInputProgress(
 
   ensureToolInputStart(state, controller, progress.toolName);
   if (progress.argumentsText !== undefined) {
-    emitToolInputDelta(state, controller, progress.argumentsText);
+    emitToolInputDelta(
+      state,
+      controller,
+      normalizeArgumentsProgressText(progress.argumentsText)
+    );
   }
 }
 

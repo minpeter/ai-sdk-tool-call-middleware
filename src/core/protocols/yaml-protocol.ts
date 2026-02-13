@@ -29,6 +29,17 @@ function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
 
 const LEADING_WHITESPACE_RE = /^(\s*)/;
 const INCOMPLETE_MAPPING_TAIL_RE = /^[^:[\]{}-][^:]*:\s*$/;
+const INCOMPLETE_SEQUENCE_TAIL_RE = /^-\s*$/;
+const BLOCK_SCALAR_KEY_RE = /:\s*[|>][-+0-9]*\s*$/;
+const PLAIN_MAPPING_VALUE_RE = /^[^:[\]{}-][^:]*:\s*(.+)$/;
+const PLAIN_SEQUENCE_VALUE_RE = /^-\s+(.+)$/;
+
+interface LastMeaningfulLineInfo {
+  index: number;
+  raw: string;
+  trimmed: string;
+  indent: number;
+}
 
 function normalizeYamlContent(yamlContent: string): {
   normalized: string;
@@ -84,35 +95,151 @@ function parseYamlDocumentAsMapping(normalized: string): {
   }
 }
 
-function dropLastMeaningfulLine(input: string): string | null {
+function getLastMeaningfulLineInfo(input: string): LastMeaningfulLineInfo | null {
   const lines = input.split("\n");
   let index = lines.length - 1;
   while (index >= 0) {
-    const trimmed = lines[index]?.trim() ?? "";
+    const raw = lines[index] ?? "";
+    const trimmed = raw.trim();
     if (trimmed.length > 0 && !trimmed.startsWith("#")) {
-      break;
+      return {
+        index,
+        raw,
+        trimmed,
+        indent: raw.length - raw.trimStart().length,
+      };
     }
     index -= 1;
   }
+  return null;
+}
 
-  if (index < 0) {
+function dropLastMeaningfulLine(input: string): string | null {
+  const lineInfo = getLastMeaningfulLineInfo(input);
+  if (!lineInfo) {
     return null;
   }
 
-  return lines.slice(0, index).join("\n").trimEnd();
+  return input
+    .split("\n")
+    .slice(0, lineInfo.index)
+    .join("\n")
+    .trimEnd();
 }
 
 function hasIncompleteMappingTail(normalized: string): boolean {
-  const lines = normalized.split("\n");
-  let index = lines.length - 1;
-  while (index >= 0) {
-    const trimmed = lines[index]?.trim() ?? "";
-    if (trimmed.length > 0 && !trimmed.startsWith("#")) {
-      return INCOMPLETE_MAPPING_TAIL_RE.test(trimmed);
-    }
-    index -= 1;
+  const lineInfo = getLastMeaningfulLineInfo(normalized);
+  if (!lineInfo) {
+    return false;
   }
+  return INCOMPLETE_MAPPING_TAIL_RE.test(lineInfo.trimmed);
+}
+
+function hasIncompleteSequenceTail(normalized: string): boolean {
+  const lineInfo = getLastMeaningfulLineInfo(normalized);
+  if (!lineInfo) {
+    return false;
+  }
+  return INCOMPLETE_SEQUENCE_TAIL_RE.test(lineInfo.trimmed);
+}
+
+function hasSplitNestedKeyTail(normalized: string): boolean {
+  const lineInfo = getLastMeaningfulLineInfo(normalized);
+  if (!lineInfo) {
+    return false;
+  }
+
+  const { trimmed, indent, index } = lineInfo;
+  if (indent === 0) {
+    return false;
+  }
+  if (
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("-") ||
+    trimmed.includes(":")
+  ) {
+    return false;
+  }
+
+  const lines = normalized.split("\n");
+  let parentIndex = index - 1;
+  while (parentIndex >= 0) {
+    const parentRaw = lines[parentIndex] ?? "";
+    const parentTrimmed = parentRaw.trim();
+    if (parentTrimmed.length === 0 || parentTrimmed.startsWith("#")) {
+      parentIndex -= 1;
+      continue;
+    }
+
+    const parentIndent = parentRaw.length - parentRaw.trimStart().length;
+    if (parentIndent >= indent) {
+      parentIndex -= 1;
+      continue;
+    }
+
+    if (!parentTrimmed.endsWith(":")) {
+      return false;
+    }
+    if (BLOCK_SCALAR_KEY_RE.test(parentTrimmed)) {
+      return false;
+    }
+    return true;
+  }
+
   return false;
+}
+
+function extractTrailingPlainScalarValue(line: string): string | null {
+  if (BLOCK_SCALAR_KEY_RE.test(line)) {
+    return null;
+  }
+
+  const mappingMatch = line.match(PLAIN_MAPPING_VALUE_RE);
+  const sequenceMatch = line.match(PLAIN_SEQUENCE_VALUE_RE);
+  const value = mappingMatch?.[1] ?? sequenceMatch?.[1];
+  if (!value) {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+  if (trimmedValue.length === 0) {
+    return null;
+  }
+  if (trimmedValue.startsWith('"') || trimmedValue.startsWith("'")) {
+    return null;
+  }
+  if (
+    trimmedValue.startsWith("{") ||
+    trimmedValue.startsWith("[") ||
+    trimmedValue.startsWith("|") ||
+    trimmedValue.startsWith(">")
+  ) {
+    return null;
+  }
+
+  return trimmedValue;
+}
+
+function hasUnterminatedPlainScalarTail(normalized: string): boolean {
+  if (normalized.endsWith("\n")) {
+    return false;
+  }
+
+  const lineInfo = getLastMeaningfulLineInfo(normalized);
+  if (!lineInfo) {
+    return false;
+  }
+
+  return extractTrailingPlainScalarValue(lineInfo.trimmed) != null;
+}
+
+function hasUnstableProgressTail(normalized: string): boolean {
+  return (
+    hasIncompleteMappingTail(normalized) ||
+    hasIncompleteSequenceTail(normalized) ||
+    hasSplitNestedKeyTail(normalized) ||
+    hasUnterminatedPlainScalarTail(normalized)
+  );
 }
 
 function trimTrailingNewlineInUnknown(value: unknown): unknown {
@@ -352,43 +479,25 @@ function parseYamlContentForStreamProgress(
     return {};
   }
 
-  const parsed = parseYamlDocumentAsMapping(normalized);
-  if (parsed.errors.length === 0) {
-    if (hasIncompleteMappingTail(normalized)) {
-      const truncated = dropLastMeaningfulLine(normalized);
-      if (truncated == null || truncated.length === 0) {
-        return {};
-      }
-      const reparsed = parseYamlDocumentAsMapping(truncated);
-      if (reparsed.errors.length > 0) {
+  let candidate = normalized;
+  while (true) {
+    const parsed = parseYamlDocumentAsMapping(candidate);
+    if (parsed.errors.length === 0 && !hasUnstableProgressTail(candidate)) {
+      if (candidate.trim().length === 0 && normalized.trim().length > 0) {
         return null;
       }
-      return stabilizeParsedValueForStreamProgress(reparsed.value, truncated);
+      return stabilizeParsedValueForStreamProgress(parsed.value, candidate);
     }
-    return stabilizeParsedValueForStreamProgress(parsed.value, normalized);
-  }
 
-  const lines = normalized.split("\n");
-  if (lines.length < 2) {
-    return null;
+    const truncated = dropLastMeaningfulLine(candidate);
+    if (truncated == null) {
+      return null;
+    }
+    if (truncated === candidate) {
+      return null;
+    }
+    candidate = truncated;
   }
-  const lastLine = lines.at(-1) ?? "";
-  const trimmedLastLine = lastLine.trim();
-  const looksLikeSplitKey =
-    trimmedLastLine.length > 0 &&
-    !trimmedLastLine.includes(":") &&
-    !trimmedLastLine.startsWith("-") &&
-    !trimmedLastLine.startsWith("#");
-  if (!looksLikeSplitKey) {
-    return null;
-  }
-
-  const truncated = lines.slice(0, -1).join("\n");
-  const reparsed = parseYamlDocumentAsMapping(truncated);
-  if (reparsed.errors.length > 0) {
-    return null;
-  }
-  return stabilizeParsedValueForStreamProgress(reparsed.value, truncated);
 }
 
 function processToolCallMatch(

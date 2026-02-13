@@ -2,10 +2,10 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const XML_CURRENT_VIEW_OBJECT_DELTA_RE =
-  /=== XML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seo"/;
+  /=== XML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seoul","unit":"celsius"/;
 
 const YAML_CURRENT_VIEW_OBJECT_DELTA_RE =
-  /=== YAML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seo"/;
+  /=== YAML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seoul","unit":"celsius"/;
 
 describe("tool-input delta compare example output", () => {
   it("shows raw snapshot and parsed-object streaming deltas side-by-side", () => {

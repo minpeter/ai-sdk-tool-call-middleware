@@ -44,9 +44,8 @@ export const toolInputStreamFixtures = {
       "</get_weather>",
     ],
     expectedProgressDeltas: [
-      '{"location":"Seo',
-      'ul","unit":"ce',
-      "lsius",
+      '{"location":"Seoul',
+      '","unit":"celsius',
       '"}',
     ],
     finishReconcileChunks: [
@@ -65,7 +64,7 @@ export const toolInputStreamFixtures = {
       "nit: celsius\n",
       "</get_weather>",
     ],
-    expectedProgressDeltas: ['{"location":"Seoul', '","unit":"celsius', '"}'],
+    expectedProgressDeltas: ['{"location":"Seoul","unit":"celsius', '"}'],
     finishReconcileChunks: ["<get_weather>\nlocation: Busan\nunit: celsius\n"],
     expectedFinishInput: '{"location":"Busan","unit":"celsius"}',
     malformedChunks: ["<get_weather>\n- invalid\n- yaml\n</get_weather>"],

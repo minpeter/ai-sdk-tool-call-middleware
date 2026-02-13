@@ -128,6 +128,36 @@ describe("tool-input streaming events", () => {
     });
   });
 
+  it("json protocol normalizes streamed arguments:null progress to match final tool-call input", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = jsonProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          '<tool_call>{"name":"get_weather","arguments":null',
+          "}</tool_call>",
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, deltas, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: string;
+    };
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(toolCall.toolCallId).toBe(starts[0].id);
+    expect(toolCall.input).toBe("{}");
+    expect(deltas.map((delta) => delta.delta)).toEqual(["{}"]);
+    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+  });
+
   it("xml protocol streams tool input deltas and emits matching tool-call id", async () => {
     const fixture = toolInputStreamFixtures.xml;
     const protocol = xmlProtocol();

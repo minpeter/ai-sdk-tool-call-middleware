@@ -101,6 +101,160 @@ interface HandleStreamingToolCallEndParams {
   parseOptions?: Record<string, unknown>;
 }
 
+function parseXmlTagName(rawTagBody: string): string {
+  let index = 0;
+  while (index < rawTagBody.length && WHITESPACE_REGEX.test(rawTagBody[index])) {
+    index += 1;
+  }
+  const nameStart = index;
+  while (index < rawTagBody.length && NAME_CHAR_RE.test(rawTagBody.charAt(index))) {
+    index += 1;
+  }
+  return rawTagBody.slice(nameStart, index);
+}
+
+function analyzeXmlFragmentForProgress(
+  fragment: string
+): { topLevelTagNames: string[] } | null {
+  const stack: string[] = [];
+  const topLevelTagNames: string[] = [];
+  let position = 0;
+
+  while (position < fragment.length) {
+    const ltIndex = fragment.indexOf("<", position);
+    if (ltIndex === -1) {
+      break;
+    }
+
+    if (fragment.startsWith("<!--", ltIndex)) {
+      const commentEnd = fragment.indexOf("-->", ltIndex + 4);
+      if (commentEnd === -1) {
+        return null;
+      }
+      position = commentEnd + 3;
+      continue;
+    }
+    if (fragment.startsWith("<![CDATA[", ltIndex)) {
+      const cdataEnd = fragment.indexOf("]]>", ltIndex + 9);
+      if (cdataEnd === -1) {
+        return null;
+      }
+      position = cdataEnd + 3;
+      continue;
+    }
+    if (fragment.startsWith("<?", ltIndex)) {
+      const processingEnd = fragment.indexOf("?>", ltIndex + 2);
+      if (processingEnd === -1) {
+        return null;
+      }
+      position = processingEnd + 2;
+      continue;
+    }
+    if (fragment.startsWith("<!", ltIndex)) {
+      const declarationEnd = fragment.indexOf(">", ltIndex + 2);
+      if (declarationEnd === -1) {
+        return null;
+      }
+      position = declarationEnd + 1;
+      continue;
+    }
+
+    const gtIndex = fragment.indexOf(">", ltIndex + 1);
+    if (gtIndex === -1) {
+      return null;
+    }
+
+    const tagBody = fragment.slice(ltIndex + 1, gtIndex).trim();
+    if (tagBody.length === 0) {
+      return null;
+    }
+
+    if (tagBody.startsWith("/")) {
+      const closeName = parseXmlTagName(tagBody.slice(1));
+      if (closeName.length === 0) {
+        return null;
+      }
+      const openName = stack.pop();
+      if (!openName || openName !== closeName) {
+        return null;
+      }
+      position = gtIndex + 1;
+      continue;
+    }
+
+    const selfClosing = tagBody.endsWith("/");
+    const openBody = selfClosing ? tagBody.slice(0, -1).trimEnd() : tagBody;
+    const openName = parseXmlTagName(openBody);
+    if (openName.length === 0) {
+      return null;
+    }
+
+    if (stack.length === 0) {
+      topLevelTagNames.push(openName);
+    }
+    if (!selfClosing) {
+      stack.push(openName);
+    }
+
+    position = gtIndex + 1;
+  }
+
+  if (stack.length > 0) {
+    return null;
+  }
+
+  return { topLevelTagNames };
+}
+
+function getObjectSchemaPropertyNames(schema: unknown): Set<string> | null {
+  if (!schema || typeof schema !== "object") {
+    return null;
+  }
+
+  const schemaObject = schema as {
+    type?: unknown;
+    properties?: unknown;
+  };
+  if (schemaObject.type != null && schemaObject.type !== "object") {
+    return null;
+  }
+  if (!schemaObject.properties || typeof schemaObject.properties !== "object") {
+    return new Set<string>();
+  }
+
+  return new Set(Object.keys(schemaObject.properties as Record<string, unknown>));
+}
+
+function isStableXmlProgressCandidate(options: {
+  candidate: string;
+  parsed: unknown;
+  toolSchema: unknown;
+}): boolean {
+  const { candidate, parsed, toolSchema } = options;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return false;
+  }
+
+  const structure = analyzeXmlFragmentForProgress(candidate);
+  if (!structure) {
+    return false;
+  }
+
+  if (structure.topLevelTagNames.length === 1) {
+    const onlyTopLevelTag = structure.topLevelTagNames[0];
+    const schemaProperties = getObjectSchemaPropertyNames(toolSchema);
+    if (
+      !schemaProperties ||
+      schemaProperties.size === 0 ||
+      !schemaProperties.has(onlyTopLevelTag)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function parseXmlContentForStreamProgress({
   toolContent,
   toolSchema,
@@ -110,16 +264,56 @@ function parseXmlContentForStreamProgress({
   toolSchema: unknown;
   parseOptions?: Record<string, unknown>;
 }): string | null {
-  try {
-    const parsed = parse(toolContent, toolSchema, {
-      ...(parseOptions ?? {}),
-      repair: true,
-      onError: undefined,
-    });
-    return JSON.stringify(parsed);
-  } catch {
-    return null;
+  const tryParse = (content: string): unknown | null => {
+    try {
+      return parse(content, toolSchema, {
+        ...(parseOptions ?? {}),
+        repair: false,
+        onError: undefined,
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  const strictFull = tryParse(toolContent);
+  if (
+    strictFull !== null &&
+    isStableXmlProgressCandidate({
+      candidate: toolContent,
+      parsed: strictFull,
+      toolSchema,
+    })
+  ) {
+    return JSON.stringify(strictFull);
   }
+
+  let searchEnd = toolContent.length;
+  while (searchEnd > 0) {
+    const gtIndex = toolContent.lastIndexOf(">", searchEnd - 1);
+    if (gtIndex === -1) {
+      break;
+    }
+    const candidate = toolContent.slice(0, gtIndex + 1);
+    if (!analyzeXmlFragmentForProgress(candidate)) {
+      searchEnd = gtIndex;
+      continue;
+    }
+    const parsedCandidate = tryParse(candidate);
+    if (
+      parsedCandidate !== null &&
+      isStableXmlProgressCandidate({
+        candidate,
+        parsed: parsedCandidate,
+        toolSchema,
+      })
+    ) {
+      return JSON.stringify(parsedCandidate);
+    }
+    searchEnd = gtIndex;
+  }
+
+  return null;
 }
 
 function handleStreamingToolCallEnd(
