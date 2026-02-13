@@ -808,7 +808,6 @@ export const yamlProtocol = (
       };
 
       return new TransformStream({
-        // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Stateful stream parsing requires branching over chunk lifecycle and parser states.
         transform(chunk, controller) {
           if (chunk.type === "finish") {
             if (currentToolCall) {
