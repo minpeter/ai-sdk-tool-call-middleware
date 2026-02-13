@@ -876,12 +876,18 @@ export const yamlProtocol = (
         if (selfClosing) {
           buffer = buffer.substring(tagIndex + tagLength);
           const toolCallId = generateToolCallId();
+          currentToolCall = {
+            name: tagName,
+            toolCallId,
+            emittedInput: "",
+          };
           controller.enqueue({
             type: "tool-input-start",
             id: toolCallId,
             toolName: tagName,
           });
           processToolCallEnd(controller, "", tagName, toolCallId);
+          currentToolCall = null;
         } else {
           const startTag = `<${tagName}>`;
           buffer = buffer.substring(tagIndex + startTag.length);

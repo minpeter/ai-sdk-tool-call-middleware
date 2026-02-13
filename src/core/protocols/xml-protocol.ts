@@ -316,8 +316,14 @@ function getObjectSchemaPropertyNames(schema: unknown): Set<string> | null {
     type?: unknown;
     properties?: unknown;
   };
-  if (schemaObject.type != null && schemaObject.type !== "object") {
-    return null;
+  const typeValue = schemaObject.type;
+  if (typeValue != null) {
+    const isObjectType =
+      typeValue === "object" ||
+      (Array.isArray(typeValue) && typeValue.includes("object"));
+    if (!isObjectType) {
+      return null;
+    }
   }
   if (!schemaObject.properties || typeof schemaObject.properties !== "object") {
     return new Set<string>();

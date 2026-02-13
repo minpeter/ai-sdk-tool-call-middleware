@@ -1,4 +1,7 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type {
+  LanguageModelV3FunctionTool,
+  LanguageModelV3StreamPart,
+} from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { jsonProtocol } from "../../core/protocols/json-protocol";
@@ -252,6 +255,34 @@ describe("tool-input streaming events", () => {
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 
+  it("json protocol emits tool-input deltas for parseable arguments even when outer JSON is incomplete", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = jsonProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          '<tool_call>{"meta":{"msg":"{"},"name":"get_weather","arguments":{"location":"Seoul","unit":"celsius"}',
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, deltas, ends } = extractToolInputTimeline(out);
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(deltas.map((delta) => delta.delta).join("")).toBe(
+      '{"location":"Seoul","unit":"celsius"}'
+    );
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(leakedText).not.toContain("<tool_call>");
+  });
+
   it("xml protocol streams tool input deltas and emits matching tool-call id", async () => {
     const fixture = toolInputStreamFixtures.xml;
     const protocol = xmlProtocol();
@@ -276,6 +307,50 @@ describe("tool-input streaming events", () => {
     expect(starts[0].id).toBe(ends[0].id);
     expect(toolCall.toolCallId).toBe(starts[0].id);
     expect(toolCall.input).toBe('{"location":"Seoul","unit":"celsius"}');
+    expect(deltas.map((delta) => delta.delta)).toEqual(
+      fixture.expectedProgressDeltas
+    );
+    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+  });
+
+  it("xml protocol emits progress deltas for union-typed object schemas", async () => {
+    const fixture = toolInputStreamFixtures.xml;
+    const unionWeatherTool: LanguageModelV3FunctionTool = {
+      type: "function",
+      name: "get_weather",
+      description: "Get weather information",
+      inputSchema: {
+        type: ["object", "null"],
+        properties: {
+          location: { type: "string" },
+          unit: { type: "string" },
+        },
+        required: ["location"],
+      },
+    };
+
+    const protocol = xmlProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [unionWeatherTool],
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream(fixture.progressiveChunks),
+        transformer
+      )
+    );
+
+    const { starts, deltas, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as {
+      type: "tool-call";
+      toolCallId: string;
+      input: string;
+    };
+
+    expect(starts).toHaveLength(1);
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(ends).toHaveLength(1);
+    expect(toolCall.toolCallId).toBe(starts[0].id);
     expect(deltas.map((delta) => delta.delta)).toEqual(
       fixture.expectedProgressDeltas
     );
@@ -413,6 +488,32 @@ describe("tool-input streaming events", () => {
     expect(deltas.map((delta) => delta.delta)).toEqual(
       fixture.expectedProgressDeltas
     );
+    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+  });
+
+  it("yaml protocol emits '{}' tool-input-delta for self-closing tags", async () => {
+    const fixture = toolInputStreamFixtures.yaml;
+    const protocol = yamlProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream(["Before ", "<get_weather/>", " After"]),
+        transformer
+      )
+    );
+
+    const { starts, deltas, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as {
+      type: "tool-call";
+      toolCallId: string;
+      input: string;
+    };
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(toolCall.toolCallId).toBe(starts[0].id);
+    expect(toolCall.input).toBe("{}");
+    expect(deltas.map((delta) => delta.delta)).toEqual(["{}"]);
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 

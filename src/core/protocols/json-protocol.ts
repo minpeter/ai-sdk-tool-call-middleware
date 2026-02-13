@@ -127,9 +127,26 @@ function findTopLevelPropertyValueStart(
   }
 
   let depth = 0;
+  let inString = false;
+  let escaping = false;
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
+
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaping = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
 
     if (char === "{") {
       depth += 1;
@@ -140,7 +157,12 @@ function findTopLevelPropertyValueStart(
       continue;
     }
 
-    if (char !== '"' || depth !== 1) {
+    if (char !== '"') {
+      continue;
+    }
+
+    if (depth !== 1) {
+      inString = true;
       continue;
     }
 
