@@ -1326,7 +1326,8 @@ export const xmlProtocol = (
 
           if (chunk.type !== "text-delta") {
             if (currentToolCall) {
-              finalizeUnclosedToolCall(controller);
+              // Keep an open XML tool call alive across non-text stream chunks
+              // so mixed-mode streams (e.g. reasoning) can continue to complete it.
             } else if (buffer) {
               flushText(controller, buffer);
               buffer = "";
