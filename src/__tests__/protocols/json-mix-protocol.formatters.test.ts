@@ -32,4 +32,54 @@ describe("jsonProtocol formatters and parseGeneratedText edges", () => {
       .join("");
     expect(combined).toContain("<tool_call>{bad}</tool_call>");
   });
+
+  it("recovers unclosed tool_call when JSON envelope is complete", () => {
+    const p = jsonProtocol();
+    const out = p.parseGeneratedText({
+      text: 'prefix <tool_call>{"name":"get_weather","arguments":{"city":"Seoul","unit":"celsius"}}',
+      tools: [],
+    });
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("get_weather");
+    expect(JSON.parse(tool.input)).toEqual({
+      city: "Seoul",
+      unit: "celsius",
+    });
+    const combinedText = out
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("");
+    expect(combinedText).toContain("prefix ");
+  });
+
+  it("does not recover unclosed tool_call when trailing non-tag text exists", () => {
+    const p = jsonProtocol();
+    const source = '<tool_call>{"name":"x","arguments":{}} trailing text';
+    const out = p.parseGeneratedText({
+      text: source,
+      tools: [],
+    });
+    expect(out.some((c) => c.type === "tool-call")).toBe(false);
+    const combinedText = out
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("");
+    expect(combinedText).toContain(source);
+  });
+
+  it("does not recover unclosed tool_call when JSON is malformed", () => {
+    const p = jsonProtocol();
+    const source = '<tool_call>{"name":"x","arguments":';
+    const out = p.parseGeneratedText({
+      text: source,
+      tools: [],
+    });
+    expect(out.some((c) => c.type === "tool-call")).toBe(false);
+    const combinedText = out
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("");
+    expect(combinedText).toContain(source);
+  });
 });

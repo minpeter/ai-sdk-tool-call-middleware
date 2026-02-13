@@ -1,0 +1,50 @@
+{
+  "caseId": "basic-extraction",
+  "samples": [
+    {
+      "id": "json-generate-well-formed-tool-call",
+      "protocol": "json",
+      "mode": "generate",
+      "modelOutput": "<tool_call>{\"name\":\"extract_facts\",\"arguments\":{\"text\":\"AI SDK middleware should parse tool calls robustly.\",\"max_facts\":3}}</tool_call>",
+      "expected": {
+        "shouldParse": true,
+        "toolCalls": [
+          {
+            "toolName": "extract_facts",
+            "input": {
+              "text": "AI SDK middleware should parse tool calls robustly.",
+              "max_facts": 3
+            }
+          }
+        ],
+        "expectedToolNames": ["extract_facts"],
+        "expectedFailureMode": "NONE"
+      }
+    },
+    {
+      "id": "json-generate-empty-output",
+      "protocol": "json",
+      "mode": "generate",
+      "modelOutput": "",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "EMPTY_OUTPUT"
+      }
+    },
+    {
+      "id": "yaml-stream-xml-self-closing-unsupported",
+      "protocol": "yaml",
+      "mode": "stream",
+      "modelOutput": "<extract_facts text=\"AI SDK middleware should parse tool calls robustly. max_facts=3.\" max_facts=\"3\"/>",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "YAML_PROTOCOL_XML_SELF_CLOSING",
+        "preserveTextIncludes": ["<extract_facts", "max_facts=\"3\""]
+      }
+    }
+  ]
+}

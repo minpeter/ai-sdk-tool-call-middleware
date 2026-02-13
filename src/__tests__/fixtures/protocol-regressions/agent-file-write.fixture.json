@@ -1,0 +1,55 @@
+{
+  "caseId": "agent-file-write",
+  "samples": [
+    {
+      "id": "json-generate-well-formed-tool-call",
+      "protocol": "json",
+      "mode": "generate",
+      "modelOutput": "<tool_call>{\"name\":\"write_file\",\"arguments\":{\"file_path\":\"/tmp/eval-note.md\",\"contents\":\"# Eval Note\\n- First point\\n- Second point\",\"overwrite\":true}}</tool_call>",
+      "expected": {
+        "shouldParse": true,
+        "toolCalls": [
+          {
+            "toolName": "write_file",
+            "input": {
+              "file_path": "/tmp/eval-note.md",
+              "contents": "# Eval Note\n- First point\n- Second point",
+              "overwrite": true
+            }
+          }
+        ],
+        "expectedToolNames": ["write_file"],
+        "expectedFailureMode": "NONE"
+      }
+    },
+    {
+      "id": "json-stream-prose-intent-only",
+      "protocol": "json",
+      "mode": "stream",
+      "modelOutput": "I'll write a markdown file with 3 lines of content to the specified path. Here's the function call:",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "PROSE_ONLY_NO_TOOL_CALL",
+        "preserveTextIncludes": [
+          "I'll write a markdown file",
+          "Here's the function call"
+        ]
+      }
+    },
+    {
+      "id": "xml-stream-self-closing-write-file-unsupported",
+      "protocol": "xml",
+      "mode": "stream",
+      "modelOutput": "<write_file\n  file_path=\"/tmp/eval-note.md\"\n  contents=\"# Eval Note\\n\\nThis is a note for evaluation.\\n\\n## Key Points\"\n  overwrite=\"true\"\n/>",
+      "expected": {
+        "shouldParse": false,
+        "toolCalls": [],
+        "expectedToolNames": [],
+        "expectedFailureMode": "UNSUPPORTED_XML_SELF_CLOSING",
+        "preserveTextIncludes": ["<write_file", "overwrite=\"true\""]
+      }
+    }
+  ]
+}
