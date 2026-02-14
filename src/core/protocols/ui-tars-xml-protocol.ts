@@ -35,6 +35,15 @@ const PARAM_TAG_RE =
 const PARAM_SELF_CLOSING_RE =
   /<(parameter|param|argument|arg)\b[^>]*\bname\s*=\s*(["'])(.*?)\2[^>]*\/\s*>/gi;
 
+const PARAM_EQUALS_TAG_RE =
+  /<(parameter|param|argument|arg)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))[^>]*>([\s\S]*?)<\/\1\s*>/gi;
+
+const PARAM_EQUALS_SELF_CLOSING_RE =
+  /<(parameter|param|argument|arg)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))[^>]*\/\s*>/gi;
+
+const CALL_SHORTHAND_VALUE_RE =
+  /^<\s*(call|function|tool|invoke)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))/i;
+
 // Non-global variants for streaming parsing (avoids `lastIndex` state).
 const UI_TARS_STREAM_CALL_OPEN_START_RE =
   /<\s*(?!\/)\s*(call|function|tool|invoke)\b/i;
@@ -45,12 +54,12 @@ const UI_TARS_STREAM_NAME_OR_PARAM_SIGNAL_RE =
   /<\s*(?!\/)\s*(name|tool_name|parameter|param|argument|arg)\b/i;
 const UI_TARS_STREAM_NAME_TAG_RE =
   /<\s*(name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/i;
-const UI_TARS_STREAM_PARAM_TAG_RE =
-  /<(parameter|param|argument|arg)\b[^>]*\bname\s*=\s*(["'])(.*?)\2[^>]*>([\s\S]*?)<\/\1\s*>/i;
-const UI_TARS_STREAM_PARAM_SELF_CLOSING_RE =
-  /<(parameter|param|argument|arg)\b[^>]*\bname\s*=\s*(["'])(.*?)\2[^>]*\/\s*>/i;
+const UI_TARS_STREAM_PARAM_ANY_TAG_RE =
+  /<(parameter|param|argument|arg)\b(?:[^>]*\bname\s*=\s*(["'])(.*?)\2|\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+)))[^>]*(?:>([\s\S]*?)<\/\1\s*>|\/\s*>)/i;
 const UI_TARS_STREAM_PARAM_OPEN_TAG_RE =
   /<\s*(parameter|param|argument|arg)\b[^>]*\bname\s*=\s*(["'])(.*?)\2[^>]*>/i;
+const UI_TARS_STREAM_PARAM_EQUALS_OPEN_TAG_RE =
+  /<\s*(parameter|param|argument|arg)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))/i;
 const UI_TARS_STREAM_SELF_CLOSING_TAG_RE = /\/\s*>$/;
 
 function normalizeXmlTextValue(raw: string): string {
@@ -79,6 +88,18 @@ function getAttributeValue(openTag: string, attrName: string): string | null {
     return null;
   }
   return unescapeXml(match[2] ?? "");
+}
+
+function getShorthandValue(openTag: string): string | null {
+  const match = CALL_SHORTHAND_VALUE_RE.exec(openTag);
+  if (!match) {
+    return null;
+  }
+  const value = match[2] ?? match[3] ?? match[4];
+  if (!value) {
+    return null;
+  }
+  return unescapeXml(value);
 }
 
 function extractFirstTagText(xml: string, tagName: string): string | null {
@@ -153,8 +174,25 @@ function extractParameters(xml: string): Record<string, unknown> {
     mergeParamValue(args, unescapeXml(name), normalizeXmlTextValue(rawValue));
   }
 
+  for (const match of xml.matchAll(PARAM_EQUALS_TAG_RE)) {
+    const name = match[2] ?? match[3] ?? match[4];
+    const rawValue = match[5] ?? "";
+    if (!name) {
+      continue;
+    }
+    mergeParamValue(args, unescapeXml(name), normalizeXmlTextValue(rawValue));
+  }
+
   for (const match of xml.matchAll(PARAM_SELF_CLOSING_RE)) {
     const name = match[3];
+    if (!name) {
+      continue;
+    }
+    mergeParamValue(args, unescapeXml(name), "");
+  }
+
+  for (const match of xml.matchAll(PARAM_EQUALS_SELF_CLOSING_RE)) {
+    const name = match[2] ?? match[3] ?? match[4];
     if (!name) {
       continue;
     }
@@ -172,8 +210,10 @@ function parseSingleFunctionCallXml(
   const toolNameAttr = openingTag
     ? getAttributeValue(openingTag, "name")
     : null;
+  const shorthandName = openingTag ? getShorthandValue(openingTag) : null;
   const toolName =
     toolNameAttr ??
+    shorthandName ??
     extractFirstTagText(xml, "name") ??
     extractFirstTagText(xml, "tool_name") ??
     fallbackToolName;
@@ -257,7 +297,7 @@ function appendUiTarsParameter(
 ): void {
   const nameAttr = escapeXmlMinimalAttr(key, '"');
   const text = escapeXmlMinimalText(toUiTarsParamText(value));
-  lines.push(`  <parameter name="${nameAttr}">${text}</parameter>`);
+  lines.push(`    <parameter=${nameAttr}>${text}</parameter>`);
 }
 
 function appendUiTarsArgs(lines: string[], args: unknown): void {
@@ -287,9 +327,9 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
   formatToolCall(toolCall: LanguageModelV3ToolCall): string {
     const args = parseToolCallInput(toolCall.input);
     const lines: string[] = ["<tool_call>"];
-    lines.push(`  <name>${escapeXmlMinimalText(toolCall.toolName)}</name>`);
+    lines.push(`  <function=${escapeXmlMinimalAttr(toolCall.toolName, '"')}>`);
     appendUiTarsArgs(lines, args);
-
+    lines.push("  </function>");
     lines.push("</tool_call>");
     return lines.join("\n");
   },
@@ -399,36 +439,40 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
     const findNextParamTag = (
       text: string
     ): { start: number; end: number; name: string; value: string } | null => {
-      const tagMatch = UI_TARS_STREAM_PARAM_TAG_RE.exec(text);
-      const selfMatch = UI_TARS_STREAM_PARAM_SELF_CLOSING_RE.exec(text);
-
-      if (!(tagMatch || selfMatch)) {
-        return null;
-      }
-
-      const tagIndex = tagMatch?.index ?? Number.POSITIVE_INFINITY;
-      const selfIndex = selfMatch?.index ?? Number.POSITIVE_INFINITY;
-      const useTag = tagIndex <= selfIndex;
-      const match = (useTag ? tagMatch : selfMatch) as RegExpExecArray;
-
-      const start = match.index ?? 0;
-      const full = match[0] ?? "";
-      const end = start + full.length;
-      const name = unescapeXml(match[3] ?? "");
-      const value = useTag ? normalizeXmlTextValue(match[4] ?? "") : "";
-      return { start, end, name, value };
-    };
-
-    const peekNextParamName = (text: string): string | null => {
-      const match = UI_TARS_STREAM_PARAM_OPEN_TAG_RE.exec(text);
+      const match = UI_TARS_STREAM_PARAM_ANY_TAG_RE.exec(text);
       if (!match) {
         return null;
       }
-      const name = match[3] ?? "";
-      if (!name) {
+
+      const start = match.index;
+      const end = start + match[0].length;
+
+      const rawName = match[3] ?? match[4] ?? match[5] ?? match[6] ?? "";
+      const rawValue = match[7] ?? "";
+      const value = rawValue ? normalizeXmlTextValue(rawValue) : "";
+
+      return { start, end, name: unescapeXml(rawName), value };
+    };
+
+    const peekNextParamName = (text: string): string | null => {
+      const attrMatch = UI_TARS_STREAM_PARAM_OPEN_TAG_RE.exec(text);
+      const eqMatch = UI_TARS_STREAM_PARAM_EQUALS_OPEN_TAG_RE.exec(text);
+
+      const attrIndex = attrMatch?.index ?? Number.POSITIVE_INFINITY;
+      const eqIndex = eqMatch?.index ?? Number.POSITIVE_INFINITY;
+
+      const useEq = eqIndex < attrIndex;
+      const match = useEq ? eqMatch : attrMatch;
+      if (!match) {
         return null;
       }
-      return unescapeXml(name);
+      const rawName = useEq
+        ? (match[2] ?? match[3] ?? match[4] ?? "")
+        : match[3];
+      if (!rawName) {
+        return null;
+      }
+      return unescapeXml(rawName);
     };
 
     const maybeEmitToolInputStart = (
@@ -966,7 +1010,9 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
           const selfClosing = UI_TARS_STREAM_SELF_CLOSING_TAG_RE.test(openTag);
           if (selfClosing) {
             const toolNameAttr =
-              getAttributeValue(openTag, "name") ?? toolCall.outerNameAttr;
+              getAttributeValue(openTag, "name") ??
+              getShorthandValue(openTag) ??
+              toolCall.outerNameAttr;
             const immediateCall: StreamingCallState = {
               endTagName: callTagName,
               toolCallId: generateToolCallId(),
@@ -988,7 +1034,8 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
             continue;
           }
 
-          const toolNameAttr = getAttributeValue(openTag, "name");
+          const toolNameAttr =
+            getAttributeValue(openTag, "name") ?? getShorthandValue(openTag);
           const newCall: StreamingCallState = {
             endTagName: callTagName,
             toolCallId: generateToolCallId(),

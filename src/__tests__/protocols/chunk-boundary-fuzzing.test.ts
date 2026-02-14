@@ -125,13 +125,13 @@ describe("Random chunk boundary fuzzing", () => {
     {
       name: "simple UI-TARS tool call",
       input:
-        '<tool_call><name>get_weather</name><parameter name="city">Tokyo</parameter></tool_call>',
+        "<tool_call><function=get_weather><parameter=city>Tokyo</parameter></function></tool_call>",
       expectedTools: [{ toolName: "get_weather", input: { city: "Tokyo" } }],
     },
     {
       name: "UI-TARS tool call with multiple params",
       input:
-        '<tool_call><name>search</name><parameter name="query">hello world</parameter><parameter name="limit">10</parameter></tool_call>',
+        "<tool_call><function=search><parameter=query>hello world</parameter><parameter=limit>10</parameter></function></tool_call>",
       expectedTools: [
         { toolName: "search", input: { query: "hello world", limit: "10" } },
       ],
@@ -139,7 +139,7 @@ describe("Random chunk boundary fuzzing", () => {
     {
       name: "UI-TARS with surrounding text",
       input:
-        'Checking... <tool_call><name>get_weather</name><parameter name="city">NYC</parameter></tool_call> found!',
+        "Checking... <tool_call><function=get_weather><parameter=city>NYC</parameter></function></tool_call> found!",
       expectedTools: [{ toolName: "get_weather", input: { city: "NYC" } }],
       expectedTextContains: ["Checking...", "found!"],
       expectedTextNotContains: ["<tool_call>", "</tool_call>"],
@@ -147,7 +147,7 @@ describe("Random chunk boundary fuzzing", () => {
     {
       name: "UI-TARS multiple tool calls",
       input:
-        '<tool_call><name>a</name><parameter name="x">1</parameter></tool_call> and <tool_call><name>b</name><parameter name="y">2</parameter></tool_call>',
+        "<tool_call><function=a><parameter=x>1</parameter></function></tool_call> and <tool_call><function=b><parameter=y>2</parameter></function></tool_call>",
       expectedTools: [
         { toolName: "a", input: { x: "1" } },
         { toolName: "b", input: { y: "2" } },
@@ -158,7 +158,7 @@ describe("Random chunk boundary fuzzing", () => {
     {
       name: "UI-TARS multiple calls inside one tool_call",
       input:
-        '<tool_call><call><name>alpha</name><parameter name="x">1</parameter></call><call name="beta"><parameter name="y">2</parameter><parameter name="y">3</parameter></call></tool_call>',
+        "<tool_call><function=alpha><parameter=x>1</parameter></function><function=beta><parameter=y>2</parameter><parameter=y>3</parameter></function></tool_call>",
       expectedTools: [
         { toolName: "alpha", input: { x: "1" } },
         { toolName: "beta", input: { y: ["2", "3"] } },
@@ -395,7 +395,7 @@ describe("Single-character chunk streaming", () => {
   describe("uiTarsXmlProtocol", () => {
     it("parses UI-TARS tool call when streamed char-by-char", async () => {
       const input =
-        '<tool_call><name>test</name><parameter name="value">hello</parameter></tool_call>';
+        "<tool_call><function=test><parameter=value>hello</parameter></function></tool_call>";
       const protocol = uiTarsXmlProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
@@ -411,7 +411,7 @@ describe("Single-character chunk streaming", () => {
 
     it("handles text + UI-TARS tool call + text char-by-char", async () => {
       const input =
-        'Before <tool_call><name>x</name><parameter name="a">1</parameter></tool_call> After';
+        "Before <tool_call><function=x><parameter=a>1</parameter></function></tool_call> After";
       const protocol = uiTarsXmlProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
@@ -432,7 +432,7 @@ describe("Single-character chunk streaming", () => {
 
     it("handles multiple UI-TARS tool calls char-by-char", async () => {
       const input =
-        '<tool_call><name>a</name><parameter name="n">1</parameter></tool_call><tool_call><name>b</name><parameter name="n">2</parameter></tool_call>';
+        "<tool_call><function=a><parameter=n>1</parameter></function></tool_call><tool_call><function=b><parameter=n>2</parameter></function></tool_call>";
       const protocol = uiTarsXmlProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);

@@ -8,12 +8,13 @@ describe("uiTarsXmlProtocol", () => {
     const text = [
       "before ",
       `<tool_call>
-  <name>search</name>
-  <parameter name="query">
-    AI
-  </parameter>
-  <parameter name="query"> ML </parameter>
-  <parameter name="lang"> en </parameter>
+  <function=search>
+    <parameter=query>
+      AI
+    </parameter>
+    <parameter=query> ML </parameter>
+    <parameter=lang> en </parameter>
+  </function>
 </tool_call>`,
       " after",
     ].join("");
@@ -36,9 +37,9 @@ describe("uiTarsXmlProtocol", () => {
     const p = uiTarsXmlProtocol();
     const text = [
       "a ",
-      `<tool_call><name>alpha</name><parameter name="x">1</parameter></tool_call>`,
+      "<tool_call><function=alpha><parameter=x>1</parameter></function></tool_call>",
       " b ",
-      `<tool_call><name>beta</name><parameter name="y">2</parameter></tool_call>`,
+      "<tool_call><function=beta><parameter=y>2</parameter></function></tool_call>",
       " c",
     ].join("");
 
@@ -63,14 +64,13 @@ describe("uiTarsXmlProtocol", () => {
     const text = [
       "prefix ",
       `<tool_call>
-  <call>
-    <name>alpha</name>
-    <parameter name="x">1</parameter>
-  </call>
-  <call name="beta">
-    <parameter name="y"> 2 </parameter>
-    <parameter name="y">3</parameter>
-  </call>
+  <function=alpha>
+    <parameter=x>1</parameter>
+  </function>
+  <function=beta>
+    <parameter=y> 2 </parameter>
+    <parameter=y>3</parameter>
+  </function>
 </tool_call>`,
       " suffix",
     ].join("");
@@ -92,8 +92,8 @@ describe("uiTarsXmlProtocol", () => {
 
   it("extractToolCallSegments returns raw <tool_call> segments in order", () => {
     const p = uiTarsXmlProtocol();
-    const a = "<tool_call><name>a</name></tool_call>";
-    const b = "<tool_call><name>b</name></tool_call>";
+    const a = "<tool_call><function=a></function></tool_call>";
+    const b = "<tool_call><function=b></function></tool_call>";
     const text = `prefix ${a} mid ${b} suffix`;
 
     if (!p.extractToolCallSegments) {
@@ -108,7 +108,8 @@ describe("uiTarsXmlProtocol", () => {
   it("calls onError and keeps original text on malformed segments", () => {
     const onError = vi.fn();
     const p = uiTarsXmlProtocol();
-    const bad = `<tool_call><parameter name="x">1</parameter></tool_call>`;
+    const bad =
+      "<tool_call><function><parameter=x>1</parameter></function></tool_call>";
     const text = `before ${bad} after`;
     const out = p.parseGeneratedText({
       text,
@@ -133,10 +134,10 @@ describe("uiTarsXmlProtocol", () => {
     } as any);
 
     expect(formatted).toContain("<tool_call>");
-    expect(formatted).toContain("<name>test_tool</name>");
-    expect(formatted).toContain('<parameter name="x">1</parameter>');
-    expect(formatted).toContain('<parameter name="y">2</parameter>');
-    expect(formatted).toContain('<parameter name="y">3</parameter>');
+    expect(formatted).toContain("<function=test_tool>");
+    expect(formatted).toContain("<parameter=x>1</parameter>");
+    expect(formatted).toContain("<parameter=y>2</parameter>");
+    expect(formatted).toContain("<parameter=y>3</parameter>");
 
     const parsed = p.parseGeneratedText({
       text: `prefix ${formatted} suffix`,

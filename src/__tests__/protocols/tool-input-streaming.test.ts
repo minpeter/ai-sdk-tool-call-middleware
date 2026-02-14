@@ -500,8 +500,8 @@ describe("tool-input streaming events", () => {
       pipeWithTransformer(
         createTextDeltaStream([
           "Before ",
-          '<tool_call>\n  <name>get_weather</name>\n  <parameter name="location">Seo',
-          'ul</parameter>\n  <parameter name="unit">celsius</parameter>\n</tool_call>',
+          "<tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
+          "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call>",
           " After",
         ]),
         transformer
@@ -543,7 +543,7 @@ describe("tool-input streaming events", () => {
       pipeWithTransformer(
         createTextDeltaStream([
           "prefix ",
-          '<tool_call>\n  <call>\n    <name>alpha</name>\n    <parameter name="x">1</parameter>\n  </call>\n  <call name="beta">\n    <parameter name="y"> 2 </parameter>\n    <parameter name="y">3</parameter>\n  </call>\n</tool_call>',
+          "<tool_call>\n  <function=alpha>\n    <parameter=x>1</parameter>\n  </function>\n  <function=beta>\n    <parameter=y> 2 </parameter>\n    <parameter=y>3</parameter>\n  </function>\n</tool_call>",
           " suffix",
         ]),
         transformer
@@ -584,7 +584,7 @@ describe("tool-input streaming events", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
         createTextDeltaStream([
-          '<tool_call>\n  <name>get_weather</name>\n  <parameter name="location">Busan</parameter>\n  <parameter name="unit">celsius</parameter>\n',
+          "<tool_call>\n  <function=get_weather>\n    <parameter=location>Busan</parameter>\n    <parameter=unit>celsius</parameter>\n",
         ]),
         transformer
       )
@@ -621,7 +621,7 @@ describe("tool-input streaming events", () => {
     });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
-        createTextDeltaStream(["<tool_call><name>get_weather"]),
+        createTextDeltaStream(["<tool_call><function=get_weather"]),
         transformer
       )
     );
@@ -636,7 +636,7 @@ describe("tool-input streaming events", () => {
     expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
     expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
     expect(leakedText).toContain("<tool_call");
-    expect(leakedText).toContain("<name>get_weather");
+    expect(leakedText).toContain("<function=get_weather");
   });
 
   it("ui-tars xml protocol suppresses buffered partial tool_call at finish by default", async () => {
@@ -644,7 +644,7 @@ describe("tool-input streaming events", () => {
     const transformer = protocol.createStreamParser({ tools: [] });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
-        createTextDeltaStream(["<tool_call><name>get_weather"]),
+        createTextDeltaStream(["<tool_call><function=get_weather"]),
         transformer
       )
     );
