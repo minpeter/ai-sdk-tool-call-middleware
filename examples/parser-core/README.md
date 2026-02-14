@@ -12,6 +12,9 @@ Runnable examples for `@ai-sdk-tool/parser`.
 - `src/02-choice-toolname.ts` — tool choice: specific tool name
 - `src/02-stream-choice-required.ts` — streaming + required tool
 - `src/02-stream-choice-toolname.ts` — streaming + specific tool
+- `src/03-stream-tool-input-delta-compare.ts` — user-view comparison: legacy tool-call only vs streaming tool-input deltas, plus raw-delta snapshot vs current parsed-object delta behavior for XML/YAML
+- `src/04-stream-tool-input-visual-demo.ts` — visual live demo of `tool-input-start/delta/end` while generating a long file-writing tool input (assistant `text-delta` is intentionally hidden to avoid protocol-markup leakage)
+- `src/05-stream-tool-input-visual-many-params-demo.ts` — visual live demo of `tool-input-start/delta/end` for a deeply nested tool payload with many top-level parameters
 
 ## Run
 
@@ -19,6 +22,24 @@ From repo root after `pnpm install`:
 
 ```bash
 cd examples/parser-core && pnpm dlx tsx src/00-stream-tool-call.ts
+```
+
+Comparison demo without model API calls:
+
+```bash
+cd examples/parser-core && pnpm dlx tsx src/03-stream-tool-input-delta-compare.ts
+```
+
+Live visual streaming demo with real model calls:
+
+```bash
+cd examples/parser-core && pnpm dlx tsx src/04-stream-tool-input-visual-demo.ts
+```
+
+Many-parameter + nested payload visual demo with real model calls:
+
+```bash
+cd examples/parser-core && pnpm dlx tsx src/05-stream-tool-input-visual-many-params-demo.ts
 ```
 
 Configure your model provider credentials as needed (e.g., OpenRouter key/base URL).

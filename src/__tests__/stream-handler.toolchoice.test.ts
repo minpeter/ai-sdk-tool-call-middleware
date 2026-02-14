@@ -4,9 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { toolChoiceStream } from "../stream-handler";
 import { mockFinishReason, mockUsage } from "./test-helpers";
 
-vi.mock("@ai-sdk/provider-utils", () => ({
-  generateId: vi.fn(() => "mock-id"),
-}));
+const TOOL_CALL_ID_RE = /^call_[A-Za-z0-9]{24}$/;
 
 describe("toolChoiceStream", () => {
   it("works when called without tools for backwards compatibility", async () => {
@@ -42,10 +40,12 @@ describe("toolChoiceStream", () => {
 
     expect(chunks[0]).toMatchObject({
       type: "tool-call",
-      toolCallId: "mock-id",
       toolName: "do",
       input: '{"x":1}',
     });
+    expect((chunks[0] as { toolCallId?: string }).toolCallId).toMatch(
+      TOOL_CALL_ID_RE
+    );
     // The actual implementation returns finishReason as string and usage from doGenerate
     expect(chunks[1]).toMatchObject({
       type: "finish",
@@ -68,10 +68,12 @@ describe("toolChoiceStream", () => {
 
     expect(chunks[0]).toMatchObject({
       type: "tool-call",
-      toolCallId: "mock-id",
       toolName: "unknown",
       input: "{}",
     });
+    expect((chunks[0] as { toolCallId?: string }).toolCallId).toMatch(
+      TOOL_CALL_ID_RE
+    );
     expect(chunks[1]).toMatchObject({ type: "finish" });
   });
 

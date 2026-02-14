@@ -67,6 +67,18 @@ describe("jsonProtocol stream parsing", () => {
       toolName: "get_weather",
       input: '{"location":"NY"}',
     });
+
+    const finish = chunks.find((c) => c.type === "finish") as
+      | {
+          type: "finish";
+          finishReason: { unified: string; raw: string | undefined };
+        }
+      | undefined;
+    expect(finish).toBeDefined();
+    expect(finish?.finishReason).toEqual({
+      unified: "tool-calls",
+      raw: "stop",
+    });
   });
 
   test("should handle malformed tool calls gracefully", async () => {
@@ -95,6 +107,19 @@ describe("jsonProtocol stream parsing", () => {
       .filter((c) => c.type === "text-delta")
       .map((c) => (c as any).delta)
       .join("");
-    expect(textContent).toContain("<tool_call>invalid json</tool_call>");
+    expect(textContent).not.toContain("<tool_call>");
+    expect(textContent).not.toContain("</tool_call>");
+
+    const finish = chunks.find((c) => c.type === "finish") as
+      | {
+          type: "finish";
+          finishReason: { unified: string; raw: string | undefined };
+        }
+      | undefined;
+    expect(finish).toBeDefined();
+    expect(finish?.finishReason).toEqual({
+      unified: "stop",
+      raw: undefined,
+    });
   });
 });

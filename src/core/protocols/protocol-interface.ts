@@ -10,6 +10,12 @@ import type {
  */
 export interface ParserOptions {
   onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  /**
+   * When true, stream parsers may emit malformed raw tool-call text as
+   * `text-delta` fallback on parse failure. Defaults to false to avoid leaking
+   * protocol/internal markup to end users.
+   */
+  emitRawToolCallTextOnError?: boolean;
 }
 
 export interface TCMProtocol {
@@ -30,9 +36,7 @@ export interface TCMProtocol {
   }: {
     text: string;
     tools: LanguageModelV3FunctionTool[];
-    options?: {
-      onError?: (message: string, metadata?: Record<string, unknown>) => void;
-    };
+    options?: ParserOptions;
   }): LanguageModelV3Content[];
 
   createStreamParser({
@@ -40,9 +44,7 @@ export interface TCMProtocol {
     options,
   }: {
     tools: LanguageModelV3FunctionTool[];
-    options?: {
-      onError?: (message: string, metadata?: Record<string, unknown>) => void;
-    };
+    options?: ParserOptions;
   }): TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>;
 
   extractToolCallSegments?: ({

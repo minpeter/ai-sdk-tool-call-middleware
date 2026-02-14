@@ -151,16 +151,16 @@ describe("xmlProtocol streaming edge cases", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    // Either a text piece was emitted, or a tool-call was parsed; both are acceptable
+    // Either tool-call recovery succeeds, or raw text stays suppressed.
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
       .join("");
     const hasTool = out.some((c) => c.type === "tool-call");
-    expect(text.length > 0 || hasTool).toBe(true);
+    expect(hasTool || text.length === 0).toBe(true);
   });
 
-  it("flushes unfinished call content at flush", async () => {
+  it("force-completes unfinished call at flush when parseable", async () => {
     const protocol = xmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
@@ -181,12 +181,20 @@ describe("xmlProtocol streaming edge cases", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
+    const tool = out.find((c) => c.type === "tool-call") as
+      | { type: "tool-call"; toolName: string; input: string }
+      | undefined;
     const text = out
       .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)
       .join("");
-    expect(text).toContain("<get_weather>");
-    expect(text).toContain("location>NY");
+
+    if (tool) {
+      expect(tool.toolName).toBe("get_weather");
+      expect(JSON.parse(tool.input)).toEqual({ location: "NY" });
+    } else {
+      expect(text).not.toContain("<get_weather>");
+    }
   });
 
   it("handles multiple inner tags inside one function call", async () => {

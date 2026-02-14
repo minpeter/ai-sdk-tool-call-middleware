@@ -37,3 +37,10 @@ for await (const part of result.fullStream) {
   // handle text and tool events
 }
 ```
+
+## Tool-input delta semantics
+
+- `jsonProtocol`: `tool-input-delta` emits incremental JSON argument text.
+- `xmlProtocol` and `yamlProtocol`: `tool-input-delta` now also emits incremental JSON argument text (parsed-object prefixes), not raw XML/YAML fragments.
+- `jsonProtocol`, `xmlProtocol`, and `yamlProtocol`: malformed streaming tool payloads do not emit raw protocol markup to `text-delta` by default. Set `emitRawToolCallTextOnError: true` in parser options only if you explicitly want raw fallback text.
+- `tool-input-start.id`, `tool-input-end.id`, and `tool-call.toolCallId` are reconciled to the same ID for each tool call stream.
