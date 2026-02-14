@@ -1548,6 +1548,7 @@ export const xmlProtocol = (
         controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
         toolName: string
       ): StreamingToolCallState => {
+        flushText(controller);
         const next: StreamingToolCallState = {
           name: toolName,
           toolCallId: generateToolCallId(),

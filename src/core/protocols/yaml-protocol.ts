@@ -873,6 +873,8 @@ export const yamlProtocol = (
           flushText(controller, buffer.substring(0, tagIndex));
         }
 
+        flushText(controller);
+
         if (selfClosing) {
           buffer = buffer.substring(tagIndex + tagLength);
           const toolCallId = generateToolCallId();
