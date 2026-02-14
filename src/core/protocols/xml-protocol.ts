@@ -120,7 +120,82 @@ function parseXmlTagName(rawTagBody: string): string {
   return rawTagBody.slice(nameStart, index);
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: XML fragment stability scan requires branching over tag token variants.
+type XmlSpecialConsumeResult =
+  | { kind: "none" }
+  | { kind: "incomplete" }
+  | { kind: "consumed"; nextPos: number };
+
+function consumeXmlSpecialSection(
+  fragment: string,
+  ltIndex: number
+): XmlSpecialConsumeResult {
+  if (fragment.startsWith("<!--", ltIndex)) {
+    const commentEnd = fragment.indexOf("-->", ltIndex + 4);
+    return commentEnd === -1
+      ? { kind: "incomplete" }
+      : { kind: "consumed", nextPos: commentEnd + 3 };
+  }
+  if (fragment.startsWith("<![CDATA[", ltIndex)) {
+    const cdataEnd = fragment.indexOf("]]>", ltIndex + 9);
+    return cdataEnd === -1
+      ? { kind: "incomplete" }
+      : { kind: "consumed", nextPos: cdataEnd + 3 };
+  }
+  if (fragment.startsWith("<?", ltIndex)) {
+    const processingEnd = fragment.indexOf("?>", ltIndex + 2);
+    return processingEnd === -1
+      ? { kind: "incomplete" }
+      : { kind: "consumed", nextPos: processingEnd + 2 };
+  }
+  if (fragment.startsWith("<!", ltIndex)) {
+    const declarationEnd = fragment.indexOf(">", ltIndex + 2);
+    return declarationEnd === -1
+      ? { kind: "incomplete" }
+      : { kind: "consumed", nextPos: declarationEnd + 1 };
+  }
+  return { kind: "none" };
+}
+
+type XmlTagToken =
+  | { kind: "close"; name: string; nextPos: number }
+  | { kind: "open"; name: string; selfClosing: boolean; nextPos: number };
+
+function parseXmlTagToken(
+  fragment: string,
+  ltIndex: number
+): XmlTagToken | null {
+  const gtIndex = fragment.indexOf(">", ltIndex + 1);
+  if (gtIndex === -1) {
+    return null;
+  }
+
+  const tagBody = fragment.slice(ltIndex + 1, gtIndex).trim();
+  if (tagBody.length === 0) {
+    return null;
+  }
+
+  if (tagBody.startsWith("/")) {
+    const closeName = parseXmlTagName(tagBody.slice(1));
+    if (closeName.length === 0) {
+      return null;
+    }
+    return { kind: "close", name: closeName, nextPos: gtIndex + 1 };
+  }
+
+  const selfClosing = tagBody.endsWith("/");
+  const openBody = selfClosing ? tagBody.slice(0, -1).trimEnd() : tagBody;
+  const openName = parseXmlTagName(openBody);
+  if (openName.length === 0) {
+    return null;
+  }
+  return {
+    kind: "open",
+    name: openName,
+    selfClosing,
+    nextPos: gtIndex + 1,
+  };
+}
+
 function analyzeXmlFragmentForProgress(
   fragment: string
 ): { topLevelTagNames: string[] } | null {
@@ -134,77 +209,36 @@ function analyzeXmlFragmentForProgress(
       break;
     }
 
-    if (fragment.startsWith("<!--", ltIndex)) {
-      const commentEnd = fragment.indexOf("-->", ltIndex + 4);
-      if (commentEnd === -1) {
-        return null;
-      }
-      position = commentEnd + 3;
-      continue;
+    const special = consumeXmlSpecialSection(fragment, ltIndex);
+    if (special.kind === "incomplete") {
+      return null;
     }
-    if (fragment.startsWith("<![CDATA[", ltIndex)) {
-      const cdataEnd = fragment.indexOf("]]>", ltIndex + 9);
-      if (cdataEnd === -1) {
-        return null;
-      }
-      position = cdataEnd + 3;
-      continue;
-    }
-    if (fragment.startsWith("<?", ltIndex)) {
-      const processingEnd = fragment.indexOf("?>", ltIndex + 2);
-      if (processingEnd === -1) {
-        return null;
-      }
-      position = processingEnd + 2;
-      continue;
-    }
-    if (fragment.startsWith("<!", ltIndex)) {
-      const declarationEnd = fragment.indexOf(">", ltIndex + 2);
-      if (declarationEnd === -1) {
-        return null;
-      }
-      position = declarationEnd + 1;
+    if (special.kind === "consumed") {
+      position = special.nextPos;
       continue;
     }
 
-    const gtIndex = fragment.indexOf(">", ltIndex + 1);
-    if (gtIndex === -1) {
+    const token = parseXmlTagToken(fragment, ltIndex);
+    if (token === null) {
       return null;
     }
 
-    const tagBody = fragment.slice(ltIndex + 1, gtIndex).trim();
-    if (tagBody.length === 0) {
-      return null;
-    }
-
-    if (tagBody.startsWith("/")) {
-      const closeName = parseXmlTagName(tagBody.slice(1));
-      if (closeName.length === 0) {
-        return null;
-      }
+    if (token.kind === "close") {
       const openName = stack.pop();
-      if (!openName || openName !== closeName) {
+      if (!openName || openName !== token.name) {
         return null;
       }
-      position = gtIndex + 1;
+      position = token.nextPos;
       continue;
-    }
-
-    const selfClosing = tagBody.endsWith("/");
-    const openBody = selfClosing ? tagBody.slice(0, -1).trimEnd() : tagBody;
-    const openName = parseXmlTagName(openBody);
-    if (openName.length === 0) {
-      return null;
     }
 
     if (stack.length === 0) {
-      topLevelTagNames.push(openName);
+      topLevelTagNames.push(token.name);
     }
-    if (!selfClosing) {
-      stack.push(openName);
+    if (!token.selfClosing) {
+      stack.push(token.name);
     }
-
-    position = gtIndex + 1;
+    position = token.nextPos;
   }
 
   if (stack.length > 0) {
@@ -214,7 +248,58 @@ function analyzeXmlFragmentForProgress(
   return { topLevelTagNames };
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Top-level text detection must track nested tag boundaries and special XML sections.
+type XmlTopLevelTextScanResult =
+  | { kind: "found" }
+  | { kind: "invalid" }
+  | { kind: "next"; nextPos: number }
+  | { kind: "done"; value: boolean };
+
+function scanXmlFragmentTopLevelTextStep(options: {
+  fragment: string;
+  position: number;
+  stack: string[];
+}): XmlTopLevelTextScanResult {
+  const { fragment, position, stack } = options;
+
+  const ltIndex = fragment.indexOf("<", position);
+  if (ltIndex === -1) {
+    const trailingText = fragment.slice(position);
+    return {
+      kind: "done",
+      value: stack.length === 0 && trailingText.trim().length > 0,
+    };
+  }
+
+  const textBetweenTags = fragment.slice(position, ltIndex);
+  if (stack.length === 0 && textBetweenTags.trim().length > 0) {
+    return { kind: "found" };
+  }
+
+  const special = consumeXmlSpecialSection(fragment, ltIndex);
+  if (special.kind === "incomplete") {
+    return { kind: "invalid" };
+  }
+  if (special.kind === "consumed") {
+    return { kind: "next", nextPos: special.nextPos };
+  }
+
+  const token = parseXmlTagToken(fragment, ltIndex);
+  if (token === null) {
+    return { kind: "invalid" };
+  }
+
+  if (token.kind === "close") {
+    const openName = stack.pop();
+    if (!openName || openName !== token.name) {
+      return { kind: "invalid" };
+    }
+  } else if (!token.selfClosing) {
+    stack.push(token.name);
+  }
+
+  return { kind: "next", nextPos: token.nextPos };
+}
+
 function hasNonWhitespaceTopLevelText(fragment: string): boolean {
   if (!fragment.includes("<")) {
     return fragment.trim().length > 0;
@@ -224,84 +309,18 @@ function hasNonWhitespaceTopLevelText(fragment: string): boolean {
   let position = 0;
 
   while (position < fragment.length) {
-    const ltIndex = fragment.indexOf("<", position);
-    if (ltIndex === -1) {
-      const trailingText = fragment.slice(position);
-      return stack.length === 0 && trailingText.trim().length > 0;
-    }
-
-    const textBetweenTags = fragment.slice(position, ltIndex);
-    if (stack.length === 0 && textBetweenTags.trim().length > 0) {
+    const step = scanXmlFragmentTopLevelTextStep({ fragment, position, stack });
+    if (step.kind === "found") {
       return true;
     }
-
-    if (fragment.startsWith("<!--", ltIndex)) {
-      const commentEnd = fragment.indexOf("-->", ltIndex + 4);
-      if (commentEnd === -1) {
-        return false;
-      }
-      position = commentEnd + 3;
-      continue;
-    }
-    if (fragment.startsWith("<![CDATA[", ltIndex)) {
-      const cdataEnd = fragment.indexOf("]]>", ltIndex + 9);
-      if (cdataEnd === -1) {
-        return false;
-      }
-      position = cdataEnd + 3;
-      continue;
-    }
-    if (fragment.startsWith("<?", ltIndex)) {
-      const processingEnd = fragment.indexOf("?>", ltIndex + 2);
-      if (processingEnd === -1) {
-        return false;
-      }
-      position = processingEnd + 2;
-      continue;
-    }
-    if (fragment.startsWith("<!", ltIndex)) {
-      const declarationEnd = fragment.indexOf(">", ltIndex + 2);
-      if (declarationEnd === -1) {
-        return false;
-      }
-      position = declarationEnd + 1;
-      continue;
-    }
-
-    const gtIndex = fragment.indexOf(">", ltIndex + 1);
-    if (gtIndex === -1) {
+    if (step.kind === "invalid") {
       return false;
     }
-
-    const tagBody = fragment.slice(ltIndex + 1, gtIndex).trim();
-    if (tagBody.length === 0) {
-      return false;
+    if (step.kind === "done") {
+      return step.value;
     }
 
-    if (tagBody.startsWith("/")) {
-      const closeName = parseXmlTagName(tagBody.slice(1));
-      if (closeName.length === 0) {
-        return false;
-      }
-      const openName = stack.pop();
-      if (!openName || openName !== closeName) {
-        return false;
-      }
-      position = gtIndex + 1;
-      continue;
-    }
-
-    const selfClosing = tagBody.endsWith("/");
-    const openBody = selfClosing ? tagBody.slice(0, -1).trimEnd() : tagBody;
-    const openName = parseXmlTagName(openBody);
-    if (openName.length === 0) {
-      return false;
-    }
-    if (!selfClosing) {
-      stack.push(openName);
-    }
-
-    position = gtIndex + 1;
+    position = step.nextPos;
   }
 
   return false;
