@@ -2,6 +2,7 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { jsonProtocol } from "../../core/protocols/json-protocol";
+import { uiTarsXmlProtocol } from "../../core/protocols/ui-tars-xml-protocol";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import { createChunkedStream, pipeWithTransformer } from "../test-helpers";
 
@@ -120,6 +121,51 @@ describe("Random chunk boundary fuzzing", () => {
     },
   ];
 
+  const uiTarsTestCases = [
+    {
+      name: "simple UI-TARS tool call",
+      input:
+        '<tool_call><name>get_weather</name><parameter name="city">Tokyo</parameter></tool_call>',
+      expectedTools: [{ toolName: "get_weather", input: { city: "Tokyo" } }],
+    },
+    {
+      name: "UI-TARS tool call with multiple params",
+      input:
+        '<tool_call><name>search</name><parameter name="query">hello world</parameter><parameter name="limit">10</parameter></tool_call>',
+      expectedTools: [
+        { toolName: "search", input: { query: "hello world", limit: "10" } },
+      ],
+    },
+    {
+      name: "UI-TARS with surrounding text",
+      input:
+        'Checking... <tool_call><name>get_weather</name><parameter name="city">NYC</parameter></tool_call> found!',
+      expectedTools: [{ toolName: "get_weather", input: { city: "NYC" } }],
+      expectedTextContains: ["Checking...", "found!"],
+      expectedTextNotContains: ["<tool_call>", "</tool_call>"],
+    },
+    {
+      name: "UI-TARS multiple tool calls",
+      input:
+        '<tool_call><name>a</name><parameter name="x">1</parameter></tool_call> and <tool_call><name>b</name><parameter name="y">2</parameter></tool_call>',
+      expectedTools: [
+        { toolName: "a", input: { x: "1" } },
+        { toolName: "b", input: { y: "2" } },
+      ],
+      expectedTextContains: [" and "],
+      expectedTextNotContains: ["<tool_call>", "</tool_call>"],
+    },
+    {
+      name: "UI-TARS multiple calls inside one tool_call",
+      input:
+        '<tool_call><call><name>alpha</name><parameter name="x">1</parameter></call><call name="beta"><parameter name="y">2</parameter><parameter name="y">3</parameter></call></tool_call>',
+      expectedTools: [
+        { toolName: "alpha", input: { x: "1" } },
+        { toolName: "beta", input: { y: ["2", "3"] } },
+      ],
+    },
+  ];
+
   // Run each test case with 50 different random chunk splits
   const FUZZ_ITERATIONS = 50;
 
@@ -194,6 +240,42 @@ describe("Random chunk boundary fuzzing", () => {
             const text = extractText(output);
             for (const expected of testCase.expectedTextContains) {
               expect(text).toContain(expected);
+            }
+          }
+        });
+      });
+    }
+  });
+
+  describe("uiTarsXmlProtocol", () => {
+    for (const testCase of uiTarsTestCases) {
+      describe(testCase.name, () => {
+        it.each(
+          Array.from({ length: FUZZ_ITERATIONS }, (_, i) => i)
+        )("produces consistent results with random split seed %i", async (seed) => {
+          const protocol = uiTarsXmlProtocol();
+          const transformer = protocol.createStreamParser({ tools: [] });
+          const chunks = randomChunkSplit(testCase.input, 1, 8, seed);
+          const stream = createChunkedStream(chunks);
+
+          const output = await convertReadableStreamToArray(
+            pipeWithTransformer(stream, transformer)
+          );
+
+          const tools = extractToolCalls(output);
+          expect(tools).toEqual(testCase.expectedTools);
+
+          const text = extractText(output);
+
+          if (testCase.expectedTextContains) {
+            for (const expected of testCase.expectedTextContains) {
+              expect(text).toContain(expected);
+            }
+          }
+
+          if (testCase.expectedTextNotContains) {
+            for (const notExpected of testCase.expectedTextNotContains) {
+              expect(text).not.toContain(notExpected);
             }
           }
         });
@@ -306,6 +388,64 @@ describe("Single-character chunk streaming", () => {
           toolName: "search",
           input: { query: "test query", limit: 5, offset: 0 },
         },
+      ]);
+    });
+  });
+
+  describe("uiTarsXmlProtocol", () => {
+    it("parses UI-TARS tool call when streamed char-by-char", async () => {
+      const input =
+        '<tool_call><name>test</name><parameter name="value">hello</parameter></tool_call>';
+      const protocol = uiTarsXmlProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = charByCharSplit(input);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      expect(tools).toEqual([{ toolName: "test", input: { value: "hello" } }]);
+    });
+
+    it("handles text + UI-TARS tool call + text char-by-char", async () => {
+      const input =
+        'Before <tool_call><name>x</name><parameter name="a">1</parameter></tool_call> After';
+      const protocol = uiTarsXmlProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = charByCharSplit(input);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      const text = extractText(output);
+
+      expect(tools).toEqual([{ toolName: "x", input: { a: "1" } }]);
+      expect(text).toContain("Before");
+      expect(text).toContain("After");
+      expect(text).not.toContain("<tool_call>");
+    });
+
+    it("handles multiple UI-TARS tool calls char-by-char", async () => {
+      const input =
+        '<tool_call><name>a</name><parameter name="n">1</parameter></tool_call><tool_call><name>b</name><parameter name="n">2</parameter></tool_call>';
+      const protocol = uiTarsXmlProtocol();
+      const transformer = protocol.createStreamParser({ tools: [] });
+      const chunks = charByCharSplit(input);
+      const stream = createChunkedStream(chunks);
+
+      const output = await convertReadableStreamToArray(
+        pipeWithTransformer(stream, transformer)
+      );
+
+      const tools = extractToolCalls(output);
+      expect(tools).toEqual([
+        { toolName: "a", input: { n: "1" } },
+        { toolName: "b", input: { n: "2" } },
       ]);
     });
   });

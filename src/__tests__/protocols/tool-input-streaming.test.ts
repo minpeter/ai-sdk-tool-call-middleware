@@ -5,6 +5,7 @@ import type {
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { jsonProtocol } from "../../core/protocols/json-protocol";
+import { uiTarsXmlProtocol } from "../../core/protocols/ui-tars-xml-protocol";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import { yamlProtocol } from "../../core/protocols/yaml-protocol";
 import { toolInputStreamFixtures } from "../fixtures/tool-input-stream-fixtures";
@@ -489,6 +490,172 @@ describe("tool-input streaming events", () => {
       fixture.expectedProgressDeltas
     );
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+  });
+
+  it("ui-tars xml protocol streams tool input deltas and emits matching tool-call id", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = uiTarsXmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "Before ",
+          '<tool_call>\n  <name>get_weather</name>\n  <parameter name="location">Seo',
+          'ul</parameter>\n  <parameter name="unit">celsius</parameter>\n</tool_call>',
+          " After",
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, deltas, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: string;
+    };
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(starts).toHaveLength(1);
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(ends).toHaveLength(1);
+    expect(starts[0].toolName).toBe("get_weather");
+    expect(starts[0].id).toBe(ends[0].id);
+    expect(toolCall.toolCallId).toBe(starts[0].id);
+    expect(toolCall.toolName).toBe("get_weather");
+    expect(toolCall.input).toBe('{"location":"Seoul","unit":"celsius"}');
+    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+    expect(deltas.some((delta) => delta.delta.includes("<"))).toBe(false);
+    expect(leakedText).toContain("Before");
+    expect(leakedText).toContain("After");
+    expect(leakedText).not.toContain("<tool_call");
+    expect(leakedText).not.toContain("</tool_call");
+  });
+
+  it("ui-tars xml protocol supports multiple function calls inside a single <tool_call> block in-order", async () => {
+    const protocol = uiTarsXmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "prefix ",
+          '<tool_call>\n  <call>\n    <name>alpha</name>\n    <parameter name="x">1</parameter>\n  </call>\n  <call name="beta">\n    <parameter name="y"> 2 </parameter>\n    <parameter name="y">3</parameter>\n  </call>\n</tool_call>',
+          " suffix",
+        ]),
+        transformer
+      )
+    );
+
+    const toolCalls = out.filter((part) => part.type === "tool-call") as Array<{
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: string;
+    }>;
+
+    const { starts, deltas, ends } = extractToolInputTimeline(out);
+
+    expect(toolCalls.map((c) => c.toolName)).toEqual(["alpha", "beta"]);
+    expect(JSON.parse(toolCalls[0].input)).toEqual({ x: "1" });
+    expect(JSON.parse(toolCalls[1].input)).toEqual({ y: ["2", "3"] });
+
+    for (const toolCall of toolCalls) {
+      const start = starts.find((s) => s.id === toolCall.toolCallId);
+      const end = ends.find((e) => e.id === toolCall.toolCallId);
+      const joined = deltas
+        .filter((d) => d.id === toolCall.toolCallId)
+        .map((d) => d.delta)
+        .join("");
+
+      expect(start).toBeTruthy();
+      expect(end).toBeTruthy();
+      expect(joined).toBe(toolCall.input);
+    }
+  });
+
+  it("ui-tars xml protocol force-completes unclosed tool block at finish when content is parseable", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = uiTarsXmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          '<tool_call>\n  <name>get_weather</name>\n  <parameter name="location">Busan</parameter>\n  <parameter name="unit">celsius</parameter>\n',
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: string;
+    };
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(toolCall.toolCallId).toBe(starts[0].id);
+    expect(toolCall.toolName).toBe("get_weather");
+    expect(JSON.parse(toolCall.input)).toEqual({
+      location: "Busan",
+      unit: "celsius",
+    });
+    expect(leakedText).not.toContain("<tool_call");
+  });
+
+  it("ui-tars xml protocol flushes buffered partial tool_call at finish as text when enabled", async () => {
+    const protocol = uiTarsXmlProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { emitRawToolCallTextOnError: true },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream(["<tool_call><name>get_weather"]),
+        transformer
+      )
+    );
+
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-start")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(leakedText).toContain("<tool_call");
+    expect(leakedText).toContain("<name>get_weather");
+  });
+
+  it("ui-tars xml protocol suppresses buffered partial tool_call at finish by default", async () => {
+    const protocol = uiTarsXmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream(["<tool_call><name>get_weather"]),
+        transformer
+      )
+    );
+
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(leakedText).not.toContain("<tool_call");
   });
 
   it("yaml protocol emits '{}' tool-input-delta for self-closing tags", async () => {
