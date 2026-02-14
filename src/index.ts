@@ -4,6 +4,7 @@
 
 export * from "./core/protocols/json-protocol";
 export * from "./core/protocols/protocol-interface";
+export { uiTarsXmlProtocol } from "./core/protocols/ui-tars-xml-protocol";
 export type { XmlProtocolOptions } from "./core/protocols/xml-protocol";
 export { xmlProtocol } from "./core/protocols/xml-protocol";
 export type { YamlProtocolOptions } from "./core/protocols/yaml-protocol";
