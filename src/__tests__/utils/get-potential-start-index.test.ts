@@ -66,6 +66,12 @@ describe("getPotentialStartIndex", () => {
     it("should handle overlapping patterns", () => {
       expect(getPotentialStartIndex("abcab", "abcd")).toBe(INDEX_3);
     });
+
+    it("should find the earliest (longest) match for overlapping patterns", () => {
+      // "ababa" contains suffixes "a", "aba", "ababa" that are prefixes of "ababax"
+      // It should return the earliest index (0), which is the longest suffix match.
+      expect(getPotentialStartIndex("ababa", "ababax")).toBe(0);
+    });
   });
 
   describe("no matches", () => {

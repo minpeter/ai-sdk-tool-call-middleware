@@ -390,10 +390,10 @@ function collectToolCallsForName(
 ): ToolCallMatch[] {
   const toolCalls: ToolCallMatch[] = [];
   let searchIndex = 0;
+  const startTag = `<${toolName}>`;
   const selfTagRegex = getSelfClosingTagPattern(toolName);
 
   while (searchIndex < text.length) {
-    const startTag = `<${toolName}>`;
     const openIdx = text.indexOf(startTag, searchIndex);
 
     selfTagRegex.lastIndex = searchIndex;
@@ -686,6 +686,7 @@ export const yamlProtocol = (
 
     createStreamParser({ tools, options }) {
       const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+
       let buffer = "";
       let currentToolCall: {
         name: string;
