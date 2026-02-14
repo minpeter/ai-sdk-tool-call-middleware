@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
-import { generateId } from "./id";
+import { generateToolCallId } from "./id";
 
 interface ToolCallCandidate {
   toolName: string;
@@ -184,7 +184,7 @@ function mergeJsonCandidatesByStart(
 function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV3Content {
   return {
     type: "tool-call",
-    toolCallId: generateId(),
+    toolCallId: generateToolCallId(),
     toolName: candidate.toolName,
     input: candidate.input,
   };

@@ -4,7 +4,6 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
-import { generateId } from "@ai-sdk/provider-utils";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import {
   getDebugLevel,
@@ -13,6 +12,7 @@ import {
   logRawChunk,
 } from "./core/utils/debug";
 import { recoverToolCallFromJsonCandidates } from "./core/utils/generated-text-json-recovery";
+import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   isToolChoiceActive,
@@ -69,7 +69,7 @@ async function handleToolChoice(
 
   const toolCall: LanguageModelV3ToolCall = {
     type: "tool-call",
-    toolCallId: generateId(),
+    toolCallId: generateToolCallId(),
     toolName,
     input,
   };

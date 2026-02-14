@@ -86,7 +86,7 @@ describe("xmlProtocol raw string handling in streaming", () => {
     expect(args.encoding).toBe("utf-8");
   });
 
-  it("error policy cancels the tool call and emits original text in streaming", async () => {
+  it("error policy cancels the tool call without leaking raw text by default", async () => {
     const CHUNK_SIZE = 5;
     const protocol = xmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
@@ -134,19 +134,79 @@ describe("xmlProtocol raw string handling in streaming", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    // Entire tool call is cancelled and returned as text stream
+    // Entire tool call is cancelled and raw text is suppressed by default
     const textParts = out.filter(
       (p): p is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
         p.type === "text-delta"
     );
     const combined = textParts.map((p) => p.delta).join("");
-    expect(combined).toContain("<write_file>");
-    expect(combined).toContain(
-      "<content>part1</content><content>part2</content>"
-    );
-    expect(combined).toContain("</write_file>");
+    expect(combined).not.toContain("<write_file>");
+    expect(combined).not.toContain("</write_file>");
     const hasToolCall = out.some((p) => p.type === "tool-call");
     expect(hasToolCall).toBe(false);
+  });
+
+  it("can emit raw text fallback when explicitly enabled", async () => {
+    const CHUNK_SIZE = 5;
+    const protocol = xmlProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "write_file",
+        description: "Write a file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string" },
+            content: { type: "string" },
+          },
+          required: ["file_path", "content"],
+        },
+      },
+    ];
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { emitRawToolCallTextOnError: true },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        const parts = [
+          "<write_file>",
+          "<file_path>/tmp/file.txt</file_path>",
+          "<content>part1</content>",
+          "<content>part2</content>",
+          "</write_file>",
+        ];
+        for (const p of parts) {
+          for (let i = 0; i < p.length; i += CHUNK_SIZE) {
+            ctrl.enqueue({
+              type: "text-delta",
+              id: "t",
+              delta: p.slice(i, i + CHUNK_SIZE),
+            });
+          }
+        }
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const combined = out
+      .filter(
+        (p): p is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
+          p.type === "text-delta"
+      )
+      .map((p) => p.delta)
+      .join("");
+    expect(combined).toContain("<write_file>");
+    expect(combined).toContain("</write_file>");
+    expect(out.some((p) => p.type === "tool-call")).toBe(false);
   });
 
   it("captures DOCTYPE HTML inside string-typed <content> during streaming (user-reported)", async () => {

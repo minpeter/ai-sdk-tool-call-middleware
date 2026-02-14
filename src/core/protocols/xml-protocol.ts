@@ -5,9 +5,15 @@ import type {
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 import { parse, stringify } from "../../rxml";
-import { generateId } from "../utils/id";
+import { generateToolCallId } from "../utils/id";
+import { createFlushTextHandler } from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
+import {
+  emitFinalRemainder,
+  emitPrefixDelta,
+  toIncompleteJsonPrefix,
+} from "../utils/streamed-tool-input-delta";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
@@ -28,6 +34,10 @@ type FlushTextFn = (
 
 function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
+}
+
+function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
+  return options?.emitRawToolCallTextOnError === true;
 }
 
 interface ProcessToolCallParams {
@@ -61,7 +71,7 @@ function processToolCall(params: ProcessToolCallParams): void {
     const parsed = parse(toolCall.content, toolSchema, parseConfig);
     processedElements.push({
       type: "tool-call",
-      toolCallId: generateId(),
+      toolCallId: generateToolCallId(),
       toolName: toolCall.toolName,
       input: JSON.stringify(parsed),
     });
@@ -80,12 +90,427 @@ function processToolCall(params: ProcessToolCallParams): void {
 
 interface HandleStreamingToolCallEndParams {
   toolContent: string;
-  currentToolCall: { name: string; content?: string };
+  currentToolCall: {
+    name: string;
+    toolCallId: string;
+    emittedInput: string;
+  };
   tools: LanguageModelV3FunctionTool[];
   options?: ParserOptions;
   ctrl: TransformStreamDefaultController<LanguageModelV3StreamPart>;
   flushText: FlushTextFn;
   parseOptions?: Record<string, unknown>;
+}
+
+function parseXmlTagName(rawTagBody: string): string {
+  let index = 0;
+  while (
+    index < rawTagBody.length &&
+    WHITESPACE_REGEX.test(rawTagBody[index])
+  ) {
+    index += 1;
+  }
+  const nameStart = index;
+  while (
+    index < rawTagBody.length &&
+    NAME_CHAR_RE.test(rawTagBody.charAt(index))
+  ) {
+    index += 1;
+  }
+  return rawTagBody.slice(nameStart, index);
+}
+
+type XmlSpecialConsumeResult =
+  | { kind: "none" }
+  | { kind: "incomplete" }
+  | { kind: "consumed"; nextPos: number };
+
+function consumeXmlSpecialSection(
+  fragment: string,
+  ltIndex: number
+): XmlSpecialConsumeResult {
+  if (fragment.startsWith("<!--", ltIndex)) {
+    const commentEnd = fragment.indexOf("-->", ltIndex + 4);
+    return commentEnd === -1
+      ? { kind: "incomplete" }
+      : { kind: "consumed", nextPos: commentEnd + 3 };
+  }
+  if (fragment.startsWith("<![CDATA[", ltIndex)) {
+    const cdataEnd = fragment.indexOf("]]>", ltIndex + 9);
+    return cdataEnd === -1
+      ? { kind: "incomplete" }
+      : { kind: "consumed", nextPos: cdataEnd + 3 };
+  }
+  if (fragment.startsWith("<?", ltIndex)) {
+    const processingEnd = fragment.indexOf("?>", ltIndex + 2);
+    return processingEnd === -1
+      ? { kind: "incomplete" }
+      : { kind: "consumed", nextPos: processingEnd + 2 };
+  }
+  if (fragment.startsWith("<!", ltIndex)) {
+    const declarationEnd = fragment.indexOf(">", ltIndex + 2);
+    return declarationEnd === -1
+      ? { kind: "incomplete" }
+      : { kind: "consumed", nextPos: declarationEnd + 1 };
+  }
+  return { kind: "none" };
+}
+
+type XmlTagToken =
+  | { kind: "close"; name: string; nextPos: number }
+  | { kind: "open"; name: string; selfClosing: boolean; nextPos: number };
+
+function parseXmlTagToken(
+  fragment: string,
+  ltIndex: number
+): XmlTagToken | null {
+  const gtIndex = fragment.indexOf(">", ltIndex + 1);
+  if (gtIndex === -1) {
+    return null;
+  }
+
+  const tagBody = fragment.slice(ltIndex + 1, gtIndex).trim();
+  if (tagBody.length === 0) {
+    return null;
+  }
+
+  if (tagBody.startsWith("/")) {
+    const closeName = parseXmlTagName(tagBody.slice(1));
+    if (closeName.length === 0) {
+      return null;
+    }
+    return { kind: "close", name: closeName, nextPos: gtIndex + 1 };
+  }
+
+  const selfClosing = tagBody.endsWith("/");
+  const openBody = selfClosing ? tagBody.slice(0, -1).trimEnd() : tagBody;
+  const openName = parseXmlTagName(openBody);
+  if (openName.length === 0) {
+    return null;
+  }
+  return {
+    kind: "open",
+    name: openName,
+    selfClosing,
+    nextPos: gtIndex + 1,
+  };
+}
+
+function analyzeXmlFragmentForProgress(
+  fragment: string
+): { topLevelTagNames: string[] } | null {
+  const stack: string[] = [];
+  const topLevelTagNames: string[] = [];
+  let position = 0;
+
+  while (position < fragment.length) {
+    const ltIndex = fragment.indexOf("<", position);
+    if (ltIndex === -1) {
+      break;
+    }
+
+    const special = consumeXmlSpecialSection(fragment, ltIndex);
+    if (special.kind === "incomplete") {
+      return null;
+    }
+    if (special.kind === "consumed") {
+      position = special.nextPos;
+      continue;
+    }
+
+    const token = parseXmlTagToken(fragment, ltIndex);
+    if (token === null) {
+      return null;
+    }
+
+    if (token.kind === "close") {
+      const openName = stack.pop();
+      if (!openName || openName !== token.name) {
+        return null;
+      }
+      position = token.nextPos;
+      continue;
+    }
+
+    if (stack.length === 0) {
+      topLevelTagNames.push(token.name);
+    }
+    if (!token.selfClosing) {
+      stack.push(token.name);
+    }
+    position = token.nextPos;
+  }
+
+  if (stack.length > 0) {
+    return null;
+  }
+
+  return { topLevelTagNames };
+}
+
+type XmlTopLevelTextScanResult =
+  | { kind: "found" }
+  | { kind: "invalid" }
+  | { kind: "next"; nextPos: number }
+  | { kind: "done"; value: boolean };
+
+function scanXmlFragmentTopLevelTextStep(options: {
+  fragment: string;
+  position: number;
+  stack: string[];
+}): XmlTopLevelTextScanResult {
+  const { fragment, position, stack } = options;
+
+  const ltIndex = fragment.indexOf("<", position);
+  if (ltIndex === -1) {
+    const trailingText = fragment.slice(position);
+    return {
+      kind: "done",
+      value: stack.length === 0 && trailingText.trim().length > 0,
+    };
+  }
+
+  const textBetweenTags = fragment.slice(position, ltIndex);
+  if (stack.length === 0 && textBetweenTags.trim().length > 0) {
+    return { kind: "found" };
+  }
+
+  const special = consumeXmlSpecialSection(fragment, ltIndex);
+  if (special.kind === "incomplete") {
+    return { kind: "invalid" };
+  }
+  if (special.kind === "consumed") {
+    return { kind: "next", nextPos: special.nextPos };
+  }
+
+  const token = parseXmlTagToken(fragment, ltIndex);
+  if (token === null) {
+    return { kind: "invalid" };
+  }
+
+  if (token.kind === "close") {
+    const openName = stack.pop();
+    if (!openName || openName !== token.name) {
+      return { kind: "invalid" };
+    }
+  } else if (!token.selfClosing) {
+    stack.push(token.name);
+  }
+
+  return { kind: "next", nextPos: token.nextPos };
+}
+
+function hasNonWhitespaceTopLevelText(fragment: string): boolean {
+  if (!fragment.includes("<")) {
+    return fragment.trim().length > 0;
+  }
+
+  const stack: string[] = [];
+  let position = 0;
+
+  while (position < fragment.length) {
+    const step = scanXmlFragmentTopLevelTextStep({ fragment, position, stack });
+    if (step.kind === "found") {
+      return true;
+    }
+    if (step.kind === "invalid") {
+      return false;
+    }
+    if (step.kind === "done") {
+      return step.value;
+    }
+
+    position = step.nextPos;
+  }
+
+  return false;
+}
+
+function getObjectSchemaPropertyNames(schema: unknown): Set<string> | null {
+  if (!schema || typeof schema !== "object") {
+    return null;
+  }
+
+  const schemaObject = schema as {
+    type?: unknown;
+    properties?: unknown;
+  };
+  const typeValue = schemaObject.type;
+  if (typeValue != null) {
+    const isObjectType =
+      typeValue === "object" ||
+      (Array.isArray(typeValue) && typeValue.includes("object"));
+    if (!isObjectType) {
+      return null;
+    }
+  }
+  if (!schemaObject.properties || typeof schemaObject.properties !== "object") {
+    return new Set<string>();
+  }
+
+  return new Set(
+    Object.keys(schemaObject.properties as Record<string, unknown>)
+  );
+}
+
+function schemaAllowsArrayType(schema: unknown): boolean {
+  if (!schema || typeof schema !== "object") {
+    return false;
+  }
+
+  const schemaRecord = schema as Record<string, unknown>;
+  const typeValue = schemaRecord.type;
+  if (typeValue === "array") {
+    return true;
+  }
+  if (Array.isArray(typeValue) && typeValue.includes("array")) {
+    return true;
+  }
+
+  const unions = [schemaRecord.anyOf, schemaRecord.oneOf, schemaRecord.allOf];
+  for (const union of unions) {
+    if (!Array.isArray(union)) {
+      continue;
+    }
+    if (union.some((entry) => schemaAllowsArrayType(entry))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getSchemaObjectProperty(
+  schema: unknown,
+  propertyName: string
+): unknown | null {
+  if (!schema || typeof schema !== "object") {
+    return null;
+  }
+
+  const schemaObject = schema as Record<string, unknown>;
+  const properties = schemaObject.properties;
+  if (!properties || typeof properties !== "object") {
+    return null;
+  }
+
+  const property = (properties as Record<string, unknown>)[propertyName];
+  if (!property) {
+    return null;
+  }
+
+  return property;
+}
+
+function isStableXmlProgressCandidate(options: {
+  candidate: string;
+  parsed: unknown;
+  toolSchema: unknown;
+}): boolean {
+  const { candidate, parsed, toolSchema } = options;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return false;
+  }
+
+  const structure = analyzeXmlFragmentForProgress(candidate);
+  if (!structure) {
+    return false;
+  }
+
+  const schemaProperties = getObjectSchemaPropertyNames(toolSchema);
+  if (!schemaProperties || schemaProperties.size === 0) {
+    return false;
+  }
+
+  const parsedObject = parsed as Record<string, unknown>;
+  const uniqueTopLevelTags = new Set(structure.topLevelTagNames);
+  for (const tagName of uniqueTopLevelTags) {
+    if (!schemaProperties.has(tagName)) {
+      continue;
+    }
+    const schemaProperty = getSchemaObjectProperty(toolSchema, tagName);
+    if (
+      schemaProperty &&
+      schemaAllowsArrayType(schemaProperty) &&
+      !Array.isArray(parsedObject[tagName])
+    ) {
+      return false;
+    }
+  }
+
+  if (structure.topLevelTagNames.length === 1) {
+    const onlyTopLevelTag = structure.topLevelTagNames[0];
+    if (
+      !schemaProperties ||
+      schemaProperties.size === 0 ||
+      !schemaProperties.has(onlyTopLevelTag)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function parseXmlContentForStreamProgress({
+  toolContent,
+  toolSchema,
+  parseOptions,
+}: {
+  toolContent: string;
+  toolSchema: unknown;
+  parseOptions?: Record<string, unknown>;
+}): string | null {
+  const tryParse = (content: string): unknown | null => {
+    try {
+      return parse(content, toolSchema, {
+        ...(parseOptions ?? {}),
+        repair: false,
+        onError: undefined,
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  const strictFull = tryParse(toolContent);
+  if (
+    strictFull !== null &&
+    isStableXmlProgressCandidate({
+      candidate: toolContent,
+      parsed: strictFull,
+      toolSchema,
+    })
+  ) {
+    return JSON.stringify(strictFull);
+  }
+
+  let searchEnd = toolContent.length;
+  while (searchEnd > 0) {
+    const gtIndex = toolContent.lastIndexOf(">", searchEnd - 1);
+    if (gtIndex === -1) {
+      break;
+    }
+    const candidate = toolContent.slice(0, gtIndex + 1);
+    if (!analyzeXmlFragmentForProgress(candidate)) {
+      searchEnd = gtIndex;
+      continue;
+    }
+    const parsedCandidate = tryParse(candidate);
+    if (
+      parsedCandidate !== null &&
+      isStableXmlProgressCandidate({
+        candidate,
+        parsed: parsedCandidate,
+        toolSchema,
+      })
+    ) {
+      return JSON.stringify(parsedCandidate);
+    }
+    searchEnd = gtIndex;
+  }
+
+  return null;
 }
 
 function handleStreamingToolCallEnd(
@@ -112,19 +537,37 @@ function handleStreamingToolCallEnd(
   flushText(ctrl);
   try {
     const parsedResult = parse(toolContent, toolSchema, parseConfig);
+    const finalInput = JSON.stringify(parsedResult);
+    emitFinalRemainder({
+      controller: ctrl,
+      id: currentToolCall.toolCallId,
+      state: currentToolCall,
+      finalFullJson: finalInput,
+      onMismatch: options?.onError,
+    });
+    ctrl.enqueue({
+      type: "tool-input-end",
+      id: currentToolCall.toolCallId,
+    });
     ctrl.enqueue({
       type: "tool-call",
-      toolCallId: generateId(),
+      toolCallId: currentToolCall.toolCallId,
       toolName: currentToolCall.name,
-      input: JSON.stringify(parsedResult),
+      input: finalInput,
     });
   } catch (error) {
+    ctrl.enqueue({
+      type: "tool-input-end",
+      id: currentToolCall.toolCallId,
+    });
     const original = `<${currentToolCall.name}>${toolContent}</${currentToolCall.name}>`;
     options?.onError?.("Could not process streaming XML tool call", {
       toolCall: original,
       error,
     });
-    flushText(ctrl, original);
+    if (shouldEmitRawToolCallTextOnError(options)) {
+      flushText(ctrl, original);
+    }
   }
 }
 
@@ -750,62 +1193,33 @@ function findPotentialToolTagStart(
   return -1;
 }
 
-function createFlushTextHandler(
-  getCurrentTextId: () => string | null,
-  setCurrentTextId: (id: string | null) => void,
-  getHasEmittedTextStart: () => boolean,
-  setHasEmittedTextStart: (value: boolean) => void
-) {
-  return (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    text?: string
-  ) => {
-    const content = text;
-    if (content) {
-      if (!getCurrentTextId()) {
-        const newId = generateId();
-        setCurrentTextId(newId);
-        controller.enqueue({
-          type: "text-start",
-          id: newId,
-        });
-        setHasEmittedTextStart(true);
-      }
-      controller.enqueue({
-        type: "text-delta",
-        id: getCurrentTextId() as string,
-        delta: content,
-      });
-    }
-
-    const currentTextId = getCurrentTextId();
-    if (currentTextId && !text) {
-      if (getHasEmittedTextStart()) {
-        controller.enqueue({
-          type: "text-end",
-          id: currentTextId,
-        });
-        setHasEmittedTextStart(false);
-      }
-      setCurrentTextId(null);
-    }
-  };
+interface StreamingToolCallState {
+  name: string;
+  toolCallId: string;
+  emittedInput: string;
+  lastProgressGtIndex: number | null;
+  lastProgressFullInput: string | null;
 }
 
 interface ProcessToolCallInBufferParams {
   buffer: string;
-  currentToolCall: { name: string; content: string };
+  currentToolCall: StreamingToolCallState;
   tools: LanguageModelV3FunctionTool[];
   options?: ParserOptions;
   controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
   flushText: FlushTextFn;
   setBuffer: (buffer: string) => void;
   parseOptions?: Record<string, unknown>;
+  emitToolInputProgress: (
+    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+    currentToolCall: StreamingToolCallState,
+    toolContent: string
+  ) => void;
 }
 
 function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
   buffer: string;
-  currentToolCall: { name: string; content: string } | null;
+  currentToolCall: StreamingToolCallState | null;
   shouldBreak: boolean;
 } {
   const {
@@ -817,18 +1231,21 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     flushText,
     setBuffer,
     parseOptions,
+    emitToolInputProgress,
   } = params;
   const endTagPattern = new RegExp(
     `</\\s*${escapeRegExp(currentToolCall.name)}\\s*>`
   );
   const endMatch = endTagPattern.exec(buffer);
   if (!endMatch || endMatch.index === undefined) {
+    emitToolInputProgress(controller, currentToolCall, buffer);
     return { buffer, currentToolCall, shouldBreak: true };
   }
 
   const endIdx = endMatch.index;
   const endPos = endIdx + endMatch[0].length;
   const content = buffer.substring(0, endIdx);
+  emitToolInputProgress(controller, currentToolCall, content);
   const remainder = buffer.substring(endPos);
   setBuffer(remainder);
 
@@ -858,11 +1275,15 @@ interface ProcessNoToolCallInBufferParams {
   options?: ParserOptions;
   parseOptions?: Record<string, unknown>;
   setBuffer: (buffer: string) => void;
+  emitToolInputStart: (
+    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+    toolName: string
+  ) => StreamingToolCallState;
 }
 
 function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
   buffer: string;
-  currentToolCall: { name: string; content: string } | null;
+  currentToolCall: StreamingToolCallState | null;
   shouldBreak: boolean;
   shouldContinue: boolean;
 } {
@@ -875,6 +1296,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     options,
     parseOptions,
     setBuffer,
+    emitToolInputStart,
   } = params;
   const {
     index: earliestStartTagIndex,
@@ -907,9 +1329,10 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
   if (selfClosing) {
     const newBuffer = buffer.substring(earliestStartTagIndex + tagLength);
     setBuffer(newBuffer);
+    const currentToolCall = emitToolInputStart(controller, earliestToolName);
     handleStreamingToolCallEnd({
       toolContent: "",
-      currentToolCall: { name: earliestToolName, content: "" },
+      currentToolCall,
       tools,
       options,
       ctrl: controller,
@@ -929,7 +1352,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
   setBuffer(newBuffer);
   return {
     buffer: newBuffer,
-    currentToolCall: { name: earliestToolName, content: "" },
+    currentToolCall: emitToolInputStart(controller, earliestToolName),
     shouldBreak: false,
     shouldContinue: true,
   };
@@ -938,15 +1361,22 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
 function createProcessBufferHandler(
   getBuffer: () => string,
   setBuffer: (buffer: string) => void,
-  getCurrentToolCall: () => { name: string; content: string } | null,
-  setCurrentToolCall: (
-    toolCall: { name: string; content: string } | null
-  ) => void,
+  getCurrentToolCall: () => StreamingToolCallState | null,
+  setCurrentToolCall: (toolCall: StreamingToolCallState | null) => void,
   tools: LanguageModelV3FunctionTool[],
   options: ParserOptions | undefined,
   toolNames: string[],
   flushText: FlushTextFn,
-  parseOptions?: Record<string, unknown>
+  parseOptions: Record<string, unknown> | undefined,
+  emitToolInputProgress: (
+    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+    currentToolCall: StreamingToolCallState,
+    toolContent: string
+  ) => void,
+  emitToolInputStart: (
+    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+    toolName: string
+  ) => StreamingToolCallState
 ) {
   return (
     controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
@@ -963,6 +1393,7 @@ function createProcessBufferHandler(
           flushText,
           setBuffer,
           parseOptions,
+          emitToolInputProgress,
         });
         setBuffer(result.buffer);
         setCurrentToolCall(result.currentToolCall);
@@ -979,6 +1410,7 @@ function createProcessBufferHandler(
           options,
           parseOptions,
           setBuffer,
+          emitToolInputStart,
         });
         setBuffer(result.buffer);
         setCurrentToolCall(result.currentToolCall);
@@ -1097,7 +1529,7 @@ export const xmlProtocol = (
     createStreamParser({ tools, options }) {
       const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
       let buffer = "";
-      let currentToolCall: { name: string; content: string } | null = null;
+      let currentToolCall: StreamingToolCallState | null = null;
       let currentTextId: string | null = null;
       let hasEmittedTextStart = false;
 
@@ -1112,30 +1544,159 @@ export const xmlProtocol = (
         }
       );
 
+      const emitToolInputStart = (
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+        toolName: string
+      ): StreamingToolCallState => {
+        flushText(controller);
+        const next: StreamingToolCallState = {
+          name: toolName,
+          toolCallId: generateToolCallId(),
+          emittedInput: "",
+          lastProgressGtIndex: null,
+          lastProgressFullInput: null,
+        };
+        controller.enqueue({
+          type: "tool-input-start",
+          id: next.toolCallId,
+          toolName,
+        });
+        return next;
+      };
+
+      const emitToolInputProgress = (
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+        toolCall: StreamingToolCallState,
+        toolContent: string
+      ) => {
+        const progressGtIndex = toolContent.lastIndexOf(">");
+        if (toolCall.lastProgressGtIndex === progressGtIndex) {
+          const cached = toolCall.lastProgressFullInput;
+          if (cached == null) {
+            return;
+          }
+          if (cached === "{}" && toolContent.trim().length === 0) {
+            return;
+          }
+          const prefixCandidate = toIncompleteJsonPrefix(cached);
+          emitPrefixDelta({
+            controller,
+            id: toolCall.toolCallId,
+            state: toolCall,
+            candidate: prefixCandidate,
+          });
+          return;
+        }
+
+        const toolSchema = getToolSchema(tools, toolCall.name);
+        const fullInput = parseXmlContentForStreamProgress({
+          toolContent,
+          toolSchema,
+          parseOptions,
+        });
+        toolCall.lastProgressGtIndex = progressGtIndex;
+        toolCall.lastProgressFullInput = fullInput;
+        if (fullInput == null) {
+          return;
+        }
+        if (fullInput === "{}" && toolContent.trim().length === 0) {
+          return;
+        }
+        const prefixCandidate = toIncompleteJsonPrefix(fullInput);
+        emitPrefixDelta({
+          controller,
+          id: toolCall.toolCallId,
+          state: toolCall,
+          candidate: prefixCandidate,
+        });
+      };
+
+      const finalizeUnclosedToolCall = (
+        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
+      ) => {
+        if (!currentToolCall) {
+          return;
+        }
+
+        emitToolInputProgress(controller, currentToolCall, buffer);
+        const parseConfig = {
+          ...parseOptions,
+          onError:
+            options?.onError ??
+            (parseOptions as { onError?: ParserOptions["onError"] } | undefined)
+              ?.onError,
+        };
+
+        const toolSchema = getToolSchema(tools, currentToolCall.name);
+        flushText(controller);
+        try {
+          if (hasNonWhitespaceTopLevelText(buffer)) {
+            throw new Error(
+              "Cannot reconcile unclosed XML tool call with top-level plain text."
+            );
+          }
+          const parsedResult = parse(buffer, toolSchema, parseConfig);
+          const finalInput = JSON.stringify(parsedResult);
+          emitFinalRemainder({
+            controller,
+            id: currentToolCall.toolCallId,
+            state: currentToolCall,
+            finalFullJson: finalInput,
+            onMismatch: options?.onError,
+          });
+          controller.enqueue({
+            type: "tool-input-end",
+            id: currentToolCall.toolCallId,
+          });
+          controller.enqueue({
+            type: "tool-call",
+            toolCallId: currentToolCall.toolCallId,
+            toolName: currentToolCall.name,
+            input: finalInput,
+          });
+        } catch (error) {
+          controller.enqueue({
+            type: "tool-input-end",
+            id: currentToolCall.toolCallId,
+          });
+          const unfinishedContent = `<${currentToolCall.name}>${buffer}`;
+          options?.onError?.(
+            "Could not complete streaming XML tool call at finish.",
+            { toolCall: unfinishedContent, error }
+          );
+          if (shouldEmitRawToolCallTextOnError(options)) {
+            flushText(controller, unfinishedContent);
+          }
+        }
+
+        buffer = "";
+        currentToolCall = null;
+      };
+
       const processBuffer = createProcessBufferHandler(
         () => buffer,
         (newBuffer: string) => {
           buffer = newBuffer;
         },
         () => currentToolCall,
-        (newToolCall: { name: string; content: string } | null) => {
+        (newToolCall: StreamingToolCallState | null) => {
           currentToolCall = newToolCall;
         },
         tools,
         options,
         toolNames,
         flushText,
-        parseOptions
+        parseOptions,
+        emitToolInputProgress,
+        emitToolInputStart
       );
 
       return new TransformStream({
+        // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Stateful stream parsing requires branching over chunk lifecycle and parser states.
         transform(chunk, controller) {
           if (chunk.type === "finish") {
             if (currentToolCall) {
-              const unfinishedContent = `<${currentToolCall.name}>${currentToolCall.content}${buffer}`;
-              flushText(controller, unfinishedContent);
-              buffer = "";
-              currentToolCall = null;
+              finalizeUnclosedToolCall(controller);
             } else if (buffer) {
               flushText(controller, buffer);
               buffer = "";
@@ -1146,7 +1707,10 @@ export const xmlProtocol = (
           }
 
           if (chunk.type !== "text-delta") {
-            if (buffer) {
+            if (currentToolCall) {
+              // Keep an open XML tool call alive across non-text stream chunks
+              // so mixed-mode streams (e.g. reasoning) can continue to complete it.
+            } else if (buffer) {
               flushText(controller, buffer);
               buffer = "";
             }
@@ -1161,10 +1725,7 @@ export const xmlProtocol = (
         },
         flush(controller) {
           if (currentToolCall) {
-            const unfinishedContent = `<${currentToolCall.name}>${currentToolCall.content || ""}${buffer}`;
-            flushText(controller, unfinishedContent);
-            buffer = "";
-            currentToolCall = null;
+            finalizeUnclosedToolCall(controller);
           } else if (buffer) {
             flushText(controller, buffer);
             buffer = "";
