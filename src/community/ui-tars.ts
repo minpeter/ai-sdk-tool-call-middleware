@@ -1,8 +1,10 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import { formatToolResponseAsXml } from "../core/prompts/tool-response";
 import { createToolMiddleware, uiTarsXmlProtocol } from "../index";
 
 export const uiTarsDetailedXmlToolMiddleware = createToolMiddleware({
   protocol: uiTarsXmlProtocol,
+  toolResponsePromptTemplate: formatToolResponseAsXml,
   toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
     const toolsJson = JSON.stringify(tools);
     return `You have access to callable functions (tools).
@@ -10,72 +12,68 @@ Tool list/context:
 ${toolsJson}
 
 ===============================
-UI-TARS TOOL CALLING FORMAT
+UI-TARS FUNCTION CALLING FORMAT
 ===============================
-- When you need to call a tool, output ONLY tool-call markup and nothing else.
-- No suffix, no extra text, no explanations, and no markdown code fences.
+You MUST use the EXACT format below for ALL function calls:
 
-Tool calls MUST use this exact XML-like format:
-<tool_call>
-  <function=TOOL_NAME>
-    <parameter=PARAM_NAME>VALUE</parameter>
-    ...
-  </function>
-</tool_call>
+<function=tool_name>
+<parameter=parameter_name>value</parameter>
+<parameter=another_parameter>value</parameter>
+</function>
 
 ===============================
-ARRAY PARAMETERS
+CRITICAL SYNTAX RULES
 ===============================
-- For array/multiple values, repeat the same parameter tag for each value.
-- Example:
-<tool_call>
-  <function=send_messages>
-    <parameter=recipient>alice@example.com</parameter>
-    <parameter=recipient>bob@example.com</parameter>
-    <parameter=message>Hello!</parameter>
-  </function>
-</tool_call>
+1. Start with <function=TOOL_NAME> (use the exact tool name from the list above)
+2. Each parameter MUST be <parameter=PARAM_NAME>VALUE</parameter>
+3. End with </function>
+4. NO quotes around tool names or parameter names
+5. NO extra spaces or characters
+6. NO JSON format - only use this XML-like format
 
 ===============================
-SINGLE VALUE PARAMETERS
+CORRECT EXAMPLES
 ===============================
-- For single values, use one parameter tag.
-- Example:
-<tool_call>
-  <function=get_weather>
-    <parameter=location>San Francisco</parameter>
-  </function>
-</tool_call>
+Screenshot:
+<function=computer>
+<parameter=action>screenshot</parameter>
+</function>
+
+Click at coordinates:
+<function=computer>
+<parameter=action>left_click</parameter>
+<parameter=coordinate>[100, 200]</parameter>
+</function>
+
+Type text:
+<function=computer>
+<parameter=action>type</parameter>
+<parameter=text>Hello World</parameter>
+</function>
+
+Scroll:
+<function=computer>
+<parameter=action>scroll</parameter>
+<parameter=coordinate>[500, 400]</parameter>
+<parameter=scroll_direction>down</parameter>
+<parameter=scroll_amount>3</parameter>
+</function>
 
 ===============================
-GENERAL RULES
+WRONG FORMATS (DO NOT USE)
 ===============================
-- Include all required parameters. If info is missing, ask the user.
-- Do NOT use JSON for tool calls. Use only the specified UI-TARS format.
-- If no tool call is needed, reply with plain text and do NOT output <tool_call>.`;
-  },
-});
-export const uiTarsConciseXmlToolMiddleware = createToolMiddleware({
-  protocol: uiTarsXmlProtocol,
-  toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
-    const toolsJson = JSON.stringify(tools);
-    return `You have access to callable functions (tools).
-Tool list/context:
-${toolsJson}
+❌ <function=function='screenshot'> (no quotes or extra text)
+❌ <parameter=parameters> (must use actual parameter name)
+❌ JSON format like {"action": "screenshot"}
+❌ Any format other than the exact XML-like format above
 
-STRICT UI-TARS TOOL CALLING RULES:
-- If calling a tool, output ONLY:
-
-<tool_call>
-  <function=TOOL_NAME>
-    <parameter=PARAM_NAME>VALUE</parameter>
-    ...
-  </function>
-</tool_call>
-
-- No extra text before or after the tool call (no suffix).
-- Repeat <parameter=PARAM_NAME> for arrays/multiple values.
-- Include all required parameters. If info is missing, ask the user.
-- If no call is needed, reply normally with plain text (no <tool_call>).`;
+===============================
+EXECUTION RULES
+===============================
+- Use ONLY the tool names listed above
+- Include ALL required parameters for each tool
+- If you don't know a parameter value, ask the user
+- After calling a function, STOP and wait for the result
+- Do NOT add extra text before or after function calls`;
   },
 });
