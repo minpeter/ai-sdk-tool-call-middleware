@@ -74,12 +74,12 @@ Notes:
 
 ### Usage (preconfigured)
 
-Qwen3CoderToolParser middleware is exported via the `./community` entrypoint (`qwen3coder_tool_parser_middleware`):
+Qwen3CoderToolParser middleware is exported via the `./community` entrypoint (`qwen3CoderToolParserMiddleware`):
 
 ```ts
 import { wrapLanguageModel, streamText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { qwen3coder_tool_parser_middleware } from "@ai-sdk-tool/parser/community";
+import { qwen3CoderToolParserMiddleware } from "@ai-sdk-tool/parser/community";
 
 const client = createOpenAICompatible({
   /* baseURL, apiKey */
@@ -88,7 +88,7 @@ const client = createOpenAICompatible({
 const result = streamText({
   model: wrapLanguageModel({
     model: client("your-model-name"),
-    middleware: qwen3coder_tool_parser_middleware,
+    middleware: qwen3CoderToolParserMiddleware,
   }),
   tools: {
     /* your tools */
