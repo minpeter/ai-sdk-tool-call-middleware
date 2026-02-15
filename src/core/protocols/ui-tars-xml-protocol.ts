@@ -29,17 +29,12 @@ const TOOL_CALL_BLOCK_RE = /<tool_call\b[^>]*>[\s\S]*?<\/tool_call\s*>/gi;
 
 const CALL_BLOCK_RE = /<(call|function|tool|invoke)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
 
-const PARAM_TAG_RE =
-  /<(parameter|param|argument|arg)\b[^>]*\bname\s*=\s*(["'])(.*?)\2[^>]*>([\s\S]*?)<\/\1\s*>/gi;
-
-const PARAM_SELF_CLOSING_RE =
-  /<(parameter|param|argument|arg)\b[^>]*\bname\s*=\s*(["'])(.*?)\2[^>]*\/\s*>/gi;
-
-const PARAM_EQUALS_TAG_RE =
-  /<(parameter|param|argument|arg)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))[^>]*>([\s\S]*?)<\/\1\s*>/gi;
-
-const PARAM_EQUALS_SELF_CLOSING_RE =
-  /<(parameter|param|argument|arg)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))[^>]*\/\s*>/gi;
+const UI_TARS_PARAM_TAG_NAMES = new Set([
+  "parameter",
+  "param",
+  "argument",
+  "arg",
+]);
 
 const CALL_SHORTHAND_VALUE_RE =
   /^<\s*(call|function|tool|invoke)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))/i;
@@ -54,13 +49,212 @@ const UI_TARS_STREAM_NAME_OR_PARAM_SIGNAL_RE =
   /<\s*(?!\/)\s*(name|tool_name|parameter|param|argument|arg)\b/i;
 const UI_TARS_STREAM_NAME_TAG_RE =
   /<\s*(name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/i;
-const UI_TARS_STREAM_PARAM_ANY_TAG_RE =
-  /<(parameter|param|argument|arg)\b(?:[^>]*\bname\s*=\s*(["'])(.*?)\2|\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+)))[^>]*(?:>([\s\S]*?)<\/\1\s*>|\/\s*>)/i;
-const UI_TARS_STREAM_PARAM_OPEN_TAG_RE =
-  /<\s*(parameter|param|argument|arg)\b[^>]*\bname\s*=\s*(["'])(.*?)\2[^>]*>/i;
-const UI_TARS_STREAM_PARAM_EQUALS_OPEN_TAG_RE =
-  /<\s*(parameter|param|argument|arg)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))/i;
 const UI_TARS_STREAM_SELF_CLOSING_TAG_RE = /\/\s*>$/;
+
+function isAsciiWhitespace(ch: string): boolean {
+  return ch === " " || ch === "\n" || ch === "\r" || ch === "\t" || ch === "\f";
+}
+
+function skipAsciiWhitespace(text: string, index: number): number {
+  let i = index;
+  while (i < text.length && isAsciiWhitespace(text[i] ?? "")) {
+    i += 1;
+  }
+  return i;
+}
+
+function isTagBoundaryChar(ch: string): boolean {
+  return ch === "" || isAsciiWhitespace(ch) || ch === ">" || ch === "/";
+}
+
+function findTagEndIndex(text: string, startIndex: number): number | null {
+  let quote: '"' | "'" | null = null;
+  for (let i = startIndex; i < text.length; i += 1) {
+    const ch = text[i] ?? "";
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === ">") {
+      return i;
+    }
+  }
+  return null;
+}
+
+function parseShorthandValue(
+  openTag: string,
+  tagNameLower: string
+): string | null {
+  let i = 1;
+  i = skipAsciiWhitespace(openTag, i);
+  if (!openTag.toLowerCase().startsWith(tagNameLower, i)) {
+    return null;
+  }
+  i += tagNameLower.length;
+  i = skipAsciiWhitespace(openTag, i);
+  if (openTag[i] !== "=") {
+    return null;
+  }
+  i += 1;
+  i = skipAsciiWhitespace(openTag, i);
+
+  const quote = openTag[i] ?? "";
+  if (quote === '"' || quote === "'") {
+    const end = openTag.indexOf(quote, i + 1);
+    if (end === -1) {
+      return null;
+    }
+    return openTag.slice(i + 1, end);
+  }
+
+  const start = i;
+  while (i < openTag.length) {
+    const ch = openTag[i] ?? "";
+    if (isAsciiWhitespace(ch) || ch === ">" || ch === "/") {
+      break;
+    }
+    i += 1;
+  }
+  const value = openTag.slice(start, i);
+  return value.length > 0 ? value : null;
+}
+
+function parseUiTarsParamName(
+  openTag: string,
+  tagNameLower: string
+): string | null {
+  const shorthand = parseShorthandValue(openTag, tagNameLower);
+  if (shorthand != null) {
+    return unescapeXml(shorthand);
+  }
+
+  return getAttributeValue(openTag, "name");
+}
+
+function findClosingTagEnd(
+  textLower: string,
+  startIndex: number,
+  tagNameLower: string
+): { start: number; end: number } | null {
+  let index = startIndex;
+  while (true) {
+    const lt = textLower.indexOf("<", index);
+    if (lt === -1) {
+      return null;
+    }
+
+    let i = skipAsciiWhitespace(textLower, lt + 1);
+    if (textLower[i] !== "/") {
+      index = lt + 1;
+      continue;
+    }
+    i += 1;
+    i = skipAsciiWhitespace(textLower, i);
+    if (!textLower.startsWith(tagNameLower, i)) {
+      index = lt + 1;
+      continue;
+    }
+
+    const afterName = i + tagNameLower.length;
+    const boundary = textLower[afterName] ?? "";
+    if (boundary && !isTagBoundaryChar(boundary)) {
+      index = lt + 1;
+      continue;
+    }
+
+    const gt = textLower.indexOf(">", afterName);
+    if (gt === -1) {
+      return null;
+    }
+    return { start: lt, end: gt + 1 };
+  }
+}
+
+type UiTarsParamTagParseResult =
+  | {
+      kind: "match";
+      start: number;
+      end: number;
+      name: string;
+      value: string;
+    }
+  | {
+      kind: "partial";
+      start: number;
+      openEnd: number | null;
+    };
+
+function parseUiTarsParamTagAt(
+  text: string,
+  lowerText: string,
+  startIndex: number
+): UiTarsParamTagParseResult | null {
+  let i = skipAsciiWhitespace(lowerText, startIndex + 1);
+  if (i >= lowerText.length) {
+    return { kind: "partial", start: startIndex, openEnd: null };
+  }
+  if (lowerText[i] === "/") {
+    return null;
+  }
+
+  const nameStart = i;
+  while (i < lowerText.length) {
+    const ch = lowerText[i] ?? "";
+    if (isAsciiWhitespace(ch) || ch === ">" || ch === "/" || ch === "=") {
+      break;
+    }
+    i += 1;
+  }
+
+  const tagNameLower = lowerText.slice(nameStart, i);
+  if (!UI_TARS_PARAM_TAG_NAMES.has(tagNameLower)) {
+    return null;
+  }
+
+  const openEnd = findTagEndIndex(text, startIndex);
+  if (openEnd == null) {
+    return { kind: "partial", start: startIndex, openEnd: null };
+  }
+
+  const openTag = text.slice(startIndex, openEnd + 1);
+  const paramNameRaw = parseUiTarsParamName(openTag, tagNameLower);
+  const paramName = paramNameRaw?.trim() ?? "";
+  if (paramName.length === 0) {
+    return null;
+  }
+
+  const selfClosing = openTag.trimEnd().endsWith("/>");
+  if (selfClosing) {
+    return {
+      kind: "match",
+      start: startIndex,
+      end: openEnd + 1,
+      name: paramName,
+      value: "",
+    };
+  }
+
+  const close = findClosingTagEnd(lowerText, openEnd + 1, tagNameLower);
+  if (!close) {
+    return { kind: "partial", start: startIndex, openEnd };
+  }
+
+  const rawValue = text.slice(openEnd + 1, close.start);
+  return {
+    kind: "match",
+    start: startIndex,
+    end: close.end,
+    name: paramName,
+    value: rawValue ? normalizeXmlTextValue(rawValue) : "",
+  };
+}
 
 function normalizeXmlTextValue(raw: string): string {
   let out = raw.trim();
@@ -103,15 +297,45 @@ function getShorthandValue(openTag: string): string | null {
 }
 
 function extractFirstTagText(xml: string, tagName: string): string | null {
-  const re = new RegExp(
-    `<\\s*${escapeRegExp(tagName)}\\b[^>]*>([\\s\\S]*?)<\\s*\\/\\s*${escapeRegExp(tagName)}\\s*>`,
-    "i"
-  );
-  const match = re.exec(xml);
-  if (!match) {
-    return null;
+  const lower = xml.toLowerCase();
+  const tagLower = tagName.toLowerCase();
+
+  let index = 0;
+  while (true) {
+    const lt = lower.indexOf("<", index);
+    if (lt === -1) {
+      return null;
+    }
+
+    const i = skipAsciiWhitespace(lower, lt + 1);
+    if (i >= lower.length || lower[i] === "/") {
+      index = lt + 1;
+      continue;
+    }
+
+    if (!lower.startsWith(tagLower, i)) {
+      index = lt + 1;
+      continue;
+    }
+
+    const afterName = i + tagLower.length;
+    const boundary = lower[afterName] ?? "";
+    if (boundary && !isTagBoundaryChar(boundary)) {
+      index = lt + 1;
+      continue;
+    }
+
+    const openEnd = findTagEndIndex(xml, lt);
+    if (openEnd == null) {
+      return null;
+    }
+    const contentStart = openEnd + 1;
+    const close = findClosingTagEnd(lower, contentStart, tagLower);
+    if (!close) {
+      return null;
+    }
+    return normalizeXmlTextValue(xml.slice(contentStart, close.start));
   }
-  return normalizeXmlTextValue(match[1] ?? "");
 }
 
 function extractToolCallInnerXml(segment: string): {
@@ -165,38 +389,26 @@ function mergeParamValue(
 function extractParameters(xml: string): Record<string, unknown> {
   const args: Record<string, unknown> = {};
 
-  for (const match of xml.matchAll(PARAM_TAG_RE)) {
-    const name = match[3];
-    const rawValue = match[4] ?? "";
-    if (!name) {
+  const lower = xml.toLowerCase();
+  let index = 0;
+  while (true) {
+    const lt = lower.indexOf("<", index);
+    if (lt === -1) {
+      break;
+    }
+    const parsed = parseUiTarsParamTagAt(xml, lower, lt);
+    if (!parsed) {
+      index = lt + 1;
       continue;
     }
-    mergeParamValue(args, unescapeXml(name), normalizeXmlTextValue(rawValue));
-  }
 
-  for (const match of xml.matchAll(PARAM_EQUALS_TAG_RE)) {
-    const name = match[2] ?? match[3] ?? match[4];
-    const rawValue = match[5] ?? "";
-    if (!name) {
+    if (parsed.kind === "match") {
+      mergeParamValue(args, parsed.name, parsed.value);
+      index = parsed.end;
       continue;
     }
-    mergeParamValue(args, unescapeXml(name), normalizeXmlTextValue(rawValue));
-  }
 
-  for (const match of xml.matchAll(PARAM_SELF_CLOSING_RE)) {
-    const name = match[3];
-    if (!name) {
-      continue;
-    }
-    mergeParamValue(args, unescapeXml(name), "");
-  }
-
-  for (const match of xml.matchAll(PARAM_EQUALS_SELF_CLOSING_RE)) {
-    const name = match[2] ?? match[3] ?? match[4];
-    if (!name) {
-      continue;
-    }
-    mergeParamValue(args, unescapeXml(name), "");
+    index = (parsed.openEnd ?? lt) + 1;
   }
 
   return args;
@@ -256,7 +468,9 @@ function parseUiTarsToolCallSegment(
     return calls;
   }
 
-  const single = parseSingleFunctionCallXml(segment, outerNameAttr);
+  const single =
+    parseSingleFunctionCallXml(inner, outerNameAttr) ??
+    parseSingleFunctionCallXml(segment, outerNameAttr);
   if (!single) {
     return null;
   }
@@ -400,11 +614,7 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
       hasEmittedStart: boolean;
       emittedInput: string;
       args: Record<string, unknown>;
-      pendingParamName: string | null;
-      pendingParamValues: string[];
-      pendingParamIsArray: boolean;
       buffer: string;
-      sealedKeys: Set<string>;
     }
 
     interface ToolCallContainerState {
@@ -435,45 +645,6 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
 
     const removeSlice = (text: string, start: number, end: number): string =>
       text.slice(0, start) + text.slice(end);
-
-    const findNextParamTag = (
-      text: string
-    ): { start: number; end: number; name: string; value: string } | null => {
-      const match = UI_TARS_STREAM_PARAM_ANY_TAG_RE.exec(text);
-      if (!match) {
-        return null;
-      }
-
-      const start = match.index;
-      const end = start + match[0].length;
-
-      const rawName = match[3] ?? match[4] ?? match[5] ?? match[6] ?? "";
-      const rawValue = match[7] ?? "";
-      const value = rawValue ? normalizeXmlTextValue(rawValue) : "";
-
-      return { start, end, name: unescapeXml(rawName), value };
-    };
-
-    const peekNextParamName = (text: string): string | null => {
-      const attrMatch = UI_TARS_STREAM_PARAM_OPEN_TAG_RE.exec(text);
-      const eqMatch = UI_TARS_STREAM_PARAM_EQUALS_OPEN_TAG_RE.exec(text);
-
-      const attrIndex = attrMatch?.index ?? Number.POSITIVE_INFINITY;
-      const eqIndex = eqMatch?.index ?? Number.POSITIVE_INFINITY;
-
-      const useEq = eqIndex < attrIndex;
-      const match = useEq ? eqMatch : attrMatch;
-      if (!match) {
-        return null;
-      }
-      const rawName = useEq
-        ? (match[2] ?? match[3] ?? match[4] ?? "")
-        : match[3];
-      if (!rawName) {
-        return null;
-      }
-      return unescapeXml(rawName);
-    };
 
     const maybeEmitToolInputStart = (
       controller: StreamController,
@@ -515,147 +686,11 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
       });
     };
 
-    const flushPendingIfPossible = (
-      controller: StreamController,
-      callState: StreamingCallState,
-      lookaheadText: string
-    ) => {
-      const pendingName = callState.pendingParamName;
-      if (!pendingName || pendingName.trim().length === 0) {
-        return;
-      }
-      if (callState.pendingParamIsArray) {
-        const next = peekNextParamName(lookaheadText);
-        if (next && next !== pendingName) {
-          callState.sealedKeys.add(pendingName);
-          callState.pendingParamName = null;
-          callState.pendingParamValues = [];
-          callState.pendingParamIsArray = false;
-        }
-        return;
-      }
-
-      const nextName = peekNextParamName(lookaheadText);
-      if (!nextName) {
-        return;
-      }
-
-      if (nextName === pendingName) {
-        callState.pendingParamIsArray = true;
-        callState.args[pendingName] = [callState.pendingParamValues[0] ?? ""];
-        maybeEmitToolInputProgress(controller, callState);
-        return;
-      }
-
-      callState.args[pendingName] = callState.pendingParamValues[0] ?? "";
-      callState.sealedKeys.add(pendingName);
-      callState.pendingParamName = null;
-      callState.pendingParamValues = [];
-      callState.pendingParamIsArray = false;
-      maybeEmitToolInputProgress(controller, callState);
-    };
-
-    const startPendingParam = (
-      callState: StreamingCallState,
-      key: string,
-      value: string
-    ) => {
-      callState.pendingParamName = key;
-      callState.pendingParamValues = [value];
-      callState.pendingParamIsArray = false;
-    };
-
-    const commitAndSealPending = (
-      controller: StreamController,
-      callState: StreamingCallState
-    ) => {
-      const prev = callState.pendingParamName;
-      if (!prev) {
-        return;
-      }
-      if (!callState.pendingParamIsArray) {
-        callState.args[prev] = callState.pendingParamValues[0] ?? "";
-        maybeEmitToolInputProgress(controller, callState);
-      }
-      callState.sealedKeys.add(prev);
-    };
-
-    const handleRepeatParamValue = (
-      controller: StreamController,
-      callState: StreamingCallState,
-      key: string,
-      value: string
-    ) => {
-      callState.pendingParamValues.push(value);
-      if (callState.pendingParamIsArray) {
-        const arr = callState.args[key];
-        if (Array.isArray(arr)) {
-          arr.push(value);
-        }
-        maybeEmitToolInputProgress(controller, callState);
-        return;
-      }
-
-      if (callState.pendingParamValues.length >= 2) {
-        callState.pendingParamIsArray = true;
-        callState.args[key] = [...callState.pendingParamValues];
-        maybeEmitToolInputProgress(controller, callState);
-      }
-    };
-
-    const handleParamValue = (
-      controller: StreamController,
-      callState: StreamingCallState,
-      name: string,
-      value: string
-    ) => {
-      const key = name.trim();
-      if (key.length === 0) {
-        return;
-      }
-
-      if (callState.sealedKeys.has(key)) {
-        options?.onError?.(
-          "Ignoring non-contiguous repeated UI-TARS parameter",
-          {
-            name: key,
-          }
-        );
-        return;
-      }
-
-      if (callState.pendingParamName == null) {
-        startPendingParam(callState, key, value);
-        return;
-      }
-
-      if (key === callState.pendingParamName) {
-        handleRepeatParamValue(controller, callState, key, value);
-        return;
-      }
-
-      // Key switch: commit the previous pending key now, then begin the new one.
-      commitAndSealPending(controller, callState);
-      startPendingParam(callState, key, value);
-    };
-
     const finalizeCall = (
       controller: StreamController,
       callState: StreamingCallState,
       fallbackToolName: string | null
     ): boolean => {
-      if (callState.pendingParamName) {
-        const pendingName = callState.pendingParamName;
-        if (!callState.pendingParamIsArray) {
-          callState.args[pendingName] = callState.pendingParamValues[0] ?? "";
-          maybeEmitToolInputProgress(controller, callState);
-        }
-        callState.sealedKeys.add(pendingName);
-        callState.pendingParamName = null;
-        callState.pendingParamValues = [];
-        callState.pendingParamIsArray = false;
-      }
-
       if (!callState.toolName && fallbackToolName) {
         callState.toolName = fallbackToolName;
       }
@@ -731,28 +766,40 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
       callState: StreamingCallState,
       work: string
     ) => {
-      let out = work;
+      const lower = work.toLowerCase();
+      let index = 0;
+      let lastKept = 0;
+      let pieces: string[] | null = null;
+
       while (true) {
-        const next = findNextParamTag(out);
-        if (!next) {
+        const lt = lower.indexOf("<", index);
+        if (lt === -1) {
           break;
         }
-        const { start, end, name, value } = next;
-        handleParamValue(controller, callState, name, value);
-        out = removeSlice(out, start, end);
-        flushPendingIfPossible(controller, callState, out);
-      }
-      return out;
-    };
 
-    const ensureStreamingUpToDate = (
-      controller: StreamController,
-      callState: StreamingCallState,
-      work: string
-    ) => {
-      flushPendingIfPossible(controller, callState, work);
+        const parsed = parseUiTarsParamTagAt(work, lower, lt);
+        if (!parsed) {
+          index = lt + 1;
+          continue;
+        }
+
+        if (parsed.kind === "partial") {
+          break;
+        }
+
+        mergeParamValue(callState.args, parsed.name, parsed.value);
+        pieces ??= [];
+        pieces.push(work.slice(lastKept, parsed.start));
+        lastKept = parsed.end;
+        index = parsed.end;
+      }
+
       maybeEmitToolInputStart(controller, callState);
-      maybeEmitToolInputProgress(controller, callState);
+      if (!pieces) {
+        return work;
+      }
+      pieces.push(work.slice(lastKept));
+      return pieces.join("");
     };
 
     const parseCallContent = (
@@ -763,8 +810,24 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
       let work = content;
       work = consumeToolNameTag(controller, callState, work);
       work = consumeParamTags(controller, callState, work);
-      ensureStreamingUpToDate(controller, callState, work);
+      maybeEmitToolInputStart(controller, callState);
       return work;
+    };
+
+    const closeTagCache = new Map<string, RegExp>();
+
+    const getCloseTagPattern = (endTagName: string): RegExp => {
+      const cached = closeTagCache.get(endTagName);
+      if (cached) {
+        return cached;
+      }
+
+      const created = new RegExp(
+        `<\\s*\\/\\s*${escapeRegExp(endTagName)}\\s*>`,
+        "i"
+      );
+      closeTagCache.set(endTagName, created);
+      return created;
     };
 
     const consumeCall = (
@@ -775,11 +838,9 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
     ): { done: boolean; remainder: string } => {
       callState.buffer += incoming;
 
-      const closeTagRe = new RegExp(
-        `<\\s*\\/\\s*${escapeRegExp(callState.endTagName)}\\s*>`,
-        "i"
+      const closeMatch = getCloseTagPattern(callState.endTagName).exec(
+        callState.buffer
       );
-      const closeMatch = closeTagRe.exec(callState.buffer);
       if (!closeMatch) {
         callState.buffer = parseCallContent(
           controller,
@@ -897,21 +958,18 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
             toolCall.mode = "multi";
           } else if (signalMatch) {
             toolCall.mode = "single";
-            toolCall.activeCall = {
+            const activeCall: StreamingCallState = {
               endTagName: "tool_call",
               toolCallId: generateToolCallId(),
               toolName: toolCall.outerNameAttr,
               hasEmittedStart: false,
               emittedInput: "",
               args: {},
-              pendingParamName: null,
-              pendingParamValues: [],
-              pendingParamIsArray: false,
               buffer: "",
-              sealedKeys: new Set<string>(),
             };
+            toolCall.activeCall = activeCall;
             if (toolCall.outerNameAttr) {
-              maybeEmitToolInputStart(controller, toolCall.activeCall);
+              maybeEmitToolInputStart(controller, activeCall);
             }
           } else {
             return;
@@ -1020,11 +1078,7 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
               hasEmittedStart: false,
               emittedInput: "",
               args: {},
-              pendingParamName: null,
-              pendingParamValues: [],
-              pendingParamIsArray: false,
               buffer: "",
-              sealedKeys: new Set<string>(),
             };
             const ok = finalizeCall(controller, immediateCall, toolNameAttr);
             if (ok) {
@@ -1043,11 +1097,7 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
             hasEmittedStart: false,
             emittedInput: "",
             args: {},
-            pendingParamName: null,
-            pendingParamValues: [],
-            pendingParamIsArray: false,
             buffer: "",
-            sealedKeys: new Set<string>(),
           };
 
           if (toolNameAttr) {
@@ -1057,6 +1107,22 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
           toolCall.activeCall = newCall;
           toolCall.innerBuffer = rest;
         }
+      }
+    };
+
+    const reportUnfinishedToolCallAtFinish = (
+      controller: StreamController,
+      rawToolCall: string
+    ) => {
+      const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
+      options?.onError?.(
+        shouldEmitRaw
+          ? "Could not complete streaming UI-TARS XML tool call at finish; emitting original text."
+          : "Could not complete streaming UI-TARS XML tool call at finish.",
+        { toolCall: rawToolCall }
+      );
+      if (shouldEmitRaw) {
+        flushText(controller, rawToolCall);
       }
     };
 
@@ -1090,11 +1156,7 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
                 hasEmittedStart: false,
                 emittedInput: "",
                 args: {},
-                pendingParamName: null,
-                pendingParamValues: [],
-                pendingParamIsArray: false,
                 buffer: "",
-                sealedKeys: new Set<string>(),
               };
             }
           }
@@ -1111,16 +1173,7 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
               toolCall.emittedToolCallCount += 1;
             }
             if (!ok && toolCall.emittedToolCallCount === 0) {
-              const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
-              options?.onError?.(
-                shouldEmitRaw
-                  ? "Could not complete streaming UI-TARS XML tool call at finish; emitting original text."
-                  : "Could not complete streaming UI-TARS XML tool call at finish.",
-                { toolCall: toolCall.raw }
-              );
-              if (shouldEmitRaw) {
-                flushText(controller, toolCall.raw);
-              }
+              reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
             }
           } else if (toolCall.mode === "multi") {
             if (toolCall.activeCall) {
@@ -1132,41 +1185,14 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
               if (ok) {
                 toolCall.emittedToolCallCount += 1;
               } else if (toolCall.emittedToolCallCount === 0) {
-                const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
-                options?.onError?.(
-                  shouldEmitRaw
-                    ? "Could not complete streaming UI-TARS XML tool call at finish; emitting original text."
-                    : "Could not complete streaming UI-TARS XML tool call at finish.",
-                  { toolCall: toolCall.raw }
-                );
-                if (shouldEmitRaw) {
-                  flushText(controller, toolCall.raw);
-                }
+                reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
               }
               toolCall.activeCall = null;
             } else if (toolCall.emittedToolCallCount === 0) {
-              const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
-              options?.onError?.(
-                shouldEmitRaw
-                  ? "Could not complete streaming UI-TARS XML tool call at finish; emitting original text."
-                  : "Could not complete streaming UI-TARS XML tool call at finish.",
-                { toolCall: toolCall.raw }
-              );
-              if (shouldEmitRaw) {
-                flushText(controller, toolCall.raw);
-              }
+              reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
             }
           } else {
-            const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
-            options?.onError?.(
-              shouldEmitRaw
-                ? "Could not complete streaming UI-TARS XML tool call at finish; emitting original text."
-                : "Could not complete streaming UI-TARS XML tool call at finish.",
-              { toolCall: toolCall.raw }
-            );
-            if (shouldEmitRaw) {
-              flushText(controller, toolCall.raw);
-            }
+            reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
           }
 
           toolCall = null;

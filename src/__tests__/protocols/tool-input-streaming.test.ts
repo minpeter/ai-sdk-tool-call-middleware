@@ -536,6 +536,36 @@ describe("tool-input streaming events", () => {
     expect(leakedText).not.toContain("</tool_call");
   });
 
+  it("ui-tars xml protocol preserves non-contiguous repeated parameters in streams", async () => {
+    const protocol = uiTarsXmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "<tool_call>\n  <function=alpha>\n    <parameter=a>1</parameter>\n    <parameter=b>2</parameter>\n    <parameter=a>3</parameter>\n  </function>\n</tool_call>",
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, deltas, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: string;
+    };
+
+    expect(starts).toHaveLength(1);
+    expect(deltas.length).toBeGreaterThan(0);
+    expect(ends).toHaveLength(1);
+    expect(starts[0].id).toBe(ends[0].id);
+    expect(toolCall.toolCallId).toBe(starts[0].id);
+    expect(toolCall.toolName).toBe("alpha");
+    expect(JSON.parse(toolCall.input)).toEqual({ a: ["1", "3"], b: "2" });
+    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+  });
+
   it("ui-tars xml protocol supports multiple function calls inside a single <tool_call> block in-order", async () => {
     const protocol = uiTarsXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });

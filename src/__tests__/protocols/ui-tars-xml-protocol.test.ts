@@ -124,6 +124,30 @@ describe("uiTarsXmlProtocol", () => {
     expect(rejoined).toContain(bad);
   });
 
+  it("parses self-closing function tags in non-stream mode", () => {
+    const p = uiTarsXmlProtocol();
+    const text = [
+      "before ",
+      "<tool_call><function=get_weather/></tool_call>",
+      " after",
+    ].join("");
+
+    const out = p.parseGeneratedText({ text, tools: [] });
+    expect(out).toHaveLength(3);
+
+    const toolCall = out.find((part) => part.type === "tool-call") as
+      | {
+          type: "tool-call";
+          toolCallId: string;
+          toolName: string;
+          input: string;
+        }
+      | undefined;
+    expect(toolCall).toBeTruthy();
+    expect(toolCall?.toolName).toBe("get_weather");
+    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({});
+  });
+
   it("formatToolCall emits UI-TARS markup that round-trips through parseGeneratedText", () => {
     const p = uiTarsXmlProtocol();
     const formatted = p.formatToolCall({
