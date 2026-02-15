@@ -386,16 +386,25 @@ function coerceStringToObject(
   s: string,
   unwrapped: Record<string, unknown>
 ): unknown {
+  // First try parsing the original string as-is
   try {
-    let normalized = s.replace(/'/g, '"');
-    normalized = normalized.replace(EMPTY_OBJECT_REGEX, "{}");
-
-    const obj = JSON.parse(normalized);
+    const obj = JSON.parse(s);
     if (obj && typeof obj === "object" && !Array.isArray(obj)) {
       return coerceObjectToObject(obj as Record<string, unknown>, unwrapped);
     }
   } catch {
-    // fallthrough
+    // Fallback: try replacing single quotes with double quotes
+    // (for cases where model uses single-quoted JSON)
+    try {
+      let normalized = s.replace(/'/g, '"');
+      normalized = normalized.replace(EMPTY_OBJECT_REGEX, "{}");
+      const obj = JSON.parse(normalized);
+      if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+        return coerceObjectToObject(obj as Record<string, unknown>, unwrapped);
+      }
+    } catch {
+      // fallthrough
+    }
   }
   return null;
 }
@@ -413,8 +422,7 @@ function coerceStringToArray(
   const itemsSchema = unwrapped.items as unknown;
 
   try {
-    const normalized = s.replace(/'/g, '"');
-    const arr = JSON.parse(normalized);
+    const arr = JSON.parse(s);
     if (Array.isArray(arr)) {
       if (prefixItems && arr.length === prefixItems.length) {
         return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
@@ -422,6 +430,20 @@ function coerceStringToArray(
       return arr.map((v) => coerceBySchema(v, itemsSchema));
     }
   } catch {
+    // Fallback: try replacing single quotes with double quotes
+    // (for cases where model uses single-quoted JSON)
+    try {
+      const normalized = s.replace(/'/g, '"');
+      const arr = JSON.parse(normalized);
+      if (Array.isArray(arr)) {
+        if (prefixItems && arr.length === prefixItems.length) {
+          return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
+        }
+        return arr.map((v) => coerceBySchema(v, itemsSchema));
+      }
+    } catch {
+      // Both failed — fall through to CSV split
+    }
     const csv = s.includes("\n")
       ? s.split(NEWLINE_SPLIT_REGEX)
       : s.split(COMMA_SPLIT_REGEX);
