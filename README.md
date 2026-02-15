@@ -68,7 +68,7 @@ Use Qwen3CoderToolParser when your model/prompt expects this XML-like tool marku
 
 Notes:
 
-- Parsed tool inputs are JSON objects where all values are strings.
+- Parsed tool inputs are JSON objects. Parameter values are parsed as strings first; if the tool provides an `inputSchema`, values are schema-coerced before emitting `tool-call` / `tool-input-delta`.
 - Repeating the same parameter name produces an array (order preserved).
 - Whitespace around values is trimmed and XML entities are unescaped.
 
@@ -128,5 +128,5 @@ export const myQwen3CoderToolParserMiddleware = createToolMiddleware({
 
 ### Limitations
 
-- Qwen3CoderToolParser parameter values are parsed as strings. If your tools require nested objects, prefer `jsonProtocol` or `xmlProtocol`.
+- Qwen3CoderToolParser parameter values start as strings. If your tools require deeply nested objects/arrays, prefer `jsonProtocol` or `xmlProtocol`.
 - In streaming mode, incomplete/malformed `<tool_call>` blocks are suppressed by default (to avoid showing raw markup to end users). Enable `emitRawToolCallTextOnError` only if you explicitly want raw fallback text.

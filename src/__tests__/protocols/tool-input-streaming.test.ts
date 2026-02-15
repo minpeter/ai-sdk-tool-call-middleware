@@ -566,6 +566,106 @@ describe("tool-input streaming events", () => {
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 
+  it("Qwen3CoderToolParser streams tool calls when <tool_call> wrapper is missing", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = qwen3coder_tool_parser();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "Before ",
+          "<function=get_weather><parameter=location>Seoul</parameter><parameter=unit>celsius</parameter></function>",
+          " After",
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, deltas, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as
+      | {
+          type: "tool-call";
+          toolCallId: string;
+          toolName: string;
+          input: string;
+        }
+      | undefined;
+
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(toolCall).toBeTruthy();
+    expect(starts[0].id).toBe(ends[0].id);
+    expect(toolCall?.toolCallId).toBe(starts[0].id);
+    expect(toolCall?.toolName).toBe("get_weather");
+    expect(toolCall?.input).toBe('{"location":"Seoul","unit":"celsius"}');
+    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall?.input);
+    expect(leakedText).toContain("Before");
+    expect(leakedText).toContain("After");
+    expect(leakedText).not.toContain("<function");
+    expect(leakedText).not.toContain("</function");
+  });
+
+  it("Qwen3CoderToolParser ignores stray </tool_call> before an implicit <function> call", async () => {
+    const protocol = qwen3coder_tool_parser();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "</tool_call>\n",
+          "<function=alpha><parameter=x>1</parameter></function>",
+        ]),
+        transformer
+      )
+    );
+
+    const toolCall = out.find((part) => part.type === "tool-call") as
+      | {
+          type: "tool-call";
+          toolName: string;
+          input: string;
+        }
+      | undefined;
+    const leakedText = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(toolCall).toBeTruthy();
+    expect(toolCall?.toolName).toBe("alpha");
+    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({ x: "1" });
+    expect(leakedText).not.toContain("</tool_call>");
+  });
+
+  it("Qwen3CoderToolParser recovers missing </parameter> during streaming by using next-tag boundary", async () => {
+    const protocol = qwen3coder_tool_parser();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "<tool_call><function=alpha><parameter=a>1<parameter=b>2</parameter></function></tool_call>",
+        ]),
+        transformer
+      )
+    );
+
+    const toolCall = out.find((part) => part.type === "tool-call") as
+      | {
+          type: "tool-call";
+          toolName: string;
+          input: string;
+        }
+      | undefined;
+
+    expect(toolCall).toBeTruthy();
+    expect(toolCall?.toolName).toBe("alpha");
+    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({ a: "1", b: "2" });
+  });
+
   it("Qwen3CoderToolParser supports multiple function calls inside a single <tool_call> block in-order", async () => {
     const protocol = qwen3coder_tool_parser();
     const transformer = protocol.createStreamParser({ tools: [] });
