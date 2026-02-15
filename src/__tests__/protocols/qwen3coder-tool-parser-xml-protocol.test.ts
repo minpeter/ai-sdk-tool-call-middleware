@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { uiTarsXmlProtocol } from "../../core/protocols/ui-tars-xml-protocol";
+import { qwen3coder_tool_parser } from "../../core/protocols/qwen3coder-tool-parser-xml-protocol";
 
-describe("uiTarsXmlProtocol", () => {
+describe("qwen3coder_tool_parser", () => {
   it("parseGeneratedText extracts <tool_call> blocks and preserves surrounding text", () => {
-    const p = uiTarsXmlProtocol();
+    const p = qwen3coder_tool_parser();
     const text = [
       "before ",
       `<tool_call>
@@ -34,7 +34,7 @@ describe("uiTarsXmlProtocol", () => {
   });
 
   it("supports multiple <tool_call> blocks per message", () => {
-    const p = uiTarsXmlProtocol();
+    const p = qwen3coder_tool_parser();
     const text = [
       "a ",
       "<tool_call><function=alpha><parameter=x>1</parameter></function></tool_call>",
@@ -60,7 +60,7 @@ describe("uiTarsXmlProtocol", () => {
   });
 
   it("supports multiple function calls inside a single <tool_call> block", () => {
-    const p = uiTarsXmlProtocol();
+    const p = qwen3coder_tool_parser();
     const text = [
       "prefix ",
       `<tool_call>
@@ -91,7 +91,7 @@ describe("uiTarsXmlProtocol", () => {
   });
 
   it("extractToolCallSegments returns raw <tool_call> segments in order", () => {
-    const p = uiTarsXmlProtocol();
+    const p = qwen3coder_tool_parser();
     const a = "<tool_call><function=a></function></tool_call>";
     const b = "<tool_call><function=b></function></tool_call>";
     const text = `prefix ${a} mid ${b} suffix`;
@@ -107,7 +107,7 @@ describe("uiTarsXmlProtocol", () => {
 
   it("calls onError and keeps original text on malformed segments", () => {
     const onError = vi.fn();
-    const p = uiTarsXmlProtocol();
+    const p = qwen3coder_tool_parser();
     const bad =
       "<tool_call><function><parameter=x>1</parameter></function></tool_call>";
     const text = `before ${bad} after`;
@@ -125,7 +125,7 @@ describe("uiTarsXmlProtocol", () => {
   });
 
   it("parses self-closing function tags in non-stream mode", () => {
-    const p = uiTarsXmlProtocol();
+    const p = qwen3coder_tool_parser();
     const text = [
       "before ",
       "<tool_call><function=get_weather/></tool_call>",
@@ -148,8 +148,8 @@ describe("uiTarsXmlProtocol", () => {
     expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({});
   });
 
-  it("formatToolCall emits UI-TARS markup that round-trips through parseGeneratedText", () => {
-    const p = uiTarsXmlProtocol();
+  it("formatToolCall emits Qwen3CoderToolParser markup that round-trips through parseGeneratedText", () => {
+    const p = qwen3coder_tool_parser();
     const formatted = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",

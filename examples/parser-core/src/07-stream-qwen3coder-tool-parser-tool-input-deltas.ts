@@ -2,7 +2,7 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
-import { uiTarsXmlProtocol } from "@ai-sdk-tool/parser";
+import { qwen3coder_tool_parser } from "@ai-sdk-tool/parser";
 
 const tool: LanguageModelV3FunctionTool = {
   type: "function",
@@ -83,7 +83,7 @@ function formatPart(part: LanguageModelV3StreamPart) {
 }
 
 async function main() {
-  const protocol = uiTarsXmlProtocol();
+  const protocol = qwen3coder_tool_parser();
   const transformer = protocol.createStreamParser({ tools: [tool] });
 
   const chunks = [
@@ -98,7 +98,7 @@ async function main() {
   );
   const parts = await readAll(parsedStream);
 
-  console.log("\n[UI-TARS stream parts]");
+  console.log("\n[Qwen3CoderToolParser stream parts]");
   for (const part of parts) {
     console.log(`- ${formatPart(part)}`);
   }

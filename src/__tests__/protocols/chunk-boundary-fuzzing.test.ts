@@ -2,7 +2,7 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { jsonProtocol } from "../../core/protocols/json-protocol";
-import { uiTarsXmlProtocol } from "../../core/protocols/ui-tars-xml-protocol";
+import { qwen3coder_tool_parser } from "../../core/protocols/qwen3coder-tool-parser-xml-protocol";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import { createChunkedStream, pipeWithTransformer } from "../test-helpers";
 
@@ -121,15 +121,15 @@ describe("Random chunk boundary fuzzing", () => {
     },
   ];
 
-  const uiTarsTestCases = [
+  const qwen3CoderToolParserTestCases = [
     {
-      name: "simple UI-TARS tool call",
+      name: "simple Qwen3CoderToolParser tool call",
       input:
         "<tool_call><function=get_weather><parameter=city>Tokyo</parameter></function></tool_call>",
       expectedTools: [{ toolName: "get_weather", input: { city: "Tokyo" } }],
     },
     {
-      name: "UI-TARS tool call with multiple params",
+      name: "Qwen3CoderToolParser tool call with multiple params",
       input:
         "<tool_call><function=search><parameter=query>hello world</parameter><parameter=limit>10</parameter></function></tool_call>",
       expectedTools: [
@@ -137,7 +137,7 @@ describe("Random chunk boundary fuzzing", () => {
       ],
     },
     {
-      name: "UI-TARS with surrounding text",
+      name: "Qwen3CoderToolParser with surrounding text",
       input:
         "Checking... <tool_call><function=get_weather><parameter=city>NYC</parameter></function></tool_call> found!",
       expectedTools: [{ toolName: "get_weather", input: { city: "NYC" } }],
@@ -145,7 +145,7 @@ describe("Random chunk boundary fuzzing", () => {
       expectedTextNotContains: ["<tool_call>", "</tool_call>"],
     },
     {
-      name: "UI-TARS multiple tool calls",
+      name: "Qwen3CoderToolParser multiple tool calls",
       input:
         "<tool_call><function=a><parameter=x>1</parameter></function></tool_call> and <tool_call><function=b><parameter=y>2</parameter></function></tool_call>",
       expectedTools: [
@@ -156,7 +156,7 @@ describe("Random chunk boundary fuzzing", () => {
       expectedTextNotContains: ["<tool_call>", "</tool_call>"],
     },
     {
-      name: "UI-TARS multiple calls inside one tool_call",
+      name: "Qwen3CoderToolParser multiple calls inside one tool_call",
       input:
         "<tool_call><function=alpha><parameter=x>1</parameter></function><function=beta><parameter=y>2</parameter><parameter=y>3</parameter></function></tool_call>",
       expectedTools: [
@@ -247,13 +247,13 @@ describe("Random chunk boundary fuzzing", () => {
     }
   });
 
-  describe("uiTarsXmlProtocol", () => {
-    for (const testCase of uiTarsTestCases) {
+  describe("qwen3coder_tool_parser", () => {
+    for (const testCase of qwen3CoderToolParserTestCases) {
       describe(testCase.name, () => {
         it.each(
           Array.from({ length: FUZZ_ITERATIONS }, (_, i) => i)
         )("produces consistent results with random split seed %i", async (seed) => {
-          const protocol = uiTarsXmlProtocol();
+          const protocol = qwen3coder_tool_parser();
           const transformer = protocol.createStreamParser({ tools: [] });
           const chunks = randomChunkSplit(testCase.input, 1, 8, seed);
           const stream = createChunkedStream(chunks);
@@ -392,11 +392,11 @@ describe("Single-character chunk streaming", () => {
     });
   });
 
-  describe("uiTarsXmlProtocol", () => {
-    it("parses UI-TARS tool call when streamed char-by-char", async () => {
+  describe("qwen3coder_tool_parser", () => {
+    it("parses Qwen3CoderToolParser tool call when streamed char-by-char", async () => {
       const input =
         "<tool_call><function=test><parameter=value>hello</parameter></function></tool_call>";
-      const protocol = uiTarsXmlProtocol();
+      const protocol = qwen3coder_tool_parser();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);
@@ -409,10 +409,10 @@ describe("Single-character chunk streaming", () => {
       expect(tools).toEqual([{ toolName: "test", input: { value: "hello" } }]);
     });
 
-    it("handles text + UI-TARS tool call + text char-by-char", async () => {
+    it("handles text + Qwen3CoderToolParser tool call + text char-by-char", async () => {
       const input =
         "Before <tool_call><function=x><parameter=a>1</parameter></function></tool_call> After";
-      const protocol = uiTarsXmlProtocol();
+      const protocol = qwen3coder_tool_parser();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);
@@ -430,10 +430,10 @@ describe("Single-character chunk streaming", () => {
       expect(text).not.toContain("<tool_call>");
     });
 
-    it("handles multiple UI-TARS tool calls char-by-char", async () => {
+    it("handles multiple Qwen3CoderToolParser tool calls char-by-char", async () => {
       const input =
         "<tool_call><function=a><parameter=n>1</parameter></function></tool_call><tool_call><function=b><parameter=n>2</parameter></function></tool_call>";
-      const protocol = uiTarsXmlProtocol();
+      const protocol = qwen3coder_tool_parser();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);

@@ -4,4 +4,4 @@ export {
   sijawaraDetailedXmlToolMiddleware,
 } from "./sijawara";
 
-export { uiTarsToolMiddleware } from "./ui-tars";
+export { uiTarsToolMiddleware as qwen3coder_tool_parser_middleware } from "./ui-tars";

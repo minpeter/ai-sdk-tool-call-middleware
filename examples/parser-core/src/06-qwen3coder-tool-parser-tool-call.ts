@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { uiTarsToolMiddleware } from "@ai-sdk-tool/parser/community";
+import { qwen3coder_tool_parser_middleware } from "@ai-sdk-tool/parser/community";
 import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
 import { printComplete, printStepLikeStream } from "./console-output";
@@ -18,7 +18,7 @@ async function main() {
   await generateText({
     model: wrapLanguageModel({
       model: openrouter("z-ai/glm-4.5-air"),
-      middleware: uiTarsToolMiddleware,
+      middleware: qwen3coder_tool_parser_middleware,
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York?",

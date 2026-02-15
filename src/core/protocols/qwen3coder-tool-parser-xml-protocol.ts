@@ -29,7 +29,7 @@ const TOOL_CALL_BLOCK_RE = /<tool_call\b[^>]*>[\s\S]*?<\/tool_call\s*>/gi;
 
 const CALL_BLOCK_RE = /<(call|function|tool|invoke)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
 
-const UI_TARS_PARAM_TAG_NAMES = new Set([
+const QWEN3CODER_TOOL_PARSER_PARAM_TAG_NAMES = new Set([
   "parameter",
   "param",
   "argument",
@@ -40,16 +40,17 @@ const CALL_SHORTHAND_VALUE_RE =
   /^<\s*(call|function|tool|invoke)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))/i;
 
 // Non-global variants for streaming parsing (avoids `lastIndex` state).
-const UI_TARS_STREAM_CALL_OPEN_START_RE =
+const QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE =
   /<\s*(?!\/)\s*(call|function|tool|invoke)\b/i;
-const UI_TARS_STREAM_CALL_OPEN_TAG_RE =
+const QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_TAG_RE =
   /<\s*(?!\/)\s*(call|function|tool|invoke)\b[^>]*>/i;
-const UI_TARS_STREAM_TOOL_CALL_CLOSE_TAG_RE = /<\s*\/\s*tool_call\s*>/i;
-const UI_TARS_STREAM_NAME_OR_PARAM_SIGNAL_RE =
+const QWEN3CODER_TOOL_PARSER_STREAM_TOOL_CALL_CLOSE_TAG_RE =
+  /<\s*\/\s*tool_call\s*>/i;
+const QWEN3CODER_TOOL_PARSER_STREAM_NAME_OR_PARAM_SIGNAL_RE =
   /<\s*(?!\/)\s*(name|tool_name|parameter|param|argument|arg)\b/i;
-const UI_TARS_STREAM_NAME_TAG_RE =
+const QWEN3CODER_TOOL_PARSER_STREAM_NAME_TAG_RE =
   /<\s*(name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/i;
-const UI_TARS_STREAM_SELF_CLOSING_TAG_RE = /\/\s*>$/;
+const QWEN3CODER_TOOL_PARSER_STREAM_SELF_CLOSING_TAG_RE = /\/\s*>$/;
 
 function isAsciiWhitespace(ch: string): boolean {
   return ch === " " || ch === "\n" || ch === "\r" || ch === "\t" || ch === "\f";
@@ -126,7 +127,7 @@ function parseShorthandValue(
   return value.length > 0 ? value : null;
 }
 
-function parseUiTarsParamName(
+function parseQwen3CoderToolParserParamName(
   openTag: string,
   tagNameLower: string
 ): string | null {
@@ -177,7 +178,7 @@ function findClosingTagEnd(
   }
 }
 
-type UiTarsParamTagParseResult =
+type Qwen3CoderToolParserParamTagParseResult =
   | {
       kind: "match";
       start: number;
@@ -191,11 +192,11 @@ type UiTarsParamTagParseResult =
       openEnd: number | null;
     };
 
-function parseUiTarsParamTagAt(
+function parseQwen3CoderToolParserParamTagAt(
   text: string,
   lowerText: string,
   startIndex: number
-): UiTarsParamTagParseResult | null {
+): Qwen3CoderToolParserParamTagParseResult | null {
   let i = skipAsciiWhitespace(lowerText, startIndex + 1);
   if (i >= lowerText.length) {
     return { kind: "partial", start: startIndex, openEnd: null };
@@ -214,7 +215,7 @@ function parseUiTarsParamTagAt(
   }
 
   const tagNameLower = lowerText.slice(nameStart, i);
-  if (!UI_TARS_PARAM_TAG_NAMES.has(tagNameLower)) {
+  if (!QWEN3CODER_TOOL_PARSER_PARAM_TAG_NAMES.has(tagNameLower)) {
     return null;
   }
 
@@ -224,7 +225,10 @@ function parseUiTarsParamTagAt(
   }
 
   const openTag = text.slice(startIndex, openEnd + 1);
-  const paramNameRaw = parseUiTarsParamName(openTag, tagNameLower);
+  const paramNameRaw = parseQwen3CoderToolParserParamName(
+    openTag,
+    tagNameLower
+  );
   const paramName = paramNameRaw?.trim() ?? "";
   if (paramName.length === 0) {
     return null;
@@ -396,7 +400,7 @@ function extractParameters(xml: string): Record<string, unknown> {
     if (lt === -1) {
       break;
     }
-    const parsed = parseUiTarsParamTagAt(xml, lower, lt);
+    const parsed = parseQwen3CoderToolParserParamTagAt(xml, lower, lt);
     if (!parsed) {
       index = lt + 1;
       continue;
@@ -440,7 +444,7 @@ function parseSingleFunctionCallXml(
   };
 }
 
-function parseUiTarsToolCallSegment(
+function parseQwen3CoderToolParserToolCallSegment(
   segment: string
 ): Array<{ toolName: string; args: Record<string, unknown> }> | null {
   const extracted = extractToolCallInnerXml(segment);
@@ -491,7 +495,7 @@ function parseToolCallInput(input: string | null | undefined): unknown {
   }
 }
 
-function toUiTarsParamText(value: unknown): string {
+function toQwen3CoderToolParserParamText(value: unknown): string {
   if (typeof value === "string") {
     return value;
   }
@@ -504,36 +508,36 @@ function toUiTarsParamText(value: unknown): string {
   return String(value);
 }
 
-function appendUiTarsParameter(
+function appendQwen3CoderToolParserParameter(
   lines: string[],
   key: string,
   value: unknown
 ): void {
   const nameAttr = escapeXmlMinimalAttr(key, '"');
-  const text = escapeXmlMinimalText(toUiTarsParamText(value));
+  const text = escapeXmlMinimalText(toQwen3CoderToolParserParamText(value));
   lines.push(`    <parameter=${nameAttr}>${text}</parameter>`);
 }
 
-function appendUiTarsArgs(lines: string[], args: unknown): void {
+function appendQwen3CoderToolParserArgs(lines: string[], args: unknown): void {
   if (args && typeof args === "object" && !Array.isArray(args)) {
     for (const [key, value] of Object.entries(args)) {
       if (Array.isArray(value)) {
         for (const item of value) {
-          appendUiTarsParameter(lines, key, item);
+          appendQwen3CoderToolParserParameter(lines, key, item);
         }
       } else {
-        appendUiTarsParameter(lines, key, value);
+        appendQwen3CoderToolParserParameter(lines, key, value);
       }
     }
     return;
   }
 
   if (args !== undefined && args !== null && args !== "") {
-    appendUiTarsParameter(lines, "input", args);
+    appendQwen3CoderToolParserParameter(lines, "input", args);
   }
 }
 
-export const uiTarsXmlProtocol = (): TCMProtocol => ({
+export const qwen3coder_tool_parser = (): TCMProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     return toolSystemPromptTemplate(tools || []);
   },
@@ -542,7 +546,7 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
     const args = parseToolCallInput(toolCall.input);
     const lines: string[] = ["<tool_call>"];
     lines.push(`  <function=${escapeXmlMinimalAttr(toolCall.toolName, '"')}>`);
-    appendUiTarsArgs(lines, args);
+    appendQwen3CoderToolParserArgs(lines, args);
     lines.push("  </function>");
     lines.push("</tool_call>");
     return lines.join("\n");
@@ -566,10 +570,10 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
         });
       }
 
-      const parsedCalls = parseUiTarsToolCallSegment(full);
+      const parsedCalls = parseQwen3CoderToolParserToolCallSegment(full);
       if (!parsedCalls) {
         options?.onError?.(
-          "Could not process UI-TARS XML tool call; keeping original text.",
+          "Could not process Qwen3CoderToolParser XML tool call; keeping original text.",
           { toolCall: full }
         );
         processedElements.push({ type: "text", text: full });
@@ -697,7 +701,7 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
 
       if (!callState.toolName || callState.toolName.trim().length === 0) {
         options?.onError?.(
-          "Could not resolve UI-TARS tool name for tool call",
+          "Could not resolve Qwen3CoderToolParser tool name for tool call",
           {
             toolCallId: callState.toolCallId,
           }
@@ -743,7 +747,7 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
       if (callState.toolName) {
         return work;
       }
-      const match = UI_TARS_STREAM_NAME_TAG_RE.exec(work);
+      const match = QWEN3CODER_TOOL_PARSER_STREAM_NAME_TAG_RE.exec(work);
       if (!match) {
         return work;
       }
@@ -777,7 +781,7 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
           break;
         }
 
-        const parsed = parseUiTarsParamTagAt(work, lower, lt);
+        const parsed = parseQwen3CoderToolParserParamTagAt(work, lower, lt);
         if (!parsed) {
           index = lt + 1;
           continue;
@@ -945,12 +949,14 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
     const processToolCall = (controller: StreamController) => {
       while (toolCall) {
         if (toolCall.mode === "unknown") {
-          const callMatch = UI_TARS_STREAM_CALL_OPEN_START_RE.exec(
-            toolCall.innerBuffer
-          );
-          const signalMatch = UI_TARS_STREAM_NAME_OR_PARAM_SIGNAL_RE.exec(
-            toolCall.innerBuffer
-          );
+          const callMatch =
+            QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE.exec(
+              toolCall.innerBuffer
+            );
+          const signalMatch =
+            QWEN3CODER_TOOL_PARSER_STREAM_NAME_OR_PARAM_SIGNAL_RE.exec(
+              toolCall.innerBuffer
+            );
           if (
             callMatch &&
             (!signalMatch || (callMatch.index ?? 0) < (signalMatch.index ?? 0))
@@ -1023,12 +1029,14 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
             continue;
           }
 
-          const closeMatch = UI_TARS_STREAM_TOOL_CALL_CLOSE_TAG_RE.exec(
-            toolCall.innerBuffer
-          );
-          const callOpenMatch = UI_TARS_STREAM_CALL_OPEN_TAG_RE.exec(
-            toolCall.innerBuffer
-          );
+          const closeMatch =
+            QWEN3CODER_TOOL_PARSER_STREAM_TOOL_CALL_CLOSE_TAG_RE.exec(
+              toolCall.innerBuffer
+            );
+          const callOpenMatch =
+            QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_TAG_RE.exec(
+              toolCall.innerBuffer
+            );
 
           if (!(closeMatch || callOpenMatch)) {
             return;
@@ -1065,7 +1073,8 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
           const callTagName = (callOpenMatch[1] ?? "").toLowerCase();
           const rest = toolCall.innerBuffer.slice(openTag.length);
 
-          const selfClosing = UI_TARS_STREAM_SELF_CLOSING_TAG_RE.test(openTag);
+          const selfClosing =
+            QWEN3CODER_TOOL_PARSER_STREAM_SELF_CLOSING_TAG_RE.test(openTag);
           if (selfClosing) {
             const toolNameAttr =
               getAttributeValue(openTag, "name") ??
@@ -1117,8 +1126,8 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
       const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
       options?.onError?.(
         shouldEmitRaw
-          ? "Could not complete streaming UI-TARS XML tool call at finish; emitting original text."
-          : "Could not complete streaming UI-TARS XML tool call at finish.",
+          ? "Could not complete streaming Qwen3CoderToolParser XML tool call at finish; emitting original text."
+          : "Could not complete streaming Qwen3CoderToolParser XML tool call at finish.",
         { toolCall: rawToolCall }
       );
       if (shouldEmitRaw) {
@@ -1135,12 +1144,14 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
         if (toolCall) {
           // Best-effort reconciliation on incomplete tool-call markup at finish.
           if (toolCall.mode === "unknown") {
-            const callMatch = UI_TARS_STREAM_CALL_OPEN_START_RE.exec(
-              toolCall.innerBuffer
-            );
-            const signalMatch = UI_TARS_STREAM_NAME_OR_PARAM_SIGNAL_RE.exec(
-              toolCall.innerBuffer
-            );
+            const callMatch =
+              QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE.exec(
+                toolCall.innerBuffer
+              );
+            const signalMatch =
+              QWEN3CODER_TOOL_PARSER_STREAM_NAME_OR_PARAM_SIGNAL_RE.exec(
+                toolCall.innerBuffer
+              );
             if (
               callMatch &&
               (!signalMatch ||
@@ -1247,3 +1258,7 @@ export const uiTarsXmlProtocol = (): TCMProtocol => ({
     });
   },
 });
+
+export const uiTarsXmlProtocol = qwen3coder_tool_parser;
+
+export const Qwen3CoderToolParser = qwen3coder_tool_parser;
