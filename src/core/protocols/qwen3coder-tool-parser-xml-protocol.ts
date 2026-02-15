@@ -571,6 +571,61 @@ function parseSingleFunctionCallXml(
   };
 }
 
+function findImplicitCallOpenIndices(lowerText: string): number[] {
+  const indices: number[] = [];
+  let index = 0;
+  while (true) {
+    const lt = lowerText.indexOf("<", index);
+    if (lt === -1) {
+      break;
+    }
+
+    let i = skipAsciiWhitespace(lowerText, lt + 1);
+    if (i >= lowerText.length) {
+      break;
+    }
+    if (lowerText[i] === "/") {
+      index = lt + 1;
+      continue;
+    }
+
+    const tagNames = ["call", "function", "tool", "invoke"] as const;
+    let matched = false;
+    for (const tagName of tagNames) {
+      if (!lowerText.startsWith(tagName, i)) {
+        continue;
+      }
+      const after = i + tagName.length;
+      const boundary = lowerText[after] ?? "";
+      if (boundary && !isTagBoundaryChar(boundary) && boundary !== "=") {
+        continue;
+      }
+      indices.push(lt);
+      matched = true;
+      break;
+    }
+
+    index = matched ? lt + 1 : lt + 1;
+  }
+  return indices;
+}
+
+function splitImplicitCallBlocks(xml: string): string[] {
+  const lower = xml.toLowerCase();
+  const starts = findImplicitCallOpenIndices(lower);
+  if (starts.length === 0) {
+    return [];
+  }
+
+  const blocks: string[] = [];
+  for (let i = 0; i < starts.length; i += 1) {
+    const start = starts[i] ?? 0;
+    const end = starts[i + 1] ?? xml.length;
+    blocks.push(xml.slice(start, end));
+  }
+  return blocks;
+}
+
 function parseQwen3CoderToolParserToolCallSegment(
   segment: string
 ): Array<{ toolName: string; args: Record<string, unknown> }> | null {
@@ -591,6 +646,26 @@ function parseQwen3CoderToolParserToolCallSegment(
       [];
     for (const callBlock of callBlocks) {
       const parsed = parseSingleFunctionCallXml(callBlock, outerNameAttr);
+      if (!parsed) {
+        return null;
+      }
+      calls.push(parsed);
+    }
+    return calls;
+  }
+
+  // Some models omit the closing </function> and go straight to </tool_call>.
+  // When that happens, CALL_BLOCK_RE matches nothing; fall back to splitting
+  // by call-opening tags (<function=...>, etc.) and treating the next opening
+  // tag or end-of-container as an implicit terminator.
+  const implicitBlocks = splitImplicitCallBlocks(inner).filter(
+    (b) => b.trim().length > 0
+  );
+  if (implicitBlocks.length > 0) {
+    const calls: Array<{ toolName: string; args: Record<string, unknown> }> =
+      [];
+    for (const block of implicitBlocks) {
+      const parsed = parseSingleFunctionCallXml(block, outerNameAttr);
       if (!parsed) {
         return null;
       }
@@ -806,7 +881,45 @@ export const qwen3coder_tool_parser = (): TCMProtocol => ({
     const tryParseCallBlocksWithoutWrapper = (): boolean => {
       const matches = Array.from(text.matchAll(CALL_BLOCK_RE));
       if (matches.length === 0) {
-        return false;
+        const starts = findImplicitCallOpenIndices(text.toLowerCase());
+        if (starts.length === 0) {
+          return false;
+        }
+        let index = 0;
+        for (let i = 0; i < starts.length; i += 1) {
+          const startIndex = starts[i] ?? -1;
+          if (startIndex < 0) {
+            continue;
+          }
+          const endIndex = starts[i + 1] ?? text.length;
+
+          pushText(
+            stripTrailingToolCallCloseTags(
+              stripLeadingToolCallCloseTags(text.slice(index, startIndex))
+            )
+          );
+
+          const full = text.slice(startIndex, endIndex);
+          const parsed = parseSingleFunctionCallXml(full, null);
+          if (parsed) {
+            emitToolCalls([parsed]);
+          } else {
+            options?.onError?.(
+              "Could not process Qwen3CoderToolParser <function> call; keeping original text.",
+              { toolCall: full }
+            );
+            processedElements.push({ type: "text", text: full });
+          }
+
+          index = endIndex;
+        }
+
+        pushText(
+          stripTrailingToolCallCloseTags(
+            stripLeadingToolCallCloseTags(text.slice(index))
+          )
+        );
+        return true;
       }
 
       let index = 0;

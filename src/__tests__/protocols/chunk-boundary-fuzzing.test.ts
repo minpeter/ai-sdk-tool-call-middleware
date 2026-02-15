@@ -129,6 +129,12 @@ describe("Random chunk boundary fuzzing", () => {
       expectedTools: [{ toolName: "get_weather", input: { city: "Tokyo" } }],
     },
     {
+      name: "Qwen3CoderToolParser tool call missing </function>",
+      input:
+        "<tool_call><function=get_weather><parameter=city>Tokyo</parameter></tool_call>",
+      expectedTools: [{ toolName: "get_weather", input: { city: "Tokyo" } }],
+    },
+    {
       name: "Qwen3CoderToolParser tool call with multiple params",
       input:
         "<tool_call><function=search><parameter=query>hello world</parameter><parameter=limit>10</parameter></function></tool_call>",
