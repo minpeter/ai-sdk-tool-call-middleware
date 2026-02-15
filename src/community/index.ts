@@ -5,6 +5,5 @@ export {
 } from "./sijawara";
 
 export {
-  uiTarsConciseXmlToolMiddleware,
-  uiTarsDetailedXmlToolMiddleware,
+  uiTarsToolMiddleware
 } from "./ui-tars";
