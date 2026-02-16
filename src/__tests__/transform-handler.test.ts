@@ -73,6 +73,29 @@ describe("index prompt templates", () => {
 });
 
 describe("placement last behaviour (default)", () => {
+  it("does not append empty system message when rendered system prompt is empty", async () => {
+    const mw = createToolMiddleware({
+      placement: "last",
+      protocol: jsonProtocol,
+      toolSystemPromptTemplate: () => "",
+    });
+    const transformParams = mw.transformParams;
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
+
+    const out = await transformParams({
+      params: {
+        prompt: [{ role: "user", content: [{ type: "text", text: "A" }] }],
+        tools: [],
+      },
+    } as any);
+
+    expect(out.prompt).toEqual([
+      { role: "user", content: [{ type: "text", text: "A" }] },
+    ]);
+  });
+
   it("default last: appends system at end when no system exists", async () => {
     const mw = createToolMiddleware({
       placement: "last",

@@ -31,6 +31,10 @@ function buildFinalPrompt(
   processedPrompt: LanguageModelV3Prompt,
   placement: "first" | "last"
 ): LanguageModelV3Prompt {
+  if (systemPrompt.trim().length === 0) {
+    return processedPrompt;
+  }
+
   const systemIndex = processedPrompt.findIndex((m) => m.role === "system");
   if (systemIndex !== -1) {
     const existing = processedPrompt[systemIndex].content as unknown;

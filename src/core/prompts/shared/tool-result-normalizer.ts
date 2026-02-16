@@ -105,17 +105,20 @@ function shouldPassRawContent(
     return false;
   }
 
+  let hasSupportedMediaContent = false;
+
   for (const part of contentParts) {
     const mediaKind = getContentPartMediaKind(part);
     if (!mediaKind) {
       continue;
     }
+    hasSupportedMediaContent = true;
     if (!shouldPassRawByStrategy(mediaKind, strategy)) {
       return false;
     }
   }
 
-  return true;
+  return hasSupportedMediaContent;
 }
 
 function formatContentPartPlaceholder(part: unknown): string {

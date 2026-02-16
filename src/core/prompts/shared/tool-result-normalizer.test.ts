@@ -388,6 +388,26 @@ describe("unwrapToolResult", () => {
 
       expect(result).toBe("[File: clip.mp4 (video/mp4)]");
     });
+
+    it("does not return raw array in auto mode for text-only content", () => {
+      const result = unwrapToolResult(
+        {
+          type: "content",
+          value: [{ type: "text", text: "hello" }],
+        },
+        {
+          mode: "auto",
+          capabilities: {
+            image: true,
+            audio: true,
+            video: true,
+            file: true,
+          },
+        }
+      );
+
+      expect(result).toBe("hello");
+    });
   });
 });
 
