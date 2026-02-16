@@ -626,6 +626,98 @@ function splitImplicitCallBlocks(xml: string): string[] {
   return blocks;
 }
 
+function stripLeadingCallCloseTags(text: string): string {
+  let out = text;
+  while (true) {
+    const match =
+      /^\s*<\s*\/\s*(?:tool_call|function|call|tool|invoke)\s*>/i.exec(out);
+    if (!match) {
+      return out;
+    }
+    out = out.slice(match[0].length);
+  }
+}
+
+function getOpenTagNameLower(openTag: string): string | null {
+  const lowerOpenTag = openTag.toLowerCase();
+  const lt = lowerOpenTag.indexOf("<");
+  if (lt === -1) {
+    return null;
+  }
+
+  let i = skipAsciiWhitespace(lowerOpenTag, lt + 1);
+  if (i >= lowerOpenTag.length || lowerOpenTag[i] === "/") {
+    return null;
+  }
+
+  const start = i;
+  while (i < lowerOpenTag.length) {
+    const ch = lowerOpenTag[i] ?? "";
+    if (isAsciiWhitespace(ch) || ch === ">" || ch === "/" || ch === "=") {
+      break;
+    }
+    i += 1;
+  }
+
+  const tagName = lowerOpenTag.slice(start, i);
+  return tagName.length > 0 ? tagName : null;
+}
+
+function splitImplicitCallAndTail(callBlock: string): {
+  callContent: string;
+  trailingText: string;
+} {
+  const openingTag = getOpeningTag(callBlock);
+  const lowerCallBlock = callBlock.toLowerCase();
+  let consumed = 0;
+
+  if (openingTag) {
+    consumed = openingTag.length;
+    const openingTagName = getOpenTagNameLower(openingTag);
+    if (openingTagName) {
+      const close = findClosingTagEnd(lowerCallBlock, consumed, openingTagName);
+      if (close) {
+        consumed = Math.max(consumed, close.end);
+      }
+    }
+  }
+
+  let index = 0;
+  while (true) {
+    const lt = lowerCallBlock.indexOf("<", index);
+    if (lt === -1) {
+      break;
+    }
+
+    const parsed = parseQwen3CoderToolParserParamTagAt(
+      callBlock,
+      lowerCallBlock,
+      lt,
+      {
+        allowEndOfString: true,
+      }
+    );
+    if (!parsed) {
+      index = lt + 1;
+      continue;
+    }
+
+    if (parsed.kind === "partial") {
+      index = (parsed.openEnd ?? lt) + 1;
+      continue;
+    }
+
+    consumed = Math.max(consumed, parsed.end);
+    index = parsed.end;
+  }
+
+  const clamped = Math.max(0, Math.min(consumed, callBlock.length));
+  return {
+    callContent: callBlock.slice(0, clamped),
+    trailingText: callBlock.slice(clamped),
+  };
+}
+
 function parseQwen3CoderToolParserToolCallSegment(
   segment: string
 ): Array<{ toolName: string; args: Record<string, unknown> }> | null {
@@ -907,9 +999,15 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           );
 
           const full = text.slice(startIndex, endIndex);
-          const parsed = parseSingleFunctionCallXml(full, null);
+          const { callContent, trailingText } = splitImplicitCallAndTail(full);
+          const parsed = parseSingleFunctionCallXml(callContent, null);
           if (parsed) {
             emitToolCalls([parsed]);
+            pushText(
+              stripTrailingToolCallCloseTags(
+                stripLeadingToolCallCloseTags(trailingText)
+              )
+            );
           } else {
             options?.onError?.(
               "Could not process Qwen3CoderToolParser <function> call; keeping original text.",
@@ -1301,15 +1399,20 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       controller: StreamController,
       callState: StreamingCallState,
       fallbackToolName: string | null
-    ): boolean => {
+    ): { ok: boolean; trailingText: string } => {
       callState.buffer = parseCallContent(
         controller,
         callState,
         callState.buffer,
         true
       );
+      const trailingText = stripLeadingCallCloseTags(callState.buffer);
       callState.buffer = "";
-      return finalizeCall(controller, callState, fallbackToolName);
+      const ok = finalizeCall(controller, callState, fallbackToolName);
+      return {
+        ok,
+        trailingText: ok ? trailingText : "",
+      };
     };
 
     const flushSafeTextPrefix = (controller: StreamController) => {
@@ -1742,26 +1845,32 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           if (toolCall.mode === "single" && toolCall.activeCall) {
             toolCall.activeCall.buffer += toolCall.innerBuffer;
             toolCall.innerBuffer = "";
-            const ok = finalizeCallAtFinish(
+            const result = finalizeCallAtFinish(
               controller,
               toolCall.activeCall,
               toolCall.outerNameAttr
             );
-            if (ok) {
+            if (result.ok) {
               toolCall.emittedToolCallCount += 1;
+              if (result.trailingText.length > 0) {
+                flushText(controller, result.trailingText);
+              }
             }
-            if (!ok && toolCall.emittedToolCallCount === 0) {
+            if (!result.ok && toolCall.emittedToolCallCount === 0) {
               reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
             }
           } else if (toolCall.mode === "multi") {
             if (toolCall.activeCall) {
-              const ok = finalizeCallAtFinish(
+              const result = finalizeCallAtFinish(
                 controller,
                 toolCall.activeCall,
                 toolCall.outerNameAttr
               );
-              if (ok) {
+              if (result.ok) {
                 toolCall.emittedToolCallCount += 1;
+                if (result.trailingText.length > 0) {
+                  flushText(controller, result.trailingText);
+                }
               } else if (toolCall.emittedToolCallCount === 0) {
                 reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
               }
@@ -1783,8 +1892,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         implicitCall = null;
         implicitCallOpenTag = null;
 
-        const ok = finalizeCallAtFinish(controller, callState, null);
-        if (!ok && openTag) {
+        const result = finalizeCallAtFinish(controller, callState, null);
+        if (result.ok && result.trailingText.length > 0) {
+          flushText(controller, result.trailingText);
+        }
+        if (!result.ok && openTag) {
           reportUnfinishedImplicitCallAtFinish(controller, openTag, callState);
         }
       } else {

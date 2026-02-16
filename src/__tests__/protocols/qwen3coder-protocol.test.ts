@@ -348,4 +348,23 @@ describe("qwen3CoderProtocol", () => {
     expect(call.toolName).toBe("get_weather");
     expect(JSON.parse(call.input)).toEqual({ city: "Tokyo" });
   });
+
+  it("preserves trailing text after bare <function=...> when </function> is missing", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const text =
+      "before <function=get_weather><parameter=city>Tokyo</parameter> after";
+
+    const out = p.parseGeneratedText({ text, tools });
+    expect(out).toHaveLength(3);
+    expect(out[0]).toEqual({ type: "text", text: "before " });
+    expect(out[2]).toEqual({ type: "text", text: " after" });
+
+    const call = out[1];
+    if (call.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(call.toolName).toBe("get_weather");
+    expect(JSON.parse(call.input)).toEqual({ city: "Tokyo" });
+  });
 });

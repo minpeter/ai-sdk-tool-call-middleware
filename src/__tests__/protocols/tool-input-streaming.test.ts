@@ -784,6 +784,41 @@ describe("tool-input streaming events", () => {
     expect(leakedText).not.toContain("<tool_call");
   });
 
+  it("Qwen3CoderToolParser preserves trailing text when implicit call is force-completed at finish", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = qwen3CoderProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "before <function=get_weather><parameter=location>Busan</parameter> after",
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: string;
+    };
+    const textOut = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(toolCall.toolCallId).toBe(starts[0].id);
+    expect(toolCall.toolName).toBe("get_weather");
+    expect(JSON.parse(toolCall.input)).toEqual({ location: "Busan" });
+    expect(textOut).toContain("before ");
+    expect(textOut).toContain(" after");
+    expect(textOut).not.toContain("<function=get_weather>");
+  });
+
   it("Qwen3CoderToolParser flushes buffered partial tool_call at finish as text when enabled", async () => {
     const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({
