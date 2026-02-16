@@ -8,7 +8,7 @@ import dedent from "dedent";
 import {
   type ToolResponseMediaStrategy,
   unwrapToolResult,
-} from "./shared/tool-response";
+} from "./shared/tool-result-normalizer";
 
 export function xmlSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[]

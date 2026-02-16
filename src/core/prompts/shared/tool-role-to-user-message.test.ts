@@ -1,6 +1,6 @@
 import type { ToolContent } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
-import { toolRoleContentToUserTextMessage } from "./tool-role-user-text";
+import { toolRoleContentToUserTextMessage } from "./tool-role-to-user-message";
 
 describe("toolRoleContentToUserTextMessage", () => {
   it("converts tool-result and approval responses into a single user text message", () => {

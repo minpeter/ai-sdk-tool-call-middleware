@@ -3,7 +3,7 @@ import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
   type ToolResponseMediaStrategy,
   unwrapToolResult,
-} from "./shared/tool-response";
+} from "./shared/tool-result-normalizer";
 
 export interface JsonInXmlToolResponseFormatterOptions {
   mediaStrategy?: ToolResponseMediaStrategy;

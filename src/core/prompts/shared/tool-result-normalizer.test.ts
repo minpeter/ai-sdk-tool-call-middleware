@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { unwrapToolResult } from "./tool-response";
+import { unwrapToolResult } from "./tool-result-normalizer";
 
 describe("unwrapToolResult", () => {
   describe("ToolResultOutput: text type", () => {
