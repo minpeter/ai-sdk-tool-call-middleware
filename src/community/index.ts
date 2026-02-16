@@ -4,3 +4,4 @@ export {
   sijawaraConciseXmlToolMiddleware,
   sijawaraDetailedXmlToolMiddleware,
 } from "./sijawara";
+export { uiTarsToolMiddleware } from "./ui-tars";
