@@ -1,6 +1,9 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
-import { type ToolResponseMediaStrategy, unwrapToolResult } from "./shared";
+import {
+  type ToolResponseMediaStrategy,
+  unwrapToolResult,
+} from "./shared/tool-response";
 
 export interface JsonInXmlToolResponseFormatterOptions {
   mediaStrategy?: ToolResponseMediaStrategy;

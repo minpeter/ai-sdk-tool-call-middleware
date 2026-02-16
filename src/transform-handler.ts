@@ -12,10 +12,8 @@ import type {
   SharedV3ProviderOptions,
 } from "@ai-sdk/provider";
 import type { ToolContent, ToolResultPart } from "@ai-sdk/provider-utils";
-import {
-  assistantToolCallsToTextContent,
-  toolRoleContentToUserTextMessage,
-} from "./core/prompts/shared";
+import { assistantToolCallsToTextContent } from "./core/prompts/shared/assistant-tool-call-text";
+import { toolRoleContentToUserTextMessage } from "./core/prompts/shared/tool-role-user-text";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
 import { createDynamicIfThenElseSchema } from "./core/utils/dynamic-tool-schema";

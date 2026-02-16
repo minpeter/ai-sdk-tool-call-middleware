@@ -1,6 +1,6 @@
 import type { LanguageModelV3Content } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { assistantToolCallsToTextContent } from "./shared";
+import { assistantToolCallsToTextContent } from "./assistant-tool-call-text";
 
 describe("assistantToolCallsToTextContent", () => {
   it("converts assistant tool-call parts to formatted text and condenses when output is text-only", () => {
@@ -20,7 +20,7 @@ describe("assistantToolCallsToTextContent", () => {
       protocol: {
         formatToolCall: () =>
           "<tool_call><function=get_weather></function></tool_call>",
-      } as any,
+      } as never,
     });
 
     expect(result).toEqual([
@@ -47,7 +47,7 @@ describe("assistantToolCallsToTextContent", () => {
       ],
       protocol: {
         formatToolCall: () => "",
-      } as any,
+      } as never,
       conversionOptions: {
         onError,
       },

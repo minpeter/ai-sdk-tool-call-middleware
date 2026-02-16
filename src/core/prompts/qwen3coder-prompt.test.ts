@@ -2,10 +2,12 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3Prompt,
 } from "@ai-sdk/provider";
+import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import { transformParams } from "../../transform-handler";
 import { qwen3coder_tool_parser } from "../protocols/qwen3coder-protocol";
 import {
+  createQwen3CoderXmlToolResponseFormatter,
   formatToolResponseAsQwen3CoderXml,
   qwen3coderSystemPromptTemplate,
 } from "./qwen3coder-prompt";
@@ -154,5 +156,53 @@ describe("qwen3coder-prompt outer-layer transform", () => {
     expect(transformed.prompt).toEqual(expectedPrompt);
     expect(transformed.tools).toEqual([]);
     expect(transformed.toolChoice).toBeUndefined();
+  });
+});
+
+describe("formatToolResponseAsQwen3CoderXml", () => {
+  it("formats object result as raw JSON text within <tool_response>", () => {
+    const result = formatToolResponseAsQwen3CoderXml({
+      type: "tool-result",
+      toolCallId: "tc1",
+      toolName: "get_weather",
+      output: { type: "json", value: { temperature: 21 } },
+    } satisfies ToolResultPart);
+
+    expect(result).toBe(
+      `<tool_response>\n{"temperature":21}\n</tool_response>`
+    );
+  });
+
+  it("preserves text result verbatim within <tool_response>", () => {
+    const result = formatToolResponseAsQwen3CoderXml({
+      type: "tool-result",
+      toolCallId: "tc1",
+      toolName: "get_weather",
+      output: { type: "text", value: "ok" },
+    } satisfies ToolResultPart);
+
+    expect(result).toBe("<tool_response>\nok\n</tool_response>");
+  });
+
+  it("factory supports raw media strategy", () => {
+    const formatter = createQwen3CoderXmlToolResponseFormatter({
+      mediaStrategy: {
+        mode: "raw",
+      },
+    });
+
+    const result = formatter({
+      type: "tool-result",
+      toolCallId: "tc1",
+      toolName: "vision",
+      output: {
+        type: "content",
+        value: [{ type: "image-url", url: "https://example.com/a.png" }],
+      },
+    } satisfies ToolResultPart);
+
+    expect(result).toBe(
+      '<tool_response>\n[{"type":"image-url","url":"https://example.com/a.png"}]\n</tool_response>'
+    );
   });
 });

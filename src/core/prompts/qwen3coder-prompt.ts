@@ -8,9 +8,11 @@ import type { TCMCoreProtocol } from "../protocols/protocol-interface";
 import {
   type AssistantToolCallTextConversionOptions,
   assistantToolCallsToTextContent,
+} from "./shared/assistant-tool-call-text";
+import {
   type ToolResponseMediaStrategy,
   unwrapToolResult,
-} from "./shared";
+} from "./shared/tool-response";
 
 const QWEN3CODER_TOOL_HEADER =
   "# Tools\n\nYou have access to the following functions:\n\n";

@@ -5,7 +5,10 @@ import type {
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import dedent from "dedent";
-import { type ToolResponseMediaStrategy, unwrapToolResult } from "./shared";
+import {
+  type ToolResponseMediaStrategy,
+  unwrapToolResult,
+} from "./shared/tool-response";
 
 export function xmlSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[]
