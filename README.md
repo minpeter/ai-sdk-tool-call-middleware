@@ -45,9 +45,9 @@ for await (const part of result.fullStream) {
 - `jsonProtocol`, `xmlProtocol`, `yamlProtocol`, and `qwen3CoderProtocol`: malformed streaming tool payloads do not emit raw protocol markup to `text-delta` by default. Set `emitRawToolCallTextOnError: true` in parser options only if you explicitly want raw fallback text.
 - `tool-input-start.id`, `tool-input-end.id`, and `tool-call.toolCallId` are reconciled to the same ID for each tool call stream.
 
-## Qwen3CoderToolParser (protocol + middleware)
+## Qwen3Coder Protocol + Tool Middleware
 
-Use Qwen3CoderToolParser when your model/prompt expects this XML-like tool markup, or when you want a human-readable tool-call format with repeated `<parameter=...>` tags for arrays. If you can control the tool format freely, prefer:
+Use `qwen3CoderProtocol` when your model/prompt expects this XML-like tool markup, or when you want a human-readable tool-call format with repeated `<parameter=...>` tags for arrays. If you can control the tool format freely, prefer:
 
 - `jsonProtocol` for strict, nested JSON arguments
 - `xmlProtocol` / `yamlProtocol` for schema-driven nested structures
@@ -128,5 +128,5 @@ export const myQwen3CoderToolMiddleware = createToolMiddleware({
 
 ### Limitations
 
-- Qwen3CoderToolParser parameter values start as strings. If your tools require deeply nested objects/arrays, prefer `jsonProtocol` or `xmlProtocol`.
+- `qwen3CoderProtocol` parameter values start as strings. If your tools require deeply nested objects/arrays, prefer `jsonProtocol` or `xmlProtocol`.
 - In streaming mode, incomplete/malformed `<tool_call>` blocks are suppressed by default (to avoid showing raw markup to end users). Enable `emitRawToolCallTextOnError` only if you explicitly want raw fallback text.

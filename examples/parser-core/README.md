@@ -2,59 +2,57 @@
 
 Runnable examples for `@ai-sdk-tool/parser`.
 
+Each example demonstrates a distinct behavior. Similar transport patterns are kept only when stream vs non-stream is the point of the example.
+
+Numbering note:
+
+- `parser-core` uses `00-08`
+- `rxml-core` uses `20-29`
+
+## Learn first (ai-sdk.dev)
+
+- https://ai-sdk.dev/docs/foundations/tools
+- https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling
+- https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text
+- https://ai-sdk.dev/docs/reference/ai-sdk-core/wrap-language-model
+- https://ai-sdk.dev/docs/ai-sdk-core/middleware
+
 ## Files
 
-- `src/00-tool-call.ts` — basic non‑streaming tool call
-- `src/00-stream-tool-call.ts` — streaming tool call
-- `src/01-reasoning-tool-call.ts` — reasoning + tool call (non‑streaming)
-- `src/01-stream-reasoning-tool-call.ts` — reasoning + tool call (streaming)
-- `src/02-choice-required.ts` — tool choice: required
-- `src/02-choice-toolname.ts` — tool choice: specific tool name
-- `src/02-stream-choice-required.ts` — streaming + required tool
-- `src/02-stream-choice-toolname.ts` — streaming + specific tool
-- `src/03-stream-tool-input-delta-compare.ts` — user-view comparison: legacy tool-call only vs streaming tool-input deltas, plus raw-delta snapshot vs current parsed-object delta behavior for XML/YAML
-- `src/04-stream-tool-input-visual-demo.ts` — visual live demo of `tool-input-start/delta/end` while generating a long file-writing tool input (assistant `text-delta` is intentionally hidden to avoid protocol-markup leakage)
-- `src/05-stream-tool-input-visual-many-params-demo.ts` — visual live demo of `tool-input-start/delta/end` for a deeply nested tool payload with many top-level parameters
-- `src/06-qwen3coder-protocol-tool-call.ts` — Qwen3CoderToolParser middleware: basic non-streaming tool call
-- `src/07-stream-qwen3coder-protocol-tool-input-deltas.ts` — Qwen3CoderToolParser protocol: streaming tool-input deltas + final tool-call (no model API calls)
-- `src/08-stream-qwen3coder-protocol-middleware.ts` — Qwen3CoderToolParser middleware: end-to-end streaming with a live model
+- `src/00-basic-tool-call.ts` — baseline non-streaming tool call with preconfigured middleware
+- `src/01-stream-basic-tool-call.ts` — baseline streaming tool call with full stream event handling
+- `src/02-tool-choice-required.ts` — `toolChoice: "required"` behavior (non-streaming)
+- `src/03-tool-choice-toolname.ts` — `toolChoice: { type: "tool", toolName }` behavior (non-streaming)
+- `src/04-stream-tool-choice-required.ts` — `toolChoice: "required"` behavior (streaming)
+- `src/05-stream-tool-choice-toolname.ts` — `toolChoice: { type: "tool", toolName }` behavior (streaming)
+- `src/06-stream-tool-input-delta-compare.ts` — protocol comparison for streamed tool-input deltas (JSON vs XML vs YAML)
+- `src/07-stream-tool-input-visual-demo.ts` — visualized `tool-input-start/delta/end` for a practical file-write payload
+- `src/08-stream-tool-input-visual-many-params-demo.ts` — visualized `tool-input-*` events for a large nested payload
 
 ## Run
 
 From repo root after `pnpm install`:
 
 ```bash
-cd examples/parser-core && pnpm dlx tsx src/00-stream-tool-call.ts
-```
-
-Qwen3CoderToolParser streaming demo without model API calls:
-
-```bash
-cd examples/parser-core && pnpm dlx tsx src/07-stream-qwen3coder-protocol-tool-input-deltas.ts
-```
-
-Qwen3CoderToolParser middleware streaming demo with live model calls:
-
-```bash
-cd examples/parser-core && OPENROUTER_API_KEY=... pnpm dlx tsx src/08-stream-qwen3coder-protocol-middleware.ts
+cd examples/parser-core && pnpm dlx tsx src/01-stream-basic-tool-call.ts
 ```
 
 Comparison demo without model API calls:
 
 ```bash
-cd examples/parser-core && pnpm dlx tsx src/03-stream-tool-input-delta-compare.ts
+cd examples/parser-core && pnpm dlx tsx src/06-stream-tool-input-delta-compare.ts
 ```
 
 Live visual streaming demo with real model calls:
 
 ```bash
-cd examples/parser-core && pnpm dlx tsx src/04-stream-tool-input-visual-demo.ts
+cd examples/parser-core && pnpm dlx tsx src/07-stream-tool-input-visual-demo.ts
 ```
 
 Many-parameter + nested payload visual demo with real model calls:
 
 ```bash
-cd examples/parser-core && pnpm dlx tsx src/05-stream-tool-input-visual-many-params-demo.ts
+cd examples/parser-core && pnpm dlx tsx src/08-stream-tool-input-visual-many-params-demo.ts
 ```
 
 Configure your model provider credentials as needed (e.g., OpenRouter key/base URL).
