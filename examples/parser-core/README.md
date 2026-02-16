@@ -6,7 +6,7 @@ Each example demonstrates a distinct behavior. Similar transport patterns are ke
 
 Numbering note:
 
-- `parser-core` uses `00-08`
+- `parser-core` uses `00-07`
 - `rxml-core` uses `20-29`
 
 ## Learn first (ai-sdk.dev)
@@ -25,9 +25,8 @@ Numbering note:
 - `src/03-tool-choice-toolname.ts` — `toolChoice: { type: "tool", toolName }` behavior (non-streaming)
 - `src/04-stream-tool-choice-required.ts` — `toolChoice: "required"` behavior (streaming)
 - `src/05-stream-tool-choice-toolname.ts` — `toolChoice: { type: "tool", toolName }` behavior (streaming)
-- `src/06-stream-tool-input-delta-compare.ts` — protocol comparison for streamed tool-input deltas (JSON vs XML vs YAML)
-- `src/07-stream-tool-input-visual-demo.ts` — visualized `tool-input-start/delta/end` for a practical file-write payload
-- `src/08-stream-tool-input-visual-many-params-demo.ts` — visualized `tool-input-*` events for a large nested payload
+- `src/06-stream-tool-input-visual-demo.ts` — visualized `tool-input-start/delta/end` for a practical file-write payload
+- `src/07-stream-tool-input-visual-many-params-demo.ts` — visualized `tool-input-*` events for a large nested payload
 
 ## Run
 
@@ -37,22 +36,16 @@ From repo root after `pnpm install`:
 cd examples/parser-core && pnpm dlx tsx src/01-stream-basic-tool-call.ts
 ```
 
-Comparison demo without model API calls:
-
-```bash
-cd examples/parser-core && pnpm dlx tsx src/06-stream-tool-input-delta-compare.ts
-```
-
 Live visual streaming demo with real model calls:
 
 ```bash
-cd examples/parser-core && pnpm dlx tsx src/07-stream-tool-input-visual-demo.ts
+cd examples/parser-core && pnpm dlx tsx src/06-stream-tool-input-visual-demo.ts
 ```
 
 Many-parameter + nested payload visual demo with real model calls:
 
 ```bash
-cd examples/parser-core && pnpm dlx tsx src/08-stream-tool-input-visual-many-params-demo.ts
+cd examples/parser-core && pnpm dlx tsx src/07-stream-tool-input-visual-many-params-demo.ts
 ```
 
 Configure your model provider credentials as needed (e.g., OpenRouter key/base URL).

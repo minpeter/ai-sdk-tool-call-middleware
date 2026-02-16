@@ -22,7 +22,7 @@ const model = createOpenAICompatible({
   name: "openrouter",
   apiKey: openrouterApiKey,
   baseURL: "https://openrouter.ai/api/v1",
-})("arcee-ai/trinity-large-preview:free");
+})("stepfun/step-3.5-flash:free");
 
 const prompt = [
   "Call write_markdown_file exactly once.",
