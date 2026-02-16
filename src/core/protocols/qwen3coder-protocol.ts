@@ -29,6 +29,8 @@ const TOOL_CALL_OPEN_RE = /<tool_call\b[^>]*>/i;
 const TOOL_CALL_CLOSE_RE = /<\/tool_call\s*>/i;
 const TOOL_CALL_CLOSE_TRAILING_RE = /<\/tool_call\s*>\s*$/i;
 const TOOL_CALL_BLOCK_RE = /<tool_call\b[^>]*>[\s\S]*?<\/tool_call\s*>/gi;
+const LEADING_CALL_CLOSE_TAG_RE =
+  /^\s*<\s*\/\s*(?:tool_call|function|call|tool|invoke)\s*>/i;
 
 const CALL_BLOCK_RE = /<(call|function|tool|invoke)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
 
@@ -629,8 +631,7 @@ function splitImplicitCallBlocks(xml: string): string[] {
 function stripLeadingCallCloseTags(text: string): string {
   let out = text;
   while (true) {
-    const match =
-      /^\s*<\s*\/\s*(?:tool_call|function|call|tool|invoke)\s*>/i.exec(out);
+    const match = LEADING_CALL_CLOSE_TAG_RE.exec(out);
     if (!match) {
       return out;
     }
