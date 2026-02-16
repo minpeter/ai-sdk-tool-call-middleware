@@ -18,7 +18,7 @@ const openrouter = createOpenAI({
 async function main() {
   await generateText({
     model: wrapLanguageModel({
-      model: openrouter.chat("arcee-ai/trinity-large-preview:free"),
+      model: openrouter.chat("stepfun/step-3.5-flash:free"),
       middleware: qwen3CoderToolMiddleware,
     }),
     tools: {
