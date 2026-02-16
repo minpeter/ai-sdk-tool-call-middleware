@@ -898,14 +898,17 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       processedElements.push({ type: "text", text: value });
     };
 
-    const tryEmitToolCallSegment = (segment: string): boolean => {
+    const tryEmitToolCallSegment = (
+      segment: string,
+      fallbackText: string = segment
+    ): boolean => {
       const parsedCalls = parseQwen3CoderToolParserToolCallSegment(segment);
       if (!parsedCalls) {
         options?.onError?.(
           "Could not process Qwen3CoderToolParser XML tool call; keeping original text.",
-          { toolCall: segment }
+          { toolCall: fallbackText }
         );
-        processedElements.push({ type: "text", text: segment });
+        processedElements.push({ type: "text", text: fallbackText });
         return false;
       }
       emitToolCalls(parsedCalls);
@@ -931,7 +934,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const synthetic = TOOL_CALL_CLOSE_RE.test(trailing)
         ? trailing
         : `${trailing}</tool_call>`;
-      tryEmitToolCallSegment(synthetic);
+      tryEmitToolCallSegment(synthetic, trailing);
     };
 
     const tryParseCompleteToolCallBlocks = (): boolean => {
@@ -969,7 +972,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const synthetic = TOOL_CALL_CLOSE_RE.test(trailing)
         ? trailing
         : `${trailing}</tool_call>`;
-      tryEmitToolCallSegment(synthetic);
+      tryEmitToolCallSegment(synthetic, trailing);
       return true;
     };
 

@@ -137,6 +137,44 @@ describe("qwen3CoderProtocol", () => {
     expect(rejoined).toContain(bad);
   });
 
+  it("keeps original trailing text when incomplete <tool_call recovery fails", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const text = "How to type <tool_call in docs?";
+
+    const out = p.parseGeneratedText({ text, tools });
+    const rejoined = out
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(rejoined).toBe(text);
+  });
+
+  it("keeps original remainder text after parsed blocks when trailing <tool_call is invalid", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const validCall =
+      "<tool_call><function=alpha><parameter=x>1</parameter></function></tool_call>";
+    const trailing = " trailing <tool_call in docs?";
+
+    const out = p.parseGeneratedText({
+      text: `${validCall}${trailing}`,
+      tools,
+    });
+
+    const toolCall = out[0];
+    if (toolCall?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(toolCall.toolName).toBe("alpha");
+    expect(JSON.parse(toolCall.input)).toEqual({ x: "1" });
+    const rejoined = out
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(rejoined).toBe(trailing);
+  });
+
   it("parses self-closing function tags in non-stream mode", () => {
     const p = qwen3CoderProtocol();
     const text = [
