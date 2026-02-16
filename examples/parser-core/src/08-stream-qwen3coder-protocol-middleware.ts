@@ -5,7 +5,7 @@
  * for models served via OpenAI-compatible endpoints (vLLM, OpenRouter, etc.)
  *
  * Run:
- *   OPENROUTER_API_KEY=... pnpm dlx tsx src/08-stream-qwen3coder-tool-parser-middleware.ts
+ *   OPENROUTER_API_KEY=... pnpm dlx tsx src/08-stream-qwen3coder-protocol-middleware.ts
  */
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { qwen3CoderToolParserMiddleware } from "@ai-sdk-tool/parser/community";
@@ -50,10 +50,13 @@ const tools = {
     parameters: z.object({
       expression: z.string().describe("Math expression to evaluate"),
     }),
-    execute: async ({ expression }: { expression: string }) => {
+    execute: ({ expression }: { expression: string }) => {
       try {
         // Simple eval for demo only — don't do this in production!
-        return { expression, result: Function(`"use strict"; return (${expression})`)() };
+        return {
+          expression,
+          result: Function(`"use strict"; return (${expression})`)(),
+        };
       } catch {
         return { expression, error: "Invalid expression" };
       }
@@ -94,20 +97,23 @@ async function main() {
         break;
 
       case "tool-result":
-        console.log(
-          `📦 [tool-result] ${JSON.stringify(part.result)}`
-        );
+        console.log(`📦 [tool-result] ${JSON.stringify(part.result)}`);
         break;
 
       case "step-finish":
         console.log(`── step done (${part.finishReason}) ──`);
+        break;
+
+      default:
         break;
     }
   }
 
   // Final usage
   const usage = await result.usage;
-  console.log(`\n📊 Tokens: ${usage.promptTokens} in / ${usage.completionTokens} out`);
+  console.log(
+    `\n📊 Tokens: ${usage.promptTokens} in / ${usage.completionTokens} out`
+  );
 }
 
 main().catch(console.error);

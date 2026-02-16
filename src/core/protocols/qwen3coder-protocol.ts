@@ -580,7 +580,7 @@ function findImplicitCallOpenIndices(lowerText: string): number[] {
       break;
     }
 
-    let i = skipAsciiWhitespace(lowerText, lt + 1);
+    const i = skipAsciiWhitespace(lowerText, lt + 1);
     if (i >= lowerText.length) {
       break;
     }
@@ -878,6 +878,7 @@ export const qwen3coder_tool_parser = (): TCMProtocol => ({
     // parse when XML wrapper tags are missing (raw output starts with <function=...>).
     // https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/vllm/tool_parsers/qwen3coder_tool_parser.py#L271-L289
     // https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/tests/tool_parsers/test_qwen3coder_tool_parser.py#L356-L377
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Wrapperless fallback combines multiple recovery branches to preserve vLLM-compatible behavior.
     const tryParseCallBlocksWithoutWrapper = (): boolean => {
       const matches = Array.from(text.matchAll(CALL_BLOCK_RE));
       if (matches.length === 0) {

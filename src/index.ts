@@ -8,7 +8,7 @@ export {
   Qwen3CoderToolParser,
   qwen3coder_tool_parser,
   uiTarsXmlProtocol,
-} from "./core/protocols/qwen3coder-tool-parser-xml-protocol";
+} from "./core/protocols/qwen3coder-protocol";
 export type { XmlProtocolOptions } from "./core/protocols/xml-protocol";
 export { xmlProtocol } from "./core/protocols/xml-protocol";
 export type { YamlProtocolOptions } from "./core/protocols/yaml-protocol";

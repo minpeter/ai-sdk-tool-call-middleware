@@ -2,7 +2,7 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { jsonProtocol } from "../../core/protocols/json-protocol";
-import { qwen3coder_tool_parser } from "../../core/protocols/qwen3coder-tool-parser-xml-protocol";
+import { qwen3coder_tool_parser } from "../../core/protocols/qwen3coder-protocol";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import { createChunkedStream, pipeWithTransformer } from "../test-helpers";
 

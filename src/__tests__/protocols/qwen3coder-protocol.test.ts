@@ -1,6 +1,6 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { qwen3coder_tool_parser } from "../../core/protocols/qwen3coder-tool-parser-xml-protocol";
+import { qwen3coder_tool_parser } from "../../core/protocols/qwen3coder-protocol";
 
 describe("qwen3coder_tool_parser", () => {
   it("parseGeneratedText extracts <tool_call> blocks and preserves surrounding text", () => {
