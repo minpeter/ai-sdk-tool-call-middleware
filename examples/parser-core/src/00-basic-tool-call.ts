@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
+import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
 import { printComplete, printStepLikeStream } from "./console-output";
 
 // Constants
@@ -18,7 +18,7 @@ async function main() {
   await generateText({
     model: wrapLanguageModel({
       model: openrouter("arcee-ai/trinity-large-preview:free"),
-      middleware: xmlToolMiddleware,
+      middleware: qwen3CoderToolMiddleware,
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",

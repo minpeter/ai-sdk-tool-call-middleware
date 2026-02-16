@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { generateText, wrapLanguageModel } from "ai";
 import { z } from "zod";
+import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
 import { printComplete, printStepLikeStream } from "./console-output";
 
 // Constants
@@ -19,7 +19,7 @@ async function main() {
   await generateText({
     model: wrapLanguageModel({
       model: openrouter.chat("arcee-ai/trinity-large-preview:free"),
-      middleware: hermesToolMiddleware,
+      middleware: qwen3CoderToolMiddleware,
     }),
     tools: {
       weather: {

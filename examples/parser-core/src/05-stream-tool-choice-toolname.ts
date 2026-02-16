@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
+import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
 
 const BASE_TEMPERATURE = 72;
 const TEMPERATURE_RANGE = 21;
@@ -17,7 +17,7 @@ async function main() {
   const result = streamText({
     model: wrapLanguageModel({
       model: openrouter.chat("arcee-ai/trinity-large-preview:free"),
-      middleware: hermesToolMiddleware,
+      middleware: qwen3CoderToolMiddleware,
     }),
     tools: {
       weather: {
