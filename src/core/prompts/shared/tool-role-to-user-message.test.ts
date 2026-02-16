@@ -1,6 +1,9 @@
 import type { ToolContent } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
-import { toolRoleContentToUserTextMessage } from "./tool-role-to-user-message";
+import {
+  createUserContentToolResponseTemplate,
+  toolRoleContentToUserTextMessage,
+} from "./tool-role-to-user-message";
 
 describe("toolRoleContentToUserTextMessage", () => {
   it("converts tool-result and approval responses into a single user text message", () => {
@@ -29,6 +32,38 @@ describe("toolRoleContentToUserTextMessage", () => {
         {
           type: "text",
           text: '<tool_response>\n{"temperature":21}\n</tool_response>\n[Tool Approval Denied: Not allowed]',
+        },
+      ],
+    });
+  });
+
+  it("supports model media mode and emits file parts for user content", () => {
+    const result = toolRoleContentToUserTextMessage({
+      toolContent: [
+        {
+          type: "tool-result",
+          toolCallId: "tc1",
+          toolName: "vision",
+          output: {
+            type: "content",
+            value: [{ type: "image-url", url: "https://example.com/a.png" }],
+          },
+        },
+      ] as ToolContent,
+      toolResponsePromptTemplate: createUserContentToolResponseTemplate({
+        mediaStrategy: {
+          mode: "model",
+        },
+      }),
+    });
+
+    expect(result).toEqual({
+      role: "user",
+      content: [
+        {
+          type: "file",
+          data: "https://example.com/a.png",
+          mediaType: "image/*",
         },
       ],
     });

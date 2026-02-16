@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { unwrapToolResult } from "./tool-result-normalizer";
+import {
+  normalizeToolResultForUserContent,
+  unwrapToolResult,
+} from "./tool-result-normalizer";
 
 describe("unwrapToolResult", () => {
   describe("ToolResultOutput: text type", () => {
@@ -385,5 +388,93 @@ describe("unwrapToolResult", () => {
 
       expect(result).toBe("[File: clip.mp4 (video/mp4)]");
     });
+  });
+});
+
+describe("normalizeToolResultForUserContent", () => {
+  it("converts image-url content into model-recognizable file part in model mode", () => {
+    const result = normalizeToolResultForUserContent(
+      {
+        type: "content",
+        value: [{ type: "image-url", url: "https://example.com/a.png" }],
+      },
+      {
+        mode: "model",
+      }
+    );
+
+    expect(result).toEqual([
+      {
+        type: "file",
+        data: "https://example.com/a.png",
+        mediaType: "image/*",
+      },
+    ]);
+  });
+
+  it("converts file-data content into model-recognizable file part in model mode", () => {
+    const result = normalizeToolResultForUserContent(
+      {
+        type: "content",
+        value: [
+          {
+            type: "file-data",
+            data: "YWJj",
+            mediaType: "application/pdf",
+            filename: "report.pdf",
+          },
+        ],
+      },
+      {
+        mode: "model",
+      }
+    );
+
+    expect(result).toEqual([
+      {
+        type: "file",
+        data: "YWJj",
+        mediaType: "application/pdf",
+        filename: "report.pdf",
+      },
+    ]);
+  });
+
+  it("falls back to text placeholder for file-id in model mode", () => {
+    const result = normalizeToolResultForUserContent(
+      {
+        type: "content",
+        value: [{ type: "file-id", fileId: "file-123" }],
+      },
+      {
+        mode: "model",
+      }
+    );
+
+    expect(result).toEqual([
+      {
+        type: "text",
+        text: "[File ID: file-123]",
+      },
+    ]);
+  });
+
+  it("returns text part output when mode is not model", () => {
+    const result = normalizeToolResultForUserContent(
+      {
+        type: "content",
+        value: [{ type: "image-url", url: "https://example.com/a.png" }],
+      },
+      {
+        mode: "placeholder",
+      }
+    );
+
+    expect(result).toEqual([
+      {
+        type: "text",
+        text: "[Image URL: https://example.com/a.png]",
+      },
+    ]);
   });
 });

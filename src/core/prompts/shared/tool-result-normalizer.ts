@@ -1,4 +1,8 @@
-import type { JSONValue } from "@ai-sdk/provider";
+import type {
+  JSONValue,
+  LanguageModelV3FilePart,
+  LanguageModelV3TextPart,
+} from "@ai-sdk/provider";
 import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 
 export type ToolResponseMediaType = "image" | "audio" | "video" | "file";
@@ -10,12 +14,16 @@ export interface ToolResponseMediaCapabilities {
   file?: boolean;
 }
 
-export type ToolResponseMediaMode = "placeholder" | "raw" | "auto";
+export type ToolResponseMediaMode = "placeholder" | "raw" | "auto" | "model";
 
 export interface ToolResponseMediaStrategy {
   mode?: ToolResponseMediaMode;
   capabilities?: ToolResponseMediaCapabilities;
 }
+
+export type ToolResponseUserContentPart =
+  | LanguageModelV3TextPart
+  | LanguageModelV3FilePart;
 
 function isMapping(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -75,6 +83,9 @@ function shouldPassRawByStrategy(
   if (mode === "placeholder") {
     return false;
   }
+  if (mode === "model") {
+    return false;
+  }
 
   return strategy?.capabilities?.[mediaKind] === true;
 }
@@ -88,6 +99,9 @@ function shouldPassRawContent(
     return true;
   }
   if (mode === "placeholder") {
+    return false;
+  }
+  if (mode === "model") {
     return false;
   }
 
@@ -146,6 +160,109 @@ function formatContentPartPlaceholder(part: unknown): string {
   }
 }
 
+function toTextPart(
+  text: string,
+  providerOptions?: LanguageModelV3TextPart["providerOptions"]
+): LanguageModelV3TextPart {
+  if (providerOptions === undefined) {
+    return {
+      type: "text",
+      text,
+    };
+  }
+
+  return {
+    type: "text",
+    text,
+    providerOptions,
+  };
+}
+
+function toFilePart(options: {
+  data: string;
+  mediaType: string;
+  filename?: string;
+  providerOptions?: LanguageModelV3FilePart["providerOptions"];
+}): LanguageModelV3FilePart {
+  return {
+    type: "file",
+    data: options.data,
+    mediaType: options.mediaType,
+    ...(options.filename !== undefined ? { filename: options.filename } : {}),
+    ...(options.providerOptions !== undefined
+      ? { providerOptions: options.providerOptions }
+      : {}),
+  };
+}
+
+function toModelContentPart(part: unknown): ToolResponseUserContentPart {
+  const contentPart = part as {
+    type?: string;
+    text?: string;
+    data?: string;
+    mediaType?: string;
+    url?: string;
+    filename?: string;
+    providerOptions?: LanguageModelV3TextPart["providerOptions"];
+  };
+
+  switch (contentPart.type) {
+    case "text":
+      return toTextPart(contentPart.text ?? "", contentPart.providerOptions);
+    case "image-data":
+      return toFilePart({
+        data: contentPart.data ?? "",
+        mediaType: contentPart.mediaType ?? "image/*",
+        providerOptions: contentPart.providerOptions,
+      });
+    case "image-url":
+      return toFilePart({
+        data: contentPart.url ?? "",
+        mediaType: "image/*",
+        providerOptions: contentPart.providerOptions,
+      });
+    case "file-data":
+      return toFilePart({
+        data: contentPart.data ?? "",
+        mediaType: contentPart.mediaType ?? "application/octet-stream",
+        filename: contentPart.filename,
+        providerOptions: contentPart.providerOptions,
+      });
+    case "file-url":
+      return toFilePart({
+        data: contentPart.url ?? "",
+        mediaType: "application/octet-stream",
+        providerOptions: contentPart.providerOptions,
+      });
+    case "media":
+      return toFilePart({
+        data: contentPart.data ?? "",
+        mediaType: contentPart.mediaType ?? "application/octet-stream",
+        providerOptions: contentPart.providerOptions,
+      });
+    case "image-file-id":
+    case "file-id":
+    case "custom":
+      return toTextPart(
+        formatContentPartPlaceholder(part),
+        contentPart.providerOptions
+      );
+    default:
+      return toTextPart(
+        formatContentPartPlaceholder(part),
+        contentPart.providerOptions
+      );
+  }
+}
+
+function stringifyJsonValue(value: JSONValue): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return JSON.stringify(value);
+}
+
 export function unwrapToolResult(
   result: ToolResultOutput,
   mediaStrategy?: ToolResponseMediaStrategy
@@ -176,4 +293,22 @@ export function unwrapToolResult(
       return _exhaustive;
     }
   }
+}
+
+export function normalizeToolResultForUserContent(
+  result: ToolResultOutput,
+  mediaStrategy?: ToolResponseMediaStrategy
+): ToolResponseUserContentPart[] {
+  if (result.type === "content" && mediaStrategy?.mode === "model") {
+    return (result.value as unknown[]).map(toModelContentPart);
+  }
+
+  const unwrapped = unwrapToolResult(result, mediaStrategy);
+  const providerOptions = (
+    result as {
+      providerOptions?: LanguageModelV3TextPart["providerOptions"];
+    }
+  ).providerOptions;
+
+  return [toTextPart(stringifyJsonValue(unwrapped), providerOptions)];
 }

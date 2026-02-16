@@ -4,6 +4,7 @@ import type {
   LanguageModelV3Middleware,
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
+import type { ToolResponsePromptTemplateResult } from "./core/prompts/shared/tool-role-to-user-message";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
@@ -18,7 +19,9 @@ export function createToolMiddleware({
 }: {
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
   toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
-  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string;
+  toolResponsePromptTemplate?: (
+    toolResult: ToolResultPart
+  ) => ToolResponsePromptTemplateResult;
   placement?: "first" | "last";
 }): LanguageModelV3Middleware {
   const resolvedProtocol = isTCMProtocolFactory(protocol)

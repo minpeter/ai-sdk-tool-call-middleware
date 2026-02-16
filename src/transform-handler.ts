@@ -13,7 +13,10 @@ import type {
 } from "@ai-sdk/provider";
 import type { ToolContent, ToolResultPart } from "@ai-sdk/provider-utils";
 import { assistantToolCallsToTextContent } from "./core/prompts/shared/assistant-tool-calls-to-text";
-import { toolRoleContentToUserTextMessage } from "./core/prompts/shared/tool-role-to-user-message";
+import {
+  type ToolResponsePromptTemplateResult,
+  toolRoleContentToUserTextMessage,
+} from "./core/prompts/shared/tool-role-to-user-message";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
 import { createDynamicIfThenElseSchema } from "./core/utils/dynamic-tool-schema";
@@ -262,7 +265,9 @@ export function transformParams({
   };
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
   toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
-  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string;
+  toolResponsePromptTemplate?: (
+    toolResult: ToolResultPart
+  ) => ToolResponsePromptTemplateResult;
   placement?: "first" | "last";
 }) {
   const resolvedProtocol = isTCMProtocolFactory(protocol)
@@ -330,7 +335,9 @@ function processMessage(
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   },
-  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string
+  toolResponsePromptTemplate?: (
+    toolResult: ToolResultPart
+  ) => ToolResponsePromptTemplateResult
 ): LanguageModelV3Prompt[number] {
   if (message.role === "assistant") {
     const condensedContent = assistantToolCallsToTextContent({
@@ -448,6 +455,12 @@ function mergeConsecutiveUserMessages(
     const current = processedPrompt[i];
     const prev = processedPrompt[i - 1];
     if (current.role === "user" && prev.role === "user") {
+      if (
+        !(isAllTextContent(prev.content) && isAllTextContent(current.content))
+      ) {
+        continue;
+      }
+
       const prevContent = prev.content
         .map((c) => (c.type === "text" ? c.text : ""))
         .join("\n");
@@ -467,7 +480,9 @@ function mergeConsecutiveUserMessages(
 function convertToolPrompt(
   prompt: LanguageModelV3Message[],
   resolvedProtocol: TCMCoreProtocol,
-  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string,
+  toolResponsePromptTemplate?: (
+    toolResult: ToolResultPart
+  ) => ToolResponsePromptTemplateResult,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
