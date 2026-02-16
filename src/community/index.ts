@@ -1,7 +1,7 @@
-// biome-ignore lint/performance/noBarrelFile: Package entrypoint - must re-export for public API
+// biome-ignore-all lint/performance/noBarrelFile: Package entrypoint - must re-export for public API
+
+export { qwen3CoderToolParserMiddleware } from "./qwen3coder";
 export {
   sijawaraConciseXmlToolMiddleware,
   sijawaraDetailedXmlToolMiddleware,
 } from "./sijawara";
-
-export { uiTarsToolMiddleware as qwen3CoderToolParserMiddleware } from "./ui-tars";

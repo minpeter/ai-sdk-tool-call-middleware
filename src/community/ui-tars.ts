@@ -1,5 +1,5 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
-import { formatToolResponseAsXml } from "../core/prompts/tool-response";
+import { formatToolResponseAsXml } from "../core/prompts/xml-prompt";
 import { createToolMiddleware, uiTarsXmlProtocol } from "../index";
 
 /**

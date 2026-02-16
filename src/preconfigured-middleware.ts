@@ -1,10 +1,15 @@
-import { hermesSystemPromptTemplate } from "./core/prompts/hermes-system-prompt";
 import {
   formatToolResponseAsJsonInXml,
+  hermesSystemPromptTemplate,
+} from "./core/prompts/hermes-prompt";
+import {
   formatToolResponseAsXml,
-} from "./core/prompts/tool-response";
-import { xmlSystemPromptTemplate } from "./core/prompts/xml-system-prompt";
-import { yamlSystemPromptTemplate } from "./core/prompts/yaml-system-prompt";
+  xmlSystemPromptTemplate,
+} from "./core/prompts/xml-prompt";
+import {
+  formatToolResponseAsYaml,
+  yamlSystemPromptTemplate,
+} from "./core/prompts/yaml-prompt";
 import { jsonProtocol } from "./core/protocols/json-protocol";
 import { xmlProtocol } from "./core/protocols/xml-protocol";
 import { yamlProtocol } from "./core/protocols/yaml-protocol";
@@ -25,5 +30,5 @@ export const xmlToolMiddleware = createToolMiddleware({
 export const yamlToolMiddleware = createToolMiddleware({
   protocol: yamlProtocol({}),
   toolSystemPromptTemplate: yamlSystemPromptTemplate,
-  toolResponsePromptTemplate: formatToolResponseAsXml,
+  toolResponsePromptTemplate: formatToolResponseAsYaml,
 });

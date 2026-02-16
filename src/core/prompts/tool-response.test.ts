@@ -1,10 +1,18 @@
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
+  createJsonInXmlToolResponseFormatter,
   formatToolResponseAsJsonInXml,
+} from "./hermes-prompt";
+import {
+  createQwen3CoderXmlToolResponseFormatter,
+  formatToolResponseAsQwen3CoderXml,
+} from "./qwen3coder-prompt";
+import { unwrapToolResult } from "./shared";
+import {
+  createXmlToolResponseFormatter,
   formatToolResponseAsXml,
-  unwrapToolResult,
-} from "./tool-response";
+} from "./xml-prompt";
 
 /**
  * Test suite for tool-response.ts
@@ -279,7 +287,11 @@ describe("tool-response", () => {
         expect(
           unwrapToolResult({
             type: "content",
-            value: [{ type: "unknown-future-type" } as any],
+            value: [
+              {
+                type: "unknown-future-type",
+              } as never,
+            ],
           })
         ).toBe("[Unknown content]");
       });
@@ -319,6 +331,89 @@ describe("tool-response", () => {
         expect(result).toBe(
           "Files attached:\n[File: data.csv (text/csv)]\n[Image: image/jpeg]\nEnd of results"
         );
+      });
+
+      it("returns raw content when media strategy is raw", () => {
+        const result = unwrapToolResult(
+          {
+            type: "content",
+            value: [
+              { type: "text", text: "visual" },
+              {
+                type: "image-data",
+                data: "base64...",
+                mediaType: "image/png",
+              },
+            ],
+          },
+          {
+            mode: "raw",
+          }
+        );
+
+        expect(result).toEqual([
+          { type: "text", text: "visual" },
+          {
+            type: "image-data",
+            data: "base64...",
+            mediaType: "image/png",
+          },
+        ]);
+      });
+
+      it("returns raw content in auto mode when media capability is enabled", () => {
+        const result = unwrapToolResult(
+          {
+            type: "content",
+            value: [
+              {
+                type: "file-data",
+                data: "abc",
+                mediaType: "audio/mp3",
+                filename: "sample.mp3",
+              },
+            ],
+          },
+          {
+            mode: "auto",
+            capabilities: {
+              audio: true,
+            },
+          }
+        );
+
+        expect(result).toEqual([
+          {
+            type: "file-data",
+            data: "abc",
+            mediaType: "audio/mp3",
+            filename: "sample.mp3",
+          },
+        ]);
+      });
+
+      it("falls back to placeholders in auto mode when media capability is disabled", () => {
+        const result = unwrapToolResult(
+          {
+            type: "content",
+            value: [
+              {
+                type: "file-data",
+                data: "abc",
+                mediaType: "video/mp4",
+                filename: "clip.mp4",
+              },
+            ],
+          },
+          {
+            mode: "auto",
+            capabilities: {
+              video: false,
+            },
+          }
+        );
+
+        expect(result).toBe("[File: clip.mp4 (video/mp4)]");
       });
     });
   });
@@ -406,6 +501,75 @@ describe("tool-response", () => {
         output: { type: "text", value: "simple string" },
       } satisfies ToolResultPart);
       expect(result).toContain('"result":"simple string"');
+    });
+
+    it("factory supports raw media strategy", () => {
+      const formatter = createJsonInXmlToolResponseFormatter({
+        mediaStrategy: {
+          mode: "raw",
+        },
+      });
+
+      const result = formatter({
+        type: "tool-result",
+        toolCallId: "tc1",
+        toolName: "vision",
+        output: {
+          type: "content",
+          value: [{ type: "image-url", url: "https://example.com/a.png" }],
+        },
+      } satisfies ToolResultPart);
+
+      expect(result).toContain('"type":"image-url"');
+      expect(result).toContain('"url":"https://example.com/a.png"');
+    });
+  });
+
+  describe("formatToolResponseAsQwen3CoderXml", () => {
+    it("formats object result as raw JSON text within <tool_response>", () => {
+      const result = formatToolResponseAsQwen3CoderXml({
+        type: "tool-result",
+        toolCallId: "tc1",
+        toolName: "get_weather",
+        output: { type: "json", value: { temperature: 21 } },
+      } satisfies ToolResultPart);
+
+      expect(result).toBe(
+        `<tool_response>\n{"temperature":21}\n</tool_response>`
+      );
+    });
+
+    it("preserves text result verbatim within <tool_response>", () => {
+      const result = formatToolResponseAsQwen3CoderXml({
+        type: "tool-result",
+        toolCallId: "tc1",
+        toolName: "get_weather",
+        output: { type: "text", value: "ok" },
+      } satisfies ToolResultPart);
+
+      expect(result).toBe("<tool_response>\nok\n</tool_response>");
+    });
+
+    it("factory supports raw media strategy", () => {
+      const formatter = createQwen3CoderXmlToolResponseFormatter({
+        mediaStrategy: {
+          mode: "raw",
+        },
+      });
+
+      const result = formatter({
+        type: "tool-result",
+        toolCallId: "tc1",
+        toolName: "vision",
+        output: {
+          type: "content",
+          value: [{ type: "image-url", url: "https://example.com/a.png" }],
+        },
+      } satisfies ToolResultPart);
+
+      expect(result).toBe(
+        '<tool_response>\n[{"type":"image-url","url":"https://example.com/a.png"}]\n</tool_response>'
+      );
     });
   });
 
@@ -529,6 +693,30 @@ describe("tool-response", () => {
       } satisfies ToolResultPart);
       expect(result).toContain("Execution Denied");
       expect(result).toContain("Not authorized");
+    });
+
+    it("factory supports auto media strategy with enabled image capability", () => {
+      const formatter = createXmlToolResponseFormatter({
+        mediaStrategy: {
+          mode: "auto",
+          capabilities: {
+            image: true,
+          },
+        },
+      });
+
+      const result = formatter({
+        type: "tool-result",
+        toolCallId: "tc1",
+        toolName: "vision",
+        output: {
+          type: "content",
+          value: [{ type: "image-url", url: "https://example.com/a.png" }],
+        },
+      } satisfies ToolResultPart);
+
+      expect(result).toContain("<type>image-url</type>");
+      expect(result).toContain("<url>https://example.com/a.png</url>");
     });
   });
 });

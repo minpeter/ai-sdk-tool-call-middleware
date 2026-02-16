@@ -1,8 +1,11 @@
 import type {
   JSONSchema7,
+  JSONValue,
   LanguageModelV3FunctionTool,
 } from "@ai-sdk/provider";
+import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import dedent from "dedent";
+import { type ToolResponseMediaStrategy, unwrapToolResult } from "./shared";
 
 export function xmlSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[]
@@ -306,4 +309,82 @@ function stripSchemaKeys(value: unknown): unknown {
   }
 
   return value;
+}
+
+export interface XmlToolResponseFormatterOptions {
+  mediaStrategy?: ToolResponseMediaStrategy;
+}
+
+function formatXmlNode(
+  tagName: string,
+  value: JSONValue,
+  depth: number
+): string[] {
+  const indent = "  ".repeat(depth);
+
+  if (value === null || value === undefined) {
+    return [`${indent}<${tagName}></${tagName}>`];
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return [`${indent}<${tagName}>${String(value)}</${tagName}>`];
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return [`${indent}<${tagName}></${tagName}>`];
+    }
+    const lines = [`${indent}<${tagName}>`];
+    for (const item of value) {
+      lines.push(...formatXmlNode("item", item as JSONValue, depth + 1));
+    }
+    lines.push(`${indent}</${tagName}>`);
+    return lines;
+  }
+
+  const entries = Object.entries(value as Record<string, JSONValue>);
+  if (entries.length === 0) {
+    return [`${indent}<${tagName}></${tagName}>`];
+  }
+
+  const lines = [`${indent}<${tagName}>`];
+  for (const [key, entryValue] of entries) {
+    lines.push(...formatXmlNode(key, entryValue, depth + 1));
+  }
+  lines.push(`${indent}</${tagName}>`);
+  return lines;
+}
+
+function formatToolResponseAsXmlWithOptions(
+  toolResult: ToolResultPart,
+  options?: XmlToolResponseFormatterOptions
+): string {
+  const unwrappedResult = unwrapToolResult(
+    toolResult.output,
+    options?.mediaStrategy
+  );
+  const toolNameXml = `<tool_name>${toolResult.toolName}</tool_name>`;
+  const resultLines = formatXmlNode("result", unwrappedResult, 1);
+
+  return [
+    "<tool_response>",
+    `  ${toolNameXml}`,
+    ...resultLines,
+    "</tool_response>",
+  ].join("\n");
+}
+
+export function createXmlToolResponseFormatter(
+  options?: XmlToolResponseFormatterOptions
+): (toolResult: ToolResultPart) => string {
+  return (toolResult) =>
+    formatToolResponseAsXmlWithOptions(toolResult, options);
+}
+
+export function formatToolResponseAsXml(toolResult: ToolResultPart): string {
+  return formatToolResponseAsXmlWithOptions(toolResult);
 }

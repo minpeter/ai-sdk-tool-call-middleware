@@ -191,6 +191,20 @@ describe("qwen3coder_tool_parser", () => {
     expect(JSON.parse(call.input)).toEqual({ x: "1", y: ["2", "3"] });
   });
 
+  it("formatToolCall serializes boolean/null values using Qwen3-Coder template string semantics", () => {
+    const p = qwen3coder_tool_parser();
+    const formatted = p.formatToolCall({
+      type: "tool-call",
+      toolCallId: "id",
+      toolName: "test_tool",
+      input: JSON.stringify({ strict: false, enabled: true, optional: null }),
+    });
+
+    expect(formatted).toContain("<parameter=strict>False</parameter>");
+    expect(formatted).toContain("<parameter=enabled>True</parameter>");
+    expect(formatted).toContain("<parameter=optional>None</parameter>");
+  });
+
   it("recovers missing </parameter> by terminating at the next parameter tag", () => {
     const p = qwen3coder_tool_parser();
     const tools: LanguageModelV3FunctionTool[] = [];

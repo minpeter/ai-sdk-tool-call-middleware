@@ -719,7 +719,13 @@ function toQwen3CoderToolParserParamText(value: unknown): string {
   if (typeof value === "string") {
     return value;
   }
-  if (value == null) {
+  if (value === null) {
+    return "None";
+  }
+  if (typeof value === "boolean") {
+    return value ? "True" : "False";
+  }
+  if (value === undefined) {
     return "";
   }
   if (typeof value === "object") {
