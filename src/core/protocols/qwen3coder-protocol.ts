@@ -763,7 +763,7 @@ function appendQwen3CoderToolParserArgs(lines: string[], args: unknown): void {
   }
 }
 
-export const qwen3coder_tool_parser = (): TCMProtocol => ({
+export const qwen3CoderProtocol = (): TCMProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
     return toolSystemPromptTemplate(tools || []);
   },
@@ -1882,6 +1882,6 @@ export const qwen3coder_tool_parser = (): TCMProtocol => ({
   },
 });
 
-export const uiTarsXmlProtocol = qwen3coder_tool_parser;
+export const uiTarsXmlProtocol = qwen3CoderProtocol;
 
-export const Qwen3CoderToolParser = qwen3coder_tool_parser;
+export const Qwen3CoderToolParser = qwen3CoderProtocol;

@@ -3,7 +3,7 @@ import { formatToolResponseAsXml } from "../core/prompts/xml-prompt";
 import { createToolMiddleware, uiTarsXmlProtocol } from "../index";
 
 /**
- * UI-TARS middleware using a custom protocol that handles <function=name> syntax (qwen3coder_tool_parser)
+ * UI-TARS middleware using a custom protocol that handles <function=name> syntax (qwen3CoderProtocol)
  * This is a modified version of https://github.com/julien-blanchon/silo/blob/6ebbc24e9dcf21e502b65b07b86a1e76169d4e8c/src/lib/middleware/uiTars.ts
  */
 export const uiTarsToolMiddleware = createToolMiddleware({

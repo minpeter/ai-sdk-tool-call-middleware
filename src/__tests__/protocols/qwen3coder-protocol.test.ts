@@ -1,10 +1,10 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { qwen3coder_tool_parser } from "../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
 
-describe("qwen3coder_tool_parser", () => {
+describe("qwen3CoderProtocol", () => {
   it("parseGeneratedText extracts <tool_call> blocks and preserves surrounding text", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "before ",
@@ -38,7 +38,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("supports multiple <tool_call> blocks per message", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "a ",
@@ -70,7 +70,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("supports multiple function calls inside a single <tool_call> block", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "prefix ",
@@ -105,7 +105,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("extractToolCallSegments returns raw <tool_call> segments in order", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const a = "<tool_call><function=a></function></tool_call>";
     const b = "<tool_call><function=b></function></tool_call>";
@@ -119,7 +119,7 @@ describe("qwen3coder_tool_parser", () => {
 
   it("calls onError and keeps original text on malformed segments", () => {
     const onError = vi.fn();
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const bad =
       "<tool_call><function><parameter=x>1</parameter></function></tool_call>";
@@ -138,7 +138,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("parses self-closing function tags in non-stream mode", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const text = [
       "before ",
       "<tool_call><function=get_weather/></tool_call>",
@@ -161,8 +161,8 @@ describe("qwen3coder_tool_parser", () => {
     expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({});
   });
 
-  it("formatToolCall emits Qwen3CoderToolParser markup that round-trips through parseGeneratedText", () => {
-    const p = qwen3coder_tool_parser();
+  it("formatToolCall emits Qwen3CoderProtocol markup that round-trips through parseGeneratedText", () => {
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const formatted = p.formatToolCall({
       type: "tool-call",
@@ -192,7 +192,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("formatToolCall serializes boolean/null values using Qwen3-Coder template string semantics", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const formatted = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",
@@ -206,7 +206,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("recovers missing </parameter> by terminating at the next parameter tag", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const text =
       "<tool_call><function=alpha><parameter=a>1<parameter=b>2</parameter></function></tool_call>";
@@ -221,7 +221,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("parses <function> blocks even when <tool_call> wrapper is missing", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "before ",
@@ -243,7 +243,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("ignores stray leading </tool_call> close tags before a <function> block", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "before ",
@@ -271,7 +271,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("parses a single <tool_call> when </function> is missing", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const text =
       "<tool_call><function=get_weather><parameter=city>Tokyo</parameter></tool_call>";
@@ -288,7 +288,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("parses multiple <tool_call> blocks when </function> is missing", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "a ",
@@ -312,7 +312,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("parses mixed <tool_call> blocks with and without </function>", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "<tool_call><function=alpha><parameter=x>1</parameter></function></tool_call>",
@@ -334,7 +334,7 @@ describe("qwen3coder_tool_parser", () => {
   });
 
   it("parses a bare <function=...> call when </function> and <tool_call> are missing", () => {
-    const p = qwen3coder_tool_parser();
+    const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const text = "<function=get_weather><parameter=city>Tokyo</parameter>";
 

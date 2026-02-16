@@ -7,7 +7,7 @@ import {
   qwen3coderSystemPromptTemplate,
 } from "../core/prompts/qwen3coder-prompt";
 import { jsonProtocol } from "../core/protocols/json-protocol";
-import { qwen3coder_tool_parser } from "../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../core/protocols/qwen3coder-protocol";
 import { createToolMiddleware } from "../tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
@@ -409,7 +409,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
 describe("qwen3coder chat-template alignment via existing transform pipeline", () => {
   it("keeps existing system text first, renders tools section, converts assistant tool-call markup, and maps tool messages to user <tool_response>", async () => {
     const mw = createToolMiddleware({
-      protocol: qwen3coder_tool_parser,
+      protocol: qwen3CoderProtocol,
       toolSystemPromptTemplate: qwen3coderSystemPromptTemplate,
       toolResponsePromptTemplate: formatToolResponseAsQwen3CoderXml,
     });

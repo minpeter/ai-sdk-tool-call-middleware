@@ -5,7 +5,7 @@ import type {
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { jsonProtocol } from "../../core/protocols/json-protocol";
-import { qwen3coder_tool_parser } from "../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import { yamlProtocol } from "../../core/protocols/yaml-protocol";
 import { toolInputStreamFixtures } from "../fixtures/tool-input-stream-fixtures";
@@ -494,7 +494,7 @@ describe("tool-input streaming events", () => {
 
   it("Qwen3CoderToolParser streams tool input deltas and emits matching tool-call id", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = qwen3coder_tool_parser();
+    const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -538,7 +538,7 @@ describe("tool-input streaming events", () => {
 
   it("Qwen3CoderToolParser handles missing </function> inside <tool_call> during streaming", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = qwen3coder_tool_parser();
+    const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -578,7 +578,7 @@ describe("tool-input streaming events", () => {
   });
 
   it("Qwen3CoderToolParser preserves non-contiguous repeated parameters in streams", async () => {
-    const protocol = qwen3coder_tool_parser();
+    const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -609,7 +609,7 @@ describe("tool-input streaming events", () => {
 
   it("Qwen3CoderToolParser streams tool calls when <tool_call> wrapper is missing", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = qwen3coder_tool_parser();
+    const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -652,7 +652,7 @@ describe("tool-input streaming events", () => {
   });
 
   it("Qwen3CoderToolParser ignores stray </tool_call> before an implicit <function> call", async () => {
-    const protocol = qwen3coder_tool_parser();
+    const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -683,7 +683,7 @@ describe("tool-input streaming events", () => {
   });
 
   it("Qwen3CoderToolParser recovers missing </parameter> during streaming by using next-tag boundary", async () => {
-    const protocol = qwen3coder_tool_parser();
+    const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -708,7 +708,7 @@ describe("tool-input streaming events", () => {
   });
 
   it("Qwen3CoderToolParser supports multiple function calls inside a single <tool_call> block in-order", async () => {
-    const protocol = qwen3coder_tool_parser();
+    const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -750,7 +750,7 @@ describe("tool-input streaming events", () => {
 
   it("Qwen3CoderToolParser force-completes unclosed tool block at finish when content is parseable", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = qwen3coder_tool_parser();
+    const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -785,7 +785,7 @@ describe("tool-input streaming events", () => {
   });
 
   it("Qwen3CoderToolParser flushes buffered partial tool_call at finish as text when enabled", async () => {
-    const protocol = qwen3coder_tool_parser();
+    const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
       options: { emitRawToolCallTextOnError: true },
@@ -811,7 +811,7 @@ describe("tool-input streaming events", () => {
   });
 
   it("Qwen3CoderToolParser suppresses buffered partial tool_call at finish by default", async () => {
-    const protocol = qwen3coder_tool_parser();
+    const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(

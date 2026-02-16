@@ -42,7 +42,7 @@ for await (const part of result.fullStream) {
 
 - `jsonProtocol`: `tool-input-delta` emits incremental JSON argument text.
 - `xmlProtocol` and `yamlProtocol`: `tool-input-delta` now also emits incremental JSON argument text (parsed-object prefixes), not raw XML/YAML fragments.
-- `jsonProtocol`, `xmlProtocol`, `yamlProtocol`, and `qwen3coder_tool_parser`: malformed streaming tool payloads do not emit raw protocol markup to `text-delta` by default. Set `emitRawToolCallTextOnError: true` in parser options only if you explicitly want raw fallback text.
+- `jsonProtocol`, `xmlProtocol`, `yamlProtocol`, and `qwen3CoderProtocol`: malformed streaming tool payloads do not emit raw protocol markup to `text-delta` by default. Set `emitRawToolCallTextOnError: true` in parser options only if you explicitly want raw fallback text.
 - `tool-input-start.id`, `tool-input-end.id`, and `tool-call.toolCallId` are reconciled to the same ID for each tool call stream.
 
 ## Qwen3CoderToolParser (protocol + middleware)
@@ -51,11 +51,11 @@ Use Qwen3CoderToolParser when your model/prompt expects this XML-like tool marku
 
 - `jsonProtocol` for strict, nested JSON arguments
 - `xmlProtocol` / `yamlProtocol` for schema-driven nested structures
-- `qwen3coder_tool_parser` for this format (`<tool_call><function=...><parameter=...>`)
+- `qwen3CoderProtocol` for this format (`<tool_call><function=...><parameter=...>`)
 
 ### Exact tool-call format
 
-`qwen3coder_tool_parser` expects (and `formatToolCall()` emits) tool calls like:
+`qwen3CoderProtocol` expects (and `formatToolCall()` emits) tool calls like:
 
 ```xml
 <tool_call>
@@ -74,12 +74,12 @@ Notes:
 
 ### Usage (preconfigured)
 
-Qwen3CoderToolParser middleware is exported via the `./community` entrypoint (`qwen3CoderToolParserMiddleware`):
+Qwen3Coder tool middleware is exported via the root package (`qwen3CoderToolMiddleware`):
 
 ```ts
 import { wrapLanguageModel, streamText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { qwen3CoderToolParserMiddleware } from "@ai-sdk-tool/parser/community";
+import { qwen3CoderToolMiddleware } from "@ai-sdk-tool/parser";
 
 const client = createOpenAICompatible({
   /* baseURL, apiKey */
@@ -88,7 +88,7 @@ const client = createOpenAICompatible({
 const result = streamText({
   model: wrapLanguageModel({
     model: client("your-model-name"),
-    middleware: qwen3CoderToolParserMiddleware,
+    middleware: qwen3CoderToolMiddleware,
   }),
   tools: {
     /* your tools */
@@ -115,10 +115,10 @@ for await (const part of result.fullStream) {
 If you want to bring your own system prompt, build middleware directly from the protocol:
 
 ```ts
-import { createToolMiddleware, qwen3coder_tool_parser } from "@ai-sdk-tool/parser";
+import { createToolMiddleware, qwen3CoderProtocol } from "@ai-sdk-tool/parser";
 
-export const myQwen3CoderToolParserMiddleware = createToolMiddleware({
-  protocol: qwen3coder_tool_parser,
+export const myQwen3CoderToolMiddleware = createToolMiddleware({
+  protocol: qwen3CoderProtocol,
   toolSystemPromptTemplate: (tools) => {
     // Return a system prompt that instructs the model to emit <tool_call> markup.
     return `Tools: ${JSON.stringify(tools)}`;

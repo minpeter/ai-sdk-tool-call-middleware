@@ -5,7 +5,7 @@ import type {
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import { transformParams } from "../../transform-handler";
-import { qwen3coder_tool_parser } from "../protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../protocols/qwen3coder-protocol";
 import {
   createQwen3CoderXmlToolResponseFormatter,
   formatToolResponseAsQwen3CoderXml,
@@ -108,7 +108,7 @@ describe("qwen3coder-prompt outer-layer transform", () => {
     ];
 
     const transformed = transformParams({
-      protocol: qwen3coder_tool_parser(),
+      protocol: qwen3CoderProtocol(),
       placement: "first",
       toolSystemPromptTemplate: qwen3coderSystemPromptTemplate,
       toolResponsePromptTemplate: formatToolResponseAsQwen3CoderXml,

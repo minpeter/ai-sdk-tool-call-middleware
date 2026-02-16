@@ -2,7 +2,7 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { jsonProtocol } from "../../core/protocols/json-protocol";
-import { qwen3coder_tool_parser } from "../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
 import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import { createChunkedStream, pipeWithTransformer } from "../test-helpers";
 
@@ -121,7 +121,7 @@ describe("Random chunk boundary fuzzing", () => {
     },
   ];
 
-  const qwen3CoderToolParserTestCases = [
+  const qwen3CoderProtocolTestCases = [
     {
       name: "simple Qwen3CoderToolParser tool call",
       input:
@@ -253,13 +253,13 @@ describe("Random chunk boundary fuzzing", () => {
     }
   });
 
-  describe("qwen3coder_tool_parser", () => {
-    for (const testCase of qwen3CoderToolParserTestCases) {
+  describe("qwen3CoderProtocol", () => {
+    for (const testCase of qwen3CoderProtocolTestCases) {
       describe(testCase.name, () => {
         it.each(
           Array.from({ length: FUZZ_ITERATIONS }, (_, i) => i)
         )("produces consistent results with random split seed %i", async (seed) => {
-          const protocol = qwen3coder_tool_parser();
+          const protocol = qwen3CoderProtocol();
           const transformer = protocol.createStreamParser({ tools: [] });
           const chunks = randomChunkSplit(testCase.input, 1, 8, seed);
           const stream = createChunkedStream(chunks);
@@ -398,11 +398,11 @@ describe("Single-character chunk streaming", () => {
     });
   });
 
-  describe("qwen3coder_tool_parser", () => {
+  describe("qwen3CoderProtocol", () => {
     it("parses Qwen3CoderToolParser tool call when streamed char-by-char", async () => {
       const input =
         "<tool_call><function=test><parameter=value>hello</parameter></function></tool_call>";
-      const protocol = qwen3coder_tool_parser();
+      const protocol = qwen3CoderProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);
@@ -418,7 +418,7 @@ describe("Single-character chunk streaming", () => {
     it("handles text + Qwen3CoderToolParser tool call + text char-by-char", async () => {
       const input =
         "Before <tool_call><function=x><parameter=a>1</parameter></function></tool_call> After";
-      const protocol = qwen3coder_tool_parser();
+      const protocol = qwen3CoderProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);
@@ -439,7 +439,7 @@ describe("Single-character chunk streaming", () => {
     it("handles multiple Qwen3CoderToolParser tool calls char-by-char", async () => {
       const input =
         "<tool_call><function=a><parameter=n>1</parameter></function></tool_call><tool_call><function=b><parameter=n>2</parameter></function></tool_call>";
-      const protocol = qwen3coder_tool_parser();
+      const protocol = qwen3CoderProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);

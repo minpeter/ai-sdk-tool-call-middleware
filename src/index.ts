@@ -6,7 +6,7 @@ export * from "./core/protocols/json-protocol";
 export * from "./core/protocols/protocol-interface";
 export {
   Qwen3CoderToolParser,
-  qwen3coder_tool_parser,
+  qwen3CoderProtocol,
   uiTarsXmlProtocol,
 } from "./core/protocols/qwen3coder-protocol";
 export type { XmlProtocolOptions } from "./core/protocols/xml-protocol";
