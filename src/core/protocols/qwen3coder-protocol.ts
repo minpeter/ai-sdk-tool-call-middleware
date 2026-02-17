@@ -41,6 +41,14 @@ const QWEN3CODER_TOOL_PARSER_PARAM_TAG_NAMES = new Set([
   "arg",
 ]);
 
+const QWEN3CODER_TOOL_PARSER_CALL_TAG_NAMES = new Set([
+  "function",
+  "call",
+  "tool",
+  "invoke",
+  "tool_call",
+]);
+
 const CALL_SHORTHAND_VALUE_RE =
   /^<\s*(call|function|tool|invoke)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))/i;
 
@@ -270,6 +278,46 @@ function findClosingTagEnd(
   }
 }
 
+function findClosingTagStartWithBoundary(
+  lowerText: string,
+  valueStart: number,
+  tagNameLower: string,
+  allowEndOfStringBoundary: boolean
+): number {
+  const needle = `</${tagNameLower}`;
+  let searchIndex = valueStart;
+
+  while (searchIndex < lowerText.length) {
+    const found = lowerText.indexOf(needle, searchIndex);
+    if (found === -1) {
+      return -1;
+    }
+    const nextChar = lowerText[found + needle.length] ?? "";
+    if (nextChar === "" && !allowEndOfStringBoundary) {
+      searchIndex = found + needle.length;
+      continue;
+    }
+    if (isTagBoundaryChar(nextChar)) {
+      return found;
+    }
+    searchIndex = found + needle.length;
+  }
+
+  return -1;
+}
+
+function toSupportedCallEndTagName(
+  tagNameLower: string | null | undefined
+): string | null {
+  const normalized = tagNameLower?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return null;
+  }
+  return QWEN3CODER_TOOL_PARSER_CALL_TAG_NAMES.has(normalized)
+    ? normalized
+    : null;
+}
+
 // vLLM reference (Qwen3CoderToolParser): tolerate missing </parameter> by treating
 // the next <parameter=...> / </function> boundary as an implicit close.
 // https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/vllm/tool_parsers/qwen3coder_tool_parser.py#L65-L68
@@ -277,15 +325,37 @@ function findClosingTagEnd(
 // https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/tests/tool_parsers/test_qwen3coder_tool_parser.py#L686-L764
 function findUnclosedParamBoundaryIndex(
   lowerText: string,
-  valueStart: number
+  valueStart: number,
+  callEndTagNameLower: string | null,
+  allowEndOfString: boolean
 ): number | null {
+  const normalizedCallEndTag = toSupportedCallEndTagName(callEndTagNameLower);
+  const callCloseIndex = normalizedCallEndTag
+    ? findClosingTagStartWithBoundary(
+        lowerText,
+        valueStart,
+        normalizedCallEndTag,
+        allowEndOfString
+      )
+    : findClosingTagStartWithBoundary(
+        lowerText,
+        valueStart,
+        "function",
+        allowEndOfString
+      );
+
   const indices = [
     lowerText.indexOf("<parameter", valueStart),
     lowerText.indexOf("<param", valueStart),
     lowerText.indexOf("<argument", valueStart),
     lowerText.indexOf("<arg", valueStart),
-    lowerText.indexOf("</function", valueStart),
-    lowerText.indexOf("</tool_call", valueStart),
+    callCloseIndex,
+    findClosingTagStartWithBoundary(
+      lowerText,
+      valueStart,
+      "tool_call",
+      allowEndOfString
+    ),
     lowerText.indexOf("<function", valueStart),
   ].filter((index) => index !== -1);
 
@@ -344,11 +414,14 @@ function parseQwen3CoderToolParserUnclosedParamValue(options: {
   openEnd: number;
   paramName: string;
   allowEndOfString: boolean;
+  callEndTagNameLower?: string | null;
 }): Qwen3CoderToolParserParamTagParseResult {
   const valueStart = options.openEnd + 1;
   const boundaryIndex = findUnclosedParamBoundaryIndex(
     options.lowerText,
-    valueStart
+    valueStart,
+    options.callEndTagNameLower ?? null,
+    options.allowEndOfString
   );
   if (boundaryIndex == null) {
     if (!options.allowEndOfString) {
@@ -385,6 +458,7 @@ function parseQwen3CoderToolParserParamTagAt(
   startIndex: number,
   options?: {
     allowEndOfString?: boolean;
+    callEndTagNameLower?: string | null;
   }
 ): Qwen3CoderToolParserParamTagParseResult | null {
   const tagNameParse = parseQwen3CoderToolParserParamTagNameLower(
@@ -436,6 +510,7 @@ function parseQwen3CoderToolParserParamTagAt(
       openEnd,
       paramName,
       allowEndOfString: options?.allowEndOfString === true,
+      callEndTagNameLower: options?.callEndTagNameLower,
     });
   }
 
@@ -586,7 +661,12 @@ function mergeParamValue(
   args[key] = [existing, value];
 }
 
-function extractParameters(xml: string): Record<string, unknown> {
+function extractParameters(
+  xml: string,
+  options?: {
+    callEndTagNameLower?: string | null;
+  }
+): Record<string, unknown> {
   const args: Record<string, unknown> = {};
 
   const lower = xml.toLowerCase();
@@ -598,6 +678,7 @@ function extractParameters(xml: string): Record<string, unknown> {
     }
     const parsed = parseQwen3CoderToolParserParamTagAt(xml, lower, lt, {
       allowEndOfString: true,
+      callEndTagNameLower: options?.callEndTagNameLower,
     });
     if (!parsed) {
       index = lt + 1;
@@ -631,6 +712,9 @@ function parseSingleFunctionCallXml(
     extractFirstTagText(xml, "name") ??
     extractFirstTagText(xml, "tool_name") ??
     fallbackToolName;
+  const callEndTagNameLower = toSupportedCallEndTagName(
+    openingTag ? getOpenTagNameLower(openingTag) : null
+  );
 
   if (!toolName || toolName.trim().length === 0) {
     return null;
@@ -638,7 +722,7 @@ function parseSingleFunctionCallXml(
 
   return {
     toolName,
-    args: extractParameters(xml),
+    args: extractParameters(xml, { callEndTagNameLower }),
   };
 }
 
@@ -736,12 +820,14 @@ function splitImplicitCallAndTail(callBlock: string): {
   trailingText: string;
 } {
   const openingTag = getOpeningTag(callBlock);
+  const openingTagName = toSupportedCallEndTagName(
+    openingTag ? getOpenTagNameLower(openingTag) : null
+  );
   const lowerCallBlock = callBlock.toLowerCase();
   let consumed = 0;
 
   if (openingTag) {
     consumed = openingTag.length;
-    const openingTagName = getOpenTagNameLower(openingTag);
     if (openingTagName) {
       const close = findClosingTagEnd(lowerCallBlock, consumed, openingTagName);
       if (close) {
@@ -763,6 +849,7 @@ function splitImplicitCallAndTail(callBlock: string): {
       lt,
       {
         allowEndOfString: true,
+        callEndTagNameLower: openingTagName,
       }
     );
     if (!parsed) {
@@ -1483,6 +1570,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
         const parsed = parseQwen3CoderToolParserParamTagAt(work, lower, lt, {
           allowEndOfString,
+          callEndTagNameLower: callState.endTagName,
         });
         if (!parsed) {
           index = lt + 1;
@@ -1641,7 +1729,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const beforeClose = callState.buffer.slice(0, closeStart);
       const afterClose = callState.buffer.slice(closeEnd);
 
-      parseCallContent(controller, callState, beforeClose, false);
+      parseCallContent(controller, callState, beforeClose, true);
       callState.buffer = "";
       finalizeStreamingCall(
         controller,
