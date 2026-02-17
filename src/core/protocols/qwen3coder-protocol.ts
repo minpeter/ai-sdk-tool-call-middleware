@@ -920,6 +920,123 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       return true;
     };
 
+    const emitWrapperlessCallParseFailureAsText = (raw: string) => {
+      options?.onError?.(
+        "Could not process Qwen3CoderToolParser <function> call; keeping original text.",
+        { toolCall: raw }
+      );
+      processedElements.push({ type: "text", text: raw });
+    };
+
+    const tryParseCallBlocksWithoutWrapperByImplicitStarts = (
+      sourceText: string,
+      starts: number[]
+    ): boolean => {
+      let index = 0;
+      for (let i = 0; i < starts.length; i += 1) {
+        const startIndex = starts[i] ?? -1;
+        if (startIndex < 0) {
+          continue;
+        }
+        const endIndex = starts[i + 1] ?? sourceText.length;
+
+        pushText(
+          stripTrailingToolCallCloseTags(
+            stripLeadingToolCallCloseTags(sourceText.slice(index, startIndex))
+          )
+        );
+
+        const full = sourceText.slice(startIndex, endIndex);
+        const { callContent, trailingText } = splitImplicitCallAndTail(full);
+        const parsed = parseSingleFunctionCallXml(callContent, null);
+        if (parsed) {
+          emitToolCalls([parsed]);
+          pushText(
+            stripTrailingToolCallCloseTags(
+              stripLeadingToolCallCloseTags(trailingText)
+            )
+          );
+        } else {
+          emitWrapperlessCallParseFailureAsText(full);
+        }
+
+        index = endIndex;
+      }
+
+      pushText(
+        stripTrailingToolCallCloseTags(
+          stripLeadingToolCallCloseTags(sourceText.slice(index))
+        )
+      );
+      return true;
+    };
+
+    const tryParseCallBlocksWithoutWrapperByMatches = (
+      sourceText: string,
+      matches: RegExpMatchArray[]
+    ): boolean => {
+      let index = 0;
+      for (const match of matches) {
+        const full = match[0];
+        const startIndex = match.index ?? -1;
+        if (!full || startIndex < 0) {
+          continue;
+        }
+
+        pushText(
+          stripTrailingToolCallCloseTags(
+            stripLeadingToolCallCloseTags(sourceText.slice(index, startIndex))
+          )
+        );
+
+        const parsed = parseSingleFunctionCallXml(full, null);
+        if (parsed) {
+          emitToolCalls([parsed]);
+        } else {
+          emitWrapperlessCallParseFailureAsText(full);
+        }
+        index = startIndex + full.length;
+      }
+
+      pushText(
+        stripTrailingToolCallCloseTags(
+          stripLeadingToolCallCloseTags(sourceText.slice(index))
+        )
+      );
+      return true;
+    };
+
+    // vLLM reference (Qwen3CoderToolParser): fallback extraction still attempts to
+    // parse when XML wrapper tags are missing (raw output starts with <function=...>).
+    // https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/vllm/tool_parsers/qwen3coder_tool_parser.py#L271-L289
+    // https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/tests/tool_parsers/test_qwen3coder_tool_parser.py#L356-L377
+    const tryParseCallBlocksWithoutWrapperText = (
+      sourceText: string
+    ): boolean => {
+      const matches = Array.from(sourceText.matchAll(CALL_BLOCK_RE));
+      if (matches.length > 0) {
+        return tryParseCallBlocksWithoutWrapperByMatches(sourceText, matches);
+      }
+
+      const starts = findImplicitCallOpenIndices(sourceText.toLowerCase());
+      if (starts.length === 0) {
+        return false;
+      }
+      return tryParseCallBlocksWithoutWrapperByImplicitStarts(
+        sourceText,
+        starts
+      );
+    };
+
+    const pushTextOrParseWrapperlessCalls = (segment: string) => {
+      if (segment.length === 0) {
+        return;
+      }
+      if (!tryParseCallBlocksWithoutWrapperText(segment)) {
+        pushText(segment);
+      }
+    };
+
     // vLLM reference (Qwen3CoderToolParser): allow trailing, incomplete <tool_call>
     // blocks ("<tool_call>...$"), and still attempt best-effort parsing.
     // https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/vllm/tool_parsers/qwen3coder_tool_parser.py#L55-L61
@@ -930,11 +1047,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const lowerRemainder = remainder.toLowerCase();
       const trailingIndex = lowerRemainder.indexOf("<tool_call");
       if (trailingIndex === -1) {
-        pushText(remainder);
+        pushTextOrParseWrapperlessCalls(remainder);
         return;
       }
 
-      pushText(remainder.slice(0, trailingIndex));
+      pushTextOrParseWrapperlessCalls(remainder.slice(0, trailingIndex));
       const trailing = remainder.slice(trailingIndex);
       const synthetic = TOOL_CALL_CLOSE_RE.test(trailing)
         ? trailing
@@ -956,7 +1073,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           continue;
         }
 
-        pushText(text.slice(index, startIndex));
+        pushTextOrParseWrapperlessCalls(text.slice(index, startIndex));
         tryEmitToolCallSegment(full);
         index = startIndex + full.length;
       }
@@ -981,93 +1098,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       return true;
     };
 
-    // vLLM reference (Qwen3CoderToolParser): fallback extraction still attempts to
-    // parse when XML wrapper tags are missing (raw output starts with <function=...>).
-    // https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/vllm/tool_parsers/qwen3coder_tool_parser.py#L271-L289
-    // https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/tests/tool_parsers/test_qwen3coder_tool_parser.py#L356-L377
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Wrapperless fallback combines multiple recovery branches to preserve vLLM-compatible behavior.
     const tryParseCallBlocksWithoutWrapper = (): boolean => {
-      const matches = Array.from(text.matchAll(CALL_BLOCK_RE));
-      if (matches.length === 0) {
-        const starts = findImplicitCallOpenIndices(text.toLowerCase());
-        if (starts.length === 0) {
-          return false;
-        }
-        let index = 0;
-        for (let i = 0; i < starts.length; i += 1) {
-          const startIndex = starts[i] ?? -1;
-          if (startIndex < 0) {
-            continue;
-          }
-          const endIndex = starts[i + 1] ?? text.length;
-
-          pushText(
-            stripTrailingToolCallCloseTags(
-              stripLeadingToolCallCloseTags(text.slice(index, startIndex))
-            )
-          );
-
-          const full = text.slice(startIndex, endIndex);
-          const { callContent, trailingText } = splitImplicitCallAndTail(full);
-          const parsed = parseSingleFunctionCallXml(callContent, null);
-          if (parsed) {
-            emitToolCalls([parsed]);
-            pushText(
-              stripTrailingToolCallCloseTags(
-                stripLeadingToolCallCloseTags(trailingText)
-              )
-            );
-          } else {
-            options?.onError?.(
-              "Could not process Qwen3CoderToolParser <function> call; keeping original text.",
-              { toolCall: full }
-            );
-            processedElements.push({ type: "text", text: full });
-          }
-
-          index = endIndex;
-        }
-
-        pushText(
-          stripTrailingToolCallCloseTags(
-            stripLeadingToolCallCloseTags(text.slice(index))
-          )
-        );
-        return true;
-      }
-
-      let index = 0;
-      for (const match of matches) {
-        const full = match[0];
-        const startIndex = match.index ?? -1;
-        if (!full || startIndex < 0) {
-          continue;
-        }
-
-        pushText(
-          stripTrailingToolCallCloseTags(
-            stripLeadingToolCallCloseTags(text.slice(index, startIndex))
-          )
-        );
-        const parsed = parseSingleFunctionCallXml(full, null);
-        if (parsed) {
-          emitToolCalls([parsed]);
-        } else {
-          options?.onError?.(
-            "Could not process Qwen3CoderToolParser <function> call; keeping original text.",
-            { toolCall: full }
-          );
-          processedElements.push({ type: "text", text: full });
-        }
-        index = startIndex + full.length;
-      }
-
-      pushText(
-        stripTrailingToolCallCloseTags(
-          stripLeadingToolCallCloseTags(text.slice(index))
-        )
-      );
-      return true;
+      return tryParseCallBlocksWithoutWrapperText(text);
     };
 
     const tryParseSingleFunctionCall = (): boolean => {
@@ -1134,6 +1166,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       toolName: string | null;
       hasEmittedStart: boolean;
       emittedInput: string;
+      raw: string;
       args: Record<string, unknown>;
       buffer: string;
     }
@@ -1220,14 +1253,19 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     const finalizeCall = (
       controller: StreamController,
       callState: StreamingCallState,
-      fallbackToolName: string | null
+      fallbackToolName: string | null,
+      rawToolCallText: string | null = null
     ): boolean => {
       const resolvedToolName = callState.toolName ?? fallbackToolName;
       if (!resolvedToolName || resolvedToolName.trim().length === 0) {
+        const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
         options?.onError?.(
-          "Could not resolve Qwen3CoderToolParser tool name for tool call",
+          shouldEmitRaw && rawToolCallText
+            ? "Could not resolve Qwen3CoderToolParser tool name for tool call; emitting original text."
+            : "Could not resolve Qwen3CoderToolParser tool name for tool call",
           {
             toolCallId: callState.toolCallId,
+            toolCall: rawToolCallText,
           }
         );
         if (callState.hasEmittedStart) {
@@ -1235,6 +1273,9 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             type: "tool-input-end",
             id: callState.toolCallId,
           });
+        }
+        if (shouldEmitRaw && rawToolCallText) {
+          flushText(controller, rawToolCallText);
         }
         return false;
       }
@@ -1381,6 +1422,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       fallbackToolName: string | null
     ): { done: boolean; remainder: string } => {
       callState.buffer += incoming;
+      callState.raw += incoming;
 
       const closeMatch = getCloseTagPattern(callState.endTagName).exec(
         callState.buffer
@@ -1402,7 +1444,16 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
       parseCallContent(controller, callState, beforeClose, false);
       callState.buffer = "";
-      const ok = finalizeCall(controller, callState, fallbackToolName);
+      const rawToolCallText =
+        afterClose.length > 0 && callState.raw.endsWith(afterClose)
+          ? callState.raw.slice(0, -afterClose.length)
+          : callState.raw;
+      const ok = finalizeCall(
+        controller,
+        callState,
+        fallbackToolName,
+        rawToolCallText
+      );
       if (ok && toolCall) {
         toolCall.emittedToolCallCount += 1;
       }
@@ -1423,7 +1474,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       );
       const trailingText = stripLeadingCallCloseTags(callState.buffer);
       callState.buffer = "";
-      const ok = finalizeCall(controller, callState, fallbackToolName);
+      const ok = finalizeCall(controller, callState, fallbackToolName, null);
       return {
         ok,
         trailingText: ok ? trailingText : "",
@@ -1538,6 +1589,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         toolName: toolNameAttr,
         hasEmittedStart: false,
         emittedInput: "",
+        raw: openTag,
         args: {},
         buffer: "",
       };
@@ -1547,7 +1599,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
 
       if (selfClosing) {
-        finalizeCall(controller, newCall, toolNameAttr);
+        finalizeCall(controller, newCall, toolNameAttr, newCall.raw);
         return;
       }
 
@@ -1638,6 +1690,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               toolName: toolCall.outerNameAttr,
               hasEmittedStart: false,
               emittedInput: "",
+              raw: toolCall.outerOpenTag,
               args: {},
               buffer: "",
             };
@@ -1754,10 +1807,16 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               toolName: toolNameAttr,
               hasEmittedStart: false,
               emittedInput: "",
+              raw: openTag,
               args: {},
               buffer: "",
             };
-            const ok = finalizeCall(controller, immediateCall, toolNameAttr);
+            const ok = finalizeCall(
+              controller,
+              immediateCall,
+              toolNameAttr,
+              immediateCall.raw
+            );
             if (ok) {
               toolCall.emittedToolCallCount += 1;
             }
@@ -1773,6 +1832,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             toolName: toolNameAttr,
             hasEmittedStart: false,
             emittedInput: "",
+            raw: openTag,
             args: {},
             buffer: "",
           };
@@ -1851,6 +1911,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
                 toolName: toolCall.outerNameAttr,
                 hasEmittedStart: false,
                 emittedInput: "",
+                raw: toolCall.outerOpenTag,
                 args: {},
                 buffer: "",
               };

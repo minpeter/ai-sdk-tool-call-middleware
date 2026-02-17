@@ -280,6 +280,40 @@ describe("qwen3CoderProtocol", () => {
     expect(JSON.parse(call.input)).toEqual({ x: "1" });
   });
 
+  it("parses wrapperless <function> calls even when wrapped <tool_call> blocks are present", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const text = [
+      "before ",
+      "<function=beta><parameter=y>2</parameter></function>",
+      " middle ",
+      "<tool_call><function=alpha><parameter=x>1</parameter></function></tool_call>",
+      " after",
+    ].join("");
+
+    const out = p.parseGeneratedText({ text, tools });
+    expect(out.map((part) => part.type)).toEqual([
+      "text",
+      "tool-call",
+      "text",
+      "tool-call",
+      "text",
+    ]);
+
+    const calls = out.filter((part) => part.type === "tool-call");
+    expect(calls).toHaveLength(2);
+    const first = calls[0];
+    const second = calls[1];
+    if (first?.type !== "tool-call" || second?.type !== "tool-call") {
+      throw new Error("Expected tool-call parts");
+    }
+
+    expect(first.toolName).toBe("beta");
+    expect(JSON.parse(first.input)).toEqual({ y: "2" });
+    expect(second.toolName).toBe("alpha");
+    expect(JSON.parse(second.input)).toEqual({ x: "1" });
+  });
+
   it("ignores stray leading </tool_call> close tags before a <function> block", () => {
     const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
