@@ -4,10 +4,10 @@ import { coerceToolCallInput } from "./tool-call-coercion";
 type OnErrorFn = (message: string, metadata?: Record<string, unknown>) => void;
 
 interface ParseToolChoiceOptions {
+  errorMessage: string;
+  onError?: OnErrorFn;
   text: string;
   tools: LanguageModelV3FunctionTool[];
-  onError?: OnErrorFn;
-  errorMessage: string;
 }
 
 function ensureNonEmptyToolName(name: unknown): string {

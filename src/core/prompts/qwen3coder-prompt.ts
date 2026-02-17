@@ -27,8 +27,8 @@ const QWEN3CODER_TOOL_CALL_INSTRUCTIONS =
 type Mapping = Record<string, unknown>;
 
 interface Qwen3CoderToolShape extends Mapping {
-  name?: unknown;
   description?: unknown;
+  name?: unknown;
   parameters?: unknown;
 }
 

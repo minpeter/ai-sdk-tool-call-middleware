@@ -345,8 +345,8 @@ function repairParsedAgainstSchema(input: unknown, schema: unknown): unknown {
 }
 
 interface PropSchema {
-  type?: string;
   items?: unknown;
+  type?: string;
 }
 
 function applySchemaProps(

@@ -50,10 +50,10 @@ const PLAIN_MAPPING_VALUE_RE = /^[^:[\]{}-][^:]*:\s*(.+)$/;
 const PLAIN_SEQUENCE_VALUE_RE = /^-\s+(.+)$/;
 
 interface LastMeaningfulLineInfo {
+  indent: number;
   index: number;
   raw: string;
   trimmed: string;
-  indent: number;
 }
 
 function normalizeYamlContent(yamlContent: string): {
@@ -378,10 +378,10 @@ function findEarliestTagPosition(
  * Find all tool calls in the text for the given tool names.
  */
 interface ToolCallMatch {
-  toolName: string;
-  startIndex: number;
-  endIndex: number;
   content: string;
+  endIndex: number;
+  startIndex: number;
+  toolName: string;
 }
 
 function collectToolCallsForName(

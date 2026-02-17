@@ -1376,24 +1376,24 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     type ToolCallMode = "unknown" | "single" | "multi";
 
     interface StreamingCallState {
-      endTagName: string;
-      toolCallId: string;
-      toolName: string | null;
-      hasEmittedStart: boolean;
-      emittedInput: string;
-      raw: string;
       args: Record<string, unknown>;
       buffer: string;
+      emittedInput: string;
+      endTagName: string;
+      hasEmittedStart: boolean;
+      raw: string;
+      toolCallId: string;
+      toolName: string | null;
     }
 
     interface ToolCallContainerState {
-      outerOpenTag: string;
-      outerNameAttr: string | null;
-      raw: string;
-      mode: ToolCallMode;
-      innerBuffer: string;
       activeCall: StreamingCallState | null;
       emittedToolCallCount: number;
+      innerBuffer: string;
+      mode: ToolCallMode;
+      outerNameAttr: string | null;
+      outerOpenTag: string;
+      raw: string;
     }
 
     let buffer = "";

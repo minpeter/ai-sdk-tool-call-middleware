@@ -7,20 +7,20 @@ import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
 import { generateToolCallId } from "./id";
 
 interface ToolCallCandidate {
-  toolName: string;
   input: string;
+  toolName: string;
 }
 
 interface JsonCandidate {
-  text: string;
-  startIndex: number;
   endIndex: number;
+  startIndex: number;
+  text: string;
 }
 
 interface JsonScanState {
   depth: number;
-  inString: boolean;
   escaping: boolean;
+  inString: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -41,6 +41,10 @@ function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
 }
 
 interface ProcessToolCallParams {
+  options?: ParserOptions;
+  parseOptions?: Record<string, unknown>;
+  processedElements: LanguageModelV3Content[];
+  text: string;
   toolCall: {
     toolName: string;
     content: string;
@@ -48,10 +52,6 @@ interface ProcessToolCallParams {
     endIndex: number;
   };
   tools: LanguageModelV3FunctionTool[];
-  options?: ParserOptions;
-  text: string;
-  processedElements: LanguageModelV3Content[];
-  parseOptions?: Record<string, unknown>;
 }
 
 function processToolCall(params: ProcessToolCallParams): void {
@@ -89,17 +89,17 @@ function processToolCall(params: ProcessToolCallParams): void {
 }
 
 interface HandleStreamingToolCallEndParams {
-  toolContent: string;
+  ctrl: TransformStreamDefaultController<LanguageModelV3StreamPart>;
   currentToolCall: {
     name: string;
     toolCallId: string;
     emittedInput: string;
   };
-  tools: LanguageModelV3FunctionTool[];
-  options?: ParserOptions;
-  ctrl: TransformStreamDefaultController<LanguageModelV3StreamPart>;
   flushText: FlushTextFn;
+  options?: ParserOptions;
   parseOptions?: Record<string, unknown>;
+  toolContent: string;
+  tools: LanguageModelV3FunctionTool[];
 }
 
 function parseXmlTagName(rawTagBody: string): string {
@@ -702,9 +702,9 @@ function nextTagToken(
 }
 
 interface ToolTagMatch {
-  tagStart: number;
   isSelfClosing: boolean;
   tagLength: number;
+  tagStart: number;
 }
 
 function findNextToolTag(
@@ -1194,27 +1194,27 @@ function findPotentialToolTagStart(
 }
 
 interface StreamingToolCallState {
+  emittedInput: string;
+  lastProgressFullInput: string | null;
+  lastProgressGtIndex: number | null;
   name: string;
   toolCallId: string;
-  emittedInput: string;
-  lastProgressGtIndex: number | null;
-  lastProgressFullInput: string | null;
 }
 
 interface ProcessToolCallInBufferParams {
   buffer: string;
-  currentToolCall: StreamingToolCallState;
-  tools: LanguageModelV3FunctionTool[];
-  options?: ParserOptions;
   controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
-  flushText: FlushTextFn;
-  setBuffer: (buffer: string) => void;
-  parseOptions?: Record<string, unknown>;
+  currentToolCall: StreamingToolCallState;
   emitToolInputProgress: (
     controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
     currentToolCall: StreamingToolCallState,
     toolContent: string
   ) => void;
+  flushText: FlushTextFn;
+  options?: ParserOptions;
+  parseOptions?: Record<string, unknown>;
+  setBuffer: (buffer: string) => void;
+  tools: LanguageModelV3FunctionTool[];
 }
 
 function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
@@ -1268,17 +1268,17 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
 
 interface ProcessNoToolCallInBufferParams {
   buffer: string;
-  toolNames: string[];
   controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
-  flushText: FlushTextFn;
-  tools: LanguageModelV3FunctionTool[];
-  options?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
-  setBuffer: (buffer: string) => void;
   emitToolInputStart: (
     controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
     toolName: string
   ) => StreamingToolCallState;
+  flushText: FlushTextFn;
+  options?: ParserOptions;
+  parseOptions?: Record<string, unknown>;
+  setBuffer: (buffer: string) => void;
+  toolNames: string[];
+  tools: LanguageModelV3FunctionTool[];
 }
 
 function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {

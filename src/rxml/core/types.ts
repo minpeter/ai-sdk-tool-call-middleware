@@ -12,40 +12,15 @@ export type OnErrorFn = (
  * Represents a parsed XML node in the DOM tree
  */
 export interface RXMLNode {
-  tagName: string;
   attributes: Record<string, string | null>;
   children: (RXMLNode | string)[];
+  tagName: string;
 }
 
 /**
  * Options for XML parsing
  */
 export interface ParseOptions {
-  /** Position to start parsing from (for streaming) */
-  pos?: number;
-  /** Array of tag names that don't have children and don't need to be closed */
-  noChildNodes?: string[];
-  /** Whether to set position information in result */
-  setPos?: boolean;
-  /** Keep comments in the parsed result */
-  keepComments?: boolean;
-  /** Keep whitespace like spaces, tabs and line breaks as string content */
-  keepWhitespace?: boolean;
-  /** Name of the text node property (default: "#text") */
-  textNodeName?: string;
-  /** Whether to throw on duplicate string tags */
-  throwOnDuplicateStringTags?: boolean;
-  /** Error handling callback */
-  onError?: OnErrorFn;
-  /**
-   * Apply internal repair heuristics for fragment parsing.
-   * When enabled, parsing attempts normalization/repair before throwing.
-   */
-  repair?: boolean;
-  /** Maximum reparses when repair heuristics are enabled */
-  maxReparses?: number;
-  /** Whether to parse a single node instead of children */
-  parseNode?: boolean;
   /** Filter function for nodes */
   filter?: (
     node: RXMLNode,
@@ -53,18 +28,45 @@ export interface ParseOptions {
     depth: number,
     path: string
   ) => boolean;
+  /** Keep comments in the parsed result */
+  keepComments?: boolean;
+  /** Keep whitespace like spaces, tabs and line breaks as string content */
+  keepWhitespace?: boolean;
+  /** Maximum reparses when repair heuristics are enabled */
+  maxReparses?: number;
+  /** Array of tag names that don't have children and don't need to be closed */
+  noChildNodes?: string[];
+  /** Error handling callback */
+  onError?: OnErrorFn;
+  /** Whether to parse a single node instead of children */
+  parseNode?: boolean;
+  /** Position to start parsing from (for streaming) */
+  pos?: number;
+  /**
+   * Apply internal repair heuristics for fragment parsing.
+   * When enabled, parsing attempts normalization/repair before throwing.
+   */
+  repair?: boolean;
+  /** Whether to set position information in result */
+  setPos?: boolean;
   /** Simplify the result structure */
   simplify?: boolean;
+  /** Name of the text node property (default: "#text") */
+  textNodeName?: string;
+  /** Whether to throw on duplicate string tags */
+  throwOnDuplicateStringTags?: boolean;
 }
 
 /**
  * Options for XML stringification
  */
 export interface StringifyOptions {
+  /**
+   * Whether to include the XML declaration
+   */
+  declaration?: boolean;
   /** Whether to format the output with indentation */
   format?: boolean;
-  /** Whether to suppress empty nodes */
-  suppressEmptyNode?: boolean;
   /**
    * Whether to use minimal escaping per XML 1.0:
    * - In character data: escape '&' and '<' (and '>' only in ']]>' sequence)
@@ -81,18 +83,16 @@ export interface StringifyOptions {
    * (e.g., <item checked>), for compatibility with existing outputs.
    */
   strictBooleanAttributes?: boolean;
-  /**
-   * Whether to include the XML declaration
-   */
-  declaration?: boolean;
+  /** Whether to suppress empty nodes */
+  suppressEmptyNode?: boolean;
 }
 
 /**
  * Result of parsing with position information
  */
 export interface ParseResult {
-  result: (RXMLNode | string)[];
   pos: number;
+  result: (RXMLNode | string)[];
 }
 
 /**

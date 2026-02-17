@@ -33,8 +33,8 @@ const prompt = [
 ].join("\n");
 
 interface ToolInputState {
-  toolName: string;
   inputText: string;
+  toolName: string;
 }
 
 interface StreamState {

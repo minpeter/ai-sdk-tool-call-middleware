@@ -2,22 +2,22 @@ const REASONING_COLOR = "\x1b[33m";
 const RESET_COLOR = "\x1b[0m";
 
 interface ToolCallLike {
+  input?: unknown;
   toolCallId?: string;
   toolName?: string;
-  input?: unknown;
 }
 
 interface ToolResultLike {
-  toolCallId?: string;
-  toolName?: string;
   input?: unknown;
   output?: unknown;
+  toolCallId?: string;
+  toolName?: string;
 }
 
 interface StepLike {
-  text?: unknown;
   reasoning?: unknown;
   reasoningText?: unknown;
+  text?: unknown;
   toolCalls?: ToolCallLike[];
   toolResults?: ToolResultLike[];
 }

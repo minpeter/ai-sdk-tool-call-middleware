@@ -31,8 +31,8 @@ export const originalToolsSchema = {
 };
 
 interface EncodedOriginalTool {
-  name: string;
   inputSchema: string; // stringified JSONSchema7
+  name: string;
 }
 
 interface DecodeOriginalToolsOptions {
