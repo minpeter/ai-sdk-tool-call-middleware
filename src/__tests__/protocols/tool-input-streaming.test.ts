@@ -1009,6 +1009,29 @@ describe("tool-input streaming events", () => {
     expect(leakedText).toContain("<function><parameter=x>1</parameter>");
   });
 
+  it("Qwen3CoderToolParser keeps implicit-call-like tags without tool identifier as text", async () => {
+    const protocol = qwen3CoderProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const input = "before <function>docs</function> after";
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream(["before <function>docs", "</function> after"]),
+        transformer
+      )
+    );
+
+    const textOut = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-start")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(textOut).toBe(input);
+  });
+
   it("Qwen3CoderToolParser suppresses buffered partial tool_call at finish by default", async () => {
     const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });

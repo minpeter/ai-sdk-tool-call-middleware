@@ -1767,8 +1767,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return;
       }
 
-      const toolNameAttr =
+      const inlineToolName =
         getAttributeValue(openTag, "name") ?? getShorthandValue(openTag);
+      if (!inlineToolName || inlineToolName.trim().length === 0) {
+        return;
+      }
       const selfClosing =
         QWEN3CODER_TOOL_PARSER_STREAM_SELF_CLOSING_TAG_RE.test(openTag);
 
@@ -1777,7 +1780,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const newCall: StreamingCallState = {
         endTagName: callTagName,
         toolCallId: generateToolCallId(),
-        toolName: toolNameAttr,
+        toolName: inlineToolName,
         hasEmittedStart: false,
         emittedInput: "",
         raw: openTag,
@@ -1785,12 +1788,10 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         buffer: "",
       };
 
-      if (toolNameAttr) {
-        maybeEmitToolInputStart(controller, newCall);
-      }
+      maybeEmitToolInputStart(controller, newCall);
 
       if (selfClosing) {
-        finalizeCall(controller, newCall, toolNameAttr, newCall.raw);
+        finalizeCall(controller, newCall, inlineToolName, newCall.raw);
         return;
       }
 
