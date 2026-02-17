@@ -68,4 +68,45 @@ describe("toolRoleContentToUserTextMessage", () => {
       ],
     });
   });
+
+  it("does not merge adjacent text parts when providerOptions are present", () => {
+    const result = toolRoleContentToUserTextMessage({
+      toolContent: [
+        {
+          type: "tool-result",
+          toolCallId: "tc1",
+          toolName: "get_weather",
+          output: { type: "json", value: { temperature: 21 } },
+        },
+      ] as ToolContent,
+      toolResponsePromptTemplate: () => [
+        {
+          type: "text",
+          text: "first",
+          providerOptions: { providerA: { mode: "x" } },
+        },
+        {
+          type: "text",
+          text: "second",
+          providerOptions: { providerA: { mode: "y" } },
+        },
+      ],
+    });
+
+    expect(result).toEqual({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "first",
+          providerOptions: { providerA: { mode: "x" } },
+        },
+        {
+          type: "text",
+          text: "second",
+          providerOptions: { providerA: { mode: "y" } },
+        },
+      ],
+    });
+  });
 });

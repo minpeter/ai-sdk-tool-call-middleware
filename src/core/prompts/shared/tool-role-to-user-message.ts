@@ -63,7 +63,12 @@ function mergeAdjacentTextParts(
 
   for (const part of parts) {
     const last = merged.at(-1);
-    if (part.type === "text" && last?.type === "text") {
+    const canMergeTextParts =
+      part.type === "text" &&
+      last?.type === "text" &&
+      part.providerOptions === undefined &&
+      last.providerOptions === undefined;
+    if (canMergeTextParts) {
       last.text += part.text;
       continue;
     }

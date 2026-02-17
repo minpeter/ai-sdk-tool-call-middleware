@@ -1664,7 +1664,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const ok = finalizeCall(controller, callState, fallbackToolName, null);
       return {
         ok,
-        trailingText: ok ? trailingText : "",
+        trailingText,
       };
     };
 
@@ -2052,18 +2052,17 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
     const reportUnfinishedImplicitCallAtFinish = (
       controller: StreamController,
-      openTag: string,
-      callState: StreamingCallState
+      rawCallText: string
     ) => {
       const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
       options?.onError?.(
         shouldEmitRaw
           ? "Could not complete streaming Qwen3CoderToolParser call block at finish; emitting original text."
           : "Could not complete streaming Qwen3CoderToolParser call block at finish.",
-        { toolCall: openTag }
+        { toolCall: rawCallText }
       );
       if (shouldEmitRaw) {
-        flushText(controller, openTag + callState.buffer);
+        flushText(controller, rawCallText);
       }
     };
 
@@ -2115,9 +2114,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             );
             if (result.ok) {
               toolCall.emittedToolCallCount += 1;
-              if (result.trailingText.length > 0) {
-                flushText(controller, result.trailingText);
-              }
+            }
+            const shouldFlushTrailingText =
+              result.ok || !shouldEmitRawToolCallTextOnError(options);
+            if (shouldFlushTrailingText && result.trailingText.length > 0) {
+              flushText(controller, result.trailingText);
             }
             if (!result.ok && toolCall.emittedToolCallCount === 0) {
               reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
@@ -2131,10 +2132,13 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               );
               if (result.ok) {
                 toolCall.emittedToolCallCount += 1;
-                if (result.trailingText.length > 0) {
-                  flushText(controller, result.trailingText);
-                }
-              } else if (toolCall.emittedToolCallCount === 0) {
+              }
+              const shouldFlushTrailingText =
+                result.ok || !shouldEmitRawToolCallTextOnError(options);
+              if (shouldFlushTrailingText && result.trailingText.length > 0) {
+                flushText(controller, result.trailingText);
+              }
+              if (!result.ok && toolCall.emittedToolCallCount === 0) {
                 reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
               }
               toolCall.activeCall = null;
@@ -2156,11 +2160,16 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         implicitCallOpenTag = null;
 
         const result = finalizeCallAtFinish(controller, callState, null);
-        if (result.ok && result.trailingText.length > 0) {
+        const shouldFlushTrailingText =
+          result.ok || !shouldEmitRawToolCallTextOnError(options);
+        if (shouldFlushTrailingText && result.trailingText.length > 0) {
           flushText(controller, result.trailingText);
         }
         if (!result.ok && openTag) {
-          reportUnfinishedImplicitCallAtFinish(controller, openTag, callState);
+          reportUnfinishedImplicitCallAtFinish(
+            controller,
+            callState.raw || openTag + callState.buffer
+          );
         }
       } else {
         stripLeadingToolCallCloseTagsFromBuffer();
