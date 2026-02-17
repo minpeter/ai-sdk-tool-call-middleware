@@ -13,8 +13,8 @@ import { escapeRegExp } from "../utils/regex";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
 interface JsonProtocolOptions {
-  toolCallStart?: string;
   toolCallEnd?: string;
+  toolCallStart?: string;
 }
 
 function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
@@ -58,11 +58,11 @@ function processToolCallJson(
 }
 
 interface ParseContext {
-  match: RegExpExecArray;
-  text: string;
   currentIndex: number;
-  processedElements: LanguageModelV3Content[];
+  match: RegExpExecArray;
   options?: ParserOptions;
+  processedElements: LanguageModelV3Content[];
+  text: string;
 }
 
 function processMatchedToolCall(context: ParseContext): number {
@@ -83,27 +83,27 @@ function processMatchedToolCall(context: ParseContext): number {
 }
 
 interface StreamState {
-  isInsideToolCall: boolean;
-  buffer: string;
-  currentToolCallJson: string;
-  currentTextId: string | null;
-  hasEmittedTextStart: boolean;
   activeToolInput: {
     id: string;
     toolName: string;
     emittedInput: string;
   } | null;
+  buffer: string;
+  currentTextId: string | null;
+  currentToolCallJson: string;
+  hasEmittedTextStart: boolean;
+  isInsideToolCall: boolean;
 }
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV3StreamPart>;
 
 interface TagProcessingContext {
-  state: StreamState;
   controller: StreamController;
-  toolCallStart: string;
-  toolCallEnd: string;
   options?: ParserOptions;
+  state: StreamState;
+  toolCallEnd: string;
+  toolCallStart: string;
 }
 
 const WHITESPACE_JSON_REGEX = /\s/;

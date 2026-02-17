@@ -70,9 +70,9 @@ function some<T, R>(
 
 // Type for the specification of a single token type
 interface TokenSpec {
-  re: RegExp;
   // Function to process the regex match and return a RawToken
   f: (match: RegExpExecArray) => RawToken;
+  re: RegExp;
 }
 
 // Literal types for possible token types
@@ -92,8 +92,8 @@ type TokenType =
 // Type for a token right after regex matching, before line number is added
 // Value is optional as punctuation/whitespace tokens might not have a semantic value
 interface RawToken {
-  type: TokenType;
   match: string; // The raw matched text
+  type: TokenType;
   value?: unknown; // The parsed value (for strings, numbers, atoms)
 }
 
@@ -104,18 +104,18 @@ type Token = RawToken & {
 
 // Type for parse warnings
 interface ParseWarning {
-  message: string;
   line: number;
+  message: string;
 }
 
 // Type for the state object used during parsing
 interface ParseState {
+  duplicate: boolean; // true = allow duplicate keys (use last value), false = reject duplicate keys with error
   pos: number; // Current position in the token array
-  warnings: ParseWarning[];
+  reviver?: (key: string, value: unknown) => unknown; // Optional JSON reviver function
   // Options passed to the parser
   tolerant: boolean;
-  duplicate: boolean; // true = allow duplicate keys (use last value), false = reject duplicate keys with error
-  reviver?: (key: string, value: unknown) => unknown; // Optional JSON reviver function
+  warnings: ParseWarning[];
 }
 
 /**
@@ -123,17 +123,25 @@ interface ParseState {
  */
 interface ParseOptions {
   /**
+   * Allow duplicate object keys in JSON.
+   * - true: Allow duplicates (uses last value, like native JSON.parse)
+   * - false: Reject duplicates with error (enforces JSON specification)
+   * @default false
+   */
+  duplicate?: boolean;
+  /**
    * Enable relaxed JSON syntax parsing (unquoted keys, single quotes, trailing commas, comments)
    * @default true
    */
   relaxed?: boolean;
 
   /**
-   * Collect parsing warnings instead of throwing immediately. Implies tolerant mode.
-   * At the end of parsing, if warnings exist, throws with warning details.
-   * @default false
+   * Optional reviver function to transform parsed values (same as JSON.parse reviver)
+   * @param key - The object key or array index
+   * @param value - The parsed value
+   * @returns The transformed value
    */
-  warnings?: boolean;
+  reviver?: (key: string, value: unknown) => unknown;
 
   /**
    * Continue parsing when encountering recoverable errors, collecting warnings.
@@ -143,28 +151,19 @@ interface ParseOptions {
   tolerant?: boolean;
 
   /**
-   * Allow duplicate object keys in JSON.
-   * - true: Allow duplicates (uses last value, like native JSON.parse)
-   * - false: Reject duplicates with error (enforces JSON specification)
+   * Collect parsing warnings instead of throwing immediately. Implies tolerant mode.
+   * At the end of parsing, if warnings exist, throws with warning details.
    * @default false
    */
-  duplicate?: boolean;
-
-  /**
-   * Optional reviver function to transform parsed values (same as JSON.parse reviver)
-   * @param key - The object key or array index
-   * @param value - The parsed value
-   * @returns The transformed value
-   */
-  reviver?: (key: string, value: unknown) => unknown;
+  warnings?: boolean;
 }
 
 // Type for options specific to the parseMany function
 interface ParseManyOpts<T> {
-  skip: TokenType[]; // Token types to skip initially
-  elementParser: (tokens: Token[], state: ParseState, obj: T) => void; // Function to parse an element/pair
   elementName: string; // Name of the expected element for error messages
+  elementParser: (tokens: Token[], state: ParseState, obj: T) => void; // Function to parse an element/pair
   endSymbol: TokenType; // The token type that marks the end of the structure (']' or '}')
+  skip: TokenType[]; // Token types to skip initially
 }
 
 // --- Lexer Implementation ---
@@ -786,11 +785,11 @@ function handleInvalidToken<T>(
 
 // Helper to handle comma tokens in parseMany
 interface HandleCommaTokenParams<T> {
-  token: Token;
-  tokens: Token[];
-  state: ParseState;
   opts: ParseManyOpts<T>;
   result: T;
+  state: ParseState;
+  token: Token;
+  tokens: Token[];
 }
 
 function handleCommaToken<T>(params: HandleCommaTokenParams<T>): T | null {

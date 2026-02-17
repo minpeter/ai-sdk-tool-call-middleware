@@ -457,9 +457,9 @@ function coerceStringToArray(
 }
 
 interface StrictObjectSchemaInfo {
+  patternProperties?: Record<string, unknown>;
   properties: Record<string, unknown>;
   required: string[];
-  patternProperties?: Record<string, unknown>;
 }
 
 function getStrictObjectSchemaInfo(

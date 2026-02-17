@@ -53,9 +53,9 @@ export function stringify(
 interface StringifyContext {
   depth: number;
   format: boolean;
-  suppressEmptyNode: boolean;
   minimalEscaping: boolean;
   strictBooleanAttributes: boolean;
+  suppressEmptyNode: boolean;
 }
 
 /**
@@ -282,9 +282,9 @@ function stringifyTextOnlyContent(options: {
 }
 
 interface ComplexContentOptions {
+  childIndent: string;
   indent: string;
   newline: string;
-  childIndent: string;
   openTag: string;
 }
 
@@ -406,10 +406,10 @@ export function stringifyNodes(
 }
 
 interface NodeStringifyOptions {
-  minimalEscaping: boolean;
-  strictBooleanAttributes: boolean;
   indent: string;
+  minimalEscaping: boolean;
   newline: string;
+  strictBooleanAttributes: boolean;
 }
 
 /**

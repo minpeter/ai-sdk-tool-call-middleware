@@ -9,36 +9,16 @@ import type {
  * Options for parsing tool calls and handling errors
  */
 export interface ParserOptions {
-  onError?: (message: string, metadata?: Record<string, unknown>) => void;
   /**
    * When true, stream parsers may emit malformed raw tool-call text as
    * `text-delta` fallback on parse failure. Defaults to false to avoid leaking
    * protocol/internal markup to end users.
    */
   emitRawToolCallTextOnError?: boolean;
+  onError?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 
 export interface TCMProtocol {
-  formatTools({
-    tools,
-    toolSystemPromptTemplate,
-  }: {
-    tools: LanguageModelV3FunctionTool[];
-    toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
-  }): string;
-
-  formatToolCall(toolCall: LanguageModelV3ToolCall): string;
-
-  parseGeneratedText({
-    text,
-    tools,
-    options,
-  }: {
-    text: string;
-    tools: LanguageModelV3FunctionTool[];
-    options?: ParserOptions;
-  }): LanguageModelV3Content[];
-
   createStreamParser({
     tools,
     options,
@@ -54,6 +34,25 @@ export interface TCMProtocol {
     text: string;
     tools: LanguageModelV3FunctionTool[];
   }) => string[];
+
+  formatToolCall(toolCall: LanguageModelV3ToolCall): string;
+  formatTools({
+    tools,
+    toolSystemPromptTemplate,
+  }: {
+    tools: LanguageModelV3FunctionTool[];
+    toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
+  }): string;
+
+  parseGeneratedText({
+    text,
+    tools,
+    options,
+  }: {
+    text: string;
+    tools: LanguageModelV3FunctionTool[];
+    options?: ParserOptions;
+  }): LanguageModelV3Content[];
 }
 
 export type TCMCoreProtocol = TCMProtocol;

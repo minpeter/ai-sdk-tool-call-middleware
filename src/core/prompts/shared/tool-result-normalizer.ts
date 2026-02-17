@@ -8,17 +8,17 @@ import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 export type ToolResponseMediaType = "image" | "audio" | "video" | "file";
 
 export interface ToolResponseMediaCapabilities {
-  image?: boolean;
   audio?: boolean;
-  video?: boolean;
   file?: boolean;
+  image?: boolean;
+  video?: boolean;
 }
 
 export type ToolResponseMediaMode = "placeholder" | "raw" | "auto" | "model";
 
 export interface ToolResponseMediaStrategy {
-  mode?: ToolResponseMediaMode;
   capabilities?: ToolResponseMediaCapabilities;
+  mode?: ToolResponseMediaMode;
 }
 
 export type ToolResponseUserContentPart =

@@ -12,39 +12,39 @@
 export type HeuristicPhase = "pre-parse" | "fallback-reparse" | "post-parse";
 
 export interface IntermediateCall {
-  toolName: string;
-  schema: unknown;
-  rawSegment: string;
-  parsed: unknown | null;
   errors: unknown[];
   meta?: Record<string, unknown>;
+  parsed: unknown | null;
+  rawSegment: string;
+  schema: unknown;
+  toolName: string;
 }
 
 export interface HeuristicResult {
-  rawSegment?: string;
   parsed?: unknown;
+  rawSegment?: string;
   reparse?: boolean;
   stop?: boolean;
   warnings?: string[];
 }
 
 export interface ToolCallHeuristic {
+  applies(ctx: IntermediateCall): boolean;
   id: string;
   phase: HeuristicPhase;
-  applies(ctx: IntermediateCall): boolean;
   run(ctx: IntermediateCall): HeuristicResult;
 }
 
 export interface PipelineConfig {
-  preParse?: ToolCallHeuristic[];
   fallbackReparse?: ToolCallHeuristic[];
   postParse?: ToolCallHeuristic[];
+  preParse?: ToolCallHeuristic[];
 }
 
 export interface HeuristicEngineOptions {
-  parse: (xml: string, schema: unknown) => unknown;
-  onError?: (message: string, metadata?: Record<string, unknown>) => void;
   maxReparses?: number;
+  onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  parse: (xml: string, schema: unknown) => unknown;
 }
 
 function applyRawSegmentUpdate(
