@@ -1349,6 +1349,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       work = consumeToolNameTag(controller, callState, work);
       work = consumeParamTags(controller, callState, work, allowEndOfString);
       maybeEmitToolInputStart(controller, callState);
+      maybeEmitToolInputProgress(controller, callState);
       return work;
     };
 
