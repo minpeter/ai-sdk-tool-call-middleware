@@ -150,6 +150,30 @@ describe("qwen3CoderProtocol", () => {
     expect(rejoined).toBe(text);
   });
 
+  it("parses wrapperless <function> before an incomplete <tool_call>", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const text = "<function=alpha><parameter=x>1</parameter><tool_call";
+
+    const out = p.parseGeneratedText({ text, tools });
+    const calls = out.filter((part) => part.type === "tool-call");
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (!call || call.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(call.toolName).toBe("alpha");
+    expect(JSON.parse(call.input)).toEqual({ x: "1" });
+
+    const texts = out.filter((part) => part.type === "text");
+    expect(texts).toHaveLength(1);
+    const textPart = texts[0];
+    if (!textPart || textPart.type !== "text") {
+      throw new Error("Expected text part");
+    }
+    expect(textPart.text).toBe("<tool_call");
+  });
+
   it("keeps original remainder text after parsed blocks when trailing <tool_call is invalid", () => {
     const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
@@ -258,6 +282,23 @@ describe("qwen3CoderProtocol", () => {
     expect(JSON.parse(call.input)).toEqual({ a: "1", b: "2" });
   });
 
+  it("prefers explicit </parameter> over boundary heuristic when value contains pseudo tags", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const text =
+      "<tool_call><function=alpha><parameter=query><![CDATA[How to use <function=beta> and <parameter=x> tags]]></parameter></function></tool_call>";
+
+    const out = p.parseGeneratedText({ text, tools });
+    const call = out.find((part) => part.type === "tool-call");
+    if (!call || call.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(call.toolName).toBe("alpha");
+    expect(JSON.parse(call.input)).toEqual({
+      query: "How to use <function=beta> and <parameter=x> tags",
+    });
+  });
+
   it("parses <function> blocks even when <tool_call> wrapper is missing", () => {
     const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
@@ -312,6 +353,30 @@ describe("qwen3CoderProtocol", () => {
     expect(JSON.parse(first.input)).toEqual({ y: "2" });
     expect(second.toolName).toBe("alpha");
     expect(JSON.parse(second.input)).toEqual({ x: "1" });
+  });
+
+  it("parses wrapperless prefix before trailing incomplete <tool_call> recovery", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const text =
+      "<function=alpha><parameter=x>1</parameter></function> between <tool_call><parameter=y>2";
+
+    const out = p.parseGeneratedText({ text, tools });
+    const calls = out.filter((part) => part.type === "tool-call");
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(call.toolName).toBe("alpha");
+    expect(JSON.parse(call.input)).toEqual({ x: "1" });
+
+    const rejoinedText = out
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(rejoinedText).toContain(" between ");
+    expect(rejoinedText).toContain("<tool_call><parameter=y>2");
   });
 
   it("ignores stray leading </tool_call> close tags before a <function> block", () => {

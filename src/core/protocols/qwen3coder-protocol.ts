@@ -168,11 +168,64 @@ function parseQwen3CoderToolParserParamName(
   return getAttributeValue(openTag, "name");
 }
 
+function getCdataSectionNextIndex(
+  textLower: string,
+  startIndex: number
+): number | null {
+  if (!textLower.startsWith("<![cdata[", startIndex)) {
+    return startIndex;
+  }
+  const cdataEnd = textLower.indexOf("]]>", startIndex + "<![cdata[".length);
+  if (cdataEnd === -1) {
+    return null;
+  }
+  return cdataEnd + 3;
+}
+
+function parseMatchingTagHeader(
+  textLower: string,
+  lt: number,
+  tagNameLower: string
+): { isClosing: boolean; afterName: number } | null {
+  let i = skipAsciiWhitespace(textLower, lt + 1);
+  const isClosing = textLower[i] === "/";
+  if (isClosing) {
+    i += 1;
+    i = skipAsciiWhitespace(textLower, i);
+  }
+  if (!textLower.startsWith(tagNameLower, i)) {
+    return null;
+  }
+
+  const afterName = i + tagNameLower.length;
+  const boundary = textLower[afterName] ?? "";
+  const validBoundary = isClosing
+    ? isTagBoundaryChar(boundary)
+    : isTagBoundaryChar(boundary) || boundary === "=";
+  if (boundary && !validBoundary) {
+    return null;
+  }
+
+  return { isClosing, afterName };
+}
+
+function isSelfClosingXmlTag(
+  textLower: string,
+  lt: number,
+  gt: number
+): boolean {
+  return textLower
+    .slice(lt, gt + 1)
+    .trimEnd()
+    .endsWith("/>");
+}
+
 function findClosingTagEnd(
   textLower: string,
   startIndex: number,
   tagNameLower: string
 ): { start: number; end: number } | null {
+  let depth = 1;
   let index = startIndex;
   while (true) {
     const lt = textLower.indexOf("<", index);
@@ -180,30 +233,40 @@ function findClosingTagEnd(
       return null;
     }
 
-    let i = skipAsciiWhitespace(textLower, lt + 1);
-    if (textLower[i] !== "/") {
-      index = lt + 1;
+    const cdataNextIndex = getCdataSectionNextIndex(textLower, lt);
+    if (cdataNextIndex == null) {
+      return null;
+    }
+    if (cdataNextIndex !== lt) {
+      index = cdataNextIndex;
       continue;
     }
-    i += 1;
-    i = skipAsciiWhitespace(textLower, i);
-    if (!textLower.startsWith(tagNameLower, i)) {
+
+    const header = parseMatchingTagHeader(textLower, lt, tagNameLower);
+    if (!header) {
       index = lt + 1;
       continue;
     }
 
-    const afterName = i + tagNameLower.length;
-    const boundary = textLower[afterName] ?? "";
-    if (boundary && !isTagBoundaryChar(boundary)) {
-      index = lt + 1;
-      continue;
-    }
-
-    const gt = textLower.indexOf(">", afterName);
+    const gt = textLower.indexOf(">", header.afterName);
     if (gt === -1) {
       return null;
     }
-    return { start: lt, end: gt + 1 };
+
+    if (header.isClosing) {
+      depth -= 1;
+      if (depth === 0) {
+        return { start: lt, end: gt + 1 };
+      }
+      index = gt + 1;
+      continue;
+    }
+
+    const isSelfClosing = isSelfClosingXmlTag(textLower, lt, gt);
+    if (!isSelfClosing) {
+      depth += 1;
+    }
+    index = gt + 1;
   }
 }
 
@@ -365,8 +428,7 @@ function parseQwen3CoderToolParserParamTagAt(
 
   const valueStart = openEnd + 1;
   const close = findClosingTagEnd(lowerText, valueStart, tagNameLower);
-  const boundaryIndex = findUnclosedParamBoundaryIndex(lowerText, valueStart);
-  if (!close || (boundaryIndex != null && boundaryIndex < close.start)) {
+  if (!close) {
     return parseQwen3CoderToolParserUnclosedParamValue({
       text,
       lowerText,
@@ -1089,7 +1151,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return false;
       }
 
-      pushText(text.slice(0, startIndex));
+      pushTextOrParseWrapperlessCalls(text.slice(0, startIndex));
       const trailing = text.slice(startIndex);
       const synthetic = TOOL_CALL_CLOSE_RE.test(trailing)
         ? trailing
