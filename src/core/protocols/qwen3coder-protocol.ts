@@ -403,11 +403,18 @@ function getOpeningTag(xml: string): string | null {
   return xml.slice(0, gt + 1);
 }
 
+const attrValueRegExpCache = new Map<string, RegExp>();
+
 function getAttributeValue(openTag: string, attrName: string): string | null {
-  const re = new RegExp(
-    `\\b${escapeRegExp(attrName)}\\s*=\\s*(["'])([\\s\\S]*?)\\1`,
-    "i"
-  );
+  let re = attrValueRegExpCache.get(attrName);
+  if (!re) {
+    // Since the regex has no 'g' flag, re.exec resets automatically — safe.
+    re = new RegExp(
+      `\\b${escapeRegExp(attrName)}\\s*=\\s*(["'])([\\s\\S]*?)\\1`,
+      "i"
+    );
+    attrValueRegExpCache.set(attrName, re);
+  }
   const match = re.exec(openTag);
   if (!match) {
     return null;
@@ -592,7 +599,6 @@ function findImplicitCallOpenIndices(lowerText: string): number[] {
     }
 
     const tagNames = ["call", "function", "tool", "invoke"] as const;
-    let matched = false;
     for (const tagName of tagNames) {
       if (!lowerText.startsWith(tagName, i)) {
         continue;
@@ -603,11 +609,10 @@ function findImplicitCallOpenIndices(lowerText: string): number[] {
         continue;
       }
       indices.push(lt);
-      matched = true;
       break;
     }
 
-    index = matched ? lt + 1 : lt + 1;
+    index = lt + 1;
   }
   return indices;
 }
@@ -1347,6 +1352,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       return work;
     };
 
+    // This cache is scoped to createStreamParser (per-stream), so it cannot outlive
+    // one stream invocation.
+    // It is bounded by the small set of endTagName values {call, function, tool,
+    // invoke, tool_call}, so this is effectively ~5 entries max.
+    // Eviction is unnecessary because the keyspace is fixed and tiny.
     const closeTagCache = new Map<string, RegExp>();
 
     const getCloseTagPattern = (endTagName: string): RegExp => {
