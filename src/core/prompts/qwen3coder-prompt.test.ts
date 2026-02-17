@@ -165,8 +165,8 @@ describe("qwen3coder-prompt outer-layer transform", () => {
           {
             type: "text",
             text: `<tool_call>
-  <function=get_weather>
-    <parameter=city>Seoul</parameter>
+  <function="get_weather">
+    <parameter="city">Seoul</parameter>
   </function>
 </tool_call>`,
           },

@@ -234,10 +234,10 @@ describe("qwen3CoderProtocol", () => {
     });
 
     expect(formatted).toContain("<tool_call>");
-    expect(formatted).toContain("<function=test_tool>");
-    expect(formatted).toContain("<parameter=x>1</parameter>");
-    expect(formatted).toContain("<parameter=y>2</parameter>");
-    expect(formatted).toContain("<parameter=y>3</parameter>");
+    expect(formatted).toContain('<function="test_tool">');
+    expect(formatted).toContain('<parameter="x">1</parameter>');
+    expect(formatted).toContain('<parameter="y">2</parameter>');
+    expect(formatted).toContain('<parameter="y">3</parameter>');
 
     const parsed = p.parseGeneratedText({
       text: `prefix ${formatted} suffix`,
@@ -262,9 +262,45 @@ describe("qwen3CoderProtocol", () => {
       input: JSON.stringify({ strict: false, enabled: true, optional: null }),
     });
 
-    expect(formatted).toContain("<parameter=strict>False</parameter>");
-    expect(formatted).toContain("<parameter=enabled>True</parameter>");
-    expect(formatted).toContain("<parameter=optional>None</parameter>");
+    expect(formatted).toContain('<parameter="strict">False</parameter>');
+    expect(formatted).toContain('<parameter="enabled">True</parameter>');
+    expect(formatted).toContain('<parameter="optional">None</parameter>');
+  });
+
+  it("formatToolCall quotes function and parameter shorthand names for round-trip safety", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const formatted = p.formatToolCall({
+      type: "tool-call",
+      toolCallId: "id",
+      toolName: "group/search tool",
+      input: JSON.stringify({
+        "icon/default": "star",
+        "display name": "Weather",
+      }),
+    });
+
+    expect(formatted).toContain('<function="group/search tool">');
+    expect(formatted).toContain('<parameter="icon/default">star</parameter>');
+    expect(formatted).toContain(
+      '<parameter="display name">Weather</parameter>'
+    );
+
+    const parsed = p.parseGeneratedText({
+      text: `prefix ${formatted} suffix`,
+      tools,
+    });
+    const calls = parsed.filter((x) => x.type === "tool-call");
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(call.toolName).toBe("group/search tool");
+    expect(JSON.parse(call.input)).toEqual({
+      "icon/default": "star",
+      "display name": "Weather",
+    });
   });
 
   it("recovers missing </parameter> by terminating at the next parameter tag", () => {
@@ -487,6 +523,23 @@ describe("qwen3CoderProtocol", () => {
     expect(JSON.parse(alpha.input)).toEqual({ x: "1" });
     expect(beta.toolName).toBe("beta");
     expect(JSON.parse(beta.input)).toEqual({ y: "2" });
+  });
+
+  it("preserves closed calls when <tool_call> has trailing non-call text", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const text =
+      "<tool_call><function=alpha><parameter=x>1</parameter></function>oops</tool_call>";
+
+    const out = p.parseGeneratedText({ text, tools });
+    const calls = out.filter((part) => part.type === "tool-call");
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(call.toolName).toBe("alpha");
+    expect(JSON.parse(call.input)).toEqual({ x: "1" });
   });
 
   it("recovers trailing incomplete wrapperless call after complete wrapperless match", () => {

@@ -517,12 +517,12 @@ describe("qwen3coder chat-template alignment via existing transform pipeline", (
       .map((part) => part.text ?? "")
       .join("\n");
     expect(assistantText).toContain("<tool_call>");
-    expect(assistantText).toContain("<function=get_weather>");
+    expect(assistantText).toContain('<function="get_weather">');
     expect(assistantText).toContain(
-      '<parameter=options>{"unit":"celsius"}</parameter>'
+      '<parameter="options">{"unit":"celsius"}</parameter>'
     );
-    expect(assistantText).toContain("<parameter=days>3</parameter>");
-    expect(assistantText).toContain("<parameter=strict>False</parameter>");
+    expect(assistantText).toContain('<parameter="days">3</parameter>');
+    expect(assistantText).toContain('<parameter="strict">False</parameter>');
 
     const user = out.prompt.find((m) => m.role === "user") as
       | { content: Array<{ type: string; text?: string }> }

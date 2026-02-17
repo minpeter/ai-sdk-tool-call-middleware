@@ -841,14 +841,16 @@ function parseQwen3CoderToolParserClosedMatches(
   const trailingBlocks = splitImplicitCallBlocks(trailingInner).filter(
     (b) => b.trim().length > 0
   );
-  const blocksToParse =
-    trailingBlocks.length > 0 ? trailingBlocks : [trailingInner];
+  if (trailingBlocks.length === 0) {
+    return closedCalls;
+  }
+
   const trailingCalls = parseQwen3CoderToolParserCallBlocks(
-    blocksToParse,
+    trailingBlocks,
     outerNameAttr
   );
   if (!trailingCalls) {
-    return null;
+    return closedCalls;
   }
 
   return closedCalls.concat(trailingCalls);
@@ -954,7 +956,7 @@ function appendQwen3CoderToolParserParameter(
 ): void {
   const nameAttr = escapeXmlMinimalAttr(key, '"');
   const text = escapeXmlMinimalText(toQwen3CoderToolParserParamText(value));
-  lines.push(`    <parameter=${nameAttr}>${text}</parameter>`);
+  lines.push(`    <parameter="${nameAttr}">${text}</parameter>`);
 }
 
 function appendQwen3CoderToolParserArgs(lines: string[], args: unknown): void {
@@ -984,7 +986,9 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
   formatToolCall(toolCall: LanguageModelV3ToolCall): string {
     const args = parseToolCallInput(toolCall.input);
     const lines: string[] = ["<tool_call>"];
-    lines.push(`  <function=${escapeXmlMinimalAttr(toolCall.toolName, '"')}>`);
+    lines.push(
+      `  <function="${escapeXmlMinimalAttr(toolCall.toolName, '"')}">`
+    );
     appendQwen3CoderToolParserArgs(lines, args);
     lines.push("  </function>");
     lines.push("</tool_call>");
