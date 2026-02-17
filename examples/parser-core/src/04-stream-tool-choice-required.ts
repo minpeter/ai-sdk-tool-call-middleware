@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
+import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
 
 // Constants
 const MAX_STEPS = 4;
@@ -19,8 +19,8 @@ const openrouter = createOpenAI({
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: openrouter.chat("arcee-ai/trinity-large-preview:free"),
-      middleware: hermesToolMiddleware,
+      model: openrouter.chat("stepfun/step-3.5-flash:free"),
+      middleware: qwen3CoderToolMiddleware,
     }),
     tools: {
       weather: {

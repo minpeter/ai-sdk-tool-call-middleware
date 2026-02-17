@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { yamlSystemPromptTemplate } from "../../core/prompts/yaml-system-prompt";
+import { yamlSystemPromptTemplate } from "../../core/prompts/yaml-prompt";
 import { yamlProtocol } from "../../core/protocols/yaml-protocol";
 import {
   pipeWithTransformer,

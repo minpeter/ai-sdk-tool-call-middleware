@@ -1,12 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { hermesToolMiddleware } from "@ai-sdk-tool/parser";
-import {
-  extractReasoningMiddleware,
-  generateText,
-  stepCountIs,
-  wrapLanguageModel,
-} from "ai";
+import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
+import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
 import { printComplete, printStepLikeStream } from "./console-output";
 
 // Constants
@@ -22,18 +17,9 @@ const openrouter = createOpenAICompatible({
 async function main() {
   await generateText({
     model: wrapLanguageModel({
-      model: openrouter("arcee-ai/trinity-large-preview:free"),
-
-      middleware: [
-        // The order is important, extractReasoningMiddleware is called first and then hermesToolMiddleware,
-        // because inside <think> the <tool_call> tag is created for reasoning and the tool call mode is triggered.
-        hermesToolMiddleware,
-        extractReasoningMiddleware({ tagName: "think" }),
-      ],
+      model: openrouter("stepfun/step-3.5-flash:free"),
+      middleware: qwen3CoderToolMiddleware,
     }),
-    providerOptions: {
-      openrouter: { reasoning: { enabled: true } },
-    },
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",
     stopWhen: stepCountIs(MAX_STEPS),

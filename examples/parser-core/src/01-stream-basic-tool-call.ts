@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
+import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
 
 // Constants
 const MAX_STEPS = 4;
@@ -16,8 +16,8 @@ const openrouter = createOpenAICompatible({
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: openrouter("openrouter/pony-alpha"),
-      middleware: xmlToolMiddleware,
+      model: openrouter("stepfun/step-3.5-flash:free"),
+      middleware: qwen3CoderToolMiddleware,
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in my city?",

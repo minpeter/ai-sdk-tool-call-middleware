@@ -3,17 +3,14 @@ import path from "node:path";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { yamlToolMiddleware } from "../../../src/preconfigured-middleware";
+import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
 
 const TOOL_COLOR = "\x1b[36m";
 const INFO_COLOR = "\x1b[90m";
 const RESET_COLOR = "\x1b[0m";
 
 const MAX_STEPS = 1;
-const OUTPUT_DIR = path.resolve(
-  process.cwd(),
-  "examples/parser-core/.demo-output"
-);
+const OUTPUT_DIR = path.resolve(process.cwd(), ".demo-output");
 
 const openrouterApiKey = process.env.OPENROUTER_API_KEY;
 
@@ -25,7 +22,7 @@ const model = createOpenAICompatible({
   name: "openrouter",
   apiKey: openrouterApiKey,
   baseURL: "https://openrouter.ai/api/v1",
-})(process.env.OPENROUTER_MODEL ?? "arcee-ai/trinity-large-preview:free");
+})("stepfun/step-3.5-flash:free");
 
 const prompt = [
   "Call write_markdown_file exactly once.",
@@ -174,7 +171,7 @@ async function main() {
   const result = streamText({
     model: wrapLanguageModel({
       model,
-      middleware: yamlToolMiddleware,
+      middleware: qwen3CoderToolMiddleware,
     }),
     stopWhen: stepCountIs(MAX_STEPS),
     prompt,

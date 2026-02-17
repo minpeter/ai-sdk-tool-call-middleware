@@ -1,11 +1,21 @@
-import { hermesSystemPromptTemplate } from "./core/prompts/hermes-system-prompt";
 import {
   formatToolResponseAsJsonInXml,
+  hermesSystemPromptTemplate,
+} from "./core/prompts/hermes-prompt";
+import {
+  formatToolResponseAsQwen3CoderXml,
+  qwen3coderSystemPromptTemplate,
+} from "./core/prompts/qwen3coder-prompt";
+import {
   formatToolResponseAsXml,
-} from "./core/prompts/tool-response";
-import { xmlSystemPromptTemplate } from "./core/prompts/xml-system-prompt";
-import { yamlSystemPromptTemplate } from "./core/prompts/yaml-system-prompt";
+  xmlSystemPromptTemplate,
+} from "./core/prompts/xml-prompt";
+import {
+  formatToolResponseAsYaml,
+  yamlSystemPromptTemplate,
+} from "./core/prompts/yaml-prompt";
 import { jsonProtocol } from "./core/protocols/json-protocol";
+import { qwen3CoderProtocol } from "./core/protocols/qwen3coder-protocol";
 import { xmlProtocol } from "./core/protocols/xml-protocol";
 import { yamlProtocol } from "./core/protocols/yaml-protocol";
 import { createToolMiddleware } from "./tool-call-middleware";
@@ -14,6 +24,12 @@ export const hermesToolMiddleware = createToolMiddleware({
   protocol: jsonProtocol({}),
   toolSystemPromptTemplate: hermesSystemPromptTemplate,
   toolResponsePromptTemplate: formatToolResponseAsJsonInXml,
+});
+
+export const qwen3CoderToolMiddleware = createToolMiddleware({
+  protocol: qwen3CoderProtocol,
+  toolSystemPromptTemplate: qwen3coderSystemPromptTemplate,
+  toolResponsePromptTemplate: formatToolResponseAsQwen3CoderXml,
 });
 
 export const xmlToolMiddleware = createToolMiddleware({
@@ -25,5 +41,5 @@ export const xmlToolMiddleware = createToolMiddleware({
 export const yamlToolMiddleware = createToolMiddleware({
   protocol: yamlProtocol({}),
   toolSystemPromptTemplate: yamlSystemPromptTemplate,
-  toolResponsePromptTemplate: formatToolResponseAsXml,
+  toolResponsePromptTemplate: formatToolResponseAsYaml,
 });

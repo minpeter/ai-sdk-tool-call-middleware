@@ -27,6 +27,8 @@ out/
 build
 dist
 tsconfig.tsbuildinfo
+__pycache__
+
 
 
 # Debug
@@ -54,4 +56,5 @@ examples/parser-core/.demo-output
 .opencode
 .sisyphus
 AGENTS.md
-__pycache__
+.ralph-tui
+tasks

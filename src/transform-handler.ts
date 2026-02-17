@@ -11,11 +11,12 @@ import type {
   LanguageModelV3ToolResultPart,
   SharedV3ProviderOptions,
 } from "@ai-sdk/provider";
-import type {
-  ToolApprovalResponse,
-  ToolContent,
-  ToolResultPart,
-} from "@ai-sdk/provider-utils";
+import type { ToolContent, ToolResultPart } from "@ai-sdk/provider-utils";
+import { assistantToolCallsToTextContent } from "./core/prompts/shared/assistant-tool-calls-to-text";
+import {
+  type ToolResponsePromptTemplateResult,
+  toolRoleContentToUserTextMessage,
+} from "./core/prompts/shared/tool-role-to-user-message";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
 import { createDynamicIfThenElseSchema } from "./core/utils/dynamic-tool-schema";
@@ -30,6 +31,10 @@ function buildFinalPrompt(
   processedPrompt: LanguageModelV3Prompt,
   placement: "first" | "last"
 ): LanguageModelV3Prompt {
+  if (systemPrompt.trim().length === 0) {
+    return processedPrompt;
+  }
+
   const systemIndex = processedPrompt.findIndex((m) => m.role === "system");
   if (systemIndex !== -1) {
     const existing = processedPrompt[systemIndex].content as unknown;
@@ -264,7 +269,9 @@ export function transformParams({
   };
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
   toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
-  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string;
+  toolResponsePromptTemplate?: (
+    toolResult: ToolResultPart
+  ) => ToolResponsePromptTemplateResult;
   placement?: "first" | "last";
 }) {
   const resolvedProtocol = isTCMProtocolFactory(protocol)
@@ -324,88 +331,6 @@ export function transformParams({
 }
 
 /**
- * Process assistant message content
- */
-function processAssistantContent(
-  content: LanguageModelV3Content[],
-  resolvedProtocol: TCMCoreProtocol,
-  providerOptions?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
-): LanguageModelV3Content[] {
-  const newContent: LanguageModelV3Content[] = [];
-  for (const item of content) {
-    switch (item.type) {
-      case "tool-call":
-        newContent.push({
-          type: "text",
-          text: resolvedProtocol.formatToolCall(item),
-        });
-        break;
-      case "text":
-      case "reasoning":
-        newContent.push(item);
-        break;
-      default: {
-        const options = extractOnErrorOption(providerOptions);
-        options?.onError?.(
-          "tool-call-middleware: unknown assistant content; stringifying for provider compatibility",
-          { content: item }
-        );
-        newContent.push({
-          type: "text",
-          text: JSON.stringify(item),
-        });
-      }
-    }
-  }
-
-  // Condense if all content is text
-  const onlyText = newContent.every((c) => c.type === "text");
-  return onlyText
-    ? [
-        {
-          type: "text" as const,
-          text: newContent.map((c) => (c as { text: string }).text).join("\n"),
-        },
-      ]
-    : newContent;
-}
-
-/**
- * Process tool message content
- */
-function formatApprovalResponse(part: ToolApprovalResponse): string {
-  const status = part.approved ? "Approved" : "Denied";
-  const reason = part.reason ? `: ${part.reason}` : "";
-  return `[Tool Approval ${status}${reason}]`;
-}
-
-function processToolMessage(
-  toolResults: ToolResultPart[],
-  approvalResponses: ToolApprovalResponse[],
-  toolResponsePromptTemplate: (toolResult: ToolResultPart) => string
-): LanguageModelV3Prompt[number] {
-  const resultTexts = toolResults.map((toolResult) => {
-    return toolResponsePromptTemplate(toolResult);
-  });
-
-  const approvalTexts = approvalResponses.map(formatApprovalResponse);
-
-  const allTexts = [...resultTexts, ...approvalTexts];
-
-  return {
-    role: "user" as const,
-    content: [
-      {
-        type: "text" as const,
-        text: allTexts.join("\n"),
-      },
-    ],
-  };
-}
-
-/**
  * Process a single message in the prompt
  */
 function processMessage(
@@ -414,14 +339,19 @@ function processMessage(
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   },
-  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string
+  toolResponsePromptTemplate?: (
+    toolResult: ToolResultPart
+  ) => ToolResponsePromptTemplateResult
 ): LanguageModelV3Prompt[number] {
   if (message.role === "assistant") {
-    const condensedContent = processAssistantContent(
-      message.content as LanguageModelV3Content[],
-      resolvedProtocol,
-      providerOptions
-    );
+    const condensedContent = assistantToolCallsToTextContent({
+      content: message.content as LanguageModelV3Content[],
+      protocol: resolvedProtocol,
+      conversionOptions: {
+        onError: providerOptions?.onError,
+      },
+    });
+
     return {
       role: "assistant" as const,
       content: condensedContent as Array<
@@ -434,14 +364,6 @@ function processMessage(
     };
   }
   if (message.role === "tool") {
-    const toolContent = message.content as ToolContent;
-    const toolResultParts = toolContent.filter(
-      (part): part is ToolResultPart => part.type === "tool-result"
-    );
-    const approvalResponseParts = toolContent.filter(
-      (part): part is ToolApprovalResponse =>
-        part.type === "tool-approval-response"
-    );
     if (!toolResponsePromptTemplate) {
       throw new Error(
         'toolResponsePromptTemplate is required when processing messages with role "tool". ' +
@@ -450,12 +372,13 @@ function processMessage(
           "when tool message processing is enabled."
       );
     }
-    return processToolMessage(
-      toolResultParts,
-      approvalResponseParts,
-      toolResponsePromptTemplate
-    );
+
+    return toolRoleContentToUserTextMessage({
+      toolContent: message.content as ToolContent,
+      toolResponsePromptTemplate,
+    });
   }
+
   return message;
 }
 
@@ -536,6 +459,12 @@ function mergeConsecutiveUserMessages(
     const current = processedPrompt[i];
     const prev = processedPrompt[i - 1];
     if (current.role === "user" && prev.role === "user") {
+      if (
+        !(isAllTextContent(prev.content) && isAllTextContent(current.content))
+      ) {
+        continue;
+      }
+
       const prevContent = prev.content
         .map((c) => (c.type === "text" ? c.text : ""))
         .join("\n");
@@ -555,7 +484,9 @@ function mergeConsecutiveUserMessages(
 function convertToolPrompt(
   prompt: LanguageModelV3Message[],
   resolvedProtocol: TCMCoreProtocol,
-  toolResponsePromptTemplate?: (toolResult: ToolResultPart) => string,
+  toolResponsePromptTemplate?: (
+    toolResult: ToolResultPart
+  ) => ToolResponsePromptTemplateResult,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
