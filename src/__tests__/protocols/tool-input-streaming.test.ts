@@ -577,6 +577,38 @@ describe("tool-input streaming events", () => {
     expect(leakedText).not.toContain("</tool_call");
   });
 
+  it("Qwen3CoderToolParser handles a missing </function> boundary followed by another function", async () => {
+    const protocol = qwen3CoderProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "<tool_call><function=alpha><parameter=x>1</parameter><function=beta><parameter=y>2</parameter></function></tool_call>",
+        ]),
+        transformer
+      )
+    );
+
+    const toolCalls = out.filter((part) => part.type === "tool-call") as Array<{
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: string;
+    }>;
+    const text = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+
+    expect(toolCalls).toHaveLength(2);
+    expect(toolCalls[0]?.toolName).toBe("alpha");
+    expect(toolCalls[1]?.toolName).toBe("beta");
+    expect(JSON.parse(toolCalls[0]?.input ?? "{}")).toEqual({ x: "1" });
+    expect(JSON.parse(toolCalls[1]?.input ?? "{}")).toEqual({ y: "2" });
+    expect(text).not.toContain("<function=alpha");
+    expect(text).not.toContain("<function=beta");
+  });
+
   it("Qwen3CoderToolParser preserves non-contiguous repeated parameters in streams", async () => {
     const protocol = qwen3CoderProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
@@ -746,6 +778,31 @@ describe("tool-input streaming events", () => {
       expect(end).toBeTruthy();
       expect(joined).toBe(toolCall.input);
     }
+  });
+
+  it("Qwen3CoderToolParser ends active call when next <function> starts without </function>", async () => {
+    const protocol = qwen3CoderProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "<tool_call><function=alpha><parameter=x>1</parameter><function=beta><parameter=y>2</parameter></tool_call>",
+        ]),
+        transformer
+      )
+    );
+
+    const toolCalls = out.filter((part) => part.type === "tool-call") as Array<{
+      type: "tool-call";
+      toolName: string;
+      input: string;
+    }>;
+
+    expect(toolCalls).toHaveLength(2);
+    expect(toolCalls[0]?.toolName).toBe("alpha");
+    expect(JSON.parse(toolCalls[0]?.input ?? "{}")).toEqual({ x: "1" });
+    expect(toolCalls[1]?.toolName).toBe("beta");
+    expect(JSON.parse(toolCalls[1]?.input ?? "{}")).toEqual({ y: "2" });
   });
 
   it("Qwen3CoderToolParser force-completes unclosed tool block at finish when content is parseable", async () => {

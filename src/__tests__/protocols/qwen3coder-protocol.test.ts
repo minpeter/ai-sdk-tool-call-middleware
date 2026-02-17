@@ -470,6 +470,44 @@ describe("qwen3CoderProtocol", () => {
     expect(JSON.parse(beta.input)).toEqual({ y: "2" });
   });
 
+  it("parses trailing recoverable malformed call inside one <tool_call> block", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const text =
+      "<tool_call><function=alpha><parameter=x>1</parameter></function><function=beta><parameter=y>2</parameter></tool_call>";
+
+    const out = p.parseGeneratedText({ text, tools });
+    const calls = out.filter((part) => part.type === "tool-call");
+    expect(calls).toHaveLength(2);
+    const [alpha, beta] = calls;
+    if (alpha?.type !== "tool-call" || beta?.type !== "tool-call") {
+      throw new Error("Expected tool-call parts");
+    }
+    expect(alpha.toolName).toBe("alpha");
+    expect(JSON.parse(alpha.input)).toEqual({ x: "1" });
+    expect(beta.toolName).toBe("beta");
+    expect(JSON.parse(beta.input)).toEqual({ y: "2" });
+  });
+
+  it("recovers trailing incomplete wrapperless call after complete wrapperless match", () => {
+    const p = qwen3CoderProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [];
+    const text =
+      "<function=alpha><parameter=x>1</parameter></function> <function=beta><parameter=y>2</parameter>";
+
+    const out = p.parseGeneratedText({ text, tools });
+    const calls = out.filter((part) => part.type === "tool-call");
+    expect(calls).toHaveLength(2);
+    const [alpha, beta] = calls;
+    if (alpha?.type !== "tool-call" || beta?.type !== "tool-call") {
+      throw new Error("Expected tool-call parts");
+    }
+    expect(alpha.toolName).toBe("alpha");
+    expect(JSON.parse(alpha.input)).toEqual({ x: "1" });
+    expect(beta.toolName).toBe("beta");
+    expect(JSON.parse(beta.input)).toEqual({ y: "2" });
+  });
+
   it("parses a bare <function=...> call when </function> and <tool_call> are missing", () => {
     const p = qwen3CoderProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];

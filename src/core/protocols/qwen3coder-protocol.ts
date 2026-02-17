@@ -786,6 +786,74 @@ function splitImplicitCallAndTail(callBlock: string): {
   };
 }
 
+function parseQwen3CoderToolParserCallBlocks(
+  blocks: string[],
+  outerNameAttr: string | null
+): Array<{ toolName: string; args: Record<string, unknown> }> | null {
+  const calls: Array<{ toolName: string; args: Record<string, unknown> }> = [];
+  for (const block of blocks) {
+    const parsed = parseSingleFunctionCallXml(block, outerNameAttr);
+    if (!parsed) {
+      return null;
+    }
+    calls.push(parsed);
+  }
+  return calls;
+}
+
+function parseQwen3CoderToolParserClosedMatches(
+  inner: string,
+  outerNameAttr: string | null
+):
+  | Array<{ toolName: string; args: Record<string, unknown> }>
+  | null
+  | undefined {
+  const callBlockMatches = Array.from(inner.matchAll(CALL_BLOCK_RE));
+  if (callBlockMatches.length === 0) {
+    return undefined;
+  }
+
+  const closedBlocks: string[] = [];
+  let lastClosedEnd = 0;
+  for (const match of callBlockMatches) {
+    const callBlock = match[0] ?? "";
+    const startIndex = match.index ?? -1;
+    if (!callBlock || startIndex < 0) {
+      continue;
+    }
+    closedBlocks.push(callBlock);
+    lastClosedEnd = startIndex + callBlock.length;
+  }
+
+  const closedCalls = parseQwen3CoderToolParserCallBlocks(
+    closedBlocks,
+    outerNameAttr
+  );
+  if (!closedCalls) {
+    return null;
+  }
+
+  const trailingInner = inner.slice(lastClosedEnd);
+  if (trailingInner.trim().length === 0) {
+    return closedCalls;
+  }
+
+  const trailingBlocks = splitImplicitCallBlocks(trailingInner).filter(
+    (b) => b.trim().length > 0
+  );
+  const blocksToParse =
+    trailingBlocks.length > 0 ? trailingBlocks : [trailingInner];
+  const trailingCalls = parseQwen3CoderToolParserCallBlocks(
+    blocksToParse,
+    outerNameAttr
+  );
+  if (!trailingCalls) {
+    return null;
+  }
+
+  return closedCalls.concat(trailingCalls);
+}
+
 function parseQwen3CoderToolParserToolCallSegment(
   segment: string
 ): Array<{ toolName: string; args: Record<string, unknown> }> | null {
@@ -797,21 +865,15 @@ function parseQwen3CoderToolParserToolCallSegment(
   const { inner, outerOpenTag } = extracted;
   const outerNameAttr = getAttributeValue(outerOpenTag, "name");
 
-  const callBlocks = Array.from(inner.matchAll(CALL_BLOCK_RE)).map(
-    (m) => m[0] ?? ""
+  const closedCalls = parseQwen3CoderToolParserClosedMatches(
+    inner,
+    outerNameAttr
   );
-
-  if (callBlocks.length > 0) {
-    const calls: Array<{ toolName: string; args: Record<string, unknown> }> =
-      [];
-    for (const callBlock of callBlocks) {
-      const parsed = parseSingleFunctionCallXml(callBlock, outerNameAttr);
-      if (!parsed) {
-        return null;
-      }
-      calls.push(parsed);
-    }
-    return calls;
+  if (closedCalls) {
+    return closedCalls;
+  }
+  if (closedCalls === null) {
+    return null;
   }
 
   // Some models omit the closing </function> and go straight to </tool_call>.
@@ -822,16 +884,7 @@ function parseQwen3CoderToolParserToolCallSegment(
     (b) => b.trim().length > 0
   );
   if (implicitBlocks.length > 0) {
-    const calls: Array<{ toolName: string; args: Record<string, unknown> }> =
-      [];
-    for (const block of implicitBlocks) {
-      const parsed = parseSingleFunctionCallXml(block, outerNameAttr);
-      if (!parsed) {
-        return null;
-      }
-      calls.push(parsed);
-    }
-    return calls;
+    return parseQwen3CoderToolParserCallBlocks(implicitBlocks, outerNameAttr);
   }
 
   const single =
@@ -1060,10 +1113,19 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         index = startIndex + full.length;
       }
 
+      const trailing = sourceText.slice(index);
+      const trailingStarts = findImplicitCallOpenIndices(
+        trailing.toLowerCase()
+      );
+      if (trailingStarts.length > 0) {
+        return tryParseCallBlocksWithoutWrapperByImplicitStarts(
+          trailing,
+          trailingStarts
+        );
+      }
+
       pushText(
-        stripTrailingToolCallCloseTags(
-          stripLeadingToolCallCloseTags(sourceText.slice(index))
-        )
+        stripTrailingToolCallCloseTags(stripLeadingToolCallCloseTags(trailing))
       );
       return true;
     };
@@ -1477,6 +1539,63 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       return created;
     };
 
+    const getNextCallStartInBuffer = (
+      callState: StreamingCallState
+    ): number => {
+      if (callState.endTagName === "tool_call") {
+        return -1;
+      }
+      const match = QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_TAG_RE.exec(
+        callState.buffer
+      );
+      return match?.index ?? -1;
+    };
+
+    const finalizeStreamingCall = (
+      controller: StreamController,
+      callState: StreamingCallState,
+      fallbackToolName: string | null,
+      remainder: string
+    ) => {
+      const rawToolCallText =
+        remainder.length > 0 && callState.raw.endsWith(remainder)
+          ? callState.raw.slice(0, -remainder.length)
+          : callState.raw;
+      const ok = finalizeCall(
+        controller,
+        callState,
+        fallbackToolName,
+        rawToolCallText
+      );
+      if (ok && toolCall) {
+        toolCall.emittedToolCallCount += 1;
+      }
+    };
+
+    const consumeCallAtNextBoundary = (
+      controller: StreamController,
+      callState: StreamingCallState,
+      fallbackToolName: string | null,
+      nextCallStart: number
+    ): { done: true; remainder: string } => {
+      const beforeNextCall = callState.buffer.slice(0, nextCallStart);
+      const afterNextCall = callState.buffer.slice(nextCallStart);
+
+      callState.buffer = parseCallContent(
+        controller,
+        callState,
+        beforeNextCall,
+        true
+      );
+      finalizeStreamingCall(
+        controller,
+        callState,
+        fallbackToolName,
+        afterNextCall
+      );
+      return { done: true, remainder: afterNextCall };
+    };
+
     const consumeCall = (
       controller: StreamController,
       callState: StreamingCallState,
@@ -1489,6 +1608,21 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const closeMatch = getCloseTagPattern(callState.endTagName).exec(
         callState.buffer
       );
+      const closeStart = closeMatch?.index ?? -1;
+      const nextCallStart = getNextCallStartInBuffer(callState);
+      const shouldCloseAtNextBoundary =
+        nextCallStart !== -1 &&
+        (closeStart === -1 || nextCallStart < closeStart);
+
+      if (shouldCloseAtNextBoundary) {
+        return consumeCallAtNextBoundary(
+          controller,
+          callState,
+          fallbackToolName,
+          nextCallStart
+        );
+      }
+
       if (!closeMatch) {
         callState.buffer = parseCallContent(
           controller,
@@ -1499,27 +1633,18 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return { done: false, remainder: "" };
       }
 
-      const closeStart = closeMatch.index ?? 0;
       const closeEnd = closeStart + (closeMatch[0]?.length ?? 0);
       const beforeClose = callState.buffer.slice(0, closeStart);
       const afterClose = callState.buffer.slice(closeEnd);
 
       parseCallContent(controller, callState, beforeClose, false);
       callState.buffer = "";
-      const rawToolCallText =
-        afterClose.length > 0 && callState.raw.endsWith(afterClose)
-          ? callState.raw.slice(0, -afterClose.length)
-          : callState.raw;
-      const ok = finalizeCall(
+      finalizeStreamingCall(
         controller,
         callState,
         fallbackToolName,
-        rawToolCallText
+        afterClose
       );
-      if (ok && toolCall) {
-        toolCall.emittedToolCallCount += 1;
-      }
-
       return { done: true, remainder: afterClose };
     };
 
