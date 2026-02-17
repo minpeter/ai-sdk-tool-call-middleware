@@ -4,6 +4,10 @@ import type {
   LanguageModelV3FunctionTool,
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
+import {
+  escapeXmlMinimalAttr,
+  escapeXmlMinimalText,
+} from "../../rxml/utils/helpers";
 import type { TCMCoreProtocol } from "../protocols/protocol-interface";
 import {
   type AssistantToolCallTextConversionOptions,
@@ -27,6 +31,8 @@ interface Qwen3CoderToolShape extends Mapping {
   description?: unknown;
   parameters?: unknown;
 }
+
+const XML_PROMPT_TAG_NAME_RE = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 
 function isMapping(value: unknown): value is Mapping {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -53,6 +59,25 @@ function toJinjaTrimmedString(value: unknown): string {
   return toJinjaString(value).trim();
 }
 
+function toEscapedXmlText(value: unknown): string {
+  return escapeXmlMinimalText(toJinjaString(value));
+}
+
+function toEscapedTrimmedXmlText(value: unknown): string {
+  return escapeXmlMinimalText(toJinjaTrimmedString(value));
+}
+
+function renderXmlPromptField(key: string, escapedValue: string): string {
+  if (XML_PROMPT_TAG_NAME_RE.test(key)) {
+    return `\n<${key}>${escapedValue}</${key}>`;
+  }
+
+  return `\n<property name="${escapeXmlMinimalAttr(
+    key,
+    '"'
+  )}">${escapedValue}</property>`;
+}
+
 function renderExtraKeys(
   jsonDict: unknown,
   handledKeys: readonly string[]
@@ -73,7 +98,7 @@ function renderExtraKeys(
       isMapping(jsonValue) || isSequence(jsonValue)
         ? JSON.stringify(jsonValue)
         : toJinjaString(jsonValue);
-    out += `\n<${jsonKey}>${renderedValue}</${jsonKey}>`;
+    out += renderXmlPromptField(jsonKey, escapeXmlMinimalText(renderedValue));
   }
 
   return out;
@@ -107,14 +132,14 @@ function renderParameter(paramName: string, paramFieldsRaw: unknown): string {
     : undefined;
 
   let out = "\n<parameter>";
-  out += `\n<name>${paramName}</name>`;
+  out += `\n<name>${toEscapedXmlText(paramName)}</name>`;
 
   if (paramFields?.type !== undefined) {
-    out += `\n<type>${toJinjaString(paramFields.type)}</type>`;
+    out += `\n<type>${toEscapedXmlText(paramFields.type)}</type>`;
   }
 
   if (paramFields?.description !== undefined) {
-    out += `\n<description>${toJinjaTrimmedString(paramFields.description)}</description>`;
+    out += `\n<description>${toEscapedTrimmedXmlText(paramFields.description)}</description>`;
   }
 
   out += renderExtraKeys(paramFieldsRaw, ["name", "type", "description"]);
@@ -123,10 +148,10 @@ function renderParameter(paramName: string, paramFieldsRaw: unknown): string {
 }
 
 function renderTool(tool: Qwen3CoderToolShape): string {
-  let out = `\n<function>\n<name>${toJinjaString(tool.name)}</name>`;
+  let out = `\n<function>\n<name>${toEscapedXmlText(tool.name)}</name>`;
 
   if (tool.description !== undefined) {
-    out += `\n<description>${toJinjaTrimmedString(tool.description)}</description>`;
+    out += `\n<description>${toEscapedTrimmedXmlText(tool.description)}</description>`;
   }
 
   out += "\n<parameters>";

@@ -53,6 +53,38 @@ describe("qwen3coderSystemPromptTemplate", () => {
   it("returns empty string when no tools are provided", () => {
     expect(qwen3coderSystemPromptTemplate([])).toBe("");
   });
+
+  it("escapes XML-sensitive values and renders non-XML extra keys safely", () => {
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "A < B & C",
+        inputSchema: {
+          type: "object",
+          properties: {
+            "city<name": {
+              type: "string",
+              description: "x < y & z",
+            },
+          },
+          required: ["city<name"],
+          $schema: "https://example.com/schema?x=1&y=<z>",
+        },
+      },
+    ];
+
+    const prompt = qwen3coderSystemPromptTemplate(tools);
+
+    expect(prompt).toContain("<description>A &lt; B &amp; C</description>");
+    expect(prompt).toContain("<name>city&lt;name</name>");
+    expect(prompt).toContain("<description>x &lt; y &amp; z</description>");
+    expect(prompt).toContain('<required>["city&lt;name"]</required>');
+    expect(prompt).toContain(
+      '<property name="$schema">https://example.com/schema?x=1&amp;y=&lt;z></property>'
+    );
+    expect(prompt).not.toContain("<$schema>");
+  });
 });
 
 describe("qwen3coder-prompt outer-layer transform", () => {
