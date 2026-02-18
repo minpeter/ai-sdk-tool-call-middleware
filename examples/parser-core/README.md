@@ -19,33 +19,33 @@ Numbering note:
 
 ## Files
 
-- `src/00-basic-tool-call.ts` — baseline non-streaming tool call with preconfigured middleware
-- `src/01-stream-basic-tool-call.ts` — baseline streaming tool call with full stream event handling
-- `src/02-tool-choice-required.ts` — `toolChoice: "required"` behavior (non-streaming)
-- `src/03-tool-choice-toolname.ts` — `toolChoice: { type: "tool", toolName }` behavior (non-streaming)
-- `src/04-stream-tool-choice-required.ts` — `toolChoice: "required"` behavior (streaming)
-- `src/05-stream-tool-choice-toolname.ts` — `toolChoice: { type: "tool", toolName }` behavior (streaming)
-- `src/06-stream-tool-input-visual-demo.ts` — visualized `tool-input-start/delta/end` for a practical file-write payload
-- `src/07-stream-tool-input-visual-many-params-demo.ts` — visualized `tool-input-*` events for a large nested payload
+- `src/00-tool-call.ts` — Non-stream: baseline weather tool call.
+- `src/01-stream-tool-call.ts` — Streaming: baseline tool call with `fullStream` events.
+- `src/02-tool-choice-required.ts` — Non-stream: force tool usage with `toolChoice: "required"`.
+- `src/03-tool-choice-fixed.ts` — Non-stream: lock to one tool with `toolChoice.toolName`.
+- `src/04-stream-tool-choice-required.ts` — Streaming: force tool usage with `toolChoice: "required"`.
+- `src/05-stream-tool-choice-fixed.ts` — Streaming: lock to one tool with `toolChoice.toolName`.
+- `src/06-stream-tool-input-file.ts` — Streaming: visualize `tool-input-start/delta/end` during file write.
+- `src/07-stream-tool-input-nested.ts` — Streaming: visualize `tool-input-*` for a large nested payload.
 
 ## Run
 
 From repo root after `pnpm install`:
 
 ```bash
-cd examples/parser-core && pnpm dlx tsx src/01-stream-basic-tool-call.ts
+cd examples/parser-core && pnpm dlx tsx src/01-stream-tool-call.ts
 ```
 
 Live visual streaming demo with real model calls:
 
 ```bash
-cd examples/parser-core && pnpm dlx tsx src/06-stream-tool-input-visual-demo.ts
+cd examples/parser-core && pnpm dlx tsx src/06-stream-tool-input-file.ts
 ```
 
 Many-parameter + nested payload visual demo with real model calls:
 
 ```bash
-cd examples/parser-core && pnpm dlx tsx src/07-stream-tool-input-visual-many-params-demo.ts
+cd examples/parser-core && pnpm dlx tsx src/07-stream-tool-input-nested.ts
 ```
 
 Configure your model provider credentials as needed (e.g., OpenRouter key/base URL).
