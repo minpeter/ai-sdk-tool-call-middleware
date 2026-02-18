@@ -1,13 +1,13 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-import { jsonProtocol } from "../../core/protocols/json-protocol";
+import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
 import { createChunkedStream, pipeWithTransformer } from "../test-helpers";
 
 type MorphXmlTools = Parameters<
-  ReturnType<typeof xmlProtocol>["createStreamParser"]
+  ReturnType<typeof morphXmlProtocol>["createStreamParser"]
 >[0]["tools"];
 
 function seededRandom(seed: number): () => number {
@@ -175,13 +175,13 @@ describe("Random chunk boundary fuzzing", () => {
   // Run each test case with 50 different random chunk splits
   const FUZZ_ITERATIONS = 50;
 
-  describe("jsonProtocol", () => {
+  describe("jsonMixProtocol", () => {
     for (const testCase of jsonMixTestCases) {
       describe(testCase.name, () => {
         it.each(
           Array.from({ length: FUZZ_ITERATIONS }, (_, i) => i)
         )("produces consistent results with random split seed %i", async (seed) => {
-          const protocol = jsonProtocol();
+          const protocol = jsonMixProtocol();
           const transformer = protocol.createStreamParser({ tools: [] });
           const chunks = randomChunkSplit(testCase.input, 1, 8, seed);
           const stream = createChunkedStream(chunks);
@@ -215,7 +215,7 @@ describe("Random chunk boundary fuzzing", () => {
     }
   });
 
-  describe("xmlProtocol", () => {
+  describe("morphXmlProtocol", () => {
     const tools: MorphXmlTools = [
       {
         type: "function",
@@ -230,7 +230,7 @@ describe("Random chunk boundary fuzzing", () => {
         it.each(
           Array.from({ length: FUZZ_ITERATIONS }, (_, i) => i)
         )("produces consistent results with random split seed %i", async (seed) => {
-          const protocol = xmlProtocol();
+          const protocol = morphXmlProtocol();
           const transformer = protocol.createStreamParser({ tools });
           const chunks = randomChunkSplit(testCase.input, 1, 8, seed);
           const stream = createChunkedStream(chunks);
@@ -291,11 +291,11 @@ describe("Random chunk boundary fuzzing", () => {
 });
 
 describe("Single-character chunk streaming", () => {
-  describe("jsonProtocol", () => {
+  describe("jsonMixProtocol", () => {
     it("parses tool call when streamed char-by-char", async () => {
       const input =
         '<tool_call>{"name":"test","arguments":{"value":"hello"}}</tool_call>';
-      const protocol = jsonProtocol();
+      const protocol = jsonMixProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);
@@ -311,7 +311,7 @@ describe("Single-character chunk streaming", () => {
     it("handles text + tool call + text char-by-char", async () => {
       const input =
         'Before <tool_call>{"name":"x","arguments":{}}</tool_call> After';
-      const protocol = jsonProtocol();
+      const protocol = jsonMixProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);
@@ -332,7 +332,7 @@ describe("Single-character chunk streaming", () => {
     it("handles multiple tool calls char-by-char", async () => {
       const input =
         '<tool_call>{"name":"a","arguments":{"n":1}}</tool_call><tool_call>{"name":"b","arguments":{"n":2}}</tool_call>';
-      const protocol = jsonProtocol();
+      const protocol = jsonMixProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);
@@ -349,7 +349,7 @@ describe("Single-character chunk streaming", () => {
     });
   });
 
-  describe("xmlProtocol", () => {
+  describe("morphXmlProtocol", () => {
     const tools: MorphXmlTools = [
       {
         type: "function",
@@ -361,7 +361,7 @@ describe("Single-character chunk streaming", () => {
 
     it("parses XML tool call when streamed char-by-char", async () => {
       const input = "<get_weather><city>Seoul</city></get_weather>";
-      const protocol = xmlProtocol();
+      const protocol = morphXmlProtocol();
       const transformer = protocol.createStreamParser({ tools });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);
@@ -379,7 +379,7 @@ describe("Single-character chunk streaming", () => {
     it("handles nested params char-by-char", async () => {
       const input =
         "<search><query>test query</query><limit>5</limit><offset>0</offset></search>";
-      const protocol = xmlProtocol();
+      const protocol = morphXmlProtocol();
       const transformer = protocol.createStreamParser({ tools });
       const chunks = charByCharSplit(input);
       const stream = createChunkedStream(chunks);
@@ -458,11 +458,11 @@ describe("Single-character chunk streaming", () => {
 });
 
 describe("Unicode and special character boundary handling", () => {
-  describe("jsonProtocol", () => {
+  describe("jsonMixProtocol", () => {
     it("handles Korean characters in arguments", async () => {
       const input =
         '<tool_call>{"name":"search","arguments":{"query":"서울 날씨"}}</tool_call>';
-      const protocol = jsonProtocol();
+      const protocol = jsonMixProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
 
       const chunks = randomChunkSplit(input, 1, 5, 42);
@@ -481,7 +481,7 @@ describe("Unicode and special character boundary handling", () => {
     it("handles Japanese characters in arguments", async () => {
       const input =
         '<tool_call>{"name":"translate","arguments":{"text":"こんにちは世界"}}</tool_call>';
-      const protocol = jsonProtocol();
+      const protocol = jsonMixProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = randomChunkSplit(input, 1, 4, 123);
       const stream = createChunkedStream(chunks);
@@ -499,7 +499,7 @@ describe("Unicode and special character boundary handling", () => {
     it("handles emoji in arguments", async () => {
       const input =
         '<tool_call>{"name":"react","arguments":{"emoji":"🎉🚀💻"}}</tool_call>';
-      const protocol = jsonProtocol();
+      const protocol = jsonMixProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = randomChunkSplit(input, 1, 3, 999);
       const stream = createChunkedStream(chunks);
@@ -517,7 +517,7 @@ describe("Unicode and special character boundary handling", () => {
     it("handles mixed unicode and ASCII", async () => {
       const input =
         '<tool_call>{"name":"search","arguments":{"query":"Hello 世界 🌍 Привет"}}</tool_call>';
-      const protocol = jsonProtocol();
+      const protocol = jsonMixProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = randomChunkSplit(input, 1, 6, 777);
       const stream = createChunkedStream(chunks);
@@ -535,7 +535,7 @@ describe("Unicode and special character boundary handling", () => {
     it("handles escaped characters in JSON", async () => {
       const input =
         '<tool_call>{"name":"code","arguments":{"snippet":"function() {\\n  return \\"test\\";\\n}"}}</tool_call>';
-      const protocol = jsonProtocol();
+      const protocol = jsonMixProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = randomChunkSplit(input, 1, 5, 555);
       const stream = createChunkedStream(chunks);
@@ -556,7 +556,7 @@ describe("Unicode and special character boundary handling", () => {
     it("handles special XML-like characters in JSON strings", async () => {
       const input =
         '<tool_call>{"name":"html","arguments":{"content":"<div class=\\"test\\">Hello</div>"}}</tool_call>';
-      const protocol = jsonProtocol();
+      const protocol = jsonMixProtocol();
       const transformer = protocol.createStreamParser({ tools: [] });
       const chunks = randomChunkSplit(input, 1, 4, 333);
       const stream = createChunkedStream(chunks);
@@ -575,7 +575,7 @@ describe("Unicode and special character boundary handling", () => {
     });
   });
 
-  describe("xmlProtocol", () => {
+  describe("morphXmlProtocol", () => {
     const tools: MorphXmlTools = [
       { type: "function", name: "search", inputSchema: { type: "object" } },
       { type: "function", name: "translate", inputSchema: { type: "object" } },
@@ -584,7 +584,7 @@ describe("Unicode and special character boundary handling", () => {
 
     it("handles Korean characters in XML content", async () => {
       const input = "<search><query>서울 맛집 추천</query></search>";
-      const protocol = xmlProtocol();
+      const protocol = morphXmlProtocol();
       const transformer = protocol.createStreamParser({ tools });
       const chunks = randomChunkSplit(input, 1, 4, 42);
       const stream = createChunkedStream(chunks);
@@ -601,7 +601,7 @@ describe("Unicode and special character boundary handling", () => {
 
     it("handles Chinese characters in XML content", async () => {
       const input = "<translate><text>你好世界</text><to>en</to></translate>";
-      const protocol = xmlProtocol();
+      const protocol = morphXmlProtocol();
       const transformer = protocol.createStreamParser({ tools });
       const chunks = randomChunkSplit(input, 1, 5, 88);
       const stream = createChunkedStream(chunks);
@@ -619,7 +619,7 @@ describe("Unicode and special character boundary handling", () => {
     it("handles emoji in XML content", async () => {
       const input =
         "<react><type>celebrate</type><emoji>🎊🎉✨</emoji></react>";
-      const protocol = xmlProtocol();
+      const protocol = morphXmlProtocol();
       const transformer = protocol.createStreamParser({ tools });
       const chunks = randomChunkSplit(input, 1, 3, 111);
       const stream = createChunkedStream(chunks);

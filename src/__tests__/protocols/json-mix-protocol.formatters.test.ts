@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { jsonProtocol } from "../../core/protocols/json-protocol";
+import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
 
-describe("jsonProtocol formatters and parseGeneratedText edges", () => {
+describe("jsonMixProtocol formatters and parseGeneratedText edges", () => {
   it("formatToolCall stringifies input JSON and non-JSON inputs", () => {
-    const p = jsonProtocol();
+    const p = jsonMixProtocol();
     const xml = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",
@@ -22,7 +22,7 @@ describe("jsonProtocol formatters and parseGeneratedText edges", () => {
   });
 
   it("parseGeneratedText falls back to text on malformed tool call", () => {
-    const p = jsonProtocol();
+    const p = jsonMixProtocol();
     const out = p.parseGeneratedText({
       text: "prefix <tool_call>{bad}</tool_call> suffix",
       tools: [],

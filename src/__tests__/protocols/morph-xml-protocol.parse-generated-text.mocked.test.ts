@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
-describe("xmlProtocol parseGeneratedText recovery via malformed XML", () => {
+describe("morphXmlProtocol parseGeneratedText recovery via malformed XML", () => {
   it("recovers malformed XML by parsing available content", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const onError = vi.fn();
     const tools = [
       {

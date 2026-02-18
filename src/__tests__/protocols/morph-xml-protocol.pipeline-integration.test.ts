@@ -1,8 +1,8 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
-describe("xmlProtocol pipeline integration", () => {
+describe("morphXmlProtocol pipeline integration", () => {
   const simpleTools: LanguageModelV3FunctionTool[] = [
     {
       type: "function",
@@ -18,7 +18,7 @@ describe("xmlProtocol pipeline integration", () => {
 
   describe("default behavior (no options)", () => {
     it("should parse valid XML without pipeline", () => {
-      const protocol = xmlProtocol();
+      const protocol = morphXmlProtocol();
       const text = "<get_weather><location>Seoul</location></get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -31,7 +31,7 @@ describe("xmlProtocol pipeline integration", () => {
     });
 
     it("should recover malformed close tags without pipeline", () => {
-      const protocol = xmlProtocol();
+      const protocol = morphXmlProtocol();
       const text = "<get_weather><location>Seoul</get_weather>";
 
       const result = protocol.parseGeneratedText({ text, tools: simpleTools });
@@ -43,7 +43,7 @@ describe("xmlProtocol pipeline integration", () => {
 
   describe("repair toggle", () => {
     it("should not repair malformed XML when repair=false", () => {
-      const protocol = xmlProtocol({
+      const protocol = morphXmlProtocol({
         parseOptions: { repair: false },
       });
       const text = "<get_weather><location>Seoul</get_weather>";
@@ -55,7 +55,7 @@ describe("xmlProtocol pipeline integration", () => {
     });
 
     it("should still parse valid XML when repair=false", () => {
-      const protocol = xmlProtocol({
+      const protocol = morphXmlProtocol({
         parseOptions: { repair: false },
       });
       const text = "<get_weather><location>Seoul</location></get_weather>";
@@ -89,7 +89,7 @@ describe("xmlProtocol pipeline integration", () => {
     ];
 
     it("should recover when balance fixes tags but creates duplicate string tags", () => {
-      const protocol = xmlProtocol();
+      const protocol = morphXmlProtocol();
 
       const text = `<shell>
         <command>echo "hello"</command>
@@ -109,7 +109,7 @@ describe("xmlProtocol pipeline integration", () => {
     });
 
     it("should handle malformed close tags with duplicate string tags", () => {
-      const protocol = xmlProtocol();
+      const protocol = morphXmlProtocol();
 
       const text = `<shell>
         <command>ls -la</command>
@@ -153,7 +153,7 @@ describe("xmlProtocol pipeline integration", () => {
     </shell>`;
 
     it("should fail to repair when maxReparses is 0", () => {
-      const protocol = xmlProtocol({
+      const protocol = morphXmlProtocol({
         parseOptions: { maxReparses: 0 },
       });
 
@@ -167,7 +167,7 @@ describe("xmlProtocol pipeline integration", () => {
     });
 
     it("should repair duplicates when maxReparses allows reparsing", () => {
-      const protocol = xmlProtocol({
+      const protocol = morphXmlProtocol({
         parseOptions: { maxReparses: 2 },
       });
 
@@ -187,8 +187,8 @@ describe("xmlProtocol pipeline integration", () => {
 
   describe("repair vs strict parsing", () => {
     it("should produce same result for valid XML with or without repair", () => {
-      const strict = xmlProtocol({ parseOptions: { repair: false } });
-      const repaired = xmlProtocol();
+      const strict = morphXmlProtocol({ parseOptions: { repair: false } });
+      const repaired = morphXmlProtocol();
 
       const text = "<get_weather><location>Seoul</location></get_weather>";
 
@@ -215,8 +215,8 @@ describe("xmlProtocol pipeline integration", () => {
     });
 
     it("should recover malformed close tags only when repair is enabled", () => {
-      const strict = xmlProtocol({ parseOptions: { repair: false } });
-      const repaired = xmlProtocol();
+      const strict = morphXmlProtocol({ parseOptions: { repair: false } });
+      const repaired = morphXmlProtocol();
 
       const text = "<get_weather><location>Seoul</get_weather>";
 
@@ -252,7 +252,7 @@ describe("xmlProtocol pipeline integration", () => {
     ];
 
     it("should preserve <0>, <1> index tags", () => {
-      const protocol = xmlProtocol();
+      const protocol = morphXmlProtocol();
       const text = `<set_coordinates>
         <coordinates>
           <0>10.5</0>

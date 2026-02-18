@@ -1,5 +1,5 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
-import { formatToolResponseAsXml } from "../core/prompts/xml-prompt";
+import { morphFormatToolResponseAsXml } from "../core/prompts/morph-xml-prompt";
 import { createToolMiddleware, uiTarsXmlProtocol } from "../index";
 
 /**
@@ -8,7 +8,7 @@ import { createToolMiddleware, uiTarsXmlProtocol } from "../index";
  */
 export const uiTarsToolMiddleware = createToolMiddleware({
   protocol: uiTarsXmlProtocol,
-  toolResponsePromptTemplate: formatToolResponseAsXml,
+  toolResponsePromptTemplate: morphFormatToolResponseAsXml,
   toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
     const toolsJson = JSON.stringify(tools);
     return `You have access to callable functions (tools).

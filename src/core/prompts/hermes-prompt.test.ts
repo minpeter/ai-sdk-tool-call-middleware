@@ -5,7 +5,7 @@ import type {
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import { transformParams } from "../../transform-handler";
-import { jsonProtocol } from "../protocols/json-protocol";
+import { jsonMixProtocol } from "../protocols/json-mix-protocol";
 import {
   createJsonInXmlToolResponseFormatter,
   formatToolResponseAsJsonInXml,
@@ -65,7 +65,7 @@ describe("hermes-prompt outer-layer transform", () => {
     ];
 
     const transformed = transformParams({
-      protocol: jsonProtocol({}),
+      protocol: jsonMixProtocol({}),
       placement: "first",
       toolSystemPromptTemplate: hermesSystemPromptTemplate,
       toolResponsePromptTemplate: formatToolResponseAsJsonInXml,

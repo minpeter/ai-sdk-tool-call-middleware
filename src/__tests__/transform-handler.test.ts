@@ -1,12 +1,12 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { hermesToolMiddleware, xmlToolMiddleware } from "..";
+import { hermesToolMiddleware, morphXmlToolMiddleware } from "..";
 import { formatToolResponseAsJsonInXml } from "../core/prompts/hermes-prompt";
 import {
   formatToolResponseAsQwen3CoderXml,
   qwen3coderSystemPromptTemplate,
 } from "../core/prompts/qwen3coder-prompt";
-import { jsonProtocol } from "../core/protocols/json-protocol";
+import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
 import { qwen3CoderProtocol } from "../core/protocols/qwen3coder-protocol";
 import { createToolMiddleware } from "../tool-call-middleware";
 
@@ -57,8 +57,8 @@ describe("index prompt templates", () => {
     expect(text).toMatch(REGEX_GET_WEATHER);
   });
 
-  it("xmlToolMiddleware template appears in system prompt", async () => {
-    const transformParams = xmlToolMiddleware.transformParams as any;
+  it("morphXmlToolMiddleware template appears in system prompt", async () => {
+    const transformParams = morphXmlToolMiddleware.transformParams as any;
     const out = await transformParams({
       params: { prompt: [], tools },
     } as any);
@@ -76,7 +76,7 @@ describe("placement last behaviour (default)", () => {
   it("does not append empty system message when rendered system prompt is empty", async () => {
     const mw = createToolMiddleware({
       placement: "last",
-      protocol: jsonProtocol,
+      protocol: jsonMixProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const transformParams = mw.transformParams;
@@ -99,7 +99,7 @@ describe("placement last behaviour (default)", () => {
   it("default last: appends system at end when no system exists", async () => {
     const mw = createToolMiddleware({
       placement: "last",
-      protocol: jsonProtocol,
+      protocol: jsonMixProtocol,
       toolSystemPromptTemplate: (t) => `SYS:${t}`,
     });
     const tools: LanguageModelV3FunctionTool[] = [
@@ -140,7 +140,7 @@ describe("placement last behaviour (default)", () => {
   it("last: merges with existing system at non-zero index (keeps one system)", async () => {
     const mw = createToolMiddleware({
       placement: "last",
-      protocol: jsonProtocol,
+      protocol: jsonMixProtocol,
       toolSystemPromptTemplate: (t) => `SYS:${t}`,
     });
     const tools: LanguageModelV3FunctionTool[] = [
@@ -178,7 +178,7 @@ describe("placement last behaviour (default)", () => {
 
 describe("createToolMiddleware error branches", () => {
   const mw = createToolMiddleware({
-    protocol: jsonProtocol,
+    protocol: jsonMixProtocol,
     toolSystemPromptTemplate: (t) => `T:${t}`,
   });
 
@@ -258,7 +258,7 @@ describe("createToolMiddleware error branches", () => {
 describe("createToolMiddleware positive paths", () => {
   it("transformParams injects system prompt and merges consecutive user texts", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: jsonMixProtocol,
       placement: "first",
       toolSystemPromptTemplate: (t) => `SYS:${t}`,
     });
@@ -364,7 +364,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
   });
 
   it("xml: formats assistant tool-call (object input) and tool result into user text", async () => {
-    const mw = xmlToolMiddleware;
+    const mw = morphXmlToolMiddleware;
     const transformParams = mw.transformParams;
     if (!transformParams) {
       throw new Error("transformParams is undefined");
@@ -547,7 +547,7 @@ describe("qwen3coder chat-template alignment via existing transform pipeline", (
 describe("transformParams", () => {
   it("should transform params with tools into prompt", async () => {
     const middleware = createToolMiddleware({
-      protocol: jsonProtocol({}),
+      protocol: jsonMixProtocol({}),
       toolSystemPromptTemplate: (tools) =>
         `You have tools: ${JSON.stringify(tools)}`,
     });
@@ -588,7 +588,7 @@ describe("transformParams", () => {
 describe("transformParams merges adjacent user messages", () => {
   it("merges two consecutive user messages into one with newline", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: jsonMixProtocol,
       placement: "first",
       toolSystemPromptTemplate: (t) => `T:${t}`,
     });
@@ -618,7 +618,7 @@ describe("transformParams merges adjacent user messages", () => {
 
   it("condenses multiple tool_response messages into single user text content", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: jsonMixProtocol,
       placement: "first",
       toolSystemPromptTemplate: (t) => `T:${t}`,
       toolResponsePromptTemplate: formatToolResponseAsJsonInXml,
@@ -688,7 +688,7 @@ describe("transformParams merges adjacent user messages", () => {
 
 describe("transformParams convertToolPrompt mapping and merge", () => {
   const mw = createToolMiddleware({
-    protocol: jsonProtocol,
+    protocol: jsonMixProtocol,
     placement: "first",
     toolSystemPromptTemplate: (t) => `TOOLS:${t}`,
     toolResponsePromptTemplate: formatToolResponseAsJsonInXml,
@@ -871,7 +871,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
 describe(".....", () => {
   it("transformParams throws on toolChoice type none", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: jsonMixProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const transformParams = mw.transformParams;
@@ -887,7 +887,7 @@ describe(".....", () => {
 
   it("transformParams validates specific tool selection and builds JSON schema", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: jsonMixProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const tools = [
@@ -917,7 +917,7 @@ describe(".....", () => {
 
   it("transformParams required builds if/then/else schema", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: jsonMixProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const tools = [

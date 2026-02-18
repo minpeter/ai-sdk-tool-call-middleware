@@ -14,8 +14,8 @@
 
 - 11778c6: Stream stable, monotonic JSON argument deltas for tool calls across protocols.
 
-  - `jsonProtocol`: `tool-input-delta` streams canonical JSON argument text.
-  - `xmlProtocol` and `yamlProtocol`: `tool-input-delta` streams parsed JSON argument prefixes (not raw XML/YAML fragments).
+  - `jsonMixProtocol`: `tool-input-delta` streams canonical JSON argument text.
+  - `morphXmlProtocol` and `yamlXmlProtocol`: `tool-input-delta` streams parsed JSON argument prefixes (not raw XML/YAML fragments).
   - Preserve ID reconciliation across `tool-input-start`, `tool-input-end`, and final `tool-call`.
   - Tool call ids are now generated in an OpenAI-like `call_` format.
   - Suppress raw protocol-markup fallback in streaming parse failures by default to avoid leaking internal markup to end users (opt-in via `emitRawToolCallTextOnError: true`).
@@ -47,8 +47,8 @@
 
   - Extract shared `escapeRegExp` function: removed duplicate from `rxml/heuristics/xml-defaults.ts`, now imports from `core/utils/regex.ts`
   - Create shared regex constants: new `core/utils/regex-constants.ts` exports `NAME_CHAR_RE` and `WHITESPACE_REGEX` used by protocol implementations
-  - Extract shared `ParserOptions` interface: moved to `core/protocols/protocol-interface.ts` from duplicate definitions in `xml-protocol.ts` and `yaml-protocol.ts`
-  - Create shared protocol utility: new `core/utils/protocol-utils.ts` exports `addTextSegment()` function, replacing duplicate implementations in `json-protocol.ts` and `yaml-protocol.ts`
+  - Extract shared `ParserOptions` interface: moved to `core/protocols/protocol-interface.ts` from duplicate definitions in `morph-xml-protocol.ts` and `yaml-xml-protocol.ts`
+  - Create shared protocol utility: new `core/utils/protocol-utils.ts` exports `addTextSegment()` function, replacing duplicate implementations in `json-mix-protocol.ts` and `yaml-xml-protocol.ts`
 
   ### Dependency Updates
 
@@ -127,19 +127,19 @@
 
 ### Patch Changes
 
-- b9b13bd: Simplify `formatToolResponseAsJsonInXml` signature to match `formatToolResponseAsXml` by removing optional tag parameters and hardcoding `<tool_response>` tags.
+- b9b13bd: Simplify `formatToolResponseAsJsonInXml` signature to match `morphFormatToolResponseAsXml` by removing optional tag parameters and hardcoding `<tool_response>` tags.
 - b9b13bd: feat: Implement PR #141 review feedback - clean up gemma support and fix documentation
 
   - Remove all gemma model references and configurations across codebase
   - Fix broken README examples by adding proper model and middleware imports
-  - Change xmlToolMiddleware placement from "first" to "last" for consistency
-  - Fix yamlToolMiddleware import name in benchmark scripts
+- Change morphXmlToolMiddleware placement from "first" to "last" for consistency
+  - Fix yamlXmlToolMiddleware import name in benchmark scripts
   - Update ai dependency from 6.0.5 to 6.0.6
   - Add missing transformParams to disk cache middleware
 
 - b9b13bd: Fix type issues and variable references in tool response formatting refactoring
 - b9b13bd: Fixed prompt normalization in v5 transform handler to handle single message objects, preventing runtime errors when params.prompt is a single ModelMessage instead of an array.
-- b9b13bd: Fixed XML escaping in formatToolResponseAsXml to prevent invalid XML when tool results contain special characters like < and & in JSON-serialized objects.
+- b9b13bd: Fixed XML escaping in morphFormatToolResponseAsXml to prevent invalid XML when tool results contain special characters like < and & in JSON-serialized objects.
 - b9b13bd: Sync v5 and v6 middleware implementations: extract shared prompts to `core/prompts/`, add orchestratorToolMiddleware to v5, unify morphXmlToolMiddleware placement, and add debug logging to v5 handlers
 
 ## 3.0.0
@@ -162,8 +162,8 @@
 - 1fc1810: Add YAML+XML mixed tool call protocol (Orchestrator-style)
 - Internal restructuring: consolidate v6 folder contents into main src directory, update all imports and exports accordingly
 
-  - New `yamlProtocol` for parsing tool calls with YAML content inside XML tags
-  - New `ymlToolMiddleware` pre-configured middleware
+  - New `yamlXmlProtocol` for parsing tool calls with YAML content inside XML tags
+  - New `yamlXmlToolMiddleware` pre-configured middleware
   - New `orchestratorSystemPromptTemplate` for customizable system prompts
   - Supports YAML multiline syntax (`|` and `>`)
   - Full streaming support with proper text/tool-call separation
@@ -235,7 +235,7 @@
 - 49f5024: Added license to Apache 2.0
 - 02b32c0: Morph XML protocol and utils robustness tweaks.
 
-  - Add `RXML` for safer XML extraction (raw string tags, duplicate checks) and use it in `xmlProtocol`.
+  - Add `RXML` for safer XML extraction (raw string tags, duplicate checks) and use it in `morphXmlProtocol`.
   - Replace relaxed JSON helper with `RJSON`; export `RXML`/`RJSON` from utils.
   - Minor improvements to streaming parsing and XML stringify options.
 

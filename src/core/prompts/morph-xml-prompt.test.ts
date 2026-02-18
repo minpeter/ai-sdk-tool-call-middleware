@@ -5,14 +5,14 @@ import type {
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import { transformParams } from "../../transform-handler";
-import { xmlProtocol } from "../protocols/xml-protocol";
+import { morphXmlProtocol } from "../protocols/morph-xml-protocol";
 import {
-  createXmlToolResponseFormatter,
-  formatToolResponseAsXml,
-  xmlSystemPromptTemplate,
-} from "./xml-prompt";
+  createMorphXmlToolResponseFormatter,
+  morphFormatToolResponseAsXml,
+  morphXmlSystemPromptTemplate,
+} from "./morph-xml-prompt";
 
-describe("xml-prompt outer-layer transform", () => {
+describe("morph-xml-prompt outer-layer transform", () => {
   it("transforms tools + messages into the expected prompt message array", () => {
     const tools: LanguageModelV3FunctionTool[] = [
       {
@@ -65,10 +65,10 @@ describe("xml-prompt outer-layer transform", () => {
     ];
 
     const transformed = transformParams({
-      protocol: xmlProtocol({}),
+      protocol: morphXmlProtocol({}),
       placement: "first",
-      toolSystemPromptTemplate: xmlSystemPromptTemplate,
-      toolResponsePromptTemplate: formatToolResponseAsXml,
+      toolSystemPromptTemplate: morphXmlSystemPromptTemplate,
+      toolResponsePromptTemplate: morphFormatToolResponseAsXml,
       params: {
         prompt: inputPrompt,
         tools,
@@ -78,7 +78,7 @@ describe("xml-prompt outer-layer transform", () => {
     const expectedPrompt: LanguageModelV3Prompt = [
       {
         role: "system",
-        content: xmlSystemPromptTemplate(tools),
+        content: morphXmlSystemPromptTemplate(tools),
       },
       {
         role: "user",
@@ -118,9 +118,9 @@ describe("xml-prompt outer-layer transform", () => {
   });
 });
 
-describe("formatToolResponseAsXml", () => {
+describe("morphFormatToolResponseAsXml", () => {
   it("formats basic tool result with XML tags", () => {
-    const result = formatToolResponseAsXml({
+    const result = morphFormatToolResponseAsXml({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "search",
@@ -137,7 +137,7 @@ describe("formatToolResponseAsXml", () => {
   });
 
   it("formats full XML response with nested result", () => {
-    const result = formatToolResponseAsXml({
+    const result = morphFormatToolResponseAsXml({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "get_weather",
@@ -165,7 +165,7 @@ describe("formatToolResponseAsXml", () => {
   });
 
   it("does not escape XML special characters in tool name", () => {
-    const result = formatToolResponseAsXml({
+    const result = morphFormatToolResponseAsXml({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "get<data>",
@@ -175,7 +175,7 @@ describe("formatToolResponseAsXml", () => {
   });
 
   it("does not escape XML special characters in result", () => {
-    const result = formatToolResponseAsXml({
+    const result = morphFormatToolResponseAsXml({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "search",
@@ -190,7 +190,7 @@ describe("formatToolResponseAsXml", () => {
   });
 
   it("unwraps json-typed result before formatting", () => {
-    const result = formatToolResponseAsXml({
+    const result = morphFormatToolResponseAsXml({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "get_data",
@@ -201,7 +201,7 @@ describe("formatToolResponseAsXml", () => {
   });
 
   it("handles content type with images gracefully", () => {
-    const result = formatToolResponseAsXml({
+    const result = morphFormatToolResponseAsXml({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "screenshot",
@@ -218,7 +218,7 @@ describe("formatToolResponseAsXml", () => {
   });
 
   it("formats object result as XML", () => {
-    const result = formatToolResponseAsXml({
+    const result = morphFormatToolResponseAsXml({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "get_data",
@@ -230,7 +230,7 @@ describe("formatToolResponseAsXml", () => {
   });
 
   it("handles execution-denied result", () => {
-    const result = formatToolResponseAsXml({
+    const result = morphFormatToolResponseAsXml({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "delete",
@@ -241,7 +241,7 @@ describe("formatToolResponseAsXml", () => {
   });
 
   it("factory supports auto media strategy with enabled image capability", () => {
-    const formatter = createXmlToolResponseFormatter({
+    const formatter = createMorphXmlToolResponseFormatter({
       mediaStrategy: {
         mode: "auto",
         capabilities: {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 // Test data constants
 const TEST_COORDS = [3, 4, 5];
@@ -11,9 +11,9 @@ vi.spyOn(console, "warn").mockImplementation(() => {
   // Intentionally empty - suppress console warnings during tests
 });
 
-describe("xmlProtocol parseGeneratedText coercion", () => {
+describe("morphXmlProtocol parseGeneratedText coercion", () => {
   it("coerces string numbers/booleans to primitives using simple object schema", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -43,7 +43,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("coerces using jsonSchema-wrapped schema", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -73,7 +73,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("applies heuristic coercion when schema missing but values are numeric/boolean strings", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -95,7 +95,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("coerces array from JSON string and CSV/newline to number[]", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -133,7 +133,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("coerces array from XML item shape to typed array", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -168,7 +168,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("coerces object from JSON-like string (single quotes) and nested objects", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -212,7 +212,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("recursively coerces nested arrays of objects", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -253,7 +253,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("handles booleans (case-insensitive) and numbers with scientific notation", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -282,7 +282,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("preserves strings when schema says string even if numeric-like", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -304,7 +304,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("handles empty array/object inputs", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -332,7 +332,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("preserves wrapper key for unconstrained array items", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -366,7 +366,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("coerces array items when item-wrapped contains object strings", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
@@ -405,7 +405,7 @@ describe("xmlProtocol parseGeneratedText coercion", () => {
   });
 
   it("handles multiline JSON strings in object properties", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",

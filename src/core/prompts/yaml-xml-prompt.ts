@@ -1,12 +1,12 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
-  createXmlToolResponseFormatter,
-  formatToolResponseAsXml,
-  type XmlToolResponseFormatterOptions,
-} from "./xml-prompt";
+  createMorphXmlToolResponseFormatter,
+  type MorphXmlToolResponseFormatterOptions,
+  morphFormatToolResponseAsXml,
+} from "./morph-xml-prompt";
 
-export function yamlSystemPromptTemplate(
+export function yamlXmlSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[],
   includeMultilineExample = true
 ): string {
@@ -52,14 +52,15 @@ unit: celsius
 - If a task requires multiple function calls, make ALL of them at once.`;
 }
 
-export type YamlToolResponseFormatterOptions = XmlToolResponseFormatterOptions;
+export type YamlToolResponseFormatterOptions =
+  MorphXmlToolResponseFormatterOptions;
 
 export function createYamlToolResponseFormatter(
   options?: YamlToolResponseFormatterOptions
 ): (toolResult: ToolResultPart) => string {
-  return createXmlToolResponseFormatter(options);
+  return createMorphXmlToolResponseFormatter(options);
 }
 
 export function formatToolResponseAsYaml(toolResult: ToolResultPart): string {
-  return formatToolResponseAsXml(toolResult);
+  return morphFormatToolResponseAsXml(toolResult);
 }

@@ -12,7 +12,7 @@ import { addTextSegment } from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
-interface JsonProtocolOptions {
+interface JsonMixProtocolOptions {
   toolCallEnd?: string;
   toolCallStart?: string;
 }
@@ -746,10 +746,10 @@ function handlePartialTag(
   }
 }
 
-export const jsonProtocol = ({
+export const jsonMixProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
-}: JsonProtocolOptions = {}): TCMProtocol => ({
+}: JsonMixProtocolOptions = {}): TCMProtocol => ({
   formatTools({
     tools,
     toolSystemPromptTemplate,

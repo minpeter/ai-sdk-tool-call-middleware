@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 import { originalToolsSchema } from "../../core/utils/provider-options";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { mockUsage, stopFinishReason } from "../test-helpers";
@@ -13,7 +13,7 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-describe("xmlProtocol stream parsing", () => {
+describe("morphXmlProtocol stream parsing", () => {
   const tools: LanguageModelV3FunctionTool[] = [
     {
       type: "function",
@@ -24,7 +24,7 @@ describe("xmlProtocol stream parsing", () => {
   ];
 
   const middleware = createToolMiddleware({
-    protocol: xmlProtocol,
+    protocol: morphXmlProtocol,
     toolSystemPromptTemplate: () => "",
   });
 
@@ -220,7 +220,7 @@ describe("xmlProtocol stream parsing", () => {
   });
 });
 
-describe("xmlProtocol parseGeneratedText self-closing tags", () => {
+describe("morphXmlProtocol parseGeneratedText self-closing tags", () => {
   const tools: LanguageModelV3FunctionTool[] = [
     {
       type: "function",
@@ -242,7 +242,7 @@ describe("xmlProtocol parseGeneratedText self-closing tags", () => {
   ];
 
   test("should parse self-closing tool call without arguments (issue #84)", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const text = "<get_location/>";
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
 
@@ -256,7 +256,7 @@ describe("xmlProtocol parseGeneratedText self-closing tags", () => {
   });
 
   test("should parse self-closing tool call with surrounding text (issue #84)", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const text = "Getting your location now... <get_location/> Done!";
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
 
@@ -278,7 +278,7 @@ describe("xmlProtocol parseGeneratedText self-closing tags", () => {
   });
 
   test("should parse multiple self-closing tool calls", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const text = "<get_location/><get_location/>";
     const out = protocol.parseGeneratedText({ text, tools, options: {} });
 
@@ -297,7 +297,7 @@ describe("xmlProtocol parseGeneratedText self-closing tags", () => {
   });
 
   test("should parse mixed self-closing and regular tool calls", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const text =
       "<get_location/><get_weather><location>Seoul</location></get_weather>";
     const out = protocol.parseGeneratedText({ text, tools, options: {} });

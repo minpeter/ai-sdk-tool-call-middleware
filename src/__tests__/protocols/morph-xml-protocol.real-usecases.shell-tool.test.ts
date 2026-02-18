@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 vi.spyOn(console, "warn").mockImplementation(() => {
   // suppress noisy console output during test
 });
 
-describe("xmlProtocol - shell tool", () => {
+describe("morphXmlProtocol - shell tool", () => {
   const tools = [
     {
       type: "function",
@@ -46,7 +46,7 @@ describe("xmlProtocol - shell tool", () => {
   ] as any;
 
   it("[malformed closing tag handling] parses shell call with extra stray </command> and produces correct arguments", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
 
     const text =
       "<shell>" +
@@ -84,7 +84,7 @@ describe("xmlProtocol - shell tool", () => {
   });
 
   it("[excessive tag call] case where justification tag appears excessively", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
 
     const text =
       "<shell><command>git</command><command>log</command><justification>oneline</justification><command>-10</" +
@@ -111,7 +111,7 @@ describe("xmlProtocol - shell tool", () => {
   });
 
   it("[Special character handling] Handling of special characters such as '>', '<<'", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
 
     const text =
       "<shell><command>cat > test.md << 'EOF'" +

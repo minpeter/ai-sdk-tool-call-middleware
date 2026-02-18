@@ -3,25 +3,25 @@ import {
   hermesSystemPromptTemplate,
 } from "./core/prompts/hermes-prompt";
 import {
+  morphFormatToolResponseAsXml,
+  morphXmlSystemPromptTemplate,
+} from "./core/prompts/morph-xml-prompt";
+import {
   formatToolResponseAsQwen3CoderXml,
   qwen3coderSystemPromptTemplate,
 } from "./core/prompts/qwen3coder-prompt";
 import {
-  formatToolResponseAsXml,
-  xmlSystemPromptTemplate,
-} from "./core/prompts/xml-prompt";
-import {
   formatToolResponseAsYaml,
-  yamlSystemPromptTemplate,
-} from "./core/prompts/yaml-prompt";
-import { jsonProtocol } from "./core/protocols/json-protocol";
+  yamlXmlSystemPromptTemplate,
+} from "./core/prompts/yaml-xml-prompt";
+import { jsonMixProtocol } from "./core/protocols/json-mix-protocol";
+import { morphXmlProtocol } from "./core/protocols/morph-xml-protocol";
 import { qwen3CoderProtocol } from "./core/protocols/qwen3coder-protocol";
-import { xmlProtocol } from "./core/protocols/xml-protocol";
-import { yamlProtocol } from "./core/protocols/yaml-protocol";
+import { yamlXmlProtocol } from "./core/protocols/yaml-xml-protocol";
 import { createToolMiddleware } from "./tool-call-middleware";
 
 export const hermesToolMiddleware = createToolMiddleware({
-  protocol: jsonProtocol({}),
+  protocol: jsonMixProtocol({}),
   toolSystemPromptTemplate: hermesSystemPromptTemplate,
   toolResponsePromptTemplate: formatToolResponseAsJsonInXml,
 });
@@ -32,14 +32,14 @@ export const qwen3CoderToolMiddleware = createToolMiddleware({
   toolResponsePromptTemplate: formatToolResponseAsQwen3CoderXml,
 });
 
-export const xmlToolMiddleware = createToolMiddleware({
-  protocol: xmlProtocol({}),
-  toolSystemPromptTemplate: xmlSystemPromptTemplate,
-  toolResponsePromptTemplate: formatToolResponseAsXml,
+export const morphXmlToolMiddleware = createToolMiddleware({
+  protocol: morphXmlProtocol({}),
+  toolSystemPromptTemplate: morphXmlSystemPromptTemplate,
+  toolResponsePromptTemplate: morphFormatToolResponseAsXml,
 });
 
-export const yamlToolMiddleware = createToolMiddleware({
-  protocol: yamlProtocol({}),
-  toolSystemPromptTemplate: yamlSystemPromptTemplate,
+export const yamlXmlToolMiddleware = createToolMiddleware({
+  protocol: yamlXmlProtocol({}),
+  toolSystemPromptTemplate: yamlXmlSystemPromptTemplate,
   toolResponsePromptTemplate: formatToolResponseAsYaml,
 });

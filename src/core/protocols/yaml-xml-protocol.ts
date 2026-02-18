@@ -19,7 +19,7 @@ import {
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
-export interface YamlProtocolOptions {
+export interface YamlXmlProtocolOptions {
   /**
    * Whether to include a system prompt example showing YAML multiline syntax.
    * @default true
@@ -620,9 +620,9 @@ function stripTrailingPartialCloseTag(
   return contentWithoutPartial.trimEnd();
 }
 
-export const yamlProtocol = (
+export const yamlXmlProtocol = (
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future extensibility
-  _protocolOptions?: YamlProtocolOptions
+  _protocolOptions?: YamlXmlProtocolOptions
 ): TCMCoreProtocol => {
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {

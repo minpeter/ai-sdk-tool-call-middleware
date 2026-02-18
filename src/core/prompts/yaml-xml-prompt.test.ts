@@ -4,13 +4,13 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { transformParams } from "../../transform-handler";
-import { yamlProtocol } from "../protocols/yaml-protocol";
+import { yamlXmlProtocol } from "../protocols/yaml-xml-protocol";
 import {
   formatToolResponseAsYaml,
-  yamlSystemPromptTemplate,
-} from "./yaml-prompt";
+  yamlXmlSystemPromptTemplate,
+} from "./yaml-xml-prompt";
 
-describe("yaml-prompt outer-layer transform", () => {
+describe("yaml-xml-prompt outer-layer transform", () => {
   it("transforms tools + messages into the expected prompt message array", () => {
     const tools: LanguageModelV3FunctionTool[] = [
       {
@@ -63,9 +63,9 @@ describe("yaml-prompt outer-layer transform", () => {
     ];
 
     const transformed = transformParams({
-      protocol: yamlProtocol({}),
+      protocol: yamlXmlProtocol({}),
       placement: "first",
-      toolSystemPromptTemplate: yamlSystemPromptTemplate,
+      toolSystemPromptTemplate: yamlXmlSystemPromptTemplate,
       toolResponsePromptTemplate: formatToolResponseAsYaml,
       params: {
         prompt: inputPrompt,
@@ -76,7 +76,7 @@ describe("yaml-prompt outer-layer transform", () => {
     const expectedPrompt: LanguageModelV3Prompt = [
       {
         role: "system",
-        content: yamlSystemPromptTemplate(tools),
+        content: yamlXmlSystemPromptTemplate(tools),
       },
       {
         role: "user",

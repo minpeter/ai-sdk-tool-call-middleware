@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { jsonProtocol } from "../../core/protocols/json-protocol";
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 describe("protocol formatters", () => {
-  it("jsonProtocol formatToolCall and formatTools", () => {
-    const p = jsonProtocol();
+  it("jsonMixProtocol formatToolCall and formatTools", () => {
+    const p = jsonMixProtocol();
     const tools = [
       {
         type: "function",
@@ -28,8 +28,8 @@ describe("protocol formatters", () => {
     expect(call).toContain("<tool_call>");
   });
 
-  it("xmlProtocol formatToolCall and formatTools", () => {
-    const p = xmlProtocol();
+  it("morphXmlProtocol formatToolCall and formatTools", () => {
+    const p = morphXmlProtocol();
     const tools = [
       {
         type: "function",
