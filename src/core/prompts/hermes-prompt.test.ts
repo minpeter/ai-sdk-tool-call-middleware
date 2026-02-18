@@ -10,6 +10,8 @@ import {
   createHermesToolResponseFormatter,
   formatToolResponseAsHermes,
   hermesSystemPromptTemplate,
+  jsonSchemaToPythonType,
+  renderToolDefinition,
 } from "./hermes-prompt";
 
 describe("hermes-prompt outer-layer transform", () => {
@@ -107,6 +109,106 @@ describe("hermes-prompt outer-layer transform", () => {
     expect(transformed.prompt).toEqual(expectedPrompt);
     expect(transformed.tools).toEqual([]);
     expect(transformed.toolChoice).toBeUndefined();
+  });
+});
+
+describe("jsonSchemaToPythonType", () => {
+  it('maps "string" to "str"', () => {
+    expect(jsonSchemaToPythonType({ type: "string" })).toBe("str");
+  });
+
+  it('maps "number" to "float"', () => {
+    expect(jsonSchemaToPythonType({ type: "number" })).toBe("float");
+  });
+
+  it('maps "integer" to "int"', () => {
+    expect(jsonSchemaToPythonType({ type: "integer" })).toBe("int");
+  });
+
+  it('maps "boolean" to "bool"', () => {
+    expect(jsonSchemaToPythonType({ type: "boolean" })).toBe("bool");
+  });
+
+  it("maps array with items to list[type]", () => {
+    expect(
+      jsonSchemaToPythonType({ type: "array", items: { type: "string" } })
+    ).toBe("list[str]");
+  });
+
+  it("maps object with additionalProperties to dict[str, type]", () => {
+    expect(
+      jsonSchemaToPythonType({
+        type: "object",
+        additionalProperties: { type: "number" },
+      })
+    ).toBe("dict[str, float]");
+  });
+
+  it("maps object without additionalProperties to dict", () => {
+    expect(jsonSchemaToPythonType({ type: "object" })).toBe("dict");
+  });
+
+  it("maps union type array to Union[...]", () => {
+    expect(jsonSchemaToPythonType({ type: ["string", "integer"] })).toBe(
+      "Union[str,int]"
+    );
+  });
+
+  it("maps unknown/missing type to Any", () => {
+    expect(jsonSchemaToPythonType({})).toBe("Any");
+  });
+});
+
+describe("renderToolDefinition", () => {
+  it("renders tool with description and parameters", () => {
+    const tool: LanguageModelV3FunctionTool = {
+      type: "function",
+      name: "get_weather",
+      description: "Get weather by city",
+      inputSchema: {
+        type: "object",
+        properties: {
+          city: { type: "string", description: "The city name" },
+        },
+        required: ["city"],
+      },
+    };
+    const result = renderToolDefinition(tool);
+    expect(result).toContain('"type": "function"');
+    expect(result).toContain('"function":');
+    expect(result).toContain("get_weather");
+    expect(result).toContain("Args:");
+    expect(result).toContain("city(str):");
+  });
+
+  it("renders tool without description gracefully", () => {
+    const tool: LanguageModelV3FunctionTool = {
+      type: "function",
+      name: "no_desc_tool",
+      inputSchema: {
+        type: "object",
+        properties: {
+          value: { type: "integer" },
+        },
+      },
+    };
+    const result = renderToolDefinition(tool);
+    expect(result).toContain("no_desc_tool");
+    expect(result).toContain('"type": "function"');
+  });
+
+  it("renders tool with empty properties as parameters: {}", () => {
+    const tool: LanguageModelV3FunctionTool = {
+      type: "function",
+      name: "no_params_tool",
+      description: "No params",
+      inputSchema: {
+        type: "object",
+        properties: {},
+      },
+    };
+    const result = renderToolDefinition(tool);
+    expect(result).toContain('"parameters": {}');
   });
 });
 
