@@ -4,9 +4,14 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
+import { dummyProtocol } from "../../core/protocols/dummy-protocol";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
-import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
+import {
+  Qwen3CoderToolParser,
+  qwen3CoderProtocol,
+  uiTarsXmlProtocol,
+} from "../../core/protocols/qwen3coder-protocol";
 import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
 import { toolInputStreamFixtures } from "../fixtures/tool-input-stream-fixtures";
 import {
@@ -73,6 +78,431 @@ function extractToolInputTimeline(parts: LanguageModelV3StreamPart[]) {
   return { starts, deltas, ends };
 }
 
+function assertCondition(
+  condition: unknown,
+  message: string
+): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function assertCanonicalAiSdkEventOrder(parts: LanguageModelV3StreamPart[]) {
+  const finishIndex = parts.findIndex((part) => part.type === "finish");
+  assertCondition(finishIndex >= 0, "Missing finish event");
+  assertCondition(
+    finishIndex === parts.length - 1,
+    "Finish event must be the final event"
+  );
+
+  const openTextSegments = new Map<string, number>();
+  const openReasoningSegments = new Map<string, number>();
+  const toolInputWindows = new Map<
+    string,
+    { startIndex: number; endIndex: number | null }
+  >();
+
+  parts.forEach((part, index) => {
+    if (part.type === "text-start") {
+      assertCondition(
+        !openTextSegments.has(part.id),
+        `Duplicate text-start for id '${part.id}'`
+      );
+      openTextSegments.set(part.id, index);
+      return;
+    }
+
+    if (part.type === "text-delta") {
+      assertCondition(
+        openTextSegments.has(part.id),
+        `text-delta without text-start for id '${part.id}'`
+      );
+      return;
+    }
+
+    if (part.type === "text-end") {
+      const startIndex = openTextSegments.get(part.id);
+      assertCondition(
+        startIndex !== undefined,
+        `text-end without text-start for id '${part.id}'`
+      );
+      assertCondition(
+        (startIndex ?? index) < index,
+        `text-end must occur after text-start for id '${part.id}'`
+      );
+      openTextSegments.delete(part.id);
+      return;
+    }
+
+    if (part.type === "reasoning-start") {
+      assertCondition(
+        !openReasoningSegments.has(part.id),
+        `Duplicate reasoning-start for id '${part.id}'`
+      );
+      openReasoningSegments.set(part.id, index);
+      return;
+    }
+
+    if (part.type === "reasoning-delta") {
+      assertCondition(
+        openReasoningSegments.has(part.id),
+        `reasoning-delta without reasoning-start for id '${part.id}'`
+      );
+      return;
+    }
+
+    if (part.type === "reasoning-end") {
+      const startIndex = openReasoningSegments.get(part.id);
+      assertCondition(
+        startIndex !== undefined,
+        `reasoning-end without reasoning-start for id '${part.id}'`
+      );
+      assertCondition(
+        (startIndex ?? index) < index,
+        `reasoning-end must occur after reasoning-start for id '${part.id}'`
+      );
+      openReasoningSegments.delete(part.id);
+      return;
+    }
+
+    if (part.type === "tool-input-start") {
+      assertCondition(
+        !toolInputWindows.has(part.id),
+        `Duplicate tool-input-start for id '${part.id}'`
+      );
+      toolInputWindows.set(part.id, { startIndex: index, endIndex: null });
+      return;
+    }
+
+    if (part.type === "tool-input-delta") {
+      const window = toolInputWindows.get(part.id);
+      assertCondition(
+        window !== undefined,
+        `tool-input-delta without tool-input-start for id '${part.id}'`
+      );
+      assertCondition(
+        (window?.startIndex ?? index) < index,
+        `tool-input-delta must occur after tool-input-start for id '${part.id}'`
+      );
+      assertCondition(
+        window?.endIndex == null,
+        `tool-input-delta appears after tool-input-end for id '${part.id}'`
+      );
+      return;
+    }
+
+    if (part.type === "tool-input-end") {
+      const window = toolInputWindows.get(part.id);
+      assertCondition(
+        window !== undefined,
+        `tool-input-end without tool-input-start for id '${part.id}'`
+      );
+      assertCondition(
+        (window?.startIndex ?? index) < index,
+        `tool-input-end must occur after tool-input-start for id '${part.id}'`
+      );
+      assertCondition(
+        window?.endIndex == null,
+        `Duplicate tool-input-end for id '${part.id}'`
+      );
+      if (window) {
+        window.endIndex = index;
+      }
+      return;
+    }
+
+    if (part.type === "tool-call") {
+      const window = toolInputWindows.get(part.toolCallId);
+      assertCondition(
+        window !== undefined,
+        `tool-call without tool-input-start for id '${part.toolCallId}'`
+      );
+      assertCondition(
+        window?.endIndex != null,
+        `tool-call before tool-input-end for id '${part.toolCallId}'`
+      );
+      assertCondition(
+        (window?.endIndex ?? index) < index,
+        `tool-call must occur after tool-input-end for id '${part.toolCallId}'`
+      );
+    }
+  });
+
+  assertCondition(
+    openTextSegments.size === 0,
+    `Unclosed text segments remain: ${openTextSegments.size}`
+  );
+  assertCondition(
+    openReasoningSegments.size === 0,
+    `Unclosed reasoning segments remain: ${openReasoningSegments.size}`
+  );
+
+  for (const window of toolInputWindows.values()) {
+    assertCondition(
+      window.endIndex != null,
+      "Unclosed tool-input window found"
+    );
+  }
+}
+
+function assertCoreAiSdkEventCoverage(parts: LanguageModelV3StreamPart[]) {
+  const eventTypes = new Set(parts.map((part) => part.type));
+  const requiredTypes: LanguageModelV3StreamPart["type"][] = [
+    "text-start",
+    "text-delta",
+    "text-end",
+    "tool-input-start",
+    "tool-input-delta",
+    "tool-input-end",
+    "tool-call",
+    "finish",
+  ];
+
+  for (const eventType of requiredTypes) {
+    assertCondition(
+      eventTypes.has(eventType),
+      `Missing event type '${eventType}'`
+    );
+  }
+}
+
+function assertHasEventTypes(
+  parts: LanguageModelV3StreamPart[],
+  requiredTypes: LanguageModelV3StreamPart["type"][]
+) {
+  const eventTypes = new Set(parts.map((part) => part.type));
+  for (const eventType of requiredTypes) {
+    assertCondition(
+      eventTypes.has(eventType),
+      `Missing event type '${eventType}'`
+    );
+  }
+}
+
+interface EventCheck {
+  label: string;
+  matches: (part: LanguageModelV3StreamPart) => boolean;
+}
+
+function assertEventSequence(
+  parts: LanguageModelV3StreamPart[],
+  checks: EventCheck[]
+) {
+  let prevIndex = -1;
+  for (const check of checks) {
+    const index = parts.findIndex(
+      (part, candidateIndex) =>
+        candidateIndex > prevIndex && check.matches(part)
+    );
+    assertCondition(index >= 0, `Missing expected event: ${check.label}`);
+    prevIndex = index;
+  }
+}
+
+function createOfficialPassthroughFixture(tag: string) {
+  const reasoningId = `reasoning-${tag}`;
+  const sourceUrlId = `source-url-${tag}`;
+  const sourceDocumentId = `source-doc-${tag}`;
+  const responseId = `response-${tag}`;
+  const approvalId = `approval-${tag}`;
+  const passthroughToolCallId = `passthrough-call-${tag}`;
+
+  const parts: LanguageModelV3StreamPart[] = [
+    {
+      type: "stream-start",
+      warnings: [],
+    },
+    {
+      type: "reasoning-start",
+      id: reasoningId,
+    },
+    {
+      type: "reasoning-delta",
+      id: reasoningId,
+      delta: "thinking",
+    },
+    {
+      type: "reasoning-end",
+      id: reasoningId,
+    },
+    {
+      type: "source",
+      sourceType: "url",
+      id: sourceUrlId,
+      url: "https://example.com/rules",
+      title: "Rules",
+    },
+    {
+      type: "source",
+      sourceType: "document",
+      id: sourceDocumentId,
+      mediaType: "application/pdf",
+      title: "Spec",
+      filename: "spec.pdf",
+    },
+    {
+      type: "file",
+      mediaType: "text/plain",
+      data: "Y29tcGxpYW5jZQ==",
+    },
+    {
+      type: "response-metadata",
+      id: responseId,
+      modelId: "compliance-model",
+    },
+    {
+      type: "tool-approval-request",
+      approvalId,
+      toolCallId: passthroughToolCallId,
+    },
+    {
+      type: "tool-input-start",
+      id: passthroughToolCallId,
+      toolName: "passthrough_marker",
+    },
+    {
+      type: "tool-input-delta",
+      id: passthroughToolCallId,
+      delta: "{}",
+    },
+    {
+      type: "tool-input-end",
+      id: passthroughToolCallId,
+    },
+    {
+      type: "tool-call",
+      toolCallId: passthroughToolCallId,
+      toolName: "passthrough_marker",
+      input: "{}",
+    },
+    {
+      type: "tool-result",
+      toolCallId: passthroughToolCallId,
+      toolName: "passthrough_marker",
+      result: { ok: true },
+    },
+    {
+      type: "raw",
+      rawValue: { tag },
+    },
+    {
+      type: "error",
+      error: `error-${tag}`,
+    },
+  ];
+
+  const checks: EventCheck[] = [
+    {
+      label: "stream-start",
+      matches: (part) => part.type === "stream-start",
+    },
+    {
+      label: "reasoning-start",
+      matches: (part) =>
+        part.type === "reasoning-start" && part.id === reasoningId,
+    },
+    {
+      label: "reasoning-delta",
+      matches: (part) =>
+        part.type === "reasoning-delta" && part.id === reasoningId,
+    },
+    {
+      label: "reasoning-end",
+      matches: (part) =>
+        part.type === "reasoning-end" && part.id === reasoningId,
+    },
+    {
+      label: "source-url",
+      matches: (part) =>
+        part.type === "source" &&
+        part.sourceType === "url" &&
+        part.id === sourceUrlId,
+    },
+    {
+      label: "source-document",
+      matches: (part) =>
+        part.type === "source" &&
+        part.sourceType === "document" &&
+        part.id === sourceDocumentId,
+    },
+    {
+      label: "file",
+      matches: (part) =>
+        part.type === "file" && part.mediaType === "text/plain",
+    },
+    {
+      label: "response-metadata",
+      matches: (part) =>
+        part.type === "response-metadata" && part.id === responseId,
+    },
+    {
+      label: "tool-approval-request",
+      matches: (part) =>
+        part.type === "tool-approval-request" &&
+        part.approvalId === approvalId &&
+        part.toolCallId === passthroughToolCallId,
+    },
+    {
+      label: "tool-input-start",
+      matches: (part) =>
+        part.type === "tool-input-start" && part.id === passthroughToolCallId,
+    },
+    {
+      label: "tool-input-delta",
+      matches: (part) =>
+        part.type === "tool-input-delta" && part.id === passthroughToolCallId,
+    },
+    {
+      label: "tool-input-end",
+      matches: (part) =>
+        part.type === "tool-input-end" && part.id === passthroughToolCallId,
+    },
+    {
+      label: "tool-call",
+      matches: (part) =>
+        part.type === "tool-call" && part.toolCallId === passthroughToolCallId,
+    },
+    {
+      label: "tool-result",
+      matches: (part) =>
+        part.type === "tool-result" &&
+        part.toolCallId === passthroughToolCallId,
+    },
+    {
+      label: "raw",
+      matches: (part) => part.type === "raw",
+    },
+    {
+      label: "error",
+      matches: (part) => part.type === "error" && part.error === `error-${tag}`,
+    },
+  ];
+
+  return { parts, checks };
+}
+
+const allOfficialEventTypes: LanguageModelV3StreamPart["type"][] = [
+  "stream-start",
+  "text-start",
+  "text-delta",
+  "text-end",
+  "reasoning-start",
+  "reasoning-delta",
+  "reasoning-end",
+  "tool-input-start",
+  "tool-input-delta",
+  "tool-input-end",
+  "tool-approval-request",
+  "tool-call",
+  "tool-result",
+  "source",
+  "file",
+  "response-metadata",
+  "raw",
+  "error",
+  "finish",
+];
+
 describe("tool-input streaming events", () => {
   it("json protocol emits tool-input-start/delta/end and reconciles id with tool-call", async () => {
     const fixture = toolInputStreamFixtures.json;
@@ -102,6 +532,21 @@ describe("tool-input streaming events", () => {
     expect(toolCall.toolName).toBe("get_weather");
     expect(toolCall.input).toBe('{"location":"Seoul","unit":"celsius"}');
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+  });
+
+  it("json protocol preserves canonical order for all emitted AI SDK stream events", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream(fixture.progressiveChunks),
+        transformer
+      )
+    );
+
+    assertCanonicalAiSdkEventOrder(out);
+    assertCoreAiSdkEventCoverage(out);
   });
 
   it("json protocol force-completes tool input at finish when closing tag is missing", async () => {
@@ -492,6 +937,25 @@ describe("tool-input streaming events", () => {
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 
+  it("yaml protocol preserves canonical order for all emitted AI SDK stream events", async () => {
+    const fixture = toolInputStreamFixtures.yaml;
+    const protocol = yamlXmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "Before ",
+          ...fixture.progressiveChunks,
+          " After",
+        ]),
+        transformer
+      )
+    );
+
+    assertCanonicalAiSdkEventOrder(out);
+    assertCoreAiSdkEventCoverage(out);
+  });
+
   it("Qwen3CoderToolParser streams tool input deltas and emits matching tool-call id", async () => {
     const fixture = toolInputStreamFixtures.json;
     const protocol = qwen3CoderProtocol();
@@ -535,6 +999,132 @@ describe("tool-input streaming events", () => {
     expect(leakedText).not.toContain("<tool_call");
     expect(leakedText).not.toContain("</tool_call");
   });
+
+  it("Qwen3CoderToolParser preserves canonical order for all emitted AI SDK stream events", async () => {
+    const fixture = toolInputStreamFixtures.json;
+    const protocol = qwen3CoderProtocol();
+    const transformer = protocol.createStreamParser({ tools: fixture.tools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "Before ",
+          "<tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
+          "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call>",
+          " After",
+        ]),
+        transformer
+      )
+    );
+
+    assertCanonicalAiSdkEventOrder(out);
+    assertCoreAiSdkEventCoverage(out);
+  });
+
+  const streamComplianceScenarios: Array<{
+    name: string;
+    tools: LanguageModelV3FunctionTool[];
+    createProtocol: () => {
+      createStreamParser: (options: {
+        tools: LanguageModelV3FunctionTool[];
+      }) => TransformStream<
+        LanguageModelV3StreamPart,
+        LanguageModelV3StreamPart
+      >;
+    };
+    openChunk: string;
+    closeChunk: string;
+  }> = [
+    {
+      name: "json-hermes",
+      tools: toolInputStreamFixtures.json.tools,
+      createProtocol: () => hermesProtocol(),
+      openChunk:
+        'Before <tool_call>{"name":"get_weather","arguments":{"location":"Seo',
+      closeChunk: 'ul","unit":"celsius"}}</tool_call> After',
+    },
+    {
+      name: "xml-morph",
+      tools: toolInputStreamFixtures.xml.tools,
+      createProtocol: () => morphXmlProtocol(),
+      openChunk: "Before <get_weather>\n<location>Seo",
+      closeChunk: "ul</location>\n<unit>celsius</unit>\n</get_weather> After",
+    },
+    {
+      name: "yaml-xml",
+      tools: toolInputStreamFixtures.yaml.tools,
+      createProtocol: () => yamlXmlProtocol(),
+      openChunk: "Before <get_weather>\nlocation: Seo",
+      closeChunk: "ul\nunit: celsius\n</get_weather> After",
+    },
+    {
+      name: "qwen3coder",
+      tools: toolInputStreamFixtures.json.tools,
+      createProtocol: () => qwen3CoderProtocol(),
+      openChunk:
+        "Before <tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
+      closeChunk:
+        "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call> After",
+    },
+    {
+      name: "ui-tars-alias",
+      tools: toolInputStreamFixtures.json.tools,
+      createProtocol: () => uiTarsXmlProtocol(),
+      openChunk:
+        "Before <tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
+      closeChunk:
+        "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call> After",
+    },
+    {
+      name: "qwen-tool-parser-alias",
+      tools: toolInputStreamFixtures.json.tools,
+      createProtocol: () => Qwen3CoderToolParser(),
+      openChunk:
+        "Before <tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
+      closeChunk:
+        "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call> After",
+    },
+    {
+      name: "dummy",
+      tools: [],
+      createProtocol: () => dummyProtocol(),
+      openChunk: "Before plain ",
+      closeChunk: "text After",
+    },
+  ];
+
+  for (const scenario of streamComplianceScenarios) {
+    it(`${scenario.name} preserves official AI SDK event lifecycles across all stream-part types`, async () => {
+      const { parts: passthroughParts, checks } =
+        createOfficialPassthroughFixture(scenario.name);
+      const protocol = scenario.createProtocol();
+      const transformer = protocol.createStreamParser({
+        tools: scenario.tools,
+      });
+
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(
+          createInterleavedStream([
+            {
+              type: "text-delta",
+              id: `seed-open-${scenario.name}`,
+              delta: scenario.openChunk,
+            },
+            ...passthroughParts,
+            {
+              type: "text-delta",
+              id: `seed-close-${scenario.name}`,
+              delta: scenario.closeChunk,
+            },
+          ]),
+          transformer
+        )
+      );
+
+      assertCanonicalAiSdkEventOrder(out);
+      assertEventSequence(out, checks);
+      assertHasEventTypes(out, allOfficialEventTypes);
+    });
+  }
 
   it("Qwen3CoderToolParser handles missing </function> inside <tool_call> during streaming", async () => {
     const fixture = toolInputStreamFixtures.json;
