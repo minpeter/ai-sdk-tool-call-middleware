@@ -1,10 +1,10 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../core/protocols/hermes-protocol";
-import { morphXmlProtocol } from "../core/protocols/morph-xml-protocol";
-import { originalToolsSchema } from "../core/utils/provider-options";
-import { createToolMiddleware } from "../tool-call-middleware";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { originalToolsSchema } from "../../core/utils/provider-options";
+import { createToolMiddleware } from "../../tool-call-middleware";
 
 describe("createToolMiddleware", () => {
   const mockToolSystemPromptTemplate = (tools: unknown[]) =>

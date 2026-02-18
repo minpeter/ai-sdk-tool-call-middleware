@@ -1,7 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { hermesProtocol } from "../core/protocols/hermes-protocol";
-import { createToolMiddleware } from "../tool-call-middleware";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { createToolMiddleware } from "../../tool-call-middleware";
 
 describe("tool middleware placement option", () => {
   const tools: LanguageModelV3FunctionTool[] = [
