@@ -15,7 +15,7 @@ pnpm add @ai-sdk-tool/parser
 
 ## AI SDK compatibility
 
-Fact-checked from this repo `CHANGELOG.md` and npm release metadata.
+Fact-checked from this repo `CHANGELOG.md` and npm release metadata (as of 2026-02-18).
 
 | `@ai-sdk-tool/parser` major | AI SDK major | Maintenance status |
 |---|---|---|

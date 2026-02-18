@@ -99,24 +99,25 @@ export function renderToolDefinition(
     description += "    Args:\n";
     for (const [paramName, paramFields] of Object.entries(properties)) {
       const paramDesc = (paramFields.description as string | undefined) ?? "";
-      description += `        ${paramName}(${jsonSchemaToPythonType(paramFields)}): ${paramDesc.trim()}`;
+      description += `        ${paramName}(${jsonSchemaToPythonType(paramFields)}): ${paramDesc.trim()}\n`;
     }
   }
 
-  const hasProperties = properties && Object.keys(properties).length > 0;
-  const parametersJson = hasProperties ? JSON.stringify(schema) : "{}";
+  const parametersJson = JSON.stringify(schema);
   const descJson = JSON.stringify(description);
+  const nameJson = JSON.stringify(tool.name);
 
-  return `{"type": "function", "function": {"name": "${tool.name}", "description": ${descJson}, "parameters": ${parametersJson}}}`;
+  return `{"type": "function", "function": {"name": ${nameJson}, "description": ${descJson}, "parameters": ${parametersJson}}}`;
 }
 
 export function hermesSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[]
 ): string {
   const toolsRendered = tools.map(renderToolDefinition).join("\n");
-  return `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> ${toolsRendered} </tools>Use the following pydantic model json schema for each tool call you will make: {"properties": {"name": {"title": "Name", "type": "string"}, "arguments": {"title": "Arguments", "type": "object"}}, "required": ["name", "arguments"], "title": "FunctionCall", "type": "object"}
+  return `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> ${toolsRendered} </tools>
+Use the following pydantic model json schema for each tool call you will make: {"properties": {"name": {"title": "Name", "type": "string"}, "arguments": {"title": "Arguments", "type": "object"}}, "required": ["name", "arguments"], "title": "FunctionCall", "type": "object"}
 For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
 <tool_call>
-{"name": <function-name>, "arguments": <args-dict>}
+{"name": "<function-name>", "arguments": <args-dict>}
 </tool_call>`;
 }

@@ -228,7 +228,7 @@ describe("renderToolDefinition", () => {
     expect(result).toContain('"type": "function"');
   });
 
-  it("renders tool with empty properties as parameters: {}", () => {
+  it("preserves the original schema when properties is empty", () => {
     const tool: LanguageModelV3FunctionTool = {
       type: "function",
       name: "no_params_tool",
@@ -238,8 +238,73 @@ describe("renderToolDefinition", () => {
         properties: {},
       },
     };
-    const result = renderToolDefinition(tool);
-    expect(result).toContain('"parameters": {}');
+
+    const parsed = JSON.parse(renderToolDefinition(tool)) as {
+      function: { parameters: unknown };
+    };
+
+    expect(parsed.function.parameters).toEqual(tool.inputSchema);
+  });
+
+  it("preserves schemas without properties (e.g. additionalProperties)", () => {
+    const tool: LanguageModelV3FunctionTool = {
+      type: "function",
+      name: "dynamic_payload",
+      description: "Accepts dynamic object values",
+      inputSchema: {
+        type: "object",
+        additionalProperties: { type: "string" },
+      },
+    };
+
+    const parsed = JSON.parse(renderToolDefinition(tool)) as {
+      function: { parameters: unknown };
+    };
+
+    expect(parsed.function.parameters).toEqual(tool.inputSchema);
+  });
+
+  it("escapes tool names safely when serializing", () => {
+    const tool: LanguageModelV3FunctionTool = {
+      type: "function",
+      name: 'bad"name\\tool',
+      description: "Escaping check",
+      inputSchema: {
+        type: "object",
+        properties: {
+          value: { type: "string" },
+        },
+      },
+    };
+
+    const parsed = JSON.parse(renderToolDefinition(tool)) as {
+      function: { name: string };
+    };
+
+    expect(parsed.function.name).toBe('bad"name\\tool');
+  });
+
+  it("renders each Args entry on its own line", () => {
+    const tool: LanguageModelV3FunctionTool = {
+      type: "function",
+      name: "two_params",
+      description: "Two parameters",
+      inputSchema: {
+        type: "object",
+        properties: {
+          first: { type: "string", description: "First value" },
+          second: { type: "integer", description: "Second value" },
+        },
+      },
+    };
+
+    const parsed = JSON.parse(renderToolDefinition(tool)) as {
+      function: { description: string };
+    };
+
+    expect(parsed.function.description).toContain(
+      "first(str): First value\n        second(int): Second value"
+    );
   });
 
   it("renders complex nested parameter types in signature and args", () => {
@@ -414,5 +479,22 @@ describe("formatToolResponseAsHermes", () => {
 
     expect(result).toContain('"type":"image-url"');
     expect(result).toContain('"url":"https://example.com/a.png"');
+  });
+});
+
+describe("hermesSystemPromptTemplate", () => {
+  it("keeps the tool-call JSON example valid", () => {
+    const rendered = hermesSystemPromptTemplate([]);
+    expect(rendered).toContain(
+      '{"name": "<function-name>", "arguments": <args-dict>}'
+    );
+  });
+
+  it("adds spacing between tools block and next sentence", () => {
+    const rendered = hermesSystemPromptTemplate([]);
+    expect(rendered).toContain(
+      "</tools>\nUse the following pydantic model json schema"
+    );
+    expect(rendered).not.toContain("</tools>Use");
   });
 });
