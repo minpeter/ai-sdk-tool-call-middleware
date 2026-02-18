@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 vi.spyOn(console, "warn").mockImplementation(() => {
   // Intentionally empty - suppressing console warnings in tests
 });
 
-describe("xmlProtocol parseGeneratedText branches", () => {
+describe("morphXmlProtocol parseGeneratedText branches", () => {
   const tools = [
     {
       type: "function",
@@ -17,7 +17,7 @@ describe("xmlProtocol parseGeneratedText branches", () => {
   ] as any;
 
   it("returns original text when tools list is empty", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const out = p.parseGeneratedText({
       text: "free text",
       tools: [],
@@ -27,7 +27,7 @@ describe("xmlProtocol parseGeneratedText branches", () => {
   });
 
   it("handles malformed inner XML gracefully (either falls back to text or parses)", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const text = "<a><x></y></a>";
     const out = p.parseGeneratedText({ text, tools, options: {} });
     const hasText = out.some((c) => c.type === "text");
@@ -36,7 +36,7 @@ describe("xmlProtocol parseGeneratedText branches", () => {
   });
 
   it("parses tool calls with whitespace in the closing tag name", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const text = "<a><x>ok</x></ a>";
     const out = p.parseGeneratedText({ text, tools, options: {} });
     const tool = out.find((c) => c.type === "tool-call") as any;
@@ -44,7 +44,7 @@ describe("xmlProtocol parseGeneratedText branches", () => {
   });
 
   it("parses empty tool call bodies when repair is disabled", () => {
-    const p = xmlProtocol({ parseOptions: { repair: false } });
+    const p = morphXmlProtocol({ parseOptions: { repair: false } });
     const text = "<a></a>";
     const out = p.parseGeneratedText({ text, tools, options: {} });
     expect(out).toHaveLength(1);
@@ -56,7 +56,7 @@ describe("xmlProtocol parseGeneratedText branches", () => {
   });
 
   it("treats HTML-void tag names like <input> as normal XML nodes", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const localTools = [
       {
         type: "function",
@@ -80,7 +80,7 @@ describe("xmlProtocol parseGeneratedText branches", () => {
   });
 
   it("parses line-prefixed tool name followed by XML body", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const localTools = [
       {
         type: "function",
@@ -105,7 +105,7 @@ describe("xmlProtocol parseGeneratedText branches", () => {
   });
 
   it("parses line-prefixed tool name with colon separator", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const localTools = [
       {
         type: "function",
@@ -127,7 +127,7 @@ describe("xmlProtocol parseGeneratedText branches", () => {
   });
 
   it("preserves trailing text after line-prefixed XML fallback payload", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const localTools = [
       {
         type: "function",
@@ -155,7 +155,7 @@ describe("xmlProtocol parseGeneratedText branches", () => {
   });
 
   it("does not treat line-prefixed tool name without XML body as tool-call", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const localTools = [
       {
         type: "function",
@@ -170,7 +170,7 @@ describe("xmlProtocol parseGeneratedText branches", () => {
   });
 
   it("repairs malformed self-closing root with body-style payload", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const localTools = [
       {
         type: "function",

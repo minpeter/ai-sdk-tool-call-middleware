@@ -1,6 +1,6 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { jsonProtocol } from "../core/protocols/json-protocol";
+import { hermesProtocol } from "../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../tool-call-middleware";
 
 describe("tool middleware placement option", () => {
@@ -15,7 +15,7 @@ describe("tool middleware placement option", () => {
 
   it("placement=last appends system message at the end when no system exists", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: hermesProtocol,
       toolSystemPromptTemplate: (t) => `TOOLS:${t}`,
       placement: "last",
     });
@@ -43,7 +43,7 @@ describe("tool middleware placement option", () => {
 
   it("placement=first prepends system message before user when no system exists", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: hermesProtocol,
       toolSystemPromptTemplate: (t) => `TOOLS:${t}`,
       placement: "first",
     });

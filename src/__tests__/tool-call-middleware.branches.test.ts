@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { jsonProtocol } from "../core/protocols/json-protocol";
+import { hermesProtocol } from "../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
@@ -13,7 +13,7 @@ describe("createToolMiddleware branches", () => {
   });
   it("wrapGenerate returns tool-call content when toolChoice active", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const doGenerate = vi.fn().mockResolvedValue({
@@ -40,7 +40,7 @@ describe("createToolMiddleware branches", () => {
 
   it("wrapStream handles toolChoice 'required' via stream handler", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "",
     });
 
@@ -69,7 +69,7 @@ describe("createToolMiddleware branches", () => {
 
   it("wrapGenerate toolChoice path coerces arguments with decoded tool schema", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "",
     });
 
@@ -109,7 +109,7 @@ describe("createToolMiddleware branches", () => {
 
   it("wrapStream handles toolChoice 'tool' via stream handler", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "",
     });
 
@@ -138,7 +138,7 @@ describe("createToolMiddleware branches", () => {
 
   it("wrapGenerate does not throw when originalTools contains malformed schema JSON", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const onError = vi.fn();

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
-describe("xmlProtocol.extractToolCallSegments ordering", () => {
+describe("morphXmlProtocol.extractToolCallSegments ordering", () => {
   const tools = [
     {
       type: "function",
@@ -19,7 +19,7 @@ describe("xmlProtocol.extractToolCallSegments ordering", () => {
   ];
 
   it("returns segments ordered by their appearance in the text", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const text = [
       "prefix ",
       "<beta><x>1</x></beta>",

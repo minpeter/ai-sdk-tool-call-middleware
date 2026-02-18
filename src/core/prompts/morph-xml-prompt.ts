@@ -10,7 +10,7 @@ import {
   unwrapToolResult,
 } from "./shared/tool-result-normalizer";
 
-export function xmlSystemPromptTemplate(
+export function morphXmlSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[]
 ): string {
   const toolsText = renderToolsForXmlPrompt(tools);
@@ -314,7 +314,7 @@ function stripSchemaKeys(value: unknown): unknown {
   return value;
 }
 
-export interface XmlToolResponseFormatterOptions {
+export interface MorphXmlToolResponseFormatterOptions {
   mediaStrategy?: ToolResponseMediaStrategy;
 }
 
@@ -362,9 +362,9 @@ function formatXmlNode(
   return lines;
 }
 
-function formatToolResponseAsXmlWithOptions(
+function morphFormatToolResponseAsXmlWithOptions(
   toolResult: ToolResultPart,
-  options?: XmlToolResponseFormatterOptions
+  options?: MorphXmlToolResponseFormatterOptions
 ): string {
   const unwrappedResult = unwrapToolResult(
     toolResult.output,
@@ -381,13 +381,15 @@ function formatToolResponseAsXmlWithOptions(
   ].join("\n");
 }
 
-export function createXmlToolResponseFormatter(
-  options?: XmlToolResponseFormatterOptions
+export function createMorphXmlToolResponseFormatter(
+  options?: MorphXmlToolResponseFormatterOptions
 ): (toolResult: ToolResultPart) => string {
   return (toolResult) =>
-    formatToolResponseAsXmlWithOptions(toolResult, options);
+    morphFormatToolResponseAsXmlWithOptions(toolResult, options);
 }
 
-export function formatToolResponseAsXml(toolResult: ToolResultPart): string {
-  return formatToolResponseAsXmlWithOptions(toolResult);
+export function morphFormatToolResponseAsXml(
+  toolResult: ToolResultPart
+): string {
+  return morphFormatToolResponseAsXmlWithOptions(toolResult);
 }

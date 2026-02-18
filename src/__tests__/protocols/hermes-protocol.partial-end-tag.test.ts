@@ -2,16 +2,16 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
-import { jsonProtocol } from "../../core/protocols/json-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
   zeroUsage,
 } from "../test-helpers";
 
-describe("jsonProtocol partial end-tag handling", () => {
+describe("hermesProtocol partial end-tag handling", () => {
   it("breaks loop when only partial end tag present at end of buffer", async () => {
-    const protocol = jsonProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
       options: { emitRawToolCallTextOnError: true },

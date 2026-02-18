@@ -1,6 +1,6 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { hermesToolMiddleware, xmlToolMiddleware } from "..";
+import { hermesToolMiddleware, morphXmlToolMiddleware } from "..";
 
 /**
  * Bug reproduction test: Tool call signatures disappear while tool responses are maintained
@@ -193,7 +193,7 @@ describe("Bug: Tool call signatures disappear through middleware", () => {
 
   describe("Scenario 4: XML middleware with various input types", () => {
     it("xml middleware should preserve tool call signature with undefined input", async () => {
-      const transformParams = xmlToolMiddleware.transformParams;
+      const transformParams = morphXmlToolMiddleware.transformParams;
       if (!transformParams) {
         throw new Error("transformParams is undefined");
       }
@@ -247,7 +247,7 @@ describe("Bug: Tool call signatures disappear through middleware", () => {
 
   describe("Scenario 5: Tool call with object input (already parsed)", () => {
     it("should preserve tool call when input is an object instead of string", async () => {
-      const transformParams = xmlToolMiddleware.transformParams;
+      const transformParams = morphXmlToolMiddleware.transformParams;
       if (!transformParams) {
         throw new Error("transformParams is undefined");
       }

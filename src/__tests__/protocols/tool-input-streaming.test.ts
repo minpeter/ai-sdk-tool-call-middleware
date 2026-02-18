@@ -4,10 +4,10 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-import { jsonProtocol } from "../../core/protocols/json-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
-import { yamlProtocol } from "../../core/protocols/yaml-protocol";
+import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
 import { toolInputStreamFixtures } from "../fixtures/tool-input-stream-fixtures";
 import {
   pipeWithTransformer,
@@ -76,7 +76,7 @@ function extractToolInputTimeline(parts: LanguageModelV3StreamPart[]) {
 describe("tool-input streaming events", () => {
   it("json protocol emits tool-input-start/delta/end and reconciles id with tool-call", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -106,7 +106,7 @@ describe("tool-input streaming events", () => {
 
   it("json protocol force-completes tool input at finish when closing tag is missing", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -134,7 +134,7 @@ describe("tool-input streaming events", () => {
 
   it("json finish reconciliation does not leak partial end-tag text when recovery succeeds", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -170,7 +170,7 @@ describe("tool-input streaming events", () => {
 
   it("json protocol normalizes streamed arguments:null progress to match final tool-call input", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -200,7 +200,7 @@ describe("tool-input streaming events", () => {
 
   it("json protocol does not emit non-canonical partial literal prefixes for split null arguments", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -228,7 +228,7 @@ describe("tool-input streaming events", () => {
 
   it("json protocol canonicalizes pretty-printed arguments progress before emitting deltas", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -258,7 +258,7 @@ describe("tool-input streaming events", () => {
 
   it("json protocol emits tool-input deltas for parseable arguments even when outer JSON is incomplete", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -286,7 +286,7 @@ describe("tool-input streaming events", () => {
 
   it("xml protocol streams tool input deltas and emits matching tool-call id", async () => {
     const fixture = toolInputStreamFixtures.xml;
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -330,7 +330,7 @@ describe("tool-input streaming events", () => {
       },
     };
 
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({
       tools: [unionWeatherTool],
     });
@@ -360,7 +360,7 @@ describe("tool-input streaming events", () => {
 
   it("xml protocol force-completes unclosed tool block at finish when content is parseable", async () => {
     const fixture = toolInputStreamFixtures.xml;
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -384,7 +384,7 @@ describe("tool-input streaming events", () => {
 
   it("xml finish reconciliation rejects unclosed payloads with trailing plain text", async () => {
     const fixture = toolInputStreamFixtures.xml;
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -401,7 +401,7 @@ describe("tool-input streaming events", () => {
 
   it("xml finish reconciliation rejects unclosed payloads with tagless plain text body", async () => {
     const fixture = toolInputStreamFixtures.xml;
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -418,7 +418,7 @@ describe("tool-input streaming events", () => {
 
   it("xml protocol does not prematurely finalize tool call when non-text chunks are interleaved", async () => {
     const fixture = toolInputStreamFixtures.xml;
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -464,7 +464,7 @@ describe("tool-input streaming events", () => {
 
   it("yaml protocol streams tool input deltas and emits matching tool-call id", async () => {
     const fixture = toolInputStreamFixtures.yaml;
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -1279,7 +1279,7 @@ describe("tool-input streaming events", () => {
 
   it("yaml protocol emits '{}' tool-input-delta for self-closing tags", async () => {
     const fixture = toolInputStreamFixtures.yaml;
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -1305,7 +1305,7 @@ describe("tool-input streaming events", () => {
 
   it("yaml protocol force-completes unclosed tool block at finish when content is parseable", async () => {
     const fixture = toolInputStreamFixtures.yaml;
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -1329,7 +1329,7 @@ describe("tool-input streaming events", () => {
 
   it("yaml finish reconciliation ignores trailing partial close-tag and still emits tool-call", async () => {
     const fixture = toolInputStreamFixtures.yaml;
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -1366,7 +1366,7 @@ describe("tool-input streaming events", () => {
 
   it("yaml protocol does not prematurely finalize tool call when non-text chunks are interleaved", async () => {
     const fixture = toolInputStreamFixtures.yaml;
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -1412,7 +1412,7 @@ describe("tool-input streaming events", () => {
 
   it("json malformed fixture does not leave dangling tool-input stream", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -1428,7 +1428,7 @@ describe("tool-input streaming events", () => {
 
   it("xml malformed fixture does not leave dangling tool-input stream", async () => {
     const fixture = toolInputStreamFixtures.xml;
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -1444,7 +1444,7 @@ describe("tool-input streaming events", () => {
 
   it("yaml malformed fixture stays non-leaking without dangling tool-input stream", async () => {
     const fixture = toolInputStreamFixtures.yaml;
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(

@@ -4,9 +4,9 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { jsonProtocol } from "../../core/protocols/json-protocol";
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
-import { yamlProtocol } from "../../core/protocols/yaml-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
 
 const XML_CURRENT_VIEW_OBJECT_DELTA_RE =
   /=== XML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seoul","unit":"celsius"/;
@@ -31,7 +31,7 @@ const tool: LanguageModelV3FunctionTool = {
 const scenarios = [
   {
     name: "JSON protocol",
-    parser: jsonProtocol().createStreamParser({ tools: [tool] }),
+    parser: hermesProtocol().createStreamParser({ tools: [tool] }),
     chunks: [
       "Before ",
       '<tool_call>{"na',
@@ -48,7 +48,7 @@ const scenarios = [
   },
   {
     name: "XML protocol",
-    parser: xmlProtocol().createStreamParser({ tools: [tool] }),
+    parser: morphXmlProtocol().createStreamParser({ tools: [tool] }),
     chunks: [
       "Before ",
       "<get_weather>\n<location>Seo",
@@ -64,7 +64,7 @@ const scenarios = [
   },
   {
     name: "YAML protocol",
-    parser: yamlProtocol().createStreamParser({ tools: [tool] }),
+    parser: yamlXmlProtocol().createStreamParser({ tools: [tool] }),
     chunks: [
       "Before ",
       "<get_weather>\nlocation: Seo",

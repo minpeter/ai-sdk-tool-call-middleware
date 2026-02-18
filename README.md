@@ -5,128 +5,131 @@
 [![npm downloads - parser](https://img.shields.io/npm/dt/@ai-sdk-tool/parser)](https://www.npmjs.com/package/@ai-sdk-tool/parser)
 [![codecov](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware/branch/main/graph/badge.svg)](https://codecov.io/gh/minpeter/ai-sdk-tool-call-middleware)
 
-Tooling for Vercel AI SDK: enable tool calling with models lacking native `tools`.
+AI SDK middleware for parsing tool calls from models that do not natively support `tools`.
 
-- **@ai-sdk-tool/parser**: add tool-calling via middleware; works with any provider supported by AI SDK `wrapLanguageModel`.
-- **@ai-sdk-tool/parser/rxml**: robust XML parser/streamer/builder for AI-generated XML.
-- **@ai-sdk-tool/parser/rjson**: relaxed JSON parser with tolerant mode and JSON5-like syntax support.
+## Install
 
-## Usage at a glance
-
-```ts
-import { wrapLanguageModel, streamText } from "ai";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { xmlToolMiddleware } from "@ai-sdk-tool/parser";
-
-const client = createOpenAICompatible({
-  /* baseURL, apiKey */
-});
-
-const result = streamText({
-  model: wrapLanguageModel({
-    model: client("your-model-name"),
-    middleware: xmlToolMiddleware,
-  }),
-  tools: {
-    /* your tools */
-  },
-  prompt: "Find weather for Seoul today",
-});
-
-for await (const part of result.fullStream) {
-  // handle text and tool events
-}
+```bash
+pnpm add @ai-sdk-tool/parser
 ```
 
-## Tool-input delta semantics
+## AI SDK compatibility
 
-- `jsonProtocol`: `tool-input-delta` emits incremental JSON argument text.
-- `xmlProtocol` and `yamlProtocol`: `tool-input-delta` now also emits incremental JSON argument text (parsed-object prefixes), not raw XML/YAML fragments.
-- `jsonProtocol`, `xmlProtocol`, `yamlProtocol`, and `qwen3CoderProtocol`: malformed streaming tool payloads do not emit raw protocol markup to `text-delta` by default. Set `emitRawToolCallTextOnError: true` in parser options only if you explicitly want raw fallback text.
-- `tool-input-start.id`, `tool-input-end.id`, and `tool-call.toolCallId` are reconciled to the same ID for each tool call stream.
+Fact-checked from this repo `CHANGELOG.md` and npm release metadata (as of 2026-02-18).
 
-## Qwen3Coder Protocol + Tool Middleware
+| `@ai-sdk-tool/parser` major | AI SDK major | Maintenance status |
+|---|---|---|
+| `v1.x` | `v4.x` | Legacy (not actively maintained) |
+| `v2.x` | `v5.x` | Legacy (not actively maintained) |
+| `v3.x` | `v6.x` | Legacy (not actively maintained) |
+| `v4.x` | `v6.x` | Active (current `latest` line) |
 
-Use `qwen3CoderProtocol` when your model/prompt expects this XML-like tool markup, or when you want a human-readable tool-call format with repeated `<parameter=...>` tags for arrays. If you can control the tool format freely, prefer:
+Note: there is no separate formal EOL announcement in releases/changelog for `v1`-`v3`; "legacy" here means non-current release lines.
 
-- `jsonProtocol` for strict, nested JSON arguments
-- `xmlProtocol` / `yamlProtocol` for schema-driven nested structures
-- `qwen3CoderProtocol` for this format (`<tool_call><function=...><parameter=...>`)
+## Package map
 
-### Exact tool-call format
+| Import | Purpose |
+|---|---|
+| `@ai-sdk-tool/parser` | Main middleware factory, preconfigured middleware, protocol exports |
+| `@ai-sdk-tool/parser/community` | Community middleware (Sijawara, UI-TARS) |
 
-`qwen3CoderProtocol` expects (and `formatToolCall()` emits) tool calls like:
-
-```xml
-<tool_call>
-  <function=TOOL_NAME>
-    <parameter=PARAM_NAME>VALUE</parameter>
-    <parameter=PARAM_NAME>VALUE</parameter> <!-- repeat for arrays -->
-  </function>
-</tool_call>
-```
-
-Notes:
-
-- Parsed tool inputs are JSON objects. Parameter values are parsed as strings first; if the tool provides an `inputSchema`, values are schema-coerced before emitting `tool-call` / `tool-input-delta`.
-- Repeating the same parameter name produces an array (order preserved).
-- Whitespace around values is trimmed and XML entities are unescaped.
-
-### Usage (preconfigured)
-
-Qwen3Coder tool middleware is exported via the root package (`qwen3CoderToolMiddleware`):
+## Quick start
 
 ```ts
-import { wrapLanguageModel, streamText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { qwen3CoderToolMiddleware } from "@ai-sdk-tool/parser";
+import { stepCountIs, streamText, wrapLanguageModel } from "ai";
+import { z } from "zod";
 
-const client = createOpenAICompatible({
-  /* baseURL, apiKey */
-});
+const model = createOpenAICompatible({
+  name: "openrouter",
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: "https://openrouter.ai/api/v1",
+})("stepfun/step-3.5-flash:free");
 
 const result = streamText({
   model: wrapLanguageModel({
-    model: client("your-model-name"),
+    model,
     middleware: qwen3CoderToolMiddleware,
   }),
+  stopWhen: stepCountIs(4),
+  prompt: "What is the weather in Seoul?",
   tools: {
-    /* your tools */
-  },
-  prompt: "Find weather for Seoul today",
-  providerOptions: {
-    toolCallMiddleware: {
-      onError: (message, metadata) => {
-        console.warn(message, metadata);
-      },
-      // Defaults to false: avoids leaking raw <tool_call> markup into user text.
-      emitRawToolCallTextOnError: false,
+    get_weather: {
+      description: "Get weather by city name",
+      inputSchema: z.object({ city: z.string() }),
+      execute: async ({ city }) => ({ city, condition: "sunny", celsius: 23 }),
     },
   },
 });
 
 for await (const part of result.fullStream) {
-  // handle text and tool events
+  // text-delta / tool-input-start / tool-input-delta / tool-input-end / tool-call / tool-result
 }
 ```
 
-### Usage (custom prompt)
+## Choose middleware
 
-If you want to bring your own system prompt, build middleware directly from the protocol:
+Use the preconfigured middleware exports from `src/preconfigured-middleware.ts`:
+
+| Middleware | Best for |
+|---|---|
+| `hermesToolMiddleware` | JSON-style tool payloads |
+| `morphXmlToolMiddleware` | XML-style payloads with schema-aware coercion |
+| `yamlXmlToolMiddleware` | XML tool tags + YAML bodies |
+| `qwen3CoderToolMiddleware` | Qwen/UI-TARS style `<tool_call>` markup |
+
+## Build custom middleware
 
 ```ts
 import { createToolMiddleware, qwen3CoderProtocol } from "@ai-sdk-tool/parser";
 
-export const myQwen3CoderToolMiddleware = createToolMiddleware({
+export const myToolMiddleware = createToolMiddleware({
   protocol: qwen3CoderProtocol,
-  toolSystemPromptTemplate: (tools) => {
-    // Return a system prompt that instructs the model to emit <tool_call> markup.
-    return `Tools: ${JSON.stringify(tools)}`;
+  toolSystemPromptTemplate: (tools) =>
+    `Use these tools and emit <tool_call> blocks only: ${JSON.stringify(tools)}`,
+});
+```
+
+## Streaming semantics
+
+- Stream parsers emit `tool-input-start`, `tool-input-delta`, and `tool-input-end` when a tool input can be incrementally reconstructed.
+- `tool-input-start.id`, `tool-input-end.id`, and final `tool-call.toolCallId` are reconciled to the same ID.
+- `emitRawToolCallTextOnError` defaults to `false`; malformed tool-call markup is suppressed from `text-delta` unless explicitly enabled.
+
+Configure parser error behavior through `providerOptions.toolCallMiddleware`:
+
+```ts
+const result = streamText({
+  // ...
+  providerOptions: {
+    toolCallMiddleware: {
+      onError: (message, metadata) => {
+        console.warn(message, metadata);
+      },
+      emitRawToolCallTextOnError: false,
+    },
   },
 });
 ```
 
-### Limitations
+## Local development
 
-- `qwen3CoderProtocol` parameter values start as strings. If your tools require deeply nested objects/arrays, prefer `jsonProtocol` or `xmlProtocol`.
-- In streaming mode, incomplete/malformed `<tool_call>` blocks are suppressed by default (to avoid showing raw markup to end users). Enable `emitRawToolCallTextOnError` only if you explicitly want raw fallback text.
+```bash
+pnpm build
+pnpm test
+pnpm check:biome
+pnpm check:types
+pnpm check
+```
+
+## Examples in this repo
+
+- Parser middleware examples: `examples/parser-core/README.md`
+- RXML examples: `examples/rxml-core/README.md`
+
+Run one example from repo root:
+
+```bash
+pnpm dlx tsx examples/parser-core/src/01-stream-tool-call.ts
+```

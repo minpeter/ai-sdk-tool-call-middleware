@@ -4,16 +4,16 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
   zeroUsage,
 } from "../test-helpers";
 
-describe("xmlProtocol streaming: progressive text emission", () => {
+describe("morphXmlProtocol streaming: progressive text emission", () => {
   it("emits text-delta progressively when no tool tags are present", async () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [];
     const transformer = protocol.createStreamParser({ tools });
 
@@ -42,7 +42,7 @@ describe("xmlProtocol streaming: progressive text emission", () => {
   });
 
   it("emits text progressively around tool tags, buffering minimal tail to detect split tags", async () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       { type: "function", name: "echo", inputSchema: { type: "object" } },
     ];
@@ -95,7 +95,7 @@ describe("xmlProtocol streaming: progressive text emission", () => {
   });
 
   it("handles DOCTYPE HTML without entity escaping inside string-typed arg (progress text)", async () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",

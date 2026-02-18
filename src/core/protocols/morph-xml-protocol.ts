@@ -17,7 +17,7 @@ import {
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
-export interface XmlProtocolOptions {
+export interface MorphXmlProtocolOptions {
   parseOptions?: {
     repair?: boolean;
     maxReparses?: number;
@@ -1454,8 +1454,8 @@ function findToolCallsWithFallbacks(
   return { parseText, toolCalls };
 }
 
-export const xmlProtocol = (
-  protocolOptions?: XmlProtocolOptions
+export const morphXmlProtocol = (
+  protocolOptions?: MorphXmlProtocolOptions
 ): TCMCoreProtocol => {
   const parseOptions = {
     repair: true,

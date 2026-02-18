@@ -1,8 +1,8 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { jsonProtocol } from "../core/protocols/json-protocol";
-import { xmlProtocol } from "../core/protocols/xml-protocol";
+import { hermesProtocol } from "../core/protocols/hermes-protocol";
+import { morphXmlProtocol } from "../core/protocols/morph-xml-protocol";
 import { originalToolsSchema } from "../core/utils/provider-options";
 import { createToolMiddleware } from "../tool-call-middleware";
 
@@ -12,13 +12,13 @@ describe("createToolMiddleware", () => {
 
   const createJsonMiddleware = () =>
     createToolMiddleware({
-      protocol: jsonProtocol({}),
+      protocol: hermesProtocol({}),
       toolSystemPromptTemplate: mockToolSystemPromptTemplate,
     });
 
   const createXmlMiddleware = () =>
     createToolMiddleware({
-      protocol: xmlProtocol,
+      protocol: morphXmlProtocol,
       toolSystemPromptTemplate: mockToolSystemPromptTemplate,
     });
 
@@ -33,7 +33,7 @@ describe("createToolMiddleware", () => {
     });
   });
 
-  describe("wrapGenerate with jsonProtocol", () => {
+  describe("wrapGenerate with hermesProtocol", () => {
     it("should parse tool calls from text content", async () => {
       const middleware = createJsonMiddleware();
       const doGenerate = vi.fn().mockResolvedValue({
@@ -289,7 +289,7 @@ describe("createToolMiddleware", () => {
     });
   });
 
-  describe("wrapGenerate with xmlProtocol", () => {
+  describe("wrapGenerate with morphXmlProtocol", () => {
     it("should parse XML tool calls from text content", async () => {
       const middleware = createXmlMiddleware();
       const tools: LanguageModelV3FunctionTool[] = [
@@ -341,7 +341,7 @@ describe("createToolMiddleware", () => {
 describe("createToolMiddleware positive paths", () => {
   it("wrapGenerate parses text content via protocol parseGeneratedText", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonProtocol,
+      protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const doGenerate = vi.fn().mockResolvedValue({

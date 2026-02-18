@@ -4,14 +4,14 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 // Simple helper to find tool-call content in parsed output
 const isToolCall = (c: LanguageModelV3Content) => c.type === "tool-call";
 
-describe("xmlProtocol raw string handling by schema", () => {
+describe("morphXmlProtocol raw string handling by schema", () => {
   it("treats string-typed args as raw text, not nested XML", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -49,7 +49,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("preserves HTML with DOCTYPE inside string-typed <content> (user-reported)", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -83,7 +83,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("preserves DOCTYPE HTML when model doesn't escape entities (non-escaped)", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -111,7 +111,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("decodes entity-escaped HTML inside string-typed <content>", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -147,7 +147,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("cancels entire tool call when duplicate string tags are emitted (non-stream)", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -181,7 +181,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("supports attributes on string-typed tag and preserves only inner raw content (no sibling bleed)", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -224,7 +224,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("preserves nested markup inside string-typed tag even if it looks like sibling tags", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -277,7 +277,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("handles nested markup inside string-typed tag that looks like sibling tags", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -317,7 +317,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("treats self-closing string-typed tag as empty string and parses siblings", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -352,7 +352,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("handles attribute values containing '>' and quotes on string-typed tag", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -387,7 +387,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("selects the shallowest occurrence when same-named tag exists nested and as sibling", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -420,7 +420,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("cancels when duplicate string-typed tags include a self-closing and non-empty", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -453,7 +453,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("preserves CDATA blocks inside string-typed tag as raw content", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -485,7 +485,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("emits onError and returns original text when duplicate string tags are present", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -527,7 +527,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("coerces numeric-like strings inside <item> to numbers when schema expects numbers", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",
@@ -558,7 +558,7 @@ describe("xmlProtocol raw string handling by schema", () => {
   });
 
   it("coerces numeric-like items with attributes (#text objects) to numbers when schema expects numbers", () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const tools: LanguageModelV3FunctionTool[] = [
       {
         type: "function",

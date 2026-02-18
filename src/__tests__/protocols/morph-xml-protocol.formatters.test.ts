@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 const ADD_TAG_REGEX = /<add>/;
 const A_TAG_REGEX = /<a>1<\/a>/;
 
-describe("xmlProtocol formatters", () => {
+describe("morphXmlProtocol formatters", () => {
   it("formatToolCall handles JSON string input and object input", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const asString = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",
@@ -27,7 +27,7 @@ describe("xmlProtocol formatters", () => {
   });
 
   it("formatToolCall outputs formatted XML with newlines and indentation", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const result = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",
@@ -46,7 +46,7 @@ describe("xmlProtocol formatters", () => {
   });
 
   it("formatToolCall preserves quotes without HTML entity escaping", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const result = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",
@@ -61,7 +61,7 @@ describe("xmlProtocol formatters", () => {
   });
 
   it("formatToolCall still escapes required XML characters", () => {
-    const p = xmlProtocol();
+    const p = morphXmlProtocol();
     const result = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",

@@ -1,10 +1,10 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
-import { formatToolResponseAsXml } from "../core/prompts/xml-prompt";
-import { createToolMiddleware, xmlProtocol } from "../index";
+import { morphFormatToolResponseAsXml } from "../core/prompts/morph-xml-prompt";
+import { createToolMiddleware, morphXmlProtocol } from "../index";
 
 export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
-  protocol: xmlProtocol,
-  toolResponsePromptTemplate: formatToolResponseAsXml,
+  protocol: morphXmlProtocol,
+  toolResponsePromptTemplate: morphFormatToolResponseAsXml,
   toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
     const toolsJson = JSON.stringify(tools);
     return `You have access to callable functions (tools).
@@ -62,8 +62,8 @@ export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
 });
 
 export const sijawaraConciseXmlToolMiddleware = createToolMiddleware({
-  protocol: xmlProtocol,
-  toolResponsePromptTemplate: formatToolResponseAsXml,
+  protocol: morphXmlProtocol,
+  toolResponsePromptTemplate: morphFormatToolResponseAsXml,
   toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
     const toolsJson = JSON.stringify(tools);
     return `You have access to callable functions (tools).

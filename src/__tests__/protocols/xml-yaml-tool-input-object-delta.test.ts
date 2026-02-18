@@ -5,8 +5,8 @@ import type {
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 import YAML from "yaml";
-import { xmlProtocol } from "../../core/protocols/xml-protocol";
-import { yamlProtocol } from "../../core/protocols/yaml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
@@ -181,7 +181,7 @@ function findToolCall(
 
 describe("XML/YAML object delta streaming", () => {
   it("xml protocol emits parsed JSON deltas for nested object/array payloads", async () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: [nestedTool] });
     const chunks = [
       "<plan_trip>\n<location>Seo",
@@ -208,7 +208,7 @@ describe("XML/YAML object delta streaming", () => {
   });
 
   it("xml protocol does not emit non-prefix string placeholders when nested tags are split across chunks", async () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: [nestedTool] });
     const chunks = [
       "<plan_trip>\n<location>Seoul</location>\n<options>",
@@ -231,7 +231,7 @@ describe("XML/YAML object delta streaming", () => {
   });
 
   it("xml protocol suppresses unstable single-root progress deltas for permissive schemas", async () => {
-    const protocol = xmlProtocol();
+    const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({
       tools: [permissiveObjectTool],
     });
@@ -258,7 +258,7 @@ describe("XML/YAML object delta streaming", () => {
   });
 
   it("yaml protocol handles key-split chunks and still emits parsed JSON deltas", async () => {
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: [weatherTool] });
     const chunks = [
       "<get_weather>",
@@ -280,7 +280,7 @@ describe("XML/YAML object delta streaming", () => {
   });
 
   it("yaml protocol avoids unstable null placeholder deltas for incomplete mapping lines", async () => {
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: [weatherTool] });
     const chunks = [
       "<get_weather>\nlocation:\n",
@@ -301,7 +301,7 @@ describe("XML/YAML object delta streaming", () => {
   });
 
   it("yaml protocol treats split scalar tokens as unstable until the scalar is complete", async () => {
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: [nestedTool] });
     const chunks = ["<plan_trip>\nk0_1: t", "rue\nk0_2: done\n</plan_trip>"];
     const out = await convertReadableStreamToArray(
@@ -321,7 +321,7 @@ describe("XML/YAML object delta streaming", () => {
   });
 
   it("yaml protocol avoids emitting transient nested scalar placeholders from split nested keys", async () => {
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: [nestedTool] });
     const chunks = [
       "<plan_trip>\nlocation: Seoul\noptions:\n  u",
@@ -344,7 +344,7 @@ describe("XML/YAML object delta streaming", () => {
   });
 
   it("yaml protocol avoids emitting transient null array items when a list item is split", async () => {
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: [nestedTool] });
     const chunks = [
       "<plan_trip>\nlocation: Seoul\ndays:\n  -",
@@ -368,7 +368,7 @@ describe("XML/YAML object delta streaming", () => {
   });
 
   it("yaml protocol keeps block-scalar progress deltas prefix-safe while a heading line is still streaming", async () => {
-    const protocol = yamlProtocol();
+    const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({
       tools: [writeMarkdownTool],
     });
@@ -402,10 +402,10 @@ describe("XML/YAML object delta streaming", () => {
   });
 
   it("xml/yaml finish reconciliation emits final suffix so joined deltas equal final tool input", async () => {
-    const xmlTransformer = xmlProtocol().createStreamParser({
+    const xmlTransformer = morphXmlProtocol().createStreamParser({
       tools: [weatherTool],
     });
-    const yamlTransformer = yamlProtocol().createStreamParser({
+    const yamlTransformer = yamlXmlProtocol().createStreamParser({
       tools: [weatherTool],
     });
 
@@ -452,7 +452,7 @@ describe("XML/YAML object delta streaming", () => {
         createTextDeltaStream([
           "<math_sum>\n<numbers>3</numbers>\n<numbers>5</numbers>\n<numbers>7</numbers>\n",
         ]),
-        xmlProtocol().createStreamParser({
+        morphXmlProtocol().createStreamParser({
           tools: [mathSumTool],
         })
       )
@@ -474,7 +474,7 @@ describe("XML/YAML object delta streaming", () => {
           "<math_sum_with_unit>\n<numbers>3</numbers>\n<unit>celsius</unit>\n",
           "<numbers>5</numbers>\n</math_sum_with_unit>",
         ]),
-        xmlProtocol().createStreamParser({
+        morphXmlProtocol().createStreamParser({
           tools: [mathSumWithUnitTool],
         })
       )
@@ -499,7 +499,7 @@ describe("XML/YAML object delta streaming", () => {
           "<shape_shift><numbers>3</numbers><unit>celsius</unit>",
           "<numbers>5</numbers></shape_shift>",
         ]),
-        xmlProtocol().createStreamParser({
+        morphXmlProtocol().createStreamParser({
           tools: [permissiveObjectTool],
         })
       )
@@ -524,7 +524,7 @@ describe("XML/YAML object delta streaming", () => {
           createTextDeltaStream([
             "<get_weather><location>Seoul<location></get_weather>",
           ]),
-          xmlProtocol().createStreamParser({ tools: [weatherTool] })
+          morphXmlProtocol().createStreamParser({ tools: [weatherTool] })
         )
       ),
       convertReadableStreamToArray(
@@ -532,7 +532,7 @@ describe("XML/YAML object delta streaming", () => {
           createTextDeltaStream([
             "<get_weather>\n- invalid\n- yaml\n</get_weather>",
           ]),
-          yamlProtocol().createStreamParser({ tools: [weatherTool] })
+          yamlXmlProtocol().createStreamParser({ tools: [weatherTool] })
         )
       ),
     ]);
@@ -556,7 +556,7 @@ describe("XML/YAML object delta streaming", () => {
         createTextDeltaStream([
           "<bad_tool><name>first</name><name>second</name>",
         ]),
-        xmlProtocol().createStreamParser({
+        morphXmlProtocol().createStreamParser({
           tools: [strictNameTool],
         })
       )
@@ -578,7 +578,7 @@ describe("XML/YAML object delta streaming", () => {
         createTextDeltaStream([
           "<bad_tool><name>first</name><name>second</name>",
         ]),
-        xmlProtocol().createStreamParser({
+        morphXmlProtocol().createStreamParser({
           tools: [strictNameTool],
           options: { emitRawToolCallTextOnError: true },
         })
@@ -600,7 +600,7 @@ describe("XML/YAML object delta streaming", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
         createTextDeltaStream(["<get_weather>\n["]),
-        yamlProtocol().createStreamParser({
+        yamlXmlProtocol().createStreamParser({
           tools: [weatherTool],
         })
       )
@@ -622,7 +622,7 @@ describe("XML/YAML object delta streaming", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
         createTextDeltaStream(["<get_weather>\n["]),
-        yamlProtocol().createStreamParser({
+        yamlXmlProtocol().createStreamParser({
           tools: [weatherTool],
           options: { emitRawToolCallTextOnError: true },
         })
@@ -657,7 +657,7 @@ describe("XML/YAML object delta streaming", () => {
       const out = await convertReadableStreamToArray(
         pipeWithTransformer(
           createTextDeltaStream(["<get_weather>\nlocation: Seoul\nunit:\n"]),
-          yamlProtocol().createStreamParser({
+          yamlXmlProtocol().createStreamParser({
             tools: [weatherTool],
           })
         )
