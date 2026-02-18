@@ -13,6 +13,19 @@ AI SDK middleware for parsing tool calls from models that do not natively suppor
 pnpm add @ai-sdk-tool/parser
 ```
 
+## AI SDK compatibility
+
+Fact-checked from this repo `CHANGELOG.md` and npm release metadata.
+
+| `@ai-sdk-tool/parser` major | AI SDK major | Maintenance status |
+|---|---|---|
+| `v1.x` | `v4.x` | Legacy (not actively maintained) |
+| `v2.x` | `v5.x` | Legacy (not actively maintained) |
+| `v3.x` | `v6.x` | Legacy (not actively maintained) |
+| `v4.x` | `v6.x` | Active (current `latest` line) |
+
+Note: there is no separate formal EOL announcement in releases/changelog for `v1`-`v3`; "legacy" here means non-current release lines.
+
 ## Package map
 
 | Import | Purpose |
