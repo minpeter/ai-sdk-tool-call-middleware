@@ -1,5 +1,27 @@
 # @ai-sdk-tool/parser
 
+## 4.1.0
+
+### Minor Changes
+
+- 097a6fb: Add a new `model` media strategy mode for tool-result handling so tool `content` outputs can be converted into model-recognizable user content parts (`text`/`file`) instead of placeholder-only text.
+
+  Update tool-role message conversion and middleware typing to support structured tool-response template outputs, while preserving existing string-based formatter behavior.
+
+  Improve prompt shared module naming clarity and align shared test ownership with the renamed modules.
+
+- 097a6fb: Add Qwen3-Coder dedicated middleware and prompt/protocol support, including:
+
+  - Qwen3-Coder specific system-prompt rendering aligned to the Qwen tool format.
+  - Qwen3-Coder tool-response formatting and assistant tool-call text conversion flow.
+  - Prompt-layer refactor that separates shared prompt utilities from protocol-specific prompt modules for better maintainability.
+
+- 37933c7: Rename the JSON protocol surface from `jsonProtocol` to `hermesProtocol` and align Hermes prompt/tool-response behavior with the vLLM Hermes format.
+
+  Expand Hermes-focused parser test coverage (including nested schema rendering) and update protocol/preconfigured middleware references to the new naming.
+
+  Refresh README and example documentation, including parser-core example filename cleanup and an AI SDK compatibility matrix in the top-level README.
+
 ## 4.0.1
 
 ### Patch Changes
@@ -132,7 +154,9 @@
 
   - Remove all gemma model references and configurations across codebase
   - Fix broken README examples by adding proper model and middleware imports
+
 - Change morphXmlToolMiddleware placement from "first" to "last" for consistency
+
   - Fix yamlXmlToolMiddleware import name in benchmark scripts
   - Update ai dependency from 6.0.5 to 6.0.6
   - Add missing transformParams to disk cache middleware
