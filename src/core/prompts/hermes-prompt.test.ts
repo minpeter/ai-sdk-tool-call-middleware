@@ -157,6 +157,37 @@ describe("jsonSchemaToPythonType", () => {
   it("maps unknown/missing type to Any", () => {
     expect(jsonSchemaToPythonType({})).toBe("Any");
   });
+
+  it("maps nested array/object/union structures recursively", () => {
+    expect(
+      jsonSchemaToPythonType({
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: {
+            type: ["string", "integer"],
+          },
+        },
+      })
+    ).toBe("list[dict[str, Union[str,int]]]");
+  });
+
+  it("maps deeply nested dictionary/list combinations", () => {
+    expect(
+      jsonSchemaToPythonType({
+        type: "object",
+        additionalProperties: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: {
+              type: "number",
+            },
+          },
+        },
+      })
+    ).toBe("dict[str, list[dict[str, float]]]");
+  });
 });
 
 describe("renderToolDefinition", () => {
@@ -209,6 +240,73 @@ describe("renderToolDefinition", () => {
     };
     const result = renderToolDefinition(tool);
     expect(result).toContain('"parameters": {}');
+  });
+
+  it("renders complex nested parameter types in signature and args", () => {
+    const tool: LanguageModelV3FunctionTool = {
+      type: "function",
+      name: "analyze_data",
+      description: "Analyze deeply nested payload",
+      inputSchema: {
+        type: "object",
+        properties: {
+          filters: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: {
+                type: ["string", "integer"],
+              },
+            },
+            description: "Filter list",
+          },
+          metrics: {
+            type: "object",
+            additionalProperties: {
+              type: "array",
+              items: {
+                type: "number",
+              },
+            },
+            description: "Metric values",
+          },
+          rawPayload: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+            },
+            description: "Raw payload object",
+          },
+        },
+        required: ["filters"],
+      },
+    };
+
+    const parsed = JSON.parse(renderToolDefinition(tool)) as {
+      type: string;
+      function: {
+        name: string;
+        description: string;
+        parameters: unknown;
+      };
+    };
+
+    expect(parsed.type).toBe("function");
+    expect(parsed.function.name).toBe("analyze_data");
+    expect(parsed.function.parameters).toEqual(tool.inputSchema);
+    expect(parsed.function.description).toContain(
+      "analyze_data(filters: list[dict[str, Union[str,int]]], metrics: dict[str, list[float]], rawPayload: dict)"
+    );
+    expect(parsed.function.description).toContain("Args:\n");
+    expect(parsed.function.description).toContain(
+      "filters(list[dict[str, Union[str,int]]]): Filter list"
+    );
+    expect(parsed.function.description).toContain(
+      "metrics(dict[str, list[float]]): Metric values"
+    );
+    expect(parsed.function.description).toContain(
+      "rawPayload(dict): Raw payload object"
+    );
   });
 });
 
