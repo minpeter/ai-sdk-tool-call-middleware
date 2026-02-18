@@ -5,10 +5,10 @@ import type {
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import { transformParams } from "../../transform-handler";
-import { jsonMixProtocol } from "../protocols/json-mix-protocol";
+import { hermesProtocol } from "../protocols/hermes-protocol";
 import {
-  createJsonInXmlToolResponseFormatter,
-  formatToolResponseAsJsonInXml,
+  createHermesToolResponseFormatter,
+  formatToolResponseAsHermes,
   hermesSystemPromptTemplate,
 } from "./hermes-prompt";
 
@@ -65,10 +65,10 @@ describe("hermes-prompt outer-layer transform", () => {
     ];
 
     const transformed = transformParams({
-      protocol: jsonMixProtocol({}),
+      protocol: hermesProtocol(),
       placement: "first",
       toolSystemPromptTemplate: hermesSystemPromptTemplate,
-      toolResponsePromptTemplate: formatToolResponseAsJsonInXml,
+      toolResponsePromptTemplate: formatToolResponseAsHermes,
       params: {
         prompt: inputPrompt,
         tools,
@@ -110,7 +110,7 @@ describe("hermes-prompt outer-layer transform", () => {
   });
 });
 
-describe("formatToolResponseAsJsonInXml", () => {
+describe("formatToolResponseAsHermes", () => {
   it("formats basic tool result", () => {
     const toolResult: ToolResultPart = {
       type: "tool-result",
@@ -118,7 +118,7 @@ describe("formatToolResponseAsJsonInXml", () => {
       toolName: "get_weather",
       output: { type: "json", value: { temp: 25 } },
     };
-    const result = formatToolResponseAsJsonInXml(toolResult);
+    const result = formatToolResponseAsHermes(toolResult);
     expect(result).toContain("<tool_response>");
     expect(result).toContain("</tool_response>");
     expect(result).toContain('"toolName":"get_weather"');
@@ -126,7 +126,7 @@ describe("formatToolResponseAsJsonInXml", () => {
   });
 
   it("unwraps json-typed result before formatting", () => {
-    const result = formatToolResponseAsJsonInXml({
+    const result = formatToolResponseAsHermes({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "get_weather",
@@ -137,7 +137,7 @@ describe("formatToolResponseAsJsonInXml", () => {
   });
 
   it("unwraps text-typed result before formatting", () => {
-    const result = formatToolResponseAsJsonInXml({
+    const result = formatToolResponseAsHermes({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "echo",
@@ -147,7 +147,7 @@ describe("formatToolResponseAsJsonInXml", () => {
   });
 
   it("handles execution-denied result", () => {
-    const result = formatToolResponseAsJsonInXml({
+    const result = formatToolResponseAsHermes({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "delete_file",
@@ -158,7 +158,7 @@ describe("formatToolResponseAsJsonInXml", () => {
   });
 
   it("handles error-text result", () => {
-    const result = formatToolResponseAsJsonInXml({
+    const result = formatToolResponseAsHermes({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "fetch_data",
@@ -169,7 +169,7 @@ describe("formatToolResponseAsJsonInXml", () => {
   });
 
   it("handles content type with images", () => {
-    const result = formatToolResponseAsJsonInXml({
+    const result = formatToolResponseAsHermes({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "screenshot",
@@ -186,7 +186,7 @@ describe("formatToolResponseAsJsonInXml", () => {
   });
 
   it("handles string output", () => {
-    const result = formatToolResponseAsJsonInXml({
+    const result = formatToolResponseAsHermes({
       type: "tool-result",
       toolCallId: "tc1",
       toolName: "echo",
@@ -196,7 +196,7 @@ describe("formatToolResponseAsJsonInXml", () => {
   });
 
   it("factory supports raw media strategy", () => {
-    const formatter = createJsonInXmlToolResponseFormatter({
+    const formatter = createHermesToolResponseFormatter({
       mediaStrategy: {
         mode: "raw",
       },

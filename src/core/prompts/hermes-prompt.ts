@@ -5,13 +5,13 @@ import {
   unwrapToolResult,
 } from "./shared/tool-result-normalizer";
 
-export interface JsonInXmlToolResponseFormatterOptions {
+export interface HermesToolResponseFormatterOptions {
   mediaStrategy?: ToolResponseMediaStrategy;
 }
 
-function formatToolResponseAsJsonInXmlWithOptions(
+function formatToolResponseAsHermesWithOptions(
   toolResult: ToolResultPart,
-  options?: JsonInXmlToolResponseFormatterOptions
+  options?: HermesToolResponseFormatterOptions
 ): string {
   const unwrappedResult = unwrapToolResult(
     toolResult.output,
@@ -23,17 +23,15 @@ function formatToolResponseAsJsonInXmlWithOptions(
   })}</tool_response>`;
 }
 
-export function createJsonInXmlToolResponseFormatter(
-  options?: JsonInXmlToolResponseFormatterOptions
+export function createHermesToolResponseFormatter(
+  options?: HermesToolResponseFormatterOptions
 ): (toolResult: ToolResultPart) => string {
   return (toolResult) =>
-    formatToolResponseAsJsonInXmlWithOptions(toolResult, options);
+    formatToolResponseAsHermesWithOptions(toolResult, options);
 }
 
-export function formatToolResponseAsJsonInXml(
-  toolResult: ToolResultPart
-): string {
-  return formatToolResponseAsJsonInXmlWithOptions(toolResult);
+export function formatToolResponseAsHermes(toolResult: ToolResultPart): string {
+  return formatToolResponseAsHermesWithOptions(toolResult);
 }
 
 export function hermesSystemPromptTemplate(

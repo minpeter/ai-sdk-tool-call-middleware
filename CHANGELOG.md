@@ -14,7 +14,7 @@
 
 - 11778c6: Stream stable, monotonic JSON argument deltas for tool calls across protocols.
 
-  - `jsonMixProtocol`: `tool-input-delta` streams canonical JSON argument text.
+  - `hermesProtocol`: `tool-input-delta` streams canonical JSON argument text.
   - `morphXmlProtocol` and `yamlXmlProtocol`: `tool-input-delta` streams parsed JSON argument prefixes (not raw XML/YAML fragments).
   - Preserve ID reconciliation across `tool-input-start`, `tool-input-end`, and final `tool-call`.
   - Tool call ids are now generated in an OpenAI-like `call_` format.
@@ -48,7 +48,7 @@
   - Extract shared `escapeRegExp` function: removed duplicate from `rxml/heuristics/xml-defaults.ts`, now imports from `core/utils/regex.ts`
   - Create shared regex constants: new `core/utils/regex-constants.ts` exports `NAME_CHAR_RE` and `WHITESPACE_REGEX` used by protocol implementations
   - Extract shared `ParserOptions` interface: moved to `core/protocols/protocol-interface.ts` from duplicate definitions in `morph-xml-protocol.ts` and `yaml-xml-protocol.ts`
-  - Create shared protocol utility: new `core/utils/protocol-utils.ts` exports `addTextSegment()` function, replacing duplicate implementations in `json-mix-protocol.ts` and `yaml-xml-protocol.ts`
+  - Create shared protocol utility: new `core/utils/protocol-utils.ts` exports `addTextSegment()` function, replacing duplicate implementations in `hermes-protocol.ts` and `yaml-xml-protocol.ts`
 
   ### Dependency Updates
 
@@ -127,7 +127,7 @@
 
 ### Patch Changes
 
-- b9b13bd: Simplify `formatToolResponseAsJsonInXml` signature to match `morphFormatToolResponseAsXml` by removing optional tag parameters and hardcoding `<tool_response>` tags.
+- b9b13bd: Simplify `formatToolResponseAsHermes` signature to match `morphFormatToolResponseAsXml` by removing optional tag parameters and hardcoding `<tool_response>` tags.
 - b9b13bd: feat: Implement PR #141 review feedback - clean up gemma support and fix documentation
 
   - Remove all gemma model references and configurations across codebase

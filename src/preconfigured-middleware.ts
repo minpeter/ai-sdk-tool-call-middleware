@@ -1,5 +1,5 @@
 import {
-  formatToolResponseAsJsonInXml,
+  formatToolResponseAsHermes,
   hermesSystemPromptTemplate,
 } from "./core/prompts/hermes-prompt";
 import {
@@ -14,16 +14,16 @@ import {
   formatToolResponseAsYaml,
   yamlXmlSystemPromptTemplate,
 } from "./core/prompts/yaml-xml-prompt";
-import { jsonMixProtocol } from "./core/protocols/json-mix-protocol";
+import { hermesProtocol } from "./core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "./core/protocols/morph-xml-protocol";
 import { qwen3CoderProtocol } from "./core/protocols/qwen3coder-protocol";
 import { yamlXmlProtocol } from "./core/protocols/yaml-xml-protocol";
 import { createToolMiddleware } from "./tool-call-middleware";
 
 export const hermesToolMiddleware = createToolMiddleware({
-  protocol: jsonMixProtocol({}),
+  protocol: hermesProtocol(),
   toolSystemPromptTemplate: hermesSystemPromptTemplate,
-  toolResponsePromptTemplate: formatToolResponseAsJsonInXml,
+  toolResponsePromptTemplate: formatToolResponseAsHermes,
 });
 
 export const qwen3CoderToolMiddleware = createToolMiddleware({

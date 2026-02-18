@@ -2,7 +2,7 @@
 
 // Core Protocols (Agnostic)
 
-export * from "./core/protocols/json-mix-protocol";
+export * from "./core/protocols/hermes-protocol";
 export type { MorphXmlProtocolOptions } from "./core/protocols/morph-xml-protocol";
 export { morphXmlProtocol } from "./core/protocols/morph-xml-protocol";
 export * from "./core/protocols/protocol-interface";

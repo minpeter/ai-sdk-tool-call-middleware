@@ -2,7 +2,7 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
-import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
@@ -37,9 +37,9 @@ function isToolCallPart(part: LanguageModelV3StreamPart): part is ToolCallPart {
   return typeof maybe.toolName === "string" && typeof maybe.input === "string";
 }
 
-describe("jsonMixProtocol partial tag handling", () => {
+describe("hermesProtocol partial tag handling", () => {
   it("breaks inner loop when only partial start tag suffix present and publishes buffer", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -63,7 +63,7 @@ describe("jsonMixProtocol partial tag handling", () => {
   it("keeps the longest overlapping start-tag suffix across chunks", async () => {
     const toolCallStart = "ababax";
     const toolCallEnd = "ENDTAG";
-    const protocol = jsonMixProtocol({ toolCallStart, toolCallEnd });
+    const protocol = hermesProtocol({ toolCallStart, toolCallEnd });
     const transformer = protocol.createStreamParser({ tools: [] });
 
     const rs = new ReadableStream<LanguageModelV3StreamPart>({

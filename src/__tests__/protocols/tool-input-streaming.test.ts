@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
 import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
@@ -76,7 +76,7 @@ function extractToolInputTimeline(parts: LanguageModelV3StreamPart[]) {
 describe("tool-input streaming events", () => {
   it("json protocol emits tool-input-start/delta/end and reconciles id with tool-call", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -106,7 +106,7 @@ describe("tool-input streaming events", () => {
 
   it("json protocol force-completes tool input at finish when closing tag is missing", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -134,7 +134,7 @@ describe("tool-input streaming events", () => {
 
   it("json finish reconciliation does not leak partial end-tag text when recovery succeeds", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -170,7 +170,7 @@ describe("tool-input streaming events", () => {
 
   it("json protocol normalizes streamed arguments:null progress to match final tool-call input", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -200,7 +200,7 @@ describe("tool-input streaming events", () => {
 
   it("json protocol does not emit non-canonical partial literal prefixes for split null arguments", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -228,7 +228,7 @@ describe("tool-input streaming events", () => {
 
   it("json protocol canonicalizes pretty-printed arguments progress before emitting deltas", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -258,7 +258,7 @@ describe("tool-input streaming events", () => {
 
   it("json protocol emits tool-input deltas for parseable arguments even when outer JSON is incomplete", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
@@ -1412,7 +1412,7 @@ describe("tool-input streaming events", () => {
 
   it("json malformed fixture does not leave dangling tool-input stream", async () => {
     const fixture = toolInputStreamFixtures.json;
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: fixture.tools });
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(

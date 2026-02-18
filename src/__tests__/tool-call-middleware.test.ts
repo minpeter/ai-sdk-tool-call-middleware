@@ -1,7 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { jsonMixProtocol } from "../core/protocols/json-mix-protocol";
+import { hermesProtocol } from "../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../core/protocols/morph-xml-protocol";
 import { originalToolsSchema } from "../core/utils/provider-options";
 import { createToolMiddleware } from "../tool-call-middleware";
@@ -12,7 +12,7 @@ describe("createToolMiddleware", () => {
 
   const createJsonMiddleware = () =>
     createToolMiddleware({
-      protocol: jsonMixProtocol({}),
+      protocol: hermesProtocol({}),
       toolSystemPromptTemplate: mockToolSystemPromptTemplate,
     });
 
@@ -33,7 +33,7 @@ describe("createToolMiddleware", () => {
     });
   });
 
-  describe("wrapGenerate with jsonMixProtocol", () => {
+  describe("wrapGenerate with hermesProtocol", () => {
     it("should parse tool calls from text content", async () => {
       const middleware = createJsonMiddleware();
       const doGenerate = vi.fn().mockResolvedValue({
@@ -341,7 +341,7 @@ describe("createToolMiddleware", () => {
 describe("createToolMiddleware positive paths", () => {
   it("wrapGenerate parses text content via protocol parseGeneratedText", async () => {
     const mw = createToolMiddleware({
-      protocol: jsonMixProtocol,
+      protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "",
     });
     const doGenerate = vi.fn().mockResolvedValue({

@@ -40,16 +40,16 @@ for await (const part of result.fullStream) {
 
 ## Tool-input delta semantics
 
-- `jsonMixProtocol`: `tool-input-delta` emits incremental JSON argument text.
+- `hermesProtocol`: `tool-input-delta` emits incremental JSON argument text.
 - `morphXmlProtocol` and `yamlXmlProtocol`: `tool-input-delta` now also emits incremental JSON argument text (parsed-object prefixes), not raw XML/YAML fragments.
-- `jsonMixProtocol`, `morphXmlProtocol`, `yamlXmlProtocol`, and `qwen3CoderProtocol`: malformed streaming tool payloads do not emit raw protocol markup to `text-delta` by default. Set `emitRawToolCallTextOnError: true` in parser options only if you explicitly want raw fallback text.
+- `hermesProtocol`, `morphXmlProtocol`, `yamlXmlProtocol`, and `qwen3CoderProtocol`: malformed streaming tool payloads do not emit raw protocol markup to `text-delta` by default. Set `emitRawToolCallTextOnError: true` in parser options only if you explicitly want raw fallback text.
 - `tool-input-start.id`, `tool-input-end.id`, and `tool-call.toolCallId` are reconciled to the same ID for each tool call stream.
 
 ## Qwen3Coder Protocol + Tool Middleware
 
 Use `qwen3CoderProtocol` when your model/prompt expects this XML-like tool markup, or when you want a human-readable tool-call format with repeated `<parameter=...>` tags for arrays. If you can control the tool format freely, prefer:
 
-- `jsonMixProtocol` for strict, nested JSON arguments
+- `hermesProtocol` for strict, nested JSON arguments
 - `morphXmlProtocol` / `yamlXmlProtocol` for schema-driven nested structures
 - `qwen3CoderProtocol` for this format (`<tool_call><function=...><parameter=...>`)
 
@@ -128,5 +128,5 @@ export const myQwen3CoderToolMiddleware = createToolMiddleware({
 
 ### Limitations
 
-- `qwen3CoderProtocol` parameter values start as strings. If your tools require deeply nested objects/arrays, prefer `jsonMixProtocol` or `morphXmlProtocol`.
+- `qwen3CoderProtocol` parameter values start as strings. If your tools require deeply nested objects/arrays, prefer `hermesProtocol` or `morphXmlProtocol`.
 - In streaming mode, incomplete/malformed `<tool_call>` blocks are suppressed by default (to avoid showing raw markup to end users). Enable `emitRawToolCallTextOnError` only if you explicitly want raw fallback text.

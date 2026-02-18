@@ -1,7 +1,7 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import {
   mockUsage,
   pipeWithTransformer,
@@ -9,9 +9,9 @@ import {
   zeroUsage,
 } from "../test-helpers";
 
-describe("jsonMixProtocol streaming", () => {
+describe("hermesProtocol streaming", () => {
   it("parses normal tool_call blocks into tool-call events", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -39,7 +39,7 @@ describe("jsonMixProtocol streaming", () => {
   });
 
   it("normalizes legacy <tool_call> tags and parses", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -65,7 +65,7 @@ describe("jsonMixProtocol streaming", () => {
 
   it("on parse error suppresses raw fallback text by default and calls onError", async () => {
     const onError = vi.fn();
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
       options: { onError },
@@ -101,7 +101,7 @@ describe("jsonMixProtocol streaming", () => {
 
   it("on parse error emits raw fallback text when explicitly enabled", async () => {
     const onError = vi.fn();
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
       options: { onError, emitRawToolCallTextOnError: true },
@@ -135,9 +135,9 @@ describe("jsonMixProtocol streaming", () => {
   });
 });
 
-describe("jsonMixProtocol streaming edge cases", () => {
+describe("hermesProtocol streaming edge cases", () => {
   it("parses tool call when content split across chunks", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -182,7 +182,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
   });
 
   it("supports legacy <tool_call> tags mixed in chunks", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -209,7 +209,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
 
   it("emits original text on malformed JSON when raw fallback is enabled", async () => {
     const onError = vi.fn();
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
       options: { onError, emitRawToolCallTextOnError: true },
@@ -241,7 +241,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
   });
 
   it("flushes buffered partial tool_call at finish as text when enabled", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
       options: { emitRawToolCallTextOnError: true },
@@ -272,7 +272,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
   });
 
   it("suppresses buffered partial tool_call at finish by default", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -301,7 +301,7 @@ describe("jsonMixProtocol streaming edge cases", () => {
   });
 
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -347,9 +347,9 @@ describe("jsonMixProtocol streaming edge cases", () => {
   });
 });
 
-describe("jsonMixProtocol content isolation", () => {
+describe("hermesProtocol content isolation", () => {
   it("does not expose JSON content inside tool_call tags in text output", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -404,7 +404,7 @@ describe("jsonMixProtocol content isolation", () => {
   });
 
   it("handles multiple consecutive tool calls without exposing JSON content", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -462,7 +462,7 @@ describe("jsonMixProtocol content isolation", () => {
   });
 
   it("properly emits text-start and text-end events around tool calls", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {
@@ -532,7 +532,7 @@ describe("jsonMixProtocol content isolation", () => {
   });
 
   it("handles tool call split across chunks without exposing JSON in text", async () => {
-    const protocol = jsonMixProtocol();
+    const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
       start(ctrl) {

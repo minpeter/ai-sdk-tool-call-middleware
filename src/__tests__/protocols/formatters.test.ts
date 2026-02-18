@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 
 describe("protocol formatters", () => {
-  it("jsonMixProtocol formatToolCall and formatTools", () => {
-    const p = jsonMixProtocol();
+  it("hermesProtocol formatToolCall and formatTools", () => {
+    const p = hermesProtocol();
     const tools = [
       {
         type: "function",

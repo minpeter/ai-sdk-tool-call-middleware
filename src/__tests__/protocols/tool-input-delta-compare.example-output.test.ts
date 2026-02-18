@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { jsonMixProtocol } from "../../core/protocols/json-mix-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
 
@@ -31,7 +31,7 @@ const tool: LanguageModelV3FunctionTool = {
 const scenarios = [
   {
     name: "JSON protocol",
-    parser: jsonMixProtocol().createStreamParser({ tools: [tool] }),
+    parser: hermesProtocol().createStreamParser({ tools: [tool] }),
     chunks: [
       "Before ",
       '<tool_call>{"na',

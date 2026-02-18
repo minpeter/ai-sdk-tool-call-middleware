@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   createToolMiddleware,
+  hermesProtocol,
   hermesToolMiddleware,
-  jsonMixProtocol,
   morphXmlToolMiddleware,
   originalToolsSchema,
 } from "..";
@@ -123,6 +123,12 @@ describe("index exports", () => {
     });
   });
 
+  describe("hermes protocol exports", () => {
+    it("should export hermesProtocol", () => {
+      expect(hermesProtocol).toBeDefined();
+    });
+  });
+
   describe("createToolMiddleware export", () => {
     it("should be exported and callable", () => {
       expect(createToolMiddleware).toBeDefined();
@@ -131,7 +137,7 @@ describe("index exports", () => {
 
     it("should create custom middleware", () => {
       const customMiddleware = createToolMiddleware({
-        protocol: jsonMixProtocol(), // or morphXmlProtocol
+        protocol: hermesProtocol(), // or morphXmlProtocol
         toolSystemPromptTemplate: (tools) =>
           `Custom template: ${JSON.stringify(tools)}`,
       });
