@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createUserContentToolResponseTemplate,
   toolRoleContentToUserTextMessage,
-} from "./tool-role-to-user-message";
+} from "../../shared/tool-role-to-user-message";
 
 describe("toolRoleContentToUserTextMessage", () => {
   it("converts tool-result and approval responses into a single user text message", () => {

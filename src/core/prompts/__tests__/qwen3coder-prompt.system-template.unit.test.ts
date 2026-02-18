@@ -4,13 +4,13 @@ import type {
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
-import { transformParams } from "../../transform-handler";
-import { qwen3CoderProtocol } from "../protocols/qwen3coder-protocol";
+import { transformParams } from "../../../transform-handler";
+import { qwen3CoderProtocol } from "../../protocols/qwen3coder-protocol";
 import {
   createQwen3CoderXmlToolResponseFormatter,
   formatToolResponseAsQwen3CoderXml,
   qwen3coderSystemPromptTemplate,
-} from "./qwen3coder-prompt";
+} from "../qwen3coder-prompt";
 
 describe("qwen3coderSystemPromptTemplate", () => {
   it("renders the Qwen3-Coder tools section without chat-role wrappers", () => {

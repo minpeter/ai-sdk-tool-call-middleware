@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { stringify as rxmlStringify } from "../builders/stringify";
-import { RXMLDuplicateStringTagError } from "../errors/types";
-import { parse as rxmlParse } from "../parse";
+import { stringify as rxmlStringify } from "../../builders/stringify";
+import { RXMLDuplicateStringTagError } from "../../errors/types";
+import { parse as rxmlParse } from "../../parse";
 
 const VALUE_100 = 100;
 
