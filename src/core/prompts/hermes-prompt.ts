@@ -18,8 +18,8 @@ function formatToolResponseAsHermesWithOptions(
     options?.mediaStrategy
   );
   return `<tool_response>${JSON.stringify({
-    toolName: toolResult.toolName,
-    result: unwrappedResult,
+    name: toolResult.toolName,
+    content: unwrappedResult,
   })}</tool_response>`;
 }
 

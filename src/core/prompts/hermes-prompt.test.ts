@@ -98,7 +98,7 @@ describe("hermes-prompt outer-layer transform", () => {
         content: [
           {
             type: "text",
-            text: '<tool_response>{"toolName":"get_weather","result":{"city":"Seoul","temperature":21}}</tool_response>',
+            text: '<tool_response>{"name":"get_weather","content":{"city":"Seoul","temperature":21}}</tool_response>',
           },
         ],
       },
@@ -121,8 +121,8 @@ describe("formatToolResponseAsHermes", () => {
     const result = formatToolResponseAsHermes(toolResult);
     expect(result).toContain("<tool_response>");
     expect(result).toContain("</tool_response>");
-    expect(result).toContain('"toolName":"get_weather"');
-    expect(result).toContain('"result":{"temp":25}');
+    expect(result).toContain('"name":"get_weather"');
+    expect(result).toContain('"content":{"temp":25}');
   });
 
   it("unwraps json-typed result before formatting", () => {
@@ -132,7 +132,7 @@ describe("formatToolResponseAsHermes", () => {
       toolName: "get_weather",
       output: { type: "json", value: { temp: 25 } },
     } satisfies ToolResultPart);
-    expect(result).toContain('"result":{"temp":25}');
+    expect(result).toContain('"content":{"temp":25}');
     expect(result).not.toContain('"type":"json"');
   });
 
@@ -143,7 +143,7 @@ describe("formatToolResponseAsHermes", () => {
       toolName: "echo",
       output: { type: "text", value: "hello world" },
     } satisfies ToolResultPart);
-    expect(result).toContain('"result":"hello world"');
+    expect(result).toContain('"content":"hello world"');
   });
 
   it("handles execution-denied result", () => {
@@ -192,7 +192,7 @@ describe("formatToolResponseAsHermes", () => {
       toolName: "echo",
       output: { type: "text", value: "simple string" },
     } satisfies ToolResultPart);
-    expect(result).toContain('"result":"simple string"');
+    expect(result).toContain('"content":"simple string"');
   });
 
   it("factory supports raw media strategy", () => {
