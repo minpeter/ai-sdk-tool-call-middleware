@@ -1,7 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { recoverToolCallFromJsonCandidates } from "../../core/utils/generated-text-json-recovery";
+import { recoverToolCallFromJsonCandidates } from "../../../core/utils/generated-text-json-recovery";
 
 const tools: LanguageModelV3FunctionTool[] = [
   {

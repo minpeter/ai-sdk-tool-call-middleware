@@ -1,14 +1,14 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { hermesToolMiddleware, morphXmlToolMiddleware } from "..";
-import { formatToolResponseAsHermes } from "../core/prompts/hermes-prompt";
+import { hermesToolMiddleware, morphXmlToolMiddleware } from "../../index";
+import { formatToolResponseAsHermes } from "../../core/prompts/hermes-prompt";
 import {
   formatToolResponseAsQwen3CoderXml,
   qwen3coderSystemPromptTemplate,
-} from "../core/prompts/qwen3coder-prompt";
-import { hermesProtocol } from "../core/protocols/hermes-protocol";
-import { qwen3CoderProtocol } from "../core/protocols/qwen3coder-protocol";
-import { createToolMiddleware } from "../tool-call-middleware";
+} from "../../core/prompts/qwen3coder-prompt";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
+import { createToolMiddleware } from "../../tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

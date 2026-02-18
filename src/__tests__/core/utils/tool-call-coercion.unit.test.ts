@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   coerceToolCallInput,
   coerceToolCallPart,
-} from "../../core/utils/tool-call-coercion";
+} from "../../../core/utils/tool-call-coercion";
 
 describe("tool-call coercion utils", () => {
   it("coerces stringified tool input by schema", () => {

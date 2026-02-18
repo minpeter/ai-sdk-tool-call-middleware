@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../core/protocols/hermes-protocol";
-import { createToolMiddleware } from "../tool-call-middleware";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { createToolMiddleware } from "../../tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),

@@ -2,9 +2,9 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test } from "vitest";
 
-import { dummyProtocol } from "../core/protocols/dummy-protocol";
-import { createToolMiddleware } from "../tool-call-middleware";
-import { mockUsage, stopFinishReason, zeroUsage } from "./test-helpers";
+import { dummyProtocol } from "../../core/protocols/dummy-protocol";
+import { createToolMiddleware } from "../../tool-call-middleware";
+import { mockUsage, stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("AI SDK stream protocol compliance", () => {
   const middleware = createToolMiddleware({

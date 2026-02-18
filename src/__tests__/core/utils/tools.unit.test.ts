@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   decodeOriginalTools,
   isToolChoiceActive,
-} from "../../core/utils/provider-options";
+} from "../../../core/utils/provider-options";
 
 describe("tools utils", () => {
   it("isToolChoiceActive detects required and tool types", () => {

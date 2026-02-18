@@ -10,7 +10,7 @@ import {
   hermesToolMiddleware,
   morphXmlToolMiddleware,
   originalToolsSchema,
-} from "..";
+} from "../../index";
 
 describe("index exports", () => {
   describe("hermesToolMiddleware", () => {

@@ -5,11 +5,11 @@ import type {
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../core/protocols/hermes-protocol";
-import type { TCMCoreProtocol } from "../core/protocols/protocol-interface";
-import { originalToolsSchema } from "../core/utils/provider-options";
-import { wrapStream } from "../stream-handler";
-import { stopFinishReason, zeroUsage } from "./test-helpers";
+import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
+import { originalToolsSchema } from "../../core/utils/provider-options";
+import { wrapStream } from "../../stream-handler";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 const passthroughProtocol: TCMCoreProtocol = {
   formatTools: ({ toolSystemPromptTemplate }) => toolSystemPromptTemplate([]),

@@ -1,8 +1,8 @@
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
-import { toolChoiceStream } from "../stream-handler";
-import { mockFinishReason, mockUsage } from "./test-helpers";
+import { toolChoiceStream } from "../../stream-handler";
+import { mockFinishReason, mockUsage } from "../test-helpers";
 
 const TOOL_CALL_ID_RE = /^call_[A-Za-z0-9]{24}$/;
 

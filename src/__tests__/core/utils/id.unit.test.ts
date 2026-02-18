@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateToolCallId } from "../../core/utils/id";
+import { generateToolCallId } from "../../../core/utils/id";
 
 const TOOL_CALL_ID_RE = /^call_[A-Za-z0-9]{24}$/;
 

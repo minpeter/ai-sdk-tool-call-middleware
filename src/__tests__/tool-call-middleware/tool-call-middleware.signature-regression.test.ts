@@ -1,6 +1,6 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { hermesToolMiddleware, morphXmlToolMiddleware } from "..";
+import { hermesToolMiddleware, morphXmlToolMiddleware } from "../../index";
 
 /**
  * Bug reproduction test: Tool call signatures disappear while tool responses are maintained

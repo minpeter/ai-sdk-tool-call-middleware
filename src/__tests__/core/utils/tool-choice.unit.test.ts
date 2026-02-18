@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { parseToolChoicePayload } from "../../core/utils/tool-choice";
+import { parseToolChoicePayload } from "../../../core/utils/tool-choice";
 
 describe("tool-choice utils", () => {
   it("parses and coerces valid toolChoice payload", () => {

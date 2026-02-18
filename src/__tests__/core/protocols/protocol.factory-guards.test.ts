@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
-import { isTCMProtocolFactory } from "../../core/protocols/protocol-interface";
+import type { TCMCoreProtocol } from "../../../core/protocols/protocol-interface";
+import { isTCMProtocolFactory } from "../../../core/protocols/protocol-interface";
 
 describe("utils/protocol - isTCMProtocolFactory", () => {
   it("returns true for a factory function", () => {
