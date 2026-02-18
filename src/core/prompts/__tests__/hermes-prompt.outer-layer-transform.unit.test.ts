@@ -4,15 +4,15 @@ import type {
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
-import { transformParams } from "../../transform-handler";
-import { hermesProtocol } from "../protocols/hermes-protocol";
+import { transformParams } from "../../../transform-handler";
+import { hermesProtocol } from "../../protocols/hermes-protocol";
 import {
   createHermesToolResponseFormatter,
   formatToolResponseAsHermes,
   hermesSystemPromptTemplate,
   jsonSchemaToPythonType,
   renderToolDefinition,
-} from "./hermes-prompt";
+} from "../hermes-prompt";
 
 describe("hermes-prompt outer-layer transform", () => {
   it("transforms tools + messages into the expected prompt message array", () => {

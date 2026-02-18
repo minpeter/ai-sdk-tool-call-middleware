@@ -4,13 +4,13 @@ import type {
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
-import { transformParams } from "../../transform-handler";
-import { morphXmlProtocol } from "../protocols/morph-xml-protocol";
+import { transformParams } from "../../../transform-handler";
+import { morphXmlProtocol } from "../../protocols/morph-xml-protocol";
 import {
   createMorphXmlToolResponseFormatter,
   morphFormatToolResponseAsXml,
   morphXmlSystemPromptTemplate,
-} from "./morph-xml-prompt";
+} from "../morph-xml-prompt";
 
 describe("morph-xml-prompt outer-layer transform", () => {
   it("transforms tools + messages into the expected prompt message array", () => {

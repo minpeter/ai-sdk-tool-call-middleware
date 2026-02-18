@@ -3,12 +3,12 @@ import type {
   LanguageModelV3Prompt,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { transformParams } from "../../transform-handler";
-import { yamlXmlProtocol } from "../protocols/yaml-xml-protocol";
+import { transformParams } from "../../../transform-handler";
+import { yamlXmlProtocol } from "../../protocols/yaml-xml-protocol";
 import {
   formatToolResponseAsYaml,
   yamlXmlSystemPromptTemplate,
-} from "./yaml-xml-prompt";
+} from "../yaml-xml-prompt";
 
 describe("yaml-xml-prompt outer-layer transform", () => {
   it("transforms tools + messages into the expected prompt message array", () => {
