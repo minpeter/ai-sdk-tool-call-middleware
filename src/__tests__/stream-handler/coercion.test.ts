@@ -299,4 +299,131 @@ describe("wrapStream tool-call coercion", () => {
       expect(JSON.parse(streamedInput)).toEqual({ a: 10, b: false });
     });
   }
+
+  it("streams tool-input-delta before delayed final chunk is released", async () => {
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "calc",
+        inputSchema: {
+          type: "object",
+          properties: {
+            a: { type: "number" },
+            b: { type: "boolean" },
+          },
+          required: ["a", "b"],
+        },
+      },
+    ];
+
+    let releaseSecondChunk!: () => void;
+    const secondChunkGate = new Promise<void>((resolve) => {
+      releaseSecondChunk = resolve;
+    });
+
+    const doStream = vi.fn().mockResolvedValue({
+      stream: new ReadableStream<LanguageModelV3StreamPart>({
+        async start(controller) {
+          controller.enqueue({
+            type: "text-delta",
+            id: "seed-streaming",
+            delta: "<tool_call><function=calc><parameter=a>10</parameter>",
+          });
+          await secondChunkGate;
+          controller.enqueue({
+            type: "text-delta",
+            id: "seed-streaming",
+            delta: "<parameter=b>false</parameter></function></tool_call>",
+          });
+          controller.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          controller.close();
+        },
+      }),
+    });
+
+    const result = await wrapStream({
+      protocol: qwen3CoderProtocol(),
+      doStream,
+      doGenerate: vi.fn(),
+      params: {
+        providerOptions: {
+          toolCallMiddleware: {
+            originalTools: originalToolsSchema.encode(tools),
+          },
+        },
+      },
+    });
+
+    const reader = result.stream.getReader();
+    const earlyParts: LanguageModelV3StreamPart[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done || !value) {
+        break;
+      }
+      earlyParts.push(value);
+      if (value.type === "tool-input-delta") {
+        break;
+      }
+    }
+
+    releaseSecondChunk();
+
+    const remainingParts: LanguageModelV3StreamPart[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done || !value) {
+        break;
+      }
+      remainingParts.push(value);
+    }
+
+    const parts = [...earlyParts, ...remainingParts];
+    const toolInputDeltas = parts.filter(
+      (
+        part
+      ): part is Extract<
+        LanguageModelV3StreamPart,
+        { type: "tool-input-delta" }
+      > => part.type === "tool-input-delta"
+    );
+    const joined = toolInputDeltas.map((part) => part.delta).join("");
+    const toolInputEndIndex = parts.findIndex(
+      (part) => part.type === "tool-input-end"
+    );
+    const firstDeltaIndex = parts.findIndex(
+      (part) => part.type === "tool-input-delta"
+    );
+    const toolCallIndex = parts.findIndex((part) => part.type === "tool-call");
+    const toolCall = parts.find(
+      (
+        part
+      ): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+        part.type === "tool-call" && part.toolName === "calc"
+    );
+
+    expect(earlyParts.some((part) => part.type === "tool-input-start")).toBe(
+      true
+    );
+    expect(earlyParts.some((part) => part.type === "tool-input-delta")).toBe(
+      true
+    );
+    expect(earlyParts.some((part) => part.type === "tool-input-end")).toBe(
+      false
+    );
+    expect(earlyParts.some((part) => part.type === "tool-call")).toBe(false);
+
+    expect(toolInputDeltas.length).toBeGreaterThanOrEqual(2);
+    expect(firstDeltaIndex).toBeGreaterThanOrEqual(0);
+    expect(toolInputEndIndex).toBeGreaterThan(firstDeltaIndex);
+    expect(toolCallIndex).toBeGreaterThan(toolInputEndIndex);
+    expect(toolInputDeltas[0].delta.length).toBeLessThan(joined.length);
+    expect(joined.startsWith(toolInputDeltas[0].delta)).toBe(true);
+    expect(joined).toBe(toolCall?.input);
+  });
 });
