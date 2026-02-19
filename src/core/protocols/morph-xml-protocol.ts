@@ -380,6 +380,94 @@ function schemaAllowsArrayType(schema: unknown): boolean {
   return false;
 }
 
+function schemaAllowsStringType(schema: unknown): boolean {
+  if (!schema || typeof schema !== "object") {
+    return false;
+  }
+
+  const schemaRecord = schema as Record<string, unknown>;
+  const typeValue = schemaRecord.type;
+  if (typeValue === "string") {
+    return true;
+  }
+  if (Array.isArray(typeValue) && typeValue.includes("string")) {
+    return true;
+  }
+
+  const unions = [schemaRecord.anyOf, schemaRecord.oneOf, schemaRecord.allOf];
+  for (const union of unions) {
+    if (!Array.isArray(union)) {
+      continue;
+    }
+    if (union.some((entry) => schemaAllowsStringType(entry))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getObjectSchemaStringPropertyNames(
+  schema: unknown
+): Set<string> | null {
+  const propertyNames = getObjectSchemaPropertyNames(schema);
+  if (!propertyNames) {
+    return null;
+  }
+
+  const out = new Set<string>();
+  for (const name of propertyNames) {
+    const property = getSchemaObjectProperty(schema, name);
+    if (schemaAllowsStringType(property)) {
+      out.add(name);
+    }
+  }
+  return out;
+}
+
+function findTrailingUnclosedStringTag(options: {
+  toolContent: string;
+  stringPropertyNames: Set<string>;
+}): string | null {
+  let bestName: string | null = null;
+  let bestOpenIndex = -1;
+
+  for (const name of options.stringPropertyNames) {
+    const openPattern = new RegExp(
+      `<${escapeRegExp(name)}(?:\\s[^>]*)?>`,
+      "gi"
+    );
+    const closePattern = new RegExp(`</\\s*${escapeRegExp(name)}\\s*>`, "gi");
+
+    let lastOpen = -1;
+    for (const match of options.toolContent.matchAll(openPattern)) {
+      const index = match.index;
+      if (index !== undefined) {
+        lastOpen = index;
+      }
+    }
+
+    if (lastOpen === -1) {
+      continue;
+    }
+
+    let lastClose = -1;
+    for (const match of options.toolContent.matchAll(closePattern)) {
+      const index = match.index;
+      if (index !== undefined) {
+        lastClose = index;
+      }
+    }
+
+    if (lastOpen > lastClose && lastOpen > bestOpenIndex) {
+      bestOpenIndex = lastOpen;
+      bestName = name;
+    }
+  }
+
+  return bestName;
+}
+
 function getSchemaObjectProperty(
   schema: unknown,
   propertyName: string
@@ -483,6 +571,21 @@ function parseXmlContentForStreamProgress({
     })
   ) {
     return JSON.stringify(strictFull);
+  }
+
+  const stringPropertyNames = getObjectSchemaStringPropertyNames(toolSchema);
+  if (stringPropertyNames && stringPropertyNames.size > 0) {
+    const trailingStringTag = findTrailingUnclosedStringTag({
+      toolContent,
+      stringPropertyNames,
+    });
+    if (trailingStringTag) {
+      const repaired = `${toolContent}</${trailingStringTag}>`;
+      const parsedRepaired = tryParse(repaired);
+      if (parsedRepaired !== null) {
+        return JSON.stringify(parsedRepaired);
+      }
+    }
   }
 
   let searchEnd = toolContent.length;
@@ -1195,6 +1298,7 @@ function findPotentialToolTagStart(
 
 interface StreamingToolCallState {
   emittedInput: string;
+  lastProgressContentLength: number | null;
   lastProgressFullInput: string | null;
   lastProgressGtIndex: number | null;
   name: string;
@@ -1553,6 +1657,7 @@ export const morphXmlProtocol = (
           name: toolName,
           toolCallId: generateToolCallId(),
           emittedInput: "",
+          lastProgressContentLength: null,
           lastProgressGtIndex: null,
           lastProgressFullInput: null,
         };
@@ -1570,7 +1675,11 @@ export const morphXmlProtocol = (
         toolContent: string
       ) => {
         const progressGtIndex = toolContent.lastIndexOf(">");
-        if (toolCall.lastProgressGtIndex === progressGtIndex) {
+        const progressContentLength = toolContent.length;
+        if (
+          toolCall.lastProgressGtIndex === progressGtIndex &&
+          toolCall.lastProgressContentLength === progressContentLength
+        ) {
           const cached = toolCall.lastProgressFullInput;
           if (cached == null) {
             return;
@@ -1595,6 +1704,7 @@ export const morphXmlProtocol = (
           parseOptions,
         });
         toolCall.lastProgressGtIndex = progressGtIndex;
+        toolCall.lastProgressContentLength = progressContentLength;
         toolCall.lastProgressFullInput = fullInput;
         if (fullInput == null) {
           return;

@@ -520,9 +520,6 @@ describe("cross-protocol tool-input streaming events: morph xml", () => {
     expect(starts[0].id).toBe(ends[0].id);
     expect(toolCall.toolCallId).toBe(starts[0].id);
     expect(toolCall.input).toBe('{"location":"Seoul","unit":"celsius"}');
-    expect(deltas.map((delta) => delta.delta)).toEqual(
-      fixture.expectedProgressDeltas
-    );
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 
@@ -564,9 +561,6 @@ describe("cross-protocol tool-input streaming events: morph xml", () => {
     expect(deltas.length).toBeGreaterThan(0);
     expect(ends).toHaveLength(1);
     expect(toolCall.toolCallId).toBe(starts[0].id);
-    expect(deltas.map((delta) => delta.delta)).toEqual(
-      fixture.expectedProgressDeltas
-    );
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 

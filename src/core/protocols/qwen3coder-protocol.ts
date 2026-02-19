@@ -1394,6 +1394,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
   createStreamParser({ tools, options }) {
     const toolCallStartPrefixLower = "<tool_call";
+    const maxProgressDeltaChunkChars = 512;
 
     // vLLM reference (Qwen3XMLToolParser): streaming tool calls can start directly
     // with <function=...> (missing opening <tool_call>), and the parser implicitly
@@ -1496,12 +1497,29 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return;
       }
       const prefixCandidate = toIncompleteJsonPrefix(fullInput);
-      emitPrefixDelta({
-        controller,
-        id: callState.toolCallId,
-        state: callState,
-        candidate: prefixCandidate,
-      });
+      const emitCandidate = (candidate: string): boolean =>
+        emitPrefixDelta({
+          controller,
+          id: callState.toolCallId,
+          state: callState,
+          candidate,
+        });
+
+      const jumpLength = prefixCandidate.length - callState.emittedInput.length;
+      if (jumpLength <= maxProgressDeltaChunkChars) {
+        emitCandidate(prefixCandidate);
+        return;
+      }
+
+      let cursor = callState.emittedInput.length + maxProgressDeltaChunkChars;
+      while (cursor < prefixCandidate.length) {
+        if (!emitCandidate(prefixCandidate.slice(0, cursor))) {
+          return;
+        }
+        cursor += maxProgressDeltaChunkChars;
+      }
+
+      emitCandidate(prefixCandidate);
     };
 
     const finalizeCall = (
