@@ -7,6 +7,7 @@ import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware"
 
 const TOOL_COLOR = "\x1b[36m";
 const INFO_COLOR = "\x1b[90m";
+const REASONING_COLOR = "\x1b[33m";
 const RESET_COLOR = "\x1b[0m";
 
 const MAX_STEPS = 1;
@@ -37,6 +38,7 @@ interface ToolInputState {
   toolName: string;
 }
 interface StreamState {
+  didPrintReasoning: boolean;
   sawToolInput: boolean;
 }
 
@@ -115,6 +117,17 @@ function handleToolCall(
   });
 }
 
+function handleReasoningDelta(
+  part: Extract<FullStreamPart, { type: "reasoning-delta" }>,
+  state: StreamState
+) {
+  if (!state.didPrintReasoning) {
+    printSection("Reasoning");
+    state.didPrintReasoning = true;
+  }
+  process.stdout.write(`${REASONING_COLOR}${part.text}${RESET_COLOR}`);
+}
+
 function handleStreamPart(
   part: FullStreamPart,
   toolInputById: Map<string, ToolInputState>,
@@ -143,6 +156,10 @@ function handleStreamPart(
         toolCallId: part.toolCallId,
         output: part.output,
       });
+      return;
+    }
+    case "reasoning-delta": {
+      handleReasoningDelta(part, state);
       return;
     }
     case "finish-step": {
@@ -202,6 +219,7 @@ async function main() {
 
   const toolInputById = new Map<string, ToolInputState>();
   const state: StreamState = {
+    didPrintReasoning: false,
     sawToolInput: false,
   };
   let didPrintAssistantText = false;
@@ -223,7 +241,7 @@ async function main() {
   })();
 
   await Promise.all([fullStreamTask, textStreamTask]);
-  if (didPrintAssistantText) {
+  if (didPrintAssistantText || state.didPrintReasoning) {
     process.stdout.write("\n");
   }
 
