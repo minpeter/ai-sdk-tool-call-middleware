@@ -10,24 +10,20 @@ export function createChunkedStream(
   chunkSize: number = CHUNK_SIZE,
   _parseOptions?: any
 ): Readable {
-  const chunks: string[] = [];
-
-  // Split text into chunks of specified size
-  for (let i = 0; i < text.length; i += chunkSize) {
-    chunks.push(text.slice(i, i + chunkSize));
-  }
-
-  let chunkIndex = 0;
+  let position = 0;
 
   return new Readable({
     read() {
-      if (chunkIndex < chunks.length) {
-        // Push chunks immediately without delay for fast testing
-        this.push(chunks[chunkIndex]);
-        chunkIndex += 1;
-      } else {
+      if (position >= text.length) {
         this.push(null); // End of stream
+        return;
       }
+
+      const chunk = text.slice(position, position + chunkSize);
+      position += chunk.length;
+
+      // Push chunks immediately without delay for fast testing
+      this.push(chunk);
     },
   });
 }
