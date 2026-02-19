@@ -64,4 +64,49 @@ describe("transformParams", () => {
     expect(result.tools).toEqual([]);
     expect(result.toolChoice).toBeUndefined();
   });
+
+  it("should default to an empty tool list when tools are omitted", async () => {
+    const middleware = createToolMiddleware({
+      protocol: hermesProtocol({}),
+      toolSystemPromptTemplate: () => "SYSTEM: no tools",
+    });
+
+    const transformParams = middleware.transformParams;
+    if (!transformParams) {
+      throw new Error("transformParams is undefined");
+    }
+
+    const result = await transformParams({
+      params: {
+        prompt: [
+          {
+            role: "user" as const,
+            content: [{ type: "text" as const, text: "hello" }],
+          },
+        ],
+        providerOptions: {
+          toolCallMiddleware: {
+            existing: true,
+          },
+        },
+      },
+    } as any);
+
+    expect(result.prompt).toHaveLength(2);
+    expect(result.prompt[0]).toEqual({
+      role: "user",
+      content: [{ type: "text", text: "hello" }],
+    });
+    expect(result.prompt[1]).toEqual({
+      role: "system",
+      content: "SYSTEM: no tools",
+    });
+    expect(result.tools).toEqual([]);
+    expect(
+      (result.providerOptions as any).toolCallMiddleware.originalTools
+    ).toEqual([]);
+    expect((result.providerOptions as any).toolCallMiddleware.existing).toBe(
+      true
+    );
+  });
 });
