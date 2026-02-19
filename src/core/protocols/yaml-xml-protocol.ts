@@ -1,5 +1,6 @@
 import type {
   LanguageModelV3Content,
+  LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
@@ -16,6 +17,7 @@ import {
   emitPrefixDelta,
   toIncompleteJsonPrefix,
 } from "../utils/streamed-tool-input-delta";
+import { coerceToolCallInput } from "../utils/tool-call-coercion";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
@@ -510,6 +512,19 @@ function parseYamlContentForStreamProgress(
   }
 }
 
+function stringifyToolInputWithSchema(options: {
+  toolName: string;
+  args: Record<string, unknown>;
+  tools: LanguageModelV3FunctionTool[];
+}): string {
+  const coerced = coerceToolCallInput(
+    options.toolName,
+    options.args,
+    options.tools
+  );
+  return coerced ?? JSON.stringify(options.args);
+}
+
 function processToolCallMatch(
   text: string,
   tc: ToolCallMatch,
@@ -718,7 +733,11 @@ export const yamlXmlProtocol = (
         if (parsedArgs === null) {
           return;
         }
-        const fullInput = JSON.stringify(parsedArgs);
+        const fullInput = stringifyToolInputWithSchema({
+          toolName: currentToolCall.name,
+          args: parsedArgs,
+          tools,
+        });
         if (fullInput === "{}" && toolContent.trim().length === 0) {
           return;
         }
@@ -740,7 +759,11 @@ export const yamlXmlProtocol = (
         const parsedArgs = parseYamlContent(toolContent, options);
         flushText(controller);
         if (parsedArgs !== null) {
-          const finalInput = JSON.stringify(parsedArgs);
+          const finalInput = stringifyToolInputWithSchema({
+            toolName,
+            args: parsedArgs,
+            tools,
+          });
           if (currentToolCall && currentToolCall.toolCallId === toolCallId) {
             emitFinalRemainder({
               controller,
@@ -788,7 +811,11 @@ export const yamlXmlProtocol = (
         const parsedArgs = parseYamlContent(reconciledBuffer, options);
         flushText(controller);
         if (parsedArgs !== null) {
-          const finalInput = JSON.stringify(parsedArgs);
+          const finalInput = stringifyToolInputWithSchema({
+            toolName,
+            args: parsedArgs,
+            tools,
+          });
           emitFinalRemainder({
             controller,
             id: toolCallId,
