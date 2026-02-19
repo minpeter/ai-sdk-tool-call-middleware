@@ -377,6 +377,8 @@ type Qwen3CoderToolParserParamTagParseResult =
       kind: "partial";
       start: number;
       openEnd: number | null;
+      name?: string;
+      value?: string;
     };
 
 function parseQwen3CoderToolParserParamTagNameLower(
@@ -425,10 +427,13 @@ function parseQwen3CoderToolParserUnclosedParamValue(options: {
   );
   if (boundaryIndex == null) {
     if (!options.allowEndOfString) {
+      const rawProgressValue = options.text.slice(valueStart);
       return {
         kind: "partial",
         start: options.startIndex,
         openEnd: options.openEnd,
+        name: options.paramName,
+        value: rawProgressValue ? normalizeXmlTextValue(rawProgressValue) : "",
       };
     }
 
@@ -659,6 +664,35 @@ function mergeParamValue(
     return;
   }
   args[key] = [existing, value];
+}
+
+function mergeArgsWithPartialParam(
+  args: Record<string, unknown>,
+  partialParam: { name: string; value: string } | null
+): Record<string, unknown> {
+  if (!partialParam) {
+    return args;
+  }
+
+  const existing = args[partialParam.name];
+  if (existing === undefined) {
+    return {
+      ...args,
+      [partialParam.name]: partialParam.value,
+    };
+  }
+
+  if (Array.isArray(existing)) {
+    return {
+      ...args,
+      [partialParam.name]: [...existing, partialParam.value],
+    };
+  }
+
+  return {
+    ...args,
+    [partialParam.name]: [existing, partialParam.value],
+  };
 }
 
 function extractParameters(
@@ -1381,6 +1415,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       emittedInput: string;
       endTagName: string;
       hasEmittedStart: boolean;
+      partialParam: { name: string; value: string } | null;
       raw: string;
       toolCallId: string;
       toolName: string | null;
@@ -1448,10 +1483,14 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       if (!toolName) {
         return;
       }
+      const argsForProgress = mergeArgsWithPartialParam(
+        callState.args,
+        callState.partialParam
+      );
       const fullInput = stringifyToolInputWithSchema({
         tools,
         toolName,
-        args: callState.args,
+        args: argsForProgress,
       });
       if (fullInput === "{}") {
         return;
@@ -1551,6 +1590,61 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       return nextWork;
     };
 
+    const consumeSingleParamTag = (options: {
+      allowEndOfString: boolean;
+      callState: StreamingCallState;
+      lastKept: number;
+      lower: string;
+      lt: number;
+      work: string;
+    }): {
+      keepSlice?: string;
+      nextIndex: number;
+      nextLastKept: number;
+      shouldStop: boolean;
+    } => {
+      const parsed = parseQwen3CoderToolParserParamTagAt(
+        options.work,
+        options.lower,
+        options.lt,
+        {
+          allowEndOfString: options.allowEndOfString,
+          callEndTagNameLower: options.callState.endTagName,
+        }
+      );
+
+      if (!parsed) {
+        return {
+          nextIndex: options.lt + 1,
+          nextLastKept: options.lastKept,
+          shouldStop: false,
+        };
+      }
+
+      if (parsed.kind === "partial") {
+        if (parsed.name !== undefined) {
+          options.callState.partialParam = {
+            name: parsed.name,
+            value: parsed.value ?? "",
+          };
+        }
+        return {
+          nextIndex: options.lt + 1,
+          nextLastKept: options.lastKept,
+          shouldStop: true,
+        };
+      }
+
+      options.callState.partialParam = null;
+      mergeParamValue(options.callState.args, parsed.name, parsed.value);
+      return {
+        keepSlice: options.work.slice(options.lastKept, parsed.start),
+        nextIndex: parsed.end,
+        nextLastKept: parsed.end,
+        shouldStop: false,
+      };
+    };
+
     const consumeParamTags = (
       controller: StreamController,
       callState: StreamingCallState,
@@ -1568,24 +1662,25 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           break;
         }
 
-        const parsed = parseQwen3CoderToolParserParamTagAt(work, lower, lt, {
+        const step = consumeSingleParamTag({
           allowEndOfString,
-          callEndTagNameLower: callState.endTagName,
+          callState,
+          lower,
+          lt,
+          work,
+          lastKept,
         });
-        if (!parsed) {
-          index = lt + 1;
-          continue;
+
+        if (step.keepSlice !== undefined) {
+          pieces ??= [];
+          pieces.push(step.keepSlice);
         }
 
-        if (parsed.kind === "partial") {
+        index = step.nextIndex;
+        lastKept = step.nextLastKept;
+        if (step.shouldStop) {
           break;
         }
-
-        mergeParamValue(callState.args, parsed.name, parsed.value);
-        pieces ??= [];
-        pieces.push(work.slice(lastKept, parsed.start));
-        lastKept = parsed.end;
-        index = parsed.end;
       }
 
       maybeEmitToolInputStart(controller, callState);
@@ -1870,6 +1965,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         toolCallId: generateToolCallId(),
         toolName: inlineToolName,
         hasEmittedStart: false,
+        partialParam: null,
         emittedInput: "",
         raw: openTag,
         args: {},
@@ -1969,6 +2065,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               toolCallId: generateToolCallId(),
               toolName: toolCall.outerNameAttr,
               hasEmittedStart: false,
+              partialParam: null,
               emittedInput: "",
               raw: toolCall.outerOpenTag,
               args: {},
@@ -2086,6 +2183,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               toolCallId: generateToolCallId(),
               toolName: toolNameAttr,
               hasEmittedStart: false,
+              partialParam: null,
               emittedInput: "",
               raw: openTag,
               args: {},
@@ -2111,6 +2209,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             toolCallId: generateToolCallId(),
             toolName: toolNameAttr,
             hasEmittedStart: false,
+            partialParam: null,
             emittedInput: "",
             raw: openTag,
             args: {},
@@ -2189,6 +2288,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
                 toolCallId: generateToolCallId(),
                 toolName: toolCall.outerNameAttr,
                 hasEmittedStart: false,
+                partialParam: null,
                 emittedInput: "",
                 raw: toolCall.outerOpenTag,
                 args: {},

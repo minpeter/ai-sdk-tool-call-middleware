@@ -426,4 +426,145 @@ describe("wrapStream tool-call coercion", () => {
     expect(joined.startsWith(toolInputDeltas[0].delta)).toBe(true);
     expect(joined).toBe(toolCall?.input);
   });
+
+  it("streams long single content argument before close while keeping coercion", async () => {
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "write_markdown_file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string" },
+            line_count: { type: "integer" },
+            content: { type: "string" },
+          },
+          required: ["file_path", "line_count", "content"],
+        },
+      },
+    ];
+
+    const longContent = "long_content_segment_".repeat(600);
+    const splitIndex = Math.floor(longContent.length * 0.7);
+    const contentHead = longContent.slice(0, splitIndex);
+    const contentTail = longContent.slice(splitIndex);
+
+    let releaseSecondChunk!: () => void;
+    const secondChunkGate = new Promise<void>((resolve) => {
+      releaseSecondChunk = resolve;
+    });
+
+    const doStream = vi.fn().mockResolvedValue({
+      stream: new ReadableStream<LanguageModelV3StreamPart>({
+        async start(controller) {
+          controller.enqueue({
+            type: "text-delta",
+            id: "seed-long-content",
+            delta:
+              "<tool_call><function=write_markdown_file><parameter=file_path>stream-tool-input-visual-demo.md</parameter><parameter=line_count>420</parameter><parameter=content>" +
+              contentHead,
+          });
+          await secondChunkGate;
+          controller.enqueue({
+            type: "text-delta",
+            id: "seed-long-content",
+            delta: `${contentTail}</parameter></function></tool_call>`,
+          });
+          controller.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          controller.close();
+        },
+      }),
+    });
+
+    const result = await wrapStream({
+      protocol: qwen3CoderProtocol(),
+      doStream,
+      doGenerate: vi.fn(),
+      params: {
+        providerOptions: {
+          toolCallMiddleware: {
+            originalTools: originalToolsSchema.encode(tools),
+          },
+        },
+      },
+    });
+
+    const reader = result.stream.getReader();
+    const earlyParts: LanguageModelV3StreamPart[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done || !value) {
+        break;
+      }
+      earlyParts.push(value);
+      if (value.type === "tool-input-delta") {
+        break;
+      }
+    }
+
+    const earlyJoined = earlyParts
+      .filter(
+        (
+          part
+        ): part is Extract<
+          LanguageModelV3StreamPart,
+          { type: "tool-input-delta" }
+        > => part.type === "tool-input-delta"
+      )
+      .map((part) => part.delta)
+      .join("");
+
+    expect(earlyParts.some((part) => part.type === "tool-input-start")).toBe(
+      true
+    );
+    expect(earlyParts.some((part) => part.type === "tool-call")).toBe(false);
+    expect(earlyParts.some((part) => part.type === "tool-input-end")).toBe(
+      false
+    );
+    expect(earlyJoined).toContain('"line_count":420');
+    expect(earlyJoined).toContain(contentHead.slice(0, 120));
+
+    releaseSecondChunk();
+
+    const remainingParts: LanguageModelV3StreamPart[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done || !value) {
+        break;
+      }
+      remainingParts.push(value);
+    }
+
+    const parts = [...earlyParts, ...remainingParts];
+    const deltas = parts.filter(
+      (
+        part
+      ): part is Extract<
+        LanguageModelV3StreamPart,
+        { type: "tool-input-delta" }
+      > => part.type === "tool-input-delta"
+    );
+    const joined = deltas.map((part) => part.delta).join("");
+    const toolCall = parts.find(
+      (
+        part
+      ): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+        part.type === "tool-call" && part.toolName === "write_markdown_file"
+    );
+    const parsed = JSON.parse(toolCall?.input ?? "{}") as {
+      content: string;
+      file_path: string;
+      line_count: number;
+    };
+
+    expect(deltas.length).toBeGreaterThanOrEqual(2);
+    expect(joined).toBe(toolCall?.input);
+    expect(parsed.file_path).toBe("stream-tool-input-visual-demo.md");
+    expect(parsed.line_count).toBe(420);
+    expect(parsed.content).toBe(longContent);
+  });
 });
