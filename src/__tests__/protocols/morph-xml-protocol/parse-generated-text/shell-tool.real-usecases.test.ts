@@ -93,8 +93,6 @@ describe("morphXmlProtocol - shell tool", () => {
 
     const out = p.parseGeneratedText({ text, tools, options: {} });
 
-    console.log(out);
-
     const tc = out.find((part) => (part as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
     expect(tc.toolName).toBe("shell");
@@ -120,8 +118,6 @@ describe("morphXmlProtocol - shell tool", () => {
       "EOF</command></shell>";
 
     const out = p.parseGeneratedText({ text, tools, options: {} });
-
-    console.log(out);
 
     const tc = out.find((part) => (part as any).type === "tool-call") as any;
     expect(tc).toBeTruthy();
