@@ -1,5 +1,12 @@
 # @ai-sdk-tool/parser
 
+## 4.1.1
+
+### Patch Changes
+
+- 8e499fb: Fix morph XML streaming end-tag matching by escaping tool names before building the closing-tag regex.
+  This preserves correct parsing for tool names with regex metacharacters (for example `weather.v2`) and prevents premature or missed tool-call termination in stream output.
+
 ## 4.1.0
 
 ### Minor Changes
