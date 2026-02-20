@@ -14,6 +14,32 @@ import {
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import { runProtocolTextDeltaStream } from "./streaming-events.shared";
 
+type DeltaJoinExpectation = "equal" | "diverges";
+
+function assertIncludesAll(
+  value: string,
+  needles: string[],
+  label: string
+): void {
+  for (const needle of needles) {
+    if (!value.includes(needle)) {
+      throw new Error(`${label}: missing '${needle}' in '${value}'`);
+    }
+  }
+}
+
+function assertExcludesAll(
+  value: string,
+  needles: string[],
+  label: string
+): void {
+  for (const needle of needles) {
+    if (value.includes(needle)) {
+      throw new Error(`${label}: unexpected '${needle}' in '${value}'`);
+    }
+  }
+}
+
 describe("cross-protocol tool-input streaming events: literal angle-bracket arg values", () => {
   const literalValue = "<Ctrl+C>ahi, my name is pi<Esc><Enter>";
 
@@ -36,12 +62,18 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
     return text.split("");
   }
 
+  function assertLiteralAngleValue(value: string): void {
+    assertIncludesAll(value, ["<Ctrl+C>", "<Esc>", "<Enter>"], "literal value");
+    assertExcludesAll(value, ["&lt;", "&gt;", "&amp;"], "literal value");
+  }
+
   const scenarios: Array<{
     name: string;
     protocol: TCMProtocol;
     variants: Array<{
       variantName: string;
       rawModelOutput: string;
+      deltaJoinExpectation: DeltaJoinExpectation;
     }>;
   }> = [
     {
@@ -52,11 +84,13 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
           variantName: "escaped-sequence input",
           rawModelOutput:
             '<tool_call>{"name":"send_keys","arguments":{"value":"\\u003cCtrl+C\\u003eahi, my name is pi\\u003cEsc\\u003e\\u003cEnter\\u003e"}}</tool_call>',
+          deltaJoinExpectation: "equal",
         },
         {
           variantName: "raw-angle input",
           rawModelOutput:
             '<tool_call>{"name":"send_keys","arguments":{"value":"<Ctrl+C>ahi, my name is pi<Esc><Enter>"}}</tool_call>',
+          deltaJoinExpectation: "equal",
         },
       ],
     },
@@ -68,11 +102,13 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
           variantName: "entity-escaped input",
           rawModelOutput:
             "<send_keys><value>&lt;Ctrl+C&gt;ahi, my name is pi&lt;Esc&gt;&lt;Enter&gt;</value></send_keys>",
+          deltaJoinExpectation: "diverges",
         },
         {
           variantName: "raw-angle input",
           rawModelOutput:
             "<send_keys><value><Ctrl+C>ahi, my name is pi<Esc><Enter></value></send_keys>",
+          deltaJoinExpectation: "equal",
         },
       ],
     },
@@ -84,11 +120,13 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
           variantName: "escaped-sequence input",
           rawModelOutput:
             '<send_keys>\nvalue: "\\u003cCtrl+C\\u003eahi, my name is pi\\u003cEsc\\u003e\\u003cEnter\\u003e"\n</send_keys>',
+          deltaJoinExpectation: "equal",
         },
         {
           variantName: "raw-angle input",
           rawModelOutput:
             "<send_keys>\nvalue: '<Ctrl+C>ahi, my name is pi<Esc><Enter>'\n</send_keys>",
+          deltaJoinExpectation: "equal",
         },
       ],
     },
@@ -100,27 +138,31 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
           variantName: "entity-escaped input",
           rawModelOutput:
             "<tool_call><function=send_keys><parameter=value>&lt;Ctrl+C&gt;ahi, my name is pi&lt;Esc&gt;&lt;Enter&gt;</parameter></function></tool_call>",
+          deltaJoinExpectation: "diverges",
         },
         {
           variantName: "raw-angle input",
           rawModelOutput:
             "<tool_call><function=send_keys><parameter=value><Ctrl+C>ahi, my name is pi<Esc><Enter></parameter></function></tool_call>",
+          deltaJoinExpectation: "diverges",
         },
       ],
     },
     {
-      name: "ui-tars-xml",
+      name: "ui-tars-xml-alias-coverage",
       protocol: uiTarsXmlProtocol(),
       variants: [
         {
           variantName: "entity-escaped input",
           rawModelOutput:
             "<tool_call><function=send_keys><parameter=value>&lt;Ctrl+C&gt;ahi, my name is pi&lt;Esc&gt;&lt;Enter&gt;</parameter></function></tool_call>",
+          deltaJoinExpectation: "diverges",
         },
         {
           variantName: "raw-angle input",
           rawModelOutput:
             "<tool_call><function=send_keys><parameter=value><Ctrl+C>ahi, my name is pi<Esc><Enter></parameter></function></tool_call>",
+          deltaJoinExpectation: "diverges",
         },
       ],
     },
@@ -148,12 +190,7 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
 
         const input = JSON.parse(toolCall.input) as { value: string };
         expect(input).toEqual({ value: literalValue });
-        expect(input.value).toContain("<Ctrl+C>");
-        expect(input.value).toContain("<Esc>");
-        expect(input.value).toContain("<Enter>");
-        expect(input.value).not.toContain("&lt;");
-        expect(input.value).not.toContain("&gt;");
-        expect(input.value).not.toContain("&amp;");
+        assertLiteralAngleValue(input.value);
       });
 
       it(`${scenario.name} ${variant.variantName} stream parser keeps literal '<' and '>'`, async () => {
@@ -179,12 +216,7 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
 
         const input = JSON.parse(toolCall.input) as { value: string };
         expect(input).toEqual({ value: literalValue });
-        expect(input.value).toContain("<Ctrl+C>");
-        expect(input.value).toContain("<Esc>");
-        expect(input.value).toContain("<Enter>");
-        expect(input.value).not.toContain("&lt;");
-        expect(input.value).not.toContain("&gt;");
-        expect(input.value).not.toContain("&amp;");
+        assertLiteralAngleValue(input.value);
 
         const deltas = out.filter(
           (
@@ -199,13 +231,16 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
         expect(deltas.length).toBeGreaterThan(0);
 
         const joined = deltas.map((part) => part.delta).join("");
-        if (joined === toolCall.input) {
+        if (variant.deltaJoinExpectation === "equal") {
+          expect(joined).toBe(toolCall.input);
           const deltaInput = JSON.parse(joined) as { value: string };
           expect(deltaInput).toEqual({ value: literalValue });
-          expect(deltaInput.value).not.toContain("&lt;");
-          expect(deltaInput.value).not.toContain("&gt;");
-          expect(deltaInput.value).not.toContain("&amp;");
+          assertLiteralAngleValue(deltaInput.value);
+          return;
         }
+
+        expect(joined).not.toBe(toolCall.input);
+        expect(joined.startsWith('{"value":"')).toBe(true);
       });
     }
   }
@@ -234,28 +269,45 @@ describe("cross-protocol tool-input streaming events: double-escaped entity lite
     return text.split("");
   }
 
+  function assertEntityLiteralValue(value: string): void {
+    assertIncludesAll(
+      value,
+      ["&lt;Ctrl+C&gt;", "&lt;Esc&gt;", "&lt;Enter&gt;"],
+      "entity-literal value"
+    );
+    assertExcludesAll(
+      value,
+      ["<Ctrl+C>", "<Esc>", "<Enter>", "&amp;"],
+      "entity-literal value"
+    );
+  }
+
   const scenarios: Array<{
     name: string;
     protocol: TCMProtocol;
     rawModelOutput: string;
+    deltaJoinExpectation: DeltaJoinExpectation;
   }> = [
     {
       name: "morph-xml",
       protocol: morphXmlProtocol(),
       rawModelOutput:
         "<send_keys><value>&amp;lt;Ctrl+C&amp;gt;ahi, my name is pi&amp;lt;Esc&amp;gt;&amp;lt;Enter&amp;gt;</value></send_keys>",
+      deltaJoinExpectation: "diverges",
     },
     {
       name: "qwen3coder",
       protocol: qwen3CoderProtocol(),
       rawModelOutput:
         "<tool_call><function=send_keys><parameter=value>&amp;lt;Ctrl+C&amp;gt;ahi, my name is pi&amp;lt;Esc&amp;gt;&amp;lt;Enter&amp;gt;</parameter></function></tool_call>",
+      deltaJoinExpectation: "diverges",
     },
     {
-      name: "ui-tars-xml",
+      name: "ui-tars-xml-alias-coverage",
       protocol: uiTarsXmlProtocol(),
       rawModelOutput:
         "<tool_call><function=send_keys><parameter=value>&amp;lt;Ctrl+C&amp;gt;ahi, my name is pi&amp;lt;Esc&amp;gt;&amp;lt;Enter&amp;gt;</parameter></function></tool_call>",
+      deltaJoinExpectation: "diverges",
     },
   ];
 
@@ -280,13 +332,7 @@ describe("cross-protocol tool-input streaming events: double-escaped entity lite
 
       const input = JSON.parse(toolCall.input) as { value: string };
       expect(input).toEqual({ value: entityLiteralValue });
-      expect(input.value).toContain("&lt;Ctrl+C&gt;");
-      expect(input.value).toContain("&lt;Esc&gt;");
-      expect(input.value).toContain("&lt;Enter&gt;");
-      expect(input.value).not.toContain("<Ctrl+C>");
-      expect(input.value).not.toContain("<Esc>");
-      expect(input.value).not.toContain("<Enter>");
-      expect(input.value).not.toContain("&amp;");
+      assertEntityLiteralValue(input.value);
     });
 
     it(`${scenario.name} stream parser turns '&amp;lt;' into literal '&lt;' text`, async () => {
@@ -310,13 +356,7 @@ describe("cross-protocol tool-input streaming events: double-escaped entity lite
 
       const input = JSON.parse(toolCall.input) as { value: string };
       expect(input).toEqual({ value: entityLiteralValue });
-      expect(input.value).toContain("&lt;Ctrl+C&gt;");
-      expect(input.value).toContain("&lt;Esc&gt;");
-      expect(input.value).toContain("&lt;Enter&gt;");
-      expect(input.value).not.toContain("<Ctrl+C>");
-      expect(input.value).not.toContain("<Esc>");
-      expect(input.value).not.toContain("<Enter>");
-      expect(input.value).not.toContain("&amp;");
+      assertEntityLiteralValue(input.value);
 
       const deltas = out.filter(
         (
@@ -330,11 +370,16 @@ describe("cross-protocol tool-input streaming events: double-escaped entity lite
       expect(deltas.length).toBeGreaterThan(0);
 
       const joined = deltas.map((part) => part.delta).join("");
-      if (joined === toolCall.input) {
+      if (scenario.deltaJoinExpectation === "equal") {
+        expect(joined).toBe(toolCall.input);
         const deltaInput = JSON.parse(joined) as { value: string };
         expect(deltaInput).toEqual({ value: entityLiteralValue });
-        expect(deltaInput.value).not.toContain("&amp;");
+        assertEntityLiteralValue(deltaInput.value);
+        return;
       }
+
+      expect(joined).not.toBe(toolCall.input);
+      expect(joined.startsWith('{"value":"')).toBe(true);
     });
   }
 });
