@@ -1,6 +1,6 @@
 {
   "name": "@ai-sdk-tool/parser",
-  "version": "4.1.1",
+  "version": "4.1.2",
   "description": "AI SDK middleware for tool call parsing",
   "type": "module",
   "repository": {
