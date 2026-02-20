@@ -2,6 +2,7 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
+import { escapeRegExp } from "../utils/regex";
 import { findEarliestToolTag } from "../utils/xml-tool-tag-scanner";
 import type { ParserOptions } from "./protocol-interface";
 
@@ -63,7 +64,9 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     emitToolInputProgress,
     handleStreamingToolCallEnd,
   } = params;
-  const endTagPattern = new RegExp(`</\\s*${currentToolCall.name}\\s*>`);
+  const endTagPattern = new RegExp(
+    `</\\s*${escapeRegExp(currentToolCall.name)}\\s*>`
+  );
   const endMatch = endTagPattern.exec(buffer);
   if (!endMatch || endMatch.index === undefined) {
     emitToolInputProgress(controller, currentToolCall, buffer);
