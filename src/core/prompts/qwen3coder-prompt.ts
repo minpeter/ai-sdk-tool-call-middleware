@@ -1,18 +1,9 @@
-import type {
-  JSONValue,
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
-} from "@ai-sdk/provider";
+import type { JSONValue, LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
   escapeXmlMinimalAttr,
   escapeXmlMinimalText,
 } from "../../rxml/utils/helpers";
-import type { TCMCoreProtocol } from "../protocols/protocol-interface";
-import {
-  type AssistantToolCallTextConversionOptions,
-  assistantToolCallsToTextContent,
-} from "./shared/assistant-tool-calls-to-text";
 import {
   type ToolResponseMediaStrategy,
   unwrapToolResult,
@@ -188,7 +179,7 @@ export function qwen3coderSystemPromptTemplate(
   return out;
 }
 
-export interface Qwen3CoderToolResponseFormatterOptions {
+interface Qwen3CoderToolResponseFormatterOptions {
   mediaStrategy?: ToolResponseMediaStrategy;
 }
 
@@ -223,12 +214,4 @@ export function formatToolResponseAsQwen3CoderXml(
   toolResult: ToolResultPart
 ): string {
   return formatToolResponseAsQwen3CoderXmlWithOptions(toolResult);
-}
-
-export function qwen3coderAssistantToolCallsToTextContent(options: {
-  content: LanguageModelV3Content[];
-  protocol: TCMCoreProtocol;
-  conversionOptions?: AssistantToolCallTextConversionOptions;
-}): LanguageModelV3Content[] {
-  return assistantToolCallsToTextContent(options);
 }

@@ -1,10 +1,6 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
-import {
-  createMorphXmlToolResponseFormatter,
-  type MorphXmlToolResponseFormatterOptions,
-  morphFormatToolResponseAsXml,
-} from "./morph-xml-prompt";
+import { morphFormatToolResponseAsXml } from "./morph-xml-prompt";
 
 export function yamlXmlSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[],
@@ -50,15 +46,6 @@ unit: celsius
 - After calling a tool, you will receive a response. Use this result to answer the user.
 - Do NOT ask clarifying questions. Use reasonable defaults for optional parameters.
 - If a task requires multiple function calls, make ALL of them at once.`;
-}
-
-export type YamlToolResponseFormatterOptions =
-  MorphXmlToolResponseFormatterOptions;
-
-export function createYamlToolResponseFormatter(
-  options?: YamlToolResponseFormatterOptions
-): (toolResult: ToolResultPart) => string {
-  return createMorphXmlToolResponseFormatter(options);
 }
 
 export function formatToolResponseAsYaml(toolResult: ToolResultPart): string {
