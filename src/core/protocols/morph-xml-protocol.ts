@@ -20,10 +20,12 @@ import {
   shouldEmitRawToolCallTextOnError,
 } from "../utils/tool-input-streaming";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
+import { findNextToolTag } from "../utils/xml-tool-tag-scanner";
 import {
-  findEarliestToolTag,
-  findNextToolTag,
-} from "../utils/xml-tool-tag-scanner";
+  createProcessBufferHandler,
+  type FlushTextFn,
+  type StreamingToolCallState,
+} from "./morph-xml-stream-state-machine";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
 export interface MorphXmlProtocolOptions {
@@ -35,11 +37,6 @@ export interface MorphXmlProtocolOptions {
     [key: string]: unknown;
   };
 }
-
-type FlushTextFn = (
-  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-  text?: string
-) => void;
 
 function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
@@ -1200,240 +1197,6 @@ function findPotentialToolTagStart(
   return -1;
 }
 
-interface StreamingToolCallState {
-  emittedInput: string;
-  lastProgressContentLength: number | null;
-  lastProgressFullInput: string | null;
-  lastProgressGtIndex: number | null;
-  name: string;
-  toolCallId: string;
-}
-
-interface ProcessToolCallInBufferParams {
-  buffer: string;
-  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
-  currentToolCall: StreamingToolCallState;
-  emitToolInputProgress: (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    currentToolCall: StreamingToolCallState,
-    toolContent: string
-  ) => void;
-  flushText: FlushTextFn;
-  options?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
-  setBuffer: (buffer: string) => void;
-  tools: LanguageModelV3FunctionTool[];
-}
-
-function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
-  buffer: string;
-  currentToolCall: StreamingToolCallState | null;
-  shouldBreak: boolean;
-} {
-  const {
-    buffer,
-    currentToolCall,
-    tools,
-    options,
-    controller,
-    flushText,
-    setBuffer,
-    parseOptions,
-    emitToolInputProgress,
-  } = params;
-  const endTagPattern = new RegExp(
-    `</\\s*${escapeRegExp(currentToolCall.name)}\\s*>`
-  );
-  const endMatch = endTagPattern.exec(buffer);
-  if (!endMatch || endMatch.index === undefined) {
-    emitToolInputProgress(controller, currentToolCall, buffer);
-    return { buffer, currentToolCall, shouldBreak: true };
-  }
-
-  const endIdx = endMatch.index;
-  const endPos = endIdx + endMatch[0].length;
-  const content = buffer.substring(0, endIdx);
-  emitToolInputProgress(controller, currentToolCall, content);
-  const remainder = buffer.substring(endPos);
-  setBuffer(remainder);
-
-  handleStreamingToolCallEnd({
-    toolContent: content,
-    currentToolCall,
-    tools,
-    options,
-    ctrl: controller,
-    flushText,
-    parseOptions,
-  });
-
-  return {
-    buffer: remainder,
-    currentToolCall: null,
-    shouldBreak: false,
-  };
-}
-
-interface ProcessNoToolCallInBufferParams {
-  buffer: string;
-  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
-  emitToolInputStart: (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    toolName: string
-  ) => StreamingToolCallState;
-  flushText: FlushTextFn;
-  options?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
-  setBuffer: (buffer: string) => void;
-  toolNames: string[];
-  tools: LanguageModelV3FunctionTool[];
-}
-
-function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
-  buffer: string;
-  currentToolCall: StreamingToolCallState | null;
-  shouldBreak: boolean;
-  shouldContinue: boolean;
-} {
-  const {
-    buffer,
-    toolNames,
-    controller,
-    flushText,
-    tools,
-    options,
-    parseOptions,
-    setBuffer,
-    emitToolInputStart,
-  } = params;
-  const {
-    index: earliestStartTagIndex,
-    name: earliestToolName,
-    selfClosing,
-    tagLength,
-  } = findEarliestToolTag(buffer, toolNames);
-
-  if (earliestStartTagIndex === -1) {
-    const potentialStart = findPotentialToolTagStart(buffer, toolNames);
-    const safeLen = Math.max(
-      0,
-      potentialStart === -1 ? buffer.length : potentialStart
-    );
-    const remaining = buffer.slice(safeLen);
-    if (safeLen > 0) {
-      flushText(controller, buffer.slice(0, safeLen));
-      setBuffer(remaining);
-    }
-    return {
-      buffer: remaining,
-      currentToolCall: null,
-      shouldBreak: true,
-      shouldContinue: false,
-    };
-  }
-
-  flushText(controller, buffer.substring(0, earliestStartTagIndex));
-
-  if (selfClosing) {
-    const newBuffer = buffer.substring(earliestStartTagIndex + tagLength);
-    setBuffer(newBuffer);
-    const currentToolCall = emitToolInputStart(controller, earliestToolName);
-    handleStreamingToolCallEnd({
-      toolContent: "",
-      currentToolCall,
-      tools,
-      options,
-      ctrl: controller,
-      flushText,
-      parseOptions,
-    });
-    return {
-      buffer: newBuffer,
-      currentToolCall: null,
-      shouldBreak: false,
-      shouldContinue: false,
-    };
-  }
-
-  const startTag = `<${earliestToolName}>`;
-  const newBuffer = buffer.substring(earliestStartTagIndex + startTag.length);
-  setBuffer(newBuffer);
-  return {
-    buffer: newBuffer,
-    currentToolCall: emitToolInputStart(controller, earliestToolName),
-    shouldBreak: false,
-    shouldContinue: true,
-  };
-}
-
-function createProcessBufferHandler(
-  getBuffer: () => string,
-  setBuffer: (buffer: string) => void,
-  getCurrentToolCall: () => StreamingToolCallState | null,
-  setCurrentToolCall: (toolCall: StreamingToolCallState | null) => void,
-  tools: LanguageModelV3FunctionTool[],
-  options: ParserOptions | undefined,
-  toolNames: string[],
-  flushText: FlushTextFn,
-  parseOptions: Record<string, unknown> | undefined,
-  emitToolInputProgress: (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    currentToolCall: StreamingToolCallState,
-    toolContent: string
-  ) => void,
-  emitToolInputStart: (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    toolName: string
-  ) => StreamingToolCallState
-) {
-  return (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
-  ) => {
-    while (true) {
-      const currentToolCall = getCurrentToolCall();
-      if (currentToolCall) {
-        const result = processToolCallInBuffer({
-          buffer: getBuffer(),
-          currentToolCall,
-          tools,
-          options,
-          controller,
-          flushText,
-          setBuffer,
-          parseOptions,
-          emitToolInputProgress,
-        });
-        setBuffer(result.buffer);
-        setCurrentToolCall(result.currentToolCall);
-        if (result.shouldBreak) {
-          break;
-        }
-      } else {
-        const result = processNoToolCallInBuffer({
-          buffer: getBuffer(),
-          toolNames,
-          controller,
-          flushText,
-          tools,
-          options,
-          parseOptions,
-          setBuffer,
-          emitToolInputStart,
-        });
-        setBuffer(result.buffer);
-        setCurrentToolCall(result.currentToolCall);
-        if (result.shouldBreak) {
-          break;
-        }
-        if (result.shouldContinue) {
-          continue;
-        }
-        break;
-      }
-    }
-  };
-}
-
 function findToolCallsWithFallbacks(
   text: string,
   toolNames: string[]
@@ -1679,23 +1442,25 @@ export const morphXmlProtocol = (
         currentToolCall = null;
       };
 
-      const processBuffer = createProcessBufferHandler(
-        () => buffer,
-        (newBuffer: string) => {
+      const processBuffer = createProcessBufferHandler({
+        getBuffer: () => buffer,
+        setBuffer: (newBuffer: string) => {
           buffer = newBuffer;
         },
-        () => currentToolCall,
-        (newToolCall: StreamingToolCallState | null) => {
+        getCurrentToolCall: () => currentToolCall,
+        setCurrentToolCall: (newToolCall: StreamingToolCallState | null) => {
           currentToolCall = newToolCall;
         },
         tools,
-        options,
+        parserOptions: options,
         toolNames,
         flushText,
         parseOptions,
         emitToolInputProgress,
-        emitToolInputStart
-      );
+        emitToolInputStart,
+        findPotentialToolTagStart,
+        handleStreamingToolCallEnd,
+      });
 
       return new TransformStream({
         // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Stateful stream parsing requires branching over chunk lifecycle and parser states.

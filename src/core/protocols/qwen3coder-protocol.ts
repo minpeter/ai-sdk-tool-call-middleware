@@ -23,6 +23,8 @@ import {
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
 import type { TCMProtocol } from "./protocol-interface";
+import type { QwenStreamCallState } from "./qwen3coder-stream-call-content";
+import { parseCallContent } from "./qwen3coder-stream-call-content";
 
 const TOOL_CALL_OPEN_RE = /<tool_call\b[^>]*>/i;
 const TOOL_CALL_CLOSE_RE = /<\/tool_call\s*>/i;
@@ -1390,17 +1392,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
     type ToolCallMode = "unknown" | "single" | "multi";
 
-    interface StreamingCallState {
-      args: Record<string, unknown>;
-      buffer: string;
-      emittedInput: string;
-      endTagName: string;
-      hasEmittedStart: boolean;
-      partialParam: { name: string; value: string } | null;
-      raw: string;
-      toolCallId: string;
-      toolName: string | null;
-    }
+    type StreamingCallState = QwenStreamCallState;
 
     interface ToolCallContainerState {
       activeCall: StreamingCallState | null;
@@ -1429,9 +1421,6 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         hasEmittedTextStart = value;
       }
     );
-
-    const removeSlice = (text: string, start: number, end: number): string =>
-      text.slice(0, start) + text.slice(end);
 
     const maybeEmitToolInputStart = (
       controller: StreamController,
@@ -1536,146 +1525,27 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       return true;
     };
 
-    const consumeToolNameTag = (
-      controller: StreamController,
-      callState: StreamingCallState,
-      work: string
-    ) => {
-      if (callState.toolName) {
-        return work;
-      }
-      const match = QWEN3CODER_TOOL_PARSER_STREAM_NAME_TAG_RE.exec(work);
-      if (!match) {
-        return work;
-      }
-      const value = normalizeXmlTextValue(match[2] ?? "");
-      if (value.trim().length > 0) {
-        callState.toolName = value;
-      }
-      const start = match.index ?? 0;
-      const nextWork = removeSlice(
-        work,
-        start,
-        start + (match[0]?.length ?? 0)
-      );
-      maybeEmitToolInputStart(controller, callState);
-      return nextWork;
-    };
-
-    const consumeSingleParamTag = (options: {
-      allowEndOfString: boolean;
-      callState: StreamingCallState;
-      lastKept: number;
-      lower: string;
-      lt: number;
-      work: string;
-    }): {
-      keepSlice?: string;
-      nextIndex: number;
-      nextLastKept: number;
-      shouldStop: boolean;
-    } => {
-      const parsed = parseQwen3CoderToolParserParamTagAt(
-        options.work,
-        options.lower,
-        options.lt,
-        {
-          allowEndOfString: options.allowEndOfString,
-          callEndTagNameLower: options.callState.endTagName,
-        }
-      );
-
-      if (!parsed) {
-        return {
-          nextIndex: options.lt + 1,
-          nextLastKept: options.lastKept,
-          shouldStop: false,
-        };
-      }
-
-      if (parsed.kind === "partial") {
-        if (parsed.name !== undefined) {
-          options.callState.partialParam = {
-            name: parsed.name,
-            value: parsed.value ?? "",
-          };
-        }
-        return {
-          nextIndex: options.lt + 1,
-          nextLastKept: options.lastKept,
-          shouldStop: true,
-        };
-      }
-
-      options.callState.partialParam = null;
-      mergeParamValue(options.callState.args, parsed.name, parsed.value);
-      return {
-        keepSlice: options.work.slice(options.lastKept, parsed.start),
-        nextIndex: parsed.end,
-        nextLastKept: parsed.end,
-        shouldStop: false,
-      };
-    };
-
-    const consumeParamTags = (
-      controller: StreamController,
-      callState: StreamingCallState,
-      work: string,
-      allowEndOfString: boolean
-    ) => {
-      const lower = work.toLowerCase();
-      let index = 0;
-      let lastKept = 0;
-      let pieces: string[] | null = null;
-
-      while (true) {
-        const lt = lower.indexOf("<", index);
-        if (lt === -1) {
-          break;
-        }
-
-        const step = consumeSingleParamTag({
-          allowEndOfString,
-          callState,
-          lower,
-          lt,
-          work,
-          lastKept,
-        });
-
-        if (step.keepSlice !== undefined) {
-          pieces ??= [];
-          pieces.push(step.keepSlice);
-        }
-
-        index = step.nextIndex;
-        lastKept = step.nextLastKept;
-        if (step.shouldStop) {
-          break;
-        }
-      }
-
-      maybeEmitToolInputStart(controller, callState);
-      if (!pieces) {
-        return work;
-      }
-      pieces.push(work.slice(lastKept));
-      return pieces.join("");
-    };
-
-    const parseCallContent = (
+    const parseStreamingCallContent = (
       controller: StreamController,
       callState: StreamingCallState,
       content: string,
       allowEndOfString: boolean
-    ): string => {
-      let work = content;
-      work = consumeToolNameTag(controller, callState, work);
-      work = consumeParamTags(controller, callState, work, allowEndOfString);
-      maybeEmitToolInputStart(controller, callState);
-      maybeEmitToolInputProgress(controller, callState);
-      return work;
-    };
+    ): string =>
+      parseCallContent({
+        callState,
+        content,
+        allowEndOfString,
+        nameTagRe: QWEN3CODER_TOOL_PARSER_STREAM_NAME_TAG_RE,
+        normalizeXmlTextValue,
+        parseParamTagAt: parseQwen3CoderToolParserParamTagAt,
+        mergeParamValue,
+        maybeEmitToolInputStart: () => {
+          maybeEmitToolInputStart(controller, callState);
+        },
+        maybeEmitToolInputProgress: () => {
+          maybeEmitToolInputProgress(controller, callState);
+        },
+      });
 
     // This cache is scoped to createStreamParser (per-stream), so it cannot outlive
     // one stream invocation.
@@ -1740,7 +1610,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const beforeNextCall = callState.buffer.slice(0, nextCallStart);
       const afterNextCall = callState.buffer.slice(nextCallStart);
 
-      callState.buffer = parseCallContent(
+      callState.buffer = parseStreamingCallContent(
         controller,
         callState,
         beforeNextCall,
@@ -1783,7 +1653,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
 
       if (!closeMatch) {
-        callState.buffer = parseCallContent(
+        callState.buffer = parseStreamingCallContent(
           controller,
           callState,
           callState.buffer,
@@ -1796,7 +1666,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const beforeClose = callState.buffer.slice(0, closeStart);
       const afterClose = callState.buffer.slice(closeEnd);
 
-      parseCallContent(controller, callState, beforeClose, true);
+      parseStreamingCallContent(controller, callState, beforeClose, true);
       callState.buffer = "";
       finalizeStreamingCall(
         controller,
@@ -1812,7 +1682,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       callState: StreamingCallState,
       fallbackToolName: string | null
     ): { ok: boolean; trailingText: string } => {
-      callState.buffer = parseCallContent(
+      callState.buffer = parseStreamingCallContent(
         controller,
         callState,
         callState.buffer,
