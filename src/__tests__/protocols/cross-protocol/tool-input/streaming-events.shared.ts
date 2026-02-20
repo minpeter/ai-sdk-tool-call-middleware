@@ -14,7 +14,7 @@ import {
   zeroUsage,
 } from "../../../test-helpers";
 
-export function createTextDeltaStream(chunks: string[], id = "fixture") {
+function createTextDeltaStream(chunks: string[], id = "fixture") {
   return new ReadableStream<LanguageModelV3StreamPart>({
     start(controller) {
       for (const chunk of chunks) {
@@ -347,7 +347,7 @@ export function assertHasEventTypes(
   }
 }
 
-export interface EventCheck {
+interface EventCheck {
   label: string;
   matches: (part: LanguageModelV3StreamPart) => boolean;
 }

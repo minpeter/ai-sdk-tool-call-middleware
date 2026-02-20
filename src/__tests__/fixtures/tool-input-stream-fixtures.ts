@@ -1,6 +1,6 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 
-export const weatherTool: LanguageModelV3FunctionTool = {
+const weatherTool: LanguageModelV3FunctionTool = {
   type: "function",
   name: "get_weather",
   description: "Get weather information",
