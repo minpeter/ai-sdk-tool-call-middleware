@@ -2,7 +2,7 @@
  * Utility functions for XML parsing
  */
 
-import { CharCodes, NAME_SPACER } from "../core/types";
+import { NAME_SPACER } from "../core/types";
 
 const NAME_START_CHAR_REGEX = /[A-Za-z_:]/;
 const NAME_CHAR_REGEX = /[A-Za-z0-9_.:-]/;
@@ -19,18 +19,6 @@ export function isNameStartChar(ch: string): boolean {
  */
 export function isNameChar(ch: string): boolean {
   return NAME_CHAR_REGEX.test(ch);
-}
-
-/**
- * Check if a character is whitespace
- */
-export function isWhitespace(charCode: number): boolean {
-  return (
-    charCode === CharCodes.SPACE ||
-    charCode === CharCodes.TAB ||
-    charCode === CharCodes.NEWLINE ||
-    charCode === CharCodes.CARRIAGE_RETURN
-  );
 }
 
 /**
@@ -88,34 +76,6 @@ export function parseString(
     return { value: s.slice(startPos), newPos: s.length };
   }
   return { value: s.slice(startPos, endPos), newPos: endPos + 1 };
-}
-
-/**
- * Find elements by attribute value (used for getElementById, etc.)
- */
-export function findElementsByAttr(
-  xmlString: string,
-  attrName: string,
-  attrValue: string
-): number[] {
-  const regex = new RegExp(`\\s${attrName}\\s*=['""]${attrValue}['""]`);
-  const positions: number[] = [];
-  let searchPos = 0;
-
-  while (true) {
-    const match = regex.exec(xmlString.slice(searchPos));
-    if (!match) {
-      break;
-    }
-
-    const pos = xmlString.lastIndexOf("<", searchPos + match.index);
-    if (pos !== -1) {
-      positions.push(pos);
-    }
-    searchPos += match.index + match[0].length;
-  }
-
-  return positions;
 }
 
 /**
