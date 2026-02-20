@@ -11,7 +11,6 @@ import {
   extractToolNames,
   formatToolsWithPromptTemplate,
 } from "../utils/protocol-utils";
-import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
   emitFailedToolInputLifecycle,
@@ -22,6 +21,10 @@ import {
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
+import {
+  findEarliestToolTag,
+  findNextToolTag,
+} from "../utils/xml-tool-tag-scanner";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
 export interface YamlXmlProtocolOptions {
@@ -30,17 +33,6 @@ export interface YamlXmlProtocolOptions {
    * @default true
    */
   includeMultilineExample?: boolean;
-}
-
-const selfClosingTagCache = new Map<string, RegExp>();
-
-function getSelfClosingTagPattern(toolName: string): RegExp {
-  let pattern = selfClosingTagCache.get(toolName);
-  if (!pattern) {
-    pattern = new RegExp(`<\\s*${escapeRegExp(toolName)}\\s*/>`, "g");
-    selfClosingTagCache.set(toolName, pattern);
-  }
-  return pattern;
 }
 
 const LEADING_WHITESPACE_RE = /^(\s*)/;
@@ -362,19 +354,6 @@ function findClosingTagEnd(
   return -1;
 }
 
-function findEarliestTagPosition(
-  openIdx: number,
-  selfIdx: number
-): { tagStart: number; isSelfClosing: boolean } {
-  const hasSelf = selfIdx !== -1;
-  const hasOpen = openIdx !== -1;
-
-  if (hasSelf && (!hasOpen || selfIdx < openIdx)) {
-    return { tagStart: selfIdx, isSelfClosing: true };
-  }
-  return { tagStart: openIdx, isSelfClosing: false };
-}
-
 /**
  * Find all tool calls in the text for the given tool names.
  */
@@ -392,27 +371,18 @@ function collectToolCallsForName(
   const toolCalls: ToolCallMatch[] = [];
   let searchIndex = 0;
   const startTag = `<${toolName}>`;
-  const selfTagRegex = getSelfClosingTagPattern(toolName);
 
   while (searchIndex < text.length) {
-    const openIdx = text.indexOf(startTag, searchIndex);
-
-    selfTagRegex.lastIndex = searchIndex;
-    const selfMatch = selfTagRegex.exec(text);
-    const selfIdx = selfMatch ? selfMatch.index : -1;
-    const selfTagLength = selfMatch ? selfMatch[0].length : 0;
-
-    if (openIdx === -1 && selfIdx === -1) {
+    const match = findNextToolTag(text, searchIndex, toolName);
+    if (match === null) {
       break;
     }
 
-    const { tagStart, isSelfClosing } = findEarliestTagPosition(
-      openIdx,
-      selfIdx
-    );
+    const tagStart = match.tagStart;
+    const isSelfClosing = match.isSelfClosing;
 
     if (isSelfClosing) {
-      const endIndex = tagStart + selfTagLength;
+      const endIndex = tagStart + match.tagLength;
       toolCalls.push({
         toolName,
         startIndex: tagStart,
@@ -544,45 +514,6 @@ function processToolCallMatch(
   }
 
   return tc.endIndex;
-}
-
-function findEarliestToolTag(
-  buffer: string,
-  toolNames: string[]
-): { index: number; name: string; selfClosing: boolean; tagLength: number } {
-  let bestIndex = -1;
-  let bestName = "";
-  let bestSelfClosing = false;
-  let bestTagLength = 0;
-
-  for (const name of toolNames) {
-    const openTag = `<${name}>`;
-    const selfTagRegex = getSelfClosingTagPattern(name);
-    const idxOpen = buffer.indexOf(openTag);
-    selfTagRegex.lastIndex = 0;
-    const selfMatch = selfTagRegex.exec(buffer);
-    const idxSelf = selfMatch ? selfMatch.index : -1;
-
-    if (idxOpen !== -1 && (bestIndex === -1 || idxOpen < bestIndex)) {
-      bestIndex = idxOpen;
-      bestName = name;
-      bestSelfClosing = false;
-      bestTagLength = openTag.length;
-    }
-    if (idxSelf !== -1 && (bestIndex === -1 || idxSelf < bestIndex)) {
-      bestIndex = idxSelf;
-      bestName = name;
-      bestSelfClosing = true;
-      bestTagLength = selfMatch ? selfMatch[0].length : 0;
-    }
-  }
-
-  return {
-    index: bestIndex,
-    name: bestName,
-    selfClosing: bestSelfClosing,
-    tagLength: bestTagLength,
-  };
 }
 
 function stripTrailingPartialCloseTag(
