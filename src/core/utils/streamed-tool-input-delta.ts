@@ -93,7 +93,7 @@ export function emitPrefixDelta(params: EmitPrefixDeltaParams): boolean {
   });
 }
 
-export const DEFAULT_TOOL_INPUT_DELTA_CHUNK_CHARS = 512;
+const DEFAULT_TOOL_INPUT_DELTA_CHUNK_CHARS = 512;
 
 export function emitChunkedPrefixDelta(
   params: EmitChunkedPrefixDeltaParams
