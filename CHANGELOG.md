@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.2
+
+### Patch Changes
+
+- c9cda8b: Add cross-protocol regression coverage for literal angle-bracket tool argument values in both generated-text parsing and character-by-character streaming parsing paths.
+
 ## 4.1.1
 
 ### Patch Changes
