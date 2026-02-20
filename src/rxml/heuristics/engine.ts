@@ -41,7 +41,7 @@ export interface PipelineConfig {
   preParse?: ToolCallHeuristic[];
 }
 
-export interface HeuristicEngineOptions {
+interface HeuristicEngineOptions {
   maxReparses?: number;
   onError?: (message: string, metadata?: Record<string, unknown>) => void;
   parse: (xml: string, schema: unknown) => unknown;
