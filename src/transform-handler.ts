@@ -9,7 +9,6 @@ import type {
   LanguageModelV3TextPart,
   LanguageModelV3ToolCallPart,
   LanguageModelV3ToolResultPart,
-  SharedV3ProviderOptions,
 } from "@ai-sdk/provider";
 import type { ToolContent, ToolResultPart } from "@ai-sdk/provider-utils";
 import { assistantToolCallsToTextContent } from "./core/prompts/shared/assistant-tool-calls-to-text";
@@ -21,7 +20,10 @@ import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
 import { createDynamicIfThenElseSchema } from "./core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "./core/utils/on-error";
-import { originalToolsSchema } from "./core/utils/provider-options";
+import {
+  mergeToolCallMiddlewareOptions,
+  originalToolsSchema,
+} from "./core/utils/provider-options";
 
 /**
  * Build final prompt by merging system prompt with existing prompt
@@ -101,17 +103,9 @@ function buildBaseReturnParams(
     prompt: finalPrompt,
     tools: [] as never[],
     toolChoice: undefined,
-    providerOptions: {
-      ...(params.providerOptions || {}),
-      toolCallMiddleware: {
-        ...((params.providerOptions &&
-          typeof params.providerOptions === "object" &&
-          (params.providerOptions as { toolCallMiddleware?: unknown })
-            .toolCallMiddleware) ||
-          {}),
-        originalTools: originalToolsSchema.encode(functionTools),
-      },
-    } as unknown as SharedV3ProviderOptions,
+    providerOptions: mergeToolCallMiddlewareOptions(params.providerOptions, {
+      originalTools: originalToolsSchema.encode(functionTools),
+    }),
   };
 }
 
@@ -188,20 +182,10 @@ function handleToolChoiceTool(
           ? selectedTool.description
           : undefined,
     },
-    providerOptions: {
-      ...(baseReturnParams.providerOptions || {}),
-      toolCallMiddleware: {
-        ...((baseReturnParams.providerOptions &&
-          typeof baseReturnParams.providerOptions === "object" &&
-          (
-            baseReturnParams.providerOptions as {
-              toolCallMiddleware?: unknown;
-            }
-          ).toolCallMiddleware) ||
-          {}),
-        ...(params.toolChoice ? { toolChoice: params.toolChoice } : {}),
-      },
-    },
+    providerOptions: mergeToolCallMiddlewareOptions(
+      baseReturnParams.providerOptions,
+      params.toolChoice ? { toolChoice: params.toolChoice } : {}
+    ),
   };
 }
 
@@ -233,20 +217,12 @@ function handleToolChoiceRequired(
       type: "json" as const,
       schema: createDynamicIfThenElseSchema(functionTools),
     },
-    providerOptions: {
-      ...(baseReturnParams.providerOptions || {}),
-      toolCallMiddleware: {
-        ...((baseReturnParams.providerOptions &&
-          typeof baseReturnParams.providerOptions === "object" &&
-          (
-            baseReturnParams.providerOptions as {
-              toolCallMiddleware?: unknown;
-            }
-          ).toolCallMiddleware) ||
-          {}),
+    providerOptions: mergeToolCallMiddlewareOptions(
+      baseReturnParams.providerOptions,
+      {
         toolChoice: { type: "required" as const },
-      },
-    },
+      }
+    ),
   };
 }
 

@@ -1,7 +1,8 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { createOperationTools } from "../fixtures/function-tools";
+import { requireTransformParams } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -33,10 +34,7 @@ describe("placement last behaviour (default)", () => {
       protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "",
     });
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
 
     const out = await transformParams({
       params: {
@@ -56,18 +54,8 @@ describe("placement last behaviour (default)", () => {
       protocol: hermesProtocol,
       toolSystemPromptTemplate: (t) => `SYS:${t}`,
     });
-    const tools: LanguageModelV3FunctionTool[] = [
-      {
-        type: "function",
-        name: "op",
-        description: "",
-        inputSchema: { type: "object" },
-      },
-    ];
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const tools = createOperationTools();
+    const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
       params: {
         prompt: [
@@ -97,19 +85,8 @@ describe("placement last behaviour (default)", () => {
       protocol: hermesProtocol,
       toolSystemPromptTemplate: (t) => `SYS:${t}`,
     });
-    const tools: LanguageModelV3FunctionTool[] = [
-      {
-        type: "function",
-        name: "op",
-        description: "",
-        inputSchema: { type: "object" },
-      },
-    ];
-    const transformParams = mw.transformParams;
-
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const tools = createOperationTools();
+    const transformParams = requireTransformParams(mw.transformParams);
 
     const out = await transformParams({
       params: {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { formatToolResponseAsHermes } from "../../core/prompts/hermes-prompt";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { requireTransformParams } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -34,10 +35,7 @@ describe("transformParams merges adjacent user messages", () => {
       toolSystemPromptTemplate: (t) => `T:${t}`,
     });
 
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
       params: {
         prompt: [
@@ -65,10 +63,7 @@ describe("transformParams merges adjacent user messages", () => {
       toolResponsePromptTemplate: formatToolResponseAsHermes,
     });
 
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
       params: {
         prompt: [

@@ -1,6 +1,7 @@
 import type {
   JSONSchema7,
   LanguageModelV3FunctionTool,
+  SharedV3ProviderOptions,
 } from "@ai-sdk/provider";
 import type { OnErrorFn } from "./on-error";
 
@@ -106,6 +107,16 @@ export function decodeOriginalTools(
   return decodedTools;
 }
 
+export function decodeOriginalToolsFromProviderOptions(
+  providerOptions: ToolCallMiddlewareProviderOptions | undefined,
+  options?: DecodeOriginalToolsOptions
+): LanguageModelV3FunctionTool[] {
+  return decodeOriginalTools(
+    providerOptions?.toolCallMiddleware?.originalTools,
+    options
+  );
+}
+
 export function extractToolNamesFromOriginalTools(
   originalTools:
     | Array<{
@@ -115,6 +126,38 @@ export function extractToolNamesFromOriginalTools(
     | undefined
 ): string[] {
   return originalTools?.map((t) => t.name) || [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+export function getToolCallMiddlewareOptions(
+  providerOptions?: unknown
+): Record<string, unknown> {
+  if (!isRecord(providerOptions)) {
+    return {};
+  }
+
+  const toolCallMiddleware = providerOptions.toolCallMiddleware;
+  if (!isRecord(toolCallMiddleware)) {
+    return {};
+  }
+
+  return toolCallMiddleware;
+}
+
+export function mergeToolCallMiddlewareOptions(
+  providerOptions: unknown,
+  overrides: Record<string, unknown>
+): SharedV3ProviderOptions {
+  return {
+    ...(isRecord(providerOptions) ? providerOptions : {}),
+    toolCallMiddleware: {
+      ...getToolCallMiddlewareOptions(providerOptions),
+      ...overrides,
+    },
+  } as SharedV3ProviderOptions;
 }
 
 export function isToolChoiceActive(params: {

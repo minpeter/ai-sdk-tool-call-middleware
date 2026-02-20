@@ -1,16 +1,13 @@
-import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import YAML from "yaml";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  extractTextDeltas,
+  extractToolInputDeltas,
+  findToolCall,
+  runProtocolTextDeltaStream,
+} from "./streaming-events.shared";
 
 const nestedTool: LanguageModelV3FunctionTool = {
   type: "function",
@@ -120,68 +117,8 @@ const _mathSumWithUnitTool: LanguageModelV3FunctionTool = {
   },
 };
 
-function createTextDeltaStream(chunks: string[]) {
-  return new ReadableStream<LanguageModelV3StreamPart>({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue({
-          type: "text-delta",
-          id: "fixture",
-          delta: chunk,
-        });
-      }
-      controller.enqueue({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-      });
-      controller.close();
-    },
-  });
-}
-
-function extractToolInputDeltas(parts: LanguageModelV3StreamPart[]): string[] {
-  return parts
-    .filter(
-      (
-        part
-      ): part is Extract<
-        LanguageModelV3StreamPart,
-        { type: "tool-input-delta" }
-      > => part.type === "tool-input-delta"
-    )
-    .map((part) => part.delta);
-}
-
-function extractTextDeltas(parts: LanguageModelV3StreamPart[]): string {
-  return parts
-    .filter(
-      (
-        part
-      ): part is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
-        part.type === "text-delta"
-    )
-    .map((part) => part.delta)
-    .join("");
-}
-
-function findToolCall(
-  parts: LanguageModelV3StreamPart[]
-): Extract<LanguageModelV3StreamPart, { type: "tool-call" }> {
-  const toolCall = parts.find(
-    (part): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
-      part.type === "tool-call"
-  );
-  if (!toolCall) {
-    throw new Error("Expected tool-call part");
-  }
-  return toolCall;
-}
-
 describe("YAML object-delta progressive invariants", () => {
   it("yaml protocol handles key-split chunks and still emits parsed JSON deltas", async () => {
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({ tools: [weatherTool] });
     const chunks = [
       "<get_weather>",
       "\n",
@@ -189,9 +126,11 @@ describe("YAML object-delta progressive invariants", () => {
       "nit: celsius\n",
       "</get_weather>",
     ];
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: yamlXmlProtocol(),
+      tools: [weatherTool],
+      chunks,
+    });
 
     const deltas = extractToolInputDeltas(out);
     const toolCall = findToolCall(out);
@@ -202,16 +141,16 @@ describe("YAML object-delta progressive invariants", () => {
   });
 
   it("yaml protocol avoids unstable null placeholder deltas for incomplete mapping lines", async () => {
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({ tools: [weatherTool] });
     const chunks = [
       "<get_weather>\nlocation:\n",
       "  Seoul\nunit: celsius\n",
       "</get_weather>",
     ];
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: yamlXmlProtocol(),
+      tools: [weatherTool],
+      chunks,
+    });
 
     const deltas = extractToolInputDeltas(out);
     const toolCall = findToolCall(out);
@@ -223,12 +162,12 @@ describe("YAML object-delta progressive invariants", () => {
   });
 
   it("yaml protocol treats split scalar tokens as unstable until the scalar is complete", async () => {
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({ tools: [nestedTool] });
     const chunks = ["<plan_trip>\nk0_1: t", "rue\nk0_2: done\n</plan_trip>"];
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: yamlXmlProtocol(),
+      tools: [nestedTool],
+      chunks,
+    });
 
     const deltas = extractToolInputDeltas(out);
     const toolCall = findToolCall(out);
@@ -243,15 +182,15 @@ describe("YAML object-delta progressive invariants", () => {
   });
 
   it("yaml protocol avoids emitting transient nested scalar placeholders from split nested keys", async () => {
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({ tools: [nestedTool] });
     const chunks = [
       "<plan_trip>\nlocation: Seoul\noptions:\n  u",
       "nit: celsius\n</plan_trip>",
     ];
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: yamlXmlProtocol(),
+      tools: [nestedTool],
+      chunks,
+    });
 
     const deltas = extractToolInputDeltas(out);
     const toolCall = findToolCall(out);
@@ -266,16 +205,16 @@ describe("YAML object-delta progressive invariants", () => {
   });
 
   it("yaml protocol avoids emitting transient null array items when a list item is split", async () => {
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({ tools: [nestedTool] });
     const chunks = [
       "<plan_trip>\nlocation: Seoul\ndays:\n  -",
       " mon\n  - tue\n",
       "</plan_trip>",
     ];
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: yamlXmlProtocol(),
+      tools: [nestedTool],
+      chunks,
+    });
 
     const deltas = extractToolInputDeltas(out);
     const toolCall = findToolCall(out);
@@ -290,10 +229,6 @@ describe("YAML object-delta progressive invariants", () => {
   });
 
   it("yaml protocol keeps block-scalar progress deltas prefix-safe while a heading line is still streaming", async () => {
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: [writeMarkdownTool],
-    });
     const chunks = [
       "<write_markdown_file>\nfile_path: stream-tool-input-visual-demo.md\ncontent: |\n #",
       " Stream",
@@ -304,9 +239,11 @@ describe("YAML object-delta progressive invariants", () => {
       "</write_markdown_file>",
     ];
 
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: yamlXmlProtocol(),
+      tools: [writeMarkdownTool],
+      chunks,
+    });
 
     const deltas = extractToolInputDeltas(out);
     const toolCall = findToolCall(out);
@@ -324,14 +261,11 @@ describe("YAML object-delta progressive invariants", () => {
   });
 
   it("yaml progress parse with single-line malformed body emits no unstable deltas and no tool-call", async () => {
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream(["<get_weather>\n["]),
-        yamlXmlProtocol().createStreamParser({
-          tools: [weatherTool],
-        })
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: yamlXmlProtocol(),
+      tools: [weatherTool],
+      chunks: ["<get_weather>\n["],
+    });
 
     const starts = out.filter((part) => part.type === "tool-input-start");
     const ends = out.filter((part) => part.type === "tool-input-end");
@@ -360,14 +294,11 @@ describe("YAML object-delta progressive invariants", () => {
     );
 
     try {
-      const out = await convertReadableStreamToArray(
-        pipeWithTransformer(
-          createTextDeltaStream(["<get_weather>\nlocation: Seoul\nunit:\n"]),
-          yamlXmlProtocol().createStreamParser({
-            tools: [weatherTool],
-          })
-        )
-      );
+      const out = await runProtocolTextDeltaStream({
+        protocol: yamlXmlProtocol(),
+        tools: [weatherTool],
+        chunks: ["<get_weather>\nlocation: Seoul\nunit:\n"],
+      });
 
       const starts = out.filter((part) => part.type === "tool-input-start");
       const ends = out.filter((part) => part.type === "tool-input-end");

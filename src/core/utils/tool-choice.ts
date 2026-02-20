@@ -9,6 +9,13 @@ interface ParseToolChoiceOptions {
   tools: LanguageModelV3FunctionTool[];
 }
 
+interface ResolveToolChoiceSelectionOptions {
+  errorMessage: string;
+  onError?: OnErrorFn;
+  text?: string;
+  tools: LanguageModelV3FunctionTool[];
+}
+
 function ensureNonEmptyToolName(name: unknown): string {
   if (typeof name !== "string") {
     return "unknown";
@@ -71,5 +78,36 @@ export function parseToolChoicePayload({
   return {
     toolName,
     input: coercedInput ?? safeStringify(rawArgs),
+  };
+}
+
+export function resolveToolChoiceSelection({
+  text,
+  tools,
+  onError,
+  errorMessage,
+}: ResolveToolChoiceSelectionOptions): {
+  input: string;
+  originText: string;
+  toolName: string;
+} {
+  if (typeof text !== "string") {
+    return {
+      toolName: "unknown",
+      input: "{}",
+      originText: "",
+    };
+  }
+
+  const parsed = parseToolChoicePayload({
+    text,
+    tools,
+    onError,
+    errorMessage,
+  });
+
+  return {
+    ...parsed,
+    originText: text,
   };
 }

@@ -1,11 +1,12 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { emptyFunctionTools } from "../../../fixtures/function-tools";
 
 describe("qwen3CoderProtocol", () => {
+  const tools = emptyFunctionTools;
+
   it("formatToolCall emits Qwen3CoderProtocol markup that round-trips through parseGeneratedText", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const formatted = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",
@@ -49,7 +50,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("formatToolCall quotes function and parameter shorthand names for round-trip safety", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const formatted = p.formatToolCall({
       type: "tool-call",
       toolCallId: "id",

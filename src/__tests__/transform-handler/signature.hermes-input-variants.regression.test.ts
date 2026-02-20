@@ -1,7 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-
 import { hermesToolMiddleware } from "../../preconfigured-middleware";
+import { requireTransformParams } from "../test-helpers";
 
 const REGEX_TOOL_CALL = /<tool_call>/;
 
@@ -19,10 +19,9 @@ const tools: LanguageModelV3FunctionTool[] = [
 
 describe("transformParams hermes tool-call signature regression", () => {
   it("preserves tool-call signature when input is undefined", async () => {
-    const transformParams = hermesToolMiddleware.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(
+      hermesToolMiddleware.transformParams
+    );
 
     const out = await transformParams({
       params: {
@@ -71,10 +70,9 @@ describe("transformParams hermes tool-call signature regression", () => {
   });
 
   it("preserves tool-call signature when input is empty string", async () => {
-    const transformParams = hermesToolMiddleware.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(
+      hermesToolMiddleware.transformParams
+    );
 
     const out = await transformParams({
       params: {
@@ -123,10 +121,9 @@ describe("transformParams hermes tool-call signature regression", () => {
   });
 
   it("preserves tool-call signature when input is null", async () => {
-    const transformParams = hermesToolMiddleware.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(
+      hermesToolMiddleware.transformParams
+    );
 
     const out = await transformParams({
       params: {
@@ -188,10 +185,9 @@ describe("transformParams hermes tool-call signature regression", () => {
       },
     ];
 
-    const transformParams = hermesToolMiddleware.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(
+      hermesToolMiddleware.transformParams
+    );
 
     const out = await transformParams({
       params: {

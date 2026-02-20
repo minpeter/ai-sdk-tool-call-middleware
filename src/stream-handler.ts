@@ -10,12 +10,13 @@ import { getDebugLevel, logParsedChunk, logRawChunk } from "./core/utils/debug";
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
+  decodeOriginalToolsFromProviderOptions,
+  getToolCallMiddlewareOptions,
   isToolChoiceActive,
-  originalToolsSchema,
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
-import { parseToolChoicePayload } from "./core/utils/tool-choice";
+import { resolveToolChoiceSelection } from "./core/utils/tool-choice";
 
 export async function wrapStream({
   protocol,
@@ -31,8 +32,8 @@ export async function wrapStream({
   };
 }) {
   const onErrorOptions = extractOnErrorOption(params.providerOptions);
-  const tools = originalToolsSchema.decode(
-    params.providerOptions?.toolCallMiddleware?.originalTools,
+  const tools = decodeOriginalToolsFromProviderOptions(
+    params.providerOptions,
     onErrorOptions
   );
 
@@ -48,8 +49,7 @@ export async function wrapStream({
   const debugLevel = getDebugLevel();
   const options = {
     ...onErrorOptions,
-    ...((params.providerOptions as Record<string, unknown>)
-      ?.toolCallMiddleware || {}),
+    ...getToolCallMiddlewareOptions(params.providerOptions),
   };
 
   const coreStream = stream
@@ -118,23 +118,14 @@ export async function toolChoiceStream({
 }) {
   const normalizedTools = Array.isArray(tools) ? tools : [];
   const result = await doGenerate();
-  let toolName = "unknown";
-  let input = "{}";
-  if (
-    result?.content &&
-    result.content.length > 0 &&
-    result.content[0]?.type === "text"
-  ) {
-    const parsed = parseToolChoicePayload({
-      text: result.content[0].text,
-      tools: normalizedTools,
-      onError: options?.onError,
-      errorMessage:
-        "Failed to parse toolChoice JSON from streamed model output",
-    });
-    toolName = parsed.toolName;
-    input = parsed.input;
-  }
+  const first = result?.content?.[0];
+  const firstText = first?.type === "text" ? first.text : undefined;
+  const { toolName, input } = resolveToolChoiceSelection({
+    text: firstText,
+    tools: normalizedTools,
+    onError: options?.onError,
+    errorMessage: "Failed to parse toolChoice JSON from streamed model output",
+  });
 
   const stream = new ReadableStream<LanguageModelV3StreamPart>({
     start(controller) {

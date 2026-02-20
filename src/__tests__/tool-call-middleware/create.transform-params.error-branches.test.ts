@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { requireTransformParams } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -31,10 +32,7 @@ describe("createToolMiddleware transformParams error branches", () => {
   });
 
   it("throws when specific tool not found", async () => {
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     await expect(
       transformParams({
         params: {
@@ -47,10 +45,7 @@ describe("createToolMiddleware transformParams error branches", () => {
   });
 
   it("throws when provider-defined tool is selected", async () => {
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     await expect(
       transformParams({
         params: {
@@ -63,10 +58,7 @@ describe("createToolMiddleware transformParams error branches", () => {
   });
 
   it("throws when required toolChoice is set but no tools are provided", async () => {
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     await expect(
       transformParams({
         params: { prompt: [], tools: [], toolChoice: { type: "required" } },
@@ -75,10 +67,7 @@ describe("createToolMiddleware transformParams error branches", () => {
   });
 
   it("throws when required toolChoice is set but tools are provider-defined only", async () => {
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     await expect(
       transformParams({
         params: {

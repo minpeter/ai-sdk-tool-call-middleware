@@ -1,5 +1,6 @@
 import type {
   LanguageModelV3FinishReason,
+  LanguageModelV3Middleware,
   LanguageModelV3StreamPart,
   LanguageModelV3Usage,
 } from "@ai-sdk/provider";
@@ -71,4 +72,14 @@ export function createChunkedStream(
       ctrl.close();
     },
   });
+}
+
+export function requireTransformParams(
+  transformParams: LanguageModelV3Middleware["transformParams"]
+): NonNullable<LanguageModelV3Middleware["transformParams"]> {
+  if (!transformParams) {
+    throw new Error("transformParams is undefined");
+  }
+
+  return transformParams;
 }

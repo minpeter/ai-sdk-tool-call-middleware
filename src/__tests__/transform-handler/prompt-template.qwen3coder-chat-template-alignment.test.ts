@@ -5,6 +5,7 @@ import {
 } from "../../core/prompts/qwen3coder-prompt";
 import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { requireTransformParams } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -37,10 +38,7 @@ describe("qwen3coder chat-template alignment via existing transform pipeline", (
       toolResponsePromptTemplate: formatToolResponseAsQwen3CoderXml,
     });
 
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
 
     const out = await transformParams({
       params: {

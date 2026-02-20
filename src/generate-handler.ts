@@ -15,12 +15,13 @@ import { recoverToolCallFromJsonCandidates } from "./core/utils/generated-text-j
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
+  decodeOriginalToolsFromProviderOptions,
+  getToolCallMiddlewareOptions,
   isToolChoiceActive,
-  originalToolsSchema,
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
-import { parseToolChoicePayload } from "./core/utils/tool-choice";
+import { resolveToolChoiceSelection } from "./core/utils/tool-choice";
 
 function logDebugSummary(
   debugSummary: { originalText?: string; toolCalls?: string } | undefined,
@@ -48,24 +49,19 @@ async function handleToolChoice(
 ) {
   const result = await doGenerate();
   const first = result.content?.[0];
+  const firstText = first?.type === "text" ? first.text : undefined;
   const onError = extractOnErrorOption(params.providerOptions)?.onError;
 
-  let toolName = "unknown";
-  let input = "{}";
-  if (first && first.type === "text") {
-    if (getDebugLevel() === "parse") {
-      logRawChunk(first.text);
-    }
-    const parsed = parseToolChoicePayload({
-      text: first.text,
-      tools,
-      onError,
-      errorMessage:
-        "Failed to parse toolChoice JSON from generated model output",
-    });
-    toolName = parsed.toolName;
-    input = parsed.input;
+  if (typeof firstText === "string" && getDebugLevel() === "parse") {
+    logRawChunk(firstText);
   }
+
+  const { toolName, input, originText } = resolveToolChoiceSelection({
+    text: firstText,
+    tools,
+    onError,
+    errorMessage: "Failed to parse toolChoice JSON from generated model output",
+  });
 
   const toolCall: LanguageModelV3ToolCall = {
     type: "tool-call",
@@ -74,7 +70,6 @@ async function handleToolChoice(
     input,
   };
 
-  const originText = first && first.type === "text" ? first.text : "";
   const debugSummary = params.providerOptions?.toolCallMiddleware?.debugSummary;
   logDebugSummary(debugSummary, toolCall, originText);
 
@@ -102,10 +97,9 @@ function parseContent(
       tools,
       options: {
         ...extractOnErrorOption(providerOptions),
-        ...((providerOptions as { toolCallMiddleware?: unknown } | undefined)
-          ?.toolCallMiddleware as Record<string, unknown>),
+        ...getToolCallMiddlewareOptions(providerOptions),
       },
-    }) as LanguageModelV3Content[];
+    });
 
     const hasToolCall = parsedByProtocol.some(
       (part): part is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
@@ -191,8 +185,8 @@ export async function wrapGenerate({
   };
 }) {
   const onError = extractOnErrorOption(params.providerOptions);
-  const tools = originalToolsSchema.decode(
-    params.providerOptions?.toolCallMiddleware?.originalTools,
+  const tools = decodeOriginalToolsFromProviderOptions(
+    params.providerOptions,
     onError
   );
 

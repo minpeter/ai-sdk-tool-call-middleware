@@ -1,32 +1,29 @@
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
-import { pipeWithTransformer } from "../../../test-helpers";
 import {
   assertCanonicalAiSdkEventOrder,
   assertCoreAiSdkEventCoverage,
-  createTextDeltaStream,
   extractToolInputTimeline,
-} from "./streaming-events.qwen3coder.shared";
+  runProtocolTextDeltaStream,
+} from "./streaming-events.shared";
 
 describe("cross-protocol tool-input streaming events: qwen3coder", () => {
+  const fixture = toolInputStreamFixtures.json;
+  const protocol = qwen3CoderProtocol();
+
   it("Qwen3CoderToolParser streams tool input deltas and emits matching tool-call id", async () => {
-    const fixture = toolInputStreamFixtures.json;
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({ tools: fixture.tools });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "Before ",
-          "<tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
-          "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call>",
-          " After",
-        ]),
-        transformer
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: fixture.tools,
+      chunks: [
+        "Before ",
+        "<tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
+        "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call>",
+        " After",
+      ],
+    });
 
     const { starts, deltas, ends } = extractToolInputTimeline(out);
     const toolCall = out.find((part) => part.type === "tool-call") as {
@@ -57,36 +54,29 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
   });
 
   it("Qwen3CoderToolParser preserves canonical order for all emitted AI SDK stream events", async () => {
-    const fixture = toolInputStreamFixtures.json;
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({ tools: fixture.tools });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "Before ",
-          "<tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
-          "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call>",
-          " After",
-        ]),
-        transformer
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: fixture.tools,
+      chunks: [
+        "Before ",
+        "<tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
+        "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call>",
+        " After",
+      ],
+    });
 
     assertCanonicalAiSdkEventOrder(out);
     assertCoreAiSdkEventCoverage(out);
   });
 
   it("Qwen3CoderToolParser preserves non-contiguous repeated parameters in streams", async () => {
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({ tools: [] });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "<tool_call>\n  <function=alpha>\n    <parameter=a>1</parameter>\n    <parameter=b>2</parameter>\n    <parameter=a>3</parameter>\n  </function>\n</tool_call>",
-        ]),
-        transformer
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: [],
+      chunks: [
+        "<tool_call>\n  <function=alpha>\n    <parameter=a>1</parameter>\n    <parameter=b>2</parameter>\n    <parameter=a>3</parameter>\n  </function>\n</tool_call>",
+      ],
+    });
 
     const { starts, deltas, ends } = extractToolInputTimeline(out);
     const toolCall = out.find((part) => part.type === "tool-call") as {
@@ -107,19 +97,15 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
   });
 
   it("Qwen3CoderToolParser streams tool calls when <tool_call> wrapper is missing", async () => {
-    const fixture = toolInputStreamFixtures.json;
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({ tools: fixture.tools });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "Before ",
-          "<function=get_weather><parameter=location>Seoul</parameter><parameter=unit>celsius</parameter></function>",
-          " After",
-        ]),
-        transformer
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: fixture.tools,
+      chunks: [
+        "Before ",
+        "<function=get_weather><parameter=location>Seoul</parameter><parameter=unit>celsius</parameter></function>",
+        " After",
+      ],
+    });
 
     const { starts, deltas, ends } = extractToolInputTimeline(out);
     const toolCall = out.find((part) => part.type === "tool-call") as

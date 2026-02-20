@@ -1,11 +1,12 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { emptyFunctionTools } from "../../../fixtures/function-tools";
 
 describe("qwen3CoderProtocol", () => {
+  const tools = emptyFunctionTools;
+
   it("parses wrapperless <function> before an incomplete <tool_call>", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = "<function=alpha><parameter=x>1</parameter><tool_call";
 
     const out = p.parseGeneratedText({ text, tools });
@@ -29,7 +30,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("parses <function> blocks even when <tool_call> wrapper is missing", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "before ",
       "<function=alpha><parameter=x>1</parameter></function>",
@@ -51,7 +51,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("parses wrapperless <function> calls even when wrapped <tool_call> blocks are present", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "before ",
       "<function=beta><parameter=y>2</parameter></function>",
@@ -85,7 +84,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("parses wrapperless prefix before trailing incomplete <tool_call> recovery", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text =
       "<function=alpha><parameter=x>1</parameter></function> between <tool_call><parameter=y>2";
 
@@ -109,7 +107,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("ignores stray leading </tool_call> close tags before a <function> block", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "before ",
       "</tool_call>\n",

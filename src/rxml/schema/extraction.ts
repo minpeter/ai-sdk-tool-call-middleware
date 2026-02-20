@@ -269,7 +269,7 @@ function processTargetTag(options: {
 }): { start: number; end: number; depth: number } | null {
   const { xmlContent, tagEnd, isSelfClosing, target, len, depth, bestDepth } =
     options;
-  const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
+  const contentStart = tagEnd + 1;
 
   if (isSelfClosing) {
     return updateBestMatch(depth, bestDepth, contentStart, contentStart);
@@ -333,7 +333,7 @@ function processOpeningTagInExtract(options: {
   }
 
   return {
-    newPos: xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1,
+    newPos: tagEnd + 1,
     newDepth: depth + (isSelfClosing ? 0 : 1),
     bestMatch,
   };
@@ -412,7 +412,7 @@ function processOpeningTag(options: {
   ranges: Array<{ start: number; end: number }>;
 }): number {
   const { xmlContent, tagEnd, isSelfClosing, target, len, ranges } = options;
-  const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
+  const contentStart = tagEnd + 1;
 
   if (isSelfClosing) {
     ranges.push({ start: contentStart, end: contentStart });
@@ -483,7 +483,7 @@ export function findAllInnerRanges(
 
     if (tagInfo.name !== target) {
       // Advance over this tag
-      i = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
+      i = tagEnd + 1;
       continue;
     }
 
@@ -517,7 +517,7 @@ function findTopLevelTargetRange(options: {
   len: number;
 }): { start: number; end: number } | undefined {
   const { xmlContent, tagEnd, isSelfClosing, target, len } = options;
-  const contentStart = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
+  const contentStart = tagEnd + 1;
 
   if (isSelfClosing) {
     return { start: contentStart, end: contentStart };
@@ -594,7 +594,7 @@ export function findFirstTopLevelRange(
         len,
       });
     }
-    i = xmlContent[tagEnd] === ">" ? tagEnd + 1 : tagEnd + 1;
+    i = tagEnd + 1;
     depth += isSelfClosing ? 0 : 1;
   }
   return;

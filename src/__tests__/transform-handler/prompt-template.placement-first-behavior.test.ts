@@ -1,17 +1,11 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { createOperationTools } from "../fixtures/function-tools";
+import { requireTransformParams } from "../test-helpers";
 
 describe("placement first behavior", () => {
-  const tools: LanguageModelV3FunctionTool[] = [
-    {
-      type: "function",
-      name: "op",
-      description: "d",
-      inputSchema: { type: "object" },
-    },
-  ];
+  const tools = createOperationTools("d");
 
   it("placement=first prepends system message before user when no system exists", async () => {
     const mw = createToolMiddleware({
@@ -20,10 +14,7 @@ describe("placement first behavior", () => {
       placement: "first",
     });
 
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
       params: {
         prompt: [
