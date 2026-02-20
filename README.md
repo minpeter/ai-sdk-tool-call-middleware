@@ -37,7 +37,7 @@ Note: there is no separate formal EOL announcement in releases/changelog for `v1
 
 ```ts
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { qwen3CoderToolMiddleware } from "@ai-sdk-tool/parser";
+import { morphXmlToolMiddleware } from "@ai-sdk-tool/parser";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
 
@@ -45,12 +45,12 @@ const model = createOpenAICompatible({
   name: "openrouter",
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: "https://openrouter.ai/api/v1",
-})("stepfun/step-3.5-flash:free");
+})("arcee-ai/trinity-large-preview:free");
 
 const result = streamText({
   model: wrapLanguageModel({
     model,
-    middleware: qwen3CoderToolMiddleware,
+    middleware: morphXmlToolMiddleware,
   }),
   stopWhen: stepCountIs(4),
   prompt: "What is the weather in Seoul?",

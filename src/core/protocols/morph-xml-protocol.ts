@@ -10,8 +10,8 @@ import { createFlushTextHandler } from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
+  emitChunkedPrefixDelta,
   emitFinalRemainder,
-  emitPrefixDelta,
   toIncompleteJsonPrefix,
 } from "../utils/streamed-tool-input-delta";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
@@ -1688,7 +1688,7 @@ export const morphXmlProtocol = (
             return;
           }
           const prefixCandidate = toIncompleteJsonPrefix(cached);
-          emitPrefixDelta({
+          emitChunkedPrefixDelta({
             controller,
             id: toolCall.toolCallId,
             state: toolCall,
@@ -1713,7 +1713,7 @@ export const morphXmlProtocol = (
           return;
         }
         const prefixCandidate = toIncompleteJsonPrefix(fullInput);
-        emitPrefixDelta({
+        emitChunkedPrefixDelta({
           controller,
           id: toolCall.toolCallId,
           state: toolCall,

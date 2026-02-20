@@ -10,6 +10,7 @@ import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
 import { addTextSegment } from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
+import { emitChunkedPrefixDelta } from "../utils/streamed-tool-input-delta";
 import { coerceToolCallInput } from "../utils/tool-call-coercion";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
@@ -387,21 +388,12 @@ function emitToolInputDelta(
     return;
   }
 
-  if (!fullInput.startsWith(active.emittedInput)) {
-    return;
-  }
-
-  const delta = fullInput.slice(active.emittedInput.length);
-  if (delta.length === 0) {
-    return;
-  }
-
-  controller.enqueue({
-    type: "tool-input-delta",
+  emitChunkedPrefixDelta({
+    controller,
     id: active.id,
-    delta,
-  } as LanguageModelV3StreamPart);
-  active.emittedInput = fullInput;
+    state: active,
+    candidate: fullInput,
+  });
 }
 
 function closeToolInput(state: StreamState, controller: StreamController) {

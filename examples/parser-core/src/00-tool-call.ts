@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText, stepCountIs, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
+import { morphXmlToolMiddleware } from "../../../src/preconfigured-middleware";
 import { printComplete, printStepLikeStream } from "./console-output";
 
 // Constants
@@ -17,8 +17,8 @@ const openrouter = createOpenAICompatible({
 async function main() {
   await generateText({
     model: wrapLanguageModel({
-      model: openrouter("stepfun/step-3.5-flash:free"),
-      middleware: qwen3CoderToolMiddleware,
+      model: openrouter("arcee-ai/trinity-large-preview:free"),
+      middleware: morphXmlToolMiddleware,
     }),
     system: "You are a helpful assistant.",
     prompt: "What is the weather in New York and Los Angeles?",

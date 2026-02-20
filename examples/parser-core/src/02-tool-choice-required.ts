@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
+import { morphXmlToolMiddleware } from "../../../src/preconfigured-middleware";
 import { printComplete, printStepLikeStream } from "./console-output";
 
 // Constants
@@ -19,8 +19,8 @@ const openrouter = createOpenAI({
 async function main() {
   await generateText({
     model: wrapLanguageModel({
-      model: openrouter.chat("stepfun/step-3.5-flash:free"),
-      middleware: qwen3CoderToolMiddleware,
+      model: openrouter.chat("arcee-ai/trinity-large-preview:free"),
+      middleware: morphXmlToolMiddleware,
     }),
     tools: {
       weather: {

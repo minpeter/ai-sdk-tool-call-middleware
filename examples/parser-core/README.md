@@ -51,4 +51,4 @@ pnpm dlx tsx examples/parser-core/src/07-stream-tool-input-nested.ts
 Notes:
 
 - `06` and `07` write demo files to `.demo-output/` under your current working directory.
-- Most parser-core examples use `qwen3CoderToolMiddleware` to demonstrate XML-like tool-call parsing in real model output.
+- Most parser-core examples use `morphXmlToolMiddleware` to demonstrate XML-like tool-call parsing in real model output.

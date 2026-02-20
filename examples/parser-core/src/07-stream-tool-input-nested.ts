@@ -3,7 +3,7 @@ import path from "node:path";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
+import { morphXmlToolMiddleware } from "../../../src/preconfigured-middleware";
 
 const TOOL_COLOR = "\x1b[36m";
 const INFO_COLOR = "\x1b[90m";
@@ -23,7 +23,7 @@ const model = createOpenAICompatible({
   name: "openrouter",
   apiKey: openrouterApiKey,
   baseURL: "https://openrouter.ai/api/v1",
-})("stepfun/step-3.5-flash:free");
+})("arcee-ai/trinity-large-preview:free");
 
 const prompt = [
   "Call submit_release_bundle exactly once.",
@@ -206,7 +206,7 @@ async function main() {
   const result = streamText({
     model: wrapLanguageModel({
       model,
-      middleware: qwen3CoderToolMiddleware,
+      middleware: morphXmlToolMiddleware,
     }),
     stopWhen: stepCountIs(MAX_STEPS),
     prompt,

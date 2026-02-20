@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
+import { morphXmlToolMiddleware } from "../../../src/preconfigured-middleware";
 
 const BASE_TEMPERATURE = 72;
 const TEMPERATURE_RANGE = 21;
@@ -17,8 +17,8 @@ const openrouter = createOpenAI({
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: openrouter.chat("stepfun/step-3.5-flash:free"),
-      middleware: qwen3CoderToolMiddleware,
+      model: openrouter.chat("arcee-ai/trinity-large-preview:free"),
+      middleware: morphXmlToolMiddleware,
     }),
     tools: {
       weather: {

@@ -13,8 +13,8 @@ import {
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
+  emitChunkedPrefixDelta,
   emitFinalRemainder,
-  emitPrefixDelta,
   toIncompleteJsonPrefix,
 } from "../utils/streamed-tool-input-delta";
 import { coerceToolCallInput } from "../utils/tool-call-coercion";
@@ -742,7 +742,7 @@ export const yamlXmlProtocol = (
           return;
         }
         const prefixCandidate = toIncompleteJsonPrefix(fullInput);
-        emitPrefixDelta({
+        emitChunkedPrefixDelta({
           controller,
           id: currentToolCall.toolCallId,
           state: currentToolCall,
