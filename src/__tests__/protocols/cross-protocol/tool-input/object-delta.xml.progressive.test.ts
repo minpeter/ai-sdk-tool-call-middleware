@@ -1,15 +1,11 @@
-import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  extractToolInputDeltas,
+  findToolCall,
+  runProtocolTextDeltaStream,
+} from "./streaming-events.shared";
 
 const nestedTool: LanguageModelV3FunctionTool = {
   type: "function",
@@ -119,68 +115,8 @@ const mathSumWithUnitTool: LanguageModelV3FunctionTool = {
   },
 };
 
-function createTextDeltaStream(chunks: string[]) {
-  return new ReadableStream<LanguageModelV3StreamPart>({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue({
-          type: "text-delta",
-          id: "fixture",
-          delta: chunk,
-        });
-      }
-      controller.enqueue({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-      });
-      controller.close();
-    },
-  });
-}
-
-function extractToolInputDeltas(parts: LanguageModelV3StreamPart[]): string[] {
-  return parts
-    .filter(
-      (
-        part
-      ): part is Extract<
-        LanguageModelV3StreamPart,
-        { type: "tool-input-delta" }
-      > => part.type === "tool-input-delta"
-    )
-    .map((part) => part.delta);
-}
-
-function _extractTextDeltas(parts: LanguageModelV3StreamPart[]): string {
-  return parts
-    .filter(
-      (
-        part
-      ): part is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
-        part.type === "text-delta"
-    )
-    .map((part) => part.delta)
-    .join("");
-}
-
-function findToolCall(
-  parts: LanguageModelV3StreamPart[]
-): Extract<LanguageModelV3StreamPart, { type: "tool-call" }> {
-  const toolCall = parts.find(
-    (part): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
-      part.type === "tool-call"
-  );
-  if (!toolCall) {
-    throw new Error("Expected tool-call part");
-  }
-  return toolCall;
-}
-
 describe("XML object-delta progressive invariants", () => {
   it("xml protocol emits parsed JSON deltas for nested object/array payloads", async () => {
-    const protocol = morphXmlProtocol();
-    const transformer = protocol.createStreamParser({ tools: [nestedTool] });
     const chunks = [
       "<plan_trip>\n<location>Seo",
       "ul</location>\n<options><unit>ce",
@@ -188,9 +124,11 @@ describe("XML object-delta progressive invariants", () => {
       "e</include_hourly></options>\n<days><item>mon</item><item>tue</item></days>\n",
       "</plan_trip>",
     ];
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [nestedTool],
+      chunks,
+    });
 
     const deltas = extractToolInputDeltas(out);
     const toolCall = findToolCall(out);
@@ -206,15 +144,15 @@ describe("XML object-delta progressive invariants", () => {
   });
 
   it("xml protocol does not emit non-prefix string placeholders when nested tags are split across chunks", async () => {
-    const protocol = morphXmlProtocol();
-    const transformer = protocol.createStreamParser({ tools: [nestedTool] });
     const chunks = [
       "<plan_trip>\n<location>Seoul</location>\n<options>",
       "<unit>celsius</unit></options>\n</plan_trip>",
     ];
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [nestedTool],
+      chunks,
+    });
 
     const deltas = extractToolInputDeltas(out);
     const toolCall = findToolCall(out);
@@ -229,17 +167,15 @@ describe("XML object-delta progressive invariants", () => {
   });
 
   it("xml protocol suppresses unstable single-root progress deltas for permissive schemas", async () => {
-    const protocol = morphXmlProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: [permissiveObjectTool],
-    });
     const chunks = [
       "<shape_shift><person><name>Alice</name></person>",
       "<city>Seoul</city></shape_shift>",
     ];
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(createTextDeltaStream(chunks), transformer)
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [permissiveObjectTool],
+      chunks,
+    });
 
     const deltas = extractToolInputDeltas(out);
     const toolCall = findToolCall(out);
@@ -256,16 +192,13 @@ describe("XML object-delta progressive invariants", () => {
   });
 
   it("xml protocol keeps delta stream prefix-safe when repeated tags later coerce to arrays", async () => {
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "<math_sum>\n<numbers>3</numbers>\n<numbers>5</numbers>\n<numbers>7</numbers>\n",
-        ]),
-        morphXmlProtocol().createStreamParser({
-          tools: [mathSumTool],
-        })
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [mathSumTool],
+      chunks: [
+        "<math_sum>\n<numbers>3</numbers>\n<numbers>5</numbers>\n<numbers>7</numbers>\n",
+      ],
+    });
 
     const toolCall = findToolCall(out);
     const deltas = extractToolInputDeltas(out);
@@ -277,17 +210,14 @@ describe("XML object-delta progressive invariants", () => {
   });
 
   it("xml protocol keeps deltas prefix-safe when array tags repeat after sibling top-level fields", async () => {
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "<math_sum_with_unit>\n<numbers>3</numbers>\n<unit>celsius</unit>\n",
-          "<numbers>5</numbers>\n</math_sum_with_unit>",
-        ]),
-        morphXmlProtocol().createStreamParser({
-          tools: [mathSumWithUnitTool],
-        })
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [mathSumWithUnitTool],
+      chunks: [
+        "<math_sum_with_unit>\n<numbers>3</numbers>\n<unit>celsius</unit>\n",
+        "<numbers>5</numbers>\n</math_sum_with_unit>",
+      ],
+    });
 
     const toolCall = findToolCall(out);
     const deltas = extractToolInputDeltas(out);
@@ -302,17 +232,14 @@ describe("XML object-delta progressive invariants", () => {
   });
 
   it("xml protocol avoids scalar-to-array prefix mismatch deltas for permissive schemas", async () => {
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "<shape_shift><numbers>3</numbers><unit>celsius</unit>",
-          "<numbers>5</numbers></shape_shift>",
-        ]),
-        morphXmlProtocol().createStreamParser({
-          tools: [permissiveObjectTool],
-        })
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [permissiveObjectTool],
+      chunks: [
+        "<shape_shift><numbers>3</numbers><unit>celsius</unit>",
+        "<numbers>5</numbers></shape_shift>",
+      ],
+    });
 
     const toolCall = findToolCall(out);
     const deltas = extractToolInputDeltas(out);

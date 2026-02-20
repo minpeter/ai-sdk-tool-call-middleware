@@ -6,15 +6,27 @@ import type {
 } from "@ai-sdk/provider";
 import { parse, stringify } from "../../rxml";
 import { generateToolCallId } from "../utils/id";
-import { createFlushTextHandler } from "../utils/protocol-utils";
+import {
+  createFlushTextHandler,
+  extractToolNames,
+  formatToolsWithPromptTemplate,
+} from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
-  emitFinalRemainder,
-  emitPrefixDelta,
-  toIncompleteJsonPrefix,
-} from "../utils/streamed-tool-input-delta";
+  emitFailedToolInputLifecycle,
+  emitFinalizedToolInputLifecycle,
+  emitToolInputProgressDelta,
+  shouldEmitRawToolCallTextOnError,
+  stringifyToolInputWithSchema,
+} from "../utils/tool-input-streaming";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
+import { findNextToolTag } from "../utils/xml-tool-tag-scanner";
+import {
+  createProcessBufferHandler,
+  type FlushTextFn,
+  type StreamingToolCallState,
+} from "./morph-xml-stream-state-machine";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
 export interface MorphXmlProtocolOptions {
@@ -27,17 +39,8 @@ export interface MorphXmlProtocolOptions {
   };
 }
 
-type FlushTextFn = (
-  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-  text?: string
-) => void;
-
 function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
-}
-
-function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
-  return options?.emitRawToolCallTextOnError === true;
 }
 
 interface ProcessToolCallParams {
@@ -380,6 +383,94 @@ function schemaAllowsArrayType(schema: unknown): boolean {
   return false;
 }
 
+function schemaAllowsStringType(schema: unknown): boolean {
+  if (!schema || typeof schema !== "object") {
+    return false;
+  }
+
+  const schemaRecord = schema as Record<string, unknown>;
+  const typeValue = schemaRecord.type;
+  if (typeValue === "string") {
+    return true;
+  }
+  if (Array.isArray(typeValue) && typeValue.includes("string")) {
+    return true;
+  }
+
+  const unions = [schemaRecord.anyOf, schemaRecord.oneOf, schemaRecord.allOf];
+  for (const union of unions) {
+    if (!Array.isArray(union)) {
+      continue;
+    }
+    if (union.some((entry) => schemaAllowsStringType(entry))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function getObjectSchemaStringPropertyNames(
+  schema: unknown
+): Set<string> | null {
+  const propertyNames = getObjectSchemaPropertyNames(schema);
+  if (!propertyNames) {
+    return null;
+  }
+
+  const out = new Set<string>();
+  for (const name of propertyNames) {
+    const property = getSchemaObjectProperty(schema, name);
+    if (schemaAllowsStringType(property)) {
+      out.add(name);
+    }
+  }
+  return out;
+}
+
+function findTrailingUnclosedStringTag(options: {
+  toolContent: string;
+  stringPropertyNames: Set<string>;
+}): string | null {
+  let bestName: string | null = null;
+  let bestOpenIndex = -1;
+
+  for (const name of options.stringPropertyNames) {
+    const openPattern = new RegExp(
+      `<${escapeRegExp(name)}(?:\\s[^>]*)?>`,
+      "gi"
+    );
+    const closePattern = new RegExp(`</\\s*${escapeRegExp(name)}\\s*>`, "gi");
+
+    let lastOpen = -1;
+    for (const match of options.toolContent.matchAll(openPattern)) {
+      const index = match.index;
+      if (index !== undefined) {
+        lastOpen = index;
+      }
+    }
+
+    if (lastOpen === -1) {
+      continue;
+    }
+
+    let lastClose = -1;
+    for (const match of options.toolContent.matchAll(closePattern)) {
+      const index = match.index;
+      if (index !== undefined) {
+        lastClose = index;
+      }
+    }
+
+    if (lastOpen > lastClose && lastOpen > bestOpenIndex) {
+      bestOpenIndex = lastOpen;
+      bestName = name;
+    }
+  }
+
+  return bestName;
+}
+
 function getSchemaObjectProperty(
   schema: unknown,
   propertyName: string
@@ -454,12 +545,16 @@ function isStableXmlProgressCandidate(options: {
 
 function parseXmlContentForStreamProgress({
   toolContent,
+  toolName,
   toolSchema,
   parseOptions,
+  tools,
 }: {
   toolContent: string;
+  toolName: string;
   toolSchema: unknown;
   parseOptions?: Record<string, unknown>;
+  tools: LanguageModelV3FunctionTool[];
 }): string | null {
   const tryParse = (content: string): unknown | null => {
     try {
@@ -482,7 +577,30 @@ function parseXmlContentForStreamProgress({
       toolSchema,
     })
   ) {
-    return JSON.stringify(strictFull);
+    return stringifyToolInputWithSchema({
+      toolName,
+      args: strictFull,
+      tools,
+    });
+  }
+
+  const stringPropertyNames = getObjectSchemaStringPropertyNames(toolSchema);
+  if (stringPropertyNames && stringPropertyNames.size > 0) {
+    const trailingStringTag = findTrailingUnclosedStringTag({
+      toolContent,
+      stringPropertyNames,
+    });
+    if (trailingStringTag) {
+      const repaired = `${toolContent}</${trailingStringTag}>`;
+      const parsedRepaired = tryParse(repaired);
+      if (parsedRepaired !== null) {
+        return stringifyToolInputWithSchema({
+          toolName,
+          args: parsedRepaired,
+          tools,
+        });
+      }
+    }
   }
 
   let searchEnd = toolContent.length;
@@ -505,7 +623,11 @@ function parseXmlContentForStreamProgress({
         toolSchema,
       })
     ) {
-      return JSON.stringify(parsedCandidate);
+      return stringifyToolInputWithSchema({
+        toolName,
+        args: parsedCandidate,
+        tools,
+      });
     }
     searchEnd = gtIndex;
   }
@@ -537,37 +659,35 @@ function handleStreamingToolCallEnd(
   flushText(ctrl);
   try {
     const parsedResult = parse(toolContent, toolSchema, parseConfig);
-    const finalInput = JSON.stringify(parsedResult);
-    emitFinalRemainder({
+    const finalInput = stringifyToolInputWithSchema({
+      toolName: currentToolCall.name,
+      args: parsedResult,
+      tools,
+    });
+    emitFinalizedToolInputLifecycle({
       controller: ctrl,
       id: currentToolCall.toolCallId,
       state: currentToolCall,
-      finalFullJson: finalInput,
+      toolName: currentToolCall.name,
+      finalInput,
       onMismatch: options?.onError,
     });
-    ctrl.enqueue({
-      type: "tool-input-end",
-      id: currentToolCall.toolCallId,
-    });
-    ctrl.enqueue({
-      type: "tool-call",
-      toolCallId: currentToolCall.toolCallId,
-      toolName: currentToolCall.name,
-      input: finalInput,
-    });
   } catch (error) {
-    ctrl.enqueue({
-      type: "tool-input-end",
-      id: currentToolCall.toolCallId,
-    });
     const original = `<${currentToolCall.name}>${toolContent}</${currentToolCall.name}>`;
+    const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+    emitFailedToolInputLifecycle({
+      controller: ctrl,
+      id: currentToolCall.toolCallId,
+      emitRawToolCallTextOnError: emitRawFallback,
+      rawToolCallText: original,
+      emitRawText: (rawText) => {
+        flushText(ctrl, rawText);
+      },
+    });
     options?.onError?.("Could not process streaming XML tool call", {
       toolCall: original,
       error,
     });
-    if (shouldEmitRawToolCallTextOnError(options)) {
-      flushText(ctrl, original);
-    }
   }
 }
 
@@ -701,32 +821,6 @@ function nextTagToken(
   };
 }
 
-interface ToolTagMatch {
-  isSelfClosing: boolean;
-  tagLength: number;
-  tagStart: number;
-}
-
-function findNextToolTag(
-  text: string,
-  searchIndex: number,
-  toolName: string
-): ToolTagMatch | null {
-  const startTag = `<${toolName}>`;
-  const openIdx = text.indexOf(startTag, searchIndex);
-  const selfMatch = findSelfClosingTag(text, toolName, searchIndex);
-  const selfIdx = selfMatch?.index ?? -1;
-  if (openIdx === -1 && selfIdx === -1) {
-    return null;
-  }
-  const isSelfClosing = selfIdx !== -1 && (openIdx === -1 || selfIdx < openIdx);
-  return {
-    tagStart: isSelfClosing ? selfIdx : openIdx,
-    isSelfClosing,
-    tagLength: isSelfClosing ? (selfMatch?.length ?? 0) : startTag.length,
-  };
-}
-
 function findLastCloseTagStart(segment: string, toolName: string): number {
   const closeTagPattern = new RegExp(
     `</\\s*${escapeRegExp(toolName)}\\s*>`,
@@ -766,36 +860,6 @@ function pushSelfClosingToolCall(
     segment: text.substring(tagStart, endIndex),
   });
   return endIndex;
-}
-
-/**
- * Cache for self-closing tag regex patterns.
- * This cache grows with the number of unique tool names but is bounded
- * in practice since tools are defined at configuration time, not dynamically.
- */
-const selfClosingTagCache = new Map<string, RegExp>();
-
-function getSelfClosingTagPattern(toolName: string): RegExp {
-  let pattern = selfClosingTagCache.get(toolName);
-  if (!pattern) {
-    pattern = new RegExp(`<\\s*${escapeRegExp(toolName)}\\s*/>`, "g");
-    selfClosingTagCache.set(toolName, pattern);
-  }
-  return pattern;
-}
-
-function findSelfClosingTag(
-  text: string,
-  toolName: string,
-  fromIndex: number
-): { index: number; length: number } | null {
-  const pattern = getSelfClosingTagPattern(toolName);
-  pattern.lastIndex = fromIndex;
-  const match = pattern.exec(text);
-  if (!match || match.index === undefined) {
-    return null;
-  }
-  return { index: match.index, length: match[0].length };
 }
 
 function appendOpenToolCallIfComplete(
@@ -1045,45 +1109,6 @@ function findLinePrefixedToolCall(
   return best;
 }
 
-function findEarliestToolTag(
-  buffer: string,
-  toolNames: string[]
-): { index: number; name: string; selfClosing: boolean; tagLength: number } {
-  let bestIndex = -1;
-  let bestName = "";
-  let bestSelfClosing = false;
-  let bestTagLength = 0;
-
-  if (toolNames.length > 0) {
-    for (const name of toolNames) {
-      const openTag = `<${name}>`;
-      const idxOpen = buffer.indexOf(openTag);
-      const selfMatch = findSelfClosingTag(buffer, name, 0);
-      const idxSelf = selfMatch?.index ?? -1;
-
-      if (idxOpen !== -1 && (bestIndex === -1 || idxOpen < bestIndex)) {
-        bestIndex = idxOpen;
-        bestName = name;
-        bestSelfClosing = false;
-        bestTagLength = openTag.length;
-      }
-      if (idxSelf !== -1 && (bestIndex === -1 || idxSelf < bestIndex)) {
-        bestIndex = idxSelf;
-        bestName = name;
-        bestSelfClosing = true;
-        bestTagLength = selfMatch?.length ?? 0;
-      }
-    }
-  }
-
-  return {
-    index: bestIndex,
-    name: bestName,
-    selfClosing: bestSelfClosing,
-    tagLength: bestTagLength,
-  };
-}
-
 function isOpenTagPrefix(suffix: string, toolName: string): boolean {
   return `${toolName}>`.startsWith(suffix);
 }
@@ -1193,239 +1218,6 @@ function findPotentialToolTagStart(
   return -1;
 }
 
-interface StreamingToolCallState {
-  emittedInput: string;
-  lastProgressFullInput: string | null;
-  lastProgressGtIndex: number | null;
-  name: string;
-  toolCallId: string;
-}
-
-interface ProcessToolCallInBufferParams {
-  buffer: string;
-  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
-  currentToolCall: StreamingToolCallState;
-  emitToolInputProgress: (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    currentToolCall: StreamingToolCallState,
-    toolContent: string
-  ) => void;
-  flushText: FlushTextFn;
-  options?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
-  setBuffer: (buffer: string) => void;
-  tools: LanguageModelV3FunctionTool[];
-}
-
-function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
-  buffer: string;
-  currentToolCall: StreamingToolCallState | null;
-  shouldBreak: boolean;
-} {
-  const {
-    buffer,
-    currentToolCall,
-    tools,
-    options,
-    controller,
-    flushText,
-    setBuffer,
-    parseOptions,
-    emitToolInputProgress,
-  } = params;
-  const endTagPattern = new RegExp(
-    `</\\s*${escapeRegExp(currentToolCall.name)}\\s*>`
-  );
-  const endMatch = endTagPattern.exec(buffer);
-  if (!endMatch || endMatch.index === undefined) {
-    emitToolInputProgress(controller, currentToolCall, buffer);
-    return { buffer, currentToolCall, shouldBreak: true };
-  }
-
-  const endIdx = endMatch.index;
-  const endPos = endIdx + endMatch[0].length;
-  const content = buffer.substring(0, endIdx);
-  emitToolInputProgress(controller, currentToolCall, content);
-  const remainder = buffer.substring(endPos);
-  setBuffer(remainder);
-
-  handleStreamingToolCallEnd({
-    toolContent: content,
-    currentToolCall,
-    tools,
-    options,
-    ctrl: controller,
-    flushText,
-    parseOptions,
-  });
-
-  return {
-    buffer: remainder,
-    currentToolCall: null,
-    shouldBreak: false,
-  };
-}
-
-interface ProcessNoToolCallInBufferParams {
-  buffer: string;
-  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
-  emitToolInputStart: (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    toolName: string
-  ) => StreamingToolCallState;
-  flushText: FlushTextFn;
-  options?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
-  setBuffer: (buffer: string) => void;
-  toolNames: string[];
-  tools: LanguageModelV3FunctionTool[];
-}
-
-function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
-  buffer: string;
-  currentToolCall: StreamingToolCallState | null;
-  shouldBreak: boolean;
-  shouldContinue: boolean;
-} {
-  const {
-    buffer,
-    toolNames,
-    controller,
-    flushText,
-    tools,
-    options,
-    parseOptions,
-    setBuffer,
-    emitToolInputStart,
-  } = params;
-  const {
-    index: earliestStartTagIndex,
-    name: earliestToolName,
-    selfClosing,
-    tagLength,
-  } = findEarliestToolTag(buffer, toolNames);
-
-  if (earliestStartTagIndex === -1) {
-    const potentialStart = findPotentialToolTagStart(buffer, toolNames);
-    const safeLen = Math.max(
-      0,
-      potentialStart === -1 ? buffer.length : potentialStart
-    );
-    const remaining = buffer.slice(safeLen);
-    if (safeLen > 0) {
-      flushText(controller, buffer.slice(0, safeLen));
-      setBuffer(remaining);
-    }
-    return {
-      buffer: remaining,
-      currentToolCall: null,
-      shouldBreak: true,
-      shouldContinue: false,
-    };
-  }
-
-  flushText(controller, buffer.substring(0, earliestStartTagIndex));
-
-  if (selfClosing) {
-    const newBuffer = buffer.substring(earliestStartTagIndex + tagLength);
-    setBuffer(newBuffer);
-    const currentToolCall = emitToolInputStart(controller, earliestToolName);
-    handleStreamingToolCallEnd({
-      toolContent: "",
-      currentToolCall,
-      tools,
-      options,
-      ctrl: controller,
-      flushText,
-      parseOptions,
-    });
-    return {
-      buffer: newBuffer,
-      currentToolCall: null,
-      shouldBreak: false,
-      shouldContinue: false,
-    };
-  }
-
-  const startTag = `<${earliestToolName}>`;
-  const newBuffer = buffer.substring(earliestStartTagIndex + startTag.length);
-  setBuffer(newBuffer);
-  return {
-    buffer: newBuffer,
-    currentToolCall: emitToolInputStart(controller, earliestToolName),
-    shouldBreak: false,
-    shouldContinue: true,
-  };
-}
-
-function createProcessBufferHandler(
-  getBuffer: () => string,
-  setBuffer: (buffer: string) => void,
-  getCurrentToolCall: () => StreamingToolCallState | null,
-  setCurrentToolCall: (toolCall: StreamingToolCallState | null) => void,
-  tools: LanguageModelV3FunctionTool[],
-  options: ParserOptions | undefined,
-  toolNames: string[],
-  flushText: FlushTextFn,
-  parseOptions: Record<string, unknown> | undefined,
-  emitToolInputProgress: (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    currentToolCall: StreamingToolCallState,
-    toolContent: string
-  ) => void,
-  emitToolInputStart: (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-    toolName: string
-  ) => StreamingToolCallState
-) {
-  return (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
-  ) => {
-    while (true) {
-      const currentToolCall = getCurrentToolCall();
-      if (currentToolCall) {
-        const result = processToolCallInBuffer({
-          buffer: getBuffer(),
-          currentToolCall,
-          tools,
-          options,
-          controller,
-          flushText,
-          setBuffer,
-          parseOptions,
-          emitToolInputProgress,
-        });
-        setBuffer(result.buffer);
-        setCurrentToolCall(result.currentToolCall);
-        if (result.shouldBreak) {
-          break;
-        }
-      } else {
-        const result = processNoToolCallInBuffer({
-          buffer: getBuffer(),
-          toolNames,
-          controller,
-          flushText,
-          tools,
-          options,
-          parseOptions,
-          setBuffer,
-          emitToolInputStart,
-        });
-        setBuffer(result.buffer);
-        setCurrentToolCall(result.currentToolCall);
-        if (result.shouldBreak) {
-          break;
-        }
-        if (result.shouldContinue) {
-          continue;
-        }
-        break;
-      }
-    }
-  };
-}
-
 function findToolCallsWithFallbacks(
   text: string,
   toolNames: string[]
@@ -1465,7 +1257,7 @@ export const morphXmlProtocol = (
 
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
-      return toolSystemPromptTemplate(tools || []);
+      return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
     },
 
     formatToolCall(toolCall: LanguageModelV3ToolCall): string {
@@ -1485,7 +1277,7 @@ export const morphXmlProtocol = (
     },
 
     parseGeneratedText({ text, tools, options }) {
-      const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+      const toolNames = extractToolNames(tools);
       if (toolNames.length === 0) {
         return [{ type: "text", text }];
       }
@@ -1527,7 +1319,7 @@ export const morphXmlProtocol = (
     },
 
     createStreamParser({ tools, options }) {
-      const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+      const toolNames = extractToolNames(tools);
       let buffer = "";
       let currentToolCall: StreamingToolCallState | null = null;
       let currentTextId: string | null = null;
@@ -1553,6 +1345,7 @@ export const morphXmlProtocol = (
           name: toolName,
           toolCallId: generateToolCallId(),
           emittedInput: "",
+          lastProgressContentLength: null,
           lastProgressGtIndex: null,
           lastProgressFullInput: null,
         };
@@ -1570,7 +1363,11 @@ export const morphXmlProtocol = (
         toolContent: string
       ) => {
         const progressGtIndex = toolContent.lastIndexOf(">");
-        if (toolCall.lastProgressGtIndex === progressGtIndex) {
+        const progressContentLength = toolContent.length;
+        if (
+          toolCall.lastProgressGtIndex === progressGtIndex &&
+          toolCall.lastProgressContentLength === progressContentLength
+        ) {
           const cached = toolCall.lastProgressFullInput;
           if (cached == null) {
             return;
@@ -1578,12 +1375,11 @@ export const morphXmlProtocol = (
           if (cached === "{}" && toolContent.trim().length === 0) {
             return;
           }
-          const prefixCandidate = toIncompleteJsonPrefix(cached);
-          emitPrefixDelta({
+          emitToolInputProgressDelta({
             controller,
             id: toolCall.toolCallId,
             state: toolCall,
-            candidate: prefixCandidate,
+            fullInput: cached,
           });
           return;
         }
@@ -1591,10 +1387,13 @@ export const morphXmlProtocol = (
         const toolSchema = getToolSchema(tools, toolCall.name);
         const fullInput = parseXmlContentForStreamProgress({
           toolContent,
+          toolName: toolCall.name,
           toolSchema,
           parseOptions,
+          tools,
         });
         toolCall.lastProgressGtIndex = progressGtIndex;
+        toolCall.lastProgressContentLength = progressContentLength;
         toolCall.lastProgressFullInput = fullInput;
         if (fullInput == null) {
           return;
@@ -1602,12 +1401,11 @@ export const morphXmlProtocol = (
         if (fullInput === "{}" && toolContent.trim().length === 0) {
           return;
         }
-        const prefixCandidate = toIncompleteJsonPrefix(fullInput);
-        emitPrefixDelta({
+        emitToolInputProgressDelta({
           controller,
           id: toolCall.toolCallId,
           state: toolCall,
-          candidate: prefixCandidate,
+          fullInput,
         });
       };
 
@@ -1636,60 +1434,60 @@ export const morphXmlProtocol = (
             );
           }
           const parsedResult = parse(buffer, toolSchema, parseConfig);
-          const finalInput = JSON.stringify(parsedResult);
-          emitFinalRemainder({
+          const finalInput = stringifyToolInputWithSchema({
+            toolName: currentToolCall.name,
+            args: parsedResult,
+            tools,
+          });
+          emitFinalizedToolInputLifecycle({
             controller,
             id: currentToolCall.toolCallId,
             state: currentToolCall,
-            finalFullJson: finalInput,
+            toolName: currentToolCall.name,
+            finalInput,
             onMismatch: options?.onError,
           });
-          controller.enqueue({
-            type: "tool-input-end",
-            id: currentToolCall.toolCallId,
-          });
-          controller.enqueue({
-            type: "tool-call",
-            toolCallId: currentToolCall.toolCallId,
-            toolName: currentToolCall.name,
-            input: finalInput,
-          });
         } catch (error) {
-          controller.enqueue({
-            type: "tool-input-end",
-            id: currentToolCall.toolCallId,
-          });
           const unfinishedContent = `<${currentToolCall.name}>${buffer}`;
+          const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+          emitFailedToolInputLifecycle({
+            controller,
+            id: currentToolCall.toolCallId,
+            emitRawToolCallTextOnError: emitRawFallback,
+            rawToolCallText: unfinishedContent,
+            emitRawText: (rawText) => {
+              flushText(controller, rawText);
+            },
+          });
           options?.onError?.(
             "Could not complete streaming XML tool call at finish.",
             { toolCall: unfinishedContent, error }
           );
-          if (shouldEmitRawToolCallTextOnError(options)) {
-            flushText(controller, unfinishedContent);
-          }
         }
 
         buffer = "";
         currentToolCall = null;
       };
 
-      const processBuffer = createProcessBufferHandler(
-        () => buffer,
-        (newBuffer: string) => {
+      const processBuffer = createProcessBufferHandler({
+        getBuffer: () => buffer,
+        setBuffer: (newBuffer: string) => {
           buffer = newBuffer;
         },
-        () => currentToolCall,
-        (newToolCall: StreamingToolCallState | null) => {
+        getCurrentToolCall: () => currentToolCall,
+        setCurrentToolCall: (newToolCall: StreamingToolCallState | null) => {
           currentToolCall = newToolCall;
         },
         tools,
-        options,
+        parserOptions: options,
         toolNames,
         flushText,
         parseOptions,
         emitToolInputProgress,
-        emitToolInputStart
-      );
+        emitToolInputStart,
+        findPotentialToolTagStart,
+        handleStreamingToolCallEnd,
+      });
 
       return new TransformStream({
         // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Stateful stream parsing requires branching over chunk lifecycle and parser states.

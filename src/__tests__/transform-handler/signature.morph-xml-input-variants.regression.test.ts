@@ -1,7 +1,7 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-
 import { morphXmlToolMiddleware } from "../../preconfigured-middleware";
+import { requireTransformParams } from "../test-helpers";
 
 const REGEX_GET_WEATHER_TAG = /<get_weather[>/]/;
 const REGEX_EDIT_FILE_TAG = /<edit_file>/;
@@ -20,10 +20,9 @@ const weatherTools: LanguageModelV3FunctionTool[] = [
 
 describe("transformParams morph-xml tool-call signature regression", () => {
   it("preserves morph-xml tool-call signature when input is undefined", async () => {
-    const transformParams = morphXmlToolMiddleware.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(
+      morphXmlToolMiddleware.transformParams
+    );
 
     const out = await transformParams({
       params: {
@@ -71,10 +70,9 @@ describe("transformParams morph-xml tool-call signature regression", () => {
   });
 
   it("preserves tool-call signature when input is object", async () => {
-    const transformParams = morphXmlToolMiddleware.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(
+      morphXmlToolMiddleware.transformParams
+    );
 
     const out = await transformParams({
       params: {

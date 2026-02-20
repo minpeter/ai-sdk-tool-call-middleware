@@ -2,11 +2,11 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 
 import type { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 
-export type MorphXmlTools = Parameters<
+type MorphXmlTools = Parameters<
   ReturnType<typeof morphXmlProtocol>["createStreamParser"]
 >[0]["tools"];
 
-export function seededRandom(seed: number): () => number {
+function seededRandom(seed: number): () => number {
   let current = seed;
   return () => {
     current = (current * 9301 + 49_297) % 233_280;

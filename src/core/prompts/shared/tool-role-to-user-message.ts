@@ -8,6 +8,7 @@ import type {
   ToolContent,
   ToolResultPart,
 } from "@ai-sdk/provider-utils";
+import { toTextPart } from "./text-part";
 import {
   normalizeToolResultForUserContent,
   type ToolResponseMediaStrategy,
@@ -22,13 +23,6 @@ function formatApprovalResponse(part: ToolApprovalResponse): string {
   const status = part.approved ? "Approved" : "Denied";
   const reason = part.reason ? `: ${part.reason}` : "";
   return `[Tool Approval ${status}${reason}]`;
-}
-
-function toTextPart(text: string): LanguageModelV3TextPart {
-  return {
-    type: "text",
-    text,
-  };
 }
 
 function normalizeTemplateResult(

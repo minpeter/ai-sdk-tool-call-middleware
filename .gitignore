@@ -41,16 +41,7 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
-
-# Benchmark results (keep history.jsonl and README.md)
-.benchmark-results/*
-!.benchmark-results/history.jsonl
-!.benchmark-results/.gitkeep
-!.benchmark-results/README.md
-
-# Benchmark API cache (never commit, cached in CI)
-.benchmark-results/cache/
-examples/parser-core/.demo-output
+.demo-output
 
 # ai agent tool
 .opencode

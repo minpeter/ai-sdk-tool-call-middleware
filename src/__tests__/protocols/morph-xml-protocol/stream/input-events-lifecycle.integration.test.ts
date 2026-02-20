@@ -105,4 +105,59 @@ describe("morphXmlProtocol stream tool-input lifecycle integration", () => {
     expect(endIndex).toBeGreaterThan(startIndex);
     expect(callIndex).toBeGreaterThan(endIndex);
   });
+
+  it("matches closing tag literally when tool name contains regex metacharacters", async () => {
+    const protocol = morphXmlProtocol();
+    const metacharTools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "weather.v2",
+        description: "",
+        inputSchema: {
+          type: "object",
+          properties: {
+            location: { type: "string" },
+          },
+          required: ["location"],
+        },
+      },
+    ];
+    const transformer = protocol.createStreamParser({ tools: metacharTools });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createTextDeltaStream([
+          "prefix ",
+          "<weather.v2>",
+          "<location>Seoul</location>",
+          "<weatherXv2>noise</weatherXv2>",
+          "</weather.v2>",
+          " suffix",
+        ]),
+        transformer
+      )
+    );
+
+    const { starts, ends, calls } = extract(out);
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    expect(starts[0]?.toolName).toBe("weather.v2");
+    expect(calls[0]?.toolName).toBe("weather.v2");
+
+    const input = JSON.parse(calls[0]?.input ?? "{}") as { location?: string };
+    expect(input.location).toBe("Seoul");
+
+    const textOutput = out
+      .filter(
+        (
+          part
+        ): part is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
+          part.type === "text-delta"
+      )
+      .map((part) => part.delta)
+      .join("");
+    expect(textOutput).toContain("prefix ");
+    expect(textOutput).toContain(" suffix");
+    expect(textOutput).not.toContain("</weather.v2>");
+  });
 });

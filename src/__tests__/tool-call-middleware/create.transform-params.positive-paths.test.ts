@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { requireTransformParams } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -40,10 +41,7 @@ describe("createToolMiddleware transformParams positive paths", () => {
         inputSchema: { type: "object" },
       },
     ];
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
       params: {
         prompt: [

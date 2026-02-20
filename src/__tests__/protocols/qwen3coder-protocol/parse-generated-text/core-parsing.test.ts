@@ -1,11 +1,12 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { emptyFunctionTools } from "../../../fixtures/function-tools";
 
 describe("qwen3CoderProtocol", () => {
+  const tools = emptyFunctionTools;
+
   it("parseGeneratedText extracts <tool_call> blocks and preserves surrounding text", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "before ",
       `<tool_call>
@@ -39,7 +40,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("supports multiple <tool_call> blocks per message", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "a ",
       "<tool_call><function=alpha><parameter=x>1</parameter></function></tool_call>",
@@ -71,7 +71,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("supports multiple function calls inside a single <tool_call> block", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "prefix ",
       `<tool_call>
@@ -106,7 +105,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("extractToolCallSegments returns raw <tool_call> segments in order", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const a = "<tool_call><function=a></function></tool_call>";
     const b = "<tool_call><function=b></function></tool_call>";
     const text = `prefix ${a} mid ${b} suffix`;
@@ -125,7 +123,7 @@ describe("qwen3CoderProtocol", () => {
       " after",
     ].join("");
 
-    const out = p.parseGeneratedText({ text, tools: [] });
+    const out = p.parseGeneratedText({ text, tools });
     expect(out).toHaveLength(3);
 
     const toolCall = out.find((part) => part.type === "tool-call") as

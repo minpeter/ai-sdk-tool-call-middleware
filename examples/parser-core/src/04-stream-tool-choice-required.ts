@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
+import { morphXmlToolMiddleware } from "../../../src/preconfigured-middleware";
 
 // Constants
 const MAX_STEPS = 4;
@@ -9,6 +9,7 @@ const BASE_TEMPERATURE = 72;
 const TEMPERATURE_RANGE = 21;
 const TEMPERATURE_OFFSET = 10;
 const CONVERSION_RATE = 1.1;
+const REASONING_COLOR = "\x1b[33m";
 
 const openrouter = createOpenAI({
   name: "openrouter",
@@ -19,8 +20,8 @@ const openrouter = createOpenAI({
 async function main() {
   const result = streamText({
     model: wrapLanguageModel({
-      model: openrouter.chat("stepfun/step-3.5-flash:free"),
-      middleware: qwen3CoderToolMiddleware,
+      model: openrouter.chat("arcee-ai/trinity-large-preview:free"),
+      middleware: morphXmlToolMiddleware,
     }),
     tools: {
       weather: {
@@ -58,6 +59,8 @@ async function main() {
   for await (const part of result.fullStream) {
     if (part.type === "text-delta") {
       process.stdout.write(part.text);
+    } else if (part.type === "reasoning-delta") {
+      process.stdout.write(`${REASONING_COLOR}${part.text}\x1b[0m`);
     } else if (part.type === "tool-result") {
       console.log({
         name: part.toolName,

@@ -1,16 +1,13 @@
-import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  extractTextDeltas,
+  extractToolInputDeltas,
+  findToolCall,
+  runProtocolTextDeltaStream,
+} from "./streaming-events.shared";
 
 const _nestedTool: LanguageModelV3FunctionTool = {
   type: "function",
@@ -120,91 +117,22 @@ const _mathSumWithUnitTool: LanguageModelV3FunctionTool = {
   },
 };
 
-function createTextDeltaStream(chunks: string[]) {
-  return new ReadableStream<LanguageModelV3StreamPart>({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue({
-          type: "text-delta",
-          id: "fixture",
-          delta: chunk,
-        });
-      }
-      controller.enqueue({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-      });
-      controller.close();
-    },
-  });
-}
-
-function extractToolInputDeltas(parts: LanguageModelV3StreamPart[]): string[] {
-  return parts
-    .filter(
-      (
-        part
-      ): part is Extract<
-        LanguageModelV3StreamPart,
-        { type: "tool-input-delta" }
-      > => part.type === "tool-input-delta"
-    )
-    .map((part) => part.delta);
-}
-
-function extractTextDeltas(parts: LanguageModelV3StreamPart[]): string {
-  return parts
-    .filter(
-      (
-        part
-      ): part is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
-        part.type === "text-delta"
-    )
-    .map((part) => part.delta)
-    .join("");
-}
-
-function findToolCall(
-  parts: LanguageModelV3StreamPart[]
-): Extract<LanguageModelV3StreamPart, { type: "tool-call" }> {
-  const toolCall = parts.find(
-    (part): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
-      part.type === "tool-call"
-  );
-  if (!toolCall) {
-    throw new Error("Expected tool-call part");
-  }
-  return toolCall;
-}
-
 describe("XML/YAML finish reconciliation policy", () => {
   it("xml/yaml finish reconciliation emits final suffix so joined deltas equal final tool input", async () => {
-    const xmlTransformer = morphXmlProtocol().createStreamParser({
-      tools: [weatherTool],
-    });
-    const yamlTransformer = yamlXmlProtocol().createStreamParser({
-      tools: [weatherTool],
-    });
-
     const [xmlOut, yamlOut] = await Promise.all([
-      convertReadableStreamToArray(
-        pipeWithTransformer(
-          createTextDeltaStream([
-            "<get_weather>\n<location>Bus",
-            "an</location>\n<unit>celsius</unit>\n",
-          ]),
-          xmlTransformer
-        )
-      ),
-      convertReadableStreamToArray(
-        pipeWithTransformer(
-          createTextDeltaStream([
-            "<get_weather>\nlocation: Busan\nunit: celsius\n",
-          ]),
-          yamlTransformer
-        )
-      ),
+      runProtocolTextDeltaStream({
+        protocol: morphXmlProtocol(),
+        tools: [weatherTool],
+        chunks: [
+          "<get_weather>\n<location>Bus",
+          "an</location>\n<unit>celsius</unit>\n",
+        ],
+      }),
+      runProtocolTextDeltaStream({
+        protocol: yamlXmlProtocol(),
+        tools: [weatherTool],
+        chunks: ["<get_weather>\nlocation: Busan\nunit: celsius\n"],
+      }),
     ]);
 
     const xmlCall = findToolCall(xmlOut);
@@ -225,16 +153,11 @@ describe("XML/YAML finish reconciliation policy", () => {
   });
 
   it("xml finish on unclosed malformed tool call closes stream without raw fallback by default", async () => {
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "<bad_tool><name>first</name><name>second</name>",
-        ]),
-        morphXmlProtocol().createStreamParser({
-          tools: [strictNameTool],
-        })
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [strictNameTool],
+      chunks: ["<bad_tool><name>first</name><name>second</name>"],
+    });
 
     const starts = out.filter((part) => part.type === "tool-input-start");
     const ends = out.filter((part) => part.type === "tool-input-end");
@@ -247,17 +170,12 @@ describe("XML/YAML finish reconciliation policy", () => {
   });
 
   it("xml finish on unclosed malformed tool call can emit raw fallback when enabled", async () => {
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "<bad_tool><name>first</name><name>second</name>",
-        ]),
-        morphXmlProtocol().createStreamParser({
-          tools: [strictNameTool],
-          options: { emitRawToolCallTextOnError: true },
-        })
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [strictNameTool],
+      chunks: ["<bad_tool><name>first</name><name>second</name>"],
+      options: { emitRawToolCallTextOnError: true },
+    });
 
     const starts = out.filter((part) => part.type === "tool-input-start");
     const ends = out.filter((part) => part.type === "tool-input-end");
@@ -271,15 +189,12 @@ describe("XML/YAML finish reconciliation policy", () => {
   });
 
   it("yaml finish on malformed unclosed tool call can emit raw fallback when enabled", async () => {
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream(["<get_weather>\n["]),
-        yamlXmlProtocol().createStreamParser({
-          tools: [weatherTool],
-          options: { emitRawToolCallTextOnError: true },
-        })
-      )
-    );
+    const out = await runProtocolTextDeltaStream({
+      protocol: yamlXmlProtocol(),
+      tools: [weatherTool],
+      chunks: ["<get_weather>\n["],
+      options: { emitRawToolCallTextOnError: true },
+    });
 
     const starts = out.filter((part) => part.type === "tool-input-start");
     const ends = out.filter((part) => part.type === "tool-input-end");

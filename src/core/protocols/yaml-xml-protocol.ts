@@ -8,15 +8,23 @@ import { generateToolCallId } from "../utils/id";
 import {
   addTextSegment,
   createFlushTextHandler,
+  extractToolNames,
+  formatToolsWithPromptTemplate,
 } from "../utils/protocol-utils";
-import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
-  emitFinalRemainder,
-  emitPrefixDelta,
-  toIncompleteJsonPrefix,
-} from "../utils/streamed-tool-input-delta";
+  emitFailedToolInputLifecycle,
+  emitFinalizedToolInputLifecycle,
+  emitToolInputProgressDelta,
+  enqueueToolInputEndAndCall,
+  shouldEmitRawToolCallTextOnError,
+  stringifyToolInputWithSchema,
+} from "../utils/tool-input-streaming";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
+import {
+  findEarliestToolTag,
+  findNextToolTag,
+} from "../utils/xml-tool-tag-scanner";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
 export interface YamlXmlProtocolOptions {
@@ -25,21 +33,6 @@ export interface YamlXmlProtocolOptions {
    * @default true
    */
   includeMultilineExample?: boolean;
-}
-
-function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
-  return options?.emitRawToolCallTextOnError === true;
-}
-
-const selfClosingTagCache = new Map<string, RegExp>();
-
-function getSelfClosingTagPattern(toolName: string): RegExp {
-  let pattern = selfClosingTagCache.get(toolName);
-  if (!pattern) {
-    pattern = new RegExp(`<\\s*${escapeRegExp(toolName)}\\s*/>`, "g");
-    selfClosingTagCache.set(toolName, pattern);
-  }
-  return pattern;
 }
 
 const LEADING_WHITESPACE_RE = /^(\s*)/;
@@ -361,19 +354,6 @@ function findClosingTagEnd(
   return -1;
 }
 
-function findEarliestTagPosition(
-  openIdx: number,
-  selfIdx: number
-): { tagStart: number; isSelfClosing: boolean } {
-  const hasSelf = selfIdx !== -1;
-  const hasOpen = openIdx !== -1;
-
-  if (hasSelf && (!hasOpen || selfIdx < openIdx)) {
-    return { tagStart: selfIdx, isSelfClosing: true };
-  }
-  return { tagStart: openIdx, isSelfClosing: false };
-}
-
 /**
  * Find all tool calls in the text for the given tool names.
  */
@@ -391,27 +371,18 @@ function collectToolCallsForName(
   const toolCalls: ToolCallMatch[] = [];
   let searchIndex = 0;
   const startTag = `<${toolName}>`;
-  const selfTagRegex = getSelfClosingTagPattern(toolName);
 
   while (searchIndex < text.length) {
-    const openIdx = text.indexOf(startTag, searchIndex);
-
-    selfTagRegex.lastIndex = searchIndex;
-    const selfMatch = selfTagRegex.exec(text);
-    const selfIdx = selfMatch ? selfMatch.index : -1;
-    const selfTagLength = selfMatch ? selfMatch[0].length : 0;
-
-    if (openIdx === -1 && selfIdx === -1) {
+    const match = findNextToolTag(text, searchIndex, toolName);
+    if (match === null) {
       break;
     }
 
-    const { tagStart, isSelfClosing } = findEarliestTagPosition(
-      openIdx,
-      selfIdx
-    );
+    const tagStart = match.tagStart;
+    const isSelfClosing = match.isSelfClosing;
 
     if (isSelfClosing) {
-      const endIndex = tagStart + selfTagLength;
+      const endIndex = tagStart + match.tagLength;
       toolCalls.push({
         toolName,
         startIndex: tagStart,
@@ -545,45 +516,6 @@ function processToolCallMatch(
   return tc.endIndex;
 }
 
-function findEarliestToolTag(
-  buffer: string,
-  toolNames: string[]
-): { index: number; name: string; selfClosing: boolean; tagLength: number } {
-  let bestIndex = -1;
-  let bestName = "";
-  let bestSelfClosing = false;
-  let bestTagLength = 0;
-
-  for (const name of toolNames) {
-    const openTag = `<${name}>`;
-    const selfTagRegex = getSelfClosingTagPattern(name);
-    const idxOpen = buffer.indexOf(openTag);
-    selfTagRegex.lastIndex = 0;
-    const selfMatch = selfTagRegex.exec(buffer);
-    const idxSelf = selfMatch ? selfMatch.index : -1;
-
-    if (idxOpen !== -1 && (bestIndex === -1 || idxOpen < bestIndex)) {
-      bestIndex = idxOpen;
-      bestName = name;
-      bestSelfClosing = false;
-      bestTagLength = openTag.length;
-    }
-    if (idxSelf !== -1 && (bestIndex === -1 || idxSelf < bestIndex)) {
-      bestIndex = idxSelf;
-      bestName = name;
-      bestSelfClosing = true;
-      bestTagLength = selfMatch ? selfMatch[0].length : 0;
-    }
-  }
-
-  return {
-    index: bestIndex,
-    name: bestName,
-    selfClosing: bestSelfClosing,
-    tagLength: bestTagLength,
-  };
-}
-
 function stripTrailingPartialCloseTag(
   content: string,
   toolName: string
@@ -626,7 +558,7 @@ export const yamlXmlProtocol = (
 ): TCMCoreProtocol => {
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
-      return toolSystemPromptTemplate(tools || []);
+      return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
     },
 
     formatToolCall(toolCall: LanguageModelV3ToolCall): string {
@@ -643,7 +575,7 @@ export const yamlXmlProtocol = (
     },
 
     parseGeneratedText({ text, tools, options }) {
-      const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+      const toolNames = extractToolNames(tools);
       if (toolNames.length === 0) {
         return [{ type: "text", text }];
       }
@@ -685,7 +617,7 @@ export const yamlXmlProtocol = (
     },
 
     createStreamParser({ tools, options }) {
-      const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+      const toolNames = extractToolNames(tools);
 
       let buffer = "";
       let currentToolCall: {
@@ -718,16 +650,19 @@ export const yamlXmlProtocol = (
         if (parsedArgs === null) {
           return;
         }
-        const fullInput = JSON.stringify(parsedArgs);
+        const fullInput = stringifyToolInputWithSchema({
+          toolName: currentToolCall.name,
+          args: parsedArgs,
+          tools,
+        });
         if (fullInput === "{}" && toolContent.trim().length === 0) {
           return;
         }
-        const prefixCandidate = toIncompleteJsonPrefix(fullInput);
-        emitPrefixDelta({
+        emitToolInputProgressDelta({
           controller,
           id: currentToolCall.toolCallId,
           state: currentToolCall,
-          candidate: prefixCandidate,
+          fullInput,
         });
       };
 
@@ -740,38 +675,43 @@ export const yamlXmlProtocol = (
         const parsedArgs = parseYamlContent(toolContent, options);
         flushText(controller);
         if (parsedArgs !== null) {
-          const finalInput = JSON.stringify(parsedArgs);
+          const finalInput = stringifyToolInputWithSchema({
+            toolName,
+            args: parsedArgs,
+            tools,
+          });
           if (currentToolCall && currentToolCall.toolCallId === toolCallId) {
-            emitFinalRemainder({
+            emitFinalizedToolInputLifecycle({
               controller,
               id: toolCallId,
               state: currentToolCall,
-              finalFullJson: finalInput,
+              toolName,
+              finalInput,
               onMismatch: options?.onError,
             });
+          } else {
+            enqueueToolInputEndAndCall({
+              controller,
+              id: toolCallId,
+              toolName,
+              input: finalInput,
+            });
           }
-          controller.enqueue({
-            type: "tool-input-end",
-            id: toolCallId,
-          });
-          controller.enqueue({
-            type: "tool-call",
-            toolCallId,
-            toolName,
-            input: finalInput,
-          });
         } else {
-          controller.enqueue({
-            type: "tool-input-end",
-            id: toolCallId,
-          });
           const original = `<${toolName}>${toolContent}</${toolName}>`;
+          const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+          emitFailedToolInputLifecycle({
+            controller,
+            id: toolCallId,
+            emitRawToolCallTextOnError: emitRawFallback,
+            rawToolCallText: original,
+            emitRawText: (rawText) => {
+              flushText(controller, rawText);
+            },
+          });
           options?.onError?.("Could not parse streaming YAML tool call", {
             toolCall: original,
           });
-          if (shouldEmitRawToolCallTextOnError(options)) {
-            flushText(controller, original);
-          }
         }
       };
 
@@ -788,37 +728,35 @@ export const yamlXmlProtocol = (
         const parsedArgs = parseYamlContent(reconciledBuffer, options);
         flushText(controller);
         if (parsedArgs !== null) {
-          const finalInput = JSON.stringify(parsedArgs);
-          emitFinalRemainder({
+          const finalInput = stringifyToolInputWithSchema({
+            toolName,
+            args: parsedArgs,
+            tools,
+          });
+          emitFinalizedToolInputLifecycle({
             controller,
             id: toolCallId,
             state: currentToolCall,
-            finalFullJson: finalInput,
+            toolName,
+            finalInput,
             onMismatch: options?.onError,
           });
-          controller.enqueue({
-            type: "tool-input-end",
-            id: toolCallId,
-          });
-          controller.enqueue({
-            type: "tool-call",
-            toolCallId,
-            toolName,
-            input: finalInput,
-          });
         } else {
-          controller.enqueue({
-            type: "tool-input-end",
-            id: toolCallId,
-          });
           const unfinishedContent = `<${toolName}>${buffer}`;
+          const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+          emitFailedToolInputLifecycle({
+            controller,
+            id: toolCallId,
+            emitRawToolCallTextOnError: emitRawFallback,
+            rawToolCallText: unfinishedContent,
+            emitRawText: (rawText) => {
+              flushText(controller, rawText);
+            },
+          });
           options?.onError?.(
             "Could not complete streaming YAML tool call at finish.",
             { toolCall: unfinishedContent }
           );
-          if (shouldEmitRawToolCallTextOnError(options)) {
-            flushText(controller, unfinishedContent);
-          }
         }
 
         buffer = "";

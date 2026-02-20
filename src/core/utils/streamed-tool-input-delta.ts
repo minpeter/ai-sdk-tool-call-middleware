@@ -1,6 +1,6 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 
-interface EmittedToolInputState {
+export interface EmittedToolInputState {
   emittedInput: string;
 }
 
@@ -12,6 +12,10 @@ interface EmitToolInputDeltaBaseParams {
 
 interface EmitPrefixDeltaParams extends EmitToolInputDeltaBaseParams {
   candidate: string;
+}
+
+interface EmitChunkedPrefixDeltaParams extends EmitPrefixDeltaParams {
+  maxChunkChars?: number;
 }
 
 interface EmitFinalRemainderParams extends EmitToolInputDeltaBaseParams {
@@ -87,6 +91,51 @@ export function emitPrefixDelta(params: EmitPrefixDeltaParams): boolean {
     ...params,
     nextInput: params.candidate,
   });
+}
+
+const DEFAULT_TOOL_INPUT_DELTA_CHUNK_CHARS = 512;
+
+export function emitChunkedPrefixDelta(
+  params: EmitChunkedPrefixDeltaParams
+): boolean {
+  const { maxChunkChars = DEFAULT_TOOL_INPUT_DELTA_CHUNK_CHARS } = params;
+  if (maxChunkChars <= 0) {
+    return emitPrefixDelta(params);
+  }
+
+  const growth = params.candidate.length - params.state.emittedInput.length;
+  if (growth <= 0) {
+    return false;
+  }
+
+  if (growth <= maxChunkChars) {
+    return emitPrefixDelta(params);
+  }
+
+  let emittedAny = false;
+  let cursor = params.state.emittedInput.length + maxChunkChars;
+  while (cursor < params.candidate.length) {
+    const didEmit = emitPrefixDelta({
+      controller: params.controller,
+      id: params.id,
+      state: params.state,
+      candidate: params.candidate.slice(0, cursor),
+    });
+    if (!didEmit) {
+      return emittedAny;
+    }
+    emittedAny = true;
+    cursor += maxChunkChars;
+  }
+
+  return (
+    emitPrefixDelta({
+      controller: params.controller,
+      id: params.id,
+      state: params.state,
+      candidate: params.candidate,
+    }) || emittedAny
+  );
 }
 
 export function emitFinalRemainder(params: EmitFinalRemainderParams): boolean {

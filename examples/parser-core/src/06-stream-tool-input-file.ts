@@ -3,10 +3,11 @@ import path from "node:path";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, streamText, wrapLanguageModel } from "ai";
 import { z } from "zod";
-import { qwen3CoderToolMiddleware } from "../../../src/preconfigured-middleware";
+import { morphXmlToolMiddleware } from "../../../src/preconfigured-middleware";
 
 const TOOL_COLOR = "\x1b[36m";
 const INFO_COLOR = "\x1b[90m";
+const REASONING_COLOR = "\x1b[33m";
 const RESET_COLOR = "\x1b[0m";
 
 const MAX_STEPS = 1;
@@ -22,7 +23,7 @@ const model = createOpenAICompatible({
   name: "openrouter",
   apiKey: openrouterApiKey,
   baseURL: "https://openrouter.ai/api/v1",
-})("stepfun/step-3.5-flash:free");
+})("arcee-ai/trinity-large-preview:free");
 
 const prompt = [
   "Call write_markdown_file exactly once.",
@@ -37,6 +38,7 @@ interface ToolInputState {
   toolName: string;
 }
 interface StreamState {
+  didPrintReasoning: boolean;
   sawToolInput: boolean;
 }
 
@@ -115,6 +117,17 @@ function handleToolCall(
   });
 }
 
+function handleReasoningDelta(
+  part: Extract<FullStreamPart, { type: "reasoning-delta" }>,
+  state: StreamState
+) {
+  if (!state.didPrintReasoning) {
+    printSection("Reasoning");
+    state.didPrintReasoning = true;
+  }
+  process.stdout.write(`${REASONING_COLOR}${part.text}${RESET_COLOR}`);
+}
+
 function handleStreamPart(
   part: FullStreamPart,
   toolInputById: Map<string, ToolInputState>,
@@ -145,6 +158,10 @@ function handleStreamPart(
       });
       return;
     }
+    case "reasoning-delta": {
+      handleReasoningDelta(part, state);
+      return;
+    }
     case "finish-step": {
       console.log(
         `${INFO_COLOR}[finish-step] reason=${part.finishReason}${RESET_COLOR}`
@@ -171,7 +188,7 @@ async function main() {
   const result = streamText({
     model: wrapLanguageModel({
       model,
-      middleware: qwen3CoderToolMiddleware,
+      middleware: morphXmlToolMiddleware,
     }),
     stopWhen: stepCountIs(MAX_STEPS),
     prompt,
@@ -202,6 +219,7 @@ async function main() {
 
   const toolInputById = new Map<string, ToolInputState>();
   const state: StreamState = {
+    didPrintReasoning: false,
     sawToolInput: false,
   };
   let didPrintAssistantText = false;
@@ -223,7 +241,7 @@ async function main() {
   })();
 
   await Promise.all([fullStreamTask, textStreamTask]);
-  if (didPrintAssistantText) {
+  if (didPrintAssistantText || state.didPrintReasoning) {
     process.stdout.write("\n");
   }
 

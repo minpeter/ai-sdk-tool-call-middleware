@@ -8,17 +8,21 @@ import { parse as parseRJSON } from "../../rjson";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
-import { addTextSegment } from "../utils/protocol-utils";
+import {
+  addTextSegment,
+  formatToolsWithPromptTemplate,
+} from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
+import {
+  emitToolInputProgressDelta,
+  shouldEmitRawToolCallTextOnError,
+  stringifyToolInputWithSchema,
+} from "../utils/tool-input-streaming";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
 interface HermesProtocolOptions {
   toolCallEnd?: string;
   toolCallStart?: string;
-}
-
-function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
-  return options?.emitRawToolCallTextOnError === true;
 }
 
 function canonicalizeToolInput(argumentsValue: unknown): string {
@@ -104,6 +108,7 @@ interface TagProcessingContext {
   state: StreamState;
   toolCallEnd: string;
   toolCallStart: string;
+  tools: LanguageModelV3FunctionTool[];
 }
 
 const WHITESPACE_JSON_REGEX = /\s/;
@@ -385,21 +390,13 @@ function emitToolInputDelta(
     return;
   }
 
-  if (!fullInput.startsWith(active.emittedInput)) {
-    return;
-  }
-
-  const delta = fullInput.slice(active.emittedInput.length);
-  if (delta.length === 0) {
-    return;
-  }
-
-  controller.enqueue({
-    type: "tool-input-delta",
+  emitToolInputProgressDelta({
+    controller,
     id: active.id,
-    delta,
-  } as LanguageModelV3StreamPart);
-  active.emittedInput = fullInput;
+    state: active,
+    fullInput,
+    mode: "full-json",
+  });
 }
 
 function closeToolInput(state: StreamState, controller: StreamController) {
@@ -416,14 +413,20 @@ function closeToolInput(state: StreamState, controller: StreamController) {
 function emitToolCallFromParsed(
   state: StreamState,
   controller: StreamController,
-  parsedToolCall: { name: string; arguments: unknown }
+  parsedToolCall: { name: string; arguments: unknown },
+  tools: LanguageModelV3FunctionTool[]
 ) {
   closeTextBlock(state, controller);
   const toolName =
     typeof parsedToolCall.name === "string"
       ? parsedToolCall.name
       : (state.activeToolInput?.toolName ?? "unknown");
-  const input = canonicalizeToolInput(parsedToolCall.arguments);
+  const input = stringifyToolInputWithSchema({
+    toolName,
+    args: parsedToolCall.arguments,
+    tools,
+    fallback: canonicalizeToolInput,
+  });
   ensureToolInputStart(state, controller, toolName);
   emitToolInputDelta(state, controller, input);
   const toolCallId = state.activeToolInput?.id ?? generateToolCallId();
@@ -436,17 +439,26 @@ function emitToolCallFromParsed(
   } as LanguageModelV3StreamPart);
 }
 
-function canonicalizeArgumentsProgressInput(progress: {
-  argumentsText: string | undefined;
-  argumentsComplete: boolean;
-}): string | undefined {
+function canonicalizeArgumentsProgressInput(
+  progress: {
+    argumentsText: string | undefined;
+    argumentsComplete: boolean;
+  },
+  toolName: string,
+  tools: LanguageModelV3FunctionTool[]
+): string | undefined {
   if (progress.argumentsText === undefined || !progress.argumentsComplete) {
     return undefined;
   }
 
   try {
     const parsedArguments = parseRJSON(progress.argumentsText);
-    return canonicalizeToolInput(parsedArguments);
+    return stringifyToolInputWithSchema({
+      toolName,
+      args: parsedArguments,
+      tools,
+      fallback: canonicalizeToolInput,
+    });
   } catch {
     return undefined;
   }
@@ -454,7 +466,8 @@ function canonicalizeArgumentsProgressInput(progress: {
 
 function emitToolInputProgress(
   state: StreamState,
-  controller: StreamController
+  controller: StreamController,
+  tools: LanguageModelV3FunctionTool[]
 ) {
   if (!(state.isInsideToolCall && state.currentToolCallJson)) {
     return;
@@ -466,7 +479,11 @@ function emitToolInputProgress(
   }
 
   ensureToolInputStart(state, controller, progress.toolName);
-  const canonicalProgressInput = canonicalizeArgumentsProgressInput(progress);
+  const canonicalProgressInput = canonicalizeArgumentsProgressInput(
+    progress,
+    progress.toolName,
+    tools
+  );
   if (canonicalProgressInput !== undefined) {
     emitToolInputDelta(state, controller, canonicalProgressInput);
   }
@@ -518,6 +535,7 @@ function emitIncompleteToolCall(
   controller: StreamController,
   toolCallStart: string,
   trailingBuffer: string,
+  tools: LanguageModelV3FunctionTool[],
   options?: ParserOptions
 ) {
   if (!state.currentToolCallJson && trailingBuffer.length === 0) {
@@ -531,7 +549,7 @@ function emitIncompleteToolCall(
         name: string;
         arguments: unknown;
       };
-      emitToolCallFromParsed(state, controller, parsedToolCall);
+      emitToolCallFromParsed(state, controller, parsedToolCall, tools);
       state.currentToolCallJson = "";
       state.isInsideToolCall = false;
       return;
@@ -583,6 +601,7 @@ function handleFinishChunk(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
+  tools: LanguageModelV3FunctionTool[],
   options: ParserOptions | undefined,
   chunk: LanguageModelV3StreamPart
 ) {
@@ -594,6 +613,7 @@ function handleFinishChunk(
       controller,
       toolCallStart,
       trailingBuffer,
+      tools,
       options
     );
   } else if (state.buffer.length > 0) {
@@ -606,12 +626,13 @@ function handleFinishChunk(
 function publishText(
   text: string,
   state: StreamState,
-  controller: StreamController
+  controller: StreamController,
+  tools: LanguageModelV3FunctionTool[]
 ) {
   if (state.isInsideToolCall) {
     closeTextBlock(state, controller);
     state.currentToolCallJson += text;
-    emitToolInputProgress(state, controller);
+    emitToolInputProgress(state, controller, tools);
   } else if (text.length > 0) {
     if (!state.currentTextId) {
       state.currentTextId = generateId();
@@ -630,13 +651,14 @@ function publishText(
 }
 
 function emitToolCall(context: TagProcessingContext) {
-  const { state, controller, toolCallStart, toolCallEnd, options } = context;
+  const { state, controller, toolCallStart, toolCallEnd, options, tools } =
+    context;
   try {
     const parsedToolCall = parseRJSON(state.currentToolCallJson) as {
       name: string;
       arguments: unknown;
     };
-    emitToolCallFromParsed(state, controller, parsedToolCall);
+    emitToolCallFromParsed(state, controller, parsedToolCall, tools);
   } catch (error) {
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
@@ -689,7 +711,7 @@ function processTagMatch(context: TagProcessingContext) {
 }
 
 function processBufferTags(context: TagProcessingContext) {
-  const { state, controller, toolCallStart, toolCallEnd } = context;
+  const { state, controller, toolCallStart, toolCallEnd, tools } = context;
   let startIndex = getPotentialStartIndex(
     state.buffer,
     state.isInsideToolCall ? toolCallEnd : toolCallStart
@@ -701,7 +723,7 @@ function processBufferTags(context: TagProcessingContext) {
       break;
     }
 
-    publishText(state.buffer.slice(0, startIndex), state, controller);
+    publishText(state.buffer.slice(0, startIndex), state, controller, tools);
     state.buffer = state.buffer.slice(startIndex + tag.length);
     processTagMatch(context);
 
@@ -716,7 +738,8 @@ function handlePartialTag(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
-  toolCallEnd: string
+  toolCallEnd: string,
+  tools: LanguageModelV3FunctionTool[]
 ) {
   if (state.isInsideToolCall) {
     const potentialEndIndex = getPotentialStartIndex(state.buffer, toolCallEnd);
@@ -724,10 +747,15 @@ function handlePartialTag(
       potentialEndIndex != null &&
       potentialEndIndex + toolCallEnd.length > state.buffer.length
     ) {
-      publishText(state.buffer.slice(0, potentialEndIndex), state, controller);
+      publishText(
+        state.buffer.slice(0, potentialEndIndex),
+        state,
+        controller,
+        tools
+      );
       state.buffer = state.buffer.slice(potentialEndIndex);
     } else {
-      publishText(state.buffer, state, controller);
+      publishText(state.buffer, state, controller, tools);
       state.buffer = "";
     }
     return;
@@ -738,10 +766,15 @@ function handlePartialTag(
     potentialIndex != null &&
     potentialIndex + toolCallStart.length > state.buffer.length
   ) {
-    publishText(state.buffer.slice(0, potentialIndex), state, controller);
+    publishText(
+      state.buffer.slice(0, potentialIndex),
+      state,
+      controller,
+      tools
+    );
     state.buffer = state.buffer.slice(potentialIndex);
   } else {
-    publishText(state.buffer, state, controller);
+    publishText(state.buffer, state, controller, tools);
     state.buffer = "";
   }
 }
@@ -757,7 +790,7 @@ export const hermesProtocol = ({
     tools: LanguageModelV3FunctionTool[];
     toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
   }) {
-    return toolSystemPromptTemplate(tools || []);
+    return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
   },
 
   formatToolCall(toolCall: LanguageModelV3ToolCall) {
@@ -814,6 +847,7 @@ export const hermesProtocol = ({
   },
 
   createStreamParser({
+    tools,
     options,
   }: {
     tools: LanguageModelV3FunctionTool[];
@@ -834,7 +868,14 @@ export const hermesProtocol = ({
     >({
       transform(chunk, controller) {
         if (chunk.type === "finish") {
-          handleFinishChunk(state, controller, toolCallStart, options, chunk);
+          handleFinishChunk(
+            state,
+            controller,
+            toolCallStart,
+            tools,
+            options,
+            chunk
+          );
           return;
         }
 
@@ -851,8 +892,9 @@ export const hermesProtocol = ({
           toolCallStart,
           toolCallEnd,
           options,
+          tools,
         });
-        handlePartialTag(state, controller, toolCallStart, toolCallEnd);
+        handlePartialTag(state, controller, toolCallStart, toolCallEnd, tools);
       },
     });
   },

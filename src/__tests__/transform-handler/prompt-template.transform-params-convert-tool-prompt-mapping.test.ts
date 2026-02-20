@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { formatToolResponseAsHermes } from "../../core/prompts/hermes-prompt";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { requireTransformParams } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -78,10 +79,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       providerOptions: { toolCallMiddleware: { existing: true } },
     };
 
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({ params } as any);
     expect(out.prompt[0].role).toBe("system");
     // Assistant remains assistant with formatted tool call text
@@ -136,10 +134,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       tools: [],
     };
 
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({ params } as any);
     const userMsgs = out.prompt.filter((m) => m.role === "user");
     expect(userMsgs).toHaveLength(1);
@@ -178,10 +173,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       ],
     };
 
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({ params } as any);
     const assistant = out.prompt.find((m) => m.role === "assistant");
     if (!assistant) {

@@ -1,12 +1,13 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { emptyFunctionTools } from "../../../fixtures/function-tools";
 
 describe("qwen3CoderProtocol", () => {
+  const tools = emptyFunctionTools;
+
   it("calls onError and keeps original text on malformed segments", () => {
     const onError = vi.fn();
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const bad =
       "<tool_call><function><parameter=x>1</parameter></function></tool_call>";
     const text = `before ${bad} after`;
@@ -25,7 +26,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("keeps original trailing text when incomplete <tool_call recovery fails", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = "How to type <tool_call in docs?";
 
     const out = p.parseGeneratedText({ text, tools });
@@ -38,7 +38,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("keeps original remainder text after parsed blocks when trailing <tool_call is invalid", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const validCall =
       "<tool_call><function=alpha><parameter=x>1</parameter></function></tool_call>";
     const trailing = " trailing <tool_call in docs?";
@@ -63,7 +62,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("parses a single <tool_call> when </function> is missing", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text =
       "<tool_call><function=get_weather><parameter=city>Tokyo</parameter></tool_call>";
 
@@ -80,7 +78,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("parses multiple <tool_call> blocks when </function> is missing", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "a ",
       "<tool_call><function=alpha><parameter=x>1</parameter></tool_call>",
@@ -104,7 +101,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("parses mixed <tool_call> blocks with and without </function>", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = [
       "<tool_call><function=alpha><parameter=x>1</parameter></function></tool_call>",
       " and ",
@@ -126,7 +122,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("parses trailing recoverable malformed call inside one <tool_call> block", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text =
       "<tool_call><function=alpha><parameter=x>1</parameter></function><function=beta><parameter=y>2</parameter></tool_call>";
 
@@ -145,7 +140,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("preserves closed calls when <tool_call> has trailing non-call text", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text =
       "<tool_call><function=alpha><parameter=x>1</parameter></function>oops</tool_call>";
 
@@ -162,7 +156,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("recovers trailing incomplete wrapperless call after complete wrapperless match", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text =
       "<function=alpha><parameter=x>1</parameter></function> <function=beta><parameter=y>2</parameter>";
 
@@ -181,7 +174,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("parses a bare <function=...> call when </function> and <tool_call> are missing", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text = "<function=get_weather><parameter=city>Tokyo</parameter>";
 
     const out = p.parseGeneratedText({ text, tools });
@@ -197,7 +189,6 @@ describe("qwen3CoderProtocol", () => {
 
   it("preserves trailing text after bare <function=...> when </function> is missing", () => {
     const p = qwen3CoderProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
     const text =
       "before <function=get_weather><parameter=city>Tokyo</parameter> after";
 

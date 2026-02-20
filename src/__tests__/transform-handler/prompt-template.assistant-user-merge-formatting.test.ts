@@ -3,6 +3,7 @@ import {
   hermesToolMiddleware,
   morphXmlToolMiddleware,
 } from "../../preconfigured-middleware";
+import { requireTransformParams } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -30,10 +31,7 @@ const _REGEX_TOOL_CALL_WORD = /tool_call/;
 describe("non-stream assistant->user merge formatting with object input", () => {
   it("hermes: formats assistant tool-call (object input) and tool result into user text", async () => {
     const mw = hermesToolMiddleware;
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
       params: {
         prompt: [
@@ -92,10 +90,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
 
   it("xml: formats assistant tool-call (object input) and tool result into user text", async () => {
     const mw = morphXmlToolMiddleware;
-    const transformParams = mw.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
       params: {
         prompt: [

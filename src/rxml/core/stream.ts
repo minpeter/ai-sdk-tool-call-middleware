@@ -16,7 +16,7 @@ const WHITESPACE_REGEX = /\s/;
 /**
  * Transform stream for parsing XML
  */
-export class XMLTransformStream extends Transform {
+class XMLTransformStream extends Transform {
   private buffer = "";
   private readonly parseOptions: ParseOptions;
   private emittedCount = 0;
@@ -336,7 +336,7 @@ export class XMLTransformStream extends Transform {
 /**
  * Create a transform stream for parsing XML
  */
-export function createXMLStream(
+function createXMLStream(
   offset?: number | string,
   parseOptions?: ParseOptions
 ): XMLTransformStream {
@@ -463,43 +463,5 @@ export async function* processXMLStream(
     }
 
     yield result.value;
-  }
-}
-
-/**
- * Find elements by ID in streaming fashion
- */
-export async function* findElementByIdStream(
-  stream: Readable,
-  id: string,
-  offset?: number | string,
-  parseOptions?: ParseOptions
-): AsyncGenerator<RXMLNode, void, unknown> {
-  for await (const element of processXMLStream(stream, offset, parseOptions)) {
-    if (typeof element === "object" && element.attributes.id === id) {
-      yield element;
-    }
-  }
-}
-
-/**
- * Find elements by class name in streaming fashion
- */
-export async function* findElementsByClassStream(
-  stream: Readable,
-  className: string,
-  offset?: number | string,
-  parseOptions?: ParseOptions
-): AsyncGenerator<RXMLNode, void, unknown> {
-  const classRegex = new RegExp(`\\b${className}\\b`);
-
-  for await (const element of processXMLStream(stream, offset, parseOptions)) {
-    if (
-      typeof element === "object" &&
-      element.attributes.class &&
-      classRegex.test(element.attributes.class)
-    ) {
-      yield element;
-    }
   }
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { requireTransformParams } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -55,10 +56,7 @@ describe("transformParams", () => {
       ],
     };
 
-    const transformParams = middleware.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(middleware.transformParams);
     const result = await transformParams({ params } as any);
     expect(result.prompt).toBeDefined();
     expect(result.tools).toEqual([]);
@@ -71,10 +69,7 @@ describe("transformParams", () => {
       toolSystemPromptTemplate: () => "SYSTEM: no tools",
     });
 
-    const transformParams = middleware.transformParams;
-    if (!transformParams) {
-      throw new Error("transformParams is undefined");
-    }
+    const transformParams = requireTransformParams(middleware.transformParams);
 
     const result = await transformParams({
       params: {

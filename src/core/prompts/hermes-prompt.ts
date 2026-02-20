@@ -5,7 +5,7 @@ import {
   unwrapToolResult,
 } from "./shared/tool-result-normalizer";
 
-export interface HermesToolResponseFormatterOptions {
+interface HermesToolResponseFormatterOptions {
   mediaStrategy?: ToolResponseMediaStrategy;
 }
 

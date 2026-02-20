@@ -314,7 +314,7 @@ function stripSchemaKeys(value: unknown): unknown {
   return value;
 }
 
-export interface MorphXmlToolResponseFormatterOptions {
+interface MorphXmlToolResponseFormatterOptions {
   mediaStrategy?: ToolResponseMediaStrategy;
 }
 

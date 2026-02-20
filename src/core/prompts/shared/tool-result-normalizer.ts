@@ -4,8 +4,9 @@ import type {
   LanguageModelV3TextPart,
 } from "@ai-sdk/provider";
 import type { ToolResultOutput } from "@ai-sdk/provider-utils";
+import { toTextPart } from "./text-part";
 
-export type ToolResponseMediaType = "image" | "audio" | "video" | "file";
+type ToolResponseMediaType = "image" | "audio" | "video" | "file";
 
 export interface ToolResponseMediaCapabilities {
   audio?: boolean;
@@ -76,7 +77,7 @@ function shouldPassRawByStrategy(
   mediaKind: ToolResponseMediaType,
   strategy?: ToolResponseMediaStrategy
 ): boolean {
-  const mode = strategy?.mode ?? "placeholder";
+  const mode = getMediaMode(strategy);
   if (mode === "raw") {
     return true;
   }
@@ -90,11 +91,17 @@ function shouldPassRawByStrategy(
   return strategy?.capabilities?.[mediaKind] === true;
 }
 
+function getMediaMode(
+  strategy?: ToolResponseMediaStrategy
+): ToolResponseMediaMode {
+  return strategy?.mode ?? "placeholder";
+}
+
 function shouldPassRawContent(
   contentParts: unknown[],
   strategy?: ToolResponseMediaStrategy
 ): boolean {
-  const mode = strategy?.mode ?? "placeholder";
+  const mode = getMediaMode(strategy);
   if (mode === "raw") {
     return true;
   }
@@ -121,6 +128,15 @@ function shouldPassRawContent(
   return hasSupportedMediaContent;
 }
 
+function formatIdPlaceholder(
+  label: "Image ID" | "File ID",
+  fileId: unknown
+): string {
+  const displayId =
+    typeof fileId === "string" ? fileId : JSON.stringify(fileId);
+  return `[${label}: ${displayId}]`;
+}
+
 function formatContentPartPlaceholder(part: unknown): string {
   const contentPart = part as { type?: string };
   switch (contentPart.type) {
@@ -132,9 +148,7 @@ function formatContentPartPlaceholder(part: unknown): string {
       return `[Image URL: ${(contentPart as { url?: string }).url}]`;
     case "image-file-id": {
       const fileId = (contentPart as { fileId?: unknown }).fileId;
-      const displayId =
-        typeof fileId === "string" ? fileId : JSON.stringify(fileId);
-      return `[Image ID: ${displayId}]`;
+      return formatIdPlaceholder("Image ID", fileId);
     }
     case "file-data": {
       const filePart = contentPart as {
@@ -150,9 +164,7 @@ function formatContentPartPlaceholder(part: unknown): string {
       return `[File URL: ${(contentPart as { url?: string }).url}]`;
     case "file-id": {
       const fileId = (contentPart as { fileId?: unknown }).fileId;
-      const displayId =
-        typeof fileId === "string" ? fileId : JSON.stringify(fileId);
-      return `[File ID: ${displayId}]`;
+      return formatIdPlaceholder("File ID", fileId);
     }
     case "media":
       return `[Media: ${(contentPart as { mediaType?: string }).mediaType}]`;
@@ -161,24 +173,6 @@ function formatContentPartPlaceholder(part: unknown): string {
     default:
       return "[Unknown content]";
   }
-}
-
-function toTextPart(
-  text: string,
-  providerOptions?: LanguageModelV3TextPart["providerOptions"]
-): LanguageModelV3TextPart {
-  if (providerOptions === undefined) {
-    return {
-      type: "text",
-      text,
-    };
-  }
-
-  return {
-    type: "text",
-    text,
-    providerOptions,
-  };
 }
 
 function toFilePart(options: {

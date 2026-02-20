@@ -63,8 +63,4 @@ export function isProtocolFactory(
   return typeof protocol === "function";
 }
 
-export function isTCMProtocolFactory(
-  protocol: TCMProtocol | (() => TCMProtocol)
-): protocol is () => TCMProtocol {
-  return typeof protocol === "function";
-}
+export const isTCMProtocolFactory = isProtocolFactory;

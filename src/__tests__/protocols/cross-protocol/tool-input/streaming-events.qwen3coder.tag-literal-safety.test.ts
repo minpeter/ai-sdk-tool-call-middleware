@@ -1,22 +1,19 @@
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
-import { pipeWithTransformer } from "../../../test-helpers";
-import { createTextDeltaStream } from "./streaming-events.qwen3coder.shared";
+import { runProtocolTextDeltaStream } from "./streaming-events.shared";
 
 describe("cross-protocol tool-input streaming events: qwen3coder", () => {
+  const protocol = qwen3CoderProtocol();
+
+  function runQwenTagSafetyStream(chunks: string[]) {
+    return runProtocolTextDeltaStream({ protocol, tools: [], chunks });
+  }
+
   it("Qwen3CoderToolParser does not truncate parameter values containing </toolbox> pseudo-tags", async () => {
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({ tools: [] });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "<tool_call><function=alpha><parameter=query>How to close </toolbox> tag</function></tool_call>",
-        ]),
-        transformer
-      )
-    );
+    const out = await runQwenTagSafetyStream([
+      "<tool_call><function=alpha><parameter=query>How to close </toolbox> tag</function></tool_call>",
+    ]);
 
     const toolCall = out.find((part) => part.type === "tool-call") as
       | {
@@ -34,16 +31,9 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
   });
 
   it("Qwen3CoderToolParser keeps </tool> text when parsing a <function> call", async () => {
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({ tools: [] });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "<tool_call><function=alpha><parameter=query>How to use </tool> tag</function></tool_call>",
-        ]),
-        transformer
-      )
-    );
+    const out = await runQwenTagSafetyStream([
+      "<tool_call><function=alpha><parameter=query>How to use </tool> tag</function></tool_call>",
+    ]);
 
     const toolCall = out.find((part) => part.type === "tool-call") as
       | {
@@ -61,17 +51,10 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
   });
 
   it("Qwen3CoderToolParser does not treat chunk-terminal </call prefix as a completed boundary", async () => {
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({ tools: [] });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream([
-          "<tool_call><call=alpha><parameter=query>How to use </call",
-          "out> tag</call></tool_call>",
-        ]),
-        transformer
-      )
-    );
+    const out = await runQwenTagSafetyStream([
+      "<tool_call><call=alpha><parameter=query>How to use </call",
+      "out> tag</call></tool_call>",
+    ]);
 
     const toolCall = out.find((part) => part.type === "tool-call") as
       | {
@@ -89,15 +72,11 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
   });
 
   it("Qwen3CoderToolParser keeps implicit-call-like tags without tool identifier as text", async () => {
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({ tools: [] });
     const input = "before <function>docs</function> after";
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createTextDeltaStream(["before <function>docs", "</function> after"]),
-        transformer
-      )
-    );
+    const out = await runQwenTagSafetyStream([
+      "before <function>docs",
+      "</function> after",
+    ]);
 
     const textOut = out
       .filter((part) => part.type === "text-delta")

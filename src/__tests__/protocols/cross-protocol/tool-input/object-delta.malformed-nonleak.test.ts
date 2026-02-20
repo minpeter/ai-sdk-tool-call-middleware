@@ -1,16 +1,8 @@
-import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
-} from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
-import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+import { runProtocolTextDeltaStream } from "./streaming-events.shared";
 
 const weatherTool: LanguageModelV3FunctionTool = {
   type: "function",
@@ -26,45 +18,19 @@ const weatherTool: LanguageModelV3FunctionTool = {
   },
 };
 
-function createTextDeltaStream(chunks: string[]) {
-  return new ReadableStream<LanguageModelV3StreamPart>({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue({
-          type: "text-delta",
-          id: "fixture",
-          delta: chunk,
-        });
-      }
-      controller.enqueue({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-      });
-      controller.close();
-    },
-  });
-}
-
 describe("XML/YAML malformed non-leak guarantees", () => {
   it("malformed xml/yaml do not leave dangling tool-input streams", async () => {
     const [xmlOut, yamlOut] = await Promise.all([
-      convertReadableStreamToArray(
-        pipeWithTransformer(
-          createTextDeltaStream([
-            "<get_weather><location>Seoul<location></get_weather>",
-          ]),
-          morphXmlProtocol().createStreamParser({ tools: [weatherTool] })
-        )
-      ),
-      convertReadableStreamToArray(
-        pipeWithTransformer(
-          createTextDeltaStream([
-            "<get_weather>\n- invalid\n- yaml\n</get_weather>",
-          ]),
-          yamlXmlProtocol().createStreamParser({ tools: [weatherTool] })
-        )
-      ),
+      runProtocolTextDeltaStream({
+        protocol: morphXmlProtocol(),
+        tools: [weatherTool],
+        chunks: ["<get_weather><location>Seoul<location></get_weather>"],
+      }),
+      runProtocolTextDeltaStream({
+        protocol: yamlXmlProtocol(),
+        tools: [weatherTool],
+        chunks: ["<get_weather>\n- invalid\n- yaml\n</get_weather>"],
+      }),
     ]);
 
     const xmlStarts = xmlOut.filter((part) => part.type === "tool-input-start");
