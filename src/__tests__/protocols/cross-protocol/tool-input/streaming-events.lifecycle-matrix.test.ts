@@ -42,7 +42,7 @@ describe("cross-protocol tool-input streaming events: lifecycle matrix", () => {
       tools: toolInputStreamFixtures.json.tools,
       createProtocol: () => hermesProtocol(),
       openChunk: 'Before <tool_call>{"name":"get_weather","arguments":',
-      closeChunk: '{"location":"Seoul","unit":"celsius"}</tool_call> After',
+      closeChunk: '{"location":"Seoul","unit":"celsius"}}</tool_call> After',
     },
     {
       name: "morph-xml",

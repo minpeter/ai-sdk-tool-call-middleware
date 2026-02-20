@@ -37,14 +37,21 @@ function createTextDeltaStream(chunks: string[], id = "fixture") {
 export function createInterleavedStream(parts: LanguageModelV3StreamPart[]) {
   return new ReadableStream<LanguageModelV3StreamPart>({
     start(controller) {
-      for (const part of parts) {
+      parts.forEach((part, index) => {
+        if (part.type === "finish" && index !== parts.length - 1) {
+          throw new Error(
+            "createInterleavedStream: finish event must be last when provided"
+          );
+        }
         controller.enqueue(part);
-      }
-      controller.enqueue({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
       });
+      if (parts.at(-1)?.type !== "finish") {
+        controller.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+      }
       controller.close();
     },
   });
@@ -165,7 +172,7 @@ export function assertCanonicalAiSdkEventOrder(
   const openReasoningSegments = new Map<string, number>();
   const toolInputWindows = new Map<
     string,
-    { startIndex: number; endIndex: number | null }
+    { startIndex: number; endIndex: number | null; toolCallSeen: boolean }
   >();
 
   parts.forEach((part, index) => {
@@ -236,7 +243,11 @@ export function assertCanonicalAiSdkEventOrder(
         !toolInputWindows.has(part.id),
         `Duplicate tool-input-start for id '${part.id}'`
       );
-      toolInputWindows.set(part.id, { startIndex: index, endIndex: null });
+      toolInputWindows.set(part.id, {
+        startIndex: index,
+        endIndex: null,
+        toolCallSeen: false,
+      });
       return;
     }
 
@@ -291,6 +302,9 @@ export function assertCanonicalAiSdkEventOrder(
         (window?.endIndex ?? index) < index,
         `tool-call must occur after tool-input-end for id '${part.toolCallId}'`
       );
+      if (window) {
+        window.toolCallSeen = true;
+      }
     }
   });
 
@@ -307,6 +321,10 @@ export function assertCanonicalAiSdkEventOrder(
     assertCondition(
       window.endIndex != null,
       "Unclosed tool-input window found"
+    );
+    assertCondition(
+      window.toolCallSeen,
+      "tool-input window closed without a corresponding tool-call"
     );
   }
 }

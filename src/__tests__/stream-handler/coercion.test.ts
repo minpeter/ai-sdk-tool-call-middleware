@@ -24,6 +24,51 @@ const passthroughProtocol: TCMCoreProtocol = {
   createStreamParser: () => new TransformStream(),
 };
 
+async function readUntilToolInputDelta(options: {
+  reader: ReadableStreamDefaultReader<LanguageModelV3StreamPart>;
+  timeoutMs?: number;
+}): Promise<LanguageModelV3StreamPart[]> {
+  const { reader, timeoutMs = 2000 } = options;
+  const parts: LanguageModelV3StreamPart[] = [];
+
+  const readWithTimeout = async (): Promise<
+    ReadableStreamReadResult<LanguageModelV3StreamPart>
+  > => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(
+              new Error(
+                `Did not receive tool-input-delta within ${timeoutMs}ms`
+              )
+            );
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    }
+  };
+
+  while (true) {
+    const { done, value } = await readWithTimeout();
+    if (done || !value) {
+      break;
+    }
+    parts.push(value);
+    if (value.type === "tool-input-delta") {
+      break;
+    }
+  }
+
+  return parts;
+}
+
 describe("wrapStream tool-call coercion", () => {
   it("coerces streamed tool-call input using originalTools schema", async () => {
     const tools: LanguageModelV3FunctionTool[] = [
@@ -359,18 +404,7 @@ describe("wrapStream tool-call coercion", () => {
     });
 
     const reader = result.stream.getReader();
-    const earlyParts: LanguageModelV3StreamPart[] = [];
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done || !value) {
-        break;
-      }
-      earlyParts.push(value);
-      if (value.type === "tool-input-delta") {
-        break;
-      }
-    }
+    const earlyParts = await readUntilToolInputDelta({ reader });
 
     releaseSecondChunk();
 
@@ -494,17 +528,7 @@ describe("wrapStream tool-call coercion", () => {
     });
 
     const reader = result.stream.getReader();
-    const earlyParts: LanguageModelV3StreamPart[] = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done || !value) {
-        break;
-      }
-      earlyParts.push(value);
-      if (value.type === "tool-input-delta") {
-        break;
-      }
-    }
+    const earlyParts = await readUntilToolInputDelta({ reader });
 
     const earlyJoined = earlyParts
       .filter(
@@ -766,17 +790,7 @@ describe("wrapStream tool-call coercion", () => {
     });
 
     const reader = result.stream.getReader();
-    const earlyParts: LanguageModelV3StreamPart[] = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done || !value) {
-        break;
-      }
-      earlyParts.push(value);
-      if (value.type === "tool-input-delta") {
-        break;
-      }
-    }
+    const earlyParts = await readUntilToolInputDelta({ reader });
 
     const earlyJoined = earlyParts
       .filter(

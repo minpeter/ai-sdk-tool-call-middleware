@@ -18,6 +18,7 @@ import {
   emitFinalizedToolInputLifecycle,
   emitToolInputProgressDelta,
   shouldEmitRawToolCallTextOnError,
+  stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import { findNextToolTag } from "../utils/xml-tool-tag-scanner";
@@ -544,12 +545,16 @@ function isStableXmlProgressCandidate(options: {
 
 function parseXmlContentForStreamProgress({
   toolContent,
+  toolName,
   toolSchema,
   parseOptions,
+  tools,
 }: {
   toolContent: string;
+  toolName: string;
   toolSchema: unknown;
   parseOptions?: Record<string, unknown>;
+  tools: LanguageModelV3FunctionTool[];
 }): string | null {
   const tryParse = (content: string): unknown | null => {
     try {
@@ -572,7 +577,11 @@ function parseXmlContentForStreamProgress({
       toolSchema,
     })
   ) {
-    return JSON.stringify(strictFull);
+    return stringifyToolInputWithSchema({
+      toolName,
+      args: strictFull,
+      tools,
+    });
   }
 
   const stringPropertyNames = getObjectSchemaStringPropertyNames(toolSchema);
@@ -585,7 +594,11 @@ function parseXmlContentForStreamProgress({
       const repaired = `${toolContent}</${trailingStringTag}>`;
       const parsedRepaired = tryParse(repaired);
       if (parsedRepaired !== null) {
-        return JSON.stringify(parsedRepaired);
+        return stringifyToolInputWithSchema({
+          toolName,
+          args: parsedRepaired,
+          tools,
+        });
       }
     }
   }
@@ -610,7 +623,11 @@ function parseXmlContentForStreamProgress({
         toolSchema,
       })
     ) {
-      return JSON.stringify(parsedCandidate);
+      return stringifyToolInputWithSchema({
+        toolName,
+        args: parsedCandidate,
+        tools,
+      });
     }
     searchEnd = gtIndex;
   }
@@ -642,7 +659,11 @@ function handleStreamingToolCallEnd(
   flushText(ctrl);
   try {
     const parsedResult = parse(toolContent, toolSchema, parseConfig);
-    const finalInput = JSON.stringify(parsedResult);
+    const finalInput = stringifyToolInputWithSchema({
+      toolName: currentToolCall.name,
+      args: parsedResult,
+      tools,
+    });
     emitFinalizedToolInputLifecycle({
       controller: ctrl,
       id: currentToolCall.toolCallId,
@@ -1366,8 +1387,10 @@ export const morphXmlProtocol = (
         const toolSchema = getToolSchema(tools, toolCall.name);
         const fullInput = parseXmlContentForStreamProgress({
           toolContent,
+          toolName: toolCall.name,
           toolSchema,
           parseOptions,
+          tools,
         });
         toolCall.lastProgressGtIndex = progressGtIndex;
         toolCall.lastProgressContentLength = progressContentLength;
@@ -1411,7 +1434,11 @@ export const morphXmlProtocol = (
             );
           }
           const parsedResult = parse(buffer, toolSchema, parseConfig);
-          const finalInput = JSON.stringify(parsedResult);
+          const finalInput = stringifyToolInputWithSchema({
+            toolName: currentToolCall.name,
+            args: parsedResult,
+            tools,
+          });
           emitFinalizedToolInputLifecycle({
             controller,
             id: currentToolCall.toolCallId,
