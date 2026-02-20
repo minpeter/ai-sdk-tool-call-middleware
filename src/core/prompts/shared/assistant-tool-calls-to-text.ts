@@ -1,7 +1,7 @@
 import type { LanguageModelV3Content } from "@ai-sdk/provider";
 import type { TCMCoreProtocol } from "../../protocols/protocol-interface";
 
-export interface AssistantToolCallTextConversionOptions {
+interface AssistantToolCallTextConversionOptions {
   onError?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 

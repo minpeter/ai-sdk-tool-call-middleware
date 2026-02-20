@@ -6,7 +6,7 @@ import type {
 import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import { toTextPart } from "./text-part";
 
-export type ToolResponseMediaType = "image" | "audio" | "video" | "file";
+type ToolResponseMediaType = "image" | "audio" | "video" | "file";
 
 export interface ToolResponseMediaCapabilities {
   audio?: boolean;

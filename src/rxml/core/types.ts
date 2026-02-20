@@ -88,14 +88,6 @@ export interface StringifyOptions {
 }
 
 /**
- * Result of parsing with position information
- */
-export interface ParseResult {
-  pos: number;
-  result: (RXMLNode | string)[];
-}
-
-/**
  * Character code constants for efficient parsing
  */
 export const CharCodes = {

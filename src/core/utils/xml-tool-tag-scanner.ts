@@ -1,13 +1,13 @@
 import { escapeRegExp } from "./regex";
 
-export interface EarliestToolTag {
+interface EarliestToolTag {
   index: number;
   name: string;
   selfClosing: boolean;
   tagLength: number;
 }
 
-export interface ToolTagMatch {
+interface ToolTagMatch {
   isSelfClosing: boolean;
   tagLength: number;
   tagStart: number;
