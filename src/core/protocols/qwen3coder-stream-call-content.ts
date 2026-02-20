@@ -10,7 +10,7 @@ export interface QwenStreamCallState {
   toolName: string | null;
 }
 
-export type QwenParamTagParseResult =
+type QwenParamTagParseResult =
   | {
       kind: "match";
       start: number;
@@ -26,7 +26,7 @@ export type QwenParamTagParseResult =
       value?: string;
     };
 
-export function consumeToolNameTag(options: {
+function consumeToolNameTag(options: {
   callState: QwenStreamCallState;
   work: string;
   nameTagRe: RegExp;
@@ -56,7 +56,7 @@ export function consumeToolNameTag(options: {
   return nextWork;
 }
 
-export function consumeSingleParamTag(options: {
+function consumeSingleParamTag(options: {
   allowEndOfString: boolean;
   callState: QwenStreamCallState;
   lastKept: number;
@@ -125,7 +125,7 @@ export function consumeSingleParamTag(options: {
   };
 }
 
-export function consumeParamTags(options: {
+function consumeParamTags(options: {
   callState: QwenStreamCallState;
   work: string;
   allowEndOfString: boolean;
