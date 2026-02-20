@@ -6,14 +6,19 @@ import type {
 } from "@ai-sdk/provider";
 import { parse, stringify } from "../../rxml";
 import { generateToolCallId } from "../utils/id";
-import { createFlushTextHandler } from "../utils/protocol-utils";
+import {
+  createFlushTextHandler,
+  extractToolNames,
+  formatToolsWithPromptTemplate,
+} from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
-  emitChunkedPrefixDelta,
-  emitFinalRemainder,
-  toIncompleteJsonPrefix,
-} from "../utils/streamed-tool-input-delta";
+  emitFailedToolInputLifecycle,
+  emitFinalizedToolInputLifecycle,
+  emitToolInputProgressDelta,
+  shouldEmitRawToolCallTextOnError,
+} from "../utils/tool-input-streaming";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
@@ -34,10 +39,6 @@ type FlushTextFn = (
 
 function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
-}
-
-function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
-  return options?.emitRawToolCallTextOnError === true;
 }
 
 interface ProcessToolCallParams {
@@ -641,36 +642,30 @@ function handleStreamingToolCallEnd(
   try {
     const parsedResult = parse(toolContent, toolSchema, parseConfig);
     const finalInput = JSON.stringify(parsedResult);
-    emitFinalRemainder({
+    emitFinalizedToolInputLifecycle({
       controller: ctrl,
       id: currentToolCall.toolCallId,
       state: currentToolCall,
-      finalFullJson: finalInput,
+      toolName: currentToolCall.name,
+      finalInput,
       onMismatch: options?.onError,
     });
-    ctrl.enqueue({
-      type: "tool-input-end",
-      id: currentToolCall.toolCallId,
-    });
-    ctrl.enqueue({
-      type: "tool-call",
-      toolCallId: currentToolCall.toolCallId,
-      toolName: currentToolCall.name,
-      input: finalInput,
-    });
   } catch (error) {
-    ctrl.enqueue({
-      type: "tool-input-end",
-      id: currentToolCall.toolCallId,
-    });
     const original = `<${currentToolCall.name}>${toolContent}</${currentToolCall.name}>`;
+    const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+    emitFailedToolInputLifecycle({
+      controller: ctrl,
+      id: currentToolCall.toolCallId,
+      emitRawToolCallTextOnError: emitRawFallback,
+      rawToolCallText: original,
+      emitRawText: (rawText) => {
+        flushText(ctrl, rawText);
+      },
+    });
     options?.onError?.("Could not process streaming XML tool call", {
       toolCall: original,
       error,
     });
-    if (shouldEmitRawToolCallTextOnError(options)) {
-      flushText(ctrl, original);
-    }
   }
 }
 
@@ -1569,7 +1564,7 @@ export const morphXmlProtocol = (
 
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
-      return toolSystemPromptTemplate(tools || []);
+      return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
     },
 
     formatToolCall(toolCall: LanguageModelV3ToolCall): string {
@@ -1589,7 +1584,7 @@ export const morphXmlProtocol = (
     },
 
     parseGeneratedText({ text, tools, options }) {
-      const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+      const toolNames = extractToolNames(tools);
       if (toolNames.length === 0) {
         return [{ type: "text", text }];
       }
@@ -1631,7 +1626,7 @@ export const morphXmlProtocol = (
     },
 
     createStreamParser({ tools, options }) {
-      const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+      const toolNames = extractToolNames(tools);
       let buffer = "";
       let currentToolCall: StreamingToolCallState | null = null;
       let currentTextId: string | null = null;
@@ -1687,12 +1682,11 @@ export const morphXmlProtocol = (
           if (cached === "{}" && toolContent.trim().length === 0) {
             return;
           }
-          const prefixCandidate = toIncompleteJsonPrefix(cached);
-          emitChunkedPrefixDelta({
+          emitToolInputProgressDelta({
             controller,
             id: toolCall.toolCallId,
             state: toolCall,
-            candidate: prefixCandidate,
+            fullInput: cached,
           });
           return;
         }
@@ -1712,12 +1706,11 @@ export const morphXmlProtocol = (
         if (fullInput === "{}" && toolContent.trim().length === 0) {
           return;
         }
-        const prefixCandidate = toIncompleteJsonPrefix(fullInput);
-        emitChunkedPrefixDelta({
+        emitToolInputProgressDelta({
           controller,
           id: toolCall.toolCallId,
           state: toolCall,
-          candidate: prefixCandidate,
+          fullInput,
         });
       };
 
@@ -1747,36 +1740,30 @@ export const morphXmlProtocol = (
           }
           const parsedResult = parse(buffer, toolSchema, parseConfig);
           const finalInput = JSON.stringify(parsedResult);
-          emitFinalRemainder({
+          emitFinalizedToolInputLifecycle({
             controller,
             id: currentToolCall.toolCallId,
             state: currentToolCall,
-            finalFullJson: finalInput,
+            toolName: currentToolCall.name,
+            finalInput,
             onMismatch: options?.onError,
           });
-          controller.enqueue({
-            type: "tool-input-end",
-            id: currentToolCall.toolCallId,
-          });
-          controller.enqueue({
-            type: "tool-call",
-            toolCallId: currentToolCall.toolCallId,
-            toolName: currentToolCall.name,
-            input: finalInput,
-          });
         } catch (error) {
-          controller.enqueue({
-            type: "tool-input-end",
-            id: currentToolCall.toolCallId,
-          });
           const unfinishedContent = `<${currentToolCall.name}>${buffer}`;
+          const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+          emitFailedToolInputLifecycle({
+            controller,
+            id: currentToolCall.toolCallId,
+            emitRawToolCallTextOnError: emitRawFallback,
+            rawToolCallText: unfinishedContent,
+            emitRawText: (rawText) => {
+              flushText(controller, rawText);
+            },
+          });
           options?.onError?.(
             "Could not complete streaming XML tool call at finish.",
             { toolCall: unfinishedContent, error }
           );
-          if (shouldEmitRawToolCallTextOnError(options)) {
-            flushText(controller, unfinishedContent);
-          }
         }
 
         buffer = "";

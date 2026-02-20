@@ -2,8 +2,7 @@ import type {
   JSONSchema7,
   LanguageModelV3FunctionTool,
 } from "@ai-sdk/provider";
-
-type OnErrorFn = (message: string, metadata?: Record<string, unknown>) => void;
+import type { OnErrorFn } from "./on-error";
 
 export interface ToolCallMiddlewareProviderOptions {
   toolCallMiddleware?: {

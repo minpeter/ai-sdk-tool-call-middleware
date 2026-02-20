@@ -1,6 +1,5 @@
 import type {
   LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
@@ -9,15 +8,19 @@ import { generateToolCallId } from "../utils/id";
 import {
   addTextSegment,
   createFlushTextHandler,
+  extractToolNames,
+  formatToolsWithPromptTemplate,
 } from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
-  emitChunkedPrefixDelta,
-  emitFinalRemainder,
-  toIncompleteJsonPrefix,
-} from "../utils/streamed-tool-input-delta";
-import { coerceToolCallInput } from "../utils/tool-call-coercion";
+  emitFailedToolInputLifecycle,
+  emitFinalizedToolInputLifecycle,
+  emitToolInputProgressDelta,
+  enqueueToolInputEndAndCall,
+  shouldEmitRawToolCallTextOnError,
+  stringifyToolInputWithSchema,
+} from "../utils/tool-input-streaming";
 import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
@@ -27,10 +30,6 @@ export interface YamlXmlProtocolOptions {
    * @default true
    */
   includeMultilineExample?: boolean;
-}
-
-function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
-  return options?.emitRawToolCallTextOnError === true;
 }
 
 const selfClosingTagCache = new Map<string, RegExp>();
@@ -512,19 +511,6 @@ function parseYamlContentForStreamProgress(
   }
 }
 
-function stringifyToolInputWithSchema(options: {
-  toolName: string;
-  args: Record<string, unknown>;
-  tools: LanguageModelV3FunctionTool[];
-}): string {
-  const coerced = coerceToolCallInput(
-    options.toolName,
-    options.args,
-    options.tools
-  );
-  return coerced ?? JSON.stringify(options.args);
-}
-
 function processToolCallMatch(
   text: string,
   tc: ToolCallMatch,
@@ -641,7 +627,7 @@ export const yamlXmlProtocol = (
 ): TCMCoreProtocol => {
   return {
     formatTools({ tools, toolSystemPromptTemplate }) {
-      return toolSystemPromptTemplate(tools || []);
+      return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
     },
 
     formatToolCall(toolCall: LanguageModelV3ToolCall): string {
@@ -658,7 +644,7 @@ export const yamlXmlProtocol = (
     },
 
     parseGeneratedText({ text, tools, options }) {
-      const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+      const toolNames = extractToolNames(tools);
       if (toolNames.length === 0) {
         return [{ type: "text", text }];
       }
@@ -700,7 +686,7 @@ export const yamlXmlProtocol = (
     },
 
     createStreamParser({ tools, options }) {
-      const toolNames = tools.map((t) => t.name).filter(Boolean) as string[];
+      const toolNames = extractToolNames(tools);
 
       let buffer = "";
       let currentToolCall: {
@@ -741,12 +727,11 @@ export const yamlXmlProtocol = (
         if (fullInput === "{}" && toolContent.trim().length === 0) {
           return;
         }
-        const prefixCandidate = toIncompleteJsonPrefix(fullInput);
-        emitChunkedPrefixDelta({
+        emitToolInputProgressDelta({
           controller,
           id: currentToolCall.toolCallId,
           state: currentToolCall,
-          candidate: prefixCandidate,
+          fullInput,
         });
       };
 
@@ -765,36 +750,37 @@ export const yamlXmlProtocol = (
             tools,
           });
           if (currentToolCall && currentToolCall.toolCallId === toolCallId) {
-            emitFinalRemainder({
+            emitFinalizedToolInputLifecycle({
               controller,
               id: toolCallId,
               state: currentToolCall,
-              finalFullJson: finalInput,
+              toolName,
+              finalInput,
               onMismatch: options?.onError,
             });
+          } else {
+            enqueueToolInputEndAndCall({
+              controller,
+              id: toolCallId,
+              toolName,
+              input: finalInput,
+            });
           }
-          controller.enqueue({
-            type: "tool-input-end",
-            id: toolCallId,
-          });
-          controller.enqueue({
-            type: "tool-call",
-            toolCallId,
-            toolName,
-            input: finalInput,
-          });
         } else {
-          controller.enqueue({
-            type: "tool-input-end",
-            id: toolCallId,
-          });
           const original = `<${toolName}>${toolContent}</${toolName}>`;
+          const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+          emitFailedToolInputLifecycle({
+            controller,
+            id: toolCallId,
+            emitRawToolCallTextOnError: emitRawFallback,
+            rawToolCallText: original,
+            emitRawText: (rawText) => {
+              flushText(controller, rawText);
+            },
+          });
           options?.onError?.("Could not parse streaming YAML tool call", {
             toolCall: original,
           });
-          if (shouldEmitRawToolCallTextOnError(options)) {
-            flushText(controller, original);
-          }
         }
       };
 
@@ -816,36 +802,30 @@ export const yamlXmlProtocol = (
             args: parsedArgs,
             tools,
           });
-          emitFinalRemainder({
+          emitFinalizedToolInputLifecycle({
             controller,
             id: toolCallId,
             state: currentToolCall,
-            finalFullJson: finalInput,
+            toolName,
+            finalInput,
             onMismatch: options?.onError,
           });
-          controller.enqueue({
-            type: "tool-input-end",
-            id: toolCallId,
-          });
-          controller.enqueue({
-            type: "tool-call",
-            toolCallId,
-            toolName,
-            input: finalInput,
-          });
         } else {
-          controller.enqueue({
-            type: "tool-input-end",
-            id: toolCallId,
-          });
           const unfinishedContent = `<${toolName}>${buffer}`;
+          const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+          emitFailedToolInputLifecycle({
+            controller,
+            id: toolCallId,
+            emitRawToolCallTextOnError: emitRawFallback,
+            rawToolCallText: unfinishedContent,
+            emitRawText: (rawText) => {
+              flushText(controller, rawText);
+            },
+          });
           options?.onError?.(
             "Could not complete streaming YAML tool call at finish.",
             { toolCall: unfinishedContent }
           );
-          if (shouldEmitRawToolCallTextOnError(options)) {
-            flushText(controller, unfinishedContent);
-          }
         }
 
         buffer = "";

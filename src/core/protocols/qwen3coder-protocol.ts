@@ -1,6 +1,5 @@
 import type {
   LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
@@ -11,19 +10,19 @@ import {
 } from "../../rxml/utils/helpers";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateToolCallId } from "../utils/id";
-import { createFlushTextHandler } from "../utils/protocol-utils";
+import {
+  createFlushTextHandler,
+  formatToolsWithPromptTemplate,
+} from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import {
-  emitChunkedPrefixDelta,
-  emitFinalRemainder,
-  toIncompleteJsonPrefix,
-} from "../utils/streamed-tool-input-delta";
-import { coerceToolCallInput } from "../utils/tool-call-coercion";
-import type { ParserOptions, TCMProtocol } from "./protocol-interface";
-
-function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
-  return options?.emitRawToolCallTextOnError === true;
-}
+  emitFailedToolInputLifecycle,
+  emitFinalizedToolInputLifecycle,
+  emitToolInputProgressDelta,
+  shouldEmitRawToolCallTextOnError,
+  stringifyToolInputWithSchema,
+} from "../utils/tool-input-streaming";
+import type { TCMProtocol } from "./protocol-interface";
 
 const TOOL_CALL_OPEN_RE = /<tool_call\b[^>]*>/i;
 const TOOL_CALL_CLOSE_RE = /<\/tool_call\s*>/i;
@@ -1033,24 +1032,6 @@ function parseToolCallInput(input: string | null | undefined): unknown {
   }
 }
 
-// vLLM reference (Qwen3CoderToolParser): converts string parameters to typed JSON
-// values using the tool schema (int/float/bool/object/array, with json.loads and
-// ast.literal_eval fallback).
-// https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/vllm/tool_parsers/qwen3coder_tool_parser.py#L136-L240
-// https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/tests/tool_parsers/test_qwen3coder_tool_parser.py#L379-L430
-function stringifyToolInputWithSchema(options: {
-  tools: LanguageModelV3FunctionTool[];
-  toolName: string;
-  args: Record<string, unknown>;
-}): string {
-  const coerced = coerceToolCallInput(
-    options.toolName,
-    options.args,
-    options.tools
-  );
-  return coerced ?? JSON.stringify(options.args);
-}
-
 function toQwen3CoderToolParserParamText(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -1101,7 +1082,7 @@ function appendQwen3CoderToolParserArgs(lines: string[], args: unknown): void {
 
 export const qwen3CoderProtocol = (): TCMProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {
-    return toolSystemPromptTemplate(tools || []);
+    return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
   },
 
   formatToolCall(toolCall: LanguageModelV3ToolCall): string {
@@ -1495,12 +1476,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       if (fullInput === "{}") {
         return;
       }
-      const prefixCandidate = toIncompleteJsonPrefix(fullInput);
-      emitChunkedPrefixDelta({
+      emitToolInputProgressDelta({
         controller,
         id: callState.toolCallId,
         state: callState,
-        candidate: prefixCandidate,
+        fullInput,
       });
     };
 
@@ -1513,6 +1493,16 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const resolvedToolName = callState.toolName ?? fallbackToolName;
       if (!resolvedToolName || resolvedToolName.trim().length === 0) {
         const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
+        emitFailedToolInputLifecycle({
+          controller,
+          id: callState.toolCallId,
+          endInput: callState.hasEmittedStart,
+          emitRawToolCallTextOnError: shouldEmitRaw,
+          rawToolCallText,
+          emitRawText: (rawText) => {
+            flushText(controller, rawText);
+          },
+        });
         options?.onError?.(
           shouldEmitRaw && rawToolCallText
             ? "Could not resolve Qwen3CoderToolParser tool name for tool call; emitting original text."
@@ -1522,15 +1512,6 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             toolCall: rawToolCallText,
           }
         );
-        if (callState.hasEmittedStart) {
-          controller.enqueue({
-            type: "tool-input-end",
-            id: callState.toolCallId,
-          });
-        }
-        if (shouldEmitRaw && rawToolCallText) {
-          flushText(controller, rawToolCallText);
-        }
         return false;
       }
 
@@ -1544,22 +1525,13 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         toolName: resolvedToolName,
         args: callState.args,
       });
-      emitFinalRemainder({
+      emitFinalizedToolInputLifecycle({
         controller,
         id: callState.toolCallId,
         state: callState,
-        finalFullJson: finalInput,
-        onMismatch: options?.onError,
-      });
-      controller.enqueue({
-        type: "tool-input-end",
-        id: callState.toolCallId,
-      });
-      controller.enqueue({
-        type: "tool-call",
-        toolCallId: callState.toolCallId,
         toolName: resolvedToolName,
-        input: finalInput,
+        finalInput,
+        onMismatch: options?.onError,
       });
       return true;
     };

@@ -1,7 +1,6 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { OnErrorFn } from "./on-error";
 import { coerceToolCallInput } from "./tool-call-coercion";
-
-type OnErrorFn = (message: string, metadata?: Record<string, unknown>) => void;
 
 interface ParseToolChoiceOptions {
   errorMessage: string;

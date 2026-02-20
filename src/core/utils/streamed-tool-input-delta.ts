@@ -1,6 +1,6 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 
-interface EmittedToolInputState {
+export interface EmittedToolInputState {
   emittedInput: string;
 }
 

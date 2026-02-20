@@ -8,19 +8,21 @@ import { parse as parseRJSON } from "../../rjson";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
-import { addTextSegment } from "../utils/protocol-utils";
+import {
+  addTextSegment,
+  formatToolsWithPromptTemplate,
+} from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
-import { emitChunkedPrefixDelta } from "../utils/streamed-tool-input-delta";
-import { coerceToolCallInput } from "../utils/tool-call-coercion";
+import {
+  emitToolInputProgressDelta,
+  shouldEmitRawToolCallTextOnError,
+  stringifyToolInputWithSchema,
+} from "../utils/tool-input-streaming";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
 interface HermesProtocolOptions {
   toolCallEnd?: string;
   toolCallStart?: string;
-}
-
-function shouldEmitRawToolCallTextOnError(options?: ParserOptions): boolean {
-  return options?.emitRawToolCallTextOnError === true;
 }
 
 function canonicalizeToolInput(argumentsValue: unknown): string {
@@ -388,11 +390,12 @@ function emitToolInputDelta(
     return;
   }
 
-  emitChunkedPrefixDelta({
+  emitToolInputProgressDelta({
     controller,
     id: active.id,
     state: active,
-    candidate: fullInput,
+    fullInput,
+    mode: "full-json",
   });
 }
 
@@ -418,9 +421,12 @@ function emitToolCallFromParsed(
     typeof parsedToolCall.name === "string"
       ? parsedToolCall.name
       : (state.activeToolInput?.toolName ?? "unknown");
-  const input =
-    coerceToolCallInput(toolName, parsedToolCall.arguments, tools) ??
-    canonicalizeToolInput(parsedToolCall.arguments);
+  const input = stringifyToolInputWithSchema({
+    toolName,
+    args: parsedToolCall.arguments,
+    tools,
+    fallback: canonicalizeToolInput,
+  });
   ensureToolInputStart(state, controller, toolName);
   emitToolInputDelta(state, controller, input);
   const toolCallId = state.activeToolInput?.id ?? generateToolCallId();
@@ -447,10 +453,12 @@ function canonicalizeArgumentsProgressInput(
 
   try {
     const parsedArguments = parseRJSON(progress.argumentsText);
-    return (
-      coerceToolCallInput(toolName, parsedArguments, tools) ??
-      canonicalizeToolInput(parsedArguments)
-    );
+    return stringifyToolInputWithSchema({
+      toolName,
+      args: parsedArguments,
+      tools,
+      fallback: canonicalizeToolInput,
+    });
   } catch {
     return undefined;
   }
@@ -782,7 +790,7 @@ export const hermesProtocol = ({
     tools: LanguageModelV3FunctionTool[];
     toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
   }) {
-    return toolSystemPromptTemplate(tools || []);
+    return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
   },
 
   formatToolCall(toolCall: LanguageModelV3ToolCall) {
