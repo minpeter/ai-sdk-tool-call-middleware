@@ -5,6 +5,7 @@ import type {
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import dedent from "dedent";
+import { stringify } from "../../rxml";
 import {
   type ToolResponseMediaStrategy,
   unwrapToolResult,
@@ -14,10 +15,13 @@ export function morphXmlSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[]
 ): string {
   const toolsText = renderToolsForXmlPrompt(tools);
+  const inputExamplesText = renderInputExamplesForXmlPrompt(tools);
 
   const header = dedent`
     # Tools
-    You may call one or more functions to assist with the user query.
+    You are a function-calling assistant.
+    Use tools when they materially improve correctness, freshness, or completeness.
+    If a tool is not needed, answer directly in plain text.
   `;
 
   const definitions = [
@@ -27,20 +31,31 @@ export function morphXmlSystemPromptTemplate(
     "</tools>",
   ].join("\n");
 
-  const rules = dedent`
-    <rules>
-    - Use exactly one XML element whose tag name is the function name.
-    - Put each parameter as a child element.
-    - Values must follow the schema exactly (numbers, arrays, objects, enums → copy as-is).
-    - Do not add or remove functions or parameters.
-    - Each required parameter must appear once.
-    - Output nothing before or after the function call.
-    - It is also possible to call multiple types of functions in one turn or to call a single function multiple times.
-    </rules>
+  const decisionPolicy = dedent`
+    # Decision Policy
+    - First decide whether a tool call is necessary for the latest user request.
+    - Call tools when the user asks for external actions/data or when tool use materially improves answer reliability.
+    - Do not call tools when the request can be fully answered from the conversation context.
+    - Never invent tools or parameters that are not defined in the tool list.
+    - If multiple independent tool calls are needed, emit all of them in the same response.
+    - If required arguments are missing and cannot be inferred safely, ask one concise clarification question that requests all missing required values.
   `;
 
-  const examples = dedent`
-    For each function call, output the function name and parameter in the following format:
+  const outputContract = dedent`
+    # Output Contract (when calling tools)
+    - Choose exactly one mode:
+      1) Tool-call mode: output one or more XML tool-call blocks and nothing else.
+      2) Plain-text mode: output a normal assistant response with no tool-call XML.
+    - In tool-call mode, do not include prose, markdown, comments, or any suffix text around tool calls.
+    - Use the function name as the XML tag.
+    - Put each parameter as a direct child element of that tag.
+    - Include each required parameter exactly once.
+    - Do not add unknown functions, unknown parameters, or wrapper tags.
+    - Values must match the schema exactly (types, enums, arrays, and objects).
+  `;
+
+  const canonicalExample = dedent`
+    # Canonical Shape
     <example_function_name>
       <example_parameter_1>value_1</example_parameter_1>
       <example_parameter_2>This is the value for the second parameter
@@ -49,7 +64,16 @@ export function morphXmlSystemPromptTemplate(
     </example_function_name>
   `;
 
-  return [header, definitions, rules, examples].join("\n\n");
+  return [
+    header,
+    definitions,
+    decisionPolicy,
+    outputContract,
+    canonicalExample,
+    inputExamplesText,
+  ]
+    .filter((section) => section.trim().length > 0)
+    .join("\n\n");
 }
 
 const INDENT = "  ";
@@ -75,6 +99,82 @@ function renderToolForXmlPrompt(tool: LanguageModelV3FunctionTool): string {
   lines.push(`schema: ${stringifySchema(normalizedSchema)}`);
 
   return lines.join("\n");
+}
+
+function getToolInputExamples(
+  tool: LanguageModelV3FunctionTool
+): Array<{ input: unknown }> {
+  const inputExamples = (
+    tool as LanguageModelV3FunctionTool & {
+      inputExamples?: Array<{ input: unknown }>;
+    }
+  ).inputExamples;
+
+  if (!Array.isArray(inputExamples)) {
+    return [];
+  }
+
+  return inputExamples.filter(
+    (example) =>
+      typeof example === "object" &&
+      example !== null &&
+      "input" in example &&
+      typeof example.input === "object" &&
+      example.input !== null
+  );
+}
+
+function renderMorphXmlInputExample(
+  toolName: string,
+  input: JSONValue
+): string {
+  try {
+    return stringify(toolName, input, {
+      suppressEmptyNode: false,
+      format: true,
+      minimalEscaping: true,
+    });
+  } catch {
+    return `<${toolName}>${JSON.stringify(input)}</${toolName}>`;
+  }
+}
+
+function renderInputExamplesForXmlPrompt(
+  tools: LanguageModelV3FunctionTool[]
+): string {
+  const renderedTools = tools
+    .map((tool) => {
+      const inputExamples = getToolInputExamples(tool);
+      if (inputExamples.length === 0) {
+        return "";
+      }
+
+      const renderedExamples = inputExamples
+        .map((example, index) => {
+          const xml = renderMorphXmlInputExample(
+            tool.name,
+            example.input as JSONValue
+          );
+          return `Example ${index + 1}:\n${xml}`;
+        })
+        .join("\n\n");
+
+      return `Tool: ${tool.name}\n${renderedExamples}`;
+    })
+    .filter((text) => text.length > 0)
+    .join("\n\n");
+
+  if (renderedTools.length === 0) {
+    return "";
+  }
+
+  return [
+    "# Input Examples",
+    "Treat these as canonical tool-call patterns.",
+    "Reuse the closest structure and nesting, change only values, and do not invent parameters.",
+    "Do not copy example values unless they match the user's request.",
+    renderedTools,
+  ].join("\n\n");
 }
 
 function normalizeSchema(

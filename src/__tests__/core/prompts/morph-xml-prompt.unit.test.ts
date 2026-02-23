@@ -1,9 +1,71 @@
+import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
   createMorphXmlToolResponseFormatter,
   morphFormatToolResponseAsXml,
+  morphXmlSystemPromptTemplate,
 } from "../../../core/prompts/morph-xml-prompt";
+
+describe("morphXmlSystemPromptTemplate", () => {
+  it("renders Morph XML examples from inputExamples", () => {
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "Get weather by city",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+            unit: { type: "string", enum: ["celsius", "fahrenheit"] },
+          },
+          required: ["city"],
+        },
+        inputExamples: [
+          { input: { city: "Seoul", unit: "celsius" } },
+          { input: { city: "Busan" } },
+        ],
+      },
+    ];
+
+    const prompt = morphXmlSystemPromptTemplate(tools);
+
+    expect(prompt).toContain("# Decision Policy");
+    expect(prompt).toContain("# Output Contract (when calling tools)");
+    expect(prompt).toContain("# Input Examples");
+    expect(prompt).toContain("Treat these as canonical tool-call patterns.");
+    expect(prompt).toContain("Tool: get_weather");
+    expect(prompt).toContain("Example 1:");
+    expect(prompt).toContain("Example 2:");
+    expect(prompt).toContain("<get_weather>");
+    expect(prompt).toContain("<city>Seoul</city>");
+    expect(prompt).toContain("<unit>celsius</unit>");
+    expect(prompt).toContain("<city>Busan</city>");
+  });
+
+  it("does not render input example section when no examples are provided", () => {
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "search_docs",
+        description: "Search docs",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+          },
+          required: ["query"],
+        },
+      },
+    ];
+
+    const prompt = morphXmlSystemPromptTemplate(tools);
+
+    expect(prompt).not.toContain("# Input Examples");
+    expect(prompt).not.toContain("Tool: search_docs");
+  });
+});
 
 describe("morphFormatToolResponseAsXml", () => {
   it("formats basic tool result with XML tags", () => {
