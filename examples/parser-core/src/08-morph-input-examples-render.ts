@@ -147,8 +147,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseSectionMode(value: string): SectionMode {
-  if (value === "full" || value === "examples" || value === "tools") {
-    return value;
+  const sectionMode = SECTION_MODES.find((mode) => mode === value);
+  if (sectionMode !== undefined) {
+    return sectionMode;
   }
 
   throw new Error(

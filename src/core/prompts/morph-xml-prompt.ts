@@ -6,6 +6,7 @@ import type {
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import dedent from "dedent";
 import { stringify } from "../../rxml";
+import { escapeXmlMinimalText } from "../../rxml/utils/helpers";
 import {
   type ToolResponseMediaStrategy,
   unwrapToolResult,
@@ -20,6 +21,7 @@ export function morphXmlSystemPromptTemplate(
   const header = dedent`
     # Tools
     You are a function-calling assistant.
+    You may call one or more functions in a single response when needed.
     Use tools when they materially improve correctness, freshness, or completeness.
     If a tool is not needed, answer directly in plain text.
   `;
@@ -119,23 +121,43 @@ function getToolInputExamples(
       typeof example === "object" &&
       example !== null &&
       "input" in example &&
-      typeof example.input === "object" &&
-      example.input !== null
+      example.input !== undefined
   );
 }
 
-function renderMorphXmlInputExample(
-  toolName: string,
-  input: JSONValue
+function safeStringifyInputExample(
+  input: unknown,
+  sourceError?: unknown
 ): string {
   try {
-    return stringify(toolName, input, {
+    const serialized = JSON.stringify(input);
+    return serialized ?? "null";
+  } catch (stringifyError) {
+    let reason = "";
+
+    if (sourceError instanceof Error) {
+      reason = sourceError.message;
+    } else if (stringifyError instanceof Error) {
+      reason = stringifyError.message;
+    }
+
+    return reason.length > 0
+      ? `[unserializable input: ${reason}]`
+      : "[unserializable input]";
+  }
+}
+
+function renderMorphXmlInputExample(toolName: string, input: unknown): string {
+  try {
+    return stringify(toolName, input as JSONValue, {
       suppressEmptyNode: false,
       format: true,
       minimalEscaping: true,
     });
-  } catch {
-    return `<${toolName}>${JSON.stringify(input)}</${toolName}>`;
+  } catch (error) {
+    const fallbackContent = safeStringifyInputExample(input, error);
+    const escapedFallback = escapeXmlMinimalText(fallbackContent);
+    return `<${toolName}>${escapedFallback}</${toolName}>`;
   }
 }
 
@@ -151,10 +173,7 @@ function renderInputExamplesForXmlPrompt(
 
       const renderedExamples = inputExamples
         .map((example, index) => {
-          const xml = renderMorphXmlInputExample(
-            tool.name,
-            example.input as JSONValue
-          );
+          const xml = renderMorphXmlInputExample(tool.name, example.input);
           return `Example ${index + 1}:\n${xml}`;
         })
         .join("\n\n");

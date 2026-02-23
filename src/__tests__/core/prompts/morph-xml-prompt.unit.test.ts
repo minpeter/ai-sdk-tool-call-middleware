@@ -44,6 +44,26 @@ describe("morphXmlSystemPromptTemplate", () => {
     expect(prompt).toContain("<city>Busan</city>");
   });
 
+  it("renders scalar root input examples", () => {
+    const tools = [
+      {
+        type: "function",
+        name: "normalize_text",
+        description: "Normalize text",
+        inputSchema: {
+          type: "string",
+        },
+        inputExamples: [{ input: "hello world" }, { input: 42 }],
+      },
+    ] as unknown as LanguageModelV3FunctionTool[];
+
+    const prompt = morphXmlSystemPromptTemplate(tools);
+
+    expect(prompt).toContain("Tool: normalize_text");
+    expect(prompt).toContain("<normalize_text>hello world</normalize_text>");
+    expect(prompt).toContain("<normalize_text>42</normalize_text>");
+  });
+
   it("does not render input example section when no examples are provided", () => {
     const tools: LanguageModelV3FunctionTool[] = [
       {
