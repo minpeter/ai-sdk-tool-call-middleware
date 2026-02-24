@@ -31,8 +31,8 @@ describe("morphXmlSystemPromptTemplate", () => {
 
     const prompt = morphXmlSystemPromptTemplate(tools);
 
-    expect(prompt).toContain("# Decision Policy");
-    expect(prompt).toContain("# Output Contract (when calling tools)");
+    expect(prompt).toContain("# Tools");
+    expect(prompt).toContain("<rules>");
     expect(prompt).toContain("# Input Examples");
     expect(prompt).toContain("Treat these as canonical tool-call patterns.");
     expect(prompt).toContain("Tool: get_weather");
