@@ -1,0 +1,75 @@
+{
+  "title": "Custom fixture for MorphXML inputExamples rendering",
+  "tools": [
+    {
+      "type": "function",
+      "name": "book_flight",
+      "description": "Book a one-way flight with optional seat preference",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "date": { "type": "string" },
+          "seat": {
+            "type": "string",
+            "enum": ["aisle", "window", "middle"]
+          }
+        },
+        "required": ["from", "to", "date"]
+      },
+      "inputExamples": [
+        {
+          "input": {
+            "from": "ICN",
+            "to": "NRT",
+            "date": "2026-03-10",
+            "seat": "window"
+          }
+        },
+        {
+          "input": {
+            "from": "GMP",
+            "to": "CJU",
+            "date": "2026-03-12"
+          }
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "reserve_hotel",
+      "description": "Reserve a hotel with check-in/out dates and room type",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "city": { "type": "string" },
+          "check_in": { "type": "string" },
+          "check_out": { "type": "string" },
+          "room_type": {
+            "type": "string",
+            "enum": ["single", "double", "suite"]
+          }
+        },
+        "required": ["city", "check_in", "check_out"]
+      },
+      "inputExamples": [
+        {
+          "input": {
+            "city": "Tokyo",
+            "check_in": "2026-03-10",
+            "check_out": "2026-03-13",
+            "room_type": "double"
+          }
+        },
+        {
+          "input": {
+            "city": "Osaka",
+            "check_in": "2026-04-02",
+            "check_out": "2026-04-04"
+          }
+        }
+      ]
+    }
+  ]
+}
