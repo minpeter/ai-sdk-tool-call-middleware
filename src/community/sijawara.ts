@@ -4,15 +4,13 @@ import {
   renderInputExamplesSection,
   safeStringifyInputExample,
 } from "../core/prompts/shared/input-examples";
+import {
+  isValidXmlTagName,
+  toSafeXmlTagName,
+} from "../core/prompts/shared/xml-tag-name";
 import { createToolMiddleware, morphXmlProtocol } from "../index";
 import { stringify } from "../rxml";
 import { escapeXmlMinimalText } from "../rxml/utils/helpers";
-
-const XML_TAG_NAME_REGEX = /^[A-Za-z_][A-Za-z0-9_.:-]*$/;
-
-function toSafeXmlTagName(name: string): string {
-  return XML_TAG_NAME_REGEX.test(name) ? name : "tool";
-}
 
 function hasInvalidXmlKeys(value: unknown): boolean {
   if (Array.isArray(value)) {
@@ -21,8 +19,7 @@ function hasInvalidXmlKeys(value: unknown): boolean {
 
   if (value && typeof value === "object") {
     return Object.entries(value as Record<string, unknown>).some(
-      ([key, nested]) =>
-        !XML_TAG_NAME_REGEX.test(key) || hasInvalidXmlKeys(nested)
+      ([key, nested]) => !isValidXmlTagName(key) || hasInvalidXmlKeys(nested)
     );
   }
 

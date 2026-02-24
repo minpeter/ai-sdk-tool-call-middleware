@@ -7,12 +7,7 @@ import {
   renderInputExamplesSection,
   safeStringifyInputExample,
 } from "./shared/input-examples";
-
-const XML_TAG_NAME_REGEX = /^[A-Za-z_][A-Za-z0-9_.:-]*$/;
-
-function toSafeXmlTagName(name: string): string {
-  return XML_TAG_NAME_REGEX.test(name) ? name : "tool";
-}
+import { toSafeXmlTagName } from "./shared/xml-tag-name";
 
 export function yamlXmlSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[],
