@@ -1,12 +1,18 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
+import YAML from "yaml";
 import { morphFormatToolResponseAsXml } from "./morph-xml-prompt";
+import { renderInputExamplesSection } from "./shared/input-examples";
 
 export function yamlXmlSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[],
   includeMultilineExample = true
 ): string {
   const toolsJson = JSON.stringify(tools);
+  const inputExamplesText = renderInputExamplesSection({
+    tools,
+    renderExample: renderYamlXmlInputExample,
+  });
   const multilineExample = includeMultilineExample
     ? `
 
@@ -20,7 +26,7 @@ contents: |
 </write_file>`
     : "";
 
-  return `# Tools
+  const basePrompt = `# Tools
 
 You may call one or more functions to assist with the user query.
 
@@ -46,6 +52,18 @@ unit: celsius
 - After calling a tool, you will receive a response. Use this result to answer the user.
 - Do NOT ask clarifying questions. Use reasonable defaults for optional parameters.
 - If a task requires multiple function calls, make ALL of them at once.`;
+
+  if (inputExamplesText.length === 0) {
+    return basePrompt;
+  }
+
+  return `${basePrompt}\n\n${inputExamplesText}`;
+}
+
+function renderYamlXmlInputExample(toolName: string, input: unknown): string {
+  const yaml = YAML.stringify(input).trimEnd();
+  const yamlBody = yaml.length > 0 ? yaml : "null";
+  return `<${toolName}>\n${yamlBody}\n</${toolName}>`;
 }
 
 export function formatToolResponseAsYaml(toolResult: ToolResultPart): string {

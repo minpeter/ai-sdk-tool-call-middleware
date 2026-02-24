@@ -394,4 +394,39 @@ describe("hermesSystemPromptTemplate", () => {
     );
     expect(rendered).not.toContain("</tools>Use");
   });
+
+  it("renders Input Examples from tool.inputExamples", () => {
+    const rendered = hermesSystemPromptTemplate([
+      {
+        type: "function",
+        name: "get_weather",
+        description: "Get weather by city",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+            unit: { type: "string" },
+          },
+          required: ["city"],
+        },
+        inputExamples: [
+          {
+            input: {
+              city: "Seoul",
+              unit: "celsius",
+            },
+          },
+        ],
+      } satisfies LanguageModelV3FunctionTool & {
+        inputExamples: Array<{ input: unknown }>;
+      },
+    ]);
+
+    expect(rendered).toContain("# Input Examples");
+    expect(rendered).toContain("Tool: get_weather");
+    expect(rendered).toContain("<tool_call>");
+    expect(rendered).toContain(
+      '{"name":"get_weather","arguments":{"city":"Seoul","unit":"celsius"}}'
+    );
+  });
 });

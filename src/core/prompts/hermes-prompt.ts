@@ -1,6 +1,10 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
+  renderInputExamplesSection,
+  stringifyInputExampleAsJsonLiteral,
+} from "./shared/input-examples";
+import {
   type ToolResponseMediaStrategy,
   unwrapToolResult,
 } from "./shared/tool-result-normalizer";
@@ -114,10 +118,27 @@ export function hermesSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[]
 ): string {
   const toolsRendered = tools.map(renderToolDefinition).join("\n");
-  return `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> ${toolsRendered} </tools>
+  const basePrompt = `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> ${toolsRendered} </tools>
 Use the following pydantic model json schema for each tool call you will make: {"properties": {"name": {"title": "Name", "type": "string"}, "arguments": {"title": "Arguments", "type": "object"}}, "required": ["name", "arguments"], "title": "FunctionCall", "type": "object"}
 For each function call return a json object with function name and arguments within <tool_call></tool_call> XML tags as follows:
 <tool_call>
 {"name": "<function-name>", "arguments": <args-dict>}
 </tool_call>`;
+
+  const inputExamplesText = renderInputExamplesSection({
+    tools,
+    renderExample: renderHermesInputExample,
+  });
+
+  if (inputExamplesText.length === 0) {
+    return basePrompt;
+  }
+
+  return `${basePrompt}\n\n${inputExamplesText}`;
+}
+
+function renderHermesInputExample(toolName: string, input: unknown): string {
+  const argumentsLiteral = stringifyInputExampleAsJsonLiteral(input);
+  const nameLiteral = JSON.stringify(toolName);
+  return `<tool_call>\n{"name":${nameLiteral},"arguments":${argumentsLiteral}}\n</tool_call>`;
 }

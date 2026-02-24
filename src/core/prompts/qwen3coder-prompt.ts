@@ -5,6 +5,10 @@ import {
   escapeXmlMinimalText,
 } from "../../rxml/utils/helpers";
 import {
+  renderInputExamplesSection,
+  safeStringifyInputExample,
+} from "./shared/input-examples";
+import {
   type ToolResponseMediaStrategy,
   unwrapToolResult,
 } from "./shared/tool-result-normalizer";
@@ -176,7 +180,50 @@ export function qwen3coderSystemPromptTemplate(
   }
   out += "\n</tools>";
   out += QWEN3CODER_TOOL_CALL_INSTRUCTIONS;
+
+  const inputExamplesText = renderInputExamplesSection({
+    tools,
+    renderExample: renderQwen3CoderInputExample,
+  });
+
+  if (inputExamplesText.length > 0) {
+    out += `\n\n${inputExamplesText}`;
+  }
+
   return out;
+}
+
+function renderQwen3CoderInputExample(
+  toolName: string,
+  input: unknown
+): string {
+  const parameterBlocks = renderQwen3CoderParameters(input);
+  return `<tool_call>\n<function=${escapeXmlMinimalAttr(toolName, '"')}>${parameterBlocks}\n</function>\n</tool_call>`;
+}
+
+function renderQwen3CoderParameters(input: unknown): string {
+  if (isMapping(input)) {
+    const lines = Object.entries(input).map(([key, value]) => {
+      const content = renderQwen3CoderParameterValue(value);
+      return `<parameter=${escapeXmlMinimalAttr(key, '"')}>\n${content}\n</parameter>`;
+    });
+
+    if (lines.length > 0) {
+      return `\n${lines.join("\n")}`;
+    }
+  }
+
+  const fallback = renderQwen3CoderParameterValue(input);
+  return `\n<parameter=input>\n${fallback}\n</parameter>`;
+}
+
+function renderQwen3CoderParameterValue(value: unknown): string {
+  if (typeof value === "string") {
+    return escapeXmlMinimalText(value);
+  }
+
+  const serialized = safeStringifyInputExample(value);
+  return escapeXmlMinimalText(serialized);
 }
 
 interface Qwen3CoderToolResponseFormatterOptions {
