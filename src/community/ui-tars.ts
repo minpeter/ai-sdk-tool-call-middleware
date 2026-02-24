@@ -1,6 +1,14 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { morphFormatToolResponseAsXml } from "../core/prompts/morph-xml-prompt";
+import {
+  renderInputExamplesSection,
+  safeStringifyInputExample,
+} from "../core/prompts/shared/input-examples";
 import { createToolMiddleware, uiTarsXmlProtocol } from "../index";
+import {
+  escapeXmlMinimalAttr,
+  escapeXmlMinimalText,
+} from "../rxml/utils/helpers";
 
 /**
  * UI-TARS middleware using a custom protocol that handles <function=name> syntax (qwen3CoderProtocol)
@@ -11,7 +19,7 @@ export const uiTarsToolMiddleware = createToolMiddleware({
   toolResponsePromptTemplate: morphFormatToolResponseAsXml,
   toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
     const toolsJson = JSON.stringify(tools);
-    return `You have access to callable functions (tools).
+    const basePrompt = `You have access to callable functions (tools).
 Tool list/context:
 ${toolsJson}
 
@@ -117,5 +125,55 @@ EXECUTION RULES
 - If you don't know a parameter value, ask the user
 - After calling a function, STOP and wait for the result
 - Do NOT add extra text before or after tool calls`;
+
+    const inputExamplesText = renderUiTarsInputExamples(tools);
+    if (inputExamplesText.length === 0) {
+      return basePrompt;
+    }
+
+    return `${basePrompt}\n\n${inputExamplesText}`;
   },
 });
+
+function renderUiTarsInputExamples(
+  tools: LanguageModelV3FunctionTool[]
+): string {
+  return renderInputExamplesSection({
+    tools,
+    renderExample: renderUiTarsInputExample,
+  });
+}
+
+function renderUiTarsInputExample(toolName: string, input: unknown): string {
+  const parameterBlocks = renderUiTarsParameters(input);
+  return `<tool_call>\n<function=${escapeXmlMinimalAttr(toolName, '"')}>${parameterBlocks}\n</function>\n</tool_call>`;
+}
+
+function renderUiTarsParameters(input: unknown): string {
+  if (isRecord(input)) {
+    const lines = Object.entries(input).map(([key, value]) => {
+      const content = renderUiTarsParameterValue(value);
+      return `<parameter=${escapeXmlMinimalAttr(key, '"')}>\n${content}\n</parameter>`;
+    });
+
+    if (lines.length > 0) {
+      return `\n${lines.join("\n")}`;
+    }
+  }
+
+  const fallback = renderUiTarsParameterValue(input);
+  return `\n<parameter=input>\n${fallback}\n</parameter>`;
+}
+
+function renderUiTarsParameterValue(value: unknown): string {
+  if (typeof value === "string") {
+    return escapeXmlMinimalText(value);
+  }
+
+  const serialized = safeStringifyInputExample(value);
+  return escapeXmlMinimalText(serialized);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

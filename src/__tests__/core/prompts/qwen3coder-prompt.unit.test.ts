@@ -80,6 +80,41 @@ describe("qwen3coderSystemPromptTemplate", () => {
     );
     expect(prompt).not.toContain("<$schema>");
   });
+
+  it("renders Input Examples from tool.inputExamples", () => {
+    const prompt = qwen3coderSystemPromptTemplate([
+      {
+        type: "function",
+        name: "get_weather",
+        description: "Get weather by city",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+            unit: { type: "string" },
+          },
+          required: ["city"],
+        },
+        inputExamples: [
+          {
+            input: {
+              city: "Seoul",
+              unit: "celsius",
+            },
+          },
+        ],
+      } satisfies LanguageModelV3FunctionTool & {
+        inputExamples: Array<{ input: unknown }>;
+      },
+    ]);
+
+    expect(prompt).toContain("# Input Examples");
+    expect(prompt).toContain("Tool: get_weather");
+    expect(prompt).toContain("<tool_call>");
+    expect(prompt).toContain("<function=get_weather>");
+    expect(prompt).toContain("<parameter=city>");
+    expect(prompt).toContain("Seoul");
+  });
 });
 
 describe("formatToolResponseAsQwen3CoderXml", () => {

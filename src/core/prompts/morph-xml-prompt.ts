@@ -8,6 +8,10 @@ import dedent from "dedent";
 import { stringify } from "../../rxml";
 import { escapeXmlMinimalText } from "../../rxml/utils/helpers";
 import {
+  renderInputExamplesSection,
+  safeStringifyInputExample,
+} from "./shared/input-examples";
+import {
   type ToolResponseMediaStrategy,
   unwrapToolResult,
 } from "./shared/tool-result-normalizer";
@@ -82,50 +86,6 @@ function renderToolForXmlPrompt(tool: LanguageModelV3FunctionTool): string {
   return lines.join("\n");
 }
 
-function getToolInputExamples(
-  tool: LanguageModelV3FunctionTool
-): Array<{ input: unknown }> {
-  const inputExamples = (
-    tool as LanguageModelV3FunctionTool & {
-      inputExamples?: Array<{ input: unknown }>;
-    }
-  ).inputExamples;
-
-  if (!Array.isArray(inputExamples)) {
-    return [];
-  }
-
-  return inputExamples.filter(
-    (example) =>
-      typeof example === "object" &&
-      example !== null &&
-      "input" in example &&
-      example.input !== undefined
-  );
-}
-
-function safeStringifyInputExample(
-  input: unknown,
-  sourceError?: unknown
-): string {
-  try {
-    const serialized = JSON.stringify(input);
-    return serialized ?? "null";
-  } catch (stringifyError) {
-    let reason = "";
-
-    if (sourceError instanceof Error) {
-      reason = sourceError.message;
-    } else if (stringifyError instanceof Error) {
-      reason = stringifyError.message;
-    }
-
-    return reason.length > 0
-      ? `[unserializable input: ${reason}]`
-      : "[unserializable input]";
-  }
-}
-
 function renderMorphXmlInputExample(toolName: string, input: unknown): string {
   try {
     return stringify(toolName, input as JSONValue, {
@@ -143,36 +103,10 @@ function renderMorphXmlInputExample(toolName: string, input: unknown): string {
 function renderInputExamplesForXmlPrompt(
   tools: LanguageModelV3FunctionTool[]
 ): string {
-  const renderedTools = tools
-    .map((tool) => {
-      const inputExamples = getToolInputExamples(tool);
-      if (inputExamples.length === 0) {
-        return "";
-      }
-
-      const renderedExamples = inputExamples
-        .map((example, index) => {
-          const xml = renderMorphXmlInputExample(tool.name, example.input);
-          return `Example ${index + 1}:\n${xml}`;
-        })
-        .join("\n\n");
-
-      return `Tool: ${tool.name}\n${renderedExamples}`;
-    })
-    .filter((text) => text.length > 0)
-    .join("\n\n");
-
-  if (renderedTools.length === 0) {
-    return "";
-  }
-
-  return [
-    "# Input Examples",
-    "Treat these as canonical tool-call patterns.",
-    "Reuse the closest structure and nesting, change only values, and do not invent parameters.",
-    "Do not copy example values unless they match the user's request.",
-    renderedTools,
-  ].join("\n\n");
+  return renderInputExamplesSection({
+    tools,
+    renderExample: renderMorphXmlInputExample,
+  });
 }
 
 function normalizeSchema(
