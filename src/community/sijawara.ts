@@ -8,6 +8,27 @@ import { createToolMiddleware, morphXmlProtocol } from "../index";
 import { stringify } from "../rxml";
 import { escapeXmlMinimalText } from "../rxml/utils/helpers";
 
+const XML_TAG_NAME_REGEX = /^[A-Za-z_][A-Za-z0-9_.:-]*$/;
+
+function toSafeXmlTagName(name: string): string {
+  return XML_TAG_NAME_REGEX.test(name) ? name : "tool";
+}
+
+function hasInvalidXmlKeys(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some((entry) => hasInvalidXmlKeys(entry));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).some(
+      ([key, nested]) =>
+        !XML_TAG_NAME_REGEX.test(key) || hasInvalidXmlKeys(nested)
+    );
+  }
+
+  return false;
+}
+
 export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
   toolResponsePromptTemplate: morphFormatToolResponseAsXml,
@@ -125,8 +146,16 @@ function renderSijawaraInputExamples(
 }
 
 function renderSijawaraInputExample(toolName: string, input: unknown): string {
+  const safeToolName = toSafeXmlTagName(toolName);
+
+  if (hasInvalidXmlKeys(input)) {
+    const fallbackContent = safeStringifyInputExample(input);
+    const escapedFallback = escapeXmlMinimalText(fallbackContent);
+    return `<${safeToolName}>${escapedFallback}</${safeToolName}>`;
+  }
+
   try {
-    return stringify(toolName, input as JSONValue, {
+    return stringify(safeToolName, input as JSONValue, {
       suppressEmptyNode: false,
       format: true,
       minimalEscaping: true,
@@ -134,6 +163,6 @@ function renderSijawaraInputExample(toolName: string, input: unknown): string {
   } catch (error) {
     const fallbackContent = safeStringifyInputExample(input, error);
     const escapedFallback = escapeXmlMinimalText(fallbackContent);
-    return `<${toolName}>${escapedFallback}</${toolName}>`;
+    return `<${safeToolName}>${escapedFallback}</${safeToolName}>`;
   }
 }

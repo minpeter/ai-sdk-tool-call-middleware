@@ -161,4 +161,44 @@ describe("community middleware prompt templates", () => {
     expect(text).toContain("<get_weather>");
     expect(text).toContain("<city>Busan</city>");
   });
+
+  it("sijawaraDetailedXmlToolMiddleware falls back safely for invalid XML keys", async () => {
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "Get weather by city",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+          },
+          required: ["city"],
+        },
+        inputExamples: [
+          {
+            input: {
+              "bad key": "Seoul",
+            },
+          },
+        ],
+      } satisfies LanguageModelV3FunctionTool & {
+        inputExamples: Array<{ input: unknown }>;
+      },
+    ];
+
+    const transformParams = requireTransformParams(
+      sijawaraDetailedXmlToolMiddleware.transformParams
+    );
+    const out = await transformParams({
+      params: { prompt: [], tools },
+    });
+
+    const system = out.prompt[0];
+    expect(system?.role).toBe("system");
+    const text = String(system?.content ?? "");
+    expect(text).toContain("# Input Examples");
+    expect(text).toContain('<get_weather>{"bad key":"Seoul"}</get_weather>');
+    expect(text).not.toContain("<bad key>");
+  });
 });

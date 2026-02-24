@@ -1,8 +1,18 @@
 import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import YAML from "yaml";
+import { escapeXmlMinimalText } from "../../rxml/utils/helpers";
 import { morphFormatToolResponseAsXml } from "./morph-xml-prompt";
-import { renderInputExamplesSection } from "./shared/input-examples";
+import {
+  renderInputExamplesSection,
+  safeStringifyInputExample,
+} from "./shared/input-examples";
+
+const XML_TAG_NAME_REGEX = /^[A-Za-z_][A-Za-z0-9_.:-]*$/;
+
+function toSafeXmlTagName(name: string): string {
+  return XML_TAG_NAME_REGEX.test(name) ? name : "tool";
+}
 
 export function yamlXmlSystemPromptTemplate(
   tools: LanguageModelV3FunctionTool[],
@@ -61,9 +71,18 @@ unit: celsius
 }
 
 function renderYamlXmlInputExample(toolName: string, input: unknown): string {
-  const yaml = YAML.stringify(input).trimEnd();
-  const yamlBody = yaml.length > 0 ? yaml : "null";
-  return `<${toolName}>\n${yamlBody}\n</${toolName}>`;
+  const safeToolName = toSafeXmlTagName(toolName);
+  let yamlBody = "null";
+
+  try {
+    const yaml = YAML.stringify(input).trimEnd();
+    yamlBody = yaml.length > 0 ? yaml : "null";
+  } catch (error) {
+    yamlBody = safeStringifyInputExample(input, error);
+  }
+
+  const escapedYamlBody = escapeXmlMinimalText(yamlBody);
+  return `<${safeToolName}>\n${escapedYamlBody}\n</${safeToolName}>`;
 }
 
 export function formatToolResponseAsYaml(toolResult: ToolResultPart): string {
