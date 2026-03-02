@@ -104,4 +104,34 @@ describe("transformParams", () => {
       true
     );
   });
+
+  it("emits transform lifecycle events when onEvent is provided", async () => {
+    const events: Array<{ type: string; metadata?: Record<string, unknown> }> =
+      [];
+    const middleware = createToolMiddleware({
+      protocol: hermesProtocol({}),
+      toolSystemPromptTemplate: () => "SYSTEM",
+    });
+    const transformParams = requireTransformParams(middleware.transformParams);
+
+    await transformParams({
+      params: {
+        prompt: [],
+        providerOptions: {
+          toolCallMiddleware: {
+            onEvent: (event: {
+              type: string;
+              metadata?: Record<string, unknown>;
+            }) => events.push(event),
+          },
+        },
+      },
+    } as any);
+
+    expect(events.map((event) => event.type)).toEqual([
+      "transform-params.start",
+      "transform-params.complete",
+    ]);
+    expect(events[1]?.metadata?.mode).toBe("auto");
+  });
 });

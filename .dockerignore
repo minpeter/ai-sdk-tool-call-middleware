@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+*.log
+.git
+.github
+.vscode
+.idea
+.env.local
+.env
+codex_timebox_*
+codex_strong_30m_*

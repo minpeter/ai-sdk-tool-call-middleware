@@ -1,0 +1,1544 @@
+<!-- biome-ignore-all lint: this is a static judge demo template with inline script/style -->
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StagePilot Judge Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+  <style>
+    :root {
+      --bg-main: #0B0E14;
+      /* Deep dark blue/black */
+      --bg-panel: rgba(18, 23, 34, 0.65);
+      /* Glass panel */
+      --bg-card: rgba(26, 33, 48, 0.5);
+      /* Glass card */
+      --ink: #F0F4F8;
+      /* Light text */
+      --ink-muted: #8B9BB4;
+      /* Muted text */
+      --line: rgba(255, 255, 255, 0.08);
+      /* Subtle border */
+      --primary: #00E5FF;
+      /* Cyan accent */
+      --primary-glow: rgba(0, 229, 255, 0.3);
+      --secondary: #B084E6;
+      /* Purple accent */
+      --warn: #FFB347;
+      /* Orange/Yellow */
+      --warn-soft: rgba(255, 179, 71, 0.15);
+      --ok: #00E676;
+      /* Green */
+      --ok-soft: rgba(0, 230, 118, 0.15);
+      --bad: #FF3D00;
+      /* Red */
+      --bad-soft: rgba(255, 61, 0, 0.15);
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-sm: 8px;
+      --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      --backdrop-blur: blur(12px);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Outfit", sans-serif;
+      background-color: var(--bg-main);
+      /* Premium Animated Background */
+      background-image:
+        radial-gradient(circle at 15% 50%, rgba(0, 229, 255, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 85% 30%, rgba(176, 132, 230, 0.15) 0%, transparent 50%),
+        url('https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=2547&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D');
+      /* High quality abstract tech wavy background */
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated Grain Overlay */
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: url('https://upload.wikimedia.org/wikipedia/commons/7/76/1k_Dissolve_Noise_Texture.png');
+      opacity: 0.03;
+      mix-blend-mode: overlay;
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    .shell {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 40px 32px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 40px;
+      animation: fadeInDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .title-container {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 2.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #FFF 0%, #A5B4CB 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 40px rgba(255, 255, 255, 0.1);
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      font-size: 1rem;
+      color: var(--ink-muted);
+      font-weight: 300;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: rgba(0, 229, 255, 0.1);
+      border: 1px solid rgba(0, 229, 255, 0.2);
+      color: var(--primary);
+      font-weight: 500;
+      font-size: 0.85rem;
+      box-shadow: 0 0 20px var(--primary-glow);
+      backdrop-filter: blur(4px);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 320px 1fr 380px;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      backdrop-filter: var(--backdrop-blur);
+      -webkit-backdrop-filter: var(--backdrop-blur);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      opacity: 0;
+    }
+
+    .panel:nth-child(1) {
+      animation-delay: 0.1s;
+    }
+
+    .panel:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .panel:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+
+    .panel:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .panel-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+    }
+
+    .panel h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .panel>small {
+      color: var(--ink-muted);
+      font-size: 0.85rem;
+      display: block;
+      margin-top: -12px;
+      margin-bottom: 8px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .field label {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--ink-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      color: var(--ink);
+      background: rgba(0, 0, 0, 0.2);
+      transition: all 0.2s ease;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.15);
+      background: rgba(0, 0, 0, 0.3);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+      line-height: 1.5;
+    }
+
+    /* Custom Range Slider */
+    input[type="range"] {
+      -webkit-appearance: none;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      padding: 0;
+      border: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--primary);
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--primary-glow);
+      transition: transform 0.2s ease;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    .risk-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .risk-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.2);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+
+    .risk-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .risk-item input:checked+span {
+      color: var(--primary);
+      font-weight: 600;
+      text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+    }
+
+    .risk-item input {
+      display: none;
+    }
+
+    /* Custom Checkbox Indicator */
+    .risk-item span::before {
+      content: '';
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      margin-right: 8px;
+      vertical-align: middle;
+      transition: all 0.2s ease;
+    }
+
+    .risk-item input:checked+span::before {
+      background: var(--primary);
+      border-color: var(--primary);
+      box-shadow: 0 0 8px var(--primary-glow);
+    }
+
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 14px 20px;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #00E5FF 0%, #0088CC 100%);
+      color: #000;
+      box-shadow: 0 4px 15px rgba(0, 229, 255, 0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0, 229, 255, 0.4);
+    }
+
+    .btn-primary::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.3), transparent);
+      transform: rotate(45deg);
+      animation: shine 3s infinite;
+    }
+
+    @keyframes shine {
+      0% {
+        left: -100%;
+      }
+
+      20% {
+        left: 100%;
+      }
+
+      100% {
+        left: 100%;
+      }
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--ink);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .mono {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.8rem;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--bg-card);
+      padding: 16px;
+      backdrop-filter: blur(8px);
+    }
+
+    /* Glowing borders for specific cards */
+    .card.glow {
+      border-color: rgba(0, 229, 255, 0.3);
+      box-shadow: inset 0 0 20px rgba(0, 229, 255, 0.05);
+    }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 16px;
+      align-items: center;
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(0, 0, 0, 0.2);
+      margin-bottom: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .status-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .status-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 6px 10px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .status-wait {
+      background: rgba(255, 255, 255, 0.1);
+      color: #A5B4CB;
+    }
+
+    .status-run {
+      background: var(--warn-soft);
+      color: var(--warn);
+      box-shadow: 0 0 10px var(--warn-soft);
+      animation: pulseWarn 1.5s infinite;
+    }
+
+    .status-ok {
+      background: var(--ok-soft);
+      color: var(--ok);
+      box-shadow: 0 0 10px var(--ok-soft);
+    }
+
+    .status-err {
+      background: var(--bad-soft);
+      color: var(--bad);
+      box-shadow: 0 0 10px var(--bad-soft);
+    }
+
+    @keyframes pulseWarn {
+      0% {
+        box-shadow: 0 0 0 0 rgba(255, 179, 71, 0.4);
+      }
+
+      70% {
+        box-shadow: 0 0 0 6px rgba(255, 179, 71, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(255, 179, 71, 0);
+      }
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .metric {
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(0, 0, 0, 0.2) 100%);
+      padding: 16px 12px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    }
+
+    .metric small {
+      display: block;
+      color: var(--ink-muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 1.5rem;
+      font-weight: 300;
+      color: #FFF;
+    }
+
+    .whatif-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .delta-up {
+      color: var(--bad);
+      text-shadow: 0 0 10px rgba(255, 61, 0, 0.3);
+    }
+
+    .delta-down {
+      color: var(--ok);
+      text-shadow: 0 0 10px rgba(0, 230, 118, 0.3);
+    }
+
+    .route-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      margin-top: 12px;
+    }
+
+    .route-table th,
+    .route-table td {
+      padding: 12px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      text-align: left;
+    }
+
+    .route-table th {
+      color: var(--ink-muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+
+    .route-table tbody tr {
+      transition: background 0.2s;
+    }
+
+    .route-table tbody tr:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .range-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .range-row label {
+      font-size: 0.85rem;
+      color: var(--ink-muted);
+    }
+
+    .range-row output {
+      min-width: 48px;
+      text-align: right;
+      font-size: 0.85rem;
+      color: var(--primary);
+      font-family: "JetBrains Mono", monospace;
+      background: rgba(0, 229, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .profile-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    /* Custom scrollbar for pre tags */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    #payloadPreview {
+      font-size: 0.75rem;
+      color: #A5B4CB;
+      max-height: 200px;
+      overflow-y: auto;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    #insightText {
+      color: #E2E8F0;
+      line-height: 1.6;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 12px;
+      border-radius: 8px;
+    }
+
+    ol#actionList {
+      padding-left: 20px;
+      margin: 0;
+      color: #E2E8F0;
+    }
+
+    ol#actionList li {
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    ol#actionList li::marker {
+      color: var(--primary);
+      font-weight: bold;
+    }
+
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 1300px) {
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .panel:nth-child(3) {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div class="title-container">
+        <!-- GIF Icon next to title -->
+        <img
+          src="https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3ZtMTM1aHVrMzFkOWMyZHV2eGMyMnVpZGQxZHU3b3B1cXNpY2FjMiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/L8K62iDadb194QYQe8/giphy.gif"
+          alt="AI Core"
+          style="width: 50px; height: 50px; border-radius: 50%; mix-blend-mode: screen; filter: hue-rotate(180deg);" />
+        <div>
+          <h1 class="title">StagePilot Nexus</h1>
+          <p class="subtitle">
+            Intelligent intake, orchestration, ontology insights & digital twin simulation
+          </p>
+        </div>
+      </div>
+      <div class="kicker">
+        <span
+          style="display:inline-block; width:8px; height:8px; background:var(--primary); border-radius:50%; box-shadow:0 0 8px var(--primary); margin-right:4px;"></span>
+        Google-only | Gemini + Built-in Twin
+      </div>
+    </header>
+
+    <section class="grid">
+      <!-- Panel 1: Intake -->
+      <article class="panel">
+        <div class="panel-header">
+          <div class="panel-icon">📥</div>
+          <h2>1. Signal Intake</h2>
+        </div>
+        <small>Configure case parameters for live evaluation</small>
+
+        <div class="field">
+          <label for="geminiKey">Gemini API Key (Optional)</label>
+          <input id="geminiKey" type="password" placeholder="AI Studio Key for Insight Actions" />
+        </div>
+
+        <div class="field">
+          <label for="caseId">Case Identifier</label>
+          <input id="caseId" value="nexus-live-001" />
+        </div>
+
+        <div class="field">
+          <label for="district">Operational Zone</label>
+          <select id="district">
+            <option value="Gangbuk-gu">Sector Alpha (Gangbuk-gu)</option>
+            <option value="Jungnang-gu">Sector Beta (Jungnang-gu)</option>
+            <option value="Seocho-gu">Sector Gamma (Seocho-gu)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="urgency">Priority Level</label>
+          <select id="urgency">
+            <option value="high">Critical (High)</option>
+            <option value="medium" selected>Standard (Medium)</option>
+            <option value="low">Routine (Low)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="notes">Situation Briefing</label>
+          <textarea
+            id="notes">Target reports resource depletion, systemic isolation, and requires structural intervention. Route to appropriate support node.</textarea>
+        </div>
+
+        <div class="field">
+          <label>Risk Vectors</label>
+          <div class="risk-wrap" id="riskWrap"></div>
+        </div>
+
+        <div class="actions">
+          <button class="btn-primary" id="runBtn">Initialize Orchestration</button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-secondary" id="notifyBtn" type="button" style="flex:1;">Relay to OpenClaw</button>
+            <button class="btn-secondary" id="sampleBtn" type="button" style="flex:1;">Load Template</button>
+          </div>
+          <button class="btn-secondary" id="autoDemoBtn" type="button"
+            style="margin-top: 8px; border-color: var(--primary); color: var(--primary); font-weight: bold; font-family: 'Outfit';">▶️
+            Start Auto Demo (TTS)</button>
+        </div>
+
+        <div style="margin-top: 10px;">
+          <label
+            style="font-size:0.75rem; color: var(--ink-muted); text-transform:uppercase; margin-bottom: 4px; display:block;">Live
+            Payload Stream</label>
+          <div class="card mono" id="payloadPreview"></div>
+        </div>
+      </article>
+
+      <!-- Panel 2: Twin Controls -->
+      <article class="panel">
+        <div class="panel-header">
+          <div class="panel-icon">🎛️</div>
+          <h2>2. Digital Twin Ops Matrix</h2>
+        </div>
+        <small>Real-time parameter manipulation & environment calibration</small>
+
+        <div class="card glow">
+          <strong
+            style="display:block; margin-bottom:12px; color:var(--primary); font-size: 0.9rem; text-transform: uppercase;">Environmental
+            Stressors</strong>
+          <div class="range-row">
+            <label for="staffingDelta">Staffing Variance (%)</label>
+            <output id="staffingOut">0%</output>
+          </div>
+          <input type="range" id="staffingDelta" min="-80" max="80" step="1" value="0" />
+
+          <div class="range-row" style="margin-top: 16px;">
+            <label for="demandDelta">Demand Matrix (%)</label>
+            <output id="demandOut">0%</output>
+          </div>
+          <input type="range" id="demandDelta" min="-80" max="80" step="1" value="0" />
+
+          <div class="range-row" style="margin-top: 16px;">
+            <label for="contactDelta">Contact Efficacy (%)</label>
+            <output id="contactOut">0%</output>
+          </div>
+          <input type="range" id="contactDelta" min="-80" max="80" step="1" value="0" />
+        </div>
+
+        <div class="card">
+          <strong style="display:block; margin-bottom:4px; font-size: 0.9rem; color:#fff;">Zone Calibration</strong>
+          <small style="color:var(--ink-muted); font-size:0.75rem; display:block; margin-bottom:12px;">Base operational
+            metrics</small>
+          <div class="profile-grid">
+            <div class="field">
+              <label for="avgHandleMinutes">Avg Handle (m)</label>
+              <input id="avgHandleMinutes" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label for="backlogCases">Queue Depth</label>
+              <input id="backlogCases" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label for="caseWorkers">Active Agents</label>
+              <input id="caseWorkers" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label for="demandPerHour">Ingest/hr</label>
+              <input id="demandPerHour" type="number" step="0.1" />
+            </div>
+            <div class="field" style="grid-column:1 / -1">
+              <label for="contactSuccessRate">Connection Probability (0-1)</label>
+              <input id="contactSuccessRate" type="number" step="0.01" min="0" max="1" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <strong style="display:block; margin-bottom:12px; font-size: 0.9rem; color:#fff;">Dispatch
+            Configuration</strong>
+          <div class="profile-grid">
+            <div class="field">
+              <label for="notifyChannel">Comms Channel</label>
+              <input id="notifyChannel" value="telegram" />
+            </div>
+            <div class="field">
+              <label for="notifyTarget">Target Node</label>
+              <input id="notifyTarget" value="@welfare-ops" />
+            </div>
+          </div>
+          <label class="risk-item" style="margin-top:12px; width: 100%; border-color: rgba(255,179,71,0.3);">
+            <input id="notifyDryRun" type="checkbox" checked />
+            <span style="font-size: 0.8rem;">Safety Lock (Dry run simulation)</span>
+          </label>
+        </div>
+
+      </article>
+
+      <!-- Panel 3: Output -->
+      <article class="panel">
+        <div class="panel-header">
+          <div class="panel-icon">🧠</div>
+          <h2>3. Synthesis & Telemetry</h2>
+        </div>
+        <small>Orchestration results and simulation deltas</small>
+
+        <div class="card">
+          <strong
+            style="display:block; margin-bottom:12px; font-size: 0.85rem; color:var(--ink-muted); text-transform:uppercase;">Execution
+            State</strong>
+          <div id="statusStack" style="display:flex; flex-direction:column; gap:0;"></div>
+        </div>
+
+        <div style="margin-top: 8px;">
+          <strong
+            style="display:block; margin-bottom:8px; font-size: 0.85rem; color:var(--ink-muted); text-transform:uppercase;">Core
+            Vitals</strong>
+          <div class="metric-grid" id="metricGrid">
+            <!-- Placeholder metrics until run -->
+            <div class="metric"><small>Judge Score</small><strong>--</strong></div>
+            <div class="metric"><small>Referrals</small><strong>--</strong></div>
+            <div class="metric"><small>SLA target</small><strong>--</strong></div>
+          </div>
+        </div>
+
+        <div class="card glow">
+          <strong style="display:block; margin-bottom:8px; font-size: 0.9rem; color:var(--primary);">Twin Impact
+            Analysis</strong>
+          <div class="whatifGrid whatif-grid" id="whatifGrid">
+            <div class="metric"><small>First Contact</small><strong style="font-size: 1.1rem;">--</strong></div>
+            <div class="metric"><small>SLA Breach</small><strong style="font-size: 1.1rem;">--</strong></div>
+            <div class="metric"><small>Coverage</small><strong style="font-size: 1.1rem;">--</strong></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <strong style="display:block; margin-bottom:12px; font-size: 0.9rem; color:#fff;">Action Blueprint</strong>
+          <ol id="actionList" style="font-size:0.85rem">
+            <li style="list-style-type: none; margin-left: -20px; color: var(--ink-muted);">Awaiting initialization...
+            </li>
+          </ol>
+        </div>
+
+        <div class="card">
+          <strong style="display:block; margin-bottom:12px; font-size: 0.9rem; color:#fff;">Deep Insights
+            (Gemini)</strong>
+          <pre id="insightText" class="mono"
+            style="white-space:pre-wrap; margin:0; font-size:0.8rem; color:var(--ink-muted);">Standby for analysis stream...</pre>
+        </div>
+
+        <div class="card">
+          <strong style="display:block; margin-bottom:8px; font-size: 0.9rem; color:#fff;">Routing Intelligence</strong>
+          <div id="recommendText" class="mono" style="color:var(--primary); font-size:0.85rem; margin-bottom:12px;">No
+            active vectors.</div>
+          <div style="overflow-x: auto;">
+            <table class="route-table" id="routeTable">
+              <thead>
+                <tr>
+                  <th>Agency</th>
+                  <th>Phone</th>
+                  <th>Wait</th>
+                  <th>Breach</th>
+                  <th>Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="5" style="text-align:center; color:var(--ink-muted);">--</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const RISK_TYPES = ["housing", "food", "income", "isolation", "care", "other"];
+    const DISTRICT_PROFILES = {
+      "Gangbuk-gu": { avgHandleMinutes: 34, backlogCases: 42, caseWorkers: 10, demandPerHour: 8.4, contactSuccessRate: 0.74 },
+      "Jungnang-gu": { avgHandleMinutes: 36, backlogCases: 47, caseWorkers: 11, demandPerHour: 8.8, contactSuccessRate: 0.72 },
+      "Seocho-gu": { avgHandleMinutes: 38, backlogCases: 30, caseWorkers: 9, demandPerHour: 6.9, contactSuccessRate: 0.76 },
+    };
+
+    const el = (id) => document.getElementById(id);
+    const statusKeys = ["plan", "insights", "whatif", "notify"];
+    const statusLabel = { plan: "PLAN", insights: "INSIGHT", whatif: "TWIN", notify: "NOTIFY" };
+    const API_REQUEST_TIMEOUT_MS = 15000;
+    const TTS_UTTERANCE_TIMEOUT_MS = 12000;
+    let flowInFlight = false;
+    let notifyInFlight = false;
+
+    function canUseSpeechSynthesis() {
+      return (
+        "speechSynthesis" in window &&
+        typeof SpeechSynthesisUtterance !== "undefined"
+      );
+    }
+
+    function scrollToPanel(panelIndex, block = "center") {
+      const panel = document.querySelector(`.panel:nth-child(${panelIndex})`);
+      if (!panel || typeof panel.scrollIntoView !== "function") {
+        return;
+      }
+      panel.scrollIntoView({ behavior: "smooth", block });
+    }
+
+    function setButtonBusy(buttonId, isBusy, busyLabel) {
+      const button = el(buttonId);
+      if (!button) return;
+      if (!button.dataset.idleLabel) {
+        button.dataset.idleLabel = button.textContent || "";
+      }
+      if (isBusy) {
+        button.disabled = true;
+        button.textContent = busyLabel;
+        return;
+      }
+      button.disabled = false;
+      button.textContent = button.dataset.idleLabel || "";
+    }
+
+    function mkStatusRow(key) {
+      const row = document.createElement("div");
+      row.className = "status-row";
+      const tag = document.createElement("span");
+      tag.className = "status-tag status-wait";
+      tag.textContent = statusLabel[key];
+      const msg = document.createElement("div");
+      msg.textContent = "Awaiting execution";
+      msg.style.fontSize = "0.85rem";
+      row.append(tag, msg);
+      return { tag, msg, row };
+    }
+
+    const statusMap = {
+      plan: mkStatusRow("plan"),
+      insights: mkStatusRow("insights"),
+      whatif: mkStatusRow("whatif"),
+      notify: mkStatusRow("notify"),
+    };
+
+    function setStatus(key, type, text) {
+      const item = statusMap[key];
+      item.tag.className = `status-tag status-${type}`;
+      item.msg.textContent = text;
+    }
+
+    function bootstrapStatusStack() {
+      const root = el("statusStack");
+      root.innerHTML = "";
+      for (const key of statusKeys) {
+        root.append(statusMap[key].row);
+        setStatus(key, "wait", "Awaiting execution");
+      }
+    }
+
+    function buildRiskTags() {
+      const wrap = el("riskWrap");
+      wrap.innerHTML = "";
+      for (const risk of RISK_TYPES) {
+        const label = document.createElement("label");
+        label.className = "risk-item";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.value = risk;
+        box.checked = ["housing", "food", "income"].includes(risk);
+        const text = document.createElement("span");
+        text.textContent = risk.toUpperCase();
+        label.append(box, text);
+        wrap.append(label);
+      }
+    }
+
+    function selectedRisks() {
+      const checked = document.querySelectorAll("#riskWrap input[type='checkbox']:checked");
+      return Array.from(checked).map((node) => node.value);
+    }
+
+    function toNumber(value, fallback = 0) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function previewPayload(payload) {
+      el("payloadPreview").textContent = JSON.stringify(payload, null, 2);
+    }
+
+    function readPayload() {
+      // We ensure fallback values in case inputs are missing or invalid
+      const payload = {
+        caseId: (el("caseId").value || "demo-001").trim(),
+        district: el("district").value || "Gangbuk-gu",
+        notes: (el("notes").value || "demo notes").trim(),
+        risks: selectedRisks().length > 0 ? selectedRisks() : ["other"],
+        urgencyHint: el("urgency").value || "medium",
+        scenario: {
+          staffingDeltaPct: toNumber(el("staffingDelta").value, 0),
+          demandDeltaPct: toNumber(el("demandDelta").value, 0),
+          contactRateDeltaPct: toNumber(el("contactDelta").value, 0),
+        },
+        profile: {
+          avgHandleMinutes: toNumber(el("avgHandleMinutes").value, 30),
+          backlogCases: toNumber(el("backlogCases").value, 10),
+          caseWorkers: toNumber(el("caseWorkers").value, 5),
+          demandPerHour: toNumber(el("demandPerHour").value, 5.0),
+          contactSuccessRate: toNumber(el("contactSuccessRate").value, 0.7),
+        },
+      };
+      previewPayload(payload);
+      return payload;
+    }
+
+    async function postJson(path, body) {
+      const headers = { "Content-Type": "application/json" };
+      const apiKey = el("geminiKey")?.value?.trim();
+      if (apiKey) {
+        headers["x-gemini-api-key"] = apiKey;
+      }
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS);
+      let response;
+      try {
+        response = await fetch(path, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (error && typeof error === "object" && error.name === "AbortError") {
+          throw new Error(`${path}: request timeout (${API_REQUEST_TIMEOUT_MS}ms)`);
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(`${path} [${response.status}]: invalid JSON response`);
+      }
+      if (!response.ok || !data.ok) {
+        const message = data && typeof data.error === "string" ? data.error : "Request failed on server end";
+        throw new Error(`${path} [${response.status}]: ${message}`);
+      }
+      return data;
+    }
+
+    function metricCard(label, value, tone) {
+      const box = document.createElement("div");
+      box.className = "metric";
+      const name = document.createElement("small");
+      name.textContent = label;
+      const strong = document.createElement("strong");
+      if (tone) strong.className = tone;
+      strong.textContent = value;
+      box.append(name, strong);
+      return box;
+    }
+
+    function renderOutput(planData, insightsData, whatifData) {
+      const metricGrid = el("metricGrid");
+      metricGrid.innerHTML = "";
+      metricGrid.append(
+        metricCard("Judge Score", String(planData.result.judge.score)),
+        metricCard("Referrals", String(planData.result.eligibility.referrals.length)),
+        metricCard("SLA Target", `${planData.result.safety.slaMinutes}m`)
+      );
+
+      const actionList = el("actionList");
+      actionList.innerHTML = "";
+      for (const action of planData.result.plan.actions) {
+        const li = document.createElement("li");
+        const title = document.createElement("strong");
+        title.textContent = `${action.step}:`;
+        const details = document.createTextNode(` ${action.details} `);
+        const due = document.createElement("span");
+        due.style.color = "var(--warn)";
+        due.textContent = `(T-${action.dueInHours}h)`;
+        li.append(title, details, due);
+        actionList.append(li);
+      }
+
+      if (insightsData && insightsData.insights) {
+        const insightRoot = el("insightText");
+        insightRoot.innerHTML = "";
+        const narrative = document.createElement("span");
+        narrative.style.color = "#fff";
+        narrative.textContent = insightsData.insights.narrative;
+        const source = document.createElement("span");
+        source.style.color = "var(--primary)";
+        source.style.fontSize = "0.7rem";
+        source.textContent = `[SOURCE: ${insightsData.insights.source.toUpperCase()}]`;
+        insightRoot.append(narrative, document.createTextNode("\n\n"), source);
+      }
+
+      if (whatifData && whatifData.twin) {
+        const twin = whatifData.twin;
+        const breachDelta = twin.delta.slaBreachProbability;
+        const contactDelta = twin.delta.expectedFirstContactMinutes;
+        const whatifGrid = el("whatifGrid");
+        whatifGrid.innerHTML = "";
+        whatifGrid.append(
+          metricCard(
+            "First Contact",
+            `${Math.round(twin.simulated.expectedFirstContactMinutes)}m`,
+            contactDelta > 0 ? "delta-up" : "delta-down"
+          ),
+          metricCard(
+            "SLA Breach",
+            `${Math.round(twin.simulated.slaBreachProbability * 100)}%`,
+            breachDelta > 0 ? "delta-up" : "delta-down"
+          ),
+          metricCard(
+            "Coverage",
+            `${twin.simulated.coverageScore}`,
+            twin.delta.coverageScore < 0 ? "delta-up" : "delta-down"
+          )
+        );
+
+        if (twin.recommendation) {
+          const recommendRoot = el("recommendText");
+          recommendRoot.innerHTML = "";
+          const prefix = document.createTextNode("Optimal Route: ");
+          const agencyName = document.createElement("strong");
+          agencyName.textContent = twin.recommendation.agencyName;
+          const lineOneSuffix = document.createTextNode(
+            ` (${twin.recommendation.phone})`
+          );
+          const lineBreak = document.createElement("br");
+          const lineTwo = document.createTextNode(
+            `Est. Wait: ${Math.round(twin.recommendation.expectedWaitMinutes)}m | Node Score: ${Math.round(twin.recommendation.score)}`
+          );
+          recommendRoot.append(
+            prefix,
+            agencyName,
+            lineOneSuffix,
+            lineBreak,
+            lineTwo
+          );
+        } else {
+          el("recommendText").textContent = "No valid recommendations derived from current constraints.";
+        }
+
+        const routeTable = el("routeTable");
+        routeTable.innerHTML = "";
+        const thead = document.createElement("thead");
+        const trh = document.createElement("tr");
+        for (const title of ["Node Agency", "Comms", "Est.Wait", "Breach%", "Score"]) {
+          const th = document.createElement("th");
+          th.textContent = title;
+          trh.append(th);
+        }
+        thead.append(trh);
+        const tbody = document.createElement("tbody");
+        for (const alt of twin.alternatives) {
+          const tr = document.createElement("tr");
+          for (const value of [
+            alt.agencyName,
+            alt.phone,
+            `${Math.round(alt.expectedWaitMinutes)}m`,
+            `${Math.round(alt.slaBreachProbability * 100)}%`,
+            Math.round(alt.score),
+          ]) {
+            const td = document.createElement("td");
+            td.textContent = value;
+            tr.append(td);
+          }
+          tbody.append(tr);
+        }
+        routeTable.append(thead, tbody);
+      }
+    }
+
+    function setRangeOutputs() {
+      el("staffingOut").textContent = `${el("staffingDelta").value > 0 ? '+' : ''}${el("staffingDelta").value}%`;
+      el("demandOut").textContent = `${el("demandDelta").value > 0 ? '+' : ''}${el("demandDelta").value}%`;
+      el("contactOut").textContent = `${el("contactDelta").value > 0 ? '+' : ''}${el("contactDelta").value}%`;
+    }
+
+    function setProfileFromDistrict() {
+      const district = el("district").value;
+      const profile = DISTRICT_PROFILES[district] || DISTRICT_PROFILES["Seocho-gu"];
+      el("avgHandleMinutes").value = profile.avgHandleMinutes;
+      el("backlogCases").value = profile.backlogCases;
+      el("caseWorkers").value = profile.caseWorkers;
+      el("demandPerHour").value = profile.demandPerHour;
+      el("contactSuccessRate").value = profile.contactSuccessRate;
+    }
+
+    function loadSample() {
+      el("caseId").value = "nexus-sim-alpha-99";
+      el("district").value = "Jungnang-gu";
+      el("urgency").value = "high";
+      el("notes").value = "Subject isolated, exhibiting critical resource deficiency (nutrition/finance). Immediate socio-economic stabilization required.";
+
+      const checkboxes = document.querySelectorAll("#riskWrap input[type='checkbox']");
+      for (const box of checkboxes) {
+        box.checked = ["food", "isolation", "care"].includes(box.value);
+      }
+
+      el("staffingDelta").value = "-25";
+      el("demandDelta").value = "40";
+      el("contactDelta").value = "10";
+      setRangeOutputs();
+      setProfileFromDistrict();
+      previewPayload(readPayload());
+
+      // Add subtle flash effect to indicate load
+      document.querySelector('.shell').style.animation = 'none';
+      void document.querySelector('.shell').offsetWidth; // trigger reflow
+      document.querySelector('.shell').style.animation = 'fadeInUp 0.5s ease-out';
+    }
+
+    async function runFlow() {
+      if (flowInFlight) {
+        setStatus("plan", "wait", "Plan request already running");
+        return;
+      }
+      flowInFlight = true;
+      setButtonBusy("runBtn", true, "Running...");
+      try {
+        const payload = readPayload();
+        // Reset UI
+        el("insightText").innerHTML = '<span style="color:var(--warn); animation: pulseWarn 1.5s infinite;">Processing telemetry...</span>';
+
+        setStatus("plan", "run", "Executing StagePilot /v1/plan");
+        const planData = await postJson("/v1/plan", payload);
+        setStatus("plan", "ok", "Plan synthesized successfully");
+
+        setStatus("insights", "run", "Querying Gemini Ontology");
+        setStatus("whatif", "run", "Running Digital Twin Simulation");
+
+        const [insightsData, whatifData] = await Promise.all([
+          postJson("/v1/insights", payload),
+          postJson("/v1/whatif", payload),
+        ]);
+
+        setStatus("insights", "ok", `Intelligence retrieved [${insightsData.insights.source}]`);
+        setStatus("whatif", "ok", "Simulations converged");
+
+        renderOutput(planData, insightsData, whatifData);
+      } catch (error) {
+        console.error(error);
+        const message = error instanceof Error ? error.message : "System Exception";
+        for (const key of statusKeys) {
+          if (statusMap[key].tag.className.includes("status-run")) {
+            setStatus(key, "err", `FAULT: ${message}`);
+          }
+        }
+      } finally {
+        flowInFlight = false;
+        setButtonBusy("runBtn", false, "Running...");
+      }
+    }
+
+    async function notifyOpenClaw() {
+      if (notifyInFlight) {
+        setStatus("notify", "wait", "Notify request already running");
+        return;
+      }
+      notifyInFlight = true;
+      setButtonBusy("notifyBtn", true, "Dispatching...");
+      try {
+        const payload = readPayload();
+        const notifyPayload = {
+          ...payload,
+          delivery: {
+            channel: el("notifyChannel").value.trim() || undefined,
+            dryRun: el("notifyDryRun").checked,
+            target: el("notifyTarget").value.trim() || undefined,
+          },
+        };
+
+        setStatus("notify", "run", "Broadcasting to OpenClaw Node");
+        const response = await postJson("/v1/notify", notifyPayload);
+        const delivery = response.delivery || {};
+
+        if (delivery.delivered) {
+          setStatus("notify", "ok", `Broadcast Success [${delivery.mode}]: ${delivery.detail}`);
+        } else {
+          setStatus("notify", "wait", `Dispatch Held [${delivery.mode}]: ${delivery.detail}`);
+        }
+      } catch (error) {
+        console.error(error);
+        const message = error instanceof Error ? error.message : "Broadcast Failure";
+        setStatus("notify", "err", `COMM FAULT: ${message}`);
+      } finally {
+        notifyInFlight = false;
+        setButtonBusy("notifyBtn", false, "Dispatching...");
+      }
+    }
+
+    function bindEvents() {
+      for (const id of ["staffingDelta", "demandDelta", "contactDelta"]) {
+        el(id).addEventListener("input", () => {
+          setRangeOutputs();
+          previewPayload(readPayload());
+        });
+      }
+
+      for (const id of [
+        "caseId",
+        "district",
+        "urgency",
+        "notes",
+        "avgHandleMinutes",
+        "backlogCases",
+        "caseWorkers",
+        "demandPerHour",
+        "contactSuccessRate",
+      ]) {
+        el(id).addEventListener("input", () => {
+          if (id === "district") {
+            setProfileFromDistrict();
+          }
+          previewPayload(readPayload());
+        });
+      }
+
+      el("riskWrap").addEventListener("input", () => {
+        previewPayload(readPayload());
+      });
+
+      el("runBtn").addEventListener("click", runFlow);
+      el("notifyBtn").addEventListener("click", notifyOpenClaw);
+      el("sampleBtn").addEventListener("click", loadSample);
+      if (el("autoDemoBtn")) el("autoDemoBtn").addEventListener("click", runAutoDemo);
+    }
+
+    async function speakKorean(text) {
+      if (!canUseSpeechSynthesis()) {
+        return;
+      }
+
+      return new Promise(resolve => {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'ko-KR';
+        const voices = window.speechSynthesis.getVoices();
+        const koVoice = voices.find(v => v.lang.includes('ko'));
+        if (koVoice) utterance.voice = koVoice;
+        utterance.rate = 1.05; // Slightly upbeat
+        let settled = false;
+        const timeoutId = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          window.speechSynthesis.cancel();
+          resolve();
+        }, TTS_UTTERANCE_TIMEOUT_MS);
+
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          resolve();
+        };
+
+        utterance.onend = finish;
+        utterance.onerror = finish;
+
+        try {
+          window.speechSynthesis.speak(utterance);
+        } catch {
+          finish();
+        }
+      });
+    }
+
+    const delay = ms => new Promise(res => setTimeout(res, ms));
+
+    async function runAutoDemo() {
+      const btn = el('autoDemoBtn');
+      if (flowInFlight || notifyInFlight) {
+        setStatus("notify", "wait", "Wait for active operation to complete");
+        return;
+      }
+      if (!btn || btn.disabled) return;
+      setButtonBusy("autoDemoBtn", true, "Running Demo...");
+
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Guarantee voices are loaded and clear any stale queue when TTS is supported.
+        if (canUseSpeechSynthesis()) {
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.getVoices();
+        } else {
+          setStatus("notify", "wait", "TTS unavailable, running silent demo");
+        }
+
+        await speakKorean("안녕하세요. 스테이지파일럿 넥서스의 자동화 데모를 시작하겠습니다.");
+        await delay(500);
+
+        await speakKorean("첫번째 단계로, 실시간 접수된 위기 가구의 복지 데이터를 시스템에 로드합니다.");
+        el('sampleBtn').style.boxShadow = "0 0 20px #00E5FF";
+        await delay(500);
+        el('sampleBtn').click();
+        await delay(500);
+        el('sampleBtn').style.boxShadow = "none";
+
+        scrollToPanel(2, "center");
+        await speakKorean("이어서 디지털 트윈 매트릭스를 조작하여 현장의 인력과 수요 변화를 시뮬레이션 환경에 반영합니다. 여기서는 긴급 수요를 늘려보겠습니다.");
+        el('demandDelta').value = 50;
+        el('demandDelta').dispatchEvent(new Event('input'));
+        setRangeOutputs();
+        await delay(1000);
+
+        scrollToPanel(1, "center");
+        await speakKorean("모든 환경 준비가 완료되었습니다. 이제 구글 제미나이와 연결된 오케스트레이션 엔진을 시작하겠습니다.");
+        el('runBtn').style.boxShadow = "0 0 20px #00E5FF";
+        await delay(500);
+        const flowPromise = runFlow();
+        el('runBtn').style.boxShadow = "none";
+
+        scrollToPanel(3, "start");
+        await delay(1500);
+        await speakKorean("A I가 실시간으로 데이터를 분석하고, 최상의 라우팅 경로와 액션 플랜을 도출하고 있습니다.");
+
+        await flowPromise;
+        await delay(1000);
+        await speakKorean("분석이 완료되었습니다. 화면에서 확인할 수 있듯이 최적의 지원 기관 매칭 결과와 시뮬레이션된 예상 지표들이 산출되었습니다.");
+        await delay(1500);
+
+        await speakKorean("마지막으로, 도출된 솔루션을 실제 담당 기관에 전송하기 위해 오픈클로 네트워크로 브로드캐스트 합니다.");
+        el('notifyBtn').style.boxShadow = "0 0 20px #B084E6";
+        await delay(500);
+        await notifyOpenClaw();
+        await delay(500);
+        el('notifyBtn').style.boxShadow = "none";
+
+        await delay(2500);
+
+        await speakKorean("모든 프로세스가 성공적으로 처리되었습니다. 이상으로 스테이지파일럿 넥서스의 시연을 마칩니다. 감사합니다.");
+      } catch (error) {
+        console.error(error);
+        const message = error instanceof Error ? error.message : "Auto demo failed";
+        setStatus("notify", "err", `DEMO FAULT: ${message}`);
+      } finally {
+        setButtonBusy("autoDemoBtn", false, "Running Demo...");
+        el('sampleBtn').style.boxShadow = "none";
+        el('runBtn').style.boxShadow = "none";
+        el('notifyBtn').style.boxShadow = "none";
+      }
+    }
+
+    function boot() {
+      buildRiskTags();
+      bootstrapStatusStack();
+      setRangeOutputs();
+      setProfileFromDistrict();
+      bindEvents();
+      previewPayload(readPayload());
+    }
+
+    boot();
+  </script>
+</body>
+
+</html>

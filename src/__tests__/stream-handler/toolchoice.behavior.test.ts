@@ -106,4 +106,31 @@ describe("toolChoiceStream behavior", () => {
       },
     });
   });
+
+  it("emits stream.tool-choice and stream.finish events when onEvent is provided", async () => {
+    const events: Array<{ type: string; metadata?: Record<string, unknown> }> =
+      [];
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],
+      finishReason: "stop",
+    });
+
+    const { stream } = await toolChoiceStream({
+      doGenerate,
+      tools: [],
+      options: {
+        onEvent: (event: {
+          type: string;
+          metadata?: Record<string, unknown>;
+        }) => events.push(event),
+      },
+    });
+    await convertReadableStreamToArray(stream);
+
+    expect(events.map((event) => event.type)).toEqual([
+      "stream.tool-choice",
+      "stream.finish",
+    ]);
+    expect(events[0]?.metadata?.toolName).toBe("do");
+  });
 });

@@ -11,6 +11,50 @@ const DOUBLE_QUOTE = '"';
 const SNAKE_SEGMENT_REGEX = /_([a-zA-Z0-9])/g;
 const CAMEL_BOUNDARY_REGEX = /([a-z0-9])([A-Z])/g;
 const LEADING_UNDERSCORES_REGEX = /^_+/;
+const DEFAULT_COERCE_MAX_DEPTH = 64;
+const MIN_COERCE_MAX_DEPTH = 1;
+const MAX_COERCE_MAX_DEPTH = 4096;
+
+export interface CoerceMaxDepthExceededMetadata {
+  depth: number;
+  maxDepth: number;
+  schemaType?: string;
+  valueType: string;
+}
+
+export interface CoerceBySchemaOptions {
+  maxDepth?: number;
+  onMaxDepthExceeded?: (metadata: CoerceMaxDepthExceededMetadata) => void;
+}
+
+interface CoerceContext {
+  depth: number;
+  didReportMaxDepth: boolean;
+  maxDepth: number;
+  onMaxDepthExceeded?: (metadata: CoerceMaxDepthExceededMetadata) => void;
+}
+
+const COERCE_CONTEXT_STACK: CoerceContext[] = [];
+
+function normalizeMaxDepth(value: number | undefined): number {
+  const candidate =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.trunc(value)
+      : DEFAULT_COERCE_MAX_DEPTH;
+  return Math.min(
+    MAX_COERCE_MAX_DEPTH,
+    Math.max(MIN_COERCE_MAX_DEPTH, candidate)
+  );
+}
+
+function createCoerceContext(options?: CoerceBySchemaOptions): CoerceContext {
+  return {
+    depth: 0,
+    didReportMaxDepth: false,
+    maxDepth: normalizeMaxDepth(options?.maxDepth),
+    onMaxDepthExceeded: options?.onMaxDepthExceeded,
+  };
+}
 
 export function unwrapJsonSchema(schema: unknown): unknown {
   if (!schema || typeof schema !== "object") {
@@ -1147,7 +1191,17 @@ function coerceArrayValue(
   return [value];
 }
 
-export function coerceBySchema(value: unknown, schema?: unknown): unknown {
+function getValueType(value: unknown): string {
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  return typeof value;
+}
+
+function coerceBySchemaCore(value: unknown, schema?: unknown): unknown {
   const unwrapped = unwrapJsonSchema(schema);
   if (!unwrapped || typeof unwrapped !== "object") {
     if (typeof value === "string") {
@@ -1157,30 +1211,29 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
   }
 
   const schemaType = getSchemaType(unwrapped);
-  const u = unwrapped as Record<string, unknown>;
+  const unwrappedRecord = unwrapped as Record<string, unknown>;
 
-  // Handle string values
   if (typeof value === "string") {
-    return coerceStringValue(value, schemaType, u);
+    return coerceStringValue(value, schemaType, unwrappedRecord);
   }
 
-  // Coerce primitive scalars to string when schema explicitly expects a string.
   const primitiveString = coercePrimitiveToString(value, schemaType);
   if (primitiveString !== null) {
     return primitiveString;
   }
 
-  // Handle object to object coercion
   if (
     schemaType === "object" &&
     value &&
     typeof value === "object" &&
     !Array.isArray(value)
   ) {
-    return coerceObjectToObject(value as Record<string, unknown>, u);
+    return coerceObjectToObject(
+      value as Record<string, unknown>,
+      unwrappedRecord
+    );
   }
 
-  // Handle object wrappers when schema expects a primitive value.
   if (
     value &&
     typeof value === "object" &&
@@ -1190,22 +1243,61 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
     const primitiveResult = coerceObjectToPrimitive(
       value as Record<string, unknown>,
       schemaType,
-      u
+      unwrappedRecord
     );
     if (primitiveResult !== null) {
       return primitiveResult;
     }
   }
 
-  // Handle array coercion
   if (schemaType === "array") {
-    const prefixItems = Array.isArray(u.prefixItems)
-      ? (u.prefixItems as unknown[])
+    const prefixItems = Array.isArray(unwrappedRecord.prefixItems)
+      ? (unwrappedRecord.prefixItems as unknown[])
       : undefined;
-    const itemsSchema = u.items as unknown;
-
+    const itemsSchema = unwrappedRecord.items as unknown;
     return coerceArrayValue(value, prefixItems, itemsSchema);
   }
 
   return value;
+}
+
+export function coerceBySchema(
+  value: unknown,
+  schema?: unknown,
+  options?: CoerceBySchemaOptions
+): unknown {
+  const activeContext = COERCE_CONTEXT_STACK.at(-1);
+  const context = activeContext ?? createCoerceContext(options);
+  const ownsContext = !activeContext;
+  if (ownsContext) {
+    COERCE_CONTEXT_STACK.push(context);
+  }
+
+  if (context.depth >= context.maxDepth) {
+    if (!context.didReportMaxDepth) {
+      context.didReportMaxDepth = true;
+      const unwrappedSchema = unwrapJsonSchema(schema);
+      context.onMaxDepthExceeded?.({
+        depth: context.depth,
+        maxDepth: context.maxDepth,
+        schemaType: getSchemaType(unwrappedSchema),
+        valueType: getValueType(value),
+      });
+    }
+
+    if (ownsContext) {
+      COERCE_CONTEXT_STACK.pop();
+    }
+    return value;
+  }
+
+  context.depth += 1;
+  try {
+    return coerceBySchemaCore(value, schema);
+  } finally {
+    context.depth -= 1;
+    if (ownsContext) {
+      COERCE_CONTEXT_STACK.pop();
+    }
+  }
 }

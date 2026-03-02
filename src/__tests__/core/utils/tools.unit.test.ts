@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   decodeOriginalTools,
+  extractCoerceOptionsFromProviderOptions,
   isToolChoiceActive,
 } from "../../../core/utils/provider-options";
 
@@ -60,5 +61,21 @@ describe("tools utils", () => {
     expect(decoded).toHaveLength(1);
     expect(decoded[0].name).toBe("ok");
     expect(onError).toHaveBeenCalledTimes(2);
+  });
+
+  it("extractCoerceOptionsFromProviderOptions returns coerce options", () => {
+    const onMaxDepthExceeded = vi.fn();
+    const coerce = extractCoerceOptionsFromProviderOptions({
+      toolCallMiddleware: {
+        coerce: {
+          maxDepth: 9,
+          onMaxDepthExceeded,
+        },
+      },
+    });
+
+    expect(coerce).toBeDefined();
+    expect(coerce?.maxDepth).toBe(9);
+    expect(coerce?.onMaxDepthExceeded).toBe(onMaxDepthExceeded);
   });
 });

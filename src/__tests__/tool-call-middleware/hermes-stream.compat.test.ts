@@ -122,4 +122,60 @@ describe("createToolMiddleware hermes stream compat", () => {
       raw: undefined,
     });
   });
+
+  test("wrapStream emits stream lifecycle events via onEvent callback", async () => {
+    const events: Array<{ type: string; metadata?: Record<string, unknown> }> =
+      [];
+    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+      start(controller) {
+        controller.enqueue({ type: "text-start", id: "text-1" });
+        controller.enqueue({
+          type: "text-delta",
+          id: "text-1",
+          delta: "<tool_call>",
+        });
+        controller.enqueue({
+          type: "text-delta",
+          id: "text-1",
+          delta: '{"name":"get_weather","arguments":{"location":"Seoul"}}',
+        });
+        controller.enqueue({
+          type: "text-delta",
+          id: "text-1",
+          delta: "</tool_call>",
+        });
+        controller.enqueue({ type: "text-end", id: "text-1" });
+        controller.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: mockUsage(1, 1),
+        });
+        controller.close();
+      },
+    });
+
+    const mockDoStream = () => Promise.resolve({ stream: mockStream });
+    if (!middleware.wrapStream) {
+      throw new Error("wrapStream is not defined");
+    }
+    const result = await middleware.wrapStream({
+      doStream: mockDoStream,
+      params: {
+        providerOptions: {
+          toolCallMiddleware: {
+            onEvent: (event: {
+              type: string;
+              metadata?: Record<string, unknown>;
+            }) => events.push(event),
+          },
+        },
+      },
+    } as any);
+
+    await convertReadableStreamToArray(result.stream);
+
+    expect(events.map((event) => event.type)).toContain("stream.start");
+    expect(events.map((event) => event.type)).toContain("stream.tool-call");
+    expect(events.map((event) => event.type)).toContain("stream.finish");
+  });
 });

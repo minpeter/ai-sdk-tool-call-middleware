@@ -69,4 +69,85 @@ describe("tool-call-middleware coercion (utils)", () => {
     expect(tc).toBeTruthy();
     expect(JSON.parse(tc.input)).toEqual({ a: 10, b: false });
   });
+
+  it("applies coerce.maxDepth from provider options", async () => {
+    const deepProtocol: TCMCoreProtocol = {
+      ...dummyProtocol,
+      parseGeneratedText: ({ tools }) => [
+        {
+          type: "tool-call",
+          toolCallId: "id",
+          toolName: tools[0]?.name ?? "deep",
+          input: JSON.stringify({
+            outer: {
+              inner: {
+                count: "12",
+              },
+            },
+          }),
+        } as any,
+      ],
+    };
+    const middleware = createToolMiddleware({
+      protocol: deepProtocol,
+      toolSystemPromptTemplate: () => "",
+    });
+
+    const onMaxDepthExceeded = vi.fn();
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "deep",
+        inputSchema: {
+          type: "object",
+          properties: {
+            outer: {
+              type: "object",
+              properties: {
+                inner: {
+                  type: "object",
+                  properties: {
+                    count: { type: "number" },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ];
+
+    if (!middleware.wrapGenerate) {
+      throw new Error("wrapGenerate is not defined");
+    }
+    const result = await middleware.wrapGenerate({
+      doGenerate: async () =>
+        ({ content: [{ type: "text", text: "" }] }) as any,
+      params: {
+        tools,
+        providerOptions: {
+          toolCallMiddleware: {
+            originalTools: originalToolsSchema.encode(tools),
+            coerce: {
+              maxDepth: 2,
+              onMaxDepthExceeded,
+            },
+          },
+        },
+      },
+    } as any);
+
+    const tc = (result.content as any[]).find(
+      (p: any) => p.type === "tool-call"
+    );
+    expect(tc).toBeTruthy();
+    expect(JSON.parse(tc.input)).toEqual({
+      outer: {
+        inner: {
+          count: "12",
+        },
+      },
+    });
+    expect(onMaxDepthExceeded).toHaveBeenCalled();
+  });
 });

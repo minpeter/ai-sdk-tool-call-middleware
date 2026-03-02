@@ -3,7 +3,10 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
-import { coerceBySchema } from "../../schema-coerce";
+import {
+  type CoerceBySchemaOptions,
+  coerceBySchema,
+} from "../../schema-coerce";
 
 type ToolCallLike = Extract<
   LanguageModelV3Content | LanguageModelV3StreamPart,
@@ -13,7 +16,8 @@ type ToolCallLike = Extract<
 export function coerceToolCallInput(
   toolName: string,
   input: unknown,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV3FunctionTool[],
+  options?: CoerceBySchemaOptions
 ): string | undefined {
   let args: unknown = {};
   if (typeof input === "string") {
@@ -29,15 +33,21 @@ export function coerceToolCallInput(
   }
 
   const schema = tools.find((t) => t.name === toolName)?.inputSchema;
-  const coerced = coerceBySchema(args, schema);
+  const coerced = coerceBySchema(args, schema, options);
   return JSON.stringify(coerced ?? {});
 }
 
 export function coerceToolCallPart<T extends ToolCallLike>(
   part: T,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV3FunctionTool[],
+  options?: CoerceBySchemaOptions
 ): T {
-  const coercedInput = coerceToolCallInput(part.toolName, part.input, tools);
+  const coercedInput = coerceToolCallInput(
+    part.toolName,
+    part.input,
+    tools,
+    options
+  );
   if (coercedInput === undefined) {
     return part;
   }

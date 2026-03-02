@@ -21,6 +21,10 @@ import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
 import { createDynamicIfThenElseSchema } from "./core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
+  emitMiddlewareEvent,
+  extractOnEventOption,
+} from "./core/utils/on-event";
+import {
   mergeToolCallMiddlewareOptions,
   originalToolsSchema,
 } from "./core/utils/provider-options";
@@ -257,6 +261,15 @@ export function transformParams({
   const functionTools = (params.tools ?? []).filter(
     (t): t is LanguageModelV3FunctionTool => t.type === "function"
   );
+  const onEvent = extractOnEventOption(params.providerOptions)?.onEvent;
+  emitMiddlewareEvent(onEvent, {
+    type: "transform-params.start",
+    metadata: {
+      toolsCount: functionTools.length,
+      placement,
+      toolChoiceType: params.toolChoice?.type ?? "auto",
+    },
+  });
 
   const systemPrompt = resolvedProtocol.formatTools({
     tools: functionTools,
@@ -288,6 +301,13 @@ export function transformParams({
     finalPrompt,
     functionTools
   );
+  const complete = <T>(result: T, metadata: Record<string, unknown>): T => {
+    emitMiddlewareEvent(onEvent, {
+      type: "transform-params.complete",
+      metadata,
+    });
+    return result;
+  };
 
   if (params.toolChoice?.type === "none") {
     throw new Error(
@@ -296,14 +316,21 @@ export function transformParams({
   }
 
   if (params.toolChoice?.type === "tool") {
-    return handleToolChoiceTool(params, baseReturnParams);
+    return complete(handleToolChoiceTool(params, baseReturnParams), {
+      mode: "tool",
+    });
   }
 
   if (params.toolChoice?.type === "required") {
-    return handleToolChoiceRequired(params, baseReturnParams, functionTools);
+    return complete(
+      handleToolChoiceRequired(params, baseReturnParams, functionTools),
+      {
+        mode: "required",
+      }
+    );
   }
 
-  return baseReturnParams;
+  return complete(baseReturnParams, { mode: "auto" });
 }
 
 /**

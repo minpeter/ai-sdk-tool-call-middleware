@@ -1,0 +1,11 @@
+{
+  "district": "Jungnang-gu",
+  "profile": {
+    "avgHandleMinutes": 36,
+    "backlogCases": 52,
+    "caseWorkers": 10,
+    "demandPerHour": 9.1,
+    "contactSuccessRate": 0.73
+  },
+  "notes": "Replace with measured district operations values before demo."
+}

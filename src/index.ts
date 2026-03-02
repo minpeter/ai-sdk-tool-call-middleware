@@ -18,6 +18,7 @@ export * from "./core/utils/debug";
 export * from "./core/utils/dynamic-tool-schema";
 export * from "./core/utils/get-potential-start-index";
 export * from "./core/utils/on-error";
+export * from "./core/utils/on-event";
 export * from "./core/utils/provider-options";
 export * from "./core/utils/regex";
 export * from "./core/utils/type-guards";

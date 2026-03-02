@@ -61,4 +61,38 @@ describe("createToolMiddleware wrapGenerate hermes", () => {
     expect(result?.content).toHaveLength(1);
     expect(result?.content[0]).toEqual(original);
   });
+
+  it("emits generate lifecycle events through providerOptions.toolCallMiddleware.onEvent", async () => {
+    const middleware = createJsonMiddleware();
+    const events: Array<{ type: string; metadata?: Record<string, unknown> }> =
+      [];
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: '<tool_call>{"name":"evtTool","arguments":{"x":"1"}}</tool_call>',
+        },
+      ],
+    });
+
+    await middleware.wrapGenerate?.({
+      doGenerate,
+      params: {
+        prompt: [],
+        providerOptions: {
+          toolCallMiddleware: {
+            onEvent: (event: {
+              type: string;
+              metadata?: Record<string, unknown>;
+            }) => events.push(event),
+          },
+        },
+      },
+    } as any);
+
+    expect(events.map((event) => event.type)).toContain("generate.start");
+    expect(events.map((event) => event.type)).toContain("generate.complete");
+    const complete = events.find((event) => event.type === "generate.complete");
+    expect(complete?.metadata?.fromToolChoice).toBe(false);
+  });
 });

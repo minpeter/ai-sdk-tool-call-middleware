@@ -3,17 +3,25 @@ import type {
   LanguageModelV3FunctionTool,
   SharedV3ProviderOptions,
 } from "@ai-sdk/provider";
+import type { CoerceBySchemaOptions } from "../../schema-coerce";
 import type { OnErrorFn } from "./on-error";
+import type { OnEventFn } from "./on-event";
 
 export interface ToolCallMiddlewareProviderOptions {
   toolCallMiddleware?: {
     // onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    // onEvent?: (event: ToolCallMiddlewareEvent) => void;
+    onEvent?: OnEventFn;
+
     // Optional debug summary container that middleware can populate.
     // Values must be JSON-safe.
     debugSummary?: {
       originalText?: string;
       toolCalls?: string; // JSON string of array of { toolName, input }
     };
+
+    // Optional schema coercion tuning for tool-call payload normalization.
+    coerce?: CoerceBySchemaOptions;
 
     // INTERNAL: Set by transform-handler. Used for internal propagation of tool-choice.
     toolChoice?: { type: string; toolName?: string };
@@ -115,6 +123,12 @@ export function decodeOriginalToolsFromProviderOptions(
     providerOptions?.toolCallMiddleware?.originalTools,
     options
   );
+}
+
+export function extractCoerceOptionsFromProviderOptions(
+  providerOptions: ToolCallMiddlewareProviderOptions | undefined
+): CoerceBySchemaOptions | undefined {
+  return providerOptions?.toolCallMiddleware?.coerce;
 }
 
 export function extractToolNamesFromOriginalTools(

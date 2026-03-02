@@ -10,7 +10,13 @@ import { getDebugLevel, logParsedChunk, logRawChunk } from "./core/utils/debug";
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
+  emitMiddlewareEvent,
+  extractOnEventOption,
+  type OnEventFn,
+} from "./core/utils/on-event";
+import {
   decodeOriginalToolsFromProviderOptions,
+  extractCoerceOptionsFromProviderOptions,
   getToolCallMiddlewareOptions,
   isToolChoiceActive,
   type ToolCallMiddlewareProviderOptions,
@@ -32,16 +38,30 @@ export async function wrapStream({
   };
 }) {
   const onErrorOptions = extractOnErrorOption(params.providerOptions);
+  const onEvent = extractOnEventOption(params.providerOptions)?.onEvent;
   const tools = decodeOriginalToolsFromProviderOptions(
     params.providerOptions,
     onErrorOptions
   );
+  const coerceOptions = extractCoerceOptionsFromProviderOptions(
+    params.providerOptions
+  );
+  emitMiddlewareEvent(onEvent, {
+    type: "stream.start",
+    metadata: {
+      toolsCount: tools.length,
+      toolChoiceActive: isToolChoiceActive(params),
+    },
+  });
 
   if (isToolChoiceActive(params)) {
     return toolChoiceStream({
       doGenerate,
       tools,
-      options: onErrorOptions,
+      options: {
+        ...onErrorOptions,
+        onEvent,
+      },
     });
   }
 
@@ -72,10 +92,16 @@ export async function wrapStream({
     new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>({
       transform(part, controller) {
         let normalizedPart =
-          part.type === "tool-call" ? coerceToolCallPart(part, tools) : part;
+          part.type === "tool-call"
+            ? coerceToolCallPart(part, tools, coerceOptions)
+            : part;
 
         if (normalizedPart.type === "tool-call") {
           seenToolCall = true;
+          emitMiddlewareEvent(onEvent, {
+            type: "stream.tool-call",
+            metadata: { toolName: normalizedPart.toolName },
+          });
         }
 
         if (
@@ -89,6 +115,16 @@ export async function wrapStream({
               normalizedPart.finishReason
             ),
           };
+        }
+
+        if (normalizedPart.type === "finish") {
+          emitMiddlewareEvent(onEvent, {
+            type: "stream.finish",
+            metadata: {
+              unifiedFinishReason: normalizedPart.finishReason.unified,
+              rawFinishReason: normalizedPart.finishReason.raw,
+            },
+          });
         }
 
         if (debugLevel === "stream") {
@@ -114,6 +150,7 @@ export async function toolChoiceStream({
   tools?: LanguageModelV3FunctionTool[];
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    onEvent?: OnEventFn;
   };
 }) {
   const normalizedTools = Array.isArray(tools) ? tools : [];
@@ -125,6 +162,10 @@ export async function toolChoiceStream({
     tools: normalizedTools,
     onError: options?.onError,
     errorMessage: "Failed to parse toolChoice JSON from streamed model output",
+  });
+  emitMiddlewareEvent(options?.onEvent, {
+    type: "stream.tool-choice",
+    metadata: { toolName },
   });
 
   const stream = new ReadableStream<LanguageModelV3StreamPart>({
@@ -139,6 +180,16 @@ export async function toolChoiceStream({
         type: "finish",
         usage: normalizeUsage(result?.usage),
         finishReason: normalizeToolCallsFinishReason(result?.finishReason),
+      });
+      emitMiddlewareEvent(options?.onEvent, {
+        type: "stream.finish",
+        metadata: {
+          unifiedFinishReason: "tool-calls",
+          rawFinishReason:
+            typeof result?.finishReason === "string"
+              ? result.finishReason
+              : undefined,
+        },
       });
       controller.close();
     },

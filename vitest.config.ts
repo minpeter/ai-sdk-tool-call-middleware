@@ -11,7 +11,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["**/*.test.ts{,x}"],
+    include: ["src/**/*.test.ts{,x}", "tests/**/*.test.ts{,x}"],
     exclude: [
       "**/*.ui.test.ts{,x}",
       "**/*.e2e.test.ts{,x}",
@@ -19,6 +19,7 @@ export default defineConfig({
     ],
     typecheck: {
       enabled: true,
+      tsconfig: "./tsconfig.vitest.json",
     },
     coverage: {
       provider: "v8",

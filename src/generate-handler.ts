@@ -15,7 +15,12 @@ import { recoverToolCallFromJsonCandidates } from "./core/utils/generated-text-j
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
+  emitMiddlewareEvent,
+  extractOnEventOption,
+} from "./core/utils/on-event";
+import {
   decodeOriginalToolsFromProviderOptions,
+  extractCoerceOptionsFromProviderOptions,
   getToolCallMiddlewareOptions,
   isToolChoiceActive,
   type ToolCallMiddlewareProviderOptions,
@@ -72,6 +77,10 @@ async function handleToolChoice(
 
   const debugSummary = params.providerOptions?.toolCallMiddleware?.debugSummary;
   logDebugSummary(debugSummary, toolCall, originText);
+  emitMiddlewareEvent(extractOnEventOption(params.providerOptions)?.onEvent, {
+    type: "generate.tool-choice",
+    metadata: { toolName: toolCall.toolName },
+  });
 
   return {
     ...result,
@@ -85,6 +94,8 @@ function parseContent(
   tools: LanguageModelV3FunctionTool[],
   providerOptions?: ToolCallMiddlewareProviderOptions
 ): LanguageModelV3Content[] {
+  const coerceOptions =
+    extractCoerceOptionsFromProviderOptions(providerOptions);
   const parsed = content.flatMap((contentItem): LanguageModelV3Content[] => {
     if (contentItem.type !== "text") {
       return [contentItem];
@@ -117,7 +128,9 @@ function parseContent(
   });
 
   return parsed.map((part) =>
-    part.type === "tool-call" ? coerceToolCallPart(part, tools) : part
+    part.type === "tool-call"
+      ? coerceToolCallPart(part, tools, coerceOptions)
+      : part
   );
 }
 
@@ -189,9 +202,22 @@ export async function wrapGenerate({
     params.providerOptions,
     onError
   );
+  const onEvent = extractOnEventOption(params.providerOptions)?.onEvent;
+  emitMiddlewareEvent(onEvent, {
+    type: "generate.start",
+    metadata: {
+      toolsCount: tools.length,
+      toolChoiceActive: isToolChoiceActive(params),
+    },
+  });
 
   if (isToolChoiceActive(params)) {
-    return handleToolChoice(doGenerate, params, tools);
+    const toolChoiceResult = await handleToolChoice(doGenerate, params, tools);
+    emitMiddlewareEvent(onEvent, {
+      type: "generate.complete",
+      metadata: { toolCallCount: 1, fromToolChoice: true },
+    });
+    return toolChoiceResult;
   }
 
   const result = await doGenerate();
@@ -214,6 +240,14 @@ export async function wrapGenerate({
     protocol,
     tools,
     providerOptions: params.providerOptions,
+  });
+  emitMiddlewareEvent(onEvent, {
+    type: "generate.complete",
+    metadata: {
+      toolCallCount: newContent.filter((part) => part.type === "tool-call")
+        .length,
+      fromToolChoice: false,
+    },
   });
 
   return {
