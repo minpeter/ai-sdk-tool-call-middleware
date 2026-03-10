@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.4
+
+### Patch Changes
+
+- 3ed6efa: chore(deps-dev): bump @types/node from 25.3.4 to 25.3.5
+
 ## 4.1.3
 
 ### Patch Changes
