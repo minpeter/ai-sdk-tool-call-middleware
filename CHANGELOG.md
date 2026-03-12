@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.5
+
+### Patch Changes
+
+- 0057235: Bump @types/node from 25.3.5 to 25.4.0
+
 ## 4.1.4
 
 ### Patch Changes
