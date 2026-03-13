@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.6
+
+### Patch Changes
+
+- 999fceb: Bump @types/node, @vitest/coverage-v8, ultracite, and vitest dev dependencies
+
 ## 4.1.5
 
 ### Patch Changes
