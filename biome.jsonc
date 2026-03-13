@@ -6,6 +6,10 @@
   },
   "linter": {
     "rules": {
+      "correctness": {
+        "useImportExtensions": "off",
+        "noUnresolvedImports": "off"
+      },
       "suspicious": {
         "noConsole": "off"
       },
