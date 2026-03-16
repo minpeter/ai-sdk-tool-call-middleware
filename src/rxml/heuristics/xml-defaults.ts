@@ -429,10 +429,10 @@ function extractStepStatusFromString(
 }
 
 export {
-  escapeInvalidLt,
   balanceTags,
-  shouldDeduplicateStringTags,
-  getStringPropertyNames,
   dedupeSingleTag,
+  escapeInvalidLt,
+  getStringPropertyNames,
   repairParsedAgainstSchema,
+  shouldDeduplicateStringTags,
 };

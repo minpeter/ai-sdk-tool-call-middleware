@@ -185,10 +185,10 @@ function toFilePart(options: {
     type: "file",
     data: options.data,
     mediaType: options.mediaType,
-    ...(options.filename !== undefined ? { filename: options.filename } : {}),
-    ...(options.providerOptions !== undefined
-      ? { providerOptions: options.providerOptions }
-      : {}),
+    ...(options.filename === undefined ? {} : { filename: options.filename }),
+    ...(options.providerOptions === undefined
+      ? {}
+      : { providerOptions: options.providerOptions }),
   };
 }
 
