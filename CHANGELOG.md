@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.7
+
+### Patch Changes
+
+- cbcc455: Update dev dependencies: @biomejs/biome 2.4.6 → 2.4.7, ultracite 7.3.0 → 7.3.1
+
 ## 4.1.6
 
 ### Patch Changes
