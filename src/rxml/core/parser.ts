@@ -45,7 +45,7 @@ function restorePlaceholderString(
 ): string {
   if (val.startsWith("__RXML_PLACEHOLDER_")) {
     const orig = placeholderMap.get(val);
-    return orig !== undefined ? orig : val;
+    return orig === undefined ? val : orig;
   }
   return val;
 }
@@ -711,10 +711,10 @@ function buildNodeValue(child: RXMLNode): unknown {
     if (typeof kids === "string") {
       nodeValue = kids;
       // For string content with attributes, we need to preserve both
-      if (kids !== "") {
-        nodeValue = { _attributes: child.attributes, value: kids };
-      } else {
+      if (kids === "") {
         nodeValue = { _attributes: child.attributes };
+      } else {
+        nodeValue = { _attributes: child.attributes, value: kids };
       }
     } else if (typeof kids === "object" && kids !== null) {
       (kids as Record<string, unknown>)._attributes = child.attributes;

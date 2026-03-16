@@ -498,19 +498,19 @@ function processToolCallMatch(
   );
 
   const parsedArgs = parseYamlContent(tc.content, options);
-  if (parsedArgs !== null) {
+  if (parsedArgs === null) {
+    const originalText = text.substring(tc.startIndex, tc.endIndex);
+    options?.onError?.("Could not parse YAML tool call", {
+      toolCall: originalText,
+    });
+    processedElements.push({ type: "text", text: originalText });
+  } else {
     processedElements.push({
       type: "tool-call",
       toolCallId: generateToolCallId(),
       toolName: tc.toolName,
       input: JSON.stringify(parsedArgs),
     });
-  } else {
-    const originalText = text.substring(tc.startIndex, tc.endIndex);
-    options?.onError?.("Could not parse YAML tool call", {
-      toolCall: originalText,
-    });
-    processedElements.push({ type: "text", text: originalText });
   }
 
   return tc.endIndex;
@@ -674,7 +674,22 @@ export const yamlXmlProtocol = (
       ) => {
         const parsedArgs = parseYamlContent(toolContent, options);
         flushText(controller);
-        if (parsedArgs !== null) {
+        if (parsedArgs === null) {
+          const original = `<${toolName}>${toolContent}</${toolName}>`;
+          const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+          emitFailedToolInputLifecycle({
+            controller,
+            id: toolCallId,
+            emitRawToolCallTextOnError: emitRawFallback,
+            rawToolCallText: original,
+            emitRawText: (rawText) => {
+              flushText(controller, rawText);
+            },
+          });
+          options?.onError?.("Could not parse streaming YAML tool call", {
+            toolCall: original,
+          });
+        } else {
           const finalInput = stringifyToolInputWithSchema({
             toolName,
             args: parsedArgs,
@@ -697,21 +712,6 @@ export const yamlXmlProtocol = (
               input: finalInput,
             });
           }
-        } else {
-          const original = `<${toolName}>${toolContent}</${toolName}>`;
-          const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-          emitFailedToolInputLifecycle({
-            controller,
-            id: toolCallId,
-            emitRawToolCallTextOnError: emitRawFallback,
-            rawToolCallText: original,
-            emitRawText: (rawText) => {
-              flushText(controller, rawText);
-            },
-          });
-          options?.onError?.("Could not parse streaming YAML tool call", {
-            toolCall: original,
-          });
         }
       };
 
@@ -727,21 +727,7 @@ export const yamlXmlProtocol = (
         const reconciledBuffer = stripTrailingPartialCloseTag(buffer, toolName);
         const parsedArgs = parseYamlContent(reconciledBuffer, options);
         flushText(controller);
-        if (parsedArgs !== null) {
-          const finalInput = stringifyToolInputWithSchema({
-            toolName,
-            args: parsedArgs,
-            tools,
-          });
-          emitFinalizedToolInputLifecycle({
-            controller,
-            id: toolCallId,
-            state: currentToolCall,
-            toolName,
-            finalInput,
-            onMismatch: options?.onError,
-          });
-        } else {
+        if (parsedArgs === null) {
           const unfinishedContent = `<${toolName}>${buffer}`;
           const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
           emitFailedToolInputLifecycle({
@@ -757,6 +743,20 @@ export const yamlXmlProtocol = (
             "Could not complete streaming YAML tool call at finish.",
             { toolCall: unfinishedContent }
           );
+        } else {
+          const finalInput = stringifyToolInputWithSchema({
+            toolName,
+            args: parsedArgs,
+            tools,
+          });
+          emitFinalizedToolInputLifecycle({
+            controller,
+            id: toolCallId,
+            state: currentToolCall,
+            toolName,
+            finalInput,
+            onMismatch: options?.onError,
+          });
         }
 
         buffer = "";
