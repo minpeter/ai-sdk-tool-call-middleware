@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.8
+
+### Patch Changes
+
+- 91bffa8: bump ultracite from 7.3.1 to 7.3.2
+
 ## 4.1.7
 
 ### Patch Changes
