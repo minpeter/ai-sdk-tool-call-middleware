@@ -75,9 +75,9 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
 
   const endIdx = endMatch.index;
   const endPos = endIdx + endMatch[0].length;
-  const content = buffer.substring(0, endIdx);
+  const content = buffer.slice(0, endIdx);
   emitToolInputProgress(controller, currentToolCall, content);
-  const remainder = buffer.substring(endPos);
+  const remainder = buffer.slice(endPos);
   setBuffer(remainder);
 
   handleStreamingToolCallEnd({
@@ -159,10 +159,10 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     };
   }
 
-  flushText(controller, buffer.substring(0, earliestStartTagIndex));
+  flushText(controller, buffer.slice(0, earliestStartTagIndex));
 
   if (selfClosing) {
-    const newBuffer = buffer.substring(earliestStartTagIndex + tagLength);
+    const newBuffer = buffer.slice(earliestStartTagIndex + tagLength);
     setBuffer(newBuffer);
     const currentToolCall = emitToolInputStart(controller, earliestToolName);
     handleStreamingToolCallEnd({
@@ -183,7 +183,7 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
   }
 
   const startTag = `<${earliestToolName}>`;
-  const newBuffer = buffer.substring(earliestStartTagIndex + startTag.length);
+  const newBuffer = buffer.slice(earliestStartTagIndex + startTag.length);
   setBuffer(newBuffer);
   return {
     buffer: newBuffer,

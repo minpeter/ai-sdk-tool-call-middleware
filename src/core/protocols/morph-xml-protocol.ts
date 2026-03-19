@@ -79,10 +79,7 @@ function processToolCall(params: ProcessToolCallParams): void {
       input: JSON.stringify(parsed),
     });
   } catch (error) {
-    const originalCallText = text.substring(
-      toolCall.startIndex,
-      toolCall.endIndex
-    );
+    const originalCallText = text.slice(toolCall.startIndex, toolCall.endIndex);
     options?.onError?.(
       `Could not process XML tool call: ${toolCall.toolName}`,
       { toolCall: originalCallText, error }
@@ -857,7 +854,7 @@ function pushSelfClosingToolCall(
     startIndex: tagStart,
     endIndex,
     content: "",
-    segment: text.substring(tagStart, endIndex),
+    segment: text.slice(tagStart, endIndex),
   });
   return endIndex;
 }
@@ -880,7 +877,7 @@ function appendOpenToolCallIfComplete(
   if (fullTagEnd === -1 || fullTagEnd <= contentStart) {
     return contentStart;
   }
-  const segment = text.substring(tagStart, fullTagEnd);
+  const segment = text.slice(tagStart, fullTagEnd);
   const closeTagStart = findLastCloseTagStart(segment, toolName);
   const inner =
     closeTagStart === -1
@@ -1294,7 +1291,7 @@ export const morphXmlProtocol = (
         if (tc.startIndex > currentIndex) {
           processedElements.push({
             type: "text",
-            text: parseText.substring(currentIndex, tc.startIndex),
+            text: parseText.slice(currentIndex, tc.startIndex),
           });
         }
         processToolCall({
@@ -1311,7 +1308,7 @@ export const morphXmlProtocol = (
       if (currentIndex < parseText.length) {
         processedElements.push({
           type: "text",
-          text: parseText.substring(currentIndex),
+          text: parseText.slice(currentIndex),
         });
       }
 

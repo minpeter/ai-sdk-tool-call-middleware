@@ -193,7 +193,7 @@ function extractObjectParts(obj: Record<string, unknown>): ObjectParts {
 
   for (const [key, value] of Object.entries(obj)) {
     if (key.startsWith("@")) {
-      attributes[key.substring(1)] = value;
+      attributes[key.slice(1)] = value;
     } else if (key === "#text" || key === "_text") {
       textContent = String(value);
     } else if (key === "_attributes") {

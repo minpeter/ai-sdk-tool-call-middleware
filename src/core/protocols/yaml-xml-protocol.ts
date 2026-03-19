@@ -398,7 +398,7 @@ function collectToolCallsForName(
     if (fullTagEnd !== -1 && fullTagEnd > contentStart) {
       const endTag = `</${toolName}>`;
       const endTagStart = fullTagEnd - endTag.length;
-      const content = text.substring(contentStart, endTagStart);
+      const content = text.slice(contentStart, endTagStart);
       toolCalls.push({
         toolName,
         startIndex: tagStart,
@@ -492,14 +492,11 @@ function processToolCallMatch(
     return currentIndex;
   }
 
-  addTextSegment(
-    text.substring(currentIndex, tc.startIndex),
-    processedElements
-  );
+  addTextSegment(text.slice(currentIndex, tc.startIndex), processedElements);
 
   const parsedArgs = parseYamlContent(tc.content, options);
   if (parsedArgs === null) {
-    const originalText = text.substring(tc.startIndex, tc.endIndex);
+    const originalText = text.slice(tc.startIndex, tc.endIndex);
     options?.onError?.("Could not parse YAML tool call", {
       toolCall: originalText,
     });
@@ -610,7 +607,7 @@ export const yamlXmlProtocol = (
       }
 
       if (currentIndex < parseText.length) {
-        addTextSegment(parseText.substring(currentIndex), processedElements);
+        addTextSegment(parseText.slice(currentIndex), processedElements);
       }
 
       return processedElements;
@@ -774,9 +771,9 @@ export const yamlXmlProtocol = (
           return false;
         }
 
-        const content = buffer.substring(0, endIdx);
+        const content = buffer.slice(0, endIdx);
         emitToolInputProgress(controller, content);
-        buffer = buffer.substring(endIdx + endTag.length);
+        buffer = buffer.slice(endIdx + endTag.length);
         processToolCallEnd(
           controller,
           content,
@@ -809,13 +806,13 @@ export const yamlXmlProtocol = (
         tagLength: number
       ): void => {
         if (tagIndex > 0) {
-          flushText(controller, buffer.substring(0, tagIndex));
+          flushText(controller, buffer.slice(0, tagIndex));
         }
 
         flushText(controller);
 
         if (selfClosing) {
-          buffer = buffer.substring(tagIndex + tagLength);
+          buffer = buffer.slice(tagIndex + tagLength);
           const toolCallId = generateToolCallId();
           currentToolCall = {
             name: tagName,
@@ -831,7 +828,7 @@ export const yamlXmlProtocol = (
           currentToolCall = null;
         } else {
           const startTag = `<${tagName}>`;
-          buffer = buffer.substring(tagIndex + startTag.length);
+          buffer = buffer.slice(tagIndex + startTag.length);
           currentToolCall = {
             name: tagName,
             toolCallId: generateToolCallId(),
