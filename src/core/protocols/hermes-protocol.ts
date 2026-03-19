@@ -75,7 +75,7 @@ function processMatchedToolCall(context: ParseContext): number {
   const toolCallJson = match[1];
 
   if (startIndex > currentIndex) {
-    const textSegment = text.substring(currentIndex, startIndex);
+    const textSegment = text.slice(currentIndex, startIndex);
     addTextSegment(textSegment, processedElements);
   }
 
@@ -839,7 +839,7 @@ export const hermesProtocol = ({
     }
 
     if (currentIndex < text.length) {
-      const remainingText = text.substring(currentIndex);
+      const remainingText = text.slice(currentIndex);
       addTextSegment(remainingText, processedElements);
     }
 

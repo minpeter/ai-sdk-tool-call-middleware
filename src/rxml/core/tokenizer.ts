@@ -36,7 +36,7 @@ export class XMLTokenizer {
     const closeStart = this.pos + 2;
     this.pos = this.xmlString.indexOf(">", this.pos);
 
-    const closeTag = this.xmlString.substring(closeStart, this.pos);
+    const closeTag = this.xmlString.slice(closeStart, this.pos);
     if (tagName && closeTag.trim() !== tagName) {
       const { line, column } = getLineColumn(this.xmlString, this.pos);
       throw new RXMLParseError(
@@ -368,7 +368,7 @@ export class XMLTokenizer {
         CharCodes.OPEN_CORNER_BRACKET &&
       this.xmlString.charCodeAt(this.pos + 8) ===
         CharCodes.OPEN_CORNER_BRACKET &&
-      this.xmlString.substr(this.pos + 3, 5).toLowerCase() === "cdata"
+      this.xmlString.slice(this.pos + 3, this.pos + 8).toLowerCase() === "cdata"
     ) {
       // CDATA
       this.handleCData(children);
@@ -401,7 +401,7 @@ export class XMLTokenizer {
     }
 
     if (this.options.keepComments) {
-      children.push(this.xmlString.substring(startCommentPos, this.pos + 1));
+      children.push(this.xmlString.slice(startCommentPos, this.pos + 1));
     }
 
     this.pos += 1;
@@ -414,10 +414,10 @@ export class XMLTokenizer {
     const cdataEndIndex = this.xmlString.indexOf("]]>", this.pos);
     if (cdataEndIndex === -1) {
       // Unclosed CDATA - consume everything to the end
-      children.push(this.xmlString.substr(this.pos + 9));
+      children.push(this.xmlString.slice(this.pos + 9));
       this.pos = this.xmlString.length;
     } else {
-      children.push(this.xmlString.substring(this.pos + 9, cdataEndIndex));
+      children.push(this.xmlString.slice(this.pos + 9, cdataEndIndex));
       this.pos = cdataEndIndex + 3;
     }
   }
@@ -448,7 +448,7 @@ export class XMLTokenizer {
       this.pos += 1;
     }
 
-    children.push(this.xmlString.substring(startDoctype, this.pos));
+    children.push(this.xmlString.slice(startDoctype, this.pos));
     this.pos += 1;
   }
 

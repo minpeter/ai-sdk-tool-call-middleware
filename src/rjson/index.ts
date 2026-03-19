@@ -204,7 +204,7 @@ function makeLexer(tokenSpecs: TokenSpec[]): (contents: string) => Token[] {
       if (!matched) {
         // If no token spec matches, it's a syntax error
         const err = new SyntaxError(
-          `Unexpected character: ${remainingContents[0]}; input: ${remainingContents.substr(
+          `Unexpected character: ${remainingContents[0]}; input: ${remainingContents.slice(
             0,
             100
           )}`
