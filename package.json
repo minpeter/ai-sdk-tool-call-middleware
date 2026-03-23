@@ -59,19 +59,19 @@
     "ci:version": "changeset version"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.41",
+    "@ai-sdk/openai": "^3.0.47",
     "@ai-sdk/provider": "3.0.8",
-    "@ai-sdk/provider-utils": "4.0.19",
+    "@ai-sdk/provider-utils": "4.0.21",
     "dedent": "^1.7.2",
-    "yaml": "^2.8.2"
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
-    "@ai-sdk/openai-compatible": "2.0.35",
+    "@ai-sdk/openai-compatible": "2.0.37",
     "@biomejs/biome": "2.4.8",
     "@changesets/cli": "2.30.0",
     "@types/node": "^25.5.0",
     "@vitest/coverage-v8": "^4.1.0",
-    "ai": "6.0.116",
+    "ai": "6.0.134",
     "globals": "^17.4.0",
     "husky": "^9.1.7",
     "jiti": "^2.6.1",
