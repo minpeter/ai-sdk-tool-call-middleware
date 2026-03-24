@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.11
+
+### Patch Changes
+
+- bd095ce: bump dependencies: @ai-sdk/openai, @vitest/coverage-v8, ai, typescript, vitest
+
 ## 4.1.10
 
 ### Patch Changes
