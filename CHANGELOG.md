@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.13
+
+### Patch Changes
+
+- defd244: chore(deps-dev): bump @biomejs/biome from 2.4.8 to 2.4.9
+
 ## 4.1.12
 
 ### Patch Changes
