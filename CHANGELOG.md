@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.14
+
+### Patch Changes
+
+- c6d8734: bump dev dependencies: @vitest/coverage-v8, ai, ultracite, vitest
+
 ## 4.1.13
 
 ### Patch Changes
