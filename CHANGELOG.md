@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.16
+
+### Patch Changes
+
+- 3affd37: Bump ai from 6.0.141 to 6.0.142 and ultracite from 7.4.0 to 7.4.2
+
 ## 4.1.15
 
 ### Patch Changes
