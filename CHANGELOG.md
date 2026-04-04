@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.17
+
+### Patch Changes
+
+- 89e0547: chore(deps): bump @ai-sdk/openai, @ai-sdk/provider-utils, @ai-sdk/openai-compatible, and ai
+
 ## 4.1.16
 
 ### Patch Changes
