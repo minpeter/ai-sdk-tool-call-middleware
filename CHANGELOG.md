@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.18
+
+### Patch Changes
+
+- 6372694: chore: update devDependencies @types/node 25.5.0 → 25.5.2, ai 6.0.144 → 6.0.146, ultracite 7.4.2 → 7.4.3
+
 ## 4.1.17
 
 ### Patch Changes
