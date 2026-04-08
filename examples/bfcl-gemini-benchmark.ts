@@ -1,5 +1,6 @@
 /// <reference types="node" />
 
+import { fileURLToPath } from "node:url";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV3Middleware } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
@@ -13,7 +14,7 @@ import {
 async function loadEval() {
   const evalRepoBase = new URL("../../ai-sdk-eval/", import.meta.url);
   const localDist = new URL("dist/index.js", evalRepoBase).href;
-  const localData = new URL("data", evalRepoBase).pathname;
+  const localData = fileURLToPath(new URL("data", evalRepoBase));
 
   if (!process.env.BFCL_DATA_DIR) {
     process.env.BFCL_DATA_DIR = localData;
@@ -21,7 +22,11 @@ async function loadEval() {
 
   try {
     return await import(localDist);
-  } catch {
+  } catch (err) {
+    console.warn(
+      "Local ai-sdk-eval not found, falling back to npm package:",
+      (err as Error).message
+    );
     const pkg = "@ai-sdk-tool/eval";
     return await import(pkg);
   }
@@ -110,6 +115,18 @@ function validateOptions(opts: Options) {
   if (!PROTOCOL_NAMES.includes(opts.protocol)) {
     console.error(
       `Invalid protocol: ${opts.protocol}. Valid: ${PROTOCOL_NAMES.join(", ")}`
+    );
+    process.exit(1);
+  }
+  if (!Number.isFinite(opts.temperature)) {
+    console.error(
+      `Invalid temperature: ${readArg("temperature")}. Must be a number.`
+    );
+    process.exit(1);
+  }
+  if (!Number.isFinite(opts.maxTokens) || opts.maxTokens <= 0) {
+    console.error(
+      `Invalid max-tokens: ${readArg("max-tokens")}. Must be a positive number.`
     );
     process.exit(1);
   }
