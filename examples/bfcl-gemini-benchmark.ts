@@ -14,14 +14,13 @@ import {
 async function loadEval() {
   const evalRepoBase = new URL("../../ai-sdk-eval/", import.meta.url);
   const localDist = new URL("dist/index.js", evalRepoBase).href;
-  const localData = fileURLToPath(new URL("data", evalRepoBase));
-
-  if (!process.env.BFCL_DATA_DIR) {
-    process.env.BFCL_DATA_DIR = localData;
-  }
 
   try {
-    return await import(localDist);
+    const mod = await import(localDist);
+    if (!process.env.BFCL_DATA_DIR) {
+      process.env.BFCL_DATA_DIR = fileURLToPath(new URL("data", evalRepoBase));
+    }
+    return mod;
   } catch (err) {
     console.warn(
       "Local ai-sdk-eval not found, falling back to npm package:",
@@ -47,6 +46,15 @@ type ProtocolName = (typeof PROTOCOL_NAMES)[number];
 const MODE_NAMES = ["native", "middleware", "both"] as const;
 type ModeName = (typeof MODE_NAMES)[number];
 
+const REPORTER_NAMES = [
+  "console",
+  "console.summary",
+  "console.debug",
+  "json",
+  "none",
+] as const;
+type ReporterName = (typeof REPORTER_NAMES)[number];
+
 interface Options {
   benchmark: BenchmarkName;
   cache: boolean;
@@ -55,7 +63,7 @@ interface Options {
   mode: ModeName;
   model: string;
   protocol: ProtocolName;
-  reporter: string;
+  reporter: ReporterName;
   temperature: number;
 }
 
@@ -64,7 +72,7 @@ function readArg(name: string): string | undefined {
   const flag = `--${name}`;
   const prefix = `${flag}=`;
   for (let i = 2; i < argv.length; i++) {
-    if (argv[i] === flag && argv[i + 1]) {
+    if (argv[i] === flag && argv[i + 1] && !argv[i + 1].startsWith("--")) {
       return argv[i + 1];
     }
     if (argv[i]?.startsWith(prefix)) {
@@ -84,7 +92,7 @@ function parseOptions(): Options {
     benchmark: (readArg("benchmark") ?? "simple") as BenchmarkName,
     mode: (readArg("mode") ?? "both") as ModeName,
     protocol: (readArg("protocol") ?? "morphXml") as ProtocolName,
-    reporter: readArg("reporter") ?? "console.summary",
+    reporter: (readArg("reporter") ?? "console.summary") as ReporterName,
     temperature: Number(readArg("temperature") ?? "0"),
     maxTokens: Number(readArg("max-tokens") ?? "4096"),
     cache: hasFlag("cache"),
@@ -115,6 +123,12 @@ function validateOptions(opts: Options) {
   if (!PROTOCOL_NAMES.includes(opts.protocol)) {
     console.error(
       `Invalid protocol: ${opts.protocol}. Valid: ${PROTOCOL_NAMES.join(", ")}`
+    );
+    process.exit(1);
+  }
+  if (!(REPORTER_NAMES as readonly string[]).includes(opts.reporter)) {
+    console.error(
+      `Invalid reporter: ${opts.reporter}. Valid: ${REPORTER_NAMES.join(", ")}`
     );
     process.exit(1);
   }
@@ -264,12 +278,7 @@ async function main() {
   const results = await evalModule.evaluate({
     models,
     benchmarks,
-    reporter: opts.reporter as
-      | "console"
-      | "json"
-      | "console.debug"
-      | "console.summary"
-      | "none",
+    reporter: opts.reporter,
     temperature: opts.temperature,
     maxTokens: opts.maxTokens,
     cache: opts.cache
