@@ -1,0 +1,23 @@
+.changeset/bump-dev-deps.md
+  dc6cc6e05b96d09f 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "d39d1cbfe616fb2811246aa886a364360e12d5fc",
+  "prompts": {
+    "dc6cc6e05b96d09f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e22f76dd-bc6f-4759-aebd-1ec29f7745f0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "minpeter",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 0,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}
