@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.20
+
+### Patch Changes
+
+- 666bebb: chore: update devDependency ai 6.0.152 → 6.0.154
+
 ## 4.1.19
 
 ### Patch Changes
