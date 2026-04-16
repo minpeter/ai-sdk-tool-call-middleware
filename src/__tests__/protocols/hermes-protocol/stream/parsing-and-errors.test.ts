@@ -331,6 +331,69 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     expect(metadata.toolCall).toContain("<tool_call>");
   });
 
+  it("passes truncated toolName in onError when name value is cut mid-string", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"ba',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [, metadata] = onError.mock.calls[0];
+    // extractTopLevelStringProperty requires closing quote, so truncated name returns undefined
+    expect(metadata.toolName).toBeUndefined();
+    expect(metadata.reason).toBe("unfinished");
+  });
+
+  it("passes undefined toolName in onError when only arguments are present", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"arguments":{"command":"ls"}',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [, metadata] = onError.mock.calls[0];
+    expect(metadata.toolName).toBeUndefined();
+    expect(metadata.reason).toBe("unfinished");
+  });
+
   it("passes undefined toolName in onError when name is not parseable", async () => {
     const onError = vi.fn();
     const protocol = hermesProtocol();
