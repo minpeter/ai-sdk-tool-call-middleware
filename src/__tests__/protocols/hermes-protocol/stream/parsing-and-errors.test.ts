@@ -298,6 +298,70 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     expect(out.some((c) => c.type === "tool-call")).toBe(false);
   });
 
+  it("passes toolName and reason in onError when tool call is dropped at finish", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"bash","arguments":{"command":"ls"',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [message, metadata] = onError.mock.calls[0];
+    expect(message).toContain("Could not complete streaming JSON tool call at finish");
+    expect(metadata.toolName).toBe("bash");
+    expect(metadata.reason).toBe("unfinished");
+    expect(metadata.toolCall).toContain("<tool_call>");
+  });
+
+  it("passes undefined toolName in onError when name is not parseable", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: "<tool_call>{broken",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [, metadata] = onError.mock.calls[0];
+    expect(metadata.toolName).toBeUndefined();
+    expect(metadata.reason).toBe("unfinished");
+  });
+
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
