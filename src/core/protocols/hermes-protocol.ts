@@ -503,13 +503,37 @@ function extractKnownArgKeys(
   tools: LanguageModelV3FunctionTool[],
   toolCallJson: string
 ): string[] | undefined {
-  const nameMatch = toolCallJson.match(/"name"\s*:\s*"([^"]+)"/);
-  if (!nameMatch) return undefined;
-  const tool = tools.find((t) => t.name === nameMatch[1]);
+  const toolName = extractTopLevelStringProperty(toolCallJson, "name");
+  if (!toolName) return undefined;
+  const tool = tools.find((t) => t.name === toolName);
   if (!tool?.inputSchema?.properties) return undefined;
   return Object.keys(
     tool.inputSchema.properties as Record<string, unknown>
   );
+}
+
+/** Maximum size (in UTF-16 code units) for the arguments body before bailing out of repair. */
+const REPAIR_MAX_ARGS_BODY_SIZE = 102400;
+
+/**
+ * Returns true if `position` in `argsBody` is at nesting depth 0
+ * (not inside a nested `{}` or `[]`).
+ */
+function isAtTopLevel(argsBody: string, position: number): boolean {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < position; i++) {
+    const ch = argsBody[i];
+    if (esc) { esc = false; continue; }
+    if (ch === '\\' && inStr) { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (!inStr) {
+      if (ch === '{' || ch === '[') depth++;
+      if (ch === '}' || ch === ']') depth--;
+    }
+  }
+  return depth === 0;
 }
 
 /**
@@ -522,17 +546,18 @@ function repairToolCallJson(
   raw: string,
   knownArgKeys?: string[]
 ): { name: string; arguments: Record<string, unknown> } | null {
-  // 1. Extract tool name
-  const nameMatch = raw.match(/"name"\s*:\s*"([^"]+)"/);
-  if (!nameMatch) return null;
-  const toolName = nameMatch[1];
+  // 1. Extract tool name (depth-aware to avoid matching nested "name" keys)
+  const toolName = extractTopLevelStringProperty(raw, "name");
+  if (!toolName) return null;
 
-  // 2. Find arguments object boundaries
-  const argsMatch = raw.match(/"arguments"\s*:\s*\{/);
-  if (!argsMatch || argsMatch.index === undefined) return null;
-  const argsStart = argsMatch.index + argsMatch[0].length;
+  // 2. Find arguments object boundaries (top-level aware, like name extraction)
+  const argsValueStart = findTopLevelPropertyValueStart(raw, "arguments");
+  if (argsValueStart == null || raw.charAt(argsValueStart) !== "{") return null;
+  const argsStart = argsValueStart + 1;
 
-  // 3. Find closing braces from end (arguments + outer object)
+  // 3. Find closing braces from end (arguments + outer object).
+  //    Uses backwards scan because forward brace-balance is unreliable
+  //    when quotes are broken (which is the premise of this repair path).
   let outerClose = -1;
   for (let i = raw.length - 1; i >= argsStart; i--) {
     if (raw.charAt(i) === "}") {
@@ -554,6 +579,9 @@ function repairToolCallJson(
   if (argsClose === -1) return null;
 
   const argsBody = raw.substring(argsStart, argsClose);
+
+  // Size guard: bail out on unreasonably large argument bodies
+  if (argsBody.length > REPAIR_MAX_ARGS_BODY_SIZE) return null;
 
   // 4. Try standard parse first
   try {
@@ -589,10 +617,22 @@ function repairToolCallJson(
     });
   }
 
-  // 6. Filter by known keys if provided
-  if (knownArgKeys && knownArgKeys.length > 0) {
-    const known = new Set(knownArgKeys);
-    allKeys = allKeys.filter((entry) => known.has(entry.key));
+  // 5b. Filter candidates to prevent false boundary splits.
+  //     When knownArgKeys is available, only keep keys that match the schema.
+  //     This prevents ,"fake": patterns inside broken string values from
+  //     being treated as key boundaries.  Unknown extra keys are dropped —
+  //     acceptable for a best-effort repair path since the alternative
+  //     (keeping them) corrupts known values.
+  //     When no schema is available, use depth checking as a heuristic.
+  const knownKeySet = knownArgKeys && knownArgKeys.length > 0
+    ? new Set(knownArgKeys)
+    : null;
+  if (knownKeySet) {
+    allKeys = allKeys.filter((entry) => knownKeySet.has(entry.key));
+  } else {
+    allKeys = allKeys.filter((entry) =>
+      entry.matchStart === 0 || isAtTopLevel(argsBody, entry.matchStart)
+    );
   }
 
   // 7. Handle duplicate key names with scoring heuristic
@@ -702,8 +742,8 @@ function repairToolCallJson(
       let eq = rv.length - 1;
       while (eq > 0 && rv.charAt(eq) !== '"') eq--;
       if (eq <= 0) {
-        args[kp.key] = rv;
-        continue;
+        // String literal with no closing quote — repair cannot handle this
+        return null;
       }
       const inner = rv.substring(1, eq);
       let esc = "";
@@ -727,10 +767,12 @@ function repairToolCallJson(
       try {
         args[kp.key] = JSON.parse(`"${esc}"`);
       } catch {
-        args[kp.key] = inner;
+        // Repaired string still invalid — bail out
+        return null;
       }
     } else {
-      args[kp.key] = rv;
+      // Non-string value that failed JSON.parse — repair cannot handle this
+      return null;
     }
   }
   return { name: toolName, arguments: args };
@@ -1266,18 +1308,9 @@ function emitIncompleteToolCall(
       state.isInsideToolCall = false;
       return;
     } catch {
-      // Attempt repair for unescaped quotes
-      const repaired = repairToolCallJson(
-        state.currentToolCallJson,
-        extractKnownArgKeys(tools, state.currentToolCallJson)
-      );
-      if (repaired) {
-        emitToolCallFromParsed(state, controller, repaired, tools);
-        state.currentToolCallJson = "";
-        state.isInsideToolCall = false;
-        return;
-      }
-      // fall through to text fallback
+      // Incomplete tool calls (no closing </tool_call>) are not candidates
+      // for repair — the JSON may be genuinely truncated.
+      // Fall through to text/error fallback.
     }
   }
 
