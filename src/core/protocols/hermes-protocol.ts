@@ -26,7 +26,10 @@ interface HermesProtocolOptions {
 
 /**
  * Returns true if the current position in `json` is inside an unfinished
- * string literal \u2014 i.e., there is an odd number of unescaped double-quotes.
+ * double-quoted string literal.  Only double quotes are tracked because
+ * single-quote tracking would be confused by apostrophes in comments
+ * (`parseRJSON` also supports `// ...` and block comments), and
+ * models virtually never emit single-quoted JSON in tool calls.
  */
 function isInsideJsonString(json: string): boolean {
   let inStr = false;
@@ -81,31 +84,6 @@ function processToolCallJson(
     );
     processedElements.push({ type: "text", text: fullMatch });
   }
-}
-
-interface ParseContext {
-  currentIndex: number;
-  match: RegExpExecArray;
-  options?: ParserOptions;
-  processedElements: LanguageModelV3Content[];
-  text: string;
-}
-
-function processMatchedToolCall(context: ParseContext): number {
-  const { match, text, currentIndex, processedElements, options } = context;
-  const startIndex = match.index;
-  const toolCallJson = match[1];
-
-  if (startIndex > currentIndex) {
-    const textSegment = text.slice(currentIndex, startIndex);
-    addTextSegment(textSegment, processedElements);
-  }
-
-  if (toolCallJson) {
-    processToolCallJson(toolCallJson, match[0], processedElements, options);
-  }
-
-  return startIndex + match[0].length;
 }
 
 interface StreamState {
@@ -885,14 +863,45 @@ export const hermesProtocol = ({
         }
         const jsonSegment = text.slice(jsonStart, endIdx);
         if (!isInsideJsonString(jsonSegment)) {
-          found = true;
+          // Also check that we haven't crossed into another tool call's
+          // territory — if there's a <tool_call> start tag inside the
+          // JSON segment (outside a string), this end tag belongs to
+          // a later tool call, not ours.
+          // Check for any <tool_call> NOT inside a JSON string — if
+          // found, this </tool_call> belongs to a later tool call.
+          let hasOuterInner = false;
+          let isp = 0;
+          while (isp < jsonSegment.length) {
+            const pos = jsonSegment.indexOf(toolCallStart, isp);
+            if (pos === -1) break;
+            if (!isInsideJsonString(jsonSegment.slice(0, pos))) {
+              hasOuterInner = true;
+              break;
+            }
+            isp = pos + 1;
+          }
+          if (!hasOuterInner) {
+            found = true;
+            break;
+          }
+          // Inner <tool_call> outside a string — this </tool_call>
+          // belongs to a later call.
           break;
         }
         endIdx += 1;
       }
 
       if (!found) {
-        break;
+        // No valid closing tag found for this <tool_call> — emit everything
+        // up to and including the start tag as text, then continue searching
+        // for subsequent tool calls.
+        const skipTo = startIdx + toolCallStart.length;
+        if (skipTo > currentIndex) {
+          addTextSegment(text.slice(currentIndex, skipTo), processedElements);
+          currentIndex = skipTo;
+        }
+        searchFrom = skipTo;
+        continue;
       }
 
       const toolCallJson = text.slice(jsonStart, endIdx);
@@ -989,14 +998,34 @@ export const hermesProtocol = ({
         }
         const jsonSegment = text.slice(jsonStart, endIdx);
         if (!isInsideJsonString(jsonSegment)) {
-          found = true;
+          // Check for any <tool_call> NOT inside a JSON string — if
+          // found, this </tool_call> belongs to a later tool call.
+          let hasOuterInner2 = false;
+          let isp2 = 0;
+          while (isp2 < jsonSegment.length) {
+            const pos = jsonSegment.indexOf(toolCallStart, isp2);
+            if (pos === -1) break;
+            if (!isInsideJsonString(jsonSegment.slice(0, pos))) {
+              hasOuterInner2 = true;
+              break;
+            }
+            isp2 = pos + 1;
+          }
+          if (!hasOuterInner2) {
+            found = true;
+            break;
+          }
+          // Inner <tool_call> outside a string — this </tool_call>
+          // belongs to a later call.
           break;
         }
         endIdx += 1;
       }
 
       if (!found) {
-        break;
+        // No valid closing tag — skip past the start tag and keep searching
+        searchFrom = startIdx + toolCallStart.length;
+        continue;
       }
 
       segments.push(text.slice(startIdx, endIdx + toolCallEnd.length));

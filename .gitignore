@@ -49,3 +49,4 @@ yarn-error.log*
 AGENTS.md
 .ralph-tui
 tasks
+package-lock.json

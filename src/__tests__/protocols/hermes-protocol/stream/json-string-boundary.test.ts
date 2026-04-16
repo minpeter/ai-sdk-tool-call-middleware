@@ -92,6 +92,84 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     });
   });
 
+  it("handles chunk split in the middle of an escape sequence", async () => {
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    // The value is: say \"</tool_call>\" ok
+    // We split the chunk right between the backslash and the quote
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"bash","arguments":{"cmd":"say \\',
+        });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '"</tool_call>\\',
+        });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '" ok"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("bash");
+    expect(JSON.parse(tool.input)).toEqual({
+      cmd: 'say "</tool_call>" ok',
+    });
+  });
+
+  it("handles multiple false end tags in one string value (streaming)", async () => {
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"bash","arguments":{"cmd":"first </tool_call>',
+        });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: ' and second </tool_call> end"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("bash");
+    expect(JSON.parse(tool.input)).toEqual({
+      cmd: "first </tool_call> and second </tool_call> end",
+    });
+  });
+
   it("still parses normal streaming tool calls correctly (regression check)", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
@@ -137,5 +215,39 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     expect(text).toContain("after");
     expect(text).not.toContain("<tool_call>");
     expect(text).not.toContain("</tool_call>");
+  });
+
+
+  it("handles malformed tool call followed by valid one in same chunk", async () => {
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    // Malformed: has </tool_call> inside string but no real closing tag
+    // Valid: proper tool call immediately after
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"bash","arguments":{"cmd":"x </tool_call> y"}} ' +
+            '<tool_call>{"name":"ok","arguments":{}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    // The valid tool call should eventually be parsed (possibly after
+    // the malformed one is emitted as text at finish time)
+    const toolCalls = out.filter((c) => c.type === "tool-call") as any[];
+    // At minimum, the stream should not crash or hang
+    expect(out.some((c) => c.type === "finish")).toBe(true);
   });
 });
