@@ -43,6 +43,25 @@ function normalizeJsonStringCtrl(json: string): string {
     const ch = json[i];
     if (esc) {
       esc = false;
+      // A raw control char after \\ should be escaped to form a valid sequence.
+      // The backslash is already in result, so just append the escape letter.
+      if (ch.charCodeAt(0) < 0x20) {
+        switch (ch) {
+          case "\n":
+            result += "n";
+            continue;
+          case "\r":
+            result += "r";
+            continue;
+          case "\t":
+            result += "t";
+            continue;
+          default:
+            // Replace the trailing \\ with a \\uXXXX escape
+            result = result.slice(0, -1) + `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`;
+            continue;
+        }
+      }
       result += ch;
       continue;
     }
@@ -500,7 +519,9 @@ function canonicalizeArgumentsProgressInput(
   }
 
   try {
-    const parsedArguments = parseRJSON(progress.argumentsText);
+    const parsedArguments = parseRJSON(
+      normalizeJsonStringCtrl(progress.argumentsText),
+    );
     return stringifyToolInputWithSchema({
       toolName,
       args: parsedArguments,

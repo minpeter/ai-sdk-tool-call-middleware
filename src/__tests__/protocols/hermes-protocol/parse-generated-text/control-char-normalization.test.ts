@@ -65,4 +65,61 @@ describe("parseGeneratedText control character normalization", () => {
     expect(tool.toolName).toBe("bash");
     expect(JSON.parse(tool.input).command).toBe("ls");
   });
+
+  it("handles escaped quote followed by raw newline", () => {
+    const p = hermesProtocol();
+    // JSON source: {"name":"edit","arguments":{"content":"say \"hello\"\nthere"}}
+    // The \" is a valid JSON escape for a literal quote.
+    // The raw newline after it must be normalized to \\n.
+    const text = `<tool_call>{"name":"edit","arguments":{"content":"say \\"hello\\"\nthere"}}</tool_call>`;
+    const out = p.parseGeneratedText({ text, tools: [] });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(JSON.parse(tool.input).content).toBe('say "hello"\nthere');
+  });
+
+  it("handles double backslash followed by raw newline (not an escape)", () => {
+    const p = hermesProtocol();
+    // JSON source: {"name":"edit","arguments":{"content":"path\\\\\nline2"}}
+    // \\\\ in JSON decodes to two literal backslashes.
+    // The raw newline that follows is a new raw character, not part of an escape.
+    const text = `<tool_call>{"name":"edit","arguments":{"content":"path\\\\\\\\\nline2"}}</tool_call>`;
+    const out = p.parseGeneratedText({ text, tools: [] });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(JSON.parse(tool.input).content).toBe("path\\\\\nline2");
+  });
+
+  it("handles backslash followed by raw newline", () => {
+    const p = hermesProtocol();
+    // The value contains a literal backslash followed by an actual newline char
+    const json = '{"name":"edit","arguments":{"content":"foo\\' + '\n' + 'bar"}}';
+    const text = `<tool_call>${json}</tool_call>`;
+    const out = p.parseGeneratedText({ text, tools: [] });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("edit");
+    expect(JSON.parse(tool.input).content).toBe("foo\nbar");
+  });
+
+  it("handles backslash followed by raw tab", () => {
+    const p = hermesProtocol();
+    const json = '{"name":"edit","arguments":{"content":"foo\\' + '\t' + 'bar"}}';
+    const text = `<tool_call>${json}</tool_call>`;
+    const out = p.parseGeneratedText({ text, tools: [] });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(JSON.parse(tool.input).content).toBe("foo\tbar");
+  });
+
+  it("handles triple backslash before quote (escaped backslash + escaped quote)", () => {
+    const p = hermesProtocol();
+    // JSON source: {"name":"edit","arguments":{"content":"a\\\"b"}}
+    // \\\" in JSON = literal backslash + literal quote
+    const text = `<tool_call>{"name":"edit","arguments":{"content":"a\\\\\\"b"}}</tool_call>`;
+    const out = p.parseGeneratedText({ text, tools: [] });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(JSON.parse(tool.input).content).toBe('a\\"b');
+  });
 });
