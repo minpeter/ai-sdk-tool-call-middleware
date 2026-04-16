@@ -12,7 +12,6 @@ import {
   addTextSegment,
   formatToolsWithPromptTemplate,
 } from "../utils/protocol-utils";
-import { escapeRegExp } from "../utils/regex";
 import {
   emitToolInputProgressDelta,
   shouldEmitRawToolCallTextOnError,
@@ -23,6 +22,29 @@ import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 interface HermesProtocolOptions {
   toolCallEnd?: string;
   toolCallStart?: string;
+}
+
+/**
+ * Returns true if the current position in `json` is inside an unfinished
+ * string literal \u2014 i.e., there is an odd number of unescaped double-quotes.
+ */
+function isInsideJsonString(json: string): boolean {
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < json.length; i++) {
+    if (esc) {
+      esc = false;
+      continue;
+    }
+    if (json[i] === "\\") {
+      esc = true;
+      continue;
+    }
+    if (json[i] === '"') {
+      inStr = !inStr;
+    }
+  }
+  return inStr;
 }
 
 function canonicalizeToolInput(argumentsValue: unknown): string {
@@ -710,6 +732,7 @@ function processTagMatch(context: TagProcessingContext) {
   }
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Must check JSON string context before accepting end tags.
 function processBufferTags(context: TagProcessingContext) {
   const { state, controller, toolCallStart, toolCallEnd, tools } = context;
   let startIndex = getPotentialStartIndex(
@@ -721,6 +744,30 @@ function processBufferTags(context: TagProcessingContext) {
     const tag = state.isInsideToolCall ? toolCallEnd : toolCallStart;
     if (startIndex + tag.length > state.buffer.length) {
       break;
+    }
+
+    // When inside a tool call and we found an end tag, check whether
+    // it falls inside a JSON string literal. If so, consume it as
+    // content rather than treating it as a real closing tag.
+    if (state.isInsideToolCall) {
+      const jsonSoFar =
+        state.currentToolCallJson + state.buffer.slice(0, startIndex);
+      if (isInsideJsonString(jsonSoFar)) {
+        // Consume through the false end tag as tool-call JSON content
+        const consumeEnd = startIndex + tag.length;
+        publishText(
+          state.buffer.slice(0, consumeEnd),
+          state,
+          controller,
+          tools
+        );
+        state.buffer = state.buffer.slice(consumeEnd);
+        startIndex = getPotentialStartIndex(
+          state.buffer,
+          state.isInsideToolCall ? toolCallEnd : toolCallStart
+        );
+        continue;
+      }
     }
 
     publishText(state.buffer.slice(0, startIndex), state, controller, tools);
@@ -808,6 +855,7 @@ export const hermesProtocol = ({
     })}${toolCallEnd}`;
   },
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Manual scanning needed to skip end tags inside JSON string literals.
   parseGeneratedText({
     text,
     options,
@@ -816,26 +864,47 @@ export const hermesProtocol = ({
     tools: LanguageModelV3FunctionTool[];
     options?: ParserOptions;
   }) {
-    const startEsc = escapeRegExp(toolCallStart);
-    const endEsc = escapeRegExp(toolCallEnd);
-    const toolCallRegex = new RegExp(
-      `${startEsc}([\u0000-\uFFFF]*?)${endEsc}`,
-      "gs"
-    );
-
     const processedElements: LanguageModelV3Content[] = [];
     let currentIndex = 0;
-    let match = toolCallRegex.exec(text);
+    let searchFrom = 0;
 
-    while (match !== null) {
-      currentIndex = processMatchedToolCall({
-        match,
-        text,
-        currentIndex,
-        processedElements,
-        options,
-      });
-      match = toolCallRegex.exec(text);
+    while (searchFrom < text.length) {
+      const startIdx = text.indexOf(toolCallStart, searchFrom);
+      if (startIdx === -1) {
+        break;
+      }
+
+      const jsonStart = startIdx + toolCallStart.length;
+      let endIdx = jsonStart;
+      let found = false;
+
+      while (endIdx < text.length) {
+        endIdx = text.indexOf(toolCallEnd, endIdx);
+        if (endIdx === -1) {
+          break;
+        }
+        const jsonSegment = text.slice(jsonStart, endIdx);
+        if (!isInsideJsonString(jsonSegment)) {
+          found = true;
+          break;
+        }
+        endIdx += 1;
+      }
+
+      if (!found) {
+        break;
+      }
+
+      const toolCallJson = text.slice(jsonStart, endIdx);
+      const fullMatch = text.slice(startIdx, endIdx + toolCallEnd.length);
+
+      if (startIdx > currentIndex) {
+        addTextSegment(text.slice(currentIndex, startIdx), processedElements);
+      }
+
+      processToolCallJson(toolCallJson, fullMatch, processedElements, options);
+      currentIndex = endIdx + toolCallEnd.length;
+      searchFrom = currentIndex;
     }
 
     if (currentIndex < text.length) {
@@ -900,15 +969,40 @@ export const hermesProtocol = ({
   },
 
   extractToolCallSegments({ text }: { text: string }) {
-    const startEsc = escapeRegExp(toolCallStart);
-    const endEsc = escapeRegExp(toolCallEnd);
-    const regex = new RegExp(`${startEsc}([\u0000-\uFFFF]*?)${endEsc}`, "gs");
     const segments: string[] = [];
-    let m = regex.exec(text);
-    while (m != null) {
-      segments.push(m[0]);
-      m = regex.exec(text);
+    let searchFrom = 0;
+
+    while (searchFrom < text.length) {
+      const startIdx = text.indexOf(toolCallStart, searchFrom);
+      if (startIdx === -1) {
+        break;
+      }
+
+      const jsonStart = startIdx + toolCallStart.length;
+      let endIdx = jsonStart;
+      let found = false;
+
+      while (endIdx < text.length) {
+        endIdx = text.indexOf(toolCallEnd, endIdx);
+        if (endIdx === -1) {
+          break;
+        }
+        const jsonSegment = text.slice(jsonStart, endIdx);
+        if (!isInsideJsonString(jsonSegment)) {
+          found = true;
+          break;
+        }
+        endIdx += 1;
+      }
+
+      if (!found) {
+        break;
+      }
+
+      segments.push(text.slice(startIdx, endIdx + toolCallEnd.length));
+      searchFrom = endIdx + toolCallEnd.length;
     }
+
     return segments;
   },
 });
