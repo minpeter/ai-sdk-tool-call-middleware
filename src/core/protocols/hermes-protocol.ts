@@ -29,6 +29,54 @@ function canonicalizeToolInput(argumentsValue: unknown): string {
   return JSON.stringify(argumentsValue ?? {});
 }
 
+/**
+ * Escape literal control characters (U+0000–U+001F) that appear inside JSON
+ * string values.  Models often emit raw newlines in long content fields, which
+ * are valid plaintext but rejected by JSON.parse.  Only replaces inside
+ * strings to preserve JSON structural whitespace.
+ */
+function normalizeJsonStringCtrl(json: string): string {
+  let result = "";
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < json.length; i += 1) {
+    const ch = json[i];
+    if (esc) {
+      esc = false;
+      result += ch;
+      continue;
+    }
+    if (ch === "\\" && inStr) {
+      esc = true;
+      result += ch;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = !inStr;
+      result += ch;
+      continue;
+    }
+    if (inStr && ch.charCodeAt(0) < 0x20) {
+      switch (ch) {
+        case "\n":
+          result += "\\n";
+          continue;
+        case "\r":
+          result += "\\r";
+          continue;
+        case "\t":
+          result += "\\t";
+          continue;
+        default:
+          result += `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`;
+          continue;
+      }
+    }
+    result += ch;
+  }
+  return result;
+}
+
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
@@ -36,7 +84,7 @@ function processToolCallJson(
   options?: ParserOptions
 ) {
   try {
-    const parsedToolCall = parseRJSON(toolCallJson) as {
+    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson)) as {
       name: string;
       arguments: unknown;
     };
@@ -545,7 +593,9 @@ function emitIncompleteToolCall(
 
   if (state.currentToolCallJson) {
     try {
-      const parsedToolCall = parseRJSON(state.currentToolCallJson) as {
+      const parsedToolCall = parseRJSON(
+        normalizeJsonStringCtrl(state.currentToolCallJson),
+      ) as {
         name: string;
         arguments: unknown;
       };
@@ -654,7 +704,9 @@ function emitToolCall(context: TagProcessingContext) {
   const { state, controller, toolCallStart, toolCallEnd, options, tools } =
     context;
   try {
-    const parsedToolCall = parseRJSON(state.currentToolCallJson) as {
+    const parsedToolCall = parseRJSON(
+      normalizeJsonStringCtrl(state.currentToolCallJson),
+    ) as {
       name: string;
       arguments: unknown;
     };
