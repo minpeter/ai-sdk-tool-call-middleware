@@ -587,11 +587,18 @@ function emitIncompleteToolCall(
     } as LanguageModelV3StreamPart);
   }
   closeToolInput(state, controller);
+  const toolName = state.currentToolCallJson
+    ? extractStreamingToolCallProgress(state.currentToolCallJson).toolName
+    : undefined;
   options?.onError?.(
     shouldEmitRawFallback
       ? "Could not complete streaming JSON tool call at finish; emitting original text."
       : "Could not complete streaming JSON tool call at finish.",
-    { toolCall: errorContent }
+    {
+      toolCall: errorContent,
+      toolName,
+      reason: "unfinished",
+    }
   );
   state.currentToolCallJson = "";
   state.isInsideToolCall = false;
