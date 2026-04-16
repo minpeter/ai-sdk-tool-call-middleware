@@ -495,10 +495,252 @@ function normalizeJsonStringCtrl(json: string): string {
   return parts.join("");
 }
 
+/**
+ * Extract known argument key names from the tool schema matching the
+ * tool name found in a (possibly malformed) JSON string.
+ */
+function extractKnownArgKeys(
+  tools: LanguageModelV3FunctionTool[],
+  toolCallJson: string
+): string[] | undefined {
+  const nameMatch = toolCallJson.match(/"name"\s*:\s*"([^"]+)"/);
+  if (!nameMatch) return undefined;
+  const tool = tools.find((t) => t.name === nameMatch[1]);
+  if (!tool?.inputSchema?.properties) return undefined;
+  return Object.keys(
+    tool.inputSchema.properties as Record<string, unknown>
+  );
+}
+
+/**
+ * Attempt to repair a malformed tool-call JSON string where the model
+ * failed to escape double-quotes inside string values.  Returns the
+ * parsed result or null when repair is not possible.
+ */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: JSON repair requires manual character-level scanning with multiple heuristic passes.
+function repairToolCallJson(
+  raw: string,
+  knownArgKeys?: string[]
+): { name: string; arguments: Record<string, unknown> } | null {
+  // 1. Extract tool name
+  const nameMatch = raw.match(/"name"\s*:\s*"([^"]+)"/);
+  if (!nameMatch) return null;
+  const toolName = nameMatch[1];
+
+  // 2. Find arguments object boundaries
+  const argsMatch = raw.match(/"arguments"\s*:\s*\{/);
+  if (!argsMatch || argsMatch.index === undefined) return null;
+  const argsStart = argsMatch.index + argsMatch[0].length;
+
+  // 3. Find closing braces from end (arguments + outer object)
+  let outerClose = -1;
+  for (let i = raw.length - 1; i >= argsStart; i--) {
+    if (raw.charAt(i) === "}") {
+      outerClose = i;
+      break;
+    }
+    if (!/\s/.test(raw.charAt(i))) break;
+  }
+  if (outerClose === -1) return null;
+
+  let argsClose = -1;
+  for (let j = outerClose - 1; j >= argsStart; j--) {
+    if (raw.charAt(j) === "}") {
+      argsClose = j;
+      break;
+    }
+    if (!/\s/.test(raw.charAt(j))) break;
+  }
+  if (argsClose === -1) return null;
+
+  const argsBody = raw.substring(argsStart, argsClose);
+
+  // 4. Try standard parse first
+  try {
+    return {
+      name: toolName,
+      arguments: JSON.parse(`{${argsBody}}`) as Record<string, unknown>,
+    };
+  } catch {
+    /* fall through to repair */
+  }
+
+  // 5. Collect key positions
+  const firstKeyMatch = argsBody.match(/^\s*"([^"]+)"\s*:\s*/);
+  if (!firstKeyMatch) return null;
+  let allKeys: Array<{
+    key: string;
+    matchStart: number;
+    valueStart: number;
+  }> = [
+    {
+      key: firstKeyMatch[1],
+      matchStart: 0,
+      valueStart: firstKeyMatch[0].length,
+    },
+  ];
+  const kvPattern = /,\s*"([^"]+)"\s*:\s*/g;
+  let m: RegExpExecArray | null;
+  while ((m = kvPattern.exec(argsBody)) !== null) {
+    allKeys.push({
+      key: m[1],
+      matchStart: m.index,
+      valueStart: m.index + m[0].length,
+    });
+  }
+
+  // 6. Filter by known keys if provided
+  if (knownArgKeys && knownArgKeys.length > 0) {
+    const known = new Set(knownArgKeys);
+    allKeys = allKeys.filter((entry) => known.has(entry.key));
+  }
+
+  // 7. Handle duplicate key names with scoring heuristic
+  const firstByKey: Record<string, number> = {};
+  const lastByKey: Record<string, number> = {};
+  for (let idx = 0; idx < allKeys.length; idx++) {
+    if (!(allKeys[idx].key in firstByKey))
+      firstByKey[allKeys[idx].key] = idx;
+    lastByKey[allKeys[idx].key] = idx;
+  }
+  const firstPositions = allKeys.filter(
+    (_, i) => firstByKey[allKeys[i].key] === i
+  );
+  const lastPositions = allKeys.filter(
+    (_, i) => lastByKey[allKeys[i].key] === i
+  );
+
+  let keyPositions: typeof allKeys;
+  if (
+    firstPositions.length === lastPositions.length &&
+    firstPositions.every(
+      (fp, i) => fp.matchStart === lastPositions[i].matchStart
+    )
+  ) {
+    keyPositions = firstPositions;
+  } else {
+    function scorePositions(
+      positions: typeof allKeys
+    ): [number, number] {
+      let rawOk = 0;
+      let repaired = 0;
+      for (let si = 0; si < positions.length; si++) {
+        const svs = positions[si].valueStart;
+        const sve =
+          si + 1 < positions.length
+            ? positions[si + 1].matchStart
+            : argsBody.length;
+        const srv = argsBody.substring(svs, sve).replace(/,\s*$/, "");
+        try {
+          JSON.parse(srv);
+          rawOk++;
+          continue;
+        } catch {
+          /* skip */
+        }
+        if (srv.charAt(0) === '"') {
+          let seq = srv.length - 1;
+          while (seq > 0 && srv.charAt(seq) !== '"') seq--;
+          if (seq > 0) {
+            const sinner = srv.substring(1, seq);
+            let sesc = "";
+            let sbs = 0;
+            for (const sch of sinner) {
+              if (sch === "\\") {
+                sbs++;
+                sesc += sch;
+              } else if (sch === '"' && sbs % 2 === 0) {
+                sbs = 0;
+                sesc += '\\"';
+              } else {
+                sbs = 0;
+                sesc += sch;
+              }
+            }
+            sesc = sesc
+              .replace(/\n/g, "\\n")
+              .replace(/\r/g, "\\r")
+              .replace(/\t/g, "\\t");
+            try {
+              JSON.parse(`"${sesc}"`);
+              repaired++;
+            } catch {
+              /* skip */
+            }
+          }
+        }
+      }
+      return [rawOk, repaired];
+    }
+    const fs = scorePositions(firstPositions);
+    const ls = scorePositions(lastPositions);
+    keyPositions =
+      ls[0] > fs[0] || (ls[0] === fs[0] && ls[1] > fs[1])
+        ? lastPositions
+        : firstPositions;
+  }
+  allKeys = keyPositions;
+  if (allKeys.length === 0) return null;
+
+  // 8. Repair each value by escaping unescaped quotes
+  const args: Record<string, unknown> = {};
+  for (let i = 0; i < allKeys.length; i++) {
+    const kp = allKeys[i];
+    const vs = kp.valueStart;
+    const ve =
+      i + 1 < allKeys.length
+        ? allKeys[i + 1].matchStart
+        : argsBody.length;
+    let rv = argsBody.substring(vs, ve).replace(/,\s*$/, "");
+    try {
+      args[kp.key] = JSON.parse(rv);
+      continue;
+    } catch {
+      /* needs repair */
+    }
+    if (rv.charAt(0) === '"') {
+      let eq = rv.length - 1;
+      while (eq > 0 && rv.charAt(eq) !== '"') eq--;
+      if (eq <= 0) {
+        args[kp.key] = rv;
+        continue;
+      }
+      const inner = rv.substring(1, eq);
+      let esc = "";
+      let bs = 0;
+      for (const ch of inner) {
+        if (ch === "\\") {
+          bs++;
+          esc += ch;
+        } else if (ch === '"' && bs % 2 === 0) {
+          bs = 0;
+          esc += '\\"';
+        } else {
+          bs = 0;
+          esc += ch;
+        }
+      }
+      esc = esc
+        .replace(/\n/g, "\\n")
+        .replace(/\r/g, "\\r")
+        .replace(/\t/g, "\\t");
+      try {
+        args[kp.key] = JSON.parse(`"${esc}"`);
+      } catch {
+        args[kp.key] = inner;
+      }
+    } else {
+      args[kp.key] = rv;
+    }
+  }
+  return { name: toolName, arguments: args };
+}
+
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
   processedElements: LanguageModelV3Content[],
+  tools: LanguageModelV3FunctionTool[],
   options?: ParserOptions
 ) {
   try {
@@ -515,6 +757,20 @@ function processToolCallJson(
       input: canonicalizeToolInput(parsedToolCall.arguments),
     });
   } catch (error) {
+    // Attempt repair for unescaped quotes
+    const repaired = repairToolCallJson(
+      toolCallJson,
+      extractKnownArgKeys(tools, toolCallJson)
+    );
+    if (repaired) {
+      processedElements.push({
+        type: "tool-call",
+        toolCallId: generateToolCallId(),
+        toolName: repaired.name,
+        input: canonicalizeToolInput(repaired.arguments),
+      });
+      return;
+    }
     const salvagedToolName =
       extractStreamingToolCallProgress(toolCallJson).toolName;
     const salvagedToolCallId = generateToolCallId();
@@ -1010,6 +1266,17 @@ function emitIncompleteToolCall(
       state.isInsideToolCall = false;
       return;
     } catch {
+      // Attempt repair for unescaped quotes
+      const repaired = repairToolCallJson(
+        state.currentToolCallJson,
+        extractKnownArgKeys(tools, state.currentToolCallJson)
+      );
+      if (repaired) {
+        emitToolCallFromParsed(state, controller, repaired, tools);
+        state.currentToolCallJson = "";
+        state.isInsideToolCall = false;
+        return;
+      }
       // fall through to text fallback
     }
   }
@@ -1136,6 +1403,16 @@ function emitToolCall(context: TagProcessingContext) {
     };
     emitToolCallFromParsed(state, controller, parsedToolCall, tools);
   } catch (error) {
+    // Attempt repair for unescaped quotes
+    const repaired = repairToolCallJson(
+      state.currentToolCallJson,
+      extractKnownArgKeys(tools, state.currentToolCallJson)
+    );
+    if (repaired) {
+      emitToolCallFromParsed(state, controller, repaired, tools);
+      return;
+    }
+
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
     const streamingToolCallId =
@@ -1412,6 +1689,7 @@ export const hermesProtocol = ({
 
   parseGeneratedText({
     text,
+    tools,
     options,
   }: {
     text: string;
@@ -1458,7 +1736,13 @@ export const hermesProtocol = ({
         );
       }
 
-      processToolCallJson(toolCallJson, fullMatch, processedElements, options);
+      processToolCallJson(
+        toolCallJson,
+        fullMatch,
+        processedElements,
+        tools,
+        options
+      );
       currentIndex = span.endIdx + toolCallEnd.length;
       searchFrom = currentIndex;
     }
