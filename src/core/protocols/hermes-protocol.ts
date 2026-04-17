@@ -29,71 +29,115 @@ function canonicalizeToolInput(argumentsValue: unknown): string {
   return JSON.stringify(argumentsValue ?? {});
 }
 
+const CHAR_CODE_BACKSLASH = 0x5c;
+const CHAR_CODE_QUOTE = 0x22;
+const CHAR_CODE_LF = 0x0a;
+const CHAR_CODE_CR = 0x0d;
+const CHAR_CODE_TAB = 0x09;
+const CHAR_CODE_CONTROL_UPPER = 0x1f;
+
+/**
+ * Fast single-pass detector: returns true when any JSON string literal in
+ * `json` contains a raw (unescaped) control character that would cause
+ * JSON.parse to fail. Used as an early-exit guard so the 99% common case
+ * of well-formed JSON skips all string allocation in
+ * `normalizeJsonStringCtrl`.
+ */
+function hasControlCharInString(json: string): boolean {
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < json.length; i += 1) {
+    const code = json.charCodeAt(i);
+    if (esc) {
+      esc = false;
+      if (code <= CHAR_CODE_CONTROL_UPPER) return true;
+      continue;
+    }
+    if (inStr && code === CHAR_CODE_BACKSLASH) {
+      esc = true;
+      continue;
+    }
+    if (code === CHAR_CODE_QUOTE) {
+      inStr = !inStr;
+      continue;
+    }
+    if (inStr && code <= CHAR_CODE_CONTROL_UPPER) return true;
+  }
+  return false;
+}
+
 /**
  * Escape literal control characters (U+0000–U+001F) that appear inside JSON
  * string values.  Models often emit raw newlines in long content fields, which
  * are valid plaintext but rejected by JSON.parse.  Only replaces inside
  * strings to preserve JSON structural whitespace.
+ *
+ * Implementation notes:
+ *   - Fast-path: if no control char appears inside any string literal, we
+ *     return the input unchanged without any string building.
+ *   - Slow-path: chunk-based slicing with an array builder — avoids the
+ *     quadratic string concatenation that a per-character `result += ch`
+ *     loop produces on large arguments.
  */
 function normalizeJsonStringCtrl(json: string): string {
-  let result = "";
+  if (!hasControlCharInString(json)) return json;
+
+  const parts: string[] = [];
+  let chunkStart = 0;
   let inStr = false;
   let esc = false;
+
+  const flushUpTo = (end: number) => {
+    if (chunkStart < end) parts.push(json.slice(chunkStart, end));
+  };
+
+  const escapeForCode = (code: number): string => {
+    switch (code) {
+      case CHAR_CODE_LF:
+        return "\\n";
+      case CHAR_CODE_CR:
+        return "\\r";
+      case CHAR_CODE_TAB:
+        return "\\t";
+      default:
+        return `\\u${code.toString(16).padStart(4, "0")}`;
+    }
+  };
+
   for (let i = 0; i < json.length; i += 1) {
-    const ch = json[i];
+    const code = json.charCodeAt(i);
+
     if (esc) {
       esc = false;
-      // A raw control char after \\ should be escaped to form a valid sequence.
-      // The backslash is already in result, so just append the escape letter.
-      if (ch.charCodeAt(0) < 0x20) {
-        switch (ch) {
-          case "\n":
-            result += "n";
-            continue;
-          case "\r":
-            result += "r";
-            continue;
-          case "\t":
-            result += "t";
-            continue;
-          default:
-            // Replace the trailing \\ with a \\uXXXX escape
-            result = result.slice(0, -1) + `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`;
-            continue;
-        }
+      if (code <= CHAR_CODE_CONTROL_UPPER) {
+        // `\` + raw control char — drop the preceding `\` and emit a
+        // proper JSON escape.
+        flushUpTo(i - 1);
+        parts.push(escapeForCode(code));
+        chunkStart = i + 1;
       }
-      result += ch;
       continue;
     }
-    if (ch === "\\" && inStr) {
+
+    if (inStr && code === CHAR_CODE_BACKSLASH) {
       esc = true;
-      result += ch;
       continue;
     }
-    if (ch === '"') {
+
+    if (code === CHAR_CODE_QUOTE) {
       inStr = !inStr;
-      result += ch;
       continue;
     }
-    if (inStr && ch.charCodeAt(0) < 0x20) {
-      switch (ch) {
-        case "\n":
-          result += "\\n";
-          continue;
-        case "\r":
-          result += "\\r";
-          continue;
-        case "\t":
-          result += "\\t";
-          continue;
-        default:
-          result += `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`;
-          continue;
-      }
+
+    if (inStr && code <= CHAR_CODE_CONTROL_UPPER) {
+      flushUpTo(i);
+      parts.push(escapeForCode(code));
+      chunkStart = i + 1;
     }
-    result += ch;
   }
-  return result;
+
+  if (chunkStart < json.length) parts.push(json.slice(chunkStart));
+  return parts.join("");
 }
 
 function processToolCallJson(
