@@ -618,22 +618,17 @@ function repairToolCallJson(
   }
 
   // 5b. Filter candidates to prevent false boundary splits.
-  //     When knownArgKeys is available, only keep keys that match the schema.
-  //     This prevents ,"fake": patterns inside broken string values from
-  //     being treated as key boundaries.  Unknown extra keys are dropped —
-  //     acceptable for a best-effort repair path since the alternative
-  //     (keeping them) corrupts known values.
-  //     When no schema is available, use depth checking as a heuristic.
+  //     Boundary detection always uses top-level position — dropping
+  //     schema-unknown keys from the candidate list corrupts neighbouring
+  //     value slices, because their ,"extra":... text gets merged into
+  //     the previous value. Schema filtering is applied later when
+  //     assigning parsed values into args (step 8 below).
   const knownKeySet = knownArgKeys && knownArgKeys.length > 0
     ? new Set(knownArgKeys)
     : null;
-  if (knownKeySet) {
-    allKeys = allKeys.filter((entry) => knownKeySet.has(entry.key));
-  } else {
-    allKeys = allKeys.filter((entry) =>
-      entry.matchStart === 0 || isAtTopLevel(argsBody, entry.matchStart)
-    );
-  }
+  allKeys = allKeys.filter((entry) =>
+    entry.matchStart === 0 || isAtTopLevel(argsBody, entry.matchStart)
+  );
 
   // 7. Handle duplicate key names with scoring heuristic
   const firstByKey: Record<string, number> = {};
@@ -722,10 +717,13 @@ function repairToolCallJson(
   allKeys = keyPositions;
   if (allKeys.length === 0) return null;
 
-  // 8. Repair each value by escaping unescaped quotes
+  // 8. Repair each value by escaping unescaped quotes.
+  //    Schema-unknown keys are skipped here (their slice was still needed
+  //    for correct boundary detection in step 5b).
   const args: Record<string, unknown> = {};
   for (let i = 0; i < allKeys.length; i++) {
     const kp = allKeys[i];
+    if (knownKeySet && !knownKeySet.has(kp.key)) continue;
     const vs = kp.valueStart;
     const ve =
       i + 1 < allKeys.length
