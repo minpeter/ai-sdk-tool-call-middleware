@@ -773,6 +773,10 @@ function repairToolCallJson(
       return null;
     }
   }
+  // Guard: if the schema filter skipped every parsed key, we have nothing
+  // meaningful to emit. Returning {arguments: {}} here would trigger a
+  // tool invocation with empty args — worse than reporting parse failure.
+  if (knownKeySet && Object.keys(args).length === 0) return null;
   return { name: toolName, arguments: args };
 }
 

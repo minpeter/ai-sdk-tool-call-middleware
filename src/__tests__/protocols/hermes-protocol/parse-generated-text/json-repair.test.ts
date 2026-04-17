@@ -297,6 +297,29 @@ describe("parseGeneratedText JSON repair", () => {
     expect(args.b).toEqual({ c: 2 });
   });
 
+  it("bails out when all parsed keys are schema-unknown (no empty-args fallback)", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    // Tool schema knows "content" and "path", but the model hallucinates
+    // different key names ("foo", "bar") AND emits unescaped quotes so
+    // parseRJSON fails and repair runs. Without the guard, repair would
+    // skip every key via knownKeySet and return {name, arguments: {}} —
+    // emitting a tool call with empty args (worse than failing). The guard
+    // makes repair bail out to onError when no known key survives.
+    const text =
+      '<tool_call>{"name":"write","arguments":{"foo":"He said "hi" there","bar":"b"}}</tool_call>';
+    const tools = [
+      makeTool("write", {
+        content: { type: "string" },
+        path: { type: "string" },
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("bails out on arguments body larger than 100KB", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
