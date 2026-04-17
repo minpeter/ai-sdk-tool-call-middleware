@@ -50,6 +50,67 @@ function isInsideJsonString(json: string): boolean {
   return inStr;
 }
 
+/**
+ * Detect whether `segment` contains an occurrence of `startTag` outside any
+ * JSON string literal. Used to identify nested `<tool_call>` start tags that
+ * indicate the current tool call's `</tool_call>` actually belongs to a later
+ * tool call (i.e. the current call is orphaned / malformed).
+ */
+function hasOuterToolCallStart(segment: string, startTag: string): boolean {
+  let pos = 0;
+  while (pos < segment.length) {
+    const next = segment.indexOf(startTag, pos);
+    if (next === -1) return false;
+    if (!isInsideJsonString(segment.slice(0, next))) return true;
+    pos = next + 1;
+  }
+  return false;
+}
+
+/**
+ * Locate the next valid `<tool_call>...</tool_call>` span in `text` starting
+ * at `searchFrom`. Skips `</tool_call>` sequences that occur inside JSON
+ * string literals, and bails out when a nested `<tool_call>` start tag
+ * appears outside a JSON string (treating the current start tag as orphaned
+ * — its presumed close belongs to a later call).
+ *
+ * Returns:
+ *   - `null`: no more start tags in the remaining text
+ *   - `{ startIdx, found: true, jsonStart, endIdx }`: a valid span
+ *   - `{ startIdx, found: false }`: an orphan start tag (caller should skip
+ *     past it and resume scanning)
+ */
+function findNextToolCallSpan(
+  text: string,
+  searchFrom: number,
+  startTag: string,
+  endTag: string,
+):
+  | { startIdx: number; found: true; jsonStart: number; endIdx: number }
+  | { startIdx: number; found: false }
+  | null {
+  const startIdx = text.indexOf(startTag, searchFrom);
+  if (startIdx === -1) return null;
+  const jsonStart = startIdx + startTag.length;
+
+  let endIdx = jsonStart;
+  while (endIdx < text.length) {
+    endIdx = text.indexOf(endTag, endIdx);
+    if (endIdx === -1) break;
+    const jsonSegment = text.slice(jsonStart, endIdx);
+    if (!isInsideJsonString(jsonSegment)) {
+      if (hasOuterToolCallStart(jsonSegment, startTag)) {
+        // Nested <tool_call> outside JSON string — abandon this start,
+        // its presumed </tool_call> belongs to a later call.
+        return { startIdx, found: false };
+      }
+      return { startIdx, found: true, jsonStart, endIdx };
+    }
+    endIdx += 1;
+  }
+  return { startIdx, found: false };
+}
+
 function canonicalizeToolInput(argumentsValue: unknown): string {
   return JSON.stringify(argumentsValue ?? {});
 }
@@ -833,7 +894,6 @@ export const hermesProtocol = ({
     })}${toolCallEnd}`;
   },
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Manual scanning needed to skip end tags inside JSON string literals.
   parseGeneratedText({
     text,
     options,
@@ -847,55 +907,18 @@ export const hermesProtocol = ({
     let searchFrom = 0;
 
     while (searchFrom < text.length) {
-      const startIdx = text.indexOf(toolCallStart, searchFrom);
-      if (startIdx === -1) {
-        break;
-      }
+      const span = findNextToolCallSpan(
+        text,
+        searchFrom,
+        toolCallStart,
+        toolCallEnd,
+      );
+      if (span === null) break;
 
-      const jsonStart = startIdx + toolCallStart.length;
-      let endIdx = jsonStart;
-      let found = false;
-
-      while (endIdx < text.length) {
-        endIdx = text.indexOf(toolCallEnd, endIdx);
-        if (endIdx === -1) {
-          break;
-        }
-        const jsonSegment = text.slice(jsonStart, endIdx);
-        if (!isInsideJsonString(jsonSegment)) {
-          // Also check that we haven't crossed into another tool call's
-          // territory — if there's a <tool_call> start tag inside the
-          // JSON segment (outside a string), this end tag belongs to
-          // a later tool call, not ours.
-          // Check for any <tool_call> NOT inside a JSON string — if
-          // found, this </tool_call> belongs to a later tool call.
-          let hasOuterInner = false;
-          let isp = 0;
-          while (isp < jsonSegment.length) {
-            const pos = jsonSegment.indexOf(toolCallStart, isp);
-            if (pos === -1) break;
-            if (!isInsideJsonString(jsonSegment.slice(0, pos))) {
-              hasOuterInner = true;
-              break;
-            }
-            isp = pos + 1;
-          }
-          if (!hasOuterInner) {
-            found = true;
-            break;
-          }
-          // Inner <tool_call> outside a string — this </tool_call>
-          // belongs to a later call.
-          break;
-        }
-        endIdx += 1;
-      }
-
-      if (!found) {
-        // No valid closing tag found for this <tool_call> — emit everything
-        // up to and including the start tag as text, then continue searching
-        // for subsequent tool calls.
-        const skipTo = startIdx + toolCallStart.length;
+      if (!span.found) {
+        // Orphan start tag — emit everything up to and including it as text,
+        // then continue searching for subsequent tool calls.
+        const skipTo = span.startIdx + toolCallStart.length;
         if (skipTo > currentIndex) {
           addTextSegment(text.slice(currentIndex, skipTo), processedElements);
           currentIndex = skipTo;
@@ -904,15 +927,21 @@ export const hermesProtocol = ({
         continue;
       }
 
-      const toolCallJson = text.slice(jsonStart, endIdx);
-      const fullMatch = text.slice(startIdx, endIdx + toolCallEnd.length);
+      const toolCallJson = text.slice(span.jsonStart, span.endIdx);
+      const fullMatch = text.slice(
+        span.startIdx,
+        span.endIdx + toolCallEnd.length,
+      );
 
-      if (startIdx > currentIndex) {
-        addTextSegment(text.slice(currentIndex, startIdx), processedElements);
+      if (span.startIdx > currentIndex) {
+        addTextSegment(
+          text.slice(currentIndex, span.startIdx),
+          processedElements,
+        );
       }
 
       processToolCallJson(toolCallJson, fullMatch, processedElements, options);
-      currentIndex = endIdx + toolCallEnd.length;
+      currentIndex = span.endIdx + toolCallEnd.length;
       searchFrom = currentIndex;
     }
 
@@ -982,54 +1011,22 @@ export const hermesProtocol = ({
     let searchFrom = 0;
 
     while (searchFrom < text.length) {
-      const startIdx = text.indexOf(toolCallStart, searchFrom);
-      if (startIdx === -1) {
-        break;
-      }
+      const span = findNextToolCallSpan(
+        text,
+        searchFrom,
+        toolCallStart,
+        toolCallEnd,
+      );
+      if (span === null) break;
 
-      const jsonStart = startIdx + toolCallStart.length;
-      let endIdx = jsonStart;
-      let found = false;
-
-      while (endIdx < text.length) {
-        endIdx = text.indexOf(toolCallEnd, endIdx);
-        if (endIdx === -1) {
-          break;
-        }
-        const jsonSegment = text.slice(jsonStart, endIdx);
-        if (!isInsideJsonString(jsonSegment)) {
-          // Check for any <tool_call> NOT inside a JSON string — if
-          // found, this </tool_call> belongs to a later tool call.
-          let hasOuterInner2 = false;
-          let isp2 = 0;
-          while (isp2 < jsonSegment.length) {
-            const pos = jsonSegment.indexOf(toolCallStart, isp2);
-            if (pos === -1) break;
-            if (!isInsideJsonString(jsonSegment.slice(0, pos))) {
-              hasOuterInner2 = true;
-              break;
-            }
-            isp2 = pos + 1;
-          }
-          if (!hasOuterInner2) {
-            found = true;
-            break;
-          }
-          // Inner <tool_call> outside a string — this </tool_call>
-          // belongs to a later call.
-          break;
-        }
-        endIdx += 1;
-      }
-
-      if (!found) {
-        // No valid closing tag — skip past the start tag and keep searching
-        searchFrom = startIdx + toolCallStart.length;
+      if (!span.found) {
+        // Orphan start tag — skip past it and keep searching
+        searchFrom = span.startIdx + toolCallStart.length;
         continue;
       }
 
-      segments.push(text.slice(startIdx, endIdx + toolCallEnd.length));
-      searchFrom = endIdx + toolCallEnd.length;
+      segments.push(text.slice(span.startIdx, span.endIdx + toolCallEnd.length));
+      searchFrom = span.endIdx + toolCallEnd.length;
     }
 
     return segments;
