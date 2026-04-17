@@ -586,10 +586,16 @@ function emitIncompleteToolCall(
       id: errorId,
     } as LanguageModelV3StreamPart);
   }
+  // Capture the tool name from the streaming state before closeToolInput
+  // clears state.activeToolInput. If streaming already identified the name
+  // we use it directly; otherwise fall back to re-scanning the raw JSON.
+  const streamingToolName = state.activeToolInput?.toolName;
   closeToolInput(state, controller);
-  const toolName = state.currentToolCallJson
-    ? extractStreamingToolCallProgress(state.currentToolCallJson).toolName
-    : undefined;
+  const toolName =
+    streamingToolName ??
+    (state.currentToolCallJson
+      ? extractStreamingToolCallProgress(state.currentToolCallJson).toolName
+      : undefined);
   options?.onError?.(
     shouldEmitRawFallback
       ? "Could not complete streaming JSON tool call at finish; emitting original text."

@@ -325,10 +325,63 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     );
     expect(onError).toHaveBeenCalledTimes(1);
     const [message, metadata] = onError.mock.calls[0];
+    // Default (emitRawToolCallTextOnError=false) — no "emitting original text"
+    // suffix in the error message.
     expect(message).toContain("Could not complete streaming JSON tool call at finish");
-    expect(metadata.toolName).toBe("bash");
-    expect(metadata.reason).toBe("unfinished");
+    expect(message).not.toContain("emitting original text");
+    // Full metadata shape: toolCall + toolName + reason all populated.
+    expect(metadata).toMatchObject({
+      toolName: "bash",
+      reason: "unfinished",
+    });
+    expect(typeof metadata.toolCall).toBe("string");
     expect(metadata.toolCall).toContain("<tool_call>");
+    expect(metadata.toolCall).toContain('"name":"bash"');
+  });
+
+  it("emits the raw tool-call text and flags message when emitRawToolCallTextOnError is true", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError, emitRawToolCallTextOnError: true },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"bash","arguments":{"command":"ls"',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [message, metadata] = onError.mock.calls[0];
+    // emitRawToolCallTextOnError=true path — message notes the raw emission.
+    expect(message).toContain("emitting original text");
+    // metadata shape still includes toolName and reason.
+    expect(metadata).toMatchObject({
+      toolName: "bash",
+      reason: "unfinished",
+    });
+    expect(metadata.toolCall).toContain('"name":"bash"');
+
+    // The raw text should also appear in the output stream.
+    const textOutput = out
+      .filter((c) => c.type === "text-delta")
+      .map((c: any) => c.delta)
+      .join("");
+    expect(textOutput).toContain("<tool_call>");
   });
 
   it("passes truncated toolName in onError when name value is cut mid-string", async () => {
