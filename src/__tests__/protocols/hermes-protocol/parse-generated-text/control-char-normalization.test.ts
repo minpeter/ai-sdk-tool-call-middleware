@@ -156,4 +156,19 @@ line2'}}</tool_call>`;
     expect(tool).toBeTruthy();
     expect(tool.toolName).toBe("edit");
   });
+  it("skips relaxed comments in slow-path normalization", () => {
+    const p = hermesProtocol();
+    const text = `<tool_call>{
+  name: "edit",
+  arguments: {
+    content: "line1
+line2"
+  }, // it's a comment
+  extra: 1
+}</tool_call>`;
+    const out = p.parseGeneratedText({ text, tools: [] });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(JSON.parse(tool.input).content).toBe("line1\nline2");
+  });
 });
