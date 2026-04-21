@@ -351,6 +351,55 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     expect(toolCalls.map((c) => c.toolName)).toEqual(["bash", "ok"]);
   });
 
+  it("reports and optionally emits raw text when recovering after a malformed nested start", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError, emitRawToolCallTextOnError: true },
+    });
+    const malformedPrefix =
+      '<tool_call>{"name":"bash","arguments":{"cmd":"x </tool_call> y"}} ';
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: `${malformedPrefix}<tool_call>{"name":"ok","arguments":{}}</tool_call>`,
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+
+    const text = out
+      .filter((c) => c.type === "text-delta")
+      .map((c) => (c as any).delta)
+      .join("");
+    expect(text).toContain(malformedPrefix);
+
+    const toolCalls = out.filter((c) => c.type === "tool-call") as any[];
+    expect(toolCalls.map((c) => c.toolName)).toEqual(["ok"]);
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [message, metadata] = onError.mock.calls[0];
+    expect(message).toContain("emitting original text");
+    expect(metadata).toMatchObject({
+      toolCall: malformedPrefix,
+      toolName: "bash",
+      dropReason: "malformed-nested-tool-call",
+    });
+    expect(metadata.toolCallId).toEqual(expect.any(String));
+  });
+
   it("recovers a valid tool call that follows an unclosed/malformed one", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });

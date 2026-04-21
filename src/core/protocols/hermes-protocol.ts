@@ -1055,6 +1055,74 @@ function processTagMatch(context: TagProcessingContext) {
   }
 }
 
+function recoverNestedStreamingToolCall(options: {
+  context: TagProcessingContext;
+  jsonSoFar: string;
+  nestedStartIndex: number;
+  startIndex: number;
+  tag: string;
+}): number | null {
+  const { context, jsonSoFar, nestedStartIndex, startIndex, tag } = options;
+  const {
+    state,
+    controller,
+    toolCallStart,
+    toolCallEnd,
+    options: parserOptions,
+  } = context;
+  const droppedToolCall = `${toolCallStart}${jsonSoFar.slice(
+    0,
+    nestedStartIndex
+  )}`;
+  const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(parserOptions);
+  const streamingToolCallId = state.activeToolInput?.id;
+  const streamingToolName =
+    state.activeToolInput?.toolName ??
+    extractStreamingToolCallProgress(jsonSoFar.slice(0, nestedStartIndex))
+      .toolName;
+
+  logParseFailure({
+    phase: "stream",
+    reason: "Abandoning malformed streaming tool call before nested start tag",
+    snippet: droppedToolCall,
+  });
+  if (shouldEmitRawFallback) {
+    const errorId = generateId();
+    controller.enqueue({
+      type: "text-start",
+      id: errorId,
+    } as LanguageModelV3StreamPart);
+    controller.enqueue({
+      type: "text-delta",
+      id: errorId,
+      delta: droppedToolCall,
+    } as LanguageModelV3StreamPart);
+    controller.enqueue({
+      type: "text-end",
+      id: errorId,
+    } as LanguageModelV3StreamPart);
+  }
+  closeToolInput(state, controller);
+  parserOptions?.onError?.(
+    shouldEmitRawFallback
+      ? "Could not process malformed streaming JSON tool call before nested start; emitting original text."
+      : "Could not process malformed streaming JSON tool call before nested start.",
+    {
+      toolCall: droppedToolCall,
+      toolCallId: streamingToolCallId,
+      toolName: streamingToolName,
+      dropReason: "malformed-nested-tool-call",
+    }
+  );
+  state.currentToolCallJson = "";
+  state.isInsideToolCall = false;
+  state.buffer =
+    jsonSoFar.slice(nestedStartIndex) +
+    toolCallEnd +
+    state.buffer.slice(startIndex + tag.length);
+  return getPotentialStartIndex(state.buffer, toolCallStart);
+}
+
 function processBufferTags(context: TagProcessingContext) {
   const { state, controller, toolCallStart, toolCallEnd, tools } = context;
   let startIndex = getPotentialStartIndex(
@@ -1096,20 +1164,13 @@ function processBufferTags(context: TagProcessingContext) {
         toolCallStart
       );
       if (nestedStartIndex !== null) {
-        logParseFailure({
-          phase: "stream",
-          reason:
-            "Abandoning malformed streaming tool call before nested start tag",
-          snippet: `${toolCallStart}${jsonSoFar.slice(0, nestedStartIndex)}`,
+        startIndex = recoverNestedStreamingToolCall({
+          context,
+          jsonSoFar,
+          nestedStartIndex,
+          startIndex,
+          tag,
         });
-        closeToolInput(state, controller);
-        state.currentToolCallJson = "";
-        state.isInsideToolCall = false;
-        state.buffer =
-          jsonSoFar.slice(nestedStartIndex) +
-          toolCallEnd +
-          state.buffer.slice(startIndex + tag.length);
-        startIndex = getPotentialStartIndex(state.buffer, toolCallStart);
         continue;
       }
     }
