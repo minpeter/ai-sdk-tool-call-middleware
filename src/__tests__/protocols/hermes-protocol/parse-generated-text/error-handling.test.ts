@@ -19,7 +19,7 @@ describe("protocol error paths", () => {
     expect(rejoined).toContain("<tool_call>{invalid}</tool_call>");
   });
 
-  it("hermesProtocol parseGeneratedText onError metadata includes toolName and malformed-tool-call-body dropReason", () => {
+  it("hermesProtocol parseGeneratedText onError metadata includes toolName, toolCallId, and malformed-tool-call-body dropReason", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -34,9 +34,11 @@ describe("protocol error paths", () => {
     });
     expect(typeof metadata.toolCall).toBe("string");
     expect(metadata.toolCall).toContain("<tool_call>");
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
 
-  it("hermesProtocol parseGeneratedText onError leaves toolName undefined when name is missing but still populates dropReason", () => {
+  it("hermesProtocol parseGeneratedText onError leaves toolName undefined when name is missing but still populates toolCallId and dropReason", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text = "<tool_call>{not even a name key}</tool_call>";
@@ -47,6 +49,8 @@ describe("protocol error paths", () => {
       dropReason: "malformed-tool-call-body",
     });
     expect(metadata.toolName).toBeUndefined();
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it("hermesProtocol parseGeneratedText does NOT recover JSON with unescaped double quotes (#298 proposal-2 not implemented)", () => {

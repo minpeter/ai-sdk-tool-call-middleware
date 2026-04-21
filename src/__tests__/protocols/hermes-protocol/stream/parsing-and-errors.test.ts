@@ -558,6 +558,8 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     expect(typeof metadata.toolCall).toBe("string");
     expect(metadata.toolCall).toContain("<tool_call>");
     expect(metadata.toolCall).toContain("</tool_call>");
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it("emits the raw tool-call text and keeps structured metadata when emitRawToolCallTextOnError is true and JSON body is invalid", async () => {
@@ -593,6 +595,8 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       toolName: "bash",
       dropReason: "malformed-tool-call-body",
     });
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
     const textOutput = out
       .filter((c) => c.type === "text-delta")
       .map((c: any) => c.delta)

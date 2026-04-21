@@ -48,6 +48,6 @@ yarn-error.log*
 .sisyphus
 AGENTS.md
 .ralph-tui
-.omx
+.omx/
 tasks
 package-lock.json

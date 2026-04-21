@@ -517,6 +517,7 @@ function processToolCallJson(
   } catch (error) {
     const salvagedToolName =
       extractStreamingToolCallProgress(toolCallJson).toolName;
+    const salvagedToolCallId = generateToolCallId();
     logParseFailure({
       phase: "generated-text",
       reason: "Failed to parse tool call JSON segment",
@@ -529,6 +530,7 @@ function processToolCallJson(
         toolCall: fullMatch,
         error,
         toolName: salvagedToolName,
+        toolCallId: salvagedToolCallId,
         dropReason: "malformed-tool-call-body",
       }
     );
