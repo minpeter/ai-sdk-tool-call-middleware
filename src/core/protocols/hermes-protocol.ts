@@ -44,16 +44,20 @@ function isRjsonIdentifierChar(ch: string | undefined): boolean {
   return ch != null && RJSON_IDENTIFIER_CHAR_REGEX.test(ch);
 }
 
-function previousRjsonToken(json: string, index: number): string {
+function previousRjsonToken(json: string, index: number, minIndex = 0): string {
   let start = index - 1;
-  while (start >= 0 && isRjsonIdentifierChar(json[start])) {
+  while (start >= minIndex && isRjsonIdentifierChar(json[start])) {
     start -= 1;
   }
   return json.slice(start + 1, index);
 }
 
-function previousTokenAllowsComment(json: string, index: number): boolean {
-  const previous = previousRjsonToken(json, index);
+function previousTokenAllowsComment(
+  json: string,
+  index: number,
+  minIndex = 0
+): boolean {
+  const previous = previousRjsonToken(json, index, minIndex);
   if (previous.length === 0) {
     return true;
   }
@@ -65,7 +69,11 @@ function previousTokenAllowsComment(json: string, index: number): boolean {
   );
 }
 
-function startsRjsonComment(json: string, index: number): boolean {
+function startsRjsonComment(
+  json: string,
+  index: number,
+  minIndex = 0
+): boolean {
   if (
     !(
       (json[index] === "/" && json[index + 1] === "/") ||
@@ -74,8 +82,8 @@ function startsRjsonComment(json: string, index: number): boolean {
   ) {
     return false;
   }
-  if (isRjsonIdentifierChar(json[index - 1])) {
-    return previousTokenAllowsComment(json, index);
+  if (index > minIndex && isRjsonIdentifierChar(json[index - 1])) {
+    return previousTokenAllowsComment(json, index, minIndex);
   }
   return true;
 }
@@ -184,10 +192,6 @@ function findOuterToolCallStartIndex(
   return null;
 }
 
-function hasOuterToolCallStart(segment: string, startTag: string): boolean {
-  return findOuterToolCallStartIndex(segment, startTag) !== null;
-}
-
 /**
  * Locate the next valid `<tool_call>...</tool_call>` span in `text` starting
  * at `searchFrom`. Skips `</tool_call>` sequences that occur inside
@@ -201,6 +205,7 @@ function hasOuterToolCallStart(segment: string, startTag: string): boolean {
  *   - `{ startIdx, found: false }`: an orphan start tag (caller should skip
  *     past it and resume scanning)
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Tool-call span scanning tracks relaxed JSON string/comment state and tag boundaries in one pass.
 function findNextToolCallSpan(
   text: string,
   searchFrom: number,
@@ -216,23 +221,76 @@ function findNextToolCallSpan(
   }
   const jsonStart = startIdx + startTag.length;
 
-  let endIdx = jsonStart;
-  while (endIdx < text.length) {
-    endIdx = text.indexOf(endTag, endIdx);
-    if (endIdx === -1) {
-      break;
+  let quote: '"' | "'" | null = null;
+  let esc = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let index = jsonStart; index < text.length; index += 1) {
+    const ch = text[index];
+
+    if (esc) {
+      esc = false;
+      continue;
     }
-    const jsonSegment = text.slice(jsonStart, endIdx);
-    if (!isInsideRjsonStringOrComment(jsonSegment)) {
-      if (hasOuterToolCallStart(jsonSegment, startTag)) {
-        // Nested <tool_call> outside a string/comment — abandon this
-        // start; its presumed </tool_call> belongs to a later call.
-        return { startIdx, found: false };
+
+    if (quote !== null) {
+      if (ch === "\\") {
+        esc = true;
+        continue;
       }
-      return { startIdx, found: true, jsonStart, endIdx };
+      if (ch === quote) {
+        quote = null;
+      }
+      continue;
     }
-    endIdx += 1;
+
+    if (inLineComment) {
+      if (ch === "\n" || ch === "\r") {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (ch === "*" && text[index + 1] === "/") {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (startsRjsonComment(text, index, jsonStart)) {
+      if (text[index + 1] === "/") {
+        inLineComment = true;
+        index += 1;
+        continue;
+      }
+      if (text[index + 1] === "*") {
+        inBlockComment = true;
+        index += 1;
+        continue;
+      }
+    }
+
+    if (text.startsWith(endTag, index)) {
+      return { startIdx, found: true, jsonStart, endIdx: index };
+    }
+
+    if (
+      text.startsWith(startTag, index) &&
+      isLikelyNestedToolCallStart(text, index, startTag)
+    ) {
+      // Nested <tool_call> outside a string/comment — abandon this
+      // start; its presumed </tool_call> belongs to a later call.
+      return { startIdx, found: false };
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+    }
   }
+
   return { startIdx, found: false };
 }
 
