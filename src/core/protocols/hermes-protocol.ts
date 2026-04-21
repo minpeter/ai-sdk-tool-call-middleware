@@ -101,30 +101,6 @@ function hasControlCharInString(json: string): boolean {
       i += 1;
       continue;
     }
-    if (
-      code === CHAR_CODE_SLASH &&
-      json.charCodeAt(i + 1) === CHAR_CODE_SLASH
-    ) {
-      i += 2;
-      while (i < json.length && json.charCodeAt(i) !== CHAR_CODE_LF) {
-        i += 1;
-      }
-      continue;
-    }
-    if (code === CHAR_CODE_SLASH && json.charCodeAt(i + 1) === CHAR_CODE_STAR) {
-      i += 2;
-      while (
-        i + 1 < json.length &&
-        !(
-          json.charCodeAt(i) === CHAR_CODE_STAR &&
-          json.charCodeAt(i + 1) === CHAR_CODE_SLASH
-        )
-      ) {
-        i += 1;
-      }
-      i += 1;
-      continue;
-    }
     if (code === CHAR_CODE_QUOTE || code === CHAR_CODE_SINGLE_QUOTE) {
       quote = code;
     }
