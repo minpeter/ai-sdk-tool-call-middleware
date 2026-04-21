@@ -298,6 +298,185 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     expect(out.some((c) => c.type === "tool-call")).toBe(false);
   });
 
+  it("passes toolName, toolCallId, and dropReason in onError when tool call is dropped at finish", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"bash","arguments":{"command":"ls"',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [message, metadata] = onError.mock.calls[0];
+    // Default (emitRawToolCallTextOnError=false) — no "emitting original text"
+    // suffix in the error message.
+    expect(message).toContain(
+      "Could not complete streaming JSON tool call at finish"
+    );
+    expect(message).not.toContain("emitting original text");
+    // Full metadata shape: toolCall + toolCallId + toolName + dropReason all populated.
+    expect(metadata).toMatchObject({
+      toolName: "bash",
+      dropReason: "unfinished-tool-call",
+    });
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect(typeof metadata.toolCall).toBe("string");
+    expect(metadata.toolCall).toContain("<tool_call>");
+    expect(metadata.toolCall).toContain('"name":"bash"');
+  });
+
+  it("emits the raw tool-call text and flags message when emitRawToolCallTextOnError is true", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError, emitRawToolCallTextOnError: true },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"bash","arguments":{"command":"ls"',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [message, metadata] = onError.mock.calls[0];
+    // emitRawToolCallTextOnError=true path — message notes the raw emission.
+    expect(message).toContain("emitting original text");
+    // metadata shape still includes toolCallId, toolName, and dropReason.
+    expect(metadata).toMatchObject({
+      toolName: "bash",
+      dropReason: "unfinished-tool-call",
+    });
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect(metadata.toolCall).toContain('"name":"bash"');
+
+    // The raw text should also appear in the output stream.
+    const textOutput = out
+      .filter((c) => c.type === "text-delta")
+      .map((c: any) => c.delta)
+      .join("");
+    expect(textOutput).toContain("<tool_call>");
+  });
+
+  it("passes truncated toolName in onError when name value is cut mid-string", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"ba',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [, metadata] = onError.mock.calls[0];
+    // extractTopLevelStringProperty requires closing quote, so truncated name returns undefined
+    expect(metadata.toolName).toBeUndefined();
+    expect(metadata.dropReason).toBe("unfinished-tool-call");
+    expect(metadata.toolCallId).toBeUndefined();
+  });
+
+  it("passes undefined toolName in onError when only arguments are present", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"arguments":{"command":"ls"}',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [, metadata] = onError.mock.calls[0];
+    expect(metadata.toolName).toBeUndefined();
+    expect(metadata.dropReason).toBe("unfinished-tool-call");
+    expect(metadata.toolCallId).toBeUndefined();
+  });
+
+  it("passes undefined toolName in onError when name is not parseable", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: "<tool_call>{broken",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [, metadata] = onError.mock.calls[0];
+    expect(metadata.toolName).toBeUndefined();
+    expect(metadata.dropReason).toBe("unfinished-tool-call");
+    expect(metadata.toolCallId).toBeUndefined();
+  });
+
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });

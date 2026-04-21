@@ -738,7 +738,12 @@ export const yamlXmlProtocol = (
           });
           options?.onError?.(
             "Could not complete streaming YAML tool call at finish.",
-            { toolCall: unfinishedContent }
+            {
+              toolCall: unfinishedContent,
+              toolCallId,
+              toolName,
+              dropReason: "unfinished-tool-call",
+            }
           );
         } else {
           const finalInput = stringifyToolInputWithSchema({

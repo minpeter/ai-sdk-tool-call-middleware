@@ -51,7 +51,9 @@ const QWEN3CODER_TOOL_PARSER_CALL_TAG_NAMES = new Set([
 ]);
 
 const CALL_SHORTHAND_VALUE_RE =
-  /^<\s*(call|function|tool|invoke)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/]+))/i;
+  /^<\s*(call|function|tool|invoke)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/<]+))/i;
+const NESTED_CALL_SHORTHAND_VALUE_RE =
+  /<\s*(?:call|function|tool|invoke)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/<]+))/i;
 
 // Non-global variants for streaming parsing (avoids `lastIndex` state).
 const QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE =
@@ -575,6 +577,12 @@ function getShorthandValue(openTag: string): string | null {
     return null;
   }
   return unescapeXml(value);
+}
+
+function extractShorthandToolNameFromRaw(rawText: string): string | null {
+  const match = NESTED_CALL_SHORTHAND_VALUE_RE.exec(rawText);
+  const value = match?.[1] ?? match?.[2] ?? match?.[3];
+  return value ? unescapeXml(value) : null;
 }
 
 function extractFirstTagText(xml: string, tagName: string): string | null {
@@ -2070,14 +2078,22 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
     const reportUnfinishedToolCallAtFinish = (
       controller: StreamController,
-      rawToolCall: string
+      rawToolCall: string,
+      metadata: { toolCallId?: string; toolName?: string | null } = {}
     ) => {
       const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
+      const toolName =
+        metadata.toolName ?? extractShorthandToolNameFromRaw(rawToolCall);
       options?.onError?.(
         shouldEmitRaw
           ? "Could not complete streaming Qwen3CoderToolParser XML tool call at finish; emitting original text."
           : "Could not complete streaming Qwen3CoderToolParser XML tool call at finish.",
-        { toolCall: rawToolCall }
+        {
+          toolCall: rawToolCall,
+          ...(metadata.toolCallId ? { toolCallId: metadata.toolCallId } : {}),
+          ...(toolName ? { toolName } : {}),
+          dropReason: "unfinished-tool-call",
+        }
       );
       if (shouldEmitRaw) {
         flushText(controller, rawToolCall);
@@ -2086,14 +2102,20 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
     const reportUnfinishedImplicitCallAtFinish = (
       controller: StreamController,
-      rawCallText: string
+      rawCallText: string,
+      callState: StreamingCallState
     ) => {
       const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
       options?.onError?.(
         shouldEmitRaw
           ? "Could not complete streaming Qwen3CoderToolParser call block at finish; emitting original text."
           : "Could not complete streaming Qwen3CoderToolParser call block at finish.",
-        { toolCall: rawCallText }
+        {
+          toolCall: rawCallText,
+          toolCallId: callState.toolCallId,
+          ...(callState.toolName ? { toolName: callState.toolName } : {}),
+          dropReason: "unfinished-tool-call",
+        }
       );
       if (shouldEmitRaw) {
         flushText(controller, rawCallText);
@@ -2156,7 +2178,12 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               flushText(controller, result.trailingText);
             }
             if (!result.ok && toolCall.emittedToolCallCount === 0) {
-              reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
+              reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
+                toolCallId: toolCall.activeCall.toolCallId,
+                ...(toolCall.activeCall.toolName
+                  ? { toolName: toolCall.activeCall.toolName }
+                  : {}),
+              });
             }
           } else if (toolCall.mode === "multi") {
             if (toolCall.activeCall) {
@@ -2174,14 +2201,23 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
                 flushText(controller, result.trailingText);
               }
               if (!result.ok && toolCall.emittedToolCallCount === 0) {
-                reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
+                reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
+                  toolCallId: toolCall.activeCall.toolCallId,
+                  ...(toolCall.activeCall.toolName
+                    ? { toolName: toolCall.activeCall.toolName }
+                    : {}),
+                });
               }
               toolCall.activeCall = null;
             } else if (toolCall.emittedToolCallCount === 0) {
-              reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
+              reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
+                toolName: toolCall.outerNameAttr,
+              });
             }
           } else {
-            reportUnfinishedToolCallAtFinish(controller, toolCall.raw);
+            reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
+              toolName: toolCall.outerNameAttr,
+            });
           }
 
           toolCall = null;
@@ -2203,7 +2239,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         if (!result.ok && openTag) {
           reportUnfinishedImplicitCallAtFinish(
             controller,
-            callState.raw || openTag + callState.buffer
+            callState.raw || openTag + callState.buffer,
+            callState
           );
         }
       } else {
