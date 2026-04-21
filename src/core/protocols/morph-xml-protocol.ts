@@ -82,7 +82,13 @@ function processToolCall(params: ProcessToolCallParams): void {
     const originalCallText = text.slice(toolCall.startIndex, toolCall.endIndex);
     options?.onError?.(
       `Could not process XML tool call: ${toolCall.toolName}`,
-      { toolCall: originalCallText, error }
+      {
+        toolCall: originalCallText,
+        error,
+        toolName: toolCall.toolName,
+        toolCallId: generateToolCallId(),
+        dropReason: "malformed-tool-call-body",
+      }
     );
     processedElements.push({ type: "text", text: originalCallText });
   }
@@ -684,6 +690,9 @@ function handleStreamingToolCallEnd(
     options?.onError?.("Could not process streaming XML tool call", {
       toolCall: original,
       error,
+      toolName: currentToolCall.name,
+      toolCallId: currentToolCall.toolCallId,
+      dropReason: "malformed-tool-call-body",
     });
   }
 }

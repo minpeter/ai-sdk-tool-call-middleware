@@ -986,6 +986,49 @@ function parseQwen3CoderToolParserClosedMatches(
   return closedCalls.concat(trailingCalls);
 }
 
+/**
+ * Best-effort tool-name salvage regex covering every inner call-tag shape the
+ * parser itself accepts in parseSingleFunctionCallXml / parseCallContent:
+ *   - <(function|call|tool|invoke)="NAME">       shorthand, double-quoted
+ *   - <(function|call|tool|invoke)='NAME'>       shorthand, single-quoted
+ *   - <(function|call|tool|invoke)=NAME>         shorthand, bare
+ *   - <(function|call|tool|invoke) name="NAME">  attribute, double-quoted
+ *   - <(function|call|tool|invoke) name='NAME'>  attribute, single-quoted
+ *   - <name>NAME</name>                          child element fallback
+ *   - <tool_name>NAME</tool_name>                alternate child element fallback
+ *
+ * Bare-shorthand char class is `[^\s>/]` — exactly the parser's stop set in
+ * parseShorthandValue (L159-165): it breaks on ASCII whitespace, `>`, or `/`
+ * only. Quoted and attribute alternations are tried first, so the bare branch
+ * is only reached when the value did not open with a quote — making it safe
+ * to accept `'`, `"`, and `=` mid-value, matching the parser exactly.
+ *
+ * Keep this in sync with QWEN3CODER_TOOL_PARSER_CALL_TAG_NAMES and
+ * parseShorthandValue's accepted character class.
+ */
+const QWEN3CODER_TOOL_NAME_SALVAGE_REGEX =
+  /<(?:function|call|tool|invoke)(?:\s*=\s*"([^"]+)"|\s*=\s*'([^']+)'|\s*=\s*([^\s>/]+)|\s+name\s*=\s*"([^"]+)"|\s+name\s*=\s*'([^']+)')|<(?:name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*(?:name|tool_name)\s*>/i;
+
+/**
+ * @internal exported only so unit tests can exhaustively verify the salvage
+ * shape coverage. Not part of the public API.
+ */
+export function extractQwen3CoderToolNameFromMarkup(
+  markup: string
+): string | undefined {
+  const match = markup.match(QWEN3CODER_TOOL_NAME_SALVAGE_REGEX);
+  if (!match) {
+    return undefined;
+  }
+  const name =
+    match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6];
+  if (!name) {
+    return undefined;
+  }
+  const trimmed = name.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function parseQwen3CoderToolParserToolCallSegment(
   segment: string
 ): Array<{ toolName: string; args: Record<string, unknown> }> | null {
@@ -1142,7 +1185,12 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       if (!parsedCalls) {
         options?.onError?.(
           "Could not process Qwen3CoderToolParser XML tool call; keeping original text.",
-          { toolCall: fallbackText }
+          {
+            toolCall: fallbackText,
+            toolName: extractQwen3CoderToolNameFromMarkup(segment),
+            toolCallId: generateToolCallId(),
+            dropReason: "malformed-tool-call-body",
+          }
         );
         processedElements.push({ type: "text", text: fallbackText });
         return false;
@@ -1154,7 +1202,12 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     const emitWrapperlessCallParseFailureAsText = (raw: string) => {
       options?.onError?.(
         "Could not process Qwen3CoderToolParser <function> call; keeping original text.",
-        { toolCall: raw }
+        {
+          toolCall: raw,
+          toolName: extractQwen3CoderToolNameFromMarkup(raw),
+          toolCallId: generateToolCallId(),
+          dropReason: "malformed-tool-call-body",
+        }
       );
       processedElements.push({ type: "text", text: raw });
     };
@@ -1507,6 +1560,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           {
             toolCallId: callState.toolCallId,
             toolCall: rawToolCallText,
+            toolName: callState.toolName ?? fallbackToolName ?? undefined,
+            dropReason: "unresolved-tool-name",
           }
         );
         return false;

@@ -421,35 +421,51 @@ function findToolCalls(text: string, toolNames: string[]): ToolCallMatch[] {
   return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
 }
 
+type YamlParseFailure =
+  | { kind: "yaml-parse-error"; errors: readonly string[] }
+  | { kind: "yaml-non-mapping" };
+
+type YamlParseResult =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; failure: YamlParseFailure };
+
+function yamlFailureCause(
+  failure: YamlParseFailure
+): Record<string, unknown> {
+  if (failure.kind === "yaml-parse-error") {
+    return { kind: "yaml-parse-error", errors: failure.errors };
+  }
+  return { kind: "yaml-non-mapping" };
+}
+
 /**
  * Parse YAML content from inside an XML tag.
  * Handles common LLM output issues like inconsistent indentation.
+ *
+ * Returns a structured result instead of calling onError directly so the
+ * caller can surface a single uniform onError metadata shape
+ * (`toolCall`, `toolName`, `toolCallId`, `dropReason`) with the underlying
+ * helper cause attached as context.
  */
-function parseYamlContent(
-  yamlContent: string,
-  options?: ParserOptions
-): Record<string, unknown> | null {
+function parseYamlContent(yamlContent: string): YamlParseResult {
   const { normalized, nonEmptyLines } = normalizeYamlContent(yamlContent);
   if (nonEmptyLines.length === 0) {
-    return {};
+    return { ok: true, value: {} };
   }
 
   const parsed = parseYamlDocumentAsMapping(normalized);
   if (parsed.errors.length > 0) {
-    options?.onError?.("YAML parse error", {
-      errors: parsed.errors,
-    });
-    return null;
+    return {
+      ok: false,
+      failure: { kind: "yaml-parse-error", errors: parsed.errors },
+    };
   }
 
   if (parsed.value === null) {
-    options?.onError?.("YAML content must be a key-value mapping", {
-      got: "non-mapping",
-    });
-    return null;
+    return { ok: false, failure: { kind: "yaml-non-mapping" } };
   }
 
-  return parsed.value;
+  return { ok: true, value: parsed.value };
 }
 
 function parseYamlContentForStreamProgress(
@@ -494,11 +510,16 @@ function processToolCallMatch(
 
   addTextSegment(text.slice(currentIndex, tc.startIndex), processedElements);
 
-  const parsedArgs = parseYamlContent(tc.content, options);
-  if (parsedArgs === null) {
+  const result = parseYamlContent(tc.content);
+  if (!result.ok) {
     const originalText = text.slice(tc.startIndex, tc.endIndex);
+    const cause = yamlFailureCause(result.failure);
     options?.onError?.("Could not parse YAML tool call", {
       toolCall: originalText,
+      toolName: tc.toolName,
+      toolCallId: generateToolCallId(),
+      dropReason: "malformed-tool-call-body",
+      cause,
     });
     processedElements.push({ type: "text", text: originalText });
   } else {
@@ -506,7 +527,7 @@ function processToolCallMatch(
       type: "tool-call",
       toolCallId: generateToolCallId(),
       toolName: tc.toolName,
-      input: JSON.stringify(parsedArgs),
+      input: JSON.stringify(result.value),
     });
   }
 
@@ -669,9 +690,9 @@ export const yamlXmlProtocol = (
         toolName: string,
         toolCallId: string
       ) => {
-        const parsedArgs = parseYamlContent(toolContent, options);
+        const result = parseYamlContent(toolContent);
         flushText(controller);
-        if (parsedArgs === null) {
+        if (!result.ok) {
           const original = `<${toolName}>${toolContent}</${toolName}>`;
           const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
           emitFailedToolInputLifecycle({
@@ -685,11 +706,15 @@ export const yamlXmlProtocol = (
           });
           options?.onError?.("Could not parse streaming YAML tool call", {
             toolCall: original,
+            toolName,
+            toolCallId,
+            dropReason: "malformed-tool-call-body",
+            cause: yamlFailureCause(result.failure),
           });
         } else {
           const finalInput = stringifyToolInputWithSchema({
             toolName,
-            args: parsedArgs,
+            args: result.value,
             tools,
           });
           if (currentToolCall && currentToolCall.toolCallId === toolCallId) {
@@ -722,9 +747,9 @@ export const yamlXmlProtocol = (
         emitToolInputProgress(controller, buffer);
         const { name: toolName, toolCallId } = currentToolCall;
         const reconciledBuffer = stripTrailingPartialCloseTag(buffer, toolName);
-        const parsedArgs = parseYamlContent(reconciledBuffer, options);
+        const result = parseYamlContent(reconciledBuffer);
         flushText(controller);
-        if (parsedArgs === null) {
+        if (!result.ok) {
           const unfinishedContent = `<${toolName}>${buffer}`;
           const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
           emitFailedToolInputLifecycle({
@@ -743,12 +768,13 @@ export const yamlXmlProtocol = (
               toolCallId,
               toolName,
               dropReason: "unfinished-tool-call",
+              cause: yamlFailureCause(result.failure),
             }
           );
         } else {
           const finalInput = stringifyToolInputWithSchema({
             toolName,
-            args: parsedArgs,
+            args: result.value,
             tools,
           });
           emitFinalizedToolInputLifecycle({

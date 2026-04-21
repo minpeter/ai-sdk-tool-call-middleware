@@ -414,7 +414,10 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     // extractTopLevelStringProperty requires closing quote, so truncated name returns undefined
     expect(metadata.toolName).toBeUndefined();
     expect(metadata.dropReason).toBe("unfinished-tool-call");
-    expect(metadata.toolCallId).toBeUndefined();
+    // A fallback toolCallId is generated so consumers always see the uniform
+    // { toolCall, toolCallId, toolName, dropReason } recovery shape.
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it("passes undefined toolName in onError when only arguments are present", async () => {
@@ -444,7 +447,8 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     const [, metadata] = onError.mock.calls[0];
     expect(metadata.toolName).toBeUndefined();
     expect(metadata.dropReason).toBe("unfinished-tool-call");
-    expect(metadata.toolCallId).toBeUndefined();
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it("passes undefined toolName in onError when name is not parseable", async () => {
@@ -474,7 +478,8 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     const [, metadata] = onError.mock.calls[0];
     expect(metadata.toolName).toBeUndefined();
     expect(metadata.dropReason).toBe("unfinished-tool-call");
-    expect(metadata.toolCallId).toBeUndefined();
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {
@@ -521,5 +526,119 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     expect(tool).toBeTruthy();
     expect(JSON.parse(tool.input).location).toBe("NY");
     expect(tool.toolName).toBe("d");
+  });
+
+  it("passes toolName, toolCallId, and malformed-tool-call-body dropReason in onError when a complete tool_call block has invalid JSON body", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"bash","arguments": not valid json here}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [message, metadata] = onError.mock.calls[0];
+    expect(message).toContain("Could not process streaming JSON tool call");
+    expect(message).not.toContain("emitting original text");
+    expect(metadata).toMatchObject({
+      toolName: "bash",
+      dropReason: "malformed-tool-call-body",
+    });
+    expect(typeof metadata.toolCall).toBe("string");
+    expect(metadata.toolCall).toContain("<tool_call>");
+    expect(metadata.toolCall).toContain("</tool_call>");
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
+  });
+
+  it("emits the raw tool-call text and keeps structured metadata when emitRawToolCallTextOnError is true and JSON body is invalid", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError, emitRawToolCallTextOnError: true },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"bash","arguments": not valid json here}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [message, metadata] = onError.mock.calls[0];
+    expect(message).toContain("emitting original text");
+    expect(metadata).toMatchObject({
+      toolName: "bash",
+      dropReason: "malformed-tool-call-body",
+    });
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
+    const textOutput = out
+      .filter((c) => c.type === "text-delta")
+      .map((c: any) => c.delta)
+      .join("");
+    expect(textOutput).toContain("<tool_call>");
+    expect(textOutput).toContain("</tool_call>");
+  });
+
+  it("does not attempt to recover JSON with unescaped double quotes in string values (#298 proposal-2 is NOT implemented)", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(out.some((c) => c.type === "tool-call")).toBe(false);
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [, metadata] = onError.mock.calls[0];
+    expect(metadata.dropReason).toBe("malformed-tool-call-body");
   });
 });

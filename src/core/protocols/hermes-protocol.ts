@@ -515,6 +515,9 @@ function processToolCallJson(
       input: canonicalizeToolInput(parsedToolCall.arguments),
     });
   } catch (error) {
+    const salvagedToolName =
+      extractStreamingToolCallProgress(toolCallJson).toolName;
+    const salvagedToolCallId = generateToolCallId();
     logParseFailure({
       phase: "generated-text",
       reason: "Failed to parse tool call JSON segment",
@@ -523,7 +526,13 @@ function processToolCallJson(
     });
     options?.onError?.(
       "Could not process JSON tool call, keeping original text.",
-      { toolCall: fullMatch, error }
+      {
+        toolCall: fullMatch,
+        error,
+        toolName: salvagedToolName,
+        toolCallId: salvagedToolCallId,
+        dropReason: "malformed-tool-call-body",
+      }
     );
     processedElements.push({ type: "text", text: fullMatch });
   }
@@ -1035,8 +1044,11 @@ function emitIncompleteToolCall(
   }
   // Capture structured tool-call context before closeToolInput clears
   // state.activeToolInput. If streaming already identified the name/id we use
-  // them directly; otherwise fall back to re-scanning the raw JSON for the name.
-  const streamingToolCallId = state.activeToolInput?.id;
+  // them directly; otherwise fall back to re-scanning the raw JSON for the name
+  // and generating a fresh correlation id so consumers always receive the
+  // uniform { toolCall, toolCallId, toolName, dropReason } recovery shape.
+  const streamingToolCallId =
+    state.activeToolInput?.id ?? generateToolCallId();
   const streamingToolName = state.activeToolInput?.toolName;
   closeToolInput(state, controller);
   const toolName =
@@ -1126,6 +1138,11 @@ function emitToolCall(context: TagProcessingContext) {
   } catch (error) {
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
+    const streamingToolCallId =
+      state.activeToolInput?.id ?? generateToolCallId();
+    const streamingToolName =
+      state.activeToolInput?.toolName ??
+      extractStreamingToolCallProgress(state.currentToolCallJson).toolName;
 
     logParseFailure({
       phase: "stream",
@@ -1156,6 +1173,10 @@ function emitToolCall(context: TagProcessingContext) {
         : "Could not process streaming JSON tool call.",
       {
         toolCall: errorContent,
+        error,
+        toolCallId: streamingToolCallId,
+        toolName: streamingToolName,
+        dropReason: "malformed-tool-call-body",
       }
     );
   }
