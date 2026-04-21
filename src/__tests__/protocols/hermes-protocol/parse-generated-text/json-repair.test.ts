@@ -322,6 +322,24 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("falls through to text when malformed input uses relaxed-JSON syntax (repair is strict-JSON only)", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    // Unquoted `name` / `arguments` keys (relaxed JSON) combined with an
+    // unescaped quote inside a value. parseRJSON rejects the unescaped
+    // quote, and the strict-JSON repair path cannot locate top-level keys
+    // without double quotes. Expected behavior: same as pre-repair — the
+    // segment falls through to text output via onError. This pins the
+    // documented limitation; extending repair to relaxed JSON is out of scope.
+    const text =
+      '<tool_call>{name:"edit",arguments:{content:"He said "hi" there"}}</tool_call>';
+    const tools = [makeTool("edit", { content: { type: "string" } })];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("bails out on arguments body larger than 100KB", () => {
     const onError = vi.fn();
     const p = hermesProtocol();

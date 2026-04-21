@@ -560,6 +560,12 @@ function isAtTopLevel(argsBody: string, position: number): boolean {
  * Attempt to repair a malformed tool-call JSON string where the model
  * failed to escape double-quotes inside string values.  Returns the
  * parsed result or null when repair is not possible.
+ *
+ * Scope: this path assumes strict JSON structure (double-quoted keys and
+ * string values, per-value `JSON.parse`). Relaxed-JSON malformation
+ * (unquoted keys, single-quoted strings, comments) is out of scope — such
+ * input returns null and the caller falls through to the text segment path,
+ * matching pre-repair behavior.
  */
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: JSON repair requires manual character-level scanning with multiple heuristic passes.
 function repairToolCallJson(
