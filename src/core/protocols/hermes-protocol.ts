@@ -89,67 +89,6 @@ function startsRjsonComment(
 }
 
 /**
- * Returns true if the current position in `json` is inside syntax that can
- * legally contain literal tool-call tag text: a relaxed-JSON string or
- * comment. `parseRJSON` supports `// ...` and block comments, so tag-boundary
- * detection must ignore quotes and tag-looking text inside those comments.
- */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Relaxed JSON boundary scanning must track strings, escapes, and comments.
-function isInsideRjsonStringOrComment(json: string): boolean {
-  let quote: '"' | "'" | null = null;
-  let esc = false;
-
-  for (let i = 0; i < json.length; i += 1) {
-    const ch = json[i];
-
-    if (esc) {
-      esc = false;
-      continue;
-    }
-
-    if (quote !== null) {
-      if (ch === "\\") {
-        esc = true;
-        continue;
-      }
-      if (ch === quote) {
-        quote = null;
-      }
-      continue;
-    }
-
-    if (startsRjsonComment(json, i) && json[i + 1] === "/") {
-      i += 2;
-      while (i < json.length && json[i] !== "\n" && json[i] !== "\r") {
-        i += 1;
-      }
-      if (i >= json.length) {
-        return true;
-      }
-      continue;
-    }
-
-    if (startsRjsonComment(json, i) && json[i + 1] === "*") {
-      i += 2;
-      while (i + 1 < json.length && !(json[i] === "*" && json[i + 1] === "/")) {
-        i += 1;
-      }
-      if (i + 1 >= json.length) {
-        return true;
-      }
-      i += 1;
-      continue;
-    }
-
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-    }
-  }
-
-  return quote !== null;
-}
-
-/**
  * Detect whether `segment` contains an occurrence of `startTag` outside any
  * relaxed-JSON string or comment. Used to identify nested `<tool_call>` start
  * tags that indicate the current tool call's `</tool_call>` actually belongs
@@ -171,62 +110,24 @@ function isLikelyNestedToolCallStart(
   );
 }
 
-function findOuterToolCallStartIndex(
-  segment: string,
-  startTag: string
-): number | null {
-  let pos = 0;
-  while (pos < segment.length) {
-    const next = segment.indexOf(startTag, pos);
-    if (next === -1) {
-      return null;
-    }
-    if (
-      !isInsideRjsonStringOrComment(segment.slice(0, next)) &&
-      isLikelyNestedToolCallStart(segment, next, startTag)
-    ) {
-      return next;
-    }
-    pos = next + 1;
-  }
-  return null;
-}
+type ToolCallBoundary =
+  | { kind: "end"; endIdx: number }
+  | { kind: "nested"; endIdx: number; nestedStartIndex: number };
 
-/**
- * Locate the next valid `<tool_call>...</tool_call>` span in `text` starting
- * at `searchFrom`. Skips `</tool_call>` sequences that occur inside
- * relaxed-JSON strings or comments, and bails out when a nested `<tool_call>`
- * start tag appears outside a string/comment (treating the current start tag
- * as orphaned — its presumed close belongs to a later call).
- *
- * Returns:
- *   - `null`: no more start tags in the remaining text
- *   - `{ startIdx, found: true, jsonStart, endIdx }`: a valid span
- *   - `{ startIdx, found: false }`: an orphan start tag (caller should skip
- *     past it and resume scanning)
- */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Tool-call span scanning tracks relaxed JSON string/comment state and tag boundaries in one pass.
-function findNextToolCallSpan(
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Boundary scanning tracks relaxed JSON string/comment state and two delimiter types in one pass.
+function findToolCallBoundaryOutsideRjsonSyntax(
   text: string,
-  searchFrom: number,
+  scanFrom: number,
   startTag: string,
   endTag: string
-):
-  | { startIdx: number; found: true; jsonStart: number; endIdx: number }
-  | { startIdx: number; found: false }
-  | null {
-  const startIdx = text.indexOf(startTag, searchFrom);
-  if (startIdx === -1) {
-    return null;
-  }
-  const jsonStart = startIdx + startTag.length;
-
+): ToolCallBoundary | null {
   let quote: '"' | "'" | null = null;
   let esc = false;
   let inLineComment = false;
   let inBlockComment = false;
+  let nestedStartIndex: number | null = null;
 
-  for (let index = jsonStart; index < text.length; index += 1) {
+  for (let index = scanFrom; index < text.length; index += 1) {
     const ch = text[index];
 
     if (esc) {
@@ -260,7 +161,7 @@ function findNextToolCallSpan(
       continue;
     }
 
-    if (startsRjsonComment(text, index, jsonStart)) {
+    if (startsRjsonComment(text, index, scanFrom)) {
       if (text[index + 1] === "/") {
         inLineComment = true;
         index += 1;
@@ -274,16 +175,19 @@ function findNextToolCallSpan(
     }
 
     if (text.startsWith(endTag, index)) {
-      return { startIdx, found: true, jsonStart, endIdx: index };
+      return nestedStartIndex == null
+        ? { kind: "end", endIdx: index }
+        : { kind: "nested", endIdx: index, nestedStartIndex };
     }
 
     if (
+      nestedStartIndex == null &&
       text.startsWith(startTag, index) &&
       isLikelyNestedToolCallStart(text, index, startTag)
     ) {
-      // Nested <tool_call> outside a string/comment — abandon this
-      // start; its presumed </tool_call> belongs to a later call.
-      return { startIdx, found: false };
+      nestedStartIndex = index;
+      index += startTag.length - 1;
+      continue;
     }
 
     if (ch === '"' || ch === "'") {
@@ -291,7 +195,52 @@ function findNextToolCallSpan(
     }
   }
 
-  return { startIdx, found: false };
+  return null;
+}
+
+/**
+ * Locate the next valid `<tool_call>...</tool_call>` span in `text` starting
+ * at `searchFrom`. Skips `</tool_call>` sequences that occur inside
+ * relaxed-JSON strings or comments, and bails out when a nested `<tool_call>`
+ * start tag appears outside a string/comment (treating the current start tag
+ * as orphaned — its presumed close belongs to a later call).
+ *
+ * Returns:
+ *   - `null`: no more start tags in the remaining text
+ *   - `{ startIdx, found: true, jsonStart, endIdx }`: a valid span
+ *   - `{ startIdx, found: false }`: an orphan start tag (caller should skip
+ *     past it and resume scanning)
+ */
+function findNextToolCallSpan(
+  text: string,
+  searchFrom: number,
+  startTag: string,
+  endTag: string
+):
+  | { startIdx: number; found: true; jsonStart: number; endIdx: number }
+  | { startIdx: number; found: false }
+  | null {
+  const startIdx = text.indexOf(startTag, searchFrom);
+  if (startIdx === -1) {
+    return null;
+  }
+  const jsonStart = startIdx + startTag.length;
+
+  const boundary = findToolCallBoundaryOutsideRjsonSyntax(
+    text,
+    jsonStart,
+    startTag,
+    endTag
+  );
+  if (boundary == null) {
+    return { startIdx, found: false };
+  }
+  if (boundary.kind === "nested") {
+    // Nested <tool_call> outside a string/comment — abandon this
+    // start; its presumed </tool_call> belongs to a later call.
+    return { startIdx, found: false };
+  }
+  return { startIdx, found: true, jsonStart, endIdx: boundary.endIdx };
 }
 
 function canonicalizeToolInput(argumentsValue: unknown): string {
@@ -1243,66 +1192,74 @@ function recoverNestedStreamingToolCall(options: {
   return getPotentialStartIndex(state.buffer, toolCallStart);
 }
 
-function processBufferTags(context: TagProcessingContext) {
+function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
   const { state, controller, toolCallStart, toolCallEnd, tools } = context;
-  let startIndex = getPotentialStartIndex(
-    state.buffer,
-    state.isInsideToolCall ? toolCallEnd : toolCallStart
+  const currentLength = state.currentToolCallJson.length;
+  const combined = state.currentToolCallJson + state.buffer;
+  const boundary = findToolCallBoundaryOutsideRjsonSyntax(
+    combined,
+    0,
+    toolCallStart,
+    toolCallEnd
   );
+  if (boundary == null) {
+    return false;
+  }
+
+  const relativeEndIndex = boundary.endIdx - currentLength;
+  if (relativeEndIndex < 0) {
+    return false;
+  }
+
+  if (boundary.kind === "nested") {
+    recoverNestedStreamingToolCall({
+      context,
+      jsonSoFar: combined.slice(0, boundary.endIdx),
+      nestedStartIndex: boundary.nestedStartIndex,
+      startIndex: relativeEndIndex,
+      tag: toolCallEnd,
+    });
+    return true;
+  }
+
+  publishText(
+    state.buffer.slice(0, relativeEndIndex),
+    state,
+    controller,
+    tools
+  );
+  state.buffer = state.buffer.slice(relativeEndIndex + toolCallEnd.length);
+  processTagMatch(context);
+  return true;
+}
+
+function processBufferTags(context: TagProcessingContext) {
+  const { state, controller, toolCallStart, tools } = context;
+
+  while (state.isInsideToolCall) {
+    if (!processInsideToolCallBoundary(context)) {
+      return;
+    }
+  }
+
+  let startIndex = getPotentialStartIndex(state.buffer, toolCallStart);
 
   while (startIndex != null) {
-    const tag = state.isInsideToolCall ? toolCallEnd : toolCallStart;
-    if (startIndex + tag.length > state.buffer.length) {
+    if (startIndex + toolCallStart.length > state.buffer.length) {
       break;
     }
 
-    // When inside a tool call and we found an end tag, check whether
-    // it falls inside a relaxed-JSON string/comment. If so, consume it
-    // as content rather than treating it as a real closing tag.
-    if (state.isInsideToolCall) {
-      const jsonSoFar =
-        state.currentToolCallJson + state.buffer.slice(0, startIndex);
-      if (isInsideRjsonStringOrComment(jsonSoFar)) {
-        // Consume through the false end tag as tool-call JSON content
-        const consumeEnd = startIndex + tag.length;
-        publishText(
-          state.buffer.slice(0, consumeEnd),
-          state,
-          controller,
-          tools
-        );
-        state.buffer = state.buffer.slice(consumeEnd);
-        startIndex = getPotentialStartIndex(
-          state.buffer,
-          state.isInsideToolCall ? toolCallEnd : toolCallStart
-        );
-        continue;
-      }
+    publishText(state.buffer.slice(0, startIndex), state, controller, tools);
+    state.buffer = state.buffer.slice(startIndex + toolCallStart.length);
+    processTagMatch(context);
 
-      const nestedStartIndex = findOuterToolCallStartIndex(
-        jsonSoFar,
-        toolCallStart
-      );
-      if (nestedStartIndex !== null) {
-        startIndex = recoverNestedStreamingToolCall({
-          context,
-          jsonSoFar,
-          nestedStartIndex,
-          startIndex,
-          tag,
-        });
-        continue;
+    while (state.isInsideToolCall) {
+      if (!processInsideToolCallBoundary(context)) {
+        return;
       }
     }
 
-    publishText(state.buffer.slice(0, startIndex), state, controller, tools);
-    state.buffer = state.buffer.slice(startIndex + tag.length);
-    processTagMatch(context);
-
-    startIndex = getPotentialStartIndex(
-      state.buffer,
-      state.isInsideToolCall ? toolCallEnd : toolCallStart
-    );
+    startIndex = getPotentialStartIndex(state.buffer, toolCallStart);
   }
 }
 

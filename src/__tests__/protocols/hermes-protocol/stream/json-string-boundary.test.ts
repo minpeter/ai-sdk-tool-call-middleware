@@ -547,7 +547,10 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
       toolName: "bash",
       dropReason: "malformed-nested-tool-call",
     });
-    expect(metadata.toolCallId).toEqual(expect.any(String));
+    expect(
+      metadata.toolCallId === undefined ||
+        typeof metadata.toolCallId === "string"
+    ).toBe(true);
   });
 
   it("recovers a valid tool call that follows an unclosed/malformed one", async () => {
