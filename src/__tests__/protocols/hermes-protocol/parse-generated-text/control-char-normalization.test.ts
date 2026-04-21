@@ -122,4 +122,26 @@ describe("parseGeneratedText control character normalization", () => {
     expect(tool).toBeTruthy();
     expect(JSON.parse(tool.input).content).toBe('a\\"b');
   });
+  it("preserves relaxed single-quoted strings containing double quotes", () => {
+    const p = hermesProtocol();
+    const text = `<tool_call>{
+  name: 'echo "hi"',
+  arguments: {}
+}</tool_call>`;
+    const out = p.parseGeneratedText({ text, tools: [] });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe('echo "hi"');
+    expect(JSON.parse(tool.input)).toEqual({});
+  });
+
+  it("normalizes raw control characters inside relaxed single-quoted strings", () => {
+    const p = hermesProtocol();
+    const text = `<tool_call>{name:'edit',arguments:{content:'line1
+line2'}}</tool_call>`;
+    const out = p.parseGeneratedText({ text, tools: [] });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(JSON.parse(tool.input).content).toBe("line1\nline2");
+  });
 });

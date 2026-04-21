@@ -36,6 +36,10 @@ const CHAR_CODE_CR = 0x0d;
 const CHAR_CODE_TAB = 0x09;
 const CHAR_CODE_CONTROL_UPPER = 0x1f;
 
+const CHAR_CODE_SINGLE_QUOTE = 0x27;
+
+type JsonStringQuote = typeof CHAR_CODE_QUOTE | typeof CHAR_CODE_SINGLE_QUOTE;
+
 /**
  * Fast single-pass detector: returns true when any JSON string literal in
  * `json` contains a raw (unescaped) control character that would cause
@@ -43,8 +47,9 @@ const CHAR_CODE_CONTROL_UPPER = 0x1f;
  * of well-formed JSON skips all string allocation in
  * `normalizeJsonStringCtrl`.
  */
+
 function hasControlCharInString(json: string): boolean {
-  let inStr = false;
+  let quote: JsonStringQuote | null = null;
   let esc = false;
   for (let i = 0; i < json.length; i += 1) {
     const code = json.charCodeAt(i);
@@ -55,16 +60,22 @@ function hasControlCharInString(json: string): boolean {
       }
       continue;
     }
-    if (inStr && code === CHAR_CODE_BACKSLASH) {
+    if (quote !== null && code === CHAR_CODE_BACKSLASH) {
       esc = true;
       continue;
     }
-    if (code === CHAR_CODE_QUOTE) {
-      inStr = !inStr;
+    if (quote !== null) {
+      if (code === quote) {
+        quote = null;
+        continue;
+      }
+      if (code <= CHAR_CODE_CONTROL_UPPER) {
+        return true;
+      }
       continue;
     }
-    if (inStr && code <= CHAR_CODE_CONTROL_UPPER) {
-      return true;
+    if (code === CHAR_CODE_QUOTE || code === CHAR_CODE_SINGLE_QUOTE) {
+      quote = code;
     }
   }
   return false;
@@ -83,6 +94,7 @@ function hasControlCharInString(json: string): boolean {
  *     quadratic string concatenation that a per-character `result += ch`
  *     loop produces on large arguments.
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Quote-aware JSON normalization requires explicit escape/string-state transitions.
 function normalizeJsonStringCtrl(json: string): string {
   if (!hasControlCharInString(json)) {
     return json;
@@ -90,7 +102,7 @@ function normalizeJsonStringCtrl(json: string): string {
 
   const parts: string[] = [];
   let chunkStart = 0;
-  let inStr = false;
+  let quote: JsonStringQuote | null = null;
   let esc = false;
 
   const flushUpTo = (end: number) => {
@@ -127,20 +139,26 @@ function normalizeJsonStringCtrl(json: string): string {
       continue;
     }
 
-    if (inStr && code === CHAR_CODE_BACKSLASH) {
+    if (quote !== null && code === CHAR_CODE_BACKSLASH) {
       esc = true;
       continue;
     }
 
-    if (code === CHAR_CODE_QUOTE) {
-      inStr = !inStr;
+    if (quote !== null) {
+      if (code === quote) {
+        quote = null;
+        continue;
+      }
+      if (code <= CHAR_CODE_CONTROL_UPPER) {
+        flushUpTo(i);
+        parts.push(escapeForCode(code));
+        chunkStart = i + 1;
+      }
       continue;
     }
 
-    if (inStr && code <= CHAR_CODE_CONTROL_UPPER) {
-      flushUpTo(i);
-      parts.push(escapeForCode(code));
-      chunkStart = i + 1;
+    if (code === CHAR_CODE_QUOTE || code === CHAR_CODE_SINGLE_QUOTE) {
+      quote = code;
     }
   }
 
