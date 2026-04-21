@@ -133,6 +133,7 @@ function findToolCallBoundaryOutsideRjsonSyntax(
   let esc = false;
   let inLineComment = false;
   let inBlockComment = false;
+  let lineCommentSawEndTag = false;
   let nestedStartIndex: number | null = null;
 
   for (let index = scanFrom; index < text.length; index += 1) {
@@ -157,6 +158,24 @@ function findToolCallBoundaryOutsideRjsonSyntax(
     if (inLineComment) {
       if (ch === "\n" || ch === "\r") {
         inLineComment = false;
+        lineCommentSawEndTag = false;
+        continue;
+      }
+      if (text.startsWith(endTag, index)) {
+        lineCommentSawEndTag = true;
+        index += endTag.length - 1;
+        continue;
+      }
+      if (
+        lineCommentSawEndTag &&
+        text.startsWith(startTag, index) &&
+        text[skipJsonWhitespace(text, index + startTag.length)] === "{"
+      ) {
+        nestedStartIndex = index;
+        inLineComment = false;
+        lineCommentSawEndTag = false;
+        index += startTag.length - 1;
+        continue;
       }
       continue;
     }
@@ -172,6 +191,7 @@ function findToolCallBoundaryOutsideRjsonSyntax(
     if (startsRjsonComment(text, index, scanFrom)) {
       if (text[index + 1] === "/") {
         inLineComment = true;
+        lineCommentSawEndTag = false;
         index += 1;
         continue;
       }
