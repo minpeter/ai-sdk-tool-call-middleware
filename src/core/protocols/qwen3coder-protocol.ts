@@ -986,6 +986,24 @@ function parseQwen3CoderToolParserClosedMatches(
   return closedCalls.concat(trailingCalls);
 }
 
+const QWEN3CODER_TOOL_NAME_SALVAGE_REGEX =
+  /<function(?:\s*=\s*"([^"]+)"|\s*=\s*'([^']+)'|\s*=\s*([A-Za-z_][\w.-]*)|\s+name\s*=\s*"([^"]+)"|\s+name\s*=\s*'([^']+)')/;
+
+function extractQwen3CoderToolNameFromMarkup(
+  markup: string
+): string | undefined {
+  const match = markup.match(QWEN3CODER_TOOL_NAME_SALVAGE_REGEX);
+  if (!match) {
+    return undefined;
+  }
+  const name = match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5];
+  if (!name) {
+    return undefined;
+  }
+  const trimmed = name.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function parseQwen3CoderToolParserToolCallSegment(
   segment: string
 ): Array<{ toolName: string; args: Record<string, unknown> }> | null {
@@ -1142,7 +1160,12 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       if (!parsedCalls) {
         options?.onError?.(
           "Could not process Qwen3CoderToolParser XML tool call; keeping original text.",
-          { toolCall: fallbackText }
+          {
+            toolCall: fallbackText,
+            toolName: extractQwen3CoderToolNameFromMarkup(segment),
+            toolCallId: generateToolCallId(),
+            dropReason: "malformed-tool-call-body",
+          }
         );
         processedElements.push({ type: "text", text: fallbackText });
         return false;
@@ -1154,7 +1177,12 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     const emitWrapperlessCallParseFailureAsText = (raw: string) => {
       options?.onError?.(
         "Could not process Qwen3CoderToolParser <function> call; keeping original text.",
-        { toolCall: raw }
+        {
+          toolCall: raw,
+          toolName: extractQwen3CoderToolNameFromMarkup(raw),
+          toolCallId: generateToolCallId(),
+          dropReason: "malformed-tool-call-body",
+        }
       );
       processedElements.push({ type: "text", text: raw });
     };
@@ -1507,6 +1535,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           {
             toolCallId: callState.toolCallId,
             toolCall: rawToolCallText,
+            toolName: callState.toolName ?? fallbackToolName ?? undefined,
+            dropReason: "unresolved-tool-name",
           }
         );
         return false;

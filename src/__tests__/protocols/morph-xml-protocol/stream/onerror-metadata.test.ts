@@ -1,0 +1,70 @@
+import type {
+  LanguageModelV3FunctionTool,
+  LanguageModelV3StreamPart,
+} from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import { describe, expect, it, vi } from "vitest";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import {
+  pipeWithTransformer,
+  stopFinishReason,
+  zeroUsage,
+} from "../../../test-helpers";
+
+const tools: LanguageModelV3FunctionTool[] = [
+  {
+    type: "function",
+    name: "write_file",
+    description: "",
+    inputSchema: {
+      type: "object",
+      properties: {
+        file_path: { type: "string" },
+        contents: { type: "string" },
+      },
+      required: ["file_path", "contents"],
+    },
+  },
+];
+
+describe("morphXmlProtocol streaming onError metadata", () => {
+  it("populates toolName, toolCallId, and malformed-tool-call-body dropReason when streaming XML body parse fails", async () => {
+    const onError = vi.fn();
+    const protocol = morphXmlProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            "<write_file><file_path>a</file_path><file_path>b</file_path></write_file>",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+
+    const parseFail = onError.mock.calls.find(([message]) =>
+      String(message).includes("Could not process streaming XML tool call")
+    );
+    expect(parseFail).toBeDefined();
+    const metadata = parseFail?.[1];
+    expect(metadata).toMatchObject({
+      toolName: "write_file",
+      dropReason: "malformed-tool-call-body",
+    });
+    expect(typeof metadata?.toolCallId).toBe("string");
+    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
+    expect(metadata?.toolCall).toContain("<write_file>");
+    expect(metadata?.toolCall).toContain("</write_file>");
+  });
+});

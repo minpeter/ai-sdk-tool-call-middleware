@@ -438,6 +438,7 @@ function parseYamlContent(
   if (parsed.errors.length > 0) {
     options?.onError?.("YAML parse error", {
       errors: parsed.errors,
+      dropReason: "yaml-parse-error",
     });
     return null;
   }
@@ -445,6 +446,7 @@ function parseYamlContent(
   if (parsed.value === null) {
     options?.onError?.("YAML content must be a key-value mapping", {
       got: "non-mapping",
+      dropReason: "yaml-non-mapping",
     });
     return null;
   }
@@ -499,6 +501,9 @@ function processToolCallMatch(
     const originalText = text.slice(tc.startIndex, tc.endIndex);
     options?.onError?.("Could not parse YAML tool call", {
       toolCall: originalText,
+      toolName: tc.toolName,
+      toolCallId: generateToolCallId(),
+      dropReason: "malformed-tool-call-body",
     });
     processedElements.push({ type: "text", text: originalText });
   } else {
@@ -685,6 +690,9 @@ export const yamlXmlProtocol = (
           });
           options?.onError?.("Could not parse streaming YAML tool call", {
             toolCall: original,
+            toolName,
+            toolCallId,
+            dropReason: "malformed-tool-call-body",
           });
         } else {
           const finalInput = stringifyToolInputWithSchema({
