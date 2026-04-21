@@ -1,6 +1,8 @@
 /// <reference types="node" />
 
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { constants } from "node:fs";
+import { access } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV3Middleware } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
@@ -11,39 +13,25 @@ import {
   yamlXmlToolMiddleware,
 } from "../src/preconfigured-middleware";
 
-function isMissingLocalEvalEntry(
-  error: unknown,
-  localDistPath: string
-): boolean {
-  const err = error as NodeJS.ErrnoException & { url?: string };
-  const localDistUrl = pathToFileURL(localDistPath).href;
-  return (
-    err.code === "ERR_MODULE_NOT_FOUND" &&
-    (err.url === localDistUrl ||
-      (typeof err.message === "string" && err.message.includes(localDistPath)))
-  );
-}
-
 async function loadEval() {
   const evalRepoBase = new URL("../../ai-sdk-eval/", import.meta.url);
   const localDistUrl = new URL("dist/index.js", evalRepoBase);
   const localDistPath = fileURLToPath(localDistUrl);
 
   try {
-    const mod = await import(localDistUrl.href);
-    if (!process.env.BFCL_DATA_DIR) {
-      process.env.BFCL_DATA_DIR = fileURLToPath(new URL("data", evalRepoBase));
-    }
-    return mod;
-  } catch (err) {
-    if (!isMissingLocalEvalEntry(err, localDistPath)) {
-      throw err;
-    }
+    await access(localDistPath, constants.R_OK);
+  } catch {
     console.warn(
       `Local ai-sdk-eval build not found at ${localDistPath}; falling back to @ai-sdk-tool/eval.`
     );
     return await import("@ai-sdk-tool/eval");
   }
+
+  const mod = await import(localDistUrl.href);
+  if (!process.env.BFCL_DATA_DIR) {
+    process.env.BFCL_DATA_DIR = fileURLToPath(new URL("data", evalRepoBase));
+  }
+  return mod;
 }
 
 const BENCHMARK_NAMES = [
@@ -123,6 +111,10 @@ const MIDDLEWARE_MAP: Record<ProtocolName, LanguageModelV3Middleware> = {
 };
 
 function validateOptions(opts: Options) {
+  if (!opts.model.trim()) {
+    console.error("Invalid model: must be a non-empty string.");
+    process.exit(1);
+  }
   if (!BENCHMARK_NAMES.includes(opts.benchmark)) {
     console.error(
       `Invalid benchmark: ${opts.benchmark}. Valid: ${BENCHMARK_NAMES.join(", ")}`
@@ -147,15 +139,15 @@ function validateOptions(opts: Options) {
     );
     process.exit(1);
   }
-  if (!Number.isFinite(opts.temperature)) {
+  if (!Number.isFinite(opts.temperature) || opts.temperature < 0) {
     console.error(
-      `Invalid temperature: ${readArg("temperature")}. Must be a number.`
+      `Invalid temperature: ${readArg("temperature")}. Must be a non-negative number.`
     );
     process.exit(1);
   }
-  if (!Number.isFinite(opts.maxTokens) || opts.maxTokens <= 0) {
+  if (!Number.isInteger(opts.maxTokens) || opts.maxTokens < 256) {
     console.error(
-      `Invalid max-tokens: ${readArg("max-tokens")}. Must be a positive number.`
+      `Invalid max-tokens: ${readArg("max-tokens")}. Must be an integer >= 256.`
     );
     process.exit(1);
   }
