@@ -655,12 +655,27 @@ function emitIncompleteToolCall(
       id: errorId,
     } as LanguageModelV3StreamPart);
   }
+  // Capture structured tool-call context before closeToolInput clears
+  // state.activeToolInput. If streaming already identified the name/id we use
+  // them directly; otherwise fall back to re-scanning the raw JSON for the name.
+  const streamingToolCallId = state.activeToolInput?.id;
+  const streamingToolName = state.activeToolInput?.toolName;
   closeToolInput(state, controller);
+  const toolName =
+    streamingToolName ??
+    (state.currentToolCallJson
+      ? extractStreamingToolCallProgress(state.currentToolCallJson).toolName
+      : undefined);
   options?.onError?.(
     shouldEmitRawFallback
       ? "Could not complete streaming JSON tool call at finish; emitting original text."
       : "Could not complete streaming JSON tool call at finish.",
-    { toolCall: errorContent }
+    {
+      toolCall: errorContent,
+      toolCallId: streamingToolCallId,
+      toolName,
+      dropReason: "unfinished-tool-call",
+    }
   );
   state.currentToolCallJson = "";
   state.isInsideToolCall = false;

@@ -1458,7 +1458,13 @@ export const morphXmlProtocol = (
           });
           options?.onError?.(
             "Could not complete streaming XML tool call at finish.",
-            { toolCall: unfinishedContent, error }
+            {
+              toolCall: unfinishedContent,
+              toolCallId: currentToolCall.toolCallId,
+              toolName: currentToolCall.name,
+              dropReason: "unfinished-tool-call",
+              error,
+            }
           );
         }
 
