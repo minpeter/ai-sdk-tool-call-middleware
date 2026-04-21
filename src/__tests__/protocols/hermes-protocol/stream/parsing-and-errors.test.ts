@@ -414,7 +414,10 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     // extractTopLevelStringProperty requires closing quote, so truncated name returns undefined
     expect(metadata.toolName).toBeUndefined();
     expect(metadata.dropReason).toBe("unfinished-tool-call");
-    expect(metadata.toolCallId).toBeUndefined();
+    // A fallback toolCallId is generated so consumers always see the uniform
+    // { toolCall, toolCallId, toolName, dropReason } recovery shape.
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it("passes undefined toolName in onError when only arguments are present", async () => {
@@ -444,7 +447,8 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     const [, metadata] = onError.mock.calls[0];
     expect(metadata.toolName).toBeUndefined();
     expect(metadata.dropReason).toBe("unfinished-tool-call");
-    expect(metadata.toolCallId).toBeUndefined();
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it("passes undefined toolName in onError when name is not parseable", async () => {
@@ -474,7 +478,8 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     const [, metadata] = onError.mock.calls[0];
     expect(metadata.toolName).toBeUndefined();
     expect(metadata.dropReason).toBe("unfinished-tool-call");
-    expect(metadata.toolCallId).toBeUndefined();
+    expect(typeof metadata.toolCallId).toBe("string");
+    expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {

@@ -1044,8 +1044,11 @@ function emitIncompleteToolCall(
   }
   // Capture structured tool-call context before closeToolInput clears
   // state.activeToolInput. If streaming already identified the name/id we use
-  // them directly; otherwise fall back to re-scanning the raw JSON for the name.
-  const streamingToolCallId = state.activeToolInput?.id;
+  // them directly; otherwise fall back to re-scanning the raw JSON for the name
+  // and generating a fresh correlation id so consumers always receive the
+  // uniform { toolCall, toolCallId, toolName, dropReason } recovery shape.
+  const streamingToolCallId =
+    state.activeToolInput?.id ?? generateToolCallId();
   const streamingToolName = state.activeToolInput?.toolName;
   closeToolInput(state, controller);
   const toolName =
@@ -1135,7 +1138,8 @@ function emitToolCall(context: TagProcessingContext) {
   } catch (error) {
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
-    const streamingToolCallId = state.activeToolInput?.id;
+    const streamingToolCallId =
+      state.activeToolInput?.id ?? generateToolCallId();
     const streamingToolName =
       state.activeToolInput?.toolName ??
       extractStreamingToolCallProgress(state.currentToolCallJson).toolName;
@@ -1169,6 +1173,7 @@ function emitToolCall(context: TagProcessingContext) {
         : "Could not process streaming JSON tool call.",
       {
         toolCall: errorContent,
+        error,
         toolCallId: streamingToolCallId,
         toolName: streamingToolName,
         dropReason: "malformed-tool-call-body",

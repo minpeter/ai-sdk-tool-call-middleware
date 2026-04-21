@@ -986,17 +986,36 @@ function parseQwen3CoderToolParserClosedMatches(
   return closedCalls.concat(trailingCalls);
 }
 
+/**
+ * Best-effort tool-name salvage regex covering every inner call-tag shape the
+ * parser itself accepts in parseSingleFunctionCallXml / parseCallContent:
+ *   - <(function|call|tool|invoke)="NAME">       shorthand, double-quoted
+ *   - <(function|call|tool|invoke)='NAME'>       shorthand, single-quoted
+ *   - <(function|call|tool|invoke)=NAME>         shorthand, bare (parser accepts [^\s>/<] per parseShorthandValue)
+ *   - <(function|call|tool|invoke) name="NAME">  attribute, double-quoted
+ *   - <(function|call|tool|invoke) name='NAME'>  attribute, single-quoted
+ *   - <name>NAME</name>                          child element fallback
+ *   - <tool_name>NAME</tool_name>                alternate child element fallback
+ *
+ * Keep this in sync with QWEN3CODER_TOOL_PARSER_CALL_TAG_NAMES and
+ * parseShorthandValue's accepted character class.
+ */
 const QWEN3CODER_TOOL_NAME_SALVAGE_REGEX =
-  /<function(?:\s*=\s*"([^"]+)"|\s*=\s*'([^']+)'|\s*=\s*([A-Za-z_][\w.-]*)|\s+name\s*=\s*"([^"]+)"|\s+name\s*=\s*'([^']+)')/;
+  /<(?:function|call|tool|invoke)(?:\s*=\s*"([^"]+)"|\s*=\s*'([^']+)'|\s*=\s*([^\s>/<'"=]+)|\s+name\s*=\s*"([^"]+)"|\s+name\s*=\s*'([^']+)')|<(?:name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*(?:name|tool_name)\s*>/i;
 
-function extractQwen3CoderToolNameFromMarkup(
+/**
+ * @internal exported only so unit tests can exhaustively verify the salvage
+ * shape coverage. Not part of the public API.
+ */
+export function extractQwen3CoderToolNameFromMarkup(
   markup: string
 ): string | undefined {
   const match = markup.match(QWEN3CODER_TOOL_NAME_SALVAGE_REGEX);
   if (!match) {
     return undefined;
   }
-  const name = match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5];
+  const name =
+    match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6];
   if (!name) {
     return undefined;
   }
