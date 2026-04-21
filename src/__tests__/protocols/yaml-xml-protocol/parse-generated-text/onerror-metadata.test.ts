@@ -27,7 +27,7 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
     expect(metadata?.toolCall).toContain("<get_weather>");
   });
 
-  it("populates yaml-parse-error dropReason when the helper parser reports a YAML syntax error", () => {
+  it("attaches yaml-parse-error cause to the uniform malformed-tool-call-body onError metadata when YAML syntax fails", () => {
     const onError = vi.fn();
     const protocol = yamlXmlProtocol();
     const text = "<get_weather>\n[invalid: yaml:\n</get_weather>";
@@ -37,17 +37,20 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
       options: { onError },
     });
 
-    const helperError = onError.mock.calls.find(
-      ([message]) => String(message) === "YAML parse error"
-    );
-    expect(helperError).toBeDefined();
-    const metadata = helperError?.[1];
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [message, metadata] = onError.mock.calls[0];
+    expect(String(message)).toBe("Could not parse YAML tool call");
     expect(metadata).toMatchObject({
-      dropReason: "yaml-parse-error",
+      toolName: "get_weather",
+      dropReason: "malformed-tool-call-body",
     });
+    const cause = (metadata as { cause?: { kind?: string } }).cause;
+    expect(cause).toMatchObject({ kind: "yaml-parse-error" });
+    expect(typeof metadata?.toolCallId).toBe("string");
+    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
   });
 
-  it("populates yaml-non-mapping dropReason when the YAML document is not a key-value mapping", () => {
+  it("attaches yaml-non-mapping cause to the uniform malformed-tool-call-body onError metadata when the YAML document is not a mapping", () => {
     const onError = vi.fn();
     const protocol = yamlXmlProtocol();
     const text = "<get_weather>\njust a scalar string\n</get_weather>";
@@ -57,14 +60,16 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
       options: { onError },
     });
 
-    const helperError = onError.mock.calls.find(
-      ([message]) =>
-        String(message) === "YAML content must be a key-value mapping"
-    );
-    expect(helperError).toBeDefined();
-    const metadata = helperError?.[1];
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [message, metadata] = onError.mock.calls[0];
+    expect(String(message)).toBe("Could not parse YAML tool call");
     expect(metadata).toMatchObject({
-      dropReason: "yaml-non-mapping",
+      toolName: "get_weather",
+      dropReason: "malformed-tool-call-body",
     });
+    const cause = (metadata as { cause?: { kind?: string } }).cause;
+    expect(cause).toMatchObject({ kind: "yaml-non-mapping" });
+    expect(typeof metadata?.toolCallId).toBe("string");
+    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
   });
 });
