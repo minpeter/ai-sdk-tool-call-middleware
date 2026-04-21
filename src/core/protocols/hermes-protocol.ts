@@ -12,7 +12,6 @@ import {
   addTextSegment,
   formatToolsWithPromptTemplate,
 } from "../utils/protocol-utils";
-import { escapeRegExp } from "../utils/regex";
 import {
   emitToolInputProgressDelta,
   shouldEmitRawToolCallTextOnError,
@@ -23,6 +22,275 @@ import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 interface HermesProtocolOptions {
   toolCallEnd?: string;
   toolCallStart?: string;
+}
+
+const RJSON_IDENTIFIER_CHAR_REGEX = /[$a-zA-Z0-9_\-+.*?!|&%^/#\\]/;
+const RJSON_NUMBER_TOKEN_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
+function validateNonEmptyDelimiters(
+  toolCallStart: string,
+  toolCallEnd: string
+): Record<never, never> {
+  if (toolCallStart.length === 0) {
+    throw new TypeError("hermesProtocol toolCallStart must not be empty");
+  }
+  if (toolCallEnd.length === 0) {
+    throw new TypeError("hermesProtocol toolCallEnd must not be empty");
+  }
+  return {};
+}
+
+function isRjsonIdentifierChar(ch: string | undefined): boolean {
+  return ch != null && RJSON_IDENTIFIER_CHAR_REGEX.test(ch);
+}
+
+function isRjsonPropertyLikeDelimiter(startTag: string): boolean {
+  const key = startTag.endsWith(":") ? startTag.slice(0, -1) : "";
+  return key.length > 0 && [...key].every((ch) => isRjsonIdentifierChar(ch));
+}
+
+function previousRjsonToken(json: string, index: number, minIndex = 0): string {
+  let start = index - 1;
+  while (start >= minIndex && isRjsonIdentifierChar(json[start])) {
+    start -= 1;
+  }
+  return json.slice(start + 1, index);
+}
+
+function previousTokenAllowsComment(
+  json: string,
+  index: number,
+  minIndex = 0
+): boolean {
+  const previous = previousRjsonToken(json, index, minIndex);
+  if (previous.length === 0) {
+    return true;
+  }
+  return (
+    RJSON_NUMBER_TOKEN_REGEX.test(previous) ||
+    previous === "true" ||
+    previous === "false" ||
+    previous === "null"
+  );
+}
+
+function startsRjsonComment(
+  json: string,
+  index: number,
+  minIndex = 0
+): boolean {
+  if (
+    !(
+      (json[index] === "/" && json[index + 1] === "/") ||
+      (json[index] === "/" && json[index + 1] === "*")
+    )
+  ) {
+    return false;
+  }
+  if (index > minIndex && isRjsonIdentifierChar(json[index - 1])) {
+    return previousTokenAllowsComment(json, index, minIndex);
+  }
+  return true;
+}
+
+/**
+ * Detect whether `segment` contains an occurrence of `startTag` outside any
+ * relaxed-JSON string or comment. Used to identify nested `<tool_call>` start
+ * tags that indicate the current tool call's `</tool_call>` actually belongs
+ * to a later tool call (i.e. the current call is orphaned / malformed).
+ */
+function hasNestedStartBoundary(segment: string, startIndex: number): boolean {
+  const previous = segment[startIndex - 1];
+  return (
+    previous == null || WHITESPACE_JSON_REGEX.test(previous) || previous === "}"
+  );
+}
+
+function isLikelyNestedToolCallStart(
+  segment: string,
+  startIndex: number,
+  startTag: string
+): boolean {
+  if (isRjsonPropertyLikeDelimiter(startTag)) {
+    return false;
+  }
+  const jsonStart = skipJsonWhitespace(segment, startIndex + startTag.length);
+  return (
+    segment[jsonStart] === "{" && hasNestedStartBoundary(segment, startIndex)
+  );
+}
+
+type ToolCallBoundary =
+  | { kind: "end"; endIdx: number }
+  | { kind: "nested"; endIdx: number; nestedStartIndex: number };
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Boundary scanning tracks relaxed JSON string/comment state and two delimiter types in one pass.
+function findToolCallBoundaryOutsideRjsonSyntax(
+  text: string,
+  scanFrom: number,
+  startTag: string,
+  endTag: string
+): ToolCallBoundary | null {
+  let quote: '"' | "'" | null = null;
+  let esc = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let lineCommentSawEndTag = false;
+  let blockCommentSawEndTag = false;
+  let nestedStartIndex: number | null = null;
+
+  for (let index = scanFrom; index < text.length; index += 1) {
+    const ch = text[index];
+
+    if (esc) {
+      esc = false;
+      continue;
+    }
+
+    if (quote !== null) {
+      if (ch === "\\") {
+        esc = true;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (inLineComment) {
+      if (ch === "\n" || ch === "\r") {
+        inLineComment = false;
+        lineCommentSawEndTag = false;
+        continue;
+      }
+      if (text.startsWith(endTag, index)) {
+        lineCommentSawEndTag = true;
+        index += endTag.length - 1;
+        continue;
+      }
+      if (
+        lineCommentSawEndTag &&
+        text.startsWith(startTag, index) &&
+        text[skipJsonWhitespace(text, index + startTag.length)] === "{"
+      ) {
+        nestedStartIndex = index;
+        inLineComment = false;
+        lineCommentSawEndTag = false;
+        index += startTag.length - 1;
+        continue;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (ch === "*" && text[index + 1] === "/") {
+        inBlockComment = false;
+        blockCommentSawEndTag = false;
+        index += 1;
+        continue;
+      }
+      if (text.startsWith(endTag, index)) {
+        blockCommentSawEndTag = true;
+        index += endTag.length - 1;
+        continue;
+      }
+      if (
+        blockCommentSawEndTag &&
+        text.startsWith(startTag, index) &&
+        text[skipJsonWhitespace(text, index + startTag.length)] === "{"
+      ) {
+        nestedStartIndex = index;
+        inBlockComment = false;
+        blockCommentSawEndTag = false;
+        index += startTag.length - 1;
+        continue;
+      }
+      continue;
+    }
+
+    if (startsRjsonComment(text, index, scanFrom)) {
+      if (text[index + 1] === "/") {
+        inLineComment = true;
+        lineCommentSawEndTag = false;
+        index += 1;
+        continue;
+      }
+      if (text[index + 1] === "*") {
+        inBlockComment = true;
+        blockCommentSawEndTag = false;
+        index += 1;
+        continue;
+      }
+    }
+
+    if (text.startsWith(endTag, index)) {
+      return nestedStartIndex == null
+        ? { kind: "end", endIdx: index }
+        : { kind: "nested", endIdx: index, nestedStartIndex };
+    }
+
+    if (
+      nestedStartIndex == null &&
+      text.startsWith(startTag, index) &&
+      isLikelyNestedToolCallStart(text, index, startTag)
+    ) {
+      nestedStartIndex = index;
+      index += startTag.length - 1;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Locate the next valid `<tool_call>...</tool_call>` span in `text` starting
+ * at `searchFrom`. Skips `</tool_call>` sequences that occur inside
+ * relaxed-JSON strings or comments, and bails out when a nested `<tool_call>`
+ * start tag appears outside a string/comment (treating the current start tag
+ * as orphaned — its presumed close belongs to a later call).
+ *
+ * Returns:
+ *   - `null`: no more start tags in the remaining text
+ *   - `{ startIdx, found: true, jsonStart, endIdx }`: a valid span
+ *   - `{ startIdx, found: false }`: an orphan start tag (caller should skip
+ *     past it and resume scanning)
+ */
+function findNextToolCallSpan(
+  text: string,
+  searchFrom: number,
+  startTag: string,
+  endTag: string
+):
+  | { startIdx: number; found: true; jsonStart: number; endIdx: number }
+  | { startIdx: number; found: false }
+  | null {
+  const startIdx = text.indexOf(startTag, searchFrom);
+  if (startIdx === -1) {
+    return null;
+  }
+  const jsonStart = startIdx + startTag.length;
+
+  const boundary = findToolCallBoundaryOutsideRjsonSyntax(
+    text,
+    jsonStart,
+    startTag,
+    endTag
+  );
+  if (boundary == null) {
+    return { startIdx, found: false };
+  }
+  if (boundary.kind === "nested") {
+    // Nested <tool_call> outside a string/comment — abandon this
+    // start; its presumed </tool_call> belongs to a later call.
+    return { startIdx, found: false };
+  }
+  return { startIdx, found: true, jsonStart, endIdx: boundary.endIdx };
 }
 
 function canonicalizeToolInput(argumentsValue: unknown): string {
@@ -259,31 +527,6 @@ function processToolCallJson(
     );
     processedElements.push({ type: "text", text: fullMatch });
   }
-}
-
-interface ParseContext {
-  currentIndex: number;
-  match: RegExpExecArray;
-  options?: ParserOptions;
-  processedElements: LanguageModelV3Content[];
-  text: string;
-}
-
-function processMatchedToolCall(context: ParseContext): number {
-  const { match, text, currentIndex, processedElements, options } = context;
-  const startIndex = match.index;
-  const toolCallJson = match[1];
-
-  if (startIndex > currentIndex) {
-    const textSegment = text.slice(currentIndex, startIndex);
-    addTextSegment(textSegment, processedElements);
-  }
-
-  if (toolCallJson) {
-    processToolCallJson(toolCallJson, match[0], processedElements, options);
-  }
-
-  return startIndex + match[0].length;
 }
 
 interface StreamState {
@@ -931,27 +1174,142 @@ function processTagMatch(context: TagProcessingContext) {
   }
 }
 
-function processBufferTags(context: TagProcessingContext) {
-  const { state, controller, toolCallStart, toolCallEnd, tools } = context;
-  let startIndex = getPotentialStartIndex(
-    state.buffer,
-    state.isInsideToolCall ? toolCallEnd : toolCallStart
+function recoverNestedStreamingToolCall(options: {
+  context: TagProcessingContext;
+  jsonSoFar: string;
+  nestedStartIndex: number;
+  startIndex: number;
+  tag: string;
+}): number | null {
+  const { context, jsonSoFar, nestedStartIndex, startIndex, tag } = options;
+  const {
+    state,
+    controller,
+    toolCallStart,
+    toolCallEnd,
+    options: parserOptions,
+  } = context;
+  const droppedToolCall = `${toolCallStart}${jsonSoFar.slice(
+    0,
+    nestedStartIndex
+  )}`;
+  const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(parserOptions);
+  const streamingToolCallId = state.activeToolInput?.id;
+  const streamingToolName =
+    state.activeToolInput?.toolName ??
+    extractStreamingToolCallProgress(jsonSoFar.slice(0, nestedStartIndex))
+      .toolName;
+
+  logParseFailure({
+    phase: "stream",
+    reason: "Abandoning malformed streaming tool call before nested start tag",
+    snippet: droppedToolCall,
+  });
+  if (shouldEmitRawFallback) {
+    const errorId = generateId();
+    controller.enqueue({
+      type: "text-start",
+      id: errorId,
+    } as LanguageModelV3StreamPart);
+    controller.enqueue({
+      type: "text-delta",
+      id: errorId,
+      delta: droppedToolCall,
+    } as LanguageModelV3StreamPart);
+    controller.enqueue({
+      type: "text-end",
+      id: errorId,
+    } as LanguageModelV3StreamPart);
+  }
+  closeToolInput(state, controller);
+  parserOptions?.onError?.(
+    shouldEmitRawFallback
+      ? "Could not process malformed streaming JSON tool call before nested start; emitting original text."
+      : "Could not process malformed streaming JSON tool call before nested start.",
+    {
+      toolCall: droppedToolCall,
+      toolCallId: streamingToolCallId,
+      toolName: streamingToolName,
+      dropReason: "malformed-nested-tool-call",
+    }
   );
+  state.currentToolCallJson = "";
+  state.isInsideToolCall = false;
+  state.buffer =
+    jsonSoFar.slice(nestedStartIndex) +
+    toolCallEnd +
+    state.buffer.slice(startIndex + tag.length);
+  return getPotentialStartIndex(state.buffer, toolCallStart);
+}
+
+function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
+  const { state, controller, toolCallStart, toolCallEnd, tools } = context;
+  const currentLength = state.currentToolCallJson.length;
+  const combined = state.currentToolCallJson + state.buffer;
+  const boundary = findToolCallBoundaryOutsideRjsonSyntax(
+    combined,
+    0,
+    toolCallStart,
+    toolCallEnd
+  );
+  if (boundary == null) {
+    return false;
+  }
+
+  const relativeEndIndex = boundary.endIdx - currentLength;
+  if (relativeEndIndex < 0) {
+    return false;
+  }
+
+  if (boundary.kind === "nested") {
+    recoverNestedStreamingToolCall({
+      context,
+      jsonSoFar: combined.slice(0, boundary.endIdx),
+      nestedStartIndex: boundary.nestedStartIndex,
+      startIndex: relativeEndIndex,
+      tag: toolCallEnd,
+    });
+    return true;
+  }
+
+  publishText(
+    state.buffer.slice(0, relativeEndIndex),
+    state,
+    controller,
+    tools
+  );
+  state.buffer = state.buffer.slice(relativeEndIndex + toolCallEnd.length);
+  processTagMatch(context);
+  return true;
+}
+
+function processBufferTags(context: TagProcessingContext) {
+  const { state, controller, toolCallStart, tools } = context;
+
+  while (state.isInsideToolCall) {
+    if (!processInsideToolCallBoundary(context)) {
+      return;
+    }
+  }
+
+  let startIndex = getPotentialStartIndex(state.buffer, toolCallStart);
 
   while (startIndex != null) {
-    const tag = state.isInsideToolCall ? toolCallEnd : toolCallStart;
-    if (startIndex + tag.length > state.buffer.length) {
+    if (startIndex + toolCallStart.length > state.buffer.length) {
       break;
     }
 
     publishText(state.buffer.slice(0, startIndex), state, controller, tools);
-    state.buffer = state.buffer.slice(startIndex + tag.length);
+    state.buffer = state.buffer.slice(startIndex + toolCallStart.length);
     processTagMatch(context);
 
-    startIndex = getPotentialStartIndex(
-      state.buffer,
-      state.isInsideToolCall ? toolCallEnd : toolCallStart
-    );
+    while (state.isInsideToolCall) {
+      if (!processInsideToolCallBoundary(context)) {
+        return;
+      }
+    }
+
+    startIndex = getPotentialStartIndex(state.buffer, toolCallStart);
   }
 }
 
@@ -1004,6 +1362,8 @@ export const hermesProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
 }: HermesProtocolOptions = {}): TCMProtocol => ({
+  ...validateNonEmptyDelimiters(toolCallStart, toolCallEnd),
+
   formatTools({
     tools,
     toolSystemPromptTemplate,
@@ -1037,26 +1397,49 @@ export const hermesProtocol = ({
     tools: LanguageModelV3FunctionTool[];
     options?: ParserOptions;
   }) {
-    const startEsc = escapeRegExp(toolCallStart);
-    const endEsc = escapeRegExp(toolCallEnd);
-    const toolCallRegex = new RegExp(
-      `${startEsc}([\u0000-\uFFFF]*?)${endEsc}`,
-      "gs"
-    );
-
     const processedElements: LanguageModelV3Content[] = [];
     let currentIndex = 0;
-    let match = toolCallRegex.exec(text);
+    let searchFrom = 0;
 
-    while (match !== null) {
-      currentIndex = processMatchedToolCall({
-        match,
+    while (searchFrom < text.length) {
+      const span = findNextToolCallSpan(
         text,
-        currentIndex,
-        processedElements,
-        options,
-      });
-      match = toolCallRegex.exec(text);
+        searchFrom,
+        toolCallStart,
+        toolCallEnd
+      );
+      if (span === null) {
+        break;
+      }
+
+      if (!span.found) {
+        // Orphan start tag — emit everything up to and including it as text,
+        // then continue searching for subsequent tool calls.
+        const skipTo = span.startIdx + toolCallStart.length;
+        if (skipTo > currentIndex) {
+          addTextSegment(text.slice(currentIndex, skipTo), processedElements);
+          currentIndex = skipTo;
+        }
+        searchFrom = skipTo;
+        continue;
+      }
+
+      const toolCallJson = text.slice(span.jsonStart, span.endIdx);
+      const fullMatch = text.slice(
+        span.startIdx,
+        span.endIdx + toolCallEnd.length
+      );
+
+      if (span.startIdx > currentIndex) {
+        addTextSegment(
+          text.slice(currentIndex, span.startIdx),
+          processedElements
+        );
+      }
+
+      processToolCallJson(toolCallJson, fullMatch, processedElements, options);
+      currentIndex = span.endIdx + toolCallEnd.length;
+      searchFrom = currentIndex;
     }
 
     if (currentIndex < text.length) {
@@ -1120,16 +1503,33 @@ export const hermesProtocol = ({
     });
   },
 
-  extractToolCallSegments({ text }: { text: string }) {
-    const startEsc = escapeRegExp(toolCallStart);
-    const endEsc = escapeRegExp(toolCallEnd);
-    const regex = new RegExp(`${startEsc}([\u0000-\uFFFF]*?)${endEsc}`, "gs");
+  extractToolCallSegments({ text }) {
     const segments: string[] = [];
-    let m = regex.exec(text);
-    while (m != null) {
-      segments.push(m[0]);
-      m = regex.exec(text);
+    let searchFrom = 0;
+
+    while (searchFrom < text.length) {
+      const span = findNextToolCallSpan(
+        text,
+        searchFrom,
+        toolCallStart,
+        toolCallEnd
+      );
+      if (span === null) {
+        break;
+      }
+
+      if (!span.found) {
+        // Orphan start tag — skip past it and keep searching
+        searchFrom = span.startIdx + toolCallStart.length;
+        continue;
+      }
+
+      segments.push(
+        text.slice(span.startIdx, span.endIdx + toolCallEnd.length)
+      );
+      searchFrom = span.endIdx + toolCallEnd.length;
     }
+
     return segments;
   },
 });
