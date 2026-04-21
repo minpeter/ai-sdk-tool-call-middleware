@@ -3,7 +3,7 @@ import type {
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import {
   pipeWithTransformer,
@@ -144,6 +144,61 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     expect(combined).not.toContain("</write_file>");
     const hasToolCall = out.some((p) => p.type === "tool-call");
     expect(hasToolCall).toBe(false);
+  });
+
+  it("passes structured drop metadata when unclosed XML tool call is not parseable at finish", async () => {
+    const onError = vi.fn();
+    const protocol = morphXmlProtocol();
+    const tools: LanguageModelV3FunctionTool[] = [
+      {
+        type: "function",
+        name: "write_file",
+        description: "Write a file",
+        inputSchema: {
+          type: "object",
+          properties: {
+            file_path: { type: "string" },
+            content: { type: "string" },
+          },
+          required: ["file_path", "content"],
+        },
+      },
+    ];
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "t",
+          delta:
+            "<write_file><file_path>/tmp/file.txt</file_path><content>one</content><content>two</content>",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+
+    expect(onError).toHaveBeenCalled();
+    const finishErrorCall = onError.mock.calls.find(([message]) =>
+      String(message).includes("Could not complete streaming XML tool call")
+    );
+    expect(finishErrorCall).toBeDefined();
+    const metadata = finishErrorCall?.[1];
+    expect(metadata).toMatchObject({
+      toolName: "write_file",
+      dropReason: "unfinished-tool-call",
+    });
+    expect(typeof metadata?.toolCallId).toBe("string");
+    expect(metadata?.toolCall).toContain("<write_file>");
   });
 
   it("can emit raw text fallback when explicitly enabled", async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import { runProtocolTextDeltaStream } from "./streaming-events.shared";
@@ -114,6 +114,26 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
     expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
     expect(leakedText).toContain("<function><parameter=x>1</parameter>");
+  });
+
+  it("Qwen3CoderToolParser reports structured drop metadata for unfinished named tool_call at finish", async () => {
+    const onError = vi.fn();
+    await runProtocolTextDeltaStream({
+      protocol,
+      tools: [],
+      chunks: ["<tool_call><function=get_weather"],
+      options: { onError },
+    });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [, metadata] = onError.mock.calls[0];
+    expect(metadata).toMatchObject({
+      toolName: "get_weather",
+      dropReason: "unfinished-tool-call",
+    });
+    expect(metadata.toolCallId).toBeUndefined();
+    expect(metadata.toolCall).toContain("<tool_call");
+    expect(metadata.toolCall).toContain("<function=get_weather");
   });
 
   it("Qwen3CoderToolParser suppresses buffered partial tool_call at finish by default", async () => {
