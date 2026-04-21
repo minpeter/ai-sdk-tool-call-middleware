@@ -31,11 +31,14 @@ describe("qwen3CoderProtocol parseGeneratedText onError metadata", () => {
     expect(metadata?.toolCall).toContain("<tool_call>");
   });
 
-  it("salvages toolName from markup when present even if the body is unparseable", () => {
+  it("salvages toolName from markup when the whole segment fails to parse but a recognizable call tag is present", () => {
     const onError = vi.fn();
     const p = qwen3CoderProtocol();
+    // A segment the parser rejects outright (returns null from
+    // parseQwen3CoderToolParserToolCallSegment) while still containing a
+    // `<function=alpha>` the salvage regex can recover.
     const bad =
-      '<tool_call><function="alpha"><parameter type="broken" extra></parameter></function></tool_call>';
+      "<tool_call><function=alpha></function><function garbage nothing></function></tool_call>";
     p.parseGeneratedText({
       text: bad,
       tools,
@@ -47,11 +50,11 @@ describe("qwen3CoderProtocol parseGeneratedText onError metadata", () => {
         "Could not process Qwen3CoderToolParser XML tool call"
       )
     );
-    if (parseFail) {
-      const metadata = parseFail?.[1];
-      expect(metadata?.toolName).toBe("alpha");
-      expect(metadata?.dropReason).toBe("malformed-tool-call-body");
-      expect(typeof metadata?.toolCallId).toBe("string");
-    }
+    expect(parseFail).toBeDefined();
+    const metadata = parseFail?.[1];
+    expect(metadata?.toolName).toBe("alpha");
+    expect(metadata?.dropReason).toBe("malformed-tool-call-body");
+    expect(typeof metadata?.toolCallId).toBe("string");
+    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
   });
 });
