@@ -171,6 +171,16 @@ describe("parseGeneratedText – malformed tool call recovery", () => {
   });
 });
 
+it("recovers a valid adjacent tool call after a malformed one without whitespace", () => {
+  const p = hermesProtocol();
+  const text =
+    '<tool_call>{"name":"bash","arguments":{"cmd":"x </tool_call> y"}}' +
+    '<tool_call>{"name":"ok","arguments":{}}</tool_call>';
+  const out = p.parseGeneratedText({ text, tools: [] });
+  const tools = out.filter((x) => x.type === "tool-call") as any[];
+  expect(tools.map((tool) => tool.toolName)).toEqual(["ok"]);
+});
+
 describe("extractToolCallSegments – end tag inside JSON string values", () => {
   it("skips end tag embedded in a JSON string value", () => {
     const p = hermesProtocol();

@@ -101,7 +101,9 @@ function startsRjsonComment(
  */
 function hasNestedStartBoundary(segment: string, startIndex: number): boolean {
   const previous = segment[startIndex - 1];
-  return previous == null || WHITESPACE_JSON_REGEX.test(previous);
+  return (
+    previous == null || WHITESPACE_JSON_REGEX.test(previous) || previous === "}"
+  );
 }
 
 function isLikelyNestedToolCallStart(
