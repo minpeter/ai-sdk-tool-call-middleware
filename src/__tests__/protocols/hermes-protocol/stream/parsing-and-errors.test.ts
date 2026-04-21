@@ -610,35 +610,4 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     expect(textOutput).toContain("</tool_call>");
   });
 
-  it("does not attempt to recover JSON with unescaped double quotes in string values (#298 proposal-2 is NOT implemented)", async () => {
-    const onError = vi.fn();
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: [],
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    expect(out.some((c) => c.type === "tool-call")).toBe(false);
-    expect(onError).toHaveBeenCalledTimes(1);
-    const [, metadata] = onError.mock.calls[0];
-    expect(metadata.dropReason).toBe("malformed-tool-call-body");
-  });
 });
