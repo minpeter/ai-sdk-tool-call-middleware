@@ -149,11 +149,7 @@ function isInsideRjsonStringOrComment(json: string): boolean {
  */
 function hasNestedStartBoundary(segment: string, startIndex: number): boolean {
   const previous = segment[startIndex - 1];
-  return (
-    previous == null ||
-    WHITESPACE_JSON_REGEX.test(previous) ||
-    !(isRjsonIdentifierChar(previous) || previous === "{" || previous === "[")
-  );
+  return previous == null || WHITESPACE_JSON_REGEX.test(previous);
 }
 
 function isLikelyNestedToolCallStart(

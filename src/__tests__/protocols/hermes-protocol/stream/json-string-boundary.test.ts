@@ -470,6 +470,37 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     expect(JSON.parse(toolCall.input)).toEqual({ name: { a: 1 } });
   });
 
+  it("does not treat comma-delimited RJSON properties matching a custom delimiter as nested in streams", async () => {
+    const protocol = hermesProtocol({
+      toolCallStart: "name:",
+      toolCallEnd: "END",
+    });
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: 'name:{name:"ok",arguments:{x:1,name:{a:1}}}END',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const toolCall = out.find((c) => c.type === "tool-call") as any;
+    expect(toolCall).toBeTruthy();
+    expect(toolCall.toolName).toBe("ok");
+    expect(JSON.parse(toolCall.input)).toEqual({ x: 1, name: { a: 1 } });
+  });
+
   it("reports and optionally emits raw text when recovering after a malformed nested start", async () => {
     const onError = vi.fn();
     const protocol = hermesProtocol();
