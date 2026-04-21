@@ -104,19 +104,26 @@ function isInsideRjsonStringOrComment(json: string): boolean {
  * tags that indicate the current tool call's `</tool_call>` actually belongs
  * to a later tool call (i.e. the current call is orphaned / malformed).
  */
-function hasOuterToolCallStart(segment: string, startTag: string): boolean {
+function findOuterToolCallStartIndex(
+  segment: string,
+  startTag: string
+): number | null {
   let pos = 0;
   while (pos < segment.length) {
     const next = segment.indexOf(startTag, pos);
     if (next === -1) {
-      return false;
+      return null;
     }
     if (!isInsideRjsonStringOrComment(segment.slice(0, next))) {
-      return true;
+      return next;
     }
     pos = next + 1;
   }
-  return false;
+  return null;
+}
+
+function hasOuterToolCallStart(segment: string, startTag: string): boolean {
+  return findOuterToolCallStartIndex(segment, startTag) !== null;
 }
 
 /**
@@ -1081,6 +1088,28 @@ function processBufferTags(context: TagProcessingContext) {
           state.buffer,
           state.isInsideToolCall ? toolCallEnd : toolCallStart
         );
+        continue;
+      }
+
+      const nestedStartIndex = findOuterToolCallStartIndex(
+        jsonSoFar,
+        toolCallStart
+      );
+      if (nestedStartIndex !== null) {
+        logParseFailure({
+          phase: "stream",
+          reason:
+            "Abandoning malformed streaming tool call before nested start tag",
+          snippet: `${toolCallStart}${jsonSoFar.slice(0, nestedStartIndex)}`,
+        });
+        closeToolInput(state, controller);
+        state.currentToolCallJson = "";
+        state.isInsideToolCall = false;
+        state.buffer =
+          jsonSoFar.slice(nestedStartIndex) +
+          toolCallEnd +
+          state.buffer.slice(startIndex + tag.length);
+        startIndex = getPotentialStartIndex(state.buffer, toolCallStart);
         continue;
       }
     }

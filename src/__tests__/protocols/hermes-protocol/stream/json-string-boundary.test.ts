@@ -199,6 +199,39 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     expect(JSON.parse(tool.input)).toEqual({});
   });
 
+  it("ignores </tool_call> inside a relaxed block comment split across chunks", async () => {
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{name:"block_comment",arguments:{}, /* " </tool_',
+        });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: "call> inside comment */}</tool_call>",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("block_comment");
+    expect(JSON.parse(tool.input)).toEqual({});
+  });
+
   it("still parses normal streaming tool calls correctly (regression check)", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
@@ -247,7 +280,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     expect(text).not.toContain("</tool_call>");
   });
 
-  it("parses the first tool call cleanly when </tool_call> appears inside its JSON string value", async () => {
+  it("parses adjacent tool calls when the first contains </tool_call> inside its JSON string value", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     // First tool call has a literal </tool_call> inside a JSON string value;
@@ -258,7 +291,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
           type: "text-delta",
           id: "1",
           delta:
-            '<tool_call>{"name":"bash","arguments":{"cmd":"x </tool_call> y"}} ' +
+            '<tool_call>{"name":"bash","arguments":{"cmd":"x </tool_call> y"}}</tool_call>' +
             '<tool_call>{"name":"ok","arguments":{}}</tool_call>',
         });
         ctrl.enqueue({
@@ -284,20 +317,13 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     expect(toolInputStart).toBeDefined();
     expect(toolInputStart.toolName).toBe("bash");
 
-    const deltas = out
-      .filter((c) => c.type === "tool-input-delta")
-      .map((c) => (c as any).delta)
-      .join("");
-    expect(deltas).toContain('"x </tool_call> y"');
+    const toolCalls = out.filter((c) => c.type === "tool-call") as any[];
+    expect(toolCalls.map((c) => c.toolName)).toEqual(["bash", "ok"]);
+    expect(JSON.parse(toolCalls[0].input)).toEqual({ cmd: "x </tool_call> y" });
+    expect(JSON.parse(toolCalls[1].input)).toEqual({});
   });
 
-  // Known limitation (tracked as follow-up): once the first <tool_call> in
-  // a stream has been closed, a second <tool_call> that appears later in
-  // the same chunk is not currently parsed. Recovery requires the streaming
-  // parser to re-enter scanning mode for new start tags after closing a
-  // tool call mid-chunk. The non-streaming parseGeneratedText already
-  // handles this correctly via findNextToolCallSpan.
-  it.skip("parses a second <tool_call> that follows a fully closed first one in the same chunk", async () => {
+  it("parses a second <tool_call> that follows a fully closed first one in the same chunk", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
@@ -306,7 +332,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
           type: "text-delta",
           id: "1",
           delta:
-            '<tool_call>{"name":"bash","arguments":{"cmd":"x </tool_call> y"}} ' +
+            '<tool_call>{"name":"bash","arguments":{"cmd":"x </tool_call> y"}}</tool_call>' +
             '<tool_call>{"name":"ok","arguments":{}}</tool_call>',
         });
         ctrl.enqueue({
@@ -321,17 +347,11 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const toolCalls = out.filter((c) => c.type === "tool-input-start") as any[];
-    expect(toolCalls.find((c) => c.toolName === "bash")).toBeDefined();
-    expect(toolCalls.find((c) => c.toolName === "ok")).toBeDefined();
+    const toolCalls = out.filter((c) => c.type === "tool-call") as any[];
+    expect(toolCalls.map((c) => c.toolName)).toEqual(["bash", "ok"]);
   });
 
-  // Known limitation (tracked as follow-up): when the first <tool_call> in a
-  // stream is unclosed before a second <tool_call> start tag appears, the
-  // second tool call is currently not recovered. A fix requires incremental
-  // JSON boundary detection inside the streaming parser (the non-streaming
-  // parseGeneratedText already does this via findNextToolCallSpan).
-  it.skip("recovers a valid tool call that follows an unclosed/malformed one", async () => {
+  it("recovers a valid tool call that follows an unclosed/malformed one", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
     const rs = new ReadableStream<LanguageModelV3StreamPart>({
@@ -340,7 +360,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
           type: "text-delta",
           id: "1",
           delta:
-            '<tool_call>{"name":"bash","arguments":{"cmd":"oops ' +
+            '<tool_call>{"name":"bash","arguments":{"cmd":"x </tool_call> y"}} ' +
             '<tool_call>{"name":"ok","arguments":{}}</tool_call>',
         });
         ctrl.enqueue({
