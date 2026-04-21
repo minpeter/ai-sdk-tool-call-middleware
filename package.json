@@ -82,7 +82,8 @@
     "typescript": "6.0.3",
     "ultracite": "7.6.0",
     "vitest": "^4.1.4",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@ai-sdk-tool/eval": "^1.1.0"
   },
   "packageManager": "pnpm@10.32.1",
   "engines": {
