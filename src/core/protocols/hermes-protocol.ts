@@ -24,6 +24,8 @@ interface HermesProtocolOptions {
   toolCallStart?: string;
 }
 
+const RJSON_IDENTIFIER_CHAR_REGEX = /[$a-zA-Z0-9_\-+.*?!|&%^/#\\]/;
+
 function validateNonEmptyDelimiters(
   toolCallStart: string,
   toolCallEnd: string
@@ -35,6 +37,20 @@ function validateNonEmptyDelimiters(
     throw new TypeError("hermesProtocol toolCallEnd must not be empty");
   }
   return {};
+}
+
+function isRjsonIdentifierChar(ch: string | undefined): boolean {
+  return ch != null && RJSON_IDENTIFIER_CHAR_REGEX.test(ch);
+}
+
+function startsRjsonComment(json: string, index: number): boolean {
+  if (isRjsonIdentifierChar(json[index - 1])) {
+    return false;
+  }
+  return (
+    (json[index] === "/" && json[index + 1] === "/") ||
+    (json[index] === "/" && json[index + 1] === "*")
+  );
 }
 
 /**
@@ -67,7 +83,7 @@ function isInsideRjsonStringOrComment(json: string): boolean {
       continue;
     }
 
-    if (ch === "/" && json[i + 1] === "/") {
+    if (startsRjsonComment(json, i) && json[i + 1] === "/") {
       i += 2;
       while (i < json.length && json[i] !== "\n" && json[i] !== "\r") {
         i += 1;
@@ -78,7 +94,7 @@ function isInsideRjsonStringOrComment(json: string): boolean {
       continue;
     }
 
-    if (ch === "/" && json[i + 1] === "*") {
+    if (startsRjsonComment(json, i) && json[i + 1] === "*") {
       i += 2;
       while (i + 1 < json.length && !(json[i] === "*" && json[i + 1] === "/")) {
         i += 1;
