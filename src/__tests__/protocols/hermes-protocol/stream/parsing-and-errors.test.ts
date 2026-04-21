@@ -320,14 +320,14 @@ describe("hermesProtocol streaming parsing and error policy", () => {
         ctrl.close();
       },
     });
-    await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
     expect(onError).toHaveBeenCalledTimes(1);
     const [message, metadata] = onError.mock.calls[0];
     // Default (emitRawToolCallTextOnError=false) — no "emitting original text"
     // suffix in the error message.
-    expect(message).toContain("Could not complete streaming JSON tool call at finish");
+    expect(message).toContain(
+      "Could not complete streaming JSON tool call at finish"
+    );
     expect(message).not.toContain("emitting original text");
     // Full metadata shape: toolCall + toolName + reason all populated.
     expect(metadata).toMatchObject({
@@ -406,9 +406,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
         ctrl.close();
       },
     });
-    await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
     expect(onError).toHaveBeenCalledTimes(1);
     const [, metadata] = onError.mock.calls[0];
     // extractTopLevelStringProperty requires closing quote, so truncated name returns undefined
@@ -438,9 +436,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
         ctrl.close();
       },
     });
-    await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
     expect(onError).toHaveBeenCalledTimes(1);
     const [, metadata] = onError.mock.calls[0];
     expect(metadata.toolName).toBeUndefined();
@@ -469,9 +465,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
         ctrl.close();
       },
     });
-    await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
     expect(onError).toHaveBeenCalledTimes(1);
     const [, metadata] = onError.mock.calls[0];
     expect(metadata.toolName).toBeUndefined();
