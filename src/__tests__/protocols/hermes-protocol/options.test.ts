@@ -79,4 +79,19 @@ describe("hermesProtocol options", () => {
     expect(toolCall.toolName).toBe("ok");
     expect(JSON.parse(toolCall.input)).toEqual({ x: 1, name: { a: 1 } });
   });
+
+  it("does not treat spaced RJSON properties matching a custom delimiter as nested", () => {
+    const protocol = hermesProtocol({
+      toolCallStart: "name:",
+      toolCallEnd: "END",
+    });
+
+    const text = 'name:{name:"ok",arguments:{x:1, name:{a:1}}}END';
+    const out = protocol.parseGeneratedText({ text, tools: [] });
+    const toolCall = out.find((part) => part.type === "tool-call") as any;
+
+    expect(toolCall).toBeTruthy();
+    expect(toolCall.toolName).toBe("ok");
+    expect(JSON.parse(toolCall.input)).toEqual({ x: 1, name: { a: 1 } });
+  });
 });

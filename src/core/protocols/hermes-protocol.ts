@@ -44,6 +44,11 @@ function isRjsonIdentifierChar(ch: string | undefined): boolean {
   return ch != null && RJSON_IDENTIFIER_CHAR_REGEX.test(ch);
 }
 
+function isRjsonPropertyLikeDelimiter(startTag: string): boolean {
+  const key = startTag.endsWith(":") ? startTag.slice(0, -1) : "";
+  return key.length > 0 && [...key].every((ch) => isRjsonIdentifierChar(ch));
+}
+
 function previousRjsonToken(json: string, index: number, minIndex = 0): string {
   let start = index - 1;
   while (start >= minIndex && isRjsonIdentifierChar(json[start])) {
@@ -104,6 +109,9 @@ function isLikelyNestedToolCallStart(
   startIndex: number,
   startTag: string
 ): boolean {
+  if (isRjsonPropertyLikeDelimiter(startTag)) {
+    return false;
+  }
   const jsonStart = skipJsonWhitespace(segment, startIndex + startTag.length);
   return (
     segment[jsonStart] === "{" && hasNestedStartBoundary(segment, startIndex)
