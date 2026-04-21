@@ -504,16 +504,23 @@ function extractKnownArgKeys(
   toolCallJson: string
 ): string[] | undefined {
   const toolName = extractTopLevelStringProperty(toolCallJson, "name");
-  if (!toolName) return undefined;
+  if (!toolName) {
+    return undefined;
+  }
   const tool = tools.find((t) => t.name === toolName);
-  if (!tool?.inputSchema?.properties) return undefined;
-  return Object.keys(
-    tool.inputSchema.properties as Record<string, unknown>
-  );
+  if (!tool?.inputSchema?.properties) {
+    return undefined;
+  }
+  return Object.keys(tool.inputSchema.properties as Record<string, unknown>);
 }
 
 /** Maximum size (in UTF-16 code units) for the arguments body before bailing out of repair. */
-const REPAIR_MAX_ARGS_BODY_SIZE = 102400;
+const REPAIR_MAX_ARGS_BODY_SIZE = 102_400;
+
+const WHITESPACE_RE = /\s/;
+const FIRST_KEY_RE = /^\s*"([^"]+)"\s*:\s*/;
+const KV_PATTERN_RE = /,\s*"([^"]+)"\s*:\s*/g;
+const TRAILING_COMMA_RE = /,\s*$/;
 
 /**
  * Returns true if `position` in `argsBody` is at nesting depth 0
@@ -525,12 +532,25 @@ function isAtTopLevel(argsBody: string, position: number): boolean {
   let esc = false;
   for (let i = 0; i < position; i++) {
     const ch = argsBody[i];
-    if (esc) { esc = false; continue; }
-    if (ch === '\\' && inStr) { esc = true; continue; }
-    if (ch === '"') { inStr = !inStr; continue; }
+    if (esc) {
+      esc = false;
+      continue;
+    }
+    if (ch === "\\" && inStr) {
+      esc = true;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = !inStr;
+      continue;
+    }
     if (!inStr) {
-      if (ch === '{' || ch === '[') depth++;
-      if (ch === '}' || ch === ']') depth--;
+      if (ch === "{" || ch === "[") {
+        depth++;
+      }
+      if (ch === "}" || ch === "]") {
+        depth--;
+      }
     }
   }
   return depth === 0;
@@ -548,11 +568,15 @@ function repairToolCallJson(
 ): { name: string; arguments: Record<string, unknown> } | null {
   // 1. Extract tool name (depth-aware to avoid matching nested "name" keys)
   const toolName = extractTopLevelStringProperty(raw, "name");
-  if (!toolName) return null;
+  if (!toolName) {
+    return null;
+  }
 
   // 2. Find arguments object boundaries (top-level aware, like name extraction)
   const argsValueStart = findTopLevelPropertyValueStart(raw, "arguments");
-  if (argsValueStart == null || raw.charAt(argsValueStart) !== "{") return null;
+  if (argsValueStart == null || raw.charAt(argsValueStart) !== "{") {
+    return null;
+  }
   const argsStart = argsValueStart + 1;
 
   // 3. Find closing braces from end (arguments + outer object).
@@ -564,9 +588,13 @@ function repairToolCallJson(
       outerClose = i;
       break;
     }
-    if (!/\s/.test(raw.charAt(i))) break;
+    if (!WHITESPACE_RE.test(raw.charAt(i))) {
+      break;
+    }
   }
-  if (outerClose === -1) return null;
+  if (outerClose === -1) {
+    return null;
+  }
 
   let argsClose = -1;
   for (let j = outerClose - 1; j >= argsStart; j--) {
@@ -574,14 +602,20 @@ function repairToolCallJson(
       argsClose = j;
       break;
     }
-    if (!/\s/.test(raw.charAt(j))) break;
+    if (!WHITESPACE_RE.test(raw.charAt(j))) {
+      break;
+    }
   }
-  if (argsClose === -1) return null;
+  if (argsClose === -1) {
+    return null;
+  }
 
-  const argsBody = raw.substring(argsStart, argsClose);
+  const argsBody = raw.slice(argsStart, argsClose);
 
   // Size guard: bail out on unreasonably large argument bodies
-  if (argsBody.length > REPAIR_MAX_ARGS_BODY_SIZE) return null;
+  if (argsBody.length > REPAIR_MAX_ARGS_BODY_SIZE) {
+    return null;
+  }
 
   // 4. Try standard parse first
   try {
@@ -594,8 +628,10 @@ function repairToolCallJson(
   }
 
   // 5. Collect key positions
-  const firstKeyMatch = argsBody.match(/^\s*"([^"]+)"\s*:\s*/);
-  if (!firstKeyMatch) return null;
+  const firstKeyMatch = argsBody.match(FIRST_KEY_RE);
+  if (!firstKeyMatch) {
+    return null;
+  }
   let allKeys: Array<{
     key: string;
     matchStart: number;
@@ -607,9 +643,7 @@ function repairToolCallJson(
       valueStart: firstKeyMatch[0].length,
     },
   ];
-  const kvPattern = /,\s*"([^"]+)"\s*:\s*/g;
-  let m: RegExpExecArray | null;
-  while ((m = kvPattern.exec(argsBody)) !== null) {
+  for (const m of argsBody.matchAll(KV_PATTERN_RE)) {
     allKeys.push({
       key: m[1],
       matchStart: m.index,
@@ -623,19 +657,20 @@ function repairToolCallJson(
   //     value slices, because their ,"extra":... text gets merged into
   //     the previous value. Schema filtering is applied later when
   //     assigning parsed values into args (step 8 below).
-  const knownKeySet = knownArgKeys && knownArgKeys.length > 0
-    ? new Set(knownArgKeys)
-    : null;
-  allKeys = allKeys.filter((entry) =>
-    entry.matchStart === 0 || isAtTopLevel(argsBody, entry.matchStart)
+  const knownKeySet =
+    knownArgKeys && knownArgKeys.length > 0 ? new Set(knownArgKeys) : null;
+  allKeys = allKeys.filter(
+    (entry) =>
+      entry.matchStart === 0 || isAtTopLevel(argsBody, entry.matchStart)
   );
 
   // 7. Handle duplicate key names with scoring heuristic
   const firstByKey: Record<string, number> = {};
   const lastByKey: Record<string, number> = {};
   for (let idx = 0; idx < allKeys.length; idx++) {
-    if (!(allKeys[idx].key in firstByKey))
+    if (!(allKeys[idx].key in firstByKey)) {
       firstByKey[allKeys[idx].key] = idx;
+    }
     lastByKey[allKeys[idx].key] = idx;
   }
   const firstPositions = allKeys.filter(
@@ -654,9 +689,8 @@ function repairToolCallJson(
   ) {
     keyPositions = firstPositions;
   } else {
-    function scorePositions(
-      positions: typeof allKeys
-    ): [number, number] {
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Scoring heuristic requires multi-stage fallback parsing.
+    function scorePositions(positions: typeof allKeys): [number, number] {
       let rawOk = 0;
       let repaired = 0;
       for (let si = 0; si < positions.length; si++) {
@@ -665,7 +699,7 @@ function repairToolCallJson(
           si + 1 < positions.length
             ? positions[si + 1].matchStart
             : argsBody.length;
-        const srv = argsBody.substring(svs, sve).replace(/,\s*$/, "");
+        const srv = argsBody.slice(svs, sve).replace(TRAILING_COMMA_RE, "");
         try {
           JSON.parse(srv);
           rawOk++;
@@ -675,9 +709,11 @@ function repairToolCallJson(
         }
         if (srv.charAt(0) === '"') {
           let seq = srv.length - 1;
-          while (seq > 0 && srv.charAt(seq) !== '"') seq--;
+          while (seq > 0 && srv.charAt(seq) !== '"') {
+            seq--;
+          }
           if (seq > 0) {
-            const sinner = srv.substring(1, seq);
+            const sinner = srv.slice(1, seq);
             let sesc = "";
             let sbs = 0;
             for (const sch of sinner) {
@@ -715,7 +751,9 @@ function repairToolCallJson(
         : firstPositions;
   }
   allKeys = keyPositions;
-  if (allKeys.length === 0) return null;
+  if (allKeys.length === 0) {
+    return null;
+  }
 
   // 8. Repair each value by escaping unescaped quotes.
   //    Schema-unknown keys are skipped here (their slice was still needed
@@ -723,13 +761,13 @@ function repairToolCallJson(
   const args: Record<string, unknown> = {};
   for (let i = 0; i < allKeys.length; i++) {
     const kp = allKeys[i];
-    if (knownKeySet && !knownKeySet.has(kp.key)) continue;
+    if (knownKeySet && !knownKeySet.has(kp.key)) {
+      continue;
+    }
     const vs = kp.valueStart;
     const ve =
-      i + 1 < allKeys.length
-        ? allKeys[i + 1].matchStart
-        : argsBody.length;
-    let rv = argsBody.substring(vs, ve).replace(/,\s*$/, "");
+      i + 1 < allKeys.length ? allKeys[i + 1].matchStart : argsBody.length;
+    const rv = argsBody.slice(vs, ve).replace(TRAILING_COMMA_RE, "");
     try {
       args[kp.key] = JSON.parse(rv);
       continue;
@@ -738,12 +776,14 @@ function repairToolCallJson(
     }
     if (rv.charAt(0) === '"') {
       let eq = rv.length - 1;
-      while (eq > 0 && rv.charAt(eq) !== '"') eq--;
+      while (eq > 0 && rv.charAt(eq) !== '"') {
+        eq--;
+      }
       if (eq <= 0) {
         // String literal with no closing quote — repair cannot handle this
         return null;
       }
-      const inner = rv.substring(1, eq);
+      const inner = rv.slice(1, eq);
       let esc = "";
       let bs = 0;
       for (const ch of inner) {
@@ -776,7 +816,9 @@ function repairToolCallJson(
   // Guard: if the schema filter skipped every parsed key, we have nothing
   // meaningful to emit. Returning {arguments: {}} here would trigger a
   // tool invocation with empty args — worse than reporting parse failure.
-  if (knownKeySet && Object.keys(args).length === 0) return null;
+  if (knownKeySet && Object.keys(args).length === 0) {
+    return null;
+  }
   return { name: toolName, arguments: args };
 }
 

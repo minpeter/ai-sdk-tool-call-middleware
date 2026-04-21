@@ -37,7 +37,12 @@ describe("parseGeneratedText JSON repair", () => {
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"path":"/tmp/a.txt","content":"use "strict"; var x = 1;"}}</tool_call>';
-    const tools = [makeTool("write", { path: { type: "string" }, content: { type: "string" } })];
+    const tools = [
+      makeTool("write", {
+        path: { type: "string" },
+        content: { type: "string" },
+      }),
+    ];
     const out = p.parseGeneratedText({ text, tools });
     const tool = out.find((x) => x.type === "tool-call") as any;
     expect(tool).toBeTruthy();
@@ -47,7 +52,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(args.content).toContain('"strict"');
   });
 
-  it("does not silently corrupt content when a ,\"unknown\": pattern appears inside broken quotes", () => {
+  it('does not silently corrupt content when a ,"unknown": pattern appears inside broken quotes', () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     // Ambiguous input: ,"fake": could be (a) a real schema-unknown key
@@ -148,8 +153,7 @@ describe("parseGeneratedText JSON repair", () => {
   it("falls through to error when repair is impossible (no arguments field)", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
-    const text =
-      '<tool_call>{"name":"x","params":{"a":1}}</tool_call>';
+    const text = '<tool_call>{"name":"x","params":{"a":1}}</tool_call>';
     const out = p.parseGeneratedText({ text, tools: [], options: { onError } });
     // rjson may handle this, but the tool call should either parse or
     // fall through to onError; it should not crash.
@@ -277,10 +281,8 @@ describe("parseGeneratedText JSON repair", () => {
     // is the last (or second-to-last) top-level property.
     const text =
       '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"},"id":"123"}</tool_call>';
-    const tools = [
-      makeTool("edit", { content: { type: "string" } }),
-    ];
-    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tools = [makeTool("edit", { content: { type: "string" } })];
+    p.parseGeneratedText({ text, tools, options: { onError } });
     expect(onError).toHaveBeenCalled();
   });
 

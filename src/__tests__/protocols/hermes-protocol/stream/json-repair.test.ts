@@ -3,7 +3,7 @@ import type {
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import {
   pipeWithTransformer,
