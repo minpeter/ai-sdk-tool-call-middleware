@@ -2,7 +2,11 @@ import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
-import { pipeWithTransformer, stopFinishReason, zeroUsage } from "../../../test-helpers";
+import {
+  pipeWithTransformer,
+  stopFinishReason,
+  zeroUsage,
+} from "../../../test-helpers";
 
 describe("hermesProtocol streaming control character normalization", () => {
   it("parses streaming tool call with raw newline in argument", async () => {
@@ -24,7 +28,7 @@ describe("hermesProtocol streaming control character normalization", () => {
       },
     });
     const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer),
+      pipeWithTransformer(rs, transformer)
     );
     const tool = out.find((c) => c.type === "tool-call") as any;
     expect(tool).toBeTruthy();
@@ -51,7 +55,7 @@ describe("hermesProtocol streaming control character normalization", () => {
       },
     });
     const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer),
+      pipeWithTransformer(rs, transformer)
     );
     const tool = out.find((c) => c.type === "tool-call") as any;
     expect(tool).toBeTruthy();

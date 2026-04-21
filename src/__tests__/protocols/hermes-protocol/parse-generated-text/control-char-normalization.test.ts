@@ -93,7 +93,7 @@ describe("parseGeneratedText control character normalization", () => {
   it("handles backslash followed by raw newline", () => {
     const p = hermesProtocol();
     // The value contains a literal backslash followed by an actual newline char
-    const json = '{"name":"edit","arguments":{"content":"foo\\' + '\n' + 'bar"}}';
+    const json = '{"name":"edit","arguments":{"content":"foo\\\nbar"}}';
     const text = `<tool_call>${json}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
     const tool = out.find((x) => x.type === "tool-call") as any;
@@ -104,7 +104,7 @@ describe("parseGeneratedText control character normalization", () => {
 
   it("handles backslash followed by raw tab", () => {
     const p = hermesProtocol();
-    const json = '{"name":"edit","arguments":{"content":"foo\\' + '\t' + 'bar"}}';
+    const json = '{"name":"edit","arguments":{"content":"foo\\\tbar"}}';
     const text = `<tool_call>${json}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
     const tool = out.find((x) => x.type === "tool-call") as any;

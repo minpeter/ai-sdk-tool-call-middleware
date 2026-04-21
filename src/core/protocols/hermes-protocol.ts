@@ -50,7 +50,9 @@ function hasControlCharInString(json: string): boolean {
     const code = json.charCodeAt(i);
     if (esc) {
       esc = false;
-      if (code <= CHAR_CODE_CONTROL_UPPER) return true;
+      if (code <= CHAR_CODE_CONTROL_UPPER) {
+        return true;
+      }
       continue;
     }
     if (inStr && code === CHAR_CODE_BACKSLASH) {
@@ -61,7 +63,9 @@ function hasControlCharInString(json: string): boolean {
       inStr = !inStr;
       continue;
     }
-    if (inStr && code <= CHAR_CODE_CONTROL_UPPER) return true;
+    if (inStr && code <= CHAR_CODE_CONTROL_UPPER) {
+      return true;
+    }
   }
   return false;
 }
@@ -80,7 +84,9 @@ function hasControlCharInString(json: string): boolean {
  *     loop produces on large arguments.
  */
 function normalizeJsonStringCtrl(json: string): string {
-  if (!hasControlCharInString(json)) return json;
+  if (!hasControlCharInString(json)) {
+    return json;
+  }
 
   const parts: string[] = [];
   let chunkStart = 0;
@@ -88,7 +94,9 @@ function normalizeJsonStringCtrl(json: string): string {
   let esc = false;
 
   const flushUpTo = (end: number) => {
-    if (chunkStart < end) parts.push(json.slice(chunkStart, end));
+    if (chunkStart < end) {
+      parts.push(json.slice(chunkStart, end));
+    }
   };
 
   const escapeForCode = (code: number): string => {
@@ -136,7 +144,9 @@ function normalizeJsonStringCtrl(json: string): string {
     }
   }
 
-  if (chunkStart < json.length) parts.push(json.slice(chunkStart));
+  if (chunkStart < json.length) {
+    parts.push(json.slice(chunkStart));
+  }
   return parts.join("");
 }
 
@@ -147,7 +157,9 @@ function processToolCallJson(
   options?: ParserOptions
 ) {
   try {
-    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson)) as {
+    const parsedToolCall = parseRJSON(
+      normalizeJsonStringCtrl(toolCallJson)
+    ) as {
       name: string;
       arguments: unknown;
     };
@@ -564,7 +576,7 @@ function canonicalizeArgumentsProgressInput(
 
   try {
     const parsedArguments = parseRJSON(
-      normalizeJsonStringCtrl(progress.argumentsText),
+      normalizeJsonStringCtrl(progress.argumentsText)
     );
     return stringifyToolInputWithSchema({
       toolName,
@@ -659,7 +671,7 @@ function emitIncompleteToolCall(
   if (state.currentToolCallJson) {
     try {
       const parsedToolCall = parseRJSON(
-        normalizeJsonStringCtrl(state.currentToolCallJson),
+        normalizeJsonStringCtrl(state.currentToolCallJson)
       ) as {
         name: string;
         arguments: unknown;
@@ -770,7 +782,7 @@ function emitToolCall(context: TagProcessingContext) {
     context;
   try {
     const parsedToolCall = parseRJSON(
-      normalizeJsonStringCtrl(state.currentToolCallJson),
+      normalizeJsonStringCtrl(state.currentToolCallJson)
     ) as {
       name: string;
       arguments: unknown;
