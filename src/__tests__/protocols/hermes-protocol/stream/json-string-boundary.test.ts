@@ -560,6 +560,34 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     expect(toolCalls.map((c) => c.toolName)).toEqual(["ok"]);
   });
 
+  it("recovers a valid tool call after an unterminated relaxed block comment consumes an end tag", async () => {
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{name:"bad",arguments:{n:1/*x}}</tool_call>' +
+            '<tool_call>{"name":"ok","arguments":{}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const toolCalls = out.filter((c) => c.type === "tool-call") as any[];
+    expect(toolCalls.map((c) => c.toolName)).toEqual(["ok"]);
+  });
+
   it("reports and optionally emits raw text when recovering after a malformed nested start", async () => {
     const onError = vi.fn();
     const protocol = hermesProtocol();
