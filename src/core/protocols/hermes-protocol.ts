@@ -24,6 +24,19 @@ interface HermesProtocolOptions {
   toolCallStart?: string;
 }
 
+function validateNonEmptyDelimiters(
+  toolCallStart: string,
+  toolCallEnd: string
+): Record<never, never> {
+  if (toolCallStart.length === 0) {
+    throw new TypeError("hermesProtocol toolCallStart must not be empty");
+  }
+  if (toolCallEnd.length === 0) {
+    throw new TypeError("hermesProtocol toolCallEnd must not be empty");
+  }
+  return {};
+}
+
 /**
  * Returns true if the current position in `json` is inside syntax that can
  * legally contain literal tool-call tag text: a relaxed-JSON string or
@@ -1132,6 +1145,8 @@ export const hermesProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
 }: HermesProtocolOptions = {}): TCMProtocol => ({
+  ...validateNonEmptyDelimiters(toolCallStart, toolCallEnd),
+
   formatTools({
     tools,
     toolSystemPromptTemplate,
