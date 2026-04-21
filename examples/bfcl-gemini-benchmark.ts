@@ -1,6 +1,6 @@
 /// <reference types="node" />
 
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV3Middleware } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
@@ -11,15 +11,16 @@ import {
   yamlXmlToolMiddleware,
 } from "../src/preconfigured-middleware";
 
-function isMissingLocalEvalError(
+function isMissingLocalEvalEntry(
   error: unknown,
   localDistPath: string
 ): boolean {
-  const err = error as NodeJS.ErrnoException;
+  const err = error as NodeJS.ErrnoException & { url?: string };
+  const localDistUrl = pathToFileURL(localDistPath).href;
   return (
     err.code === "ERR_MODULE_NOT_FOUND" &&
-    typeof err.message === "string" &&
-    err.message.includes(localDistPath)
+    (err.url === localDistUrl ||
+      (typeof err.message === "string" && err.message.includes(localDistPath)))
   );
 }
 
@@ -35,13 +36,13 @@ async function loadEval() {
     }
     return mod;
   } catch (err) {
-    if (!isMissingLocalEvalError(err, localDistPath)) {
+    if (!isMissingLocalEvalEntry(err, localDistPath)) {
       throw err;
     }
-    throw new Error(
-      `Local ai-sdk-eval build not found at ${localDistPath}. Build ../ai-sdk-eval first before running this benchmark.`,
-      { cause: err }
+    console.warn(
+      `Local ai-sdk-eval build not found at ${localDistPath}; falling back to @ai-sdk-tool/eval.`
     );
+    return await import("@ai-sdk-tool/eval");
   }
 }
 
