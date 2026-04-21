@@ -96,6 +96,24 @@ describe("extractQwen3CoderToolNameFromMarkup: covers every inner call-tag shape
         extractQwen3CoderToolNameFromMarkup("<function=a.b.c>body</function>")
       ).toBe("a.b.c");
     });
+
+    it("accepts `=` inside bare shorthand values (parser's parseShorthandValue does)", () => {
+      expect(
+        extractQwen3CoderToolNameFromMarkup("<function=a=b=c>body</function>")
+      ).toBe("a=b=c");
+    });
+
+    it("accepts `'` inside bare shorthand values (parser's parseShorthandValue does)", () => {
+      expect(
+        extractQwen3CoderToolNameFromMarkup("<function=a'b>body</function>")
+      ).toBe("a'b");
+    });
+
+    it("accepts `\"` inside bare shorthand values (parser's parseShorthandValue does)", () => {
+      expect(
+        extractQwen3CoderToolNameFromMarkup('<function=a"b>body</function>')
+      ).toBe('a"b');
+    });
   });
 
   describe("whitespace handling", () => {

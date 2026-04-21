@@ -991,17 +991,23 @@ function parseQwen3CoderToolParserClosedMatches(
  * parser itself accepts in parseSingleFunctionCallXml / parseCallContent:
  *   - <(function|call|tool|invoke)="NAME">       shorthand, double-quoted
  *   - <(function|call|tool|invoke)='NAME'>       shorthand, single-quoted
- *   - <(function|call|tool|invoke)=NAME>         shorthand, bare (parser accepts [^\s>/<] per parseShorthandValue)
+ *   - <(function|call|tool|invoke)=NAME>         shorthand, bare
  *   - <(function|call|tool|invoke) name="NAME">  attribute, double-quoted
  *   - <(function|call|tool|invoke) name='NAME'>  attribute, single-quoted
  *   - <name>NAME</name>                          child element fallback
  *   - <tool_name>NAME</tool_name>                alternate child element fallback
  *
+ * Bare-shorthand char class is `[^\s>/]` — exactly the parser's stop set in
+ * parseShorthandValue (L159-165): it breaks on ASCII whitespace, `>`, or `/`
+ * only. Quoted and attribute alternations are tried first, so the bare branch
+ * is only reached when the value did not open with a quote — making it safe
+ * to accept `'`, `"`, and `=` mid-value, matching the parser exactly.
+ *
  * Keep this in sync with QWEN3CODER_TOOL_PARSER_CALL_TAG_NAMES and
  * parseShorthandValue's accepted character class.
  */
 const QWEN3CODER_TOOL_NAME_SALVAGE_REGEX =
-  /<(?:function|call|tool|invoke)(?:\s*=\s*"([^"]+)"|\s*=\s*'([^']+)'|\s*=\s*([^\s>/<'"=]+)|\s+name\s*=\s*"([^"]+)"|\s+name\s*=\s*'([^']+)')|<(?:name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*(?:name|tool_name)\s*>/i;
+  /<(?:function|call|tool|invoke)(?:\s*=\s*"([^"]+)"|\s*=\s*'([^']+)'|\s*=\s*([^\s>/]+)|\s+name\s*=\s*"([^"]+)"|\s+name\s*=\s*'([^']+)')|<(?:name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*(?:name|tool_name)\s*>/i;
 
 /**
  * @internal exported only so unit tests can exhaustively verify the salvage
