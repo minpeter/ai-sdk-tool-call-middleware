@@ -88,9 +88,7 @@ describe("parseGeneratedText – end tag inside JSON string values", () => {
     const tc = out[0] as any;
     expect(tc.toolName).toBe("bash");
     const parsed = JSON.parse(tc.input);
-    expect(parsed.cmd).toBe(
-      "first </tool_call> and second </tool_call> end"
-    );
+    expect(parsed.cmd).toBe("first </tool_call> and second </tool_call> end");
   });
 });
 
@@ -129,7 +127,10 @@ describe("extractToolCallSegments – end tag inside JSON string values", () => 
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"bash","arguments":{"command":"echo \'</tool_call>\' test"}}</tool_call>';
-    const segments = p.extractToolCallSegments({ text });
+    if (!p.extractToolCallSegments) {
+      throw new Error("extractToolCallSegments is not defined");
+    }
+    const segments = p.extractToolCallSegments({ text, tools: [] });
 
     expect(segments).toHaveLength(1);
     expect(segments[0]).toBe(text);
@@ -141,7 +142,10 @@ describe("extractToolCallSegments – end tag inside JSON string values", () => 
       '<tool_call>{"name":"a","arguments":{}}</tool_call>' +
       " middle " +
       '<tool_call>{"name":"bash","arguments":{"cmd":"</tool_call>"}}</tool_call>';
-    const segments = p.extractToolCallSegments({ text });
+    if (!p.extractToolCallSegments) {
+      throw new Error("extractToolCallSegments is not defined");
+    }
+    const segments = p.extractToolCallSegments({ text, tools: [] });
 
     expect(segments).toHaveLength(2);
     expect(segments[0]).toBe(

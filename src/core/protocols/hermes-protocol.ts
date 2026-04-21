@@ -34,16 +34,16 @@ interface HermesProtocolOptions {
 function isInsideJsonString(json: string): boolean {
   let inStr = false;
   let esc = false;
-  for (let i = 0; i < json.length; i++) {
+  for (const ch of json) {
     if (esc) {
       esc = false;
       continue;
     }
-    if (json[i] === "\\") {
+    if (ch === "\\") {
       esc = true;
       continue;
     }
-    if (json[i] === '"') {
+    if (ch === '"') {
       inStr = !inStr;
     }
   }
@@ -60,8 +60,12 @@ function hasOuterToolCallStart(segment: string, startTag: string): boolean {
   let pos = 0;
   while (pos < segment.length) {
     const next = segment.indexOf(startTag, pos);
-    if (next === -1) return false;
-    if (!isInsideJsonString(segment.slice(0, next))) return true;
+    if (next === -1) {
+      return false;
+    }
+    if (!isInsideJsonString(segment.slice(0, next))) {
+      return true;
+    }
     pos = next + 1;
   }
   return false;
@@ -84,19 +88,23 @@ function findNextToolCallSpan(
   text: string,
   searchFrom: number,
   startTag: string,
-  endTag: string,
+  endTag: string
 ):
   | { startIdx: number; found: true; jsonStart: number; endIdx: number }
   | { startIdx: number; found: false }
   | null {
   const startIdx = text.indexOf(startTag, searchFrom);
-  if (startIdx === -1) return null;
+  if (startIdx === -1) {
+    return null;
+  }
   const jsonStart = startIdx + startTag.length;
 
   let endIdx = jsonStart;
   while (endIdx < text.length) {
     endIdx = text.indexOf(endTag, endIdx);
-    if (endIdx === -1) break;
+    if (endIdx === -1) {
+      break;
+    }
     const jsonSegment = text.slice(jsonStart, endIdx);
     if (!isInsideJsonString(jsonSegment)) {
       if (hasOuterToolCallStart(jsonSegment, startTag)) {
@@ -771,7 +779,6 @@ function processTagMatch(context: TagProcessingContext) {
   }
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Must check JSON string context before accepting end tags.
 function processBufferTags(context: TagProcessingContext) {
   const { state, controller, toolCallStart, toolCallEnd, tools } = context;
   let startIndex = getPotentialStartIndex(
@@ -911,9 +918,11 @@ export const hermesProtocol = ({
         text,
         searchFrom,
         toolCallStart,
-        toolCallEnd,
+        toolCallEnd
       );
-      if (span === null) break;
+      if (span === null) {
+        break;
+      }
 
       if (!span.found) {
         // Orphan start tag — emit everything up to and including it as text,
@@ -930,13 +939,13 @@ export const hermesProtocol = ({
       const toolCallJson = text.slice(span.jsonStart, span.endIdx);
       const fullMatch = text.slice(
         span.startIdx,
-        span.endIdx + toolCallEnd.length,
+        span.endIdx + toolCallEnd.length
       );
 
       if (span.startIdx > currentIndex) {
         addTextSegment(
           text.slice(currentIndex, span.startIdx),
-          processedElements,
+          processedElements
         );
       }
 
@@ -1006,7 +1015,7 @@ export const hermesProtocol = ({
     });
   },
 
-  extractToolCallSegments({ text }: { text: string }) {
+  extractToolCallSegments({ text }) {
     const segments: string[] = [];
     let searchFrom = 0;
 
@@ -1015,9 +1024,11 @@ export const hermesProtocol = ({
         text,
         searchFrom,
         toolCallStart,
-        toolCallEnd,
+        toolCallEnd
       );
-      if (span === null) break;
+      if (span === null) {
+        break;
+      }
 
       if (!span.found) {
         // Orphan start tag — skip past it and keep searching
@@ -1025,7 +1036,9 @@ export const hermesProtocol = ({
         continue;
       }
 
-      segments.push(text.slice(span.startIdx, span.endIdx + toolCallEnd.length));
+      segments.push(
+        text.slice(span.startIdx, span.endIdx + toolCallEnd.length)
+      );
       searchFrom = span.endIdx + toolCallEnd.length;
     }
 

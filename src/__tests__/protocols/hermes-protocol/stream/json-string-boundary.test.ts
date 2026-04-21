@@ -70,7 +70,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
         ctrl.enqueue({
           type: "text-delta",
           id: "1",
-          delta: '\' test"}}</tool_call>',
+          delta: "' test\"}}</tool_call>",
         });
         ctrl.enqueue({
           type: "finish",
@@ -183,7 +183,8 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
         ctrl.enqueue({
           type: "text-delta",
           id: "1",
-          delta: '<tool_call>{"name":"get_weather","arguments":{"city":"NYC"}}</tool_call>',
+          delta:
+            '<tool_call>{"name":"get_weather","arguments":{"city":"NYC"}}</tool_call>',
         });
         ctrl.enqueue({
           type: "text-delta",
@@ -216,7 +217,6 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     expect(text).not.toContain("<tool_call>");
     expect(text).not.toContain("</tool_call>");
   });
-
 
   it("parses the first tool call cleanly when </tool_call> appears inside its JSON string value", async () => {
     const protocol = hermesProtocol();
@@ -292,9 +292,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const toolCalls = out.filter(
-      (c) => c.type === "tool-input-start"
-    ) as any[];
+    const toolCalls = out.filter((c) => c.type === "tool-input-start") as any[];
     expect(toolCalls.find((c) => c.toolName === "bash")).toBeDefined();
     expect(toolCalls.find((c) => c.toolName === "ok")).toBeDefined();
   });
