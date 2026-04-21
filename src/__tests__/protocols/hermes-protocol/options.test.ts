@@ -28,4 +28,22 @@ describe("hermesProtocol options", () => {
     expect(toolCall.toolName).toBe("ok");
     expect(JSON.parse(toolCall.input)).toEqual({});
   });
+
+  it("does not treat an unquoted RJSON key matching a custom start delimiter as nested", () => {
+    const protocol = hermesProtocol({
+      toolCallStart: "name",
+      toolCallEnd: "END",
+    });
+
+    const text = 'name{name:"ok",arguments:{}}END';
+    const out = protocol.parseGeneratedText({ text, tools: [] });
+    const toolCall = out.find((part) => part.type === "tool-call") as any;
+
+    expect(toolCall).toBeTruthy();
+    expect(toolCall.toolName).toBe("ok");
+    expect(JSON.parse(toolCall.input)).toEqual({});
+    expect(protocol.extractToolCallSegments?.({ text, tools: [] })).toEqual([
+      text,
+    ]);
+  });
 });

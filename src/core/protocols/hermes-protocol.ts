@@ -104,6 +104,15 @@ function isInsideRjsonStringOrComment(json: string): boolean {
  * tags that indicate the current tool call's `</tool_call>` actually belongs
  * to a later tool call (i.e. the current call is orphaned / malformed).
  */
+function isLikelyNestedToolCallStart(
+  segment: string,
+  startIndex: number,
+  startTag: string
+): boolean {
+  const jsonStart = skipJsonWhitespace(segment, startIndex + startTag.length);
+  return segment[jsonStart] === "{";
+}
+
 function findOuterToolCallStartIndex(
   segment: string,
   startTag: string
@@ -114,7 +123,10 @@ function findOuterToolCallStartIndex(
     if (next === -1) {
       return null;
     }
-    if (!isInsideRjsonStringOrComment(segment.slice(0, next))) {
+    if (
+      !isInsideRjsonStringOrComment(segment.slice(0, next)) &&
+      isLikelyNestedToolCallStart(segment, next, startTag)
+    ) {
       return next;
     }
     pos = next + 1;
