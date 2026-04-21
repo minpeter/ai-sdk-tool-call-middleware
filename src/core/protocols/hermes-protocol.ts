@@ -82,7 +82,11 @@ function hasControlCharInString(json: string): boolean {
       json.charCodeAt(i + 1) === CHAR_CODE_SLASH
     ) {
       i += 2;
-      while (i < json.length && json.charCodeAt(i) !== CHAR_CODE_LF) {
+      while (
+        i < json.length &&
+        json.charCodeAt(i) !== CHAR_CODE_LF &&
+        json.charCodeAt(i) !== CHAR_CODE_CR
+      ) {
         i += 1;
       }
       continue;
@@ -189,7 +193,11 @@ function normalizeJsonStringCtrl(json: string): string {
       json.charCodeAt(i + 1) === CHAR_CODE_SLASH
     ) {
       i += 2;
-      while (i < json.length && json.charCodeAt(i) !== CHAR_CODE_LF) {
+      while (
+        i < json.length &&
+        json.charCodeAt(i) !== CHAR_CODE_LF &&
+        json.charCodeAt(i) !== CHAR_CODE_CR
+      ) {
         i += 1;
       }
       continue;
