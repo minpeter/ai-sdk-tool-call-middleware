@@ -144,4 +144,16 @@ line2'}}</tool_call>`;
     expect(tool).toBeTruthy();
     expect(JSON.parse(tool.input).content).toBe("line1\nline2");
   });
+  it("does not treat apostrophes in relaxed line comments as strings", () => {
+    const p = hermesProtocol();
+    const text = `<tool_call>{
+  name: "edit",
+  arguments: {}, // it's a comment
+  extra: 1
+}</tool_call>`;
+    const out = p.parseGeneratedText({ text, tools: [] });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("edit");
+  });
 });

@@ -34,6 +34,8 @@ const CHAR_CODE_QUOTE = 0x22;
 const CHAR_CODE_LF = 0x0a;
 const CHAR_CODE_CR = 0x0d;
 const CHAR_CODE_TAB = 0x09;
+const CHAR_CODE_SLASH = 0x2f;
+const CHAR_CODE_STAR = 0x2a;
 const CHAR_CODE_CONTROL_UPPER = 0x1f;
 
 const CHAR_CODE_SINGLE_QUOTE = 0x27;
@@ -48,6 +50,7 @@ type JsonStringQuote = typeof CHAR_CODE_QUOTE | typeof CHAR_CODE_SINGLE_QUOTE;
  * `normalizeJsonStringCtrl`.
  */
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Relaxed JSON scanning must skip comments while tracking quote and escape state.
 function hasControlCharInString(json: string): boolean {
   let quote: JsonStringQuote | null = null;
   let esc = false;
@@ -72,6 +75,54 @@ function hasControlCharInString(json: string): boolean {
       if (code <= CHAR_CODE_CONTROL_UPPER) {
         return true;
       }
+      continue;
+    }
+    if (
+      code === CHAR_CODE_SLASH &&
+      json.charCodeAt(i + 1) === CHAR_CODE_SLASH
+    ) {
+      i += 2;
+      while (i < json.length && json.charCodeAt(i) !== CHAR_CODE_LF) {
+        i += 1;
+      }
+      continue;
+    }
+    if (code === CHAR_CODE_SLASH && json.charCodeAt(i + 1) === CHAR_CODE_STAR) {
+      i += 2;
+      while (
+        i + 1 < json.length &&
+        !(
+          json.charCodeAt(i) === CHAR_CODE_STAR &&
+          json.charCodeAt(i + 1) === CHAR_CODE_SLASH
+        )
+      ) {
+        i += 1;
+      }
+      i += 1;
+      continue;
+    }
+    if (
+      code === CHAR_CODE_SLASH &&
+      json.charCodeAt(i + 1) === CHAR_CODE_SLASH
+    ) {
+      i += 2;
+      while (i < json.length && json.charCodeAt(i) !== CHAR_CODE_LF) {
+        i += 1;
+      }
+      continue;
+    }
+    if (code === CHAR_CODE_SLASH && json.charCodeAt(i + 1) === CHAR_CODE_STAR) {
+      i += 2;
+      while (
+        i + 1 < json.length &&
+        !(
+          json.charCodeAt(i) === CHAR_CODE_STAR &&
+          json.charCodeAt(i + 1) === CHAR_CODE_SLASH
+        )
+      ) {
+        i += 1;
+      }
+      i += 1;
       continue;
     }
     if (code === CHAR_CODE_QUOTE || code === CHAR_CODE_SINGLE_QUOTE) {
