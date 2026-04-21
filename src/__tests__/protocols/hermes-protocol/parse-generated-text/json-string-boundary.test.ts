@@ -92,6 +92,32 @@ describe("parseGeneratedText – end tag inside JSON string values", () => {
   });
 });
 
+describe("parseGeneratedText – relaxed JSON comments around tool-call tags", () => {
+  it("ignores </tool_call> and quotes inside relaxed line comments", () => {
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{name:"line_comment",arguments:{}, // " </tool_call> inside comment\n}</tool_call>';
+    const out = p.parseGeneratedText({ text, tools: [] });
+
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("line_comment");
+    expect(JSON.parse(tool.input)).toEqual({});
+  });
+
+  it("ignores <tool_call> nested-start text inside relaxed block comments", () => {
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{name:"block_comment",arguments:{}, /* ignored <tool_call> text */}</tool_call>';
+    const out = p.parseGeneratedText({ text, tools: [] });
+
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("block_comment");
+    expect(JSON.parse(tool.input)).toEqual({});
+  });
+});
+
 describe("parseGeneratedText – malformed tool call recovery", () => {
   it("recovers from malformed tool call with embedded end tag but no real closing tag", () => {
     const p = hermesProtocol();
@@ -167,5 +193,24 @@ describe("extractToolCallSegments – end tag inside JSON string values", () => 
     expect(tool).toBeTruthy();
     expect(tool.toolName).toBe("bash");
     expect(JSON.parse(tool.input).cmd).toBe("echo <tool_call> test");
+  });
+
+  it("ignores relaxed comments while extracting tool-call segments", () => {
+    const p = hermesProtocol();
+    if (!p.extractToolCallSegments) {
+      throw new Error("extractToolCallSegments is not defined");
+    }
+
+    const lineComment =
+      '<tool_call>{name:"line_comment",arguments:{}, // " </tool_call> inside comment\n}</tool_call>';
+    const blockComment =
+      '<tool_call>{name:"block_comment",arguments:{}, /* ignored <tool_call> text */}</tool_call>';
+
+    const segments = p.extractToolCallSegments({
+      text: `${lineComment} between ${blockComment}`,
+      tools: [],
+    });
+
+    expect(segments).toEqual([lineComment, blockComment]);
   });
 });

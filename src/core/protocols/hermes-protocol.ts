@@ -25,36 +25,71 @@ interface HermesProtocolOptions {
 }
 
 /**
- * Returns true if the current position in `json` is inside an unfinished
- * double-quoted string literal.  Only double quotes are tracked because
- * single-quote tracking would be confused by apostrophes in comments
- * (`parseRJSON` also supports `// ...` and block comments), and
- * models virtually never emit single-quoted JSON in tool calls.
+ * Returns true if the current position in `json` is inside syntax that can
+ * legally contain literal tool-call tag text: a relaxed-JSON string or
+ * comment. `parseRJSON` supports `// ...` and block comments, so tag-boundary
+ * detection must ignore quotes and tag-looking text inside those comments.
  */
-function isInsideJsonString(json: string): boolean {
-  let inStr = false;
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Relaxed JSON boundary scanning must track strings, escapes, and comments.
+function isInsideRjsonStringOrComment(json: string): boolean {
+  let quote: '"' | "'" | null = null;
   let esc = false;
-  for (const ch of json) {
+
+  for (let i = 0; i < json.length; i += 1) {
+    const ch = json[i];
+
     if (esc) {
       esc = false;
       continue;
     }
-    if (ch === "\\") {
-      esc = true;
+
+    if (quote !== null) {
+      if (ch === "\\") {
+        esc = true;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+      }
       continue;
     }
-    if (ch === '"') {
-      inStr = !inStr;
+
+    if (ch === "/" && json[i + 1] === "/") {
+      i += 2;
+      while (i < json.length && json[i] !== "\n" && json[i] !== "\r") {
+        i += 1;
+      }
+      if (i >= json.length) {
+        return true;
+      }
+      continue;
+    }
+
+    if (ch === "/" && json[i + 1] === "*") {
+      i += 2;
+      while (i + 1 < json.length && !(json[i] === "*" && json[i + 1] === "/")) {
+        i += 1;
+      }
+      if (i + 1 >= json.length) {
+        return true;
+      }
+      i += 1;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
     }
   }
-  return inStr;
+
+  return quote !== null;
 }
 
 /**
  * Detect whether `segment` contains an occurrence of `startTag` outside any
- * JSON string literal. Used to identify nested `<tool_call>` start tags that
- * indicate the current tool call's `</tool_call>` actually belongs to a later
- * tool call (i.e. the current call is orphaned / malformed).
+ * relaxed-JSON string or comment. Used to identify nested `<tool_call>` start
+ * tags that indicate the current tool call's `</tool_call>` actually belongs
+ * to a later tool call (i.e. the current call is orphaned / malformed).
  */
 function hasOuterToolCallStart(segment: string, startTag: string): boolean {
   let pos = 0;
@@ -63,7 +98,7 @@ function hasOuterToolCallStart(segment: string, startTag: string): boolean {
     if (next === -1) {
       return false;
     }
-    if (!isInsideJsonString(segment.slice(0, next))) {
+    if (!isInsideRjsonStringOrComment(segment.slice(0, next))) {
       return true;
     }
     pos = next + 1;
@@ -73,10 +108,10 @@ function hasOuterToolCallStart(segment: string, startTag: string): boolean {
 
 /**
  * Locate the next valid `<tool_call>...</tool_call>` span in `text` starting
- * at `searchFrom`. Skips `</tool_call>` sequences that occur inside JSON
- * string literals, and bails out when a nested `<tool_call>` start tag
- * appears outside a JSON string (treating the current start tag as orphaned
- * — its presumed close belongs to a later call).
+ * at `searchFrom`. Skips `</tool_call>` sequences that occur inside
+ * relaxed-JSON strings or comments, and bails out when a nested `<tool_call>`
+ * start tag appears outside a string/comment (treating the current start tag
+ * as orphaned — its presumed close belongs to a later call).
  *
  * Returns:
  *   - `null`: no more start tags in the remaining text
@@ -106,10 +141,10 @@ function findNextToolCallSpan(
       break;
     }
     const jsonSegment = text.slice(jsonStart, endIdx);
-    if (!isInsideJsonString(jsonSegment)) {
+    if (!isInsideRjsonStringOrComment(jsonSegment)) {
       if (hasOuterToolCallStart(jsonSegment, startTag)) {
-        // Nested <tool_call> outside JSON string — abandon this start,
-        // its presumed </tool_call> belongs to a later call.
+        // Nested <tool_call> outside a string/comment — abandon this
+        // start; its presumed </tool_call> belongs to a later call.
         return { startIdx, found: false };
       }
       return { startIdx, found: true, jsonStart, endIdx };
@@ -1014,12 +1049,12 @@ function processBufferTags(context: TagProcessingContext) {
     }
 
     // When inside a tool call and we found an end tag, check whether
-    // it falls inside a JSON string literal. If so, consume it as
-    // content rather than treating it as a real closing tag.
+    // it falls inside a relaxed-JSON string/comment. If so, consume it
+    // as content rather than treating it as a real closing tag.
     if (state.isInsideToolCall) {
       const jsonSoFar =
         state.currentToolCallJson + state.buffer.slice(0, startIndex);
-      if (isInsideJsonString(jsonSoFar)) {
+      if (isInsideRjsonStringOrComment(jsonSoFar)) {
         // Consume through the false end tag as tool-call JSON content
         const consumeEnd = startIndex + tag.length;
         publishText(
