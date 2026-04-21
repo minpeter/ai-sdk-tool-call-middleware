@@ -11,23 +11,37 @@ import {
   yamlXmlToolMiddleware,
 } from "../src/preconfigured-middleware";
 
+function isMissingLocalEvalError(
+  error: unknown,
+  localDistPath: string
+): boolean {
+  const err = error as NodeJS.ErrnoException;
+  return (
+    err.code === "ERR_MODULE_NOT_FOUND" &&
+    typeof err.message === "string" &&
+    err.message.includes(localDistPath)
+  );
+}
+
 async function loadEval() {
   const evalRepoBase = new URL("../../ai-sdk-eval/", import.meta.url);
-  const localDist = new URL("dist/index.js", evalRepoBase).href;
+  const localDistUrl = new URL("dist/index.js", evalRepoBase);
+  const localDistPath = fileURLToPath(localDistUrl);
 
   try {
-    const mod = await import(localDist);
+    const mod = await import(localDistUrl.href);
     if (!process.env.BFCL_DATA_DIR) {
       process.env.BFCL_DATA_DIR = fileURLToPath(new URL("data", evalRepoBase));
     }
     return mod;
   } catch (err) {
-    console.warn(
-      "Local ai-sdk-eval not found, falling back to npm package:",
-      (err as Error).message
+    if (!isMissingLocalEvalError(err, localDistPath)) {
+      throw err;
+    }
+    throw new Error(
+      `Local ai-sdk-eval build not found at ${localDistPath}. Build ../ai-sdk-eval first before running this benchmark.`,
+      { cause: err }
     );
-    const pkg = "@ai-sdk-tool/eval";
-    return await import(pkg);
   }
 }
 
