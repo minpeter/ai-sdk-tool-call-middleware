@@ -410,6 +410,66 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     expect(JSON.parse(toolCall.input)).toEqual({});
   });
 
+  it("still treats // after a relaxed number literal as a comment", async () => {
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{name:"x",arguments:{n:1// " </tool_call> inside comment\n}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    expect(tool.toolName).toBe("x");
+    expect(JSON.parse(tool.input)).toEqual({ n: 1 });
+  });
+
+  it("does not treat a nested RJSON property matching a custom start delimiter as nested in streams", async () => {
+    const protocol = hermesProtocol({
+      toolCallStart: "name:",
+      toolCallEnd: "END",
+    });
+    const transformer = protocol.createStreamParser({ tools: [] });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: 'name:{name:"ok",arguments:{name:{a:1}}}END',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const toolCall = out.find((c) => c.type === "tool-call") as any;
+    expect(toolCall).toBeTruthy();
+    expect(toolCall.toolName).toBe("ok");
+    expect(JSON.parse(toolCall.input)).toEqual({ name: { a: 1 } });
+  });
+
   it("reports and optionally emits raw text when recovering after a malformed nested start", async () => {
     const onError = vi.fn();
     const protocol = hermesProtocol();

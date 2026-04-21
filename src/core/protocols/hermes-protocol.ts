@@ -25,6 +25,7 @@ interface HermesProtocolOptions {
 }
 
 const RJSON_IDENTIFIER_CHAR_REGEX = /[$a-zA-Z0-9_\-+.*?!|&%^/#\\]/;
+const RJSON_NUMBER_TOKEN_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
 function validateNonEmptyDelimiters(
   toolCallStart: string,
@@ -43,14 +44,40 @@ function isRjsonIdentifierChar(ch: string | undefined): boolean {
   return ch != null && RJSON_IDENTIFIER_CHAR_REGEX.test(ch);
 }
 
-function startsRjsonComment(json: string, index: number): boolean {
-  if (isRjsonIdentifierChar(json[index - 1])) {
-    return false;
+function previousRjsonToken(json: string, index: number): string {
+  let start = index - 1;
+  while (start >= 0 && isRjsonIdentifierChar(json[start])) {
+    start -= 1;
+  }
+  return json.slice(start + 1, index);
+}
+
+function previousTokenAllowsComment(json: string, index: number): boolean {
+  const previous = previousRjsonToken(json, index);
+  if (previous.length === 0) {
+    return true;
   }
   return (
-    (json[index] === "/" && json[index + 1] === "/") ||
-    (json[index] === "/" && json[index + 1] === "*")
+    RJSON_NUMBER_TOKEN_REGEX.test(previous) ||
+    previous === "true" ||
+    previous === "false" ||
+    previous === "null"
   );
+}
+
+function startsRjsonComment(json: string, index: number): boolean {
+  if (
+    !(
+      (json[index] === "/" && json[index + 1] === "/") ||
+      (json[index] === "/" && json[index + 1] === "*")
+    )
+  ) {
+    return false;
+  }
+  if (isRjsonIdentifierChar(json[index - 1])) {
+    return previousTokenAllowsComment(json, index);
+  }
+  return true;
 }
 
 /**
@@ -120,13 +147,24 @@ function isInsideRjsonStringOrComment(json: string): boolean {
  * tags that indicate the current tool call's `</tool_call>` actually belongs
  * to a later tool call (i.e. the current call is orphaned / malformed).
  */
+function hasNestedStartBoundary(segment: string, startIndex: number): boolean {
+  const previous = segment[startIndex - 1];
+  return (
+    previous == null ||
+    WHITESPACE_JSON_REGEX.test(previous) ||
+    !(isRjsonIdentifierChar(previous) || previous === "{" || previous === "[")
+  );
+}
+
 function isLikelyNestedToolCallStart(
   segment: string,
   startIndex: number,
   startTag: string
 ): boolean {
   const jsonStart = skipJsonWhitespace(segment, startIndex + startTag.length);
-  return segment[jsonStart] === "{";
+  return (
+    segment[jsonStart] === "{" && hasNestedStartBoundary(segment, startIndex)
+  );
 }
 
 function findOuterToolCallStartIndex(

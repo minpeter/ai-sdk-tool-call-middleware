@@ -46,4 +46,22 @@ describe("hermesProtocol options", () => {
       text,
     ]);
   });
+
+  it("does not treat a nested RJSON property matching a custom start delimiter as nested", () => {
+    const protocol = hermesProtocol({
+      toolCallStart: "name:",
+      toolCallEnd: "END",
+    });
+
+    const text = 'name:{name:"ok",arguments:{name:{a:1}}}END';
+    const out = protocol.parseGeneratedText({ text, tools: [] });
+    const toolCall = out.find((part) => part.type === "tool-call") as any;
+
+    expect(toolCall).toBeTruthy();
+    expect(toolCall.toolName).toBe("ok");
+    expect(JSON.parse(toolCall.input)).toEqual({ name: { a: 1 } });
+    expect(protocol.extractToolCallSegments?.({ text, tools: [] })).toEqual([
+      text,
+    ]);
+  });
 });
