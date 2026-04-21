@@ -515,6 +515,8 @@ function processToolCallJson(
       input: canonicalizeToolInput(parsedToolCall.arguments),
     });
   } catch (error) {
+    const salvagedToolName =
+      extractStreamingToolCallProgress(toolCallJson).toolName;
     logParseFailure({
       phase: "generated-text",
       reason: "Failed to parse tool call JSON segment",
@@ -523,7 +525,12 @@ function processToolCallJson(
     });
     options?.onError?.(
       "Could not process JSON tool call, keeping original text.",
-      { toolCall: fullMatch, error }
+      {
+        toolCall: fullMatch,
+        error,
+        toolName: salvagedToolName,
+        dropReason: "malformed-tool-call-body",
+      }
     );
     processedElements.push({ type: "text", text: fullMatch });
   }
@@ -1126,6 +1133,10 @@ function emitToolCall(context: TagProcessingContext) {
   } catch (error) {
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
+    const streamingToolCallId = state.activeToolInput?.id;
+    const streamingToolName =
+      state.activeToolInput?.toolName ??
+      extractStreamingToolCallProgress(state.currentToolCallJson).toolName;
 
     logParseFailure({
       phase: "stream",
@@ -1156,6 +1167,9 @@ function emitToolCall(context: TagProcessingContext) {
         : "Could not process streaming JSON tool call.",
       {
         toolCall: errorContent,
+        toolCallId: streamingToolCallId,
+        toolName: streamingToolName,
+        dropReason: "malformed-tool-call-body",
       }
     );
   }

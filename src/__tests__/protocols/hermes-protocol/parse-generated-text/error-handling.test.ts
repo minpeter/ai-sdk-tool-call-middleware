@@ -18,4 +18,51 @@ describe("protocol error paths", () => {
       .join("");
     expect(rejoined).toContain("<tool_call>{invalid}</tool_call>");
   });
+
+  it("hermesProtocol parseGeneratedText onError metadata includes toolName and malformed-tool-call-body dropReason", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"bash","arguments": not valid json here}</tool_call>';
+    p.parseGeneratedText({ text, tools: [], options: { onError } });
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [message, metadata] = onError.mock.calls[0];
+    expect(message).toContain("Could not process JSON tool call");
+    expect(metadata).toMatchObject({
+      toolName: "bash",
+      dropReason: "malformed-tool-call-body",
+    });
+    expect(typeof metadata.toolCall).toBe("string");
+    expect(metadata.toolCall).toContain("<tool_call>");
+  });
+
+  it("hermesProtocol parseGeneratedText onError leaves toolName undefined when name is missing but still populates dropReason", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text = "<tool_call>{not even a name key}</tool_call>";
+    p.parseGeneratedText({ text, tools: [], options: { onError } });
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [, metadata] = onError.mock.calls[0];
+    expect(metadata).toMatchObject({
+      dropReason: "malformed-tool-call-body",
+    });
+    expect(metadata.toolName).toBeUndefined();
+  });
+
+  it("hermesProtocol parseGeneratedText does NOT recover JSON with unescaped double quotes (#298 proposal-2 not implemented)", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"}}</tool_call>';
+    const out = p.parseGeneratedText({ text, tools: [], options: { onError } });
+    const toolCalls = out.filter((e) => e.type === "tool-call");
+    expect(toolCalls).toHaveLength(0);
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [, metadata] = onError.mock.calls[0];
+    expect(metadata.dropReason).toBe("malformed-tool-call-body");
+    const rejoined = out
+      .map((x) => (x.type === "text" ? (x as any).text : ""))
+      .join("");
+    expect(rejoined).toBe(text);
+  });
 });
