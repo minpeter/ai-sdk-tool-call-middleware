@@ -1,5 +1,14 @@
 # @ai-sdk-tool/parser
 
+## 4.1.21
+
+### Patch Changes
+
+- 19b985a: fix: align `onError` parse-fail metadata across all four protocols (Hermes, morph-xml, yaml-xml, qwen3coder). Malformed tool-call bodies now uniformly report `{ toolCall, toolName, toolCallId, dropReason: "malformed-tool-call-body" }`; unresolvable tool names in qwen3coder streaming report `dropReason: "unresolved-tool-name"`. Underlying YAML helper failures are no longer surfaced as separate `onError` calls — they are attached as a `cause: { kind: "yaml-parse-error" | "yaml-non-mapping", ... }` field on the single uniform outer `onError` call, so consumers can ship one recovery handler across every protocol. Complements the existing `unfinished-tool-call` and `malformed-nested-tool-call` reasons from #296 and #299
+- 2e173e1: fix: skip `</tool_call>` end tags inside JSON string values
+- 60e620d: fix: normalize raw control characters in JSON string values before parsing
+- 091844d: feat: add streaming dropped-tool-call metadata to onError
+
 ## 4.1.20
 
 ### Patch Changes
