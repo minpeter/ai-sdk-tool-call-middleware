@@ -67,8 +67,8 @@ importers:
         specifier: 6.0.3
         version: 6.0.3
       ultracite:
-        specifier: 7.6.0
-        version: 7.6.0(oxlint@1.38.0)
+        specifier: 7.6.1
+        version: 7.6.1(oxlint@1.38.0)
       vitest:
         specifier: ^4.1.5
         version: 4.1.5(@opentelemetry/api@1.9.0)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.5)(vite@7.3.1(@types/node@25.6.0)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
@@ -2194,8 +2194,8 @@ packages:
   ufo@1.6.3:
     resolution: {integrity: sha512-yDJTmhydvl5lJzBmy/hyOAA0d+aqCBuwl818haVdYCRrWV84o7YyeVm4QlVHStqNrrJSTb6jKuFAVqAFsr+K3Q==}
 
-  ultracite@7.6.0:
-    resolution: {integrity: sha512-i8Pmi7Tgtku00/4od12nLiLjgO92+DmuRWTIFApe4f6n8osYT98QLcEdsf7xpJiZflyc8gsONWbFw0RvhO9QzQ==}
+  ultracite@7.6.1:
+    resolution: {integrity: sha512-flfiWIwxiBFLgRed6yHQOAOpBvwtvwdpSO5YWj5txmpbUutZOADqCX7WZDtAFG+BlttYkwvRD9lyewQWyPQ1vA==}
     hasBin: true
     peerDependencies:
       oxfmt: '>=0.1.0'
@@ -4405,7 +4405,7 @@ snapshots:
 
   ufo@1.6.3: {}
 
-  ultracite@7.6.0(oxlint@1.38.0):
+  ultracite@7.6.1(oxlint@1.38.0):
     dependencies:
       '@clack/prompts': 1.2.0
       commander: 14.0.3
