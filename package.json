@@ -67,7 +67,7 @@
   },
   "devDependencies": {
     "@ai-sdk/openai-compatible": "2.0.41",
-    "@biomejs/biome": "2.4.12",
+    "@biomejs/biome": "2.4.13",
     "@changesets/cli": "2.31.0",
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.5",
@@ -80,7 +80,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "6.0.3",
-    "ultracite": "7.6.0",
+    "ultracite": "7.6.1",
     "vitest": "^4.1.5",
     "zod": "^4.3.6"
   },
