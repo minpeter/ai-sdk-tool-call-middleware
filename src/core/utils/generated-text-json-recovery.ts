@@ -39,7 +39,7 @@ function parseJsonCandidate(candidateText: string): unknown {
   try {
     return parseRJSON(candidateText);
   } catch {
-    return undefined;
+    return;
   }
 }
 

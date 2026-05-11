@@ -940,7 +940,7 @@ function parseQwen3CoderToolParserClosedMatches(
   | undefined {
   const callBlockMatches = Array.from(inner.matchAll(CALL_BLOCK_RE));
   if (callBlockMatches.length === 0) {
-    return undefined;
+    return;
   }
 
   const closedBlocks: string[] = [];
@@ -1018,12 +1018,12 @@ export function extractQwen3CoderToolNameFromMarkup(
 ): string | undefined {
   const match = markup.match(QWEN3CODER_TOOL_NAME_SALVAGE_REGEX);
   if (!match) {
-    return undefined;
+    return;
   }
   const name =
     match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6];
   if (!name) {
-    return undefined;
+    return;
   }
   const trimmed = name.trim();
   return trimmed.length > 0 ? trimmed : undefined;
@@ -1391,9 +1391,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       return true;
     };
 
-    const tryParseCallBlocksWithoutWrapper = (): boolean => {
-      return tryParseCallBlocksWithoutWrapperText(text);
-    };
+    const tryParseCallBlocksWithoutWrapper = (): boolean =>
+      tryParseCallBlocksWithoutWrapperText(text);
 
     const tryParseSingleFunctionCall = (): boolean => {
       const lowerText = text.toLowerCase();
