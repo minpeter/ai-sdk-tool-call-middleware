@@ -71,7 +71,9 @@ describe("extractQwen3CoderToolNameFromMarkup: covers every inner call-tag shape
   describe("bare-shorthand character class matches the parser's accepted chars", () => {
     it("accepts hyphen", () => {
       expect(
-        extractQwen3CoderToolNameFromMarkup("<function=get-weather>body</function>")
+        extractQwen3CoderToolNameFromMarkup(
+          "<function=get-weather>body</function>"
+        )
       ).toBe("get-weather");
     });
 
@@ -119,7 +121,9 @@ describe("extractQwen3CoderToolNameFromMarkup: covers every inner call-tag shape
   describe("whitespace handling", () => {
     it("trims surrounding whitespace in attribute values", () => {
       expect(
-        extractQwen3CoderToolNameFromMarkup('<function="  alpha  ">body</function>')
+        extractQwen3CoderToolNameFromMarkup(
+          '<function="  alpha  ">body</function>'
+        )
       ).toBe("alpha");
     });
 
@@ -131,7 +135,9 @@ describe("extractQwen3CoderToolNameFromMarkup: covers every inner call-tag shape
 
     it("accepts whitespace around the shorthand equals sign", () => {
       expect(
-        extractQwen3CoderToolNameFromMarkup('<function = "alpha">body</function>')
+        extractQwen3CoderToolNameFromMarkup(
+          '<function = "alpha">body</function>'
+        )
       ).toBe("alpha");
     });
   });

@@ -227,7 +227,7 @@ function toValidatedInputExamples(
   toolIndex: number
 ): Array<{ input: JSONObject }> | undefined {
   if (value === undefined) {
-    return undefined;
+    return;
   }
 
   if (!Array.isArray(value)) {

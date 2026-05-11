@@ -666,10 +666,10 @@ function extractTopLevelStringProperty(
 ): string | undefined {
   const valueStart = findTopLevelPropertyValueStart(text, property);
   if (valueStart == null || valueStart >= text.length) {
-    return undefined;
+    return;
   }
   if (text.charAt(valueStart) !== '"') {
-    return undefined;
+    return;
   }
 
   let valueEnd = valueStart + 1;
@@ -686,7 +686,7 @@ function extractTopLevelStringProperty(
     valueEnd += 1;
   }
 
-  return undefined;
+  return;
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Streaming JSON value slicing must handle nested arrays/objects and escaped strings.
@@ -900,7 +900,7 @@ function canonicalizeArgumentsProgressInput(
   tools: LanguageModelV3FunctionTool[]
 ): string | undefined {
   if (progress.argumentsText === undefined || !progress.argumentsComplete) {
-    return undefined;
+    return;
   }
 
   try {
@@ -914,7 +914,7 @@ function canonicalizeArgumentsProgressInput(
       fallback: canonicalizeToolInput,
     });
   } catch {
-    return undefined;
+    return;
   }
 }
 
@@ -1047,8 +1047,7 @@ function emitIncompleteToolCall(
   // them directly; otherwise fall back to re-scanning the raw JSON for the name
   // and generating a fresh correlation id so consumers always receive the
   // uniform { toolCall, toolCallId, toolName, dropReason } recovery shape.
-  const streamingToolCallId =
-    state.activeToolInput?.id ?? generateToolCallId();
+  const streamingToolCallId = state.activeToolInput?.id ?? generateToolCallId();
   const streamingToolName = state.activeToolInput?.toolName;
   closeToolInput(state, controller);
   const toolName =
