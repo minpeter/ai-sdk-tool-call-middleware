@@ -495,10 +495,344 @@ function normalizeJsonStringCtrl(json: string): string {
   return parts.join("");
 }
 
+/**
+ * Extract known argument key names from the tool schema matching the
+ * tool name found in a (possibly malformed) JSON string.
+ */
+function extractKnownArgKeys(
+  tools: LanguageModelV3FunctionTool[],
+  toolCallJson: string
+): string[] | undefined {
+  const toolName = extractTopLevelStringProperty(toolCallJson, "name");
+  if (!toolName) {
+    return undefined;
+  }
+  const tool = tools.find((t) => t.name === toolName);
+  if (!tool?.inputSchema?.properties) {
+    return undefined;
+  }
+  return Object.keys(tool.inputSchema.properties as Record<string, unknown>);
+}
+
+/** Maximum size (in UTF-16 code units) for the arguments body before bailing out of repair. */
+const REPAIR_MAX_ARGS_BODY_SIZE = 102_400;
+
+const WHITESPACE_RE = /\s/;
+const FIRST_KEY_RE = /^\s*"([^"]+)"\s*:\s*/;
+const KV_PATTERN_RE = /,\s*"([^"]+)"\s*:\s*/g;
+const TRAILING_COMMA_RE = /,\s*$/;
+
+/**
+ * Returns true if `position` in `argsBody` is at nesting depth 0
+ * (not inside a nested `{}` or `[]`).
+ */
+function isAtTopLevel(argsBody: string, position: number): boolean {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < position; i++) {
+    const ch = argsBody[i];
+    if (esc) {
+      esc = false;
+      continue;
+    }
+    if (ch === "\\" && inStr) {
+      esc = true;
+      continue;
+    }
+    if (ch === '"') {
+      inStr = !inStr;
+      continue;
+    }
+    if (!inStr) {
+      if (ch === "{" || ch === "[") {
+        depth++;
+      }
+      if (ch === "}" || ch === "]") {
+        depth--;
+      }
+    }
+  }
+  return depth === 0;
+}
+
+/**
+ * Attempt to repair a malformed tool-call JSON string where the model
+ * failed to escape double-quotes inside string values.  Returns the
+ * parsed result or null when repair is not possible.
+ *
+ * Scope: this path assumes strict JSON structure (double-quoted keys and
+ * string values, per-value `JSON.parse`). Relaxed-JSON malformation
+ * (unquoted keys, single-quoted strings, comments) is out of scope — such
+ * input returns null and the caller falls through to the text segment path,
+ * matching pre-repair behavior.
+ */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: JSON repair requires manual character-level scanning with multiple heuristic passes.
+function repairToolCallJson(
+  raw: string,
+  knownArgKeys?: string[]
+): { name: string; arguments: Record<string, unknown> } | null {
+  // 1. Extract tool name (depth-aware to avoid matching nested "name" keys)
+  const toolName = extractTopLevelStringProperty(raw, "name");
+  if (!toolName) {
+    return null;
+  }
+
+  // 2. Find arguments object boundaries (top-level aware, like name extraction)
+  const argsValueStart = findTopLevelPropertyValueStart(raw, "arguments");
+  if (argsValueStart == null || raw.charAt(argsValueStart) !== "{") {
+    return null;
+  }
+  const argsStart = argsValueStart + 1;
+
+  // 3. Find closing braces from end (arguments + outer object).
+  //    Uses backwards scan because forward brace-balance is unreliable
+  //    when quotes are broken (which is the premise of this repair path).
+  let outerClose = -1;
+  for (let i = raw.length - 1; i >= argsStart; i--) {
+    if (raw.charAt(i) === "}") {
+      outerClose = i;
+      break;
+    }
+    if (!WHITESPACE_RE.test(raw.charAt(i))) {
+      break;
+    }
+  }
+  if (outerClose === -1) {
+    return null;
+  }
+
+  let argsClose = -1;
+  for (let j = outerClose - 1; j >= argsStart; j--) {
+    if (raw.charAt(j) === "}") {
+      argsClose = j;
+      break;
+    }
+    if (!WHITESPACE_RE.test(raw.charAt(j))) {
+      break;
+    }
+  }
+  if (argsClose === -1) {
+    return null;
+  }
+
+  const argsBody = raw.slice(argsStart, argsClose);
+
+  // Size guard: bail out on unreasonably large argument bodies
+  if (argsBody.length > REPAIR_MAX_ARGS_BODY_SIZE) {
+    return null;
+  }
+
+  // 4. Try standard parse first
+  try {
+    return {
+      name: toolName,
+      arguments: JSON.parse(`{${argsBody}}`) as Record<string, unknown>,
+    };
+  } catch {
+    /* fall through to repair */
+  }
+
+  // 5. Collect key positions
+  const firstKeyMatch = argsBody.match(FIRST_KEY_RE);
+  if (!firstKeyMatch) {
+    return null;
+  }
+  let allKeys: Array<{
+    key: string;
+    matchStart: number;
+    valueStart: number;
+  }> = [
+    {
+      key: firstKeyMatch[1],
+      matchStart: 0,
+      valueStart: firstKeyMatch[0].length,
+    },
+  ];
+  for (const m of argsBody.matchAll(KV_PATTERN_RE)) {
+    allKeys.push({
+      key: m[1],
+      matchStart: m.index,
+      valueStart: m.index + m[0].length,
+    });
+  }
+
+  // 5b. Filter candidates to prevent false boundary splits.
+  //     Boundary detection always uses top-level position — dropping
+  //     schema-unknown keys from the candidate list corrupts neighbouring
+  //     value slices, because their ,"extra":... text gets merged into
+  //     the previous value. Schema filtering is applied later when
+  //     assigning parsed values into args (step 8 below).
+  const knownKeySet =
+    knownArgKeys && knownArgKeys.length > 0 ? new Set(knownArgKeys) : null;
+  allKeys = allKeys.filter(
+    (entry) =>
+      entry.matchStart === 0 || isAtTopLevel(argsBody, entry.matchStart)
+  );
+
+  // 7. Handle duplicate key names with scoring heuristic
+  const firstByKey: Record<string, number> = {};
+  const lastByKey: Record<string, number> = {};
+  for (let idx = 0; idx < allKeys.length; idx++) {
+    if (!(allKeys[idx].key in firstByKey)) {
+      firstByKey[allKeys[idx].key] = idx;
+    }
+    lastByKey[allKeys[idx].key] = idx;
+  }
+  const firstPositions = allKeys.filter(
+    (_, i) => firstByKey[allKeys[i].key] === i
+  );
+  const lastPositions = allKeys.filter(
+    (_, i) => lastByKey[allKeys[i].key] === i
+  );
+
+  let keyPositions: typeof allKeys;
+  if (
+    firstPositions.length === lastPositions.length &&
+    firstPositions.every(
+      (fp, i) => fp.matchStart === lastPositions[i].matchStart
+    )
+  ) {
+    keyPositions = firstPositions;
+  } else {
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Scoring heuristic requires multi-stage fallback parsing.
+    function scorePositions(positions: typeof allKeys): [number, number] {
+      let rawOk = 0;
+      let repaired = 0;
+      for (let si = 0; si < positions.length; si++) {
+        const svs = positions[si].valueStart;
+        const sve =
+          si + 1 < positions.length
+            ? positions[si + 1].matchStart
+            : argsBody.length;
+        const srv = argsBody.slice(svs, sve).replace(TRAILING_COMMA_RE, "");
+        try {
+          JSON.parse(srv);
+          rawOk++;
+          continue;
+        } catch {
+          /* skip */
+        }
+        if (srv.charAt(0) === '"') {
+          let seq = srv.length - 1;
+          while (seq > 0 && srv.charAt(seq) !== '"') {
+            seq--;
+          }
+          if (seq > 0) {
+            const sinner = srv.slice(1, seq);
+            let sesc = "";
+            let sbs = 0;
+            for (const sch of sinner) {
+              if (sch === "\\") {
+                sbs++;
+                sesc += sch;
+              } else if (sch === '"' && sbs % 2 === 0) {
+                sbs = 0;
+                sesc += '\\"';
+              } else {
+                sbs = 0;
+                sesc += sch;
+              }
+            }
+            sesc = sesc
+              .replace(/\n/g, "\\n")
+              .replace(/\r/g, "\\r")
+              .replace(/\t/g, "\\t");
+            try {
+              JSON.parse(`"${sesc}"`);
+              repaired++;
+            } catch {
+              /* skip */
+            }
+          }
+        }
+      }
+      return [rawOk, repaired];
+    }
+    const fs = scorePositions(firstPositions);
+    const ls = scorePositions(lastPositions);
+    keyPositions =
+      ls[0] > fs[0] || (ls[0] === fs[0] && ls[1] > fs[1])
+        ? lastPositions
+        : firstPositions;
+  }
+  allKeys = keyPositions;
+  if (allKeys.length === 0) {
+    return null;
+  }
+
+  // 8. Repair each value by escaping unescaped quotes.
+  //    Schema-unknown keys are skipped here (their slice was still needed
+  //    for correct boundary detection in step 5b).
+  const args: Record<string, unknown> = {};
+  for (let i = 0; i < allKeys.length; i++) {
+    const kp = allKeys[i];
+    if (knownKeySet && !knownKeySet.has(kp.key)) {
+      continue;
+    }
+    const vs = kp.valueStart;
+    const ve =
+      i + 1 < allKeys.length ? allKeys[i + 1].matchStart : argsBody.length;
+    const rv = argsBody.slice(vs, ve).replace(TRAILING_COMMA_RE, "");
+    try {
+      args[kp.key] = JSON.parse(rv);
+      continue;
+    } catch {
+      /* needs repair */
+    }
+    if (rv.charAt(0) === '"') {
+      let eq = rv.length - 1;
+      while (eq > 0 && rv.charAt(eq) !== '"') {
+        eq--;
+      }
+      if (eq <= 0) {
+        // String literal with no closing quote — repair cannot handle this
+        return null;
+      }
+      const inner = rv.slice(1, eq);
+      let esc = "";
+      let bs = 0;
+      for (const ch of inner) {
+        if (ch === "\\") {
+          bs++;
+          esc += ch;
+        } else if (ch === '"' && bs % 2 === 0) {
+          bs = 0;
+          esc += '\\"';
+        } else {
+          bs = 0;
+          esc += ch;
+        }
+      }
+      esc = esc
+        .replace(/\n/g, "\\n")
+        .replace(/\r/g, "\\r")
+        .replace(/\t/g, "\\t");
+      try {
+        args[kp.key] = JSON.parse(`"${esc}"`);
+      } catch {
+        // Repaired string still invalid — bail out
+        return null;
+      }
+    } else {
+      // Non-string value that failed JSON.parse — repair cannot handle this
+      return null;
+    }
+  }
+  // Guard: if the schema filter skipped every parsed key, we have nothing
+  // meaningful to emit. Returning {arguments: {}} here would trigger a
+  // tool invocation with empty args — worse than reporting parse failure.
+  if (knownKeySet && Object.keys(args).length === 0) {
+    return null;
+  }
+  return { name: toolName, arguments: args };
+}
+
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
   processedElements: LanguageModelV3Content[],
+  tools: LanguageModelV3FunctionTool[],
   options?: ParserOptions
 ) {
   try {
@@ -515,6 +849,20 @@ function processToolCallJson(
       input: canonicalizeToolInput(parsedToolCall.arguments),
     });
   } catch (error) {
+    // Attempt repair for unescaped quotes
+    const repaired = repairToolCallJson(
+      toolCallJson,
+      extractKnownArgKeys(tools, toolCallJson)
+    );
+    if (repaired) {
+      processedElements.push({
+        type: "tool-call",
+        toolCallId: generateToolCallId(),
+        toolName: repaired.name,
+        input: canonicalizeToolInput(repaired.arguments),
+      });
+      return;
+    }
     const salvagedToolName =
       extractStreamingToolCallProgress(toolCallJson).toolName;
     const salvagedToolCallId = generateToolCallId();
@@ -1010,7 +1358,9 @@ function emitIncompleteToolCall(
       state.isInsideToolCall = false;
       return;
     } catch {
-      // fall through to text fallback
+      // Incomplete tool calls (no closing </tool_call>) are not candidates
+      // for repair — the JSON may be genuinely truncated.
+      // Fall through to text/error fallback.
     }
   }
 
@@ -1135,6 +1485,16 @@ function emitToolCall(context: TagProcessingContext) {
     };
     emitToolCallFromParsed(state, controller, parsedToolCall, tools);
   } catch (error) {
+    // Attempt repair for unescaped quotes
+    const repaired = repairToolCallJson(
+      state.currentToolCallJson,
+      extractKnownArgKeys(tools, state.currentToolCallJson)
+    );
+    if (repaired) {
+      emitToolCallFromParsed(state, controller, repaired, tools);
+      return;
+    }
+
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
     const streamingToolCallId =
@@ -1411,6 +1771,7 @@ export const hermesProtocol = ({
 
   parseGeneratedText({
     text,
+    tools,
     options,
   }: {
     text: string;
@@ -1457,7 +1818,13 @@ export const hermesProtocol = ({
         );
       }
 
-      processToolCallJson(toolCallJson, fullMatch, processedElements, options);
+      processToolCallJson(
+        toolCallJson,
+        fullMatch,
+        processedElements,
+        tools,
+        options
+      );
       currentIndex = span.endIdx + toolCallEnd.length;
       searchFrom = currentIndex;
     }
