@@ -1,5 +1,13 @@
 # @ai-sdk-tool/parser
 
+## 4.1.24
+
+### Patch Changes
+
+- ced3966: deps: bump `@ai-sdk/openai` from `3.0.64` to `3.0.65` (#323)
+
+  - `@ai-sdk/openai`: `3.0.64` → `3.0.65`
+
 ## 4.1.23
 
 ### Patch Changes
