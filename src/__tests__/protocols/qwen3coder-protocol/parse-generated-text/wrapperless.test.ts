@@ -13,7 +13,7 @@ describe("qwen3CoderProtocol", () => {
     const calls = out.filter((part) => part.type === "tool-call");
     expect(calls).toHaveLength(1);
     const call = calls[0];
-    if (!call || call.type !== "tool-call") {
+    if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
     expect(call.toolName).toBe("alpha");
@@ -22,7 +22,7 @@ describe("qwen3CoderProtocol", () => {
     const texts = out.filter((part) => part.type === "text");
     expect(texts).toHaveLength(1);
     const textPart = texts[0];
-    if (!textPart || textPart.type !== "text") {
+    if (textPart?.type !== "text") {
       throw new Error("Expected text part");
     }
     expect(textPart.text).toBe("<tool_call");
@@ -125,7 +125,7 @@ describe("qwen3CoderProtocol", () => {
     expect(rejoinedText).not.toContain("</tool_call>");
 
     const call = out.find((part) => part.type === "tool-call");
-    if (!call || call.type !== "tool-call") {
+    if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
     expect(call.toolName).toBe("alpha");
