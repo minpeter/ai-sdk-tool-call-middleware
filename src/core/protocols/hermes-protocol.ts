@@ -525,6 +525,7 @@ interface ArgumentKeyPolicy {
   keyPatterns: RegExp[];
   knownKeys: Set<string>;
   rejectAll: boolean;
+  rejectNonRecordArguments: boolean;
   schema: unknown;
   unsafeDeniedPatterns: string[];
 }
@@ -547,6 +548,7 @@ function extractArgumentKeyPolicy(
       keyPatterns: [],
       knownKeys: new Set(),
       rejectAll: true,
+      rejectNonRecordArguments: true,
       schema,
       unsafeDeniedPatterns: [],
     };
@@ -591,6 +593,7 @@ function extractArgumentKeyPolicy(
         .map(([key]) => key)
     ),
     rejectAll: false,
+    rejectNonRecordArguments: schema.additionalProperties === false,
     schema,
     unsafeDeniedPatterns,
   };
@@ -981,6 +984,9 @@ function applyToolArgumentKeyPolicy(
     return null;
   }
   if (!isRecord(args)) {
+    if (keyPolicy?.rejectNonRecordArguments) {
+      return null;
+    }
     return { args };
   }
   const policyArgs = applyArgumentKeyPolicy(args, keyPolicy);

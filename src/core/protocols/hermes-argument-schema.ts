@@ -49,7 +49,11 @@ function isObjectSchema(schema: Record<string, unknown>): boolean {
 }
 
 function isArraySchema(schema: Record<string, unknown>): boolean {
-  return getSchemaType(schema) === "array" || Array.isArray(schema.prefixItems);
+  return (
+    getSchemaType(schema) === "array" ||
+    Array.isArray(schema.prefixItems) ||
+    Array.isArray(schema.items)
+  );
 }
 
 function explicitSchemaTypes(schema: Record<string, unknown>): string[] {
@@ -84,10 +88,44 @@ function valueMatchesSchemaType(value: unknown, schemaType: string): boolean {
   }
 }
 
+function jsonValuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) {
+    return true;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((item, index) => jsonValuesEqual(item, right[index]))
+    );
+  }
+  if (!isRecord(left) || !isRecord(right)) {
+    return false;
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) => Object.hasOwn(right, key) && jsonValuesEqual(left[key], right[key])
+    )
+  );
+}
+
 function valueMatchesSchemaKind(
   value: unknown,
   schema: Record<string, unknown>
 ): boolean {
+  if (Object.hasOwn(schema, "const") && !jsonValuesEqual(value, schema.const)) {
+    return false;
+  }
+  if (
+    Array.isArray(schema.enum) &&
+    !schema.enum.some((allowed) => jsonValuesEqual(value, allowed))
+  ) {
+    return false;
+  }
   const schemaTypes = explicitSchemaTypes(schema);
   if (schemaTypes.length > 0) {
     return schemaTypes.some((schemaType) =>
@@ -200,12 +238,19 @@ function arrayMatchesSchemaKeyShape(
   seen: Set<object>,
   enforceValueKinds: boolean
 ): boolean {
-  const prefixItems = Array.isArray(schema.prefixItems)
+  const tupleItems = Array.isArray(schema.prefixItems)
     ? schema.prefixItems
-    : undefined;
-  if (prefixItems) {
+    : Array.isArray(schema.items)
+      ? schema.items
+      : undefined;
+  if (tupleItems) {
     return value.every((item, index) => {
-      const itemSchema = prefixItems[index] ?? schema.items;
+      const itemSchema =
+        tupleItems[index] ??
+        (Array.isArray(schema.items) ? schema.additionalItems : schema.items);
+      if (itemSchema === false) {
+        return false;
+      }
       return argumentValueMatchesSchemaKeyShape(
         item,
         itemSchema,
@@ -294,6 +339,12 @@ export function argumentValueMatchesSchemaKeyShape(
     seen.add(value);
   }
   if (!schemaCombinatorsMatch(value, unwrapped, seen)) {
+    return false;
+  }
+  if (isObjectSchema(unwrapped) && !isRecord(value)) {
+    return false;
+  }
+  if (isArraySchema(unwrapped) && !Array.isArray(value)) {
     return false;
   }
   if (Array.isArray(value)) {

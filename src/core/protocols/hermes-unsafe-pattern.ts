@@ -5,6 +5,7 @@ interface CharacterClassRange {
 
 interface PatternCharacterHints {
   hasUnknownMatcher: boolean;
+  literalRuns: string[];
   literals: Set<string>;
   ranges: CharacterClassRange[];
 }
@@ -21,6 +22,13 @@ function pushCharacterClassRange(
   if (start.length === 1 && end.length === 1) {
     ranges.push({ start, end });
   }
+}
+
+function pushLiteralRun(hints: PatternCharacterHints, run: string): string {
+  if (run.length > 0) {
+    hints.literalRuns.push(run);
+  }
+  return "";
 }
 
 function readCharacterClassRangeEnd(
@@ -139,10 +147,12 @@ function addCharacterClassHints(
 function collectPatternCharacterHints(pattern: string): PatternCharacterHints {
   const hints: PatternCharacterHints = {
     hasUnknownMatcher: false,
+    literalRuns: [],
     literals: new Set<string>(),
     ranges: [],
   };
   let escaped = false;
+  let literalRun = "";
   for (let index = 0; index < pattern.length; index += 1) {
     const char = pattern.charAt(index);
     if (escaped) {
@@ -150,12 +160,19 @@ function collectPatternCharacterHints(pattern: string): PatternCharacterHints {
       if (literal) {
         if (isComparableKeyChar(literal.char)) {
           hints.literals.add(literal.char);
+          literalRun += literal.char;
+        } else {
+          literalRun = pushLiteralRun(hints, literalRun);
         }
         index = literal.nextIndex;
       } else if ("dDsSwWpP".includes(char)) {
+        literalRun = pushLiteralRun(hints, literalRun);
         hints.hasUnknownMatcher = true;
       } else if (isComparableKeyChar(char)) {
         hints.literals.add(char);
+        literalRun += char;
+      } else {
+        literalRun = pushLiteralRun(hints, literalRun);
       }
       escaped = false;
       continue;
@@ -165,17 +182,23 @@ function collectPatternCharacterHints(pattern: string): PatternCharacterHints {
       continue;
     }
     if (char === "[") {
+      literalRun = pushLiteralRun(hints, literalRun);
       index = addCharacterClassHints(pattern, index, hints);
       continue;
     }
     if (char === ".") {
+      literalRun = pushLiteralRun(hints, literalRun);
       hints.hasUnknownMatcher = true;
       continue;
     }
     if (isComparableKeyChar(char)) {
       hints.literals.add(char);
+      literalRun += char;
+    } else {
+      literalRun = pushLiteralRun(hints, literalRun);
     }
   }
+  pushLiteralRun(hints, literalRun);
   return hints;
 }
 
@@ -222,6 +245,9 @@ export function unsafeDeniedPatternMayMatchKey(
   }
   if (matching === 0) {
     return false;
+  }
+  if (hints.literalRuns.some((run) => run.length >= 2 && key.includes(run))) {
+    return true;
   }
   return (
     matching === comparable ||

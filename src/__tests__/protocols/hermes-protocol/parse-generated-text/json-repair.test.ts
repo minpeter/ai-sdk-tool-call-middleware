@@ -1089,6 +1089,31 @@ describe("parseGeneratedText JSON repair", () => {
     }
   });
 
+  it("rejects non-object arguments for object input schemas", () => {
+    const p = hermesProtocol();
+    const argumentBodies = ["[]", "null", '"x"'];
+    for (const argumentBody of argumentBodies) {
+      const onError = vi.fn();
+      const text = `<tool_call>{"name":"write","arguments":${argumentBody}}</tool_call>`;
+      const out = p.parseGeneratedText({
+        text,
+        tools: [
+          makeSchemaTool("write", {
+            type: "object",
+            properties: {
+              content: { type: "string" },
+            },
+            required: ["content"],
+            additionalProperties: false,
+          }),
+        ],
+        options: { onError },
+      });
+      expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+      expect(onError).toHaveBeenCalled();
+    }
+  });
+
   it("rejects unknown keys through strict allOf schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
@@ -1137,6 +1162,39 @@ describe("parseGeneratedText JSON repair", () => {
             ],
           },
         },
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects nested tuple item keys through draft-07 items arrays", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"rows":[{"value":"ok","secret":"leak"}]}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          rows: {
+            type: "array",
+            items: [
+              {
+                type: "object",
+                properties: {
+                  value: { type: "string" },
+                },
+                required: ["value"],
+                additionalProperties: false,
+              },
+            ],
+            additionalItems: false,
+          },
+        },
+        required: ["rows"],
         additionalProperties: false,
       }),
     ];
@@ -1250,6 +1308,45 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("accepts oneOf object branches distinguished by nested enum values", () => {
+    const p = hermesProtocol();
+    const tools = [
+      makeSchemaTool("edit", {
+        type: "object",
+        properties: {
+          payload: {
+            oneOf: [
+              {
+                type: "object",
+                properties: { value: { type: "string", enum: ["a"] } },
+                required: ["value"],
+                additionalProperties: false,
+              },
+              {
+                type: "object",
+                properties: { value: { type: "string", enum: ["b"] } },
+                required: ["value"],
+                additionalProperties: false,
+              },
+            ],
+          },
+        },
+        additionalProperties: false,
+      }),
+    ];
+    for (const value of ["a", "b"]) {
+      const onError = vi.fn();
+      const text = `<tool_call>{"name":"edit","arguments":{"payload":{"value":"${value}"}}}</tool_call>`;
+      const out = p.parseGeneratedText({ text, tools, options: { onError } });
+      const tool = out.find((x) => x.type === "tool-call");
+      expect(tool?.type).toBe("tool-call");
+      expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+        payload: { value },
+      });
+      expect(onError).not.toHaveBeenCalled();
+    }
+  });
+
   it("does not let primitive oneOf branches bypass object key constraints", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
@@ -1336,6 +1433,28 @@ describe("parseGeneratedText JSON repair", () => {
       note: "safe",
     });
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsafe false patternProperties that may match key substrings", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","x-secret":"blocked"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "(secret+)+": false,
+        },
+        additionalProperties: true,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
   });
 
   it("rejects keys that may match unsafe false patterns with escaped range endpoints", () => {
