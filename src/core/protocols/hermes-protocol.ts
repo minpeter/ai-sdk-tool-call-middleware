@@ -927,12 +927,12 @@ const FIRST_KEY_RE = /^\s*"([^"]+)"\s*:\s*/;
 const KV_PATTERN_RE = /,\s*"([^"]+)"\s*:\s*/g;
 const TRAILING_COMMA_RE = /,\s*$/;
 
-function getTopLevelPositionMap(argsBody: string): boolean[] {
-  const topLevelAtPosition = Array<boolean>(argsBody.length + 1);
+function getTopLevelPositionMap(argsBody: string): Uint8Array {
+  const topLevelAtPosition = new Uint8Array(argsBody.length + 1);
   let depth = 0;
   let inStr = false;
   let esc = false;
-  topLevelAtPosition[0] = true;
+  topLevelAtPosition[0] = 1;
   for (let i = 0; i < argsBody.length; i++) {
     const ch = argsBody[i];
     if (esc) {
@@ -949,7 +949,7 @@ function getTopLevelPositionMap(argsBody: string): boolean[] {
         depth--;
       }
     }
-    topLevelAtPosition[i + 1] = depth === 0;
+    topLevelAtPosition[i + 1] = depth === 0 ? 1 : 0;
   }
   return topLevelAtPosition;
 }
@@ -1068,7 +1068,7 @@ function repairToolCallJson(
   const topLevelAtPosition = getTopLevelPositionMap(argsBody);
   allKeys = allKeys.filter(
     (entry) =>
-      entry.matchStart === 0 || topLevelAtPosition[entry.matchStart]
+      entry.matchStart === 0 || topLevelAtPosition[entry.matchStart] === 1
   );
 
   // 7. Handle duplicate key names with scoring heuristic
