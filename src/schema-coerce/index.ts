@@ -19,7 +19,7 @@ export function unwrapJsonSchema(schema: unknown): unknown {
     return schema;
   }
   const s = schema as Record<string, unknown>;
-  if (s.jsonSchema && typeof s.jsonSchema === "object") {
+  if ("jsonSchema" in s) {
     return unwrapJsonSchema(s.jsonSchema);
   }
   return schema;

@@ -38,6 +38,20 @@ describe("parseGeneratedText JSON repair", () => {
     expect(args.content).toBe('He said "hello" to me');
   });
 
+  it("repairs unescaped quotes before a right brace character in a string", () => {
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"content":"He said "}" there"}}</tool_call>';
+    const tools = [makeTool("edit", { content: { type: "string" } }, false)];
+    const out = p.parseGeneratedText({ text, tools });
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    if (tool?.type !== "tool-call") {
+      throw new Error("Expected repaired tool call");
+    }
+    expect(JSON.parse(tool.input)).toEqual({ content: 'He said "}" there' });
+  });
+
   it("repairs multiple arguments with one having unescaped quotes", () => {
     const p = hermesProtocol();
     const text =
@@ -443,6 +457,19 @@ describe("parseGeneratedText JSON repair", () => {
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects unquoted prototype-sensitive RJSON keys after comments", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const tools = [makeTool("write", { content: { type: "string" } }, false)];
+    for (const prefix of ["/* comment */", "// comment\n"]) {
+      onError.mockClear();
+      const text = `<tool_call>{name:"write",arguments:{${prefix}__proto__:{polluted:true},content:"ok"}}</tool_call>`;
+      const out = p.parseGeneratedText({ text, tools, options: { onError } });
+      expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+      expect(onError).toHaveBeenCalled();
+    }
   });
 
   it("rejects escaped single-quoted strict RJSON prototype-sensitive argument keys", () => {
@@ -1006,6 +1033,26 @@ describe("parseGeneratedText JSON repair", () => {
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects top-level boolean false input schemas", () => {
+    const p = hermesProtocol();
+    const schemas: LanguageModelV3FunctionTool["inputSchema"][] = [
+      false,
+      { jsonSchema: false },
+    ];
+    for (const inputSchema of schemas) {
+      const onError = vi.fn();
+      const text =
+        '<tool_call>{"name":"deny","arguments":{"content":"ok"}}</tool_call>';
+      const out = p.parseGeneratedText({
+        text,
+        tools: [makeSchemaTool("deny", inputSchema)],
+        options: { onError },
+      });
+      expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+      expect(onError).toHaveBeenCalled();
+    }
   });
 
   it("rejects unknown keys through strict allOf schemas", () => {

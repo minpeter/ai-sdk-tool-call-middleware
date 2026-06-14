@@ -524,6 +524,7 @@ interface ArgumentKeyPolicy {
   deniedPatterns: RegExp[];
   keyPatterns: RegExp[];
   knownKeys: Set<string>;
+  rejectAll: boolean;
   schema: unknown;
   unsafeDeniedPatterns: string[];
 }
@@ -538,6 +539,18 @@ function extractArgumentKeyPolicy(
 ): ArgumentKeyPolicy | undefined {
   const tool = tools.find((t) => t.name === toolName);
   const schema = unwrapJsonSchema(tool?.inputSchema);
+  if (schema === false) {
+    return {
+      allowUnknownKeys: false,
+      deniedKeys: new Set(),
+      deniedPatterns: [],
+      keyPatterns: [],
+      knownKeys: new Set(),
+      rejectAll: true,
+      schema,
+      unsafeDeniedPatterns: [],
+    };
+  }
   if (!isRecord(schema)) {
     return undefined;
   }
@@ -577,6 +590,7 @@ function extractArgumentKeyPolicy(
         .filter(([, propertySchema]) => propertySchema !== false)
         .map(([key]) => key)
     ),
+    rejectAll: false,
     schema,
     unsafeDeniedPatterns,
   };
@@ -586,6 +600,9 @@ function applyArgumentKeyPolicy(
   args: Record<string, unknown>,
   keyPolicy?: ArgumentKeyPolicy
 ): Record<string, unknown> | null {
+  if (keyPolicy?.rejectAll) {
+    return null;
+  }
   if (containsPrototypeSensitiveArgumentKey(args)) {
     return null;
   }
@@ -811,13 +828,47 @@ function parseUnquotedObjectKey(text: string, keyStart: number): {
 function previousSignificantChar(text: string, index: number): string {
   let cursor = index - 1;
   while (cursor >= 0) {
-    const char = text.charAt(cursor);
-    if (!/\s/.test(char)) {
-      return char;
+    while (cursor >= 0 && /\s/.test(text.charAt(cursor))) {
+      cursor -= 1;
     }
-    cursor -= 1;
+    if (cursor < 0) {
+      return "";
+    }
+    if (text.charAt(cursor) === "/" && text.charAt(cursor - 1) === "*") {
+      const commentStart = text.lastIndexOf("/*", cursor - 2);
+      if (commentStart === -1) {
+        return "/";
+      }
+      cursor = commentStart - 1;
+      continue;
+    }
+    const lineStart = text.lastIndexOf("\n", cursor) + 1;
+    const lineCommentStart = text.lastIndexOf("//", cursor);
+    if (lineCommentStart >= lineStart) {
+      cursor = lineCommentStart - 1;
+      continue;
+    }
+    return text.charAt(cursor);
   }
   return "";
+}
+
+function skipJsonComment(text: string, index: number): number | null {
+  if (text.charAt(index) !== "/") {
+    return null;
+  }
+  const next = text.charAt(index + 1);
+  if (next === "/") {
+    const lf = text.indexOf("\n", index + 2);
+    const cr = text.indexOf("\r", index + 2);
+    const end = lf === -1 ? cr : cr === -1 ? lf : Math.min(lf, cr);
+    return end === -1 ? text.length - 1 : end - 1;
+  }
+  if (next === "*") {
+    const end = text.indexOf("*/", index + 2);
+    return end === -1 ? text.length - 1 : end + 1;
+  }
+  return null;
 }
 
 function collectObjectKeys(
@@ -848,6 +899,12 @@ function collectObjectKeys(
       continue;
     }
 
+    const commentEnd = skipJsonComment(text, index);
+    if (commentEnd !== null) {
+      index = commentEnd;
+      continue;
+    }
+
     if (char === "{") {
       depth += 1;
       continue;
@@ -870,11 +927,11 @@ function collectObjectKeys(
     }
 
     if (char !== '"' && char !== "'") {
-      if (
-        (previousSignificantChar(text, index) === "{" ||
-          previousSignificantChar(text, index) === ",") &&
-        isUnquotedRjsonKeyStart(char)
-      ) {
+      if (!isUnquotedRjsonKeyStart(char)) {
+        continue;
+      }
+      const previous = previousSignificantChar(text, index);
+      if (previous === "{" || previous === ",") {
         const parsedKey = parseUnquotedObjectKey(text, index);
         if (!parsedKey) {
           return null;
@@ -954,6 +1011,53 @@ function getTopLevelPositionMap(argsBody: string): Uint8Array {
   return topLevelAtPosition;
 }
 
+function hasTrailingTopLevelFieldAfterArgumentsObject(argsBody: string): boolean {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  const hasCommaAfterWhitespace = (fromIndex: number): boolean => {
+    let cursor = fromIndex;
+    while (cursor < argsBody.length && WHITESPACE_RE.test(argsBody[cursor])) {
+      cursor += 1;
+    }
+    return argsBody.charAt(cursor) === ",";
+  };
+  for (let index = 0; index < argsBody.length; index += 1) {
+    const char = argsBody.charAt(index);
+    if (esc) {
+      esc = false;
+      continue;
+    }
+    if (inStr) {
+      if (char === "\\") {
+        esc = true;
+      } else if (char === '"') {
+        inStr = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inStr = true;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      depth += 1;
+      continue;
+    }
+    if (char !== "}" && char !== "]") {
+      continue;
+    }
+    if (depth > 0) {
+      depth -= 1;
+      continue;
+    }
+    if (hasCommaAfterWhitespace(index + 1)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Attempt to repair a malformed tool-call JSON string where the model
  * failed to escape double-quotes inside string values.  Returns the
@@ -979,15 +1083,6 @@ function repairToolCallJson(
   const argsValueStart = findTopLevelPropertyValueStart(raw, "arguments");
   if (argsValueStart == null || raw.charAt(argsValueStart) !== "{") {
     return null;
-  }
-  const completeArgsSlice = extractJsonValueSlice(raw, argsValueStart);
-  if (completeArgsSlice?.complete) {
-    const afterArgs = raw
-      .slice(argsValueStart + completeArgsSlice.text.length)
-      .trim();
-    if (!/^}+$/.test(afterArgs)) {
-      return null;
-    }
   }
   const argsStart = argsValueStart + 1;
 
@@ -1026,6 +1121,9 @@ function repairToolCallJson(
 
   // Size guard: bail out on unreasonably large argument bodies
   if (argsBody.length > REPAIR_MAX_ARGS_BODY_SIZE) {
+    return null;
+  }
+  if (hasTrailingTopLevelFieldAfterArgumentsObject(argsBody)) {
     return null;
   }
 
@@ -1382,6 +1480,12 @@ function findTopLevelPropertyValueStart(
       continue;
     }
 
+    const commentEnd = skipJsonComment(text, index);
+    if (commentEnd !== null) {
+      index = commentEnd;
+      continue;
+    }
+
     if (char === "{") {
       depth += 1;
       continue;
@@ -1401,14 +1505,15 @@ function findTopLevelPropertyValueStart(
     let parsedKey: { key: string; end: number } | null = null;
     if (char === '"' || char === "'") {
       parsedKey = parseQuotedObjectKey(text, index);
-    } else if (
-      (previousSignificantChar(text, index) === "{" ||
-        previousSignificantChar(text, index) === ",") &&
-      isUnquotedRjsonKeyStart(char)
-    ) {
-      parsedKey = parseUnquotedObjectKey(text, index);
     } else {
-      continue;
+      if (!isUnquotedRjsonKeyStart(char)) {
+        continue;
+      }
+      const previous = previousSignificantChar(text, index);
+      if (previous !== "{" && previous !== ",") {
+        continue;
+      }
+      parsedKey = parseUnquotedObjectKey(text, index);
     }
 
     if (!parsedKey) {

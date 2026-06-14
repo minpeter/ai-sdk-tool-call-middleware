@@ -70,6 +70,38 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(textDeltas).not.toContain("<tool_call>");
   });
 
+  it("repairs streaming unescaped quotes before a right brace character", async () => {
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [makeTool("edit", { content: { type: "string" } }, false)],
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"edit","arguments":{"content":"He said "}" there"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    if (tool?.type !== "tool-call") {
+      throw new Error("Expected repaired tool call");
+    }
+    expect(JSON.parse(tool.input)).toEqual({ content: 'He said "}" there' });
+  });
+
   it("repairs with known tool schema (tools parameter provided)", async () => {
     const tools = [
       makeTool("write", {
@@ -368,6 +400,41 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
     expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects unquoted prototype-sensitive RJSON keys after comments", async () => {
+    const tools = [makeTool("write", { content: { type: "string" } }, false)];
+    for (const prefix of ["/* comment */", "// comment\n"]) {
+      const onError = vi.fn();
+      const protocol = hermesProtocol();
+      const transformer = protocol.createStreamParser({
+        tools,
+        options: { onError },
+      });
+      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+        start(ctrl) {
+          ctrl.enqueue({
+            type: "text-delta",
+            id: "1",
+            delta: `<tool_call>{name:"write",arguments:{${prefix}__proto__:{polluted:true},content:"ok"}}</tool_call>`,
+          });
+          ctrl.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          ctrl.close();
+        },
+      });
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(rs, transformer)
+      );
+      expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+      expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
+      expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
+      expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
+      expect(onError).toHaveBeenCalled();
+    }
   });
 
   it("rejects prototype-sensitive argument keys even when unknown keys are allowed", async () => {
@@ -1301,6 +1368,45 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
     expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects top-level boolean false input schemas", async () => {
+    const schemas: LanguageModelV3FunctionTool["inputSchema"][] = [
+      false,
+      { jsonSchema: false },
+    ];
+    for (const inputSchema of schemas) {
+      const onError = vi.fn();
+      const protocol = hermesProtocol();
+      const transformer = protocol.createStreamParser({
+        tools: [makeSchemaTool("deny", inputSchema)],
+        options: { onError },
+      });
+      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+        start(ctrl) {
+          ctrl.enqueue({
+            type: "text-delta",
+            id: "1",
+            delta:
+              '<tool_call>{"name":"deny","arguments":{"content":"ok"}}</tool_call>',
+          });
+          ctrl.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          ctrl.close();
+        },
+      });
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(rs, transformer)
+      );
+      expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+      expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
+      expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
+      expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
+      expect(onError).toHaveBeenCalled();
+    }
   });
 
   it("rejects unknown keys through strict allOf schemas", async () => {
