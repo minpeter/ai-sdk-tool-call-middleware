@@ -518,6 +518,7 @@ interface ArgumentKeyPolicy {
   allowUnknownKeys: boolean;
   deniedKeys: Set<string>;
   deniedPatterns: RegExp[];
+  hasUnsafeDeniedPattern: boolean;
   keyPatterns: RegExp[];
   knownKeys: Set<string>;
   schema: unknown;
@@ -541,12 +542,15 @@ function extractArgumentKeyPolicy(
     ? schema.patternProperties
     : {};
   const deniedPatterns: RegExp[] = [];
+  let hasUnsafeDeniedPattern = false;
   const keyPatterns: RegExp[] = [];
   for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
     const regex = compileSafePatternPropertyRegex(pattern);
     if (patternSchema === false) {
       if (regex) {
         deniedPatterns.push(regex);
+      } else {
+        hasUnsafeDeniedPattern = true;
       }
       continue;
     }
@@ -563,6 +567,7 @@ function extractArgumentKeyPolicy(
         .map(([key]) => key)
     ),
     deniedPatterns,
+    hasUnsafeDeniedPattern,
     keyPatterns,
     knownKeys: new Set(
       propertyEntries
@@ -622,8 +627,11 @@ function argumentKeyDeniedByPolicy(
   keyPolicy: ArgumentKeyPolicy
 ): boolean {
   return (
+    PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key) ||
     keyPolicy.deniedKeys.has(key) ||
-    keyPolicy.deniedPatterns.some((pattern) => pattern.test(key))
+    keyPolicy.deniedPatterns.some((pattern) => pattern.test(key)) ||
+    (keyPolicy.hasUnsafeDeniedPattern &&
+      !argumentKeyMatchesPolicy(key, keyPolicy))
   );
 }
 
@@ -684,12 +692,53 @@ function parseQuotedObjectKey(text: string, keyStart: number): {
           return null;
         }
       }
-      return { key: text.slice(keyStart + 1, index), end: index };
+      return {
+        key: parseSingleQuotedObjectKey(text.slice(keyStart + 1, index)),
+        end: index,
+      };
     }
     index += 1;
   }
   return null;
 }
+
+function parseSingleQuotedObjectKey(body: string): string {
+  let result = "";
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body.charAt(index);
+    if (char !== "\\" || index === body.length - 1) {
+      result += char;
+      continue;
+    }
+
+    const escaped = body.charAt(index + 1);
+    if (escaped === "u") {
+      const hex = body.slice(index + 2, index + 6);
+      if (/^[0-9A-Fa-f]{4}$/.test(hex)) {
+        result += String.fromCharCode(Number.parseInt(hex, 16));
+        index += 5;
+        continue;
+      }
+    }
+
+    const decoded = SINGLE_QUOTED_KEY_ESCAPES.get(escaped);
+    result += decoded ?? escaped;
+    index += 1;
+  }
+  return result;
+}
+
+const SINGLE_QUOTED_KEY_ESCAPES = new Map<string, string>([
+  ["'", "'"],
+  ['"', '"'],
+  ["\\", "\\"],
+  ["/", "/"],
+  ["b", "\b"],
+  ["f", "\f"],
+  ["n", "\n"],
+  ["r", "\r"],
+  ["t", "\t"],
+]);
 
 function parseUnquotedObjectKey(text: string, keyStart: number): {
   key: string;
@@ -801,7 +850,7 @@ function strictPolicyHasPrototypeSensitiveArgumentKey(
   argumentsText: string,
   keyPolicy?: ArgumentKeyPolicy
 ): boolean {
-  if (!keyPolicy || keyPolicy.allowUnknownKeys) {
+  if (!keyPolicy) {
     return false;
   }
   const objectStart = skipJsonWhitespace(argumentsText, 0);
@@ -815,7 +864,7 @@ function strictToolCallHasPrototypeSensitiveArgumentKey(
   toolCallJson: string,
   keyPolicy?: ArgumentKeyPolicy
 ): boolean {
-  if (!keyPolicy || keyPolicy.allowUnknownKeys) {
+  if (!keyPolicy) {
     return false;
   }
   const argsValueStart = findTopLevelPropertyValueStart(

@@ -296,8 +296,11 @@ describe("parseGeneratedText JSON repair", () => {
       ),
     ];
     const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new Error("expected tool call");
+    }
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hi" there');
     expect(args.dynamic).toBe("kept");
@@ -404,11 +407,49 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("rejects prototype-sensitive argument keys even when unknown keys are allowed", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","constructor":{"polluted":true}}}</tool_call>';
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+        },
+        true
+      ),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("rejects unquoted strict RJSON with prototype-sensitive argument keys", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
       '<tool_call>{name:"write",arguments:{__proto__:{polluted:true},content:"ok"}}</tool_call>';
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+        },
+        false
+      ),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects escaped single-quoted strict RJSON prototype-sensitive argument keys", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      "<tool_call>{name:\"write\",arguments:{'\\u005f\\u005fproto__':{polluted:true},content:\"ok\"}}</tool_call>";
     const tools = [
       makeTool(
         "write",
@@ -582,6 +623,30 @@ describe("parseGeneratedText JSON repair", () => {
           "^a+a+$": { type: "string" },
         },
         additionalProperties: false,
+      }),
+    ];
+    const started = performance.now();
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(performance.now() - started).toBeLessThan(150);
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("fails closed for unsafe false patternProperties when unknown keys are allowed", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const slowKey = `${"a".repeat(24)}!`;
+    const text = `<tool_call>{"name":"write","arguments":{"content":"ok","${slowKey}":"blocked"}}</tool_call>`;
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "^(a+)+$": false,
+        },
+        additionalProperties: true,
       }),
     ];
     const started = performance.now();
