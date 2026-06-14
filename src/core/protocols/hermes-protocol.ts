@@ -22,6 +22,7 @@ import {
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
+import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
 interface HermesProtocolOptions {
@@ -624,6 +625,12 @@ function applyArgumentKeyPolicy(
     if (newCoercedKnownKeys.length < rawUnknownKeys.length) {
       return null;
     }
+  }
+  if (
+    keyPolicy &&
+    !argumentValueMatchesSchemaKeyShape(policyArgs, keyPolicy.schema)
+  ) {
+    return null;
   }
   return policyArgs;
 }

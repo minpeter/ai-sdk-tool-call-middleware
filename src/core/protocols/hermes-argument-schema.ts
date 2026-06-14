@@ -1,0 +1,168 @@
+import {
+  compileSafePatternPropertyRegex,
+  getSchemaType,
+  unwrapJsonSchema,
+} from "../../schema-coerce";
+
+interface PatternSchemaMatches {
+  hasUnsafeDeniedPattern: boolean;
+  schemas: unknown[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getPatternSchemaMatches(
+  patternProperties: unknown,
+  key: string
+): PatternSchemaMatches {
+  if (!isRecord(patternProperties)) {
+    return { hasUnsafeDeniedPattern: false, schemas: [] };
+  }
+  const schemas: unknown[] = [];
+  let hasUnsafeDeniedPattern = false;
+  for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
+    const regex = compileSafePatternPropertyRegex(pattern);
+    if (!regex) {
+      if (patternSchema === false) {
+        hasUnsafeDeniedPattern = true;
+      }
+      continue;
+    }
+    if (regex.test(key)) {
+      schemas.push(patternSchema);
+    }
+  }
+  return { hasUnsafeDeniedPattern, schemas };
+}
+
+function isObjectSchema(schema: Record<string, unknown>): boolean {
+  return (
+    getSchemaType(schema) === "object" ||
+    isRecord(schema.properties) ||
+    isRecord(schema.patternProperties) ||
+    Array.isArray(schema.required) ||
+    Object.hasOwn(schema, "additionalProperties")
+  );
+}
+
+function getPropertySchema(
+  schema: Record<string, unknown>,
+  key: string
+): unknown | undefined {
+  const properties = schema.properties;
+  if (!isRecord(properties) || !Object.hasOwn(properties, key)) {
+    return;
+  }
+  return properties[key];
+}
+
+function requiredKeys(schema: Record<string, unknown>): string[] {
+  return Array.isArray(schema.required)
+    ? schema.required.filter(
+        (key): key is string => typeof key === "string" && key.length > 0
+      )
+    : [];
+}
+
+function objectMatchesSchemaKeyShape(
+  value: Record<string, unknown>,
+  schema: Record<string, unknown>,
+  seen: Set<object>
+): boolean {
+  if (requiredKeys(schema).some((key) => !Object.hasOwn(value, key))) {
+    return false;
+  }
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    const propertySchema = getPropertySchema(schema, key);
+    if (propertySchema === false) {
+      return false;
+    }
+
+    const patternMatches = getPatternSchemaMatches(
+      schema.patternProperties,
+      key
+    );
+    if (patternMatches.schemas.some((patternSchema) => patternSchema === false)) {
+      return false;
+    }
+
+    const schemasToValidate = [
+      ...(propertySchema === undefined ? [] : [propertySchema]),
+      ...patternMatches.schemas.filter(
+        (patternSchema) => patternSchema !== false
+      ),
+    ];
+    if (schemasToValidate.length > 0) {
+      if (
+        !schemasToValidate.every((nestedSchema) =>
+          argumentValueMatchesSchemaKeyShape(nestedValue, nestedSchema, seen)
+        )
+      ) {
+        return false;
+      }
+      continue;
+    }
+
+    const additionalSchema = schema.additionalProperties;
+    if (additionalSchema === false || patternMatches.hasUnsafeDeniedPattern) {
+      return false;
+    }
+    if (
+      isRecord(additionalSchema) &&
+      !argumentValueMatchesSchemaKeyShape(nestedValue, additionalSchema, seen)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function arrayMatchesSchemaKeyShape(
+  value: unknown[],
+  schema: Record<string, unknown>,
+  seen: Set<object>
+): boolean {
+  const prefixItems = Array.isArray(schema.prefixItems)
+    ? schema.prefixItems
+    : undefined;
+  if (prefixItems) {
+    return value.every((item, index) => {
+      const itemSchema = prefixItems[index] ?? schema.items;
+      return argumentValueMatchesSchemaKeyShape(item, itemSchema, seen);
+    });
+  }
+  return value.every((item) =>
+    argumentValueMatchesSchemaKeyShape(item, schema.items, seen)
+  );
+}
+
+export function argumentValueMatchesSchemaKeyShape(
+  value: unknown,
+  schema: unknown,
+  seen = new Set<object>()
+): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (unwrapped === false) {
+    return false;
+  }
+  if (!isRecord(unwrapped)) {
+    return true;
+  }
+  if (isRecord(value) || Array.isArray(value)) {
+    if (seen.has(value)) {
+      return true;
+    }
+    seen.add(value);
+  }
+  if (Array.isArray(value)) {
+    return arrayMatchesSchemaKeyShape(value, unwrapped, seen);
+  }
+  if (isRecord(value) && isObjectSchema(unwrapped)) {
+    return objectMatchesSchemaKeyShape(value, unwrapped, seen);
+  }
+  return true;
+}

@@ -798,4 +798,76 @@ describe("parseGeneratedText JSON repair", () => {
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
   });
+
+  it("rejects missing required argument keys", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text = '<tool_call>{"name":"write","arguments":{}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        required: ["content"],
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects nested schema-unknown argument keys", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"payload":{"value":"ok","secret":"blocked"}}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          payload: {
+            type: "object",
+            properties: {
+              value: { type: "string" },
+            },
+            additionalProperties: false,
+          },
+        },
+        required: ["payload"],
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects nested argument keys disallowed by false schemas", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"payload":{"value":"ok","secret":"blocked"}}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          payload: {
+            type: "object",
+            properties: {
+              secret: false,
+              value: { type: "string" },
+            },
+            additionalProperties: true,
+          },
+        },
+        required: ["payload"],
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
 });
