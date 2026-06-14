@@ -1920,7 +1920,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("does not promote a speculative tool-call when a later chunk invalidates a complete arguments object", async () => {
+  it("uses matching ids when a later chunk invalidates a speculative tool-call", async () => {
     const onError = vi.fn();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
@@ -1961,7 +1961,13 @@ describe("hermesProtocol streaming JSON repair", () => {
     await done;
 
     const tool = out.find((c) => c.type === "tool-call");
-    expect(tool).toBeUndefined();
+    expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new Error("Expected speculative tool call");
+    }
+    expect(JSON.parse(tool.input)).toEqual({
+      content: "ok",
+    });
     expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
     expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
@@ -1971,6 +1977,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     if (!hasStringToolCallId(metadata)) {
       throw new Error("Expected onError metadata with a toolCallId");
     }
+    expect(metadata.toolCallId).toBe(tool.toolCallId);
   });
 
   it("rejects keys that may match unsafe false patterns with escaped range endpoints", async () => {

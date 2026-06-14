@@ -1436,7 +1436,6 @@ interface StreamState {
   pendingToolInputProgressVersion: number;
   speculativeToolCall: {
     input: string;
-    toolCallJson: string;
     toolName: string;
   } | null;
 }
@@ -1780,7 +1779,6 @@ function emitStreamingToolInputProgress(options: {
     emitToolInputDelta(state, controller, input);
     state.speculativeToolCall = {
       input,
-      toolCallJson,
       toolName: parsedToolCall.name,
     };
     return true;
@@ -1831,10 +1829,6 @@ function emitSpeculativeToolCall(
   controller: StreamController
 ): boolean {
   if (!state.activeToolInput || !state.speculativeToolCall) {
-    return false;
-  }
-  if (state.speculativeToolCall.toolCallJson !== state.currentToolCallJson) {
-    state.speculativeToolCall = null;
     return false;
   }
   const toolCallId = state.activeToolInput.id;
