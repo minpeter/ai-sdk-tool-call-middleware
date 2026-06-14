@@ -713,7 +713,17 @@ function containsPrototypeSensitiveArgumentKey(
 }
 
 function hasPrototypeSensitiveKeyInJsonLikeObject(text: string): boolean {
-  const firstBrace = text.indexOf("{");
+  let firstBrace = skipJsonWhitespace(text, 0);
+  while (true) {
+    const commentEnd = skipJsonComment(text, firstBrace);
+    if (commentEnd === null) {
+      break;
+    }
+    firstBrace = skipJsonWhitespace(text, commentEnd + 1);
+  }
+  if (text.charAt(firstBrace) !== "{") {
+    firstBrace = text.indexOf("{", firstBrace);
+  }
   if (firstBrace === -1) {
     return false;
   }

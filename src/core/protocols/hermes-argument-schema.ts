@@ -188,13 +188,13 @@ function schemaCombinatorsMatch(
   }
 
   const oneOf = Array.isArray(schema.oneOf) ? schema.oneOf : undefined;
-  if (
-    oneOf &&
-    !oneOf.some((subSchema) =>
+  if (oneOf) {
+    const matchCount = oneOf.filter((subSchema) =>
       argumentValueMatchesSchemaKeyShape(value, subSchema, branchSeen())
-    )
-  ) {
-    return false;
+    ).length;
+    if (matchCount !== 1) {
+      return false;
+    }
   }
 
   return true;

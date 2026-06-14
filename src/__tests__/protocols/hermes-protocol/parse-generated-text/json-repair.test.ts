@@ -472,6 +472,17 @@ describe("parseGeneratedText JSON repair", () => {
     }
   });
 
+  it("rejects prototype-sensitive RJSON keys after leading comments", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const tools = [makeTool("write", { content: { type: "string" } }, true)];
+    const text =
+      '<tool_call>/*{}*/{name:"write",arguments:{__proto__:{polluted:true},content:"ok"}}</tool_call>';
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("rejects escaped single-quoted strict RJSON prototype-sensitive argument keys", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
@@ -1099,6 +1110,40 @@ describe("parseGeneratedText JSON repair", () => {
                   },
                   additionalProperties: false,
                 },
+              },
+            ],
+          },
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects values that match multiple oneOf schemas", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"payload":{"a":"ok"}}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          payload: {
+            oneOf: [
+              {
+                type: "object",
+                properties: { a: { type: "string" } },
+                required: ["a"],
+                additionalProperties: false,
+              },
+              {
+                type: "object",
+                properties: { a: { type: "string" } },
+                required: ["a"],
+                additionalProperties: false,
               },
             ],
           },
