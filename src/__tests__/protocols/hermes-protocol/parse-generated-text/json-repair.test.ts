@@ -18,6 +18,13 @@ function makeTool(
   };
 }
 
+function makeSchemaTool(
+  name: string,
+  inputSchema: LanguageModelV3FunctionTool["inputSchema"]
+): LanguageModelV3FunctionTool {
+  return { type: "function", name, inputSchema };
+}
+
 describe("parseGeneratedText JSON repair", () => {
   it("repairs unescaped quotes in a string value", () => {
     const p = hermesProtocol();
@@ -323,6 +330,52 @@ describe("parseGeneratedText JSON repair", () => {
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects schema-unknown keys for jsonSchema-wrapped strict schemas", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","debug":"drop me","path":"/tmp/a"}}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        jsonSchema: {
+          type: "object",
+          properties: {
+            content: { type: "string" },
+            path: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("accepts patternProperties keys for strict schemas", () => {
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","x-debug":"kept","path":"/tmp/a"}}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+          path: { type: "string" },
+        },
+        patternProperties: {
+          "^x-": { type: "string" },
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    const args = JSON.parse(tool.input);
+    expect(args["x-debug"]).toBe("kept");
   });
 
   it("falls back to text instead of truncating content at schema-unknown key-like text", () => {

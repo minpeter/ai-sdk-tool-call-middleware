@@ -5,6 +5,7 @@ import type {
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
+import { unwrapJsonSchema } from "../../schema-coerce";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
@@ -497,6 +498,7 @@ function normalizeJsonStringCtrl(json: string): string {
 
 interface ArgumentKeyPolicy {
   allowUnknownKeys: boolean;
+  keyPatterns: RegExp[];
   knownKeys: Set<string>;
 }
 
@@ -509,13 +511,24 @@ function extractArgumentKeyPolicy(
   toolName: string
 ): ArgumentKeyPolicy | undefined {
   const tool = tools.find((t) => t.name === toolName);
-  const schema = tool?.inputSchema;
+  const schema = unwrapJsonSchema(tool?.inputSchema);
   if (!isRecord(schema)) {
     return undefined;
   }
   const properties = isRecord(schema.properties) ? schema.properties : {};
+  const patternProperties = isRecord(schema.patternProperties)
+    ? schema.patternProperties
+    : {};
+  const keyPatterns: RegExp[] = [];
+  for (const pattern of Object.keys(patternProperties)) {
+    try {
+      keyPatterns.push(new RegExp(pattern));
+    } catch {
+    }
+  }
   return {
     allowUnknownKeys: schema.additionalProperties !== false,
+    keyPatterns,
     knownKeys: new Set(Object.keys(properties)),
   };
 }
@@ -526,7 +539,10 @@ function applyArgumentKeyPolicy(
 ): Record<string, unknown> | null {
   if (keyPolicy && !keyPolicy.allowUnknownKeys) {
     for (const key of Object.keys(args)) {
-      if (!keyPolicy.knownKeys.has(key)) {
+      if (
+        !keyPolicy.knownKeys.has(key) &&
+        !keyPolicy.keyPatterns.some((pattern) => pattern.test(key))
+      ) {
         return null;
       }
     }
@@ -773,13 +789,14 @@ function repairToolCallJson(
     return null;
   }
 
-  const args: Record<string, unknown> = {};
+  const args = Object.create(null) as Record<string, unknown>;
   for (let i = 0; i < allKeys.length; i++) {
     const kp = allKeys[i];
     const rejectsUnknownArgument =
       keyPolicy &&
       !keyPolicy.allowUnknownKeys &&
-      !keyPolicy.knownKeys.has(kp.key);
+      !keyPolicy.knownKeys.has(kp.key) &&
+      !keyPolicy.keyPatterns.some((pattern) => pattern.test(kp.key));
     if (rejectsUnknownArgument) {
       return null;
     }

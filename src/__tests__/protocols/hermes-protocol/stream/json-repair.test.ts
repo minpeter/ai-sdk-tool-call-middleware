@@ -27,6 +27,13 @@ function makeTool(
   };
 }
 
+function makeSchemaTool(
+  name: string,
+  inputSchema: LanguageModelV3FunctionTool["inputSchema"]
+): LanguageModelV3FunctionTool {
+  return { type: "function", name, inputSchema };
+}
+
 describe("hermesProtocol streaming JSON repair", () => {
   it("repairs streaming tool call with unescaped quotes and emits tool-call", async () => {
     const protocol = hermesProtocol();
@@ -192,5 +199,88 @@ describe("hermesProtocol streaming JSON repair", () => {
     );
     expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects schema-unknown keys for jsonSchema-wrapped strict schemas", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeSchemaTool("write", {
+        jsonSchema: {
+          type: "object",
+          properties: {
+            path: { type: "string" },
+            content: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"write","arguments":{"content":"ok","debug":"drop me","path":"/tmp/a"}}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("accepts patternProperties keys for strict schemas", async () => {
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "^x-": { type: "string" },
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({ tools });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"write","arguments":{"content":"ok","x-debug":"kept","path":"/tmp/a"}}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    const args = JSON.parse(tool.input);
+    expect(args["x-debug"]).toBe("kept");
   });
 });
