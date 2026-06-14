@@ -23,6 +23,26 @@ function pushCharacterClassRange(
   }
 }
 
+function readCharacterClassRangeEnd(
+  pattern: string,
+  index: number
+): { char: string; nextIndex: number; unknown: boolean } | null {
+  const char = pattern.charAt(index);
+  if (char !== "\\") {
+    return { char, nextIndex: index, unknown: false };
+  }
+
+  const escaped = pattern.charAt(index + 1);
+  const literal = readEscapedLiteral(pattern, index + 1);
+  if (literal) {
+    return { char: literal.char, nextIndex: literal.nextIndex, unknown: false };
+  }
+  if ("dDsSwWpP".includes(escaped)) {
+    return { char: "", nextIndex: index + 1, unknown: true };
+  }
+  return { char: escaped, nextIndex: index + 1, unknown: false };
+}
+
 function readEscapedLiteral(
   pattern: string,
   index: number
@@ -91,10 +111,16 @@ function addCharacterClassHints(
       index + 1 < pattern.length &&
       pattern.charAt(index + 1) !== "]"
     ) {
-      const end = pattern.charAt(index + 1);
-      if (isComparableKeyChar(end)) {
-        pushCharacterClassRange(hints.ranges, previous, end);
-        index += 1;
+      const end = readCharacterClassRangeEnd(pattern, index + 1);
+      if (end?.unknown) {
+        hints.hasUnknownMatcher = true;
+        index = end.nextIndex;
+        previous = undefined;
+        continue;
+      }
+      if (end && isComparableKeyChar(end.char)) {
+        pushCharacterClassRange(hints.ranges, previous, end.char);
+        index = end.nextIndex;
         previous = undefined;
         continue;
       }

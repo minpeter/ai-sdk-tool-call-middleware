@@ -48,6 +48,61 @@ function isObjectSchema(schema: Record<string, unknown>): boolean {
   );
 }
 
+function isArraySchema(schema: Record<string, unknown>): boolean {
+  return getSchemaType(schema) === "array" || Array.isArray(schema.prefixItems);
+}
+
+function explicitSchemaTypes(schema: Record<string, unknown>): string[] {
+  const schemaType = schema.type;
+  if (typeof schemaType === "string") {
+    return [schemaType];
+  }
+  if (!Array.isArray(schemaType)) {
+    return [];
+  }
+  return schemaType.filter((type): type is string => typeof type === "string");
+}
+
+function valueMatchesSchemaType(value: unknown, schemaType: string): boolean {
+  switch (schemaType) {
+    case "array":
+      return Array.isArray(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "integer":
+      return typeof value === "number" && Number.isInteger(value);
+    case "null":
+      return value === null;
+    case "number":
+      return typeof value === "number";
+    case "object":
+      return isRecord(value);
+    case "string":
+      return typeof value === "string";
+    default:
+      return true;
+  }
+}
+
+function valueMatchesSchemaKind(
+  value: unknown,
+  schema: Record<string, unknown>
+): boolean {
+  const schemaTypes = explicitSchemaTypes(schema);
+  if (schemaTypes.length > 0) {
+    return schemaTypes.some((schemaType) =>
+      valueMatchesSchemaType(value, schemaType)
+    );
+  }
+  if (isObjectSchema(schema)) {
+    return isRecord(value);
+  }
+  if (isArraySchema(schema)) {
+    return Array.isArray(value);
+  }
+  return true;
+}
+
 function getPropertySchema(
   schema: Record<string, unknown>,
   key: string
@@ -167,30 +222,27 @@ function schemaCombinatorsMatch(
     }
     return nextSeen;
   };
+  const branchMatches = (subSchema: unknown) => {
+    const unwrapped = unwrapJsonSchema(subSchema);
+    if (isRecord(unwrapped) && !valueMatchesSchemaKind(value, unwrapped)) {
+      return false;
+    }
+    return argumentValueMatchesSchemaKeyShape(value, subSchema, branchSeen());
+  };
   const allOf = Array.isArray(schema.allOf) ? schema.allOf : undefined;
-  if (
-    allOf &&
-    !allOf.every((subSchema) =>
-      argumentValueMatchesSchemaKeyShape(value, subSchema, branchSeen())
-    )
-  ) {
+  if (allOf && !allOf.every((subSchema) => branchMatches(subSchema))) {
     return false;
   }
 
   const anyOf = Array.isArray(schema.anyOf) ? schema.anyOf : undefined;
-  if (
-    anyOf &&
-    !anyOf.some((subSchema) =>
-      argumentValueMatchesSchemaKeyShape(value, subSchema, branchSeen())
-    )
-  ) {
+  if (anyOf && !anyOf.some((subSchema) => branchMatches(subSchema))) {
     return false;
   }
 
   const oneOf = Array.isArray(schema.oneOf) ? schema.oneOf : undefined;
   if (oneOf) {
     const matchCount = oneOf.filter((subSchema) =>
-      argumentValueMatchesSchemaKeyShape(value, subSchema, branchSeen())
+      branchMatches(subSchema)
     ).length;
     if (matchCount !== 1) {
       return false;

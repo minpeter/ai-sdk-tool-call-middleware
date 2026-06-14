@@ -976,13 +976,14 @@ function applyToolArgumentKeyPolicy(
   args: unknown,
   tools: LanguageModelV3FunctionTool[]
 ): { args: unknown } | null {
+  const keyPolicy = extractArgumentKeyPolicy(tools, toolName);
+  if (keyPolicy?.rejectAll) {
+    return null;
+  }
   if (!isRecord(args)) {
     return { args };
   }
-  const policyArgs = applyArgumentKeyPolicy(
-    args,
-    extractArgumentKeyPolicy(tools, toolName)
-  );
+  const policyArgs = applyArgumentKeyPolicy(args, keyPolicy);
   return policyArgs === null ? null : { args: policyArgs };
 }
 
@@ -1433,7 +1434,11 @@ interface StreamState {
   hasEmittedTextStart: boolean;
   isInsideToolCall: boolean;
   pendingToolInputProgressVersion: number;
-  speculativeToolCall: { input: string; toolName: string } | null;
+  speculativeToolCall: {
+    input: string;
+    toolCallJson: string;
+    toolName: string;
+  } | null;
 }
 
 type StreamController =
@@ -1775,6 +1780,7 @@ function emitStreamingToolInputProgress(options: {
     emitToolInputDelta(state, controller, input);
     state.speculativeToolCall = {
       input,
+      toolCallJson,
       toolName: parsedToolCall.name,
     };
     return true;
@@ -1825,6 +1831,10 @@ function emitSpeculativeToolCall(
   controller: StreamController
 ): boolean {
   if (!state.activeToolInput || !state.speculativeToolCall) {
+    return false;
+  }
+  if (state.speculativeToolCall.toolCallJson !== state.currentToolCallJson) {
+    state.speculativeToolCall = null;
     return false;
   }
   const toolCallId = state.activeToolInput.id;
