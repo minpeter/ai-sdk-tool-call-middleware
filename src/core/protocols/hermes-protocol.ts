@@ -495,23 +495,29 @@ function normalizeJsonStringCtrl(json: string): string {
   return parts.join("");
 }
 
-/**
- * Extract known argument key names from the tool schema matching the
- * tool name found in a (possibly malformed) JSON string.
- */
-function extractKnownArgKeys(
+interface ArgumentKeyPolicy {
+  allowUnknownKeys: boolean;
+  knownKeys: Set<string>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractArgumentKeyPolicy(
   tools: LanguageModelV3FunctionTool[],
-  toolCallJson: string
-): string[] | undefined {
-  const toolName = extractTopLevelStringProperty(toolCallJson, "name");
-  if (!toolName) {
-    return undefined;
-  }
+  toolName: string
+): ArgumentKeyPolicy | undefined {
   const tool = tools.find((t) => t.name === toolName);
-  if (!tool?.inputSchema?.properties) {
+  const schema = tool?.inputSchema;
+  if (!isRecord(schema)) {
     return undefined;
   }
-  return Object.keys(tool.inputSchema.properties as Record<string, unknown>);
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  return {
+    allowUnknownKeys: schema.additionalProperties !== false,
+    knownKeys: new Set(Object.keys(properties)),
+  };
 }
 
 /** Maximum size (in UTF-16 code units) for the arguments body before bailing out of repair. */
@@ -522,29 +528,21 @@ const FIRST_KEY_RE = /^\s*"([^"]+)"\s*:\s*/;
 const KV_PATTERN_RE = /,\s*"([^"]+)"\s*:\s*/g;
 const TRAILING_COMMA_RE = /,\s*$/;
 
-/**
- * Returns true if `position` in `argsBody` is at nesting depth 0
- * (not inside a nested `{}` or `[]`).
- */
-function isAtTopLevel(argsBody: string, position: number): boolean {
+function getTopLevelPositionMap(argsBody: string): boolean[] {
+  const topLevelAtPosition = Array<boolean>(argsBody.length + 1);
   let depth = 0;
   let inStr = false;
   let esc = false;
-  for (let i = 0; i < position; i++) {
+  topLevelAtPosition[0] = true;
+  for (let i = 0; i < argsBody.length; i++) {
     const ch = argsBody[i];
     if (esc) {
       esc = false;
-      continue;
-    }
-    if (ch === "\\" && inStr) {
+    } else if (ch === "\\" && inStr) {
       esc = true;
-      continue;
-    }
-    if (ch === '"') {
+    } else if (ch === '"') {
       inStr = !inStr;
-      continue;
-    }
-    if (!inStr) {
+    } else if (!inStr) {
       if (ch === "{" || ch === "[") {
         depth++;
       }
@@ -552,8 +550,9 @@ function isAtTopLevel(argsBody: string, position: number): boolean {
         depth--;
       }
     }
+    topLevelAtPosition[i + 1] = depth === 0;
   }
-  return depth === 0;
+  return topLevelAtPosition;
 }
 
 /**
@@ -570,14 +569,9 @@ function isAtTopLevel(argsBody: string, position: number): boolean {
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: JSON repair requires manual character-level scanning with multiple heuristic passes.
 function repairToolCallJson(
   raw: string,
-  knownArgKeys?: string[]
+  toolName: string,
+  keyPolicy?: ArgumentKeyPolicy
 ): { name: string; arguments: Record<string, unknown> } | null {
-  // 1. Extract tool name (depth-aware to avoid matching nested "name" keys)
-  const toolName = extractTopLevelStringProperty(raw, "name");
-  if (!toolName) {
-    return null;
-  }
-
   // 2. Find arguments object boundaries (top-level aware, like name extraction)
   const argsValueStart = findTopLevelPropertyValueStart(raw, "arguments");
   if (argsValueStart == null || raw.charAt(argsValueStart) !== "{") {
@@ -663,11 +657,10 @@ function repairToolCallJson(
   //     value slices, because their ,"extra":... text gets merged into
   //     the previous value. Schema filtering is applied later when
   //     assigning parsed values into args (step 8 below).
-  const knownKeySet =
-    knownArgKeys && knownArgKeys.length > 0 ? new Set(knownArgKeys) : null;
+  const topLevelAtPosition = getTopLevelPositionMap(argsBody);
   allKeys = allKeys.filter(
     (entry) =>
-      entry.matchStart === 0 || isAtTopLevel(argsBody, entry.matchStart)
+      entry.matchStart === 0 || topLevelAtPosition[entry.matchStart]
   );
 
   // 7. Handle duplicate key names with scoring heuristic
@@ -761,14 +754,15 @@ function repairToolCallJson(
     return null;
   }
 
-  // 8. Repair each value by escaping unescaped quotes.
-  //    Schema-unknown keys are skipped here (their slice was still needed
-  //    for correct boundary detection in step 5b).
   const args: Record<string, unknown> = {};
   for (let i = 0; i < allKeys.length; i++) {
     const kp = allKeys[i];
-    if (knownKeySet && !knownKeySet.has(kp.key)) {
-      continue;
+    const rejectsUnknownArgument =
+      keyPolicy &&
+      !keyPolicy.allowUnknownKeys &&
+      !keyPolicy.knownKeys.has(kp.key);
+    if (rejectsUnknownArgument) {
+      return null;
     }
     const vs = kp.valueStart;
     const ve =
@@ -819,13 +813,25 @@ function repairToolCallJson(
       return null;
     }
   }
-  // Guard: if the schema filter skipped every parsed key, we have nothing
-  // meaningful to emit. Returning {arguments: {}} here would trigger a
-  // tool invocation with empty args — worse than reporting parse failure.
-  if (knownKeySet && Object.keys(args).length === 0) {
+  if (Object.keys(args).length === 0) {
     return null;
   }
   return { name: toolName, arguments: args };
+}
+
+function repairToolCallJsonForTools(
+  raw: string,
+  tools: LanguageModelV3FunctionTool[]
+): { name: string; arguments: Record<string, unknown> } | null {
+  const toolName = extractTopLevelStringProperty(raw, "name");
+  if (!toolName) {
+    return null;
+  }
+  return repairToolCallJson(
+    raw,
+    toolName,
+    extractArgumentKeyPolicy(tools, toolName)
+  );
 }
 
 function processToolCallJson(
@@ -850,10 +856,7 @@ function processToolCallJson(
     });
   } catch (error) {
     // Attempt repair for unescaped quotes
-    const repaired = repairToolCallJson(
-      toolCallJson,
-      extractKnownArgKeys(tools, toolCallJson)
-    );
+    const repaired = repairToolCallJsonForTools(toolCallJson, tools);
     if (repaired) {
       processedElements.push({
         type: "tool-call",
@@ -1487,10 +1490,7 @@ function emitToolCall(context: TagProcessingContext) {
     emitToolCallFromParsed(state, controller, parsedToolCall, tools);
   } catch (error) {
     // Attempt repair for unescaped quotes
-    const repaired = repairToolCallJson(
-      state.currentToolCallJson,
-      extractKnownArgKeys(tools, state.currentToolCallJson)
-    );
+    const repaired = repairToolCallJsonForTools(state.currentToolCallJson, tools);
     if (repaired) {
       emitToolCallFromParsed(state, controller, repaired, tools);
       return;

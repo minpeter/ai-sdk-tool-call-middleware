@@ -2,13 +2,10 @@ import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 
-vi.mock("@ai-sdk/provider-utils", () => ({
-  generateId: vi.fn(() => "mock-id"),
-}));
-
 function makeTool(
   name: string,
-  properties: Record<string, { type: string }>
+  properties: Record<string, { type: string }>,
+  additionalProperties?: boolean
 ): LanguageModelV3FunctionTool {
   return {
     type: "function",
@@ -16,6 +13,7 @@ function makeTool(
     inputSchema: {
       type: "object",
       properties,
+      ...(additionalProperties === undefined ? {} : { additionalProperties }),
     },
   };
 }
@@ -247,13 +245,8 @@ describe("parseGeneratedText JSON repair", () => {
     expect(hasToolOrError).toBe(true);
   });
 
-  it("repairs with knownArgKeys and drops unknown extra keys", () => {
+  it("preserves schema-unknown keys when additionalProperties is implicit", () => {
     const p = hermesProtocol();
-    // Schema knows "content" and "path"; the model also emits a
-    // schema-unknown "extra" key between them. The unknown boundary is
-    // still used to slice correctly (so "content" does not absorb the
-    // ,"extra":"debug", prefix into a corrupted value), and the unknown
-    // key is dropped from the final args object.
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"He said "hi" there","extra":"debug","path":"/tmp/a"}}</tool_call>';
     const tools = [
@@ -268,17 +261,75 @@ describe("parseGeneratedText JSON repair", () => {
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hi" there');
     expect(args.path).toBe("/tmp/a");
-    // Schema-unknown key dropped from output
-    expect(args).not.toHaveProperty("extra");
+    expect(args.extra).toBe("debug");
+  });
+
+  it("preserves schema-unknown keys when additionalProperties is true", () => {
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"He said "hi" there","dynamic":"kept"}}</tool_call>';
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+        },
+        true
+      ),
+    ];
+    const out = p.parseGeneratedText({ text, tools });
+    const tool = out.find((x) => x.type === "tool-call") as any;
+    expect(tool).toBeTruthy();
+    const args = JSON.parse(tool.input);
+    expect(args.content).toBe('He said "hi" there');
+    expect(args.dynamic).toBe("kept");
+  });
+
+  it("calls onError for schema-unknown keys when additionalProperties is false", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"He said "hi" there","debug":"drop me","path":"/tmp/a"}}</tool_call>';
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+          path: { type: "string" },
+        },
+        false
+      ),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("falls back to text instead of truncating content at schema-unknown key-like text", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"before "quoted" ,"debug":"inside after","path":"/tmp/a"}}</tool_call>';
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+          path: { type: "string" },
+        },
+        false
+      ),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(
+      out.some((x) => x.type === "text" && x.text.includes("<tool_call>"))
+    ).toBe(true);
   });
 
   it("calls onError when arguments is not the last top-level property (backwards scan limitation)", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
-    // "id" comes after "arguments" — the backwards scan includes
-    // ,"id":"123" in argsBody, which corrupts the arguments object.
-    // This is a known limitation: repair only works when "arguments"
-    // is the last (or second-to-last) top-level property.
     const text =
       '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"},"id":"123"}</tool_call>';
     const tools = [makeTool("edit", { content: { type: "string" } })];
@@ -311,10 +362,14 @@ describe("parseGeneratedText JSON repair", () => {
     const text =
       '<tool_call>{"name":"write","arguments":{"foo":"He said "hi" there","bar":"b"}}</tool_call>';
     const tools = [
-      makeTool("write", {
-        content: { type: "string" },
-        path: { type: "string" },
-      }),
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+          path: { type: "string" },
+        },
+        false
+      ),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
     const tool = out.find((x) => x.type === "tool-call");
