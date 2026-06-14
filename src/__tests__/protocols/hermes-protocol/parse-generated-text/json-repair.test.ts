@@ -238,11 +238,14 @@ describe("parseGeneratedText JSON repair", () => {
     const text =
       '<tool_call>{"name":"update","arguments":{"count":42,"flag":true,"label":null,"content":"He said "hi" there"}}</tool_call>';
     const tools = [
-      makeTool("update", {
-        count: { type: "number" },
-        flag: { type: "boolean" },
-        label: { type: "string" },
-        content: { type: "string" },
+      makeSchemaTool("update", {
+        type: "object",
+        properties: {
+          count: { type: "number" },
+          flag: { type: "boolean" },
+          label: { type: ["string", "null"] },
+          content: { type: "string" },
+        },
       }),
     ];
     const out = p.parseGeneratedText({ text, tools });
@@ -1115,26 +1118,59 @@ describe("parseGeneratedText JSON repair", () => {
   it("rejects non-object arguments for object input schemas", () => {
     const p = hermesProtocol();
     const argumentBodies = ["[]", "null", '"x"'];
-    for (const argumentBody of argumentBodies) {
-      const onError = vi.fn();
-      const text = `<tool_call>{"name":"write","arguments":${argumentBody}}</tool_call>`;
-      const out = p.parseGeneratedText({
-        text,
-        tools: [
-          makeSchemaTool("write", {
-            type: "object",
-            properties: {
-              content: { type: "string" },
-            },
-            required: ["content"],
-            additionalProperties: false,
-          }),
-        ],
-        options: { onError },
-      });
-      expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-      expect(onError).toHaveBeenCalled();
+    const schemas: LanguageModelV3FunctionTool["inputSchema"][] = [
+      {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        required: ["content"],
+      },
+      {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        required: ["content"],
+        additionalProperties: false,
+      },
+    ];
+    for (const inputSchema of schemas) {
+      for (const argumentBody of argumentBodies) {
+        const onError = vi.fn();
+        const text = `<tool_call>{"name":"write","arguments":${argumentBody}}</tool_call>`;
+        const out = p.parseGeneratedText({
+          text,
+          tools: [makeSchemaTool("write", inputSchema)],
+          options: { onError },
+        });
+        expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+        expect(onError).toHaveBeenCalled();
+      }
     }
+  });
+
+  it("rejects null for non-nullable typed object properties", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":null}}</tool_call>';
+    const out = p.parseGeneratedText({
+      text,
+      tools: [
+        makeSchemaTool("write", {
+          type: "object",
+          properties: {
+            content: { type: "string" },
+          },
+          required: ["content"],
+          additionalProperties: false,
+        }),
+      ],
+      options: { onError },
+    });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
   });
 
   it("rejects non-object arguments for allOf-wrapped strict object input schemas", () => {

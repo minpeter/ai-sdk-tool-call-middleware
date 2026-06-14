@@ -134,14 +134,14 @@ function valueMatchesSchemaKind(
   ) {
     return false;
   }
-  if (value === null) {
-    return true;
-  }
   const schemaTypes = explicitSchemaTypes(schema);
   if (schemaTypes.length > 0) {
     return schemaTypes.some((schemaType) =>
       valueMatchesSchemaType(value, schemaType)
     );
+  }
+  if (value === null) {
+    return true;
   }
   if (isObjectSchema(schema)) {
     return isRecord(value);

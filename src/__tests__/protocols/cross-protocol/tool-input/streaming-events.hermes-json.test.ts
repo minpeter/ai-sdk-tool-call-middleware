@@ -1,5 +1,5 @@
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import { stopFinishReason, zeroUsage } from "../../../test-helpers";
@@ -157,46 +157,38 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     expect(leakedText).not.toContain("</tool_");
   });
 
-  it("json protocol normalizes streamed arguments:null progress to match final tool-call input", async () => {
-    const out = await runHermesJsonStream([
-      '<tool_call>{"name":"get_weather","arguments":null',
-      "}</tool_call>",
-    ]);
+  it("json protocol rejects streamed arguments:null for object schemas", async () => {
+    const onError = vi.fn();
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: fixture.tools,
+      chunks: ['<tool_call>{"name":"get_weather","arguments":null', "}</tool_call>"],
+      options: { onError },
+    });
 
     const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      toolName: string;
-      input: string;
-    };
-
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
-    expect(toolCall.toolCallId).toBe(starts[0].id);
-    expect(toolCall.input).toBe("{}");
-    expect(deltas.map((delta) => delta.delta)).toEqual(["{}"]);
-    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+    expect(starts).toHaveLength(0);
+    expect(deltas).toHaveLength(0);
+    expect(ends).toHaveLength(0);
+    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
   });
 
-  it("json protocol does not emit non-canonical partial literal prefixes for split null arguments", async () => {
-    const out = await runHermesJsonStream([
-      '<tool_call>{"name":"get_weather","arguments":n',
-      "ull}</tool_call>",
-    ]);
+  it("json protocol rejects split null arguments for object schemas", async () => {
+    const onError = vi.fn();
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: fixture.tools,
+      chunks: ['<tool_call>{"name":"get_weather","arguments":n', "ull}</tool_call>"],
+      options: { onError },
+    });
 
     const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      input: string;
-    };
-
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
-    expect(toolCall.input).toBe("{}");
-    expect(deltas.map((delta) => delta.delta)).toEqual(["{}"]);
-    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+    expect(starts).toHaveLength(0);
+    expect(deltas).toHaveLength(0);
+    expect(ends).toHaveLength(0);
+    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
   });
 
   it("json protocol canonicalizes pretty-printed arguments progress before emitting deltas", async () => {

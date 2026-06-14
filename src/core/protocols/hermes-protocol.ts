@@ -8,6 +8,7 @@ import { parse as parseRJSON } from "../../rjson";
 import {
   coerceBySchema,
   compileSafePatternPropertyRegex,
+  getSchemaType,
   unwrapJsonSchema,
 } from "../../schema-coerce";
 import { logParseFailure } from "../utils/debug";
@@ -549,7 +550,13 @@ function schemaRejectsNonRecordArguments(
     return false;
   }
   seen.add(unwrapped);
-  if (unwrapped.additionalProperties === false) {
+  if (
+    getSchemaType(unwrapped) === "object" ||
+    isRecord(unwrapped.properties) ||
+    isRecord(unwrapped.patternProperties) ||
+    Array.isArray(unwrapped.required) ||
+    Object.hasOwn(unwrapped, "additionalProperties")
+  ) {
     return true;
   }
 
