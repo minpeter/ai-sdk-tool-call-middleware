@@ -867,8 +867,8 @@ describe("wrapStream tool-call coercion", () => {
           type: "object",
           properties: {
             finite_int: { type: "integer" },
-            overflow_num: { type: "number" },
-            huge_int: { type: "integer" },
+            overflow_num: { type: ["number", "string"] },
+            huge_int: { type: ["integer", "string"] },
           },
           required: ["finite_int", "overflow_num", "huge_int"],
         },

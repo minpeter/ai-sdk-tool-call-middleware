@@ -1,4 +1,7 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV3Content,
+  LanguageModelV3FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 
@@ -25,14 +28,32 @@ function makeSchemaTool(
   return { type: "function", name, inputSchema };
 }
 
+type ToolCallContent = Extract<LanguageModelV3Content, { type: "tool-call" }>;
+
+function expectToolCall(
+  output: LanguageModelV3Content[]
+): ToolCallContent {
+  const tool = output.find(
+    (part): part is ToolCallContent => part.type === "tool-call"
+  );
+  expect(tool?.type).toBe("tool-call");
+  if (!tool) {
+    throw new Error("Expected tool call");
+  }
+  return tool;
+}
+
 describe("parseGeneratedText JSON repair", () => {
   it("repairs unescaped quotes in a string value", () => {
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"}}</tool_call>';
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    if (tool?.type !== "tool-call") {
+      throw new Error("Expected tool call");
+    }
     expect(tool.toolName).toBe("edit");
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hello" to me');
@@ -63,8 +84,11 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    if (tool?.type !== "tool-call") {
+      throw new Error("Expected tool call");
+    }
     expect(tool.toolName).toBe("write");
     const args = JSON.parse(tool.input);
     expect(args.path).toBe("/tmp/a.txt");
@@ -88,7 +112,9 @@ describe("parseGeneratedText JSON repair", () => {
       '<tool_call>{"name":"edit","arguments":{"content":"value with ,"fake": inside"}}</tool_call>';
     const tools = [makeTool("edit", { content: { type: "string" } })];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find(
+      (x): x is ToolCallContent => x.type === "tool-call"
+    );
     if (tool) {
       const args = JSON.parse(tool.input);
       expect(typeof args.content).toBe("string");
@@ -102,8 +128,7 @@ describe("parseGeneratedText JSON repair", () => {
     const text =
       '<tool_call>{"name":"read","arguments":{"path":"/tmp/file.txt"}}</tool_call>';
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = expectToolCall(out);
     expect(tool.toolName).toBe("read");
     expect(JSON.parse(tool.input)).toEqual({ path: "/tmp/file.txt" });
   });
@@ -126,7 +151,7 @@ describe("parseGeneratedText JSON repair", () => {
     const out = p.parseGeneratedText({ text, tools: [], options: { onError } });
     expect(onError).toHaveBeenCalled();
     const rejoined = out
-      .map((x) => (x.type === "text" ? (x as any).text : ""))
+      .map((x) => (x.type === "text" ? x.text : ""))
       .join("");
     expect(rejoined).toContain("{totally broken}");
   });
@@ -143,8 +168,7 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = expectToolCall(out);
     expect(tool.toolName).toBe("update");
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hi" there');
@@ -159,8 +183,7 @@ describe("parseGeneratedText JSON repair", () => {
     const text =
       '<tool_call>{"name":"x","arguments":{"opts":{"a":1,"b":2},"content":"say \\"hi\\""}}</tool_call>';
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = expectToolCall(out);
     expect(tool.toolName).toBe("x");
     const args = JSON.parse(tool.input);
     expect(args.opts).toEqual({ a: 1, b: 2 });
@@ -172,8 +195,7 @@ describe("parseGeneratedText JSON repair", () => {
     const text =
       '<tool_call>{"name":"x","arguments":{"items":[1,2,3],"text":"a \\"b\\" c"}}</tool_call>';
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = expectToolCall(out);
     expect(tool.toolName).toBe("x");
     const args = JSON.parse(tool.input);
     expect(args.items).toEqual([1, 2, 3]);
@@ -204,8 +226,7 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = expectToolCall(out);
     expect(tool.toolName).toBe("x");
     const args = JSON.parse(tool.input);
     expect(args.opts).toEqual({ a: 1, b: 2 });
@@ -225,8 +246,7 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = expectToolCall(out);
     expect(tool.toolName).toBe("edit");
     const args = JSON.parse(tool.input);
     expect(args.name).toBe("inner_value");
@@ -249,8 +269,7 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = expectToolCall(out);
     expect(tool.toolName).toBe("update");
     const args = JSON.parse(tool.input);
     expect(args.count).toBe(42);
@@ -291,8 +310,7 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = expectToolCall(out);
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hi" there');
     expect(args.path).toBe("/tmp/a");
@@ -873,8 +891,7 @@ describe("parseGeneratedText JSON repair", () => {
     const text =
       '<tool_call>{"name":"x","arguments":{"a":1,"b":{"c":2}}}</tool_call>';
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
-    expect(tool).toBeTruthy();
+    const tool = expectToolCall(out);
     const args = JSON.parse(tool.input);
     expect(args.a).toBe(1);
     expect(args.b).toEqual({ c: 2 });
@@ -1244,6 +1261,37 @@ describe("parseGeneratedText JSON repair", () => {
     }
   });
 
+  it("coerces keys before validating allOf-wrapped strict object schemas", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"translate","arguments":{"target_language":"ko"}}</tool_call>';
+    const out = p.parseGeneratedText({
+      text,
+      tools: [
+        makeSchemaTool("translate", {
+          allOf: [
+            {
+              type: "object",
+              properties: {
+                targetLanguage: { type: "string" },
+              },
+              required: ["targetLanguage"],
+              additionalProperties: false,
+            },
+          ],
+        }),
+      ],
+      options: { onError },
+    });
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      targetLanguage: "ko",
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("rejects strict primitive property values that cannot be coerced", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
@@ -1494,6 +1542,34 @@ describe("parseGeneratedText JSON repair", () => {
       payload: { value: "123" },
     });
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-finite numeric strings for number and integer schemas", () => {
+    const p = hermesProtocol();
+    const cases = [
+      { schemaType: "number", value: "1e999" },
+      { schemaType: "integer", value: "9".repeat(400) },
+    ];
+    for (const { schemaType, value } of cases) {
+      const onError = vi.fn();
+      const text = `<tool_call>{"name":"edit","arguments":{"value":${JSON.stringify(value)}}}</tool_call>`;
+      const out = p.parseGeneratedText({
+        text,
+        tools: [
+          makeSchemaTool("edit", {
+            type: "object",
+            properties: {
+              value: { type: schemaType },
+            },
+            required: ["value"],
+            additionalProperties: false,
+          }),
+        ],
+        options: { onError },
+      });
+      expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+      expect(onError).toHaveBeenCalled();
+    }
   });
 
   it("rejects decimal strings for integer oneOf branches", () => {

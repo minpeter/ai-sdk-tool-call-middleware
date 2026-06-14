@@ -1740,6 +1740,53 @@ describe("hermesProtocol streaming JSON repair", () => {
     }
   });
 
+  it("coerces keys before validating allOf-wrapped strict object schemas", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [
+        makeSchemaTool("translate", {
+          allOf: [
+            {
+              type: "object",
+              properties: {
+                targetLanguage: { type: "string" },
+              },
+              required: ["targetLanguage"],
+              additionalProperties: false,
+            },
+          ],
+        }),
+      ],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"translate","arguments":{"target_language":"ko"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      targetLanguage: "ko",
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("rejects strict primitive property values that cannot be coerced", async () => {
     const onError = vi.fn();
     const tools = [
@@ -2165,6 +2212,53 @@ describe("hermesProtocol streaming JSON repair", () => {
       payload: { value: "123" },
     });
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-finite numeric strings for number and integer schemas", async () => {
+    const cases = [
+      { schemaType: "number", value: "1e999" },
+      { schemaType: "integer", value: "9".repeat(400) },
+    ];
+    for (const { schemaType, value } of cases) {
+      const onError = vi.fn();
+      const protocol = hermesProtocol();
+      const transformer = protocol.createStreamParser({
+        tools: [
+          makeSchemaTool("edit", {
+            type: "object",
+            properties: {
+              value: { type: schemaType },
+            },
+            required: ["value"],
+            additionalProperties: false,
+          }),
+        ],
+        options: { onError },
+      });
+      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+        start(ctrl) {
+          ctrl.enqueue({
+            type: "text-delta",
+            id: "1",
+            delta: `<tool_call>{"name":"edit","arguments":{"value":${JSON.stringify(value)}}}</tool_call>`,
+          });
+          ctrl.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          ctrl.close();
+        },
+      });
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(rs, transformer)
+      );
+      expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+      expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
+      expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
+      expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
+      expect(onError).toHaveBeenCalled();
+    }
   });
 
   it("rejects decimal strings for integer oneOf branches", async () => {

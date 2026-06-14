@@ -1378,6 +1378,28 @@ function coerceArrayValue(
   return [value];
 }
 
+function coerceByStrictAllOfObjectSchemas(
+  value: unknown,
+  allOf: unknown
+): unknown {
+  if (!Array.isArray(allOf)) {
+    return value;
+  }
+  let output = value;
+  for (const subSchema of allOf) {
+    const unwrapped = unwrapJsonSchema(subSchema);
+    if (
+      unwrapped &&
+      typeof unwrapped === "object" &&
+      !Array.isArray(unwrapped) &&
+      getStrictObjectSchemaInfo(unwrapped as Record<string, unknown>)
+    ) {
+      output = coerceBySchema(output, subSchema);
+    }
+  }
+  return output;
+}
+
 export function coerceBySchema(value: unknown, schema?: unknown): unknown {
   const unwrapped = unwrapJsonSchema(schema);
   if (!unwrapped || typeof unwrapped !== "object") {
@@ -1389,17 +1411,22 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
 
   const schemaType = getSchemaType(unwrapped);
   const u = unwrapped as Record<string, unknown>;
-  if (value === null && Array.isArray(u.type) && u.type.includes("null")) {
-    return value;
+  const valueAfterAllOf = coerceByStrictAllOfObjectSchemas(value, u.allOf);
+  if (
+    valueAfterAllOf === null &&
+    Array.isArray(u.type) &&
+    u.type.includes("null")
+  ) {
+    return valueAfterAllOf;
   }
 
   // Handle string values
-  if (typeof value === "string") {
-    return coerceStringValue(value, schemaType, u);
+  if (typeof valueAfterAllOf === "string") {
+    return coerceStringValue(valueAfterAllOf, schemaType, u);
   }
 
   // Coerce primitive scalars to string when schema explicitly expects a string.
-  const primitiveString = coercePrimitiveToString(value, schemaType);
+  const primitiveString = coercePrimitiveToString(valueAfterAllOf, schemaType);
   if (primitiveString !== null) {
     return primitiveString;
   }
@@ -1407,22 +1434,22 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
   // Handle object to object coercion
   if (
     schemaType === "object" &&
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value)
+    valueAfterAllOf &&
+    typeof valueAfterAllOf === "object" &&
+    !Array.isArray(valueAfterAllOf)
   ) {
-    return coerceObjectToObject(value as Record<string, unknown>, u);
+    return coerceObjectToObject(valueAfterAllOf as Record<string, unknown>, u);
   }
 
   // Handle object wrappers when schema expects a primitive value.
   if (
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
+    valueAfterAllOf &&
+    typeof valueAfterAllOf === "object" &&
+    !Array.isArray(valueAfterAllOf) &&
     isPrimitiveSchemaType(schemaType)
   ) {
     const primitiveResult = coerceObjectToPrimitive(
-      value as Record<string, unknown>,
+      valueAfterAllOf as Record<string, unknown>,
       schemaType,
       u
     );
@@ -1438,8 +1465,8 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
       : undefined;
     const itemsSchema = u.items as unknown;
 
-    return coerceArrayValue(value, prefixItems, itemsSchema);
+    return coerceArrayValue(valueAfterAllOf, prefixItems, itemsSchema);
   }
 
-  return value;
+  return valueAfterAllOf;
 }
