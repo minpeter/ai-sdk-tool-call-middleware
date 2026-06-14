@@ -34,6 +34,15 @@ function makeSchemaTool(
   return { type: "function", name, inputSchema };
 }
 
+function hasStringToolCallId(value: unknown): value is { toolCallId: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "toolCallId" in value &&
+    typeof value.toolCallId === "string"
+  );
+}
+
 describe("hermesProtocol streaming JSON repair", () => {
   it("repairs streaming tool call with unescaped quotes and emits tool-call", async () => {
     const protocol = hermesProtocol();
@@ -1658,12 +1667,21 @@ describe("hermesProtocol streaming JSON repair", () => {
 
     const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toBeTruthy();
-    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+    if (tool?.type !== "tool-call") {
+      throw new Error("Expected speculative tool call");
+    }
+    expect(JSON.parse(tool.input)).toEqual({
       content: "ok",
     });
     expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
     expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
     expect(onError).toHaveBeenCalled();
+    const metadata = onError.mock.calls[0]?.[1];
+    expect(hasStringToolCallId(metadata)).toBe(true);
+    if (!hasStringToolCallId(metadata)) {
+      throw new Error("Expected onError metadata with a toolCallId");
+    }
+    expect(metadata.toolCallId).toBe(tool.toolCallId);
   });
 });

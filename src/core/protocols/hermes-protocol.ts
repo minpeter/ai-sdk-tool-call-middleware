@@ -2095,6 +2095,8 @@ function emitToolCall(context: TagProcessingContext) {
       emitToolCallFromParsed(state, controller, repaired, tools);
       return;
     }
+    const activeToolCallId = state.activeToolInput?.id;
+    const activeToolName = state.activeToolInput?.toolName;
     const emittedSpeculativeToolCall = emitSpeculativeToolCall(
       state,
       controller
@@ -2102,10 +2104,9 @@ function emitToolCall(context: TagProcessingContext) {
 
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
-    const streamingToolCallId =
-      state.activeToolInput?.id ?? generateToolCallId();
+    const streamingToolCallId = activeToolCallId ?? generateToolCallId();
     const streamingToolName =
-      state.activeToolInput?.toolName ??
+      activeToolName ??
       extractStreamingToolCallProgress(state.currentToolCallJson).toolName;
 
     logParseFailure({
