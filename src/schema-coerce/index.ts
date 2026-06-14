@@ -262,10 +262,37 @@ function schemaIsUnconstrained(schema: unknown): boolean {
   return Object.keys(unwrapped).length === 0;
 }
 
-function hasRegexGroup(pattern: string): boolean {
+interface RegexGroupState {
+  hasAlternation: boolean;
+  hasQuantifier: boolean;
+}
+
+function regexQuantifierEnd(pattern: string, index: number): number | null {
+  const char = pattern.charAt(index);
+  if (char === "*" || char === "+" || char === "?") {
+    return index;
+  }
+  if (char !== "{") {
+    return null;
+  }
+  let cursor = index + 1;
+  while (cursor < pattern.length && pattern.charAt(cursor) !== "}") {
+    const part = pattern.charAt(cursor);
+    if (!(part === "," || (part >= "0" && part <= "9"))) {
+      return null;
+    }
+    cursor += 1;
+  }
+  return cursor < pattern.length ? cursor : null;
+}
+
+function hasNestedQuantifierRisk(pattern: string): boolean {
   let escaped = false;
   let inCharClass = false;
-  for (const ch of pattern) {
+  const groups: RegexGroupState[] = [];
+
+  for (let index = 0; index < pattern.length; index += 1) {
+    const ch = pattern.charAt(index);
     if (escaped) {
       escaped = false;
       continue;
@@ -282,17 +309,67 @@ function hasRegexGroup(pattern: string): boolean {
       inCharClass = false;
       continue;
     }
-    if (!inCharClass && ch === "(") {
-      return true;
+    if (inCharClass) {
+      continue;
+    }
+    if (ch === "(") {
+      groups.push({ hasAlternation: false, hasQuantifier: false });
+      continue;
+    }
+    if (ch === ")" && groups.length > 0) {
+      const group = groups.pop();
+      const quantifierEnd = regexQuantifierEnd(pattern, index + 1);
+      if (group && quantifierEnd != null) {
+        if (group.hasAlternation || group.hasQuantifier) {
+          return true;
+        }
+        if (groups.length > 0) {
+          groups[groups.length - 1].hasQuantifier = true;
+        }
+        index = quantifierEnd;
+      }
+      continue;
+    }
+    if (ch === "|" && groups.length > 0) {
+      groups[groups.length - 1].hasAlternation = true;
+      continue;
+    }
+    const quantifierEnd = regexQuantifierEnd(pattern, index);
+    if (quantifierEnd != null) {
+      if (groups.length > 0) {
+        groups[groups.length - 1].hasQuantifier = true;
+      }
+      index = quantifierEnd;
     }
   }
   return false;
 }
 
-function hasUnsafeRegexToken(pattern: string): boolean {
+function findCharClassEnd(pattern: string, start: number): number | null {
+  let escaped = false;
+  for (let index = start + 1; index < pattern.length; index += 1) {
+    const ch = pattern.charAt(index);
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === "]") {
+      return index;
+    }
+  }
+  return null;
+}
+
+function findGroupEnd(pattern: string, start: number): number | null {
   let escaped = false;
   let inCharClass = false;
-  for (const ch of pattern) {
+  let depth = 0;
+  for (let index = start; index < pattern.length; index += 1) {
+    const ch = pattern.charAt(index);
     if (escaped) {
       escaped = false;
       continue;
@@ -309,13 +386,71 @@ function hasUnsafeRegexToken(pattern: string): boolean {
       inCharClass = false;
       continue;
     }
-    if (
-      !inCharClass &&
-      (ch === "|" || ch === "*" || ch === "+" || ch === "?" || ch === "{")
-    ) {
-      return true;
+    if (inCharClass) {
+      continue;
+    }
+    if (ch === "(") {
+      depth += 1;
+      continue;
+    }
+    if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
     }
   }
+  return null;
+}
+
+function hasAdjacentRepeatedQuantifiedAtoms(pattern: string): boolean {
+  let previousQuantifiedAtom: string | null = null;
+
+  for (let index = 0; index < pattern.length; index += 1) {
+    const ch = pattern.charAt(index);
+    let atom: string | null = null;
+    let atomEnd = index;
+
+    if (ch === "\\") {
+      atom = pattern.slice(index, Math.min(index + 2, pattern.length));
+      atomEnd = index + 1;
+    } else if (ch === "[") {
+      const classEnd = findCharClassEnd(pattern, index);
+      if (classEnd == null) {
+        return false;
+      }
+      atom = pattern.slice(index, classEnd + 1);
+      atomEnd = classEnd;
+    } else if (ch === "(") {
+      const groupEnd = findGroupEnd(pattern, index);
+      if (groupEnd == null) {
+        return false;
+      }
+      const quantifierEnd = regexQuantifierEnd(pattern, groupEnd + 1);
+      index = quantifierEnd ?? groupEnd;
+      previousQuantifiedAtom = null;
+      continue;
+    } else if (ch === "." || /^[A-Za-z0-9_$-]$/.test(ch)) {
+      atom = ch;
+    } else {
+      previousQuantifiedAtom = null;
+      continue;
+    }
+
+    const quantifierEnd = regexQuantifierEnd(pattern, atomEnd + 1);
+    if (atom && quantifierEnd != null) {
+      if (previousQuantifiedAtom === atom) {
+        return true;
+      }
+      previousQuantifiedAtom = atom;
+      index = quantifierEnd;
+      continue;
+    }
+
+    previousQuantifiedAtom = null;
+    index = atomEnd;
+  }
+
   return false;
 }
 
@@ -325,8 +460,8 @@ export function compileSafePatternPropertyRegex(
   if (
     pattern.length > MAX_PATTERN_PROPERTY_REGEX_LENGTH ||
     REGEX_BACKREFERENCE_REGEX.test(pattern) ||
-    hasRegexGroup(pattern) ||
-    hasUnsafeRegexToken(pattern)
+    hasNestedQuantifierRisk(pattern) ||
+    hasAdjacentRepeatedQuantifiedAtoms(pattern)
   ) {
     return null;
   }

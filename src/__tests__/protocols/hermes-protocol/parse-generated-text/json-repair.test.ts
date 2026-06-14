@@ -404,6 +404,25 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("rejects unquoted strict RJSON with prototype-sensitive argument keys", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{name:"write",arguments:{__proto__:{polluted:true},content:"ok"}}</tool_call>';
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+        },
+        false
+      ),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("accepts coercible keys before strict schema validation", () => {
     const p = hermesProtocol();
     const text =
@@ -452,10 +471,10 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("accepts patternProperties keys for strict schemas", () => {
+  it("accepts common grouped and quantified patternProperties for strict schemas", () => {
     const p = hermesProtocol();
     const text =
-      '<tool_call>{"name":"write","arguments":{"content":"ok","x-debug":"kept","path":"/tmp/a"}}}</tool_call>';
+      '<tool_call>{"name":"write","arguments":{"content":"ok","x-debug":"kept","y-trace":"yes","z-123":"num","path":"/tmp/a"}}}</tool_call>';
     const tools = [
       makeSchemaTool("write", {
         type: "object",
@@ -464,16 +483,22 @@ describe("parseGeneratedText JSON repair", () => {
           path: { type: "string" },
         },
         patternProperties: {
-          "^x-": { type: "string" },
+          "^(x|y)-": { type: "string" },
+          "^z-[0-9]+$": { type: "string" },
         },
         additionalProperties: false,
       }),
     ];
     const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new Error("expected tool call");
+    }
     const args = JSON.parse(tool.input);
     expect(args["x-debug"]).toBe("kept");
+    expect(args["y-trace"]).toBe("yes");
+    expect(args["z-123"]).toBe("num");
   });
 
   it("rejects patternProperties false matches for strict schemas", () => {
@@ -489,6 +514,26 @@ describe("parseGeneratedText JSON repair", () => {
         },
         patternProperties: {
           "^x-": false,
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects false property schemas for strict schemas", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","secret":"blocked"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+          secret: false,
         },
         additionalProperties: false,
       }),

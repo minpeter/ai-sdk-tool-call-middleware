@@ -516,6 +516,8 @@ function normalizeJsonStringCtrl(json: string): string {
 
 interface ArgumentKeyPolicy {
   allowUnknownKeys: boolean;
+  deniedKeys: Set<string>;
+  deniedPatterns: RegExp[];
   keyPatterns: RegExp[];
   knownKeys: Set<string>;
   schema: unknown;
@@ -538,20 +540,35 @@ function extractArgumentKeyPolicy(
   const patternProperties = isRecord(schema.patternProperties)
     ? schema.patternProperties
     : {};
+  const deniedPatterns: RegExp[] = [];
   const keyPatterns: RegExp[] = [];
   for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
+    const regex = compileSafePatternPropertyRegex(pattern);
     if (patternSchema === false) {
+      if (regex) {
+        deniedPatterns.push(regex);
+      }
       continue;
     }
-    const regex = compileSafePatternPropertyRegex(pattern);
     if (regex) {
       keyPatterns.push(regex);
     }
   }
+  const propertyEntries = Object.entries(properties);
   return {
     allowUnknownKeys: schema.additionalProperties !== false,
+    deniedKeys: new Set(
+      propertyEntries
+        .filter(([, propertySchema]) => propertySchema === false)
+        .map(([key]) => key)
+    ),
+    deniedPatterns,
     keyPatterns,
-    knownKeys: new Set(Object.keys(properties)),
+    knownKeys: new Set(
+      propertyEntries
+        .filter(([, propertySchema]) => propertySchema !== false)
+        .map(([key]) => key)
+    ),
     schema,
   };
 }
@@ -560,8 +577,22 @@ function applyArgumentKeyPolicy(
   args: Record<string, unknown>,
   keyPolicy?: ArgumentKeyPolicy
 ): Record<string, unknown> | null {
+  if (
+    keyPolicy &&
+    Object.keys(args).some((key) => argumentKeyDeniedByPolicy(key, keyPolicy))
+  ) {
+    return null;
+  }
   const policyArgs = keyPolicy ? coerceBySchema(args, keyPolicy.schema) : args;
   if (!isRecord(policyArgs)) {
+    return null;
+  }
+  if (
+    keyPolicy &&
+    Object.keys(policyArgs).some((key) =>
+      argumentKeyDeniedByPolicy(key, keyPolicy)
+    )
+  ) {
     return null;
   }
   if (keyPolicy && !keyPolicy.allowUnknownKeys) {
@@ -586,6 +617,16 @@ function applyArgumentKeyPolicy(
   return policyArgs;
 }
 
+function argumentKeyDeniedByPolicy(
+  key: string,
+  keyPolicy: ArgumentKeyPolicy
+): boolean {
+  return (
+    keyPolicy.deniedKeys.has(key) ||
+    keyPolicy.deniedPatterns.some((pattern) => pattern.test(key))
+  );
+}
+
 function argumentKeyMatchesPolicy(
   key: string,
   keyPolicy: ArgumentKeyPolicy
@@ -602,10 +643,28 @@ const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
   "prototype",
 ]);
 
-function parseJsonObjectKey(text: string, keyStart: number): {
+function isUnquotedRjsonKeyStart(char: string): boolean {
+  return (
+    char === "_" ||
+    char === "$" ||
+    (char >= "A" && char <= "Z") ||
+    (char >= "a" && char <= "z")
+  );
+}
+
+function isUnquotedRjsonKeyChar(char: string): boolean {
+  return (
+    isUnquotedRjsonKeyStart(char) ||
+    (char >= "0" && char <= "9") ||
+    char === "-"
+  );
+}
+
+function parseQuotedObjectKey(text: string, keyStart: number): {
   key: string;
   end: number;
 } | null {
+  const quote = text.charAt(keyStart);
   let index = keyStart + 1;
   let escaped = false;
   while (index < text.length) {
@@ -614,16 +673,48 @@ function parseJsonObjectKey(text: string, keyStart: number): {
       escaped = false;
     } else if (char === "\\") {
       escaped = true;
-    } else if (char === '"') {
-      try {
-        return { key: JSON.parse(text.slice(keyStart, index + 1)), end: index };
-      } catch {
-        return null;
+    } else if (char === quote) {
+      if (quote === '"') {
+        try {
+          return {
+            key: JSON.parse(text.slice(keyStart, index + 1)),
+            end: index,
+          };
+        } catch {
+          return null;
+        }
       }
+      return { key: text.slice(keyStart + 1, index), end: index };
     }
     index += 1;
   }
   return null;
+}
+
+function parseUnquotedObjectKey(text: string, keyStart: number): {
+  key: string;
+  end: number;
+} | null {
+  if (!isUnquotedRjsonKeyStart(text.charAt(keyStart))) {
+    return null;
+  }
+  let index = keyStart + 1;
+  while (index < text.length && isUnquotedRjsonKeyChar(text.charAt(index))) {
+    index += 1;
+  }
+  return { key: text.slice(keyStart, index), end: index - 1 };
+}
+
+function previousSignificantChar(text: string, index: number): string {
+  let cursor = index - 1;
+  while (cursor >= 0) {
+    const char = text.charAt(cursor);
+    if (!/\s/.test(char)) {
+      return char;
+    }
+    cursor -= 1;
+  }
+  return "";
 }
 
 function collectTopLevelObjectKeys(
@@ -636,19 +727,19 @@ function collectTopLevelObjectKeys(
 
   const keys: string[] = [];
   let depth = 0;
-  let inString = false;
+  let quoteChar: string | null = null;
   let escaping = false;
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
 
-    if (inString) {
+    if (quoteChar) {
       if (escaping) {
         escaping = false;
       } else if (char === "\\") {
         escaping = true;
-      } else if (char === '"') {
-        inString = false;
+      } else if (char === quoteChar) {
+        quoteChar = null;
       }
       continue;
     }
@@ -664,15 +755,33 @@ function collectTopLevelObjectKeys(
       }
       continue;
     }
-    if (char !== '"') {
-      continue;
-    }
     if (depth !== 1) {
-      inString = true;
+      if (char === '"' || char === "'") {
+        quoteChar = char;
+      }
       continue;
     }
 
-    const parsedKey = parseJsonObjectKey(text, index);
+    if (char !== '"' && char !== "'") {
+      if (
+        (previousSignificantChar(text, index) === "{" ||
+          previousSignificantChar(text, index) === ",") &&
+        isUnquotedRjsonKeyStart(char)
+      ) {
+        const parsedKey = parseUnquotedObjectKey(text, index);
+        if (!parsedKey) {
+          return null;
+        }
+        const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+        if (text.charAt(valueCursor) === ":") {
+          keys.push(parsedKey.key);
+          index = valueCursor;
+        }
+      }
+      continue;
+    }
+
+    const parsedKey = parseQuotedObjectKey(text, index);
     if (!parsedKey) {
       return null;
     }
@@ -1169,13 +1278,13 @@ function findTopLevelPropertyValueStart(
   }
 
   let depth = 0;
-  let inString = false;
+  let quoteChar: string | null = null;
   let escaping = false;
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
 
-    if (inString) {
+    if (quoteChar) {
       if (escaping) {
         escaping = false;
         continue;
@@ -1184,8 +1293,8 @@ function findTopLevelPropertyValueStart(
         escaping = true;
         continue;
       }
-      if (char === '"') {
-        inString = false;
+      if (char === quoteChar) {
+        quoteChar = null;
       }
       continue;
     }
@@ -1199,43 +1308,38 @@ function findTopLevelPropertyValueStart(
       continue;
     }
 
-    if (char !== '"') {
-      continue;
-    }
-
     if (depth !== 1) {
-      inString = true;
+      if (char === '"' || char === "'") {
+        quoteChar = char;
+      }
       continue;
     }
 
-    const keyStart = index + 1;
-    let keyEnd = keyStart;
-    let keyEscaped = false;
-    while (keyEnd < text.length) {
-      const keyChar = text.charAt(keyEnd);
-      if (keyEscaped) {
-        keyEscaped = false;
-      } else if (keyChar === "\\") {
-        keyEscaped = true;
-      } else if (keyChar === '"') {
-        break;
-      }
-      keyEnd += 1;
+    let parsedKey: { key: string; end: number } | null = null;
+    if (char === '"' || char === "'") {
+      parsedKey = parseQuotedObjectKey(text, index);
+    } else if (
+      (previousSignificantChar(text, index) === "{" ||
+        previousSignificantChar(text, index) === ",") &&
+      isUnquotedRjsonKeyStart(char)
+    ) {
+      parsedKey = parseUnquotedObjectKey(text, index);
+    } else {
+      continue;
     }
 
-    if (keyEnd >= text.length || text.charAt(keyEnd) !== '"') {
+    if (!parsedKey) {
       return null;
     }
 
-    const key = text.slice(keyStart, keyEnd);
-    let valueCursor = skipJsonWhitespace(text, keyEnd + 1);
+    let valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
     if (valueCursor >= text.length || text.charAt(valueCursor) !== ":") {
-      index = keyEnd;
+      index = parsedKey.end;
       continue;
     }
 
     valueCursor = skipJsonWhitespace(text, valueCursor + 1);
-    if (key === property) {
+    if (parsedKey.key === property) {
       return valueCursor < text.length ? valueCursor : null;
     }
 
