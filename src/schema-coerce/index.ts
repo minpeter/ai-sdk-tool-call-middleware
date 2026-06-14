@@ -289,13 +289,44 @@ function hasRegexGroup(pattern: string): boolean {
   return false;
 }
 
+function hasUnsafeRegexToken(pattern: string): boolean {
+  let escaped = false;
+  let inCharClass = false;
+  for (const ch of pattern) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === "[" && !inCharClass) {
+      inCharClass = true;
+      continue;
+    }
+    if (ch === "]" && inCharClass) {
+      inCharClass = false;
+      continue;
+    }
+    if (
+      !inCharClass &&
+      (ch === "|" || ch === "*" || ch === "+" || ch === "?" || ch === "{")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function compileSafePatternPropertyRegex(
   pattern: string
 ): RegExp | null {
   if (
     pattern.length > MAX_PATTERN_PROPERTY_REGEX_LENGTH ||
     REGEX_BACKREFERENCE_REGEX.test(pattern) ||
-    hasRegexGroup(pattern)
+    hasRegexGroup(pattern) ||
+    hasUnsafeRegexToken(pattern)
   ) {
     return null;
   }

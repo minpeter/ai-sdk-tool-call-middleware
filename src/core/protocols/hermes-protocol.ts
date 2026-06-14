@@ -539,7 +539,10 @@ function extractArgumentKeyPolicy(
     ? schema.patternProperties
     : {};
   const keyPatterns: RegExp[] = [];
-  for (const pattern of Object.keys(patternProperties)) {
+  for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
+    if (patternSchema === false) {
+      continue;
+    }
     const regex = compileSafePatternPropertyRegex(pattern);
     if (regex) {
       keyPatterns.push(regex);
@@ -590,6 +593,132 @@ function argumentKeyMatchesPolicy(
   return (
     keyPolicy.knownKeys.has(key) ||
     keyPolicy.keyPatterns.some((pattern) => pattern.test(key))
+  );
+}
+
+const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+function parseJsonObjectKey(text: string, keyStart: number): {
+  key: string;
+  end: number;
+} | null {
+  let index = keyStart + 1;
+  let escaped = false;
+  while (index < text.length) {
+    const char = text.charAt(index);
+    if (escaped) {
+      escaped = false;
+    } else if (char === "\\") {
+      escaped = true;
+    } else if (char === '"') {
+      try {
+        return { key: JSON.parse(text.slice(keyStart, index + 1)), end: index };
+      } catch {
+        return null;
+      }
+    }
+    index += 1;
+  }
+  return null;
+}
+
+function collectTopLevelObjectKeys(
+  text: string,
+  objectStart: number
+): string[] | null {
+  if (text.charAt(objectStart) !== "{") {
+    return null;
+  }
+
+  const keys: string[] = [];
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+
+  for (let index = objectStart; index < text.length; index += 1) {
+    const char = text.charAt(index);
+
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+      } else if (char === "\\") {
+        escaping = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return keys;
+      }
+      continue;
+    }
+    if (char !== '"') {
+      continue;
+    }
+    if (depth !== 1) {
+      inString = true;
+      continue;
+    }
+
+    const parsedKey = parseJsonObjectKey(text, index);
+    if (!parsedKey) {
+      return null;
+    }
+    const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+    if (text.charAt(valueCursor) === ":") {
+      keys.push(parsedKey.key);
+      index = valueCursor;
+      continue;
+    }
+    index = parsedKey.end;
+  }
+
+  return null;
+}
+
+function strictPolicyHasPrototypeSensitiveArgumentKey(
+  argumentsText: string,
+  keyPolicy?: ArgumentKeyPolicy
+): boolean {
+  if (!keyPolicy || keyPolicy.allowUnknownKeys) {
+    return false;
+  }
+  const objectStart = skipJsonWhitespace(argumentsText, 0);
+  const keys = collectTopLevelObjectKeys(argumentsText, objectStart);
+  return (
+    keys?.some((key) => PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) ?? false
+  );
+}
+
+function strictToolCallHasPrototypeSensitiveArgumentKey(
+  toolCallJson: string,
+  keyPolicy?: ArgumentKeyPolicy
+): boolean {
+  if (!keyPolicy || keyPolicy.allowUnknownKeys) {
+    return false;
+  }
+  const argsValueStart = findTopLevelPropertyValueStart(
+    toolCallJson,
+    "arguments"
+  );
+  if (argsValueStart == null) {
+    return false;
+  }
+  return strictPolicyHasPrototypeSensitiveArgumentKey(
+    toolCallJson.slice(argsValueStart),
+    keyPolicy
   );
 }
 
@@ -660,6 +789,10 @@ function repairToolCallJson(
   toolName: string,
   keyPolicy?: ArgumentKeyPolicy
 ): { name: string; arguments: Record<string, unknown> } | null {
+  if (strictToolCallHasPrototypeSensitiveArgumentKey(raw, keyPolicy)) {
+    return null;
+  }
+
   // 2. Find arguments object boundaries (top-level aware, like name extraction)
   const argsValueStart = findTopLevelPropertyValueStart(raw, "arguments");
   if (argsValueStart == null || raw.charAt(argsValueStart) !== "{") {
@@ -934,6 +1067,12 @@ function processToolCallJson(
     );
     if (!isParsedToolCallRecord(parsedToolCall)) {
       throw new Error("Tool call object is missing own name or arguments");
+    }
+    const keyPolicy = extractArgumentKeyPolicy(tools, parsedToolCall.name);
+    if (
+      strictToolCallHasPrototypeSensitiveArgumentKey(toolCallJson, keyPolicy)
+    ) {
+      throw new Error("Tool call arguments contain prototype-sensitive keys");
     }
     const policyArguments = applyToolArgumentKeyPolicy(
       parsedToolCall.name,
@@ -1350,14 +1489,24 @@ function canonicalizeArgumentsProgressInput(
   }
 
   try {
+    const keyPolicy = extractArgumentKeyPolicy(tools, toolName);
+    if (
+      strictPolicyHasPrototypeSensitiveArgumentKey(
+        progress.argumentsText,
+        keyPolicy
+      )
+    ) {
+      return undefined;
+    }
     const parsedArguments = parseRJSON(
       normalizeJsonStringCtrl(progress.argumentsText)
     );
-    const policyArguments = applyToolArgumentKeyPolicy(
-      toolName,
-      parsedArguments,
-      tools
-    );
+    if (!isRecord(parsedArguments)) {
+      return undefined;
+    }
+    const policyArgs = applyArgumentKeyPolicy(parsedArguments, keyPolicy);
+    const policyArguments =
+      policyArgs === null ? null : { args: policyArgs };
     if (policyArguments === null) {
       return undefined;
     }
@@ -1458,6 +1607,15 @@ function emitIncompleteToolCall(
       );
       if (!isParsedToolCallRecord(parsedToolCall)) {
         throw new Error("Tool call object is missing own name or arguments");
+      }
+      const keyPolicy = extractArgumentKeyPolicy(tools, parsedToolCall.name);
+      if (
+        strictToolCallHasPrototypeSensitiveArgumentKey(
+          state.currentToolCallJson,
+          keyPolicy
+        )
+      ) {
+        throw new Error("Tool call arguments contain prototype-sensitive keys");
       }
       const policyArguments = applyToolArgumentKeyPolicy(
         parsedToolCall.name,
@@ -1602,6 +1760,15 @@ function emitToolCall(context: TagProcessingContext) {
     );
     if (!isParsedToolCallRecord(parsedToolCall)) {
       throw new Error("Tool call object is missing own name or arguments");
+    }
+    const keyPolicy = extractArgumentKeyPolicy(tools, parsedToolCall.name);
+    if (
+      strictToolCallHasPrototypeSensitiveArgumentKey(
+        state.currentToolCallJson,
+        keyPolicy
+      )
+    ) {
+      throw new Error("Tool call arguments contain prototype-sensitive keys");
     }
     const policyArguments = applyToolArgumentKeyPolicy(
       parsedToolCall.name,

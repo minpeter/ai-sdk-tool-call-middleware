@@ -385,6 +385,25 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("rejects clean strict JSON with prototype-sensitive argument keys", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","__proto__":{"polluted":true}}}</tool_call>';
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+        },
+        false
+      ),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("accepts coercible keys before strict schema validation", () => {
     const p = hermesProtocol();
     const text =
@@ -457,6 +476,28 @@ describe("parseGeneratedText JSON repair", () => {
     expect(args["x-debug"]).toBe("kept");
   });
 
+  it("rejects patternProperties false matches for strict schemas", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","x-secret":"blocked"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "^x-": false,
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("fails closed for unsafe patternProperties without regex backtracking", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
@@ -470,6 +511,30 @@ describe("parseGeneratedText JSON repair", () => {
         },
         patternProperties: {
           "^(a+)+$": { type: "string" },
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const started = performance.now();
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(performance.now() - started).toBeLessThan(150);
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("fails closed for unsafe repeated patternProperties without groups", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const slowKey = `${"a".repeat(24)}!`;
+    const text = `<tool_call>{"name":"write","arguments":{"content":"ok","${slowKey}":"blocked"}}</tool_call>`;
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "^a+a+$": { type: "string" },
         },
         additionalProperties: false,
       }),

@@ -286,6 +286,48 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("rejects clean strict JSON with prototype-sensitive argument keys", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+        },
+        false
+      ),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"write","arguments":{"content":"ok","__proto__":{"polluted":true}}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("accepts coercible keys before strict schema validation", async () => {
     const tools = [
       makeSchemaTool("translate", {
@@ -449,6 +491,51 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(args["x-debug"]).toBe("kept");
   });
 
+  it("rejects patternProperties false matches for strict schemas", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "^x-": false,
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"write","arguments":{"content":"ok","x-secret":"blocked"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("fails closed for unsafe patternProperties without leaking tool-input events", async () => {
     const onError = vi.fn();
     const slowKey = `${"a".repeat(24)}!`;
@@ -460,6 +547,53 @@ describe("hermesProtocol streaming JSON repair", () => {
         },
         patternProperties: {
           "^(a+)+$": { type: "string" },
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: `<tool_call>{"name":"write","arguments":{"content":"ok","${slowKey}":"blocked"}}</tool_call>`,
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const started = performance.now();
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(performance.now() - started).toBeLessThan(150);
+    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("fails closed for unsafe repeated patternProperties without groups", async () => {
+    const onError = vi.fn();
+    const slowKey = `${"a".repeat(24)}!`;
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "^a+a+$": { type: "string" },
         },
         additionalProperties: false,
       }),
