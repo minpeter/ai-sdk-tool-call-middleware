@@ -550,6 +550,21 @@ function applyArgumentKeyPolicy(
   return args;
 }
 
+function applyToolArgumentKeyPolicy(
+  toolName: string,
+  args: unknown,
+  tools: LanguageModelV3FunctionTool[]
+): { args: unknown } | null {
+  if (!isRecord(args)) {
+    return { args };
+  }
+  const policyArgs = applyArgumentKeyPolicy(
+    args,
+    extractArgumentKeyPolicy(tools, toolName)
+  );
+  return policyArgs === null ? null : { args: policyArgs };
+}
+
 /** Maximum size (in UTF-16 code units) for the arguments body before bailing out of repair. */
 const REPAIR_MAX_ARGS_BODY_SIZE = 102_400;
 
@@ -884,11 +899,19 @@ function processToolCallJson(
       name: string;
       arguments: unknown;
     };
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      throw new Error("Tool call arguments contain schema-unknown keys");
+    }
     processedElements.push({
       type: "tool-call",
       toolCallId: generateToolCallId(),
       toolName: parsedToolCall.name,
-      input: canonicalizeToolInput(parsedToolCall.arguments),
+      input: canonicalizeToolInput(policyArguments.args),
     });
   } catch (error) {
     // Attempt repair for unescaped quotes
@@ -1294,9 +1317,17 @@ function canonicalizeArgumentsProgressInput(
     const parsedArguments = parseRJSON(
       normalizeJsonStringCtrl(progress.argumentsText)
     );
+    const policyArguments = applyToolArgumentKeyPolicy(
+      toolName,
+      parsedArguments,
+      tools
+    );
+    if (policyArguments === null) {
+      return undefined;
+    }
     return stringifyToolInputWithSchema({
       toolName,
-      args: parsedArguments,
+      args: policyArguments.args,
       tools,
       fallback: canonicalizeToolInput,
     });
@@ -1319,13 +1350,13 @@ function emitToolInputProgress(
     return;
   }
 
-  ensureToolInputStart(state, controller, progress.toolName);
   const canonicalProgressInput = canonicalizeArgumentsProgressInput(
     progress,
     progress.toolName,
     tools
   );
   if (canonicalProgressInput !== undefined) {
+    ensureToolInputStart(state, controller, progress.toolName);
     emitToolInputDelta(state, controller, canonicalProgressInput);
   }
 }
@@ -1392,7 +1423,20 @@ function emitIncompleteToolCall(
         name: string;
         arguments: unknown;
       };
-      emitToolCallFromParsed(state, controller, parsedToolCall, tools);
+      const policyArguments = applyToolArgumentKeyPolicy(
+        parsedToolCall.name,
+        parsedToolCall.arguments,
+        tools
+      );
+      if (policyArguments === null) {
+        throw new Error("Tool call arguments contain schema-unknown keys");
+      }
+      emitToolCallFromParsed(
+        state,
+        controller,
+        { ...parsedToolCall, arguments: policyArguments.args },
+        tools
+      );
       state.currentToolCallJson = "";
       state.isInsideToolCall = false;
       return;
@@ -1523,7 +1567,20 @@ function emitToolCall(context: TagProcessingContext) {
       name: string;
       arguments: unknown;
     };
-    emitToolCallFromParsed(state, controller, parsedToolCall, tools);
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      throw new Error("Tool call arguments contain schema-unknown keys");
+    }
+    emitToolCallFromParsed(
+      state,
+      controller,
+      { ...parsedToolCall, arguments: policyArguments.args },
+      tools
+    );
   } catch (error) {
     // Attempt repair for unescaped quotes
     const repaired = repairToolCallJsonForTools(state.currentToolCallJson, tools);

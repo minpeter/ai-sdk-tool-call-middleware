@@ -243,6 +243,49 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("rejects clean strict JSON without leaking tool-input lifecycle events", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeTool(
+        "write",
+        {
+          path: { type: "string" },
+          content: { type: "string" },
+        },
+        false
+      ),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"write","arguments":{"content":"ok","debug":"drop me","path":"/tmp/a"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("accepts patternProperties keys for strict schemas", async () => {
     const tools = [
       makeSchemaTool("write", {
