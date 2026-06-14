@@ -218,11 +218,11 @@ export function argumentValueMatchesSchemaKeyShape(
     }
     seen.add(value);
   }
-  if (Array.isArray(value)) {
-    return arrayMatchesSchemaKeyShape(value, unwrapped, seen);
-  }
   if (!schemaCombinatorsMatch(value, unwrapped, seen)) {
     return false;
+  }
+  if (Array.isArray(value)) {
+    return arrayMatchesSchemaKeyShape(value, unwrapped, seen);
   }
   if (isRecord(value) && isObjectSchema(unwrapped)) {
     return objectMatchesSchemaKeyShape(value, unwrapped, seen);

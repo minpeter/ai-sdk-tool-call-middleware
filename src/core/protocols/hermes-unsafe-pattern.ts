@@ -23,6 +23,30 @@ function pushCharacterClassRange(
   }
 }
 
+function readEscapedLiteral(
+  pattern: string,
+  index: number
+): { char: string; nextIndex: number } | null {
+  const escape = pattern.charAt(index);
+  if (escape === "x" && /^[\da-fA-F]{2}$/.test(pattern.slice(index + 1, index + 3))) {
+    return {
+      char: String.fromCharCode(
+        Number.parseInt(pattern.slice(index + 1, index + 3), 16)
+      ),
+      nextIndex: index + 2,
+    };
+  }
+  if (escape === "u" && /^[\da-fA-F]{4}$/.test(pattern.slice(index + 1, index + 5))) {
+    return {
+      char: String.fromCharCode(
+        Number.parseInt(pattern.slice(index + 1, index + 5), 16)
+      ),
+      nextIndex: index + 4,
+    };
+  }
+  return null;
+}
+
 function addCharacterClassHints(
   pattern: string,
   classStart: number,
@@ -33,7 +57,14 @@ function addCharacterClassHints(
   for (let index = classStart + 1; index < pattern.length; index += 1) {
     const char = pattern.charAt(index);
     if (escaped) {
-      if ("dDsSwWpP".includes(char)) {
+      const literal = readEscapedLiteral(pattern, index);
+      if (literal) {
+        if (isComparableKeyChar(literal.char)) {
+          hints.literals.add(literal.char);
+          previous = literal.char;
+        }
+        index = literal.nextIndex;
+      } else if ("dDsSwWpP".includes(char)) {
         hints.hasUnknownMatcher = true;
       } else if (isComparableKeyChar(char)) {
         hints.literals.add(char);
@@ -89,7 +120,13 @@ function collectPatternCharacterHints(pattern: string): PatternCharacterHints {
   for (let index = 0; index < pattern.length; index += 1) {
     const char = pattern.charAt(index);
     if (escaped) {
-      if ("dDsSwWpP".includes(char)) {
+      const literal = readEscapedLiteral(pattern, index);
+      if (literal) {
+        if (isComparableKeyChar(literal.char)) {
+          hints.literals.add(literal.char);
+        }
+        index = literal.nextIndex;
+      } else if ("dDsSwWpP".includes(char)) {
         hints.hasUnknownMatcher = true;
       } else if (isComparableKeyChar(char)) {
         hints.literals.add(char);
@@ -154,7 +191,10 @@ export function unsafeDeniedPatternMayMatchKey(
   if (comparable === 0) {
     return true;
   }
-  if (matching === 0 && !hints.hasUnknownMatcher) {
+  if (hints.hasUnknownMatcher) {
+    return true;
+  }
+  if (matching === 0) {
     return false;
   }
   return (

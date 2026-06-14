@@ -1324,6 +1324,8 @@ interface StreamState {
   currentToolCallJson: string;
   hasEmittedTextStart: boolean;
   isInsideToolCall: boolean;
+  pendingToolInputProgressVersion: number;
+  speculativeToolCall: { input: string; toolName: string } | null;
 }
 
 type StreamController =
@@ -1621,6 +1623,77 @@ function emitToolInputDelta(
   });
 }
 
+function emitStreamingToolInputProgress(options: {
+  state: StreamState;
+  controller: StreamController;
+  toolCallJson: string;
+  tools: LanguageModelV3FunctionTool[];
+}): boolean {
+  const { state, controller, toolCallJson, tools } = options;
+  const progress = extractStreamingToolCallProgress(toolCallJson);
+  if (!progress.toolName || !progress.argumentsComplete) {
+    return false;
+  }
+  try {
+    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      return false;
+    }
+    if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
+      return false;
+    }
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      return false;
+    }
+    const input = stringifyToolInputWithSchema({
+      toolName: parsedToolCall.name,
+      args: policyArguments.args,
+      tools,
+      fallback: canonicalizeToolInput,
+    });
+    ensureToolInputStart(state, controller, parsedToolCall.name);
+    emitToolInputDelta(state, controller, input);
+    state.speculativeToolCall = {
+      input,
+      toolName: parsedToolCall.name,
+    };
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleStreamingToolInputProgress(options: {
+  state: StreamState;
+  controller: StreamController;
+  toolCallJson: string;
+  tools: LanguageModelV3FunctionTool[];
+}) {
+  const { state, controller, toolCallJson, tools } = options;
+  state.pendingToolInputProgressVersion += 1;
+  const version = state.pendingToolInputProgressVersion;
+  setTimeout(() => {
+    if (
+      !state.isInsideToolCall ||
+      state.pendingToolInputProgressVersion !== version ||
+      state.currentToolCallJson !== toolCallJson
+    ) {
+      return;
+    }
+    emitStreamingToolInputProgress({
+      state,
+      controller,
+      toolCallJson,
+      tools,
+    });
+  });
+}
+
 function closeToolInput(state: StreamState, controller: StreamController) {
   if (!state.activeToolInput) {
     return;
@@ -1630,6 +1703,26 @@ function closeToolInput(state: StreamState, controller: StreamController) {
     id: state.activeToolInput.id,
   } as LanguageModelV3StreamPart);
   state.activeToolInput = null;
+}
+
+function emitSpeculativeToolCall(
+  state: StreamState,
+  controller: StreamController
+): boolean {
+  if (!state.activeToolInput || !state.speculativeToolCall) {
+    return false;
+  }
+  const toolCallId = state.activeToolInput.id;
+  const { input, toolName } = state.speculativeToolCall;
+  closeToolInput(state, controller);
+  controller.enqueue({
+    type: "tool-call",
+    toolCallId,
+    toolName,
+    input,
+  } as LanguageModelV3StreamPart);
+  state.speculativeToolCall = null;
+  return true;
 }
 
 function emitToolCallFromParsed(
@@ -1653,6 +1746,7 @@ function emitToolCallFromParsed(
   emitToolInputDelta(state, controller, input);
   const toolCallId = state.activeToolInput?.id ?? generateToolCallId();
   closeToolInput(state, controller);
+  state.speculativeToolCall = null;
   controller.enqueue({
     type: "tool-call",
     toolCallId,
@@ -1896,6 +1990,10 @@ function emitToolCall(context: TagProcessingContext) {
       emitToolCallFromParsed(state, controller, repaired, tools);
       return;
     }
+    const emittedSpeculativeToolCall = emitSpeculativeToolCall(
+      state,
+      controller
+    );
 
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
@@ -1927,7 +2025,9 @@ function emitToolCall(context: TagProcessingContext) {
         id: errorId,
       } as LanguageModelV3StreamPart);
     }
-    closeToolInput(state, controller);
+    if (!emittedSpeculativeToolCall) {
+      closeToolInput(state, controller);
+    }
     options?.onError?.(
       shouldEmitRawFallback
         ? "Could not process streaming JSON tool call; emitting original text."
@@ -2098,7 +2198,8 @@ function handlePartialTag(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
-  toolCallEnd: string
+  toolCallEnd: string,
+  tools: LanguageModelV3FunctionTool[]
 ) {
   if (state.isInsideToolCall) {
     const potentialEndIndex = getPotentialStartIndex(state.buffer, toolCallEnd);
@@ -2111,9 +2212,21 @@ function handlePartialTag(
         state,
         controller
       );
+      scheduleStreamingToolInputProgress({
+        state,
+        controller,
+        toolCallJson: state.currentToolCallJson,
+        tools,
+      });
       state.buffer = state.buffer.slice(potentialEndIndex);
     } else {
       publishText(state.buffer, state, controller);
+      scheduleStreamingToolInputProgress({
+        state,
+        controller,
+        toolCallJson: state.currentToolCallJson,
+        tools,
+      });
       state.buffer = "";
     }
     return;
@@ -2249,6 +2362,8 @@ export const hermesProtocol = ({
       currentTextId: null,
       hasEmittedTextStart: false,
       activeToolInput: null,
+      pendingToolInputProgressVersion: 0,
+      speculativeToolCall: null,
     };
 
     return new TransformStream<
@@ -2283,7 +2398,7 @@ export const hermesProtocol = ({
           options,
           tools,
         });
-        handlePartialTag(state, controller, toolCallStart, toolCallEnd);
+        handlePartialTag(state, controller, toolCallStart, toolCallEnd, tools);
       },
     });
   },
