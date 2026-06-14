@@ -125,7 +125,8 @@ function requiredKeys(schema: Record<string, unknown>): string[] {
 function objectMatchesSchemaKeyShape(
   value: Record<string, unknown>,
   schema: Record<string, unknown>,
-  seen: Set<object>
+  seen: Set<object>,
+  enforceValueKinds: boolean
 ): boolean {
   if (requiredKeys(schema).some((key) => !Object.hasOwn(value, key))) {
     return false;
@@ -163,7 +164,8 @@ function objectMatchesSchemaKeyShape(
           argumentValueMatchesSchemaKeyShape(
             nestedValue,
             nestedSchema,
-            new Set(seen)
+            new Set(seen),
+            enforceValueKinds
           )
         )
       ) {
@@ -181,7 +183,8 @@ function objectMatchesSchemaKeyShape(
       !argumentValueMatchesSchemaKeyShape(
         nestedValue,
         additionalSchema,
-        new Set(seen)
+        new Set(seen),
+        enforceValueKinds
       )
     ) {
       return false;
@@ -194,7 +197,8 @@ function objectMatchesSchemaKeyShape(
 function arrayMatchesSchemaKeyShape(
   value: unknown[],
   schema: Record<string, unknown>,
-  seen: Set<object>
+  seen: Set<object>,
+  enforceValueKinds: boolean
 ): boolean {
   const prefixItems = Array.isArray(schema.prefixItems)
     ? schema.prefixItems
@@ -202,11 +206,21 @@ function arrayMatchesSchemaKeyShape(
   if (prefixItems) {
     return value.every((item, index) => {
       const itemSchema = prefixItems[index] ?? schema.items;
-      return argumentValueMatchesSchemaKeyShape(item, itemSchema, seen);
+      return argumentValueMatchesSchemaKeyShape(
+        item,
+        itemSchema,
+        seen,
+        enforceValueKinds
+      );
     });
   }
   return value.every((item) =>
-    argumentValueMatchesSchemaKeyShape(item, schema.items, seen)
+    argumentValueMatchesSchemaKeyShape(
+      item,
+      schema.items,
+      seen,
+      enforceValueKinds
+    )
   );
 }
 
@@ -227,7 +241,12 @@ function schemaCombinatorsMatch(
     if (isRecord(unwrapped) && !valueMatchesSchemaKind(value, unwrapped)) {
       return false;
     }
-    return argumentValueMatchesSchemaKeyShape(value, subSchema, branchSeen());
+    return argumentValueMatchesSchemaKeyShape(
+      value,
+      subSchema,
+      branchSeen(),
+      true
+    );
   };
   const allOf = Array.isArray(schema.allOf) ? schema.allOf : undefined;
   if (allOf && !allOf.every((subSchema) => branchMatches(subSchema))) {
@@ -255,7 +274,8 @@ function schemaCombinatorsMatch(
 export function argumentValueMatchesSchemaKeyShape(
   value: unknown,
   schema: unknown,
-  seen = new Set<object>()
+  seen = new Set<object>(),
+  enforceValueKinds = false
 ): boolean {
   const unwrapped = unwrapJsonSchema(schema);
   if (unwrapped === false) {
@@ -263,6 +283,9 @@ export function argumentValueMatchesSchemaKeyShape(
   }
   if (!isRecord(unwrapped)) {
     return true;
+  }
+  if (enforceValueKinds && !valueMatchesSchemaKind(value, unwrapped)) {
+    return false;
   }
   if (isRecord(value) || Array.isArray(value)) {
     if (seen.has(value)) {
@@ -274,10 +297,15 @@ export function argumentValueMatchesSchemaKeyShape(
     return false;
   }
   if (Array.isArray(value)) {
-    return arrayMatchesSchemaKeyShape(value, unwrapped, seen);
+    return arrayMatchesSchemaKeyShape(value, unwrapped, seen, enforceValueKinds);
   }
   if (isRecord(value) && isObjectSchema(unwrapped)) {
-    return objectMatchesSchemaKeyShape(value, unwrapped, seen);
+    return objectMatchesSchemaKeyShape(
+      value,
+      unwrapped,
+      seen,
+      enforceValueKinds
+    );
   }
   return true;
 }
