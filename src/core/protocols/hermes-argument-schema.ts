@@ -3,6 +3,7 @@ import {
   getSchemaType,
   unwrapJsonSchema,
 } from "../../schema-coerce";
+import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 
 interface PatternSchemaMatches {
   schemas: unknown[];
@@ -35,102 +36,6 @@ function getPatternSchemaMatches(
     }
   }
   return { schemas, unsafeDeniedPatterns };
-}
-
-function regexLiteralCharacters(pattern: string): Set<string> {
-  const literals = new Set<string>();
-  let escaped = false;
-  let inCharClass = false;
-  for (let index = 0; index < pattern.length; index += 1) {
-    const char = pattern.charAt(index);
-    if (escaped) {
-      if (/^[A-Za-z0-9_-]$/.test(char)) {
-        literals.add(char);
-      }
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (char === "[" && !inCharClass) {
-      inCharClass = true;
-      continue;
-    }
-    if (char === "]" && inCharClass) {
-      inCharClass = false;
-      continue;
-    }
-    if (inCharClass) {
-      continue;
-    }
-    if (/^[A-Za-z0-9_-]$/.test(char)) {
-      literals.add(char);
-    }
-  }
-  return literals;
-}
-
-function patternHasConservativeCharacterMatcher(pattern: string): boolean {
-  let escaped = false;
-  let inCharClass = false;
-  for (let index = 0; index < pattern.length; index += 1) {
-    const char = pattern.charAt(index);
-    if (escaped) {
-      if ("dDsSwWpP".includes(char)) {
-        return true;
-      }
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (inCharClass) {
-      if (char === "]") {
-        inCharClass = false;
-      }
-      continue;
-    }
-    if (char === "[") {
-      return true;
-    }
-    if (char === ".") {
-      return true;
-    }
-  }
-  return inCharClass;
-}
-
-export function unsafeDeniedPatternMayMatchKey(
-  pattern: string,
-  key: string
-): boolean {
-  const literals = regexLiteralCharacters(pattern);
-  if (literals.size === 0) {
-    return true;
-  }
-
-  let comparable = 0;
-  let matching = 0;
-  for (const char of key) {
-    if (!/^[A-Za-z0-9_-]$/.test(char)) {
-      continue;
-    }
-    comparable += 1;
-    if (literals.has(char)) {
-      matching += 1;
-    }
-  }
-  if (comparable === 0) {
-    return true;
-  }
-  if (patternHasConservativeCharacterMatcher(pattern)) {
-    return true;
-  }
-  return matching === comparable || (key.length >= 16 && matching / comparable >= 0.75);
 }
 
 function isObjectSchema(schema: Record<string, unknown>): boolean {
@@ -250,6 +155,51 @@ function arrayMatchesSchemaKeyShape(
   );
 }
 
+function schemaCombinatorsMatch(
+  value: unknown,
+  schema: Record<string, unknown>,
+  seen: Set<object>
+): boolean {
+  const branchSeen = () => {
+    const nextSeen = new Set(seen);
+    if (isRecord(value) || Array.isArray(value)) {
+      nextSeen.delete(value);
+    }
+    return nextSeen;
+  };
+  const allOf = Array.isArray(schema.allOf) ? schema.allOf : undefined;
+  if (
+    allOf &&
+    !allOf.every((subSchema) =>
+      argumentValueMatchesSchemaKeyShape(value, subSchema, branchSeen())
+    )
+  ) {
+    return false;
+  }
+
+  const anyOf = Array.isArray(schema.anyOf) ? schema.anyOf : undefined;
+  if (
+    anyOf &&
+    !anyOf.some((subSchema) =>
+      argumentValueMatchesSchemaKeyShape(value, subSchema, branchSeen())
+    )
+  ) {
+    return false;
+  }
+
+  const oneOf = Array.isArray(schema.oneOf) ? schema.oneOf : undefined;
+  if (
+    oneOf &&
+    !oneOf.some((subSchema) =>
+      argumentValueMatchesSchemaKeyShape(value, subSchema, branchSeen())
+    )
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 export function argumentValueMatchesSchemaKeyShape(
   value: unknown,
   schema: unknown,
@@ -270,6 +220,9 @@ export function argumentValueMatchesSchemaKeyShape(
   }
   if (Array.isArray(value)) {
     return arrayMatchesSchemaKeyShape(value, unwrapped, seen);
+  }
+  if (!schemaCombinatorsMatch(value, unwrapped, seen)) {
+    return false;
   }
   if (isRecord(value) && isObjectSchema(unwrapped)) {
     return objectMatchesSchemaKeyShape(value, unwrapped, seen);

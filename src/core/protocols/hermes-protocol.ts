@@ -24,8 +24,8 @@ import {
 } from "../utils/tool-input-streaming";
 import {
   argumentValueMatchesSchemaKeyShape,
-  unsafeDeniedPatternMayMatchKey,
 } from "./hermes-argument-schema";
+import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
 interface HermesProtocolOptions {
@@ -980,6 +980,15 @@ function repairToolCallJson(
   if (argsValueStart == null || raw.charAt(argsValueStart) !== "{") {
     return null;
   }
+  const completeArgsSlice = extractJsonValueSlice(raw, argsValueStart);
+  if (completeArgsSlice?.complete) {
+    const afterArgs = raw
+      .slice(argsValueStart + completeArgsSlice.text.length)
+      .trim();
+    if (!/^}+$/.test(afterArgs)) {
+      return null;
+    }
+  }
   const argsStart = argsValueStart + 1;
 
   // 3. Find closing braces from end (arguments + outer object).
@@ -1315,7 +1324,6 @@ interface StreamState {
   currentToolCallJson: string;
   hasEmittedTextStart: boolean;
   isInsideToolCall: boolean;
-  pendingToolInputProgressVersion: number;
 }
 
 type StreamController =
@@ -1610,73 +1618,6 @@ function emitToolInputDelta(
     state: active,
     fullInput,
     mode: "full-json",
-  });
-}
-
-function emitStreamingToolInputProgress(options: {
-  state: StreamState;
-  controller: StreamController;
-  toolCallJson: string;
-  tools: LanguageModelV3FunctionTool[];
-}): boolean {
-  const { state, controller, toolCallJson, tools } = options;
-  const progress = extractStreamingToolCallProgress(toolCallJson);
-  if (!progress.toolName || !progress.argumentsComplete) {
-    return false;
-  }
-  try {
-    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
-    if (!isParsedToolCallRecord(parsedToolCall)) {
-      return false;
-    }
-    if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
-      return false;
-    }
-    const policyArguments = applyToolArgumentKeyPolicy(
-      parsedToolCall.name,
-      parsedToolCall.arguments,
-      tools
-    );
-    if (policyArguments === null) {
-      return false;
-    }
-    const input = stringifyToolInputWithSchema({
-      toolName: parsedToolCall.name,
-      args: policyArguments.args,
-      tools,
-      fallback: canonicalizeToolInput,
-    });
-    ensureToolInputStart(state, controller, parsedToolCall.name);
-    emitToolInputDelta(state, controller, input);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function scheduleStreamingToolInputProgress(options: {
-  state: StreamState;
-  controller: StreamController;
-  toolCallJson: string;
-  tools: LanguageModelV3FunctionTool[];
-}) {
-  const { state, controller, toolCallJson, tools } = options;
-  state.pendingToolInputProgressVersion += 1;
-  const version = state.pendingToolInputProgressVersion;
-  setTimeout(() => {
-    if (
-      !state.isInsideToolCall ||
-      state.pendingToolInputProgressVersion !== version ||
-      state.currentToolCallJson !== toolCallJson
-    ) {
-      return;
-    }
-    emitStreamingToolInputProgress({
-      state,
-      controller,
-      toolCallJson,
-      tools,
-    });
   });
 }
 
@@ -2157,8 +2098,7 @@ function handlePartialTag(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
-  toolCallEnd: string,
-  tools: LanguageModelV3FunctionTool[]
+  toolCallEnd: string
 ) {
   if (state.isInsideToolCall) {
     const potentialEndIndex = getPotentialStartIndex(state.buffer, toolCallEnd);
@@ -2171,21 +2111,9 @@ function handlePartialTag(
         state,
         controller
       );
-      scheduleStreamingToolInputProgress({
-        state,
-        controller,
-        toolCallJson: state.currentToolCallJson,
-        tools,
-      });
       state.buffer = state.buffer.slice(potentialEndIndex);
     } else {
       publishText(state.buffer, state, controller);
-      scheduleStreamingToolInputProgress({
-        state,
-        controller,
-        toolCallJson: state.currentToolCallJson,
-        tools,
-      });
       state.buffer = "";
     }
     return;
@@ -2321,7 +2249,6 @@ export const hermesProtocol = ({
       currentTextId: null,
       hasEmittedTextStart: false,
       activeToolInput: null,
-      pendingToolInputProgressVersion: 0,
     };
 
     return new TransformStream<
@@ -2356,7 +2283,7 @@ export const hermesProtocol = ({
           options,
           tools,
         });
-        handlePartialTag(state, controller, toolCallStart, toolCallEnd, tools);
+        handlePartialTag(state, controller, toolCallStart, toolCallEnd);
       },
     });
   },

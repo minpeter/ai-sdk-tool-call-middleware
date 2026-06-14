@@ -51,7 +51,7 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     assertCoreAiSdkEventCoverage(out);
   });
 
-  it("json protocol emits progress before a delayed closing tag", async () => {
+  it("json protocol waits for a delayed closing tag before emitting progress", async () => {
     const input = new TransformStream<
       LanguageModelV3StreamPart,
       LanguageModelV3StreamPart
@@ -77,10 +77,8 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const beforeClose = extractToolInputTimeline(out);
-    expect(beforeClose.starts).toHaveLength(1);
-    expect(beforeClose.deltas.map((delta) => delta.delta).join("")).toBe(
-      '{"location":"Seoul","unit":"celsius"}'
-    );
+    expect(beforeClose.starts).toHaveLength(0);
+    expect(beforeClose.deltas).toHaveLength(0);
     expect(beforeClose.ends).toHaveLength(0);
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
 

@@ -680,6 +680,33 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("preserves allowed keys when an unsafe false pattern contains character classes", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","note":"safe"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "^(a|[0-9])+$": false,
+        },
+        additionalProperties: true,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+      note: "safe",
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("falls back to text instead of truncating content at schema-unknown key-like text", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
@@ -709,6 +736,26 @@ describe("parseGeneratedText JSON repair", () => {
       '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"},"id":"123"}</tool_call>';
     const tools = [makeTool("edit", { content: { type: "string" } })];
     p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("falls back instead of repairing arguments across trailing top-level fields", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"path":"/tmp/a"},"debug":"drop"}}</tool_call>';
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+          path: { type: "string" },
+        },
+        false
+      ),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
   });
 
@@ -910,6 +957,30 @@ describe("parseGeneratedText JSON repair", () => {
         },
         required: ["payload"],
         additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects unknown keys through strict allOf schemas", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"safe":"ok","secret":"leak"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        allOf: [
+          {
+            type: "object",
+            properties: {
+              safe: { type: "string" },
+            },
+            required: ["safe"],
+            additionalProperties: false,
+          },
+        ],
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
