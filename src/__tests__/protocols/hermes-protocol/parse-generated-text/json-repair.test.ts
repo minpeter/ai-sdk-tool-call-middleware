@@ -799,6 +799,28 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("rejects nested __proto__ argument keys parsed onto prototypes", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"payload":{"__proto__":{"polluted":true}}}}</tool_call>';
+    const tools = [
+      makeSchemaTool("edit", {
+        type: "object",
+        properties: {
+          payload: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("rejects missing required argument keys", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
@@ -863,6 +885,38 @@ describe("parseGeneratedText JSON repair", () => {
           },
         },
         required: ["payload"],
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("applies every matching property and pattern schema", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"payload":{"other":"bad"}}}</tool_call>';
+    const tools = [
+      makeSchemaTool("edit", {
+        type: "object",
+        properties: {
+          payload: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+        patternProperties: {
+          "^payload$": {
+            type: "object",
+            properties: {
+              must: { type: "string" },
+            },
+            required: ["must"],
+            additionalProperties: false,
+          },
+        },
         additionalProperties: false,
       }),
     ];

@@ -695,6 +695,16 @@ function containsPrototypeSensitiveArgumentKey(
   );
 }
 
+function hasPrototypeSensitiveKeyInJsonLikeObject(text: string): boolean {
+  const firstBrace = text.indexOf("{");
+  if (firstBrace === -1) {
+    return false;
+  }
+  return (collectObjectKeys(text, firstBrace, true) ?? []).some((key) =>
+    PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)
+  );
+}
+
 function isUnquotedRjsonKeyStart(char: string): boolean {
   return (
     char === "_" ||
@@ -810,9 +820,10 @@ function previousSignificantChar(text: string, index: number): string {
   return "";
 }
 
-function collectTopLevelObjectKeys(
+function collectObjectKeys(
   text: string,
-  objectStart: number
+  objectStart: number,
+  includeNested: boolean
 ): string[] | null {
   if (text.charAt(objectStart) !== "{") {
     return null;
@@ -848,10 +859,13 @@ function collectTopLevelObjectKeys(
       }
       continue;
     }
-    if (depth !== 1) {
+    if (depth !== 1 && !includeNested) {
       if (char === '"' || char === "'") {
         quoteChar = char;
       }
+      continue;
+    }
+    if (depth < 1) {
       continue;
     }
 
@@ -888,31 +902,6 @@ function collectTopLevelObjectKeys(
   }
 
   return null;
-}
-
-function strictPolicyHasPrototypeSensitiveArgumentKey(
-  argumentsText: string
-): boolean {
-  const objectStart = skipJsonWhitespace(argumentsText, 0);
-  const keys = collectTopLevelObjectKeys(argumentsText, objectStart);
-  return (
-    keys?.some((key) => PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) ?? false
-  );
-}
-
-function strictToolCallHasPrototypeSensitiveArgumentKey(
-  toolCallJson: string
-): boolean {
-  const argsValueStart = findTopLevelPropertyValueStart(
-    toolCallJson,
-    "arguments"
-  );
-  if (argsValueStart == null) {
-    return false;
-  }
-  return strictPolicyHasPrototypeSensitiveArgumentKey(
-    toolCallJson.slice(argsValueStart)
-  );
 }
 
 function applyToolArgumentKeyPolicy(
@@ -982,7 +971,7 @@ function repairToolCallJson(
   toolName: string,
   keyPolicy?: ArgumentKeyPolicy
 ): { name: string; arguments: Record<string, unknown> } | null {
-  if (strictToolCallHasPrototypeSensitiveArgumentKey(raw)) {
+  if (hasPrototypeSensitiveKeyInJsonLikeObject(raw)) {
     return null;
   }
 
@@ -1262,7 +1251,7 @@ function processToolCallJson(
       throw new Error("Tool call object is missing own name or arguments");
     }
     if (
-      strictToolCallHasPrototypeSensitiveArgumentKey(toolCallJson)
+      hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)
     ) {
       throw new Error("Tool call arguments contain prototype-sensitive keys");
     }
@@ -1326,6 +1315,7 @@ interface StreamState {
   currentToolCallJson: string;
   hasEmittedTextStart: boolean;
   isInsideToolCall: boolean;
+  pendingToolInputProgressVersion: number;
 }
 
 type StreamController =
@@ -1623,6 +1613,73 @@ function emitToolInputDelta(
   });
 }
 
+function emitStreamingToolInputProgress(options: {
+  state: StreamState;
+  controller: StreamController;
+  toolCallJson: string;
+  tools: LanguageModelV3FunctionTool[];
+}): boolean {
+  const { state, controller, toolCallJson, tools } = options;
+  const progress = extractStreamingToolCallProgress(toolCallJson);
+  if (!progress.toolName || !progress.argumentsComplete) {
+    return false;
+  }
+  try {
+    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      return false;
+    }
+    if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
+      return false;
+    }
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      return false;
+    }
+    const input = stringifyToolInputWithSchema({
+      toolName: parsedToolCall.name,
+      args: policyArguments.args,
+      tools,
+      fallback: canonicalizeToolInput,
+    });
+    ensureToolInputStart(state, controller, parsedToolCall.name);
+    emitToolInputDelta(state, controller, input);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleStreamingToolInputProgress(options: {
+  state: StreamState;
+  controller: StreamController;
+  toolCallJson: string;
+  tools: LanguageModelV3FunctionTool[];
+}) {
+  const { state, controller, toolCallJson, tools } = options;
+  state.pendingToolInputProgressVersion += 1;
+  const version = state.pendingToolInputProgressVersion;
+  setTimeout(() => {
+    if (
+      !state.isInsideToolCall ||
+      state.pendingToolInputProgressVersion !== version ||
+      state.currentToolCallJson !== toolCallJson
+    ) {
+      return;
+    }
+    emitStreamingToolInputProgress({
+      state,
+      controller,
+      toolCallJson,
+      tools,
+    });
+  });
+}
+
 function closeToolInput(state: StreamState, controller: StreamController) {
   if (!state.activeToolInput) {
     return;
@@ -1726,9 +1783,7 @@ function emitIncompleteToolCall(
         throw new Error("Tool call object is missing own name or arguments");
       }
       if (
-        strictToolCallHasPrototypeSensitiveArgumentKey(
-          state.currentToolCallJson
-        )
+        hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)
       ) {
         throw new Error("Tool call arguments contain prototype-sensitive keys");
       }
@@ -1875,9 +1930,7 @@ function emitToolCall(context: TagProcessingContext) {
       throw new Error("Tool call object is missing own name or arguments");
     }
     if (
-      strictToolCallHasPrototypeSensitiveArgumentKey(
-        state.currentToolCallJson
-      )
+      hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)
     ) {
       throw new Error("Tool call arguments contain prototype-sensitive keys");
     }
@@ -2104,7 +2157,8 @@ function handlePartialTag(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
-  toolCallEnd: string
+  toolCallEnd: string,
+  tools: LanguageModelV3FunctionTool[]
 ) {
   if (state.isInsideToolCall) {
     const potentialEndIndex = getPotentialStartIndex(state.buffer, toolCallEnd);
@@ -2117,9 +2171,21 @@ function handlePartialTag(
         state,
         controller
       );
+      scheduleStreamingToolInputProgress({
+        state,
+        controller,
+        toolCallJson: state.currentToolCallJson,
+        tools,
+      });
       state.buffer = state.buffer.slice(potentialEndIndex);
     } else {
       publishText(state.buffer, state, controller);
+      scheduleStreamingToolInputProgress({
+        state,
+        controller,
+        toolCallJson: state.currentToolCallJson,
+        tools,
+      });
       state.buffer = "";
     }
     return;
@@ -2255,6 +2321,7 @@ export const hermesProtocol = ({
       currentTextId: null,
       hasEmittedTextStart: false,
       activeToolInput: null,
+      pendingToolInputProgressVersion: 0,
     };
 
     return new TransformStream<
@@ -2289,7 +2356,7 @@ export const hermesProtocol = ({
           options,
           tools,
         });
-        handlePartialTag(state, controller, toolCallStart, toolCallEnd);
+        handlePartialTag(state, controller, toolCallStart, toolCallEnd, tools);
       },
     });
   },

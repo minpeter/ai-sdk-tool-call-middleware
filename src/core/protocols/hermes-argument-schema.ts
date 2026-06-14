@@ -165,7 +165,11 @@ function objectMatchesSchemaKeyShape(
     if (schemasToValidate.length > 0) {
       if (
         !schemasToValidate.every((nestedSchema) =>
-          argumentValueMatchesSchemaKeyShape(nestedValue, nestedSchema, seen)
+          argumentValueMatchesSchemaKeyShape(
+            nestedValue,
+            nestedSchema,
+            new Set(seen)
+          )
         )
       ) {
         return false;
@@ -179,7 +183,11 @@ function objectMatchesSchemaKeyShape(
     }
     if (
       isRecord(additionalSchema) &&
-      !argumentValueMatchesSchemaKeyShape(nestedValue, additionalSchema, seen)
+      !argumentValueMatchesSchemaKeyShape(
+        nestedValue,
+        additionalSchema,
+        new Set(seen)
+      )
     ) {
       return false;
     }

@@ -1,6 +1,8 @@
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
+import { stopFinishReason, zeroUsage } from "../../../test-helpers";
 import {
   assertCanonicalAiSdkEventOrder,
   assertCoreAiSdkEventCoverage,
@@ -47,6 +49,64 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
 
     assertCanonicalAiSdkEventOrder(out);
     assertCoreAiSdkEventCoverage(out);
+  });
+
+  it("json protocol emits progress before a delayed closing tag", async () => {
+    const input = new TransformStream<
+      LanguageModelV3StreamPart,
+      LanguageModelV3StreamPart
+    >();
+    const out: LanguageModelV3StreamPart[] = [];
+    const done = input.readable
+      .pipeThrough(protocol.createStreamParser({ tools: fixture.tools }))
+      .pipeTo(
+        new WritableStream<LanguageModelV3StreamPart>({
+          write(part) {
+            out.push(part);
+          },
+        })
+      );
+    const writer = input.writable.getWriter();
+
+    await writer.write({
+      type: "text-delta",
+      id: "1",
+      delta:
+        '<tool_call>{"name":"get_weather","arguments":{"location":"Seoul","unit":"celsius"}}',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const beforeClose = extractToolInputTimeline(out);
+    expect(beforeClose.starts).toHaveLength(1);
+    expect(beforeClose.deltas.map((delta) => delta.delta).join("")).toBe(
+      '{"location":"Seoul","unit":"celsius"}'
+    );
+    expect(beforeClose.ends).toHaveLength(0);
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+
+    await writer.write({
+      type: "text-delta",
+      id: "1",
+      delta: "</tool_call>",
+    });
+    await writer.write({
+      type: "finish",
+      finishReason: stopFinishReason,
+      usage: zeroUsage,
+    });
+    await writer.close();
+    await done;
+
+    const { starts, ends } = extractToolInputTimeline(out);
+    const toolCall = out.find((part) => part.type === "tool-call") as {
+      type: "tool-call";
+      toolCallId: string;
+      input: string;
+    };
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    expect(toolCall.toolCallId).toBe(starts[0].id);
+    expect(toolCall.input).toBe('{"location":"Seoul","unit":"celsius"}');
   });
 
   it("json protocol force-completes tool input at finish when closing tag is missing", async () => {
