@@ -870,4 +870,31 @@ describe("parseGeneratedText JSON repair", () => {
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
   });
+
+  it("preserves allowed extra argument keys when a denied pattern is unsafe", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","note":"safe"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "^(a+)+$": false,
+        },
+        additionalProperties: true,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+      note: "safe",
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
 });

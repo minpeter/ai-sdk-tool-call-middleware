@@ -5,8 +5,8 @@ import {
 } from "../../schema-coerce";
 
 interface PatternSchemaMatches {
-  hasUnsafeDeniedPattern: boolean;
   schemas: unknown[];
+  unsafeDeniedPatterns: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -18,15 +18,15 @@ function getPatternSchemaMatches(
   key: string
 ): PatternSchemaMatches {
   if (!isRecord(patternProperties)) {
-    return { hasUnsafeDeniedPattern: false, schemas: [] };
+    return { schemas: [], unsafeDeniedPatterns: [] };
   }
   const schemas: unknown[] = [];
-  let hasUnsafeDeniedPattern = false;
+  const unsafeDeniedPatterns: string[] = [];
   for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
     const regex = compileSafePatternPropertyRegex(pattern);
     if (!regex) {
       if (patternSchema === false) {
-        hasUnsafeDeniedPattern = true;
+        unsafeDeniedPatterns.push(pattern);
       }
       continue;
     }
@@ -34,7 +34,68 @@ function getPatternSchemaMatches(
       schemas.push(patternSchema);
     }
   }
-  return { hasUnsafeDeniedPattern, schemas };
+  return { schemas, unsafeDeniedPatterns };
+}
+
+function regexLiteralCharacters(pattern: string): Set<string> {
+  const literals = new Set<string>();
+  let escaped = false;
+  let inCharClass = false;
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern.charAt(index);
+    if (escaped) {
+      if (/^[A-Za-z0-9_-]$/.test(char)) {
+        literals.add(char);
+      }
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "[" && !inCharClass) {
+      inCharClass = true;
+      continue;
+    }
+    if (char === "]" && inCharClass) {
+      inCharClass = false;
+      continue;
+    }
+    if (inCharClass) {
+      continue;
+    }
+    if (/^[A-Za-z0-9_-]$/.test(char)) {
+      literals.add(char);
+    }
+  }
+  return literals;
+}
+
+export function unsafeDeniedPatternMayMatchKey(
+  pattern: string,
+  key: string
+): boolean {
+  const literals = regexLiteralCharacters(pattern);
+  if (literals.size === 0) {
+    return true;
+  }
+
+  let comparable = 0;
+  let matching = 0;
+  for (const char of key) {
+    if (!/^[A-Za-z0-9_-]$/.test(char)) {
+      continue;
+    }
+    comparable += 1;
+    if (literals.has(char)) {
+      matching += 1;
+    }
+  }
+  if (comparable === 0) {
+    return true;
+  }
+  return matching === comparable || (key.length >= 16 && matching / comparable >= 0.75);
 }
 
 function isObjectSchema(schema: Record<string, unknown>): boolean {
@@ -85,15 +146,21 @@ function objectMatchesSchemaKeyShape(
       schema.patternProperties,
       key
     );
-    if (patternMatches.schemas.some((patternSchema) => patternSchema === false)) {
+    const patternSchemas = patternMatches.schemas;
+    if (patternSchemas.some((patternSchema) => patternSchema === false)) {
+      return false;
+    }
+    if (
+      patternMatches.unsafeDeniedPatterns.some((pattern) =>
+        unsafeDeniedPatternMayMatchKey(pattern, key)
+      )
+    ) {
       return false;
     }
 
     const schemasToValidate = [
       ...(propertySchema === undefined ? [] : [propertySchema]),
-      ...patternMatches.schemas.filter(
-        (patternSchema) => patternSchema !== false
-      ),
+      ...patternSchemas.filter((patternSchema) => patternSchema !== false),
     ];
     if (schemasToValidate.length > 0) {
       if (
@@ -107,7 +174,7 @@ function objectMatchesSchemaKeyShape(
     }
 
     const additionalSchema = schema.additionalProperties;
-    if (additionalSchema === false || patternMatches.hasUnsafeDeniedPattern) {
+    if (additionalSchema === false) {
       return false;
     }
     if (

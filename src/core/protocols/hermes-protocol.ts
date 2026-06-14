@@ -22,7 +22,10 @@ import {
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
-import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
+import {
+  argumentValueMatchesSchemaKeyShape,
+  unsafeDeniedPatternMayMatchKey,
+} from "./hermes-argument-schema";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
 interface HermesProtocolOptions {
@@ -519,10 +522,10 @@ interface ArgumentKeyPolicy {
   allowUnknownKeys: boolean;
   deniedKeys: Set<string>;
   deniedPatterns: RegExp[];
-  hasUnsafeDeniedPattern: boolean;
   keyPatterns: RegExp[];
   knownKeys: Set<string>;
   schema: unknown;
+  unsafeDeniedPatterns: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -543,15 +546,15 @@ function extractArgumentKeyPolicy(
     ? schema.patternProperties
     : {};
   const deniedPatterns: RegExp[] = [];
-  let hasUnsafeDeniedPattern = false;
   const keyPatterns: RegExp[] = [];
+  const unsafeDeniedPatterns: string[] = [];
   for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
     const regex = compileSafePatternPropertyRegex(pattern);
     if (patternSchema === false) {
       if (regex) {
         deniedPatterns.push(regex);
       } else {
-        hasUnsafeDeniedPattern = true;
+        unsafeDeniedPatterns.push(pattern);
       }
       continue;
     }
@@ -568,7 +571,6 @@ function extractArgumentKeyPolicy(
         .map(([key]) => key)
     ),
     deniedPatterns,
-    hasUnsafeDeniedPattern,
     keyPatterns,
     knownKeys: new Set(
       propertyEntries
@@ -576,6 +578,7 @@ function extractArgumentKeyPolicy(
         .map(([key]) => key)
     ),
     schema,
+    unsafeDeniedPatterns,
   };
 }
 
@@ -643,8 +646,9 @@ function argumentKeyDeniedByPolicy(
     PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key) ||
     keyPolicy.deniedKeys.has(key) ||
     keyPolicy.deniedPatterns.some((pattern) => pattern.test(key)) ||
-    (keyPolicy.hasUnsafeDeniedPattern &&
-      !argumentKeyMatchesPolicy(key, keyPolicy))
+    keyPolicy.unsafeDeniedPatterns.some((pattern) =>
+      unsafeDeniedPatternMayMatchKey(pattern, key)
+    )
   );
 }
 
