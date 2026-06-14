@@ -673,7 +673,7 @@ function applyArgumentKeyPolicy(
   ) {
     return null;
   }
-  const policyArgs = keyPolicy ? coerceBySchema(args, keyPolicy.schema) : args;
+  const policyArgs = coerceArgsForKeyPolicy(args, keyPolicy);
   if (!isRecord(policyArgs)) {
     return null;
   }
@@ -719,6 +719,13 @@ function applyArgumentKeyPolicy(
     return null;
   }
   return policyArgs;
+}
+
+function coerceArgsForKeyPolicy(
+  args: Record<string, unknown>,
+  keyPolicy?: ArgumentKeyPolicy
+): unknown {
+  return keyPolicy ? coerceBySchema(args, keyPolicy.schema) : args;
 }
 
 function argumentKeyDeniedByPolicy(
