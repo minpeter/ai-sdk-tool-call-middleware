@@ -656,6 +656,30 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("fails closed for unsafe false patternProperties with character classes", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","123":"blocked"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "^(a|[0-9])+$": false,
+        },
+        additionalProperties: true,
+      }),
+    ];
+    const started = performance.now();
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(performance.now() - started).toBeLessThan(150);
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("falls back to text instead of truncating content at schema-unknown key-like text", () => {
     const onError = vi.fn();
     const p = hermesProtocol();

@@ -72,6 +72,38 @@ function regexLiteralCharacters(pattern: string): Set<string> {
   return literals;
 }
 
+function patternHasConservativeCharacterMatcher(pattern: string): boolean {
+  let escaped = false;
+  let inCharClass = false;
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern.charAt(index);
+    if (escaped) {
+      if ("dDsSwWpP".includes(char)) {
+        return true;
+      }
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (inCharClass) {
+      if (char === "]") {
+        inCharClass = false;
+      }
+      continue;
+    }
+    if (char === "[") {
+      return true;
+    }
+    if (char === ".") {
+      return true;
+    }
+  }
+  return inCharClass;
+}
+
 export function unsafeDeniedPatternMayMatchKey(
   pattern: string,
   key: string
@@ -93,6 +125,9 @@ export function unsafeDeniedPatternMayMatchKey(
     }
   }
   if (comparable === 0) {
+    return true;
+  }
+  if (patternHasConservativeCharacterMatcher(pattern)) {
     return true;
   }
   return matching === comparable || (key.length >= 16 && matching / comparable >= 0.75);
