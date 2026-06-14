@@ -5,6 +5,7 @@ import {
 } from "../../schema-coerce";
 import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 
+const INTEGER_STRING_RE = /^-?\d+$/;
 const NUMERIC_STRING_RE = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
 interface PatternSchemaMatches {
@@ -28,7 +29,7 @@ function getPatternSchemaMatches(
   for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
     const regex = compileSafePatternPropertyRegex(pattern);
     if (!regex) {
-      if (patternSchema === false) {
+      if (patternSchema !== true) {
         unsafeDeniedPatterns.push(pattern);
       }
       continue;
@@ -78,14 +79,18 @@ function valueMatchesSchemaType(value: unknown, schemaType: string): boolean {
     case "integer":
       return (
         (typeof value === "number" && Number.isInteger(value)) ||
-        (typeof value === "string" && NUMERIC_STRING_RE.test(value))
+        (typeof value === "string" &&
+          INTEGER_STRING_RE.test(value) &&
+          !Number.isFinite(Number(value)))
       );
     case "null":
       return value === null;
     case "number":
       return (
-        typeof value === "number" ||
-        (typeof value === "string" && NUMERIC_STRING_RE.test(value))
+        (typeof value === "number" && Number.isFinite(value)) ||
+        (typeof value === "string" &&
+          NUMERIC_STRING_RE.test(value) &&
+          !Number.isFinite(Number(value)))
       );
     case "object":
       return isRecord(value);
@@ -351,6 +356,9 @@ export function argumentValueMatchesSchemaKeyShape(
   }
   if (!schemaCombinatorsMatch(value, unwrapped, seen)) {
     return false;
+  }
+  if (value === null && explicitSchemaTypes(unwrapped).includes("null")) {
+    return true;
   }
   if (isObjectSchema(unwrapped) && !isRecord(value)) {
     return false;

@@ -631,6 +631,8 @@ function extractArgumentKeyPolicy(
     }
     if (regex) {
       keyPatterns.push(regex);
+    } else if (patternSchema !== true) {
+      unsafeDeniedPatterns.push(pattern);
     }
   }
   const propertyEntries = Object.entries(properties);
@@ -1891,26 +1893,6 @@ function closeToolInput(state: StreamState, controller: StreamController) {
   state.activeToolInput = null;
 }
 
-function emitSpeculativeToolCall(
-  state: StreamState,
-  controller: StreamController
-): boolean {
-  if (!state.activeToolInput || !state.speculativeToolCall) {
-    return false;
-  }
-  const toolCallId = state.activeToolInput.id;
-  const { input, toolName } = state.speculativeToolCall;
-  closeToolInput(state, controller);
-  controller.enqueue({
-    type: "tool-call",
-    toolCallId,
-    toolName,
-    input,
-  } as LanguageModelV3StreamPart);
-  state.speculativeToolCall = null;
-  return true;
-}
-
 function emitToolCallFromParsed(
   state: StreamState,
   controller: StreamController,
@@ -2178,10 +2160,7 @@ function emitToolCall(context: TagProcessingContext) {
     }
     const activeToolCallId = state.activeToolInput?.id;
     const activeToolName = state.activeToolInput?.toolName;
-    const emittedSpeculativeToolCall = emitSpeculativeToolCall(
-      state,
-      controller
-    );
+    state.speculativeToolCall = null;
 
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
@@ -2212,9 +2191,7 @@ function emitToolCall(context: TagProcessingContext) {
         id: errorId,
       } as LanguageModelV3StreamPart);
     }
-    if (!emittedSpeculativeToolCall) {
-      closeToolInput(state, controller);
-    }
+    closeToolInput(state, controller);
     options?.onError?.(
       shouldEmitRawFallback
         ? "Could not process streaming JSON tool call; emitting original text."

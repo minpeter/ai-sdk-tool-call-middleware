@@ -1389,6 +1389,9 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
 
   const schemaType = getSchemaType(unwrapped);
   const u = unwrapped as Record<string, unknown>;
+  if (value === null && Array.isArray(u.type) && u.type.includes("null")) {
+    return value;
+  }
 
   // Handle string values
   if (typeof value === "string") {

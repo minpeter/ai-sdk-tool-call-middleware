@@ -227,12 +227,19 @@ export function unsafeDeniedPatternMayMatchKey(
 
   let comparable = 0;
   let matching = 0;
+  let firstComparableMatches = false;
+  let lastComparableMatches = false;
   for (const char of key) {
     if (!isComparableKeyChar(char)) {
       continue;
     }
     comparable += 1;
-    if (characterMayBeMatched(char, hints)) {
+    const matches = characterMayBeMatched(char, hints);
+    if (comparable === 1) {
+      firstComparableMatches = matches;
+    }
+    lastComparableMatches = matches;
+    if (matches) {
       matching += 1;
     }
   }
@@ -248,6 +255,17 @@ export function unsafeDeniedPatternMayMatchKey(
   }
   if (hints.literalRuns.some((run) => run.length >= 2 && key.includes(run))) {
     return true;
+  }
+  const startsAtBoundary = pattern.trimStart().startsWith("^");
+  const endsAtBoundary = pattern.trimEnd().endsWith("$");
+  if (!(startsAtBoundary || endsAtBoundary)) {
+    return true;
+  }
+  if (!startsAtBoundary) {
+    return lastComparableMatches;
+  }
+  if (!endsAtBoundary) {
+    return firstComparableMatches;
   }
   return (
     matching === comparable ||
