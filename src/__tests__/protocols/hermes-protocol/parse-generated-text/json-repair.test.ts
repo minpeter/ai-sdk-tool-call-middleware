@@ -385,6 +385,54 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("accepts coercible keys before strict schema validation", () => {
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"translate","arguments":{"text":"Ship","target_language":"fr","formality":"casual"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("translate", {
+        type: "object",
+        properties: {
+          text: { type: "string" },
+          targetLanguage: { type: "string" },
+          formality: { type: "string" },
+        },
+        required: ["text", "targetLanguage", "formality"],
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools });
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new Error("expected tool call");
+    }
+    expect(JSON.parse(tool.input)).toEqual({
+      text: "Ship",
+      targetLanguage: "fr",
+      formality: "casual",
+    });
+  });
+
+  it("rejects __proto__ keys in strict repair bookkeeping", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"__proto__":{"content":"bypass"},"content":"He said "hi" there"}}</tool_call>';
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+        },
+        false
+      ),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("accepts patternProperties keys for strict schemas", () => {
     const p = hermesProtocol();
     const text =
@@ -407,6 +455,30 @@ describe("parseGeneratedText JSON repair", () => {
     expect(tool).toBeTruthy();
     const args = JSON.parse(tool.input);
     expect(args["x-debug"]).toBe("kept");
+  });
+
+  it("fails closed for unsafe patternProperties without regex backtracking", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const slowKey = `${"a".repeat(24)}!`;
+    const text = `<tool_call>{"name":"write","arguments":{"content":"ok","${slowKey}":"blocked"}}</tool_call>`;
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        patternProperties: {
+          "^(a+)+$": { type: "string" },
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const started = performance.now();
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(performance.now() - started).toBeLessThan(150);
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
   });
 
   it("falls back to text instead of truncating content at schema-unknown key-like text", () => {

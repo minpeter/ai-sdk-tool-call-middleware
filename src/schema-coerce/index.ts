@@ -11,6 +11,8 @@ const DOUBLE_QUOTE = '"';
 const SNAKE_SEGMENT_REGEX = /_([a-zA-Z0-9])/g;
 const CAMEL_BOUNDARY_REGEX = /([a-z0-9])([A-Z])/g;
 const LEADING_UNDERSCORES_REGEX = /^_+/;
+const REGEX_BACKREFERENCE_REGEX = /\\(?:[1-9]|k<)/;
+const MAX_PATTERN_PROPERTY_REGEX_LENGTH = 128;
 
 export function unwrapJsonSchema(schema: unknown): unknown {
   if (!schema || typeof schema !== "object") {
@@ -260,6 +262,50 @@ function schemaIsUnconstrained(schema: unknown): boolean {
   return Object.keys(unwrapped).length === 0;
 }
 
+function hasRegexGroup(pattern: string): boolean {
+  let escaped = false;
+  let inCharClass = false;
+  for (const ch of pattern) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === "[" && !inCharClass) {
+      inCharClass = true;
+      continue;
+    }
+    if (ch === "]" && inCharClass) {
+      inCharClass = false;
+      continue;
+    }
+    if (!inCharClass && ch === "(") {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function compileSafePatternPropertyRegex(
+  pattern: string
+): RegExp | null {
+  if (
+    pattern.length > MAX_PATTERN_PROPERTY_REGEX_LENGTH ||
+    REGEX_BACKREFERENCE_REGEX.test(pattern) ||
+    hasRegexGroup(pattern)
+  ) {
+    return null;
+  }
+  try {
+    return new RegExp(pattern);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Gets all schemas from patternProperties that match the given key.
  *
@@ -289,13 +335,9 @@ function getPatternSchemasForKey(
   for (const [pattern, schema] of Object.entries(
     patternProperties as Record<string, unknown>
   )) {
-    try {
-      const regex = new RegExp(pattern);
-      if (regex.test(key)) {
-        schemas.push(schema);
-      }
-    } catch {
-      // Ignore invalid regex patterns.
+    const regex = compileSafePatternPropertyRegex(pattern);
+    if (regex?.test(key)) {
+      schemas.push(schema);
     }
   }
   return schemas;

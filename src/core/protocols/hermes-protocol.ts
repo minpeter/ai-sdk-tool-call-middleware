@@ -5,7 +5,11 @@ import type {
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
-import { unwrapJsonSchema } from "../../schema-coerce";
+import {
+  coerceBySchema,
+  compileSafePatternPropertyRegex,
+  unwrapJsonSchema,
+} from "../../schema-coerce";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
@@ -514,6 +518,7 @@ interface ArgumentKeyPolicy {
   allowUnknownKeys: boolean;
   keyPatterns: RegExp[];
   knownKeys: Set<string>;
+  schema: unknown;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -535,15 +540,16 @@ function extractArgumentKeyPolicy(
     : {};
   const keyPatterns: RegExp[] = [];
   for (const pattern of Object.keys(patternProperties)) {
-    try {
-      keyPatterns.push(new RegExp(pattern));
-    } catch {
+    const regex = compileSafePatternPropertyRegex(pattern);
+    if (regex) {
+      keyPatterns.push(regex);
     }
   }
   return {
     allowUnknownKeys: schema.additionalProperties !== false,
     keyPatterns,
     knownKeys: new Set(Object.keys(properties)),
+    schema,
   };
 }
 
@@ -551,17 +557,40 @@ function applyArgumentKeyPolicy(
   args: Record<string, unknown>,
   keyPolicy?: ArgumentKeyPolicy
 ): Record<string, unknown> | null {
+  const policyArgs = keyPolicy ? coerceBySchema(args, keyPolicy.schema) : args;
+  if (!isRecord(policyArgs)) {
+    return null;
+  }
   if (keyPolicy && !keyPolicy.allowUnknownKeys) {
-    for (const key of Object.keys(args)) {
-      if (
-        !keyPolicy.knownKeys.has(key) &&
-        !keyPolicy.keyPatterns.some((pattern) => pattern.test(key))
-      ) {
-        return null;
-      }
+    const rawUnknownKeys = Object.keys(args).filter(
+      (key) => !argumentKeyMatchesPolicy(key, keyPolicy)
+    );
+    const rawKnownKeys = new Set(
+      Object.keys(args).filter((key) =>
+        argumentKeyMatchesPolicy(key, keyPolicy)
+      )
+    );
+    const coercedKnownKeys = Object.keys(policyArgs).filter((key) =>
+      argumentKeyMatchesPolicy(key, keyPolicy)
+    );
+    const newCoercedKnownKeys = coercedKnownKeys.filter(
+      (key) => !rawKnownKeys.has(key)
+    );
+    if (newCoercedKnownKeys.length < rawUnknownKeys.length) {
+      return null;
     }
   }
-  return args;
+  return policyArgs;
+}
+
+function argumentKeyMatchesPolicy(
+  key: string,
+  keyPolicy: ArgumentKeyPolicy
+): boolean {
+  return (
+    keyPolicy.knownKeys.has(key) ||
+    keyPolicy.keyPatterns.some((pattern) => pattern.test(key))
+  );
 }
 
 function applyToolArgumentKeyPolicy(
@@ -728,19 +757,19 @@ function repairToolCallJson(
   );
 
   // 7. Handle duplicate key names with scoring heuristic
-  const firstByKey: Record<string, number> = {};
-  const lastByKey: Record<string, number> = {};
+  const firstByKey = new Map<string, number>();
+  const lastByKey = new Map<string, number>();
   for (let idx = 0; idx < allKeys.length; idx++) {
-    if (!(allKeys[idx].key in firstByKey)) {
-      firstByKey[allKeys[idx].key] = idx;
+    if (!firstByKey.has(allKeys[idx].key)) {
+      firstByKey.set(allKeys[idx].key, idx);
     }
-    lastByKey[allKeys[idx].key] = idx;
+    lastByKey.set(allKeys[idx].key, idx);
   }
   const firstPositions = allKeys.filter(
-    (_, i) => firstByKey[allKeys[i].key] === i
+    (_, i) => firstByKey.get(allKeys[i].key) === i
   );
   const lastPositions = allKeys.filter(
-    (_, i) => lastByKey[allKeys[i].key] === i
+    (_, i) => lastByKey.get(allKeys[i].key) === i
   );
 
   let keyPositions: typeof allKeys;
@@ -821,14 +850,6 @@ function repairToolCallJson(
   const args = Object.create(null) as Record<string, unknown>;
   for (let i = 0; i < allKeys.length; i++) {
     const kp = allKeys[i];
-    const rejectsUnknownArgument =
-      keyPolicy &&
-      !keyPolicy.allowUnknownKeys &&
-      !keyPolicy.knownKeys.has(kp.key) &&
-      !keyPolicy.keyPatterns.some((pattern) => pattern.test(kp.key));
-    if (rejectsUnknownArgument) {
-      return null;
-    }
     const vs = kp.valueStart;
     const ve =
       i + 1 < allKeys.length ? allKeys[i + 1].matchStart : argsBody.length;
@@ -881,7 +902,8 @@ function repairToolCallJson(
   if (Object.keys(args).length === 0) {
     return null;
   }
-  return { name: toolName, arguments: args };
+  const policyArgs = applyArgumentKeyPolicy(args, keyPolicy);
+  return policyArgs === null ? null : { name: toolName, arguments: policyArgs };
 }
 
 function repairToolCallJsonForTools(
