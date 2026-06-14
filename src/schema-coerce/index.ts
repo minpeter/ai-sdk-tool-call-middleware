@@ -286,6 +286,25 @@ function regexQuantifierEnd(pattern: string, index: number): number | null {
   return cursor < pattern.length ? cursor : null;
 }
 
+function regexGroupPrefixEnd(pattern: string, groupStart: number): number | null {
+  if (pattern.charAt(groupStart + 1) !== "?") {
+    return null;
+  }
+  const prefix = pattern.charAt(groupStart + 2);
+  if (prefix === ":" || prefix === "=" || prefix === "!") {
+    return groupStart + 2;
+  }
+  if (prefix !== "<") {
+    return null;
+  }
+  const lookbehindPrefix = pattern.charAt(groupStart + 3);
+  if (lookbehindPrefix === "=" || lookbehindPrefix === "!") {
+    return groupStart + 3;
+  }
+  const nameEnd = pattern.indexOf(">", groupStart + 3);
+  return nameEnd === -1 ? null : nameEnd;
+}
+
 function hasNestedQuantifierRisk(pattern: string): boolean {
   let escaped = false;
   let inCharClass = false;
@@ -314,6 +333,10 @@ function hasNestedQuantifierRisk(pattern: string): boolean {
     }
     if (ch === "(") {
       groups.push({ hasAlternation: false, hasQuantifier: false });
+      const prefixEnd = regexGroupPrefixEnd(pattern, index);
+      if (prefixEnd != null) {
+        index = prefixEnd;
+      }
       continue;
     }
     if (ch === ")" && groups.length > 0) {

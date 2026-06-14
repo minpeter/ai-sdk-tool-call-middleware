@@ -732,6 +732,48 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(args["z-123"]).toBe("num");
   });
 
+  it("accepts non-capturing patternProperties groups for strict schemas", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        patternProperties: {
+          "^(?:x-)+$": { type: "string" },
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"write","arguments":{"x-":"ok"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      "x-": "ok",
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("rejects patternProperties false matches for strict schemas", async () => {
     const onError = vi.fn();
     const tools = [
@@ -1535,6 +1577,97 @@ describe("hermesProtocol streaming JSON repair", () => {
       expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
       expect(onError).toHaveBeenCalled();
     }
+  });
+
+  it("rejects non-object arguments for allOf-wrapped strict object input schemas", async () => {
+    const argumentBodies = ["[]", '"scalar"'];
+    for (const argumentBody of argumentBodies) {
+      const onError = vi.fn();
+      const protocol = hermesProtocol();
+      const transformer = protocol.createStreamParser({
+        tools: [
+          makeSchemaTool("write", {
+            allOf: [
+              {
+                type: "object",
+                properties: {
+                  content: { type: "string" },
+                },
+                required: ["content"],
+                additionalProperties: false,
+              },
+            ],
+          }),
+        ],
+        options: { onError },
+      });
+      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+        start(ctrl) {
+          ctrl.enqueue({
+            type: "text-delta",
+            id: "1",
+            delta: `<tool_call>{"name":"write","arguments":${argumentBody}}</tool_call>`,
+          });
+          ctrl.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          ctrl.close();
+        },
+      });
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(rs, transformer)
+      );
+      expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+      expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
+      expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
+      expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
+      expect(onError).toHaveBeenCalled();
+    }
+  });
+
+  it("rejects strict primitive property values that cannot be coerced", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeSchemaTool("count", {
+        type: "object",
+        properties: {
+          count: { type: "integer" },
+        },
+        required: ["count"],
+        additionalProperties: false,
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"count","arguments":{"count":"abc"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
+    expect(onError).toHaveBeenCalled();
   });
 
   it("rejects unknown keys through strict allOf schemas", async () => {

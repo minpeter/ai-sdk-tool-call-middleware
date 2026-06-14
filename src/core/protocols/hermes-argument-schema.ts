@@ -5,6 +5,8 @@ import {
 } from "../../schema-coerce";
 import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 
+const NUMERIC_STRING_RE = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
 interface PatternSchemaMatches {
   schemas: unknown[];
   unsafeDeniedPatterns: string[];
@@ -74,11 +76,17 @@ function valueMatchesSchemaType(value: unknown, schemaType: string): boolean {
     case "boolean":
       return typeof value === "boolean";
     case "integer":
-      return typeof value === "number" && Number.isInteger(value);
+      return (
+        (typeof value === "number" && Number.isInteger(value)) ||
+        (typeof value === "string" && NUMERIC_STRING_RE.test(value))
+      );
     case "null":
       return value === null;
     case "number":
-      return typeof value === "number";
+      return (
+        typeof value === "number" ||
+        (typeof value === "string" && NUMERIC_STRING_RE.test(value))
+      );
     case "object":
       return isRecord(value);
     case "string":
@@ -125,6 +133,9 @@ function valueMatchesSchemaKind(
     !schema.enum.some((allowed) => jsonValuesEqual(value, allowed))
   ) {
     return false;
+  }
+  if (value === null) {
+    return true;
   }
   const schemaTypes = explicitSchemaTypes(schema);
   if (schemaTypes.length > 0) {

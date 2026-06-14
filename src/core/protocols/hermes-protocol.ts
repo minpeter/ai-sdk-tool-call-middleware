@@ -534,6 +534,55 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function schemaRejectsNonRecordArguments(
+  schema: unknown,
+  seen = new Set<object>()
+): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (unwrapped === false) {
+    return true;
+  }
+  if (!isRecord(unwrapped)) {
+    return false;
+  }
+  if (seen.has(unwrapped)) {
+    return false;
+  }
+  seen.add(unwrapped);
+  if (unwrapped.additionalProperties === false) {
+    return true;
+  }
+
+  const allOf = Array.isArray(unwrapped.allOf) ? unwrapped.allOf : undefined;
+  if (
+    allOf?.some((subSchema) =>
+      schemaRejectsNonRecordArguments(subSchema, new Set(seen))
+    )
+  ) {
+    return true;
+  }
+
+  const anyOf = Array.isArray(unwrapped.anyOf) ? unwrapped.anyOf : undefined;
+  if (
+    anyOf &&
+    anyOf.length > 0 &&
+    anyOf.every((subSchema) =>
+      schemaRejectsNonRecordArguments(subSchema, new Set(seen))
+    )
+  ) {
+    return true;
+  }
+
+  const oneOf = Array.isArray(unwrapped.oneOf) ? unwrapped.oneOf : undefined;
+  return (
+    oneOf !== undefined &&
+    oneOf.length > 0 &&
+    oneOf.every((subSchema) =>
+      schemaRejectsNonRecordArguments(subSchema, new Set(seen))
+    )
+  );
+}
+
 function extractArgumentKeyPolicy(
   tools: LanguageModelV3FunctionTool[],
   toolName: string
@@ -593,7 +642,7 @@ function extractArgumentKeyPolicy(
         .map(([key]) => key)
     ),
     rejectAll: false,
-    rejectNonRecordArguments: schema.additionalProperties === false,
+    rejectNonRecordArguments: schemaRejectsNonRecordArguments(schema),
     schema,
     unsafeDeniedPatterns,
   };
@@ -651,7 +700,12 @@ function applyArgumentKeyPolicy(
   }
   if (
     keyPolicy &&
-    !argumentValueMatchesSchemaKeyShape(policyArgs, keyPolicy.schema)
+    !argumentValueMatchesSchemaKeyShape(
+      policyArgs,
+      keyPolicy.schema,
+      new Set(),
+      true
+    )
   ) {
     return null;
   }
