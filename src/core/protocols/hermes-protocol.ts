@@ -520,6 +520,20 @@ function extractArgumentKeyPolicy(
   };
 }
 
+function applyArgumentKeyPolicy(
+  args: Record<string, unknown>,
+  keyPolicy?: ArgumentKeyPolicy
+): Record<string, unknown> | null {
+  if (keyPolicy && !keyPolicy.allowUnknownKeys) {
+    for (const key of Object.keys(args)) {
+      if (!keyPolicy.knownKeys.has(key)) {
+        return null;
+      }
+    }
+  }
+  return args;
+}
+
 /** Maximum size (in UTF-16 code units) for the arguments body before bailing out of repair. */
 const REPAIR_MAX_ARGS_BODY_SIZE = 102_400;
 
@@ -619,9 +633,14 @@ function repairToolCallJson(
 
   // 4. Try standard parse first
   try {
+    const parsedArgs = JSON.parse(`{${argsBody}}`) as Record<string, unknown>;
+    const policyArgs = applyArgumentKeyPolicy(parsedArgs, keyPolicy);
+    if (!policyArgs) {
+      return null;
+    }
     return {
       name: toolName,
-      arguments: JSON.parse(`{${argsBody}}`) as Record<string, unknown>,
+      arguments: policyArgs,
     };
   } catch {
     /* fall through to repair */
