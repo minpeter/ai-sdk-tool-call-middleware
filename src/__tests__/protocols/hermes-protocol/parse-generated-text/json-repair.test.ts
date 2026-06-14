@@ -94,6 +94,17 @@ describe("parseGeneratedText JSON repair", () => {
     expect(JSON.parse(tool.input)).toEqual({ path: "/tmp/file.txt" });
   });
 
+  it("rejects inherited tool call fields from __proto__ wrappers", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"__proto__":{"name":"write","arguments":{"content":"ok"}}}</tool_call>';
+    const tools = [makeTool("write", { content: { type: "string" } })];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("falls through to error for completely broken JSON (no name field)", () => {
     const onError = vi.fn();
     const p = hermesProtocol();

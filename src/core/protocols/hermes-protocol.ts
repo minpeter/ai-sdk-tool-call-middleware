@@ -298,6 +298,20 @@ function canonicalizeToolInput(argumentsValue: unknown): string {
   return JSON.stringify(argumentsValue ?? {});
 }
 
+function isParsedToolCallRecord(
+  value: unknown
+): value is { name: string; arguments: unknown } {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    Object.prototype.hasOwnProperty.call(record, "name") &&
+    Object.prototype.hasOwnProperty.call(record, "arguments") &&
+    typeof record.name === "string"
+  );
+}
+
 const CHAR_CODE_BACKSLASH = 0x5c;
 const CHAR_CODE_QUOTE = 0x22;
 const CHAR_CODE_LF = 0x0a;
@@ -895,10 +909,10 @@ function processToolCallJson(
   try {
     const parsedToolCall = parseRJSON(
       normalizeJsonStringCtrl(toolCallJson)
-    ) as {
-      name: string;
-      arguments: unknown;
-    };
+    );
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      throw new Error("Tool call object is missing own name or arguments");
+    }
     const policyArguments = applyToolArgumentKeyPolicy(
       parsedToolCall.name,
       parsedToolCall.arguments,
@@ -1419,10 +1433,10 @@ function emitIncompleteToolCall(
     try {
       const parsedToolCall = parseRJSON(
         normalizeJsonStringCtrl(state.currentToolCallJson)
-      ) as {
-        name: string;
-        arguments: unknown;
-      };
+      );
+      if (!isParsedToolCallRecord(parsedToolCall)) {
+        throw new Error("Tool call object is missing own name or arguments");
+      }
       const policyArguments = applyToolArgumentKeyPolicy(
         parsedToolCall.name,
         parsedToolCall.arguments,
@@ -1563,10 +1577,10 @@ function emitToolCall(context: TagProcessingContext) {
   try {
     const parsedToolCall = parseRJSON(
       normalizeJsonStringCtrl(state.currentToolCallJson)
-    ) as {
-      name: string;
-      arguments: unknown;
-    };
+    );
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      throw new Error("Tool call object is missing own name or arguments");
+    }
     const policyArguments = applyToolArgumentKeyPolicy(
       parsedToolCall.name,
       parsedToolCall.arguments,
