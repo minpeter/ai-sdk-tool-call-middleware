@@ -582,6 +582,9 @@ function applyArgumentKeyPolicy(
   args: Record<string, unknown>,
   keyPolicy?: ArgumentKeyPolicy
 ): Record<string, unknown> | null {
+  if (containsPrototypeSensitiveArgumentKey(args)) {
+    return null;
+  }
   if (
     keyPolicy &&
     Object.keys(args).some((key) => argumentKeyDeniedByPolicy(key, keyPolicy))
@@ -590,6 +593,9 @@ function applyArgumentKeyPolicy(
   }
   const policyArgs = keyPolicy ? coerceBySchema(args, keyPolicy.schema) : args;
   if (!isRecord(policyArgs)) {
+    return null;
+  }
+  if (containsPrototypeSensitiveArgumentKey(policyArgs)) {
     return null;
   }
   if (
@@ -650,6 +656,33 @@ const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
   "constructor",
   "prototype",
 ]);
+
+function containsPrototypeSensitiveArgumentKey(
+  value: unknown,
+  seen = new Set<object>()
+): boolean {
+  if (Array.isArray(value)) {
+    if (seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    return value.some((item) =>
+      containsPrototypeSensitiveArgumentKey(item, seen)
+    );
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+  return Object.keys(value).some(
+    (key) =>
+      PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key) ||
+      containsPrototypeSensitiveArgumentKey(value[key], seen)
+  );
+}
 
 function isUnquotedRjsonKeyStart(char: string): boolean {
   return (
@@ -847,12 +880,8 @@ function collectTopLevelObjectKeys(
 }
 
 function strictPolicyHasPrototypeSensitiveArgumentKey(
-  argumentsText: string,
-  keyPolicy?: ArgumentKeyPolicy
+  argumentsText: string
 ): boolean {
-  if (!keyPolicy) {
-    return false;
-  }
   const objectStart = skipJsonWhitespace(argumentsText, 0);
   const keys = collectTopLevelObjectKeys(argumentsText, objectStart);
   return (
@@ -861,12 +890,8 @@ function strictPolicyHasPrototypeSensitiveArgumentKey(
 }
 
 function strictToolCallHasPrototypeSensitiveArgumentKey(
-  toolCallJson: string,
-  keyPolicy?: ArgumentKeyPolicy
+  toolCallJson: string
 ): boolean {
-  if (!keyPolicy) {
-    return false;
-  }
   const argsValueStart = findTopLevelPropertyValueStart(
     toolCallJson,
     "arguments"
@@ -875,8 +900,7 @@ function strictToolCallHasPrototypeSensitiveArgumentKey(
     return false;
   }
   return strictPolicyHasPrototypeSensitiveArgumentKey(
-    toolCallJson.slice(argsValueStart),
-    keyPolicy
+    toolCallJson.slice(argsValueStart)
   );
 }
 
@@ -947,7 +971,7 @@ function repairToolCallJson(
   toolName: string,
   keyPolicy?: ArgumentKeyPolicy
 ): { name: string; arguments: Record<string, unknown> } | null {
-  if (strictToolCallHasPrototypeSensitiveArgumentKey(raw, keyPolicy)) {
+  if (strictToolCallHasPrototypeSensitiveArgumentKey(raw)) {
     return null;
   }
 
@@ -1226,9 +1250,8 @@ function processToolCallJson(
     if (!isParsedToolCallRecord(parsedToolCall)) {
       throw new Error("Tool call object is missing own name or arguments");
     }
-    const keyPolicy = extractArgumentKeyPolicy(tools, parsedToolCall.name);
     if (
-      strictToolCallHasPrototypeSensitiveArgumentKey(toolCallJson, keyPolicy)
+      strictToolCallHasPrototypeSensitiveArgumentKey(toolCallJson)
     ) {
       throw new Error("Tool call arguments contain prototype-sensitive keys");
     }
@@ -1629,76 +1652,6 @@ function emitToolCallFromParsed(
   } as LanguageModelV3StreamPart);
 }
 
-function canonicalizeArgumentsProgressInput(
-  progress: {
-    argumentsText: string | undefined;
-    argumentsComplete: boolean;
-  },
-  toolName: string,
-  tools: LanguageModelV3FunctionTool[]
-): string | undefined {
-  if (progress.argumentsText === undefined || !progress.argumentsComplete) {
-    return undefined;
-  }
-
-  try {
-    const keyPolicy = extractArgumentKeyPolicy(tools, toolName);
-    if (
-      strictPolicyHasPrototypeSensitiveArgumentKey(
-        progress.argumentsText,
-        keyPolicy
-      )
-    ) {
-      return undefined;
-    }
-    const parsedArguments = parseRJSON(
-      normalizeJsonStringCtrl(progress.argumentsText)
-    );
-    if (!isRecord(parsedArguments)) {
-      return undefined;
-    }
-    const policyArgs = applyArgumentKeyPolicy(parsedArguments, keyPolicy);
-    const policyArguments =
-      policyArgs === null ? null : { args: policyArgs };
-    if (policyArguments === null) {
-      return undefined;
-    }
-    return stringifyToolInputWithSchema({
-      toolName,
-      args: policyArguments.args,
-      tools,
-      fallback: canonicalizeToolInput,
-    });
-  } catch {
-    return undefined;
-  }
-}
-
-function emitToolInputProgress(
-  state: StreamState,
-  controller: StreamController,
-  tools: LanguageModelV3FunctionTool[]
-) {
-  if (!(state.isInsideToolCall && state.currentToolCallJson)) {
-    return;
-  }
-
-  const progress = extractStreamingToolCallProgress(state.currentToolCallJson);
-  if (!progress.toolName) {
-    return;
-  }
-
-  const canonicalProgressInput = canonicalizeArgumentsProgressInput(
-    progress,
-    progress.toolName,
-    tools
-  );
-  if (canonicalProgressInput !== undefined) {
-    ensureToolInputStart(state, controller, progress.toolName);
-    emitToolInputDelta(state, controller, canonicalProgressInput);
-  }
-}
-
 function flushBuffer(
   state: StreamState,
   controller: StreamController,
@@ -1761,11 +1714,9 @@ function emitIncompleteToolCall(
       if (!isParsedToolCallRecord(parsedToolCall)) {
         throw new Error("Tool call object is missing own name or arguments");
       }
-      const keyPolicy = extractArgumentKeyPolicy(tools, parsedToolCall.name);
       if (
         strictToolCallHasPrototypeSensitiveArgumentKey(
-          state.currentToolCallJson,
-          keyPolicy
+          state.currentToolCallJson
         )
       ) {
         throw new Error("Tool call arguments contain prototype-sensitive keys");
@@ -1880,13 +1831,11 @@ function handleFinishChunk(
 function publishText(
   text: string,
   state: StreamState,
-  controller: StreamController,
-  tools: LanguageModelV3FunctionTool[]
+  controller: StreamController
 ) {
   if (state.isInsideToolCall) {
     closeTextBlock(state, controller);
     state.currentToolCallJson += text;
-    emitToolInputProgress(state, controller, tools);
   } else if (text.length > 0) {
     if (!state.currentTextId) {
       state.currentTextId = generateId();
@@ -1914,11 +1863,9 @@ function emitToolCall(context: TagProcessingContext) {
     if (!isParsedToolCallRecord(parsedToolCall)) {
       throw new Error("Tool call object is missing own name or arguments");
     }
-    const keyPolicy = extractArgumentKeyPolicy(tools, parsedToolCall.name);
     if (
       strictToolCallHasPrototypeSensitiveArgumentKey(
-        state.currentToolCallJson,
-        keyPolicy
+        state.currentToolCallJson
       )
     ) {
       throw new Error("Tool call arguments contain prototype-sensitive keys");
@@ -2073,7 +2020,7 @@ function recoverNestedStreamingToolCall(options: {
 }
 
 function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
-  const { state, controller, toolCallStart, toolCallEnd, tools } = context;
+  const { state, controller, toolCallStart, toolCallEnd } = context;
   const currentLength = state.currentToolCallJson.length;
   const combined = state.currentToolCallJson + state.buffer;
   const boundary = findToolCallBoundaryOutsideRjsonSyntax(
@@ -2105,8 +2052,7 @@ function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
   publishText(
     state.buffer.slice(0, relativeEndIndex),
     state,
-    controller,
-    tools
+    controller
   );
   state.buffer = state.buffer.slice(relativeEndIndex + toolCallEnd.length);
   processTagMatch(context);
@@ -2114,7 +2060,7 @@ function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
 }
 
 function processBufferTags(context: TagProcessingContext) {
-  const { state, controller, toolCallStart, tools } = context;
+  const { state, controller, toolCallStart } = context;
 
   while (state.isInsideToolCall) {
     if (!processInsideToolCallBoundary(context)) {
@@ -2129,7 +2075,7 @@ function processBufferTags(context: TagProcessingContext) {
       break;
     }
 
-    publishText(state.buffer.slice(0, startIndex), state, controller, tools);
+    publishText(state.buffer.slice(0, startIndex), state, controller);
     state.buffer = state.buffer.slice(startIndex + toolCallStart.length);
     processTagMatch(context);
 
@@ -2147,8 +2093,7 @@ function handlePartialTag(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
-  toolCallEnd: string,
-  tools: LanguageModelV3FunctionTool[]
+  toolCallEnd: string
 ) {
   if (state.isInsideToolCall) {
     const potentialEndIndex = getPotentialStartIndex(state.buffer, toolCallEnd);
@@ -2159,12 +2104,11 @@ function handlePartialTag(
       publishText(
         state.buffer.slice(0, potentialEndIndex),
         state,
-        controller,
-        tools
+        controller
       );
       state.buffer = state.buffer.slice(potentialEndIndex);
     } else {
-      publishText(state.buffer, state, controller, tools);
+      publishText(state.buffer, state, controller);
       state.buffer = "";
     }
     return;
@@ -2178,12 +2122,11 @@ function handlePartialTag(
     publishText(
       state.buffer.slice(0, potentialIndex),
       state,
-      controller,
-      tools
+      controller
     );
     state.buffer = state.buffer.slice(potentialIndex);
   } else {
-    publishText(state.buffer, state, controller, tools);
+    publishText(state.buffer, state, controller);
     state.buffer = "";
   }
 }
@@ -2335,7 +2278,7 @@ export const hermesProtocol = ({
           options,
           tools,
         });
-        handlePartialTag(state, controller, toolCallStart, toolCallEnd, tools);
+        handlePartialTag(state, controller, toolCallStart, toolCallEnd);
       },
     });
   },

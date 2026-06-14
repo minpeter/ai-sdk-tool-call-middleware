@@ -759,4 +759,43 @@ describe("parseGeneratedText JSON repair", () => {
       out.some((x) => x.type === "tool-call") || onError.mock.calls.length > 0;
     expect(hasToolOrError).toBe(true);
   });
+
+  it("rejects prototype-sensitive argument keys without a schema policy", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"constructor":"pollute"}}</tool_call>';
+    const out = p.parseGeneratedText({
+      text,
+      tools: [],
+      options: { onError },
+    });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects nested prototype-sensitive argument keys", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"payload":{"prototype":"pollute"}}}</tool_call>';
+    const tools = [
+      makeSchemaTool("edit", {
+        type: "object",
+        properties: {
+          payload: {
+            type: "object",
+            properties: {
+              value: { type: "string" },
+            },
+            additionalProperties: true,
+          },
+        },
+        additionalProperties: false,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
 });

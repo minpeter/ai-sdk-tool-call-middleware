@@ -161,7 +161,7 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 
-  it("json protocol emits tool-input deltas for parseable arguments even when outer JSON is incomplete", async () => {
+  it("json protocol does not emit tool-input deltas for incomplete outer JSON", async () => {
     const out = await runHermesJsonStream([
       '<tool_call>{"meta":{"msg":"{"},"name":"get_weather","arguments":{"location":"Seoul","unit":"celsius"}',
     ]);
@@ -172,11 +172,9 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
       .map((part) => (part as { delta: string }).delta)
       .join("");
 
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
-    expect(deltas.map((delta) => delta.delta).join("")).toBe(
-      '{"location":"Seoul","unit":"celsius"}'
-    );
+    expect(starts).toHaveLength(0);
+    expect(ends).toHaveLength(0);
+    expect(deltas).toHaveLength(0);
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
     expect(leakedText).not.toContain("<tool_call>");
   });
