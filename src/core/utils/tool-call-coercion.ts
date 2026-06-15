@@ -71,9 +71,12 @@ export function coerceToolCallInput(
   }
 
   const schema = tools.find((t) => t.name === toolName)?.inputSchema;
+  if (args === null) {
+    return schemaAllowsNull(schema) ? "null" : undefined;
+  }
   const coerced = coerceBySchema(args, schema);
-  if (coerced === null && schemaAllowsNull(schema)) {
-    return "null";
+  if (coerced === null) {
+    return schemaAllowsNull(schema) ? "null" : undefined;
   }
   return JSON.stringify(coerced ?? {});
 }
