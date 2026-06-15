@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 4.1.25
+
+### Patch Changes
+
+- d217a29: fix: repair malformed JSON with unescaped quotes in tool call arguments
+
 ## 4.1.24
 
 ### Patch Changes
