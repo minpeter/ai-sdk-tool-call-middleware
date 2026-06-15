@@ -157,6 +157,9 @@ describe("hermesProtocol streaming JSON repair", () => {
   it("fails closed instead of throwing for deeply nested arguments", async () => {
     const onError = vi.fn();
     const protocol = hermesProtocol();
+    const text = `<tool_call>{"name":"deep","arguments":{"data":${makeDeepArrayJson(
+      20_000
+    )}}}</tool_call>`;
     const transformer = protocol.createStreamParser({
       tools: [],
       options: { onError, emitRawToolCallTextOnError: true },
@@ -166,9 +169,7 @@ describe("hermesProtocol streaming JSON repair", () => {
         ctrl.enqueue({
           type: "text-delta",
           id: "1",
-          delta: `<tool_call>{"name":"deep","arguments":{"data":${makeDeepArrayJson(
-            20_000
-          )}}}</tool_call>`,
+          delta: text,
         });
         ctrl.enqueue({
           type: "finish",
@@ -185,7 +186,7 @@ describe("hermesProtocol streaming JSON repair", () => {
 
     expect(out.find(isToolCallPart)).toBeUndefined();
     expectNoToolInputLifecycle(out);
-    expect(collectTextDeltas(out)).toContain('<tool_call>{"name":"deep"');
+    expect(collectTextDeltas(out)).toContain(text);
     expect(onError).toHaveBeenCalled();
   });
 
