@@ -5,6 +5,12 @@ import type {
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
+import {
+  coerceBySchema,
+  compileSafePatternPropertyRegex,
+  getSchemaType,
+  unwrapJsonSchema,
+} from "../../schema-coerce";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
@@ -17,6 +23,10 @@ import {
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
+import {
+  argumentValueMatchesSchemaKeyShape,
+} from "./hermes-argument-schema";
+import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
 interface HermesProtocolOptions {
@@ -297,6 +307,20 @@ function canonicalizeToolInput(argumentsValue: unknown): string {
   return JSON.stringify(argumentsValue ?? {});
 }
 
+function isParsedToolCallRecord(
+  value: unknown
+): value is { name: string; arguments: unknown } {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    Object.prototype.hasOwnProperty.call(record, "name") &&
+    Object.prototype.hasOwnProperty.call(record, "arguments") &&
+    typeof record.name === "string"
+  );
+}
+
 const CHAR_CODE_BACKSLASH = 0x5c;
 const CHAR_CODE_QUOTE = 0x22;
 const CHAR_CODE_LF = 0x0a;
@@ -495,23 +519,548 @@ function normalizeJsonStringCtrl(json: string): string {
   return parts.join("");
 }
 
-/**
- * Extract known argument key names from the tool schema matching the
- * tool name found in a (possibly malformed) JSON string.
- */
-function extractKnownArgKeys(
+interface ArgumentKeyPolicy {
+  allowUnknownKeys: boolean;
+  deniedKeys: Set<string>;
+  deniedPatterns: RegExp[];
+  keyPatterns: RegExp[];
+  knownKeys: Set<string>;
+  rejectAll: boolean;
+  rejectNonRecordArguments: boolean;
+  schema: unknown;
+  unsafeDeniedPatterns: string[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function schemaRejectsNonRecordArguments(
+  schema: unknown,
+  seen = new Set<object>()
+): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (unwrapped === false) {
+    return true;
+  }
+  if (!isRecord(unwrapped)) {
+    return false;
+  }
+  if (seen.has(unwrapped)) {
+    return false;
+  }
+  seen.add(unwrapped);
+  if (
+    getSchemaType(unwrapped) === "object" ||
+    isRecord(unwrapped.properties) ||
+    isRecord(unwrapped.patternProperties) ||
+    Array.isArray(unwrapped.required) ||
+    Object.hasOwn(unwrapped, "additionalProperties")
+  ) {
+    return true;
+  }
+
+  const allOf = Array.isArray(unwrapped.allOf) ? unwrapped.allOf : undefined;
+  if (
+    allOf?.some((subSchema) =>
+      schemaRejectsNonRecordArguments(subSchema, new Set(seen))
+    )
+  ) {
+    return true;
+  }
+
+  const anyOf = Array.isArray(unwrapped.anyOf) ? unwrapped.anyOf : undefined;
+  if (
+    anyOf &&
+    anyOf.length > 0 &&
+    anyOf.every((subSchema) =>
+      schemaRejectsNonRecordArguments(subSchema, new Set(seen))
+    )
+  ) {
+    return true;
+  }
+
+  const oneOf = Array.isArray(unwrapped.oneOf) ? unwrapped.oneOf : undefined;
+  return (
+    oneOf !== undefined &&
+    oneOf.length > 0 &&
+    oneOf.every((subSchema) =>
+      schemaRejectsNonRecordArguments(subSchema, new Set(seen))
+    )
+  );
+}
+
+function extractArgumentKeyPolicy(
   tools: LanguageModelV3FunctionTool[],
-  toolCallJson: string
-): string[] | undefined {
-  const toolName = extractTopLevelStringProperty(toolCallJson, "name");
-  if (!toolName) {
-    return undefined;
-  }
+  toolName: string
+): ArgumentKeyPolicy | undefined {
   const tool = tools.find((t) => t.name === toolName);
-  if (!tool?.inputSchema?.properties) {
+  const schema = unwrapJsonSchema(tool?.inputSchema);
+  if (schema === false) {
+    return {
+      allowUnknownKeys: false,
+      deniedKeys: new Set(),
+      deniedPatterns: [],
+      keyPatterns: [],
+      knownKeys: new Set(),
+      rejectAll: true,
+      rejectNonRecordArguments: true,
+      schema,
+      unsafeDeniedPatterns: [],
+    };
+  }
+  if (!isRecord(schema)) {
     return undefined;
   }
-  return Object.keys(tool.inputSchema.properties as Record<string, unknown>);
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  const patternProperties = isRecord(schema.patternProperties)
+    ? schema.patternProperties
+    : {};
+  const deniedPatterns: RegExp[] = [];
+  const keyPatterns: RegExp[] = [];
+  const unsafeDeniedPatterns: string[] = [];
+  for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
+    const regex = compileSafePatternPropertyRegex(pattern);
+    if (patternSchema === false) {
+      if (regex) {
+        deniedPatterns.push(regex);
+      } else {
+        unsafeDeniedPatterns.push(pattern);
+      }
+      continue;
+    }
+    if (regex) {
+      keyPatterns.push(regex);
+    } else if (patternSchema !== true) {
+      unsafeDeniedPatterns.push(pattern);
+    }
+  }
+  const propertyEntries = Object.entries(properties);
+  return {
+    allowUnknownKeys: schema.additionalProperties !== false,
+    deniedKeys: new Set(
+      propertyEntries
+        .filter(([, propertySchema]) => propertySchema === false)
+        .map(([key]) => key)
+    ),
+    deniedPatterns,
+    keyPatterns,
+    knownKeys: new Set(
+      propertyEntries
+        .filter(([, propertySchema]) => propertySchema !== false)
+        .map(([key]) => key)
+    ),
+    rejectAll: false,
+    rejectNonRecordArguments: schemaRejectsNonRecordArguments(schema),
+    schema,
+    unsafeDeniedPatterns,
+  };
+}
+
+function applyArgumentKeyPolicy(
+  args: Record<string, unknown>,
+  keyPolicy?: ArgumentKeyPolicy
+): Record<string, unknown> | null {
+  if (keyPolicy?.rejectAll) {
+    return null;
+  }
+  if (containsPrototypeSensitiveArgumentKey(args)) {
+    return null;
+  }
+  if (
+    keyPolicy &&
+    Object.keys(args).some((key) => argumentKeyDeniedByPolicy(key, keyPolicy))
+  ) {
+    return null;
+  }
+  const policyArgs = coerceArgsForKeyPolicy(args, keyPolicy);
+  if (!isRecord(policyArgs)) {
+    return null;
+  }
+  if (containsPrototypeSensitiveArgumentKey(policyArgs)) {
+    return null;
+  }
+  if (
+    keyPolicy &&
+    Object.keys(policyArgs).some((key) =>
+      argumentKeyDeniedByPolicy(key, keyPolicy)
+    )
+  ) {
+    return null;
+  }
+  if (keyPolicy && !keyPolicy.allowUnknownKeys) {
+    const rawUnknownKeys = Object.keys(args).filter(
+      (key) => !argumentKeyMatchesPolicy(key, keyPolicy)
+    );
+    const rawKnownKeys = new Set(
+      Object.keys(args).filter((key) =>
+        argumentKeyMatchesPolicy(key, keyPolicy)
+      )
+    );
+    const coercedKnownKeys = Object.keys(policyArgs).filter((key) =>
+      argumentKeyMatchesPolicy(key, keyPolicy)
+    );
+    const newCoercedKnownKeys = coercedKnownKeys.filter(
+      (key) => !rawKnownKeys.has(key)
+    );
+    if (newCoercedKnownKeys.length < rawUnknownKeys.length) {
+      return null;
+    }
+  }
+  if (
+    keyPolicy &&
+    !argumentValueMatchesSchemaKeyShape(
+      policyArgs,
+      keyPolicy.schema,
+      new Set(),
+      true
+    )
+  ) {
+    return null;
+  }
+  return policyArgs;
+}
+
+function coerceArgsForKeyPolicy(
+  args: Record<string, unknown>,
+  keyPolicy?: ArgumentKeyPolicy
+): unknown {
+  return keyPolicy ? coerceBySchema(args, keyPolicy.schema) : args;
+}
+
+function argumentKeyDeniedByPolicy(
+  key: string,
+  keyPolicy: ArgumentKeyPolicy
+): boolean {
+  return (
+    PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key) ||
+    keyPolicy.deniedKeys.has(key) ||
+    keyPolicy.deniedPatterns.some((pattern) => pattern.test(key)) ||
+    keyPolicy.unsafeDeniedPatterns.some((pattern) =>
+      unsafeDeniedPatternMayMatchKey(pattern, key)
+    )
+  );
+}
+
+function argumentKeyMatchesPolicy(
+  key: string,
+  keyPolicy: ArgumentKeyPolicy
+): boolean {
+  return (
+    keyPolicy.knownKeys.has(key) ||
+    keyPolicy.keyPatterns.some((pattern) => pattern.test(key))
+  );
+}
+
+const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+function containsPrototypeSensitiveArgumentKey(
+  value: unknown,
+  seen = new Set<object>()
+): boolean {
+  if (Array.isArray(value)) {
+    if (seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    return value.some((item) =>
+      containsPrototypeSensitiveArgumentKey(item, seen)
+    );
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+  return Object.keys(value).some(
+    (key) =>
+      PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key) ||
+      containsPrototypeSensitiveArgumentKey(value[key], seen)
+  );
+}
+
+function hasPrototypeSensitiveKeyInJsonLikeObject(text: string): boolean {
+  let firstBrace = skipJsonWhitespace(text, 0);
+  while (true) {
+    const commentEnd = skipJsonComment(text, firstBrace);
+    if (commentEnd === null) {
+      break;
+    }
+    firstBrace = skipJsonWhitespace(text, commentEnd + 1);
+  }
+  if (text.charAt(firstBrace) !== "{") {
+    firstBrace = text.indexOf("{", firstBrace);
+  }
+  if (firstBrace === -1) {
+    return false;
+  }
+  return (collectObjectKeys(text, firstBrace, true) ?? []).some((key) =>
+    PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)
+  );
+}
+
+function isUnquotedRjsonKeyStart(char: string): boolean {
+  return (
+    char === "_" ||
+    char === "$" ||
+    (char >= "A" && char <= "Z") ||
+    (char >= "a" && char <= "z")
+  );
+}
+
+function isUnquotedRjsonKeyChar(char: string): boolean {
+  return (
+    isUnquotedRjsonKeyStart(char) ||
+    (char >= "0" && char <= "9") ||
+    char === "-"
+  );
+}
+
+function parseQuotedObjectKey(text: string, keyStart: number): {
+  key: string;
+  end: number;
+} | null {
+  const quote = text.charAt(keyStart);
+  let index = keyStart + 1;
+  let escaped = false;
+  while (index < text.length) {
+    const char = text.charAt(index);
+    if (escaped) {
+      escaped = false;
+    } else if (char === "\\") {
+      escaped = true;
+    } else if (char === quote) {
+      if (quote === '"') {
+        try {
+          return {
+            key: JSON.parse(text.slice(keyStart, index + 1)),
+            end: index,
+          };
+        } catch {
+          return null;
+        }
+      }
+      return {
+        key: parseSingleQuotedObjectKey(text.slice(keyStart + 1, index)),
+        end: index,
+      };
+    }
+    index += 1;
+  }
+  return null;
+}
+
+function parseSingleQuotedObjectKey(body: string): string {
+  let result = "";
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body.charAt(index);
+    if (char !== "\\" || index === body.length - 1) {
+      result += char;
+      continue;
+    }
+
+    const escaped = body.charAt(index + 1);
+    if (escaped === "u") {
+      const hex = body.slice(index + 2, index + 6);
+      if (/^[0-9A-Fa-f]{4}$/.test(hex)) {
+        result += String.fromCharCode(Number.parseInt(hex, 16));
+        index += 5;
+        continue;
+      }
+    }
+
+    const decoded = SINGLE_QUOTED_KEY_ESCAPES.get(escaped);
+    result += decoded ?? escaped;
+    index += 1;
+  }
+  return result;
+}
+
+const SINGLE_QUOTED_KEY_ESCAPES = new Map<string, string>([
+  ["'", "'"],
+  ['"', '"'],
+  ["\\", "\\"],
+  ["/", "/"],
+  ["b", "\b"],
+  ["f", "\f"],
+  ["n", "\n"],
+  ["r", "\r"],
+  ["t", "\t"],
+]);
+
+function parseUnquotedObjectKey(text: string, keyStart: number): {
+  key: string;
+  end: number;
+} | null {
+  if (!isUnquotedRjsonKeyStart(text.charAt(keyStart))) {
+    return null;
+  }
+  let index = keyStart + 1;
+  while (index < text.length && isUnquotedRjsonKeyChar(text.charAt(index))) {
+    index += 1;
+  }
+  return { key: text.slice(keyStart, index), end: index - 1 };
+}
+
+function previousSignificantChar(text: string, index: number): string {
+  let cursor = index - 1;
+  while (cursor >= 0) {
+    while (cursor >= 0 && /\s/.test(text.charAt(cursor))) {
+      cursor -= 1;
+    }
+    if (cursor < 0) {
+      return "";
+    }
+    if (text.charAt(cursor) === "/" && text.charAt(cursor - 1) === "*") {
+      const commentStart = text.lastIndexOf("/*", cursor - 2);
+      if (commentStart === -1) {
+        return "/";
+      }
+      cursor = commentStart - 1;
+      continue;
+    }
+    const lineStart = text.lastIndexOf("\n", cursor) + 1;
+    const lineCommentStart = text.lastIndexOf("//", cursor);
+    if (lineCommentStart >= lineStart) {
+      cursor = lineCommentStart - 1;
+      continue;
+    }
+    return text.charAt(cursor);
+  }
+  return "";
+}
+
+function skipJsonComment(text: string, index: number): number | null {
+  if (text.charAt(index) !== "/") {
+    return null;
+  }
+  const next = text.charAt(index + 1);
+  if (next === "/") {
+    const lf = text.indexOf("\n", index + 2);
+    const cr = text.indexOf("\r", index + 2);
+    const end = lf === -1 ? cr : cr === -1 ? lf : Math.min(lf, cr);
+    return end === -1 ? text.length - 1 : end - 1;
+  }
+  if (next === "*") {
+    const end = text.indexOf("*/", index + 2);
+    return end === -1 ? text.length - 1 : end + 1;
+  }
+  return null;
+}
+
+function collectObjectKeys(
+  text: string,
+  objectStart: number,
+  includeNested: boolean
+): string[] | null {
+  if (text.charAt(objectStart) !== "{") {
+    return null;
+  }
+
+  const keys: string[] = [];
+  let depth = 0;
+  let quoteChar: string | null = null;
+  let escaping = false;
+
+  for (let index = objectStart; index < text.length; index += 1) {
+    const char = text.charAt(index);
+
+    if (quoteChar) {
+      if (escaping) {
+        escaping = false;
+      } else if (char === "\\") {
+        escaping = true;
+      } else if (char === quoteChar) {
+        quoteChar = null;
+      }
+      continue;
+    }
+
+    const commentEnd = skipJsonComment(text, index);
+    if (commentEnd !== null) {
+      index = commentEnd;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return keys;
+      }
+      continue;
+    }
+    if (depth !== 1 && !includeNested) {
+      if (char === '"' || char === "'") {
+        quoteChar = char;
+      }
+      continue;
+    }
+    if (depth < 1) {
+      continue;
+    }
+
+    if (char !== '"' && char !== "'") {
+      if (!isUnquotedRjsonKeyStart(char)) {
+        continue;
+      }
+      const previous = previousSignificantChar(text, index);
+      if (previous === "{" || previous === ",") {
+        const parsedKey = parseUnquotedObjectKey(text, index);
+        if (!parsedKey) {
+          return null;
+        }
+        const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+        if (text.charAt(valueCursor) === ":") {
+          keys.push(parsedKey.key);
+          index = valueCursor;
+        }
+      }
+      continue;
+    }
+
+    const parsedKey = parseQuotedObjectKey(text, index);
+    if (!parsedKey) {
+      return null;
+    }
+    const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+    if (text.charAt(valueCursor) === ":") {
+      keys.push(parsedKey.key);
+      index = valueCursor;
+      continue;
+    }
+    index = parsedKey.end;
+  }
+
+  return null;
+}
+
+function applyToolArgumentKeyPolicy(
+  toolName: string,
+  args: unknown,
+  tools: LanguageModelV3FunctionTool[]
+): { args: unknown } | null {
+  const keyPolicy = extractArgumentKeyPolicy(tools, toolName);
+  if (keyPolicy?.rejectAll) {
+    return null;
+  }
+  if (!isRecord(args)) {
+    if (keyPolicy?.rejectNonRecordArguments) {
+      return null;
+    }
+    return { args };
+  }
+  const policyArgs = applyArgumentKeyPolicy(args, keyPolicy);
+  return policyArgs === null ? null : { args: policyArgs };
 }
 
 /** Maximum size (in UTF-16 code units) for the arguments body before bailing out of repair. */
@@ -522,29 +1071,21 @@ const FIRST_KEY_RE = /^\s*"([^"]+)"\s*:\s*/;
 const KV_PATTERN_RE = /,\s*"([^"]+)"\s*:\s*/g;
 const TRAILING_COMMA_RE = /,\s*$/;
 
-/**
- * Returns true if `position` in `argsBody` is at nesting depth 0
- * (not inside a nested `{}` or `[]`).
- */
-function isAtTopLevel(argsBody: string, position: number): boolean {
+function getTopLevelPositionMap(argsBody: string): Uint8Array {
+  const topLevelAtPosition = new Uint8Array(argsBody.length + 1);
   let depth = 0;
   let inStr = false;
   let esc = false;
-  for (let i = 0; i < position; i++) {
+  topLevelAtPosition[0] = 1;
+  for (let i = 0; i < argsBody.length; i++) {
     const ch = argsBody[i];
     if (esc) {
       esc = false;
-      continue;
-    }
-    if (ch === "\\" && inStr) {
+    } else if (ch === "\\" && inStr) {
       esc = true;
-      continue;
-    }
-    if (ch === '"') {
+    } else if (ch === '"') {
       inStr = !inStr;
-      continue;
-    }
-    if (!inStr) {
+    } else if (!inStr) {
       if (ch === "{" || ch === "[") {
         depth++;
       }
@@ -552,8 +1093,56 @@ function isAtTopLevel(argsBody: string, position: number): boolean {
         depth--;
       }
     }
+    topLevelAtPosition[i + 1] = depth === 0 ? 1 : 0;
   }
-  return depth === 0;
+  return topLevelAtPosition;
+}
+
+function hasTrailingTopLevelFieldAfterArgumentsObject(argsBody: string): boolean {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  const hasCommaAfterWhitespace = (fromIndex: number): boolean => {
+    let cursor = fromIndex;
+    while (cursor < argsBody.length && WHITESPACE_RE.test(argsBody[cursor])) {
+      cursor += 1;
+    }
+    return argsBody.charAt(cursor) === ",";
+  };
+  for (let index = 0; index < argsBody.length; index += 1) {
+    const char = argsBody.charAt(index);
+    if (esc) {
+      esc = false;
+      continue;
+    }
+    if (inStr) {
+      if (char === "\\") {
+        esc = true;
+      } else if (char === '"') {
+        inStr = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inStr = true;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      depth += 1;
+      continue;
+    }
+    if (char !== "}" && char !== "]") {
+      continue;
+    }
+    if (depth > 0) {
+      depth -= 1;
+      continue;
+    }
+    if (hasCommaAfterWhitespace(index + 1)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -570,11 +1159,10 @@ function isAtTopLevel(argsBody: string, position: number): boolean {
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: JSON repair requires manual character-level scanning with multiple heuristic passes.
 function repairToolCallJson(
   raw: string,
-  knownArgKeys?: string[]
+  toolName: string,
+  keyPolicy?: ArgumentKeyPolicy
 ): { name: string; arguments: Record<string, unknown> } | null {
-  // 1. Extract tool name (depth-aware to avoid matching nested "name" keys)
-  const toolName = extractTopLevelStringProperty(raw, "name");
-  if (!toolName) {
+  if (hasPrototypeSensitiveKeyInJsonLikeObject(raw)) {
     return null;
   }
 
@@ -622,12 +1210,20 @@ function repairToolCallJson(
   if (argsBody.length > REPAIR_MAX_ARGS_BODY_SIZE) {
     return null;
   }
+  if (hasTrailingTopLevelFieldAfterArgumentsObject(argsBody)) {
+    return null;
+  }
 
   // 4. Try standard parse first
   try {
+    const parsedArgs = JSON.parse(`{${argsBody}}`) as Record<string, unknown>;
+    const policyArgs = applyArgumentKeyPolicy(parsedArgs, keyPolicy);
+    if (!policyArgs) {
+      return null;
+    }
     return {
       name: toolName,
-      arguments: JSON.parse(`{${argsBody}}`) as Record<string, unknown>,
+      arguments: policyArgs,
     };
   } catch {
     /* fall through to repair */
@@ -663,27 +1259,26 @@ function repairToolCallJson(
   //     value slices, because their ,"extra":... text gets merged into
   //     the previous value. Schema filtering is applied later when
   //     assigning parsed values into args (step 8 below).
-  const knownKeySet =
-    knownArgKeys && knownArgKeys.length > 0 ? new Set(knownArgKeys) : null;
+  const topLevelAtPosition = getTopLevelPositionMap(argsBody);
   allKeys = allKeys.filter(
     (entry) =>
-      entry.matchStart === 0 || isAtTopLevel(argsBody, entry.matchStart)
+      entry.matchStart === 0 || topLevelAtPosition[entry.matchStart] === 1
   );
 
   // 7. Handle duplicate key names with scoring heuristic
-  const firstByKey: Record<string, number> = {};
-  const lastByKey: Record<string, number> = {};
+  const firstByKey = new Map<string, number>();
+  const lastByKey = new Map<string, number>();
   for (let idx = 0; idx < allKeys.length; idx++) {
-    if (!(allKeys[idx].key in firstByKey)) {
-      firstByKey[allKeys[idx].key] = idx;
+    if (!firstByKey.has(allKeys[idx].key)) {
+      firstByKey.set(allKeys[idx].key, idx);
     }
-    lastByKey[allKeys[idx].key] = idx;
+    lastByKey.set(allKeys[idx].key, idx);
   }
   const firstPositions = allKeys.filter(
-    (_, i) => firstByKey[allKeys[i].key] === i
+    (_, i) => firstByKey.get(allKeys[i].key) === i
   );
   const lastPositions = allKeys.filter(
-    (_, i) => lastByKey[allKeys[i].key] === i
+    (_, i) => lastByKey.get(allKeys[i].key) === i
   );
 
   let keyPositions: typeof allKeys;
@@ -761,15 +1356,9 @@ function repairToolCallJson(
     return null;
   }
 
-  // 8. Repair each value by escaping unescaped quotes.
-  //    Schema-unknown keys are skipped here (their slice was still needed
-  //    for correct boundary detection in step 5b).
-  const args: Record<string, unknown> = {};
+  const args = Object.create(null) as Record<string, unknown>;
   for (let i = 0; i < allKeys.length; i++) {
     const kp = allKeys[i];
-    if (knownKeySet && !knownKeySet.has(kp.key)) {
-      continue;
-    }
     const vs = kp.valueStart;
     const ve =
       i + 1 < allKeys.length ? allKeys[i + 1].matchStart : argsBody.length;
@@ -819,13 +1408,26 @@ function repairToolCallJson(
       return null;
     }
   }
-  // Guard: if the schema filter skipped every parsed key, we have nothing
-  // meaningful to emit. Returning {arguments: {}} here would trigger a
-  // tool invocation with empty args — worse than reporting parse failure.
-  if (knownKeySet && Object.keys(args).length === 0) {
+  if (Object.keys(args).length === 0) {
     return null;
   }
-  return { name: toolName, arguments: args };
+  const policyArgs = applyArgumentKeyPolicy(args, keyPolicy);
+  return policyArgs === null ? null : { name: toolName, arguments: policyArgs };
+}
+
+function repairToolCallJsonForTools(
+  raw: string,
+  tools: LanguageModelV3FunctionTool[]
+): { name: string; arguments: Record<string, unknown> } | null {
+  const toolName = extractTopLevelStringProperty(raw, "name");
+  if (!toolName) {
+    return null;
+  }
+  return repairToolCallJson(
+    raw,
+    toolName,
+    extractArgumentKeyPolicy(tools, toolName)
+  );
 }
 
 function processToolCallJson(
@@ -838,22 +1440,32 @@ function processToolCallJson(
   try {
     const parsedToolCall = parseRJSON(
       normalizeJsonStringCtrl(toolCallJson)
-    ) as {
-      name: string;
-      arguments: unknown;
-    };
+    );
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      throw new Error("Tool call object is missing own name or arguments");
+    }
+    if (
+      hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)
+    ) {
+      throw new Error("Tool call arguments contain prototype-sensitive keys");
+    }
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      throw new Error("Tool call arguments contain schema-unknown keys");
+    }
     processedElements.push({
       type: "tool-call",
       toolCallId: generateToolCallId(),
       toolName: parsedToolCall.name,
-      input: canonicalizeToolInput(parsedToolCall.arguments),
+      input: canonicalizeToolInput(policyArguments.args),
     });
   } catch (error) {
     // Attempt repair for unescaped quotes
-    const repaired = repairToolCallJson(
-      toolCallJson,
-      extractKnownArgKeys(tools, toolCallJson)
-    );
+    const repaired = repairToolCallJsonForTools(toolCallJson, tools);
     if (repaired) {
       processedElements.push({
         type: "tool-call",
@@ -897,6 +1509,11 @@ interface StreamState {
   currentToolCallJson: string;
   hasEmittedTextStart: boolean;
   isInsideToolCall: boolean;
+  pendingToolInputProgressVersion: number;
+  speculativeToolCall: {
+    input: string;
+    toolName: string;
+  } | null;
 }
 
 type StreamController =
@@ -932,13 +1549,13 @@ function findTopLevelPropertyValueStart(
   }
 
   let depth = 0;
-  let inString = false;
+  let quoteChar: string | null = null;
   let escaping = false;
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
 
-    if (inString) {
+    if (quoteChar) {
       if (escaping) {
         escaping = false;
         continue;
@@ -947,9 +1564,15 @@ function findTopLevelPropertyValueStart(
         escaping = true;
         continue;
       }
-      if (char === '"') {
-        inString = false;
+      if (char === quoteChar) {
+        quoteChar = null;
       }
+      continue;
+    }
+
+    const commentEnd = skipJsonComment(text, index);
+    if (commentEnd !== null) {
+      index = commentEnd;
       continue;
     }
 
@@ -962,43 +1585,39 @@ function findTopLevelPropertyValueStart(
       continue;
     }
 
-    if (char !== '"') {
-      continue;
-    }
-
     if (depth !== 1) {
-      inString = true;
+      if (char === '"' || char === "'") {
+        quoteChar = char;
+      }
       continue;
     }
 
-    const keyStart = index + 1;
-    let keyEnd = keyStart;
-    let keyEscaped = false;
-    while (keyEnd < text.length) {
-      const keyChar = text.charAt(keyEnd);
-      if (keyEscaped) {
-        keyEscaped = false;
-      } else if (keyChar === "\\") {
-        keyEscaped = true;
-      } else if (keyChar === '"') {
-        break;
+    let parsedKey: { key: string; end: number } | null = null;
+    if (char === '"' || char === "'") {
+      parsedKey = parseQuotedObjectKey(text, index);
+    } else {
+      if (!isUnquotedRjsonKeyStart(char)) {
+        continue;
       }
-      keyEnd += 1;
+      const previous = previousSignificantChar(text, index);
+      if (previous !== "{" && previous !== ",") {
+        continue;
+      }
+      parsedKey = parseUnquotedObjectKey(text, index);
     }
 
-    if (keyEnd >= text.length || text.charAt(keyEnd) !== '"') {
+    if (!parsedKey) {
       return null;
     }
 
-    const key = text.slice(keyStart, keyEnd);
-    let valueCursor = skipJsonWhitespace(text, keyEnd + 1);
+    let valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
     if (valueCursor >= text.length || text.charAt(valueCursor) !== ":") {
-      index = keyEnd;
+      index = parsedKey.end;
       continue;
     }
 
     valueCursor = skipJsonWhitespace(text, valueCursor + 1);
-    if (key === property) {
+    if (parsedKey.key === property) {
       return valueCursor < text.length ? valueCursor : null;
     }
 
@@ -1199,6 +1818,77 @@ function emitToolInputDelta(
   });
 }
 
+function emitStreamingToolInputProgress(options: {
+  state: StreamState;
+  controller: StreamController;
+  toolCallJson: string;
+  tools: LanguageModelV3FunctionTool[];
+}): boolean {
+  const { state, controller, toolCallJson, tools } = options;
+  const progress = extractStreamingToolCallProgress(toolCallJson);
+  if (!progress.toolName || !progress.argumentsComplete) {
+    return false;
+  }
+  try {
+    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      return false;
+    }
+    if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
+      return false;
+    }
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      return false;
+    }
+    const input = stringifyToolInputWithSchema({
+      toolName: parsedToolCall.name,
+      args: policyArguments.args,
+      tools,
+      fallback: canonicalizeToolInput,
+    });
+    ensureToolInputStart(state, controller, parsedToolCall.name);
+    emitToolInputDelta(state, controller, input);
+    state.speculativeToolCall = {
+      input,
+      toolName: parsedToolCall.name,
+    };
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleStreamingToolInputProgress(options: {
+  state: StreamState;
+  controller: StreamController;
+  toolCallJson: string;
+  tools: LanguageModelV3FunctionTool[];
+}) {
+  const { state, controller, toolCallJson, tools } = options;
+  state.pendingToolInputProgressVersion += 1;
+  const version = state.pendingToolInputProgressVersion;
+  setTimeout(() => {
+    if (
+      !state.isInsideToolCall ||
+      state.pendingToolInputProgressVersion !== version ||
+      state.currentToolCallJson !== toolCallJson
+    ) {
+      return;
+    }
+    emitStreamingToolInputProgress({
+      state,
+      controller,
+      toolCallJson,
+      tools,
+    });
+  });
+}
+
 function closeToolInput(state: StreamState, controller: StreamController) {
   if (!state.activeToolInput) {
     return;
@@ -1231,64 +1921,13 @@ function emitToolCallFromParsed(
   emitToolInputDelta(state, controller, input);
   const toolCallId = state.activeToolInput?.id ?? generateToolCallId();
   closeToolInput(state, controller);
+  state.speculativeToolCall = null;
   controller.enqueue({
     type: "tool-call",
     toolCallId,
     toolName,
     input,
   } as LanguageModelV3StreamPart);
-}
-
-function canonicalizeArgumentsProgressInput(
-  progress: {
-    argumentsText: string | undefined;
-    argumentsComplete: boolean;
-  },
-  toolName: string,
-  tools: LanguageModelV3FunctionTool[]
-): string | undefined {
-  if (progress.argumentsText === undefined || !progress.argumentsComplete) {
-    return undefined;
-  }
-
-  try {
-    const parsedArguments = parseRJSON(
-      normalizeJsonStringCtrl(progress.argumentsText)
-    );
-    return stringifyToolInputWithSchema({
-      toolName,
-      args: parsedArguments,
-      tools,
-      fallback: canonicalizeToolInput,
-    });
-  } catch {
-    return undefined;
-  }
-}
-
-function emitToolInputProgress(
-  state: StreamState,
-  controller: StreamController,
-  tools: LanguageModelV3FunctionTool[]
-) {
-  if (!(state.isInsideToolCall && state.currentToolCallJson)) {
-    return;
-  }
-
-  const progress = extractStreamingToolCallProgress(state.currentToolCallJson);
-  if (!progress.toolName) {
-    return;
-  }
-
-  ensureToolInputStart(state, controller, progress.toolName);
-  const canonicalProgressInput = canonicalizeArgumentsProgressInput(
-    progress,
-    progress.toolName,
-    tools
-  );
-  if (canonicalProgressInput !== undefined) {
-    emitToolInputDelta(state, controller, canonicalProgressInput);
-  }
 }
 
 function flushBuffer(
@@ -1349,11 +1988,29 @@ function emitIncompleteToolCall(
     try {
       const parsedToolCall = parseRJSON(
         normalizeJsonStringCtrl(state.currentToolCallJson)
-      ) as {
-        name: string;
-        arguments: unknown;
-      };
-      emitToolCallFromParsed(state, controller, parsedToolCall, tools);
+      );
+      if (!isParsedToolCallRecord(parsedToolCall)) {
+        throw new Error("Tool call object is missing own name or arguments");
+      }
+      if (
+        hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)
+      ) {
+        throw new Error("Tool call arguments contain prototype-sensitive keys");
+      }
+      const policyArguments = applyToolArgumentKeyPolicy(
+        parsedToolCall.name,
+        parsedToolCall.arguments,
+        tools
+      );
+      if (policyArguments === null) {
+        throw new Error("Tool call arguments contain schema-unknown keys");
+      }
+      emitToolCallFromParsed(
+        state,
+        controller,
+        { ...parsedToolCall, arguments: policyArguments.args },
+        tools
+      );
       state.currentToolCallJson = "";
       state.isInsideToolCall = false;
       return;
@@ -1450,13 +2107,11 @@ function handleFinishChunk(
 function publishText(
   text: string,
   state: StreamState,
-  controller: StreamController,
-  tools: LanguageModelV3FunctionTool[]
+  controller: StreamController
 ) {
   if (state.isInsideToolCall) {
     closeTextBlock(state, controller);
     state.currentToolCallJson += text;
-    emitToolInputProgress(state, controller, tools);
   } else if (text.length > 0) {
     if (!state.currentTextId) {
       state.currentTextId = generateId();
@@ -1480,28 +2135,45 @@ function emitToolCall(context: TagProcessingContext) {
   try {
     const parsedToolCall = parseRJSON(
       normalizeJsonStringCtrl(state.currentToolCallJson)
-    ) as {
-      name: string;
-      arguments: unknown;
-    };
-    emitToolCallFromParsed(state, controller, parsedToolCall, tools);
+    );
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      throw new Error("Tool call object is missing own name or arguments");
+    }
+    if (
+      hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)
+    ) {
+      throw new Error("Tool call arguments contain prototype-sensitive keys");
+    }
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      throw new Error("Tool call arguments contain schema-unknown keys");
+    }
+    emitToolCallFromParsed(
+      state,
+      controller,
+      { ...parsedToolCall, arguments: policyArguments.args },
+      tools
+    );
   } catch (error) {
     // Attempt repair for unescaped quotes
-    const repaired = repairToolCallJson(
-      state.currentToolCallJson,
-      extractKnownArgKeys(tools, state.currentToolCallJson)
-    );
+    const repaired = repairToolCallJsonForTools(state.currentToolCallJson, tools);
     if (repaired) {
       emitToolCallFromParsed(state, controller, repaired, tools);
       return;
     }
+    const activeToolCallId = state.activeToolInput?.id;
+    const activeToolName = state.activeToolInput?.toolName;
+    state.speculativeToolCall = null;
 
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
-    const streamingToolCallId =
-      state.activeToolInput?.id ?? generateToolCallId();
+    const streamingToolCallId = activeToolCallId ?? generateToolCallId();
     const streamingToolName =
-      state.activeToolInput?.toolName ??
+      activeToolName ??
       extractStreamingToolCallProgress(state.currentToolCallJson).toolName;
 
     logParseFailure({
@@ -1624,7 +2296,7 @@ function recoverNestedStreamingToolCall(options: {
 }
 
 function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
-  const { state, controller, toolCallStart, toolCallEnd, tools } = context;
+  const { state, controller, toolCallStart, toolCallEnd } = context;
   const currentLength = state.currentToolCallJson.length;
   const combined = state.currentToolCallJson + state.buffer;
   const boundary = findToolCallBoundaryOutsideRjsonSyntax(
@@ -1656,8 +2328,7 @@ function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
   publishText(
     state.buffer.slice(0, relativeEndIndex),
     state,
-    controller,
-    tools
+    controller
   );
   state.buffer = state.buffer.slice(relativeEndIndex + toolCallEnd.length);
   processTagMatch(context);
@@ -1665,7 +2336,7 @@ function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
 }
 
 function processBufferTags(context: TagProcessingContext) {
-  const { state, controller, toolCallStart, tools } = context;
+  const { state, controller, toolCallStart } = context;
 
   while (state.isInsideToolCall) {
     if (!processInsideToolCallBoundary(context)) {
@@ -1680,7 +2351,7 @@ function processBufferTags(context: TagProcessingContext) {
       break;
     }
 
-    publishText(state.buffer.slice(0, startIndex), state, controller, tools);
+    publishText(state.buffer.slice(0, startIndex), state, controller);
     state.buffer = state.buffer.slice(startIndex + toolCallStart.length);
     processTagMatch(context);
 
@@ -1710,12 +2381,23 @@ function handlePartialTag(
       publishText(
         state.buffer.slice(0, potentialEndIndex),
         state,
-        controller,
-        tools
+        controller
       );
+      scheduleStreamingToolInputProgress({
+        state,
+        controller,
+        toolCallJson: state.currentToolCallJson,
+        tools,
+      });
       state.buffer = state.buffer.slice(potentialEndIndex);
     } else {
-      publishText(state.buffer, state, controller, tools);
+      publishText(state.buffer, state, controller);
+      scheduleStreamingToolInputProgress({
+        state,
+        controller,
+        toolCallJson: state.currentToolCallJson,
+        tools,
+      });
       state.buffer = "";
     }
     return;
@@ -1729,12 +2411,11 @@ function handlePartialTag(
     publishText(
       state.buffer.slice(0, potentialIndex),
       state,
-      controller,
-      tools
+      controller
     );
     state.buffer = state.buffer.slice(potentialIndex);
   } else {
-    publishText(state.buffer, state, controller, tools);
+    publishText(state.buffer, state, controller);
     state.buffer = "";
   }
 }
@@ -1852,6 +2533,8 @@ export const hermesProtocol = ({
       currentTextId: null,
       hasEmittedTextStart: false,
       activeToolInput: null,
+      pendingToolInputProgressVersion: 0,
+      speculativeToolCall: null,
     };
 
     return new TransformStream<
