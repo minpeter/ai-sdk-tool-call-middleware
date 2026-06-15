@@ -108,7 +108,7 @@ jobs:
 
       # https://docs.codecov.com/docs/environment-specific-requirements#github-actions
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           use_oidc: ${{ secrets.CODECOV_TOKEN == '' }}
           token: ${{ secrets.CODECOV_TOKEN }}
