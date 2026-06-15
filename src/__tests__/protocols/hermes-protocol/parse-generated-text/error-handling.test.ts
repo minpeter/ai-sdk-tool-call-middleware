@@ -52,21 +52,4 @@ describe("protocol error paths", () => {
     expect(typeof metadata.toolCallId).toBe("string");
     expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
-
-  it("hermesProtocol parseGeneratedText does NOT recover JSON with unescaped double quotes (#298 proposal-2 not implemented)", () => {
-    const onError = vi.fn();
-    const p = hermesProtocol();
-    const text =
-      '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"}}</tool_call>';
-    const out = p.parseGeneratedText({ text, tools: [], options: { onError } });
-    const toolCalls = out.filter((e) => e.type === "tool-call");
-    expect(toolCalls).toHaveLength(0);
-    expect(onError).toHaveBeenCalledTimes(1);
-    const [, metadata] = onError.mock.calls[0];
-    expect(metadata.dropReason).toBe("malformed-tool-call-body");
-    const rejoined = out
-      .map((x) => (x.type === "text" ? (x as any).text : ""))
-      .join("");
-    expect(rejoined).toBe(text);
-  });
 });

@@ -5,6 +5,13 @@ import type {
   LanguageModelV3ToolCall,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
+import {
+  coerceBySchema,
+  compileSafePatternPropertyRegex,
+  getSchemaType,
+  schemaIsUnconstrained,
+  unwrapJsonSchema,
+} from "../../schema-coerce";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
@@ -17,6 +24,8 @@ import {
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
+import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
+import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
 interface HermesProtocolOptions {
@@ -26,6 +35,8 @@ interface HermesProtocolOptions {
 
 const RJSON_IDENTIFIER_CHAR_REGEX = /[$a-zA-Z0-9_\-+.*?!|&%^/#\\]/;
 const RJSON_NUMBER_TOKEN_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const HEX_WORD_RE = /^[0-9A-Fa-f]{4}$/;
+const WHITESPACE_CHAR_RE = /\s/;
 
 function validateNonEmptyDelimiters(
   toolCallStart: string,
@@ -297,6 +308,29 @@ function canonicalizeToolInput(argumentsValue: unknown): string {
   return JSON.stringify(argumentsValue ?? {});
 }
 
+function stringifyParsedToolInput(
+  toolName: string,
+  args: unknown,
+  tools: LanguageModelV3FunctionTool[]
+): string {
+  return stringifyToolInputWithSchema({
+    toolName,
+    args,
+    tools,
+    fallback: canonicalizeToolInput,
+  });
+}
+
+function isParsedToolCallRecord(
+  value: unknown
+): value is { name: string; arguments?: unknown } {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return Object.hasOwn(record, "name") && typeof record.name === "string";
+}
+
 const CHAR_CODE_BACKSLASH = 0x5c;
 const CHAR_CODE_QUOTE = 0x22;
 const CHAR_CODE_LF = 0x0a;
@@ -495,26 +529,1222 @@ function normalizeJsonStringCtrl(json: string): string {
   return parts.join("");
 }
 
+interface ArgumentKeyPolicy {
+  allowUnknownKeys: boolean;
+  deniedKeys: Set<string>;
+  deniedPatterns: RegExp[];
+  keyPatterns: RegExp[];
+  knownKeys: Set<string>;
+  rejectAll: boolean;
+  rejectNonRecordArguments: boolean;
+  schema: unknown;
+  unsafeDeniedPatterns: string[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function schemaRejectsNonRecordArguments(
+  schema: unknown,
+  seen = new Set<object>()
+): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (unwrapped === false) {
+    return true;
+  }
+  if (!isRecord(unwrapped)) {
+    return false;
+  }
+  if (seen.has(unwrapped)) {
+    return false;
+  }
+  seen.add(unwrapped);
+  if (
+    getSchemaType(unwrapped) === "object" ||
+    isRecord(unwrapped.properties) ||
+    isRecord(unwrapped.patternProperties) ||
+    Array.isArray(unwrapped.required) ||
+    Object.hasOwn(unwrapped, "additionalProperties")
+  ) {
+    return true;
+  }
+
+  const allOf = Array.isArray(unwrapped.allOf) ? unwrapped.allOf : undefined;
+  if (
+    allOf?.some((subSchema) =>
+      schemaRejectsNonRecordArguments(subSchema, new Set(seen))
+    )
+  ) {
+    return true;
+  }
+
+  const anyOf = Array.isArray(unwrapped.anyOf) ? unwrapped.anyOf : undefined;
+  if (
+    anyOf &&
+    anyOf.length > 0 &&
+    anyOf.every((subSchema) =>
+      schemaRejectsNonRecordArguments(subSchema, new Set(seen))
+    )
+  ) {
+    return true;
+  }
+
+  const oneOf = Array.isArray(unwrapped.oneOf) ? unwrapped.oneOf : undefined;
+  return (
+    oneOf !== undefined &&
+    oneOf.length > 0 &&
+    oneOf.every((subSchema) =>
+      schemaRejectsNonRecordArguments(subSchema, new Set(seen))
+    )
+  );
+}
+
+function extractArgumentKeyPolicy(
+  tools: LanguageModelV3FunctionTool[],
+  toolName: string
+): ArgumentKeyPolicy | undefined {
+  const tool = tools.find((t) => t.name === toolName);
+  const schema = unwrapJsonSchema(tool?.inputSchema);
+  if (schema === false) {
+    return {
+      allowUnknownKeys: false,
+      deniedKeys: new Set(),
+      deniedPatterns: [],
+      keyPatterns: [],
+      knownKeys: new Set(),
+      rejectAll: true,
+      rejectNonRecordArguments: true,
+      schema,
+      unsafeDeniedPatterns: [],
+    };
+  }
+  if (!isRecord(schema)) {
+    return;
+  }
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  const patternProperties = isRecord(schema.patternProperties)
+    ? schema.patternProperties
+    : {};
+  const deniedPatterns: RegExp[] = [];
+  const keyPatterns: RegExp[] = [];
+  const unsafeDeniedPatterns: string[] = [];
+  for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
+    const regex = compileSafePatternPropertyRegex(pattern);
+    if (patternSchema === false) {
+      if (regex) {
+        deniedPatterns.push(regex);
+      } else {
+        unsafeDeniedPatterns.push(pattern);
+      }
+      continue;
+    }
+    if (regex) {
+      keyPatterns.push(regex);
+    } else if (
+      patternSchema === false ||
+      !schemaIsUnconstrained(patternSchema)
+    ) {
+      unsafeDeniedPatterns.push(pattern);
+    }
+  }
+  const propertyEntries = Object.entries(properties);
+  return {
+    allowUnknownKeys: schema.additionalProperties !== false,
+    deniedKeys: new Set(
+      propertyEntries
+        .filter(([, propertySchema]) => propertySchema === false)
+        .map(([key]) => key)
+    ),
+    deniedPatterns,
+    keyPatterns,
+    knownKeys: new Set(
+      propertyEntries
+        .filter(([, propertySchema]) => propertySchema !== false)
+        .map(([key]) => key)
+    ),
+    rejectAll: false,
+    rejectNonRecordArguments: schemaRejectsNonRecordArguments(schema),
+    schema,
+    unsafeDeniedPatterns,
+  };
+}
+
+function applyArgumentKeyPolicy(
+  args: Record<string, unknown>,
+  keyPolicy?: ArgumentKeyPolicy
+): Record<string, unknown> | null {
+  if (keyPolicy?.rejectAll) {
+    return null;
+  }
+  if (containsPrototypeSensitiveArgumentKey(args)) {
+    return null;
+  }
+  if (
+    keyPolicy &&
+    Object.keys(args).some((key) => argumentKeyDeniedByPolicy(key, keyPolicy))
+  ) {
+    return null;
+  }
+  const policyArgs = coerceArgsForKeyPolicy(args, keyPolicy);
+  if (!isRecord(policyArgs)) {
+    return null;
+  }
+  if (containsPrototypeSensitiveArgumentKey(policyArgs)) {
+    return null;
+  }
+  if (
+    keyPolicy &&
+    Object.keys(policyArgs).some((key) =>
+      argumentKeyDeniedByPolicy(key, keyPolicy)
+    )
+  ) {
+    return null;
+  }
+  if (keyPolicy && !keyPolicy.allowUnknownKeys) {
+    const rawUnknownKeys = Object.keys(args).filter(
+      (key) => !argumentKeyMatchesPolicy(key, keyPolicy)
+    );
+    const rawKnownKeys = new Set(
+      Object.keys(args).filter((key) =>
+        argumentKeyMatchesPolicy(key, keyPolicy)
+      )
+    );
+    const coercedKnownKeys = Object.keys(policyArgs).filter((key) =>
+      argumentKeyMatchesPolicy(key, keyPolicy)
+    );
+    const newCoercedKnownKeys = coercedKnownKeys.filter(
+      (key) => !rawKnownKeys.has(key)
+    );
+    if (newCoercedKnownKeys.length < rawUnknownKeys.length) {
+      return null;
+    }
+  }
+  if (
+    keyPolicy &&
+    !argumentValueMatchesSchemaKeyShape(
+      policyArgs,
+      keyPolicy.schema,
+      new Set(),
+      true
+    )
+  ) {
+    return null;
+  }
+  return policyArgs;
+}
+
+function coerceArgsForKeyPolicy(
+  args: Record<string, unknown>,
+  keyPolicy?: ArgumentKeyPolicy
+): unknown {
+  return keyPolicy ? coerceBySchema(args, keyPolicy.schema) : args;
+}
+
+function argumentKeyDeniedByPolicy(
+  key: string,
+  keyPolicy: ArgumentKeyPolicy
+): boolean {
+  return (
+    PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key) ||
+    keyPolicy.deniedKeys.has(key) ||
+    keyPolicy.deniedPatterns.some((pattern) => pattern.test(key)) ||
+    keyPolicy.unsafeDeniedPatterns.some((pattern) =>
+      unsafeDeniedPatternMayMatchKey(pattern, key)
+    )
+  );
+}
+
+function argumentKeyMatchesPolicy(
+  key: string,
+  keyPolicy: ArgumentKeyPolicy
+): boolean {
+  return (
+    keyPolicy.knownKeys.has(key) ||
+    keyPolicy.keyPatterns.some((pattern) => pattern.test(key))
+  );
+}
+
+const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+function containsPrototypeSensitiveArgumentKey(value: unknown): boolean {
+  const seen = new Set<object>();
+  const stack: unknown[] = [value];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (Array.isArray(current)) {
+      if (seen.has(current)) {
+        continue;
+      }
+      seen.add(current);
+      for (const item of current) {
+        stack.push(item);
+      }
+      continue;
+    }
+    if (!isRecord(current)) {
+      continue;
+    }
+    if (seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    for (const key of Object.keys(current)) {
+      if (PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) {
+        return true;
+      }
+      stack.push(current[key]);
+    }
+  }
+
+  return false;
+}
+
+function hasPrototypeSensitiveKeyInJsonLikeObject(text: string): boolean {
+  let firstBrace = skipJsonWhitespace(text, 0);
+  while (true) {
+    const commentEnd = skipJsonComment(text, firstBrace);
+    if (commentEnd === null) {
+      break;
+    }
+    firstBrace = skipJsonWhitespace(text, commentEnd + 1);
+  }
+  if (text.charAt(firstBrace) !== "{") {
+    firstBrace = text.indexOf("{", firstBrace);
+  }
+  if (firstBrace === -1) {
+    return false;
+  }
+  return (collectObjectKeys(text, firstBrace, true) ?? []).some((key) =>
+    PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)
+  );
+}
+
+function isUnquotedRjsonKeyStart(char: string): boolean {
+  return (
+    char === "_" ||
+    char === "$" ||
+    (char >= "A" && char <= "Z") ||
+    (char >= "a" && char <= "z")
+  );
+}
+
+function isUnquotedRjsonKeyChar(char: string): boolean {
+  return (
+    isUnquotedRjsonKeyStart(char) ||
+    (char >= "0" && char <= "9") ||
+    char === "-"
+  );
+}
+
+function parseQuotedObjectKey(
+  text: string,
+  keyStart: number
+): {
+  key: string;
+  end: number;
+} | null {
+  const quote = text.charAt(keyStart);
+  let index = keyStart + 1;
+  let escaped = false;
+  while (index < text.length) {
+    const char = text.charAt(index);
+    if (escaped) {
+      escaped = false;
+    } else if (char === "\\") {
+      escaped = true;
+    } else if (char === quote) {
+      if (quote === '"') {
+        try {
+          return {
+            key: JSON.parse(text.slice(keyStart, index + 1)),
+            end: index,
+          };
+        } catch {
+          return null;
+        }
+      }
+      return {
+        key: parseSingleQuotedObjectKey(text.slice(keyStart + 1, index)),
+        end: index,
+      };
+    }
+    index += 1;
+  }
+  return null;
+}
+
+function parseSingleQuotedObjectKey(body: string): string {
+  let result = "";
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body.charAt(index);
+    if (char !== "\\" || index === body.length - 1) {
+      result += char;
+      continue;
+    }
+
+    const escaped = body.charAt(index + 1);
+    if (escaped === "u") {
+      const hex = body.slice(index + 2, index + 6);
+      if (HEX_WORD_RE.test(hex)) {
+        result += String.fromCharCode(Number.parseInt(hex, 16));
+        index += 5;
+        continue;
+      }
+    }
+
+    const decoded = SINGLE_QUOTED_KEY_ESCAPES.get(escaped);
+    result += decoded ?? escaped;
+    index += 1;
+  }
+  return result;
+}
+
+const SINGLE_QUOTED_KEY_ESCAPES = new Map<string, string>([
+  ["'", "'"],
+  ['"', '"'],
+  ["\\", "\\"],
+  ["/", "/"],
+  ["b", "\b"],
+  ["f", "\f"],
+  ["n", "\n"],
+  ["r", "\r"],
+  ["t", "\t"],
+]);
+
+function parseUnquotedObjectKey(
+  text: string,
+  keyStart: number
+): {
+  key: string;
+  end: number;
+} | null {
+  if (!isUnquotedRjsonKeyStart(text.charAt(keyStart))) {
+    return null;
+  }
+  let index = keyStart + 1;
+  while (index < text.length && isUnquotedRjsonKeyChar(text.charAt(index))) {
+    index += 1;
+  }
+  return { key: text.slice(keyStart, index), end: index - 1 };
+}
+
+function previousSignificantChar(text: string, index: number): string {
+  let cursor = index - 1;
+  while (cursor >= 0) {
+    while (cursor >= 0 && WHITESPACE_CHAR_RE.test(text.charAt(cursor))) {
+      cursor -= 1;
+    }
+    if (cursor < 0) {
+      return "";
+    }
+    if (text.charAt(cursor) === "/" && text.charAt(cursor - 1) === "*") {
+      const commentStart = text.lastIndexOf("/*", cursor - 2);
+      if (commentStart === -1) {
+        return "/";
+      }
+      cursor = commentStart - 1;
+      continue;
+    }
+    const lineStart = text.lastIndexOf("\n", cursor) + 1;
+    const lineCommentStart = text.lastIndexOf("//", cursor);
+    if (lineCommentStart >= lineStart) {
+      cursor = lineCommentStart - 1;
+      continue;
+    }
+    return text.charAt(cursor);
+  }
+  return "";
+}
+
+function skipJsonComment(text: string, index: number): number | null {
+  if (text.charAt(index) !== "/") {
+    return null;
+  }
+  const next = text.charAt(index + 1);
+  if (next === "/") {
+    const lf = text.indexOf("\n", index + 2);
+    const cr = text.indexOf("\r", index + 2);
+    let end = Math.min(lf, cr);
+    if (lf === -1) {
+      end = cr;
+    } else if (cr === -1) {
+      end = lf;
+    }
+    return end === -1 ? text.length - 1 : end - 1;
+  }
+  if (next === "*") {
+    const end = text.indexOf("*/", index + 2);
+    return end === -1 ? text.length - 1 : end + 1;
+  }
+  return null;
+}
+
+interface QuotedScanState {
+  escaping: boolean;
+  quoteChar: string | null;
+}
+
+interface JsonDepthScanState {
+  depth: number;
+  escaping: boolean;
+  inString: boolean;
+}
+
+interface ObjectKeyCandidate {
+  key?: string;
+  nextIndex: number;
+}
+
+interface StrictJsonPropertyCandidate {
+  key?: string;
+  nextIndex: number;
+  valueStart?: number;
+}
+
+function consumeQuotedScanChar(state: QuotedScanState, char: string): boolean {
+  if (!state.quoteChar) {
+    return false;
+  }
+  if (state.escaping) {
+    state.escaping = false;
+  } else if (char === "\\") {
+    state.escaping = true;
+  } else if (char === state.quoteChar) {
+    state.quoteChar = null;
+  }
+  return true;
+}
+
+function objectKeyDepthTransition(
+  state: { depth: number },
+  char: string
+): "closed" | "changed" | "none" {
+  if (char === "{") {
+    state.depth += 1;
+    return "changed";
+  }
+  if (char === "}") {
+    state.depth -= 1;
+    return state.depth === 0 ? "closed" : "changed";
+  }
+  return "none";
+}
+
+function shouldCollectObjectKey(
+  depth: number,
+  includeNested: boolean
+): boolean {
+  return depth >= 1 && (includeNested || depth === 1);
+}
+
+function readUnquotedObjectKeyCandidate(
+  text: string,
+  index: number,
+  char: string
+): ObjectKeyCandidate | null | undefined {
+  if (!isUnquotedRjsonKeyStart(char)) {
+    return;
+  }
+  const previous = previousSignificantChar(text, index);
+  if (!(previous === "{" || previous === ",")) {
+    return;
+  }
+  const parsedKey = parseUnquotedObjectKey(text, index);
+  if (!parsedKey) {
+    return null;
+  }
+  const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+  return text.charAt(valueCursor) === ":"
+    ? { key: parsedKey.key, nextIndex: valueCursor }
+    : undefined;
+}
+
+function readQuotedObjectKeyCandidate(
+  text: string,
+  index: number
+): ObjectKeyCandidate | null {
+  const parsedKey = parseQuotedObjectKey(text, index);
+  if (!parsedKey) {
+    return null;
+  }
+  const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+  return text.charAt(valueCursor) === ":"
+    ? { key: parsedKey.key, nextIndex: valueCursor }
+    : { nextIndex: parsedKey.end };
+}
+
+function readStrictJsonPropertyCandidate(
+  text: string,
+  index: number
+): StrictJsonPropertyCandidate | null {
+  const parsedKey = parseQuotedObjectKey(text, index);
+  if (!parsedKey) {
+    return null;
+  }
+  let valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+  if (valueCursor >= text.length || text.charAt(valueCursor) !== ":") {
+    return { nextIndex: parsedKey.end };
+  }
+  valueCursor = skipJsonWhitespace(text, valueCursor + 1);
+  return {
+    key: parsedKey.key,
+    nextIndex: valueCursor - 1,
+    valueStart: valueCursor,
+  };
+}
+
+function readObjectKeyCandidate(
+  text: string,
+  index: number,
+  char: string
+): ObjectKeyCandidate | null | undefined {
+  return char === '"' || char === "'"
+    ? readQuotedObjectKeyCandidate(text, index)
+    : readUnquotedObjectKeyCandidate(text, index, char);
+}
+
+function appendObjectKeyCandidate(
+  keys: string[],
+  text: string,
+  index: number,
+  char: string
+): { invalid: boolean; nextIndex: number } {
+  const candidate = readObjectKeyCandidate(text, index, char);
+  if (candidate === null) {
+    return { invalid: true, nextIndex: index };
+  }
+  if (candidate?.key) {
+    keys.push(candidate.key);
+  }
+  return {
+    invalid: false,
+    nextIndex: candidate?.nextIndex ?? index,
+  };
+}
+
+function consumeJsonStringScanChar(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  if (state.escaping) {
+    state.escaping = false;
+    return true;
+  }
+  if (state.inString) {
+    if (char === "\\") {
+      state.escaping = true;
+    } else if (char === '"') {
+      state.inString = false;
+    }
+    return true;
+  }
+  if (char === '"') {
+    state.inString = true;
+    return true;
+  }
+  return false;
+}
+
+function consumeJsonDepthOpen(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  if (!(char === "{" || char === "[")) {
+    return false;
+  }
+  state.depth += 1;
+  return true;
+}
+
+function consumeJsonDepthClose(
+  state: JsonDepthScanState,
+  char: string
+): "top-level-close" | "nested-close" | "none" {
+  if (!(char === "}" || char === "]")) {
+    return "none";
+  }
+  if (state.depth > 0) {
+    state.depth -= 1;
+    return "nested-close";
+  }
+  return "top-level-close";
+}
+
+function consumeExistingJsonString(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  if (!state.inString) {
+    return false;
+  }
+  if (state.escaping) {
+    state.escaping = false;
+  } else if (char === "\\") {
+    state.escaping = true;
+  } else if (char === '"') {
+    state.inString = false;
+  }
+  return true;
+}
+
+function consumeJsonObjectDepth(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  if (char === "{") {
+    state.depth += 1;
+    return true;
+  }
+  if (char === "}") {
+    state.depth = Math.max(0, state.depth - 1);
+    return true;
+  }
+  return false;
+}
+
+function collectObjectKeys(
+  text: string,
+  objectStart: number,
+  includeNested: boolean
+): string[] | null {
+  if (text.charAt(objectStart) !== "{") {
+    return null;
+  }
+
+  const keys: string[] = [];
+  const quoteState: QuotedScanState = { escaping: false, quoteChar: null };
+  const depthState = { depth: 0 };
+
+  for (let index = objectStart; index < text.length; index += 1) {
+    const char = text.charAt(index);
+
+    if (consumeQuotedScanChar(quoteState, char)) {
+      continue;
+    }
+
+    const commentEnd = skipJsonComment(text, index);
+    if (commentEnd !== null) {
+      index = commentEnd;
+      continue;
+    }
+
+    const depthTransition = objectKeyDepthTransition(depthState, char);
+    if (depthTransition === "closed") {
+      return keys;
+    }
+    if (depthTransition === "changed") {
+      continue;
+    }
+    if (!shouldCollectObjectKey(depthState.depth, includeNested)) {
+      if (char === '"' || char === "'") {
+        quoteState.quoteChar = char;
+      }
+      continue;
+    }
+
+    const candidate = appendObjectKeyCandidate(keys, text, index, char);
+    if (candidate.invalid) {
+      return null;
+    }
+    index = candidate.nextIndex;
+  }
+
+  return null;
+}
+
+function applyToolArgumentKeyPolicy(
+  toolName: string,
+  args: unknown,
+  tools: LanguageModelV3FunctionTool[]
+): { args: unknown } | null {
+  const keyPolicy = extractArgumentKeyPolicy(tools, toolName);
+  if (keyPolicy?.rejectAll) {
+    return null;
+  }
+  const normalizedArgs = args === undefined ? {} : args;
+  if (!isRecord(normalizedArgs)) {
+    if (normalizedArgs === null) {
+      return topLevelNullArgumentMatchesToolSchema(toolName, tools)
+        ? { args: normalizedArgs }
+        : null;
+    }
+    if (
+      keyPolicy &&
+      argumentValueMatchesSchemaKeyShape(
+        normalizedArgs,
+        keyPolicy.schema,
+        new Set(),
+        true
+      )
+    ) {
+      return { args: normalizedArgs };
+    }
+    if (keyPolicy?.rejectNonRecordArguments) {
+      return null;
+    }
+    return { args: normalizedArgs };
+  }
+  const policyArgs = applyArgumentKeyPolicy(normalizedArgs, keyPolicy);
+  return policyArgs === null ? null : { args: policyArgs };
+}
+
+function topLevelNullArgumentMatchesToolSchema(
+  toolName: string,
+  tools: LanguageModelV3FunctionTool[]
+): boolean {
+  const tool = tools.find((candidate) => candidate.name === toolName);
+  if (!tool || tool.inputSchema === undefined) {
+    return false;
+  }
+  return argumentValueMatchesSchemaKeyShape(
+    null,
+    tool.inputSchema,
+    new Set(),
+    true
+  );
+}
+
+/** Maximum size (in UTF-16 code units) for the arguments body before bailing out of repair. */
+const REPAIR_MAX_ARGS_BODY_SIZE = 102_400;
+
+const WHITESPACE_RE = /\s/;
+const FIRST_KEY_RE = /^\s*"([^"]+)"\s*:\s*/;
+const KV_PATTERN_RE = /,\s*"([^"]+)"\s*:\s*/g;
+const TRAILING_COMMA_RE = /,\s*$/;
+
+interface JsonRepairKeyPosition {
+  key: string;
+  matchStart: number;
+  valueStart: number;
+}
+
+function getTopLevelPositionMap(argsBody: string): Uint8Array {
+  const topLevelAtPosition = new Uint8Array(argsBody.length + 1);
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  topLevelAtPosition[0] = 1;
+  for (let i = 0; i < argsBody.length; i++) {
+    const ch = argsBody[i];
+    if (esc) {
+      esc = false;
+    } else if (ch === "\\" && inStr) {
+      esc = true;
+    } else if (ch === '"') {
+      inStr = !inStr;
+    } else if (!inStr) {
+      if (ch === "{" || ch === "[") {
+        depth++;
+      }
+      if (ch === "}" || ch === "]") {
+        depth--;
+      }
+    }
+    topLevelAtPosition[i + 1] = depth === 0 ? 1 : 0;
+  }
+  return topLevelAtPosition;
+}
+
+function hasCommaAfterWhitespace(text: string, fromIndex: number): boolean {
+  let cursor = fromIndex;
+  while (cursor < text.length && WHITESPACE_RE.test(text[cursor])) {
+    cursor += 1;
+  }
+  return text.charAt(cursor) === ",";
+}
+
+function hasTrailingTopLevelFieldAfterArgumentsObject(
+  argsBody: string
+): boolean {
+  const state: JsonDepthScanState = {
+    depth: 0,
+    escaping: false,
+    inString: false,
+  };
+  for (let index = 0; index < argsBody.length; index += 1) {
+    const char = argsBody.charAt(index);
+    if (consumeJsonStringScanChar(state, char)) {
+      continue;
+    }
+    if (consumeJsonDepthOpen(state, char)) {
+      continue;
+    }
+    const close = consumeJsonDepthClose(state, char);
+    if (close === "none" || close === "nested-close") {
+      continue;
+    }
+    if (hasCommaAfterWhitespace(argsBody, index + 1)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findRepairArgumentsBody(raw: string): string | null {
+  const argsValueStart = findStrictTopLevelJsonPropertyValueStart(
+    raw,
+    "arguments"
+  );
+  if (argsValueStart == null || raw.charAt(argsValueStart) !== "{") {
+    return null;
+  }
+  const argsStart = argsValueStart + 1;
+  let outerClose = -1;
+  for (let i = raw.length - 1; i >= argsStart; i--) {
+    if (raw.charAt(i) === "}") {
+      outerClose = i;
+      break;
+    }
+    if (!WHITESPACE_RE.test(raw.charAt(i))) {
+      break;
+    }
+  }
+  if (outerClose === -1) {
+    return null;
+  }
+
+  let argsClose = -1;
+  for (let j = outerClose - 1; j >= argsStart; j--) {
+    if (raw.charAt(j) === "}") {
+      argsClose = j;
+      break;
+    }
+    if (!WHITESPACE_RE.test(raw.charAt(j))) {
+      break;
+    }
+  }
+  return argsClose === -1 ? null : raw.slice(argsStart, argsClose);
+}
+
+function parseArgsBodyWithoutRepair(
+  argsBody: string,
+  keyPolicy?: ArgumentKeyPolicy
+): Record<string, unknown> | null {
+  try {
+    const parsedArgs = JSON.parse(`{${argsBody}}`) as Record<string, unknown>;
+    return applyArgumentKeyPolicy(parsedArgs, keyPolicy);
+  } catch {
+    return null;
+  }
+}
+
+function collectRepairKeyPositions(
+  argsBody: string
+): JsonRepairKeyPosition[] | null {
+  const firstKeyMatch = argsBody.match(FIRST_KEY_RE);
+  if (!firstKeyMatch) {
+    return null;
+  }
+  const positions: JsonRepairKeyPosition[] = [
+    {
+      key: firstKeyMatch[1],
+      matchStart: 0,
+      valueStart: firstKeyMatch[0].length,
+    },
+  ];
+  for (const match of argsBody.matchAll(KV_PATTERN_RE)) {
+    positions.push({
+      key: match[1],
+      matchStart: match.index,
+      valueStart: match.index + match[0].length,
+    });
+  }
+
+  const topLevelAtPosition = getTopLevelPositionMap(argsBody);
+  return positions.filter(
+    (entry) =>
+      entry.matchStart === 0 || topLevelAtPosition[entry.matchStart] === 1
+  );
+}
+
+function uniqueRepairKeyPositions(
+  positions: JsonRepairKeyPosition[],
+  keepLast: boolean
+): JsonRepairKeyPosition[] {
+  const selectedByKey = new Map<string, number>();
+  for (let index = 0; index < positions.length; index += 1) {
+    if (keepLast || !selectedByKey.has(positions[index].key)) {
+      selectedByKey.set(positions[index].key, index);
+    }
+  }
+  return positions.filter(
+    (_, index) => selectedByKey.get(positions[index].key) === index
+  );
+}
+
+function sameRepairPositions(
+  left: JsonRepairKeyPosition[],
+  right: JsonRepairKeyPosition[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((entry, index) => entry.matchStart === right[index].matchStart)
+  );
+}
+
+function escapeMalformedStringInner(inner: string): string {
+  let escaped = "";
+  let backslashes = 0;
+  for (const char of inner) {
+    if (char === "\\") {
+      backslashes += 1;
+      escaped += char;
+    } else if (char === '"' && backslashes % 2 === 0) {
+      backslashes = 0;
+      escaped += '\\"';
+    } else {
+      backslashes = 0;
+      escaped += char;
+    }
+  }
+  return escaped
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+function lastQuoteIndex(value: string): number {
+  let cursor = value.length - 1;
+  while (cursor > 0 && value.charAt(cursor) !== '"') {
+    cursor -= 1;
+  }
+  return cursor;
+}
+
+function parsePossiblyMalformedJsonString(value: string): unknown | undefined {
+  if (value.charAt(0) !== '"') {
+    return;
+  }
+  const quoteEnd = lastQuoteIndex(value);
+  if (quoteEnd <= 0) {
+    return;
+  }
+  const escaped = escapeMalformedStringInner(value.slice(1, quoteEnd));
+  try {
+    return JSON.parse(`"${escaped}"`);
+  } catch {
+    return;
+  }
+}
+
+function scoreRepairValue(value: string): [number, number] {
+  try {
+    JSON.parse(value);
+    return [1, 0];
+  } catch {
+    return parsePossiblyMalformedJsonString(value) === undefined
+      ? [0, 0]
+      : [0, 1];
+  }
+}
+
+function scoreRepairKeyPositions(
+  argsBody: string,
+  positions: JsonRepairKeyPosition[]
+): [number, number] {
+  let rawOk = 0;
+  let repaired = 0;
+  for (let index = 0; index < positions.length; index += 1) {
+    const valueEnd =
+      index + 1 < positions.length
+        ? positions[index + 1].matchStart
+        : argsBody.length;
+    const value = argsBody
+      .slice(positions[index].valueStart, valueEnd)
+      .replace(TRAILING_COMMA_RE, "");
+    const [rawScore, repairScore] = scoreRepairValue(value);
+    rawOk += rawScore;
+    repaired += repairScore;
+  }
+  return [rawOk, repaired];
+}
+
+function chooseRepairKeyPositions(
+  argsBody: string,
+  positions: JsonRepairKeyPosition[]
+): JsonRepairKeyPosition[] {
+  const firstPositions = uniqueRepairKeyPositions(positions, false);
+  const lastPositions = uniqueRepairKeyPositions(positions, true);
+  if (sameRepairPositions(firstPositions, lastPositions)) {
+    return firstPositions;
+  }
+  const firstScore = scoreRepairKeyPositions(argsBody, firstPositions);
+  const lastScore = scoreRepairKeyPositions(argsBody, lastPositions);
+  return lastScore[0] > firstScore[0] ||
+    (lastScore[0] === firstScore[0] && lastScore[1] > firstScore[1])
+    ? lastPositions
+    : firstPositions;
+}
+
+function parseRepairValue(value: string): unknown | undefined {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return parsePossiblyMalformedJsonString(value);
+  }
+}
+
+function parseRepairArguments(
+  argsBody: string,
+  positions: JsonRepairKeyPosition[],
+  keyPolicy?: ArgumentKeyPolicy
+): Record<string, unknown> | null {
+  const args = Object.create(null) as Record<string, unknown>;
+  for (let index = 0; index < positions.length; index += 1) {
+    const valueEnd =
+      index + 1 < positions.length
+        ? positions[index + 1].matchStart
+        : argsBody.length;
+    const rawValue = argsBody
+      .slice(positions[index].valueStart, valueEnd)
+      .replace(TRAILING_COMMA_RE, "");
+    const parsedValue = parseRepairValue(rawValue);
+    if (parsedValue === undefined) {
+      return null;
+    }
+    args[positions[index].key] = parsedValue;
+  }
+  if (Object.keys(args).length === 0) {
+    return null;
+  }
+  return applyArgumentKeyPolicy(args, keyPolicy);
+}
+
+/**
+ * Attempt to repair a malformed tool-call JSON string where the model
+ * failed to escape double-quotes inside string values.  Returns the
+ * parsed result or null when repair is not possible.
+ *
+ * Scope: this path assumes strict JSON structure (double-quoted keys and
+ * string values, per-value `JSON.parse`). Relaxed-JSON malformation
+ * (unquoted keys, single-quoted strings, comments) is out of scope — such
+ * input returns null and the caller falls through to the text segment path,
+ * matching pre-repair behavior.
+ */
+function repairToolCallJson(
+  raw: string,
+  toolName: string,
+  keyPolicy?: ArgumentKeyPolicy
+): { name: string; arguments: Record<string, unknown> } | null {
+  if (hasPrototypeSensitiveKeyInJsonLikeObject(raw)) {
+    return null;
+  }
+
+  const argsBody = findRepairArgumentsBody(raw);
+  if (argsBody === null) {
+    return null;
+  }
+  if (argsBody.length > REPAIR_MAX_ARGS_BODY_SIZE) {
+    return null;
+  }
+  if (hasTrailingTopLevelFieldAfterArgumentsObject(argsBody)) {
+    return null;
+  }
+
+  const parsedArgs = parseArgsBodyWithoutRepair(argsBody, keyPolicy);
+  if (parsedArgs) {
+    return { name: toolName, arguments: parsedArgs };
+  }
+
+  const collectedKeys = collectRepairKeyPositions(argsBody);
+  if (!collectedKeys || collectedKeys.length === 0) {
+    return null;
+  }
+
+  const args = parseRepairArguments(
+    argsBody,
+    chooseRepairKeyPositions(argsBody, collectedKeys),
+    keyPolicy
+  );
+  return args === null ? null : { name: toolName, arguments: args };
+}
+
+function repairToolCallJsonForTools(
+  raw: string,
+  tools: LanguageModelV3FunctionTool[]
+): { name: string; arguments: Record<string, unknown> } | null {
+  try {
+    const toolName = extractStrictTopLevelStringProperty(raw, "name");
+    if (!toolName) {
+      return null;
+    }
+    return repairToolCallJson(
+      raw,
+      toolName,
+      extractArgumentKeyPolicy(tools, toolName)
+    );
+  } catch {
+    // Repair is best-effort: any failure — including a RangeError from a
+    // pathologically deep value validated against a recursive/cyclic tool
+    // schema — means repair is not possible. Return null so the caller falls
+    // through to its onError / original-text fallback instead of letting the
+    // error escape parseGeneratedText or the streaming transform. This is the
+    // catch-all backstop; the primary guard is MAX_ARGUMENT_SHAPE_DEPTH in
+    // hermes-argument-schema.ts.
+    return null;
+  }
+}
+
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
   processedElements: LanguageModelV3Content[],
+  tools: LanguageModelV3FunctionTool[],
   options?: ParserOptions
 ) {
   try {
-    const parsedToolCall = parseRJSON(
-      normalizeJsonStringCtrl(toolCallJson)
-    ) as {
-      name: string;
-      arguments: unknown;
-    };
+    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      throw new Error("Tool call object is missing own name or arguments");
+    }
+    if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
+      throw new Error("Tool call arguments contain prototype-sensitive keys");
+    }
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      throw new Error("Tool call arguments contain schema-unknown keys");
+    }
     processedElements.push({
       type: "tool-call",
       toolCallId: generateToolCallId(),
       toolName: parsedToolCall.name,
-      input: canonicalizeToolInput(parsedToolCall.arguments),
+      input: stringifyParsedToolInput(
+        parsedToolCall.name,
+        policyArguments.args,
+        tools
+      ),
     });
   } catch (error) {
+    let finalError: unknown = error;
+    // Attempt repair for unescaped quotes
+    const repaired = repairToolCallJsonForTools(toolCallJson, tools);
+    if (repaired) {
+      try {
+        processedElements.push({
+          type: "tool-call",
+          toolCallId: generateToolCallId(),
+          toolName: repaired.name,
+          input: stringifyParsedToolInput(
+            repaired.name,
+            repaired.arguments,
+            tools
+          ),
+        });
+        return;
+      } catch (repairError) {
+        finalError = repairError;
+      }
+    }
     const salvagedToolName =
       extractStreamingToolCallProgress(toolCallJson).toolName;
     const salvagedToolCallId = generateToolCallId();
@@ -522,13 +1752,13 @@ function processToolCallJson(
       phase: "generated-text",
       reason: "Failed to parse tool call JSON segment",
       snippet: fullMatch,
-      error,
+      error: finalError,
     });
     options?.onError?.(
       "Could not process JSON tool call, keeping original text.",
       {
         toolCall: fullMatch,
-        error,
+        error: finalError,
         toolName: salvagedToolName,
         toolCallId: salvagedToolCallId,
         dropReason: "malformed-tool-call-body",
@@ -549,6 +1779,11 @@ interface StreamState {
   currentToolCallJson: string;
   hasEmittedTextStart: boolean;
   isInsideToolCall: boolean;
+  pendingToolInputProgressVersion: number;
+  speculativeToolCall: {
+    input: string;
+    toolName: string;
+  } | null;
 }
 
 type StreamController =
@@ -584,13 +1819,13 @@ function findTopLevelPropertyValueStart(
   }
 
   let depth = 0;
-  let inString = false;
+  let quoteChar: string | null = null;
   let escaping = false;
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
 
-    if (inString) {
+    if (quoteChar) {
       if (escaping) {
         escaping = false;
         continue;
@@ -599,9 +1834,15 @@ function findTopLevelPropertyValueStart(
         escaping = true;
         continue;
       }
-      if (char === '"') {
-        inString = false;
+      if (char === quoteChar) {
+        quoteChar = null;
       }
+      continue;
+    }
+
+    const commentEnd = skipJsonComment(text, index);
+    if (commentEnd !== null) {
+      index = commentEnd;
       continue;
     }
 
@@ -614,47 +1855,91 @@ function findTopLevelPropertyValueStart(
       continue;
     }
 
-    if (char !== '"') {
-      continue;
-    }
-
     if (depth !== 1) {
-      inString = true;
+      if (char === '"' || char === "'") {
+        quoteChar = char;
+      }
       continue;
     }
 
-    const keyStart = index + 1;
-    let keyEnd = keyStart;
-    let keyEscaped = false;
-    while (keyEnd < text.length) {
-      const keyChar = text.charAt(keyEnd);
-      if (keyEscaped) {
-        keyEscaped = false;
-      } else if (keyChar === "\\") {
-        keyEscaped = true;
-      } else if (keyChar === '"') {
-        break;
+    let parsedKey: { key: string; end: number } | null = null;
+    if (char === '"' || char === "'") {
+      parsedKey = parseQuotedObjectKey(text, index);
+    } else {
+      if (!isUnquotedRjsonKeyStart(char)) {
+        continue;
       }
-      keyEnd += 1;
+      const previous = previousSignificantChar(text, index);
+      if (previous !== "{" && previous !== ",") {
+        continue;
+      }
+      parsedKey = parseUnquotedObjectKey(text, index);
     }
 
-    if (keyEnd >= text.length || text.charAt(keyEnd) !== '"') {
+    if (!parsedKey) {
       return null;
     }
 
-    const key = text.slice(keyStart, keyEnd);
-    let valueCursor = skipJsonWhitespace(text, keyEnd + 1);
+    let valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
     if (valueCursor >= text.length || text.charAt(valueCursor) !== ":") {
-      index = keyEnd;
+      index = parsedKey.end;
       continue;
     }
 
     valueCursor = skipJsonWhitespace(text, valueCursor + 1);
-    if (key === property) {
+    if (parsedKey.key === property) {
       return valueCursor < text.length ? valueCursor : null;
     }
 
     index = valueCursor - 1;
+  }
+
+  return null;
+}
+
+function findStrictTopLevelJsonPropertyValueStart(
+  text: string,
+  property: string
+): number | null {
+  const objectStart = skipJsonWhitespace(text, 0);
+  if (objectStart >= text.length || text.charAt(objectStart) !== "{") {
+    return null;
+  }
+
+  const state: JsonDepthScanState = {
+    depth: 0,
+    escaping: false,
+    inString: false,
+  };
+
+  for (let index = objectStart; index < text.length; index += 1) {
+    const char = text.charAt(index);
+
+    if (consumeExistingJsonString(state, char)) {
+      continue;
+    }
+    if (consumeJsonObjectDepth(state, char)) {
+      continue;
+    }
+    if (char !== '"') {
+      continue;
+    }
+    if (state.depth !== 1) {
+      state.inString = true;
+      continue;
+    }
+
+    const candidate = readStrictJsonPropertyCandidate(text, index);
+    if (candidate === null) {
+      return null;
+    }
+    if (candidate.key === property) {
+      return candidate.valueStart !== undefined &&
+        candidate.valueStart < text.length
+        ? candidate.valueStart
+        : null;
+    }
+    index = candidate.nextIndex;
   }
 
   return null;
@@ -665,6 +1950,35 @@ function extractTopLevelStringProperty(
   property: string
 ): string | undefined {
   const valueStart = findTopLevelPropertyValueStart(text, property);
+  if (valueStart == null || valueStart >= text.length) {
+    return;
+  }
+  if (text.charAt(valueStart) !== '"') {
+    return;
+  }
+
+  let valueEnd = valueStart + 1;
+  let escaped = false;
+  while (valueEnd < text.length) {
+    const char = text.charAt(valueEnd);
+    if (escaped) {
+      escaped = false;
+    } else if (char === "\\") {
+      escaped = true;
+    } else if (char === '"') {
+      return text.slice(valueStart + 1, valueEnd);
+    }
+    valueEnd += 1;
+  }
+
+  return;
+}
+
+function extractStrictTopLevelStringProperty(
+  text: string,
+  property: string
+): string | undefined {
+  const valueStart = findStrictTopLevelJsonPropertyValueStart(text, property);
   if (valueStart == null || valueStart >= text.length) {
     return;
   }
@@ -851,6 +2165,77 @@ function emitToolInputDelta(
   });
 }
 
+function emitStreamingToolInputProgress(options: {
+  state: StreamState;
+  controller: StreamController;
+  toolCallJson: string;
+  tools: LanguageModelV3FunctionTool[];
+}): boolean {
+  const { state, controller, toolCallJson, tools } = options;
+  const progress = extractStreamingToolCallProgress(toolCallJson);
+  if (!(progress.toolName && progress.argumentsComplete)) {
+    return false;
+  }
+  try {
+    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      return false;
+    }
+    if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
+      return false;
+    }
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      return false;
+    }
+    const input = stringifyToolInputWithSchema({
+      toolName: parsedToolCall.name,
+      args: policyArguments.args,
+      tools,
+      fallback: canonicalizeToolInput,
+    });
+    ensureToolInputStart(state, controller, parsedToolCall.name);
+    emitToolInputDelta(state, controller, input);
+    state.speculativeToolCall = {
+      input,
+      toolName: parsedToolCall.name,
+    };
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleStreamingToolInputProgress(options: {
+  state: StreamState;
+  controller: StreamController;
+  toolCallJson: string;
+  tools: LanguageModelV3FunctionTool[];
+}) {
+  const { state, controller, toolCallJson, tools } = options;
+  state.pendingToolInputProgressVersion += 1;
+  const version = state.pendingToolInputProgressVersion;
+  setTimeout(() => {
+    if (
+      !state.isInsideToolCall ||
+      state.pendingToolInputProgressVersion !== version ||
+      state.currentToolCallJson !== toolCallJson
+    ) {
+      return;
+    }
+    emitStreamingToolInputProgress({
+      state,
+      controller,
+      toolCallJson,
+      tools,
+    });
+  });
+}
+
 function closeToolInput(state: StreamState, controller: StreamController) {
   if (!state.activeToolInput) {
     return;
@@ -883,64 +2268,13 @@ function emitToolCallFromParsed(
   emitToolInputDelta(state, controller, input);
   const toolCallId = state.activeToolInput?.id ?? generateToolCallId();
   closeToolInput(state, controller);
+  state.speculativeToolCall = null;
   controller.enqueue({
     type: "tool-call",
     toolCallId,
     toolName,
     input,
   } as LanguageModelV3StreamPart);
-}
-
-function canonicalizeArgumentsProgressInput(
-  progress: {
-    argumentsText: string | undefined;
-    argumentsComplete: boolean;
-  },
-  toolName: string,
-  tools: LanguageModelV3FunctionTool[]
-): string | undefined {
-  if (progress.argumentsText === undefined || !progress.argumentsComplete) {
-    return;
-  }
-
-  try {
-    const parsedArguments = parseRJSON(
-      normalizeJsonStringCtrl(progress.argumentsText)
-    );
-    return stringifyToolInputWithSchema({
-      toolName,
-      args: parsedArguments,
-      tools,
-      fallback: canonicalizeToolInput,
-    });
-  } catch {
-    return;
-  }
-}
-
-function emitToolInputProgress(
-  state: StreamState,
-  controller: StreamController,
-  tools: LanguageModelV3FunctionTool[]
-) {
-  if (!(state.isInsideToolCall && state.currentToolCallJson)) {
-    return;
-  }
-
-  const progress = extractStreamingToolCallProgress(state.currentToolCallJson);
-  if (!progress.toolName) {
-    return;
-  }
-
-  ensureToolInputStart(state, controller, progress.toolName);
-  const canonicalProgressInput = canonicalizeArgumentsProgressInput(
-    progress,
-    progress.toolName,
-    tools
-  );
-  if (canonicalProgressInput !== undefined) {
-    emitToolInputDelta(state, controller, canonicalProgressInput);
-  }
 }
 
 function flushBuffer(
@@ -1001,16 +2335,34 @@ function emitIncompleteToolCall(
     try {
       const parsedToolCall = parseRJSON(
         normalizeJsonStringCtrl(state.currentToolCallJson)
-      ) as {
-        name: string;
-        arguments: unknown;
-      };
-      emitToolCallFromParsed(state, controller, parsedToolCall, tools);
+      );
+      if (!isParsedToolCallRecord(parsedToolCall)) {
+        throw new Error("Tool call object is missing own name or arguments");
+      }
+      if (hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)) {
+        throw new Error("Tool call arguments contain prototype-sensitive keys");
+      }
+      const policyArguments = applyToolArgumentKeyPolicy(
+        parsedToolCall.name,
+        parsedToolCall.arguments,
+        tools
+      );
+      if (policyArguments === null) {
+        throw new Error("Tool call arguments contain schema-unknown keys");
+      }
+      emitToolCallFromParsed(
+        state,
+        controller,
+        { ...parsedToolCall, arguments: policyArguments.args },
+        tools
+      );
       state.currentToolCallJson = "";
       state.isInsideToolCall = false;
       return;
     } catch {
-      // fall through to text fallback
+      // Incomplete tool calls (no closing </tool_call>) are not candidates
+      // for repair — the JSON may be genuinely truncated.
+      // Fall through to text/error fallback.
     }
   }
 
@@ -1099,13 +2451,11 @@ function handleFinishChunk(
 function publishText(
   text: string,
   state: StreamState,
-  controller: StreamController,
-  tools: LanguageModelV3FunctionTool[]
+  controller: StreamController
 ) {
   if (state.isInsideToolCall) {
     closeTextBlock(state, controller);
     state.currentToolCallJson += text;
-    emitToolInputProgress(state, controller, tools);
   } else if (text.length > 0) {
     if (!state.currentTextId) {
       state.currentTextId = generateId();
@@ -1129,25 +2479,58 @@ function emitToolCall(context: TagProcessingContext) {
   try {
     const parsedToolCall = parseRJSON(
       normalizeJsonStringCtrl(state.currentToolCallJson)
-    ) as {
-      name: string;
-      arguments: unknown;
-    };
-    emitToolCallFromParsed(state, controller, parsedToolCall, tools);
+    );
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      throw new Error("Tool call object is missing own name or arguments");
+    }
+    if (hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)) {
+      throw new Error("Tool call arguments contain prototype-sensitive keys");
+    }
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      throw new Error("Tool call arguments contain schema-unknown keys");
+    }
+    emitToolCallFromParsed(
+      state,
+      controller,
+      { ...parsedToolCall, arguments: policyArguments.args },
+      tools
+    );
   } catch (error) {
+    let finalError: unknown = error;
+    // Attempt repair for unescaped quotes
+    const repaired = repairToolCallJsonForTools(
+      state.currentToolCallJson,
+      tools
+    );
+    if (repaired) {
+      try {
+        emitToolCallFromParsed(state, controller, repaired, tools);
+        return;
+      } catch (repairError) {
+        finalError = repairError;
+      }
+    }
+    const activeToolCallId = state.activeToolInput?.id;
+    const activeToolName = state.activeToolInput?.toolName;
+    state.speculativeToolCall = null;
+
     const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
     const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
-    const streamingToolCallId =
-      state.activeToolInput?.id ?? generateToolCallId();
+    const streamingToolCallId = activeToolCallId ?? generateToolCallId();
     const streamingToolName =
-      state.activeToolInput?.toolName ??
+      activeToolName ??
       extractStreamingToolCallProgress(state.currentToolCallJson).toolName;
 
     logParseFailure({
       phase: "stream",
       reason: "Failed to parse streaming tool call JSON segment",
       snippet: errorContent,
-      error,
+      error: finalError,
     });
     if (shouldEmitRawFallback) {
       const errorId = generateId();
@@ -1172,7 +2555,7 @@ function emitToolCall(context: TagProcessingContext) {
         : "Could not process streaming JSON tool call.",
       {
         toolCall: errorContent,
-        error,
+        error: finalError,
         toolCallId: streamingToolCallId,
         toolName: streamingToolName,
         dropReason: "malformed-tool-call-body",
@@ -1263,7 +2646,7 @@ function recoverNestedStreamingToolCall(options: {
 }
 
 function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
-  const { state, controller, toolCallStart, toolCallEnd, tools } = context;
+  const { state, controller, toolCallStart, toolCallEnd } = context;
   const currentLength = state.currentToolCallJson.length;
   const combined = state.currentToolCallJson + state.buffer;
   const boundary = findToolCallBoundaryOutsideRjsonSyntax(
@@ -1292,19 +2675,14 @@ function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
     return true;
   }
 
-  publishText(
-    state.buffer.slice(0, relativeEndIndex),
-    state,
-    controller,
-    tools
-  );
+  publishText(state.buffer.slice(0, relativeEndIndex), state, controller);
   state.buffer = state.buffer.slice(relativeEndIndex + toolCallEnd.length);
   processTagMatch(context);
   return true;
 }
 
 function processBufferTags(context: TagProcessingContext) {
-  const { state, controller, toolCallStart, tools } = context;
+  const { state, controller, toolCallStart } = context;
 
   while (state.isInsideToolCall) {
     if (!processInsideToolCallBoundary(context)) {
@@ -1319,7 +2697,7 @@ function processBufferTags(context: TagProcessingContext) {
       break;
     }
 
-    publishText(state.buffer.slice(0, startIndex), state, controller, tools);
+    publishText(state.buffer.slice(0, startIndex), state, controller);
     state.buffer = state.buffer.slice(startIndex + toolCallStart.length);
     processTagMatch(context);
 
@@ -1346,15 +2724,22 @@ function handlePartialTag(
       potentialEndIndex != null &&
       potentialEndIndex + toolCallEnd.length > state.buffer.length
     ) {
-      publishText(
-        state.buffer.slice(0, potentialEndIndex),
+      publishText(state.buffer.slice(0, potentialEndIndex), state, controller);
+      scheduleStreamingToolInputProgress({
         state,
         controller,
-        tools
-      );
+        toolCallJson: state.currentToolCallJson,
+        tools,
+      });
       state.buffer = state.buffer.slice(potentialEndIndex);
     } else {
-      publishText(state.buffer, state, controller, tools);
+      publishText(state.buffer, state, controller);
+      scheduleStreamingToolInputProgress({
+        state,
+        controller,
+        toolCallJson: state.currentToolCallJson,
+        tools,
+      });
       state.buffer = "";
     }
     return;
@@ -1365,15 +2750,10 @@ function handlePartialTag(
     potentialIndex != null &&
     potentialIndex + toolCallStart.length > state.buffer.length
   ) {
-    publishText(
-      state.buffer.slice(0, potentialIndex),
-      state,
-      controller,
-      tools
-    );
+    publishText(state.buffer.slice(0, potentialIndex), state, controller);
     state.buffer = state.buffer.slice(potentialIndex);
   } else {
-    publishText(state.buffer, state, controller, tools);
+    publishText(state.buffer, state, controller);
     state.buffer = "";
   }
 }
@@ -1411,6 +2791,7 @@ export const hermesProtocol = ({
 
   parseGeneratedText({
     text,
+    tools,
     options,
   }: {
     text: string;
@@ -1457,7 +2838,13 @@ export const hermesProtocol = ({
         );
       }
 
-      processToolCallJson(toolCallJson, fullMatch, processedElements, options);
+      processToolCallJson(
+        toolCallJson,
+        fullMatch,
+        processedElements,
+        tools,
+        options
+      );
       currentIndex = span.endIdx + toolCallEnd.length;
       searchFrom = currentIndex;
     }
@@ -1484,6 +2871,8 @@ export const hermesProtocol = ({
       currentTextId: null,
       hasEmittedTextStart: false,
       activeToolInput: null,
+      pendingToolInputProgressVersion: 0,
+      speculativeToolCall: null,
     };
 
     return new TransformStream<

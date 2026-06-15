@@ -29,6 +29,36 @@ describe("tool-call coercion utils", () => {
     expect(input).toBeUndefined();
   });
 
+  it("leaves null input unchanged for non-nullable schemas", () => {
+    const input = coerceToolCallInput("calc", null, [
+      {
+        type: "function",
+        name: "calc",
+        inputSchema: {
+          type: "object",
+          properties: { a: { type: "number" } },
+        },
+      },
+    ]);
+
+    expect(input).toBeUndefined();
+  });
+
+  it("preserves null input when the schema allows null", () => {
+    const input = coerceToolCallInput("calc", null, [
+      {
+        type: "function",
+        name: "calc",
+        inputSchema: {
+          type: ["object", "null"],
+          properties: { a: { type: "number" } },
+        },
+      },
+    ]);
+
+    expect(input).toBe("null");
+  });
+
   it("coerceToolCallPart updates tool-call input when coercion succeeds", () => {
     const part = coerceToolCallPart(
       {
