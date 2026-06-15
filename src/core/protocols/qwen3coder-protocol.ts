@@ -86,7 +86,7 @@ function stripLeadingToolCallCloseTags(text: string): string {
     const start = skipAsciiWhitespace(out, 0);
     const trimmed = out.slice(start);
     const match = TOOL_CALL_CLOSE_RE.exec(trimmed);
-    if (!match || match.index !== 0 || !match[0]) {
+    if (match?.index !== 0 || !match[0]) {
       return out;
     }
     out = out.slice(start + match[0].length);
