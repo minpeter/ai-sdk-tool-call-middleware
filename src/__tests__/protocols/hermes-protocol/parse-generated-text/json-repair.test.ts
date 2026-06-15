@@ -915,6 +915,7 @@ describe("parseGeneratedText JSON repair", () => {
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
     const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeUndefined();
+    expect(out).toContainEqual({ type: "text", text });
     expect(onError).toHaveBeenCalled();
   });
 
