@@ -1691,13 +1691,37 @@ function repairToolCallJsonForTools(
   }
 }
 
-function processToolCallJson(
+/**
+ * Discriminated result of resolving a raw `<tool_call>` JSON body into a final,
+ * emittable tool call. Shared by the non-streaming (`parseGeneratedText` ->
+ * `processToolCallJson`) and streaming (`createStreamParser` -> `emitToolCall`)
+ * paths so both apply identical parse -> validate -> repair semantics. Only the
+ * emission of the success / failure result differs between the two paths.
+ */
+type ResolvedToolCall =
+  | { ok: true; toolName: string; input: string }
+  | { ok: false; error: unknown };
+
+/**
+ * Single source of truth for turning a raw `<tool_call>` JSON body into a
+ * canonical `{ toolName, input }` pair (or a failure). Performs, in order:
+ *
+ *   1. relaxed-JSON parse (with raw control-character normalization)
+ *   2. shape validation (must be an object with a string `name`)
+ *   3. prototype-pollution guard
+ *   4. argument key-policy enforcement
+ *   5. final input stringification (schema-aware)
+ *
+ * On any failure it makes one best-effort repair attempt (e.g. unescaped quotes)
+ * and, if that also fails, reports the originating error. The stringification is
+ * performed inside the same `try` as parsing so that a stringify failure falls
+ * through to the repair path exactly as it did when this logic was inlined in
+ * each caller — the two paths must stay byte-for-byte equivalent here.
+ */
+function resolveToolCall(
   toolCallJson: string,
-  fullMatch: string,
-  processedElements: LanguageModelV3Content[],
-  tools: LanguageModelV3FunctionTool[],
-  options?: ParserOptions
-) {
+  tools: LanguageModelV3FunctionTool[]
+): ResolvedToolCall {
   try {
     const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
     if (!isParsedToolCallRecord(parsedToolCall)) {
@@ -1714,58 +1738,75 @@ function processToolCallJson(
     if (policyArguments === null) {
       throw new Error("Tool call arguments contain schema-unknown keys");
     }
-    processedElements.push({
-      type: "tool-call",
-      toolCallId: generateToolCallId(),
+    return {
+      ok: true,
       toolName: parsedToolCall.name,
       input: stringifyParsedToolInput(
         parsedToolCall.name,
         policyArguments.args,
         tools
       ),
-    });
+    };
   } catch (error) {
-    let finalError: unknown = error;
-    // Attempt repair for unescaped quotes
+    // Attempt repair for unescaped quotes (best-effort).
     const repaired = repairToolCallJsonForTools(toolCallJson, tools);
     if (repaired) {
       try {
-        processedElements.push({
-          type: "tool-call",
-          toolCallId: generateToolCallId(),
+        return {
+          ok: true,
           toolName: repaired.name,
           input: stringifyParsedToolInput(
             repaired.name,
             repaired.arguments,
             tools
           ),
-        });
-        return;
+        };
       } catch (repairError) {
-        finalError = repairError;
+        return { ok: false, error: repairError };
       }
     }
-    const salvagedToolName =
-      extractStreamingToolCallProgress(toolCallJson).toolName;
-    const salvagedToolCallId = generateToolCallId();
-    logParseFailure({
-      phase: "generated-text",
-      reason: "Failed to parse tool call JSON segment",
-      snippet: fullMatch,
-      error: finalError,
-    });
-    options?.onError?.(
-      "Could not process JSON tool call, keeping original text.",
-      {
-        toolCall: fullMatch,
-        error: finalError,
-        toolName: salvagedToolName,
-        toolCallId: salvagedToolCallId,
-        dropReason: "malformed-tool-call-body",
-      }
-    );
-    processedElements.push({ type: "text", text: fullMatch });
+    return { ok: false, error };
   }
+}
+
+function processToolCallJson(
+  toolCallJson: string,
+  fullMatch: string,
+  processedElements: LanguageModelV3Content[],
+  tools: LanguageModelV3FunctionTool[],
+  options?: ParserOptions
+) {
+  const resolved = resolveToolCall(toolCallJson, tools);
+  if (resolved.ok) {
+    processedElements.push({
+      type: "tool-call",
+      toolCallId: generateToolCallId(),
+      toolName: resolved.toolName,
+      input: resolved.input,
+    });
+    return;
+  }
+
+  const salvagedToolName =
+    extractStreamingToolCallProgress(toolCallJson).toolName;
+  const salvagedToolCallId = generateToolCallId();
+  logParseFailure({
+    phase: "generated-text",
+    reason: "Failed to parse tool call JSON segment",
+    snippet: fullMatch,
+    error: resolved.error,
+  });
+  options?.onError?.(
+    "Could not process JSON tool call, keeping original text.",
+    {
+      toolCall: fullMatch,
+      error: resolved.error,
+      toolName: salvagedToolName,
+      toolCallId: salvagedToolCallId,
+      dropReason: "malformed-tool-call-body",
+    }
+  );
+  processedElements.push({ type: "text", text: fullMatch });
 }
 
 interface StreamState {
@@ -2247,6 +2288,32 @@ function closeToolInput(state: StreamState, controller: StreamController) {
   state.activeToolInput = null;
 }
 
+/**
+ * Emit a fully-resolved streaming tool call (`toolName` plus an
+ * already-stringified `input`) onto the stream, reconciling any tool-input
+ * deltas already streamed for the in-progress call. Callers are responsible for
+ * closing any open text block first. Shared by `emitToolCallFromParsed` and the
+ * `resolveToolCall`-driven success path in `emitToolCall`.
+ */
+function emitResolvedToolCall(
+  state: StreamState,
+  controller: StreamController,
+  toolName: string,
+  input: string
+) {
+  ensureToolInputStart(state, controller, toolName);
+  emitToolInputDelta(state, controller, input);
+  const toolCallId = state.activeToolInput?.id ?? generateToolCallId();
+  closeToolInput(state, controller);
+  state.speculativeToolCall = null;
+  controller.enqueue({
+    type: "tool-call",
+    toolCallId,
+    toolName,
+    input,
+  } as LanguageModelV3StreamPart);
+}
+
 function emitToolCallFromParsed(
   state: StreamState,
   controller: StreamController,
@@ -2264,17 +2331,7 @@ function emitToolCallFromParsed(
     tools,
     fallback: canonicalizeToolInput,
   });
-  ensureToolInputStart(state, controller, toolName);
-  emitToolInputDelta(state, controller, input);
-  const toolCallId = state.activeToolInput?.id ?? generateToolCallId();
-  closeToolInput(state, controller);
-  state.speculativeToolCall = null;
-  controller.enqueue({
-    type: "tool-call",
-    toolCallId,
-    toolName,
-    input,
-  } as LanguageModelV3StreamPart);
+  emitResolvedToolCall(state, controller, toolName, input);
 }
 
 function flushBuffer(
@@ -2476,92 +2533,62 @@ function publishText(
 function emitToolCall(context: TagProcessingContext) {
   const { state, controller, toolCallStart, toolCallEnd, options, tools } =
     context;
-  try {
-    const parsedToolCall = parseRJSON(
-      normalizeJsonStringCtrl(state.currentToolCallJson)
-    );
-    if (!isParsedToolCallRecord(parsedToolCall)) {
-      throw new Error("Tool call object is missing own name or arguments");
-    }
-    if (hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)) {
-      throw new Error("Tool call arguments contain prototype-sensitive keys");
-    }
-    const policyArguments = applyToolArgumentKeyPolicy(
-      parsedToolCall.name,
-      parsedToolCall.arguments,
-      tools
-    );
-    if (policyArguments === null) {
-      throw new Error("Tool call arguments contain schema-unknown keys");
-    }
-    emitToolCallFromParsed(
-      state,
-      controller,
-      { ...parsedToolCall, arguments: policyArguments.args },
-      tools
-    );
-  } catch (error) {
-    let finalError: unknown = error;
-    // Attempt repair for unescaped quotes
-    const repaired = repairToolCallJsonForTools(
-      state.currentToolCallJson,
-      tools
-    );
-    if (repaired) {
-      try {
-        emitToolCallFromParsed(state, controller, repaired, tools);
-        return;
-      } catch (repairError) {
-        finalError = repairError;
-      }
-    }
-    const activeToolCallId = state.activeToolInput?.id;
-    const activeToolName = state.activeToolInput?.toolName;
-    state.speculativeToolCall = null;
-
-    const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
-    const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
-    const streamingToolCallId = activeToolCallId ?? generateToolCallId();
-    const streamingToolName =
-      activeToolName ??
-      extractStreamingToolCallProgress(state.currentToolCallJson).toolName;
-
-    logParseFailure({
-      phase: "stream",
-      reason: "Failed to parse streaming tool call JSON segment",
-      snippet: errorContent,
-      error: finalError,
-    });
-    if (shouldEmitRawFallback) {
-      const errorId = generateId();
-      controller.enqueue({
-        type: "text-start",
-        id: errorId,
-      } as LanguageModelV3StreamPart);
-      controller.enqueue({
-        type: "text-delta",
-        id: errorId,
-        delta: errorContent,
-      } as LanguageModelV3StreamPart);
-      controller.enqueue({
-        type: "text-end",
-        id: errorId,
-      } as LanguageModelV3StreamPart);
-    }
-    closeToolInput(state, controller);
-    options?.onError?.(
-      shouldEmitRawFallback
-        ? "Could not process streaming JSON tool call; emitting original text."
-        : "Could not process streaming JSON tool call.",
-      {
-        toolCall: errorContent,
-        error: finalError,
-        toolCallId: streamingToolCallId,
-        toolName: streamingToolName,
-        dropReason: "malformed-tool-call-body",
-      }
-    );
+  const resolved = resolveToolCall(state.currentToolCallJson, tools);
+  if (resolved.ok) {
+    // Mirror the original emit order: close any open text block before
+    // streaming the tool-input lifecycle (was inside emitToolCallFromParsed).
+    closeTextBlock(state, controller);
+    emitResolvedToolCall(state, controller, resolved.toolName, resolved.input);
+    return;
   }
+
+  const finalError = resolved.error;
+  const activeToolCallId = state.activeToolInput?.id;
+  const activeToolName = state.activeToolInput?.toolName;
+  state.speculativeToolCall = null;
+
+  const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
+  const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
+  const streamingToolCallId = activeToolCallId ?? generateToolCallId();
+  const streamingToolName =
+    activeToolName ??
+    extractStreamingToolCallProgress(state.currentToolCallJson).toolName;
+
+  logParseFailure({
+    phase: "stream",
+    reason: "Failed to parse streaming tool call JSON segment",
+    snippet: errorContent,
+    error: finalError,
+  });
+  if (shouldEmitRawFallback) {
+    const errorId = generateId();
+    controller.enqueue({
+      type: "text-start",
+      id: errorId,
+    } as LanguageModelV3StreamPart);
+    controller.enqueue({
+      type: "text-delta",
+      id: errorId,
+      delta: errorContent,
+    } as LanguageModelV3StreamPart);
+    controller.enqueue({
+      type: "text-end",
+      id: errorId,
+    } as LanguageModelV3StreamPart);
+  }
+  closeToolInput(state, controller);
+  options?.onError?.(
+    shouldEmitRawFallback
+      ? "Could not process streaming JSON tool call; emitting original text."
+      : "Could not process streaming JSON tool call.",
+    {
+      toolCall: errorContent,
+      error: finalError,
+      toolCallId: streamingToolCallId,
+      toolName: streamingToolName,
+      dropReason: "malformed-tool-call-body",
+    }
+  );
 }
 
 function processTagMatch(context: TagProcessingContext) {
