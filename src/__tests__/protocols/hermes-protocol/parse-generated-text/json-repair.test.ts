@@ -1241,7 +1241,7 @@ describe("parseGeneratedText JSON repair", () => {
     const text = '<tool_call>{"name":"write","arguments":null}</tool_call>';
     const out = p.parseGeneratedText({
       text,
-      tools: [],
+      tools: [makeSchemaTool("write", { type: "object" })],
       options: { onError },
     });
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
