@@ -6,6 +6,17 @@ import {
 } from "../../schema-coerce";
 import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 
+/**
+ * Maximum recursion depth when validating a parsed argument value against a
+ * tool's JSON schema. This is far above any realistic tool-argument nesting,
+ * so legitimate inputs are always fully validated; beyond it we fail closed
+ * (treat the value as non-matching) so a recursive/cyclic `inputSchema`
+ * combined with a deeply nested value cannot overflow the stack. The caller
+ * then routes the tool call to its `onError` / original-text fallback instead
+ * of throwing an uncaught `RangeError`.
+ */
+const MAX_ARGUMENT_SHAPE_DEPTH = 256;
+
 interface PatternSchemaMatches {
   schemas: unknown[];
   unsafeDeniedPatterns: string[];
@@ -199,7 +210,8 @@ function objectMatchesSchemaKeyShape(
   value: Record<string, unknown>,
   schema: Record<string, unknown>,
   seen: Set<object>,
-  enforceValueKinds: boolean
+  enforceValueKinds: boolean,
+  depth: number
 ): boolean {
   if (requiredKeys(schema).some((key) => !Object.hasOwn(value, key))) {
     return false;
@@ -238,7 +250,8 @@ function objectMatchesSchemaKeyShape(
             nestedValue,
             nestedSchema,
             new Set(seen),
-            enforceValueKinds
+            enforceValueKinds,
+            depth + 1
           )
         )
       ) {
@@ -257,7 +270,8 @@ function objectMatchesSchemaKeyShape(
         nestedValue,
         additionalSchema,
         new Set(seen),
-        enforceValueKinds
+        enforceValueKinds,
+        depth + 1
       )
     ) {
       return false;
@@ -271,7 +285,8 @@ function arrayMatchesSchemaKeyShape(
   value: unknown[],
   schema: Record<string, unknown>,
   seen: Set<object>,
-  enforceValueKinds: boolean
+  enforceValueKinds: boolean,
+  depth: number
 ): boolean {
   let tupleItems: unknown[] | undefined;
   if (Array.isArray(schema.prefixItems)) {
@@ -291,7 +306,8 @@ function arrayMatchesSchemaKeyShape(
         item,
         itemSchema,
         new Set(seen),
-        enforceValueKinds
+        enforceValueKinds,
+        depth + 1
       );
     });
   }
@@ -300,7 +316,8 @@ function arrayMatchesSchemaKeyShape(
       item,
       schema.items,
       new Set(seen),
-      enforceValueKinds
+      enforceValueKinds,
+      depth + 1
     )
   );
 }
@@ -308,7 +325,8 @@ function arrayMatchesSchemaKeyShape(
 function schemaCombinatorsMatch(
   value: unknown,
   schema: Record<string, unknown>,
-  seen: Set<object>
+  seen: Set<object>,
+  depth: number
 ): boolean {
   const branchSeen = () => {
     const nextSeen = new Set(seen);
@@ -326,7 +344,8 @@ function schemaCombinatorsMatch(
       value,
       subSchema,
       branchSeen(),
-      true
+      true,
+      depth + 1
     );
   };
   const allOf = Array.isArray(schema.allOf) ? schema.allOf : undefined;
@@ -356,8 +375,12 @@ export function argumentValueMatchesSchemaKeyShape(
   value: unknown,
   schema: unknown,
   seen = new Set<object>(),
-  enforceValueKinds = false
+  enforceValueKinds = false,
+  depth = 0
 ): boolean {
+  if (depth > MAX_ARGUMENT_SHAPE_DEPTH) {
+    return false;
+  }
   const unwrapped = unwrapJsonSchema(schema);
   if (unwrapped === false) {
     return false;
@@ -374,7 +397,7 @@ export function argumentValueMatchesSchemaKeyShape(
     }
     seen.add(value);
   }
-  if (!schemaCombinatorsMatch(value, unwrapped, seen)) {
+  if (!schemaCombinatorsMatch(value, unwrapped, seen, depth)) {
     return false;
   }
   if (value === null && explicitSchemaTypes(unwrapped).includes("null")) {
@@ -391,7 +414,8 @@ export function argumentValueMatchesSchemaKeyShape(
       value,
       unwrapped,
       seen,
-      enforceValueKinds
+      enforceValueKinds,
+      depth
     );
   }
   if (isRecord(value) && isObjectSchema(unwrapped)) {
@@ -399,7 +423,8 @@ export function argumentValueMatchesSchemaKeyShape(
       value,
       unwrapped,
       seen,
-      enforceValueKinds
+      enforceValueKinds,
+      depth
     );
   }
   return true;

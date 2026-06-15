@@ -1669,15 +1669,26 @@ function repairToolCallJsonForTools(
   raw: string,
   tools: LanguageModelV3FunctionTool[]
 ): { name: string; arguments: Record<string, unknown> } | null {
-  const toolName = extractStrictTopLevelStringProperty(raw, "name");
-  if (!toolName) {
+  try {
+    const toolName = extractStrictTopLevelStringProperty(raw, "name");
+    if (!toolName) {
+      return null;
+    }
+    return repairToolCallJson(
+      raw,
+      toolName,
+      extractArgumentKeyPolicy(tools, toolName)
+    );
+  } catch {
+    // Repair is best-effort: any failure — including a RangeError from a
+    // pathologically deep value validated against a recursive/cyclic tool
+    // schema — means repair is not possible. Return null so the caller falls
+    // through to its onError / original-text fallback instead of letting the
+    // error escape parseGeneratedText or the streaming transform. This is the
+    // catch-all backstop; the primary guard is MAX_ARGUMENT_SHAPE_DEPTH in
+    // hermes-argument-schema.ts.
     return null;
   }
-  return repairToolCallJson(
-    raw,
-    toolName,
-    extractArgumentKeyPolicy(tools, toolName)
-  );
 }
 
 function processToolCallJson(

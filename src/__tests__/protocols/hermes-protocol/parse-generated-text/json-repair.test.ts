@@ -982,6 +982,36 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("fails closed instead of throwing for a recursive schema with a deeply nested value", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    // Live-cyclic tool schema: additionalProperties references the schema
+    // object itself. Combined with a deeply nested value this would overflow
+    // the schema-shape validator (uncaught RangeError) without the depth guard.
+    const tool: LanguageModelV3FunctionTool = {
+      type: "function",
+      name: "deep",
+      inputSchema: { type: "object" },
+    };
+    (tool.inputSchema as Record<string, unknown>).additionalProperties =
+      tool.inputSchema;
+    let deepArgs = "{}";
+    for (let index = 0; index < 5000; index += 1) {
+      deepArgs = `{"nested":${deepArgs}}`;
+    }
+    const text = `<tool_call>{"name":"deep","arguments":${deepArgs}}</tool_call>`;
+    let out: LanguageModelV3Content[] = [];
+    expect(() => {
+      out = p.parseGeneratedText({
+        text,
+        tools: [tool],
+        options: { onError },
+      });
+    }).not.toThrow();
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("rejects prototype-sensitive argument keys without a schema policy", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
