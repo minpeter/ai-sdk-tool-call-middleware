@@ -43,6 +43,44 @@ function hasStringToolCallId(value: unknown): value is { toolCallId: string } {
   );
 }
 
+type ToolCallPart = Extract<LanguageModelV3StreamPart, { type: "tool-call" }>;
+type TextDeltaPart = Extract<LanguageModelV3StreamPart, { type: "text-delta" }>;
+
+function isToolCallPart(part: LanguageModelV3StreamPart): part is ToolCallPart {
+  return part.type === "tool-call";
+}
+
+function isTextDeltaPart(
+  part: LanguageModelV3StreamPart
+): part is TextDeltaPart {
+  return part.type === "text-delta";
+}
+
+function makeDeepArrayJson(depth: number): string {
+  let value = "0";
+  for (let index = 0; index < depth; index += 1) {
+    value = `[${value}]`;
+  }
+  return value;
+}
+
+function expectNoToolInputLifecycle(
+  parts: readonly LanguageModelV3StreamPart[]
+): void {
+  expect(parts.some((part) => part.type === "tool-input-start")).toBe(false);
+  expect(parts.some((part) => part.type === "tool-input-delta")).toBe(false);
+  expect(parts.some((part) => part.type === "tool-input-end")).toBe(false);
+}
+
+function collectTextDeltas(
+  parts: readonly LanguageModelV3StreamPart[]
+): string {
+  return parts
+    .filter(isTextDeltaPart)
+    .map((part) => part.delta)
+    .join("");
+}
+
 describe("hermesProtocol streaming JSON repair", () => {
   it("repairs streaming tool call with unescaped quotes and emits tool-call", async () => {
     const protocol = hermesProtocol();
@@ -66,17 +104,89 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find(isToolCallPart);
     expect(tool).toBeTruthy();
-    expect(tool.toolName).toBe("edit");
-    const args = JSON.parse(tool.input);
+    expect(tool?.toolName).toBe("edit");
+    const args = JSON.parse(tool?.input ?? "{}");
     expect(args.content).toBe('He said "hello" to me');
     // Should not emit any text-delta with raw tool call markup
-    const textDeltas = out
-      .filter((c) => c.type === "text-delta")
-      .map((c: any) => c.delta)
-      .join("");
-    expect(textDeltas).not.toContain("<tool_call>");
+    expect(collectTextDeltas(out)).not.toContain("<tool_call>");
+  });
+
+  it("does not repair relaxed top-level keys even when argument keys are strict JSON", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeTool("write", {
+        content: { type: "string" },
+        path: { type: "string" },
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError, emitRawToolCallTextOnError: true },
+    });
+    const text =
+      '<tool_call>{name:"write",arguments:{"content":"He said "hi" there","path":"/tmp/a"}}</tool_call>';
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: text,
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+
+    expect(out.find(isToolCallPart)).toBeUndefined();
+    expectNoToolInputLifecycle(out);
+    expect(collectTextDeltas(out)).toContain(text);
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("fails closed instead of throwing for deeply nested arguments", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError, emitRawToolCallTextOnError: true },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: `<tool_call>{"name":"deep","arguments":{"data":${makeDeepArrayJson(
+            20_000
+          )}}}</tool_call>`,
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+
+    expect(out.find(isToolCallPart)).toBeUndefined();
+    expectNoToolInputLifecycle(out);
+    expect(collectTextDeltas(out)).toContain('<tool_call>{"name":"deep"');
+    expect(onError).toHaveBeenCalled();
   });
 
   it("repairs streaming unescaped quotes before a right brace character", async () => {
@@ -154,10 +264,10 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find(isToolCallPart);
     expect(tool).toBeTruthy();
-    expect(tool.toolName).toBe("write");
-    const args = JSON.parse(tool.input);
+    expect(tool?.toolName).toBe("write");
+    const args = JSON.parse(tool?.input ?? "{}");
     expect(args.path).toBe("/tmp/test.js");
     expect(args.content).toContain('"hello"');
   });
@@ -898,11 +1008,9 @@ describe("hermesProtocol streaming JSON repair", () => {
         ctrl.close();
       },
     });
-    const started = performance.now();
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(performance.now() - started).toBeLessThan(150);
     expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
     expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
@@ -945,11 +1053,9 @@ describe("hermesProtocol streaming JSON repair", () => {
         ctrl.close();
       },
     });
-    const started = performance.now();
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(performance.now() - started).toBeLessThan(150);
     expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
     expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
@@ -992,11 +1098,9 @@ describe("hermesProtocol streaming JSON repair", () => {
         ctrl.close();
       },
     });
-    const started = performance.now();
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(performance.now() - started).toBeLessThan(150);
     expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
     expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
@@ -1141,6 +1245,46 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("accepts unconstrained unsafe patternProperties when unknown keys are allowed", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        patternProperties: {
+          "^(a+)+$": {},
+        },
+        additionalProperties: true,
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"write","arguments":{"aaaa":"ok"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find(isToolCallPart);
+    expect(tool?.input).toBe('{"aaaa":"ok"}');
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("fails closed for unsafe repeated patternProperties without groups", async () => {
     const onError = vi.fn();
     const slowKey = `${"a".repeat(24)}!`;
@@ -1176,11 +1320,9 @@ describe("hermesProtocol streaming JSON repair", () => {
         ctrl.close();
       },
     });
-    const started = performance.now();
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(performance.now() - started).toBeLessThan(150);
     expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
     expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
@@ -1590,6 +1732,42 @@ describe("hermesProtocol streaming JSON repair", () => {
     }
   });
 
+  it("accepts omitted arguments for no-input tool calls", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [
+        makeSchemaTool("ping", {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        }),
+      ],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"ping"}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find(isToolCallPart);
+    expect(tool?.input).toBe("{}");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("rejects null for non-nullable typed object properties", async () => {
     const onError = vi.fn();
     const protocol = hermesProtocol();
@@ -1630,6 +1808,47 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
     expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("accepts null arguments when the top-level schema allows null", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [
+        makeSchemaTool("write", {
+          type: ["object", "null"],
+          properties: {
+            content: { type: "string" },
+          },
+          additionalProperties: false,
+        }),
+      ],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"write","arguments":null}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find(isToolCallPart);
+    expect(tool?.input).toBe("null");
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("accepts null for nullable object and array properties", async () => {

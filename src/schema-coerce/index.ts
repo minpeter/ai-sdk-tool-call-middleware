@@ -251,7 +251,7 @@ function schemaHasProperty(schema: unknown, key: string, depth = 0): boolean {
   return schemaAllowsPropertyViaCombinators(s, key, depth);
 }
 
-function schemaIsUnconstrained(schema: unknown): boolean {
+export function schemaIsUnconstrained(schema: unknown): boolean {
   const unwrapped = unwrapJsonSchema(schema);
   if (unwrapped == null || unwrapped === true) {
     return true;

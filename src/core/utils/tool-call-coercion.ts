@@ -3,12 +3,52 @@ import type {
   LanguageModelV3FunctionTool,
   LanguageModelV3StreamPart,
 } from "@ai-sdk/provider";
-import { coerceBySchema } from "../../schema-coerce";
+import { coerceBySchema, unwrapJsonSchema } from "../../schema-coerce";
 
 type ToolCallLike = Extract<
   LanguageModelV3Content | LanguageModelV3StreamPart,
   { type: "tool-call" }
 >;
+
+function schemaAllowsNull(schema: unknown, seen = new Set<object>()): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (unwrapped === true) {
+    return true;
+  }
+  if (unwrapped === false || !unwrapped || typeof unwrapped !== "object") {
+    return false;
+  }
+  if (Array.isArray(unwrapped)) {
+    return false;
+  }
+  if (seen.has(unwrapped)) {
+    return false;
+  }
+  seen.add(unwrapped);
+
+  const record = unwrapped as Record<string, unknown>;
+  const schemaType = record.type;
+  if (schemaType === "null") {
+    return true;
+  }
+  if (Array.isArray(schemaType) && schemaType.includes("null")) {
+    return true;
+  }
+
+  const allOf = Array.isArray(record.allOf) ? record.allOf : undefined;
+  if (
+    allOf?.length &&
+    allOf.every((item) => schemaAllowsNull(item, new Set(seen)))
+  ) {
+    return true;
+  }
+  const anyOf = Array.isArray(record.anyOf) ? record.anyOf : undefined;
+  if (anyOf?.some((item) => schemaAllowsNull(item, new Set(seen)))) {
+    return true;
+  }
+  const oneOf = Array.isArray(record.oneOf) ? record.oneOf : undefined;
+  return oneOf?.some((item) => schemaAllowsNull(item, new Set(seen))) === true;
+}
 
 export function coerceToolCallInput(
   toolName: string,
@@ -22,6 +62,8 @@ export function coerceToolCallInput(
     } catch {
       return;
     }
+  } else if (input === null) {
+    args = null;
   } else if (input && typeof input === "object") {
     args = input;
   } else {
@@ -30,6 +72,9 @@ export function coerceToolCallInput(
 
   const schema = tools.find((t) => t.name === toolName)?.inputSchema;
   const coerced = coerceBySchema(args, schema);
+  if (coerced === null && schemaAllowsNull(schema)) {
+    return "null";
+  }
   return JSON.stringify(coerced ?? {});
 }
 

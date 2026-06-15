@@ -1,6 +1,7 @@
 import {
   compileSafePatternPropertyRegex,
   getSchemaType,
+  schemaIsUnconstrained,
   unwrapJsonSchema,
 } from "../../schema-coerce";
 import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
@@ -10,8 +11,37 @@ interface PatternSchemaMatches {
   unsafeDeniedPatterns: string[];
 }
 
+interface CompiledPatternSchema {
+  pattern: string;
+  regex: RegExp | null;
+  schema: unknown;
+}
+
+const patternSchemaCache = new WeakMap<
+  Record<string, unknown>,
+  CompiledPatternSchema[]
+>();
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getCompiledPatternSchemas(
+  patternProperties: Record<string, unknown>
+): CompiledPatternSchema[] {
+  const cached = patternSchemaCache.get(patternProperties);
+  if (cached) {
+    return cached;
+  }
+  const compiled = Object.entries(patternProperties).map(
+    ([pattern, schema]) => ({
+      pattern,
+      regex: compileSafePatternPropertyRegex(pattern),
+      schema,
+    })
+  );
+  patternSchemaCache.set(patternProperties, compiled);
+  return compiled;
 }
 
 function getPatternSchemaMatches(
@@ -23,16 +53,17 @@ function getPatternSchemaMatches(
   }
   const schemas: unknown[] = [];
   const unsafeDeniedPatterns: string[] = [];
-  for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
-    const regex = compileSafePatternPropertyRegex(pattern);
+  for (const { pattern, regex, schema } of getCompiledPatternSchemas(
+    patternProperties
+  )) {
     if (!regex) {
-      if (patternSchema !== true) {
+      if (schema === false || !schemaIsUnconstrained(schema)) {
         unsafeDeniedPatterns.push(pattern);
       }
       continue;
     }
     if (regex.test(key)) {
-      schemas.push(patternSchema);
+      schemas.push(schema);
     }
   }
   return { schemas, unsafeDeniedPatterns };
@@ -259,7 +290,7 @@ function arrayMatchesSchemaKeyShape(
       return argumentValueMatchesSchemaKeyShape(
         item,
         itemSchema,
-        seen,
+        new Set(seen),
         enforceValueKinds
       );
     });
@@ -268,7 +299,7 @@ function arrayMatchesSchemaKeyShape(
     argumentValueMatchesSchemaKeyShape(
       item,
       schema.items,
-      seen,
+      new Set(seen),
       enforceValueKinds
     )
   );

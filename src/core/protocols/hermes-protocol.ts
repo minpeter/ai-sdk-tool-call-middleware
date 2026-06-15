@@ -9,6 +9,7 @@ import {
   coerceBySchema,
   compileSafePatternPropertyRegex,
   getSchemaType,
+  schemaIsUnconstrained,
   unwrapJsonSchema,
 } from "../../schema-coerce";
 import { logParseFailure } from "../utils/debug";
@@ -307,18 +308,27 @@ function canonicalizeToolInput(argumentsValue: unknown): string {
   return JSON.stringify(argumentsValue ?? {});
 }
 
+function stringifyParsedToolInput(
+  toolName: string,
+  args: unknown,
+  tools: LanguageModelV3FunctionTool[]
+): string {
+  return stringifyToolInputWithSchema({
+    toolName,
+    args,
+    tools,
+    fallback: canonicalizeToolInput,
+  });
+}
+
 function isParsedToolCallRecord(
   value: unknown
-): value is { name: string; arguments: unknown } {
+): value is { name: string; arguments?: unknown } {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const record = value as Record<string, unknown>;
-  return (
-    Object.hasOwn(record, "name") &&
-    Object.hasOwn(record, "arguments") &&
-    typeof record.name === "string"
-  );
+  return Object.hasOwn(record, "name") && typeof record.name === "string";
 }
 
 const CHAR_CODE_BACKSLASH = 0x5c;
@@ -631,7 +641,10 @@ function extractArgumentKeyPolicy(
     }
     if (regex) {
       keyPatterns.push(regex);
-    } else if (patternSchema !== true) {
+    } else if (
+      patternSchema === false ||
+      !schemaIsUnconstrained(patternSchema)
+    ) {
       unsafeDeniedPatterns.push(pattern);
     }
   }
@@ -758,31 +771,38 @@ const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
   "prototype",
 ]);
 
-function containsPrototypeSensitiveArgumentKey(
-  value: unknown,
-  seen = new Set<object>()
-): boolean {
-  if (Array.isArray(value)) {
-    if (seen.has(value)) {
-      return false;
+function containsPrototypeSensitiveArgumentKey(value: unknown): boolean {
+  const seen = new Set<object>();
+  const stack: unknown[] = [value];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (Array.isArray(current)) {
+      if (seen.has(current)) {
+        continue;
+      }
+      seen.add(current);
+      for (const item of current) {
+        stack.push(item);
+      }
+      continue;
     }
-    seen.add(value);
-    return value.some((item) =>
-      containsPrototypeSensitiveArgumentKey(item, seen)
-    );
+    if (!isRecord(current)) {
+      continue;
+    }
+    if (seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    for (const key of Object.keys(current)) {
+      if (PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) {
+        return true;
+      }
+      stack.push(current[key]);
+    }
   }
-  if (!isRecord(value)) {
-    return false;
-  }
-  if (seen.has(value)) {
-    return false;
-  }
-  seen.add(value);
-  return Object.keys(value).some(
-    (key) =>
-      PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key) ||
-      containsPrototypeSensitiveArgumentKey(value[key], seen)
-  );
+
+  return false;
 }
 
 function hasPrototypeSensitiveKeyInJsonLikeObject(text: string): boolean {
@@ -1065,13 +1085,25 @@ function applyToolArgumentKeyPolicy(
   if (keyPolicy?.rejectAll) {
     return null;
   }
-  if (!isRecord(args)) {
+  const normalizedArgs = args === undefined ? {} : args;
+  if (!isRecord(normalizedArgs)) {
+    if (
+      keyPolicy &&
+      argumentValueMatchesSchemaKeyShape(
+        normalizedArgs,
+        keyPolicy.schema,
+        new Set(),
+        true
+      )
+    ) {
+      return { args: normalizedArgs };
+    }
     if (keyPolicy?.rejectNonRecordArguments) {
       return null;
     }
-    return { args };
+    return { args: normalizedArgs };
   }
-  const policyArgs = applyArgumentKeyPolicy(args, keyPolicy);
+  const policyArgs = applyArgumentKeyPolicy(normalizedArgs, keyPolicy);
   return policyArgs === null ? null : { args: policyArgs };
 }
 
@@ -1182,7 +1214,10 @@ function repairToolCallJson(
   }
 
   // 2. Find arguments object boundaries (top-level aware, like name extraction)
-  const argsValueStart = findTopLevelPropertyValueStart(raw, "arguments");
+  const argsValueStart = findStrictTopLevelJsonPropertyValueStart(
+    raw,
+    "arguments"
+  );
   if (argsValueStart == null || raw.charAt(argsValueStart) !== "{") {
     return null;
   }
@@ -1434,7 +1469,7 @@ function repairToolCallJsonForTools(
   raw: string,
   tools: LanguageModelV3FunctionTool[]
 ): { name: string; arguments: Record<string, unknown> } | null {
-  const toolName = extractTopLevelStringProperty(raw, "name");
+  const toolName = extractStrictTopLevelStringProperty(raw, "name");
   if (!toolName) {
     return null;
   }
@@ -1472,19 +1507,32 @@ function processToolCallJson(
       type: "tool-call",
       toolCallId: generateToolCallId(),
       toolName: parsedToolCall.name,
-      input: canonicalizeToolInput(policyArguments.args),
+      input: stringifyParsedToolInput(
+        parsedToolCall.name,
+        policyArguments.args,
+        tools
+      ),
     });
   } catch (error) {
+    let finalError: unknown = error;
     // Attempt repair for unescaped quotes
     const repaired = repairToolCallJsonForTools(toolCallJson, tools);
     if (repaired) {
-      processedElements.push({
-        type: "tool-call",
-        toolCallId: generateToolCallId(),
-        toolName: repaired.name,
-        input: canonicalizeToolInput(repaired.arguments),
-      });
-      return;
+      try {
+        processedElements.push({
+          type: "tool-call",
+          toolCallId: generateToolCallId(),
+          toolName: repaired.name,
+          input: stringifyParsedToolInput(
+            repaired.name,
+            repaired.arguments,
+            tools
+          ),
+        });
+        return;
+      } catch (repairError) {
+        finalError = repairError;
+      }
     }
     const salvagedToolName =
       extractStreamingToolCallProgress(toolCallJson).toolName;
@@ -1493,13 +1541,13 @@ function processToolCallJson(
       phase: "generated-text",
       reason: "Failed to parse tool call JSON segment",
       snippet: fullMatch,
-      error,
+      error: finalError,
     });
     options?.onError?.(
       "Could not process JSON tool call, keeping original text.",
       {
         toolCall: fullMatch,
-        error,
+        error: finalError,
         toolName: salvagedToolName,
         toolCallId: salvagedToolCallId,
         dropReason: "malformed-tool-call-body",
@@ -1638,11 +1686,110 @@ function findTopLevelPropertyValueStart(
   return null;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Strict repair needs a small JSON scanner that ignores relaxed RJSON keys.
+function findStrictTopLevelJsonPropertyValueStart(
+  text: string,
+  property: string
+): number | null {
+  const objectStart = skipJsonWhitespace(text, 0);
+  if (objectStart >= text.length || text.charAt(objectStart) !== "{") {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+
+  for (let index = objectStart; index < text.length; index += 1) {
+    const char = text.charAt(index);
+
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaping = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char === "}") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (char !== '"') {
+      continue;
+    }
+    if (depth !== 1) {
+      inString = true;
+      continue;
+    }
+
+    const parsedKey = parseQuotedObjectKey(text, index);
+    if (!parsedKey) {
+      return null;
+    }
+
+    let valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+    if (valueCursor >= text.length || text.charAt(valueCursor) !== ":") {
+      index = parsedKey.end;
+      continue;
+    }
+
+    valueCursor = skipJsonWhitespace(text, valueCursor + 1);
+    if (parsedKey.key === property) {
+      return valueCursor < text.length ? valueCursor : null;
+    }
+
+    index = valueCursor - 1;
+  }
+
+  return null;
+}
+
 function extractTopLevelStringProperty(
   text: string,
   property: string
 ): string | undefined {
   const valueStart = findTopLevelPropertyValueStart(text, property);
+  if (valueStart == null || valueStart >= text.length) {
+    return;
+  }
+  if (text.charAt(valueStart) !== '"') {
+    return;
+  }
+
+  let valueEnd = valueStart + 1;
+  let escaped = false;
+  while (valueEnd < text.length) {
+    const char = text.charAt(valueEnd);
+    if (escaped) {
+      escaped = false;
+    } else if (char === "\\") {
+      escaped = true;
+    } else if (char === '"') {
+      return text.slice(valueStart + 1, valueEnd);
+    }
+    valueEnd += 1;
+  }
+
+  return;
+}
+
+function extractStrictTopLevelStringProperty(
+  text: string,
+  property: string
+): string | undefined {
+  const valueStart = findStrictTopLevelJsonPropertyValueStart(text, property);
   if (valueStart == null || valueStart >= text.length) {
     return;
   }
@@ -2165,14 +2312,19 @@ function emitToolCall(context: TagProcessingContext) {
       tools
     );
   } catch (error) {
+    let finalError: unknown = error;
     // Attempt repair for unescaped quotes
     const repaired = repairToolCallJsonForTools(
       state.currentToolCallJson,
       tools
     );
     if (repaired) {
-      emitToolCallFromParsed(state, controller, repaired, tools);
-      return;
+      try {
+        emitToolCallFromParsed(state, controller, repaired, tools);
+        return;
+      } catch (repairError) {
+        finalError = repairError;
+      }
     }
     const activeToolCallId = state.activeToolInput?.id;
     const activeToolName = state.activeToolInput?.toolName;
@@ -2189,7 +2341,7 @@ function emitToolCall(context: TagProcessingContext) {
       phase: "stream",
       reason: "Failed to parse streaming tool call JSON segment",
       snippet: errorContent,
-      error,
+      error: finalError,
     });
     if (shouldEmitRawFallback) {
       const errorId = generateId();
@@ -2214,7 +2366,7 @@ function emitToolCall(context: TagProcessingContext) {
         : "Could not process streaming JSON tool call.",
       {
         toolCall: errorContent,
-        error,
+        error: finalError,
         toolCallId: streamingToolCallId,
         toolName: streamingToolName,
         dropReason: "malformed-tool-call-body",

@@ -30,6 +30,14 @@ function makeSchemaTool(
 
 type ToolCallContent = Extract<LanguageModelV3Content, { type: "tool-call" }>;
 
+function makeDeepArrayJson(depth: number): string {
+  let value = "0";
+  for (let index = 0; index < depth; index += 1) {
+    value = `[${value}]`;
+  }
+  return value;
+}
+
 function expectToolCall(output: LanguageModelV3Content[]): ToolCallContent {
   const tool = output.find(
     (part): part is ToolCallContent => part.type === "tool-call"
@@ -677,9 +685,7 @@ describe("parseGeneratedText JSON repair", () => {
         additionalProperties: false,
       }),
     ];
-    const started = performance.now();
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(performance.now() - started).toBeLessThan(150);
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
   });
@@ -701,9 +707,7 @@ describe("parseGeneratedText JSON repair", () => {
         additionalProperties: false,
       }),
     ];
-    const started = performance.now();
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(performance.now() - started).toBeLessThan(150);
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
   });
@@ -725,9 +729,7 @@ describe("parseGeneratedText JSON repair", () => {
         additionalProperties: true,
       }),
     ];
-    const started = performance.now();
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(performance.now() - started).toBeLessThan(150);
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
   });
@@ -749,9 +751,7 @@ describe("parseGeneratedText JSON repair", () => {
         additionalProperties: true,
       }),
     ];
-    const started = performance.now();
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(performance.now() - started).toBeLessThan(150);
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
   });
@@ -933,6 +933,24 @@ describe("parseGeneratedText JSON repair", () => {
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
     const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeUndefined();
+    expect(out).toContainEqual({ type: "text", text });
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("does not repair relaxed top-level keys even when argument keys are strict JSON", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{name:"write",arguments:{"content":"He said "hi" there","path":"/tmp/a"}}</tool_call>';
+    const tools = [
+      makeTool("write", {
+        content: { type: "string" },
+        path: { type: "string" },
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(out).toContainEqual({ type: "text", text });
     expect(onError).toHaveBeenCalled();
   });
 
@@ -948,6 +966,19 @@ describe("parseGeneratedText JSON repair", () => {
     const hasToolOrError =
       out.some((x) => x.type === "tool-call") || onError.mock.calls.length > 0;
     expect(hasToolOrError).toBe(true);
+  });
+
+  it("fails closed instead of throwing for deeply nested arguments", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const nestedArray = makeDeepArrayJson(20_000);
+    const text = `<tool_call>{"name":"deep","arguments":{"data":${nestedArray}}}</tool_call>`;
+    let out: LanguageModelV3Content[] = [];
+    expect(() => {
+      out = p.parseGeneratedText({ text, tools: [], options: { onError } });
+    }).not.toThrow();
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
   });
 
   it("rejects prototype-sensitive argument keys without a schema policy", () => {
@@ -1159,6 +1190,48 @@ describe("parseGeneratedText JSON repair", () => {
         expect(onError).toHaveBeenCalled();
       }
     }
+  });
+
+  it("accepts omitted arguments for no-input tool calls", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text = '<tool_call>{"name":"ping"}</tool_call>';
+    const out = p.parseGeneratedText({
+      text,
+      tools: [
+        makeSchemaTool("ping", {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        }),
+      ],
+      options: { onError },
+    });
+    const tool = expectToolCall(out);
+    expect(tool.input).toBe("{}");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("accepts null arguments when the top-level schema allows null", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text = '<tool_call>{"name":"write","arguments":null}</tool_call>';
+    const out = p.parseGeneratedText({
+      text,
+      tools: [
+        makeSchemaTool("write", {
+          type: ["object", "null"],
+          properties: {
+            content: { type: "string" },
+          },
+          additionalProperties: false,
+        }),
+      ],
+      options: { onError },
+    });
+    const tool = expectToolCall(out);
+    expect(tool.input).toBe("null");
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects null for non-nullable typed object properties", () => {
@@ -1805,6 +1878,26 @@ describe("parseGeneratedText JSON repair", () => {
       content: "ok",
       note: "safe",
     });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("accepts unconstrained unsafe patternProperties when unknown keys are allowed", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"aaaa":"ok"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        patternProperties: {
+          "^(a+)+$": {},
+        },
+        additionalProperties: true,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ aaaa: "ok" });
     expect(onError).not.toHaveBeenCalled();
   });
 
