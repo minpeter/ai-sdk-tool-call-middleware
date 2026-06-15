@@ -267,6 +267,18 @@ interface RegexGroupState {
   hasQuantifier: boolean;
 }
 
+interface RegexRiskScanState {
+  escaped: boolean;
+  groups: RegexGroupState[];
+  inCharClass: boolean;
+}
+
+interface RegexAtomRead {
+  atom: string | null;
+  end: number;
+  resetPrevious: boolean;
+}
+
 const REGEX_ATOM_CHAR_RE = /^[A-Za-z0-9_$-]$/;
 
 function regexQuantifierEnd(pattern: string, index: number): number | null {
@@ -310,67 +322,106 @@ function regexGroupPrefixEnd(
   return nameEnd === -1 ? null : nameEnd;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Regex quantifier scanning is a compact state machine.
+function consumeRegexEscapeOrClassState(
+  state: RegexRiskScanState,
+  char: string
+): boolean {
+  if (state.escaped) {
+    state.escaped = false;
+    return true;
+  }
+  if (char === "\\") {
+    state.escaped = true;
+    return true;
+  }
+  if (char === "[" && !state.inCharClass) {
+    state.inCharClass = true;
+    return true;
+  }
+  if (char === "]" && state.inCharClass) {
+    state.inCharClass = false;
+    return true;
+  }
+  return state.inCharClass;
+}
+
+function openRegexGroup(
+  pattern: string,
+  index: number,
+  groups: RegexGroupState[]
+): number {
+  groups.push({ hasAlternation: false, hasQuantifier: false });
+  return regexGroupPrefixEnd(pattern, index) ?? index;
+}
+
+function markParentGroupQuantified(groups: RegexGroupState[]) {
+  const parentGroup = groups.at(-1);
+  if (parentGroup) {
+    parentGroup.hasQuantifier = true;
+  }
+}
+
+function closeRegexGroup(
+  pattern: string,
+  index: number,
+  groups: RegexGroupState[]
+): { nextIndex: number; risk: boolean } {
+  const group = groups.pop();
+  const quantifierEnd = regexQuantifierEnd(pattern, index + 1);
+  if (!(group && quantifierEnd != null)) {
+    return { nextIndex: index, risk: false };
+  }
+  if (group.hasAlternation || group.hasQuantifier) {
+    return { nextIndex: index, risk: true };
+  }
+  markParentGroupQuantified(groups);
+  return { nextIndex: quantifierEnd, risk: false };
+}
+
+function markRegexQuantifier(
+  pattern: string,
+  index: number,
+  groups: RegexGroupState[]
+): number | null {
+  const quantifierEnd = regexQuantifierEnd(pattern, index);
+  if (quantifierEnd == null) {
+    return null;
+  }
+  markParentGroupQuantified(groups);
+  return quantifierEnd;
+}
+
 function hasNestedQuantifierRisk(pattern: string): boolean {
-  let escaped = false;
-  let inCharClass = false;
-  const groups: RegexGroupState[] = [];
+  const state: RegexRiskScanState = {
+    escaped: false,
+    groups: [],
+    inCharClass: false,
+  };
 
   for (let index = 0; index < pattern.length; index += 1) {
     const ch = pattern.charAt(index);
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (ch === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (ch === "[" && !inCharClass) {
-      inCharClass = true;
-      continue;
-    }
-    if (ch === "]" && inCharClass) {
-      inCharClass = false;
-      continue;
-    }
-    if (inCharClass) {
+    if (consumeRegexEscapeOrClassState(state, ch)) {
       continue;
     }
     if (ch === "(") {
-      groups.push({ hasAlternation: false, hasQuantifier: false });
-      const prefixEnd = regexGroupPrefixEnd(pattern, index);
-      if (prefixEnd != null) {
-        index = prefixEnd;
-      }
+      index = openRegexGroup(pattern, index, state.groups);
       continue;
     }
-    if (ch === ")" && groups.length > 0) {
-      const group = groups.pop();
-      const quantifierEnd = regexQuantifierEnd(pattern, index + 1);
-      if (group && quantifierEnd != null) {
-        if (group.hasAlternation || group.hasQuantifier) {
-          return true;
-        }
-        const parentGroup = groups.at(-1);
-        if (parentGroup) {
-          parentGroup.hasQuantifier = true;
-        }
-        index = quantifierEnd;
+    if (ch === ")" && state.groups.length > 0) {
+      const closed = closeRegexGroup(pattern, index, state.groups);
+      if (closed.risk) {
+        return true;
       }
+      index = closed.nextIndex;
       continue;
     }
-    const currentGroup = groups.at(-1);
+    const currentGroup = state.groups.at(-1);
     if (ch === "|" && currentGroup) {
       currentGroup.hasAlternation = true;
       continue;
     }
-    const quantifierEnd = regexQuantifierEnd(pattern, index);
+    const quantifierEnd = markRegexQuantifier(pattern, index, state.groups);
     if (quantifierEnd != null) {
-      const quantifiedGroup = groups.at(-1);
-      if (quantifiedGroup) {
-        quantifiedGroup.hasQuantifier = true;
-      }
       index = quantifierEnd;
     }
   }
@@ -435,53 +486,67 @@ function findGroupEnd(pattern: string, start: number): number | null {
   return null;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Regex atom scanning is a compact state machine.
+function readRegexAtom(pattern: string, index: number): RegexAtomRead | null {
+  const char = pattern.charAt(index);
+  if (char === "\\") {
+    return {
+      atom: pattern.slice(index, Math.min(index + 2, pattern.length)),
+      end: index + 1,
+      resetPrevious: false,
+    };
+  }
+  if (char === "[") {
+    const classEnd = findCharClassEnd(pattern, index);
+    return classEnd == null
+      ? null
+      : {
+          atom: pattern.slice(index, classEnd + 1),
+          end: classEnd,
+          resetPrevious: false,
+        };
+  }
+  if (char === "(") {
+    const groupEnd = findGroupEnd(pattern, index);
+    if (groupEnd == null) {
+      return null;
+    }
+    return {
+      atom: null,
+      end: regexQuantifierEnd(pattern, groupEnd + 1) ?? groupEnd,
+      resetPrevious: true,
+    };
+  }
+  return char === "." || REGEX_ATOM_CHAR_RE.test(char)
+    ? { atom: char, end: index, resetPrevious: false }
+    : { atom: null, end: index, resetPrevious: true };
+}
+
 function hasAdjacentRepeatedQuantifiedAtoms(pattern: string): boolean {
   let previousQuantifiedAtom: string | null = null;
 
   for (let index = 0; index < pattern.length; index += 1) {
-    const ch = pattern.charAt(index);
-    let atom: string | null = null;
-    let atomEnd = index;
-
-    if (ch === "\\") {
-      atom = pattern.slice(index, Math.min(index + 2, pattern.length));
-      atomEnd = index + 1;
-    } else if (ch === "[") {
-      const classEnd = findCharClassEnd(pattern, index);
-      if (classEnd == null) {
-        return false;
-      }
-      atom = pattern.slice(index, classEnd + 1);
-      atomEnd = classEnd;
-    } else if (ch === "(") {
-      const groupEnd = findGroupEnd(pattern, index);
-      if (groupEnd == null) {
-        return false;
-      }
-      const quantifierEnd = regexQuantifierEnd(pattern, groupEnd + 1);
-      index = quantifierEnd ?? groupEnd;
+    const read = readRegexAtom(pattern, index);
+    if (read === null) {
+      return false;
+    }
+    if (read.resetPrevious) {
       previousQuantifiedAtom = null;
-      continue;
-    } else if (ch === "." || REGEX_ATOM_CHAR_RE.test(ch)) {
-      atom = ch;
-    } else {
-      previousQuantifiedAtom = null;
+      index = read.end;
       continue;
     }
 
-    const quantifierEnd = regexQuantifierEnd(pattern, atomEnd + 1);
-    if (atom && quantifierEnd != null) {
-      if (previousQuantifiedAtom === atom) {
+    const quantifierEnd = regexQuantifierEnd(pattern, read.end + 1);
+    if (read.atom && quantifierEnd != null) {
+      if (previousQuantifiedAtom === read.atom) {
         return true;
       }
-      previousQuantifiedAtom = atom;
+      previousQuantifiedAtom = read.atom;
       index = quantifierEnd;
       continue;
     }
 
     previousQuantifiedAtom = null;
-    index = atomEnd;
+    index = read.end;
   }
 
   return false;

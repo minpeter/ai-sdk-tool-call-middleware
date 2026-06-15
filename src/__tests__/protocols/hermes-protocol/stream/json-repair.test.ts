@@ -1851,6 +1851,36 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("rejects null arguments without a matching nullable schema", async () => {
+    const onError = vi.fn();
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: '<tool_call>{"name":"write","arguments":null}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+    expectNoToolInputLifecycle(out);
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("accepts null for nullable object and array properties", async () => {
     const onError = vi.fn();
     const protocol = hermesProtocol();

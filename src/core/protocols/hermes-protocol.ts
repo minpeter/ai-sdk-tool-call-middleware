@@ -985,7 +985,229 @@ function skipJsonComment(text: string, index: number): number | null {
   return null;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: RJSON object-key scanning is a compact state machine.
+interface QuotedScanState {
+  escaping: boolean;
+  quoteChar: string | null;
+}
+
+interface JsonDepthScanState {
+  depth: number;
+  escaping: boolean;
+  inString: boolean;
+}
+
+interface ObjectKeyCandidate {
+  key?: string;
+  nextIndex: number;
+}
+
+interface StrictJsonPropertyCandidate {
+  key?: string;
+  nextIndex: number;
+  valueStart?: number;
+}
+
+function consumeQuotedScanChar(state: QuotedScanState, char: string): boolean {
+  if (!state.quoteChar) {
+    return false;
+  }
+  if (state.escaping) {
+    state.escaping = false;
+  } else if (char === "\\") {
+    state.escaping = true;
+  } else if (char === state.quoteChar) {
+    state.quoteChar = null;
+  }
+  return true;
+}
+
+function objectKeyDepthTransition(
+  state: { depth: number },
+  char: string
+): "closed" | "changed" | "none" {
+  if (char === "{") {
+    state.depth += 1;
+    return "changed";
+  }
+  if (char === "}") {
+    state.depth -= 1;
+    return state.depth === 0 ? "closed" : "changed";
+  }
+  return "none";
+}
+
+function shouldCollectObjectKey(
+  depth: number,
+  includeNested: boolean
+): boolean {
+  return depth >= 1 && (includeNested || depth === 1);
+}
+
+function readUnquotedObjectKeyCandidate(
+  text: string,
+  index: number,
+  char: string
+): ObjectKeyCandidate | null | undefined {
+  if (!isUnquotedRjsonKeyStart(char)) {
+    return;
+  }
+  const previous = previousSignificantChar(text, index);
+  if (!(previous === "{" || previous === ",")) {
+    return;
+  }
+  const parsedKey = parseUnquotedObjectKey(text, index);
+  if (!parsedKey) {
+    return null;
+  }
+  const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+  return text.charAt(valueCursor) === ":"
+    ? { key: parsedKey.key, nextIndex: valueCursor }
+    : undefined;
+}
+
+function readQuotedObjectKeyCandidate(
+  text: string,
+  index: number
+): ObjectKeyCandidate | null {
+  const parsedKey = parseQuotedObjectKey(text, index);
+  if (!parsedKey) {
+    return null;
+  }
+  const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+  return text.charAt(valueCursor) === ":"
+    ? { key: parsedKey.key, nextIndex: valueCursor }
+    : { nextIndex: parsedKey.end };
+}
+
+function readStrictJsonPropertyCandidate(
+  text: string,
+  index: number
+): StrictJsonPropertyCandidate | null {
+  const parsedKey = parseQuotedObjectKey(text, index);
+  if (!parsedKey) {
+    return null;
+  }
+  let valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+  if (valueCursor >= text.length || text.charAt(valueCursor) !== ":") {
+    return { nextIndex: parsedKey.end };
+  }
+  valueCursor = skipJsonWhitespace(text, valueCursor + 1);
+  return {
+    key: parsedKey.key,
+    nextIndex: valueCursor - 1,
+    valueStart: valueCursor,
+  };
+}
+
+function readObjectKeyCandidate(
+  text: string,
+  index: number,
+  char: string
+): ObjectKeyCandidate | null | undefined {
+  return char === '"' || char === "'"
+    ? readQuotedObjectKeyCandidate(text, index)
+    : readUnquotedObjectKeyCandidate(text, index, char);
+}
+
+function appendObjectKeyCandidate(
+  keys: string[],
+  text: string,
+  index: number,
+  char: string
+): { invalid: boolean; nextIndex: number } {
+  const candidate = readObjectKeyCandidate(text, index, char);
+  if (candidate === null) {
+    return { invalid: true, nextIndex: index };
+  }
+  if (candidate?.key) {
+    keys.push(candidate.key);
+  }
+  return {
+    invalid: false,
+    nextIndex: candidate?.nextIndex ?? index,
+  };
+}
+
+function consumeJsonStringScanChar(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  if (state.escaping) {
+    state.escaping = false;
+    return true;
+  }
+  if (state.inString) {
+    if (char === "\\") {
+      state.escaping = true;
+    } else if (char === '"') {
+      state.inString = false;
+    }
+    return true;
+  }
+  if (char === '"') {
+    state.inString = true;
+    return true;
+  }
+  return false;
+}
+
+function consumeJsonDepthOpen(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  if (!(char === "{" || char === "[")) {
+    return false;
+  }
+  state.depth += 1;
+  return true;
+}
+
+function consumeJsonDepthClose(
+  state: JsonDepthScanState,
+  char: string
+): "top-level-close" | "nested-close" | "none" {
+  if (!(char === "}" || char === "]")) {
+    return "none";
+  }
+  if (state.depth > 0) {
+    state.depth -= 1;
+    return "nested-close";
+  }
+  return "top-level-close";
+}
+
+function consumeExistingJsonString(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  if (!state.inString) {
+    return false;
+  }
+  if (state.escaping) {
+    state.escaping = false;
+  } else if (char === "\\") {
+    state.escaping = true;
+  } else if (char === '"') {
+    state.inString = false;
+  }
+  return true;
+}
+
+function consumeJsonObjectDepth(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  if (char === "{") {
+    state.depth += 1;
+    return true;
+  }
+  if (char === "}") {
+    state.depth = Math.max(0, state.depth - 1);
+    return true;
+  }
+  return false;
+}
+
 function collectObjectKeys(
   text: string,
   objectStart: number,
@@ -996,21 +1218,13 @@ function collectObjectKeys(
   }
 
   const keys: string[] = [];
-  let depth = 0;
-  let quoteChar: string | null = null;
-  let escaping = false;
+  const quoteState: QuotedScanState = { escaping: false, quoteChar: null };
+  const depthState = { depth: 0 };
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
 
-    if (quoteChar) {
-      if (escaping) {
-        escaping = false;
-      } else if (char === "\\") {
-        escaping = true;
-      } else if (char === quoteChar) {
-        quoteChar = null;
-      }
+    if (consumeQuotedScanChar(quoteState, char)) {
       continue;
     }
 
@@ -1020,57 +1234,25 @@ function collectObjectKeys(
       continue;
     }
 
-    if (char === "{") {
-      depth += 1;
+    const depthTransition = objectKeyDepthTransition(depthState, char);
+    if (depthTransition === "closed") {
+      return keys;
+    }
+    if (depthTransition === "changed") {
       continue;
     }
-    if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return keys;
-      }
-      continue;
-    }
-    if (depth !== 1 && !includeNested) {
+    if (!shouldCollectObjectKey(depthState.depth, includeNested)) {
       if (char === '"' || char === "'") {
-        quoteChar = char;
-      }
-      continue;
-    }
-    if (depth < 1) {
-      continue;
-    }
-
-    if (char !== '"' && char !== "'") {
-      if (!isUnquotedRjsonKeyStart(char)) {
-        continue;
-      }
-      const previous = previousSignificantChar(text, index);
-      if (previous === "{" || previous === ",") {
-        const parsedKey = parseUnquotedObjectKey(text, index);
-        if (!parsedKey) {
-          return null;
-        }
-        const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
-        if (text.charAt(valueCursor) === ":") {
-          keys.push(parsedKey.key);
-          index = valueCursor;
-        }
+        quoteState.quoteChar = char;
       }
       continue;
     }
 
-    const parsedKey = parseQuotedObjectKey(text, index);
-    if (!parsedKey) {
+    const candidate = appendObjectKeyCandidate(keys, text, index, char);
+    if (candidate.invalid) {
       return null;
     }
-    const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
-    if (text.charAt(valueCursor) === ":") {
-      keys.push(parsedKey.key);
-      index = valueCursor;
-      continue;
-    }
-    index = parsedKey.end;
+    index = candidate.nextIndex;
   }
 
   return null;
@@ -1087,6 +1269,11 @@ function applyToolArgumentKeyPolicy(
   }
   const normalizedArgs = args === undefined ? {} : args;
   if (!isRecord(normalizedArgs)) {
+    if (normalizedArgs === null) {
+      return topLevelNullArgumentMatchesToolSchema(toolName, tools)
+        ? { args: normalizedArgs }
+        : null;
+    }
     if (
       keyPolicy &&
       argumentValueMatchesSchemaKeyShape(
@@ -1107,6 +1294,22 @@ function applyToolArgumentKeyPolicy(
   return policyArgs === null ? null : { args: policyArgs };
 }
 
+function topLevelNullArgumentMatchesToolSchema(
+  toolName: string,
+  tools: LanguageModelV3FunctionTool[]
+): boolean {
+  const tool = tools.find((candidate) => candidate.name === toolName);
+  if (!tool || tool.inputSchema === undefined) {
+    return false;
+  }
+  return argumentValueMatchesSchemaKeyShape(
+    null,
+    tool.inputSchema,
+    new Set(),
+    true
+  );
+}
+
 /** Maximum size (in UTF-16 code units) for the arguments body before bailing out of repair. */
 const REPAIR_MAX_ARGS_BODY_SIZE = 102_400;
 
@@ -1114,6 +1317,12 @@ const WHITESPACE_RE = /\s/;
 const FIRST_KEY_RE = /^\s*"([^"]+)"\s*:\s*/;
 const KV_PATTERN_RE = /,\s*"([^"]+)"\s*:\s*/g;
 const TRAILING_COMMA_RE = /,\s*$/;
+
+interface JsonRepairKeyPosition {
+  key: string;
+  matchStart: number;
+  valueStart: number;
+}
 
 function getTopLevelPositionMap(argsBody: string): Uint8Array {
   const topLevelAtPosition = new Uint8Array(argsBody.length + 1);
@@ -1142,78 +1351,42 @@ function getTopLevelPositionMap(argsBody: string): Uint8Array {
   return topLevelAtPosition;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Top-level argument scanning is a compact state machine.
+function hasCommaAfterWhitespace(text: string, fromIndex: number): boolean {
+  let cursor = fromIndex;
+  while (cursor < text.length && WHITESPACE_RE.test(text[cursor])) {
+    cursor += 1;
+  }
+  return text.charAt(cursor) === ",";
+}
+
 function hasTrailingTopLevelFieldAfterArgumentsObject(
   argsBody: string
 ): boolean {
-  let depth = 0;
-  let inStr = false;
-  let esc = false;
-  const hasCommaAfterWhitespace = (fromIndex: number): boolean => {
-    let cursor = fromIndex;
-    while (cursor < argsBody.length && WHITESPACE_RE.test(argsBody[cursor])) {
-      cursor += 1;
-    }
-    return argsBody.charAt(cursor) === ",";
+  const state: JsonDepthScanState = {
+    depth: 0,
+    escaping: false,
+    inString: false,
   };
   for (let index = 0; index < argsBody.length; index += 1) {
     const char = argsBody.charAt(index);
-    if (esc) {
-      esc = false;
+    if (consumeJsonStringScanChar(state, char)) {
       continue;
     }
-    if (inStr) {
-      if (char === "\\") {
-        esc = true;
-      } else if (char === '"') {
-        inStr = false;
-      }
+    if (consumeJsonDepthOpen(state, char)) {
       continue;
     }
-    if (char === '"') {
-      inStr = true;
+    const close = consumeJsonDepthClose(state, char);
+    if (close === "none" || close === "nested-close") {
       continue;
     }
-    if (char === "{" || char === "[") {
-      depth += 1;
-      continue;
-    }
-    if (char !== "}" && char !== "]") {
-      continue;
-    }
-    if (depth > 0) {
-      depth -= 1;
-      continue;
-    }
-    if (hasCommaAfterWhitespace(index + 1)) {
+    if (hasCommaAfterWhitespace(argsBody, index + 1)) {
       return true;
     }
   }
   return false;
 }
 
-/**
- * Attempt to repair a malformed tool-call JSON string where the model
- * failed to escape double-quotes inside string values.  Returns the
- * parsed result or null when repair is not possible.
- *
- * Scope: this path assumes strict JSON structure (double-quoted keys and
- * string values, per-value `JSON.parse`). Relaxed-JSON malformation
- * (unquoted keys, single-quoted strings, comments) is out of scope — such
- * input returns null and the caller falls through to the text segment path,
- * matching pre-repair behavior.
- */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: JSON repair requires manual character-level scanning with multiple heuristic passes.
-function repairToolCallJson(
-  raw: string,
-  toolName: string,
-  keyPolicy?: ArgumentKeyPolicy
-): { name: string; arguments: Record<string, unknown> } | null {
-  if (hasPrototypeSensitiveKeyInJsonLikeObject(raw)) {
-    return null;
-  }
-
-  // 2. Find arguments object boundaries (top-level aware, like name extraction)
+function findRepairArgumentsBody(raw: string): string | null {
   const argsValueStart = findStrictTopLevelJsonPropertyValueStart(
     raw,
     "arguments"
@@ -1222,10 +1395,6 @@ function repairToolCallJson(
     return null;
   }
   const argsStart = argsValueStart + 1;
-
-  // 3. Find closing braces from end (arguments + outer object).
-  //    Uses backwards scan because forward brace-balance is unreliable
-  //    when quotes are broken (which is the premise of this repair path).
   let outerClose = -1;
   for (let i = raw.length - 1; i >= argsStart; i--) {
     if (raw.charAt(i) === "}") {
@@ -1250,13 +1419,227 @@ function repairToolCallJson(
       break;
     }
   }
-  if (argsClose === -1) {
+  return argsClose === -1 ? null : raw.slice(argsStart, argsClose);
+}
+
+function parseArgsBodyWithoutRepair(
+  argsBody: string,
+  keyPolicy?: ArgumentKeyPolicy
+): Record<string, unknown> | null {
+  try {
+    const parsedArgs = JSON.parse(`{${argsBody}}`) as Record<string, unknown>;
+    return applyArgumentKeyPolicy(parsedArgs, keyPolicy);
+  } catch {
+    return null;
+  }
+}
+
+function collectRepairKeyPositions(
+  argsBody: string
+): JsonRepairKeyPosition[] | null {
+  const firstKeyMatch = argsBody.match(FIRST_KEY_RE);
+  if (!firstKeyMatch) {
+    return null;
+  }
+  const positions: JsonRepairKeyPosition[] = [
+    {
+      key: firstKeyMatch[1],
+      matchStart: 0,
+      valueStart: firstKeyMatch[0].length,
+    },
+  ];
+  for (const match of argsBody.matchAll(KV_PATTERN_RE)) {
+    positions.push({
+      key: match[1],
+      matchStart: match.index,
+      valueStart: match.index + match[0].length,
+    });
+  }
+
+  const topLevelAtPosition = getTopLevelPositionMap(argsBody);
+  return positions.filter(
+    (entry) =>
+      entry.matchStart === 0 || topLevelAtPosition[entry.matchStart] === 1
+  );
+}
+
+function uniqueRepairKeyPositions(
+  positions: JsonRepairKeyPosition[],
+  keepLast: boolean
+): JsonRepairKeyPosition[] {
+  const selectedByKey = new Map<string, number>();
+  for (let index = 0; index < positions.length; index += 1) {
+    if (keepLast || !selectedByKey.has(positions[index].key)) {
+      selectedByKey.set(positions[index].key, index);
+    }
+  }
+  return positions.filter(
+    (_, index) => selectedByKey.get(positions[index].key) === index
+  );
+}
+
+function sameRepairPositions(
+  left: JsonRepairKeyPosition[],
+  right: JsonRepairKeyPosition[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((entry, index) => entry.matchStart === right[index].matchStart)
+  );
+}
+
+function escapeMalformedStringInner(inner: string): string {
+  let escaped = "";
+  let backslashes = 0;
+  for (const char of inner) {
+    if (char === "\\") {
+      backslashes += 1;
+      escaped += char;
+    } else if (char === '"' && backslashes % 2 === 0) {
+      backslashes = 0;
+      escaped += '\\"';
+    } else {
+      backslashes = 0;
+      escaped += char;
+    }
+  }
+  return escaped
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+function lastQuoteIndex(value: string): number {
+  let cursor = value.length - 1;
+  while (cursor > 0 && value.charAt(cursor) !== '"') {
+    cursor -= 1;
+  }
+  return cursor;
+}
+
+function parsePossiblyMalformedJsonString(value: string): unknown | undefined {
+  if (value.charAt(0) !== '"') {
+    return;
+  }
+  const quoteEnd = lastQuoteIndex(value);
+  if (quoteEnd <= 0) {
+    return;
+  }
+  const escaped = escapeMalformedStringInner(value.slice(1, quoteEnd));
+  try {
+    return JSON.parse(`"${escaped}"`);
+  } catch {
+    return;
+  }
+}
+
+function scoreRepairValue(value: string): [number, number] {
+  try {
+    JSON.parse(value);
+    return [1, 0];
+  } catch {
+    return parsePossiblyMalformedJsonString(value) === undefined
+      ? [0, 0]
+      : [0, 1];
+  }
+}
+
+function scoreRepairKeyPositions(
+  argsBody: string,
+  positions: JsonRepairKeyPosition[]
+): [number, number] {
+  let rawOk = 0;
+  let repaired = 0;
+  for (let index = 0; index < positions.length; index += 1) {
+    const valueEnd =
+      index + 1 < positions.length
+        ? positions[index + 1].matchStart
+        : argsBody.length;
+    const value = argsBody
+      .slice(positions[index].valueStart, valueEnd)
+      .replace(TRAILING_COMMA_RE, "");
+    const [rawScore, repairScore] = scoreRepairValue(value);
+    rawOk += rawScore;
+    repaired += repairScore;
+  }
+  return [rawOk, repaired];
+}
+
+function chooseRepairKeyPositions(
+  argsBody: string,
+  positions: JsonRepairKeyPosition[]
+): JsonRepairKeyPosition[] {
+  const firstPositions = uniqueRepairKeyPositions(positions, false);
+  const lastPositions = uniqueRepairKeyPositions(positions, true);
+  if (sameRepairPositions(firstPositions, lastPositions)) {
+    return firstPositions;
+  }
+  const firstScore = scoreRepairKeyPositions(argsBody, firstPositions);
+  const lastScore = scoreRepairKeyPositions(argsBody, lastPositions);
+  return lastScore[0] > firstScore[0] ||
+    (lastScore[0] === firstScore[0] && lastScore[1] > firstScore[1])
+    ? lastPositions
+    : firstPositions;
+}
+
+function parseRepairValue(value: string): unknown | undefined {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return parsePossiblyMalformedJsonString(value);
+  }
+}
+
+function parseRepairArguments(
+  argsBody: string,
+  positions: JsonRepairKeyPosition[],
+  keyPolicy?: ArgumentKeyPolicy
+): Record<string, unknown> | null {
+  const args = Object.create(null) as Record<string, unknown>;
+  for (let index = 0; index < positions.length; index += 1) {
+    const valueEnd =
+      index + 1 < positions.length
+        ? positions[index + 1].matchStart
+        : argsBody.length;
+    const rawValue = argsBody
+      .slice(positions[index].valueStart, valueEnd)
+      .replace(TRAILING_COMMA_RE, "");
+    const parsedValue = parseRepairValue(rawValue);
+    if (parsedValue === undefined) {
+      return null;
+    }
+    args[positions[index].key] = parsedValue;
+  }
+  if (Object.keys(args).length === 0) {
+    return null;
+  }
+  return applyArgumentKeyPolicy(args, keyPolicy);
+}
+
+/**
+ * Attempt to repair a malformed tool-call JSON string where the model
+ * failed to escape double-quotes inside string values.  Returns the
+ * parsed result or null when repair is not possible.
+ *
+ * Scope: this path assumes strict JSON structure (double-quoted keys and
+ * string values, per-value `JSON.parse`). Relaxed-JSON malformation
+ * (unquoted keys, single-quoted strings, comments) is out of scope — such
+ * input returns null and the caller falls through to the text segment path,
+ * matching pre-repair behavior.
+ */
+function repairToolCallJson(
+  raw: string,
+  toolName: string,
+  keyPolicy?: ArgumentKeyPolicy
+): { name: string; arguments: Record<string, unknown> } | null {
+  if (hasPrototypeSensitiveKeyInJsonLikeObject(raw)) {
     return null;
   }
 
-  const argsBody = raw.slice(argsStart, argsClose);
-
-  // Size guard: bail out on unreasonably large argument bodies
+  const argsBody = findRepairArgumentsBody(raw);
+  if (argsBody === null) {
+    return null;
+  }
   if (argsBody.length > REPAIR_MAX_ARGS_BODY_SIZE) {
     return null;
   }
@@ -1264,205 +1647,22 @@ function repairToolCallJson(
     return null;
   }
 
-  // 4. Try standard parse first
-  try {
-    const parsedArgs = JSON.parse(`{${argsBody}}`) as Record<string, unknown>;
-    const policyArgs = applyArgumentKeyPolicy(parsedArgs, keyPolicy);
-    if (!policyArgs) {
-      return null;
-    }
-    return {
-      name: toolName,
-      arguments: policyArgs,
-    };
-  } catch {
-    /* fall through to repair */
+  const parsedArgs = parseArgsBodyWithoutRepair(argsBody, keyPolicy);
+  if (parsedArgs) {
+    return { name: toolName, arguments: parsedArgs };
   }
 
-  // 5. Collect key positions
-  const firstKeyMatch = argsBody.match(FIRST_KEY_RE);
-  if (!firstKeyMatch) {
-    return null;
-  }
-  let allKeys: Array<{
-    key: string;
-    matchStart: number;
-    valueStart: number;
-  }> = [
-    {
-      key: firstKeyMatch[1],
-      matchStart: 0,
-      valueStart: firstKeyMatch[0].length,
-    },
-  ];
-  for (const m of argsBody.matchAll(KV_PATTERN_RE)) {
-    allKeys.push({
-      key: m[1],
-      matchStart: m.index,
-      valueStart: m.index + m[0].length,
-    });
-  }
-
-  // 5b. Filter candidates to prevent false boundary splits.
-  //     Boundary detection always uses top-level position — dropping
-  //     schema-unknown keys from the candidate list corrupts neighbouring
-  //     value slices, because their ,"extra":... text gets merged into
-  //     the previous value. Schema filtering is applied later when
-  //     assigning parsed values into args (step 8 below).
-  const topLevelAtPosition = getTopLevelPositionMap(argsBody);
-  allKeys = allKeys.filter(
-    (entry) =>
-      entry.matchStart === 0 || topLevelAtPosition[entry.matchStart] === 1
-  );
-
-  // 7. Handle duplicate key names with scoring heuristic
-  const firstByKey = new Map<string, number>();
-  const lastByKey = new Map<string, number>();
-  for (let idx = 0; idx < allKeys.length; idx++) {
-    if (!firstByKey.has(allKeys[idx].key)) {
-      firstByKey.set(allKeys[idx].key, idx);
-    }
-    lastByKey.set(allKeys[idx].key, idx);
-  }
-  const firstPositions = allKeys.filter(
-    (_, i) => firstByKey.get(allKeys[i].key) === i
-  );
-  const lastPositions = allKeys.filter(
-    (_, i) => lastByKey.get(allKeys[i].key) === i
-  );
-
-  let keyPositions: typeof allKeys;
-  if (
-    firstPositions.length === lastPositions.length &&
-    firstPositions.every(
-      (fp, i) => fp.matchStart === lastPositions[i].matchStart
-    )
-  ) {
-    keyPositions = firstPositions;
-  } else {
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Scoring heuristic requires multi-stage fallback parsing.
-    function scorePositions(positions: typeof allKeys): [number, number] {
-      let rawOk = 0;
-      let repaired = 0;
-      for (let si = 0; si < positions.length; si++) {
-        const svs = positions[si].valueStart;
-        const sve =
-          si + 1 < positions.length
-            ? positions[si + 1].matchStart
-            : argsBody.length;
-        const srv = argsBody.slice(svs, sve).replace(TRAILING_COMMA_RE, "");
-        try {
-          JSON.parse(srv);
-          rawOk++;
-          continue;
-        } catch {
-          /* skip */
-        }
-        if (srv.charAt(0) === '"') {
-          let seq = srv.length - 1;
-          while (seq > 0 && srv.charAt(seq) !== '"') {
-            seq--;
-          }
-          if (seq > 0) {
-            const sinner = srv.slice(1, seq);
-            let sesc = "";
-            let sbs = 0;
-            for (const sch of sinner) {
-              if (sch === "\\") {
-                sbs++;
-                sesc += sch;
-              } else if (sch === '"' && sbs % 2 === 0) {
-                sbs = 0;
-                sesc += '\\"';
-              } else {
-                sbs = 0;
-                sesc += sch;
-              }
-            }
-            sesc = sesc
-              .replace(/\n/g, "\\n")
-              .replace(/\r/g, "\\r")
-              .replace(/\t/g, "\\t");
-            try {
-              JSON.parse(`"${sesc}"`);
-              repaired++;
-            } catch {
-              /* skip */
-            }
-          }
-        }
-      }
-      return [rawOk, repaired];
-    }
-    const fs = scorePositions(firstPositions);
-    const ls = scorePositions(lastPositions);
-    keyPositions =
-      ls[0] > fs[0] || (ls[0] === fs[0] && ls[1] > fs[1])
-        ? lastPositions
-        : firstPositions;
-  }
-  allKeys = keyPositions;
-  if (allKeys.length === 0) {
+  const collectedKeys = collectRepairKeyPositions(argsBody);
+  if (!collectedKeys || collectedKeys.length === 0) {
     return null;
   }
 
-  const args = Object.create(null) as Record<string, unknown>;
-  for (let i = 0; i < allKeys.length; i++) {
-    const kp = allKeys[i];
-    const vs = kp.valueStart;
-    const ve =
-      i + 1 < allKeys.length ? allKeys[i + 1].matchStart : argsBody.length;
-    const rv = argsBody.slice(vs, ve).replace(TRAILING_COMMA_RE, "");
-    try {
-      args[kp.key] = JSON.parse(rv);
-      continue;
-    } catch {
-      /* needs repair */
-    }
-    if (rv.charAt(0) === '"') {
-      let eq = rv.length - 1;
-      while (eq > 0 && rv.charAt(eq) !== '"') {
-        eq--;
-      }
-      if (eq <= 0) {
-        // String literal with no closing quote — repair cannot handle this
-        return null;
-      }
-      const inner = rv.slice(1, eq);
-      let esc = "";
-      let bs = 0;
-      for (const ch of inner) {
-        if (ch === "\\") {
-          bs++;
-          esc += ch;
-        } else if (ch === '"' && bs % 2 === 0) {
-          bs = 0;
-          esc += '\\"';
-        } else {
-          bs = 0;
-          esc += ch;
-        }
-      }
-      esc = esc
-        .replace(/\n/g, "\\n")
-        .replace(/\r/g, "\\r")
-        .replace(/\t/g, "\\t");
-      try {
-        args[kp.key] = JSON.parse(`"${esc}"`);
-      } catch {
-        // Repaired string still invalid — bail out
-        return null;
-      }
-    } else {
-      // Non-string value that failed JSON.parse — repair cannot handle this
-      return null;
-    }
-  }
-  if (Object.keys(args).length === 0) {
-    return null;
-  }
-  const policyArgs = applyArgumentKeyPolicy(args, keyPolicy);
-  return policyArgs === null ? null : { name: toolName, arguments: policyArgs };
+  const args = parseRepairArguments(
+    argsBody,
+    chooseRepairKeyPositions(argsBody, collectedKeys),
+    keyPolicy
+  );
+  return args === null ? null : { name: toolName, arguments: args };
 }
 
 function repairToolCallJsonForTools(
@@ -1686,7 +1886,6 @@ function findTopLevelPropertyValueStart(
   return null;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Strict repair needs a small JSON scanner that ignores relaxed RJSON keys.
 function findStrictTopLevelJsonPropertyValueStart(
   text: string,
   property: string
@@ -1696,61 +1895,40 @@ function findStrictTopLevelJsonPropertyValueStart(
     return null;
   }
 
-  let depth = 0;
-  let inString = false;
-  let escaping = false;
+  const state: JsonDepthScanState = {
+    depth: 0,
+    escaping: false,
+    inString: false,
+  };
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
 
-    if (inString) {
-      if (escaping) {
-        escaping = false;
-        continue;
-      }
-      if (char === "\\") {
-        escaping = true;
-        continue;
-      }
-      if (char === '"') {
-        inString = false;
-      }
+    if (consumeExistingJsonString(state, char)) {
       continue;
     }
-
-    if (char === "{") {
-      depth += 1;
-      continue;
-    }
-    if (char === "}") {
-      depth = Math.max(0, depth - 1);
+    if (consumeJsonObjectDepth(state, char)) {
       continue;
     }
     if (char !== '"') {
       continue;
     }
-    if (depth !== 1) {
-      inString = true;
+    if (state.depth !== 1) {
+      state.inString = true;
       continue;
     }
 
-    const parsedKey = parseQuotedObjectKey(text, index);
-    if (!parsedKey) {
+    const candidate = readStrictJsonPropertyCandidate(text, index);
+    if (candidate === null) {
       return null;
     }
-
-    let valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
-    if (valueCursor >= text.length || text.charAt(valueCursor) !== ":") {
-      index = parsedKey.end;
-      continue;
+    if (candidate.key === property) {
+      return candidate.valueStart !== undefined &&
+        candidate.valueStart < text.length
+        ? candidate.valueStart
+        : null;
     }
-
-    valueCursor = skipJsonWhitespace(text, valueCursor + 1);
-    if (parsedKey.key === property) {
-      return valueCursor < text.length ? valueCursor : null;
-    }
-
-    index = valueCursor - 1;
+    index = candidate.nextIndex;
   }
 
   return null;

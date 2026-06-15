@@ -1235,6 +1235,20 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("rejects null arguments without a matching nullable schema", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text = '<tool_call>{"name":"write","arguments":null}</tool_call>';
+    const out = p.parseGeneratedText({
+      text,
+      tools: [],
+      options: { onError },
+    });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(out).toContainEqual({ type: "text", text });
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("rejects null for non-nullable typed object properties", () => {
     const onError = vi.fn();
     const p = hermesProtocol();

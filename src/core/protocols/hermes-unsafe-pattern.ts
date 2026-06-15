@@ -35,6 +35,14 @@ function pushLiteralRun(hints: PatternCharacterHints, run: string): string {
   return "";
 }
 
+function addLiteralHint(hints: PatternCharacterHints, char: string): boolean {
+  if (!isComparableKeyChar(char)) {
+    return false;
+  }
+  hints.literals.add(char);
+  return true;
+}
+
 function readCharacterClassRangeEnd(
   pattern: string,
   index: number
@@ -85,7 +93,56 @@ function readEscapedLiteral(
   return null;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Regex character-class scanning is a compact state machine.
+function consumeEscapedClassHint(
+  pattern: string,
+  index: number,
+  hints: PatternCharacterHints,
+  previous: string | undefined
+): { nextIndex: number; previous: string | undefined } {
+  const literal = readEscapedLiteral(pattern, index);
+  if (literal) {
+    return {
+      nextIndex: literal.nextIndex,
+      previous: addLiteralHint(hints, literal.char) ? literal.char : previous,
+    };
+  }
+  const char = pattern.charAt(index);
+  if ("dDsSwWpP".includes(char)) {
+    hints.hasUnknownMatcher = true;
+    return { nextIndex: index, previous };
+  }
+  return {
+    nextIndex: index,
+    previous: addLiteralHint(hints, char) ? char : previous,
+  };
+}
+
+function consumeClassRangeHint(
+  pattern: string,
+  index: number,
+  previous: string | undefined,
+  hints: PatternCharacterHints
+): { handled: boolean; nextIndex: number } {
+  if (
+    pattern.charAt(index) !== "-" ||
+    previous === undefined ||
+    index + 1 >= pattern.length ||
+    pattern.charAt(index + 1) === "]"
+  ) {
+    return { handled: false, nextIndex: index };
+  }
+  const end = readCharacterClassRangeEnd(pattern, index + 1);
+  if (end?.unknown) {
+    hints.hasUnknownMatcher = true;
+    return { handled: true, nextIndex: end.nextIndex };
+  }
+  if (end && isComparableKeyChar(end.char)) {
+    pushCharacterClassRange(hints.ranges, previous, end.char);
+    return { handled: true, nextIndex: end.nextIndex };
+  }
+  return { handled: false, nextIndex: index };
+}
+
 function addCharacterClassHints(
   pattern: string,
   classStart: number,
@@ -96,19 +153,9 @@ function addCharacterClassHints(
   for (let index = classStart + 1; index < pattern.length; index += 1) {
     const char = pattern.charAt(index);
     if (escaped) {
-      const literal = readEscapedLiteral(pattern, index);
-      if (literal) {
-        if (isComparableKeyChar(literal.char)) {
-          hints.literals.add(literal.char);
-          previous = literal.char;
-        }
-        index = literal.nextIndex;
-      } else if ("dDsSwWpP".includes(char)) {
-        hints.hasUnknownMatcher = true;
-      } else if (isComparableKeyChar(char)) {
-        hints.literals.add(char);
-        previous = char;
-      }
+      const result = consumeEscapedClassHint(pattern, index, hints, previous);
+      previous = result.previous;
+      index = result.nextIndex;
       escaped = false;
       continue;
     }
@@ -124,28 +171,13 @@ function addCharacterClassHints(
       previous = undefined;
       continue;
     }
-    if (
-      char === "-" &&
-      previous !== undefined &&
-      index + 1 < pattern.length &&
-      pattern.charAt(index + 1) !== "]"
-    ) {
-      const end = readCharacterClassRangeEnd(pattern, index + 1);
-      if (end?.unknown) {
-        hints.hasUnknownMatcher = true;
-        index = end.nextIndex;
-        previous = undefined;
-        continue;
-      }
-      if (end && isComparableKeyChar(end.char)) {
-        pushCharacterClassRange(hints.ranges, previous, end.char);
-        index = end.nextIndex;
-        previous = undefined;
-        continue;
-      }
+    const range = consumeClassRangeHint(pattern, index, previous, hints);
+    if (range.handled) {
+      index = range.nextIndex;
+      previous = undefined;
+      continue;
     }
-    if (isComparableKeyChar(char)) {
-      hints.literals.add(char);
+    if (addLiteralHint(hints, char)) {
       previous = char;
     } else {
       previous = undefined;
@@ -155,7 +187,34 @@ function addCharacterClassHints(
   return pattern.length;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Regex hint collection is a compact state machine.
+function consumeEscapedPatternHint(
+  pattern: string,
+  index: number,
+  hints: PatternCharacterHints,
+  literalRun: string
+): { literalRun: string; nextIndex: number } {
+  const literal = readEscapedLiteral(pattern, index);
+  if (literal) {
+    return addLiteralHint(hints, literal.char)
+      ? {
+          literalRun: literalRun + literal.char,
+          nextIndex: literal.nextIndex,
+        }
+      : {
+          literalRun: pushLiteralRun(hints, literalRun),
+          nextIndex: literal.nextIndex,
+        };
+  }
+  const char = pattern.charAt(index);
+  if ("dDsSwWpP".includes(char)) {
+    hints.hasUnknownMatcher = true;
+    return { literalRun: pushLiteralRun(hints, literalRun), nextIndex: index };
+  }
+  return addLiteralHint(hints, char)
+    ? { literalRun: literalRun + char, nextIndex: index }
+    : { literalRun: pushLiteralRun(hints, literalRun), nextIndex: index };
+}
+
 function collectPatternCharacterHints(pattern: string): PatternCharacterHints {
   const hints: PatternCharacterHints = {
     hasUnknownMatcher: false,
@@ -168,24 +227,14 @@ function collectPatternCharacterHints(pattern: string): PatternCharacterHints {
   for (let index = 0; index < pattern.length; index += 1) {
     const char = pattern.charAt(index);
     if (escaped) {
-      const literal = readEscapedLiteral(pattern, index);
-      if (literal) {
-        if (isComparableKeyChar(literal.char)) {
-          hints.literals.add(literal.char);
-          literalRun += literal.char;
-        } else {
-          literalRun = pushLiteralRun(hints, literalRun);
-        }
-        index = literal.nextIndex;
-      } else if ("dDsSwWpP".includes(char)) {
-        literalRun = pushLiteralRun(hints, literalRun);
-        hints.hasUnknownMatcher = true;
-      } else if (isComparableKeyChar(char)) {
-        hints.literals.add(char);
-        literalRun += char;
-      } else {
-        literalRun = pushLiteralRun(hints, literalRun);
-      }
+      const result = consumeEscapedPatternHint(
+        pattern,
+        index,
+        hints,
+        literalRun
+      );
+      literalRun = result.literalRun;
+      index = result.nextIndex;
       escaped = false;
       continue;
     }
@@ -203,8 +252,7 @@ function collectPatternCharacterHints(pattern: string): PatternCharacterHints {
       hints.hasUnknownMatcher = true;
       continue;
     }
-    if (isComparableKeyChar(char)) {
-      hints.literals.add(char);
+    if (addLiteralHint(hints, char)) {
       literalRun += char;
     } else {
       literalRun = pushLiteralRun(hints, literalRun);
