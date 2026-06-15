@@ -267,6 +267,8 @@ interface RegexGroupState {
   hasQuantifier: boolean;
 }
 
+const REGEX_ATOM_CHAR_RE = /^[A-Za-z0-9_$-]$/;
+
 function regexQuantifierEnd(pattern: string, index: number): number | null {
   const char = pattern.charAt(index);
   if (char === "*" || char === "+" || char === "?") {
@@ -286,7 +288,10 @@ function regexQuantifierEnd(pattern: string, index: number): number | null {
   return cursor < pattern.length ? cursor : null;
 }
 
-function regexGroupPrefixEnd(pattern: string, groupStart: number): number | null {
+function regexGroupPrefixEnd(
+  pattern: string,
+  groupStart: number
+): number | null {
   if (pattern.charAt(groupStart + 1) !== "?") {
     return null;
   }
@@ -305,6 +310,7 @@ function regexGroupPrefixEnd(pattern: string, groupStart: number): number | null
   return nameEnd === -1 ? null : nameEnd;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Regex quantifier scanning is a compact state machine.
 function hasNestedQuantifierRisk(pattern: string): boolean {
   let escaped = false;
   let inCharClass = false;
@@ -346,21 +352,24 @@ function hasNestedQuantifierRisk(pattern: string): boolean {
         if (group.hasAlternation || group.hasQuantifier) {
           return true;
         }
-        if (groups.length > 0) {
-          groups[groups.length - 1].hasQuantifier = true;
+        const parentGroup = groups.at(-1);
+        if (parentGroup) {
+          parentGroup.hasQuantifier = true;
         }
         index = quantifierEnd;
       }
       continue;
     }
-    if (ch === "|" && groups.length > 0) {
-      groups[groups.length - 1].hasAlternation = true;
+    const currentGroup = groups.at(-1);
+    if (ch === "|" && currentGroup) {
+      currentGroup.hasAlternation = true;
       continue;
     }
     const quantifierEnd = regexQuantifierEnd(pattern, index);
     if (quantifierEnd != null) {
-      if (groups.length > 0) {
-        groups[groups.length - 1].hasQuantifier = true;
+      const quantifiedGroup = groups.at(-1);
+      if (quantifiedGroup) {
+        quantifiedGroup.hasQuantifier = true;
       }
       index = quantifierEnd;
     }
@@ -426,6 +435,7 @@ function findGroupEnd(pattern: string, start: number): number | null {
   return null;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Regex atom scanning is a compact state machine.
 function hasAdjacentRepeatedQuantifiedAtoms(pattern: string): boolean {
   let previousQuantifiedAtom: string | null = null;
 
@@ -453,7 +463,7 @@ function hasAdjacentRepeatedQuantifiedAtoms(pattern: string): boolean {
       index = quantifierEnd ?? groupEnd;
       previousQuantifiedAtom = null;
       continue;
-    } else if (ch === "." || /^[A-Za-z0-9_$-]$/.test(ch)) {
+    } else if (ch === "." || REGEX_ATOM_CHAR_RE.test(ch)) {
       atom = ch;
     } else {
       previousQuantifiedAtom = null;

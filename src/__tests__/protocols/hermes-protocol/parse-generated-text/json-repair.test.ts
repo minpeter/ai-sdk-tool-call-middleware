@@ -30,9 +30,7 @@ function makeSchemaTool(
 
 type ToolCallContent = Extract<LanguageModelV3Content, { type: "tool-call" }>;
 
-function expectToolCall(
-  output: LanguageModelV3Content[]
-): ToolCallContent {
+function expectToolCall(output: LanguageModelV3Content[]): ToolCallContent {
   const tool = output.find(
     (part): part is ToolCallContent => part.type === "tool-call"
   );
@@ -112,9 +110,7 @@ describe("parseGeneratedText JSON repair", () => {
       '<tool_call>{"name":"edit","arguments":{"content":"value with ,"fake": inside"}}</tool_call>';
     const tools = [makeTool("edit", { content: { type: "string" } })];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    const tool = out.find(
-      (x): x is ToolCallContent => x.type === "tool-call"
-    );
+    const tool = out.find((x): x is ToolCallContent => x.type === "tool-call");
     if (tool) {
       const args = JSON.parse(tool.input);
       expect(typeof args.content).toBe("string");
@@ -150,9 +146,7 @@ describe("parseGeneratedText JSON repair", () => {
     const text = "<tool_call>{totally broken}</tool_call>";
     const out = p.parseGeneratedText({ text, tools: [], options: { onError } });
     expect(onError).toHaveBeenCalled();
-    const rejoined = out
-      .map((x) => (x.type === "text" ? x.text : ""))
-      .join("");
+    const rejoined = out.map((x) => (x.type === "text" ? x.text : "")).join("");
     expect(rejoined).toContain("{totally broken}");
   });
 
@@ -508,7 +502,7 @@ describe("parseGeneratedText JSON repair", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
-      "<tool_call>{name:\"write\",arguments:{'\\u005f\\u005fproto__':{polluted:true},content:\"ok\"}}</tool_call>";
+      '<tool_call>{name:"write",arguments:{\'\\u005f\\u005fproto__\':{polluted:true},content:"ok"}}</tool_call>';
     const tools = [
       makeTool(
         "write",
@@ -1632,7 +1626,9 @@ describe("parseGeneratedText JSON repair", () => {
       const out = p.parseGeneratedText({ text, tools, options: { onError } });
       const tool = out.find((x) => x.type === "tool-call");
       expect(tool?.type).toBe("tool-call");
-      expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      expect(
+        tool?.type === "tool-call" ? JSON.parse(tool.input) : null
+      ).toEqual({
         payload: { value },
       });
       expect(onError).not.toHaveBeenCalled();
@@ -1887,7 +1883,7 @@ describe("parseGeneratedText JSON repair", () => {
           content: { type: "string" },
         },
         patternProperties: {
-          [String.raw`^([a-\x7a]+)+$`]: false,
+          "^([a-\\x7a]+)+$": false,
         },
         additionalProperties: true,
       }),

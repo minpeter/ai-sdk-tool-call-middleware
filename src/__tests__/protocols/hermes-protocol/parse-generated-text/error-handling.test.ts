@@ -52,5 +52,4 @@ describe("protocol error paths", () => {
     expect(typeof metadata.toolCallId).toBe("string");
     expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
   });
-
 });

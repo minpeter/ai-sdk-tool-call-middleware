@@ -10,8 +10,12 @@ interface PatternCharacterHints {
   ranges: CharacterClassRange[];
 }
 
+const COMPARABLE_KEY_CHAR_RE = /^[A-Za-z0-9_-]$/;
+const HEX_BYTE_RE = /^[\da-fA-F]{2}$/;
+const HEX_WORD_RE = /^[\da-fA-F]{4}$/;
+
 function isComparableKeyChar(char: string): boolean {
-  return /^[A-Za-z0-9_-]$/.test(char);
+  return COMPARABLE_KEY_CHAR_RE.test(char);
 }
 
 function pushCharacterClassRange(
@@ -55,8 +59,11 @@ function readEscapedLiteral(
   pattern: string,
   index: number
 ): { char: string; nextIndex: number } | null {
-  const escape = pattern.charAt(index);
-  if (escape === "x" && /^[\da-fA-F]{2}$/.test(pattern.slice(index + 1, index + 3))) {
+  const escapedChar = pattern.charAt(index);
+  if (
+    escapedChar === "x" &&
+    HEX_BYTE_RE.test(pattern.slice(index + 1, index + 3))
+  ) {
     return {
       char: String.fromCharCode(
         Number.parseInt(pattern.slice(index + 1, index + 3), 16)
@@ -64,7 +71,10 @@ function readEscapedLiteral(
       nextIndex: index + 2,
     };
   }
-  if (escape === "u" && /^[\da-fA-F]{4}$/.test(pattern.slice(index + 1, index + 5))) {
+  if (
+    escapedChar === "u" &&
+    HEX_WORD_RE.test(pattern.slice(index + 1, index + 5))
+  ) {
     return {
       char: String.fromCharCode(
         Number.parseInt(pattern.slice(index + 1, index + 5), 16)
@@ -75,6 +85,7 @@ function readEscapedLiteral(
   return null;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Regex character-class scanning is a compact state machine.
 function addCharacterClassHints(
   pattern: string,
   classStart: number,
@@ -144,6 +155,7 @@ function addCharacterClassHints(
   return pattern.length;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Regex hint collection is a compact state machine.
 function collectPatternCharacterHints(pattern: string): PatternCharacterHints {
   const hints: PatternCharacterHints = {
     hasUnknownMatcher: false,

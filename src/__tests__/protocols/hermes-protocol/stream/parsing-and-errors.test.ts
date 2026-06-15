@@ -609,5 +609,4 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     expect(textOutput).toContain("<tool_call>");
     expect(textOutput).toContain("</tool_call>");
   });
-
 });

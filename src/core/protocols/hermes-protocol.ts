@@ -23,9 +23,7 @@ import {
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
-import {
-  argumentValueMatchesSchemaKeyShape,
-} from "./hermes-argument-schema";
+import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
 import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 import type { ParserOptions, TCMProtocol } from "./protocol-interface";
 
@@ -36,6 +34,8 @@ interface HermesProtocolOptions {
 
 const RJSON_IDENTIFIER_CHAR_REGEX = /[$a-zA-Z0-9_\-+.*?!|&%^/#\\]/;
 const RJSON_NUMBER_TOKEN_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const HEX_WORD_RE = /^[0-9A-Fa-f]{4}$/;
+const WHITESPACE_CHAR_RE = /\s/;
 
 function validateNonEmptyDelimiters(
   toolCallStart: string,
@@ -315,8 +315,8 @@ function isParsedToolCallRecord(
   }
   const record = value as Record<string, unknown>;
   return (
-    Object.prototype.hasOwnProperty.call(record, "name") &&
-    Object.prototype.hasOwnProperty.call(record, "arguments") &&
+    Object.hasOwn(record, "name") &&
+    Object.hasOwn(record, "arguments") &&
     typeof record.name === "string"
   );
 }
@@ -610,7 +610,7 @@ function extractArgumentKeyPolicy(
     };
   }
   if (!isRecord(schema)) {
-    return undefined;
+    return;
   }
   const properties = isRecord(schema.properties) ? schema.properties : {};
   const patternProperties = isRecord(schema.patternProperties)
@@ -822,7 +822,10 @@ function isUnquotedRjsonKeyChar(char: string): boolean {
   );
 }
 
-function parseQuotedObjectKey(text: string, keyStart: number): {
+function parseQuotedObjectKey(
+  text: string,
+  keyStart: number
+): {
   key: string;
   end: number;
 } | null {
@@ -868,7 +871,7 @@ function parseSingleQuotedObjectKey(body: string): string {
     const escaped = body.charAt(index + 1);
     if (escaped === "u") {
       const hex = body.slice(index + 2, index + 6);
-      if (/^[0-9A-Fa-f]{4}$/.test(hex)) {
+      if (HEX_WORD_RE.test(hex)) {
         result += String.fromCharCode(Number.parseInt(hex, 16));
         index += 5;
         continue;
@@ -894,7 +897,10 @@ const SINGLE_QUOTED_KEY_ESCAPES = new Map<string, string>([
   ["t", "\t"],
 ]);
 
-function parseUnquotedObjectKey(text: string, keyStart: number): {
+function parseUnquotedObjectKey(
+  text: string,
+  keyStart: number
+): {
   key: string;
   end: number;
 } | null {
@@ -911,7 +917,7 @@ function parseUnquotedObjectKey(text: string, keyStart: number): {
 function previousSignificantChar(text: string, index: number): string {
   let cursor = index - 1;
   while (cursor >= 0) {
-    while (cursor >= 0 && /\s/.test(text.charAt(cursor))) {
+    while (cursor >= 0 && WHITESPACE_CHAR_RE.test(text.charAt(cursor))) {
       cursor -= 1;
     }
     if (cursor < 0) {
@@ -944,7 +950,12 @@ function skipJsonComment(text: string, index: number): number | null {
   if (next === "/") {
     const lf = text.indexOf("\n", index + 2);
     const cr = text.indexOf("\r", index + 2);
-    const end = lf === -1 ? cr : cr === -1 ? lf : Math.min(lf, cr);
+    let end = Math.min(lf, cr);
+    if (lf === -1) {
+      end = cr;
+    } else if (cr === -1) {
+      end = lf;
+    }
     return end === -1 ? text.length - 1 : end - 1;
   }
   if (next === "*") {
@@ -954,6 +965,7 @@ function skipJsonComment(text: string, index: number): number | null {
   return null;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: RJSON object-key scanning is a compact state machine.
 function collectObjectKeys(
   text: string,
   objectStart: number,
@@ -1098,7 +1110,10 @@ function getTopLevelPositionMap(argsBody: string): Uint8Array {
   return topLevelAtPosition;
 }
 
-function hasTrailingTopLevelFieldAfterArgumentsObject(argsBody: string): boolean {
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Top-level argument scanning is a compact state machine.
+function hasTrailingTopLevelFieldAfterArgumentsObject(
+  argsBody: string
+): boolean {
   let depth = 0;
   let inStr = false;
   let esc = false;
@@ -1438,15 +1453,11 @@ function processToolCallJson(
   options?: ParserOptions
 ) {
   try {
-    const parsedToolCall = parseRJSON(
-      normalizeJsonStringCtrl(toolCallJson)
-    );
+    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
     if (!isParsedToolCallRecord(parsedToolCall)) {
       throw new Error("Tool call object is missing own name or arguments");
     }
-    if (
-      hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)
-    ) {
+    if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
       throw new Error("Tool call arguments contain prototype-sensitive keys");
     }
     const policyArguments = applyToolArgumentKeyPolicy(
@@ -1633,10 +1644,10 @@ function extractTopLevelStringProperty(
 ): string | undefined {
   const valueStart = findTopLevelPropertyValueStart(text, property);
   if (valueStart == null || valueStart >= text.length) {
-    return undefined;
+    return;
   }
   if (text.charAt(valueStart) !== '"') {
-    return undefined;
+    return;
   }
 
   let valueEnd = valueStart + 1;
@@ -1653,7 +1664,7 @@ function extractTopLevelStringProperty(
     valueEnd += 1;
   }
 
-  return undefined;
+  return;
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Streaming JSON value slicing must handle nested arrays/objects and escaped strings.
@@ -1826,7 +1837,7 @@ function emitStreamingToolInputProgress(options: {
 }): boolean {
   const { state, controller, toolCallJson, tools } = options;
   const progress = extractStreamingToolCallProgress(toolCallJson);
-  if (!progress.toolName || !progress.argumentsComplete) {
+  if (!(progress.toolName && progress.argumentsComplete)) {
     return false;
   }
   try {
@@ -1992,9 +2003,7 @@ function emitIncompleteToolCall(
       if (!isParsedToolCallRecord(parsedToolCall)) {
         throw new Error("Tool call object is missing own name or arguments");
       }
-      if (
-        hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)
-      ) {
+      if (hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)) {
         throw new Error("Tool call arguments contain prototype-sensitive keys");
       }
       const policyArguments = applyToolArgumentKeyPolicy(
@@ -2054,8 +2063,7 @@ function emitIncompleteToolCall(
   // them directly; otherwise fall back to re-scanning the raw JSON for the name
   // and generating a fresh correlation id so consumers always receive the
   // uniform { toolCall, toolCallId, toolName, dropReason } recovery shape.
-  const streamingToolCallId =
-    state.activeToolInput?.id ?? generateToolCallId();
+  const streamingToolCallId = state.activeToolInput?.id ?? generateToolCallId();
   const streamingToolName = state.activeToolInput?.toolName;
   closeToolInput(state, controller);
   const toolName =
@@ -2139,9 +2147,7 @@ function emitToolCall(context: TagProcessingContext) {
     if (!isParsedToolCallRecord(parsedToolCall)) {
       throw new Error("Tool call object is missing own name or arguments");
     }
-    if (
-      hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)
-    ) {
+    if (hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)) {
       throw new Error("Tool call arguments contain prototype-sensitive keys");
     }
     const policyArguments = applyToolArgumentKeyPolicy(
@@ -2160,7 +2166,10 @@ function emitToolCall(context: TagProcessingContext) {
     );
   } catch (error) {
     // Attempt repair for unescaped quotes
-    const repaired = repairToolCallJsonForTools(state.currentToolCallJson, tools);
+    const repaired = repairToolCallJsonForTools(
+      state.currentToolCallJson,
+      tools
+    );
     if (repaired) {
       emitToolCallFromParsed(state, controller, repaired, tools);
       return;
@@ -2325,11 +2334,7 @@ function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
     return true;
   }
 
-  publishText(
-    state.buffer.slice(0, relativeEndIndex),
-    state,
-    controller
-  );
+  publishText(state.buffer.slice(0, relativeEndIndex), state, controller);
   state.buffer = state.buffer.slice(relativeEndIndex + toolCallEnd.length);
   processTagMatch(context);
   return true;
@@ -2378,11 +2383,7 @@ function handlePartialTag(
       potentialEndIndex != null &&
       potentialEndIndex + toolCallEnd.length > state.buffer.length
     ) {
-      publishText(
-        state.buffer.slice(0, potentialEndIndex),
-        state,
-        controller
-      );
+      publishText(state.buffer.slice(0, potentialEndIndex), state, controller);
       scheduleStreamingToolInputProgress({
         state,
         controller,
@@ -2408,11 +2409,7 @@ function handlePartialTag(
     potentialIndex != null &&
     potentialIndex + toolCallStart.length > state.buffer.length
   ) {
-    publishText(
-      state.buffer.slice(0, potentialIndex),
-      state,
-      controller
-    );
+    publishText(state.buffer.slice(0, potentialIndex), state, controller);
     state.buffer = state.buffer.slice(potentialIndex);
   } else {
     publishText(state.buffer, state, controller);

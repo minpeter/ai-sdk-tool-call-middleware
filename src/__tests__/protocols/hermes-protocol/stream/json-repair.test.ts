@@ -543,7 +543,7 @@ describe("hermesProtocol streaming JSON repair", () => {
           type: "text-delta",
           id: "1",
           delta:
-            "<tool_call>{name:\"write\",arguments:{'\\u005f\\u005fproto__':{polluted:true},content:\"ok\"}}</tool_call>",
+            '<tool_call>{name:"write",arguments:{\'\\u005f\\u005fproto__\':{polluted:true},content:"ok"}}</tool_call>',
         });
         ctrl.enqueue({
           type: "finish",
@@ -753,7 +753,8 @@ describe("hermesProtocol streaming JSON repair", () => {
         ctrl.enqueue({
           type: "text-delta",
           id: "1",
-          delta: '<tool_call>{"name":"write","arguments":{"x-":"ok"}}</tool_call>',
+          delta:
+            '<tool_call>{"name":"write","arguments":{"x-":"ok"}}</tool_call>',
         });
         ctrl.enqueue({
           type: "finish",
@@ -2364,7 +2365,9 @@ describe("hermesProtocol streaming JSON repair", () => {
       );
       const tool = out.find((c) => c.type === "tool-call");
       expect(tool?.type).toBe("tool-call");
-      expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      expect(
+        tool?.type === "tool-call" ? JSON.parse(tool.input) : null
+      ).toEqual({
         payload: { value },
       });
       expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
@@ -2683,7 +2686,8 @@ describe("hermesProtocol streaming JSON repair", () => {
         ctrl.enqueue({
           type: "text-delta",
           id: "1",
-          delta: '<tool_call>{"name":"write","arguments":{"aaaa":123}}</tool_call>',
+          delta:
+            '<tool_call>{"name":"write","arguments":{"aaaa":123}}</tool_call>',
         });
         ctrl.enqueue({
           type: "finish",
@@ -2858,7 +2862,7 @@ describe("hermesProtocol streaming JSON repair", () => {
           content: { type: "string" },
         },
         patternProperties: {
-          [String.raw`^([a-\x7a]+)+$`]: false,
+          "^([a-\\x7a]+)+$": false,
         },
         additionalProperties: true,
       }),

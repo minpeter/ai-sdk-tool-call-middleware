@@ -162,7 +162,10 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     const out = await runProtocolTextDeltaStream({
       protocol,
       tools: fixture.tools,
-      chunks: ['<tool_call>{"name":"get_weather","arguments":null', "}</tool_call>"],
+      chunks: [
+        '<tool_call>{"name":"get_weather","arguments":null',
+        "}</tool_call>",
+      ],
       options: { onError },
     });
 
@@ -179,7 +182,10 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     const out = await runProtocolTextDeltaStream({
       protocol,
       tools: fixture.tools,
-      chunks: ['<tool_call>{"name":"get_weather","arguments":n', "ull}</tool_call>"],
+      chunks: [
+        '<tool_call>{"name":"get_weather","arguments":n',
+        "ull}</tool_call>",
+      ],
       options: { onError },
     });
 

@@ -100,7 +100,7 @@ function jsonValuesEqual(left: unknown, right: unknown): boolean {
       left.every((item, index) => jsonValuesEqual(item, right[index]))
     );
   }
-  if (!isRecord(left) || !isRecord(right)) {
+  if (!(isRecord(left) && isRecord(right))) {
     return false;
   }
   const leftKeys = Object.keys(left);
@@ -108,7 +108,8 @@ function jsonValuesEqual(left: unknown, right: unknown): boolean {
   return (
     leftKeys.length === rightKeys.length &&
     leftKeys.every(
-      (key) => Object.hasOwn(right, key) && jsonValuesEqual(left[key], right[key])
+      (key) =>
+        Object.hasOwn(right, key) && jsonValuesEqual(left[key], right[key])
     )
   );
 }
@@ -149,7 +150,7 @@ function getPropertySchema(
   key: string
 ): unknown | undefined {
   const properties = schema.properties;
-  if (!isRecord(properties) || !Object.hasOwn(properties, key)) {
+  if (!(isRecord(properties) && Object.hasOwn(properties, key))) {
     return;
   }
   return properties[key];
@@ -241,11 +242,12 @@ function arrayMatchesSchemaKeyShape(
   seen: Set<object>,
   enforceValueKinds: boolean
 ): boolean {
-  const tupleItems = Array.isArray(schema.prefixItems)
-    ? schema.prefixItems
-    : Array.isArray(schema.items)
-      ? schema.items
-      : undefined;
+  let tupleItems: unknown[] | undefined;
+  if (Array.isArray(schema.prefixItems)) {
+    tupleItems = schema.prefixItems;
+  } else if (Array.isArray(schema.items)) {
+    tupleItems = schema.items;
+  }
   if (tupleItems) {
     return value.every((item, index) => {
       const itemSchema =
@@ -354,7 +356,12 @@ export function argumentValueMatchesSchemaKeyShape(
     return false;
   }
   if (Array.isArray(value)) {
-    return arrayMatchesSchemaKeyShape(value, unwrapped, seen, enforceValueKinds);
+    return arrayMatchesSchemaKeyShape(
+      value,
+      unwrapped,
+      seen,
+      enforceValueKinds
+    );
   }
   if (isRecord(value) && isObjectSchema(unwrapped)) {
     return objectMatchesSchemaKeyShape(
