@@ -12,7 +12,7 @@ describe("qwen3CoderProtocol", () => {
 
     const out = p.parseGeneratedText({ text, tools });
     const call = out.find((part) => part.type === "tool-call");
-    if (!call || call.type !== "tool-call") {
+    if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
     expect(call.toolName).toBe("alpha");
@@ -52,7 +52,7 @@ describe("qwen3CoderProtocol", () => {
 
     const out = p.parseGeneratedText({ text, tools });
     const call = out.find((part) => part.type === "tool-call");
-    if (!call || call.type !== "tool-call") {
+    if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
 
@@ -69,7 +69,7 @@ describe("qwen3CoderProtocol", () => {
 
     const out = p.parseGeneratedText({ text, tools });
     const call = out.find((part) => part.type === "tool-call");
-    if (!call || call.type !== "tool-call") {
+    if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
 
@@ -86,7 +86,7 @@ describe("qwen3CoderProtocol", () => {
 
     const out = p.parseGeneratedText({ text, tools });
     const call = out.find((part) => part.type === "tool-call");
-    if (!call || call.type !== "tool-call") {
+    if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
 
@@ -103,7 +103,7 @@ describe("qwen3CoderProtocol", () => {
 
     const out = p.parseGeneratedText({ text, tools });
     const call = out.find((part) => part.type === "tool-call");
-    if (!call || call.type !== "tool-call") {
+    if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
     expect(call.toolName).toBe("alpha");
