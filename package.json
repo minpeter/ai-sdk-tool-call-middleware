@@ -59,19 +59,19 @@
     "ci:version": "changeset version"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.70",
+    "@ai-sdk/openai": "^3.0.71",
     "@ai-sdk/provider": "3.0.10",
-    "@ai-sdk/provider-utils": "4.0.28",
+    "@ai-sdk/provider-utils": "4.0.29",
     "dedent": "^1.7.2",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@ai-sdk/openai-compatible": "2.0.49",
-    "@biomejs/biome": "2.4.16",
+    "@ai-sdk/openai-compatible": "2.0.50",
+    "@biomejs/biome": "2.5.0",
     "@changesets/cli": "2.31.0",
     "@types/node": "^25.9.3",
-    "@vitest/coverage-v8": "^4.1.8",
-    "ai": "6.0.202",
+    "@vitest/coverage-v8": "^4.1.9",
+    "ai": "6.0.206",
     "globals": "^17.6.0",
     "husky": "^9.1.7",
     "jiti": "^2.7.0",
@@ -81,15 +81,15 @@
     "tsx": "^4.22.4",
     "typescript": "6.0.3",
     "ultracite": "7.8.3",
-    "vite": "^7.3.2",
-    "vitest": "^4.1.8",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9",
     "zod": "^4.4.3"
   },
   "packageManager": "pnpm@10.32.1",
   "pnpm": {
     "overrides": {
       "esbuild": "^0.28.1",
-      "vite": "^7.3.2",
+      "vite": "^8.0.16",
       "shell-quote": "^1.8.4"
     }
   },
