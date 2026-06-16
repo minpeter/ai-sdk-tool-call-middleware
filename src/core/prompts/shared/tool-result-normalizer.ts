@@ -8,14 +8,14 @@ import { toTextPart } from "./text-part";
 
 type ToolResponseMediaType = "image" | "audio" | "video" | "file";
 
-export interface ToolResponseMediaCapabilities {
+interface ToolResponseMediaCapabilities {
   audio?: boolean;
   file?: boolean;
   image?: boolean;
   video?: boolean;
 }
 
-export type ToolResponseMediaMode = "placeholder" | "raw" | "auto" | "model";
+type ToolResponseMediaMode = "placeholder" | "raw" | "auto" | "model";
 
 export interface ToolResponseMediaStrategy {
   capabilities?: ToolResponseMediaCapabilities;

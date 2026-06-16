@@ -1795,7 +1795,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
     };
 
-    const startToolCallIfPresent = (_controller: StreamController) => {
+    const startToolCallIfPresent = () => {
       if (toolCall) {
         return;
       }
@@ -1909,7 +1909,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
         stripLeadingToolCallCloseTagsFromBuffer();
         flushSafeTextPrefix(controller);
-        startToolCallIfPresent(controller);
+        startToolCallIfPresent();
         if (toolCall) {
           processToolCall(controller);
           return;
@@ -1925,7 +1925,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         }
 
         const before = buffer;
-        startToolCallIfPresent(controller);
+        startToolCallIfPresent();
         if (toolCall) {
           processToolCall(controller);
           return;
@@ -2007,7 +2007,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             buffer = remainder + buffer;
           }
           flushSafeTextPrefix(controller);
-          startToolCallIfPresent(controller);
+          startToolCallIfPresent();
           continue;
         }
 
@@ -2063,7 +2063,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               buffer = remainder + buffer;
             }
             flushSafeTextPrefix(controller);
-            startToolCallIfPresent(controller);
+            startToolCallIfPresent();
             continue;
           }
 

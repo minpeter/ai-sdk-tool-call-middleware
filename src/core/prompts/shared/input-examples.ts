@@ -1,10 +1,10 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 
-export interface ToolInputExample {
+interface ToolInputExample {
   input: unknown;
 }
 
-export function getToolInputExamples(
+function getToolInputExamples(
   tool: LanguageModelV4FunctionTool
 ): ToolInputExample[] {
   const inputExamples = (
