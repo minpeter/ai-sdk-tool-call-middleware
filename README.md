@@ -10,12 +10,22 @@ AI SDK middleware for parsing tool calls from models that do not natively suppor
 ## Install
 
 ```bash
+# Current stable line (v4.x) — built for AI SDK v6
 pnpm add @ai-sdk-tool/parser
 ```
 
+Using AI SDK v7? Install the pre-release line from the `beta` dist-tag:
+
+```bash
+# Pre-release line (v5.x) — built for AI SDK v7; requires ai@^7 and Node >=22
+pnpm add @ai-sdk-tool/parser@beta
+```
+
+> The `beta` line is a pre-release (`5.0.0-beta.N`) and is **not** the `latest` tag. It tracks AI SDK v7, which is itself still in beta. The `v4.x` line remains the current `latest`. See [Upgrading to v7 (beta)](#upgrading-to-v7-beta).
+
 ## AI SDK compatibility
 
-Fact-checked from this repo `CHANGELOG.md` and npm release metadata (as of 2026-02-18).
+Fact-checked from this repo `CHANGELOG.md` and npm release metadata (as of 2026-06-16).
 
 | `@ai-sdk-tool/parser` major | AI SDK major | Maintenance status |
 |---|---|---|
@@ -23,8 +33,29 @@ Fact-checked from this repo `CHANGELOG.md` and npm release metadata (as of 2026-
 | `v2.x` | `v5.x` | Legacy (not actively maintained) |
 | `v3.x` | `v6.x` | Legacy (not actively maintained) |
 | `v4.x` | `v6.x` | Active (current `latest` line) |
+| `v5.x` (beta) | `v7.x` (beta) | Pre-release on the `beta` dist-tag — `pnpm add @ai-sdk-tool/parser@beta`; see [Upgrading to v7 (beta)](#upgrading-to-v7-beta) |
 
 Note: there is no separate formal EOL announcement in releases/changelog for `v1`-`v3`; "legacy" here means non-current release lines.
+
+## Upgrading to v7 (beta)
+
+The `5.0.0-beta` line targets **AI SDK v7** (provider specification v4). It is published under the `beta` dist-tag; the `v4.x` line remains the current `latest`.
+
+```bash
+pnpm add @ai-sdk-tool/parser@beta
+```
+
+**Breaking changes vs. the `v4.x` line:**
+
+- **Requires `ai@^7` / `@ai-sdk/provider@^4`.** This line is **not** compatible with the AI SDK v6 line. The middleware now declares `specificationVersion: "v4"` and uses the `LanguageModelV4*` provider types.
+- **`@ai-sdk/provider` and `@ai-sdk/provider-utils` are now peer dependencies.** They are normally satisfied transitively by `ai@7`, so most apps need no extra install. If your package manager does not auto-install peers, add them explicitly:
+  ```bash
+  pnpm add @ai-sdk/provider@^4 @ai-sdk/provider-utils@^5
+  ```
+- **Node.js `>=22` is required** (Node 18 is end-of-life).
+- Tool-result file parts now use the v4 tagged file shape (`{ type: "data", data }`) instead of a bare `data` string. This only affects code that constructs tool-result file parts directly.
+
+**Status:** `5.0.0-beta.N` is a pre-release and is not yet on `latest`. AI SDK v7 is itself still in beta. The v7 line is expected to graduate to `latest` once AI SDK v7 reaches GA. Until then, pin with `@beta` (or an exact `5.0.0-beta.N` version) if you need reproducible installs.
 
 ## Package map
 

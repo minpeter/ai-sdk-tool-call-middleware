@@ -5,6 +5,7 @@ Runnable examples for `@ai-sdk-tool/parser` middleware behavior.
 ## Prerequisites
 
 - Run from repository root.
+- Requires Node.js >= 22 and the AI SDK v7 line (`ai@^7`, `@ai-sdk/provider@^4`). This repo/branch targets that line; if you copy an example into your own project, install the v7 build of the parser: `pnpm add @ai-sdk-tool/parser@beta` (the v7 line is published under the `beta` dist-tag while the v4 line stays on `latest`).
 - Install dependencies first: `pnpm install`.
 - Set `OPENROUTER_API_KEY` for examples that call a real model.
 
@@ -18,7 +19,7 @@ Runnable examples for `@ai-sdk-tool/parser` middleware behavior.
 
 ## Numbering
 
-- `parser-core` examples use `00-07`.
+- `parser-core` examples use `00-08`.
 - `rxml-core` examples use `20-29`.
 
 ## Files
@@ -31,6 +32,8 @@ Runnable examples for `@ai-sdk-tool/parser` middleware behavior.
 - `src/05-stream-tool-choice-fixed.ts` - stream + fixed tool choice.
 - `src/06-stream-tool-input-file.ts` - visualizes `tool-input-start/delta/end` and writes demo output file.
 - `src/07-stream-tool-input-nested.ts` - visualizes large nested tool input streaming.
+- `src/08-morph-input-examples-render.ts` - renders the MorphXML system prompt with tool `inputExamples` (built-in scenarios via `--scenario`, or a fixture file via `--file`; `--section full|examples|tools`).
+- `src/08-morph-input-examples-render.sample.json` - sample fixture file consumed by `08` via `--file`.
 - `src/console-output.ts` - shared output helper used by non-stream examples.
 
 ## Run
