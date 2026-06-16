@@ -1,6 +1,6 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
-import { generateId } from "../utils/id";
-import type { TCMProtocol } from "./protocol-interface";
+import type { TCMProtocol } from "../../core/protocols/protocol-interface";
+import { generateId } from "../../core/utils/id";
 
 function handleTextDelta(
   chunk: Extract<LanguageModelV4StreamPart, { type: "text-delta" }>,

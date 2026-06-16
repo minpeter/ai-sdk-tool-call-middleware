@@ -1,9 +1,8 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test } from "vitest";
-
-import { dummyProtocol } from "../../core/protocols/dummy-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { dummyProtocol } from "../fixtures/dummy-protocol";
 import { mockUsage, stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("createToolMiddleware wrapStream protocol compliance integration", () => {

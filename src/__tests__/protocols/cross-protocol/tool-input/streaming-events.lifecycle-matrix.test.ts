@@ -3,7 +3,6 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, it } from "vitest";
-import { dummyProtocol } from "../../../../core/protocols/dummy-protocol";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import {
@@ -11,6 +10,7 @@ import {
   uiTarsXmlProtocol,
 } from "../../../../core/protocols/qwen3coder-protocol";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { dummyProtocol } from "../../../fixtures/dummy-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import {
   allOfficialEventTypes,
