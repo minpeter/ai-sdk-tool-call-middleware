@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
@@ -12,7 +12,7 @@ describe("hermesProtocol streaming control character normalization", () => {
   it("parses streaming tool call with raw newline in argument", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -39,7 +39,7 @@ describe("hermesProtocol streaming control character normalization", () => {
   it("parses incomplete tool call with raw newline at finish", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",

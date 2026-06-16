@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
@@ -13,7 +13,7 @@ describe("dummyProtocol streaming behavior", () => {
   it("emits text-start only once and text-end when non-text arrives", async () => {
     const protocol = dummyProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "hello" });
         ctrl.enqueue({ type: "text-delta", id: "1", delta: " world" });
@@ -50,7 +50,7 @@ describe("dummyProtocol streaming behavior", () => {
   it("flush emits text-end when stream closes with pending text", async () => {
     const protocol = dummyProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "partial" });
         ctrl.enqueue({

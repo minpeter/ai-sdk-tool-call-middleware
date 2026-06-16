@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
@@ -14,7 +14,7 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 }));
 
 describe("createToolMiddleware morphXml stream compat", () => {
-  const tools: LanguageModelV3FunctionTool[] = [
+  const tools: LanguageModelV4FunctionTool[] = [
     {
       type: "function",
       name: "get_weather",
@@ -28,7 +28,7 @@ describe("createToolMiddleware morphXml stream compat", () => {
     toolSystemPromptTemplate: () => "",
   });
 
-  const runMiddleware = (stream: ReadableStream<LanguageModelV3StreamPart>) => {
+  const runMiddleware = (stream: ReadableStream<LanguageModelV4StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
     return middleware.wrapStream?.({
       doStream: mockDoStream,
@@ -46,7 +46,7 @@ describe("createToolMiddleware morphXml stream compat", () => {
   };
 
   test("should handle standard XML tool calls correctly", async () => {
-    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-start", id: "text-1" });
         controller.enqueue({
@@ -102,7 +102,7 @@ describe("createToolMiddleware morphXml stream compat", () => {
   });
 
   test("should handle argument-less XML tool calls correctly", async () => {
-    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-start", id: "text-1" });
         controller.enqueue({
@@ -143,7 +143,7 @@ describe("createToolMiddleware morphXml stream compat", () => {
   });
 
   test("should handle self-closing XML tool calls correctly (issue #84)", async () => {
-    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-start", id: "text-1" });
         controller.enqueue({
@@ -179,7 +179,7 @@ describe("createToolMiddleware morphXml stream compat", () => {
   });
 
   test("should handle self-closing XML tool calls split across chunks (issue #84)", async () => {
-    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-start", id: "text-1" });
         controller.enqueue({

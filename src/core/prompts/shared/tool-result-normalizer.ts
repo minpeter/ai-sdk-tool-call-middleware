@@ -1,7 +1,7 @@
 import type {
   JSONValue,
-  LanguageModelV3FilePart,
-  LanguageModelV3TextPart,
+  LanguageModelV4FilePart,
+  LanguageModelV4TextPart,
 } from "@ai-sdk/provider";
 import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import { toTextPart } from "./text-part";
@@ -23,8 +23,8 @@ export interface ToolResponseMediaStrategy {
 }
 
 export type ToolResponseUserContentPart =
-  | LanguageModelV3TextPart
-  | LanguageModelV3FilePart;
+  | LanguageModelV4TextPart
+  | LanguageModelV4FilePart;
 
 function isMapping(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -179,11 +179,11 @@ function toFilePart(options: {
   data: string;
   mediaType: string;
   filename?: string;
-  providerOptions?: LanguageModelV3FilePart["providerOptions"];
-}): LanguageModelV3FilePart {
+  providerOptions?: LanguageModelV4FilePart["providerOptions"];
+}): LanguageModelV4FilePart {
   return {
     type: "file",
-    data: options.data,
+    data: { type: "data", data: options.data },
     mediaType: options.mediaType,
     ...(options.filename === undefined ? {} : { filename: options.filename }),
     ...(options.providerOptions === undefined
@@ -200,7 +200,7 @@ function toModelContentPart(part: unknown): ToolResponseUserContentPart {
     mediaType?: string;
     url?: string;
     filename?: string;
-    providerOptions?: LanguageModelV3TextPart["providerOptions"];
+    providerOptions?: LanguageModelV4TextPart["providerOptions"];
   };
 
   switch (contentPart.type) {
@@ -303,7 +303,7 @@ export function normalizeToolResultForUserContent(
   const unwrapped = unwrapToolResult(result, mediaStrategy);
   const providerOptions = (
     result as {
-      providerOptions?: LanguageModelV3TextPart["providerOptions"];
+      providerOptions?: LanguageModelV4TextPart["providerOptions"];
     }
   ).providerOptions;
 

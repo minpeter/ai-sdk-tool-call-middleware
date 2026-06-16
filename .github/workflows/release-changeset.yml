@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+      # Pre-release (beta) line: while `.changeset/pre.json` is in "pre" mode on
+      # this branch, changesets publishes `x.y.z-beta.N` under the `beta`
+      # dist-tag, leaving the v6 `latest` release untouched.
+      - feat/ai-sdk-v7
     paths:
       - ".changeset/**"
       - .github/workflows/release-changeset.yml

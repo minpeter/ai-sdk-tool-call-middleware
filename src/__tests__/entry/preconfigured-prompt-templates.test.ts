@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesToolMiddleware, morphXmlToolMiddleware } from "../../index";
 
@@ -12,7 +12,7 @@ const REGEX_MAY_CALL_FUNCTIONS = /You may call one or more functions/;
 const REGEX_TOOLS_TAG = /<tools>/;
 
 describe("preconfigured middleware prompt templates", () => {
-  const tools: LanguageModelV3FunctionTool[] = [
+  const tools: LanguageModelV4FunctionTool[] = [
     {
       type: "function",
       name: "get_weather",

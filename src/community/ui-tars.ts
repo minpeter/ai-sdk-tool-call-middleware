@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { morphFormatToolResponseAsXml } from "../core/prompts/morph-xml-prompt";
 import {
   renderInputExamplesSection,
@@ -17,7 +17,7 @@ import {
 export const uiTarsToolMiddleware = createToolMiddleware({
   protocol: uiTarsXmlProtocol,
   toolResponsePromptTemplate: morphFormatToolResponseAsXml,
-  toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
+  toolSystemPromptTemplate(tools: LanguageModelV4FunctionTool[]) {
     const toolsJson = JSON.stringify(tools);
     const basePrompt = `You have access to callable functions (tools).
 Tool list/context:
@@ -136,7 +136,7 @@ EXECUTION RULES
 });
 
 function renderUiTarsInputExamples(
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): string {
   return renderInputExamplesSection({
     tools,

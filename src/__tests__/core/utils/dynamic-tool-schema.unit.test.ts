@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3ProviderTool,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4ProviderTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
@@ -8,7 +8,7 @@ import { createDynamicIfThenElseSchema } from "../../../core/utils/dynamic-tool-
 
 describe("createDynamicIfThenElseSchema", () => {
   it("should create schema for single tool", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "getTool",
@@ -41,7 +41,7 @@ describe("createDynamicIfThenElseSchema", () => {
   });
 
   it("should create nested if-then-else schema for multiple tools", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "tool1",
@@ -106,7 +106,7 @@ describe("createDynamicIfThenElseSchema", () => {
         id: "provider.tool" as const,
         name: "provider-tool",
         args: {} as Record<string, unknown>,
-      } satisfies LanguageModelV3ProviderTool,
+      } satisfies LanguageModelV4ProviderTool,
     ];
 
     expect(() => createDynamicIfThenElseSchema(tools)).toThrow(
@@ -115,7 +115,7 @@ describe("createDynamicIfThenElseSchema", () => {
   });
 
   it("should handle empty tool array", () => {
-    const tools: LanguageModelV3FunctionTool[] = [];
+    const tools: LanguageModelV4FunctionTool[] = [];
 
     const schema = createDynamicIfThenElseSchema(tools);
 
@@ -143,7 +143,7 @@ describe("createDynamicIfThenElseSchema", () => {
       required: ["requiredField"],
     };
 
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "complexTool",
@@ -158,7 +158,7 @@ describe("createDynamicIfThenElseSchema", () => {
   });
 
   it("should create schema with correct order for tools", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "alpha",
@@ -190,7 +190,7 @@ describe("createDynamicIfThenElseSchema", () => {
   });
 
   it("should handle tools with no input schema", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "noArgsTool",
@@ -219,7 +219,7 @@ describe("createDynamicIfThenElseSchema", () => {
         name: "providerTool",
         args: {} as Record<string, unknown>,
       },
-    ] as (LanguageModelV3FunctionTool | LanguageModelV3ProviderTool)[];
+    ] as (LanguageModelV4FunctionTool | LanguageModelV4ProviderTool)[];
 
     expect(() => createDynamicIfThenElseSchema(tools)).toThrow(
       "Provider tools are not supported by this middleware"
@@ -227,7 +227,7 @@ describe("createDynamicIfThenElseSchema", () => {
   });
 
   it("should create valid JSON Schema 7 structure", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "validateSchema",

@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
@@ -13,7 +13,7 @@ describe("yamlXmlProtocol streaming basic", () => {
   it("should parse a complete tool call in a single chunk", async () => {
     const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -48,7 +48,7 @@ unit: celsius
   it("should parse tool call split across multiple chunks", async () => {
     const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "<get_wea" });
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "ther>\n" });
@@ -83,7 +83,7 @@ unit: celsius
   it("should handle self-closing tag in stream", async () => {
     const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -113,7 +113,7 @@ unit: celsius
   it("should handle self-closing tag split across chunks", async () => {
     const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "<get_loca" });
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "tion/>" });

@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
@@ -9,7 +9,7 @@ import {
   zeroUsage,
 } from "../../../test-helpers";
 
-function joinTextDeltas(parts: LanguageModelV3StreamPart[]): string {
+function joinTextDeltas(parts: LanguageModelV4StreamPart[]): string {
   const deltas: string[] = [];
   for (const part of parts) {
     if (part.type !== "text-delta") {
@@ -23,13 +23,13 @@ function joinTextDeltas(parts: LanguageModelV3StreamPart[]): string {
   return deltas.join("");
 }
 
-type ToolCallPart = LanguageModelV3StreamPart & {
+type ToolCallPart = LanguageModelV4StreamPart & {
   type: "tool-call";
   toolName: string;
   input: string;
 };
 
-function isToolCallPart(part: LanguageModelV3StreamPart): part is ToolCallPart {
+function isToolCallPart(part: LanguageModelV4StreamPart): part is ToolCallPart {
   if (part.type !== "tool-call") {
     return false;
   }
@@ -41,7 +41,7 @@ describe("hermesProtocol partial tag handling", () => {
   it("breaks inner loop when only partial start tag suffix present and publishes buffer", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "before <tool_c" });
         ctrl.enqueue({
@@ -66,7 +66,7 @@ describe("hermesProtocol partial tag handling", () => {
     const protocol = hermesProtocol({ toolCallStart, toolCallEnd });
     const transformer = protocol.createStreamParser({ tools: [] });
 
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "before|ababa" });
         ctrl.enqueue({

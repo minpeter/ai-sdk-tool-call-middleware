@@ -1,11 +1,11 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 
 export interface EmittedToolInputState {
   emittedInput: string;
 }
 
 interface EmitToolInputDeltaBaseParams {
-  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>;
+  controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
   id: string;
   state: EmittedToolInputState;
 }

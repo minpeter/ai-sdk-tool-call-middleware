@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test } from "vitest";
 
@@ -12,7 +12,7 @@ describe("createToolMiddleware wrapStream protocol compliance integration", () =
     toolSystemPromptTemplate: () => "",
   });
 
-  const runMiddleware = (stream: ReadableStream<LanguageModelV3StreamPart>) => {
+  const runMiddleware = (stream: ReadableStream<LanguageModelV4StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
     if (!middleware.wrapStream) {
       throw new Error("wrapStream is not defined");
@@ -24,7 +24,7 @@ describe("createToolMiddleware wrapStream protocol compliance integration", () =
   };
 
   test("should produce compliant start/delta/end pattern for text", async () => {
-    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-delta", delta: "Hello world" } as any);
         controller.enqueue({
@@ -48,7 +48,7 @@ describe("createToolMiddleware wrapStream protocol compliance integration", () =
   });
 
   test("handles empty text chunks correctly", async () => {
-    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-delta", delta: "" } as any);
         controller.enqueue({

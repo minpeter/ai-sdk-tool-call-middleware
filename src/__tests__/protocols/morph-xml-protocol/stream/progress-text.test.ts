@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
@@ -14,12 +14,12 @@ import {
 describe("morphXmlProtocol streaming: progressive text emission", () => {
   it("emits text-delta progressively when no tool tags are present", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [];
+    const tools: LanguageModelV4FunctionTool[] = [];
     const transformer = protocol.createStreamParser({ tools });
 
     const chunks = ["Hello ", "world, ", "this is ", "streamed text."];
 
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         for (const c of chunks) {
           ctrl.enqueue({ type: "text-delta", id: "t", delta: c });
@@ -43,7 +43,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
 
   it("emits text progressively around tool tags, buffering minimal tail to detect split tags", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       { type: "function", name: "echo", inputSchema: { type: "object" } },
     ];
     const transformer = protocol.createStreamParser({ tools });
@@ -57,7 +57,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
       " after",
     ];
 
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         for (const p of parts) {
           ctrl.enqueue({ type: "text-delta", id: "t", delta: p });
@@ -96,7 +96,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
 
   it("handles DOCTYPE HTML without entity escaping inside string-typed arg (progress text)", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "file_write",
@@ -116,7 +116,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
     const html = "<!DOCTYPE html>\n<html><body><h1>ok</h1></body></html>";
 
     const CHUNK_SIZE = 9;
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         const src = `<file_write><path>index.html</path><content>${html}</content></file_write>`;
         for (let i = 0; i < src.length; i += CHUNK_SIZE) {
@@ -139,7 +139,7 @@ describe("morphXmlProtocol streaming: progressive text emission", () => {
       pipeWithTransformer(rs, transformer)
     );
     const tool = out.find(
-      (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+      (p): p is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("file_write");

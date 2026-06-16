@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
@@ -17,7 +17,7 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
 
   it("recovers bare JSON tool payload when protocol parsing returns no tool-call", async () => {
     const middleware = createJsonMiddleware();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -69,7 +69,7 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
 
   it("preserves surrounding text when JSON fallback recovers from fenced payload", async () => {
     const middleware = createJsonMiddleware();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -136,7 +136,7 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
 
   it("recovers arguments-only JSON object for single strict tool schema", async () => {
     const middleware = createJsonMiddleware();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -182,7 +182,7 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
 
   it("does not recover arguments-only JSON when keys do not match strict schema", async () => {
     const middleware = createJsonMiddleware();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",

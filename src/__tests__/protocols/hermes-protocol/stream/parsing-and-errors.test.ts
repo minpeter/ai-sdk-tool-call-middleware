@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
@@ -13,7 +13,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   it("parses normal tool_call blocks into tool-call events", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "pre " });
         ctrl.enqueue({
@@ -41,7 +41,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   it("normalizes legacy <tool_call> tags and parses", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -70,7 +70,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -106,7 +106,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { onError, emitRawToolCallTextOnError: true },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -137,7 +137,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   it("parses tool call when content split across chunks", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -182,7 +182,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   it("supports legacy <tool_call> tags mixed in chunks", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -212,7 +212,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { onError, emitRawToolCallTextOnError: true },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -244,7 +244,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { emitRawToolCallTextOnError: true },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -272,7 +272,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   it("suppresses buffered partial tool_call at finish by default", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -305,7 +305,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -347,7 +347,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { onError, emitRawToolCallTextOnError: true },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -393,7 +393,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -427,7 +427,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -458,7 +458,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -485,7 +485,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "<tool" });
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "_ca" });
@@ -535,7 +535,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -574,7 +574,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
       tools: [],
       options: { onError, emitRawToolCallTextOnError: true },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",

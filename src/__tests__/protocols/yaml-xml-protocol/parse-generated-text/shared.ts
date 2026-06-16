@@ -1,6 +1,6 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 
-export const basicTools: LanguageModelV3FunctionTool[] = [
+export const basicTools: LanguageModelV4FunctionTool[] = [
   {
     type: "function",
     name: "get_weather",
@@ -22,7 +22,7 @@ export const basicTools: LanguageModelV3FunctionTool[] = [
   },
 ];
 
-export const fileTools: LanguageModelV3FunctionTool[] = [
+export const fileTools: LanguageModelV4FunctionTool[] = [
   {
     type: "function",
     name: "write_file",

@@ -33,6 +33,6 @@ describe("entry exports surface", () => {
     });
 
     expect(customMiddleware).toBeDefined();
-    expect(customMiddleware.specificationVersion).toBe("v3");
+    expect(customMiddleware.specificationVersion).toBe("v4");
   });
 });

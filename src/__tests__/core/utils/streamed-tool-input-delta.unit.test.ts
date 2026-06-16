@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import {
   emitFinalRemainder,
@@ -7,13 +7,13 @@ import {
 } from "../../../core/utils/streamed-tool-input-delta";
 
 function createMockController(
-  out: LanguageModelV3StreamPart[]
-): TransformStreamDefaultController<LanguageModelV3StreamPart> {
+  out: LanguageModelV4StreamPart[]
+): TransformStreamDefaultController<LanguageModelV4StreamPart> {
   return {
-    enqueue(part: LanguageModelV3StreamPart) {
+    enqueue(part: LanguageModelV4StreamPart) {
       out.push(part);
     },
-  } as unknown as TransformStreamDefaultController<LanguageModelV3StreamPart>;
+  } as unknown as TransformStreamDefaultController<LanguageModelV4StreamPart>;
 }
 
 describe("streamed-tool-input-delta", () => {
@@ -37,7 +37,7 @@ describe("streamed-tool-input-delta", () => {
   });
 
   it("emitPrefixDelta emits only monotonic suffix deltas", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const state = { emittedInput: "" };
 
@@ -65,7 +65,7 @@ describe("streamed-tool-input-delta", () => {
       (
         part
       ): part is Extract<
-        LanguageModelV3StreamPart,
+        LanguageModelV4StreamPart,
         { type: "tool-input-delta" }
       > => part.type === "tool-input-delta"
     );
@@ -78,7 +78,7 @@ describe("streamed-tool-input-delta", () => {
   });
 
   it("emitFinalRemainder appends the missing suffix for the final JSON", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const state = { emittedInput: '{"location":"Seoul","unit":"ce' };
 
@@ -93,7 +93,7 @@ describe("streamed-tool-input-delta", () => {
       (
         part
       ): part is Extract<
-        LanguageModelV3StreamPart,
+        LanguageModelV4StreamPart,
         { type: "tool-input-delta" }
       > => part.type === "tool-input-delta"
     );
@@ -103,7 +103,7 @@ describe("streamed-tool-input-delta", () => {
   });
 
   it("emitFinalRemainder does not emit when final JSON does not extend emitted prefix", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const state = { emittedInput: '{"location":"Seoul"' };
     const onMismatch = vi.fn();
@@ -237,7 +237,7 @@ describe("toIncompleteJsonPrefix comprehensive edge cases", () => {
 
 describe("emitFinalRemainder onMismatch callback", () => {
   it("calls onMismatch when final does not extend prefix", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const state = { emittedInput: '{"location":"Seoul"' };
     const onMismatch = vi.fn();
@@ -261,7 +261,7 @@ describe("emitFinalRemainder onMismatch callback", () => {
   });
 
   it("does not call onMismatch when prefix is empty", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const state = { emittedInput: "" };
     const onMismatch = vi.fn();
@@ -278,7 +278,7 @@ describe("emitFinalRemainder onMismatch callback", () => {
   });
 
   it("does not call onMismatch when final extends prefix", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const state = { emittedInput: '{"location":"Seoul"' };
     const onMismatch = vi.fn();
@@ -295,7 +295,7 @@ describe("emitFinalRemainder onMismatch callback", () => {
   });
 
   it("does not throw when onMismatch is undefined", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const state = { emittedInput: '{"location":"Seoul"' };
 

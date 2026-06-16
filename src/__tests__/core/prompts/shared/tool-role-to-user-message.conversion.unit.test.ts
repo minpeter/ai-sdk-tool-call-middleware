@@ -62,7 +62,7 @@ describe("toolRoleContentToUserTextMessage", () => {
       content: [
         {
           type: "file",
-          data: "https://example.com/a.png",
+          data: { type: "data", data: "https://example.com/a.png" },
           mediaType: "image/*",
         },
       ],

@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { morphXmlToolMiddleware } from "../../preconfigured-middleware";
 import { requireTransformParams } from "../test-helpers";
@@ -6,7 +6,7 @@ import { requireTransformParams } from "../test-helpers";
 const REGEX_GET_WEATHER_TAG = /<get_weather[>/]/;
 const REGEX_EDIT_FILE_TAG = /<edit_file>/;
 
-const weatherTools: LanguageModelV3FunctionTool[] = [
+const weatherTools: LanguageModelV4FunctionTool[] = [
   {
     type: "function",
     name: "get_weather",

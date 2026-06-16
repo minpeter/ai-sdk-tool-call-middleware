@@ -1,8 +1,8 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 
-const tools: LanguageModelV3FunctionTool[] = [
+const tools: LanguageModelV4FunctionTool[] = [
   {
     type: "function",
     name: "write_file",

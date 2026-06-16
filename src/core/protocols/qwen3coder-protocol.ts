@@ -1,7 +1,7 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3StreamPart,
-  LanguageModelV3ToolCall,
+  LanguageModelV4Content,
+  LanguageModelV4StreamPart,
+  LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import {
   escapeXmlMinimalAttr,
@@ -1072,7 +1072,7 @@ function parseQwen3CoderToolParserToolCallSegment(
 }
 
 type StreamController =
-  TransformStreamDefaultController<LanguageModelV3StreamPart>;
+  TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
 function parseToolCallInput(input: string | null | undefined): unknown {
   if (input == null) {
@@ -1138,7 +1138,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
   },
 
-  formatToolCall(toolCall: LanguageModelV3ToolCall): string {
+  formatToolCall(toolCall: LanguageModelV4ToolCall): string {
     const args = parseToolCallInput(toolCall.input);
     const lines: string[] = ["<tool_call>"];
     lines.push(
@@ -1151,7 +1151,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
   },
 
   parseGeneratedText({ text, tools, options }) {
-    const processedElements: LanguageModelV3Content[] = [];
+    const processedElements: LanguageModelV4Content[] = [];
 
     const emitToolCalls = (
       calls: Array<{ toolName: string; args: Record<string, unknown> }>
@@ -2313,7 +2313,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
     const handlePassthroughChunk = (
       controller: StreamController,
-      chunk: LanguageModelV3StreamPart
+      chunk: LanguageModelV4StreamPart
     ) => {
       if (!toolCall && buffer) {
         flushText(controller, buffer);
@@ -2363,7 +2363,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
     const handleTransformChunk = (
       controller: StreamController,
-      chunk: LanguageModelV3StreamPart
+      chunk: LanguageModelV4StreamPart
     ) => {
       if (chunk.type === "finish") {
         handleFinish(controller);

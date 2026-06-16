@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -15,7 +15,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <multiples>5</multiples>
       </math_toolkit_sum_of_multiples>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "math_toolkit_sum_of_multiples",
@@ -54,7 +54,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <city>Marseille</city>
       </get_cities>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "get_cities",

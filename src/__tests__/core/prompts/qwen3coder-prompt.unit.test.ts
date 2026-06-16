@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,7 +9,7 @@ import {
 
 describe("qwen3coderSystemPromptTemplate", () => {
   it("renders the Qwen3-Coder tools section without chat-role wrappers", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -50,7 +50,7 @@ describe("qwen3coderSystemPromptTemplate", () => {
   });
 
   it("escapes XML-sensitive values and renders non-XML extra keys safely", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -103,7 +103,7 @@ describe("qwen3coderSystemPromptTemplate", () => {
             },
           },
         ],
-      } satisfies LanguageModelV3FunctionTool & {
+      } satisfies LanguageModelV4FunctionTool & {
         inputExamples: Array<{ input: unknown }>;
       },
     ]);

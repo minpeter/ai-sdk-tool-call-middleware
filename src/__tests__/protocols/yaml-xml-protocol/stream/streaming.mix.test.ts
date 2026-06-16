@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
@@ -13,7 +13,7 @@ describe("yamlXmlProtocol streaming text and tool mixing", () => {
   it("should emit text before and after tool call", async () => {
     const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -53,7 +53,7 @@ describe("yamlXmlProtocol streaming text and tool mixing", () => {
   it("should handle multiple tool calls in stream", async () => {
     const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -88,7 +88,7 @@ describe("yamlXmlProtocol streaming text and tool mixing", () => {
   it("should parse trailing self-closing tags after another tool call in the same chunk", async () => {
     const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",

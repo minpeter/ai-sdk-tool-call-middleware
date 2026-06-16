@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
@@ -12,7 +12,7 @@ describe("hermesProtocol content isolation and lifecycle", () => {
   it("does not expose JSON content inside tool_call tags in text output", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -67,7 +67,7 @@ describe("hermesProtocol content isolation and lifecycle", () => {
   it("handles multiple consecutive tool calls without exposing JSON content", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "First, " });
         ctrl.enqueue({
@@ -125,7 +125,7 @@ describe("hermesProtocol content isolation and lifecycle", () => {
   it("properly emits text-start and text-end events around tool calls", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -195,7 +195,7 @@ describe("hermesProtocol content isolation and lifecycle", () => {
   it("handles tool call split across chunks without exposing JSON in text", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "Computing: " });
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "<tool_call>" });

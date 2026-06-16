@@ -1,12 +1,12 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { coerceBySchema, unwrapJsonSchema } from "../../schema-coerce";
 
 type ToolCallLike = Extract<
-  LanguageModelV3Content | LanguageModelV3StreamPart,
+  LanguageModelV4Content | LanguageModelV4StreamPart,
   { type: "tool-call" }
 >;
 
@@ -53,7 +53,7 @@ function schemaAllowsNull(schema: unknown, seen = new Set<object>()): boolean {
 export function coerceToolCallInput(
   toolName: string,
   input: unknown,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): string | undefined {
   let args: unknown = {};
   if (typeof input === "string") {
@@ -83,7 +83,7 @@ export function coerceToolCallInput(
 
 export function coerceToolCallPart<T extends ToolCallLike>(
   part: T,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): T {
   const coercedInput = coerceToolCallInput(part.toolName, part.input, tools);
   if (coercedInput === undefined) {

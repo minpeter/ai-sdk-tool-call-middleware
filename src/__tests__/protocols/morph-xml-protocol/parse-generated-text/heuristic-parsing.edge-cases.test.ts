@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -12,7 +12,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <message>Hello World</message>
       </get_content>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "get_content",
@@ -44,7 +44,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </values>
       </format_text>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "format_text",
@@ -76,7 +76,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <values></values>
       </empty_data>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "empty_data",
@@ -110,7 +110,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </mixed_content>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "mixed_content",
@@ -146,7 +146,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </settings>
       </config>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "config",
@@ -176,7 +176,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </labels>
       </tags>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "tags",

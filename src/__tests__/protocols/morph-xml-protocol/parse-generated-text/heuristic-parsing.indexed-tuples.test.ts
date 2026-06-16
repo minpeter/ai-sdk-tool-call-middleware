@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -15,7 +15,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </point>
       </set_coordinates>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "set_coordinates",
@@ -51,7 +51,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </coordinates>
       </set_position>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "set_position",
@@ -87,7 +87,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </values>
       </set_data>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "set_data",
@@ -123,7 +123,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </set_mixed>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "set_mixed",

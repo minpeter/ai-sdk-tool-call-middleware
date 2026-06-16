@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
@@ -16,7 +16,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("does not split on </tool_call> inside a JSON string value (single chunk)", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -55,7 +55,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("does not split on </tool_call> inside a JSON string value split across chunks", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -97,7 +97,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     const transformer = protocol.createStreamParser({ tools: [] });
     // The value is: say \"</tool_call>\" ok
     // We split the chunk right between the backslash and the quote
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -137,7 +137,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("handles multiple false end tags in one string value (streaming)", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -173,7 +173,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("does not treat // inside a relaxed unquoted identifier as a comment", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -201,7 +201,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("ignores </tool_call> and quotes inside relaxed line comments", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -230,7 +230,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("ignores </tool_call> inside a relaxed block comment split across chunks", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -263,7 +263,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("still parses normal streaming tool calls correctly (regression check)", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -313,7 +313,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     const transformer = protocol.createStreamParser({ tools: [] });
     // First tool call has a literal </tool_call> inside a JSON string value;
     // the parser must skip that end tag and close on the real one.
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -354,7 +354,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("parses a second <tool_call> that follows a fully closed first one in the same chunk", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -385,7 +385,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
       toolCallEnd: "END",
     });
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -413,7 +413,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("still treats // after a relaxed number literal as a comment", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -445,7 +445,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
       toolCallEnd: "END",
     });
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -476,7 +476,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
       toolCallEnd: "END",
     });
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -507,7 +507,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
       toolCallEnd: "END",
     });
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -535,7 +535,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("recovers a valid tool call after an unterminated relaxed line comment consumes an end tag", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -563,7 +563,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("recovers a valid tool call after an unterminated relaxed block comment consumes an end tag", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -591,7 +591,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("recovers a valid adjacent tool call after a malformed one without whitespace", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -625,7 +625,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
     });
     const malformedPrefix =
       '<tool_call>{"name":"bash","arguments":{"cmd":"x </tool_call> y"}} ';
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -671,7 +671,7 @@ describe("hermesProtocol streaming – end tag inside JSON string values", () =>
   it("recovers a valid tool call that follows an unclosed/malformed one", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",

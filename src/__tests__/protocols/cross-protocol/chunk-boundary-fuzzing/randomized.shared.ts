@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 
 import type { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 
@@ -36,13 +36,13 @@ export function charByCharSplit(text: string): string[] {
 }
 
 export function extractToolCalls(
-  output: LanguageModelV3StreamPart[]
+  output: LanguageModelV4StreamPart[]
 ): Array<{ toolName: string; input: unknown }> {
   return output
     .filter(
       (
         c
-      ): c is LanguageModelV3StreamPart & {
+      ): c is LanguageModelV4StreamPart & {
         type: "tool-call";
         toolName: string;
         input: string;
@@ -54,12 +54,12 @@ export function extractToolCalls(
     }));
 }
 
-export function extractText(output: LanguageModelV3StreamPart[]): string {
+export function extractText(output: LanguageModelV4StreamPart[]): string {
   return output
     .filter(
       (
         c
-      ): c is LanguageModelV3StreamPart & {
+      ): c is LanguageModelV4StreamPart & {
         type: "text-delta";
         delta: string;
       } => c.type === "text-delta"

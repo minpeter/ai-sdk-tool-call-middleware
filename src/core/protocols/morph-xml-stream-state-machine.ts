@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { escapeRegExp } from "../utils/regex";
 import { findEarliestToolTag } from "../utils/xml-tool-tag-scanner";
@@ -16,7 +16,7 @@ export interface StreamingToolCallState {
 }
 
 type StreamController =
-  TransformStreamDefaultController<LanguageModelV3StreamPart>;
+  TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
 export type FlushTextFn = (controller: StreamController, text?: string) => void;
 
@@ -27,7 +27,7 @@ type HandleStreamingToolCallEnd = (params: {
   options?: ParserOptions;
   parseOptions?: Record<string, unknown>;
   toolContent: string;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }) => void;
 
 interface ProcessToolCallInBufferParams {
@@ -44,7 +44,7 @@ interface ProcessToolCallInBufferParams {
   options?: ParserOptions;
   parseOptions?: Record<string, unknown>;
   setBuffer: (buffer: string) => void;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }
 
 function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
@@ -111,7 +111,7 @@ interface ProcessNoToolCallInBufferParams {
   parseOptions?: Record<string, unknown>;
   setBuffer: (buffer: string) => void;
   toolNames: string[];
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }
 
 function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
@@ -198,7 +198,7 @@ export function createProcessBufferHandler(options: {
   setBuffer: (buffer: string) => void;
   getCurrentToolCall: () => StreamingToolCallState | null;
   setCurrentToolCall: (toolCall: StreamingToolCallState | null) => void;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
   parserOptions: ParserOptions | undefined;
   toolNames: string[];
   flushText: FlushTextFn;

@@ -1,8 +1,8 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
-  LanguageModelV3ToolCall,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
+  LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 
 /**
@@ -23,25 +23,25 @@ export interface TCMProtocol {
     tools,
     options,
   }: {
-    tools: LanguageModelV3FunctionTool[];
+    tools: LanguageModelV4FunctionTool[];
     options?: ParserOptions;
-  }): TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>;
+  }): TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>;
 
   extractToolCallSegments?: ({
     text,
     tools,
   }: {
     text: string;
-    tools: LanguageModelV3FunctionTool[];
+    tools: LanguageModelV4FunctionTool[];
   }) => string[];
 
-  formatToolCall(toolCall: LanguageModelV3ToolCall): string;
+  formatToolCall(toolCall: LanguageModelV4ToolCall): string;
   formatTools({
     tools,
     toolSystemPromptTemplate,
   }: {
-    tools: LanguageModelV3FunctionTool[];
-    toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
+    tools: LanguageModelV4FunctionTool[];
+    toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
   }): string;
 
   parseGeneratedText({
@@ -50,9 +50,9 @@ export interface TCMProtocol {
     options,
   }: {
     text: string;
-    tools: LanguageModelV3FunctionTool[];
+    tools: LanguageModelV4FunctionTool[];
     options?: ParserOptions;
-  }): LanguageModelV3Content[];
+  }): LanguageModelV4Content[];
 }
 
 export type TCMCoreProtocol = TCMProtocol;

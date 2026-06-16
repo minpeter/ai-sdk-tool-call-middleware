@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3Prompt,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4Prompt,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import {
@@ -11,31 +11,31 @@ import {
 
 function requireTransformParams(value: unknown): (args: {
   params: {
-    prompt: LanguageModelV3Prompt;
-    tools: LanguageModelV3FunctionTool[];
+    prompt: LanguageModelV4Prompt;
+    tools: LanguageModelV4FunctionTool[];
   };
 }) =>
-  | Promise<{ prompt: LanguageModelV3Prompt }>
-  | { prompt: LanguageModelV3Prompt } {
+  | Promise<{ prompt: LanguageModelV4Prompt }>
+  | { prompt: LanguageModelV4Prompt } {
   if (typeof value !== "function") {
     throw new Error("transformParams is required for middleware");
   }
 
   return value as (args: {
     params: {
-      prompt: LanguageModelV3Prompt;
-      tools: LanguageModelV3FunctionTool[];
+      prompt: LanguageModelV4Prompt;
+      tools: LanguageModelV4FunctionTool[];
     };
   }) =>
-    | Promise<{ prompt: LanguageModelV3Prompt }>
+    | Promise<{ prompt: LanguageModelV4Prompt }>
     | {
-        prompt: LanguageModelV3Prompt;
+        prompt: LanguageModelV4Prompt;
       };
 }
 
 describe("community middleware prompt templates", () => {
   it("uiTarsToolMiddleware renders Input Examples in system prompt", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "computer",
@@ -59,7 +59,7 @@ describe("community middleware prompt templates", () => {
             },
           },
         ],
-      } satisfies LanguageModelV3FunctionTool & {
+      } satisfies LanguageModelV4FunctionTool & {
         inputExamples: Array<{ input: unknown }>;
       },
     ];
@@ -81,7 +81,7 @@ describe("community middleware prompt templates", () => {
   });
 
   it("sijawaraDetailedXmlToolMiddleware renders Input Examples", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -100,7 +100,7 @@ describe("community middleware prompt templates", () => {
             },
           },
         ],
-      } satisfies LanguageModelV3FunctionTool & {
+      } satisfies LanguageModelV4FunctionTool & {
         inputExamples: Array<{ input: unknown }>;
       },
     ];
@@ -122,7 +122,7 @@ describe("community middleware prompt templates", () => {
   });
 
   it("sijawaraConciseXmlToolMiddleware renders Input Examples", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -141,7 +141,7 @@ describe("community middleware prompt templates", () => {
             },
           },
         ],
-      } satisfies LanguageModelV3FunctionTool & {
+      } satisfies LanguageModelV4FunctionTool & {
         inputExamples: Array<{ input: unknown }>;
       },
     ];
@@ -163,7 +163,7 @@ describe("community middleware prompt templates", () => {
   });
 
   it("sijawaraDetailedXmlToolMiddleware falls back safely for invalid XML keys", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -182,7 +182,7 @@ describe("community middleware prompt templates", () => {
             },
           },
         ],
-      } satisfies LanguageModelV3FunctionTool & {
+      } satisfies LanguageModelV4FunctionTool & {
         inputExamples: Array<{ input: unknown }>;
       },
     ];

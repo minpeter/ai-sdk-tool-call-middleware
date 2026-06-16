@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { OnErrorFn } from "./on-error";
 import { coerceToolCallInput } from "./tool-call-coercion";
 
@@ -6,14 +6,14 @@ interface ParseToolChoiceOptions {
   errorMessage: string;
   onError?: OnErrorFn;
   text: string;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }
 
 interface ResolveToolChoiceSelectionOptions {
   errorMessage: string;
   onError?: OnErrorFn;
   text?: string;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }
 
 function ensureNonEmptyToolName(name: unknown): string {

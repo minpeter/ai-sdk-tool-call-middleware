@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -26,7 +26,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <name>test</name>
       </complex_structure>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "complex_structure",

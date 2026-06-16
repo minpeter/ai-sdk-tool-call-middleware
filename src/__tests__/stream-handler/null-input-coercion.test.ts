@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
@@ -15,7 +15,7 @@ const passthroughProtocol: TCMCoreProtocol = {
 
 describe("wrapStream null input coercion", () => {
   it("leaves streamed null tool-call input unchanged for non-nullable schemas", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "calc",
@@ -59,7 +59,7 @@ describe("wrapStream null input coercion", () => {
   });
 
   it("preserves streamed null tool-call input for nullable schemas", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "calc",

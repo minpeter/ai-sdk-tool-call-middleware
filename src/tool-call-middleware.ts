@@ -1,7 +1,7 @@
 import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3Middleware,
+  LanguageModelV4CallOptions,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4Middleware,
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import type { ToolResponsePromptTemplateResult } from "./core/prompts/shared/tool-role-to-user-message";
@@ -18,18 +18,18 @@ export function createToolMiddleware({
   placement = "last",
 }: {
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
-  toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
+  toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
   toolResponsePromptTemplate?: (
     toolResult: ToolResultPart
   ) => ToolResponsePromptTemplateResult;
   placement?: "first" | "last";
-}): LanguageModelV3Middleware {
+}): LanguageModelV4Middleware {
   const resolvedProtocol = isTCMProtocolFactory(protocol)
     ? protocol()
     : protocol;
 
   return {
-    specificationVersion: "v3",
+    specificationVersion: "v4",
     wrapStream: ({ doStream, doGenerate, params }) =>
       wrapStreamHandler({
         protocol: resolvedProtocol,
@@ -43,7 +43,7 @@ export function createToolMiddleware({
         doGenerate,
         params,
       }),
-    transformParams: async ({ params }): Promise<LanguageModelV3CallOptions> =>
+    transformParams: async ({ params }): Promise<LanguageModelV4CallOptions> =>
       transformParams({
         protocol: resolvedProtocol,
         toolSystemPromptTemplate,

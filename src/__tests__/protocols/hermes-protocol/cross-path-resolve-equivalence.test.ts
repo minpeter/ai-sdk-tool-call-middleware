@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
@@ -27,7 +27,7 @@ function makeTool(
   name: string,
   properties: Record<string, { type: string }>,
   additionalProperties?: boolean
-): LanguageModelV3FunctionTool {
+): LanguageModelV4FunctionTool {
   return {
     type: "function",
     name,
@@ -56,7 +56,7 @@ function normalize(input: string, toolName: string): NormalizedToolCall {
 
 function nonStreamingToolCalls(
   text: string,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): NormalizedToolCall[] {
   const protocol = hermesProtocol();
   return protocol
@@ -67,11 +67,11 @@ function nonStreamingToolCalls(
 
 async function streamingToolCalls(
   text: string,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): Promise<NormalizedToolCall[]> {
   const protocol = hermesProtocol();
   const transformer = protocol.createStreamParser({ tools });
-  const rs = new ReadableStream<LanguageModelV3StreamPart>({
+  const rs = new ReadableStream<LanguageModelV4StreamPart>({
     start(ctrl) {
       ctrl.enqueue({ type: "text-delta", id: "1", delta: text });
       ctrl.enqueue({
@@ -100,7 +100,7 @@ const strictTool = makeTool("search", { query: { type: "string" } }, false);
 const cases: Array<{
   name: string;
   text: string;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }> = [
   {
     name: "single valid tool call",

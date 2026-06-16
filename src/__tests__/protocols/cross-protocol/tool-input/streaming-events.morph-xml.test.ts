@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -40,7 +40,7 @@ describe("cross-protocol tool-input streaming events: morph xml", () => {
   });
 
   it("xml protocol emits progress deltas for union-typed object schemas", async () => {
-    const unionWeatherTool: LanguageModelV3FunctionTool = {
+    const unionWeatherTool: LanguageModelV4FunctionTool = {
       type: "function",
       name: "get_weather",
       description: "Get weather information",
@@ -135,7 +135,7 @@ describe("cross-protocol tool-input streaming events: morph xml", () => {
           toolCallId: "passthrough-xml",
           toolName: "passthrough_marker",
           input: "{}",
-        } satisfies LanguageModelV3StreamPart,
+        } satisfies LanguageModelV4StreamPart,
         {
           type: "text-delta",
           id: "fixture",

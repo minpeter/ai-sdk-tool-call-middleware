@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import YAML from "yaml";
 import { escapeXmlMinimalText } from "../../rxml/utils/helpers";
@@ -10,7 +10,7 @@ import {
 import { toSafeXmlTagName } from "./shared/xml-tag-name";
 
 export function yamlXmlSystemPromptTemplate(
-  tools: LanguageModelV3FunctionTool[],
+  tools: LanguageModelV4FunctionTool[],
   includeMultilineExample = true
 ): string {
   const toolsJson = JSON.stringify(tools);

@@ -1,10 +1,10 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 
-export const emptyFunctionTools: LanguageModelV3FunctionTool[] = [];
+export const emptyFunctionTools: LanguageModelV4FunctionTool[] = [];
 
 export function createOperationTools(
   description = ""
-): LanguageModelV3FunctionTool[] {
+): LanguageModelV4FunctionTool[] {
   return [
     {
       type: "function",

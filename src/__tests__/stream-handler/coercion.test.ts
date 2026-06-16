@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
@@ -25,14 +25,14 @@ const passthroughProtocol: TCMCoreProtocol = {
 };
 
 async function readUntilToolInputDelta(options: {
-  reader: ReadableStreamDefaultReader<LanguageModelV3StreamPart>;
+  reader: ReadableStreamDefaultReader<LanguageModelV4StreamPart>;
   timeoutMs?: number;
-}): Promise<LanguageModelV3StreamPart[]> {
+}): Promise<LanguageModelV4StreamPart[]> {
   const { reader, timeoutMs = 2000 } = options;
-  const parts: LanguageModelV3StreamPart[] = [];
+  const parts: LanguageModelV4StreamPart[] = [];
 
   const readWithTimeout = async (): Promise<
-    ReadableStreamReadResult<LanguageModelV3StreamPart>
+    ReadableStreamReadResult<LanguageModelV4StreamPart>
   > => {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -71,7 +71,7 @@ async function readUntilToolInputDelta(options: {
 
 describe("wrapStream tool-call coercion", () => {
   it("coerces streamed tool-call input using originalTools schema", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "calc",
@@ -86,7 +86,7 @@ describe("wrapStream tool-call coercion", () => {
     ];
 
     const doStream = vi.fn().mockResolvedValue({
-      stream: new ReadableStream<LanguageModelV3StreamPart>({
+      stream: new ReadableStream<LanguageModelV4StreamPart>({
         start(controller) {
           controller.enqueue({
             type: "tool-call",
@@ -141,7 +141,7 @@ describe("wrapStream tool-call coercion", () => {
   });
 
   it("emits tool-input-delta while streaming tool-call arguments", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -157,7 +157,7 @@ describe("wrapStream tool-call coercion", () => {
     ];
 
     const doStream = vi.fn().mockResolvedValue({
-      stream: new ReadableStream<LanguageModelV3StreamPart>({
+      stream: new ReadableStream<LanguageModelV4StreamPart>({
         start(controller) {
           controller.enqueue({
             type: "text-delta",
@@ -208,14 +208,14 @@ describe("wrapStream tool-call coercion", () => {
       (
         part
       ): part is Extract<
-        LanguageModelV3StreamPart,
+        LanguageModelV4StreamPart,
         { type: "tool-input-delta" }
       > => part.type === "tool-input-delta"
     );
     const toolCall = parts.find(
       (
         part
-      ): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+      ): part is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
         part.type === "tool-call"
     );
 
@@ -271,7 +271,7 @@ describe("wrapStream tool-call coercion", () => {
 
   for (const scenario of crossProtocolCoercionScenarios) {
     it(`${scenario.name} keeps streamed tool-input-delta aligned with final coerced tool-call input`, async () => {
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "calc",
@@ -287,7 +287,7 @@ describe("wrapStream tool-call coercion", () => {
       ];
 
       const doStream = vi.fn().mockResolvedValue({
-        stream: new ReadableStream<LanguageModelV3StreamPart>({
+        stream: new ReadableStream<LanguageModelV4StreamPart>({
           start(controller) {
             for (const chunk of scenario.chunks) {
               controller.enqueue({
@@ -325,7 +325,7 @@ describe("wrapStream tool-call coercion", () => {
           (
             part
           ): part is Extract<
-            LanguageModelV3StreamPart,
+            LanguageModelV4StreamPart,
             { type: "tool-input-delta" }
           > => part.type === "tool-input-delta"
         )
@@ -334,7 +334,7 @@ describe("wrapStream tool-call coercion", () => {
       const toolCall = parts.find(
         (
           part
-        ): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+        ): part is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
           part.type === "tool-call" && part.toolName === "calc"
       );
 
@@ -346,7 +346,7 @@ describe("wrapStream tool-call coercion", () => {
   }
 
   it("streams tool-input-delta before delayed final chunk is released", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "calc",
@@ -367,7 +367,7 @@ describe("wrapStream tool-call coercion", () => {
     });
 
     const doStream = vi.fn().mockResolvedValue({
-      stream: new ReadableStream<LanguageModelV3StreamPart>({
+      stream: new ReadableStream<LanguageModelV4StreamPart>({
         async start(controller) {
           controller.enqueue({
             type: "text-delta",
@@ -408,7 +408,7 @@ describe("wrapStream tool-call coercion", () => {
 
     releaseSecondChunk();
 
-    const remainingParts: LanguageModelV3StreamPart[] = [];
+    const remainingParts: LanguageModelV4StreamPart[] = [];
     while (true) {
       const { done, value } = await reader.read();
       if (done || !value) {
@@ -422,7 +422,7 @@ describe("wrapStream tool-call coercion", () => {
       (
         part
       ): part is Extract<
-        LanguageModelV3StreamPart,
+        LanguageModelV4StreamPart,
         { type: "tool-input-delta" }
       > => part.type === "tool-input-delta"
     );
@@ -437,7 +437,7 @@ describe("wrapStream tool-call coercion", () => {
     const toolCall = parts.find(
       (
         part
-      ): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+      ): part is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
         part.type === "tool-call" && part.toolName === "calc"
     );
 
@@ -462,7 +462,7 @@ describe("wrapStream tool-call coercion", () => {
   });
 
   it("streams long single content argument before close while keeping coercion", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "write_markdown_file",
@@ -489,7 +489,7 @@ describe("wrapStream tool-call coercion", () => {
     });
 
     const doStream = vi.fn().mockResolvedValue({
-      stream: new ReadableStream<LanguageModelV3StreamPart>({
+      stream: new ReadableStream<LanguageModelV4StreamPart>({
         async start(controller) {
           controller.enqueue({
             type: "text-delta",
@@ -535,7 +535,7 @@ describe("wrapStream tool-call coercion", () => {
         (
           part
         ): part is Extract<
-          LanguageModelV3StreamPart,
+          LanguageModelV4StreamPart,
           { type: "tool-input-delta" }
         > => part.type === "tool-input-delta"
       )
@@ -554,7 +554,7 @@ describe("wrapStream tool-call coercion", () => {
 
     releaseSecondChunk();
 
-    const remainingParts: LanguageModelV3StreamPart[] = [];
+    const remainingParts: LanguageModelV4StreamPart[] = [];
     while (true) {
       const { done, value } = await reader.read();
       if (done || !value) {
@@ -568,7 +568,7 @@ describe("wrapStream tool-call coercion", () => {
       (
         part
       ): part is Extract<
-        LanguageModelV3StreamPart,
+        LanguageModelV4StreamPart,
         { type: "tool-input-delta" }
       > => part.type === "tool-input-delta"
     );
@@ -576,7 +576,7 @@ describe("wrapStream tool-call coercion", () => {
     const toolCall = parts.find(
       (
         part
-      ): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+      ): part is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
         part.type === "tool-call" && part.toolName === "write_markdown_file"
     );
     const parsed = JSON.parse(toolCall?.input ?? "{}") as {
@@ -593,7 +593,7 @@ describe("wrapStream tool-call coercion", () => {
   });
 
   it("splits large single-chunk content into multiple tool-input deltas across protocols", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "write_markdown_file",
@@ -663,7 +663,7 @@ describe("wrapStream tool-call coercion", () => {
 
     for (const scenario of scenarios) {
       const doStream = vi.fn().mockResolvedValue({
-        stream: new ReadableStream<LanguageModelV3StreamPart>({
+        stream: new ReadableStream<LanguageModelV4StreamPart>({
           start(controller) {
             controller.enqueue({
               type: "text-delta",
@@ -698,7 +698,7 @@ describe("wrapStream tool-call coercion", () => {
         (
           part
         ): part is Extract<
-          LanguageModelV3StreamPart,
+          LanguageModelV4StreamPart,
           { type: "tool-input-delta" }
         > => part.type === "tool-input-delta"
       );
@@ -706,7 +706,7 @@ describe("wrapStream tool-call coercion", () => {
       const toolCall = parts.find(
         (
           part
-        ): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+        ): part is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
           part.type === "tool-call" && part.toolName === "write_markdown_file"
       );
       const parsed = JSON.parse(toolCall?.input ?? "{}") as {
@@ -724,7 +724,7 @@ describe("wrapStream tool-call coercion", () => {
   });
 
   it("streams long morph-xml string content before close while keeping coercion", async () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "write_markdown_file",
@@ -751,7 +751,7 @@ describe("wrapStream tool-call coercion", () => {
     });
 
     const doStream = vi.fn().mockResolvedValue({
-      stream: new ReadableStream<LanguageModelV3StreamPart>({
+      stream: new ReadableStream<LanguageModelV4StreamPart>({
         async start(controller) {
           controller.enqueue({
             type: "text-delta",
@@ -797,7 +797,7 @@ describe("wrapStream tool-call coercion", () => {
         (
           part
         ): part is Extract<
-          LanguageModelV3StreamPart,
+          LanguageModelV4StreamPart,
           { type: "tool-input-delta" }
         > => part.type === "tool-input-delta"
       )
@@ -816,7 +816,7 @@ describe("wrapStream tool-call coercion", () => {
 
     releaseSecondChunk();
 
-    const remainingParts: LanguageModelV3StreamPart[] = [];
+    const remainingParts: LanguageModelV4StreamPart[] = [];
     while (true) {
       const { done, value } = await reader.read();
       if (done || !value) {
@@ -830,7 +830,7 @@ describe("wrapStream tool-call coercion", () => {
       (
         part
       ): part is Extract<
-        LanguageModelV3StreamPart,
+        LanguageModelV4StreamPart,
         { type: "tool-input-delta" }
       > => part.type === "tool-input-delta"
     );
@@ -838,7 +838,7 @@ describe("wrapStream tool-call coercion", () => {
     const toolCall = parts.find(
       (
         part
-      ): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+      ): part is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
         part.type === "tool-call" && part.toolName === "write_markdown_file"
     );
     const parsed = JSON.parse(toolCall?.input ?? "{}") as {
@@ -859,7 +859,7 @@ describe("wrapStream tool-call coercion", () => {
     const overflowNumberRaw = "1e400";
     const hugeDigitsRaw = "9".repeat(500);
 
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "coerce_numbers",
@@ -944,7 +944,7 @@ describe("wrapStream tool-call coercion", () => {
 
     for (const scenario of scenarios) {
       const doStream = vi.fn().mockResolvedValue({
-        stream: new ReadableStream<LanguageModelV3StreamPart>({
+        stream: new ReadableStream<LanguageModelV4StreamPart>({
           start(controller) {
             controller.enqueue({
               type: "text-delta",
@@ -979,7 +979,7 @@ describe("wrapStream tool-call coercion", () => {
         (
           part
         ): part is Extract<
-          LanguageModelV3StreamPart,
+          LanguageModelV4StreamPart,
           { type: "tool-input-delta" }
         > => part.type === "tool-input-delta"
       );
@@ -987,7 +987,7 @@ describe("wrapStream tool-call coercion", () => {
       const toolCall = parts.find(
         (
           part
-        ): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+        ): part is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
           part.type === "tool-call" && part.toolName === "coerce_numbers"
       );
       const parsed = JSON.parse(toolCall?.input ?? "{}") as {

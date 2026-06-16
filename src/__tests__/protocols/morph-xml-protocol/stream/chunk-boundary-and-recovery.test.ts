@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -21,7 +21,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("extracts tool call when start tag split across chunks", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "prefix <get_" });
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "weather>" });
@@ -61,7 +61,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
       },
     ] as any;
     const transformer = protocol.createStreamParser({ tools: whitespaceTools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -103,7 +103,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("accepts whitespace in the closing tag name while streaming", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -133,7 +133,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -163,7 +163,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("force-completes unfinished call at flush when parseable", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -200,7 +200,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("handles multiple inner tags inside one function call", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "<get_weather>" });
         ctrl.enqueue({
@@ -237,7 +237,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("parses multiple function calls in a single stream", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -275,7 +275,7 @@ describe("morphXmlProtocol streaming edge cases", () => {
   it("parses a single call whose tags are split across many chunks (>=6)", async () => {
     const protocol = morphXmlProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "<get_" });
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "weather>" });

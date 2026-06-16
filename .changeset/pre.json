@@ -1,0 +1,8 @@
+{
+  "mode": "pre",
+  "tag": "beta",
+  "initialVersions": {
+    "@ai-sdk-tool/parser": "4.1.25"
+  },
+  "changesets": []
+}

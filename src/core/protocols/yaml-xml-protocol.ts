@@ -1,7 +1,7 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3StreamPart,
-  LanguageModelV3ToolCall,
+  LanguageModelV4Content,
+  LanguageModelV4StreamPart,
+  LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import YAML from "yaml";
 import { generateToolCallId } from "../utils/id";
@@ -499,7 +499,7 @@ function processToolCallMatch(
   text: string,
   tc: ToolCallMatch,
   currentIndex: number,
-  processedElements: LanguageModelV3Content[],
+  processedElements: LanguageModelV4Content[],
   options?: ParserOptions
 ): number {
   if (tc.startIndex < currentIndex) {
@@ -576,7 +576,7 @@ export const yamlXmlProtocol = (
     return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
   },
 
-  formatToolCall(toolCall: LanguageModelV3ToolCall): string {
+  formatToolCall(toolCall: LanguageModelV4ToolCall): string {
     let args: Record<string, unknown> = {};
     if (toolCall.input != null) {
       try {
@@ -595,7 +595,7 @@ export const yamlXmlProtocol = (
       return [{ type: "text", text }];
     }
 
-    const processedElements: LanguageModelV3Content[] = [];
+    const processedElements: LanguageModelV4Content[] = [];
     let currentIndex = 0;
     let parseText = text;
 
@@ -655,7 +655,7 @@ export const yamlXmlProtocol = (
     );
 
     const emitToolInputProgress = (
-      controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
       toolContent: string
     ) => {
       if (!currentToolCall) {
@@ -682,7 +682,7 @@ export const yamlXmlProtocol = (
     };
 
     const processToolCallEnd = (
-      controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
       toolContent: string,
       toolName: string,
       toolCallId: string
@@ -735,7 +735,7 @@ export const yamlXmlProtocol = (
     };
 
     const finalizeUnclosedToolCall = (
-      controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
     ) => {
       if (!currentToolCall) {
         return;
@@ -789,7 +789,7 @@ export const yamlXmlProtocol = (
     };
 
     const handlePendingToolCall = (
-      controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
       endTag: string,
       toolName: string
     ): boolean => {
@@ -813,7 +813,7 @@ export const yamlXmlProtocol = (
     };
 
     const flushSafeText = (
-      controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
     ): void => {
       const maxTagLen = toolNames.length
         ? Math.max(...toolNames.map((n) => `<${n} />`.length))
@@ -827,7 +827,7 @@ export const yamlXmlProtocol = (
     };
 
     const handleNewToolTag = (
-      controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
       tagIndex: number,
       tagName: string,
       selfClosing: boolean,
@@ -871,7 +871,7 @@ export const yamlXmlProtocol = (
     };
 
     const processBuffer = (
-      controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
     ) => {
       while (true) {
         if (currentToolCall) {

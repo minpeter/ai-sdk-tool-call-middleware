@@ -1,10 +1,10 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { generateId } from "../utils/id";
 import type { TCMProtocol } from "./protocol-interface";
 
 function handleTextDelta(
-  chunk: Extract<LanguageModelV3StreamPart, { type: "text-delta" }>,
-  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+  chunk: Extract<LanguageModelV4StreamPart, { type: "text-delta" }>,
+  controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
   state: { currentTextId: string | null; hasEmittedText: boolean }
 ): void {
   const delta = chunk.delta;
@@ -26,8 +26,8 @@ function handleTextDelta(
 }
 
 function handleNonTextDelta(
-  chunk: LanguageModelV3StreamPart,
-  controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+  chunk: LanguageModelV4StreamPart,
+  controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
   state: { currentTextId: string | null; hasEmittedText: boolean }
 ): void {
   if (state.currentTextId && state.hasEmittedText) {

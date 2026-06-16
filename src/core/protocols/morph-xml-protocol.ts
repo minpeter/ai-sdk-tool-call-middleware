@@ -1,8 +1,8 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
-  LanguageModelV3ToolCall,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
+  LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import { parse, stringify } from "../../rxml";
 import { generateToolCallId } from "../utils/id";
@@ -39,14 +39,14 @@ export interface MorphXmlProtocolOptions {
   };
 }
 
-function getToolSchema(tools: LanguageModelV3FunctionTool[], toolName: string) {
+function getToolSchema(tools: LanguageModelV4FunctionTool[], toolName: string) {
   return tools.find((t) => t.name === toolName)?.inputSchema;
 }
 
 interface ProcessToolCallParams {
   options?: ParserOptions;
   parseOptions?: Record<string, unknown>;
-  processedElements: LanguageModelV3Content[];
+  processedElements: LanguageModelV4Content[];
   text: string;
   toolCall: {
     toolName: string;
@@ -54,7 +54,7 @@ interface ProcessToolCallParams {
     startIndex: number;
     endIndex: number;
   };
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }
 
 function processToolCall(params: ProcessToolCallParams): void {
@@ -95,7 +95,7 @@ function processToolCall(params: ProcessToolCallParams): void {
 }
 
 interface HandleStreamingToolCallEndParams {
-  ctrl: TransformStreamDefaultController<LanguageModelV3StreamPart>;
+  ctrl: TransformStreamDefaultController<LanguageModelV4StreamPart>;
   currentToolCall: {
     name: string;
     toolCallId: string;
@@ -105,7 +105,7 @@ interface HandleStreamingToolCallEndParams {
   options?: ParserOptions;
   parseOptions?: Record<string, unknown>;
   toolContent: string;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }
 
 function parseXmlTagName(rawTagBody: string): string {
@@ -557,7 +557,7 @@ function parseXmlContentForStreamProgress({
   toolName: string;
   toolSchema: unknown;
   parseOptions?: Record<string, unknown>;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }): string | null {
   const tryParse = (content: string): unknown | null => {
     try {
@@ -1266,7 +1266,7 @@ export const morphXmlProtocol = (
       return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
     },
 
-    formatToolCall(toolCall: LanguageModelV3ToolCall): string {
+    formatToolCall(toolCall: LanguageModelV4ToolCall): string {
       let args: unknown = {};
       if (toolCall.input != null) {
         try {
@@ -1288,7 +1288,7 @@ export const morphXmlProtocol = (
         return [{ type: "text", text }];
       }
 
-      const processedElements: LanguageModelV3Content[] = [];
+      const processedElements: LanguageModelV4Content[] = [];
       let currentIndex = 0;
 
       const { parseText, toolCalls } = findToolCallsWithFallbacks(
@@ -1343,7 +1343,7 @@ export const morphXmlProtocol = (
       );
 
       const emitToolInputStart = (
-        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+        controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
         toolName: string
       ): StreamingToolCallState => {
         flushText(controller);
@@ -1364,7 +1364,7 @@ export const morphXmlProtocol = (
       };
 
       const emitToolInputProgress = (
-        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+        controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
         toolCall: StreamingToolCallState,
         toolContent: string
       ) => {
@@ -1416,7 +1416,7 @@ export const morphXmlProtocol = (
       };
 
       const finalizeUnclosedToolCall = (
-        controller: TransformStreamDefaultController<LanguageModelV3StreamPart>
+        controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
       ) => {
         if (!currentToolCall) {
           return;

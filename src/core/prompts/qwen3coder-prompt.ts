@@ -1,4 +1,4 @@
-import type { JSONValue, LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
   escapeXmlMinimalAttr,
@@ -112,7 +112,7 @@ function normalizeInputSchema(inputSchema: unknown): unknown {
 }
 
 function normalizeTool(
-  rawTool: LanguageModelV3FunctionTool
+  rawTool: LanguageModelV4FunctionTool
 ): Qwen3CoderToolShape {
   return {
     name: rawTool.name,
@@ -168,7 +168,7 @@ function renderTool(tool: Qwen3CoderToolShape): string {
 }
 
 export function qwen3coderSystemPromptTemplate(
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): string {
   if (!tools.length) {
     return "";

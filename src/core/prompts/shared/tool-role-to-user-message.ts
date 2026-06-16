@@ -1,7 +1,7 @@
 import type {
-  LanguageModelV3FilePart,
-  LanguageModelV3Prompt,
-  LanguageModelV3TextPart,
+  LanguageModelV4FilePart,
+  LanguageModelV4Prompt,
+  LanguageModelV4TextPart,
 } from "@ai-sdk/provider";
 import type {
   ToolApprovalResponse,
@@ -52,8 +52,8 @@ function appendSection(
 
 function mergeAdjacentTextParts(
   parts: ToolResponseUserContentPart[]
-): Array<LanguageModelV3TextPart | LanguageModelV3FilePart> {
-  const merged: Array<LanguageModelV3TextPart | LanguageModelV3FilePart> = [];
+): Array<LanguageModelV4TextPart | LanguageModelV4FilePart> {
+  const merged: Array<LanguageModelV4TextPart | LanguageModelV4FilePart> = [];
 
   for (const part of parts) {
     const last = merged.at(-1);
@@ -87,7 +87,7 @@ export function toolRoleContentToUserTextMessage(options: {
   toolResponsePromptTemplate: (
     toolResult: ToolResultPart
   ) => ToolResponsePromptTemplateResult;
-}): LanguageModelV3Prompt[number] {
+}): LanguageModelV4Prompt[number] {
   const toolResultParts = options.toolContent.filter(
     (part): part is ToolResultPart => part.type === "tool-result"
   );

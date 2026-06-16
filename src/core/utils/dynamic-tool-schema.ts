@@ -1,7 +1,7 @@
 import type {
   JSONSchema7,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3ProviderTool,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4ProviderTool,
 } from "@ai-sdk/provider";
 
 /**
@@ -12,13 +12,13 @@ import type {
  * matches exactly one of the provided tools based on its 'name' property,
  * and then applies the corresponding tool's 'parameters' schema to its 'arguments' property.
  *
- * @param tools An array of tool definitions (LanguageModelV3FunctionTool or LanguageModelV3ProviderTool).
+ * @param tools An array of tool definitions (LanguageModelV4FunctionTool or LanguageModelV4ProviderTool).
  * Each tool must have a unique 'name' and its 'parameters' must be a valid JSON Schema.
  * @returns A JSONSchema7 object representing the dynamic validation logic.
  * @throws Error if a 'provider' tool is encountered, as they are not supported by this middleware.
  */
 export function createDynamicIfThenElseSchema(
-  tools: (LanguageModelV3FunctionTool | LanguageModelV3ProviderTool)[]
+  tools: (LanguageModelV4FunctionTool | LanguageModelV4ProviderTool)[]
 ): JSONSchema7 {
   // Explicitly specify the return type as JSONSchema7
   let currentSchema: JSONSchema7 = {};

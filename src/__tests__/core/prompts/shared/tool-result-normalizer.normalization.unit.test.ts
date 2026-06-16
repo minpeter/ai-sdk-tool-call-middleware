@@ -242,7 +242,13 @@ describe("unwrapToolResult", () => {
       expect(
         unwrapToolResult({
           type: "content",
-          value: [{ type: "media", data: "base64...", mediaType: "audio/mp3" }],
+          value: [
+            {
+              type: "media",
+              data: "base64...",
+              mediaType: "audio/mp3",
+            } as never,
+          ],
         })
       ).toBe("[Media: audio/mp3]");
     });
@@ -426,7 +432,7 @@ describe("normalizeToolResultForUserContent", () => {
     expect(result).toEqual([
       {
         type: "file",
-        data: "https://example.com/a.png",
+        data: { type: "data", data: "https://example.com/a.png" },
         mediaType: "image/*",
       },
     ]);
@@ -453,7 +459,7 @@ describe("normalizeToolResultForUserContent", () => {
     expect(result).toEqual([
       {
         type: "file",
-        data: "YWJj",
+        data: { type: "data", data: "YWJj" },
         mediaType: "application/pdf",
         filename: "report.pdf",
       },

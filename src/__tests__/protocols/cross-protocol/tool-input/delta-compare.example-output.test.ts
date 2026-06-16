@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
@@ -14,7 +14,7 @@ const XML_CURRENT_VIEW_OBJECT_DELTA_RE =
 const YAML_CURRENT_VIEW_OBJECT_DELTA_RE =
   /=== YAML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seoul","unit":"celsius"/;
 
-const tool: LanguageModelV3FunctionTool = {
+const tool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "get_weather",
   description: "Get weather information",
@@ -81,7 +81,7 @@ const scenarios = [
 ];
 
 function createInputStream(chunks: string[]) {
-  return new ReadableStream<LanguageModelV3StreamPart>({
+  return new ReadableStream<LanguageModelV4StreamPart>({
     start(controller) {
       for (const chunk of chunks) {
         controller.enqueue({
@@ -112,9 +112,9 @@ function createInputStream(chunks: string[]) {
   });
 }
 
-async function readAll(stream: ReadableStream<LanguageModelV3StreamPart>) {
+async function readAll(stream: ReadableStream<LanguageModelV4StreamPart>) {
   const reader = stream.getReader();
-  const parts: LanguageModelV3StreamPart[] = [];
+  const parts: LanguageModelV4StreamPart[] = [];
   while (true) {
     const { value, done } = await reader.read();
     if (done) {
@@ -125,7 +125,7 @@ async function readAll(stream: ReadableStream<LanguageModelV3StreamPart>) {
   return parts;
 }
 
-function formatPart(part: LanguageModelV3StreamPart) {
+function formatPart(part: LanguageModelV4StreamPart) {
   if (part.type === "text-delta") {
     return `text-delta("${part.delta.replace(/\n/g, "\\n")}")`;
   }
@@ -146,7 +146,7 @@ function formatPart(part: LanguageModelV3StreamPart) {
 
 function printComparison(
   name: string,
-  allParts: LanguageModelV3StreamPart[],
+  allParts: LanguageModelV4StreamPart[],
   pushLine: (line: string) => void
 ) {
   const legacyView = allParts.filter(
