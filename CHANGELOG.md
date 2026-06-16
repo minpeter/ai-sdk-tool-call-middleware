@@ -1,5 +1,12 @@
 # @ai-sdk-tool/parser
 
+## 4.1.26
+
+### Patch Changes
+
+- 99d5f73: Refresh the AI SDK v6 dependency stack and development tooling, including
+  provider-utils security hardening.
+
 ## 4.1.25
 
 ### Patch Changes
