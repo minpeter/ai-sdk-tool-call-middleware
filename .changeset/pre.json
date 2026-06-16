@@ -4,5 +4,7 @@
   "initialVersions": {
     "@ai-sdk-tool/parser": "4.1.25"
   },
-  "changesets": []
+  "changesets": [
+    "ai-sdk-v7-migration"
+  ]
 }
