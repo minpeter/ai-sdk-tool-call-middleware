@@ -1,5 +1,14 @@
 # @ai-sdk-tool/parser
 
+## 5.0.0-beta.1
+
+### Patch Changes
+
+- ed665b4: Move the dummy protocol test fixture out of production source, mark the package
+  as side-effect free for bundlers, and remove unused direct dev dependencies.
+- 5a24435: Refresh the AI SDK v7 beta dependency stack and raise the provider peer lower
+  bounds to the latest beta line.
+
 ## 5.0.0-beta.0
 
 ### Major Changes

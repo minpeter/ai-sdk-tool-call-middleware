@@ -5,6 +5,8 @@
     "@ai-sdk-tool/parser": "4.1.25"
   },
   "changesets": [
-    "ai-sdk-v7-migration"
+    "ai-sdk-v7-migration",
+    "clean-v7-fixtures",
+    "v7-beta-dependency-refresh"
   ]
 }
