@@ -22,7 +22,7 @@ jobs:
       id-token: write  # Required for npm OIDC Trusted Publishing
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
