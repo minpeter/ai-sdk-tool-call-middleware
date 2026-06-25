@@ -42,6 +42,13 @@
   - `@ai-sdk/provider` and `@ai-sdk/provider-utils` are now **peerDependencies** (rather than bundled dependencies) so the middleware shares the host application's provider types and avoids duplicate-package type mismatches. `@ai-sdk/openai` moved to devDependencies (used only by examples/tests).
   - **Node.js `>=22` is now required** (was `>=18`); Node 18 and 20 are no longer supported.
 
+## 4.1.26
+
+### Patch Changes
+
+- 99d5f73: Refresh the AI SDK v6 dependency stack and development tooling, including
+  provider-utils security hardening.
+
 ## 4.1.25
 
 ### Patch Changes
