@@ -5,7 +5,7 @@ Runnable examples for `@ai-sdk-tool/parser` middleware behavior.
 ## Prerequisites
 
 - Run from repository root.
-- Requires Node.js >= 22 and the AI SDK v7 line (`ai@^7`, `@ai-sdk/provider@^4`). This repo/branch targets that line; if you copy an example into your own project, install the v7 build of the parser: `pnpm add @ai-sdk-tool/parser@beta` (the v7 line is published under the `beta` dist-tag while the v4 line stays on `latest`).
+- Requires Node.js >= 22 and the AI SDK v7 line (`ai@^7`, `@ai-sdk/provider@^4`). This repo/branch targets that line; if you copy an example into your own project, install the current parser release with `pnpm add @ai-sdk-tool/parser` (the v5 line is the current `latest` release line while v4 remains available for AI SDK v6).
 - Install dependencies first: `pnpm install`.
 - Set `OPENROUTER_API_KEY` for examples that call a real model.
 

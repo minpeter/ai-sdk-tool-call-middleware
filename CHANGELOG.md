@@ -1,5 +1,25 @@
 # @ai-sdk-tool/parser
 
+## 5.0.0
+
+### Major Changes
+
+- 17cf35a: Migrate to AI SDK v7 (provider specification v4).
+
+  The v5 line is now the stable `latest` release line. Install it with `pnpm add @ai-sdk-tool/parser`.
+
+  - The middleware now declares `specificationVersion: "v4"` and uses the `LanguageModelV4*` provider types. **This release requires `ai@^7` / `@ai-sdk/provider@^4` and is no longer compatible with the AI SDK v6 line.**
+  - Tool-result file parts now use the v4 tagged `SharedV4FileData` shape (`{ type: "data", data }`) instead of a bare `data` string.
+  - `@ai-sdk/provider` and `@ai-sdk/provider-utils` are now **peerDependencies** (rather than bundled dependencies) so the middleware shares the host application's provider types and avoids duplicate-package type mismatches. `@ai-sdk/openai` moved to devDependencies (used only by examples/tests).
+  - **Node.js `>=22` is now required** (was `>=18`); Node 18 and 20 are no longer supported.
+
+### Patch Changes
+
+- ed665b4: Move the dummy protocol test fixture out of production source, mark the package
+  as side-effect free for bundlers, and remove unused direct dev dependencies.
+- 5a24435: Refresh the AI SDK v7 dependency stack and raise the provider peer lower
+  bounds to the stable 4/5 release lines.
+
 ## 5.0.0-beta.1
 
 ### Patch Changes

@@ -5,7 +5,7 @@ Local XML parsing demos using `@ai-sdk-tool/parser/rxml`.
 ## Prerequisites
 
 - Run from repository root.
-- Requires Node.js >= 22. These demos only use `@ai-sdk-tool/parser/rxml`; to install the AI SDK v7 line of the parser in your own project use `pnpm add @ai-sdk-tool/parser@beta` (the v7 line is on the `beta` dist-tag; v4 stays on `latest`).
+- Requires Node.js >= 22. These demos only use `@ai-sdk-tool/parser/rxml`; to install the AI SDK v7 line of the parser in your own project use `pnpm add @ai-sdk-tool/parser` (the v5 line is the current `latest` release line while v4 stays available for AI SDK v6).
 - Install dependencies first: `pnpm install`.
 - No model provider key is required for these examples.
 
