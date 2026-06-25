@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feat/ai-sdk-v7
     paths:
       - ".changeset/**"
       - .github/workflows/release-changeset.yml
