@@ -1,14 +1,14 @@
 import type {
   JSONSchema7,
-  LanguageModelV3Content,
-  LanguageModelV3FilePart,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3Message,
-  LanguageModelV3Prompt,
-  LanguageModelV3ReasoningPart,
-  LanguageModelV3TextPart,
-  LanguageModelV3ToolCallPart,
-  LanguageModelV3ToolResultPart,
+  LanguageModelV4Content,
+  LanguageModelV4FilePart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4Message,
+  LanguageModelV4Prompt,
+  LanguageModelV4ReasoningPart,
+  LanguageModelV4TextPart,
+  LanguageModelV4ToolCallPart,
+  LanguageModelV4ToolResultPart,
 } from "@ai-sdk/provider";
 import type { ToolContent, ToolResultPart } from "@ai-sdk/provider-utils";
 import { assistantToolCallsToTextContent } from "./core/prompts/shared/assistant-tool-calls-to-text";
@@ -30,9 +30,9 @@ import {
  */
 function buildFinalPrompt(
   systemPrompt: string,
-  processedPrompt: LanguageModelV3Prompt,
+  processedPrompt: LanguageModelV4Prompt,
   placement: "first" | "last"
-): LanguageModelV3Prompt {
+): LanguageModelV4Prompt {
   if (systemPrompt.trim().length === 0) {
     return processedPrompt;
   }
@@ -64,7 +64,7 @@ function buildFinalPrompt(
             content: mergedContent,
           }
         : m
-    ) as LanguageModelV3Prompt;
+    ) as LanguageModelV4Prompt;
   }
   if (placement === "first") {
     return [
@@ -90,13 +90,13 @@ function buildFinalPrompt(
  */
 function buildBaseReturnParams(
   params: {
-    prompt?: LanguageModelV3Prompt;
-    tools?: Array<LanguageModelV3FunctionTool | { type: string }>;
+    prompt?: LanguageModelV4Prompt;
+    tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
     providerOptions?: unknown;
     toolChoice?: { type: string; toolName?: string };
   },
-  finalPrompt: LanguageModelV3Prompt,
-  functionTools: LanguageModelV3FunctionTool[]
+  finalPrompt: LanguageModelV4Prompt,
+  functionTools: LanguageModelV4FunctionTool[]
 ) {
   return {
     ...params,
@@ -113,7 +113,7 @@ function buildBaseReturnParams(
  * Find provider-defined tool matching the selected tool name
  */
 function findProviderDefinedTool(
-  tools: Array<LanguageModelV3FunctionTool | { type: string }>,
+  tools: Array<LanguageModelV4FunctionTool | { type: string }>,
   selectedToolName: string
 ) {
   return tools.find((t) => {
@@ -130,7 +130,7 @@ function findProviderDefinedTool(
  */
 function handleToolChoiceTool(
   params: {
-    tools?: Array<LanguageModelV3FunctionTool | { type: string }>;
+    tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
     toolChoice?: { type: string; toolName?: string };
   },
   baseReturnParams: ReturnType<typeof buildBaseReturnParams>
@@ -151,9 +151,9 @@ function handleToolChoiceTool(
   }
 
   const selectedTool = (params.tools ?? []).find(
-    (t): t is LanguageModelV3FunctionTool =>
+    (t): t is LanguageModelV4FunctionTool =>
       t.type === "function" &&
-      (t as LanguageModelV3FunctionTool).name === selectedToolName
+      (t as LanguageModelV4FunctionTool).name === selectedToolName
   );
 
   if (!selectedTool) {
@@ -194,11 +194,11 @@ function handleToolChoiceTool(
  */
 function handleToolChoiceRequired(
   params: {
-    tools?: Array<LanguageModelV3FunctionTool | { type: string }>;
+    tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
     toolChoice?: { type: string; toolName?: string };
   },
   baseReturnParams: ReturnType<typeof buildBaseReturnParams>,
-  functionTools: LanguageModelV3FunctionTool[]
+  functionTools: LanguageModelV4FunctionTool[]
 ) {
   if (!params.tools || params.tools.length === 0) {
     throw new Error(
@@ -234,8 +234,8 @@ export function transformParams({
   placement = "first",
 }: {
   params: {
-    prompt?: LanguageModelV3Prompt;
-    tools?: Array<LanguageModelV3FunctionTool | { type: string }>;
+    prompt?: LanguageModelV4Prompt;
+    tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
     providerOptions?: {
       toolCallMiddleware?: {
         toolChoice?: { type: string };
@@ -244,7 +244,7 @@ export function transformParams({
     toolChoice?: { type: string; toolName?: string };
   };
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
-  toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
+  toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
   toolResponsePromptTemplate?: (
     toolResult: ToolResultPart
   ) => ToolResponsePromptTemplateResult;
@@ -255,7 +255,7 @@ export function transformParams({
     : protocol;
 
   const functionTools = (params.tools ?? []).filter(
-    (t): t is LanguageModelV3FunctionTool => t.type === "function"
+    (t): t is LanguageModelV4FunctionTool => t.type === "function"
   );
 
   const systemPrompt = resolvedProtocol.formatTools({
@@ -263,7 +263,7 @@ export function transformParams({
     toolSystemPromptTemplate,
   });
 
-  let normalizedPrompt: LanguageModelV3Message[];
+  let normalizedPrompt: LanguageModelV4Message[];
   if (Array.isArray(params.prompt)) {
     normalizedPrompt = params.prompt;
   } else if (params.prompt) {
@@ -310,7 +310,7 @@ export function transformParams({
  * Process a single message in the prompt
  */
 function processMessage(
-  message: LanguageModelV3Prompt[number],
+  message: LanguageModelV4Prompt[number],
   resolvedProtocol: TCMCoreProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
@@ -318,10 +318,10 @@ function processMessage(
   toolResponsePromptTemplate?: (
     toolResult: ToolResultPart
   ) => ToolResponsePromptTemplateResult
-): LanguageModelV3Prompt[number] {
+): LanguageModelV4Prompt[number] {
   if (message.role === "assistant") {
     const condensedContent = assistantToolCallsToTextContent({
-      content: message.content as LanguageModelV3Content[],
+      content: message.content as LanguageModelV4Content[],
       protocol: resolvedProtocol,
       conversionOptions: {
         onError: providerOptions?.onError,
@@ -331,11 +331,11 @@ function processMessage(
     return {
       role: "assistant" as const,
       content: condensedContent as Array<
-        | LanguageModelV3TextPart
-        | LanguageModelV3FilePart
-        | LanguageModelV3ReasoningPart
-        | LanguageModelV3ToolCallPart
-        | LanguageModelV3ToolResultPart
+        | LanguageModelV4TextPart
+        | LanguageModelV4FilePart
+        | LanguageModelV4ReasoningPart
+        | LanguageModelV4ToolCallPart
+        | LanguageModelV4ToolResultPart
       >,
     };
   }
@@ -403,8 +403,8 @@ function createCondensedMessage(role: string, joinedText: string) {
  * Condense multi-part text content into single text part
  */
 function condenseTextContent(
-  processedPrompt: LanguageModelV3Prompt
-): LanguageModelV3Prompt {
+  processedPrompt: LanguageModelV4Prompt
+): LanguageModelV4Prompt {
   for (let i = 0; i < processedPrompt.length; i += 1) {
     const msg = processedPrompt[i] as unknown as {
       role: string;
@@ -429,8 +429,8 @@ function condenseTextContent(
  * Merge consecutive user messages
  */
 function mergeConsecutiveUserMessages(
-  processedPrompt: LanguageModelV3Prompt
-): LanguageModelV3Prompt {
+  processedPrompt: LanguageModelV4Prompt
+): LanguageModelV4Prompt {
   for (let i = processedPrompt.length - 1; i > 0; i -= 1) {
     const current = processedPrompt[i];
     const prev = processedPrompt[i - 1];
@@ -458,7 +458,7 @@ function mergeConsecutiveUserMessages(
 }
 
 function convertToolPrompt(
-  prompt: LanguageModelV3Message[],
+  prompt: LanguageModelV4Message[],
   resolvedProtocol: TCMCoreProtocol,
   toolResponsePromptTemplate?: (
     toolResult: ToolResultPart
@@ -466,8 +466,8 @@ function convertToolPrompt(
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   }
-): LanguageModelV3Message[] {
-  let processedPrompt = prompt.map((message: LanguageModelV3Message) =>
+): LanguageModelV4Message[] {
+  let processedPrompt = prompt.map((message: LanguageModelV4Message) =>
     processMessage(
       message,
       resolvedProtocol,
@@ -478,5 +478,5 @@ function convertToolPrompt(
 
   processedPrompt = condenseTextContent(processedPrompt);
   processedPrompt = mergeConsecutiveUserMessages(processedPrompt);
-  return processedPrompt as LanguageModelV3Prompt;
+  return processedPrompt as LanguageModelV4Prompt;
 }

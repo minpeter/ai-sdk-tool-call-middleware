@@ -1,8 +1,8 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
-  LanguageModelV3ToolCall,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
+  LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import {
@@ -311,7 +311,7 @@ function canonicalizeToolInput(argumentsValue: unknown): string {
 function stringifyParsedToolInput(
   toolName: string,
   args: unknown,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): string {
   return stringifyToolInputWithSchema({
     toolName,
@@ -601,7 +601,7 @@ function schemaRejectsNonRecordArguments(
 }
 
 function extractArgumentKeyPolicy(
-  tools: LanguageModelV3FunctionTool[],
+  tools: LanguageModelV4FunctionTool[],
   toolName: string
 ): ArgumentKeyPolicy | undefined {
   const tool = tools.find((t) => t.name === toolName);
@@ -1261,7 +1261,7 @@ function collectObjectKeys(
 function applyToolArgumentKeyPolicy(
   toolName: string,
   args: unknown,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): { args: unknown } | null {
   const keyPolicy = extractArgumentKeyPolicy(tools, toolName);
   if (keyPolicy?.rejectAll) {
@@ -1296,7 +1296,7 @@ function applyToolArgumentKeyPolicy(
 
 function topLevelNullArgumentMatchesToolSchema(
   toolName: string,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): boolean {
   const tool = tools.find((candidate) => candidate.name === toolName);
   if (!tool || tool.inputSchema === undefined) {
@@ -1667,7 +1667,7 @@ function repairToolCallJson(
 
 function repairToolCallJsonForTools(
   raw: string,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): { name: string; arguments: Record<string, unknown> } | null {
   try {
     const toolName = extractStrictTopLevelStringProperty(raw, "name");
@@ -1720,7 +1720,7 @@ type ResolvedToolCall =
  */
 function resolveToolCall(
   toolCallJson: string,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): ResolvedToolCall {
   try {
     const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
@@ -1772,8 +1772,8 @@ function resolveToolCall(
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
-  processedElements: LanguageModelV3Content[],
-  tools: LanguageModelV3FunctionTool[],
+  processedElements: LanguageModelV4Content[],
+  tools: LanguageModelV4FunctionTool[],
   options?: ParserOptions
 ) {
   const resolved = resolveToolCall(toolCallJson, tools);
@@ -1828,7 +1828,7 @@ interface StreamState {
 }
 
 type StreamController =
-  TransformStreamDefaultController<LanguageModelV3StreamPart>;
+  TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
 interface TagProcessingContext {
   controller: StreamController;
@@ -1836,7 +1836,7 @@ interface TagProcessingContext {
   state: StreamState;
   toolCallEnd: string;
   toolCallStart: string;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }
 
 const WHITESPACE_JSON_REGEX = /\s/;
@@ -2183,7 +2183,7 @@ function ensureToolInputStart(
       type: "tool-input-start",
       id,
       toolName,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
   }
 }
 
@@ -2210,7 +2210,7 @@ function emitStreamingToolInputProgress(options: {
   state: StreamState;
   controller: StreamController;
   toolCallJson: string;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }): boolean {
   const { state, controller, toolCallJson, tools } = options;
   const progress = extractStreamingToolCallProgress(toolCallJson);
@@ -2255,7 +2255,7 @@ function scheduleStreamingToolInputProgress(options: {
   state: StreamState;
   controller: StreamController;
   toolCallJson: string;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }) {
   const { state, controller, toolCallJson, tools } = options;
   state.pendingToolInputProgressVersion += 1;
@@ -2284,7 +2284,7 @@ function closeToolInput(state: StreamState, controller: StreamController) {
   controller.enqueue({
     type: "tool-input-end",
     id: state.activeToolInput.id,
-  } as LanguageModelV3StreamPart);
+  } as LanguageModelV4StreamPart);
   state.activeToolInput = null;
 }
 
@@ -2311,14 +2311,14 @@ function emitResolvedToolCall(
     toolCallId,
     toolName,
     input,
-  } as LanguageModelV3StreamPart);
+  } as LanguageModelV4StreamPart);
 }
 
 function emitToolCallFromParsed(
   state: StreamState,
   controller: StreamController,
   parsedToolCall: { name: string; arguments: unknown },
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ) {
   closeTextBlock(state, controller);
   const toolName =
@@ -2348,7 +2348,7 @@ function flushBuffer(
     controller.enqueue({
       type: "text-start",
       id: state.currentTextId,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
     state.hasEmittedTextStart = true;
   }
 
@@ -2360,7 +2360,7 @@ function flushBuffer(
     type: "text-delta",
     id: state.currentTextId,
     delta: deltaContent,
-  } as LanguageModelV3StreamPart);
+  } as LanguageModelV4StreamPart);
   state.buffer = "";
 }
 
@@ -2369,7 +2369,7 @@ function closeTextBlock(state: StreamState, controller: StreamController) {
     controller.enqueue({
       type: "text-end",
       id: state.currentTextId,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
     state.currentTextId = null;
     state.hasEmittedTextStart = false;
   }
@@ -2380,7 +2380,7 @@ function emitIncompleteToolCall(
   controller: StreamController,
   toolCallStart: string,
   trailingBuffer: string,
-  tools: LanguageModelV3FunctionTool[],
+  tools: LanguageModelV4FunctionTool[],
   options?: ParserOptions
 ) {
   if (!state.currentToolCallJson && trailingBuffer.length === 0) {
@@ -2440,16 +2440,16 @@ function emitIncompleteToolCall(
     controller.enqueue({
       type: "text-start",
       id: errorId,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
     controller.enqueue({
       type: "text-delta",
       id: errorId,
       delta: errorContent,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
     controller.enqueue({
       type: "text-end",
       id: errorId,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
   }
   // Capture structured tool-call context before closeToolInput clears
   // state.activeToolInput. If streaming already identified the name/id we use
@@ -2483,9 +2483,9 @@ function handleFinishChunk(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
-  tools: LanguageModelV3FunctionTool[],
+  tools: LanguageModelV4FunctionTool[],
   options: ParserOptions | undefined,
-  chunk: LanguageModelV3StreamPart
+  chunk: LanguageModelV4StreamPart
 ) {
   if (state.isInsideToolCall) {
     const trailingBuffer = state.buffer;
@@ -2519,14 +2519,14 @@ function publishText(
       controller.enqueue({
         type: "text-start",
         id: state.currentTextId,
-      } as LanguageModelV3StreamPart);
+      } as LanguageModelV4StreamPart);
       state.hasEmittedTextStart = true;
     }
     controller.enqueue({
       type: "text-delta",
       id: state.currentTextId,
       delta: text,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
   }
 }
 
@@ -2565,16 +2565,16 @@ function emitToolCall(context: TagProcessingContext) {
     controller.enqueue({
       type: "text-start",
       id: errorId,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
     controller.enqueue({
       type: "text-delta",
       id: errorId,
       delta: errorContent,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
     controller.enqueue({
       type: "text-end",
       id: errorId,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
   }
   closeToolInput(state, controller);
   options?.onError?.(
@@ -2640,16 +2640,16 @@ function recoverNestedStreamingToolCall(options: {
     controller.enqueue({
       type: "text-start",
       id: errorId,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
     controller.enqueue({
       type: "text-delta",
       id: errorId,
       delta: droppedToolCall,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
     controller.enqueue({
       type: "text-end",
       id: errorId,
-    } as LanguageModelV3StreamPart);
+    } as LanguageModelV4StreamPart);
   }
   closeToolInput(state, controller);
   parserOptions?.onError?.(
@@ -2743,7 +2743,7 @@ function handlePartialTag(
   controller: StreamController,
   toolCallStart: string,
   toolCallEnd: string,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ) {
   if (state.isInsideToolCall) {
     const potentialEndIndex = getPotentialStartIndex(state.buffer, toolCallEnd);
@@ -2795,13 +2795,13 @@ export const hermesProtocol = ({
     tools,
     toolSystemPromptTemplate,
   }: {
-    tools: LanguageModelV3FunctionTool[];
-    toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
+    tools: LanguageModelV4FunctionTool[];
+    toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
   }) {
     return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
   },
 
-  formatToolCall(toolCall: LanguageModelV3ToolCall) {
+  formatToolCall(toolCall: LanguageModelV4ToolCall) {
     let args: unknown = {};
     if (toolCall.input != null) {
       try {
@@ -2822,10 +2822,10 @@ export const hermesProtocol = ({
     options,
   }: {
     text: string;
-    tools: LanguageModelV3FunctionTool[];
+    tools: LanguageModelV4FunctionTool[];
     options?: ParserOptions;
   }) {
-    const processedElements: LanguageModelV3Content[] = [];
+    const processedElements: LanguageModelV4Content[] = [];
     let currentIndex = 0;
     let searchFrom = 0;
 
@@ -2888,7 +2888,7 @@ export const hermesProtocol = ({
     tools,
     options,
   }: {
-    tools: LanguageModelV3FunctionTool[];
+    tools: LanguageModelV4FunctionTool[];
     options?: ParserOptions;
   }) {
     const state: StreamState = {
@@ -2903,8 +2903,8 @@ export const hermesProtocol = ({
     };
 
     return new TransformStream<
-      LanguageModelV3StreamPart,
-      LanguageModelV3StreamPart
+      LanguageModelV4StreamPart,
+      LanguageModelV4StreamPart
     >({
       transform(chunk, controller) {
         if (chunk.type === "finish") {

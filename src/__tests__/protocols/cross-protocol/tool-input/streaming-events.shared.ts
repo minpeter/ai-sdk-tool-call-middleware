@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import type {
@@ -15,7 +15,7 @@ import {
 } from "../../../test-helpers";
 
 function createTextDeltaStream(chunks: string[], id = "fixture") {
-  return new ReadableStream<LanguageModelV3StreamPart>({
+  return new ReadableStream<LanguageModelV4StreamPart>({
     start(controller) {
       for (const chunk of chunks) {
         controller.enqueue({
@@ -34,8 +34,8 @@ function createTextDeltaStream(chunks: string[], id = "fixture") {
   });
 }
 
-export function createInterleavedStream(parts: LanguageModelV3StreamPart[]) {
-  return new ReadableStream<LanguageModelV3StreamPart>({
+export function createInterleavedStream(parts: LanguageModelV4StreamPart[]) {
+  return new ReadableStream<LanguageModelV4StreamPart>({
     start(controller) {
       parts.forEach((part, index) => {
         if (part.type === "finish" && index !== parts.length - 1) {
@@ -59,8 +59,8 @@ export function createInterleavedStream(parts: LanguageModelV3StreamPart[]) {
 
 export function runProtocolStreamParser(options: {
   protocol: Pick<TCMProtocol, "createStreamParser">;
-  tools: LanguageModelV3FunctionTool[];
-  stream: ReadableStream<LanguageModelV3StreamPart>;
+  tools: LanguageModelV4FunctionTool[];
+  stream: ReadableStream<LanguageModelV4StreamPart>;
   parserOptions?: ParserOptions;
 }) {
   const transformer = options.protocol.createStreamParser({
@@ -74,7 +74,7 @@ export function runProtocolStreamParser(options: {
 
 export function runProtocolTextDeltaStream(options: {
   protocol: Pick<TCMProtocol, "createStreamParser">;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
   chunks: string[];
   id?: string;
   options?: ParserOptions;
@@ -87,7 +87,7 @@ export function runProtocolTextDeltaStream(options: {
   });
 }
 
-export function extractToolInputTimeline(parts: LanguageModelV3StreamPart[]) {
+export function extractToolInputTimeline(parts: LanguageModelV4StreamPart[]) {
   const starts = parts.filter(
     (part) => part.type === "tool-input-start"
   ) as Array<{
@@ -110,26 +110,26 @@ export function extractToolInputTimeline(parts: LanguageModelV3StreamPart[]) {
 }
 
 export function extractToolInputDeltas(
-  parts: LanguageModelV3StreamPart[]
+  parts: LanguageModelV4StreamPart[]
 ): string[] {
   return parts
     .filter(
       (
         part
       ): part is Extract<
-        LanguageModelV3StreamPart,
+        LanguageModelV4StreamPart,
         { type: "tool-input-delta" }
       > => part.type === "tool-input-delta"
     )
     .map((part) => part.delta);
 }
 
-export function extractTextDeltas(parts: LanguageModelV3StreamPart[]): string {
+export function extractTextDeltas(parts: LanguageModelV4StreamPart[]): string {
   return parts
     .filter(
       (
         part
-      ): part is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
+      ): part is Extract<LanguageModelV4StreamPart, { type: "text-delta" }> =>
         part.type === "text-delta"
     )
     .map((part) => part.delta)
@@ -137,10 +137,10 @@ export function extractTextDeltas(parts: LanguageModelV3StreamPart[]): string {
 }
 
 export function findToolCall(
-  parts: LanguageModelV3StreamPart[]
-): Extract<LanguageModelV3StreamPart, { type: "tool-call" }> {
+  parts: LanguageModelV4StreamPart[]
+): Extract<LanguageModelV4StreamPart, { type: "tool-call" }> {
   const toolCall = parts.find(
-    (part): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+    (part): part is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
       part.type === "tool-call"
   );
   if (!toolCall) {
@@ -159,7 +159,7 @@ function assertCondition(
 }
 
 export function assertCanonicalAiSdkEventOrder(
-  parts: LanguageModelV3StreamPart[]
+  parts: LanguageModelV4StreamPart[]
 ) {
   const finishIndex = parts.findIndex((part) => part.type === "finish");
   assertCondition(finishIndex >= 0, "Missing finish event");
@@ -330,10 +330,10 @@ export function assertCanonicalAiSdkEventOrder(
 }
 
 export function assertCoreAiSdkEventCoverage(
-  parts: LanguageModelV3StreamPart[]
+  parts: LanguageModelV4StreamPart[]
 ) {
   const eventTypes = new Set(parts.map((part) => part.type));
-  const requiredTypes: LanguageModelV3StreamPart["type"][] = [
+  const requiredTypes: LanguageModelV4StreamPart["type"][] = [
     "text-start",
     "text-delta",
     "text-end",
@@ -353,8 +353,8 @@ export function assertCoreAiSdkEventCoverage(
 }
 
 export function assertHasEventTypes(
-  parts: LanguageModelV3StreamPart[],
-  requiredTypes: LanguageModelV3StreamPart["type"][]
+  parts: LanguageModelV4StreamPart[],
+  requiredTypes: LanguageModelV4StreamPart["type"][]
 ) {
   const eventTypes = new Set(parts.map((part) => part.type));
   for (const eventType of requiredTypes) {
@@ -367,11 +367,11 @@ export function assertHasEventTypes(
 
 interface EventCheck {
   label: string;
-  matches: (part: LanguageModelV3StreamPart) => boolean;
+  matches: (part: LanguageModelV4StreamPart) => boolean;
 }
 
 export function assertEventSequence(
-  parts: LanguageModelV3StreamPart[],
+  parts: LanguageModelV4StreamPart[],
   checks: EventCheck[]
 ) {
   let prevIndex = -1;
@@ -386,7 +386,7 @@ export function assertEventSequence(
 }
 
 export function createOfficialPassthroughFixture(tag: string): {
-  parts: LanguageModelV3StreamPart[];
+  parts: LanguageModelV4StreamPart[];
   checks: EventCheck[];
 } {
   const reasoningId = `reasoning-${tag}`;
@@ -396,7 +396,7 @@ export function createOfficialPassthroughFixture(tag: string): {
   const approvalId = `approval-${tag}`;
   const passthroughToolCallId = `passthrough-call-${tag}`;
 
-  const parts: LanguageModelV3StreamPart[] = [
+  const parts: LanguageModelV4StreamPart[] = [
     {
       type: "stream-start",
       warnings: [],
@@ -432,7 +432,7 @@ export function createOfficialPassthroughFixture(tag: string): {
     {
       type: "file",
       mediaType: "text/plain",
-      data: "Y29tcGxpYW5jZQ==",
+      data: { type: "data", data: "Y29tcGxpYW5jZQ==" },
     },
     {
       type: "response-metadata",
@@ -570,7 +570,7 @@ export function createOfficialPassthroughFixture(tag: string): {
   return { parts, checks };
 }
 
-export const allOfficialEventTypes: LanguageModelV3StreamPart["type"][] = [
+export const allOfficialEventTypes: LanguageModelV4StreamPart["type"][] = [
   "stream-start",
   "text-start",
   "text-delta",

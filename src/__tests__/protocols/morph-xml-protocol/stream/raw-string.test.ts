@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
@@ -15,7 +15,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
   it("captures raw inner XML for string-typed arg during streaming", async () => {
     const CHUNK_SIZE = 7;
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "write_file",
@@ -34,7 +34,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
 
     const transformer = protocol.createStreamParser({ tools });
     const html = "<html><body><h1>Hi</h1><p>World</p></body></html>";
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         const parts = [
           "<write_file>",
@@ -69,7 +69,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     );
 
     const tool = out.find(
-      (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+      (p): p is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("write_file");
@@ -89,7 +89,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
   it("error policy cancels the tool call without leaking raw text by default", async () => {
     const CHUNK_SIZE = 5;
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "write_file",
@@ -105,7 +105,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         const parts = [
           "<write_file>",
@@ -136,7 +136,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     );
     // Entire tool call is cancelled and raw text is suppressed by default
     const textParts = out.filter(
-      (p): p is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
+      (p): p is Extract<LanguageModelV4StreamPart, { type: "text-delta" }> =>
         p.type === "text-delta"
     );
     const combined = textParts.map((p) => p.delta).join("");
@@ -149,7 +149,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
   it("passes structured drop metadata when unclosed XML tool call is not parseable at finish", async () => {
     const onError = vi.fn();
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "write_file",
@@ -168,7 +168,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -204,7 +204,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
   it("can emit raw text fallback when explicitly enabled", async () => {
     const CHUNK_SIZE = 5;
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "write_file",
@@ -223,7 +223,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
       tools,
       options: { emitRawToolCallTextOnError: true },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         const parts = [
           "<write_file>",
@@ -254,7 +254,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     );
     const combined = out
       .filter(
-        (p): p is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
+        (p): p is Extract<LanguageModelV4StreamPart, { type: "text-delta" }> =>
           p.type === "text-delta"
       )
       .map((p) => p.delta)
@@ -267,7 +267,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
   it("captures DOCTYPE HTML inside string-typed <content> during streaming (user-reported)", async () => {
     const CHUNK_SIZE = 11;
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "file_write",
@@ -285,7 +285,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
 
     const transformer = protocol.createStreamParser({ tools });
     const html = `<!DOCTYPE html>\n<html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Simple HTML Page</title> </head> <body> <h1>Hello World!</h1> <p>This is a simple HTML file.</p> <button>Click Me</button> </body> </html>`;
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         const parts = [
           "<file_write>",
@@ -317,7 +317,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
       pipeWithTransformer(rs, transformer)
     );
     const tool = out.find(
-      (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+      (p): p is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("file_write");
@@ -335,7 +335,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
   it("decodes entity-escaped HTML inside string-typed <content> during streaming", async () => {
     const CHUNK_SIZE = 13;
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "file_write",
@@ -355,7 +355,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
     const htmlRaw = "<!DOCTYPE html>\n<html><body><h1>안녕</h1></body></html>";
     const htmlEscaped =
       "&lt;!DOCTYPE html&gt;\n&lt;html&gt;&lt;body&gt;&lt;h1&gt;안녕&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;";
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         const parts = [
           "<file_write>",
@@ -387,7 +387,7 @@ describe("morphXmlProtocol raw string handling in streaming", () => {
       pipeWithTransformer(rs, transformer)
     );
     const tool = out.find(
-      (p): p is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+      (p): p is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
         p.type === "tool-call"
     );
     expect(tool?.toolName).toBe("file_write");

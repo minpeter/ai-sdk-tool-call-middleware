@@ -1,10 +1,10 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 
 describe("morphXmlProtocol pipeline index-tags preservation integration", () => {
-  const coordTools: LanguageModelV3FunctionTool[] = [
+  const coordTools: LanguageModelV4FunctionTool[] = [
     {
       type: "function",
       name: "set_coordinates",

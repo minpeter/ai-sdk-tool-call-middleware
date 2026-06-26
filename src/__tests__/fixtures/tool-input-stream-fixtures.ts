@@ -1,6 +1,6 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 
-const weatherTool: LanguageModelV3FunctionTool = {
+const weatherTool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "get_weather",
   description: "Get weather information",

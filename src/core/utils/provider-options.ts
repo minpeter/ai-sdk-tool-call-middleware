@@ -1,7 +1,7 @@
 import type {
   JSONSchema7,
-  LanguageModelV3FunctionTool,
-  SharedV3ProviderOptions,
+  LanguageModelV4FunctionTool,
+  SharedV4ProviderOptions,
 } from "@ai-sdk/provider";
 import type { OnErrorFn } from "./on-error";
 
@@ -40,7 +40,7 @@ interface DecodeOriginalToolsOptions {
 }
 
 export function encodeOriginalTools(
-  tools: LanguageModelV3FunctionTool[] | undefined
+  tools: LanguageModelV4FunctionTool[] | undefined
 ): Array<{ name: string; inputSchema: string }> {
   return (
     tools?.map((t) => ({
@@ -53,12 +53,12 @@ export function encodeOriginalTools(
 export function decodeOriginalTools(
   originalTools: EncodedOriginalTool[] | undefined,
   options?: DecodeOriginalToolsOptions
-): LanguageModelV3FunctionTool[] {
+): LanguageModelV4FunctionTool[] {
   if (!originalTools) {
     return [];
   }
 
-  const decodedTools: LanguageModelV3FunctionTool[] = [];
+  const decodedTools: LanguageModelV4FunctionTool[] = [];
 
   for (const [index, tool] of originalTools.entries()) {
     if (!tool || typeof tool.name !== "string") {
@@ -110,7 +110,7 @@ export function decodeOriginalTools(
 export function decodeOriginalToolsFromProviderOptions(
   providerOptions: ToolCallMiddlewareProviderOptions | undefined,
   options?: DecodeOriginalToolsOptions
-): LanguageModelV3FunctionTool[] {
+): LanguageModelV4FunctionTool[] {
   return decodeOriginalTools(
     providerOptions?.toolCallMiddleware?.originalTools,
     options
@@ -150,14 +150,14 @@ export function getToolCallMiddlewareOptions(
 export function mergeToolCallMiddlewareOptions(
   providerOptions: unknown,
   overrides: Record<string, unknown>
-): SharedV3ProviderOptions {
+): SharedV4ProviderOptions {
   return {
     ...(isRecord(providerOptions) ? providerOptions : {}),
     toolCallMiddleware: {
       ...getToolCallMiddlewareOptions(providerOptions),
       ...overrides,
     },
-  } as SharedV3ProviderOptions;
+  } as SharedV4ProviderOptions;
 }
 
 export function isToolChoiceActive(params: {

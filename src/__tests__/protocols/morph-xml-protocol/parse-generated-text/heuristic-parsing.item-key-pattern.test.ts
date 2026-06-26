@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -16,7 +16,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         <date>2023-12-25</date>
       </weather_get_by_coordinates_date>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "weather_get_by_coordinates_date",
@@ -52,7 +52,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </data>
       </get_single_value>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "get_single_value",
@@ -88,7 +88,7 @@ describe("XML Protocol Heuristic Parsing", () => {
         </point2>
       </calculate_distance>`;
 
-      const tools: LanguageModelV3FunctionTool[] = [
+      const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
           name: "calculate_distance",

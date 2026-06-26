@@ -1,9 +1,9 @@
 import type {
-  LanguageModelV3,
-  LanguageModelV3FinishReason,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
-  LanguageModelV3Usage,
+  LanguageModelV4,
+  LanguageModelV4FinishReason,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
+  LanguageModelV4Usage,
 } from "@ai-sdk/provider";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { getDebugLevel, logParsedChunk, logRawChunk } from "./core/utils/debug";
@@ -25,8 +25,8 @@ export async function wrapStream({
   params,
 }: {
   protocol: TCMCoreProtocol;
-  doStream: () => ReturnType<LanguageModelV3["doStream"]>;
-  doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>;
+  doStream: () => ReturnType<LanguageModelV4["doStream"]>;
+  doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
   params: {
     providerOptions?: ToolCallMiddlewareProviderOptions;
   };
@@ -54,7 +54,7 @@ export async function wrapStream({
 
   const coreStream = stream
     .pipeThrough(
-      new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>(
+      new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>(
         {
           transform(part, controller) {
             if (debugLevel === "stream") {
@@ -69,7 +69,7 @@ export async function wrapStream({
 
   let seenToolCall = false;
   const v3Stream = coreStream.pipeThrough(
-    new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>({
+    new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
       transform(part, controller) {
         let normalizedPart =
           part.type === "tool-call" ? coerceToolCallPart(part, tools) : part;
@@ -110,8 +110,8 @@ export async function toolChoiceStream({
   tools,
   options,
 }: {
-  doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>;
-  tools?: LanguageModelV3FunctionTool[];
+  doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
+  tools?: LanguageModelV4FunctionTool[];
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
@@ -127,7 +127,7 @@ export async function toolChoiceStream({
     errorMessage: "Failed to parse toolChoice JSON from streamed model output",
   });
 
-  const stream = new ReadableStream<LanguageModelV3StreamPart>({
+  const stream = new ReadableStream<LanguageModelV4StreamPart>({
     start(controller) {
       controller.enqueue({
         type: "tool-call",
@@ -151,7 +151,7 @@ export async function toolChoiceStream({
   };
 }
 
-const ZERO_USAGE: LanguageModelV3Usage = {
+const ZERO_USAGE: LanguageModelV4Usage = {
   inputTokens: {
     total: 0,
     noCache: undefined,
@@ -167,7 +167,7 @@ const ZERO_USAGE: LanguageModelV3Usage = {
 
 function normalizeToolCallsFinishReason(
   finishReason: unknown
-): LanguageModelV3FinishReason {
+): LanguageModelV4FinishReason {
   let raw = "tool-calls";
   if (typeof finishReason === "string") {
     raw = finishReason;
@@ -193,7 +193,7 @@ function normalizeToolCallsFinishReason(
   };
 }
 
-function normalizeUsage(usage: unknown): LanguageModelV3Usage {
+function normalizeUsage(usage: unknown): LanguageModelV4Usage {
   if (!usage || typeof usage !== "object") {
     return ZERO_USAGE;
   }
@@ -207,7 +207,7 @@ function normalizeUsage(usage: unknown): LanguageModelV3Usage {
     output &&
     typeof output === "object"
   ) {
-    return usage as LanguageModelV3Usage;
+    return usage as LanguageModelV4Usage;
   }
 
   if (typeof input === "number" && typeof output === "number") {

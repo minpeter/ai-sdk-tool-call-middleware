@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
@@ -89,7 +89,7 @@ describe("jsonSchemaToPythonType", () => {
 
 describe("renderToolDefinition", () => {
   it("renders tool with description and parameters", () => {
-    const tool: LanguageModelV3FunctionTool = {
+    const tool: LanguageModelV4FunctionTool = {
       type: "function",
       name: "get_weather",
       description: "Get weather by city",
@@ -110,7 +110,7 @@ describe("renderToolDefinition", () => {
   });
 
   it("renders tool without description gracefully", () => {
-    const tool: LanguageModelV3FunctionTool = {
+    const tool: LanguageModelV4FunctionTool = {
       type: "function",
       name: "no_desc_tool",
       inputSchema: {
@@ -126,7 +126,7 @@ describe("renderToolDefinition", () => {
   });
 
   it("preserves the original schema when properties is empty", () => {
-    const tool: LanguageModelV3FunctionTool = {
+    const tool: LanguageModelV4FunctionTool = {
       type: "function",
       name: "no_params_tool",
       description: "No params",
@@ -144,7 +144,7 @@ describe("renderToolDefinition", () => {
   });
 
   it("preserves schemas without properties (e.g. additionalProperties)", () => {
-    const tool: LanguageModelV3FunctionTool = {
+    const tool: LanguageModelV4FunctionTool = {
       type: "function",
       name: "dynamic_payload",
       description: "Accepts dynamic object values",
@@ -162,7 +162,7 @@ describe("renderToolDefinition", () => {
   });
 
   it("escapes tool names safely when serializing", () => {
-    const tool: LanguageModelV3FunctionTool = {
+    const tool: LanguageModelV4FunctionTool = {
       type: "function",
       name: 'bad"name\\tool',
       description: "Escaping check",
@@ -182,7 +182,7 @@ describe("renderToolDefinition", () => {
   });
 
   it("renders each Args entry on its own line", () => {
-    const tool: LanguageModelV3FunctionTool = {
+    const tool: LanguageModelV4FunctionTool = {
       type: "function",
       name: "two_params",
       description: "Two parameters",
@@ -205,7 +205,7 @@ describe("renderToolDefinition", () => {
   });
 
   it("renders complex nested parameter types in signature and args", () => {
-    const tool: LanguageModelV3FunctionTool = {
+    const tool: LanguageModelV4FunctionTool = {
       type: "function",
       name: "analyze_data",
       description: "Analyze deeply nested payload",
@@ -417,7 +417,7 @@ describe("hermesSystemPromptTemplate", () => {
             },
           },
         ],
-      } satisfies LanguageModelV3FunctionTool & {
+      } satisfies LanguageModelV4FunctionTool & {
         inputExamples: Array<{ input: unknown }>;
       },
     ]);

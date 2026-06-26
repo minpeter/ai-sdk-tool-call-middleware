@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
@@ -13,7 +13,7 @@ describe("yamlXmlProtocol text-start/text-end events", () => {
   it("should emit proper text-start and text-end events", async () => {
     const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "1", delta: "Before " });
         ctrl.enqueue({

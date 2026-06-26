@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
@@ -14,7 +14,7 @@ import {
 describe("morphXmlProtocol streaming error policy", () => {
   it("suppresses raw XML tags in output when parsing fails by default", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "bad_tool",
@@ -33,7 +33,7 @@ describe("morphXmlProtocol streaming error policy", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "Calling tool:\n" });
         // Invalid XML with duplicate string tags (will cause RXMLDuplicateStringTagError)
@@ -79,7 +79,7 @@ describe("morphXmlProtocol streaming error policy", () => {
 
   it("can expose raw XML fallback when explicitly enabled", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "bad_tool",
@@ -97,7 +97,7 @@ describe("morphXmlProtocol streaming error policy", () => {
       tools,
       options: { emitRawToolCallTextOnError: true },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "Calling tool:\n" });
         ctrl.enqueue({

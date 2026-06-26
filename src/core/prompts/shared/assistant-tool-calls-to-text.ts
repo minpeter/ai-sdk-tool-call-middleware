@@ -1,4 +1,4 @@
-import type { LanguageModelV3Content } from "@ai-sdk/provider";
+import type { LanguageModelV4Content } from "@ai-sdk/provider";
 import type { TCMCoreProtocol } from "../../protocols/protocol-interface";
 
 interface AssistantToolCallTextConversionOptions {
@@ -6,11 +6,11 @@ interface AssistantToolCallTextConversionOptions {
 }
 
 export function assistantToolCallsToTextContent(options: {
-  content: LanguageModelV3Content[];
+  content: LanguageModelV4Content[];
   protocol: TCMCoreProtocol;
   conversionOptions?: AssistantToolCallTextConversionOptions;
-}): LanguageModelV3Content[] {
-  const newContent: LanguageModelV3Content[] = [];
+}): LanguageModelV4Content[] {
+  const newContent: LanguageModelV4Content[] = [];
   for (const item of options.content) {
     switch (item.type) {
       case "tool-call":

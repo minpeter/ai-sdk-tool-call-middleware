@@ -10,21 +10,49 @@ AI SDK middleware for parsing tool calls from models that do not natively suppor
 ## Install
 
 ```bash
+# Current stable line (v5.x) — built for AI SDK v7
 pnpm add @ai-sdk-tool/parser
+```
+
+If you still need the AI SDK v6 line, pin the previous major:
+
+```bash
+pnpm add @ai-sdk-tool/parser@4
 ```
 
 ## AI SDK compatibility
 
-Fact-checked from this repo `CHANGELOG.md` and npm release metadata (as of 2026-02-18).
+Fact-checked from this repo `CHANGELOG.md` and npm release metadata (as of 2026-06-25).
 
 | `@ai-sdk-tool/parser` major | AI SDK major | Maintenance status |
 |---|---|---|
 | `v1.x` | `v4.x` | Legacy (not actively maintained) |
 | `v2.x` | `v5.x` | Legacy (not actively maintained) |
 | `v3.x` | `v6.x` | Legacy (not actively maintained) |
-| `v4.x` | `v6.x` | Active (current `latest` line) |
+| `v4.x` | `v6.x` | Previous stable line |
+| `v5.x` | `v7.x` | Active (current `latest` line) |
 
 Note: there is no separate formal EOL announcement in releases/changelog for `v1`-`v3`; "legacy" here means non-current release lines.
+
+## Upgrading to v7
+
+The `5.0.0` line targets **AI SDK v7** (provider specification v4). It is the current `latest` line; the `v4.x` line remains available for AI SDK v6.
+
+```bash
+pnpm add @ai-sdk-tool/parser
+```
+
+**Breaking changes vs. the `v4.x` line:**
+
+- **Requires `ai@^7` / `@ai-sdk/provider@^4`.** This line is **not** compatible with the AI SDK v6 line. The middleware declares `specificationVersion: "v4"` and uses the `LanguageModelV4*` provider types.
+- **`@ai-sdk/provider` and `@ai-sdk/provider-utils` are now peer dependencies.** They are normally satisfied transitively by `ai@7`, so most apps need no extra install. If your package manager does not auto-install peers, add them explicitly:
+  ```bash
+  pnpm add @ai-sdk/provider@^4 @ai-sdk/provider-utils@^5
+  ```
+- **Node.js `>=22` is required** (Node 18 is end-of-life).
+- Tool-result file parts now use the v4 tagged file shape (`{ type: "data", data }`) instead of a bare `data` string. This only affects code that constructs tool-result file parts directly.
+
+**Status:** `5.0.0` is the stable release line. Pin an exact version if you need reproducible installs.
 
 ## Package map
 

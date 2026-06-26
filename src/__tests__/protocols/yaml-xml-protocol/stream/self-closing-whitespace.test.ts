@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
@@ -14,7 +14,7 @@ describe("yamlXmlProtocol streaming self-closing whitespace", () => {
   it("parses self-closing tag with whitespace in stream", async () => {
     const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",

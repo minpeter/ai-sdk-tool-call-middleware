@@ -1,8 +1,8 @@
 import type {
-  LanguageModelV3,
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3ToolCall,
+  LanguageModelV4,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import {
@@ -25,7 +25,7 @@ import { resolveToolChoiceSelection } from "./core/utils/tool-choice";
 
 function logDebugSummary(
   debugSummary: { originalText?: string; toolCalls?: string } | undefined,
-  toolCall: LanguageModelV3ToolCall,
+  toolCall: LanguageModelV4ToolCall,
   originText: string
 ) {
   if (debugSummary) {
@@ -43,9 +43,9 @@ function logDebugSummary(
 }
 
 async function handleToolChoice(
-  doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>,
+  doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>,
   params: { providerOptions?: ToolCallMiddlewareProviderOptions },
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ) {
   const result = await doGenerate();
   const first = result.content?.[0];
@@ -63,7 +63,7 @@ async function handleToolChoice(
     errorMessage: "Failed to parse toolChoice JSON from generated model output",
   });
 
-  const toolCall: LanguageModelV3ToolCall = {
+  const toolCall: LanguageModelV4ToolCall = {
     type: "tool-call",
     toolCallId: generateToolCallId(),
     toolName,
@@ -80,12 +80,12 @@ async function handleToolChoice(
 }
 
 function parseContent(
-  content: LanguageModelV3Content[],
+  content: LanguageModelV4Content[],
   protocol: TCMCoreProtocol,
-  tools: LanguageModelV3FunctionTool[],
+  tools: LanguageModelV4FunctionTool[],
   providerOptions?: ToolCallMiddlewareProviderOptions
-): LanguageModelV3Content[] {
-  const parsed = content.flatMap((contentItem): LanguageModelV3Content[] => {
+): LanguageModelV4Content[] {
+  const parsed = content.flatMap((contentItem): LanguageModelV4Content[] => {
     if (contentItem.type !== "text") {
       return [contentItem];
     }
@@ -102,7 +102,7 @@ function parseContent(
     });
 
     const hasToolCall = parsedByProtocol.some(
-      (part): part is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
+      (part): part is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
         part.type === "tool-call"
     );
     if (hasToolCall) {
@@ -121,7 +121,7 @@ function parseContent(
   );
 }
 
-function logParsedContent(content: LanguageModelV3Content[]) {
+function logParsedContent(content: LanguageModelV4Content[]) {
   if (getDebugLevel() === "stream") {
     for (const part of content) {
       logParsedChunk(part);
@@ -130,16 +130,16 @@ function logParsedContent(content: LanguageModelV3Content[]) {
 }
 
 function computeDebugSummary(options: {
-  result: { content: LanguageModelV3Content[] };
-  newContent: LanguageModelV3Content[];
+  result: { content: LanguageModelV4Content[] };
+  newContent: LanguageModelV4Content[];
   protocol: TCMCoreProtocol;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
   providerOptions?: ToolCallMiddlewareProviderOptions;
 }) {
   const { result, newContent, protocol, tools, providerOptions } = options;
   const allText = result.content
     .filter(
-      (c): c is Extract<LanguageModelV3Content, { type: "text" }> =>
+      (c): c is Extract<LanguageModelV4Content, { type: "text" }> =>
         c.type === "text"
     )
     .map((c) => c.text)
@@ -151,7 +151,7 @@ function computeDebugSummary(options: {
   const originalText = segments.join("\n\n");
 
   const toolCalls = newContent.filter(
-    (p): p is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
+    (p): p is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
       p.type === "tool-call"
   );
 
@@ -179,7 +179,7 @@ export async function wrapGenerate({
   params,
 }: {
   protocol: TCMCoreProtocol;
-  doGenerate: () => ReturnType<LanguageModelV3["doGenerate"]>;
+  doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
   params: {
     providerOptions?: ToolCallMiddlewareProviderOptions;
   };

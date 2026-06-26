@@ -9,7 +9,7 @@
  * 3. post-parse: Object repair/coercion after successful parse
  */
 
-export type HeuristicPhase = "pre-parse" | "fallback-reparse" | "post-parse";
+type HeuristicPhase = "pre-parse" | "fallback-reparse" | "post-parse";
 
 export interface IntermediateCall {
   errors: unknown[];

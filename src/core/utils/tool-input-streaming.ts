@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import {
   type EmittedToolInputState,
@@ -11,7 +11,7 @@ import {
 import { coerceToolCallInput } from "./tool-call-coercion";
 
 type StreamController =
-  TransformStreamDefaultController<LanguageModelV3StreamPart>;
+  TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
 interface RawFallbackOptions {
   emitRawToolCallTextOnError?: boolean;
@@ -22,7 +22,7 @@ type OnMismatch = (message: string, metadata?: Record<string, unknown>) => void;
 export function stringifyToolInputWithSchema(options: {
   toolName: string;
   args: unknown;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
   fallback?: (args: unknown) => string;
 }): string {
   const coerced = coerceToolCallInput(

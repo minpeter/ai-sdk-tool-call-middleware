@@ -1,7 +1,7 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
@@ -43,7 +43,7 @@ function assertExcludesAll(
 describe("cross-protocol tool-input streaming events: literal angle-bracket arg values", () => {
   const literalValue = "<Ctrl+C>ahi, my name is pi<Esc><Enter>";
 
-  const tools: LanguageModelV3FunctionTool[] = [
+  const tools: LanguageModelV4FunctionTool[] = [
     {
       type: "function",
       name: "send_keys",
@@ -179,7 +179,7 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
         const toolCall = parsed.find(
           (
             part
-          ): part is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
+          ): part is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
             part.type === "tool-call" && part.toolName === "send_keys"
         );
 
@@ -204,7 +204,7 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
           (
             part
           ): part is Extract<
-            LanguageModelV3StreamPart,
+            LanguageModelV4StreamPart,
             { type: "tool-call" }
           > => part.type === "tool-call" && part.toolName === "send_keys"
         );
@@ -222,7 +222,7 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
           (
             part
           ): part is Extract<
-            LanguageModelV3StreamPart,
+            LanguageModelV4StreamPart,
             { type: "tool-input-delta" }
           > =>
             part.type === "tool-input-delta" && part.id === toolCall.toolCallId
@@ -250,7 +250,7 @@ describe("cross-protocol tool-input streaming events: double-escaped entity lite
   const entityLiteralValue =
     "&lt;Ctrl+C&gt;ahi, my name is pi&lt;Esc&gt;&lt;Enter&gt;";
 
-  const tools: LanguageModelV3FunctionTool[] = [
+  const tools: LanguageModelV4FunctionTool[] = [
     {
       type: "function",
       name: "send_keys",
@@ -321,7 +321,7 @@ describe("cross-protocol tool-input streaming events: double-escaped entity lite
       const toolCall = parsed.find(
         (
           part
-        ): part is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
+        ): part is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
           part.type === "tool-call" && part.toolName === "send_keys"
       );
 
@@ -345,7 +345,7 @@ describe("cross-protocol tool-input streaming events: double-escaped entity lite
       const toolCall = out.find(
         (
           part
-        ): part is Extract<LanguageModelV3StreamPart, { type: "tool-call" }> =>
+        ): part is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
           part.type === "tool-call" && part.toolName === "send_keys"
       );
 
@@ -362,7 +362,7 @@ describe("cross-protocol tool-input streaming events: double-escaped entity lite
         (
           part
         ): part is Extract<
-          LanguageModelV3StreamPart,
+          LanguageModelV4StreamPart,
           { type: "tool-input-delta" }
         > => part.type === "tool-input-delta" && part.id === toolCall.toolCallId
       );

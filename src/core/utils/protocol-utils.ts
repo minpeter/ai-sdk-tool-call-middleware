@@ -1,26 +1,26 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { generateId } from "./id";
 
 export function formatToolsWithPromptTemplate(options: {
-  tools: LanguageModelV3FunctionTool[];
-  toolSystemPromptTemplate: (tools: LanguageModelV3FunctionTool[]) => string;
+  tools: LanguageModelV4FunctionTool[];
+  toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
 }): string {
   return options.toolSystemPromptTemplate(options.tools || []);
 }
 
 export function extractToolNames(
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): string[] {
   return tools.map((tool) => tool.name).filter(Boolean) as string[];
 }
 
 export function addTextSegment(
   text: string,
-  processedElements: LanguageModelV3Content[]
+  processedElements: LanguageModelV4Content[]
 ): void {
   if (text.trim()) {
     processedElements.push({ type: "text", text });
@@ -34,7 +34,7 @@ export function createFlushTextHandler(
   setHasEmittedTextStart: (value: boolean) => void
 ) {
   return (
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+    controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
     text?: string
   ) => {
     const content = text;

@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import YAML from "yaml";
 import { yamlXmlSystemPromptTemplate } from "../../../core/prompts/yaml-xml-prompt";
@@ -26,7 +26,7 @@ describe("yamlXmlSystemPromptTemplate", () => {
             },
           },
         ],
-      } satisfies LanguageModelV3FunctionTool & {
+      } satisfies LanguageModelV4FunctionTool & {
         inputExamples: Array<{ input: unknown }>;
       },
     ]);
@@ -51,7 +51,7 @@ describe("yamlXmlSystemPromptTemplate", () => {
           required: ["content"],
         },
         inputExamples: [{ input: { content: "<tag> & value" } }],
-      } satisfies LanguageModelV3FunctionTool & {
+      } satisfies LanguageModelV4FunctionTool & {
         inputExamples: Array<{ input: unknown }>;
       },
     ]);
@@ -77,7 +77,7 @@ describe("yamlXmlSystemPromptTemplate", () => {
             required: ["content"],
           },
           inputExamples: [{ input: { content: "x" } }],
-        } satisfies LanguageModelV3FunctionTool & {
+        } satisfies LanguageModelV4FunctionTool & {
           inputExamples: Array<{ input: unknown }>;
         },
       ]);
@@ -101,7 +101,7 @@ describe("yamlXmlSystemPromptTemplate", () => {
           required: ["value"],
         },
         inputExamples: [{ input: { value: "ok" } }],
-      } satisfies LanguageModelV3FunctionTool & {
+      } satisfies LanguageModelV4FunctionTool & {
         inputExamples: Array<{ input: unknown }>;
       },
     ]);

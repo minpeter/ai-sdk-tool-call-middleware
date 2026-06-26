@@ -3,7 +3,7 @@ import path from "node:path";
 import type {
   JSONObject,
   JSONSchema7,
-  LanguageModelV3FunctionTool,
+  LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { morphXmlSystemPromptTemplate } from "../../../src/core/prompts/morph-xml-prompt";
 
@@ -11,7 +11,7 @@ type SectionMode = "examples" | "full" | "tools";
 
 interface FixtureDocument {
   title?: string;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }
 
 interface CliOptions {
@@ -256,7 +256,7 @@ function toValidatedInputExamples(
 function toMorphToolFixture(
   value: unknown,
   toolIndex: number
-): LanguageModelV3FunctionTool {
+): LanguageModelV4FunctionTool {
   if (!isRecord(value)) {
     throw new Error(`tools[${toolIndex}] must be an object.`);
   }

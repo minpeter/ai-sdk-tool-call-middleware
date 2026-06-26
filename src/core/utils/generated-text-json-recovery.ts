@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
@@ -181,7 +181,7 @@ function mergeJsonCandidatesByStart(
   );
 }
 
-function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV3Content {
+function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV4Content {
   return {
     type: "tool-call",
     toolCallId: generateToolCallId(),
@@ -193,9 +193,9 @@ function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV3Content {
 function toRecoveredParts(
   text: string,
   candidate: JsonCandidate,
-  toolCallPart: LanguageModelV3Content
-): LanguageModelV3Content[] {
-  const out: LanguageModelV3Content[] = [];
+  toolCallPart: LanguageModelV4Content
+): LanguageModelV4Content[] {
+  const out: LanguageModelV4Content[] = [];
   const prefix = text.slice(0, candidate.startIndex);
   if (prefix.length > 0) {
     out.push({ type: "text", text: prefix });
@@ -212,7 +212,7 @@ function toRecoveredParts(
 
 function parseAsToolPayload(
   payload: unknown,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): ToolCallCandidate | null {
   if (!isRecord(payload)) {
     return null;
@@ -243,7 +243,7 @@ function parseAsToolPayload(
 
 function isLikelyArgumentsShapeForTool(
   args: Record<string, unknown>,
-  tool: LanguageModelV3FunctionTool
+  tool: LanguageModelV4FunctionTool
 ): boolean {
   const unwrapped = unwrapJsonSchema(tool.inputSchema);
   if (!isRecord(unwrapped)) {
@@ -280,7 +280,7 @@ function isLikelyArgumentsShapeForTool(
 
 function parseAsArgumentsOnly(
   payload: unknown,
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): ToolCallCandidate | null {
   if (tools.length !== 1) {
     return null;
@@ -312,8 +312,8 @@ function parseAsArgumentsOnly(
 
 export function recoverToolCallFromJsonCandidates(
   text: string,
-  tools: LanguageModelV3FunctionTool[]
-): LanguageModelV3Content[] | null {
+  tools: LanguageModelV4FunctionTool[]
+): LanguageModelV4Content[] | null {
   if (tools.length === 0) {
     return null;
   }

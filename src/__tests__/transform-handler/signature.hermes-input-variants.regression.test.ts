@@ -1,11 +1,11 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { hermesToolMiddleware } from "../../preconfigured-middleware";
 import { requireTransformParams } from "../test-helpers";
 
 const REGEX_TOOL_CALL = /<tool_call>/;
 
-const tools: LanguageModelV3FunctionTool[] = [
+const tools: LanguageModelV4FunctionTool[] = [
   {
     type: "function",
     name: "get_weather",
@@ -172,7 +172,7 @@ describe("transformParams hermes tool-call signature regression", () => {
   });
 
   it("preserves signatures for multiple tool calls with mixed input types", async () => {
-    const multiTools: LanguageModelV3FunctionTool[] = [
+    const multiTools: LanguageModelV4FunctionTool[] = [
       ...tools,
       {
         type: "function",

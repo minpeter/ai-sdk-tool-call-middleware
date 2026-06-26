@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
@@ -140,7 +140,7 @@ describe("cross-protocol tool-input streaming events: yaml xml", () => {
           toolCallId: "passthrough-yaml",
           toolName: "passthrough_marker",
           input: "{}",
-        } satisfies LanguageModelV3StreamPart,
+        } satisfies LanguageModelV4StreamPart,
         {
           type: "text-delta",
           id: "fixture",

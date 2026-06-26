@@ -1,7 +1,7 @@
 import type {
   JSONSchema7,
   JSONValue,
-  LanguageModelV3FunctionTool,
+  LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import dedent from "dedent";
@@ -17,7 +17,7 @@ import {
 } from "./shared/tool-result-normalizer";
 
 export function morphXmlSystemPromptTemplate(
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): string {
   const toolsText = renderToolsForXmlPrompt(tools);
   const inputExamplesText = renderInputExamplesForXmlPrompt(tools);
@@ -63,7 +63,7 @@ export function morphXmlSystemPromptTemplate(
 
 const INDENT = "  ";
 
-function renderToolsForXmlPrompt(tools: LanguageModelV3FunctionTool[]): string {
+function renderToolsForXmlPrompt(tools: LanguageModelV4FunctionTool[]): string {
   if (!tools.length) {
     return "none";
   }
@@ -71,7 +71,7 @@ function renderToolsForXmlPrompt(tools: LanguageModelV3FunctionTool[]): string {
   return tools.map(renderToolForXmlPrompt).join("\n\n");
 }
 
-function renderToolForXmlPrompt(tool: LanguageModelV3FunctionTool): string {
+function renderToolForXmlPrompt(tool: LanguageModelV4FunctionTool): string {
   const lines: string[] = [`name: ${tool.name}`];
 
   if (tool.description) {
@@ -101,7 +101,7 @@ function renderMorphXmlInputExample(toolName: string, input: unknown): string {
 }
 
 function renderInputExamplesForXmlPrompt(
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): string {
   return renderInputExamplesSection({
     tools,

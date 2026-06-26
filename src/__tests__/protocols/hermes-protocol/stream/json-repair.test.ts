@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
@@ -15,7 +15,7 @@ function makeTool(
   name: string,
   properties: Record<string, { type: string }>,
   additionalProperties?: boolean
-): LanguageModelV3FunctionTool {
+): LanguageModelV4FunctionTool {
   return {
     type: "function",
     name,
@@ -29,8 +29,8 @@ function makeTool(
 
 function makeSchemaTool(
   name: string,
-  inputSchema: LanguageModelV3FunctionTool["inputSchema"]
-): LanguageModelV3FunctionTool {
+  inputSchema: LanguageModelV4FunctionTool["inputSchema"]
+): LanguageModelV4FunctionTool {
   return { type: "function", name, inputSchema };
 }
 
@@ -43,15 +43,15 @@ function hasStringToolCallId(value: unknown): value is { toolCallId: string } {
   );
 }
 
-type ToolCallPart = Extract<LanguageModelV3StreamPart, { type: "tool-call" }>;
-type TextDeltaPart = Extract<LanguageModelV3StreamPart, { type: "text-delta" }>;
+type ToolCallPart = Extract<LanguageModelV4StreamPart, { type: "tool-call" }>;
+type TextDeltaPart = Extract<LanguageModelV4StreamPart, { type: "text-delta" }>;
 
-function isToolCallPart(part: LanguageModelV3StreamPart): part is ToolCallPart {
+function isToolCallPart(part: LanguageModelV4StreamPart): part is ToolCallPart {
   return part.type === "tool-call";
 }
 
 function isTextDeltaPart(
-  part: LanguageModelV3StreamPart
+  part: LanguageModelV4StreamPart
 ): part is TextDeltaPart {
   return part.type === "text-delta";
 }
@@ -65,7 +65,7 @@ function makeDeepArrayJson(depth: number): string {
 }
 
 function expectNoToolInputLifecycle(
-  parts: readonly LanguageModelV3StreamPart[]
+  parts: readonly LanguageModelV4StreamPart[]
 ): void {
   expect(parts.some((part) => part.type === "tool-input-start")).toBe(false);
   expect(parts.some((part) => part.type === "tool-input-delta")).toBe(false);
@@ -73,7 +73,7 @@ function expectNoToolInputLifecycle(
 }
 
 function collectTextDeltas(
-  parts: readonly LanguageModelV3StreamPart[]
+  parts: readonly LanguageModelV4StreamPart[]
 ): string {
   return parts
     .filter(isTextDeltaPart)
@@ -85,7 +85,7 @@ describe("hermesProtocol streaming JSON repair", () => {
   it("repairs streaming tool call with unescaped quotes and emits tool-call", async () => {
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -128,7 +128,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     });
     const text =
       '<tool_call>{name:"write",arguments:{"content":"He said "hi" there","path":"/tmp/a"}}</tool_call>';
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -164,7 +164,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools: [],
       options: { onError, emitRawToolCallTextOnError: true },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -195,7 +195,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     const transformer = protocol.createStreamParser({
       tools: [makeTool("edit", { content: { type: "string" } }, false)],
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -231,7 +231,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     ];
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -290,7 +290,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -330,7 +330,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -372,7 +372,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -412,7 +412,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -454,7 +454,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -496,7 +496,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -531,7 +531,7 @@ describe("hermesProtocol streaming JSON repair", () => {
         tools,
         options: { onError },
       });
-      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
         start(ctrl) {
           ctrl.enqueue({
             type: "text-delta",
@@ -564,7 +564,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools: [makeTool("write", { content: { type: "string" } }, true)],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -606,7 +606,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -648,7 +648,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -689,7 +689,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     ];
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -728,7 +728,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -770,7 +770,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -813,7 +813,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     ];
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -859,7 +859,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -905,7 +905,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -948,7 +948,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -994,7 +994,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1039,7 +1039,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1083,7 +1083,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1128,7 +1128,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1173,7 +1173,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1218,7 +1218,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1262,7 +1262,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1306,7 +1306,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1338,7 +1338,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools: [],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1386,7 +1386,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1431,7 +1431,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1474,7 +1474,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1522,7 +1522,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1572,7 +1572,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1599,7 +1599,7 @@ describe("hermesProtocol streaming JSON repair", () => {
   });
 
   it("rejects top-level boolean false input schemas", async () => {
-    const schemas: LanguageModelV3FunctionTool["inputSchema"][] = [
+    const schemas: LanguageModelV4FunctionTool["inputSchema"][] = [
       false,
       { jsonSchema: false },
     ];
@@ -1610,7 +1610,7 @@ describe("hermesProtocol streaming JSON repair", () => {
         tools: [makeSchemaTool("deny", inputSchema)],
         options: { onError },
       });
-      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
         start(ctrl) {
           ctrl.enqueue({
             type: "text-delta",
@@ -1638,7 +1638,7 @@ describe("hermesProtocol streaming JSON repair", () => {
   });
 
   it("rejects non-object arguments for top-level boolean false input schemas", async () => {
-    const schemas: LanguageModelV3FunctionTool["inputSchema"][] = [
+    const schemas: LanguageModelV4FunctionTool["inputSchema"][] = [
       false,
       { jsonSchema: false },
     ];
@@ -1652,7 +1652,7 @@ describe("hermesProtocol streaming JSON repair", () => {
           tools: [makeSchemaTool("deny", inputSchema)],
           options: { onError },
         });
-        const rs = new ReadableStream<LanguageModelV3StreamPart>({
+        const rs = new ReadableStream<LanguageModelV4StreamPart>({
           start(ctrl) {
             ctrl.enqueue({
               type: "text-delta",
@@ -1681,7 +1681,7 @@ describe("hermesProtocol streaming JSON repair", () => {
 
   it("rejects non-object arguments for object input schemas", async () => {
     const argumentBodies = ["[]", "null", '"x"'];
-    const schemas: LanguageModelV3FunctionTool["inputSchema"][] = [
+    const schemas: LanguageModelV4FunctionTool["inputSchema"][] = [
       {
         type: "object",
         properties: {
@@ -1706,7 +1706,7 @@ describe("hermesProtocol streaming JSON repair", () => {
           tools: [makeSchemaTool("write", inputSchema)],
           options: { onError },
         });
-        const rs = new ReadableStream<LanguageModelV3StreamPart>({
+        const rs = new ReadableStream<LanguageModelV4StreamPart>({
           start(ctrl) {
             ctrl.enqueue({
               type: "text-delta",
@@ -1746,7 +1746,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       ],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1785,7 +1785,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       ],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1826,7 +1826,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       ],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1859,7 +1859,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools: [],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1912,7 +1912,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       ],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -1965,7 +1965,7 @@ describe("hermesProtocol streaming JSON repair", () => {
         ],
         options: { onError },
       });
-      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
         start(ctrl) {
           ctrl.enqueue({
             type: "text-delta",
@@ -2011,7 +2011,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       ],
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2055,7 +2055,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2102,7 +2102,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2157,7 +2157,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2213,7 +2213,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2270,7 +2270,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2322,7 +2322,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2380,7 +2380,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2438,7 +2438,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2486,7 +2486,7 @@ describe("hermesProtocol streaming JSON repair", () => {
         ],
         options: { onError },
       });
-      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
         start(ctrl) {
           ctrl.enqueue({
             type: "text-delta",
@@ -2537,7 +2537,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2595,7 +2595,7 @@ describe("hermesProtocol streaming JSON repair", () => {
         tools,
         options: { onError },
       });
-      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
         start(ctrl) {
           ctrl.enqueue({
             type: "text-delta",
@@ -2668,7 +2668,7 @@ describe("hermesProtocol streaming JSON repair", () => {
         tools,
         options: { onError },
       });
-      const rs = new ReadableStream<LanguageModelV3StreamPart>({
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
         start(ctrl) {
           ctrl.enqueue({
             type: "text-delta",
@@ -2732,7 +2732,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2784,7 +2784,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2839,7 +2839,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2884,7 +2884,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2931,7 +2931,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -2976,7 +2976,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -3021,7 +3021,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -3055,12 +3055,12 @@ describe("hermesProtocol streaming JSON repair", () => {
       options: { onError },
     });
     const input = new TransformStream<
-      LanguageModelV3StreamPart,
-      LanguageModelV3StreamPart
+      LanguageModelV4StreamPart,
+      LanguageModelV4StreamPart
     >();
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const done = input.readable.pipeThrough(transformer).pipeTo(
-      new WritableStream<LanguageModelV3StreamPart>({
+      new WritableStream<LanguageModelV4StreamPart>({
         write(part) {
           out.push(part);
         },
@@ -3122,7 +3122,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",

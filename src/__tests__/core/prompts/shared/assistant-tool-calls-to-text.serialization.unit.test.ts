@@ -1,4 +1,4 @@
-import type { LanguageModelV3Content } from "@ai-sdk/provider";
+import type { LanguageModelV4Content } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { assistantToolCallsToTextContent } from "../../../../core/prompts/shared/assistant-tool-calls-to-text";
 
@@ -16,7 +16,7 @@ describe("assistantToolCallsToTextContent", () => {
           type: "text",
           text: "after",
         },
-      ] as LanguageModelV3Content[],
+      ] as LanguageModelV4Content[],
       protocol: {
         formatToolCall: () =>
           "<tool_call><function=get_weather></function></tool_call>",
@@ -43,7 +43,7 @@ describe("assistantToolCallsToTextContent", () => {
         {
           type: "unknown" as never,
           payload: { x: 1 },
-        } as unknown as LanguageModelV3Content,
+        } as unknown as LanguageModelV4Content,
       ],
       protocol: {
         formatToolCall: () => "",

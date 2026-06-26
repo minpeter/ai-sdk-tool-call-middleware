@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
@@ -9,7 +9,7 @@ function makeTool(
   name: string,
   properties: Record<string, { type: string }>,
   additionalProperties?: boolean
-): LanguageModelV3FunctionTool {
+): LanguageModelV4FunctionTool {
   return {
     type: "function",
     name,
@@ -23,12 +23,12 @@ function makeTool(
 
 function makeSchemaTool(
   name: string,
-  inputSchema: LanguageModelV3FunctionTool["inputSchema"]
-): LanguageModelV3FunctionTool {
+  inputSchema: LanguageModelV4FunctionTool["inputSchema"]
+): LanguageModelV4FunctionTool {
   return { type: "function", name, inputSchema };
 }
 
-type ToolCallContent = Extract<LanguageModelV3Content, { type: "tool-call" }>;
+type ToolCallContent = Extract<LanguageModelV4Content, { type: "tool-call" }>;
 
 function makeDeepArrayJson(depth: number): string {
   let value = "0";
@@ -38,7 +38,7 @@ function makeDeepArrayJson(depth: number): string {
   return value;
 }
 
-function expectToolCall(output: LanguageModelV3Content[]): ToolCallContent {
+function expectToolCall(output: LanguageModelV4Content[]): ToolCallContent {
   const tool = output.find(
     (part): part is ToolCallContent => part.type === "tool-call"
   );
@@ -974,7 +974,7 @@ describe("parseGeneratedText JSON repair", () => {
     const p = hermesProtocol();
     const nestedArray = makeDeepArrayJson(20_000);
     const text = `<tool_call>{"name":"deep","arguments":{"data":${nestedArray}}}</tool_call>`;
-    let out: LanguageModelV3Content[] = [];
+    let out: LanguageModelV4Content[] = [];
     expect(() => {
       out = p.parseGeneratedText({ text, tools: [], options: { onError } });
     }).not.toThrow();
@@ -988,7 +988,7 @@ describe("parseGeneratedText JSON repair", () => {
     // Live-cyclic tool schema: additionalProperties references the schema
     // object itself. Combined with a deeply nested value this would overflow
     // the schema-shape validator (uncaught RangeError) without the depth guard.
-    const tool: LanguageModelV3FunctionTool = {
+    const tool: LanguageModelV4FunctionTool = {
       type: "function",
       name: "deep",
       inputSchema: { type: "object" },
@@ -1000,7 +1000,7 @@ describe("parseGeneratedText JSON repair", () => {
       deepArgs = `{"nested":${deepArgs}}`;
     }
     const text = `<tool_call>{"name":"deep","arguments":${deepArgs}}</tool_call>`;
-    let out: LanguageModelV3Content[] = [];
+    let out: LanguageModelV4Content[] = [];
     expect(() => {
       out = p.parseGeneratedText({
         text,
@@ -1147,7 +1147,7 @@ describe("parseGeneratedText JSON repair", () => {
 
   it("rejects top-level boolean false input schemas", () => {
     const p = hermesProtocol();
-    const schemas: LanguageModelV3FunctionTool["inputSchema"][] = [
+    const schemas: LanguageModelV4FunctionTool["inputSchema"][] = [
       false,
       { jsonSchema: false },
     ];
@@ -1167,7 +1167,7 @@ describe("parseGeneratedText JSON repair", () => {
 
   it("rejects non-object arguments for top-level boolean false input schemas", () => {
     const p = hermesProtocol();
-    const schemas: LanguageModelV3FunctionTool["inputSchema"][] = [
+    const schemas: LanguageModelV4FunctionTool["inputSchema"][] = [
       false,
       { jsonSchema: false },
     ];
@@ -1191,7 +1191,7 @@ describe("parseGeneratedText JSON repair", () => {
   it("rejects non-object arguments for object input schemas", () => {
     const p = hermesProtocol();
     const argumentBodies = ["[]", "null", '"x"'];
-    const schemas: LanguageModelV3FunctionTool["inputSchema"][] = [
+    const schemas: LanguageModelV4FunctionTool["inputSchema"][] = [
       {
         type: "object",
         properties: {

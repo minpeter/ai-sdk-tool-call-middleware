@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
@@ -53,14 +53,14 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
 
   it("json protocol emits progress before a delayed closing tag", async () => {
     const input = new TransformStream<
-      LanguageModelV3StreamPart,
-      LanguageModelV3StreamPart
+      LanguageModelV4StreamPart,
+      LanguageModelV4StreamPart
     >();
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const done = input.readable
       .pipeThrough(protocol.createStreamParser({ tools: fixture.tools }))
       .pipeTo(
-        new WritableStream<LanguageModelV3StreamPart>({
+        new WritableStream<LanguageModelV4StreamPart>({
           write(part) {
             out.push(part);
           },

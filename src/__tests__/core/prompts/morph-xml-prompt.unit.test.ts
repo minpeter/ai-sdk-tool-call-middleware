@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,7 +9,7 @@ import {
 
 describe("morphXmlSystemPromptTemplate", () => {
   it("renders Morph XML examples from inputExamples", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -55,7 +55,7 @@ describe("morphXmlSystemPromptTemplate", () => {
         },
         inputExamples: [{ input: "hello world" }, { input: 42 }],
       },
-    ] as unknown as LanguageModelV3FunctionTool[];
+    ] as unknown as LanguageModelV4FunctionTool[];
 
     const prompt = morphXmlSystemPromptTemplate(tools);
 
@@ -65,7 +65,7 @@ describe("morphXmlSystemPromptTemplate", () => {
   });
 
   it("does not render input example section when no examples are provided", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "search_docs",

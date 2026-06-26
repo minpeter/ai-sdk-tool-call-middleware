@@ -1,9 +1,8 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, it } from "vitest";
-import { dummyProtocol } from "../../../../core/protocols/dummy-protocol";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import {
@@ -11,6 +10,7 @@ import {
   uiTarsXmlProtocol,
 } from "../../../../core/protocols/qwen3coder-protocol";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { dummyProtocol } from "../../../fixtures/dummy-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import {
   allOfficialEventTypes,
@@ -25,13 +25,13 @@ import {
 describe("cross-protocol tool-input streaming events: lifecycle matrix", () => {
   const streamComplianceScenarios: Array<{
     name: string;
-    tools: LanguageModelV3FunctionTool[];
+    tools: LanguageModelV4FunctionTool[];
     createProtocol: () => {
       createStreamParser: (options: {
-        tools: LanguageModelV3FunctionTool[];
+        tools: LanguageModelV4FunctionTool[];
       }) => TransformStream<
-        LanguageModelV3StreamPart,
-        LanguageModelV3StreamPart
+        LanguageModelV4StreamPart,
+        LanguageModelV4StreamPart
       >;
     };
     openChunk: string;

@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3Content,
-  LanguageModelV3FunctionTool,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
@@ -15,10 +15,10 @@ describe("entry exports morph-xml smoke", () => {
             type: "text" as const,
             text: "<get_weather><location>San Francisco</location></get_weather>",
           },
-        ] as LanguageModelV3Content[],
+        ] as LanguageModelV4Content[],
       });
 
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -48,7 +48,7 @@ describe("entry exports morph-xml smoke", () => {
     const toolCalls = result.content.filter(
       (
         content
-      ): content is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
+      ): content is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
         content.type === "tool-call"
     );
 
@@ -67,10 +67,10 @@ describe("entry exports morph-xml smoke", () => {
             type: "text" as const,
             text: "<get_location></get_location>",
           },
-        ] as LanguageModelV3Content[],
+        ] as LanguageModelV4Content[],
       });
 
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_location",
@@ -100,7 +100,7 @@ describe("entry exports morph-xml smoke", () => {
     const toolCalls = result.content.filter(
       (
         content
-      ): content is Extract<LanguageModelV3Content, { type: "tool-call" }> =>
+      ): content is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
         content.type === "tool-call"
     );
 

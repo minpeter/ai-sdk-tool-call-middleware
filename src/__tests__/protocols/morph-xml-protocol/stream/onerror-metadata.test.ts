@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
@@ -11,7 +11,7 @@ import {
   zeroUsage,
 } from "../../../test-helpers";
 
-const tools: LanguageModelV3FunctionTool[] = [
+const tools: LanguageModelV4FunctionTool[] = [
   {
     type: "function",
     name: "write_file",
@@ -35,7 +35,7 @@ describe("morphXmlProtocol streaming onError metadata", () => {
       tools,
       options: { onError },
     });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",

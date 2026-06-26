@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -14,18 +14,18 @@ import {
 } from "../../../core/utils/tool-input-streaming";
 
 function createMockController(
-  out: LanguageModelV3StreamPart[]
-): TransformStreamDefaultController<LanguageModelV3StreamPart> {
+  out: LanguageModelV4StreamPart[]
+): TransformStreamDefaultController<LanguageModelV4StreamPart> {
   return {
-    enqueue(part: LanguageModelV3StreamPart) {
+    enqueue(part: LanguageModelV4StreamPart) {
       out.push(part);
     },
-  } as unknown as TransformStreamDefaultController<LanguageModelV3StreamPart>;
+  } as unknown as TransformStreamDefaultController<LanguageModelV4StreamPart>;
 }
 
 describe("tool-input-streaming", () => {
   it("stringifyToolInputWithSchema returns coerced JSON when schema coercion succeeds", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "calc",
@@ -64,7 +64,7 @@ describe("tool-input-streaming", () => {
   });
 
   it("emitToolInputProgressDelta emits incomplete-json-prefix deltas by default", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const state = { emittedInput: "" };
 
@@ -79,7 +79,7 @@ describe("tool-input-streaming", () => {
       (
         part
       ): part is Extract<
-        LanguageModelV3StreamPart,
+        LanguageModelV4StreamPart,
         { type: "tool-input-delta" }
       > => part.type === "tool-input-delta"
     );
@@ -90,7 +90,7 @@ describe("tool-input-streaming", () => {
   });
 
   it("emitToolInputProgressDelta emits full-json deltas in full-json mode", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const state = { emittedInput: "" };
 
@@ -106,7 +106,7 @@ describe("tool-input-streaming", () => {
       (
         part
       ): part is Extract<
-        LanguageModelV3StreamPart,
+        LanguageModelV4StreamPart,
         { type: "tool-input-delta" }
       > => part.type === "tool-input-delta"
     );
@@ -117,7 +117,7 @@ describe("tool-input-streaming", () => {
   });
 
   it("emitFinalizedToolInputLifecycle emits final remainder then end and call", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const state = { emittedInput: '{"city":"Seoul' };
 
@@ -149,7 +149,7 @@ describe("tool-input-streaming", () => {
   });
 
   it("enqueueToolInputEndAndCall enqueues end and call in order", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
 
     enqueueToolInputEndAndCall({
@@ -174,7 +174,7 @@ describe("tool-input-streaming", () => {
   });
 
   it("enqueueToolInputEnd enqueues only tool-input-end", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
 
     enqueueToolInputEnd({
@@ -191,7 +191,7 @@ describe("tool-input-streaming", () => {
   });
 
   it("emitFailedToolInputLifecycle emits end and raw fallback when enabled", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const emitRawText = vi.fn();
 
@@ -214,7 +214,7 @@ describe("tool-input-streaming", () => {
   });
 
   it("emitFailedToolInputLifecycle skips end and raw fallback when configured", () => {
-    const out: LanguageModelV3StreamPart[] = [];
+    const out: LanguageModelV4StreamPart[] = [];
     const controller = createMockController(out);
     const emitRawText = vi.fn();
 

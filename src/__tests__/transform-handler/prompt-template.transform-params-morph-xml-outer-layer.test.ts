@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3Prompt,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4Prompt,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
@@ -13,7 +13,7 @@ import { transformParams } from "../../transform-handler";
 
 describe("transformParams morph-xml outer-layer transform", () => {
   it("transforms tools + messages into the expected prompt message array", () => {
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -28,7 +28,7 @@ describe("transformParams morph-xml outer-layer transform", () => {
       },
     ];
 
-    const inputPrompt: LanguageModelV3Prompt = [
+    const inputPrompt: LanguageModelV4Prompt = [
       {
         role: "user",
         content: [{ type: "text", text: "오늘 서울 날씨 알려줘" }],
@@ -74,7 +74,7 @@ describe("transformParams morph-xml outer-layer transform", () => {
       },
     });
 
-    const expectedPrompt: LanguageModelV3Prompt = [
+    const expectedPrompt: LanguageModelV4Prompt = [
       {
         role: "system",
         content: morphXmlSystemPromptTemplate(tools),

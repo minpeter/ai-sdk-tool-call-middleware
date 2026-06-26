@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
@@ -12,16 +12,16 @@ import {
 } from "../../../test-helpers";
 
 type ToolInputStartPart = Extract<
-  LanguageModelV3StreamPart,
+  LanguageModelV4StreamPart,
   { type: "tool-input-start" }
 >;
 type ToolInputEndPart = Extract<
-  LanguageModelV3StreamPart,
+  LanguageModelV4StreamPart,
   { type: "tool-input-end" }
 >;
-type ToolCallPart = Extract<LanguageModelV3StreamPart, { type: "tool-call" }>;
+type ToolCallPart = Extract<LanguageModelV4StreamPart, { type: "tool-call" }>;
 
-const tools: LanguageModelV3FunctionTool[] = [
+const tools: LanguageModelV4FunctionTool[] = [
   {
     type: "function",
     name: "get_weather",
@@ -38,7 +38,7 @@ const tools: LanguageModelV3FunctionTool[] = [
 ];
 
 function createTextDeltaStream(chunks: string[]) {
-  return new ReadableStream<LanguageModelV3StreamPart>({
+  return new ReadableStream<LanguageModelV4StreamPart>({
     start(controller) {
       for (const chunk of chunks) {
         controller.enqueue({
@@ -57,7 +57,7 @@ function createTextDeltaStream(chunks: string[]) {
   });
 }
 
-function extract(parts: LanguageModelV3StreamPart[]) {
+function extract(parts: LanguageModelV4StreamPart[]) {
   const starts = parts.filter(
     (part) => part.type === "tool-input-start"
   ) as ToolInputStartPart[];
@@ -108,7 +108,7 @@ describe("morphXmlProtocol stream tool-input lifecycle integration", () => {
 
   it("matches closing tag literally when tool name contains regex metacharacters", async () => {
     const protocol = morphXmlProtocol();
-    const metacharTools: LanguageModelV3FunctionTool[] = [
+    const metacharTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "weather.v2",
@@ -151,7 +151,7 @@ describe("morphXmlProtocol stream tool-input lifecycle integration", () => {
       .filter(
         (
           part
-        ): part is Extract<LanguageModelV3StreamPart, { type: "text-delta" }> =>
+        ): part is Extract<LanguageModelV4StreamPart, { type: "text-delta" }> =>
           part.type === "text-delta"
       )
       .map((part) => part.delta)

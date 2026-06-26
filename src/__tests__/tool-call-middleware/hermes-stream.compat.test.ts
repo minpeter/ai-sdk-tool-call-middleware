@@ -1,4 +1,4 @@
-import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
 
@@ -16,7 +16,7 @@ describe("createToolMiddleware hermes stream compat", () => {
     toolSystemPromptTemplate: () => "",
   });
 
-  const runMiddleware = (stream: ReadableStream<LanguageModelV3StreamPart>) => {
+  const runMiddleware = (stream: ReadableStream<LanguageModelV4StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
     if (!middleware.wrapStream) {
       throw new Error("wrapStream is not defined");
@@ -28,7 +28,7 @@ describe("createToolMiddleware hermes stream compat", () => {
   };
 
   test("wrapStream parses legacy tool_call payload into tool-call event", async () => {
-    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-start", id: "text-1" });
         controller.enqueue({
@@ -82,7 +82,7 @@ describe("createToolMiddleware hermes stream compat", () => {
   });
 
   test("wrapStream suppresses malformed legacy tool_call markup by default", async () => {
-    const mockStream = new ReadableStream<LanguageModelV3StreamPart>({
+    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
         controller.enqueue({ type: "text-start", id: "text-1" });
         controller.enqueue({

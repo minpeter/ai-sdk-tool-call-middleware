@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
@@ -9,7 +9,7 @@ import {
   runProtocolTextDeltaStream,
 } from "./streaming-events.shared";
 
-const _nestedTool: LanguageModelV3FunctionTool = {
+const _nestedTool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "plan_trip",
   description: "Build travel plan payload",
@@ -33,7 +33,7 @@ const _nestedTool: LanguageModelV3FunctionTool = {
   },
 };
 
-const weatherTool: LanguageModelV3FunctionTool = {
+const weatherTool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "get_weather",
   description: "Get weather",
@@ -47,7 +47,7 @@ const weatherTool: LanguageModelV3FunctionTool = {
   },
 };
 
-const _permissiveObjectTool: LanguageModelV3FunctionTool = {
+const _permissiveObjectTool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "shape_shift",
   description: "Permissive schema for streaming stability checks",
@@ -57,7 +57,7 @@ const _permissiveObjectTool: LanguageModelV3FunctionTool = {
   },
 };
 
-const strictNameTool: LanguageModelV3FunctionTool = {
+const strictNameTool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "bad_tool",
   description: "Strict tool for malformed stream edge tests",
@@ -70,7 +70,7 @@ const strictNameTool: LanguageModelV3FunctionTool = {
   },
 };
 
-const _writeMarkdownTool: LanguageModelV3FunctionTool = {
+const _writeMarkdownTool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "write_markdown_file",
   description: "Write markdown file",
@@ -84,7 +84,7 @@ const _writeMarkdownTool: LanguageModelV3FunctionTool = {
   },
 };
 
-const _mathSumTool: LanguageModelV3FunctionTool = {
+const _mathSumTool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "math_sum",
   description: "Sum numbers",
@@ -100,7 +100,7 @@ const _mathSumTool: LanguageModelV3FunctionTool = {
   },
 };
 
-const _mathSumWithUnitTool: LanguageModelV3FunctionTool = {
+const _mathSumWithUnitTool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "math_sum_with_unit",
   description: "Sum numbers with unit",

@@ -1,4 +1,4 @@
-import type { JSONValue, LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { morphFormatToolResponseAsXml } from "../core/prompts/morph-xml-prompt";
 import {
   renderInputExamplesSection,
@@ -29,7 +29,7 @@ function hasInvalidXmlKeys(value: unknown): boolean {
 export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
   toolResponsePromptTemplate: morphFormatToolResponseAsXml,
-  toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
+  toolSystemPromptTemplate(tools: LanguageModelV4FunctionTool[]) {
     const toolsJson = JSON.stringify(tools);
     const basePrompt = `You have access to callable functions (tools).
     Tool list/context:
@@ -95,7 +95,7 @@ export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
 export const sijawaraConciseXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
   toolResponsePromptTemplate: morphFormatToolResponseAsXml,
-  toolSystemPromptTemplate(tools: LanguageModelV3FunctionTool[]) {
+  toolSystemPromptTemplate(tools: LanguageModelV4FunctionTool[]) {
     const toolsJson = JSON.stringify(tools);
     const basePrompt = `You have access to callable functions (tools).
     Tool list/context:
@@ -134,7 +134,7 @@ export const sijawaraConciseXmlToolMiddleware = createToolMiddleware({
 });
 
 function renderSijawaraInputExamples(
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): string {
   return renderInputExamplesSection({
     tools,

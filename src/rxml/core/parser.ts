@@ -55,7 +55,6 @@ function restorePlaceholderString(
  */
 function restorePlaceholdersInObject(
   obj: Record<string, unknown>,
-  _placeholderMap: Map<string, string>,
   textNodeName: string,
   restorer: (val: unknown) => unknown
 ): Record<string, unknown> {
@@ -92,7 +91,6 @@ function createPlaceholderRestorer(
     if (typeof val === "object") {
       return restorePlaceholdersInObject(
         val as Record<string, unknown>,
-        placeholderMap,
         textNodeName,
         restorer
       );

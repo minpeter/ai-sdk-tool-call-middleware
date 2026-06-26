@@ -1,9 +1,9 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { recoverToolCallFromJsonCandidates } from "../../../core/utils/generated-text-json-recovery";
 
-const tools: LanguageModelV3FunctionTool[] = [
+const tools: LanguageModelV4FunctionTool[] = [
   {
     type: "function",
     name: "calc",

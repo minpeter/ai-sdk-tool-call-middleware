@@ -1,14 +1,14 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 
-export interface ToolInputExample {
+interface ToolInputExample {
   input: unknown;
 }
 
-export function getToolInputExamples(
-  tool: LanguageModelV3FunctionTool
+function getToolInputExamples(
+  tool: LanguageModelV4FunctionTool
 ): ToolInputExample[] {
   const inputExamples = (
-    tool as LanguageModelV3FunctionTool & {
+    tool as LanguageModelV4FunctionTool & {
       inputExamples?: Array<{ input: unknown }>;
     }
   ).inputExamples;
@@ -60,7 +60,7 @@ export function stringifyInputExampleAsJsonLiteral(input: unknown): string {
 
 interface RenderInputExamplesSectionOptions {
   renderExample: (toolName: string, input: unknown) => string;
-  tools: LanguageModelV3FunctionTool[];
+  tools: LanguageModelV4FunctionTool[];
 }
 
 const INPUT_EXAMPLES_SECTION_HEADER = [

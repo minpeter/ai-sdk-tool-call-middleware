@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3FunctionTool,
-  LanguageModelV3StreamPart,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
@@ -14,7 +14,7 @@ import {
 describe("morphXmlProtocol streaming text boundary behavior", () => {
   it("properly emits text-start and text-end events around tool calls", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "test_tool",
@@ -26,7 +26,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -97,7 +97,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
 
   it("handles text-end correctly when multiple tool calls are present", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "tool_a",
@@ -112,7 +112,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({ type: "text-delta", id: "t", delta: "Start " });
         ctrl.enqueue({
@@ -164,7 +164,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
 
   it("handles consecutive tool calls with no text between them", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "tool_a",
@@ -179,7 +179,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -213,7 +213,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
 
   it("handles tool calls separated only by whitespace", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "tool_a",
@@ -228,7 +228,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",
@@ -269,7 +269,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
 
   it("handles empty tool call parameters", async () => {
     const protocol = morphXmlProtocol();
-    const tools: LanguageModelV3FunctionTool[] = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "empty_tool",
@@ -278,7 +278,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
       },
     ];
     const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV3StreamPart>({
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
       start(ctrl) {
         ctrl.enqueue({
           type: "text-delta",

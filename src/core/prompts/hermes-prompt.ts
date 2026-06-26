@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
   renderInputExamplesSection,
@@ -83,7 +83,7 @@ export function jsonSchemaToPythonType(
 }
 
 export function renderToolDefinition(
-  tool: LanguageModelV3FunctionTool
+  tool: LanguageModelV4FunctionTool
 ): string {
   const schema = tool.inputSchema as Record<string, unknown>;
   const properties = schema.properties as
@@ -115,7 +115,7 @@ export function renderToolDefinition(
 }
 
 export function hermesSystemPromptTemplate(
-  tools: LanguageModelV3FunctionTool[]
+  tools: LanguageModelV4FunctionTool[]
 ): string {
   const toolsRendered = tools.map(renderToolDefinition).join("\n");
   const basePrompt = `You are a function calling AI model. You are provided with function signatures within <tools></tools> XML tags. You may call one or more functions to assist with the user query. Don't make assumptions about what values to plug into functions. Here are the available tools: <tools> ${toolsRendered} </tools>

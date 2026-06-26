@@ -14,7 +14,7 @@ describe("createToolMiddleware lifecycle", () => {
     });
 
     expect(middleware).toBeDefined();
-    expect(middleware.specificationVersion).toBe("v3");
+    expect(middleware.specificationVersion).toBe("v4");
     expect(middleware.wrapGenerate).toBeDefined();
     expect(middleware.wrapStream).toBeDefined();
     expect(middleware.transformParams).toBeDefined();
