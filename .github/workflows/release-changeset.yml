@@ -6,7 +6,10 @@ on:
       - main
     paths:
       - ".changeset/**"
+      - CHANGELOG.md
       - .github/workflows/release-changeset.yml
+      - package.json
+      - pnpm-lock.yaml
   workflow_dispatch: {}
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
