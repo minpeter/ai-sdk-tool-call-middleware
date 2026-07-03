@@ -186,26 +186,6 @@ describe("createStreamJsonRecoveryTransform", () => {
     await writer.close();
   });
 
-  it("stops recovering after the protocol parser already emitted a tool call", async () => {
-    const protocolToolCall: LanguageModelV4StreamPart = {
-      type: "tool-call",
-      toolCallId: "call_protocol",
-      toolName: "get_weather",
-      input: '{"city":"Paris"}',
-    };
-    const out = await run([
-      protocolToolCall,
-      ...textBlock('{"name":"get_weather","arguments":{"city":"Seoul"}}'),
-      finishPart,
-    ]);
-
-    const toolCalls = out.filter((p) => p.type === "tool-call");
-    expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0]).toBe(protocolToolCall);
-    // The JSON block stays plain text.
-    expect(out.some((p) => p.type === "text-delta")).toBe(true);
-  });
-
   it("resolves a held block when the stream finishes without text-end", async () => {
     const out = await run([
       { type: "text-start", id: "t1" },
@@ -332,6 +312,87 @@ describe("createStreamJsonRecoveryTransform extended hold shapes", () => {
 
   it("flushes tag-like prose that is not a tool_call tag", async () => {
     const payload = "<toolbox> content here";
+    const out = await run([...textBlock(payload), finish]);
+
+    expect(out.some((p) => p.type === "tool-call")).toBe(false);
+    const text = out
+      .filter((p) => p.type === "text-delta")
+      .map((p) => (p as { delta: string }).delta)
+      .join("");
+    expect(text).toBe(payload);
+  });
+});
+
+describe("createStreamJsonRecoveryTransform per-block independence (review fixes)", () => {
+  const finish: LanguageModelV4StreamPart = {
+    type: "finish",
+    finishReason: stopFinishReason,
+    usage: zeroUsage,
+  };
+
+  it("recovers a second bare-JSON block after a successful recovery", async () => {
+    const out = await run([
+      ...textBlock('{"name":"get_weather","arguments":{"city":"Seoul"}}', "t1"),
+      ...textBlock('{"name":"get_weather","arguments":{"city":"Tokyo"}}', "t2"),
+      finish,
+    ]);
+
+    const calls = out.filter((p) => p.type === "tool-call") as Extract<
+      LanguageModelV4StreamPart,
+      { type: "tool-call" }
+    >[];
+    expect(calls).toHaveLength(2);
+    expect(calls.map((c) => JSON.parse(c.input).city)).toEqual([
+      "Seoul",
+      "Tokyo",
+    ]);
+    expect(out.some((p) => p.type === "text-delta")).toBe(false);
+  });
+
+  it("recovers a bare-JSON block even after a protocol tool call", async () => {
+    const protocolToolCall: LanguageModelV4StreamPart = {
+      type: "tool-call",
+      toolCallId: "call_protocol",
+      toolName: "get_weather",
+      input: '{"city":"Paris"}',
+    };
+    const out = await run([
+      protocolToolCall,
+      ...textBlock('{"name":"get_weather","arguments":{"city":"Seoul"}}'),
+      finish,
+    ]);
+
+    const calls = out.filter((p) => p.type === "tool-call");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("streams non-recoverable fenced blocks through without holding", async () => {
+    const transformer = createStreamJsonRecoveryTransform({ tools });
+    const writer = transformer.writable.getWriter();
+    const reader = transformer.readable.getReader();
+
+    // No close(): parts must arrive while the block is still open.
+    const writes = (async () => {
+      await writer.write({ type: "text-start", id: "t1" });
+      await writer.write({
+        type: "text-delta",
+        id: "t1",
+        delta: "```python\nprint('hi')\n",
+      });
+    })();
+
+    expect((await reader.read()).value).toMatchObject({ type: "text-start" });
+    expect((await reader.read()).value).toMatchObject({
+      type: "text-delta",
+      delta: "```python\nprint('hi')\n",
+    });
+
+    await writes;
+    await writer.close();
+  });
+
+  it("flushes bracketed prose that is not an array of calls", async () => {
+    const payload = "[1] First citation in the list.";
     const out = await run([...textBlock(payload), finish]);
 
     expect(out.some((p) => p.type === "tool-call")).toBe(false);

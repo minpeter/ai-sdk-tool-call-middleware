@@ -63,3 +63,55 @@ describe("qwen3CoderProtocol stream text flushing", () => {
     expect(text).toBe("Use <toolbar> and <invoker> tags.");
   });
 });
+
+describe("qwen3CoderProtocol trailing partial after invalid full occurrence", () => {
+  it("holds a genuine trailing partial even when <tool_callback> appears earlier", async () => {
+    const parser = qwen3CoderProtocol().createStreamParser({
+      tools: emptyFunctionTools,
+    });
+    const writer = parser.writable.getWriter();
+    const reader = parser.readable.getReader();
+
+    const writes = (async () => {
+      await writer.write({
+        type: "text-delta",
+        id: "1",
+        delta: "docs at <tool_callback> page. <tool_ca",
+      });
+      await writer.write({
+        type: "text-delta",
+        id: "1",
+        delta:
+          "ll>\n<function=get_weather>\n<parameter=city>Seoul</parameter>\n</function>\n</tool_call>",
+      });
+    })();
+
+    const collected: LanguageModelV4StreamPart[] = [];
+    while (collected.filter((p) => p.type === "tool-call").length === 0) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (value) {
+        collected.push(value);
+      }
+    }
+    await writes;
+    await writer.close();
+
+    const text = collected
+      .filter((p) => p.type === "text-delta")
+      .map((p) => (p as { delta: string }).delta)
+      .join("");
+    // The prose before the call streams out; the tag itself must not leak.
+    expect(text).toContain("<tool_callback> page.");
+    expect(text).not.toContain("<tool_call>");
+
+    const call = collected.find((p) => p.type === "tool-call") as Extract<
+      LanguageModelV4StreamPart,
+      { type: "tool-call" }
+    >;
+    expect(call).toBeDefined();
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
+  });
+});

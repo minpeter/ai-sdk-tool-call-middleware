@@ -144,11 +144,17 @@ function getPotentialTagStartIndex(
     from = index + 1;
   }
 
-  const partialIndex = getPotentialStartIndex(lower, prefixLower);
-  return partialIndex != null &&
-    partialIndex + prefixLower.length > lower.length
-    ? partialIndex
-    : null;
+  // Genuine trailing partial: the buffer tail is a proper prefix of the tag.
+  // Scanned directly (longest first) because an earlier boundary-invalid full
+  // occurrence (e.g. `<tool_callback>`) must not mask a real partial at the
+  // end of the buffer.
+  const maxLen = Math.min(prefixLower.length - 1, lower.length);
+  for (let len = maxLen; len > 0; len -= 1) {
+    if (lower.endsWith(prefixLower.slice(0, len))) {
+      return lower.length - len;
+    }
+  }
+  return null;
 }
 
 function findTagEndIndex(text: string, startIndex: number): number | null {

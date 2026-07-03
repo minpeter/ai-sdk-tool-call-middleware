@@ -86,3 +86,32 @@ describe("coerceBySchema loose structured strings", () => {
     expect(out.tags).toEqual(["a", "b", "c"]);
   });
 });
+
+describe("coerceBySchema Python literal handling (review fixes)", () => {
+  it("converts bare None to null instead of the string 'None'", () => {
+    const out = coerceBySchema(
+      { passenger: "{'name': None, 'age': 34}" },
+      schema
+    ) as Record<string, unknown>;
+
+    expect(out.passenger).toEqual({ name: null, age: 34 });
+  });
+
+  it("never rewrites Python literals inside string values", () => {
+    const out = coerceBySchema(
+      { passenger: "{'name': 'True story of None', 'age': 34}" },
+      schema
+    ) as Record<string, unknown>;
+
+    expect(out.passenger).toEqual({ name: "True story of None", age: 34 });
+  });
+
+  it("unescapes XML entities in XML-children strings", () => {
+    const out = coerceBySchema(
+      { passenger: "<name>Tom &amp; Jerry</name>\n<age>34</age>" },
+      schema
+    ) as Record<string, unknown>;
+
+    expect(out.passenger).toEqual({ name: "Tom & Jerry", age: 34 });
+  });
+});

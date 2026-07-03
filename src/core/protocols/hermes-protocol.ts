@@ -1275,7 +1275,9 @@ function tryParseDoubleEncodedArguments(
     return null;
   }
   try {
-    const parsed = parseRJSON(normalizeJsonStringCtrl(args));
+    const parsed = parseRJSON(
+      normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(args))
+    );
     return isRecord(parsed) && !containsPrototypeSensitiveArgumentKey(parsed)
       ? parsed
       : null;
@@ -1869,20 +1871,6 @@ function resolveToolCall(
   }
 }
 
-/**
- * Salvage layer shared by the closed-body emission paths: when the strict
- * parse/repair pipeline fails, recover one or more balanced
- * `{"name": ..., "arguments": ...}` payloads for known tools from bodies
- * with markup garbage (mismatched `</think>` close tags, `<tool_call>`
- * separators, array-wrapped call lists).
- */
-function salvageResolvedToolCalls(
-  toolCallJson: string,
-  tools: LanguageModelV4FunctionTool[]
-): Extract<ResolvedToolCall, { ok: true }>[] | null {
-  return recoverKnownToolCallsFromText(toolCallJson, tools);
-}
-
 /** Whitespace and complete tag-like tokens only (e.g. a stray `</think>`). */
 const MARKUP_ONLY_TEXT_REGEX = /^\s*(?:<[^<>\n]*>\s*)*$/;
 
@@ -1976,7 +1964,7 @@ function processToolCallJson(
     return;
   }
 
-  const salvagedCalls = salvageResolvedToolCalls(toolCallJson, tools);
+  const salvagedCalls = recoverKnownToolCallsFromText(toolCallJson, tools);
   if (salvagedCalls && salvagedCalls.length > 0) {
     for (const salvagedCall of salvagedCalls) {
       processedElements.push({
@@ -2773,7 +2761,7 @@ function emitToolCall(context: TagProcessingContext) {
     return;
   }
 
-  const salvagedCalls = salvageResolvedToolCalls(
+  const salvagedCalls = recoverKnownToolCallsFromText(
     state.currentToolCallJson,
     tools
   );

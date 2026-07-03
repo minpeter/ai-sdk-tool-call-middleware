@@ -1,4 +1,5 @@
 import { parse as parseRJSON } from "../rjson";
+import { unescapeXml } from "../rxml/utils/helpers";
 
 // Regex constants for performance
 const NUMERIC_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
@@ -694,7 +695,7 @@ const COERCE_PROTOTYPE_SENSITIVE_KEYS = new Set([
 const COERCE_PROTO_KEY_TEXT_REGEX =
   /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
 /** Python literals models leak into JSON-ish payloads (`True`, `None`). */
-const PYTHON_LITERAL_TOKEN_REGEX = /\b(?:True|False|None)\b/g;
+const IDENTIFIER_CHAR_REGEX = /[\w$]/;
 const XML_CHILD_VALUE_CLOSED_RE = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)<\/\1\s*>$/;
 const XML_CHILD_VALUE_OPEN_RE = /^<([A-Za-z_][\w.-]*)\s*>([^<]*\S[^<]*)$/;
 
@@ -704,11 +705,60 @@ const PYTHON_LITERAL_REPLACEMENTS: Record<string, string> = {
   None: "null",
 };
 
+/**
+ * Replace bare Python literals (`True`/`False`/`None`) with their JSON
+ * equivalents, quote-aware so occurrences inside string values (e.g.
+ * `{'note': 'True story'}`) are never touched.
+ */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Quote-aware token replacement requires explicit string-state transitions.
 function normalizePythonLiterals(s: string): string {
-  return s.replace(
-    PYTHON_LITERAL_TOKEN_REGEX,
-    (token) => PYTHON_LITERAL_REPLACEMENTS[token] ?? token
-  );
+  let quote: '"' | "'" | null = null;
+  let escaped = false;
+  let out: string[] | null = null;
+  let chunkStart = 0;
+
+  for (let i = 0; i < s.length; i += 1) {
+    const ch = s[i];
+    if (quote !== null) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+
+    const replacement =
+      ch === "T" || ch === "F" || ch === "N"
+        ? Object.keys(PYTHON_LITERAL_REPLACEMENTS).find(
+            (token) =>
+              s.startsWith(token, i) &&
+              !IDENTIFIER_CHAR_REGEX.test(s[i - 1] ?? "") &&
+              !IDENTIFIER_CHAR_REGEX.test(s[i + token.length] ?? "")
+          )
+        : undefined;
+    if (replacement) {
+      out ??= [];
+      out.push(
+        s.slice(chunkStart, i),
+        PYTHON_LITERAL_REPLACEMENTS[replacement]
+      );
+      i += replacement.length - 1;
+      chunkStart = i + 1;
+    }
+  }
+
+  if (out === null) {
+    return s;
+  }
+  out.push(s.slice(chunkStart));
+  return out.join("");
 }
 
 function hasPrototypeSensitiveOwnKey(value: unknown): boolean {
@@ -742,21 +792,22 @@ function parseLooseStructuredString(s: string): unknown {
   if (COERCE_PROTO_KEY_TEXT_REGEX.test(s)) {
     return;
   }
-  const candidates = [s, normalizePythonLiterals(s)];
-  for (const candidate of candidates) {
-    try {
-      return JSON.parse(candidate);
-    } catch {
-      // try relaxed JSON next
+  // Python literals are normalized up front (quote-aware, so string values
+  // are untouched); otherwise the relaxed parser would absorb bare `None` /
+  // `True` tokens as identifier strings before the normalized candidate ran.
+  const normalized = normalizePythonLiterals(s);
+  try {
+    return JSON.parse(normalized);
+  } catch {
+    // try relaxed JSON next
+  }
+  try {
+    const parsed = parseRJSON(normalized) as unknown;
+    if (!hasPrototypeSensitiveOwnKey(parsed)) {
+      return parsed;
     }
-    try {
-      const parsed = parseRJSON(candidate) as unknown;
-      if (!hasPrototypeSensitiveOwnKey(parsed)) {
-        return parsed;
-      }
-    } catch {
-      // try next candidate
-    }
+  } catch {
+    // not parseable as a structured value
   }
   return;
 }
@@ -786,7 +837,17 @@ function parseXmlChildrenValue(s: string): Record<string, unknown> | null {
     if (COERCE_PROTOTYPE_SENSITIVE_KEYS.has(key)) {
       return null;
     }
-    record[key] = (match[2] ?? "").trim();
+    // Match the yaml-xml protocol's body fallback: unescape XML entities
+    // and merge repeated keys into arrays.
+    const value = unescapeXml((match[2] ?? "").trim());
+    const existing = record[key];
+    if (existing === undefined) {
+      record[key] = value;
+    } else if (Array.isArray(existing)) {
+      existing.push(value);
+    } else {
+      record[key] = [existing, value];
+    }
   }
   return record;
 }

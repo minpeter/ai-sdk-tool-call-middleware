@@ -19,6 +19,14 @@ const MAX_HELD_BLOCK_LENGTH = 10_000;
  */
 const RECOVERABLE_TAG_PREFIXES = ["<tool_call>", "<function="];
 
+/**
+ * Fenced blocks are held only for info strings the non-streaming recovery
+ * scan actually parses (```json / ```yaml / ```xml or none). A ```python
+ * block can never resolve to a tool call, so it streams through.
+ */
+const RECOVERABLE_FENCE_REGEX = /^```(?:json|ya?ml|xml)?\s*(?:\n|$)/i;
+const FENCE_PREFIX = "```";
+
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
@@ -28,18 +36,35 @@ interface HeldTextBlock {
   startPart: LanguageModelV4StreamPart;
 }
 
+function fenceStillViable(leading: string): boolean {
+  if (leading.length < FENCE_PREFIX.length) {
+    return FENCE_PREFIX.startsWith(leading);
+  }
+  if (!leading.startsWith(FENCE_PREFIX)) {
+    return false;
+  }
+  const firstLineEnd = leading.indexOf("\n");
+  if (firstLineEnd === -1) {
+    // Info string still streaming in; keep holding only while it could
+    // still become a recoverable fence.
+    return RECOVERABLE_FENCE_REGEX.test(`${leading}\n`) || leading.length < 12;
+  }
+  return RECOVERABLE_FENCE_REGEX.test(leading.slice(0, firstLineEnd + 1));
+}
+
 /**
  * Streaming counterpart of `recoverToolCallFromJsonCandidates`: some models
  * emit a bare `{"name": ..., "arguments": ...}` payload without any protocol
  * markup. The generate path recovers those from the final text; without this
  * stage the stream path would leak the JSON as visible text.
  *
- * A text block whose first non-whitespace character is `{` is held back until
- * the block ends (or the stream finishes). If the accumulated block resolves
- * to a known tool call it is re-emitted as a full tool-input/tool-call
- * lifecycle; otherwise the block is flushed as ordinary text. Blocks that
- * start with anything else stream through untouched, so regular prose keeps
- * its incremental delivery.
+ * A text block that starts like a recoverable payload (bare JSON object,
+ * array of calls, recoverable code fence, or a leaked tool-call tag) is held
+ * back until the block ends (or the stream finishes). If the accumulated
+ * block resolves to known tool calls it is re-emitted as full
+ * tool-input/tool-call lifecycles; otherwise the block is flushed as
+ * ordinary text. Each text block is evaluated independently, mirroring the
+ * generate path's per-content-item recovery.
  */
 export function createStreamJsonRecoveryTransform({
   tools,
@@ -53,7 +78,6 @@ export function createStreamJsonRecoveryTransform({
     >();
   }
 
-  let disabled = false;
   let held: HeldTextBlock | null = null;
 
   const flushHeld = (controller: StreamController, closeBlock: boolean) => {
@@ -121,7 +145,6 @@ export function createStreamJsonRecoveryTransform({
     if (recovered && hasToolCall) {
       held = null;
       emitRecoveredParts(controller, recovered);
-      disabled = true;
       return;
     }
     flushHeld(controller, closeBlock);
@@ -132,20 +155,20 @@ export function createStreamJsonRecoveryTransform({
       return false;
     }
     // A block can still resolve to a tool call when it starts with a bare
-    // JSON object, a JSON array of calls, a fenced code block
-    // (```json ... ```), or a literal <tool_call> tag leaking through a
-    // protocol that does not know it — mirroring the candidate shapes of the
-    // non-streaming recovery scan.
+    // JSON object, a JSON array of calls (`[{`), a recoverable code fence,
+    // or a literal tool-call tag leaking through a protocol that does not
+    // know it — mirroring the candidate shapes of the non-streaming
+    // recovery scan.
     const leading = content.trimStart();
-    if (
-      leading.length === 0 ||
-      leading.startsWith("{") ||
-      leading.startsWith("[")
-    ) {
+    if (leading.length === 0 || leading.startsWith("{")) {
       return true;
     }
-    if ("```".startsWith(leading.slice(0, 3))) {
-      return true;
+    if (leading.startsWith("[")) {
+      const second = leading.slice(1).trimStart();
+      return second.length === 0 || second.startsWith("{");
+    }
+    if (leading.startsWith("`")) {
+      return fenceStillViable(leading);
     }
     return RECOVERABLE_TAG_PREFIXES.some(
       (tag) => leading.startsWith(tag) || tag.startsWith(leading)
@@ -156,22 +179,7 @@ export function createStreamJsonRecoveryTransform({
     LanguageModelV4StreamPart,
     LanguageModelV4StreamPart
   >({
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Stream part routing needs one branch per part type interacting with the held block.
     transform(part, controller) {
-      if (disabled) {
-        controller.enqueue(part);
-        return;
-      }
-
-      if (part.type === "tool-call") {
-        // The protocol parser already found a real tool call; recovery is a
-        // fallback for streams where it found none.
-        flushHeld(controller, false);
-        disabled = true;
-        controller.enqueue(part);
-        return;
-      }
-
       if (part.type === "text-start") {
         flushHeld(controller, false);
         held = { startPart: part, id: part.id, content: "" };
