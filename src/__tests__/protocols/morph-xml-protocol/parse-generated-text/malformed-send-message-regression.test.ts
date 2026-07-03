@@ -43,46 +43,48 @@ const parseSendMessage = (text: string) => {
   };
 };
 
-describe("morphXmlProtocol PostHog send_message regressions", () => {
+describe("morphXmlProtocol malformed send_message recovery", () => {
   it("recovers a send_message tool call whose body is plain visible copy", () => {
     const { input, text } =
-      parseSendMessage(`今のトレンドですね、何が流行っているか調べてみます。
-<send_message>生成AIの日常への溶け込みや、セルフ式ラーメンなどが話題だよ。</send_message>`);
+      parseSendMessage(`I'll summarize the experiment result.
+<send_message>The synthetic trial shows that the setup guide and billing checklist are the two most requested follow-up items.</send_message>`);
 
     expect(input).toEqual({
-      message: "生成AIの日常への溶け込みや、セルフ式ラーメンなどが話題だよ。",
+      message:
+        "The synthetic trial shows that the setup guide and billing checklist are the two most requested follow-up items.",
     });
-    expect(text).toBe("今のトレンドですね、何が流行っているか調べてみます。\n");
+    expect(text).toBe("I'll summarize the experiment result.\n");
   });
 
   it("recovers flattened card-like content as a safe message fallback", () => {
     const { input, text } = parseSendMessage(`<send_message>
-https://xtrend.nikkei.com/atcl/contents/18/01269/00001/
-記事を読む
-<image_url>https://xtrend.nikkei.com/atcl/contents/18/01269/00001/nxr_m.jpg</image_url>
-生成AIの日常への溶け込みや、「セルフ式ラーメン」などの家計と満足度を両立させるグルメが話題だよ。
-ヒット予測 “苦労キャンセル”
+https://example.com/research/synthetic-trends
+Read the synthetic report
+<image_url>https://example.com/assets/synthetic-trend-card.png</image_url>
+The synthetic trend card highlights onboarding automation, budget-friendly team lunches, and weekly planning rituals.
+Forecast: practical productivity experiments
 </send_message>`);
 
     expect(input.message).toContain(
-      "https://xtrend.nikkei.com/atcl/contents/18/01269/00001/"
+      "https://example.com/research/synthetic-trends"
     );
-    expect(input.message).toContain("記事を読む");
+    expect(input.message).toContain("Read the synthetic report");
     expect(input.message).toContain(
-      "https://xtrend.nikkei.com/atcl/contents/18/01269/00001/nxr_m.jpg"
+      "https://example.com/assets/synthetic-trend-card.png"
     );
     expect(input.message).not.toContain("<send_message>");
     expect(input.message).not.toContain("<image_url>");
     expect(text).toBe("");
   });
 
-  it("strips compact self-closing XML tags from recovered fallback text", () => {
+  it("strips compact self-closing and mixed-case XML tags from recovered fallback text", () => {
     const { input } = parseSendMessage(`<send_message>
-検索結果です。<debug/>詳細はこちらです。<line-break />ありがとうございました。
+Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for checking.
 </send_message>`);
 
     expect(input).toEqual({
-      message: "検索結果です。詳細はこちらです。ありがとうございました。",
+      message:
+        "Here is the result.More details are available.Thanks for checking.",
     });
   });
 });

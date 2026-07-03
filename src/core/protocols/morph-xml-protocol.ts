@@ -456,7 +456,7 @@ function getFallbackStringPropertyName(schema: unknown): string | null {
 }
 
 function stripXmlTagsFromTextBody(text: string): string {
-  return text.replace(/<\/?[a-z_][a-z0-9._:-]*(?:\s[^>]*)?\s*\/?>/g, "");
+  return text.replace(/<\/?[a-z_][a-z0-9._:-]*(?:\s[^>]*)?\s*\/?>/gi, "");
 }
 
 function plainTextBodyFallback(
