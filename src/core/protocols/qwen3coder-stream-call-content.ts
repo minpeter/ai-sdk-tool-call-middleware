@@ -24,6 +24,11 @@ type QwenParamTagParseResult =
       openEnd: number | null;
       name?: string;
       value?: string;
+    }
+  | {
+      kind: "skip";
+      start: number;
+      end: number;
     };
 
 function consumeToolNameTag(options: {
@@ -112,6 +117,16 @@ function consumeSingleParamTag(options: {
       nextIndex: options.lt + 1,
       nextLastKept: options.lastKept,
       shouldStop: true,
+    };
+  }
+
+  if (parsed.kind === "skip") {
+    options.callState.partialParam = null;
+    return {
+      keepSlice: options.work.slice(options.lastKept, parsed.start),
+      nextIndex: parsed.end,
+      nextLastKept: parsed.end,
+      shouldStop: false,
     };
   }
 

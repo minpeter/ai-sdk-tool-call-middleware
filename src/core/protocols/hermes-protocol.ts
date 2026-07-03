@@ -1738,8 +1738,6 @@ function repairToolCallJsonForTools(
 }
 
 const VALID_JSON_ESCAPE_CHARS = new Set([
-  '"',
-  "'",
   "\\",
   "/",
   "b",
@@ -1749,6 +1747,16 @@ const VALID_JSON_ESCAPE_CHARS = new Set([
   "t",
   "u",
 ]);
+
+function isValidJsonEscape(
+  next: string | undefined,
+  quote: '"' | "'"
+): boolean {
+  if (next === undefined) {
+    return true;
+  }
+  return next === quote || VALID_JSON_ESCAPE_CHARS.has(next);
+}
 
 /**
  * Drop the backslash from invalid JSON escape sequences inside string values
@@ -1776,7 +1784,7 @@ function normalizeInvalidJsonEscapes(json: string): string {
       continue;
     }
     const next = json[i + 1];
-    if (next !== undefined && !VALID_JSON_ESCAPE_CHARS.has(next)) {
+    if (!isValidJsonEscape(next, quote)) {
       parts ??= [];
       parts.push(json.slice(chunkStart, i));
       chunkStart = i + 1;

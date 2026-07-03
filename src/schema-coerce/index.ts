@@ -797,7 +797,11 @@ function parseLooseStructuredString(s: string): unknown {
   // `True` tokens as identifier strings before the normalized candidate ran.
   const normalized = normalizePythonLiterals(s);
   try {
-    return JSON.parse(normalized);
+    const parsed = JSON.parse(normalized) as unknown;
+    if (!hasPrototypeSensitiveOwnKey(parsed)) {
+      return parsed;
+    }
+    return;
   } catch {
     // try relaxed JSON next
   }

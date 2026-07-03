@@ -13,19 +13,15 @@ import { generateId } from "./id";
 const MAX_HELD_BLOCK_LENGTH = 10_000;
 
 /**
- * Tag tokens that can open a recoverable call block when they leak through a
- * protocol that does not know them (`<tool_call>` wrappers, Qwen-style
- * `<function=...>` blocks).
- */
-const RECOVERABLE_TAG_PREFIXES = ["<tool_call>", "<function="];
-
-/**
  * Fenced blocks are held only for info strings the non-streaming recovery
  * scan actually parses (```json / ```yaml / ```xml or none). A ```python
  * block can never resolve to a tool call, so it streams through.
  */
 const RECOVERABLE_FENCE_REGEX = /^```(?:json|ya?ml|xml)?\s*(?:\n|$)/i;
 const FENCE_PREFIX = "```";
+const RECOVERABLE_TOOL_CALL_TAG = "<tool_call>";
+const RECOVERABLE_QWEN_CALL_TAGS = ["call", "function", "tool", "invoke"];
+const ASCII_WHITESPACE_REGEX = /\s/;
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
@@ -50,6 +46,36 @@ function fenceStillViable(leading: string): boolean {
     return RECOVERABLE_FENCE_REGEX.test(`${leading}\n`) || leading.length < 12;
   }
   return RECOVERABLE_FENCE_REGEX.test(leading.slice(0, firstLineEnd + 1));
+}
+
+function recoverableTagStillViable(leading: string): boolean {
+  const lower = leading.toLowerCase();
+  if (
+    RECOVERABLE_TOOL_CALL_TAG.startsWith(lower) ||
+    lower.startsWith(RECOVERABLE_TOOL_CALL_TAG)
+  ) {
+    return true;
+  }
+
+  for (const tagName of RECOVERABLE_QWEN_CALL_TAGS) {
+    const tagStart = `<${tagName}`;
+    if (tagStart.startsWith(lower)) {
+      return true;
+    }
+    if (!lower.startsWith(tagStart)) {
+      continue;
+    }
+    const next = lower[tagStart.length];
+    return (
+      next === undefined ||
+      next === "=" ||
+      next === ">" ||
+      next === "/" ||
+      ASCII_WHITESPACE_REGEX.test(next)
+    );
+  }
+
+  return false;
 }
 
 /**
@@ -170,9 +196,7 @@ export function createStreamJsonRecoveryTransform({
     if (leading.startsWith("`")) {
       return fenceStillViable(leading);
     }
-    return RECOVERABLE_TAG_PREFIXES.some(
-      (tag) => leading.startsWith(tag) || tag.startsWith(leading)
-    );
+    return recoverableTagStillViable(leading);
   };
 
   return new TransformStream<

@@ -210,6 +210,22 @@ describe("createStreamJsonRecoveryTransform", () => {
     expect(out.some((p) => p.type === "tool-call")).toBe(true);
   });
 
+  it("keeps spaced Qwen function tags eligible for recovery", async () => {
+    const out = await run([
+      ...textBlock(
+        '<function = "get_weather"><parameter=city>Seoul</parameter></function>'
+      ),
+      finishPart,
+    ]);
+
+    const toolCall = out.find((p) => p.type === "tool-call") as Extract<
+      LanguageModelV4StreamPart,
+      { type: "tool-call" }
+    >;
+    expect(toolCall).toBeDefined();
+    expect(JSON.parse(toolCall.input)).toEqual({ city: "Seoul" });
+  });
+
   it("passes everything through when no tools are configured", async () => {
     const parts = [
       ...textBlock('{"name":"get_weather","arguments":{"city":"Seoul"}}'),

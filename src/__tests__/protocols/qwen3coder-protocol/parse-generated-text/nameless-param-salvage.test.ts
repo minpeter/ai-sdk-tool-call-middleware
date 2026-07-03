@@ -83,4 +83,23 @@ describe("qwen3CoderProtocol nameless parameter salvage", () => {
     }
     expect(JSON.parse(call.input)).toEqual({ a: "1", b: "2" });
   });
+
+  it("ignores self-closing nameless parameter tags", async () => {
+    const p = qwen3CoderProtocol();
+    const text =
+      "<tool_call><function=get_weather><parameter/></function></tool_call>";
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createChunkedStream(text),
+        p.createStreamParser({ tools })
+      )
+    );
+
+    const call = out.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(call.toolName).toBe("get_weather");
+    expect(JSON.parse(call.input)).toEqual({});
+  });
 });

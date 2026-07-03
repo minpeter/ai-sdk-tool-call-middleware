@@ -72,6 +72,18 @@ describe("coerceBySchema loose structured strings", () => {
     expect(typeof out.passenger).toBe("string");
   });
 
+  it("rejects unicode-escaped prototype-sensitive keys after strict JSON parse", () => {
+    const out = coerceBySchema(
+      {
+        passenger:
+          '{"\\u005f\\u005fproto\\u005f\\u005f":{"polluted":true},"name":"Jane Doe"}',
+      },
+      schema
+    ) as Record<string, unknown>;
+
+    expect(typeof out.passenger).toBe("string");
+  });
+
   it("keeps CSV splitting for plain enumerations", () => {
     const out = coerceBySchema(
       { tags: "a, b, c" },

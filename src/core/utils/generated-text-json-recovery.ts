@@ -4,6 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import YAML from "yaml";
 import { parse as parseRJSON } from "../../rjson";
+import { unescapeXml } from "../../rxml/utils/helpers";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
 import { generateToolCallId } from "./id";
 
@@ -430,30 +431,93 @@ function resolveCandidatePayload(
   );
 }
 
-const FUNCTION_BLOCK_OPEN_REGEX =
-  /<function\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>/]+))\s*>/gi;
-const FUNCTION_PARAM_OPEN_REGEX =
-  /<parameter\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>/]+))\s*>/gi;
-const PARAM_BOUNDARY_REGEX = /<parameter\b|<\/parameter|<\/function/i;
+const QWEN_CALL_BLOCK_OPEN_REGEX = /<\s*(call|function|tool|invoke)\b[^>]*>/gi;
+const QWEN_PARAM_OPEN_REGEX = /<\s*(?:parameter|param|argument|arg)\b[^>]*>/gi;
+const QWEN_PARAM_BOUNDARY_REGEX =
+  /<\s*(?:parameter|param|argument|arg)\b|<\s*\/\s*(?:parameter|param|argument|arg|call|function|tool|invoke)\s*>/i;
+const QWEN_NAME_CHILD_REGEX =
+  /<\s*(?:name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*(?:name|tool_name)\s*>/i;
+const SELF_CLOSING_TAG_REGEX = /\/\s*>$/;
+const QWEN_TAG_SHORTHAND_VALUE_REGEX =
+  /^<\s*[A-Za-z_][\w.-]*\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/<]+))/i;
+const QWEN_NAME_ATTR_REGEX = /\bname\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
+
+function isSelfClosingTag(openTag: string): boolean {
+  return SELF_CLOSING_TAG_REGEX.test(openTag);
+}
+
+function readQwenTagValue(openTag: string): string | null {
+  const shorthand = QWEN_TAG_SHORTHAND_VALUE_REGEX.exec(openTag);
+  const value = shorthand?.[1] ?? shorthand?.[2] ?? shorthand?.[3];
+  if (value != null) {
+    return unescapeXml(value);
+  }
+
+  const nameAttr = QWEN_NAME_ATTR_REGEX.exec(openTag);
+  return nameAttr ? unescapeXml(nameAttr[1] ?? nameAttr[2] ?? "") : null;
+}
+
+function readQwenCallToolName(openTag: string, body: string): string | null {
+  const tagValue = readQwenTagValue(openTag);
+  if (tagValue?.trim()) {
+    return tagValue.trim();
+  }
+
+  const nameChild = QWEN_NAME_CHILD_REGEX.exec(body);
+  const childValue = nameChild?.[1];
+  return childValue?.trim() ? unescapeXml(childValue).trim() : null;
+}
 
 function readFunctionBlockParams(body: string): Record<string, unknown> | null {
   const params: Record<string, unknown> = {};
-  FUNCTION_PARAM_OPEN_REGEX.lastIndex = 0;
-  let match = FUNCTION_PARAM_OPEN_REGEX.exec(body);
+  QWEN_PARAM_OPEN_REGEX.lastIndex = 0;
+  let match = QWEN_PARAM_OPEN_REGEX.exec(body);
   while (match) {
-    const key = (match[1] ?? match[2] ?? match[3] ?? "").trim();
-    if (key.length === 0 || PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+    const openTag = match[0] ?? "";
+    const key = readQwenTagValue(openTag)?.trim() ?? "";
+    if (key.length === 0) {
+      if (isSelfClosingTag(openTag)) {
+        QWEN_PARAM_OPEN_REGEX.lastIndex = match.index + openTag.length;
+        match = QWEN_PARAM_OPEN_REGEX.exec(body);
+        continue;
+      }
+      return null;
+    }
+    if (PROTOTYPE_SENSITIVE_KEYS.has(key)) {
       return null;
     }
     const valueStart = match.index + match[0].length;
-    const boundaryMatch = PARAM_BOUNDARY_REGEX.exec(body.slice(valueStart));
+    if (isSelfClosingTag(openTag)) {
+      params[key] = "";
+      QWEN_PARAM_OPEN_REGEX.lastIndex = valueStart;
+      match = QWEN_PARAM_OPEN_REGEX.exec(body);
+      continue;
+    }
+    const boundaryMatch = QWEN_PARAM_BOUNDARY_REGEX.exec(
+      body.slice(valueStart)
+    );
     const valueEnd =
       boundaryMatch == null ? body.length : valueStart + boundaryMatch.index;
     params[key] = body.slice(valueStart, valueEnd).trim();
-    FUNCTION_PARAM_OPEN_REGEX.lastIndex = valueEnd;
-    match = FUNCTION_PARAM_OPEN_REGEX.exec(body);
+    QWEN_PARAM_OPEN_REGEX.lastIndex = valueEnd;
+    match = QWEN_PARAM_OPEN_REGEX.exec(body);
   }
   return params;
+}
+
+function findQwenCallCloseTag(
+  text: string,
+  startIndex: number,
+  tagName: string,
+  beforeIndex: number
+): { start: number; end: number } | null {
+  const closeRegex = new RegExp(`<\\s*\\/\\s*${tagName}\\s*>`, "i");
+  const match = closeRegex.exec(text.slice(startIndex, beforeIndex));
+  if (!match) {
+    return null;
+  }
+  const start = startIndex + match.index;
+  return { start, end: start + match[0].length };
 }
 
 /**
@@ -467,32 +531,33 @@ function extractFunctionBlockCallSpans(
   tools: LanguageModelV4FunctionTool[]
 ): RecoveredCallSpan[] {
   const spans: RecoveredCallSpan[] = [];
-  const lower = text.toLowerCase();
-  const opens = [...text.matchAll(FUNCTION_BLOCK_OPEN_REGEX)];
+  const opens = [...text.matchAll(QWEN_CALL_BLOCK_OPEN_REGEX)];
 
   for (let index = 0; index < opens.length; index += 1) {
     const open = opens[index];
-    const toolName = (open[1] ?? open[2] ?? open[3] ?? "").trim();
-    if (!tools.some((tool) => tool.name === toolName)) {
+    const tagName = (open[1] ?? "").toLowerCase();
+    const openTag = open[0] ?? "";
+    const bodyStart = open.index + open[0].length;
+    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
+    const selfClosing = isSelfClosingTag(openTag);
+    const close = selfClosing
+      ? null
+      : findQwenCallCloseTag(text, bodyStart, tagName, nextOpenIndex);
+    const bodyEnd = close?.start ?? nextOpenIndex;
+    const body = selfClosing ? "" : text.slice(bodyStart, bodyEnd);
+    const toolName = readQwenCallToolName(openTag, body);
+    if (!(toolName && tools.some((tool) => tool.name === toolName))) {
       continue;
     }
 
-    const bodyStart = open.index + open[0].length;
-    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
-    const closeIndex = lower.indexOf("</function", bodyStart);
-    const hasClose = closeIndex !== -1 && closeIndex < nextOpenIndex;
-    const bodyEnd = hasClose ? closeIndex : nextOpenIndex;
-
-    const params = readFunctionBlockParams(text.slice(bodyStart, bodyEnd));
+    const params = readFunctionBlockParams(body);
     if (!params) {
       continue;
     }
 
-    let endIndex = bodyEnd;
-    if (hasClose) {
-      const closeGt = text.indexOf(">", closeIndex);
-      endIndex = closeGt === -1 ? text.length : closeGt + 1;
-    }
+    const endIndex = selfClosing
+      ? open.index + openTag.length
+      : (close?.end ?? nextOpenIndex);
     spans.push({
       startIndex: open.index,
       endIndex,

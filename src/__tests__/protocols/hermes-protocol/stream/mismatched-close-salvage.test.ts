@@ -245,4 +245,18 @@ describe("hermes invalid JSON escape normalization", () => {
     }
     expect(JSON.parse(toolCall.input)).toEqual({ city: 'line1\nline2 "q"' });
   });
+
+  it("drops apostrophe escapes inside double-quoted JSON strings", () => {
+    const protocol = hermesProtocol();
+    const out = protocol.parseGeneratedText({
+      text: `<tool_call>{"name":"get_weather","arguments":{"city":"it\\'s Seoul"}}</tool_call>`,
+      tools,
+    });
+
+    const toolCall = out.find((p) => p.type === "tool-call");
+    if (toolCall?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(JSON.parse(toolCall.input)).toEqual({ city: "it's Seoul" });
+  });
 });

@@ -431,6 +431,11 @@ type Qwen3CoderToolParserParamTagParseResult =
       openEnd: number | null;
       name?: string;
       value?: string;
+    }
+  | {
+      kind: "skip";
+      start: number;
+      end: number;
     };
 
 function parseQwen3CoderToolParserParamTagNameLower(
@@ -542,6 +547,14 @@ function parseQwen3CoderToolParserParamTagAt(
     tagNameLower
   );
   const paramName = paramNameRaw?.trim() ?? "";
+  const selfClosing = openTag.trimEnd().endsWith("/>");
+  if (selfClosing && paramName.length === 0) {
+    return {
+      kind: "skip",
+      start: startIndex,
+      end: openEnd + 1,
+    };
+  }
   if (paramName.length === 0) {
     return parseQwen3CoderNamelessParamTag({
       text,
@@ -554,7 +567,6 @@ function parseQwen3CoderToolParserParamTagAt(
     });
   }
 
-  const selfClosing = openTag.trimEnd().endsWith("/>");
   if (selfClosing) {
     return {
       kind: "match",
@@ -865,6 +877,11 @@ function extractParameters(
 
     if (parsed.kind === "match") {
       mergeParamValue(args, parsed.name, parsed.value);
+      index = parsed.end;
+      continue;
+    }
+
+    if (parsed.kind === "skip") {
       index = parsed.end;
       continue;
     }

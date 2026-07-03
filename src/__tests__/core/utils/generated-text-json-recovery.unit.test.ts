@@ -263,6 +263,30 @@ describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
     expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
   });
 
+  it("recovers Qwen-style call blocks with name attributes", () => {
+    const text =
+      '<tool_call>\n<call name="get_weather">\n<parameter=city>Seoul</parameter>\n</call>\n</tool_call>';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(call).toBeDefined();
+    expect(call.toolName).toBe("get_weather");
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
+  });
+
+  it("recovers Qwen-style tool blocks with child tool_name tags", () => {
+    const text =
+      "<tool_call>\n<tool>\n<tool_name>get_weather</tool_name>\n<parameter=city>Seoul</parameter>\n</tool>\n</tool_call>";
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(call).toBeDefined();
+    expect(call.toolName).toBe("get_weather");
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
+  });
+
   it("recovers YAML-bodied tool_call blocks with envelope (Granite shape)", () => {
     const text =
       "<tool_call>\nname: get_weather\narguments:\n  city: Seoul\n  unit: celsius\n</weather>";
