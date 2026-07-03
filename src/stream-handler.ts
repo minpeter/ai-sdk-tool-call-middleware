@@ -1,20 +1,25 @@
 import type {
   LanguageModelV4,
-  LanguageModelV4FinishReason,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
   LanguageModelV4Usage,
 } from "@ai-sdk/provider";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { getDebugLevel, logParsedChunk, logRawChunk } from "./core/utils/debug";
+import {
+  normalizeToolCallsFinishReason,
+  shouldRewriteFinishReasonToToolCalls,
+} from "./core/utils/finish-reason";
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   decodeOriginalToolsFromProviderOptions,
   getToolCallMiddlewareOptions,
   isToolChoiceActive,
+  isToolChoiceNone,
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
+import { createStreamJsonRecoveryTransform } from "./core/utils/stream-json-recovery";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
 import { resolveToolChoiceSelection } from "./core/utils/tool-choice";
 
@@ -31,6 +36,12 @@ export async function wrapStream({
     providerOptions?: ToolCallMiddlewareProviderOptions;
   };
 }) {
+  if (isToolChoiceNone(params)) {
+    // toolChoice 'none': no tool prompt was injected and no tool calls are
+    // expected, so pass the model stream through untouched.
+    return doStream();
+  }
+
   const onErrorOptions = extractOnErrorOption(params.providerOptions);
   const tools = decodeOriginalToolsFromProviderOptions(
     params.providerOptions,
@@ -65,7 +76,8 @@ export async function wrapStream({
         }
       )
     )
-    .pipeThrough(protocol.createStreamParser({ tools, options }));
+    .pipeThrough(protocol.createStreamParser({ tools, options }))
+    .pipeThrough(createStreamJsonRecoveryTransform({ tools }));
 
   let seenToolCall = false;
   const v3Stream = coreStream.pipeThrough(
@@ -81,7 +93,7 @@ export async function wrapStream({
         if (
           normalizedPart.type === "finish" &&
           seenToolCall &&
-          normalizedPart.finishReason.unified === "stop"
+          shouldRewriteFinishReasonToToolCalls(normalizedPart.finishReason)
         ) {
           normalizedPart = {
             ...normalizedPart,
@@ -127,11 +139,32 @@ export async function toolChoiceStream({
     errorMessage: "Failed to parse toolChoice JSON from streamed model output",
   });
 
+  const toolCallId = generateToolCallId();
   const stream = new ReadableStream<LanguageModelV4StreamPart>({
     start(controller) {
       controller.enqueue({
+        type: "stream-start",
+        warnings: result?.warnings ?? [],
+      });
+      controller.enqueue({
+        type: "tool-input-start",
+        id: toolCallId,
+        toolName,
+      });
+      if (input.length > 0) {
+        controller.enqueue({
+          type: "tool-input-delta",
+          id: toolCallId,
+          delta: input,
+        });
+      }
+      controller.enqueue({
+        type: "tool-input-end",
+        id: toolCallId,
+      });
+      controller.enqueue({
         type: "tool-call",
-        toolCallId: generateToolCallId(),
+        toolCallId,
         toolName,
         input,
       });
@@ -139,6 +172,9 @@ export async function toolChoiceStream({
         type: "finish",
         usage: normalizeUsage(result?.usage),
         finishReason: normalizeToolCallsFinishReason(result?.finishReason),
+        ...(result?.providerMetadata
+          ? { providerMetadata: result.providerMetadata }
+          : {}),
       });
       controller.close();
     },
@@ -164,34 +200,6 @@ const ZERO_USAGE: LanguageModelV4Usage = {
     reasoning: undefined,
   },
 };
-
-function normalizeToolCallsFinishReason(
-  finishReason: unknown
-): LanguageModelV4FinishReason {
-  let raw = "tool-calls";
-  if (typeof finishReason === "string") {
-    raw = finishReason;
-  } else if (
-    finishReason &&
-    typeof finishReason === "object" &&
-    "raw" in finishReason &&
-    typeof (finishReason as { raw?: unknown }).raw === "string"
-  ) {
-    raw = (finishReason as { raw: string }).raw;
-  } else if (
-    finishReason &&
-    typeof finishReason === "object" &&
-    "unified" in finishReason &&
-    typeof (finishReason as { unified?: unknown }).unified === "string"
-  ) {
-    raw = (finishReason as { unified: string }).unified;
-  }
-
-  return {
-    unified: "tool-calls",
-    raw,
-  };
-}
 
 function normalizeUsage(usage: unknown): LanguageModelV4Usage {
   if (!usage || typeof usage !== "object") {

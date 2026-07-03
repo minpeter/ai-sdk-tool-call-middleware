@@ -13,12 +13,12 @@ describe("toolChoiceStream compat", () => {
     const { stream } = await toolChoiceStream({ doGenerate });
     const chunks = await convertReadableStreamToArray(stream);
 
-    expect(chunks[0]).toMatchObject({
+    expect(chunks.find((c) => c.type === "tool-call")).toMatchObject({
       type: "tool-call",
       toolName: "do",
       input: '{"x":1}',
     });
-    expect(chunks[1]).toMatchObject({ type: "finish" });
+    expect(chunks.at(-1)).toMatchObject({ type: "finish" });
   });
 
   it("normalizes finish reason to tool-calls and preserves legacy object reason", async () => {
@@ -31,7 +31,7 @@ describe("toolChoiceStream compat", () => {
     const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
     const chunks = await convertReadableStreamToArray(stream);
 
-    expect(chunks[1]).toMatchObject({
+    expect(chunks.at(-1)).toMatchObject({
       type: "finish",
       finishReason: {
         unified: "tool-calls",
@@ -49,7 +49,7 @@ describe("toolChoiceStream compat", () => {
     const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
     const chunks = await convertReadableStreamToArray(stream);
 
-    expect(chunks[1]).toMatchObject({
+    expect(chunks.at(-1)).toMatchObject({
       type: "finish",
       usage: mockUsage(7, 11),
     });

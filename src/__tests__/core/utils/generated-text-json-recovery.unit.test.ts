@@ -27,7 +27,7 @@ const tools: LanguageModelV4FunctionTool[] = [
 ];
 
 describe("recoverToolCallFromJsonCandidates", () => {
-  it("prefers earliest JSON candidate when multiple are present", () => {
+  it("recovers every resolvable JSON candidate in order", () => {
     const text =
       'before {"name":"calc","arguments":{"a":1}} middle\n' +
       "```json\n" +
@@ -37,10 +37,14 @@ describe("recoverToolCallFromJsonCandidates", () => {
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
     expect(recovered).not.toBeNull();
-    const tool = recovered?.find((part) => part.type === "tool-call") as any;
+    const calls = recovered?.filter(
+      (part) => part.type === "tool-call"
+    ) as any[];
 
-    expect(tool.toolName).toBe("calc");
-    expect(JSON.parse(tool.input)).toEqual({ a: 1 });
+    expect(calls).toHaveLength(2);
+    expect(calls[0].toolName).toBe("calc");
+    expect(JSON.parse(calls[0].input)).toEqual({ a: 1 });
+    expect(JSON.parse(calls[1].input)).toEqual({ a: 2 });
 
     const textOut = recovered
       ?.filter((part) => part.type === "text")
@@ -48,8 +52,43 @@ describe("recoverToolCallFromJsonCandidates", () => {
       .join("");
     expect(textOut).toContain("before ");
     expect(textOut).toContain(" middle");
-    expect(textOut).toContain("```json");
-    expect(textOut).toContain("``` after");
+    expect(textOut).toContain(" after");
+  });
+
+  it("recovers consecutive bare JSON tool payloads as multiple calls", () => {
+    // Real-world shape observed from GLM-4.7: parallel calls emitted as
+    // newline-separated bare JSON objects, or separated by orphan
+    // <tool_call> tags.
+    const text =
+      '{"name":"get_weather","arguments":{"city":"Seoul"}}\n' +
+      '{"name":"get_weather","arguments":{"city":"Tokyo"}}\n' +
+      '{"name":"get_weather","arguments":{"city":"Paris"}}';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const calls = recovered?.filter(
+      (part) => part.type === "tool-call"
+    ) as any[];
+    expect(calls).toHaveLength(3);
+    expect(calls.map((c) => JSON.parse(c.input).city)).toEqual([
+      "Seoul",
+      "Tokyo",
+      "Paris",
+    ]);
+    expect(recovered?.some((part) => part.type === "text")).toBe(false);
+  });
+
+  it("treats orphan tool_call separators between payloads as markup", () => {
+    const text =
+      '{"name":"get_weather","arguments":{"city":"Seoul"}}<tool_call>{"name":"get_weather","arguments":{"city":"Tokyo"}}';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const calls = recovered?.filter(
+      (part) => part.type === "tool-call"
+    ) as any[];
+    expect(calls).toHaveLength(2);
+    expect(recovered?.some((part) => part.type === "text")).toBe(false);
   });
 
   it("does not recover nested tool payload objects", () => {
@@ -97,5 +136,72 @@ describe("recoverToolCallFromJsonCandidates", () => {
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
     expect(recovered).toBeNull();
+  });
+});
+
+describe("recoverToolCallFromJsonCandidates orphan markup trim", () => {
+  it("strips dangling tool_call tags around the recovered payload", () => {
+    const text =
+      '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul"}}</think>';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    expect(recovered).not.toBeNull();
+    const tool = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(tool.toolName).toBe("get_weather");
+
+    const textOut = recovered
+      ?.filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(textOut).not.toContain("<tool_call>");
+  });
+
+  it("strips a dangling close tag after the recovered payload", () => {
+    const text = '{"name":"calc","arguments":{"a":1}}</tool_call>';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    expect(recovered).not.toBeNull();
+    const textOut = recovered
+      ?.filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(textOut ?? "").not.toContain("</tool_call>");
+  });
+
+  it("keeps surrounding prose intact while trimming orphan tags", () => {
+    const text = 'Sure thing:\n<tool_call>{"name":"calc","arguments":{"a":2}}';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    expect(recovered).not.toBeNull();
+    const textOut = recovered
+      ?.filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(textOut).toContain("Sure thing:");
+    expect(textOut).not.toContain("<tool_call>");
+  });
+});
+
+describe("recoverToolCallFromJsonCandidates prototype-sensitive keys", () => {
+  it("rejects payloads whose arguments contain __proto__", () => {
+    const text = '{"name":"calc","arguments":{"__proto__":{"x":1}}}';
+
+    expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
+  });
+
+  it("rejects arguments-only payloads containing constructor keys", () => {
+    const text = '{"city":"Seoul","constructor":{"bad":true}}';
+
+    expect(recoverToolCallFromJsonCandidates(text, [tools[1]])).toBeNull();
+  });
+
+  it("rejects nested prototype-sensitive keys", () => {
+    const text =
+      '{"name":"calc","arguments":{"a":1,"nested":{"prototype":{}}}}';
+
+    expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
   });
 });

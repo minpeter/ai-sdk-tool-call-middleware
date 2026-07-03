@@ -24,6 +24,7 @@ import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
 import {
   findEarliestToolTag,
   findNextToolTag,
+  findPotentialPartialToolTagStart,
 } from "../utils/xml-tool-tag-scanner";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
@@ -815,14 +816,20 @@ export const yamlXmlProtocol = (
     const flushSafeText = (
       controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
     ): void => {
-      const maxTagLen = toolNames.length
-        ? Math.max(...toolNames.map((n) => `<${n} />`.length))
-        : 0;
-      const tail = Math.max(0, maxTagLen - 1);
-      const safeLen = Math.max(0, buffer.length - tail);
-      if (safeLen > 0) {
-        flushText(controller, buffer.slice(0, safeLen));
-        buffer = buffer.slice(safeLen);
+      if (buffer.length === 0) {
+        return;
+      }
+      // Hold back only a genuine partial tool-tag suffix; everything else is
+      // provably plain text and streams out immediately.
+      const holdFrom = findPotentialPartialToolTagStart(buffer, toolNames);
+      if (holdFrom == null) {
+        flushText(controller, buffer);
+        buffer = "";
+        return;
+      }
+      if (holdFrom > 0) {
+        flushText(controller, buffer.slice(0, holdFrom));
+        buffer = buffer.slice(holdFrom);
       }
     };
 

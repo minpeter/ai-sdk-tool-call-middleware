@@ -60,6 +60,62 @@ export function findNextToolTag(
   };
 }
 
+const WHITESPACE_CHAR_RE = /\s/;
+const PENDING_SELF_CLOSING_SUFFIX_RE = /^\s*\/?$/;
+
+function isPartialToolTagPrefix(suffix: string, toolName: string): boolean {
+  // Complete open tag shape is exactly `<toolName>`; self-closing allows
+  // whitespace: `<\s*toolName\s*/>`. Anything that could still grow into one
+  // of those keeps the suffix held back.
+  if (suffix.length <= 1) {
+    return suffix === "<";
+  }
+
+  let cursor = 1;
+  while (cursor < suffix.length && WHITESPACE_CHAR_RE.test(suffix[cursor])) {
+    cursor += 1;
+  }
+  const rest = suffix.slice(cursor);
+  if (rest.length === 0) {
+    return true;
+  }
+
+  if (toolName.startsWith(rest)) {
+    return true;
+  }
+  if (!rest.startsWith(toolName)) {
+    return false;
+  }
+
+  // Name complete — the remainder may only be whitespace and an optional `/`
+  // while waiting for the closing `>`.
+  return PENDING_SELF_CLOSING_SUFFIX_RE.test(rest.slice(toolName.length));
+}
+
+/**
+ * Index in `buffer` where a not-yet-complete tool tag may start, or null when
+ * the buffer tail cannot be the beginning of any tool tag. Used by streaming
+ * parsers to flush everything that is provably plain text instead of holding
+ * back a fixed-size tail on every chunk.
+ */
+export function findPotentialPartialToolTagStart(
+  buffer: string,
+  toolNames: string[]
+): number | null {
+  let from = 0;
+  while (true) {
+    const lt = buffer.indexOf("<", from);
+    if (lt === -1) {
+      return null;
+    }
+    const suffix = buffer.slice(lt);
+    if (toolNames.some((name) => isPartialToolTagPrefix(suffix, name))) {
+      return lt;
+    }
+    from = lt + 1;
+  }
+}
+
 export function findEarliestToolTag(
   buffer: string,
   toolNames: string[]

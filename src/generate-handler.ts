@@ -11,6 +11,10 @@ import {
   logParsedSummary,
   logRawChunk,
 } from "./core/utils/debug";
+import {
+  normalizeToolCallsFinishReason,
+  shouldRewriteFinishReasonToToolCalls,
+} from "./core/utils/finish-reason";
 import { recoverToolCallFromJsonCandidates } from "./core/utils/generated-text-json-recovery";
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
@@ -18,6 +22,7 @@ import {
   decodeOriginalToolsFromProviderOptions,
   getToolCallMiddlewareOptions,
   isToolChoiceActive,
+  isToolChoiceNone,
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
@@ -76,6 +81,7 @@ async function handleToolChoice(
   return {
     ...result,
     content: [toolCall],
+    finishReason: normalizeToolCallsFinishReason(result.finishReason),
   };
 }
 
@@ -184,6 +190,12 @@ export async function wrapGenerate({
     providerOptions?: ToolCallMiddlewareProviderOptions;
   };
 }) {
+  if (isToolChoiceNone(params)) {
+    // toolChoice 'none': no tool prompt was injected and no tool calls are
+    // expected, so return the model result untouched.
+    return doGenerate();
+  }
+
   const onError = extractOnErrorOption(params.providerOptions);
   const tools = decodeOriginalToolsFromProviderOptions(
     params.providerOptions,
@@ -216,8 +228,17 @@ export async function wrapGenerate({
     providerOptions: params.providerOptions,
   });
 
+  const hasParsedToolCall = newContent.some(
+    (part) => part.type === "tool-call"
+  );
+
   return {
     ...result,
     content: newContent,
+    finishReason:
+      hasParsedToolCall &&
+      shouldRewriteFinishReasonToToolCalls(result.finishReason)
+        ? normalizeToolCallsFinishReason(result.finishReason)
+        : result.finishReason,
   };
 }

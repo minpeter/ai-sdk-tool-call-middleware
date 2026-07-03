@@ -27,6 +27,51 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const PROTOTYPE_SENSITIVE_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+/**
+ * Textual guard for prototype-sensitive keys in a JSON-like candidate.
+ * Relaxed-JSON parsers may absorb a literal `__proto__` key into the object
+ * prototype instead of surfacing it as an own property, so a post-parse
+ * check alone cannot see it. Declining recovery on a textual match is safe:
+ * the candidate simply stays plain text.
+ */
+const PROTOTYPE_SENSITIVE_KEY_TEXT_REGEX =
+  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
+
+function containsPrototypeSensitiveKey(value: unknown): boolean {
+  const seen = new Set<object>();
+  const stack: unknown[] = [value];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (Array.isArray(current)) {
+      if (seen.has(current)) {
+        continue;
+      }
+      seen.add(current);
+      stack.push(...current);
+      continue;
+    }
+    if (!isRecord(current) || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    for (const key of Object.keys(current)) {
+      if (PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+        return true;
+      }
+      stack.push(current[key]);
+    }
+  }
+
+  return false;
+}
+
 function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value ?? {});
@@ -190,24 +235,27 @@ function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV4Content {
   };
 }
 
-function toRecoveredParts(
-  text: string,
-  candidate: JsonCandidate,
-  toolCallPart: LanguageModelV4Content
-): LanguageModelV4Content[] {
-  const out: LanguageModelV4Content[] = [];
-  const prefix = text.slice(0, candidate.startIndex);
-  if (prefix.length > 0) {
-    out.push({ type: "text", text: prefix });
-  }
+const ORPHAN_TAG_BEFORE_CALL_REGEX = /(?:<\/?tool_call>\s*)+$/;
+const ORPHAN_TAG_AFTER_CALL_REGEX = /^(?:\s*<\/?tool_call>)+/;
 
-  out.push(toolCallPart);
-
-  const suffix = text.slice(candidate.endIndex);
-  if (suffix.length > 0) {
-    out.push({ type: "text", text: suffix });
+/**
+ * Append a text segment between recovered calls, trimming orphan tool-call
+ * wrappers on both ends. Models that half-follow a tag protocol leave
+ * dangling `<tool_call>` markup around the recovered JSON (e.g.
+ * `<tool_call>{...}</think>` or `<tool_call>` used as a separator between
+ * consecutive payloads); stripping it keeps protocol markup out of visible
+ * text.
+ */
+function pushRecoveredTextSegment(
+  out: LanguageModelV4Content[],
+  segment: string
+): void {
+  const trimmed = segment
+    .replace(ORPHAN_TAG_AFTER_CALL_REGEX, "")
+    .replace(ORPHAN_TAG_BEFORE_CALL_REGEX, "");
+  if (trimmed.trim().length > 0) {
+    out.push({ type: "text", text: trimmed });
   }
-  return out;
 }
 
 function parseAsToolPayload(
@@ -231,7 +279,7 @@ function parseAsToolPayload(
   }
 
   const rawArgs = Object.hasOwn(payload, "arguments") ? payload.arguments : {};
-  if (!isRecord(rawArgs)) {
+  if (!isRecord(rawArgs) || containsPrototypeSensitiveKey(rawArgs)) {
     return null;
   }
 
@@ -300,7 +348,10 @@ function parseAsArgumentsOnly(
   }
 
   const tool = tools[0];
-  if (!isLikelyArgumentsShapeForTool(payload, tool)) {
+  if (
+    !isLikelyArgumentsShapeForTool(payload, tool) ||
+    containsPrototypeSensitiveKey(payload)
+  ) {
     return null;
   }
 
@@ -310,6 +361,29 @@ function parseAsArgumentsOnly(
   };
 }
 
+function resolveCandidatePayload(
+  candidate: JsonCandidate,
+  tools: LanguageModelV4FunctionTool[]
+): ToolCallCandidate | null {
+  if (PROTOTYPE_SENSITIVE_KEY_TEXT_REGEX.test(candidate.text)) {
+    return null;
+  }
+  const parsed = parseJsonCandidate(candidate.text);
+  if (parsed === undefined) {
+    return null;
+  }
+  return (
+    parseAsToolPayload(parsed, tools) ?? parseAsArgumentsOnly(parsed, tools)
+  );
+}
+
+/**
+ * Recover tool calls from JSON-like candidates embedded in plain text.
+ * Every non-overlapping candidate that resolves to a known tool becomes a
+ * tool-call part, so multi-call payloads (e.g. consecutive bare JSON objects
+ * separated by newlines or orphan `<tool_call>` tags) are all recovered.
+ * Returns null when no candidate resolves.
+ */
 export function recoverToolCallFromJsonCandidates(
   text: string,
   tools: LanguageModelV4FunctionTool[]
@@ -319,22 +393,30 @@ export function recoverToolCallFromJsonCandidates(
   }
 
   const jsonCandidates = extractJsonLikeCandidates(text);
+  const out: LanguageModelV4Content[] = [];
+  let cursor = 0;
+  let recoveredAny = false;
+
   for (const jsonCandidate of jsonCandidates) {
-    const parsed = parseJsonCandidate(jsonCandidate.text);
-    if (parsed === undefined) {
+    if (jsonCandidate.startIndex < cursor) {
+      // Overlaps a candidate that was already consumed (e.g. the balanced
+      // object inside an already-recovered tagged/fenced candidate).
       continue;
     }
-
-    const toolPayload = parseAsToolPayload(parsed, tools);
-    if (toolPayload) {
-      return toRecoveredParts(text, jsonCandidate, toToolCallPart(toolPayload));
+    const payload = resolveCandidatePayload(jsonCandidate, tools);
+    if (!payload) {
+      continue;
     }
-
-    const argsPayload = parseAsArgumentsOnly(parsed, tools);
-    if (argsPayload) {
-      return toRecoveredParts(text, jsonCandidate, toToolCallPart(argsPayload));
-    }
+    pushRecoveredTextSegment(out, text.slice(cursor, jsonCandidate.startIndex));
+    out.push(toToolCallPart(payload));
+    cursor = jsonCandidate.endIndex;
+    recoveredAny = true;
   }
 
-  return null;
+  if (!recoveredAny) {
+    return null;
+  }
+
+  pushRecoveredTextSegment(out, text.slice(cursor));
+  return out;
 }

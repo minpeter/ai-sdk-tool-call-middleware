@@ -177,3 +177,15 @@ export function isToolChoiceActive(params: {
     (toolChoice.type === "tool" || toolChoice.type === "required")
   );
 }
+
+export function isToolChoiceNone(params: {
+  providerOptions?: {
+    toolCallMiddleware?: {
+      toolChoice?: { type: string };
+    };
+  };
+}): boolean {
+  return (
+    params.providerOptions?.toolCallMiddleware?.toolChoice?.type === "none"
+  );
+}

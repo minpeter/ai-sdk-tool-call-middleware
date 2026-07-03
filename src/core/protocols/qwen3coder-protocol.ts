@@ -108,6 +108,46 @@ function isTagBoundaryChar(ch: string): boolean {
   return ch === "" || isAsciiWhitespace(ch) || ch === ">" || ch === "/";
 }
 
+function isTagNameBoundaryChar(ch: string | undefined): boolean {
+  return (
+    ch === undefined ||
+    isAsciiWhitespace(ch) ||
+    ch === ">" ||
+    ch === "/" ||
+    ch === "="
+  );
+}
+
+/**
+ * Like `getPotentialStartIndex`, but tag-shape aware: a complete occurrence
+ * of the prefix counts only when followed by a valid tag-name boundary, so
+ * ordinary text such as `<callback>` or `<toolbar>` does not pin the stream
+ * buffer until finish. A trailing partial occurrence is still reported so a
+ * real tag split across chunks is never flushed as text prematurely.
+ */
+function getPotentialTagStartIndex(
+  lower: string,
+  prefixLower: string
+): number | null {
+  let from = 0;
+  while (true) {
+    const index = lower.indexOf(prefixLower, from);
+    if (index === -1) {
+      break;
+    }
+    if (isTagNameBoundaryChar(lower[index + prefixLower.length])) {
+      return index;
+    }
+    from = index + 1;
+  }
+
+  const partialIndex = getPotentialStartIndex(lower, prefixLower);
+  return partialIndex != null &&
+    partialIndex + prefixLower.length > lower.length
+    ? partialIndex
+    : null;
+}
+
 function findTagEndIndex(text: string, startIndex: number): number | null {
   let quote: '"' | "'" | null = null;
   for (let i = startIndex; i < text.length; i += 1) {
@@ -494,7 +534,15 @@ function parseQwen3CoderToolParserParamTagAt(
   );
   const paramName = paramNameRaw?.trim() ?? "";
   if (paramName.length === 0) {
-    return null;
+    return parseQwen3CoderNamelessParamTag({
+      text,
+      lowerText,
+      startIndex,
+      openEnd,
+      tagNameLower,
+      allowEndOfString: options?.allowEndOfString === true,
+      callEndTagNameLower: options?.callEndTagNameLower,
+    });
   }
 
   const selfClosing = openTag.trimEnd().endsWith("/>");
@@ -538,6 +586,84 @@ function normalizeXmlTextValue(raw: string): string {
     out = out.slice("<![CDATA[".length, -"]]>".length).trim();
   }
   return unescapeXml(out);
+}
+
+const NAMELESS_PARAM_IDENTIFIER_RE = /^[A-Za-z_][\w.-]{0,255}$/;
+
+/**
+ * Salvage the nameless-tag variant some models (e.g. Qwen2.5) emit when they
+ * half-follow the format:
+ *
+ *   <parameter>city</parameter>
+ *   Seoul
+ *
+ * The element text is the parameter NAME and the plain text after the closing
+ * tag (up to the next parameter tag or call close boundary) is the VALUE.
+ * Only identifier-like element text qualifies, so ordinary tagged content is
+ * not misread as a parameter.
+ */
+function parseQwen3CoderNamelessParamTag(options: {
+  text: string;
+  lowerText: string;
+  startIndex: number;
+  openEnd: number;
+  tagNameLower: string;
+  allowEndOfString: boolean;
+  callEndTagNameLower?: string | null;
+}): Qwen3CoderToolParserParamTagParseResult | null {
+  const { text, lowerText, startIndex, openEnd, tagNameLower } = options;
+
+  const nameStart = openEnd + 1;
+  const close = findClosingTagEnd(lowerText, nameStart, tagNameLower);
+  if (!close) {
+    // The closing tag may still be streaming in.
+    return options.allowEndOfString
+      ? null
+      : { kind: "partial", start: startIndex, openEnd };
+  }
+
+  const paramName = normalizeXmlTextValue(text.slice(nameStart, close.start));
+  if (!NAMELESS_PARAM_IDENTIFIER_RE.test(paramName)) {
+    return null;
+  }
+
+  const valueStart = close.end;
+  const boundaryIndex = findUnclosedParamBoundaryIndex(
+    lowerText,
+    valueStart,
+    options.callEndTagNameLower ?? null,
+    options.allowEndOfString
+  );
+  if (boundaryIndex == null) {
+    if (!options.allowEndOfString) {
+      const rawProgressValue = text.slice(valueStart);
+      return {
+        kind: "partial",
+        start: startIndex,
+        openEnd,
+        name: paramName,
+        value: rawProgressValue ? normalizeXmlTextValue(rawProgressValue) : "",
+      };
+    }
+
+    const rawValue = text.slice(valueStart);
+    return {
+      kind: "match",
+      start: startIndex,
+      end: text.length,
+      name: paramName,
+      value: rawValue ? normalizeXmlTextValue(rawValue) : "",
+    };
+  }
+
+  const rawValue = text.slice(valueStart, boundaryIndex);
+  return {
+    kind: "match",
+    start: startIndex,
+    end: boundaryIndex,
+    name: paramName,
+    value: rawValue ? normalizeXmlTextValue(rawValue) : "",
+  };
 }
 
 function getOpeningTag(xml: string): string | null {
@@ -1763,9 +1889,9 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const lower = buffer.toLowerCase();
 
       const potentialIndices = [
-        getPotentialStartIndex(lower, toolCallStartPrefixLower),
+        getPotentialTagStartIndex(lower, toolCallStartPrefixLower),
         ...implicitCallPrefixesLower.map((prefix) =>
-          getPotentialStartIndex(lower, prefix)
+          getPotentialTagStartIndex(lower, prefix)
         ),
       ].filter((value): value is number => value != null);
 
