@@ -433,10 +433,6 @@ function resolveCandidatePayload(
 
 const QWEN_CALL_BLOCK_OPEN_REGEX = /<\s*(call|function|tool|invoke)\b[^>]*>/gi;
 const QWEN_PARAM_OPEN_REGEX = /<\s*(?:parameter|param|argument|arg)\b[^>]*>/gi;
-const QWEN_PARAM_TAG_REGEX =
-  /<\s*(\/?)\s*(parameter|param|argument|arg)\b[^>]*>/gi;
-const QWEN_PARAM_CLOSE_TAG_REGEX =
-  /<\s*\/\s*(?:parameter|param|argument|arg)\b[^>]*>/i;
 const QWEN_PARAM_BOUNDARY_REGEX =
   /<\s*(?:parameter|param|argument|arg)\b|<\s*\/\s*(?:parameter|param|argument|arg|call|function|tool|invoke)\s*>/i;
 const QWEN_NAME_CHILD_REGEX =
@@ -509,36 +505,6 @@ function readFunctionBlockParams(body: string): Record<string, unknown> | null {
   return params;
 }
 
-function hasUnclosedQwenParamTag(text: string): boolean {
-  let depth = 0;
-  QWEN_PARAM_TAG_REGEX.lastIndex = 0;
-  let match = QWEN_PARAM_TAG_REGEX.exec(text);
-  while (match) {
-    const isClosingTag = (match[1] ?? "").length > 0;
-    if (isClosingTag) {
-      depth = Math.max(0, depth - 1);
-    } else if (!isSelfClosingTag(match[0] ?? "")) {
-      depth += 1;
-    }
-    match = QWEN_PARAM_TAG_REGEX.exec(text);
-  }
-  return depth > 0;
-}
-
-function hasQwenParamCloseBeforeNextCallClose(
-  text: string,
-  tagName: string
-): boolean {
-  const paramClose = QWEN_PARAM_CLOSE_TAG_REGEX.exec(text);
-  if (!paramClose) {
-    return false;
-  }
-
-  const nextCallCloseRegex = new RegExp(`<\\s*\\/\\s*${tagName}\\b[^>]*>`, "i");
-  const nextCallClose = nextCallCloseRegex.exec(text);
-  return !nextCallClose || paramClose.index < nextCallClose.index;
-}
-
 function findQwenCallCloseTag(
   text: string,
   startIndex: number,
@@ -546,21 +512,36 @@ function findQwenCallCloseTag(
   beforeIndex: number
 ): { start: number; end: number } | null {
   const body = text.slice(startIndex, beforeIndex);
-  const closeRegex = new RegExp(`<\\s*\\/\\s*${tagName}\\b[^>]*>`, "gi");
-  let match = closeRegex.exec(body);
+  const tagRegex = new RegExp(
+    `<\\s*(\\/?)\\s*(parameter|param|argument|arg)\\b[^>]*>|<\\s*\\/\\s*${tagName}\\b[^>]*>`,
+    "gi"
+  );
+  let parameterDepth = 0;
+  let fallbackClose: { start: number; end: number } | null = null;
+  let match = tagRegex.exec(body);
   while (match) {
-    const prefix = body.slice(0, match.index);
-    const suffix = body.slice(match.index + match[0].length);
-    const isParameterValueText =
-      hasUnclosedQwenParamTag(prefix) &&
-      hasQwenParamCloseBeforeNextCallClose(suffix, tagName);
-    if (!isParameterValueText) {
-      const start = startIndex + match.index;
-      return { start, end: start + match[0].length };
+    const tag = match[0] ?? "";
+    const parameterTagName = match[2];
+    if (parameterTagName) {
+      const isClosingTag = (match[1] ?? "").length > 0;
+      if (isClosingTag) {
+        parameterDepth = Math.max(0, parameterDepth - 1);
+      } else if (!isSelfClosingTag(tag)) {
+        parameterDepth += 1;
+      }
+      match = tagRegex.exec(body);
+      continue;
     }
-    match = closeRegex.exec(body);
+
+    const start = startIndex + match.index;
+    const close = { start, end: start + tag.length };
+    if (parameterDepth === 0) {
+      return close;
+    }
+    fallbackClose ??= close;
+    match = tagRegex.exec(body);
   }
-  return null;
+  return fallbackClose;
 }
 
 /**

@@ -329,6 +329,53 @@ describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
     expect(textOut).toContain(" done");
   });
 
+  it("uses a malformed close inside an unclosed parameter when no later call close exists", () => {
+    const text =
+      "<function=get_weather><parameter=city>Seoul </function garbage> done </parameter> tail";
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected a recovered tool call");
+    }
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
+
+    const textOut = recovered
+      ?.filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(textOut).toContain(" done </parameter> tail");
+    expect(textOut).not.toContain("</function garbage>");
+  });
+
+  it("handles many close-like parameter fragments without quadratic scanning", () => {
+    const fragments = Array.from(
+      { length: 8000 },
+      (_, index) => `literal ${index} </function garbage>`
+    ).join(" ");
+    const text = `<function=get_weather><parameter=city>${fragments}</parameter></function> done`;
+
+    const startedAt = performance.now();
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+    const elapsedMs = performance.now() - startedAt;
+
+    const call = recovered?.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected a recovered tool call");
+    }
+    const input = JSON.parse(call.input);
+    expect(input.city).toContain("literal 0 </function garbage>");
+    expect(input.city).toContain("literal 7999 </function garbage>");
+
+    const textOut = recovered
+      ?.filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(textOut).toContain(" done");
+    expect(elapsedMs).toBeLessThan(1000);
+  });
+
   it("recovers YAML-bodied tool_call blocks with envelope (Granite shape)", () => {
     const text =
       "<tool_call>\nname: get_weather\narguments:\n  city: Seoul\n  unit: celsius\n</weather>";
