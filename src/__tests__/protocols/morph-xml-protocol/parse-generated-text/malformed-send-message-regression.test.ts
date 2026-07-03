@@ -182,6 +182,16 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
     });
   });
 
+  it("does not replace literal text that resembles a CDATA placeholder", () => {
+    const { input } = parseSendMessage(
+      "<send_message>Keep \u0000MORPH_XML_CDATA_0\u0000 literal. <![CDATA[Preserve <tag>.]]></send_message>"
+    );
+
+    expect(input).toEqual({
+      message: "Keep \u0000MORPH_XML_CDATA_0\u0000 literal. Preserve <tag>.",
+    });
+  });
+
   it("recovers message fallback from jsonSchema-wrapped schemas", () => {
     const wrappedTools = [
       {

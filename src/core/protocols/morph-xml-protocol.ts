@@ -492,12 +492,23 @@ interface ProtectedXmlText {
   value: string;
 }
 
+const createProtectedXmlTextMarker = (
+  source: string,
+  index: number
+): string => {
+  let marker = `\u0000MORPH_XML_CDATA_${index}\u0000`;
+  while (source.includes(marker)) {
+    marker = `${marker}_`;
+  }
+  return marker;
+};
+
 const protectCdataText = (text: string): [string, ProtectedXmlText[]] => {
   const protectedTexts: ProtectedXmlText[] = [];
   const protectedSource = text.replace(
     /<!\[CDATA\[([\s\S]*?)\]\]>/g,
     (_match, value: string) => {
-      const marker = `__MORPH_XML_CDATA_${protectedTexts.length}__`;
+      const marker = createProtectedXmlTextMarker(text, protectedTexts.length);
       protectedTexts.push({ marker, value });
       return marker;
     }
