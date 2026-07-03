@@ -197,7 +197,7 @@ describe("qwen3CoderProtocol live-variant salvage", () => {
       "<tool_call>\n<function=write_file>\n<parameter=path>\n/src\n</parameter>\n</function>\n</tool_call>";
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
-        createChunkedStream(text, 1),
+        createChunkedStream(toChunks(text, 1)),
         p.createStreamParser({ tools: writeFileTools })
       )
     );
@@ -223,7 +223,7 @@ describe("qwen3CoderProtocol live-variant salvage", () => {
       "<tool_call>\n<function=send_message>\n<parameter=recipient>\n민석\n</parameter>\n<parameter=body>\ngo 🚀 now\n</parameter>\n</function>\n</tool_call>";
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(
-        createChunkedStream(text, 1),
+        createChunkedStream(toChunks(text, 1)),
         p.createStreamParser({ tools: sendMessageTools })
       )
     );

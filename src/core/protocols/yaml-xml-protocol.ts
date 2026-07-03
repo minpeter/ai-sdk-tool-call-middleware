@@ -1,10 +1,12 @@
 import type {
   LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
   LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import YAML from "yaml";
 import { unescapeXml } from "../../rxml/utils/helpers";
+import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
 import {
   addTextSegment,
@@ -509,7 +511,83 @@ function parseXmlChildrenAsArgs(
   return args;
 }
 
-function parseYamlContent(yamlContent: string): YamlParseResult {
+/** Canonical property names declared in a tool's input schema. */
+function buildSchemaPropNameSet(
+  toolName: string | null | undefined,
+  tools: LanguageModelV4FunctionTool[]
+): Set<string> | null {
+  if (!toolName) {
+    return null;
+  }
+  const tool = tools.find((t) => t.name === toolName);
+  const properties = (
+    tool?.inputSchema as
+      | { properties?: Record<string, unknown> }
+      | null
+      | undefined
+  )?.properties;
+  if (!properties || typeof properties !== "object") {
+    return null;
+  }
+  const names = Object.keys(properties).filter(
+    (key) => !PROTOTYPE_SENSITIVE_PARAM_KEYS.has(key)
+  );
+  return names.length > 0 ? new Set(names) : null;
+}
+
+const SCHEMA_KEYED_LINE_RE = /^([A-Za-z_][\w.-]*)\s*:\s?(.*)$/;
+const LINE_SPLIT_RE = /\r?\n/;
+
+/**
+ * Schema-keyed raw-string salvage for YAML bodies that fail to parse because
+ * a value is an unquoted multi-line scalar (e.g. Python docstrings starting
+ * with `"""` — observed live on Mistral Small). Column-0 `key:` lines whose
+ * key is a schema property start a field; everything until the next such key
+ * line is taken verbatim as the value. Declines when no schema key matches or
+ * when meaningful content precedes the first key.
+ */
+function parseSchemaKeyedRawStrings(
+  content: string,
+  schemaPropNames: Set<string> | null
+): Record<string, unknown> | null {
+  if (!schemaPropNames || schemaPropNames.size === 0) {
+    return null;
+  }
+
+  const lines = content.split(LINE_SPLIT_RE);
+  const args: Record<string, unknown> = {};
+  let currentKey: string | null = null;
+  let currentLines: string[] = [];
+  let matchedKeys = 0;
+
+  const flush = () => {
+    if (currentKey !== null) {
+      args[currentKey] = currentLines.join("\n").trim();
+    }
+  };
+
+  for (const line of lines) {
+    const match = SCHEMA_KEYED_LINE_RE.exec(line);
+    if (match?.[1] && schemaPropNames.has(match[1])) {
+      flush();
+      currentKey = match[1];
+      currentLines = match[2] ? [match[2]] : [];
+      matchedKeys += 1;
+    } else if (currentKey !== null) {
+      currentLines.push(line);
+    } else if (line.trim().length > 0) {
+      return null;
+    }
+  }
+  flush();
+
+  return matchedKeys > 0 ? args : null;
+}
+
+function parseYamlContent(
+  yamlContent: string,
+  schemaPropNames?: Set<string> | null
+): YamlParseResult {
   const { normalized, nonEmptyLines } = normalizeYamlContent(yamlContent);
   if (nonEmptyLines.length === 0) {
     return { ok: true, value: {} };
@@ -517,9 +595,11 @@ function parseYamlContent(yamlContent: string): YamlParseResult {
 
   const parsed = parseYamlDocumentAsMapping(normalized);
   if (parsed.errors.length > 0) {
-    const xmlArgs = parseXmlChildrenAsArgs(yamlContent);
-    if (xmlArgs) {
-      return { ok: true, value: xmlArgs };
+    const salvaged =
+      parseXmlChildrenAsArgs(yamlContent) ??
+      parseSchemaKeyedRawStrings(yamlContent, schemaPropNames ?? null);
+    if (salvaged) {
+      return { ok: true, value: salvaged };
     }
     return {
       ok: false,
@@ -528,9 +608,11 @@ function parseYamlContent(yamlContent: string): YamlParseResult {
   }
 
   if (parsed.value === null) {
-    const xmlArgs = parseXmlChildrenAsArgs(yamlContent);
-    if (xmlArgs) {
-      return { ok: true, value: xmlArgs };
+    const salvaged =
+      parseXmlChildrenAsArgs(yamlContent) ??
+      parseSchemaKeyedRawStrings(yamlContent, schemaPropNames ?? null);
+    if (salvaged) {
+      return { ok: true, value: salvaged };
     }
     return { ok: false, failure: { kind: "yaml-non-mapping" } };
   }
@@ -567,20 +649,98 @@ function parseYamlContentForStreamProgress(
   }
 }
 
+/** Whitespace and complete tag-like tokens only (salvage strictness gate). */
+const FOREIGN_SALVAGE_MARKUP_ONLY_RE = /^\s*(?:<[^<>\n]*>\s*)*$/;
+
+const FOREIGN_TOOL_CALL_BLOCK_RE =
+  /<tool_call\b[^>]*>[\s\S]*?(?:<\/tool_call\s*>|$)/i;
+const FOREIGN_TOOL_CALL_CLOSE_RE = /<\/tool_call\s*>/i;
+
+type ForeignToolCallPart = Extract<
+  LanguageModelV4Content,
+  { type: "tool-call" }
+>;
+
+/**
+ * Runs the shared JSON recovery over a foreign block and applies the
+ * strictness gate: at least one call must resolve and any leftover text must
+ * be markup-only. Returns null when the block should stay plain text.
+ */
+function recoverGatedForeignCalls(
+  block: string,
+  tools: LanguageModelV4FunctionTool[]
+): ForeignToolCallPart[] | null {
+  const recovered = recoverToolCallFromJsonCandidates(block, tools);
+  if (!recovered) {
+    return null;
+  }
+  const calls = recovered.filter(
+    (part): part is ForeignToolCallPart => part.type === "tool-call"
+  );
+  const hasProse = recovered.some(
+    (part) =>
+      part.type === "text" && !FOREIGN_SALVAGE_MARKUP_ONLY_RE.test(part.text)
+  );
+  if (calls.length === 0 || hasProse) {
+    return null;
+  }
+  return calls;
+}
+
+/**
+ * Cross-format salvage: some models answer the YAML-XML prompt with
+ * Hermes-style `<tool_call>` JSON payloads instead (observed live on IBM
+ * Granite 4.0). Leftover text segments containing such blocks are re-scanned
+ * with the shared JSON recovery before being emitted as plain text.
+ */
+function addTextOrForeignToolCalls(
+  segment: string,
+  processedElements: LanguageModelV4Content[],
+  tools: LanguageModelV4FunctionTool[]
+): void {
+  if (segment.length === 0) {
+    return;
+  }
+  if (!FOREIGN_TOOL_CALL_BLOCK_RE.test(segment)) {
+    addTextSegment(segment, processedElements);
+    return;
+  }
+  const recovered = recoverToolCallFromJsonCandidates(segment, tools);
+  if (!recovered?.some((part) => part.type === "tool-call")) {
+    addTextSegment(segment, processedElements);
+    return;
+  }
+  for (const part of recovered) {
+    if (part.type === "text") {
+      addTextSegment(part.text, processedElements);
+    } else {
+      processedElements.push(part);
+    }
+  }
+}
+
 function processToolCallMatch(
   text: string,
   tc: ToolCallMatch,
   currentIndex: number,
   processedElements: LanguageModelV4Content[],
+  tools: LanguageModelV4FunctionTool[],
   options?: ParserOptions
 ): number {
   if (tc.startIndex < currentIndex) {
     return currentIndex;
   }
 
-  addTextSegment(text.slice(currentIndex, tc.startIndex), processedElements);
+  addTextOrForeignToolCalls(
+    text.slice(currentIndex, tc.startIndex),
+    processedElements,
+    tools
+  );
 
-  const result = parseYamlContent(tc.content);
+  const result = parseYamlContent(
+    tc.content,
+    buildSchemaPropNameSet(tc.toolName, tools)
+  );
   if (result.ok) {
     processedElements.push({
       type: "tool-call",
@@ -692,12 +852,17 @@ export const yamlXmlProtocol = (
         tc,
         currentIndex,
         processedElements,
+        tools,
         options
       );
     }
 
     if (currentIndex < parseText.length) {
-      addTextSegment(parseText.slice(currentIndex), processedElements);
+      addTextOrForeignToolCalls(
+        parseText.slice(currentIndex),
+        processedElements,
+        tools
+      );
     }
 
     return processedElements;
@@ -759,7 +924,10 @@ export const yamlXmlProtocol = (
       toolName: string,
       toolCallId: string
     ) => {
-      const result = parseYamlContent(toolContent);
+      const result = parseYamlContent(
+        toolContent,
+        buildSchemaPropNameSet(toolName, tools)
+      );
       flushText(controller);
       if (result.ok) {
         const finalInput = stringifyToolInputWithSchema({
@@ -816,7 +984,10 @@ export const yamlXmlProtocol = (
       emitToolInputProgress(controller, buffer);
       const { name: toolName, toolCallId } = currentToolCall;
       const reconciledBuffer = stripTrailingPartialCloseTag(buffer, toolName);
-      const result = parseYamlContent(reconciledBuffer);
+      const result = parseYamlContent(
+        reconciledBuffer,
+        buildSchemaPropNameSet(toolName, tools)
+      );
       flushText(controller);
       if (result.ok) {
         const finalInput = stringifyToolInputWithSchema({
@@ -884,15 +1055,41 @@ export const yamlXmlProtocol = (
       return true;
     };
 
+    /**
+     * Start index of a (possibly still partial) foreign `<tool_call` block
+     * that must be held back for cross-format salvage, or null when the
+     * buffer contains none.
+     */
+    const findForeignBlockHoldStart = (): number | null => {
+      const lower = buffer.toLowerCase();
+      const start = lower.indexOf("<tool_call");
+      if (start !== -1) {
+        return start;
+      }
+      const marker = "<tool_call";
+      const maxLen = Math.min(marker.length - 1, lower.length);
+      for (let len = maxLen; len > 0; len -= 1) {
+        if (lower.endsWith(marker.slice(0, len))) {
+          return lower.length - len;
+        }
+      }
+      return null;
+    };
+
     const flushSafeText = (
       controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
     ): void => {
       if (buffer.length === 0) {
         return;
       }
-      // Hold back only a genuine partial tool-tag suffix; everything else is
-      // provably plain text and streams out immediately.
-      const holdFrom = findPotentialPartialToolTagStart(buffer, toolNames);
+      // Hold back only a genuine partial tool-tag suffix or a pending foreign
+      // <tool_call block; everything else is provably plain text and streams
+      // out immediately.
+      const holds = [
+        findPotentialPartialToolTagStart(buffer, toolNames),
+        findForeignBlockHoldStart(),
+      ].filter((value): value is number => value != null);
+      const holdFrom = holds.length > 0 ? Math.min(...holds) : null;
       if (holdFrom == null) {
         flushText(controller, buffer);
         buffer = "";
@@ -902,6 +1099,107 @@ export const yamlXmlProtocol = (
         flushText(controller, buffer.slice(0, holdFrom));
         buffer = buffer.slice(holdFrom);
       }
+    };
+
+    const emitSalvagedForeignCalls = (
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
+      calls: ForeignToolCallPart[]
+    ): void => {
+      flushText(controller);
+      for (const call of calls) {
+        controller.enqueue({
+          type: "tool-input-start",
+          id: call.toolCallId,
+          toolName: call.toolName,
+        });
+        if (call.input.length > 0) {
+          controller.enqueue({
+            type: "tool-input-delta",
+            id: call.toolCallId,
+            delta: call.input,
+          });
+        }
+        enqueueToolInputEndAndCall({
+          controller,
+          id: call.toolCallId,
+          toolName: call.toolName,
+          input: call.input,
+        });
+      }
+    };
+
+    /**
+     * Consumes a complete foreign `<tool_call>…</tool_call>` block from the
+     * buffer, emitting salvaged calls (or flushing the block as text when the
+     * shared JSON recovery declines). Returns false when the buffer holds no
+     * complete foreign block to consume.
+     */
+    const tryConsumeForeignToolCallBlock = (
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
+    ): boolean => {
+      const lower = buffer.toLowerCase();
+      const start = lower.indexOf("<tool_call");
+      if (start === -1) {
+        return false;
+      }
+      const { index: realTagIndex } = findEarliestToolTag(buffer, toolNames);
+      if (realTagIndex !== -1 && realTagIndex < start) {
+        return false;
+      }
+      const closeMatch = FOREIGN_TOOL_CALL_CLOSE_RE.exec(lower.slice(start));
+      if (!closeMatch) {
+        return false;
+      }
+      const end = start + closeMatch.index + closeMatch[0].length;
+      const block = buffer.slice(start, end);
+      // A real tool tag inside the wrapper means the block is YAML-XML with a
+      // stray wrapper; leave it to the normal tag path.
+      if (findEarliestToolTag(block.slice(1), toolNames).index !== -1) {
+        return false;
+      }
+      const calls = recoverGatedForeignCalls(block, tools);
+      if (!calls) {
+        flushText(controller, buffer.slice(0, end));
+        buffer = buffer.slice(end);
+        return true;
+      }
+      if (start > 0) {
+        flushText(controller, buffer.slice(0, start));
+      }
+      emitSalvagedForeignCalls(controller, calls);
+      buffer = buffer.slice(end);
+      return true;
+    };
+
+    /**
+     * Finish-time variant: the stream ended with an unclosed foreign block
+     * still buffered. Salvage it or flush it as text.
+     */
+    const salvageForeignBlockAtFinish = (
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
+    ): void => {
+      if (!buffer) {
+        return;
+      }
+      const lower = buffer.toLowerCase();
+      const start = lower.indexOf("<tool_call");
+      if (start === -1) {
+        flushText(controller, buffer);
+        buffer = "";
+        return;
+      }
+      const block = buffer.slice(start);
+      const calls = recoverGatedForeignCalls(block, tools);
+      if (!calls) {
+        flushText(controller, buffer);
+        buffer = "";
+        return;
+      }
+      if (start > 0) {
+        flushText(controller, buffer.slice(0, start));
+      }
+      emitSalvagedForeignCalls(controller, calls);
+      buffer = "";
     };
 
     const handleNewToolTag = (
@@ -948,6 +1246,28 @@ export const yamlXmlProtocol = (
       }
     };
 
+    /** Returns false when the buffer is exhausted and scanning should stop. */
+    const processIdleBuffer = (
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
+    ): boolean => {
+      if (tryConsumeForeignToolCallBlock(controller)) {
+        return true;
+      }
+
+      const { index, name, selfClosing, tagLength } = findEarliestToolTag(
+        buffer,
+        toolNames
+      );
+
+      if (index === -1) {
+        flushSafeText(controller);
+        return false;
+      }
+
+      handleNewToolTag(controller, index, name, selfClosing, tagLength);
+      return true;
+    };
+
     const processBuffer = (
       controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
     ) => {
@@ -958,18 +1278,8 @@ export const yamlXmlProtocol = (
           if (!handlePendingToolCall(controller, endTag, toolName)) {
             break;
           }
-        } else {
-          const { index, name, selfClosing, tagLength } = findEarliestToolTag(
-            buffer,
-            toolNames
-          );
-
-          if (index === -1) {
-            flushSafeText(controller);
-            break;
-          }
-
-          handleNewToolTag(controller, index, name, selfClosing, tagLength);
+        } else if (!processIdleBuffer(controller)) {
+          break;
         }
       }
     };
@@ -980,8 +1290,7 @@ export const yamlXmlProtocol = (
           if (currentToolCall) {
             finalizeUnclosedToolCall(controller);
           } else if (buffer) {
-            flushText(controller, buffer);
-            buffer = "";
+            salvageForeignBlockAtFinish(controller);
           }
           flushText(controller);
           controller.enqueue(chunk);
@@ -1006,8 +1315,7 @@ export const yamlXmlProtocol = (
         if (currentToolCall) {
           finalizeUnclosedToolCall(controller);
         } else if (buffer) {
-          flushText(controller, buffer);
-          buffer = "";
+          salvageForeignBlockAtFinish(controller);
         }
         if (currentTextId && hasEmittedTextStart) {
           controller.enqueue({

@@ -294,9 +294,11 @@ describe("YAML object-delta progressive invariants", () => {
     );
 
     try {
+      // A schema without properties keeps the schema-keyed raw-string salvage
+      // out of the picture, so the mocked final-parse failure stays a failure.
       const out = await runProtocolTextDeltaStream({
         protocol: yamlXmlProtocol(),
-        tools: [weatherTool],
+        tools: [{ ...weatherTool, inputSchema: { type: "object" } }],
         chunks: ["<get_weather>\nlocation: Seoul\nunit:\n"],
       });
 

@@ -119,8 +119,6 @@ function buildSchemaParamNameMap(
   return map.size > 0 ? map : null;
 }
 
-const CALL_OPEN_IDENTIFIER_RE = /^[A-Za-z_][\w.-]{0,255}$/;
-
 /**
  * `<function>NAME</function>` — the tool name emitted as element text with an
  * immediate close (observed live on Llama 3.1 8B under the Qwen prompt).
@@ -185,6 +183,10 @@ function normalizeToolCallInnerOpenVariants(
  * identifier, and an optional partial closing tag. Used to defer streaming
  * mode decisions until the shape is resolved.
  */
+const CALL_OPEN_TAG_ONLY_PARTIAL_RE = /^\s*<(?:function|call|tool|invoke)$/i;
+
+const CALL_OPEN_BARE_IDENTIFIER_PARTIAL_RE = /^\s*([A-Za-z_][\w.-]{0,255})>?$/;
+
 const CALL_NAME_AS_TEXT_PARTIAL_RE =
   /^\s*<(?:function|call|tool|invoke)\s*>\s*(?:[A-Za-z_][\w.-]{0,255})?\s*(?:<(?:\s*\/(?:\s*[A-Za-z_]{0,12})?)?)?$/i;
 
@@ -215,14 +217,14 @@ function normalizeStreamToolCallInnerOpenVariants(
   // `<function` at buffer end is also held: the next character decides between
   // canonical `<function=…>` and the `<function>NAME</function>` variant.
   if (
-    /^\s*<(?:function|call|tool|invoke)$/i.test(inner) ||
+    CALL_OPEN_TAG_ONLY_PARTIAL_RE.test(inner) ||
     CALL_NAME_AS_TEXT_PARTIAL_RE.test(inner) ||
     CALL_OPEN_MISSING_LT_PARTIAL_RE.test(inner)
   ) {
     return { status: "incomplete" };
   }
 
-  const bareIdentifier = /^\s*([A-Za-z_][\w.-]{0,255})>?$/.exec(inner);
+  const bareIdentifier = CALL_OPEN_BARE_IDENTIFIER_PARTIAL_RE.exec(inner);
   if (bareIdentifier) {
     const partialName = bareIdentifier[1] ?? "";
     if (tools.some((t) => t.name.startsWith(partialName))) {
@@ -242,6 +244,8 @@ function normalizeStreamToolCallInnerOpenVariants(
  * Tag openers/closers whose partial prefix must never leak into streamed
  * tool-input deltas while the closing markup is still arriving.
  */
+const TRAILING_WHITESPACE_RE = /\s+$/u;
+
 const QWEN3CODER_PROGRESS_HOLDBACK_TAG_PREFIXES = [
   "</parameter>",
   "</param>",
@@ -303,7 +307,7 @@ function sanitizePartialParamValueForProgress(
   if (cut !== null) {
     value = value.slice(0, cut);
   }
-  value = value.replace(/\s+$/u, "");
+  value = value.replace(TRAILING_WHITESPACE_RE, "");
   // A trailing lone high surrogate (a chunk boundary split an emoji) would be
   // JSON-escaped now but emitted raw once paired, breaking delta extension.
   const lastCode = value.charCodeAt(value.length - 1);
@@ -675,7 +679,11 @@ function findUnclosedParamBoundaryIndex(
 
   if (schemaParamNames) {
     for (const nameLower of schemaParamNames.keys()) {
-      const index = indexOfTagOpenWithBoundary(lowerText, valueStart, nameLower);
+      const index = indexOfTagOpenWithBoundary(
+        lowerText,
+        valueStart,
+        nameLower
+      );
       if (index !== -1) {
         indices.push(index);
       }
