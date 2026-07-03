@@ -72,12 +72,49 @@ describe("coerceBySchema loose structured strings", () => {
     expect(typeof out.passenger).toBe("string");
   });
 
+  it("parses strict JSON string values containing prototype-like key text", () => {
+    const out = coerceBySchema(
+      {
+        passenger: `{"name":"notes mention 'constructor': and '__proto__': labels","age":34}`,
+      },
+      schema
+    ) as Record<string, unknown>;
+
+    expect(out.passenger).toEqual({
+      name: "notes mention 'constructor': and '__proto__': labels",
+      age: 34,
+    });
+  });
+
+  it("parses relaxed string values containing prototype-like key text", () => {
+    const out = coerceBySchema(
+      {
+        passenger: `{'name': "notes mention '__proto__': and 'constructor': labels", 'age': 34}`,
+      },
+      schema
+    ) as Record<string, unknown>;
+
+    expect(out.passenger).toEqual({
+      name: "notes mention '__proto__': and 'constructor': labels",
+      age: 34,
+    });
+  });
+
   it("rejects unicode-escaped prototype-sensitive keys after strict JSON parse", () => {
     const out = coerceBySchema(
       {
         passenger:
           '{"\\u005f\\u005fproto\\u005f\\u005f":{"polluted":true},"name":"Jane Doe"}',
       },
+      schema
+    ) as Record<string, unknown>;
+
+    expect(typeof out.passenger).toBe("string");
+  });
+
+  it("rejects unquoted relaxed prototype-sensitive keys", () => {
+    const out = coerceBySchema(
+      { passenger: "{constructor: {'polluted': True}, name: 'Jane Doe'}" },
       schema
     ) as Record<string, unknown>;
 

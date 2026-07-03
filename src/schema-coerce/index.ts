@@ -692,8 +692,6 @@ const COERCE_PROTOTYPE_SENSITIVE_KEYS = new Set([
   "constructor",
   "prototype",
 ]);
-const COERCE_PROTO_KEY_TEXT_REGEX =
-  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
 /** Python literals models leak into JSON-ish payloads (`True`, `None`). */
 const IDENTIFIER_CHAR_REGEX = /[\w$]/;
 const XML_CHILD_VALUE_CLOSED_RE = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)<\/\1\s*>$/;
@@ -789,9 +787,6 @@ function parseLooseStructuredString(s: string): unknown {
   if (first !== "{" && first !== "[") {
     return;
   }
-  if (COERCE_PROTO_KEY_TEXT_REGEX.test(s)) {
-    return;
-  }
   // Python literals are normalized up front (quote-aware, so string values
   // are untouched); otherwise the relaxed parser would absorb bare `None` /
   // `True` tokens as identifier strings before the normalized candidate ran.
@@ -806,10 +801,18 @@ function parseLooseStructuredString(s: string): unknown {
     // try relaxed JSON next
   }
   try {
-    const parsed = parseRJSON(normalized) as unknown;
-    if (!hasPrototypeSensitiveOwnKey(parsed)) {
-      return parsed;
+    let foundPrototypeSensitiveKey = false;
+    const parsed = parseRJSON(normalized, (key: string, value: unknown) => {
+      if (COERCE_PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+        foundPrototypeSensitiveKey = true;
+        return;
+      }
+      return value;
+    });
+    if (foundPrototypeSensitiveKey || hasPrototypeSensitiveOwnKey(parsed)) {
+      return;
     }
+    return parsed;
   } catch {
     // not parseable as a structured value
   }
