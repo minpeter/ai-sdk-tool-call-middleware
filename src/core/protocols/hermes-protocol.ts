@@ -1259,6 +1259,63 @@ function collectObjectKeys(
   return null;
 }
 
+/**
+ * Unwrap the double-encoded arguments variant some models emit
+ * (`"arguments": "{\"city\": \"Seoul\"}"` — the OpenAI native wire shape,
+ * observed live on IBM Granite 4.0). Returns the parsed record, or null when
+ * the string is not a safe JSON object.
+ */
+function tryParseDoubleEncodedArguments(
+  args: string
+): Record<string, unknown> | null {
+  if (!args.trimStart().startsWith("{")) {
+    return null;
+  }
+  if (hasPrototypeSensitiveKeyInJsonLikeObject(args)) {
+    return null;
+  }
+  try {
+    const parsed = parseRJSON(normalizeJsonStringCtrl(args));
+    return isRecord(parsed) && !containsPrototypeSensitiveArgumentKey(parsed)
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyNonRecordArgumentPolicy(
+  toolName: string,
+  args: Exclude<unknown, Record<string, unknown>>,
+  tools: LanguageModelV4FunctionTool[],
+  keyPolicy: ArgumentKeyPolicy | undefined
+): { args: unknown } | null {
+  if (args === null) {
+    return topLevelNullArgumentMatchesToolSchema(toolName, tools)
+      ? { args }
+      : null;
+  }
+  if (
+    keyPolicy &&
+    argumentValueMatchesSchemaKeyShape(args, keyPolicy.schema, new Set(), true)
+  ) {
+    return { args };
+  }
+  if (typeof args === "string") {
+    const unwrapped = tryParseDoubleEncodedArguments(args);
+    if (unwrapped) {
+      const unwrappedPolicyArgs = applyArgumentKeyPolicy(unwrapped, keyPolicy);
+      if (unwrappedPolicyArgs !== null) {
+        return { args: unwrappedPolicyArgs };
+      }
+    }
+  }
+  if (keyPolicy?.rejectNonRecordArguments) {
+    return null;
+  }
+  return { args };
+}
+
 function applyToolArgumentKeyPolicy(
   toolName: string,
   args: unknown,
@@ -1270,26 +1327,12 @@ function applyToolArgumentKeyPolicy(
   }
   const normalizedArgs = args === undefined ? {} : args;
   if (!isRecord(normalizedArgs)) {
-    if (normalizedArgs === null) {
-      return topLevelNullArgumentMatchesToolSchema(toolName, tools)
-        ? { args: normalizedArgs }
-        : null;
-    }
-    if (
-      keyPolicy &&
-      argumentValueMatchesSchemaKeyShape(
-        normalizedArgs,
-        keyPolicy.schema,
-        new Set(),
-        true
-      )
-    ) {
-      return { args: normalizedArgs };
-    }
-    if (keyPolicy?.rejectNonRecordArguments) {
-      return null;
-    }
-    return { args: normalizedArgs };
+    return applyNonRecordArgumentPolicy(
+      toolName,
+      normalizedArgs,
+      tools,
+      keyPolicy
+    );
   }
   const policyArgs = applyArgumentKeyPolicy(normalizedArgs, keyPolicy);
   return policyArgs === null ? null : { args: policyArgs };
@@ -1766,16 +1809,22 @@ function resolveToolCall(
         return { ok: false, error: repairError };
       }
     }
-    // Last resort: salvage a balanced `{"name": ..., "arguments": ...}`
-    // payload for a known tool from a body with trailing garbage (e.g. a
-    // mismatched close tag such as `{...}</think>`). This path resolves a
-    // single call, so multi-call bodies stay with the caller's fallback.
-    const recoveredCalls = recoverKnownToolCallsFromText(toolCallJson, tools);
-    if (recoveredCalls?.length === 1) {
-      return recoveredCalls[0];
-    }
     return { ok: false, error };
   }
+}
+
+/**
+ * Salvage layer shared by the closed-body emission paths: when the strict
+ * parse/repair pipeline fails, recover one or more balanced
+ * `{"name": ..., "arguments": ...}` payloads for known tools from bodies
+ * with markup garbage (mismatched `</think>` close tags, `<tool_call>`
+ * separators, array-wrapped call lists).
+ */
+function salvageResolvedToolCalls(
+  toolCallJson: string,
+  tools: LanguageModelV4FunctionTool[]
+): Extract<ResolvedToolCall, { ok: true }>[] | null {
+  return recoverKnownToolCallsFromText(toolCallJson, tools);
 }
 
 /** Whitespace and complete tag-like tokens only (e.g. a stray `</think>`). */
@@ -1868,6 +1917,19 @@ function processToolCallJson(
       toolName: resolved.toolName,
       input: resolved.input,
     });
+    return;
+  }
+
+  const salvagedCalls = salvageResolvedToolCalls(toolCallJson, tools);
+  if (salvagedCalls && salvagedCalls.length > 0) {
+    for (const salvagedCall of salvagedCalls) {
+      processedElements.push({
+        type: "tool-call",
+        toolCallId: generateToolCallId(),
+        toolName: salvagedCall.toolName,
+        input: salvagedCall.input,
+      });
+    }
     return;
   }
 
@@ -2648,6 +2710,23 @@ function emitToolCall(context: TagProcessingContext) {
     // streaming the tool-input lifecycle (was inside emitToolCallFromParsed).
     closeTextBlock(state, controller);
     emitResolvedToolCall(state, controller, resolved.toolName, resolved.input);
+    return;
+  }
+
+  const salvagedCalls = salvageResolvedToolCalls(
+    state.currentToolCallJson,
+    tools
+  );
+  if (salvagedCalls && salvagedCalls.length > 0) {
+    closeTextBlock(state, controller);
+    for (const salvagedCall of salvagedCalls) {
+      emitResolvedToolCall(
+        state,
+        controller,
+        salvagedCall.toolName,
+        salvagedCall.input
+      );
+    }
     return;
   }
 

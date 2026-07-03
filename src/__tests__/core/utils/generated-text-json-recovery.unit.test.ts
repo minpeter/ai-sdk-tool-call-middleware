@@ -205,3 +205,47 @@ describe("recoverToolCallFromJsonCandidates prototype-sensitive keys", () => {
     expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
   });
 });
+
+describe("recoverToolCallFromJsonCandidates envelope variants", () => {
+  it("accepts tool/parameters key aliases", () => {
+    const text = '{"tool": "get_weather", "parameters": {"city": "Seoul"}}';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(call).toBeDefined();
+    expect(call.toolName).toBe("get_weather");
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
+  });
+
+  it("unwraps string-typed arguments", () => {
+    const text =
+      '{"name": "get_weather", "arguments": "{\\"city\\": \\"Seoul\\"}"}';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(call).toBeDefined();
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
+  });
+
+  it("recovers array-wrapped call lists without leaking punctuation", () => {
+    const text =
+      '[{"name":"get_weather","arguments":{"city":"Seoul"}}, {"name":"get_weather","arguments":{"city":"Tokyo"}}]';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const calls = recovered?.filter(
+      (part) => part.type === "tool-call"
+    ) as any[];
+    expect(calls).toHaveLength(2);
+    expect(recovered?.some((part) => part.type === "text")).toBe(false);
+  });
+
+  it("rejects prototype-sensitive keys in string-typed arguments", () => {
+    const text =
+      '{"name": "get_weather", "arguments": "{\\"__proto__\\": {}}"}';
+
+    expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
+  });
+});

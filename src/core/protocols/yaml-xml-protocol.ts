@@ -4,6 +4,7 @@ import type {
   LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import YAML from "yaml";
+import { unescapeXml } from "../../rxml/utils/helpers";
 import { generateToolCallId } from "../utils/id";
 import {
   addTextSegment,
@@ -446,6 +447,66 @@ function yamlFailureCause(failure: YamlParseFailure): Record<string, unknown> {
  * (`toolCall`, `toolName`, `toolCallId`, `dropReason`) with the underlying
  * helper cause attached as context.
  */
+const XML_CHILD_CLOSED_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)<\/\1\s*>$/;
+const XML_CHILD_OPEN_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)$/;
+const PROTOTYPE_SENSITIVE_PARAM_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+function mergeXmlChildArg(
+  args: Record<string, unknown>,
+  key: string,
+  value: string
+): void {
+  const existing = args[key];
+  if (existing === undefined) {
+    args[key] = value;
+  } else if (Array.isArray(existing)) {
+    existing.push(value);
+  } else {
+    args[key] = [existing, value];
+  }
+}
+
+/**
+ * Fallback for models that answer the YAML-body prompt with XML child tags
+ * instead (`<city>Seoul</city>`, observed live on Amazon Nova 2 Lite —
+ * effectively the morph-xml body format). Parses line-oriented
+ * `<key>value</key>` pairs, tolerating a missing close tag on a line
+ * (`<unit>celsius`), and declines on anything else so genuine YAML failures
+ * keep their normal error handling.
+ */
+function parseXmlChildrenAsArgs(
+  content: string
+): Record<string, unknown> | null {
+  const lines = content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0 || !lines[0].startsWith("<")) {
+    return null;
+  }
+
+  const args: Record<string, unknown> = {};
+  for (const line of lines) {
+    const match =
+      XML_CHILD_CLOSED_LINE_REGEX.exec(line) ??
+      XML_CHILD_OPEN_LINE_REGEX.exec(line);
+    if (!match) {
+      return null;
+    }
+    const key = match[1];
+    if (PROTOTYPE_SENSITIVE_PARAM_KEYS.has(key)) {
+      return null;
+    }
+    mergeXmlChildArg(args, key, unescapeXml((match[2] ?? "").trim()));
+  }
+
+  return args;
+}
+
 function parseYamlContent(yamlContent: string): YamlParseResult {
   const { normalized, nonEmptyLines } = normalizeYamlContent(yamlContent);
   if (nonEmptyLines.length === 0) {
@@ -454,6 +515,10 @@ function parseYamlContent(yamlContent: string): YamlParseResult {
 
   const parsed = parseYamlDocumentAsMapping(normalized);
   if (parsed.errors.length > 0) {
+    const xmlArgs = parseXmlChildrenAsArgs(yamlContent);
+    if (xmlArgs) {
+      return { ok: true, value: xmlArgs };
+    }
     return {
       ok: false,
       failure: { kind: "yaml-parse-error", errors: parsed.errors },
@@ -461,6 +526,10 @@ function parseYamlContent(yamlContent: string): YamlParseResult {
   }
 
   if (parsed.value === null) {
+    const xmlArgs = parseXmlChildrenAsArgs(yamlContent);
+    if (xmlArgs) {
+      return { ok: true, value: xmlArgs };
+    }
     return { ok: false, failure: { kind: "yaml-non-mapping" } };
   }
 

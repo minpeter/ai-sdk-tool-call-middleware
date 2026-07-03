@@ -296,3 +296,49 @@ describe("createStreamJsonRecoveryTransform fenced blocks", () => {
     expect(text).toBe(payload);
   });
 });
+
+describe("createStreamJsonRecoveryTransform extended hold shapes", () => {
+  const finish: LanguageModelV4StreamPart = {
+    type: "finish",
+    finishReason: stopFinishReason,
+    usage: zeroUsage,
+  };
+
+  it("recovers an array-wrapped call list", async () => {
+    const out = await run([
+      ...textBlock(
+        '[{"name":"get_weather","arguments":{"city":"Seoul"}}, {"name":"get_weather","arguments":{"city":"Tokyo"}}]'
+      ),
+      finish,
+    ]);
+
+    const calls = out.filter((p) => p.type === "tool-call");
+    expect(calls).toHaveLength(2);
+    expect(out.some((p) => p.type === "text-delta")).toBe(false);
+  });
+
+  it("recovers a literal tool_call tag leaking through a foreign protocol", async () => {
+    const out = await run([
+      ...textBlock(
+        '<tool_call>[{"name":"get_weather","arguments":{"city":"Seoul"}}]'
+      ),
+      finish,
+    ]);
+
+    const calls = out.filter((p) => p.type === "tool-call");
+    expect(calls).toHaveLength(1);
+    expect(out.some((p) => p.type === "text-delta")).toBe(false);
+  });
+
+  it("flushes tag-like prose that is not a tool_call tag", async () => {
+    const payload = "<toolbox> content here";
+    const out = await run([...textBlock(payload), finish]);
+
+    expect(out.some((p) => p.type === "tool-call")).toBe(false);
+    const text = out
+      .filter((p) => p.type === "text-delta")
+      .map((p) => (p as { delta: string }).delta)
+      .join("");
+    expect(text).toBe(payload);
+  });
+});

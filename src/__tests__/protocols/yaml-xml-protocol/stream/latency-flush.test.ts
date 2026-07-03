@@ -96,3 +96,105 @@ describe("yamlXmlProtocol stream text flushing", () => {
     expect(JSON.parse(toolCall.input)).toEqual({ city: "Seoul" });
   });
 });
+
+// Real-world shape observed from Amazon Nova 2 Lite: the model answers the
+// YAML-body prompt with XML child tags (the morph-xml body format).
+describe("yamlXmlProtocol XML-children fallback", () => {
+  it("parses <key>value</key> children when YAML parsing fails (generate)", () => {
+    const p = yamlXmlProtocol({});
+    const out = p.parseGeneratedText({
+      text: "<get_weather>\n<city> Seoul</city>\n<unit> celsius</unit>\n</get_weather>",
+      tools,
+    });
+
+    const call = out.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(call.toolName).toBe("get_weather");
+    expect(JSON.parse(call.input)).toEqual({
+      city: "Seoul",
+      unit: "celsius",
+    });
+  });
+
+  it("parses <key>value</key> children when YAML parsing fails (stream)", async () => {
+    const { writer, reader } = (() => {
+      const parser = yamlXmlProtocol({}).createStreamParser({ tools });
+      return {
+        writer: parser.writable.getWriter(),
+        reader: parser.readable.getReader(),
+      };
+    })();
+
+    const writes = (async () => {
+      await writer.write({
+        type: "text-delta",
+        id: "1",
+        delta:
+          "<get_weather>\n<city> Tokyo</city>\n<unit> celsius</unit>\n</get_weather>",
+      });
+      await writer.close();
+    })();
+
+    const collected: LanguageModelV4StreamPart[] = [];
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (value) {
+        collected.push(value);
+      }
+    }
+    await writes;
+
+    const call = collected.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(JSON.parse(call.input)).toEqual({
+      city: "Tokyo",
+      unit: "celsius",
+    });
+  });
+
+  it("keeps the failure path for mixed prose bodies", () => {
+    const p = yamlXmlProtocol({});
+    const out = p.parseGeneratedText({
+      text: "<get_weather>\nsome prose <city>Seoul</city>\n</get_weather>",
+      tools,
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+  });
+});
+
+describe("yamlXmlProtocol XML-children fallback tolerance", () => {
+  it("tolerates lines with missing close tags", () => {
+    const p = yamlXmlProtocol({});
+    const out = p.parseGeneratedText({
+      text: "<get_weather>\n<city> Seoul</city>\n<unit>celsius\n</get_weather>",
+      tools,
+    });
+
+    const call = out.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(JSON.parse(call.input)).toEqual({
+      city: "Seoul",
+      unit: "celsius",
+    });
+  });
+
+  it("declines lines containing nested markup in values", () => {
+    const p = yamlXmlProtocol({});
+    const out = p.parseGeneratedText({
+      text: "<get_weather>\n<city>Seoul</city><unit>celsius</unit>\n</get_weather>",
+      tools,
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+  });
+});

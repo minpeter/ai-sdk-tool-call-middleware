@@ -141,3 +141,66 @@ describe("hermes parseGeneratedText mismatched-close salvage", () => {
     );
   });
 });
+
+describe("hermes double-encoded and array-wrapped salvage", () => {
+  // Real-world shape observed from IBM Granite 4.0: arguments serialized as
+  // a JSON string (the OpenAI native wire habit).
+  const doubleEncoded =
+    '<tool_call>\n{"name": "get_weather", "arguments": "{\\n  \\"city\\": \\"Seoul\\",\\n  \\"unit\\": \\"celsius\\"\\n}"}\n</tool_call>';
+
+  // Real-world shape observed from ByteDance Seed 2.0: an array of calls
+  // inside a single tool_call block.
+  const arrayWrapped =
+    '<tool_call>\n[{"name": "get_weather", "arguments": {"city": "Seoul"}},\n{"name": "get_weather", "arguments": {"city": "Tokyo"}}]\n</tool_call>';
+
+  it("parses string-typed arguments in parseGeneratedText", () => {
+    const protocol = hermesProtocol();
+    const out = protocol.parseGeneratedText({ text: doubleEncoded, tools });
+
+    const toolCall = out.find((p) => p.type === "tool-call");
+    if (toolCall?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(toolCall.toolName).toBe("get_weather");
+    expect(JSON.parse(toolCall.input)).toEqual({
+      city: "Seoul",
+      unit: "celsius",
+    });
+  });
+
+  it("parses string-typed arguments in streaming", async () => {
+    const out = await runStream(doubleEncoded);
+
+    const toolCall = out.find((p) => p.type === "tool-call") as ToolCallPart;
+    expect(toolCall).toBeDefined();
+    expect(JSON.parse(toolCall.input)).toEqual({
+      city: "Seoul",
+      unit: "celsius",
+    });
+    expect(joinedText(out)).toBe("");
+  });
+
+  it("salvages an array of calls in parseGeneratedText", () => {
+    const protocol = hermesProtocol();
+    const out = protocol.parseGeneratedText({ text: arrayWrapped, tools });
+
+    const calls = out.filter((p) => p.type === "tool-call");
+    expect(calls).toHaveLength(2);
+    expect(
+      calls.map((c) => JSON.parse((c as ToolCallPart).input).city)
+    ).toEqual(["Seoul", "Tokyo"]);
+    expect(out.some((p) => p.type === "text")).toBe(false);
+  });
+
+  it("salvages an array of calls in streaming", async () => {
+    const out = await runStream(arrayWrapped);
+
+    const calls = out.filter((p) => p.type === "tool-call") as ToolCallPart[];
+    expect(calls).toHaveLength(2);
+    expect(calls.map((c) => JSON.parse(c.input).city)).toEqual([
+      "Seoul",
+      "Tokyo",
+    ]);
+    expect(joinedText(out)).toBe("");
+  });
+});

@@ -125,14 +125,23 @@ export function createStreamJsonRecoveryTransform({
       return false;
     }
     // A block can still resolve to a tool call when it starts with a bare
-    // JSON object or a fenced code block (```json ... ```), mirroring the
-    // candidate shapes of the non-streaming recovery scan.
+    // JSON object, a JSON array of calls, a fenced code block
+    // (```json ... ```), or a literal <tool_call> tag leaking through a
+    // protocol that does not know it — mirroring the candidate shapes of the
+    // non-streaming recovery scan.
     const leading = content.trimStart();
-    if (leading.length === 0 || leading.startsWith("{")) {
+    if (
+      leading.length === 0 ||
+      leading.startsWith("{") ||
+      leading.startsWith("[")
+    ) {
       return true;
     }
-    const fencePrefix = leading.slice(0, 3);
-    return "```".startsWith(fencePrefix);
+    if ("```".startsWith(leading.slice(0, 3))) {
+      return true;
+    }
+    const tag = "<tool_call>";
+    return leading.startsWith(tag) || tag.startsWith(leading);
   };
 
   return new TransformStream<

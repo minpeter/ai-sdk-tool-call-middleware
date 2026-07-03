@@ -237,6 +237,12 @@ function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV4Content {
 
 const ORPHAN_TAG_BEFORE_CALL_REGEX = /(?:<\/?tool_call>\s*)+$/;
 const ORPHAN_TAG_AFTER_CALL_REGEX = /^(?:\s*<\/?tool_call>)+/;
+/**
+ * JSON array plumbing left over when calls arrive wrapped in a top-level
+ * array (e.g. `[{...}, {...}]`, observed live on Seed 2.0): brackets and
+ * commas between the recovered objects carry no content.
+ */
+const ARRAY_PUNCTUATION_ONLY_REGEX = /^[\s,[\]]*$/;
 
 /**
  * Append a text segment between recovered calls, trimming orphan tool-call
@@ -253,9 +259,35 @@ function pushRecoveredTextSegment(
   const trimmed = segment
     .replace(ORPHAN_TAG_AFTER_CALL_REGEX, "")
     .replace(ORPHAN_TAG_BEFORE_CALL_REGEX, "");
+  if (ARRAY_PUNCTUATION_ONLY_REGEX.test(trimmed)) {
+    return;
+  }
   if (trimmed.trim().length > 0) {
     out.push({ type: "text", text: trimmed });
   }
+}
+
+/** Envelope key aliases observed live (e.g. Nemotron emits tool/parameters). */
+const TOOL_NAME_KEYS = ["name", "tool"] as const;
+const TOOL_ARGS_KEYS = ["arguments", "parameters"] as const;
+
+function readToolNameField(payload: Record<string, unknown>): string | null {
+  for (const key of TOOL_NAME_KEYS) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function readToolArgsField(payload: Record<string, unknown>): unknown {
+  for (const key of TOOL_ARGS_KEYS) {
+    if (Object.hasOwn(payload, key)) {
+      return payload[key];
+    }
+  }
+  return {};
 }
 
 function parseAsToolPayload(
@@ -266,10 +298,7 @@ function parseAsToolPayload(
     return null;
   }
 
-  const toolName =
-    typeof payload.name === "string" && payload.name.trim().length > 0
-      ? payload.name.trim()
-      : null;
+  const toolName = readToolNameField(payload);
   if (!toolName) {
     return null;
   }
@@ -278,7 +307,19 @@ function parseAsToolPayload(
     return null;
   }
 
-  const rawArgs = Object.hasOwn(payload, "arguments") ? payload.arguments : {};
+  let rawArgs = readToolArgsField(payload);
+  // Double-encoded arguments (OpenAI native wire habit): a string value that
+  // itself parses to a JSON object.
+  if (
+    typeof rawArgs === "string" &&
+    rawArgs.trimStart().startsWith("{") &&
+    !PROTOTYPE_SENSITIVE_KEY_TEXT_REGEX.test(rawArgs)
+  ) {
+    const unwrapped = parseJsonCandidate(rawArgs);
+    if (isRecord(unwrapped)) {
+      rawArgs = unwrapped;
+    }
+  }
   if (!isRecord(rawArgs) || containsPrototypeSensitiveKey(rawArgs)) {
     return null;
   }
@@ -336,13 +377,17 @@ function parseAsArgumentsOnly(
   if (!isRecord(payload)) {
     return null;
   }
-  const hasNameEnvelope =
-    Object.hasOwn(payload, "name") &&
-    typeof payload.name === "string" &&
-    payload.name.length > 0;
-  const hasArgumentsEnvelope =
-    Object.hasOwn(payload, "arguments") &&
-    (typeof payload.arguments === "string" || isRecord(payload.arguments));
+  const hasNameEnvelope = TOOL_NAME_KEYS.some(
+    (key) =>
+      Object.hasOwn(payload, key) &&
+      typeof payload[key] === "string" &&
+      (payload[key] as string).length > 0
+  );
+  const hasArgumentsEnvelope = TOOL_ARGS_KEYS.some(
+    (key) =>
+      Object.hasOwn(payload, key) &&
+      (typeof payload[key] === "string" || isRecord(payload[key]))
+  );
   if (hasNameEnvelope || hasArgumentsEnvelope) {
     return null;
   }
