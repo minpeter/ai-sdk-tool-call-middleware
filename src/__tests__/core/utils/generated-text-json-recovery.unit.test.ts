@@ -287,6 +287,48 @@ describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
     expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
   });
 
+  it("terminates Qwen-style blocks at malformed close tags without swallowing trailing text", () => {
+    const text =
+      "<function=get_weather><parameter=city>Seoul</parameter></function garbage> done";
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected a recovered tool call");
+    }
+    expect(call.toolName).toBe("get_weather");
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
+
+    const textOut = recovered
+      ?.filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(textOut).toContain(" done");
+    expect(textOut).not.toContain("</function garbage>");
+  });
+
+  it("does not treat malformed close-like text inside a parameter as the block close", () => {
+    const text =
+      "<function=get_weather><parameter=city>literal </function garbage> text</parameter></function> done";
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected a recovered tool call");
+    }
+    expect(JSON.parse(call.input)).toEqual({
+      city: "literal </function garbage> text",
+    });
+
+    const textOut = recovered
+      ?.filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(textOut).toContain(" done");
+  });
+
   it("recovers YAML-bodied tool_call blocks with envelope (Granite shape)", () => {
     const text =
       "<tool_call>\nname: get_weather\narguments:\n  city: Seoul\n  unit: celsius\n</weather>";
