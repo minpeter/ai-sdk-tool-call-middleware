@@ -52,6 +52,7 @@ function getContentPartMediaKind(part: unknown): ToolResponseMediaType | null {
     case "image-url":
     case "image-file-id":
       return "image";
+    case "file":
     case "file-data":
     case "file-url":
     case "file-id": {
@@ -137,11 +138,63 @@ function formatIdPlaceholder(
   return `[${label}: ${displayId}]`;
 }
 
+interface TaggedFileData {
+  data?: unknown;
+  reference?: unknown;
+  text?: string;
+  type?: string;
+  url?: string;
+}
+
+/**
+ * Placeholder for the canonical v4 `type: 'file'` content part whose `data`
+ * is a tagged union (`data` / `url` / `reference` / `text`).
+ */
+function formatTaggedFilePartPlaceholder(contentPart: {
+  data?: unknown;
+  mediaType?: string;
+  filename?: string;
+}): string {
+  const fileData = isMapping(contentPart.data)
+    ? (contentPart.data as TaggedFileData)
+    : undefined;
+  const mediaType = contentPart.mediaType ?? "application/octet-stream";
+  const isImage = mediaType.startsWith("image");
+
+  switch (fileData?.type) {
+    case "url":
+      return isImage
+        ? `[Image URL: ${fileData.url}]`
+        : `[File URL: ${fileData.url}]`;
+    case "reference":
+      return formatIdPlaceholder(
+        isImage ? "Image ID" : "File ID",
+        fileData.reference
+      );
+    case "text":
+      // Inline text documents are readable content; surface the text itself.
+      return fileData.text ?? "";
+    default: {
+      if (isImage) {
+        return `[Image: ${mediaType}]`;
+      }
+      if (contentPart.filename) {
+        return `[File: ${contentPart.filename} (${mediaType})]`;
+      }
+      return `[File: ${mediaType}]`;
+    }
+  }
+}
+
 function formatContentPartPlaceholder(part: unknown): string {
   const contentPart = part as { type?: string };
   switch (contentPart.type) {
     case "text":
       return (contentPart as { text?: string }).text ?? "";
+    case "file":
+      return formatTaggedFilePartPlaceholder(
+        contentPart as { data?: unknown; mediaType?: string; filename?: string }
+      );
     case "image-data":
       return `[Image: ${(contentPart as { mediaType?: string }).mediaType}]`;
     case "image-url":
@@ -206,6 +259,10 @@ function toModelContentPart(part: unknown): ToolResponseUserContentPart {
   switch (contentPart.type) {
     case "text":
       return toTextPart(contentPart.text ?? "", contentPart.providerOptions);
+    case "file":
+      // Canonical v4 file part — already in LanguageModelV4FilePart shape
+      // (tagged `data` union, mediaType, optional filename).
+      return part as LanguageModelV4FilePart;
     case "image-data":
       return toFilePart({
         data: contentPart.data ?? "",

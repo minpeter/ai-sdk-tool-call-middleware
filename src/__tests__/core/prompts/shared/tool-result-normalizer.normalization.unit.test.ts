@@ -504,3 +504,115 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 });
+
+describe("canonical v4 file content parts", () => {
+  const contentWith = (part: unknown) =>
+    ({ type: "content", value: [part] }) as Parameters<
+      typeof unwrapToolResult
+    >[0];
+
+  it("renders a placeholder for inline file data", () => {
+    expect(
+      unwrapToolResult(
+        contentWith({
+          type: "file",
+          data: { type: "data", data: "aGVsbG8=" },
+          mediaType: "application/pdf",
+          filename: "report.pdf",
+        })
+      )
+    ).toBe("[File: report.pdf (application/pdf)]");
+  });
+
+  it("renders an image placeholder for image media types", () => {
+    expect(
+      unwrapToolResult(
+        contentWith({
+          type: "file",
+          data: { type: "data", data: "aGVsbG8=" },
+          mediaType: "image/png",
+        })
+      )
+    ).toBe("[Image: image/png]");
+  });
+
+  it("renders url-backed file parts as URL placeholders", () => {
+    expect(
+      unwrapToolResult(
+        contentWith({
+          type: "file",
+          data: { type: "url", url: "https://example.com/doc.pdf" },
+          mediaType: "application/pdf",
+        })
+      )
+    ).toBe("[File URL: https://example.com/doc.pdf]");
+
+    expect(
+      unwrapToolResult(
+        contentWith({
+          type: "file",
+          data: { type: "url", url: "https://example.com/cat.png" },
+          mediaType: "image/png",
+        })
+      )
+    ).toBe("[Image URL: https://example.com/cat.png]");
+  });
+
+  it("renders provider references as ID placeholders", () => {
+    expect(
+      unwrapToolResult(
+        contentWith({
+          type: "file",
+          data: { type: "reference", reference: { openai: "file-123" } },
+          mediaType: "application/pdf",
+        })
+      )
+    ).toBe('[File ID: {"openai":"file-123"}]');
+  });
+
+  it("surfaces inline text documents as their text", () => {
+    expect(
+      unwrapToolResult(
+        contentWith({
+          type: "file",
+          data: { type: "text", text: "inline document body" },
+          mediaType: "text/plain",
+        })
+      )
+    ).toBe("inline document body");
+  });
+
+  it("mixes file placeholders with text parts", () => {
+    expect(
+      unwrapToolResult({
+        type: "content",
+        value: [
+          { type: "text", text: "see attachment" },
+          {
+            type: "file",
+            data: { type: "data", data: "aGVsbG8=" },
+            mediaType: "image/jpeg",
+          },
+        ],
+      } as Parameters<typeof unwrapToolResult>[0])
+    ).toBe("see attachment\n[Image: image/jpeg]");
+  });
+
+  it("passes canonical file parts through unchanged in model mode", () => {
+    const filePart = {
+      type: "file",
+      data: { type: "data", data: "aGVsbG8=" },
+      mediaType: "image/png",
+      filename: "cat.png",
+    };
+    const out = normalizeToolResultForUserContent(
+      {
+        type: "content",
+        value: [filePart],
+      } as Parameters<typeof normalizeToolResultForUserContent>[0],
+      { mode: "model" }
+    );
+
+    expect(out).toEqual([filePart]);
+  });
+});

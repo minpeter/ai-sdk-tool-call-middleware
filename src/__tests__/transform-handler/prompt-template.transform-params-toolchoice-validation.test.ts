@@ -15,7 +15,7 @@ const _REGEX_GET_WEATHER = /get_weather/;
 const _REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
 const _REGEX_MAY_CALL_FUNCTIONS = /You may call one or more functions/;
 const _REGEX_TOOLS_TAG = /<tools>/;
-const REGEX_NONE = /none/;
+const _REGEX_NONE = /none/;
 const _REGEX_NOT_FOUND = /not found/;
 const _REGEX_PROVIDER_DEFINED = /Provider-defined tools/;
 const _REGEX_REQUIRED_NO_TOOLS =
@@ -27,17 +27,40 @@ const _REGEX_GET_WEATHER_TAG = /<get_weather>/;
 const _REGEX_TOOL_CALL_WORD = /tool_call/;
 
 describe("transformParams toolChoice validation", () => {
-  it("transformParams throws on toolChoice type none", async () => {
+  it("transformParams handles toolChoice type none without tool prompt injection", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+      toolSystemPromptTemplate: () => "TOOL PROMPT",
     });
+    const tools = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "d",
+        inputSchema: { type: "object", properties: { a: { type: "string" } } },
+      },
+    ];
     const transformParams = requireTransformParams(mw.transformParams);
-    await expect(
-      transformParams({
-        params: { prompt: [], tools: [], toolChoice: { type: "none" } },
-      } as any)
-    ).rejects.toThrow(REGEX_NONE);
+    const result = await transformParams({
+      params: {
+        prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+        tools,
+        toolChoice: { type: "none" },
+      },
+    } as any);
+
+    // No tool definitions are forwarded and no tool system prompt is added.
+    expect(result.tools).toEqual([]);
+    expect(result.toolChoice).toBeUndefined();
+    expect(result.prompt).toEqual([
+      { role: "user", content: [{ type: "text", text: "hi" }] },
+    ]);
+    expect(
+      (result.providerOptions as any).toolCallMiddleware.toolChoice
+    ).toEqual({ type: "none" });
+    expect(
+      (result.providerOptions as any).toolCallMiddleware.originalTools
+    ).toBeUndefined();
   });
 
   it("transformParams validates specific tool selection and builds JSON schema", async () => {

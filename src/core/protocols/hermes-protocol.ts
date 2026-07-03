@@ -13,6 +13,7 @@ import {
   unwrapJsonSchema,
 } from "../../schema-coerce";
 import { logParseFailure } from "../utils/debug";
+import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
 import {
@@ -1258,6 +1259,65 @@ function collectObjectKeys(
   return null;
 }
 
+/**
+ * Unwrap the double-encoded arguments variant some models emit
+ * (`"arguments": "{\"city\": \"Seoul\"}"` — the OpenAI native wire shape,
+ * observed live on IBM Granite 4.0). Returns the parsed record, or null when
+ * the string is not a safe JSON object.
+ */
+function tryParseDoubleEncodedArguments(
+  args: string
+): Record<string, unknown> | null {
+  if (!args.trimStart().startsWith("{")) {
+    return null;
+  }
+  if (hasPrototypeSensitiveKeyInJsonLikeObject(args)) {
+    return null;
+  }
+  try {
+    const parsed = parseRJSON(
+      normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(args))
+    );
+    return isRecord(parsed) && !containsPrototypeSensitiveArgumentKey(parsed)
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyNonRecordArgumentPolicy(
+  toolName: string,
+  args: Exclude<unknown, Record<string, unknown>>,
+  tools: LanguageModelV4FunctionTool[],
+  keyPolicy: ArgumentKeyPolicy | undefined
+): { args: unknown } | null {
+  if (args === null) {
+    return topLevelNullArgumentMatchesToolSchema(toolName, tools)
+      ? { args }
+      : null;
+  }
+  if (
+    keyPolicy &&
+    argumentValueMatchesSchemaKeyShape(args, keyPolicy.schema, new Set(), true)
+  ) {
+    return { args };
+  }
+  if (typeof args === "string") {
+    const unwrapped = tryParseDoubleEncodedArguments(args);
+    if (unwrapped) {
+      const unwrappedPolicyArgs = applyArgumentKeyPolicy(unwrapped, keyPolicy);
+      if (unwrappedPolicyArgs !== null) {
+        return { args: unwrappedPolicyArgs };
+      }
+    }
+  }
+  if (keyPolicy?.rejectNonRecordArguments) {
+    return null;
+  }
+  return { args };
+}
+
 function applyToolArgumentKeyPolicy(
   toolName: string,
   args: unknown,
@@ -1269,26 +1329,12 @@ function applyToolArgumentKeyPolicy(
   }
   const normalizedArgs = args === undefined ? {} : args;
   if (!isRecord(normalizedArgs)) {
-    if (normalizedArgs === null) {
-      return topLevelNullArgumentMatchesToolSchema(toolName, tools)
-        ? { args: normalizedArgs }
-        : null;
-    }
-    if (
-      keyPolicy &&
-      argumentValueMatchesSchemaKeyShape(
-        normalizedArgs,
-        keyPolicy.schema,
-        new Set(),
-        true
-      )
-    ) {
-      return { args: normalizedArgs };
-    }
-    if (keyPolicy?.rejectNonRecordArguments) {
-      return null;
-    }
-    return { args: normalizedArgs };
+    return applyNonRecordArgumentPolicy(
+      toolName,
+      normalizedArgs,
+      tools,
+      keyPolicy
+    );
   }
   const policyArgs = applyArgumentKeyPolicy(normalizedArgs, keyPolicy);
   return policyArgs === null ? null : { args: policyArgs };
@@ -1691,6 +1737,68 @@ function repairToolCallJsonForTools(
   }
 }
 
+const VALID_JSON_ESCAPE_CHARS = new Set([
+  "\\",
+  "/",
+  "b",
+  "f",
+  "n",
+  "r",
+  "t",
+  "u",
+]);
+
+function isValidJsonEscape(
+  next: string | undefined,
+  quote: '"' | "'"
+): boolean {
+  if (next === undefined) {
+    return true;
+  }
+  return next === quote || VALID_JSON_ESCAPE_CHARS.has(next);
+}
+
+/**
+ * Drop the backslash from invalid JSON escape sequences inside string values
+ * (e.g. `\$` from a template literal in generated code — observed live on
+ * Cohere Command R+). Valid escapes and structural characters are untouched.
+ */
+function normalizeInvalidJsonEscapes(json: string): string {
+  let quote: '"' | "'" | null = null;
+  let parts: string[] | null = null;
+  let chunkStart = 0;
+
+  for (let i = 0; i < json.length; i += 1) {
+    const ch = json[i];
+    if (quote === null) {
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+      }
+      continue;
+    }
+    if (ch === quote) {
+      quote = null;
+      continue;
+    }
+    if (ch !== "\\") {
+      continue;
+    }
+    const next = json[i + 1];
+    if (!isValidJsonEscape(next, quote)) {
+      parts ??= [];
+      parts.push(json.slice(chunkStart, i));
+      chunkStart = i + 1;
+    }
+    i += 1;
+  }
+
+  if (parts === null) {
+    return json;
+  }
+  parts.push(json.slice(chunkStart));
+  return parts.join("");
+}
+
 /**
  * Discriminated result of resolving a raw `<tool_call>` JSON body into a final,
  * emittable tool call. Shared by the non-streaming (`parseGeneratedText` ->
@@ -1723,7 +1831,9 @@ function resolveToolCall(
   tools: LanguageModelV4FunctionTool[]
 ): ResolvedToolCall {
   try {
-    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
+    const parsedToolCall = parseRJSON(
+      normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
+    );
     if (!isParsedToolCallRecord(parsedToolCall)) {
       throw new Error("Tool call object is missing own name or arguments");
     }
@@ -1769,6 +1879,81 @@ function resolveToolCall(
   }
 }
 
+/** Whitespace and complete tag-like tokens only (e.g. a stray `</think>`). */
+const MARKUP_ONLY_TEXT_REGEX = /^\s*(?:<[^<>\n]*>\s*)*$/;
+
+/**
+ * Run the shared JSON-candidate recovery over `text` and return every
+ * recovered call for known tools, in `ResolvedToolCall` success shape.
+ *
+ * The salvage is deliberately narrow so it cannot override the primary
+ * parser's intentional fallbacks:
+ *   - the body must consist solely of tool payloads plus markup remnants
+ *     (whitespace or complete tag-like tokens such as a mismatched
+ *     `</think>` close tag or `<tool_call>` separators). Bodies whose parse
+ *     failed mid-object (e.g. unescaped quotes, trailing top-level fields)
+ *     keep falling back to text.
+ *   - prototype-sensitive keys are re-checked on the raw text, and recovered
+ *     arguments go through the same argument key policy as the primary path.
+ */
+function recoverKnownToolCallsFromText(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): Extract<ResolvedToolCall, { ok: true }>[] | null {
+  if (hasPrototypeSensitiveKeyInJsonLikeObject(text)) {
+    return null;
+  }
+
+  const recoveredParts = recoverToolCallFromJsonCandidates(text, tools);
+  if (!recoveredParts) {
+    return null;
+  }
+
+  const calls: Extract<ResolvedToolCall, { ok: true }>[] = [];
+  for (const part of recoveredParts) {
+    if (part.type === "text") {
+      if (!MARKUP_ONLY_TEXT_REGEX.test(part.text)) {
+        return null;
+      }
+      continue;
+    }
+    if (part.type !== "tool-call") {
+      return null;
+    }
+
+    let parsedArgs: unknown;
+    try {
+      parsedArgs = JSON.parse(part.input);
+    } catch {
+      return null;
+    }
+    const policyArguments = applyToolArgumentKeyPolicy(
+      part.toolName,
+      parsedArgs,
+      tools
+    );
+    if (policyArguments === null) {
+      return null;
+    }
+
+    try {
+      calls.push({
+        ok: true,
+        toolName: part.toolName,
+        input: stringifyParsedToolInput(
+          part.toolName,
+          policyArguments.args,
+          tools
+        ),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  return calls.length > 0 ? calls : null;
+}
+
 function processToolCallJson(
   toolCallJson: string,
   fullMatch: string,
@@ -1784,6 +1969,19 @@ function processToolCallJson(
       toolName: resolved.toolName,
       input: resolved.input,
     });
+    return;
+  }
+
+  const salvagedCalls = recoverKnownToolCallsFromText(toolCallJson, tools);
+  if (salvagedCalls && salvagedCalls.length > 0) {
+    for (const salvagedCall of salvagedCalls) {
+      processedElements.push({
+        type: "tool-call",
+        toolCallId: generateToolCallId(),
+        toolName: salvagedCall.toolName,
+        input: salvagedCall.input,
+      });
+    }
     return;
   }
 
@@ -1821,10 +2019,6 @@ interface StreamState {
   hasEmittedTextStart: boolean;
   isInsideToolCall: boolean;
   pendingToolInputProgressVersion: number;
-  speculativeToolCall: {
-    input: string;
-    toolName: string;
-  } | null;
 }
 
 type StreamController =
@@ -2218,7 +2412,9 @@ function emitStreamingToolInputProgress(options: {
     return false;
   }
   try {
-    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
+    const parsedToolCall = parseRJSON(
+      normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
+    );
     if (!isParsedToolCallRecord(parsedToolCall)) {
       return false;
     }
@@ -2241,10 +2437,6 @@ function emitStreamingToolInputProgress(options: {
     });
     ensureToolInputStart(state, controller, parsedToolCall.name);
     emitToolInputDelta(state, controller, input);
-    state.speculativeToolCall = {
-      input,
-      toolName: parsedToolCall.name,
-    };
     return true;
   } catch {
     return false;
@@ -2305,7 +2497,6 @@ function emitResolvedToolCall(
   emitToolInputDelta(state, controller, input);
   const toolCallId = state.activeToolInput?.id ?? generateToolCallId();
   closeToolInput(state, controller);
-  state.speculativeToolCall = null;
   controller.enqueue({
     type: "tool-call",
     toolCallId,
@@ -2334,11 +2525,7 @@ function emitToolCallFromParsed(
   emitResolvedToolCall(state, controller, toolName, input);
 }
 
-function flushBuffer(
-  state: StreamState,
-  controller: StreamController,
-  toolCallStart: string
-) {
+function flushBuffer(state: StreamState, controller: StreamController) {
   if (state.buffer.length === 0) {
     return;
   }
@@ -2352,14 +2539,10 @@ function flushBuffer(
     state.hasEmittedTextStart = true;
   }
 
-  const deltaContent = state.isInsideToolCall
-    ? `${toolCallStart}${state.buffer}`
-    : state.buffer;
-
   controller.enqueue({
     type: "text-delta",
     id: state.currentTextId,
-    delta: deltaContent,
+    delta: state.buffer,
   } as LanguageModelV4StreamPart);
   state.buffer = "";
 }
@@ -2373,6 +2556,41 @@ function closeTextBlock(state: StreamState, controller: StreamController) {
     state.currentTextId = null;
     state.hasEmittedTextStart = false;
   }
+}
+
+/**
+ * Salvage tool calls from an unterminated streaming tool-call body. A call
+ * closed with the wrong tag (e.g. `<tool_call>{...}</think>`) or a run of
+ * calls separated by bare `<tool_call>` tags never sees an end tag, but the
+ * JSON bodies themselves are complete. Genuinely truncated JSON stays
+ * unbalanced, fails recovery, and the caller falls through to the error
+ * fallback. Returns true when at least one call was emitted.
+ */
+function salvageIncompleteToolCalls(
+  state: StreamState,
+  controller: StreamController,
+  rawToolCallContent: string,
+  tools: LanguageModelV4FunctionTool[]
+): boolean {
+  const recoveredCalls = recoverKnownToolCallsFromText(
+    rawToolCallContent,
+    tools
+  );
+  if (!recoveredCalls || recoveredCalls.length === 0) {
+    return false;
+  }
+  closeTextBlock(state, controller);
+  for (const recoveredCall of recoveredCalls) {
+    emitResolvedToolCall(
+      state,
+      controller,
+      recoveredCall.toolName,
+      recoveredCall.input
+    );
+  }
+  state.currentToolCallJson = "";
+  state.isInsideToolCall = false;
+  return true;
 }
 
 function emitIncompleteToolCall(
@@ -2391,7 +2609,9 @@ function emitIncompleteToolCall(
   if (state.currentToolCallJson) {
     try {
       const parsedToolCall = parseRJSON(
-        normalizeJsonStringCtrl(state.currentToolCallJson)
+        normalizeInvalidJsonEscapes(
+          normalizeJsonStringCtrl(state.currentToolCallJson)
+        )
       );
       if (!isParsedToolCallRecord(parsedToolCall)) {
         throw new Error("Tool call object is missing own name or arguments");
@@ -2418,12 +2638,19 @@ function emitIncompleteToolCall(
       return;
     } catch {
       // Incomplete tool calls (no closing </tool_call>) are not candidates
-      // for repair — the JSON may be genuinely truncated.
-      // Fall through to text/error fallback.
+      // for quote repair — the JSON may be genuinely truncated.
+      // Fall through to balanced-JSON salvage, then text/error fallback.
     }
   }
 
   const rawToolCallContent = `${state.currentToolCallJson}${trailingBuffer}`;
+
+  if (
+    salvageIncompleteToolCalls(state, controller, rawToolCallContent, tools)
+  ) {
+    return;
+  }
+
   const errorContent = `${toolCallStart}${rawToolCallContent}`;
   const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
 
@@ -2499,7 +2726,7 @@ function handleFinishChunk(
       options
     );
   } else if (state.buffer.length > 0) {
-    flushBuffer(state, controller, toolCallStart);
+    flushBuffer(state, controller);
   }
   closeTextBlock(state, controller);
   controller.enqueue(chunk);
@@ -2542,10 +2769,26 @@ function emitToolCall(context: TagProcessingContext) {
     return;
   }
 
+  const salvagedCalls = recoverKnownToolCallsFromText(
+    state.currentToolCallJson,
+    tools
+  );
+  if (salvagedCalls && salvagedCalls.length > 0) {
+    closeTextBlock(state, controller);
+    for (const salvagedCall of salvagedCalls) {
+      emitResolvedToolCall(
+        state,
+        controller,
+        salvagedCall.toolName,
+        salvagedCall.input
+      );
+    }
+    return;
+  }
+
   const finalError = resolved.error;
   const activeToolCallId = state.activeToolInput?.id;
   const activeToolName = state.activeToolInput?.toolName;
-  state.speculativeToolCall = null;
 
   const errorContent = `${toolCallStart}${state.currentToolCallJson}${toolCallEnd}`;
   const shouldEmitRawFallback = shouldEmitRawToolCallTextOnError(options);
@@ -2842,7 +3085,9 @@ export const hermesProtocol = ({
 
       if (!span.found) {
         // Orphan start tag — emit everything up to and including it as text,
-        // then continue searching for subsequent tool calls.
+        // then continue searching for subsequent tool calls. The original
+        // text is preserved verbatim here: the parser cannot be sure this is
+        // protocol markup, and dropped-call salvage happens downstream.
         const skipTo = span.startIdx + toolCallStart.length;
         if (skipTo > currentIndex) {
           addTextSegment(text.slice(currentIndex, skipTo), processedElements);
@@ -2899,7 +3144,6 @@ export const hermesProtocol = ({
       hasEmittedTextStart: false,
       activeToolInput: null,
       pendingToolInputProgressVersion: 0,
-      speculativeToolCall: null,
     };
 
     return new TransformStream<

@@ -32,7 +32,7 @@ describe("toolChoiceStream coercion", () => {
     });
     const chunks = await convertReadableStreamToArray(stream);
 
-    expect(chunks[0]).toMatchObject({
+    expect(chunks.find((c) => c.type === "tool-call")).toMatchObject({
       type: "tool-call",
       toolName: "calc",
       input: '{"a":10,"b":false}',

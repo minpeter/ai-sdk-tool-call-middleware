@@ -7,7 +7,7 @@ import { mockUsage } from "../test-helpers";
 const TOOL_CALL_ID_RE = /^call_[A-Za-z0-9]{24}$/;
 
 describe("toolChoiceStream behavior", () => {
-  it("emits tool-call and finish chunks from valid JSON text", async () => {
+  it("emits the full tool-input lifecycle and finish from valid JSON text", async () => {
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"name":"do","arguments":{"x":1}}' }],
       usage: mockUsage(3, 5),
@@ -22,15 +22,44 @@ describe("toolChoiceStream behavior", () => {
 
     const chunks = await convertReadableStreamToArray(stream);
 
-    expect(chunks[0]).toMatchObject({
+    expect(chunks.map((c) => c.type)).toEqual([
+      "stream-start",
+      "tool-input-start",
+      "tool-input-delta",
+      "tool-input-end",
+      "tool-call",
+      "finish",
+    ]);
+
+    expect(chunks[0]).toMatchObject({ type: "stream-start", warnings: [] });
+    expect(chunks[1]).toMatchObject({
+      type: "tool-input-start",
+      toolName: "do",
+    });
+    expect(chunks[2]).toMatchObject({
+      type: "tool-input-delta",
+      delta: '{"x":1}',
+    });
+
+    const toolCall = chunks[4] as {
+      type: string;
+      toolCallId: string;
+      toolName: string;
+      input: string;
+    };
+    expect(toolCall).toMatchObject({
       type: "tool-call",
       toolName: "do",
       input: '{"x":1}',
     });
-    expect((chunks[0] as { toolCallId?: string }).toolCallId).toMatch(
-      TOOL_CALL_ID_RE
-    );
-    expect(chunks[1]).toMatchObject({
+    expect(toolCall.toolCallId).toMatch(TOOL_CALL_ID_RE);
+
+    // The tool-input lifecycle ids reconcile with the final toolCallId.
+    expect((chunks[1] as { id?: string }).id).toBe(toolCall.toolCallId);
+    expect((chunks[2] as { id?: string }).id).toBe(toolCall.toolCallId);
+    expect((chunks[3] as { id?: string }).id).toBe(toolCall.toolCallId);
+
+    expect(chunks[5]).toMatchObject({
       type: "finish",
       finishReason: {
         unified: "tool-calls",
@@ -41,6 +70,34 @@ describe("toolChoiceStream behavior", () => {
     expect(response).toEqual({ b: 2 });
   });
 
+  it("forwards underlying warnings on stream-start", async () => {
+    const warnings = [{ type: "unsupported", feature: "seed" }];
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],
+      warnings,
+    });
+
+    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
+    const chunks = await convertReadableStreamToArray(stream);
+
+    expect(chunks[0]).toMatchObject({ type: "stream-start", warnings });
+  });
+
+  it("forwards providerMetadata on the finish part", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],
+      providerMetadata: { someProvider: { traceId: "t1" } },
+    });
+
+    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
+    const chunks = await convertReadableStreamToArray(stream);
+
+    expect(chunks.at(-1)).toMatchObject({
+      type: "finish",
+      providerMetadata: { someProvider: { traceId: "t1" } },
+    });
+  });
+
   it("falls back to unknown tool and empty args on invalid JSON", async () => {
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: "not-json" }],
@@ -49,15 +106,16 @@ describe("toolChoiceStream behavior", () => {
     const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
     const chunks = await convertReadableStreamToArray(stream);
 
-    expect(chunks[0]).toMatchObject({
+    const toolCall = chunks.find((c) => c.type === "tool-call");
+    expect(toolCall).toMatchObject({
       type: "tool-call",
       toolName: "unknown",
       input: "{}",
     });
-    expect((chunks[0] as { toolCallId?: string }).toolCallId).toMatch(
+    expect((toolCall as { toolCallId?: string }).toolCallId).toMatch(
       TOOL_CALL_ID_RE
     );
-    expect(chunks[1]).toMatchObject({ type: "finish" });
+    expect(chunks.at(-1)).toMatchObject({ type: "finish" });
   });
 
   it("handles empty content by emitting default unknown tool and zeroed usage", async () => {
@@ -66,12 +124,12 @@ describe("toolChoiceStream behavior", () => {
     const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
     const chunks = await convertReadableStreamToArray(stream);
 
-    expect(chunks[0]).toMatchObject({
+    expect(chunks.find((c) => c.type === "tool-call")).toMatchObject({
       type: "tool-call",
       toolName: "unknown",
       input: "{}",
     });
-    expect(chunks[1]).toMatchObject({
+    expect(chunks.at(-1)).toMatchObject({
       type: "finish",
       usage: {
         inputTokens: {
@@ -98,7 +156,7 @@ describe("toolChoiceStream behavior", () => {
     const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
     const chunks = await convertReadableStreamToArray(stream);
 
-    expect(chunks[1]).toMatchObject({
+    expect(chunks.at(-1)).toMatchObject({
       type: "finish",
       finishReason: {
         unified: "tool-calls",

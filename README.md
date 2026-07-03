@@ -119,11 +119,18 @@ export const myToolMiddleware = createToolMiddleware({
 });
 ```
 
+## Tool choice
+
+- `toolChoice: "auto"` (default) parses tool calls out of the model text.
+- `toolChoice: "required"` and `toolChoice: { type: "tool", toolName }` are emulated through JSON `responseFormat` constraints.
+- `toolChoice: "none"` skips tool prompt injection and tool-call parsing entirely; tool-call history in the conversation is still serialized to text.
+
 ## Streaming semantics
 
 - Stream parsers emit `tool-input-start`, `tool-input-delta`, and `tool-input-end` when a tool input can be incrementally reconstructed.
 - `tool-input-start.id`, `tool-input-end.id`, and final `tool-call.toolCallId` are reconciled to the same ID.
 - `emitRawToolCallTextOnError` defaults to `false`; malformed tool-call markup is suppressed from `text-delta` unless explicitly enabled.
+- Text blocks that consist of a bare `{"name": ..., "arguments": ...}` payload (or a fenced ```json block) for a known tool are recovered into tool calls in both generate and stream paths, and `finishReason` is normalized to `tool-calls` whenever tool calls were parsed.
 
 Configure parser error behavior through `providerOptions.toolCallMiddleware`:
 

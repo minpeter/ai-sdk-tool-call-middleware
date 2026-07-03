@@ -278,6 +278,21 @@ export function transformParams({
     extractOnErrorOption(params.providerOptions)
   );
 
+  if (params.toolChoice?.type === "none") {
+    // 'none' means the model must not call tools on this step. Tool-call
+    // history is still serialized to text above, but no tool definitions are
+    // injected and the wrap handlers skip tool-call parsing entirely.
+    return {
+      ...params,
+      prompt: processedPrompt,
+      tools: [] as never[],
+      toolChoice: undefined,
+      providerOptions: mergeToolCallMiddlewareOptions(params.providerOptions, {
+        toolChoice: { type: "none" as const },
+      }),
+    };
+  }
+
   const finalPrompt = buildFinalPrompt(
     systemPrompt,
     processedPrompt,
@@ -288,12 +303,6 @@ export function transformParams({
     finalPrompt,
     functionTools
   );
-
-  if (params.toolChoice?.type === "none") {
-    throw new Error(
-      "The 'none' toolChoice type is not supported by this middleware. Please use 'auto', 'required', or specify a tool name."
-    );
-  }
 
   if (params.toolChoice?.type === "tool") {
     return handleToolChoiceTool(params, baseReturnParams);
