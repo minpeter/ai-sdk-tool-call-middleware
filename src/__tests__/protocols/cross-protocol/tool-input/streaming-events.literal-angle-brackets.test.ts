@@ -144,7 +144,9 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
           variantName: "raw-angle input",
           rawModelOutput:
             "<tool_call><function=send_keys><parameter=value><Ctrl+C>ahi, my name is pi<Esc><Enter></parameter></function></tool_call>",
-          deltaJoinExpectation: "diverges",
+          // Progress deltas hold back potential closing-tag prefixes, so the
+          // joined deltas now reconcile exactly with the final input.
+          deltaJoinExpectation: "equal",
         },
       ],
     },
@@ -162,7 +164,9 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
           variantName: "raw-angle input",
           rawModelOutput:
             "<tool_call><function=send_keys><parameter=value><Ctrl+C>ahi, my name is pi<Esc><Enter></parameter></function></tool_call>",
-          deltaJoinExpectation: "diverges",
+          // Progress deltas hold back potential closing-tag prefixes, so the
+          // joined deltas now reconcile exactly with the final input.
+          deltaJoinExpectation: "equal",
         },
       ],
     },
