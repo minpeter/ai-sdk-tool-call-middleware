@@ -12,6 +12,13 @@ import { generateId } from "./id";
  */
 const MAX_HELD_BLOCK_LENGTH = 10_000;
 
+/**
+ * Tag tokens that can open a recoverable call block when they leak through a
+ * protocol that does not know them (`<tool_call>` wrappers, Qwen-style
+ * `<function=...>` blocks).
+ */
+const RECOVERABLE_TAG_PREFIXES = ["<tool_call>", "<function="];
+
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
@@ -140,8 +147,9 @@ export function createStreamJsonRecoveryTransform({
     if ("```".startsWith(leading.slice(0, 3))) {
       return true;
     }
-    const tag = "<tool_call>";
-    return leading.startsWith(tag) || tag.startsWith(leading);
+    return RECOVERABLE_TAG_PREFIXES.some(
+      (tag) => leading.startsWith(tag) || tag.startsWith(leading)
+    );
   };
 
   return new TransformStream<

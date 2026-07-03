@@ -448,7 +448,9 @@ function yamlFailureCause(failure: YamlParseFailure): Record<string, unknown> {
  * helper cause attached as context.
  */
 const XML_CHILD_CLOSED_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)<\/\1\s*>$/;
-const XML_CHILD_OPEN_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)$/;
+// The open form requires a non-empty value so that a lone nesting tag like
+// `<passenger>` never gets misread as an empty flat parameter.
+const XML_CHILD_OPEN_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*\S[^<]*|\S)$/;
 const PROTOTYPE_SENSITIVE_PARAM_KEYS = new Set([
   "__proto__",
   "constructor",

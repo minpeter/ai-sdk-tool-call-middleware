@@ -2,6 +2,7 @@ import type {
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
+import YAML from "yaml";
 import { parse as parseRJSON } from "../../rjson";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
 import { generateToolCallId } from "./id";
@@ -9,6 +10,13 @@ import { generateToolCallId } from "./id";
 interface ToolCallCandidate {
   input: string;
   toolName: string;
+}
+
+/** A recovered call with the span of source text it consumes. */
+interface RecoveredCallSpan {
+  endIndex: number;
+  payload: ToolCallCandidate;
+  startIndex: number;
 }
 
 interface JsonCandidate {
@@ -422,12 +430,193 @@ function resolveCandidatePayload(
   );
 }
 
+const FUNCTION_BLOCK_OPEN_REGEX =
+  /<function\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>/]+))\s*>/gi;
+const FUNCTION_PARAM_OPEN_REGEX =
+  /<parameter\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>/]+))\s*>/gi;
+const PARAM_BOUNDARY_REGEX = /<parameter\b|<\/parameter|<\/function/i;
+
+function readFunctionBlockParams(body: string): Record<string, unknown> | null {
+  const params: Record<string, unknown> = {};
+  FUNCTION_PARAM_OPEN_REGEX.lastIndex = 0;
+  let match = FUNCTION_PARAM_OPEN_REGEX.exec(body);
+  while (match) {
+    const key = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+    if (key.length === 0 || PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+      return null;
+    }
+    const valueStart = match.index + match[0].length;
+    const boundaryMatch = PARAM_BOUNDARY_REGEX.exec(body.slice(valueStart));
+    const valueEnd =
+      boundaryMatch == null ? body.length : valueStart + boundaryMatch.index;
+    params[key] = body.slice(valueStart, valueEnd).trim();
+    FUNCTION_PARAM_OPEN_REGEX.lastIndex = valueEnd;
+    match = FUNCTION_PARAM_OPEN_REGEX.exec(body);
+  }
+  return params;
+}
+
 /**
- * Recover tool calls from JSON-like candidates embedded in plain text.
- * Every non-overlapping candidate that resolves to a known tool becomes a
- * tool-call part, so multi-call payloads (e.g. consecutive bare JSON objects
- * separated by newlines or orphan `<tool_call>` tags) are all recovered.
- * Returns null when no candidate resolves.
+ * Recover Qwen3-Coder-style `<function=name><parameter=key>value` blocks for
+ * known tools regardless of the active protocol. Some models emit this
+ * format no matter what the prompt asks for (observed live on Step 3.5 Flash
+ * under the Hermes prompt).
+ */
+function extractFunctionBlockCallSpans(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): RecoveredCallSpan[] {
+  const spans: RecoveredCallSpan[] = [];
+  const lower = text.toLowerCase();
+  const opens = [...text.matchAll(FUNCTION_BLOCK_OPEN_REGEX)];
+
+  for (let index = 0; index < opens.length; index += 1) {
+    const open = opens[index];
+    const toolName = (open[1] ?? open[2] ?? open[3] ?? "").trim();
+    if (!tools.some((tool) => tool.name === toolName)) {
+      continue;
+    }
+
+    const bodyStart = open.index + open[0].length;
+    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
+    const closeIndex = lower.indexOf("</function", bodyStart);
+    const hasClose = closeIndex !== -1 && closeIndex < nextOpenIndex;
+    const bodyEnd = hasClose ? closeIndex : nextOpenIndex;
+
+    const params = readFunctionBlockParams(text.slice(bodyStart, bodyEnd));
+    if (!params) {
+      continue;
+    }
+
+    let endIndex = bodyEnd;
+    if (hasClose) {
+      const closeGt = text.indexOf(">", closeIndex);
+      endIndex = closeGt === -1 ? text.length : closeGt + 1;
+    }
+    spans.push({
+      startIndex: open.index,
+      endIndex,
+      payload: { toolName, input: safeStringify(params) },
+    });
+  }
+
+  return spans;
+}
+
+const TOOL_CALL_BLOCK_OPEN_REGEX = /<tool_call\s*>/gi;
+// Colon included for namespaced garbage closes like `</functions:get_weather>`.
+const CLOSING_TAG_REGEX = /<\/\s*([A-Za-z_][\w.:-]*)\s*>/;
+
+function parseYamlBlockMapping(body: string): Record<string, unknown> | null {
+  let parsed: unknown;
+  try {
+    parsed = YAML.parse(body);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || containsPrototypeSensitiveKey(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function resolveYamlBlockPayload(
+  mapping: Record<string, unknown>,
+  closeTagName: string | null,
+  tools: LanguageModelV4FunctionTool[]
+): ToolCallCandidate | null {
+  // Envelope form: `name: get_weather\narguments:\n  city: Seoul`.
+  const envelopeName = readToolNameField(mapping);
+  if (envelopeName && tools.some((tool) => tool.name === envelopeName)) {
+    const rawArgs = readToolArgsField(mapping);
+    const args = rawArgs === undefined || rawArgs === null ? {} : rawArgs;
+    if (isRecord(args) && !containsPrototypeSensitiveKey(args)) {
+      return { toolName: envelopeName, input: safeStringify(args) };
+    }
+    return null;
+  }
+
+  // Bare-args form closed by a tag carrying the tool name:
+  // `<tool_call>\ncity: Seoul\n</get_weather>` (possibly namespaced, e.g.
+  // `</functions:get_weather>`).
+  if (closeTagName) {
+    const candidates = [closeTagName, closeTagName.split(":").at(-1) ?? ""];
+    const matched = candidates.find((name) =>
+      tools.some((tool) => tool.name === name)
+    );
+    if (matched) {
+      return { toolName: matched, input: safeStringify(mapping) };
+    }
+  }
+
+  // Bare-args form with a single tool whose schema matches.
+  if (tools.length === 1 && isLikelyArgumentsShapeForTool(mapping, tools[0])) {
+    return { toolName: tools[0].name, input: safeStringify(mapping) };
+  }
+
+  return null;
+}
+
+/**
+ * Recover `<tool_call>` blocks whose body is a YAML mapping instead of JSON
+ * (observed live on IBM Granite 4.0, which emits this shape under every
+ * prompt format, closing with an arbitrary tag such as `</weather>` or the
+ * tool name).
+ */
+function extractYamlToolCallBlockSpans(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): RecoveredCallSpan[] {
+  const spans: RecoveredCallSpan[] = [];
+
+  TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = 0;
+  let match = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
+  while (match) {
+    const bodyStart = match.index + match[0].length;
+    TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = bodyStart;
+    const nextOpen = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
+    const blockEnd = nextOpen == null ? text.length : nextOpen.index;
+
+    let body = text.slice(bodyStart, blockEnd);
+    let endIndex = blockEnd;
+    let closeTagName: string | null = null;
+
+    // The close tag is unreliable in this shape — the first closing tag in
+    // the block (e.g. `</weather>`, `</tool_call>`, `</get_weather>`)
+    // terminates the body and may carry the tool name.
+    const closeMatch = CLOSING_TAG_REGEX.exec(body);
+    if (closeMatch) {
+      closeTagName = closeMatch[1] ?? null;
+      endIndex = bodyStart + closeMatch.index + closeMatch[0].length;
+      body = body.slice(0, closeMatch.index);
+    }
+
+    const mapping = parseYamlBlockMapping(body);
+    const payload = mapping
+      ? resolveYamlBlockPayload(mapping, closeTagName, tools)
+      : null;
+    if (payload) {
+      spans.push({ startIndex: match.index, endIndex, payload });
+    }
+
+    match = nextOpen;
+  }
+
+  return spans;
+}
+
+/**
+ * Recover tool calls embedded in plain text. Candidates come from three
+ * scanners, each validated against the known tools:
+ *
+ *   1. JSON-like candidates (bare objects, fenced blocks, tagged bodies)
+ *   2. Qwen3-Coder-style `<function=name><parameter=key>value` blocks
+ *   3. `<tool_call>` blocks with YAML mapping bodies
+ *
+ * Every non-overlapping candidate that resolves becomes a tool-call part, so
+ * multi-call payloads (consecutive bare JSON objects, orphan `<tool_call>`
+ * separators, array-wrapped lists) are all recovered. Returns null when no
+ * candidate resolves.
  */
 export function recoverToolCallFromJsonCandidates(
   text: string,
@@ -437,24 +626,38 @@ export function recoverToolCallFromJsonCandidates(
     return null;
   }
 
-  const jsonCandidates = extractJsonLikeCandidates(text);
+  const spans: RecoveredCallSpan[] = [];
+  for (const jsonCandidate of extractJsonLikeCandidates(text)) {
+    const payload = resolveCandidatePayload(jsonCandidate, tools);
+    if (payload) {
+      spans.push({
+        startIndex: jsonCandidate.startIndex,
+        endIndex: jsonCandidate.endIndex,
+        payload,
+      });
+    }
+  }
+  spans.push(...extractFunctionBlockCallSpans(text, tools));
+  spans.push(...extractYamlToolCallBlockSpans(text, tools));
+  spans.sort((a, b) =>
+    a.startIndex === b.startIndex
+      ? b.endIndex - a.endIndex
+      : a.startIndex - b.startIndex
+  );
+
   const out: LanguageModelV4Content[] = [];
   let cursor = 0;
   let recoveredAny = false;
 
-  for (const jsonCandidate of jsonCandidates) {
-    if (jsonCandidate.startIndex < cursor) {
+  for (const span of spans) {
+    if (span.startIndex < cursor) {
       // Overlaps a candidate that was already consumed (e.g. the balanced
       // object inside an already-recovered tagged/fenced candidate).
       continue;
     }
-    const payload = resolveCandidatePayload(jsonCandidate, tools);
-    if (!payload) {
-      continue;
-    }
-    pushRecoveredTextSegment(out, text.slice(cursor, jsonCandidate.startIndex));
-    out.push(toToolCallPart(payload));
-    cursor = jsonCandidate.endIndex;
+    pushRecoveredTextSegment(out, text.slice(cursor, span.startIndex));
+    out.push(toToolCallPart(span.payload));
+    cursor = span.endIndex;
     recoveredAny = true;
   }
 

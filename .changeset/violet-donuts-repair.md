@@ -29,4 +29,11 @@ Additional hardening from a second live matrix over 12 more models (DeepSeek V3.
 - YAML-XML falls back to parsing `<key>value</key>` child tags when the tool body is XML instead of YAML (observed live on Amazon Nova 2 Lite).
 - The streaming recovery stage also holds blocks that start with a JSON array or a literal `<tool_call>` tag leaking through a foreign protocol.
 
+A third pass with schema-diversity scenarios (nested objects, arrays, code content with quotes/newlines, no-arg tools, multi-tool selection, unicode values) across 14 more models (Kimi K2.6, Cohere Command R+, AI21 Jamba, LiquidAI LFM2, LG EXAONE, Longcat, Xiaomi MiMo, Tencent HY3, KAT Coder, Gemma 4, Mistral Small, Cogito 671B + controls) hardened:
+
+- schema coercion: object/array-typed parameters delivered as strings now parse through strict JSON → relaxed JSON → Python-literal normalization (`True`/`False`/`None`, observed on KAT Coder) → line-oriented XML children (observed on Cohere Command R+), with prototype-key guards.
+- cross-format recovery: the shared recovery layer now also resolves Qwen-style `<function=name><parameter=key>value` blocks (Step 3.5 Flash emits these under every prompt) and `<tool_call>` blocks with YAML mapping bodies closed by arbitrary tags (IBM Granite 4.0's native shape), in every middleware.
+- hermes: invalid JSON escapes inside string values (e.g. `\$` from template literals in generated code, observed on Command R+) are normalized before parsing.
+- qwen3coder: Hermes-style JSON payloads inside `<tool_call>` tags (observed on LiquidAI LFM2) are salvaged at stream finish instead of dropped.
+
 Internal: dead `speculativeToolCall` state and an unreachable `flushBuffer` branch were removed from the Hermes stream parser.

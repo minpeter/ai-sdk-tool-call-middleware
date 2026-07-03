@@ -8,6 +8,7 @@ import {
   escapeXmlMinimalText,
   unescapeXml,
 } from "../../rxml/utils/helpers";
+import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateToolCallId } from "../utils/id";
 import {
@@ -67,6 +68,8 @@ const QWEN3CODER_TOOL_PARSER_STREAM_NAME_OR_PARAM_SIGNAL_RE =
 const QWEN3CODER_TOOL_PARSER_STREAM_NAME_TAG_RE =
   /<\s*(name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/i;
 const QWEN3CODER_TOOL_PARSER_STREAM_SELF_CLOSING_TAG_RE = /\/\s*>$/;
+/** Whitespace and complete tag-like tokens only (salvage strictness gate). */
+const SALVAGE_MARKUP_ONLY_TEXT_REGEX = /^\s*(?:<[^<>\n]*>\s*)*$/;
 
 function isAsciiWhitespace(ch: string): boolean {
   return ch === " " || ch === "\n" || ch === "\r" || ch === "\t" || ch === "\f";
@@ -2256,11 +2259,60 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
     };
 
+    /**
+     * Cross-format salvage before dropping an unfinished tool_call block:
+     * some models emit Hermes-style JSON payloads inside `<tool_call>` tags
+     * regardless of the Qwen prompt (observed live on LiquidAI LFM2). The
+     * shared recovery only fires when the block is nothing but resolvable
+     * payloads plus markup remnants.
+     */
+    const trySalvageForeignFormatCalls = (
+      controller: StreamController,
+      rawToolCall: string
+    ): boolean => {
+      const recovered = recoverToolCallFromJsonCandidates(rawToolCall, tools);
+      if (!recovered) {
+        return false;
+      }
+      const calls = recovered.filter(
+        (part): part is Extract<typeof part, { type: "tool-call" }> =>
+          part.type === "tool-call"
+      );
+      const hasProse = recovered.some(
+        (part) =>
+          part.type === "text" &&
+          !SALVAGE_MARKUP_ONLY_TEXT_REGEX.test(part.text)
+      );
+      if (calls.length === 0 || hasProse) {
+        return false;
+      }
+      for (const call of calls) {
+        controller.enqueue({
+          type: "tool-input-start",
+          id: call.toolCallId,
+          toolName: call.toolName,
+        });
+        if (call.input.length > 0) {
+          controller.enqueue({
+            type: "tool-input-delta",
+            id: call.toolCallId,
+            delta: call.input,
+          });
+        }
+        controller.enqueue({ type: "tool-input-end", id: call.toolCallId });
+        controller.enqueue(call);
+      }
+      return true;
+    };
+
     const reportUnfinishedToolCallAtFinish = (
       controller: StreamController,
       rawToolCall: string,
       metadata: { toolCallId?: string; toolName?: string | null } = {}
     ) => {
+      if (trySalvageForeignFormatCalls(controller, rawToolCall)) {
+        return;
+      }
       const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
       const toolName =
         metadata.toolName ?? extractShorthandToolNameFromRaw(rawToolCall);

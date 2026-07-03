@@ -249,3 +249,75 @@ describe("recoverToolCallFromJsonCandidates envelope variants", () => {
     expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
   });
 });
+
+describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
+  it("recovers Qwen-style function blocks (Step 3.5 shape)", () => {
+    const text =
+      "<tool_call>\n<function=get_weather>\n<parameter=city>\nSeoul\n</parameter>\n</function>\n</tool_call>";
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(call).toBeDefined();
+    expect(call.toolName).toBe("get_weather");
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
+  });
+
+  it("recovers YAML-bodied tool_call blocks with envelope (Granite shape)", () => {
+    const text =
+      "<tool_call>\nname: get_weather\narguments:\n  city: Seoul\n  unit: celsius\n</weather>";
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(call).toBeDefined();
+    expect(call.toolName).toBe("get_weather");
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul", unit: "celsius" });
+  });
+
+  it("recovers bare-args YAML blocks closed with the tool name", () => {
+    const text =
+      "<tool_call>\ncity: Seoul\nunit: celsius\n</get_weather>\n<tool_call>\ncity: Tokyo\nunit: celsius\n</get_weather>";
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const calls = recovered?.filter(
+      (part) => part.type === "tool-call"
+    ) as any[];
+    expect(calls).toHaveLength(2);
+    expect(calls.map((c) => JSON.parse(c.input).city)).toEqual([
+      "Seoul",
+      "Tokyo",
+    ]);
+  });
+
+  it("does not misread prose inside a tool_call block as YAML args", () => {
+    const text = "<tool_call>\njust some prose here\n</tool_call>";
+
+    expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
+  });
+});
+
+describe("recoverToolCallFromJsonCandidates namespaced close tags", () => {
+  it("trims namespaced garbage close tags and matches the tool name", () => {
+    const text =
+      "<tool_call>\nname: get_weather\narguments:\n  city: Seoul\n</functions:get_weather>";
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(call).toBeDefined();
+    expect(call.toolName).toBe("get_weather");
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
+  });
+
+  it("matches the tool from the namespaced close tag in bare-args form", () => {
+    const text = "<tool_call>\ncity: Seoul\n</functions:get_weather>";
+
+    const recovered = recoverToolCallFromJsonCandidates(text, tools);
+
+    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(call).toBeDefined();
+    expect(call.toolName).toBe("get_weather");
+  });
+});

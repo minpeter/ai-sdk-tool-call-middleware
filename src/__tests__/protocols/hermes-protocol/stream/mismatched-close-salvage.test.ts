@@ -204,3 +204,45 @@ describe("hermes double-encoded and array-wrapped salvage", () => {
     expect(joinedText(out)).toBe("");
   });
 });
+
+describe("hermes invalid JSON escape normalization", () => {
+  // Real-world shape observed from Cohere Command R+: generated code inside
+  // a JSON string escapes template-literal dollars as \$ (invalid JSON).
+  it("drops invalid escapes and parses the call (generate)", () => {
+    const protocol = hermesProtocol();
+    const out = protocol.parseGeneratedText({
+      text: '<tool_call>{"name":"get_weather","arguments":{"city":"a\\$b"}}</tool_call>',
+      tools,
+    });
+
+    const toolCall = out.find((p) => p.type === "tool-call");
+    if (toolCall?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(JSON.parse(toolCall.input)).toEqual({ city: "a$b" });
+  });
+
+  it("drops invalid escapes and parses the call (stream)", async () => {
+    const out = await runStream(
+      '<tool_call>{"name":"get_weather","arguments":{"city":"a\\$b"}}</tool_call>'
+    );
+
+    const toolCall = out.find((p) => p.type === "tool-call") as ToolCallPart;
+    expect(toolCall).toBeDefined();
+    expect(JSON.parse(toolCall.input)).toEqual({ city: "a$b" });
+  });
+
+  it("keeps valid escapes intact", () => {
+    const protocol = hermesProtocol();
+    const out = protocol.parseGeneratedText({
+      text: '<tool_call>{"name":"get_weather","arguments":{"city":"line1\\nline2 \\"q\\""}}</tool_call>',
+      tools,
+    });
+
+    const toolCall = out.find((p) => p.type === "tool-call");
+    if (toolCall?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(JSON.parse(toolCall.input)).toEqual({ city: 'line1\nline2 "q"' });
+  });
+});

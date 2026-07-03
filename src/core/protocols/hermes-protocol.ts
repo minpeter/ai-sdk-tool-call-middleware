@@ -1735,6 +1735,60 @@ function repairToolCallJsonForTools(
   }
 }
 
+const VALID_JSON_ESCAPE_CHARS = new Set([
+  '"',
+  "'",
+  "\\",
+  "/",
+  "b",
+  "f",
+  "n",
+  "r",
+  "t",
+  "u",
+]);
+
+/**
+ * Drop the backslash from invalid JSON escape sequences inside string values
+ * (e.g. `\$` from a template literal in generated code — observed live on
+ * Cohere Command R+). Valid escapes and structural characters are untouched.
+ */
+function normalizeInvalidJsonEscapes(json: string): string {
+  let quote: '"' | "'" | null = null;
+  let parts: string[] | null = null;
+  let chunkStart = 0;
+
+  for (let i = 0; i < json.length; i += 1) {
+    const ch = json[i];
+    if (quote === null) {
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+      }
+      continue;
+    }
+    if (ch === quote) {
+      quote = null;
+      continue;
+    }
+    if (ch !== "\\") {
+      continue;
+    }
+    const next = json[i + 1];
+    if (next !== undefined && !VALID_JSON_ESCAPE_CHARS.has(next)) {
+      parts ??= [];
+      parts.push(json.slice(chunkStart, i));
+      chunkStart = i + 1;
+    }
+    i += 1;
+  }
+
+  if (parts === null) {
+    return json;
+  }
+  parts.push(json.slice(chunkStart));
+  return parts.join("");
+}
+
 /**
  * Discriminated result of resolving a raw `<tool_call>` JSON body into a final,
  * emittable tool call. Shared by the non-streaming (`parseGeneratedText` ->
@@ -1767,7 +1821,9 @@ function resolveToolCall(
   tools: LanguageModelV4FunctionTool[]
 ): ResolvedToolCall {
   try {
-    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
+    const parsedToolCall = parseRJSON(
+      normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
+    );
     if (!isParsedToolCallRecord(parsedToolCall)) {
       throw new Error("Tool call object is missing own name or arguments");
     }
@@ -2360,7 +2416,9 @@ function emitStreamingToolInputProgress(options: {
     return false;
   }
   try {
-    const parsedToolCall = parseRJSON(normalizeJsonStringCtrl(toolCallJson));
+    const parsedToolCall = parseRJSON(
+      normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
+    );
     if (!isParsedToolCallRecord(parsedToolCall)) {
       return false;
     }
@@ -2555,7 +2613,9 @@ function emitIncompleteToolCall(
   if (state.currentToolCallJson) {
     try {
       const parsedToolCall = parseRJSON(
-        normalizeJsonStringCtrl(state.currentToolCallJson)
+        normalizeInvalidJsonEscapes(
+          normalizeJsonStringCtrl(state.currentToolCallJson)
+        )
       );
       if (!isParsedToolCallRecord(parsedToolCall)) {
         throw new Error("Tool call object is missing own name or arguments");

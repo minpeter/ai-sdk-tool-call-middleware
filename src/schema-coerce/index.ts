@@ -1,6 +1,7 @@
+import { parse as parseRJSON } from "../rjson";
+
 // Regex constants for performance
 const NUMERIC_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
-const EMPTY_OBJECT_REGEX = /^\{\s*\}$/s;
 const NEWLINE_SPLIT_REGEX = /\n+/;
 const COMMA_SPLIT_REGEX = /,\s*/;
 const DIGIT_KEY_REGEX = /^\d+$/;
@@ -685,6 +686,111 @@ function coerceStringWithoutSchema(value: string): unknown {
   return value;
 }
 
+const COERCE_PROTOTYPE_SENSITIVE_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+const COERCE_PROTO_KEY_TEXT_REGEX =
+  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
+/** Python literals models leak into JSON-ish payloads (`True`, `None`). */
+const PYTHON_LITERAL_TOKEN_REGEX = /\b(?:True|False|None)\b/g;
+const XML_CHILD_VALUE_CLOSED_RE = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)<\/\1\s*>$/;
+const XML_CHILD_VALUE_OPEN_RE = /^<([A-Za-z_][\w.-]*)\s*>([^<]*\S[^<]*)$/;
+
+const PYTHON_LITERAL_REPLACEMENTS: Record<string, string> = {
+  True: "true",
+  False: "false",
+  None: "null",
+};
+
+function normalizePythonLiterals(s: string): string {
+  return s.replace(
+    PYTHON_LITERAL_TOKEN_REGEX,
+    (token) => PYTHON_LITERAL_REPLACEMENTS[token] ?? token
+  );
+}
+
+function hasPrototypeSensitiveOwnKey(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.some(hasPrototypeSensitiveOwnKey);
+  }
+  for (const key of Object.keys(value as Record<string, unknown>)) {
+    if (COERCE_PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+      return true;
+    }
+    if (hasPrototypeSensitiveOwnKey((value as Record<string, unknown>)[key])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Parse a string that should have been a structured value: strict JSON,
+ * then relaxed JSON (single quotes, unquoted keys), then Python-literal
+ * normalization (`True`/`False`/`None` — observed live on KAT Coder Pro).
+ */
+function parseLooseStructuredString(s: string): unknown {
+  const first = s.trimStart().charAt(0);
+  if (first !== "{" && first !== "[") {
+    return;
+  }
+  if (COERCE_PROTO_KEY_TEXT_REGEX.test(s)) {
+    return;
+  }
+  const candidates = [s, normalizePythonLiterals(s)];
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // try relaxed JSON next
+    }
+    try {
+      const parsed = parseRJSON(candidate) as unknown;
+      if (!hasPrototypeSensitiveOwnKey(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  return;
+}
+
+/**
+ * Parse line-oriented `<key>value</key>` children into a record (observed
+ * live on Cohere Command R+, which nests XML children inside an object-typed
+ * parameter value). Tolerates a missing close tag on a line.
+ */
+function parseXmlChildrenValue(s: string): Record<string, unknown> | null {
+  const lines = s
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0 || !lines[0].startsWith("<")) {
+    return null;
+  }
+  const record: Record<string, unknown> = {};
+  for (const line of lines) {
+    const match =
+      XML_CHILD_VALUE_CLOSED_RE.exec(line) ??
+      XML_CHILD_VALUE_OPEN_RE.exec(line);
+    if (!match) {
+      return null;
+    }
+    const key = match[1];
+    if (COERCE_PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+      return null;
+    }
+    record[key] = (match[2] ?? "").trim();
+  }
+  return record;
+}
+
 /**
  * Coerce string to object using schema
  */
@@ -692,26 +798,16 @@ function coerceStringToObject(
   s: string,
   unwrapped: Record<string, unknown>
 ): unknown {
-  // First try parsing the original string as-is
-  try {
-    const obj = JSON.parse(s);
-    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-      return coerceObjectToObject(obj as Record<string, unknown>, unwrapped);
-    }
-  } catch {
-    // Fallback: try replacing single quotes with double quotes
-    // (for cases where model uses single-quoted JSON)
-    try {
-      let normalized = s.replace(/'/g, '"');
-      normalized = normalized.replace(EMPTY_OBJECT_REGEX, "{}");
-      const obj = JSON.parse(normalized);
-      if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-        return coerceObjectToObject(obj as Record<string, unknown>, unwrapped);
-      }
-    } catch {
-      // fallthrough
-    }
+  const parsed = parseLooseStructuredString(s);
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    return coerceObjectToObject(parsed as Record<string, unknown>, unwrapped);
   }
+
+  const xmlChildren = parseXmlChildrenValue(s);
+  if (xmlChildren) {
+    return coerceObjectToObject(xmlChildren, unwrapped);
+  }
+
   return null;
 }
 
@@ -727,29 +823,26 @@ function coerceStringToArray(
     : undefined;
   const itemsSchema = unwrapped.items as unknown;
 
+  const coerceArrayItems = (arr: unknown[]): unknown => {
+    if (prefixItems && arr.length === prefixItems.length) {
+      return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
+    }
+    return arr.map((v) => coerceBySchema(v, itemsSchema));
+  };
+
   try {
     const arr = JSON.parse(s);
     if (Array.isArray(arr)) {
-      if (prefixItems && arr.length === prefixItems.length) {
-        return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
-      }
-      return arr.map((v) => coerceBySchema(v, itemsSchema));
+      return coerceArrayItems(arr);
     }
   } catch {
-    // Fallback: try replacing single quotes with double quotes
-    // (for cases where model uses single-quoted JSON)
-    try {
-      const normalized = s.replace(/'/g, '"');
-      const arr = JSON.parse(normalized);
-      if (Array.isArray(arr)) {
-        if (prefixItems && arr.length === prefixItems.length) {
-          return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
-        }
-        return arr.map((v) => coerceBySchema(v, itemsSchema));
-      }
-    } catch {
-      // Both failed — fall through to CSV split
+    // Relaxed parsing (single quotes, unquoted keys, Python literals).
+    const parsed = parseLooseStructuredString(s);
+    if (Array.isArray(parsed)) {
+      return coerceArrayItems(parsed);
     }
+
+    // Fall back to CSV/line splitting for plain enumerations.
     const csv = s.includes("\n")
       ? s.split(NEWLINE_SPLIT_REGEX)
       : s.split(COMMA_SPLIT_REGEX);
