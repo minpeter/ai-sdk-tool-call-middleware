@@ -5,6 +5,8 @@ import type {
   LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import { parse, stringify } from "../../rxml";
+import { unescapeXml } from "../../rxml/utils/helpers";
+import { unwrapJsonSchema } from "../../schema-coerce";
 import { generateToolCallId } from "../utils/id";
 import {
   createFlushTextHandler,
@@ -57,6 +59,12 @@ interface ProcessToolCallParams {
   tools: LanguageModelV4FunctionTool[];
 }
 
+function allowPlainTextBodyFallback(
+  parseOptions?: Record<string, unknown>
+): boolean {
+  return parseOptions?.repair !== false;
+}
+
 function processToolCall(params: ProcessToolCallParams): void {
   const { toolCall, tools, options, text, processedElements, parseOptions } =
     params;
@@ -71,7 +79,10 @@ function processToolCall(params: ProcessToolCallParams): void {
   };
 
   try {
-    const parsed = parse(toolCall.content, toolSchema, parseConfig);
+    const parsed =
+      (allowPlainTextBodyFallback(parseOptions)
+        ? plainTextBodyFallback(toolCall.content, toolSchema)
+        : null) ?? parse(toolCall.content, toolSchema, parseConfig);
     processedElements.push({
       type: "tool-call",
       toolCallId: generateToolCallId(),
@@ -360,11 +371,12 @@ function getObjectSchemaPropertyNames(schema: unknown): Set<string> | null {
 }
 
 function schemaAllowsArrayType(schema: unknown): boolean {
-  if (!schema || typeof schema !== "object") {
+  const normalizedSchema = unwrapJsonSchema(schema);
+  if (!normalizedSchema || typeof normalizedSchema !== "object") {
     return false;
   }
 
-  const schemaRecord = schema as Record<string, unknown>;
+  const schemaRecord = normalizedSchema as Record<string, unknown>;
   const typeValue = schemaRecord.type;
   if (typeValue === "array") {
     return true;
@@ -387,11 +399,12 @@ function schemaAllowsArrayType(schema: unknown): boolean {
 }
 
 function schemaAllowsStringType(schema: unknown): boolean {
-  if (!schema || typeof schema !== "object") {
+  const normalizedSchema = unwrapJsonSchema(schema);
+  if (!normalizedSchema || typeof normalizedSchema !== "object") {
     return false;
   }
 
-  const schemaRecord = schema as Record<string, unknown>;
+  const schemaRecord = normalizedSchema as Record<string, unknown>;
   const typeValue = schemaRecord.type;
   if (typeValue === "string") {
     return true;
@@ -429,6 +442,148 @@ function getObjectSchemaStringPropertyNames(
     }
   }
   return out;
+}
+
+function getRequiredMessageStringProperty(schema: unknown): string | null {
+  if (!schema || typeof schema !== "object") {
+    return null;
+  }
+
+  const schemaRecord = schema as Record<string, unknown>;
+  const required = schemaRecord.required;
+  if (
+    !(
+      Array.isArray(required) &&
+      required.length === 1 &&
+      required[0] === "message"
+    )
+  ) {
+    return null;
+  }
+
+  const messageProperty = getSchemaObjectProperty(schema, "message");
+  return schemaAllowsStringType(messageProperty) ? "message" : null;
+}
+
+function getOptionalMessageStringProperty(schema: unknown): string | null {
+  if (!schema || typeof schema !== "object") {
+    return null;
+  }
+
+  const schemaRecord = schema as Record<string, unknown>;
+  const required = schemaRecord.required;
+  if (Array.isArray(required) && required.length > 0) {
+    return null;
+  }
+
+  const messageProperty = getSchemaObjectProperty(schema, "message");
+  return schemaAllowsStringType(messageProperty) ? "message" : null;
+}
+
+function getFallbackStringPropertyName(schema: unknown): string | null {
+  return (
+    getRequiredMessageStringProperty(schema) ??
+    getOptionalMessageStringProperty(schema)
+  );
+}
+
+interface ProtectedXmlText {
+  marker: string;
+  value: string;
+}
+
+const createProtectedXmlTextMarker = (
+  source: string,
+  index: number
+): string => {
+  let marker = `\u0000MORPH_XML_CDATA_${index}\u0000`;
+  while (source.includes(marker)) {
+    marker = `${marker}_`;
+  }
+  return marker;
+};
+
+const protectCdataText = (text: string): [string, ProtectedXmlText[]] => {
+  const protectedTexts: ProtectedXmlText[] = [];
+  const protectedSource = text.replace(
+    /<!\[CDATA\[([\s\S]*?)\]\]>/g,
+    (_match, value: string) => {
+      const marker = createProtectedXmlTextMarker(text, protectedTexts.length);
+      protectedTexts.push({ marker, value });
+      return marker;
+    }
+  );
+  return [protectedSource, protectedTexts];
+};
+
+const restoreProtectedXmlText = (
+  text: string,
+  protectedTexts: readonly ProtectedXmlText[]
+): string => {
+  let restored = text;
+  for (const protectedText of protectedTexts) {
+    restored = restored.replaceAll(protectedText.marker, protectedText.value);
+  }
+  return restored;
+};
+
+function stripXmlTagsFromTextBody(text: string): string {
+  const [protectedSource, protectedTexts] = protectCdataText(text);
+  const stripped = protectedSource
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<\?[\s\S]*?\?>/g, "")
+    .replace(/<![^>]*>/g, "")
+    .replace(/<\/?[a-z_][a-z0-9._:-]*(?:\s[^>]*)?\s*\/?>/gi, "");
+  return restoreProtectedXmlText(stripped, protectedTexts);
+}
+
+function plainTextBodyFallback(
+  toolContent: string,
+  toolSchema: unknown
+): Record<string, string> | null {
+  const normalizedSchema = unwrapJsonSchema(toolSchema);
+  const propertyName = getFallbackStringPropertyName(normalizedSchema);
+  if (!propertyName) {
+    return null;
+  }
+
+  const normalized = toolContent.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const schemaProperties = getObjectSchemaPropertyNames(normalizedSchema);
+  const allowsPlainTextWithSchemaTags =
+    getRequiredMessageStringProperty(normalizedSchema) === propertyName;
+  if (schemaProperties && !allowsPlainTextWithSchemaTags) {
+    for (const name of schemaProperties) {
+      const propertyTagPattern = new RegExp(
+        `<${escapeRegExp(name)}(?:\\s[^>]*)?\\s*/?>`,
+        "i"
+      );
+      if (propertyTagPattern.test(normalized)) {
+        return null;
+      }
+    }
+  }
+
+  const structure = analyzeXmlFragmentForProgress(normalized);
+  if (
+    structure?.topLevelTagNames.some(
+      (tagName) =>
+        tagName === propertyName ||
+        (schemaProperties?.has(tagName) && !allowsPlainTextWithSchemaTags)
+    )
+  ) {
+    return null;
+  }
+
+  const recovered = unescapeXml(stripXmlTagsFromTextBody(normalized)).trim();
+  if (!recovered) {
+    return null;
+  }
+
+  return { [propertyName]: recovered };
 }
 
 function findTrailingUnclosedStringTag(options: {
@@ -661,7 +816,10 @@ function handleStreamingToolCallEnd(
 
   flushText(ctrl);
   try {
-    const parsedResult = parse(toolContent, toolSchema, parseConfig);
+    const parsedResult =
+      (allowPlainTextBodyFallback(parseOptions)
+        ? plainTextBodyFallback(toolContent, toolSchema)
+        : null) ?? parse(toolContent, toolSchema, parseConfig);
     const finalInput = stringifyToolInputWithSchema({
       toolName: currentToolCall.name,
       args: parsedResult,
