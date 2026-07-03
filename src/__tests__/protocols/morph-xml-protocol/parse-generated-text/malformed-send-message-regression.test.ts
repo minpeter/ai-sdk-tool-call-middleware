@@ -119,6 +119,32 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
     });
   });
 
+  it("does not recover plain text for non-message string fields", () => {
+    const commandTools: LanguageModelV4FunctionTool[] = [
+      {
+        type: "function",
+        name: "run_command",
+        description: "Run a shell command",
+        inputSchema: {
+          type: "object",
+          properties: {
+            command: { type: "string" },
+          },
+          required: ["command"],
+        },
+      },
+    ];
+
+    const { input } = parseSendMessage(
+      "<run_command>I will inspect the synthetic workspace.</run_command>",
+      commandTools
+    );
+
+    expect(input).not.toEqual({
+      command: "I will inspect the synthetic workspace.",
+    });
+  });
+
   it("does not recover an empty message after stripping XML tags", () => {
     const { input } = parseSendMessage(`<send_message>
 <debug/><LINE-BREAK />

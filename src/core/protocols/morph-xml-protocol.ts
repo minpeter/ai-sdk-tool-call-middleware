@@ -441,7 +441,7 @@ function getObjectSchemaStringPropertyNames(
   return out;
 }
 
-function getSingleRequiredStringProperty(schema: unknown): string | null {
+function getRequiredMessageStringProperty(schema: unknown): string | null {
   if (!schema || typeof schema !== "object") {
     return null;
   }
@@ -449,17 +449,17 @@ function getSingleRequiredStringProperty(schema: unknown): string | null {
   const schemaRecord = schema as Record<string, unknown>;
   const required = schemaRecord.required;
   if (
-    Array.isArray(required) &&
-    required.length === 1 &&
-    typeof required[0] === "string"
+    !(
+      Array.isArray(required) &&
+      required.length === 1 &&
+      required[0] === "message"
+    )
   ) {
-    const property = getSchemaObjectProperty(schema, required[0]);
-    if (schemaAllowsStringType(property)) {
-      return required[0];
-    }
+    return null;
   }
 
-  return null;
+  const messageProperty = getSchemaObjectProperty(schema, "message");
+  return schemaAllowsStringType(messageProperty) ? "message" : null;
 }
 
 function getOptionalMessageStringProperty(schema: unknown): string | null {
@@ -479,7 +479,7 @@ function getOptionalMessageStringProperty(schema: unknown): string | null {
 
 function getFallbackStringPropertyName(schema: unknown): string | null {
   return (
-    getSingleRequiredStringProperty(schema) ??
+    getRequiredMessageStringProperty(schema) ??
     getOptionalMessageStringProperty(schema)
   );
 }
