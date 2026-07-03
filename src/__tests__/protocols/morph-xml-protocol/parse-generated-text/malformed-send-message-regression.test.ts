@@ -163,6 +163,43 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
     });
   });
 
+  it("strips XML comments and processing instructions from fallback text", () => {
+    const { input } = parseSendMessage(`
+<send_message><?draft hidden?><!-- hidden note -->Visible synthetic copy<![CDATA[ with cdata text]]></send_message>`);
+
+    expect(input).toEqual({
+      message: "Visible synthetic copy with cdata text",
+    });
+  });
+
+  it("recovers message fallback from jsonSchema-wrapped schemas", () => {
+    const wrappedTools = [
+      {
+        type: "function",
+        name: "send_message",
+        description: "Send a user-visible message",
+        inputSchema: {
+          jsonSchema: {
+            type: "object",
+            properties: {
+              message: { type: "string" },
+            },
+            required: ["message"],
+          },
+        },
+      },
+    ] as LanguageModelV4FunctionTool[];
+
+    const { input } = parseSendMessage(
+      "<send_message>Wrapped synthetic message body.</send_message>",
+      wrappedTools
+    );
+
+    expect(input).toEqual({
+      message: "Wrapped synthetic message body.",
+    });
+  });
+
   it("honors repair false by skipping plain-text fallback recovery", () => {
     const { input } = parseSendMessage(
       "<send_message>Synthetic update without child tags.</send_message>",

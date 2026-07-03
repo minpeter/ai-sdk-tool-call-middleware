@@ -6,6 +6,7 @@ import type {
 } from "@ai-sdk/provider";
 import { parse, stringify } from "../../rxml";
 import { unescapeXml } from "../../rxml/utils/helpers";
+import { unwrapJsonSchema } from "../../schema-coerce";
 import { generateToolCallId } from "../utils/id";
 import {
   createFlushTextHandler,
@@ -485,14 +486,20 @@ function getFallbackStringPropertyName(schema: unknown): string | null {
 }
 
 function stripXmlTagsFromTextBody(text: string): string {
-  return text.replace(/<\/?[a-z_][a-z0-9._:-]*(?:\s[^>]*)?\s*\/?>/gi, "");
+  return text
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<\?[\s\S]*?\?>/g, "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/<![^>]*>/g, "")
+    .replace(/<\/?[a-z_][a-z0-9._:-]*(?:\s[^>]*)?\s*\/?>/gi, "");
 }
 
 function plainTextBodyFallback(
   toolContent: string,
   toolSchema: unknown
 ): Record<string, string> | null {
-  const propertyName = getFallbackStringPropertyName(toolSchema);
+  const normalizedSchema = unwrapJsonSchema(toolSchema);
+  const propertyName = getFallbackStringPropertyName(normalizedSchema);
   if (!propertyName) {
     return null;
   }
@@ -502,7 +509,7 @@ function plainTextBodyFallback(
     return null;
   }
 
-  const schemaProperties = getObjectSchemaPropertyNames(toolSchema);
+  const schemaProperties = getObjectSchemaPropertyNames(normalizedSchema);
   if (schemaProperties) {
     for (const name of schemaProperties) {
       const propertyTagPattern = new RegExp(
