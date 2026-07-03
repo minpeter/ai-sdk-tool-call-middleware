@@ -75,4 +75,14 @@ https://xtrend.nikkei.com/atcl/contents/18/01269/00001/
     expect(input.message).not.toContain("<image_url>");
     expect(text).toBe("");
   });
+
+  it("strips compact self-closing XML tags from recovered fallback text", () => {
+    const { input } = parseSendMessage(`<send_message>
+検索結果です。<debug/>詳細はこちらです。<line-break />ありがとうございました。
+</send_message>`);
+
+    expect(input).toEqual({
+      message: "検索結果です。詳細はこちらです。ありがとうございました。",
+    });
+  });
 });

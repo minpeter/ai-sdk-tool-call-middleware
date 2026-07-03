@@ -456,7 +456,7 @@ function getFallbackStringPropertyName(schema: unknown): string | null {
 }
 
 function stripXmlTagsFromTextBody(text: string): string {
-  return text.replace(/<\/?[a-z_][a-z0-9._:-]*(?:\s[^>]*)?>/g, "");
+  return text.replace(/<\/?[a-z_][a-z0-9._:-]*(?:\s[^>]*)?\s*\/?>/g, "");
 }
 
 function plainTextBodyFallback(
@@ -477,7 +477,9 @@ function plainTextBodyFallback(
   if (
     schemaProperties &&
     [...schemaProperties].some((name) =>
-      new RegExp(`<${escapeRegExp(name)}(?:\\s[^>]*)?>`, "i").test(normalized)
+      new RegExp(`<${escapeRegExp(name)}(?:\\s[^>]*)?\\s*/?>`, "i").test(
+        normalized
+      )
     )
   ) {
     return null;
