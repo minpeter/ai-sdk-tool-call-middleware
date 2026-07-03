@@ -28,9 +28,10 @@ const tools: LanguageModelV4FunctionTool[] = [
 
 const parseSendMessage = (
   text: string,
-  activeTools: LanguageModelV4FunctionTool[] = tools
+  activeTools: LanguageModelV4FunctionTool[] = tools,
+  protocolOptions?: Parameters<typeof morphXmlProtocol>[0]
 ) => {
-  const out = morphXmlProtocol().parseGeneratedText({
+  const out = morphXmlProtocol(protocolOptions).parseGeneratedText({
     text,
     tools: activeTools,
     options: {},
@@ -124,5 +125,27 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
 </send_message>`);
 
     expect(input).not.toEqual({ message: "" });
+  });
+
+  it("decodes XML entities in recovered fallback text", () => {
+    const { input } = parseSendMessage(
+      "<send_message>Synthetic R&amp;D says 3 &lt; 5 and the plan is ready.</send_message>"
+    );
+
+    expect(input).toEqual({
+      message: "Synthetic R&D says 3 < 5 and the plan is ready.",
+    });
+  });
+
+  it("honors repair false by skipping plain-text fallback recovery", () => {
+    const { input } = parseSendMessage(
+      "<send_message>Synthetic update without child tags.</send_message>",
+      tools,
+      { parseOptions: { repair: false } }
+    );
+
+    expect(input).not.toEqual({
+      message: "Synthetic update without child tags.",
+    });
   });
 });

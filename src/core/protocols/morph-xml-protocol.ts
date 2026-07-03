@@ -5,6 +5,7 @@ import type {
   LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import { parse, stringify } from "../../rxml";
+import { unescapeXml } from "../../rxml/utils/helpers";
 import { generateToolCallId } from "../utils/id";
 import {
   createFlushTextHandler,
@@ -57,6 +58,12 @@ interface ProcessToolCallParams {
   tools: LanguageModelV4FunctionTool[];
 }
 
+function allowPlainTextBodyFallback(
+  parseOptions?: Record<string, unknown>
+): boolean {
+  return parseOptions?.repair !== false;
+}
+
 function processToolCall(params: ProcessToolCallParams): void {
   const { toolCall, tools, options, text, processedElements, parseOptions } =
     params;
@@ -72,8 +79,9 @@ function processToolCall(params: ProcessToolCallParams): void {
 
   try {
     const parsed =
-      plainTextBodyFallback(toolCall.content, toolSchema) ??
-      parse(toolCall.content, toolSchema, parseConfig);
+      (allowPlainTextBodyFallback(parseOptions)
+        ? plainTextBodyFallback(toolCall.content, toolSchema)
+        : null) ?? parse(toolCall.content, toolSchema, parseConfig);
     processedElements.push({
       type: "tool-call",
       toolCallId: generateToolCallId(),
@@ -516,7 +524,7 @@ function plainTextBodyFallback(
     return null;
   }
 
-  const recovered = stripXmlTagsFromTextBody(normalized).trim();
+  const recovered = unescapeXml(stripXmlTagsFromTextBody(normalized)).trim();
   if (!recovered) {
     return null;
   }
@@ -755,8 +763,9 @@ function handleStreamingToolCallEnd(
   flushText(ctrl);
   try {
     const parsedResult =
-      plainTextBodyFallback(toolContent, toolSchema) ??
-      parse(toolContent, toolSchema, parseConfig);
+      (allowPlainTextBodyFallback(parseOptions)
+        ? plainTextBodyFallback(toolContent, toolSchema)
+        : null) ?? parse(toolContent, toolSchema, parseConfig);
     const finalInput = stringifyToolInputWithSchema({
       toolName: currentToolCall.name,
       args: parsedResult,
