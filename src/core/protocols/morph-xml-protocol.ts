@@ -71,7 +71,9 @@ function processToolCall(params: ProcessToolCallParams): void {
   };
 
   try {
-    const parsed = parse(toolCall.content, toolSchema, parseConfig);
+    const parsed =
+      plainTextBodyFallback(toolCall.content, toolSchema) ??
+      parse(toolCall.content, toolSchema, parseConfig);
     processedElements.push({
       type: "tool-call",
       toolCallId: generateToolCallId(),
@@ -431,6 +433,68 @@ function getObjectSchemaStringPropertyNames(
   return out;
 }
 
+function getFallbackStringPropertyName(schema: unknown): string | null {
+  if (!schema || typeof schema !== "object") {
+    return null;
+  }
+
+  const schemaRecord = schema as Record<string, unknown>;
+  const required = schemaRecord.required;
+  if (
+    Array.isArray(required) &&
+    required.length === 1 &&
+    typeof required[0] === "string"
+  ) {
+    const property = getSchemaObjectProperty(schema, required[0]);
+    if (schemaAllowsStringType(property)) {
+      return required[0];
+    }
+  }
+
+  const messageProperty = getSchemaObjectProperty(schema, "message");
+  return schemaAllowsStringType(messageProperty) ? "message" : null;
+}
+
+function stripXmlTagsFromTextBody(text: string): string {
+  return text.replace(/<\/?[a-z_][a-z0-9._:-]*(?:\s[^>]*)?>/g, "");
+}
+
+function plainTextBodyFallback(
+  toolContent: string,
+  toolSchema: unknown
+): Record<string, string> | null {
+  const propertyName = getFallbackStringPropertyName(toolSchema);
+  if (!propertyName) {
+    return null;
+  }
+
+  const normalized = toolContent.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const schemaProperties = getObjectSchemaPropertyNames(toolSchema);
+  if (
+    schemaProperties &&
+    [...schemaProperties].some((name) =>
+      new RegExp(`<${escapeRegExp(name)}(?:\\s[^>]*)?>`, "i").test(normalized)
+    )
+  ) {
+    return null;
+  }
+
+  const structure = analyzeXmlFragmentForProgress(normalized);
+  if (
+    structure?.topLevelTagNames.some(
+      (tagName) => tagName === propertyName || schemaProperties?.has(tagName)
+    )
+  ) {
+    return null;
+  }
+
+  return { [propertyName]: stripXmlTagsFromTextBody(normalized).trim() };
+}
+
 function findTrailingUnclosedStringTag(options: {
   toolContent: string;
   stringPropertyNames: Set<string>;
@@ -661,7 +725,9 @@ function handleStreamingToolCallEnd(
 
   flushText(ctrl);
   try {
-    const parsedResult = parse(toolContent, toolSchema, parseConfig);
+    const parsedResult =
+      plainTextBodyFallback(toolContent, toolSchema) ??
+      parse(toolContent, toolSchema, parseConfig);
     const finalInput = stringifyToolInputWithSchema({
       toolName: currentToolCall.name,
       args: parsedResult,
