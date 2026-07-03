@@ -26,10 +26,13 @@ const tools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
-const parseSendMessage = (text: string) => {
+const parseSendMessage = (
+  text: string,
+  activeTools: LanguageModelV4FunctionTool[] = tools
+) => {
   const out = morphXmlProtocol().parseGeneratedText({
     text,
-    tools,
+    tools: activeTools,
     options: {},
   });
   const tool = out.find((part) => part.type === "tool-call");
@@ -86,5 +89,40 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
       message:
         "Here is the result.More details are available.Thanks for checking.",
     });
+  });
+
+  it("does not use message fallback when other required fields are present", () => {
+    const recipientTools: LanguageModelV4FunctionTool[] = [
+      {
+        type: "function",
+        name: "send_message",
+        description: "Send a user-visible message",
+        inputSchema: {
+          type: "object",
+          properties: {
+            recipient: { type: "string" },
+            message: { type: "string" },
+          },
+          required: ["recipient", "message"],
+        },
+      },
+    ];
+
+    const { input } = parseSendMessage(
+      "<send_message>Send this synthetic update to the project owner.</send_message>",
+      recipientTools
+    );
+
+    expect(input).not.toEqual({
+      message: "Send this synthetic update to the project owner.",
+    });
+  });
+
+  it("does not recover an empty message after stripping XML tags", () => {
+    const { input } = parseSendMessage(`<send_message>
+<debug/><LINE-BREAK />
+</send_message>`);
+
+    expect(input).not.toEqual({ message: "" });
   });
 });

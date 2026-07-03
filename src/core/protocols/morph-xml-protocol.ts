@@ -433,7 +433,7 @@ function getObjectSchemaStringPropertyNames(
   return out;
 }
 
-function getFallbackStringPropertyName(schema: unknown): string | null {
+function getSingleRequiredStringProperty(schema: unknown): string | null {
   if (!schema || typeof schema !== "object") {
     return null;
   }
@@ -451,8 +451,29 @@ function getFallbackStringPropertyName(schema: unknown): string | null {
     }
   }
 
+  return null;
+}
+
+function getOptionalMessageStringProperty(schema: unknown): string | null {
+  if (!schema || typeof schema !== "object") {
+    return null;
+  }
+
+  const schemaRecord = schema as Record<string, unknown>;
+  const required = schemaRecord.required;
+  if (Array.isArray(required) && required.length > 0) {
+    return null;
+  }
+
   const messageProperty = getSchemaObjectProperty(schema, "message");
   return schemaAllowsStringType(messageProperty) ? "message" : null;
+}
+
+function getFallbackStringPropertyName(schema: unknown): string | null {
+  return (
+    getSingleRequiredStringProperty(schema) ??
+    getOptionalMessageStringProperty(schema)
+  );
 }
 
 function stripXmlTagsFromTextBody(text: string): string {
@@ -474,15 +495,16 @@ function plainTextBodyFallback(
   }
 
   const schemaProperties = getObjectSchemaPropertyNames(toolSchema);
-  if (
-    schemaProperties &&
-    [...schemaProperties].some((name) =>
-      new RegExp(`<${escapeRegExp(name)}(?:\\s[^>]*)?\\s*/?>`, "i").test(
-        normalized
-      )
-    )
-  ) {
-    return null;
+  if (schemaProperties) {
+    for (const name of schemaProperties) {
+      const propertyTagPattern = new RegExp(
+        `<${escapeRegExp(name)}(?:\\s[^>]*)?\\s*/?>`,
+        "i"
+      );
+      if (propertyTagPattern.test(normalized)) {
+        return null;
+      }
+    }
   }
 
   const structure = analyzeXmlFragmentForProgress(normalized);
@@ -494,7 +516,12 @@ function plainTextBodyFallback(
     return null;
   }
 
-  return { [propertyName]: stripXmlTagsFromTextBody(normalized).trim() };
+  const recovered = stripXmlTagsFromTextBody(normalized).trim();
+  if (!recovered) {
+    return null;
+  }
+
+  return { [propertyName]: recovered };
 }
 
 function findTrailingUnclosedStringTag(options: {
