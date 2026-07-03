@@ -172,6 +172,16 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
     });
   });
 
+  it("preserves literal markup inside CDATA fallback text", () => {
+    const { input } = parseSendMessage(
+      "<send_message><![CDATA[Use <admin> tags in the synthetic snippet.]]></send_message>"
+    );
+
+    expect(input).toEqual({
+      message: "Use <admin> tags in the synthetic snippet.",
+    });
+  });
+
   it("recovers message fallback from jsonSchema-wrapped schemas", () => {
     const wrappedTools = [
       {
@@ -197,6 +207,59 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
 
     expect(input).toEqual({
       message: "Wrapped synthetic message body.",
+    });
+  });
+
+  it("recovers message fallback when the message property schema is wrapped", () => {
+    const wrappedMessageTools = [
+      {
+        type: "function",
+        name: "send_message",
+        description: "Send a user-visible message",
+        inputSchema: {
+          type: "object",
+          properties: {
+            message: { jsonSchema: { type: "string" } },
+          },
+          required: ["message"],
+        },
+      },
+    ] as LanguageModelV4FunctionTool[];
+
+    const { input } = parseSendMessage(
+      "<send_message>Wrapped property synthetic message.</send_message>",
+      wrappedMessageTools
+    );
+
+    expect(input).toEqual({
+      message: "Wrapped property synthetic message.",
+    });
+  });
+
+  it("uses optional schema tags as text when only message is required", () => {
+    const flattenedTools = [
+      {
+        type: "function",
+        name: "send_message",
+        description: "Send a user-visible message",
+        inputSchema: {
+          type: "object",
+          properties: {
+            message: { type: "string" },
+            image_url: { type: "string" },
+          },
+          required: ["message"],
+        },
+      },
+    ] as LanguageModelV4FunctionTool[];
+
+    const { input } = parseSendMessage(
+      "<send_message>Title <image_url>https://example.com/synthetic.png</image_url> body copy.</send_message>",
+      flattenedTools
+    );
+
+    expect(input).toEqual({
+      message: "Title https://example.com/synthetic.png body copy.",
     });
   });
 

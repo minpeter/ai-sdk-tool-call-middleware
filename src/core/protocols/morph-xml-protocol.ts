@@ -371,11 +371,12 @@ function getObjectSchemaPropertyNames(schema: unknown): Set<string> | null {
 }
 
 function schemaAllowsArrayType(schema: unknown): boolean {
-  if (!schema || typeof schema !== "object") {
+  const normalizedSchema = unwrapJsonSchema(schema);
+  if (!normalizedSchema || typeof normalizedSchema !== "object") {
     return false;
   }
 
-  const schemaRecord = schema as Record<string, unknown>;
+  const schemaRecord = normalizedSchema as Record<string, unknown>;
   const typeValue = schemaRecord.type;
   if (typeValue === "array") {
     return true;
@@ -398,11 +399,12 @@ function schemaAllowsArrayType(schema: unknown): boolean {
 }
 
 function schemaAllowsStringType(schema: unknown): boolean {
-  if (!schema || typeof schema !== "object") {
+  const normalizedSchema = unwrapJsonSchema(schema);
+  if (!normalizedSchema || typeof normalizedSchema !== "object") {
     return false;
   }
 
-  const schemaRecord = schema as Record<string, unknown>;
+  const schemaRecord = normalizedSchema as Record<string, unknown>;
   const typeValue = schemaRecord.type;
   if (typeValue === "string") {
     return true;
@@ -485,13 +487,43 @@ function getFallbackStringPropertyName(schema: unknown): string | null {
   );
 }
 
+interface ProtectedXmlText {
+  marker: string;
+  value: string;
+}
+
+const protectCdataText = (text: string): [string, ProtectedXmlText[]] => {
+  const protectedTexts: ProtectedXmlText[] = [];
+  const protectedSource = text.replace(
+    /<!\[CDATA\[([\s\S]*?)\]\]>/g,
+    (_match, value: string) => {
+      const marker = `__MORPH_XML_CDATA_${protectedTexts.length}__`;
+      protectedTexts.push({ marker, value });
+      return marker;
+    }
+  );
+  return [protectedSource, protectedTexts];
+};
+
+const restoreProtectedXmlText = (
+  text: string,
+  protectedTexts: readonly ProtectedXmlText[]
+): string => {
+  let restored = text;
+  for (const protectedText of protectedTexts) {
+    restored = restored.replaceAll(protectedText.marker, protectedText.value);
+  }
+  return restored;
+};
+
 function stripXmlTagsFromTextBody(text: string): string {
-  return text
+  const [protectedSource, protectedTexts] = protectCdataText(text);
+  const stripped = protectedSource
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<\?[\s\S]*?\?>/g, "")
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/<![^>]*>/g, "")
     .replace(/<\/?[a-z_][a-z0-9._:-]*(?:\s[^>]*)?\s*\/?>/gi, "");
+  return restoreProtectedXmlText(stripped, protectedTexts);
 }
 
 function plainTextBodyFallback(
@@ -510,7 +542,9 @@ function plainTextBodyFallback(
   }
 
   const schemaProperties = getObjectSchemaPropertyNames(normalizedSchema);
-  if (schemaProperties) {
+  const allowsPlainTextWithSchemaTags =
+    getRequiredMessageStringProperty(normalizedSchema) === propertyName;
+  if (schemaProperties && !allowsPlainTextWithSchemaTags) {
     for (const name of schemaProperties) {
       const propertyTagPattern = new RegExp(
         `<${escapeRegExp(name)}(?:\\s[^>]*)?\\s*/?>`,
@@ -525,7 +559,9 @@ function plainTextBodyFallback(
   const structure = analyzeXmlFragmentForProgress(normalized);
   if (
     structure?.topLevelTagNames.some(
-      (tagName) => tagName === propertyName || schemaProperties?.has(tagName)
+      (tagName) =>
+        tagName === propertyName ||
+        (schemaProperties?.has(tagName) && !allowsPlainTextWithSchemaTags)
     )
   ) {
     return null;
