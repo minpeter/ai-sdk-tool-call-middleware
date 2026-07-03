@@ -1,5 +1,11 @@
 # @ai-sdk-tool/parser
 
+## 5.0.1
+
+### Patch Changes
+
+- cda8925: Recover XML tool calls whose body is malformed plain visible message text.
+
 ## 5.0.0
 
 ### Major Changes
