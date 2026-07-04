@@ -45,7 +45,9 @@ async function run(chunkSize: number) {
   });
   const out = source.pipeThrough(transformer);
   const parts: LanguageModelV4StreamPart[] = [];
-  for await (const p of out) parts.push(p);
+  for await (const p of out) {
+    parts.push(p);
+  }
   const deltas = parts
     .filter((p) => p.type === "tool-input-delta")
     .map((p) => (p as { delta: string }).delta)

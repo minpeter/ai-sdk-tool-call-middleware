@@ -114,7 +114,9 @@ async function streamParse(
     },
   });
   const parts: LanguageModelV4StreamPart[] = [];
-  for await (const p of source.pipeThrough(transformer)) parts.push(p);
+  for await (const p of source.pipeThrough(transformer)) {
+    parts.push(p);
+  }
   return parts;
 }
 
@@ -133,7 +135,8 @@ for (const c of cases) {
     calls.length > 0
       ? calls
           .map(
-            (call) => `${(call as { toolName: string }).toolName} ${(call as { input: string }).input.slice(0, 120)}`
+            (call) =>
+              `${(call as { toolName: string }).toolName} ${(call as { input: string }).input.slice(0, 120)}`
           )
           .join(" | ")
       : `NO CALL (errors: ${errors.join("; ")})`
@@ -151,13 +154,16 @@ for (const c of cases) {
       streamCalls.length > 0
         ? streamCalls
             .map(
-              (call) => `${(call as { toolName: string }).toolName} ${(call as { input: string }).input.slice(0, 100)}`
+              (call) =>
+                `${(call as { toolName: string }).toolName} ${(call as { input: string }).input.slice(0, 100)}`
             )
             .join(" | ")
         : "NO CALL",
       `deltasOk=${
         streamCalls.length === 1
-          ? JSON.stringify(deltas === (streamCalls[0] as { input: string }).input)
+          ? JSON.stringify(
+              deltas === (streamCalls[0] as { input: string }).input
+            )
           : "n/a"
       }`
     );

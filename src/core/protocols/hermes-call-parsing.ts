@@ -22,11 +22,6 @@ import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
 import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 import type { ParserOptions } from "./protocol-interface";
 
-interface HermesProtocolOptions {
-  toolCallEnd?: string;
-  toolCallStart?: string;
-}
-
 /**
  * Hermes call-parsing primitives shared by the generate-path parser and the
  * streaming state machine in hermes-protocol.ts: relaxed JSON scanning and
@@ -1859,6 +1854,8 @@ export function resolveToolCall(
       ),
     };
   } catch (error) {
+    const parseError =
+      error instanceof Error ? error : new Error(String(error));
     // Attempt repair for unescaped quotes (best-effort).
     const repaired = repairToolCallJsonForTools(toolCallJson, tools);
     if (repaired) {
@@ -1873,10 +1870,16 @@ export function resolveToolCall(
           ),
         };
       } catch (repairError) {
-        return { ok: false, error: repairError };
+        return {
+          ok: false,
+          error:
+            repairError instanceof Error
+              ? repairError
+              : new Error(String(repairError)),
+        };
       }
     }
-    return { ok: false, error };
+    return { ok: false, error: parseError };
   }
 }
 

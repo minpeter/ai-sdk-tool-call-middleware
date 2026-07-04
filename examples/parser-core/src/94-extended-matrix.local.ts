@@ -42,6 +42,27 @@ const MIDDLEWARES = {
   yamlXml: yamlXmlToolMiddleware,
 } as const;
 type MwName = keyof typeof MIDDLEWARES;
+type FullStreamPart =
+  ReturnType<typeof streamText>["fullStream"] extends AsyncIterable<infer Part>
+    ? Part
+    : never;
+
+interface StreamInvariantOptions {
+  modelId: string;
+  mw: MwName;
+  parserErrors: string[];
+  prompt: string;
+  tools: ToolSet;
+}
+
+interface StreamInvariantState {
+  readonly calls: TypedToolCall<ToolSet>[];
+  readonly deltas: Map<string, string>;
+  readonly ended: Set<string>;
+  readonly notes: string[];
+  readonly started: Set<string>;
+  text: string;
+}
 
 const MODELS = (
   process.env.LIVE_MATRIX_MODELS?.split(",") ?? [
@@ -101,19 +122,114 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function createInvariantState(): StreamInvariantState {
+  return {
+    deltas: new Map<string, string>(),
+    started: new Set<string>(),
+    ended: new Set<string>(),
+    calls: [],
+    text: "",
+    notes: [],
+  };
+}
+
+function pushNoteWhen(
+  notes: string[],
+  condition: boolean,
+  message: string
+): void {
+  if (condition) {
+    notes.push(message);
+  }
+}
+
+function recordStreamPart(
+  part: FullStreamPart,
+  state: StreamInvariantState
+): void {
+  switch (part.type) {
+    case "text-delta":
+      state.text += part.text;
+      break;
+    case "tool-input-start":
+      pushNoteWhen(
+        state.notes,
+        state.started.has(part.id),
+        `DUP-INPUT-START(${part.id})`
+      );
+      state.started.add(part.id);
+      state.deltas.set(part.id, "");
+      break;
+    case "tool-input-delta":
+      pushNoteWhen(
+        state.notes,
+        !state.started.has(part.id),
+        `DELTA-BEFORE-START(${part.id})`
+      );
+      state.deltas.set(part.id, (state.deltas.get(part.id) ?? "") + part.delta);
+      break;
+    case "tool-input-end":
+      pushNoteWhen(
+        state.notes,
+        !state.started.has(part.id),
+        `END-BEFORE-START(${part.id})`
+      );
+      pushNoteWhen(
+        state.notes,
+        state.ended.has(part.id),
+        `DUP-INPUT-END(${part.id})`
+      );
+      state.ended.add(part.id);
+      break;
+    case "tool-call":
+      state.calls.push(part);
+      pushNoteWhen(
+        state.notes,
+        !state.started.has(part.toolCallId),
+        `CALL-WITHOUT-INPUT-START(${part.toolCallId})`
+      );
+      break;
+    case "error":
+      throw new Error(`stream error: ${String(part.error).slice(0, 300)}`);
+    default:
+      break;
+  }
+}
+
+function recordMissingInputEnds(state: StreamInvariantState): void {
+  for (const id of state.started) {
+    pushNoteWhen(state.notes, !state.ended.has(id), `NO-INPUT-END(${id})`);
+  }
+}
+
+function recordDeltaMismatches(state: StreamInvariantState): void {
+  for (const call of state.calls) {
+    const raw = state.deltas.get(call.toolCallId);
+    if (raw === undefined) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (!deepEqual(parsed, call.input)) {
+        state.notes.push(
+          `DELTA-MISMATCH(${call.toolCallId}: deltas=${raw.slice(0, 120)} input=${JSON.stringify(call.input).slice(0, 120)})`
+        );
+      }
+    } catch {
+      state.notes.push(
+        `DELTA-NOT-JSON(${call.toolCallId}: ${raw.slice(0, 120)})`
+      );
+    }
+  }
+}
+
 /**
  * Streams a prompt and checks lifecycle invariants shared by all streaming
  * scenarios: id consistency, input-start/end pairing, and that concatenated
  * tool-input-delta chunks parse to the same object as the final tool-call
  * input.
  */
-async function streamWithInvariants(opts: {
-  modelId: string;
-  mw: MwName;
-  tools: ToolSet;
-  prompt: string;
-  parserErrors: string[];
-}) {
+async function streamWithInvariants(opts: StreamInvariantOptions) {
   const result = streamText({
     model: makeModel(opts.modelId, opts.mw),
     tools: opts.tools,
@@ -121,84 +237,25 @@ async function streamWithInvariants(opts: {
     providerOptions: collectOnError(opts.parserErrors),
     abortSignal: AbortSignal.timeout(TIMEOUT),
   });
-  const deltas = new Map<string, string>();
-  const started = new Set<string>();
-  const ended = new Set<string>();
-  const calls: TypedToolCall<ToolSet>[] = [];
-  let text = "";
-  const notes: string[] = [];
+  const state = createInvariantState();
   for await (const part of result.fullStream) {
-    switch (part.type) {
-      case "text-delta":
-        text += part.text;
-        break;
-      case "tool-input-start":
-        if (started.has(part.id)) notes.push(`DUP-INPUT-START(${part.id})`);
-        started.add(part.id);
-        deltas.set(part.id, "");
-        break;
-      case "tool-input-delta":
-        if (!started.has(part.id)) notes.push(`DELTA-BEFORE-START(${part.id})`);
-        deltas.set(part.id, (deltas.get(part.id) ?? "") + part.delta);
-        break;
-      case "tool-input-end":
-        if (!started.has(part.id)) notes.push(`END-BEFORE-START(${part.id})`);
-        if (ended.has(part.id)) notes.push(`DUP-INPUT-END(${part.id})`);
-        ended.add(part.id);
-        break;
-      case "tool-call":
-        calls.push(part);
-        if (!started.has(part.toolCallId)) {
-          notes.push(`CALL-WITHOUT-INPUT-START(${part.toolCallId})`);
-        }
-        break;
-      case "error":
-        throw new Error(`stream error: ${String(part.error).slice(0, 300)}`);
-      default:
-        break;
-    }
+    recordStreamPart(part, state);
   }
-  for (const id of started) {
-    if (!ended.has(id)) notes.push(`NO-INPUT-END(${id})`);
-  }
-  for (const call of calls) {
-    const raw = deltas.get(call.toolCallId);
-    if (raw === undefined) continue;
-    try {
-      const parsed = JSON.parse(raw);
-      if (!deepEqual(parsed, call.input)) {
-        notes.push(
-          `DELTA-MISMATCH(${call.toolCallId}: deltas=${raw.slice(0, 120)} input=${JSON.stringify(call.input).slice(0, 120)})`
-        );
-      }
-    } catch {
-      notes.push(
-        `DELTA-NOT-JSON(${call.toolCallId}: ${raw.slice(0, 120)})`
-      );
-    }
-  }
+  recordMissingInputEnds(state);
+  recordDeltaMismatches(state);
   const finishReason = await result.finishReason;
-  return { calls, text, notes, finishReason };
+  return {
+    calls: state.calls,
+    text: state.text,
+    notes: state.notes,
+    finishReason,
+  };
 }
 
-type Scenario = {
+interface Scenario {
   name: string;
-  run: (
-    modelId: string,
-    mw: MwName,
-    parserErrors: string[]
-  ) => Promise<string>;
-};
-
-const weatherTools: ToolSet = {
-  get_weather: {
-    description: "Get current weather for a city.",
-    inputSchema: z.object({
-      city: z.string().describe("City name, e.g. 'Seoul'"),
-      unit: z.enum(["celsius", "fahrenheit"]).optional(),
-    }),
-  },
-};
+  run: (modelId: string, mw: MwName, parserErrors: string[]) => Promise<string>;
+}
 
 const scenarios: Scenario[] = [
   {
@@ -217,7 +274,7 @@ const scenarios: Scenario[] = [
           },
         },
         prompt:
-          "Create index.html containing a minimal HTML5 page: doctype, <html>, <head> with <title>Demo</title>, and a <body> with one <div class=\"app\">Hello & welcome</div>. Use the write_file tool with the full file content.",
+          'Create index.html containing a minimal HTML5 page: doctype, <html>, <head> with <title>Demo</title>, and a <body> with one <div class="app">Hello & welcome</div>. Use the write_file tool with the full file content.',
         providerOptions: collectOnError(parserErrors),
         abortSignal: AbortSignal.timeout(TIMEOUT),
       });
@@ -316,12 +373,18 @@ const scenarios: Scenario[] = [
       }
       const input = call.input as Record<string, unknown>;
       const problems: string[] = [];
-      if (typeof input.zip !== "string") problems.push(`zip:${typeof input.zip}`);
-      if (typeof input.weightKg !== "number")
+      if (typeof input.zip !== "string") {
+        problems.push(`zip:${typeof input.zip}`);
+      }
+      if (typeof input.weightKg !== "number") {
         problems.push(`weightKg:${typeof input.weightKg}`);
-      if (typeof input.express !== "boolean")
+      }
+      if (typeof input.express !== "boolean") {
         problems.push(`express:${typeof input.express}`);
-      if (!Array.isArray(input.items)) problems.push("items:not-array");
+      }
+      if (!Array.isArray(input.items)) {
+        problems.push("items:not-array");
+      }
       if (problems.length > 0) {
         throw new Error(
           `type fidelity: ${problems.join(",")} input=${JSON.stringify(input)}`
@@ -403,7 +466,10 @@ const scenarios: Scenario[] = [
     name: "gen-multiturn-hostile-result",
     run: async (modelId, mw, parserErrors) => {
       const messages: ModelMessage[] = [
-        { role: "user", content: "Read config.xml and tell me the timeout value." },
+        {
+          role: "user",
+          content: "Read config.xml and tell me the timeout value.",
+        },
         {
           role: "assistant",
           content: [
@@ -493,15 +559,15 @@ const scenarios: Scenario[] = [
   },
 ];
 
-type RunResult = {
-  model: string;
-  middleware: string;
-  scenario: string;
-  ok: boolean;
+interface RunResult {
   detail: string;
-  parserErrors: string[];
+  middleware: string;
+  model: string;
   ms: number;
-};
+  ok: boolean;
+  parserErrors: string[];
+  scenario: string;
+}
 
 async function runOne(
   modelId: string,
