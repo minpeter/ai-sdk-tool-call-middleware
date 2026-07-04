@@ -30,7 +30,7 @@ import {
 } from "./core/utils/provider-options";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
 import {
-  findFirstTextContent,
+  findFirstNonEmptyTextContent,
   resolveToolChoiceSelection,
 } from "./core/utils/tool-choice";
 
@@ -84,7 +84,7 @@ async function handleToolChoice(
   tools: LanguageModelV4FunctionTool[]
 ) {
   const result = await doGenerate();
-  const firstText = findFirstTextContent(result.content);
+  const firstText = findFirstNonEmptyTextContent(result.content);
   const onError = extractOnErrorOption(params.providerOptions)?.onError;
 
   if (typeof firstText === "string" && getDebugLevel() === "parse") {

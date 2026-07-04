@@ -11,7 +11,7 @@ import { coerceToolCallInput } from "./tool-call-coercion";
  * `responseFormat: json`, so the whole content array is scanned instead of
  * only inspecting `content[0]`.
  */
-export function findFirstTextContent(
+export function findFirstNonEmptyTextContent(
   content: LanguageModelV4Content[] | undefined
 ): string | undefined {
   const textParts = content?.filter(

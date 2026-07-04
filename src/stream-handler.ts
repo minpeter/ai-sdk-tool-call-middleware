@@ -26,7 +26,7 @@ import {
 import { createStreamJsonRecoveryTransform } from "./core/utils/stream-json-recovery";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
 import {
-  findFirstTextContent,
+  findFirstNonEmptyTextContent,
   resolveToolChoiceSelection,
 } from "./core/utils/tool-choice";
 
@@ -198,7 +198,7 @@ export async function toolChoiceStream({
   const normalizedTools = Array.isArray(tools) ? tools : [];
   const result = await doGenerate();
   const { toolName, input } = resolveToolChoiceSelection({
-    text: findFirstTextContent(result?.content),
+    text: findFirstNonEmptyTextContent(result?.content),
     tools: normalizedTools,
     onError: options?.onError,
     errorMessage: "Failed to parse toolChoice JSON from streamed model output",
