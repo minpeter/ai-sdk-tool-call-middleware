@@ -1284,15 +1284,21 @@ export const yamlXmlProtocol = (
       }
     };
 
+    const handleFinishChunk = (
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
+    ) => {
+      if (currentToolCall) {
+        finalizeUnclosedToolCall(controller);
+      } else if (buffer) {
+        salvageForeignBlockAtFinish(controller);
+      }
+      flushText(controller);
+    };
+
     return new TransformStream({
       transform(chunk, controller) {
         if (chunk.type === "finish") {
-          if (currentToolCall) {
-            finalizeUnclosedToolCall(controller);
-          } else if (buffer) {
-            salvageForeignBlockAtFinish(controller);
-          }
-          flushText(controller);
+          handleFinishChunk(controller);
           controller.enqueue(chunk);
           return;
         }

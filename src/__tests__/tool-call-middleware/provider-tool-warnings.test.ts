@@ -34,7 +34,6 @@ describe("provider tools are dropped with a spec warning", () => {
         prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
         tools: [functionTool, providerTool],
       },
-      // biome-ignore lint/suspicious/noExplicitAny: partial params fixture
     } as any);
 
     expect(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractQwen3CoderToolNameFromMarkup } from "../../../../core/protocols/qwen3coder-protocol";
+import { extractQwen3CoderToolNameFromMarkup } from "../../../../core/protocols/qwen3coder-call-parsing";
 
 describe("extractQwen3CoderToolNameFromMarkup: covers every inner call-tag shape the parser accepts", () => {
   describe("shorthand on each call tag name", () => {
