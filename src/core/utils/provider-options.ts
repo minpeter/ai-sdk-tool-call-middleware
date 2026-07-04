@@ -22,7 +22,24 @@ export interface ToolCallMiddlewareProviderOptions {
       name: string;
       inputSchema: string; // Stringified JSONSchema7
     }>;
+    // INTERNAL: Set by transform-handler. Names of provider tools that were
+    // dropped because prompt-based tool calling only supports function tools.
+    droppedProviderTools?: string[];
   };
+}
+
+/**
+ * Names of provider tools dropped by transformParams, so the wrap handlers
+ * can surface a spec warning instead of discarding them silently.
+ */
+export function getDroppedProviderTools(providerOptions: unknown): string[] {
+  const middlewareOptions = getToolCallMiddlewareOptions(providerOptions);
+  const dropped = (middlewareOptions as { droppedProviderTools?: unknown })
+    .droppedProviderTools;
+  if (!Array.isArray(dropped)) {
+    return [];
+  }
+  return dropped.filter((name): name is string => typeof name === "string");
 }
 
 export const originalToolsSchema = {

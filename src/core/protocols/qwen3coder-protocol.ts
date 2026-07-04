@@ -3062,6 +3062,13 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         controller.enqueue(chunk);
         return;
       }
+      // The parser re-segments text under its own synthetic ids (tool-call
+      // markup is excised), so the provider's original text-start/text-end
+      // envelopes are dropped instead of producing empty duplicate blocks.
+      if (chunk.type === "text-start" || chunk.type === "text-end") {
+        return;
+      }
+
       if (chunk.type !== "text-delta") {
         handlePassthroughChunk(controller, chunk);
         return;

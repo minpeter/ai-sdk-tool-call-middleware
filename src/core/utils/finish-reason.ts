@@ -49,3 +49,25 @@ export function shouldRewriteFinishReasonToToolCalls(
   const unified = (finishReason as { unified?: unknown }).unified;
   return unified === "stop" || unified === "other";
 }
+
+/**
+ * Finish reason for a forced tool choice (`required` / named tool): the
+ * result is always presented as a tool call, but meaningful terminal reasons
+ * (`length`, `content-filter`, `error`) are preserved so callers can detect
+ * truncation or filtering instead of seeing a fabricated `tool-calls`.
+ */
+export function normalizeForcedToolChoiceFinishReason(
+  finishReason: unknown
+): LanguageModelV4FinishReason {
+  if (finishReason && typeof finishReason === "object") {
+    const unified = (finishReason as { unified?: unknown }).unified;
+    if (
+      unified === "length" ||
+      unified === "content-filter" ||
+      unified === "error"
+    ) {
+      return finishReason as LanguageModelV4FinishReason;
+    }
+  }
+  return normalizeToolCallsFinishReason(finishReason);
+}

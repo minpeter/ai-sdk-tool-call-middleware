@@ -1,6 +1,25 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import type { OnErrorFn } from "./on-error";
 import { coerceToolCallInput } from "./tool-call-coercion";
+
+/**
+ * First text content part of a forced-tool-choice generation. Providers may
+ * emit reasoning (or other) parts before the JSON text even under
+ * `responseFormat: json`, so the whole content array is scanned instead of
+ * only inspecting `content[0]`.
+ */
+export function findFirstTextContent(
+  content: LanguageModelV4Content[] | undefined
+): string | undefined {
+  const part = content?.find(
+    (item): item is Extract<LanguageModelV4Content, { type: "text" }> =>
+      item.type === "text"
+  );
+  return part?.text;
+}
 
 interface ParseToolChoiceOptions {
   errorMessage: string;
@@ -92,6 +111,10 @@ export function resolveToolChoiceSelection({
   toolName: string;
 } {
   if (typeof text !== "string") {
+    onError?.(
+      "toolChoice generation returned no text content to parse; emitting fallback tool call",
+      { errorMessage }
+    );
     return {
       toolName: "unknown",
       input: "{}",
