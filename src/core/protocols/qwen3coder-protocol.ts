@@ -958,10 +958,19 @@ function parseQwen3CoderToolParserParamTagAt(
   };
 }
 
+const VALUE_ELEMENT_WRAPPER_RE = /^<value\s*>([\s\S]*)<\/value\s*>$/i;
+
 function normalizeXmlTextValue(raw: string): string {
   let out = raw.trim();
   if (out.startsWith("<![CDATA[") && out.endsWith("]]>")) {
     out = out.slice("<![CDATA[".length, -"]]>".length).trim();
+  }
+  // Some models wrap the value in a literal <value> element
+  // (`<parameter=volume><value>0.8</value></parameter>`, observed live on
+  // Llama 3.1 8B); unwrap exactly that shape.
+  const valueWrapper = VALUE_ELEMENT_WRAPPER_RE.exec(out);
+  if (valueWrapper) {
+    out = (valueWrapper[1] ?? "").trim();
   }
   return unescapeXml(out);
 }

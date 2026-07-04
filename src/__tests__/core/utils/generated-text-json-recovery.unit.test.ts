@@ -434,3 +434,30 @@ describe("recoverToolCallFromJsonCandidates namespaced close tags", () => {
     expect(call.toolName).toBe("get_weather");
   });
 });
+
+describe("function key alias", () => {
+  it("recovers a bare JSON payload using function/parameters keys", () => {
+    const tools = [
+      {
+        type: "function" as const,
+        name: "create_shipment",
+        description: "Create a shipment.",
+        inputSchema: {
+          type: "object",
+          properties: { zip: { type: "string" } },
+          required: ["zip"],
+        },
+      },
+    ];
+    const out = recoverToolCallFromJsonCandidates(
+      '{\n  "function": "create_shipment",\n  "parameters": { "zip": "01234" }\n}',
+      tools
+    );
+    const call = out?.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected recovered tool-call part");
+    }
+    expect(call.toolName).toBe("create_shipment");
+    expect(JSON.parse(call.input)).toEqual({ zip: "01234" });
+  });
+});

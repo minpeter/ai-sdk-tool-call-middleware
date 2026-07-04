@@ -245,3 +245,30 @@ describe("qwen3CoderProtocol live-variant salvage", () => {
     });
   });
 });
+
+describe("qwen3CoderProtocol value-element wrapper salvage", () => {
+  it("unwraps a literal <value> element around a parameter value", () => {
+    const tools = [
+      {
+        type: "function" as const,
+        name: "set_alarm",
+        description: "Set an alarm.",
+        inputSchema: {
+          type: "object",
+          properties: { volume: { type: "number" } },
+          required: ["volume"],
+        },
+      },
+    ];
+    const p = qwen3CoderProtocol();
+    const out = p.parseGeneratedText({
+      text: "<tool_call>\n<function=set_alarm>\n<parameter=volume>\n<value>0.8</value>\n</parameter>\n</function>\n</tool_call>",
+      tools,
+    });
+    const call = out.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(JSON.parse(call.input)).toEqual({ volume: 0.8 });
+  });
+});
