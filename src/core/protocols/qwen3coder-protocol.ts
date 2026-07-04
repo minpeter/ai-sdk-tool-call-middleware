@@ -1,12 +1,12 @@
 import type {
   LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
   LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import {
   escapeXmlMinimalAttr,
   escapeXmlMinimalText,
-  unescapeXml,
 } from "../../rxml/utils/helpers";
 import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
@@ -20,1211 +20,172 @@ import {
   emitFailedToolInputLifecycle,
   emitFinalizedToolInputLifecycle,
   emitToolInputProgressDelta,
+  enqueueToolInputEndAndCall,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
 import type { TCMProtocol } from "./protocol-interface";
+import {
+  buildSchemaParamNameMap,
+  CALL_BLOCK_RE,
+  extractQwen3CoderToolNameFromMarkup,
+  extractShorthandToolNameFromRaw,
+  findImplicitCallOpenIndices,
+  getAttributeValue,
+  getPotentialTagStartIndex,
+  getShorthandValue,
+  mergeArgsWithPartialParam,
+  mergeParamValue,
+  normalizeStreamToolCallInnerOpenVariants,
+  normalizeToolCallInnerOpenVariants,
+  normalizeXmlTextValue,
+  parseQwen3CoderToolParserParamTagAt,
+  parseQwen3CoderToolParserToolCallSegment,
+  parseSingleFunctionCallXml,
+  QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE,
+  QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_TAG_RE,
+  QWEN3CODER_TOOL_PARSER_STREAM_NAME_OR_PARAM_SIGNAL_RE,
+  QWEN3CODER_TOOL_PARSER_STREAM_NAME_TAG_RE,
+  QWEN3CODER_TOOL_PARSER_STREAM_SELF_CLOSING_TAG_RE,
+  QWEN3CODER_TOOL_PARSER_STREAM_TOOL_CALL_CLOSE_TAG_RE,
+  SALVAGE_MARKUP_ONLY_TEXT_REGEX,
+  sanitizePartialParamValueForProgress,
+  splitImplicitCallAndTail,
+  stripLeadingCallCloseTags,
+  stripLeadingToolCallCloseTags,
+  stripTrailingToolCallCloseTags,
+  TOOL_CALL_BLOCK_RE,
+  TOOL_CALL_CLOSE_RE,
+  TOOL_CALL_OPEN_RE,
+} from "./qwen3coder-call-parsing";
 import type { QwenStreamCallState } from "./qwen3coder-stream-call-content";
 import { parseCallContent } from "./qwen3coder-stream-call-content";
 
-const TOOL_CALL_OPEN_RE = /<tool_call\b[^>]*>/i;
-const TOOL_CALL_CLOSE_RE = /<\/tool_call\s*>/i;
-const TOOL_CALL_CLOSE_TRAILING_RE = /<\/tool_call\s*>\s*$/i;
-const TOOL_CALL_BLOCK_RE = /<tool_call\b[^>]*>[\s\S]*?<\/tool_call\s*>/gi;
-const LEADING_CALL_CLOSE_TAG_RE =
-  /^\s*<\s*\/\s*(?:tool_call|function|call|tool|invoke)\s*>/i;
-
-const CALL_BLOCK_RE = /<(call|function|tool|invoke)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
-
-const QWEN3CODER_TOOL_PARSER_PARAM_TAG_NAMES = new Set([
-  "parameter",
-  "param",
-  "argument",
-  "arg",
-]);
-
-const QWEN3CODER_TOOL_PARSER_CALL_TAG_NAMES = new Set([
-  "function",
-  "call",
-  "tool",
-  "invoke",
-  "tool_call",
-]);
-
-const CALL_SHORTHAND_VALUE_RE =
-  /^<\s*(call|function|tool|invoke)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/<]+))/i;
-const NESTED_CALL_SHORTHAND_VALUE_RE =
-  /<\s*(?:call|function|tool|invoke)\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/<]+))/i;
-
-// Non-global variants for streaming parsing (avoids `lastIndex` state).
-const QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE =
-  /<\s*(?!\/)\s*(call|function|tool|invoke)\b/i;
-const QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_TAG_RE =
-  /<\s*(?!\/)\s*(call|function|tool|invoke)\b[^>]*>/i;
-const QWEN3CODER_TOOL_PARSER_STREAM_TOOL_CALL_CLOSE_TAG_RE =
-  /<\s*\/\s*tool_call\s*>/i;
-const QWEN3CODER_TOOL_PARSER_STREAM_NAME_OR_PARAM_SIGNAL_RE =
-  /<\s*(?!\/)\s*(name|tool_name|parameter|param|argument|arg)\b/i;
-const QWEN3CODER_TOOL_PARSER_STREAM_NAME_TAG_RE =
-  /<\s*(name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*\1\s*>/i;
-const QWEN3CODER_TOOL_PARSER_STREAM_SELF_CLOSING_TAG_RE = /\/\s*>$/;
-/** Whitespace and complete tag-like tokens only (salvage strictness gate). */
-const SALVAGE_MARKUP_ONLY_TEXT_REGEX = /^\s*(?:<[^<>\n]*>\s*)*$/;
-
-function isAsciiWhitespace(ch: string): boolean {
-  return ch === " " || ch === "\n" || ch === "\r" || ch === "\t" || ch === "\f";
-}
-
-function skipAsciiWhitespace(text: string, index: number): number {
-  let i = index;
-  while (i < text.length && isAsciiWhitespace(text[i] ?? "")) {
-    i += 1;
-  }
-  return i;
-}
-
-function stripLeadingToolCallCloseTags(text: string): string {
-  let out = text;
-  while (true) {
-    const start = skipAsciiWhitespace(out, 0);
-    const trimmed = out.slice(start);
-    const match = TOOL_CALL_CLOSE_RE.exec(trimmed);
-    if (match?.index !== 0 || !match[0]) {
-      return out;
-    }
-    out = out.slice(start + match[0].length);
-  }
-}
-
-function stripTrailingToolCallCloseTags(text: string): string {
-  let out = text;
-  while (true) {
-    const next = out.replace(TOOL_CALL_CLOSE_TRAILING_RE, "");
-    if (next === out) {
-      return out;
-    }
-    out = next;
-  }
-}
-
-function isTagBoundaryChar(ch: string): boolean {
-  return ch === "" || isAsciiWhitespace(ch) || ch === ">" || ch === "/";
-}
-
-function isTagNameBoundaryChar(ch: string | undefined): boolean {
-  return (
-    ch === undefined ||
-    isAsciiWhitespace(ch) ||
-    ch === ">" ||
-    ch === "/" ||
-    ch === "="
-  );
-}
-
-/**
- * Like `getPotentialStartIndex`, but tag-shape aware: a complete occurrence
- * of the prefix counts only when followed by a valid tag-name boundary, so
- * ordinary text such as `<callback>` or `<toolbar>` does not pin the stream
- * buffer until finish. A trailing partial occurrence is still reported so a
- * real tag split across chunks is never flushed as text prematurely.
- */
-function getPotentialTagStartIndex(
-  lower: string,
-  prefixLower: string
-): number | null {
-  let from = 0;
-  while (true) {
-    const index = lower.indexOf(prefixLower, from);
-    if (index === -1) {
-      break;
-    }
-    if (isTagNameBoundaryChar(lower[index + prefixLower.length])) {
-      return index;
-    }
-    from = index + 1;
-  }
-
-  // Genuine trailing partial: the buffer tail is a proper prefix of the tag.
-  // Scanned directly (longest first) because an earlier boundary-invalid full
-  // occurrence (e.g. `<tool_callback>`) must not mask a real partial at the
-  // end of the buffer.
-  const maxLen = Math.min(prefixLower.length - 1, lower.length);
-  for (let len = maxLen; len > 0; len -= 1) {
-    if (lower.endsWith(prefixLower.slice(0, len))) {
-      return lower.length - len;
-    }
-  }
-  return null;
-}
-
-function findTagEndIndex(text: string, startIndex: number): number | null {
-  let quote: '"' | "'" | null = null;
-  for (let i = startIndex; i < text.length; i += 1) {
-    const ch = text[i] ?? "";
-    if (quote) {
-      if (ch === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      continue;
-    }
-    if (ch === ">") {
-      return i;
-    }
-  }
-  return null;
-}
-
-function parseShorthandValue(
-  openTag: string,
-  tagNameLower: string
-): string | null {
-  let i = 1;
-  i = skipAsciiWhitespace(openTag, i);
-  if (!openTag.toLowerCase().startsWith(tagNameLower, i)) {
-    return null;
-  }
-  i += tagNameLower.length;
-  i = skipAsciiWhitespace(openTag, i);
-  if (openTag[i] !== "=") {
-    return null;
-  }
-  i += 1;
-  i = skipAsciiWhitespace(openTag, i);
-
-  const quote = openTag[i] ?? "";
-  if (quote === '"' || quote === "'") {
-    const end = openTag.indexOf(quote, i + 1);
-    if (end === -1) {
-      return null;
-    }
-    return openTag.slice(i + 1, end);
-  }
-
-  const start = i;
-  while (i < openTag.length) {
-    const ch = openTag[i] ?? "";
-    if (isAsciiWhitespace(ch) || ch === ">" || ch === "/") {
-      break;
-    }
-    i += 1;
-  }
-  const value = openTag.slice(start, i);
-  return value.length > 0 ? value : null;
-}
-
-function parseQwen3CoderToolParserParamName(
-  openTag: string,
-  tagNameLower: string
-): string | null {
-  const shorthand = parseShorthandValue(openTag, tagNameLower);
-  if (shorthand != null) {
-    return unescapeXml(shorthand);
-  }
-
-  return getAttributeValue(openTag, "name");
-}
-
-function getCdataSectionNextIndex(
-  textLower: string,
-  startIndex: number
-): number | null {
-  if (!textLower.startsWith("<![cdata[", startIndex)) {
-    return startIndex;
-  }
-  const cdataEnd = textLower.indexOf("]]>", startIndex + "<![cdata[".length);
-  if (cdataEnd === -1) {
-    return null;
-  }
-  return cdataEnd + 3;
-}
-
-function parseMatchingTagHeader(
-  textLower: string,
-  lt: number,
-  tagNameLower: string
-): { isClosing: boolean; afterName: number } | null {
-  let i = skipAsciiWhitespace(textLower, lt + 1);
-  const isClosing = textLower[i] === "/";
-  if (isClosing) {
-    i += 1;
-    i = skipAsciiWhitespace(textLower, i);
-  }
-  if (!textLower.startsWith(tagNameLower, i)) {
-    return null;
-  }
-
-  const afterName = i + tagNameLower.length;
-  const boundary = textLower[afterName] ?? "";
-  const validBoundary = isClosing
-    ? isTagBoundaryChar(boundary)
-    : isTagBoundaryChar(boundary) || boundary === "=";
-  if (boundary && !validBoundary) {
-    return null;
-  }
-
-  return { isClosing, afterName };
-}
-
-function isSelfClosingXmlTag(
-  textLower: string,
-  lt: number,
-  gt: number
-): boolean {
-  return textLower
-    .slice(lt, gt + 1)
-    .trimEnd()
-    .endsWith("/>");
-}
-
-function findClosingTagEnd(
-  textLower: string,
-  startIndex: number,
-  tagNameLower: string
-): { start: number; end: number } | null {
-  let depth = 1;
-  let index = startIndex;
-  while (true) {
-    const lt = textLower.indexOf("<", index);
-    if (lt === -1) {
-      return null;
-    }
-
-    const cdataNextIndex = getCdataSectionNextIndex(textLower, lt);
-    if (cdataNextIndex == null) {
-      return null;
-    }
-    if (cdataNextIndex !== lt) {
-      index = cdataNextIndex;
-      continue;
-    }
-
-    const header = parseMatchingTagHeader(textLower, lt, tagNameLower);
-    if (!header) {
-      index = lt + 1;
-      continue;
-    }
-
-    const gt = textLower.indexOf(">", header.afterName);
-    if (gt === -1) {
-      return null;
-    }
-
-    if (header.isClosing) {
-      depth -= 1;
-      if (depth === 0) {
-        return { start: lt, end: gt + 1 };
-      }
-      index = gt + 1;
-      continue;
-    }
-
-    const isSelfClosing = isSelfClosingXmlTag(textLower, lt, gt);
-    if (!isSelfClosing) {
-      depth += 1;
-    }
-    index = gt + 1;
-  }
-}
-
-function findClosingTagStartWithBoundary(
-  lowerText: string,
-  valueStart: number,
-  tagNameLower: string,
-  allowEndOfStringBoundary: boolean
-): number {
-  const needle = `</${tagNameLower}`;
-  let searchIndex = valueStart;
-
-  while (searchIndex < lowerText.length) {
-    const found = lowerText.indexOf(needle, searchIndex);
-    if (found === -1) {
-      return -1;
-    }
-    const nextChar = lowerText[found + needle.length] ?? "";
-    if (nextChar === "" && !allowEndOfStringBoundary) {
-      searchIndex = found + needle.length;
-      continue;
-    }
-    if (isTagBoundaryChar(nextChar)) {
-      return found;
-    }
-    searchIndex = found + needle.length;
-  }
-
-  return -1;
-}
-
-function toSupportedCallEndTagName(
-  tagNameLower: string | null | undefined
-): string | null {
-  const normalized = tagNameLower?.trim().toLowerCase() ?? "";
-  if (!normalized) {
-    return null;
-  }
-  return QWEN3CODER_TOOL_PARSER_CALL_TAG_NAMES.has(normalized)
-    ? normalized
-    : null;
-}
-
-// vLLM reference (Qwen3CoderToolParser): tolerate missing </parameter> by treating
-// the next <parameter=...> / </function> boundary as an implicit close.
-// https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/vllm/tool_parsers/qwen3coder_tool_parser.py#L65-L68
-// https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/vllm/tool_parsers/qwen3coder_tool_parser.py#L612-L636
-// https://github.com/vllm-project/vllm/blob/f13e86d8ddf81c638bacce6f8876cf6acf421d58/tests/tool_parsers/test_qwen3coder_tool_parser.py#L686-L764
-function findUnclosedParamBoundaryIndex(
-  lowerText: string,
-  valueStart: number,
-  callEndTagNameLower: string | null,
-  allowEndOfString: boolean
-): number | null {
-  const normalizedCallEndTag = toSupportedCallEndTagName(callEndTagNameLower);
-  const callCloseIndex = normalizedCallEndTag
-    ? findClosingTagStartWithBoundary(
-        lowerText,
-        valueStart,
-        normalizedCallEndTag,
-        allowEndOfString
-      )
-    : findClosingTagStartWithBoundary(
-        lowerText,
-        valueStart,
-        "function",
-        allowEndOfString
-      );
-
-  const indices = [
-    lowerText.indexOf("<parameter", valueStart),
-    lowerText.indexOf("<param", valueStart),
-    lowerText.indexOf("<argument", valueStart),
-    lowerText.indexOf("<arg", valueStart),
-    callCloseIndex,
-    findClosingTagStartWithBoundary(
-      lowerText,
-      valueStart,
-      "tool_call",
-      allowEndOfString
-    ),
-    lowerText.indexOf("<function", valueStart),
-  ].filter((index) => index !== -1);
-
-  if (indices.length === 0) {
-    return null;
-  }
-  return Math.min(...indices);
-}
-
-type Qwen3CoderToolParserParamTagParseResult =
-  | {
-      kind: "match";
-      start: number;
-      end: number;
-      name: string;
-      value: string;
-    }
-  | {
-      kind: "partial";
-      start: number;
-      openEnd: number | null;
-      name?: string;
-      value?: string;
-    }
-  | {
-      kind: "skip";
-      start: number;
-      end: number;
-    };
-
-function parseQwen3CoderToolParserParamTagNameLower(
-  lowerText: string,
-  startIndex: number
-): { kind: "match"; tagNameLower: string } | { kind: "partial" } | null {
-  let i = skipAsciiWhitespace(lowerText, startIndex + 1);
-  if (i >= lowerText.length) {
-    return { kind: "partial" };
-  }
-  if (lowerText[i] === "/") {
-    return null;
-  }
-
-  const nameStart = i;
-  while (i < lowerText.length) {
-    const ch = lowerText[i] ?? "";
-    if (isAsciiWhitespace(ch) || ch === ">" || ch === "/" || ch === "=") {
-      break;
-    }
-    i += 1;
-  }
-
-  const tagNameLower = lowerText.slice(nameStart, i);
-  if (!QWEN3CODER_TOOL_PARSER_PARAM_TAG_NAMES.has(tagNameLower)) {
-    return null;
-  }
-  return { kind: "match", tagNameLower };
-}
-
-function parseQwen3CoderToolParserUnclosedParamValue(options: {
-  text: string;
-  lowerText: string;
-  startIndex: number;
-  openEnd: number;
-  paramName: string;
-  allowEndOfString: boolean;
-  callEndTagNameLower?: string | null;
-}): Qwen3CoderToolParserParamTagParseResult {
-  const valueStart = options.openEnd + 1;
-  const boundaryIndex = findUnclosedParamBoundaryIndex(
-    options.lowerText,
-    valueStart,
-    options.callEndTagNameLower ?? null,
-    options.allowEndOfString
-  );
-  if (boundaryIndex == null) {
-    if (!options.allowEndOfString) {
-      const rawProgressValue = options.text.slice(valueStart);
-      return {
-        kind: "partial",
-        start: options.startIndex,
-        openEnd: options.openEnd,
-        name: options.paramName,
-        value: rawProgressValue ? normalizeXmlTextValue(rawProgressValue) : "",
-      };
-    }
-
-    const rawValue = options.text.slice(valueStart);
-    return {
-      kind: "match",
-      start: options.startIndex,
-      end: options.text.length,
-      name: options.paramName,
-      value: rawValue ? normalizeXmlTextValue(rawValue) : "",
-    };
-  }
-
-  const rawValue = options.text.slice(valueStart, boundaryIndex);
-  return {
-    kind: "match",
-    start: options.startIndex,
-    end: boundaryIndex,
-    name: options.paramName,
-    value: rawValue ? normalizeXmlTextValue(rawValue) : "",
-  };
-}
-
-function parseQwen3CoderToolParserParamTagAt(
-  text: string,
-  lowerText: string,
-  startIndex: number,
-  options?: {
-    allowEndOfString?: boolean;
-    callEndTagNameLower?: string | null;
-  }
-): Qwen3CoderToolParserParamTagParseResult | null {
-  const tagNameParse = parseQwen3CoderToolParserParamTagNameLower(
-    lowerText,
-    startIndex
-  );
-  if (!tagNameParse) {
-    return null;
-  }
-  if (tagNameParse.kind === "partial") {
-    return { kind: "partial", start: startIndex, openEnd: null };
-  }
-
-  const tagNameLower = tagNameParse.tagNameLower;
-
-  const openEnd = findTagEndIndex(text, startIndex);
-  if (openEnd == null) {
-    return { kind: "partial", start: startIndex, openEnd: null };
-  }
-
-  const openTag = text.slice(startIndex, openEnd + 1);
-  const paramNameRaw = parseQwen3CoderToolParserParamName(
-    openTag,
-    tagNameLower
-  );
-  const paramName = paramNameRaw?.trim() ?? "";
-  const selfClosing = openTag.trimEnd().endsWith("/>");
-  if (selfClosing && paramName.length === 0) {
-    return {
-      kind: "skip",
-      start: startIndex,
-      end: openEnd + 1,
-    };
-  }
-  if (paramName.length === 0) {
-    return parseQwen3CoderNamelessParamTag({
-      text,
-      lowerText,
-      startIndex,
-      openEnd,
-      tagNameLower,
-      allowEndOfString: options?.allowEndOfString === true,
-      callEndTagNameLower: options?.callEndTagNameLower,
-    });
-  }
-
-  if (selfClosing) {
-    return {
-      kind: "match",
-      start: startIndex,
-      end: openEnd + 1,
-      name: paramName,
-      value: "",
-    };
-  }
-
-  const valueStart = openEnd + 1;
-  const close = findClosingTagEnd(lowerText, valueStart, tagNameLower);
-  if (!close) {
-    return parseQwen3CoderToolParserUnclosedParamValue({
-      text,
-      lowerText,
-      startIndex,
-      openEnd,
-      paramName,
-      allowEndOfString: options?.allowEndOfString === true,
-      callEndTagNameLower: options?.callEndTagNameLower,
-    });
-  }
-
-  const rawValue = text.slice(openEnd + 1, close.start);
-  return {
-    kind: "match",
-    start: startIndex,
-    end: close.end,
-    name: paramName,
-    value: rawValue ? normalizeXmlTextValue(rawValue) : "",
-  };
-}
-
-function normalizeXmlTextValue(raw: string): string {
-  let out = raw.trim();
-  if (out.startsWith("<![CDATA[") && out.endsWith("]]>")) {
-    out = out.slice("<![CDATA[".length, -"]]>".length).trim();
-  }
-  return unescapeXml(out);
-}
-
-const NAMELESS_PARAM_IDENTIFIER_RE = /^[A-Za-z_][\w.-]{0,255}$/;
-
-/**
- * Salvage the nameless-tag variant some models (e.g. Qwen2.5) emit when they
- * half-follow the format:
- *
- *   <parameter>city</parameter>
- *   Seoul
- *
- * The element text is the parameter NAME and the plain text after the closing
- * tag (up to the next parameter tag or call close boundary) is the VALUE.
- * Only identifier-like element text qualifies, so ordinary tagged content is
- * not misread as a parameter.
- */
-function parseQwen3CoderNamelessParamTag(options: {
-  text: string;
-  lowerText: string;
-  startIndex: number;
-  openEnd: number;
-  tagNameLower: string;
-  allowEndOfString: boolean;
-  callEndTagNameLower?: string | null;
-}): Qwen3CoderToolParserParamTagParseResult | null {
-  const { text, lowerText, startIndex, openEnd, tagNameLower } = options;
-
-  const nameStart = openEnd + 1;
-  const close = findClosingTagEnd(lowerText, nameStart, tagNameLower);
-  if (!close) {
-    // The closing tag may still be streaming in.
-    return options.allowEndOfString
-      ? null
-      : { kind: "partial", start: startIndex, openEnd };
-  }
-
-  const paramName = normalizeXmlTextValue(text.slice(nameStart, close.start));
-  if (!NAMELESS_PARAM_IDENTIFIER_RE.test(paramName)) {
-    return null;
-  }
-
-  const valueStart = close.end;
-  const boundaryIndex = findUnclosedParamBoundaryIndex(
-    lowerText,
-    valueStart,
-    options.callEndTagNameLower ?? null,
-    options.allowEndOfString
-  );
-  if (boundaryIndex == null) {
-    if (!options.allowEndOfString) {
-      const rawProgressValue = text.slice(valueStart);
-      return {
-        kind: "partial",
-        start: startIndex,
-        openEnd,
-        name: paramName,
-        value: rawProgressValue ? normalizeXmlTextValue(rawProgressValue) : "",
-      };
-    }
-
-    const rawValue = text.slice(valueStart);
-    return {
-      kind: "match",
-      start: startIndex,
-      end: text.length,
-      name: paramName,
-      value: rawValue ? normalizeXmlTextValue(rawValue) : "",
-    };
-  }
-
-  const rawValue = text.slice(valueStart, boundaryIndex);
-  return {
-    kind: "match",
-    start: startIndex,
-    end: boundaryIndex,
-    name: paramName,
-    value: rawValue ? normalizeXmlTextValue(rawValue) : "",
-  };
-}
-
-function getOpeningTag(xml: string): string | null {
-  const gt = xml.indexOf(">");
-  if (gt === -1) {
-    return null;
-  }
-  return xml.slice(0, gt + 1);
-}
-
-const attrValueRegExpCache = new Map<string, RegExp>();
-
-function getAttributeValue(openTag: string, attrName: string): string | null {
-  let re = attrValueRegExpCache.get(attrName);
-  if (!re) {
-    // Since the regex has no 'g' flag, re.exec resets automatically — safe.
-    re = new RegExp(
-      `\\b${escapeRegExp(attrName)}\\s*=\\s*(["'])([\\s\\S]*?)\\1`,
-      "i"
-    );
-    attrValueRegExpCache.set(attrName, re);
-  }
-  const match = re.exec(openTag);
-  if (!match) {
-    return null;
-  }
-  return unescapeXml(match[2] ?? "");
-}
-
-function getShorthandValue(openTag: string): string | null {
-  const match = CALL_SHORTHAND_VALUE_RE.exec(openTag);
-  if (!match) {
-    return null;
-  }
-  const value = match[2] ?? match[3] ?? match[4];
-  if (!value) {
-    return null;
-  }
-  return unescapeXml(value);
-}
-
-function extractShorthandToolNameFromRaw(rawText: string): string | null {
-  const match = NESTED_CALL_SHORTHAND_VALUE_RE.exec(rawText);
-  const value = match?.[1] ?? match?.[2] ?? match?.[3];
-  return value ? unescapeXml(value) : null;
-}
-
-function extractFirstTagText(xml: string, tagName: string): string | null {
-  const lower = xml.toLowerCase();
-  const tagLower = tagName.toLowerCase();
-
-  let index = 0;
-  while (true) {
-    const lt = lower.indexOf("<", index);
-    if (lt === -1) {
-      return null;
-    }
-
-    const i = skipAsciiWhitespace(lower, lt + 1);
-    if (i >= lower.length || lower[i] === "/") {
-      index = lt + 1;
-      continue;
-    }
-
-    if (!lower.startsWith(tagLower, i)) {
-      index = lt + 1;
-      continue;
-    }
-
-    const afterName = i + tagLower.length;
-    const boundary = lower[afterName] ?? "";
-    if (boundary && !isTagBoundaryChar(boundary)) {
-      index = lt + 1;
-      continue;
-    }
-
-    const openEnd = findTagEndIndex(xml, lt);
-    if (openEnd == null) {
-      return null;
-    }
-    const contentStart = openEnd + 1;
-    const close = findClosingTagEnd(lower, contentStart, tagLower);
-    if (!close) {
-      return null;
-    }
-    return normalizeXmlTextValue(xml.slice(contentStart, close.start));
-  }
-}
-
-function extractToolCallInnerXml(segment: string): {
-  inner: string;
-  outerOpenTag: string;
-} | null {
-  const openMatch = TOOL_CALL_OPEN_RE.exec(segment);
-  const closeMatch = TOOL_CALL_CLOSE_RE.exec(segment);
-  if (!(openMatch && closeMatch)) {
-    return null;
-  }
-
-  const openIndex = openMatch.index;
-  const openTag = openMatch[0];
-  const openEnd = openIndex + openTag.length;
-
-  // Prefer the last closing tag to avoid early matches if nested content
-  // includes a literal "</tool_call>" string.
-  const closeIndex = segment.toLowerCase().lastIndexOf("</tool_call");
-  if (closeIndex === -1) {
-    return null;
-  }
-  const closeGt = segment.indexOf(">", closeIndex);
-  if (closeGt === -1) {
-    return null;
-  }
-
-  return {
-    outerOpenTag: openTag,
-    inner: segment.slice(openEnd, closeIndex),
-  };
-}
-
-function mergeParamValue(
-  args: Record<string, unknown>,
-  key: string,
-  value: string
-): void {
-  const existing = args[key];
-  if (existing === undefined) {
-    args[key] = value;
-    return;
-  }
-  if (Array.isArray(existing)) {
-    existing.push(value);
-    return;
-  }
-  args[key] = [existing, value];
-}
-
-function mergeArgsWithPartialParam(
-  args: Record<string, unknown>,
-  partialParam: { name: string; value: string } | null
-): Record<string, unknown> {
-  if (!partialParam) {
-    return args;
-  }
-
-  const existing = args[partialParam.name];
-  if (existing === undefined) {
-    return {
-      ...args,
-      [partialParam.name]: partialParam.value,
-    };
-  }
-
-  if (Array.isArray(existing)) {
-    return {
-      ...args,
-      [partialParam.name]: [...existing, partialParam.value],
-    };
-  }
-
-  return {
-    ...args,
-    [partialParam.name]: [existing, partialParam.value],
-  };
-}
-
-function extractParameters(
-  xml: string,
-  options?: {
-    callEndTagNameLower?: string | null;
-  }
-): Record<string, unknown> {
-  const args: Record<string, unknown> = {};
-
-  const lower = xml.toLowerCase();
-  let index = 0;
-  while (true) {
-    const lt = lower.indexOf("<", index);
-    if (lt === -1) {
-      break;
-    }
-    const parsed = parseQwen3CoderToolParserParamTagAt(xml, lower, lt, {
-      allowEndOfString: true,
-      callEndTagNameLower: options?.callEndTagNameLower,
-    });
-    if (!parsed) {
-      index = lt + 1;
-      continue;
-    }
-
-    if (parsed.kind === "match") {
-      mergeParamValue(args, parsed.name, parsed.value);
-      index = parsed.end;
-      continue;
-    }
-
-    if (parsed.kind === "skip") {
-      index = parsed.end;
-      continue;
-    }
-
-    index = (parsed.openEnd ?? lt) + 1;
-  }
-
-  return args;
-}
-
-function parseSingleFunctionCallXml(
-  xml: string,
-  fallbackToolName: string | null
-): { toolName: string; args: Record<string, unknown> } | null {
-  const openingTag = getOpeningTag(xml);
-  const toolNameAttr = openingTag
-    ? getAttributeValue(openingTag, "name")
-    : null;
-  const shorthandName = openingTag ? getShorthandValue(openingTag) : null;
-  const toolName =
-    toolNameAttr ??
-    shorthandName ??
-    extractFirstTagText(xml, "name") ??
-    extractFirstTagText(xml, "tool_name") ??
-    fallbackToolName;
-  const callEndTagNameLower = toSupportedCallEndTagName(
-    openingTag ? getOpenTagNameLower(openingTag) : null
-  );
-
-  if (!toolName || toolName.trim().length === 0) {
-    return null;
-  }
-
-  return {
-    toolName,
-    args: extractParameters(xml, { callEndTagNameLower }),
-  };
-}
-
-function findImplicitCallOpenIndices(lowerText: string): number[] {
-  const indices: number[] = [];
-  let index = 0;
-  while (true) {
-    const lt = lowerText.indexOf("<", index);
-    if (lt === -1) {
-      break;
-    }
-
-    const i = skipAsciiWhitespace(lowerText, lt + 1);
-    if (i >= lowerText.length) {
-      break;
-    }
-    if (lowerText[i] === "/") {
-      index = lt + 1;
-      continue;
-    }
-
-    const tagNames = ["call", "function", "tool", "invoke"] as const;
-    for (const tagName of tagNames) {
-      if (!lowerText.startsWith(tagName, i)) {
-        continue;
-      }
-      const after = i + tagName.length;
-      const boundary = lowerText[after] ?? "";
-      if (boundary && !isTagBoundaryChar(boundary) && boundary !== "=") {
-        continue;
-      }
-      indices.push(lt);
-      break;
-    }
-
-    index = lt + 1;
-  }
-  return indices;
-}
-
-function splitImplicitCallBlocks(xml: string): string[] {
-  const lower = xml.toLowerCase();
-  const starts = findImplicitCallOpenIndices(lower);
-  if (starts.length === 0) {
-    return [];
-  }
-
-  const blocks: string[] = [];
-  for (let i = 0; i < starts.length; i += 1) {
-    const start = starts[i] ?? 0;
-    const end = starts[i + 1] ?? xml.length;
-    blocks.push(xml.slice(start, end));
-  }
-  return blocks;
-}
-
-function stripLeadingCallCloseTags(text: string): string {
-  let out = text;
-  while (true) {
-    const match = LEADING_CALL_CLOSE_TAG_RE.exec(out);
-    if (!match) {
-      return out;
-    }
-    out = out.slice(match[0].length);
-  }
-}
-
-function getOpenTagNameLower(openTag: string): string | null {
-  const lowerOpenTag = openTag.toLowerCase();
-  const lt = lowerOpenTag.indexOf("<");
-  if (lt === -1) {
-    return null;
-  }
-
-  let i = skipAsciiWhitespace(lowerOpenTag, lt + 1);
-  if (i >= lowerOpenTag.length || lowerOpenTag[i] === "/") {
-    return null;
-  }
-
-  const start = i;
-  while (i < lowerOpenTag.length) {
-    const ch = lowerOpenTag[i] ?? "";
-    if (isAsciiWhitespace(ch) || ch === ">" || ch === "/" || ch === "=") {
-      break;
-    }
-    i += 1;
-  }
-
-  const tagName = lowerOpenTag.slice(start, i);
-  return tagName.length > 0 ? tagName : null;
-}
-
-function splitImplicitCallAndTail(callBlock: string): {
-  callContent: string;
-  trailingText: string;
-} {
-  const openingTag = getOpeningTag(callBlock);
-  const openingTagName = toSupportedCallEndTagName(
-    openingTag ? getOpenTagNameLower(openingTag) : null
-  );
-  const lowerCallBlock = callBlock.toLowerCase();
-  let consumed = 0;
-
-  if (openingTag) {
-    consumed = openingTag.length;
-    if (openingTagName) {
-      const close = findClosingTagEnd(lowerCallBlock, consumed, openingTagName);
-      if (close) {
-        consumed = Math.max(consumed, close.end);
-      }
-    }
-  }
-
-  let index = 0;
-  while (true) {
-    const lt = lowerCallBlock.indexOf("<", index);
-    if (lt === -1) {
-      break;
-    }
-
-    const parsed = parseQwen3CoderToolParserParamTagAt(
-      callBlock,
-      lowerCallBlock,
-      lt,
-      {
-        allowEndOfString: true,
-        callEndTagNameLower: openingTagName,
-      }
-    );
-    if (!parsed) {
-      index = lt + 1;
-      continue;
-    }
-
-    if (parsed.kind === "partial") {
-      index = (parsed.openEnd ?? lt) + 1;
-      continue;
-    }
-
-    consumed = Math.max(consumed, parsed.end);
-    index = parsed.end;
-  }
-
-  const clamped = Math.max(0, Math.min(consumed, callBlock.length));
-  return {
-    callContent: callBlock.slice(0, clamped),
-    trailingText: callBlock.slice(clamped),
-  };
-}
-
-function parseQwen3CoderToolParserCallBlocks(
-  blocks: string[],
-  outerNameAttr: string | null
-): Array<{ toolName: string; args: Record<string, unknown> }> | null {
-  const calls: Array<{ toolName: string; args: Record<string, unknown> }> = [];
-  for (const block of blocks) {
-    const parsed = parseSingleFunctionCallXml(block, outerNameAttr);
-    if (!parsed) {
-      return null;
-    }
-    calls.push(parsed);
-  }
-  return calls;
-}
-
-function parseQwen3CoderToolParserClosedMatches(
-  inner: string,
-  outerNameAttr: string | null
-):
-  | Array<{ toolName: string; args: Record<string, unknown> }>
-  | null
-  | undefined {
-  const callBlockMatches = Array.from(inner.matchAll(CALL_BLOCK_RE));
-  if (callBlockMatches.length === 0) {
-    return;
-  }
-
-  const closedBlocks: string[] = [];
-  let lastClosedEnd = 0;
-  for (const match of callBlockMatches) {
-    const callBlock = match[0] ?? "";
-    const startIndex = match.index ?? -1;
-    if (!callBlock || startIndex < 0) {
-      continue;
-    }
-    closedBlocks.push(callBlock);
-    lastClosedEnd = startIndex + callBlock.length;
-  }
-
-  const closedCalls = parseQwen3CoderToolParserCallBlocks(
-    closedBlocks,
-    outerNameAttr
-  );
-  if (!closedCalls) {
-    return null;
-  }
-
-  const trailingInner = inner.slice(lastClosedEnd);
-  if (trailingInner.trim().length === 0) {
-    return closedCalls;
-  }
-
-  const trailingBlocks = splitImplicitCallBlocks(trailingInner).filter(
-    (b) => b.trim().length > 0
-  );
-  if (trailingBlocks.length === 0) {
-    return closedCalls;
-  }
-
-  const trailingCalls = parseQwen3CoderToolParserCallBlocks(
-    trailingBlocks,
-    outerNameAttr
-  );
-  if (!trailingCalls) {
-    return closedCalls;
-  }
-
-  return closedCalls.concat(trailingCalls);
-}
-
-/**
- * Best-effort tool-name salvage regex covering every inner call-tag shape the
- * parser itself accepts in parseSingleFunctionCallXml / parseCallContent:
- *   - <(function|call|tool|invoke)="NAME">       shorthand, double-quoted
- *   - <(function|call|tool|invoke)='NAME'>       shorthand, single-quoted
- *   - <(function|call|tool|invoke)=NAME>         shorthand, bare
- *   - <(function|call|tool|invoke) name="NAME">  attribute, double-quoted
- *   - <(function|call|tool|invoke) name='NAME'>  attribute, single-quoted
- *   - <name>NAME</name>                          child element fallback
- *   - <tool_name>NAME</tool_name>                alternate child element fallback
- *
- * Bare-shorthand char class is `[^\s>/]` — exactly the parser's stop set in
- * parseShorthandValue (L159-165): it breaks on ASCII whitespace, `>`, or `/`
- * only. Quoted and attribute alternations are tried first, so the bare branch
- * is only reached when the value did not open with a quote — making it safe
- * to accept `'`, `"`, and `=` mid-value, matching the parser exactly.
- *
- * Keep this in sync with QWEN3CODER_TOOL_PARSER_CALL_TAG_NAMES and
- * parseShorthandValue's accepted character class.
- */
-const QWEN3CODER_TOOL_NAME_SALVAGE_REGEX =
-  /<(?:function|call|tool|invoke)(?:\s*=\s*"([^"]+)"|\s*=\s*'([^']+)'|\s*=\s*([^\s>/]+)|\s+name\s*=\s*"([^"]+)"|\s+name\s*=\s*'([^']+)')|<(?:name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*(?:name|tool_name)\s*>/i;
-
-/**
- * @internal exported only so unit tests can exhaustively verify the salvage
- * shape coverage. Not part of the public API.
- */
-export function extractQwen3CoderToolNameFromMarkup(
-  markup: string
-): string | undefined {
-  const match = markup.match(QWEN3CODER_TOOL_NAME_SALVAGE_REGEX);
-  if (!match) {
-    return;
-  }
-  const name =
-    match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? match[6];
-  if (!name) {
-    return;
-  }
-  const trimmed = name.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function parseQwen3CoderToolParserToolCallSegment(
-  segment: string
-): Array<{ toolName: string; args: Record<string, unknown> }> | null {
-  const extracted = extractToolCallInnerXml(segment);
-  if (!extracted) {
-    return null;
-  }
-
-  const { inner, outerOpenTag } = extracted;
-  const outerNameAttr = getAttributeValue(outerOpenTag, "name");
-
-  const closedCalls = parseQwen3CoderToolParserClosedMatches(
-    inner,
-    outerNameAttr
-  );
-  if (closedCalls) {
-    return closedCalls;
-  }
-  if (closedCalls === null) {
-    return null;
-  }
-
-  // Some models omit the closing </function> and go straight to </tool_call>.
-  // When that happens, CALL_BLOCK_RE matches nothing; fall back to splitting
-  // by call-opening tags (<function=...>, etc.) and treating the next opening
-  // tag or end-of-container as an implicit terminator.
-  const implicitBlocks = splitImplicitCallBlocks(inner).filter(
-    (b) => b.trim().length > 0
-  );
-  if (implicitBlocks.length > 0) {
-    return parseQwen3CoderToolParserCallBlocks(implicitBlocks, outerNameAttr);
-  }
-
-  const single =
-    parseSingleFunctionCallXml(inner, outerNameAttr) ??
-    parseSingleFunctionCallXml(segment, outerNameAttr);
-  if (!single) {
-    return null;
-  }
-  return [single];
-}
-
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
+
+const XML_TAG_RE = /<\s*(\/)?\s*([A-Za-z_][\w.:-]*)\b[^>]*>/g;
+const XML_VALUE_TAG_NAMES = new Set(["parameter", "param", "argument", "arg"]);
+
+function extractToolCallBody(markup: string): string | null {
+  const open = TOOL_CALL_OPEN_RE.exec(markup);
+  if (!open) {
+    return null;
+  }
+  const bodyStart = (open.index ?? 0) + open[0].length;
+  const rest = markup.slice(bodyStart);
+  const close = TOOL_CALL_CLOSE_RE.exec(rest);
+  const bodyEnd =
+    close?.index == null ? markup.length : bodyStart + close.index;
+  return markup.slice(bodyStart, bodyEnd);
+}
+
+function isValueTagName(
+  tagName: string,
+  tools: LanguageModelV4FunctionTool[],
+  toolName: string | null
+): boolean {
+  const normalized = tagName.toLowerCase();
+  if (XML_VALUE_TAG_NAMES.has(normalized)) {
+    return true;
+  }
+  if (!toolName) {
+    return false;
+  }
+  const tool = tools.find((candidate) => candidate.name === toolName);
+  const properties = (
+    tool?.inputSchema as
+      | { properties?: Record<string, unknown> }
+      | null
+      | undefined
+  )?.properties;
+  return Object.keys(properties ?? {}).some(
+    (property) => property.toLowerCase() === normalized
+  );
+}
+
+function lastXmlTagBefore(
+  body: string,
+  endIndex: number
+): { closing: boolean; name: string } | null {
+  let last: { closing: boolean; name: string } | null = null;
+  XML_TAG_RE.lastIndex = 0;
+  for (const match of body.matchAll(XML_TAG_RE)) {
+    const matchEnd = (match.index ?? 0) + match[0].length;
+    if (matchEnd > endIndex) {
+      break;
+    }
+    last = { closing: Boolean(match[1]), name: match[2] ?? "" };
+  }
+  return last;
+}
+
+function hasProseOutsideXmlCalls(
+  markup: string,
+  tools: LanguageModelV4FunctionTool[]
+): boolean {
+  const body = extractToolCallBody(markup);
+  if (body === null) {
+    return false;
+  }
+  const normalizedBody = normalizeToolCallInnerOpenVariants(body, tools);
+  const outerNameAttr = getAttributeValue(
+    TOOL_CALL_OPEN_RE.exec(markup)?.[0] ?? "",
+    "name"
+  );
+  const toolName =
+    extractQwen3CoderToolNameFromMarkup(normalizedBody) ??
+    outerNameAttr ??
+    null;
+
+  const firstTagStart = normalizedBody.indexOf("<");
+  if (firstTagStart === -1) {
+    return (
+      normalizedBody.trim().length > 0 &&
+      !SALVAGE_MARKUP_ONLY_TEXT_REGEX.test(normalizedBody)
+    );
+  }
+  if (
+    firstTagStart > 0 &&
+    !SALVAGE_MARKUP_ONLY_TEXT_REGEX.test(normalizedBody.slice(0, firstTagStart))
+  ) {
+    return true;
+  }
+
+  let matched = false;
+  let cursor = 0;
+  CALL_BLOCK_RE.lastIndex = 0;
+  for (const match of normalizedBody.matchAll(CALL_BLOCK_RE)) {
+    matched = true;
+    const start = match.index ?? 0;
+    const before = normalizedBody.slice(cursor, start);
+    if (!SALVAGE_MARKUP_ONLY_TEXT_REGEX.test(before)) {
+      return true;
+    }
+    cursor = start + match[0].length;
+  }
+  if (
+    matched &&
+    !SALVAGE_MARKUP_ONLY_TEXT_REGEX.test(normalizedBody.slice(cursor))
+  ) {
+    return true;
+  }
+
+  const lastTagEnd = normalizedBody.lastIndexOf(">");
+  if (lastTagEnd === -1) {
+    return false;
+  }
+  const trailing = normalizedBody.slice(lastTagEnd + 1);
+  if (SALVAGE_MARKUP_ONLY_TEXT_REGEX.test(trailing)) {
+    return false;
+  }
+  const lastTag = lastXmlTagBefore(normalizedBody, lastTagEnd + 1);
+  return (
+    lastTag === null ||
+    lastTag.closing ||
+    !isValueTagName(lastTag.name, tools, toolName)
+  );
+}
 
 function parseToolCallInput(input: string | null | undefined): unknown {
   if (input == null) {
@@ -1333,7 +294,10 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       segment: string,
       fallbackText: string = segment
     ): boolean => {
-      const parsedCalls = parseQwen3CoderToolParserToolCallSegment(segment);
+      const parsedCalls = parseQwen3CoderToolParserToolCallSegment(
+        segment,
+        tools
+      );
       if (!parsedCalls) {
         options?.onError?.(
           "Could not process Qwen3CoderToolParser XML tool call; keeping original text.",
@@ -1383,8 +347,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         );
 
         const full = sourceText.slice(startIndex, endIndex);
-        const { callContent, trailingText } = splitImplicitCallAndTail(full);
-        const parsed = parseSingleFunctionCallXml(callContent, null);
+        const { callContent, trailingText } = splitImplicitCallAndTail(
+          full,
+          tools
+        );
+        const parsed = parseSingleFunctionCallXml(callContent, null, tools);
         if (parsed) {
           emitToolCalls([parsed]);
           pushText(
@@ -1425,7 +392,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           )
         );
 
-        const parsed = parseSingleFunctionCallXml(full, null);
+        const parsed = parseSingleFunctionCallXml(full, null, tools);
         if (parsed) {
           emitToolCalls([parsed]);
         } else {
@@ -1555,7 +522,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
       pushText(stripTrailingToolCallCloseTags(text.slice(0, startIndex)));
       const trailing = stripLeadingToolCallCloseTags(text.slice(startIndex));
-      const parsed = parseSingleFunctionCallXml(trailing, null);
+      const parsed = parseSingleFunctionCallXml(trailing, null, tools);
       if (!parsed) {
         processedElements.push({ type: "text", text: trailing });
         return true;
@@ -1623,6 +590,35 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     let currentTextId: string | null = null;
     let hasEmittedTextStart = false;
 
+    // Bounded by the tool set: one entry per resolved tool name per stream.
+    const schemaParamNameCache = new Map<string, Map<string, string> | null>();
+    const getSchemaParamNames = (
+      toolName: string | null
+    ): Map<string, string> | null => {
+      if (!toolName) {
+        return null;
+      }
+      let cached = schemaParamNameCache.get(toolName);
+      if (cached === undefined) {
+        cached = buildSchemaParamNameMap(toolName, tools);
+        schemaParamNameCache.set(toolName, cached);
+      }
+      return cached;
+    };
+
+    const getProgressHoldbackTags = (
+      callState: StreamingCallState
+    ): string[] => {
+      const extra: string[] = [`</${callState.endTagName}>`];
+      const schemaParamNames = getSchemaParamNames(callState.toolName);
+      if (schemaParamNames) {
+        for (const nameLower of schemaParamNames.keys()) {
+          extra.push(`<${nameLower}>`, `</${nameLower}>`);
+        }
+      }
+      return extra;
+    };
+
     const flushText = createFlushTextHandler(
       () => currentTextId,
       (id) => {
@@ -1667,7 +663,10 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
       const argsForProgress = mergeArgsWithPartialParam(
         callState.args,
-        callState.partialParam
+        sanitizePartialParamValueForProgress(
+          callState.partialParam,
+          getProgressHoldbackTags(callState)
+        )
       );
       const fullInput = stringifyToolInputWithSchema({
         tools,
@@ -1751,7 +750,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         allowEndOfString,
         nameTagRe: QWEN3CODER_TOOL_PARSER_STREAM_NAME_TAG_RE,
         normalizeXmlTextValue,
-        parseParamTagAt: parseQwen3CoderToolParserParamTagAt,
+        parseParamTagAt: (text, lowerText, startIndex, parseOptions) =>
+          parseQwen3CoderToolParserParamTagAt(text, lowerText, startIndex, {
+            ...parseOptions,
+            schemaParamNames: getSchemaParamNames(callState.toolName),
+          }),
         mergeParamValue,
         maybeEmitToolInputStart: () => {
           maybeEmitToolInputStart(controller, callState);
@@ -2101,6 +1104,16 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     const processToolCall = (controller: StreamController) => {
       while (toolCall) {
         if (toolCall.mode === "unknown") {
+          const normalization = normalizeStreamToolCallInnerOpenVariants(
+            toolCall.innerBuffer,
+            tools
+          );
+          if (normalization.status === "incomplete") {
+            return;
+          }
+          if (normalization.status === "rewritten") {
+            toolCall.innerBuffer = normalization.value;
+          }
           const callMatch =
             QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE.exec(
               toolCall.innerBuffer
@@ -2328,11 +1341,63 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       return true;
     };
 
+    /**
+     * Finish-time backstop: re-run the (variant-tolerant) generate-path parser
+     * over the buffered tool_call markup before dropping it. This recovers
+     * shapes the incremental state machine cannot stream, e.g. GLM-4.7's
+     * `<tool_call>write_file` + schema-property parameter tags.
+     */
+    const trySalvageXmlToolCallAtFinish = (
+      controller: StreamController,
+      rawToolCall: string
+    ): boolean => {
+      const synthetic = TOOL_CALL_CLOSE_RE.test(rawToolCall)
+        ? rawToolCall
+        : `${rawToolCall}</tool_call>`;
+      if (hasProseOutsideXmlCalls(synthetic, tools)) {
+        return false;
+      }
+      const calls = parseQwen3CoderToolParserToolCallSegment(synthetic, tools);
+      if (!calls || calls.length === 0) {
+        return false;
+      }
+      for (const call of calls) {
+        const toolCallId = generateToolCallId();
+        const input = stringifyToolInputWithSchema({
+          tools,
+          toolName: call.toolName,
+          args: call.args,
+        });
+        controller.enqueue({
+          type: "tool-input-start",
+          id: toolCallId,
+          toolName: call.toolName,
+        });
+        if (input.length > 0) {
+          controller.enqueue({
+            type: "tool-input-delta",
+            id: toolCallId,
+            delta: input,
+          });
+        }
+        enqueueToolInputEndAndCall({
+          controller,
+          id: toolCallId,
+          toolName: call.toolName,
+          input,
+        });
+      }
+      return true;
+    };
+
     const reportUnfinishedToolCallAtFinish = (
       controller: StreamController,
       rawToolCall: string,
       metadata: { toolCallId?: string; toolName?: string | null } = {}
     ) => {
+      if (trySalvageXmlToolCallAtFinish(controller, rawToolCall)) {
+        return;
+      }
       if (trySalvageForeignFormatCalls(controller, rawToolCall)) {
         return;
       }
@@ -2386,6 +1451,12 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         if (toolCall) {
           // Best-effort reconciliation on incomplete tool-call markup at finish.
           if (toolCall.mode === "unknown") {
+            // The stream is over, so force malformed-opener normalization even
+            // when the live path deferred it as potentially incomplete.
+            toolCall.innerBuffer = normalizeToolCallInnerOpenVariants(
+              toolCall.innerBuffer,
+              tools
+            );
             const callMatch =
               QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE.exec(
                 toolCall.innerBuffer
@@ -2571,6 +1642,13 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         controller.enqueue(chunk);
         return;
       }
+      // The parser re-segments text under its own synthetic ids (tool-call
+      // markup is excised), so the provider's original text-start/text-end
+      // envelopes are dropped instead of producing empty duplicate blocks.
+      if (chunk.type === "text-start" || chunk.type === "text-end") {
+        return;
+      }
+
       if (chunk.type !== "text-delta") {
         handlePassthroughChunk(controller, chunk);
         return;

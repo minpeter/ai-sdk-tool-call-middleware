@@ -1,6 +1,53 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import type { OnErrorFn } from "./on-error";
 import { coerceToolCallInput } from "./tool-call-coercion";
+
+/**
+ * First text content part of a forced-tool-choice generation. Providers may
+ * emit reasoning (or other) parts before the JSON text even under
+ * `responseFormat: json`, so the whole content array is scanned instead of
+ * only inspecting `content[0]`.
+ */
+export function findFirstNonEmptyTextContent(
+  content: LanguageModelV4Content[] | undefined
+): string | undefined {
+  const textParts = content?.filter(
+    (item): item is Extract<LanguageModelV4Content, { type: "text" }> =>
+      item.type === "text"
+  );
+  return (
+    textParts?.find((part) => part.text.trim().length > 0)?.text ??
+    textParts?.[0]?.text
+  );
+}
+
+function isJsonObjectText(text: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return Boolean(
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function findToolChoiceTextContent(
+  content: LanguageModelV4Content[] | undefined
+): string | undefined {
+  const textParts = content?.filter(
+    (item): item is Extract<LanguageModelV4Content, { type: "text" }> =>
+      item.type === "text"
+  );
+  return (
+    textParts?.find(
+      (part) => part.text.trim().length > 0 && isJsonObjectText(part.text)
+    )?.text ?? findFirstNonEmptyTextContent(content)
+  );
+}
 
 interface ParseToolChoiceOptions {
   errorMessage: string;
@@ -92,6 +139,10 @@ export function resolveToolChoiceSelection({
   toolName: string;
 } {
   if (typeof text !== "string") {
+    onError?.(
+      "toolChoice generation returned no text content to parse; emitting fallback tool call",
+      { errorMessage }
+    );
     return {
       toolName: "unknown",
       input: "{}",

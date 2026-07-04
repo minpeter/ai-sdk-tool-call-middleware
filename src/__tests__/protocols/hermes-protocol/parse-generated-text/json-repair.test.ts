@@ -855,7 +855,19 @@ describe("parseGeneratedText JSON repair", () => {
     const text =
       '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"},"id":"123"}</tool_call>';
     const tools = [makeTool("edit", { content: { type: "string" } })];
-    p.parseGeneratedText({ text, tools, options: { onError } });
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("falls back when malformed arguments are followed by a primitive top-level field", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"},"id":123}</tool_call>';
+    const tools = [makeTool("edit", { content: { type: "string" } })];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
   });
 

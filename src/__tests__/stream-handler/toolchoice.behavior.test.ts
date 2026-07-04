@@ -159,7 +159,7 @@ describe("toolChoiceStream behavior", () => {
     expect(chunks.at(-1)).toMatchObject({
       type: "finish",
       finishReason: {
-        unified: "tool-calls",
+        unified: "length",
         raw: "length",
       },
     });

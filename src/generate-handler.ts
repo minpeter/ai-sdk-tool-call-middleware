@@ -3,6 +3,7 @@ import type {
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
   LanguageModelV4ToolCall,
+  SharedV4Warning,
 } from "@ai-sdk/provider";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import {
@@ -12,6 +13,7 @@ import {
   logRawChunk,
 } from "./core/utils/debug";
 import {
+  normalizeForcedToolChoiceFinishReason,
   normalizeToolCallsFinishReason,
   shouldRewriteFinishReasonToToolCalls,
 } from "./core/utils/finish-reason";
@@ -20,13 +22,17 @@ import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   decodeOriginalToolsFromProviderOptions,
+  getDroppedProviderTools,
   getToolCallMiddlewareOptions,
   isToolChoiceActive,
   isToolChoiceNone,
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
-import { resolveToolChoiceSelection } from "./core/utils/tool-choice";
+import {
+  findToolChoiceTextContent,
+  resolveToolChoiceSelection,
+} from "./core/utils/tool-choice";
 
 function logDebugSummary(
   debugSummary: { originalText?: string; toolCalls?: string } | undefined,
@@ -47,14 +53,38 @@ function logDebugSummary(
   }
 }
 
+/**
+ * Prompt-based tool calling can only express function tools; provider tools
+ * are dropped in transformParams and surfaced here as spec warnings.
+ */
+function appendDroppedProviderToolWarnings(
+  warnings: SharedV4Warning[] | undefined,
+  providerOptions: unknown
+): SharedV4Warning[] {
+  const dropped = getDroppedProviderTools(providerOptions);
+  if (dropped.length === 0) {
+    return warnings ?? [];
+  }
+  return [
+    ...(warnings ?? []),
+    ...dropped.map(
+      (name): SharedV4Warning => ({
+        type: "unsupported",
+        feature: `provider tool ${name}`,
+        details:
+          "Prompt-based tool-call middleware only supports function tools; the provider tool was removed from the request.",
+      })
+    ),
+  ];
+}
+
 async function handleToolChoice(
   doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>,
   params: { providerOptions?: ToolCallMiddlewareProviderOptions },
   tools: LanguageModelV4FunctionTool[]
 ) {
   const result = await doGenerate();
-  const first = result.content?.[0];
-  const firstText = first?.type === "text" ? first.text : undefined;
+  const firstText = findToolChoiceTextContent(result.content);
   const onError = extractOnErrorOption(params.providerOptions)?.onError;
 
   if (typeof firstText === "string" && getDebugLevel() === "parse") {
@@ -78,10 +108,20 @@ async function handleToolChoice(
   const debugSummary = params.providerOptions?.toolCallMiddleware?.debugSummary;
   logDebugSummary(debugSummary, toolCall, originText);
 
+  // Text content is consumed by the forced tool call; every other part
+  // (reasoning, files, sources) is model output the caller may still need.
+  const nonTextContent = (result.content ?? []).filter(
+    (part) => part.type !== "text"
+  );
+
   return {
     ...result,
-    content: [toolCall],
-    finishReason: normalizeToolCallsFinishReason(result.finishReason),
+    content: [...nonTextContent, toolCall],
+    warnings: appendDroppedProviderToolWarnings(
+      result.warnings,
+      params.providerOptions
+    ),
+    finishReason: normalizeForcedToolChoiceFinishReason(result.finishReason),
   };
 }
 
@@ -122,8 +162,13 @@ function parseContent(
     return recoveredFromJson ?? parsedByProtocol;
   });
 
+  // Provider-executed tool calls belong to the provider's own tools; their
+  // inputs must pass through byte-identical rather than be re-coerced against
+  // the client tool schemas.
   return parsed.map((part) =>
-    part.type === "tool-call" ? coerceToolCallPart(part, tools) : part
+    part.type === "tool-call" && !part.providerExecuted
+      ? coerceToolCallPart(part, tools)
+      : part
   );
 }
 
@@ -209,7 +254,13 @@ export async function wrapGenerate({
   const result = await doGenerate();
 
   if (result.content.length === 0) {
-    return result;
+    return {
+      ...result,
+      warnings: appendDroppedProviderToolWarnings(
+        result.warnings,
+        params.providerOptions
+      ),
+    };
   }
 
   const newContent = parseContent(
@@ -228,13 +279,19 @@ export async function wrapGenerate({
     providerOptions: params.providerOptions,
   });
 
+  // Only client-executed tool calls signal that the SDK should run a tool;
+  // provider-executed calls already finished on the provider side.
   const hasParsedToolCall = newContent.some(
-    (part) => part.type === "tool-call"
+    (part) => part.type === "tool-call" && !part.providerExecuted
   );
 
   return {
     ...result,
     content: newContent,
+    warnings: appendDroppedProviderToolWarnings(
+      result.warnings,
+      params.providerOptions
+    ),
     finishReason:
       hasParsedToolCall &&
       shouldRewriteFinishReasonToToolCalls(result.finishReason)

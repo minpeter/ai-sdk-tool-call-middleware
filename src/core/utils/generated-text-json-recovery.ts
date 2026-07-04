@@ -276,8 +276,12 @@ function pushRecoveredTextSegment(
   }
 }
 
-/** Envelope key aliases observed live (e.g. Nemotron emits tool/parameters). */
-const TOOL_NAME_KEYS = ["name", "tool"] as const;
+/**
+ * Envelope key aliases observed live (e.g. Nemotron emits tool/parameters,
+ * gpt-oss emits function/parameters). Resolved names are validated against
+ * the declared tools, so aliases cannot misfire on arbitrary JSON.
+ */
+const TOOL_NAME_KEYS = ["name", "tool", "function"] as const;
 const TOOL_ARGS_KEYS = ["arguments", "parameters"] as const;
 
 function readToolNameField(payload: Record<string, unknown>): string | null {

@@ -98,6 +98,16 @@ function buildBaseReturnParams(
   finalPrompt: LanguageModelV4Prompt,
   functionTools: LanguageModelV4FunctionTool[]
 ) {
+  const droppedProviderTools = (params.tools ?? [])
+    .filter((t) => t.type !== "function")
+    .map((t) => {
+      const named = t as { name?: unknown; id?: unknown };
+      if (typeof named.name === "string") {
+        return named.name;
+      }
+      return typeof named.id === "string" ? named.id : "unknown";
+    });
+
   return {
     ...params,
     prompt: finalPrompt,
@@ -105,6 +115,7 @@ function buildBaseReturnParams(
     toolChoice: undefined,
     providerOptions: mergeToolCallMiddlewareOptions(params.providerOptions, {
       originalTools: originalToolsSchema.encode(functionTools),
+      ...(droppedProviderTools.length > 0 ? { droppedProviderTools } : {}),
     }),
   };
 }
