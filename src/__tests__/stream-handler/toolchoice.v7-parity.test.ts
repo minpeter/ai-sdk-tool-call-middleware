@@ -55,6 +55,25 @@ describe("toolChoiceStream v7 parity", () => {
     });
   });
 
+  it("uses the first parseable JSON text part for forced tool choice", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        { type: "text", text: "I will call the tool now." },
+        { type: "text", text: '{"name":"do","arguments":{"x":1}}' },
+      ],
+      usage: mockUsage(3, 5),
+    });
+
+    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
+    const chunks = await convertReadableStreamToArray(stream);
+
+    expect(chunks.at(-2)).toMatchObject({
+      type: "tool-call",
+      toolName: "do",
+      input: '{"x":1}',
+    });
+  });
+
   it("emits response-metadata when the generate result carries response info", async () => {
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],

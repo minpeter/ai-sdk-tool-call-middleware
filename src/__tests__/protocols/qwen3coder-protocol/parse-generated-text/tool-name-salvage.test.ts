@@ -43,6 +43,14 @@ describe("extractQwen3CoderToolNameFromMarkup: covers every inner call-tag shape
   });
 
   describe("child-element name fallbacks", () => {
+    it("does not treat data-name as the call name attribute", () => {
+      expect(
+        extractQwen3CoderToolNameFromMarkup(
+          '<tool_call><function data-name="wrong"><name>right</name></function></tool_call>'
+        )
+      ).toBe("right");
+    });
+
     it("salvages tool name from a <name>…</name> child when no attribute is present", () => {
       expect(
         extractQwen3CoderToolNameFromMarkup(
@@ -137,6 +145,14 @@ describe("extractQwen3CoderToolNameFromMarkup: covers every inner call-tag shape
       expect(
         extractQwen3CoderToolNameFromMarkup(
           '<function = "alpha">body</function>'
+        )
+      ).toBe("alpha");
+    });
+
+    it("trims surrounding whitespace around attribute names", () => {
+      expect(
+        extractQwen3CoderToolNameFromMarkup(
+          '<function name="  alpha  ">body</function>'
         )
       ).toBe("alpha");
     });

@@ -26,7 +26,7 @@ import {
 import { createStreamJsonRecoveryTransform } from "./core/utils/stream-json-recovery";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
 import {
-  findFirstNonEmptyTextContent,
+  findToolChoiceTextContent,
   resolveToolChoiceSelection,
 } from "./core/utils/tool-choice";
 
@@ -107,15 +107,25 @@ export async function wrapStream({
     .pipeThrough(createStreamJsonRecoveryTransform({ tools }));
 
   let seenToolCall = false;
+  let emittedExtraWarnings = extraWarnings.length === 0;
   const outputStream = coreStream.pipeThrough(
     new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
       transform(part, controller) {
         if (part.type === "stream-start" && extraWarnings.length > 0) {
+          emittedExtraWarnings = true;
           controller.enqueue({
             ...part,
             warnings: [...(part.warnings ?? []), ...extraWarnings],
           });
           return;
+        }
+
+        if (!emittedExtraWarnings) {
+          emittedExtraWarnings = true;
+          controller.enqueue({
+            type: "stream-start",
+            warnings: extraWarnings,
+          });
         }
 
         // Provider-executed tool calls pass through byte-identical and do not
@@ -198,7 +208,7 @@ export async function toolChoiceStream({
   const normalizedTools = Array.isArray(tools) ? tools : [];
   const result = await doGenerate();
   const { toolName, input } = resolveToolChoiceSelection({
-    text: findFirstNonEmptyTextContent(result?.content),
+    text: findToolChoiceTextContent(result?.content),
     tools: normalizedTools,
     onError: options?.onError,
     errorMessage: "Failed to parse toolChoice JSON from streamed model output",

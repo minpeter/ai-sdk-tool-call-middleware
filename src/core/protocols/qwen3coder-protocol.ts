@@ -64,8 +64,6 @@ import { parseCallContent } from "./qwen3coder-stream-call-content";
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
-const XML_TOOL_CALL_CLOSED_CALL_BLOCK_RE =
-  /<(call|function|tool|invoke)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
 const XML_TAG_RE = /<\s*(\/)?\s*([A-Za-z_][\w.:-]*)\b[^>]*>/g;
 const XML_VALUE_TAG_NAMES = new Set(["parameter", "param", "argument", "arg"]);
 
@@ -141,6 +139,12 @@ function hasProseOutsideXmlCalls(
     null;
 
   const firstTagStart = normalizedBody.indexOf("<");
+  if (firstTagStart === -1) {
+    return (
+      normalizedBody.trim().length > 0 &&
+      !SALVAGE_MARKUP_ONLY_TEXT_REGEX.test(normalizedBody)
+    );
+  }
   if (
     firstTagStart > 0 &&
     !SALVAGE_MARKUP_ONLY_TEXT_REGEX.test(normalizedBody.slice(0, firstTagStart))
@@ -150,10 +154,8 @@ function hasProseOutsideXmlCalls(
 
   let matched = false;
   let cursor = 0;
-  XML_TOOL_CALL_CLOSED_CALL_BLOCK_RE.lastIndex = 0;
-  for (const match of normalizedBody.matchAll(
-    XML_TOOL_CALL_CLOSED_CALL_BLOCK_RE
-  )) {
+  CALL_BLOCK_RE.lastIndex = 0;
+  for (const match of normalizedBody.matchAll(CALL_BLOCK_RE)) {
     matched = true;
     const start = match.index ?? 0;
     const before = normalizedBody.slice(cursor, start);

@@ -135,6 +135,44 @@ content:${contentWithTrailingSpaces}
     });
   });
 
+  it("does not treat prefixed wrapper tags as foreign tool_call blocks", () => {
+    const p = yamlXmlProtocol();
+    const text =
+      '<tool_callback>\n{"name":"write_file","arguments":{"path":"x.txt","content":"body"}}\n</tool_call>';
+    const out = p.parseGeneratedText({
+      text,
+      tools: writeFileTools,
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => (part as { text: string }).text)
+        .join("")
+    ).toBe(text);
+  });
+
+  it("salvages foreign JSON even when a JSON string mentions a real tool tag", () => {
+    const p = yamlXmlProtocol();
+    const out = p.parseGeneratedText({
+      text: `<tool_call>
+{"name":"write_file","arguments":{"path":"notes.txt","content":"literal <write_file> text"}}
+</tool_call>`,
+      tools: writeFileTools,
+    });
+
+    const call = out.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(call.toolName).toBe("write_file");
+    expect(JSON.parse(call.input)).toEqual({
+      path: "notes.txt",
+      content: "literal <write_file> text",
+    });
+  });
+
   for (const chunkSize of [1, 7]) {
     it(`salvages Hermes-style JSON in <tool_call> when streamed with chunk size ${chunkSize}`, async () => {
       const p = yamlXmlProtocol();

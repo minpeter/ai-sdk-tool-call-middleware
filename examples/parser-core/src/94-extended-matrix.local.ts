@@ -29,11 +29,19 @@ const TIMEOUT = 120_000;
 
 const provider = createOpenAICompatible({
   name: "freerouter",
-  apiKey: process.env.FREEROUTER_API_KEY ?? "fr-good-vibe-only",
+  apiKey: requireEnv("FREEROUTER_API_KEY"),
   baseURL:
     process.env.FREEROUTER_BASE_URL ??
     "https://freerouter.minpeter.workers.dev/v1",
 });
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required to run this local matrix script`);
+  }
+  return value;
+}
 
 const MIDDLEWARES = {
   hermes: hermesToolMiddleware,

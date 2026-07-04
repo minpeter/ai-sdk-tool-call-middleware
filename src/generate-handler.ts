@@ -30,7 +30,7 @@ import {
 } from "./core/utils/provider-options";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
 import {
-  findFirstNonEmptyTextContent,
+  findToolChoiceTextContent,
   resolveToolChoiceSelection,
 } from "./core/utils/tool-choice";
 
@@ -84,7 +84,7 @@ async function handleToolChoice(
   tools: LanguageModelV4FunctionTool[]
 ) {
   const result = await doGenerate();
-  const firstText = findFirstNonEmptyTextContent(result.content);
+  const firstText = findToolChoiceTextContent(result.content);
   const onError = extractOnErrorOption(params.providerOptions)?.onError;
 
   if (typeof firstText === "string" && getDebugLevel() === "parse") {
@@ -254,7 +254,13 @@ export async function wrapGenerate({
   const result = await doGenerate();
 
   if (result.content.length === 0) {
-    return result;
+    return {
+      ...result,
+      warnings: appendDroppedProviderToolWarnings(
+        result.warnings,
+        params.providerOptions
+      ),
+    };
   }
 
   const newContent = parseContent(

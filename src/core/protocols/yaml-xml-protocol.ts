@@ -667,6 +667,21 @@ function isForeignToolCallOpenAt(lower: string, start: number): boolean {
   return !(afterMarker && NAME_CHAR_RE.test(afterMarker));
 }
 
+function findForeignToolCallOpenStart(lower: string): number {
+  let searchIndex = 0;
+  while (searchIndex < lower.length) {
+    const start = lower.indexOf(FOREIGN_TOOL_CALL_OPEN_MARKER, searchIndex);
+    if (start === -1) {
+      return -1;
+    }
+    if (isForeignToolCallOpenAt(lower, start)) {
+      return start;
+    }
+    searchIndex = start + FOREIGN_TOOL_CALL_OPEN_MARKER.length;
+  }
+  return -1;
+}
+
 function skipWhitespaceInLowercaseText(lower: string, start: number): number {
   let cursor = start;
   while (cursor < lower.length && WHITESPACE_REGEX.test(lower[cursor] ?? "")) {
@@ -1184,7 +1199,7 @@ export const yamlXmlProtocol = (
       controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
     ): boolean => {
       const lower = buffer.toLowerCase();
-      const start = lower.indexOf("<tool_call");
+      const start = findForeignToolCallOpenStart(lower);
       if (start === -1) {
         return false;
       }
@@ -1198,21 +1213,21 @@ export const yamlXmlProtocol = (
       }
       const end = start + closeMatch.index + closeMatch[0].length;
       const block = buffer.slice(start, end);
+      const calls = recoverGatedForeignCalls(block, tools);
+      if (calls) {
+        if (start > 0) {
+          flushText(controller, buffer.slice(0, start));
+        }
+        emitSalvagedForeignCalls(controller, calls);
+        buffer = buffer.slice(end);
+        return true;
+      }
       // A real tool tag inside the wrapper means the block is YAML-XML with a
       // stray wrapper; leave it to the normal tag path.
       if (findEarliestToolTag(block.slice(1), toolNames).index !== -1) {
         return false;
       }
-      const calls = recoverGatedForeignCalls(block, tools);
-      if (!calls) {
-        flushText(controller, buffer.slice(0, end));
-        buffer = buffer.slice(end);
-        return true;
-      }
-      if (start > 0) {
-        flushText(controller, buffer.slice(0, start));
-      }
-      emitSalvagedForeignCalls(controller, calls);
+      flushText(controller, buffer.slice(0, end));
       buffer = buffer.slice(end);
       return true;
     };
@@ -1228,7 +1243,7 @@ export const yamlXmlProtocol = (
         return;
       }
       const lower = buffer.toLowerCase();
-      const start = lower.indexOf("<tool_call");
+      const start = findForeignToolCallOpenStart(lower);
       if (start === -1) {
         flushText(controller, buffer);
         buffer = "";

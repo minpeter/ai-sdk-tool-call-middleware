@@ -656,6 +656,9 @@ function findUnclosedParamBoundaryIndex(
       allowEndOfString
     ),
     indexOfTagOpenWithBoundary(lowerText, valueStart, "function"),
+    indexOfTagOpenWithBoundary(lowerText, valueStart, "call"),
+    indexOfTagOpenWithBoundary(lowerText, valueStart, "tool"),
+    indexOfTagOpenWithBoundary(lowerText, valueStart, "invoke"),
   ].filter((index) => index !== -1);
 
   if (schemaParamNames) {
@@ -1054,7 +1057,7 @@ export function getAttributeValue(
   if (!re) {
     // Since the regex has no 'g' flag, re.exec resets automatically — safe.
     re = new RegExp(
-      `\\b${escapeRegExp(attrName)}\\s*=\\s*(["'])([\\s\\S]*?)\\1`,
+      `(?:^|[\\s<])${escapeRegExp(attrName)}\\s*=\\s*(["'])([\\s\\S]*?)\\1`,
       "i"
     );
     attrValueRegExpCache.set(attrName, re);
@@ -1063,7 +1066,7 @@ export function getAttributeValue(
   if (!match) {
     return null;
   }
-  return unescapeXml(match[2] ?? "");
+  return unescapeXml(match[2] ?? "").trim();
 }
 
 export function getShorthandValue(openTag: string): string | null {
@@ -1075,7 +1078,8 @@ export function getShorthandValue(openTag: string): string | null {
   if (!value) {
     return null;
   }
-  return unescapeXml(value);
+  const normalized = unescapeXml(value).trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 export function extractShorthandToolNameFromRaw(
@@ -1083,7 +1087,11 @@ export function extractShorthandToolNameFromRaw(
 ): string | null {
   const match = NESTED_CALL_SHORTHAND_VALUE_RE.exec(rawText);
   const value = match?.[1] ?? match?.[2] ?? match?.[3];
-  return value ? unescapeXml(value) : null;
+  if (!value) {
+    return null;
+  }
+  const normalized = unescapeXml(value).trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function extractFirstTagText(xml: string, tagName: string): string | null {
@@ -1258,12 +1266,13 @@ export function parseSingleFunctionCallXml(
     ? getAttributeValue(openingTag, "name")
     : null;
   const shorthandName = openingTag ? getShorthandValue(openingTag) : null;
-  const toolName =
+  const toolNameCandidate =
     toolNameAttr ??
     shorthandName ??
     extractFirstTagText(xml, "name") ??
     extractFirstTagText(xml, "tool_name") ??
     fallbackToolName;
+  const toolName = toolNameCandidate?.trim() ?? null;
   const callEndTagNameLower = toSupportedCallEndTagName(
     openingTag ? getOpenTagNameLower(openingTag) : null
   );
@@ -1467,6 +1476,10 @@ function parseQwen3CoderToolParserClosedMatches(
 
   const closedBlocks: string[] = [];
   let lastClosedEnd = 0;
+  const firstClosedStart = callBlockMatches[0]?.index ?? 0;
+  const leadingBlocks = splitImplicitCallBlocks(
+    inner.slice(0, firstClosedStart)
+  ).filter((block) => block.trim().length > 0);
   for (const match of callBlockMatches) {
     const callBlock = match[0] ?? "";
     const startIndex = match.index ?? -1;
@@ -1478,7 +1491,7 @@ function parseQwen3CoderToolParserClosedMatches(
   }
 
   const closedCalls = parseQwen3CoderToolParserCallBlocks(
-    closedBlocks,
+    [...leadingBlocks, ...closedBlocks],
     outerNameAttr,
     tools
   );

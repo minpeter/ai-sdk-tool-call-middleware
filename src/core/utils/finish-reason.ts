@@ -1,5 +1,7 @@
 import type { LanguageModelV4FinishReason } from "@ai-sdk/provider";
 
+const TERMINAL_FINISH_REASONS = new Set(["length", "content-filter", "error"]);
+
 /**
  * Build a `tool-calls` finish reason while preserving the provider's raw
  * value. Accepts the loose shapes seen across providers (plain string,
@@ -59,13 +61,18 @@ export function shouldRewriteFinishReasonToToolCalls(
 export function normalizeForcedToolChoiceFinishReason(
   finishReason: unknown
 ): LanguageModelV4FinishReason {
+  if (
+    typeof finishReason === "string" &&
+    TERMINAL_FINISH_REASONS.has(finishReason)
+  ) {
+    return {
+      unified: finishReason as LanguageModelV4FinishReason["unified"],
+      raw: finishReason,
+    };
+  }
   if (finishReason && typeof finishReason === "object") {
     const unified = (finishReason as { unified?: unknown }).unified;
-    if (
-      unified === "length" ||
-      unified === "content-filter" ||
-      unified === "error"
-    ) {
+    if (typeof unified === "string" && TERMINAL_FINISH_REASONS.has(unified)) {
       return finishReason as LanguageModelV4FinishReason;
     }
   }

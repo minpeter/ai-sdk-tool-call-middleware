@@ -94,6 +94,28 @@ describe("qwen3CoderProtocol foreign-format salvage", () => {
     ).toBe(raw);
   });
 
+  it("emits raw text instead of salvaging prose-only named unfinished blocks", async () => {
+    const p = qwen3CoderProtocol();
+    const raw = '<tool_call name="book_flight">visible prose only';
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createChunkedStream(raw),
+        p.createStreamParser({
+          tools,
+          options: { emitRawToolCallTextOnError: true },
+        })
+      )
+    );
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text-delta")
+        .map((part) => (part as { delta: string }).delta)
+        .join("")
+    ).toBe(raw);
+  });
+
   it("emits raw text instead of salvaging XML calls mixed with leading prose", async () => {
     const p = qwen3CoderProtocol();
     const raw =

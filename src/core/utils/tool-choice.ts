@@ -24,6 +24,31 @@ export function findFirstNonEmptyTextContent(
   );
 }
 
+function isJsonObjectText(text: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return Boolean(
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function findToolChoiceTextContent(
+  content: LanguageModelV4Content[] | undefined
+): string | undefined {
+  const textParts = content?.filter(
+    (item): item is Extract<LanguageModelV4Content, { type: "text" }> =>
+      item.type === "text"
+  );
+  return (
+    textParts?.find(
+      (part) => part.text.trim().length > 0 && isJsonObjectText(part.text)
+    )?.text ?? findFirstNonEmptyTextContent(content)
+  );
+}
+
 interface ParseToolChoiceOptions {
   errorMessage: string;
   onError?: OnErrorFn;

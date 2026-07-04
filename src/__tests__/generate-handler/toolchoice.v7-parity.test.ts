@@ -41,6 +41,29 @@ describe("wrapGenerate forced tool choice v7 parity", () => {
     });
   });
 
+  it("uses the first parseable JSON text part for forced tool choice", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        { type: "text", text: "I will call the tool now." },
+        { type: "text", text: '{"name":"do","arguments":{"x":1}}' },
+      ],
+      finishReason: { unified: "stop", raw: "stop" },
+      warnings: [],
+    });
+
+    const result = await wrapGenerate({
+      protocol: dummyProtocol(),
+      doGenerate,
+      params: { providerOptions: forcedChoiceProviderOptions },
+    });
+
+    expect(result.content.at(-1)).toMatchObject({
+      type: "tool-call",
+      toolName: "do",
+      input: '{"x":1}',
+    });
+  });
+
   it("preserves a length finish reason instead of masking truncation", async () => {
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"name":"do","arg' }],
@@ -61,6 +84,25 @@ describe("wrapGenerate forced tool choice v7 parity", () => {
     expect(result.content.at(-1)).toMatchObject({
       type: "tool-call",
       toolName: "unknown",
+    });
+  });
+
+  it("preserves a string length finish reason instead of masking truncation", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],
+      finishReason: "length",
+      warnings: [],
+    });
+
+    const result = await wrapGenerate({
+      protocol: dummyProtocol(),
+      doGenerate,
+      params: { providerOptions: forcedChoiceProviderOptions },
+    });
+
+    expect(result.finishReason).toEqual({
+      unified: "length",
+      raw: "length",
     });
   });
 });

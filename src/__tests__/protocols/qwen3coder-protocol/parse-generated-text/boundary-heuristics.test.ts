@@ -45,6 +45,32 @@ describe("qwen3CoderProtocol", () => {
     expect(JSON.parse(gamma.input)).toEqual({ z: "3" });
   });
 
+  it("terminates unclosed parameter values at the next alternate call opener", () => {
+    const p = qwen3CoderProtocol();
+    const text =
+      "<tool_call><call=alpha><parameter=x>1<tool=beta><parameter=y>2</tool><invoke=gamma><parameter=z>3</invoke></tool_call>";
+
+    const out = p.parseGeneratedText({ text, tools });
+    const calls = out.filter((part) => part.type === "tool-call");
+    expect(calls).toHaveLength(3);
+
+    const [alpha, beta, gamma] = calls;
+    if (
+      alpha?.type !== "tool-call" ||
+      beta?.type !== "tool-call" ||
+      gamma?.type !== "tool-call"
+    ) {
+      throw new Error("Expected tool-call parts");
+    }
+
+    expect(alpha.toolName).toBe("alpha");
+    expect(JSON.parse(alpha.input)).toEqual({ x: "1" });
+    expect(beta.toolName).toBe("beta");
+    expect(JSON.parse(beta.input)).toEqual({ y: "2" });
+    expect(gamma.toolName).toBe("gamma");
+    expect(JSON.parse(gamma.input)).toEqual({ z: "3" });
+  });
+
   it("does not treat partial closing-tag prefixes like </toolbox> as call boundaries", () => {
     const p = qwen3CoderProtocol();
     const text =
