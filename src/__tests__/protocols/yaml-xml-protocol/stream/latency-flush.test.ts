@@ -52,6 +52,68 @@ describe("yamlXmlProtocol stream text flushing", () => {
     await writer.close();
   });
 
+  it("streams ordinary tool_call prose while the stream is open", async () => {
+    const { writer, reader } = openParser();
+
+    const writes = writer.write({
+      type: "text-delta",
+      id: "1",
+      delta: "The <tool_call> wrapper is not used here.",
+    });
+
+    const collected: LanguageModelV4StreamPart[] = [];
+    for (let i = 0; i < 2; i += 1) {
+      const { value } = await reader.read();
+      if (value) {
+        collected.push(value);
+      }
+    }
+    await writes;
+
+    const text = collected
+      .filter((p) => p.type === "text-delta")
+      .map((p) => (p as { delta: string }).delta)
+      .join("");
+    expect(text).toBe("The <tool_call> wrapper is not used here.");
+
+    await writer.close();
+  });
+
+  it("holds an unfinished foreign JSON tool_call block for salvage", async () => {
+    const { writer, reader } = openParser();
+    const out: LanguageModelV4StreamPart[] = [];
+
+    const writes = (async () => {
+      await writer.write({
+        type: "text-delta",
+        id: "1",
+        delta:
+          '<tool_call>\n{"name":"get_weather","arguments":{"city":"Seoul"}}',
+      });
+      await writer.close();
+    })();
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (value) {
+        out.push(value);
+      }
+    }
+    await writes;
+
+    expect(
+      out
+        .filter((p) => p.type === "text-delta")
+        .map((p) => (p as { delta: string }).delta)
+        .join("")
+    ).toBe("");
+    const call = out.find((p) => p.type === "tool-call");
+    expect(call).toMatchObject({ type: "tool-call", toolName: "get_weather" });
+  });
+
   it("still holds back a genuine partial tool tag", async () => {
     const { writer, reader } = openParser();
 

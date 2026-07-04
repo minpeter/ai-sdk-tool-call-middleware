@@ -129,6 +129,21 @@ it("does not treat // inside a relaxed unquoted identifier as a comment", () => 
   expect(JSON.parse(tool.input)).toEqual({ path: "a//b" });
 });
 
+it("does not treat // inside a quoted string as a comment boundary for the next key", () => {
+  const p = hermesProtocol();
+  const text =
+    '<tool_call>{name:"x",arguments:{url:"https://example.com/a//b",next:1}}</tool_call>';
+  const out = p.parseGeneratedText({ text, tools: [] });
+
+  const tool = out.find((x) => x.type === "tool-call") as any;
+  expect(tool).toBeTruthy();
+  expect(tool.toolName).toBe("x");
+  expect(JSON.parse(tool.input)).toEqual({
+    url: "https://example.com/a//b",
+    next: 1,
+  });
+});
+
 it("still treats // after a relaxed number literal as a comment", () => {
   const p = hermesProtocol();
   const text =

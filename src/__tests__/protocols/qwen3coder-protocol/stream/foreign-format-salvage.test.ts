@@ -70,4 +70,50 @@ describe("qwen3CoderProtocol foreign-format salvage", () => {
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  it("emits raw text instead of salvaging XML calls mixed with trailing prose", async () => {
+    const p = qwen3CoderProtocol();
+    const raw =
+      '<tool_call name="book_flight"><cabin>economy</cabin>\nvisible prose';
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createChunkedStream(raw),
+        p.createStreamParser({
+          tools,
+          options: { emitRawToolCallTextOnError: true },
+        })
+      )
+    );
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text-delta")
+        .map((part) => (part as { delta: string }).delta)
+        .join("")
+    ).toBe(raw);
+  });
+
+  it("emits raw text instead of salvaging XML calls mixed with leading prose", async () => {
+    const p = qwen3CoderProtocol();
+    const raw =
+      '<tool_call name="book_flight">visible prose\n<cabin>economy</cabin>';
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createChunkedStream(raw),
+        p.createStreamParser({
+          tools,
+          options: { emitRawToolCallTextOnError: true },
+        })
+      )
+    );
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text-delta")
+        .map((part) => (part as { delta: string }).delta)
+        .join("")
+    ).toBe(raw);
+  });
 });

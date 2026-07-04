@@ -644,10 +644,10 @@ function findUnclosedParamBoundaryIndex(
       );
 
   const indices = [
-    lowerText.indexOf("<parameter", valueStart),
-    lowerText.indexOf("<param", valueStart),
-    lowerText.indexOf("<argument", valueStart),
-    lowerText.indexOf("<arg", valueStart),
+    indexOfTagOpenWithBoundary(lowerText, valueStart, "parameter"),
+    indexOfTagOpenWithBoundary(lowerText, valueStart, "param"),
+    indexOfTagOpenWithBoundary(lowerText, valueStart, "argument"),
+    indexOfTagOpenWithBoundary(lowerText, valueStart, "arg"),
     callCloseIndex,
     findClosingTagStartWithBoundary(
       lowerText,
@@ -655,7 +655,7 @@ function findUnclosedParamBoundaryIndex(
       "tool_call",
       allowEndOfString
     ),
-    lowerText.indexOf("<function", valueStart),
+    indexOfTagOpenWithBoundary(lowerText, valueStart, "function"),
   ].filter((index) => index !== -1);
 
   if (schemaParamNames) {

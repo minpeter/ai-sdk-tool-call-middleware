@@ -949,7 +949,11 @@ function previousSignificantChar(text: string, index: number): string {
       continue;
     }
     const lineStart = text.lastIndexOf("\n", cursor) + 1;
-    const lineCommentStart = text.lastIndexOf("//", cursor);
+    const lineCommentStart = findLineCommentStartBefore(
+      text,
+      lineStart,
+      cursor
+    );
     if (lineCommentStart >= lineStart) {
       cursor = lineCommentStart - 1;
       continue;
@@ -957,6 +961,47 @@ function previousSignificantChar(text: string, index: number): string {
     return text.charAt(cursor);
   }
   return "";
+}
+
+function findLineCommentStartBefore(
+  text: string,
+  lineStart: number,
+  cursor: number
+): number {
+  const state: QuotedScanState = { escaping: false, quoteChar: null };
+  let lastCommentStart = -1;
+  let index = lineStart;
+  while (index < cursor) {
+    const char = text.charAt(index);
+    if (consumeQuotedScanChar(state, char)) {
+      index += 1;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      state.quoteChar = char;
+      index += 1;
+      continue;
+    }
+    if (char === "/" && text.charAt(index + 1) === "*") {
+      const blockEnd = text.indexOf("*/", index + 2);
+      if (blockEnd === -1 || blockEnd > cursor) {
+        return lastCommentStart;
+      }
+      index = blockEnd + 2;
+      continue;
+    }
+    if (
+      char === "/" &&
+      text.charAt(index + 1) === "/" &&
+      startsRjsonComment(text, index, lineStart)
+    ) {
+      lastCommentStart = index;
+      index += 2;
+      continue;
+    }
+    index += 1;
+  }
+  return lastCommentStart;
 }
 
 function skipJsonComment(text: string, index: number): number | null {
@@ -1428,6 +1473,49 @@ function hasTrailingTopLevelFieldAfterArgumentsObject(
   return false;
 }
 
+function findLikelyRepairArgumentsClose(
+  raw: string,
+  argsStart: number
+): number {
+  const state: JsonDepthScanState = {
+    depth: 1,
+    escaping: false,
+    inString: false,
+  };
+  for (let index = argsStart; index < raw.length; index += 1) {
+    const char = raw.charAt(index);
+    if (consumeJsonStringScanChar(state, char)) {
+      continue;
+    }
+    if (consumeJsonDepthOpen(state, char)) {
+      continue;
+    }
+    const close = consumeJsonDepthClose(state, char);
+    if (close === "none" || state.depth > 0) {
+      continue;
+    }
+    const afterClose = skipJsonWhitespace(raw, index + 1);
+    const next = raw.charAt(afterClose);
+    if (next === "" || next === "," || next === "}") {
+      return index;
+    }
+    state.depth = 1;
+  }
+  return -1;
+}
+
+function hasStrictTopLevelFieldAfterArgumentsClose(
+  raw: string,
+  argsClose: number
+): boolean {
+  let cursor = skipJsonWhitespace(raw, argsClose + 1);
+  if (raw.charAt(cursor) !== ",") {
+    return false;
+  }
+  cursor = skipJsonWhitespace(raw, cursor + 1);
+  return raw.charAt(cursor) === '"';
+}
+
 function findRepairArgumentsBody(raw: string): string | null {
   const argsValueStart = findStrictTopLevelJsonPropertyValueStart(
     raw,
@@ -1437,6 +1525,13 @@ function findRepairArgumentsBody(raw: string): string | null {
     return null;
   }
   const argsStart = argsValueStart + 1;
+  const likelyArgsClose = findLikelyRepairArgumentsClose(raw, argsStart);
+  if (
+    likelyArgsClose !== -1 &&
+    hasStrictTopLevelFieldAfterArgumentsClose(raw, likelyArgsClose)
+  ) {
+    return null;
+  }
   let outerClose = -1;
   for (let i = raw.length - 1; i >= argsStart; i--) {
     if (raw.charAt(i) === "}") {

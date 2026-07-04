@@ -14,11 +14,14 @@ import { coerceToolCallInput } from "./tool-call-coercion";
 export function findFirstTextContent(
   content: LanguageModelV4Content[] | undefined
 ): string | undefined {
-  const part = content?.find(
+  const textParts = content?.filter(
     (item): item is Extract<LanguageModelV4Content, { type: "text" }> =>
       item.type === "text"
   );
-  return part?.text;
+  return (
+    textParts?.find((part) => part.text.trim().length > 0)?.text ??
+    textParts?.[0]?.text
+  );
 }
 
 interface ParseToolChoiceOptions {

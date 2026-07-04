@@ -562,7 +562,7 @@ function parseSchemaKeyedRawStrings(
 
   const flush = () => {
     if (currentKey !== null) {
-      args[currentKey] = currentLines.join("\n").trim();
+      args[currentKey] = currentLines.join("\n");
     }
   };
 
@@ -655,11 +655,78 @@ const FOREIGN_SALVAGE_MARKUP_ONLY_RE = /^\s*(?:<[^<>\n]*>\s*)*$/;
 const FOREIGN_TOOL_CALL_BLOCK_RE =
   /<tool_call\b[^>]*>[\s\S]*?(?:<\/tool_call\s*>|$)/i;
 const FOREIGN_TOOL_CALL_CLOSE_RE = /<\/tool_call\s*>/i;
+const FOREIGN_TOOL_CALL_OPEN_MARKER = "<tool_call";
 
 type ForeignToolCallPart = Extract<
   LanguageModelV4Content,
   { type: "tool-call" }
 >;
+
+function isForeignToolCallOpenAt(lower: string, start: number): boolean {
+  const afterMarker = lower[start + FOREIGN_TOOL_CALL_OPEN_MARKER.length] ?? "";
+  return !(afterMarker && NAME_CHAR_RE.test(afterMarker));
+}
+
+function skipWhitespaceInLowercaseText(lower: string, start: number): number {
+  let cursor = start;
+  while (cursor < lower.length && WHITESPACE_REGEX.test(lower[cursor] ?? "")) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function getForeignToolCallOpenHoldStart(
+  buffer: string,
+  lower: string,
+  start: number
+): number | null {
+  if (!isForeignToolCallOpenAt(lower, start)) {
+    return null;
+  }
+  const tagEnd = lower.indexOf(
+    ">",
+    start + FOREIGN_TOOL_CALL_OPEN_MARKER.length
+  );
+  if (tagEnd === -1) {
+    return start;
+  }
+  const payloadStart = skipWhitespaceInLowercaseText(lower, tagEnd + 1);
+  if (payloadStart >= lower.length) {
+    return start;
+  }
+  const payloadStartChar = buffer[payloadStart];
+  return payloadStartChar === "{" || payloadStartChar === "[" ? start : null;
+}
+
+function findForeignPartialToolCallSuffixStart(lower: string): number | null {
+  const maxLen = Math.min(
+    FOREIGN_TOOL_CALL_OPEN_MARKER.length - 1,
+    lower.length
+  );
+  for (let len = maxLen; len > 0; len -= 1) {
+    if (lower.endsWith(FOREIGN_TOOL_CALL_OPEN_MARKER.slice(0, len))) {
+      return lower.length - len;
+    }
+  }
+  return null;
+}
+
+function findForeignBlockHoldStart(buffer: string): number | null {
+  const lower = buffer.toLowerCase();
+  let searchIndex = 0;
+  while (searchIndex < lower.length) {
+    const start = lower.indexOf(FOREIGN_TOOL_CALL_OPEN_MARKER, searchIndex);
+    if (start === -1) {
+      break;
+    }
+    const holdStart = getForeignToolCallOpenHoldStart(buffer, lower, start);
+    if (holdStart !== null) {
+      return holdStart;
+    }
+    searchIndex = start + FOREIGN_TOOL_CALL_OPEN_MARKER.length;
+  }
+  return findForeignPartialToolCallSuffixStart(lower);
+}
 
 /**
  * Runs the shared JSON recovery over a foreign block and applies the
@@ -1055,27 +1122,6 @@ export const yamlXmlProtocol = (
       return true;
     };
 
-    /**
-     * Start index of a (possibly still partial) foreign `<tool_call` block
-     * that must be held back for cross-format salvage, or null when the
-     * buffer contains none.
-     */
-    const findForeignBlockHoldStart = (): number | null => {
-      const lower = buffer.toLowerCase();
-      const start = lower.indexOf("<tool_call");
-      if (start !== -1) {
-        return start;
-      }
-      const marker = "<tool_call";
-      const maxLen = Math.min(marker.length - 1, lower.length);
-      for (let len = maxLen; len > 0; len -= 1) {
-        if (lower.endsWith(marker.slice(0, len))) {
-          return lower.length - len;
-        }
-      }
-      return null;
-    };
-
     const flushSafeText = (
       controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
     ): void => {
@@ -1087,7 +1133,7 @@ export const yamlXmlProtocol = (
       // out immediately.
       const holds = [
         findPotentialPartialToolTagStart(buffer, toolNames),
-        findForeignBlockHoldStart(),
+        findForeignBlockHoldStart(buffer),
       ].filter((value): value is number => value != null);
       const holdFrom = holds.length > 0 ? Math.min(...holds) : null;
       if (holdFrom == null) {

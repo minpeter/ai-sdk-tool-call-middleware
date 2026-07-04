@@ -35,6 +35,26 @@ describe("toolChoiceStream v7 parity", () => {
     expect(chunks.at(-2)).toMatchObject({ type: "tool-call", toolName: "do" });
   });
 
+  it("skips empty text parts before the toolChoice JSON payload", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        { type: "text", text: "" },
+        { type: "text", text: "   " },
+        { type: "text", text: '{"name":"do","arguments":{"x":1}}' },
+      ],
+      usage: mockUsage(3, 5),
+    });
+
+    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
+    const chunks = await convertReadableStreamToArray(stream);
+
+    expect(chunks.at(-2)).toMatchObject({
+      type: "tool-call",
+      toolName: "do",
+      input: '{"x":1}',
+    });
+  });
+
   it("emits response-metadata when the generate result carries response info", async () => {
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],

@@ -73,6 +73,29 @@ describe("yamlXmlProtocol live-variant salvage", () => {
     expect(input.content).toContain('return "FizzBuzz"');
   });
 
+  it("preserves leading and trailing whitespace in schema-keyed raw strings", () => {
+    const p = yamlXmlProtocol();
+    const contentWithTrailingSpaces = `   leading spaces
+  indented line
+${"trailing spaces   "}`;
+    const out = p.parseGeneratedText({
+      text: `<write_file>
+path: out.txt
+content:${contentWithTrailingSpaces}
+</write_file>`,
+      tools: writeFileTools,
+    });
+
+    const call = out.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    const input = JSON.parse(call.input) as Record<string, string>;
+    expect(input.content).toBe(
+      "  leading spaces\n  indented line\ntrailing spaces   \n"
+    );
+  });
+
   for (const chunkSize of [1, 7]) {
     it(`recovers unquoted multi-line scalars when streamed with chunk size ${chunkSize}`, async () => {
       const p = yamlXmlProtocol();

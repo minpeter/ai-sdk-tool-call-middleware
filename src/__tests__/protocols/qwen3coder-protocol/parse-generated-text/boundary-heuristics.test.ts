@@ -111,4 +111,20 @@ describe("qwen3CoderProtocol", () => {
       query: "How to use <function=beta> and <parameter=x> tags",
     });
   });
+
+  it("does not cut unclosed parameter values at tag-name prefixes inside text", () => {
+    const p = qwen3CoderProtocol();
+    const text =
+      "<tool_call><function=alpha><parameter=query>How to spell <parameters> and <functions> tokens</function></tool_call>";
+
+    const out = p.parseGeneratedText({ text, tools });
+    const call = out.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected tool-call part");
+    }
+    expect(call.toolName).toBe("alpha");
+    expect(JSON.parse(call.input)).toEqual({
+      query: "How to spell <parameters> and <functions> tokens",
+    });
+  });
 });
