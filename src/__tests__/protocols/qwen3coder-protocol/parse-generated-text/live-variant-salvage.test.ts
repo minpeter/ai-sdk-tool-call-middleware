@@ -1,3 +1,4 @@
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
@@ -9,7 +10,7 @@ import {
 // Malformed-but-recoverable shapes captured verbatim from live models
 // (Qwen2.5-7B, GLM-4.7, Llama 3.1 8B) running under the Qwen3Coder prompt.
 
-const writeFileTools = [
+const writeFileTools: LanguageModelV4FunctionTool[] = [
   {
     type: "function" as const,
     name: "write_file",
@@ -22,7 +23,7 @@ const writeFileTools = [
   },
 ];
 
-const sendMessageTools = [
+const sendMessageTools: LanguageModelV4FunctionTool[] = [
   {
     type: "function" as const,
     name: "send_message",
@@ -248,7 +249,7 @@ describe("qwen3CoderProtocol live-variant salvage", () => {
 
 describe("qwen3CoderProtocol value-element wrapper salvage", () => {
   it("unwraps a literal <value> element around a parameter value", () => {
-    const tools = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function" as const,
         name: "set_alarm",

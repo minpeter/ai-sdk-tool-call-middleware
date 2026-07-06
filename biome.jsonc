@@ -4,17 +4,40 @@
   "files": {
     "includes": ["!!.changeset", "!!**/.claude", "!!**/.demo-output"]
   },
+  // The rules newly enabled by ultracite 7.9.0 are switched off below to keep
+  // the existing code style; adopt them incrementally in dedicated PRs.
+  "assist": {
+    "actions": {
+      "source": {
+        "useSortedKeys": "off"
+      }
+    }
+  },
   "linter": {
     "rules": {
       "correctness": {
         "useImportExtensions": "off",
         "noUnresolvedImports": "off"
       },
+      "complexity": {
+        "noDivRegex": "off",
+        "noUselessReturn": "off"
+      },
+      "performance": {
+        "noAwaitInLoops": "off"
+      },
       "suspicious": {
-        "noConsole": "off"
+        "noConsole": "off",
+        "noEqualsToNull": "off",
+        "noShadow": "off",
+        "noUnnecessaryConditions": "off"
       },
       "style": {
-        "noMagicNumbers": "off"
+        "noIncrementDecrement": "off",
+        "noMagicNumbers": "off",
+        "useConsistentMethodSignatures": "off",
+        "useDestructuring": "off",
+        "useErrorCause": "off"
       }
     }
   }

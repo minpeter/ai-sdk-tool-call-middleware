@@ -437,7 +437,7 @@ describe("recoverToolCallFromJsonCandidates namespaced close tags", () => {
 
 describe("function key alias", () => {
   it("recovers a bare JSON payload using function/parameters keys", () => {
-    const tools = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function" as const,
         name: "create_shipment",
