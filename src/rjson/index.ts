@@ -185,14 +185,13 @@ function makeLexer(tokenSpecs: TokenSpec[]): (contents: string) => Token[] {
       const result = some(tokenSpecs, (tokenSpec) => {
         const m = tokenSpec.re.exec(remainingContents); // Try to match the regex at the current position
         if (m) {
-          const raw = m[0]; // The matched raw string
+          const [raw] = m; // The matched raw string
           remainingContents = remainingContents.slice(raw.length); // Consume the matched part from the input
           return {
             raw,
             matched: tokenSpec.f(m), // Process the match using the spec's function
           };
         }
-        return; // No match for this spec
       });
       return result === false ? undefined : result;
     }
@@ -273,7 +272,7 @@ function fStringDouble(m: RegExpExecArray): RawToken {
 // :: tuple string -> rawToken
 function fIdentifier(m: RegExpExecArray): RawToken {
   // Transforms unquoted identifiers into JSON strings
-  const value = m[0];
+  const [value] = m;
   const match =
     '"' +
     value.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + // Escape backslashes and quotes
@@ -400,7 +399,6 @@ function previousNWSToken(tokens: Token[], index: number): number | undefined {
       return currentIndex; // Return index of the non-whitespace token
     }
   }
-  return; // Not found
 }
 
 // Removes trailing commas from arrays and objects in a token stream
@@ -824,7 +822,6 @@ function parseManyInitialElement<T>(
 
   state.pos -= 1;
   opts.elementParser(tokens, state, result);
-  return; // Signal to continue parsing
 }
 
 // Helper to process a token in parseMany loop
@@ -862,7 +859,6 @@ function parseManyProcessToken<T>(params: {
   }
 
   opts.elementParser(tokens, state, result);
-  return; // Continue loop
 }
 
 // Generic function to parse comma-separated elements within enclosing symbols (like objects or arrays)

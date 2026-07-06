@@ -172,7 +172,7 @@ function extractPartialXmlResults(
   match = xmlPattern.exec(xmlString);
   while (match !== null) {
     try {
-      const elementXml = match[0];
+      const [elementXml] = match;
       const tokenizer = new XMLTokenizer(elementXml, options);
       const parsed = tokenizer.parseChildren();
       partialResults.push(...parsed);
@@ -449,6 +449,7 @@ export function parse(
     // Extract content from root wrapper
     parsedNodes = rootNode.children;
   } catch (cause) {
+    // biome-ignore lint/style/useErrorCause: RXML errors carry the original error via their positional cause parameter.
     throw new RXMLParseError("Failed to parse XML", cause);
   }
 
@@ -476,7 +477,7 @@ export function parse(
     // Handle duplicates when throwOnDuplicateStringTags is false
     if (propType === "string" && duplicateKeys.has(k) && Array.isArray(v)) {
       // For duplicates, use the first occurrence
-      const firstValue = v[0];
+      const [firstValue] = v;
       if (
         typeof firstValue === "string" &&
         firstValue.startsWith("__RXML_PLACEHOLDER_")
@@ -611,7 +612,7 @@ export function parse(
   let dataToCoerce = args;
   const keys = Object.keys(args);
   if (keys.length === 1) {
-    const rootKey = keys[0];
+    const [rootKey] = keys;
     const rootValue = args[rootKey];
 
     // Check if schema expects the root key
@@ -636,6 +637,7 @@ export function parse(
     >;
     return decoded;
   } catch (error) {
+    // biome-ignore lint/style/useErrorCause: RXML errors carry the original error via their positional cause parameter.
     throw new RXMLCoercionError("Failed to coerce by schema", error);
   }
 }
@@ -654,6 +656,7 @@ export function parseWithoutSchema(
     // Check if this is a specific type of error that should be re-thrown
     if (shouldRethrowParseError(error, xmlString)) {
       // Preserve the original error message and line/column information
+      // biome-ignore lint/style/useErrorCause: RXML errors carry the original error via their positional cause parameter.
       throw new RXMLParseError(
         error.message,
         error.cause,
@@ -693,6 +696,7 @@ export function parseNode(
     const tokenizer = new XMLTokenizer(xmlString, options);
     return tokenizer.parseNode();
   } catch (error) {
+    // biome-ignore lint/style/useErrorCause: RXML errors carry the original error via their positional cause parameter.
     throw new RXMLParseError("Failed to parse XML node", error);
   }
 }

@@ -12,7 +12,7 @@ describe("qwen3CoderProtocol", () => {
     const out = p.parseGeneratedText({ text, tools });
     const calls = out.filter((part) => part.type === "tool-call");
     expect(calls).toHaveLength(1);
-    const call = calls[0];
+    const [call] = calls;
     if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
@@ -21,7 +21,7 @@ describe("qwen3CoderProtocol", () => {
 
     const texts = out.filter((part) => part.type === "text");
     expect(texts).toHaveLength(1);
-    const textPart = texts[0];
+    const [textPart] = texts;
     if (textPart?.type !== "text") {
       throw new Error("Expected text part");
     }
@@ -41,7 +41,7 @@ describe("qwen3CoderProtocol", () => {
     expect(out[0]).toEqual({ type: "text", text: "before " });
     expect(out[2]).toEqual({ type: "text", text: " after" });
 
-    const call = out[1];
+    const [, call] = out;
     if (call.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
@@ -70,8 +70,8 @@ describe("qwen3CoderProtocol", () => {
 
     const calls = out.filter((part) => part.type === "tool-call");
     expect(calls).toHaveLength(2);
-    const first = calls[0];
-    const second = calls[1];
+    const [first] = calls;
+    const [, second] = calls;
     if (first?.type !== "tool-call" || second?.type !== "tool-call") {
       throw new Error("Expected tool-call parts");
     }
@@ -90,7 +90,7 @@ describe("qwen3CoderProtocol", () => {
     const out = p.parseGeneratedText({ text, tools });
     const calls = out.filter((part) => part.type === "tool-call");
     expect(calls).toHaveLength(1);
-    const call = calls[0];
+    const [call] = calls;
     if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }

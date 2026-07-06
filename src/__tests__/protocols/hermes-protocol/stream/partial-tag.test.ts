@@ -15,7 +15,7 @@ function joinTextDeltas(parts: LanguageModelV4StreamPart[]): string {
     if (part.type !== "text-delta") {
       continue;
     }
-    const delta = (part as unknown as { delta?: unknown }).delta;
+    const { delta } = part as unknown as { delta?: unknown };
     if (typeof delta === "string") {
       deltas.push(delta);
     }

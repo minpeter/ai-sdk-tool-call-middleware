@@ -151,7 +151,7 @@ function renderTool(tool: Qwen3CoderToolShape): string {
 
   out += "\n<parameters>";
 
-  const parameters = tool.parameters;
+  const { parameters } = tool;
   if (isMapping(parameters) && isMapping((parameters as Mapping).properties)) {
     for (const [paramName, paramFieldsRaw] of Object.entries(
       (parameters as Mapping).properties as Mapping

@@ -32,9 +32,9 @@ describe("robust-xml integration", () => {
       if (process.env.VITEST_PERF_CHECK === "1") {
         expect(durationMs).toBeLessThan(1000);
       }
-      const data = (
-        result as unknown as { data: Array<{ value: number; active: boolean }> }
-      ).data;
+      const { data } = result as unknown as {
+        data: Array<{ value: number; active: boolean }>;
+      };
       expect(data).toHaveLength(100);
       expect(typeof data[0].value).toBe("number");
       expect(typeof data[0].active).toBe("boolean");

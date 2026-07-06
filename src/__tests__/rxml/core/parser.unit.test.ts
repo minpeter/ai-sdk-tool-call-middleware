@@ -441,7 +441,7 @@ describe("robust-xml parser", () => {
       );
       const simplified = simplify(parsed);
       if (isRecord(simplified) && isRecord(simplified.test)) {
-        const cc = (simplified.test as Record<string, unknown>).cc;
+        const { cc } = simplified.test as Record<string, unknown>;
         expect(cc).toEqual(["one", "two"]);
       } else {
         expect.fail("simplified result was not an object with 'test'");

@@ -200,7 +200,7 @@ function formatContentPartPlaceholder(part: unknown): string {
     case "image-url":
       return `[Image URL: ${(contentPart as { url?: string }).url}]`;
     case "image-file-id": {
-      const fileId = (contentPart as { fileId?: unknown }).fileId;
+      const { fileId } = contentPart as { fileId?: unknown };
       return formatIdPlaceholder("Image ID", fileId);
     }
     case "file-data": {
@@ -216,7 +216,7 @@ function formatContentPartPlaceholder(part: unknown): string {
     case "file-url":
       return `[File URL: ${(contentPart as { url?: string }).url}]`;
     case "file-id": {
-      const fileId = (contentPart as { fileId?: unknown }).fileId;
+      const { fileId } = contentPart as { fileId?: unknown };
       return formatIdPlaceholder("File ID", fileId);
     }
     case "media":
@@ -327,7 +327,7 @@ export function unwrapToolResult(
     case "json":
       return result.value;
     case "execution-denied": {
-      const reason = result.reason;
+      const { reason } = result;
       return reason ? `[Execution Denied: ${reason}]` : "[Execution Denied]";
     }
     case "error-text":
@@ -358,11 +358,9 @@ export function normalizeToolResultForUserContent(
   }
 
   const unwrapped = unwrapToolResult(result, mediaStrategy);
-  const providerOptions = (
-    result as {
-      providerOptions?: LanguageModelV4TextPart["providerOptions"];
-    }
-  ).providerOptions;
+  const { providerOptions } = result as {
+    providerOptions?: LanguageModelV4TextPart["providerOptions"];
+  };
 
   return [toTextPart(stringifyJsonValue(unwrapped), providerOptions)];
 }

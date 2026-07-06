@@ -41,7 +41,7 @@ describe("createToolMiddleware wrapStream protocol compliance integration", () =
     const MINIMUM_EXPECTED_CHUNKS = 3;
     expect(chunks.length).toBeGreaterThanOrEqual(MINIMUM_EXPECTED_CHUNKS);
     expect(chunks[0].type).toBe("text-start");
-    const id = (chunks[0] as any).id;
+    const { id } = chunks[0] as any;
     expect(chunks[1]).toEqual({ type: "text-delta", id, delta: "Hello world" });
     expect(chunks[2]).toEqual({ type: "text-end", id });
   });

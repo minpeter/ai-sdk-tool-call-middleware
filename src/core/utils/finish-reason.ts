@@ -19,7 +19,7 @@ export function normalizeToolCallsFinishReason(
     "raw" in finishReason &&
     typeof (finishReason as { raw?: unknown }).raw === "string"
   ) {
-    raw = (finishReason as { raw: string }).raw;
+    ({ raw } = finishReason as { raw: string });
   } else if (
     finishReason &&
     typeof finishReason === "object" &&
@@ -48,7 +48,7 @@ export function shouldRewriteFinishReasonToToolCalls(
   if (!finishReason || typeof finishReason !== "object") {
     return false;
   }
-  const unified = (finishReason as { unified?: unknown }).unified;
+  const { unified } = finishReason as { unified?: unknown };
   return unified === "stop" || unified === "other";
 }
 
@@ -71,7 +71,7 @@ export function normalizeForcedToolChoiceFinishReason(
     };
   }
   if (finishReason && typeof finishReason === "object") {
-    const unified = (finishReason as { unified?: unknown }).unified;
+    const { unified } = finishReason as { unified?: unknown };
     if (typeof unified === "string" && TERMINAL_FINISH_REASONS.has(unified)) {
       return finishReason as LanguageModelV4FinishReason;
     }

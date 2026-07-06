@@ -32,6 +32,6 @@ export function parse(
     return result.parsed as Record<string, unknown>;
   }
 
-  const error = result.errors[0];
+  const [error] = result.errors;
   throw new RXMLParseError("Failed to parse XML with repair heuristics", error);
 }

@@ -19,13 +19,13 @@ export interface ParserOptions {
 }
 
 export interface TCMProtocol {
-  createStreamParser({
+  createStreamParser: ({
     tools,
     options,
   }: {
     tools: LanguageModelV4FunctionTool[];
     options?: ParserOptions;
-  }): TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>;
+  }) => TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>;
 
   extractToolCallSegments?: ({
     text,
@@ -35,16 +35,16 @@ export interface TCMProtocol {
     tools: LanguageModelV4FunctionTool[];
   }) => string[];
 
-  formatToolCall(toolCall: LanguageModelV4ToolCall): string;
-  formatTools({
+  formatToolCall: (toolCall: LanguageModelV4ToolCall) => string;
+  formatTools: ({
     tools,
     toolSystemPromptTemplate,
   }: {
     tools: LanguageModelV4FunctionTool[];
     toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
-  }): string;
+  }) => string;
 
-  parseGeneratedText({
+  parseGeneratedText: ({
     text,
     tools,
     options,
@@ -52,7 +52,7 @@ export interface TCMProtocol {
     text: string;
     tools: LanguageModelV4FunctionTool[];
     options?: ParserOptions;
-  }): LanguageModelV4Content[];
+  }) => LanguageModelV4Content[];
 }
 
 export type TCMCoreProtocol = TCMProtocol;

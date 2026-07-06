@@ -31,11 +31,11 @@ export function getPotentialStartIndex(
   //    for streaming overlapping patterns (e.g., text "ababa", search "ababax").
   const startAt = Math.max(0, textLength - searchedTextLength + 1);
 
-  for (let i = startAt; i < textLength; i++) {
+  for (let i = startAt; i < textLength; i += 1) {
     let match = true;
     const currentSuffixLength = textLength - i;
 
-    for (let j = 0; j < currentSuffixLength; j++) {
+    for (let j = 0; j < currentSuffixLength; j += 1) {
       if (text[i + j] !== searchedText[j]) {
         match = false;
         break;

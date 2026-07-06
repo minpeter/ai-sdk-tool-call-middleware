@@ -308,16 +308,16 @@ function findClosingTagEnd(
 
       let p = ltIdx + 2;
       while (p < gtIdx && WHITESPACE_REGEX.test(text[p])) {
-        p++;
+        p += 1;
       }
       const nameStart = p;
       while (p < gtIdx && NAME_CHAR_RE.test(text.charAt(p))) {
-        p++;
+        p += 1;
       }
       const name = text.slice(nameStart, p);
 
       if (name === toolName) {
-        depth--;
+        depth -= 1;
         if (depth === 0) {
           return gtIdx + 1;
         }
@@ -329,11 +329,11 @@ function findClosingTagEnd(
     } else {
       let p = ltIdx + 1;
       while (p < text.length && WHITESPACE_REGEX.test(text[p])) {
-        p++;
+        p += 1;
       }
       const nameStart = p;
       while (p < text.length && NAME_CHAR_RE.test(text.charAt(p))) {
-        p++;
+        p += 1;
       }
       const name = text.slice(nameStart, p);
 
@@ -344,12 +344,12 @@ function findClosingTagEnd(
 
       let r = gtIdx - 1;
       while (r >= nameStart && WHITESPACE_REGEX.test(text[r])) {
-        r--;
+        r -= 1;
       }
       const selfClosing = text[r] === "/";
 
       if (name === toolName && !selfClosing) {
-        depth++;
+        depth += 1;
       }
       pos = gtIdx + 1;
     }
@@ -382,8 +382,8 @@ function collectToolCallsForName(
       break;
     }
 
-    const tagStart = match.tagStart;
-    const isSelfClosing = match.isSelfClosing;
+    const { tagStart } = match;
+    const { isSelfClosing } = match;
 
     if (isSelfClosing) {
       const endIndex = tagStart + match.tagLength;
@@ -501,7 +501,7 @@ function parseXmlChildrenAsArgs(
     if (!match) {
       return null;
     }
-    const key = match[1];
+    const [, key] = match;
     if (PROTOTYPE_SENSITIVE_PARAM_KEYS.has(key)) {
       return null;
     }
@@ -570,7 +570,7 @@ function parseSchemaKeyedRawStrings(
     const match = SCHEMA_KEYED_LINE_RE.exec(line);
     if (match?.[1] && schemaPropNames.has(match[1])) {
       flush();
-      currentKey = match[1];
+      [, currentKey] = match;
       currentLines = match[2] ? [match[2]] : [];
       matchedKeys += 1;
     } else if (currentKey !== null) {

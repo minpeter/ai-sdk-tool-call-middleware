@@ -44,7 +44,7 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
       toolName: "get_weather",
       dropReason: "malformed-tool-call-body",
     });
-    const cause = (metadata as { cause?: { kind?: string } }).cause;
+    const { cause } = metadata as { cause?: { kind?: string } };
     expect(cause).toMatchObject({ kind: "yaml-parse-error" });
     expect(typeof metadata?.toolCallId).toBe("string");
     expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
@@ -67,7 +67,7 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
       toolName: "get_weather",
       dropReason: "malformed-tool-call-body",
     });
-    const cause = (metadata as { cause?: { kind?: string } }).cause;
+    const { cause } = metadata as { cause?: { kind?: string } };
     expect(cause).toMatchObject({ kind: "yaml-non-mapping" });
     expect(typeof metadata?.toolCallId).toBe("string");
     expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);

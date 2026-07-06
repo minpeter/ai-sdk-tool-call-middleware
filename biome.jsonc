@@ -4,11 +4,11 @@
   "files": {
     "includes": ["!!.changeset", "!!**/.claude", "!!**/.demo-output"]
   },
-  // The rules newly enabled by ultracite 7.9.0 are switched off below to keep
-  // the existing code style; adopt them incrementally in dedicated PRs.
   "assist": {
     "actions": {
       "source": {
+        // Off: object-key sorting would reorder literals that tests compare
+        // against JSON.stringify output, and would churn ~3.4k sites.
         "useSortedKeys": "off"
       }
     }
@@ -19,25 +19,22 @@
         "useImportExtensions": "off",
         "noUnresolvedImports": "off"
       },
-      "complexity": {
-        "noDivRegex": "off",
-        "noUselessReturn": "off"
-      },
       "performance": {
+        // Off: stream parsing and chunk-replay tests are inherently
+        // sequential; awaiting in loops is intentional there.
         "noAwaitInLoops": "off"
       },
       "suspicious": {
         "noConsole": "off",
+        // Off: `== null` / `!= null` is the deliberate idiom for
+        // null-or-undefined checks throughout the codebase.
         "noEqualsToNull": "off",
-        "noShadow": "off",
+        // Off: type-driven and flags intentional runtime guards against
+        // malformed LLM output (plus `while (true)` scan loops).
         "noUnnecessaryConditions": "off"
       },
       "style": {
-        "noIncrementDecrement": "off",
-        "noMagicNumbers": "off",
-        "useConsistentMethodSignatures": "off",
-        "useDestructuring": "off",
-        "useErrorCause": "off"
+        "noMagicNumbers": "off"
       }
     }
   }

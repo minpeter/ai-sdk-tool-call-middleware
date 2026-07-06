@@ -46,6 +46,7 @@ export function stringify(
 
     return result;
   } catch (error) {
+    // biome-ignore lint/style/useErrorCause: RXML errors carry the original error via their positional cause parameter.
     throw new RXMLStringifyError("Failed to stringify XML", error);
   }
 }

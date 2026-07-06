@@ -42,7 +42,7 @@ export function formatToolResponseAsHermes(toolResult: ToolResultPart): string {
 export function jsonSchemaToPythonType(
   schema: Record<string, unknown>
 ): string {
-  const type = schema.type;
+  const { type } = schema;
 
   if (type === "string") {
     return "str";

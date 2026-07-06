@@ -15,7 +15,7 @@ export function tryRepairXmlSelfClosingRootWithBody(
     return null;
   }
 
-  const rootTag = match[1];
+  const [, rootTag] = match;
   if (!toolNames.includes(rootTag)) {
     return null;
   }

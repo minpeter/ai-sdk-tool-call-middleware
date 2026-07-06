@@ -191,7 +191,7 @@ function getPropertySchema(
   schema: Record<string, unknown>,
   key: string
 ): unknown | undefined {
-  const properties = schema.properties;
+  const { properties } = schema;
   if (!(isRecord(properties) && Object.hasOwn(properties, key))) {
     return;
   }

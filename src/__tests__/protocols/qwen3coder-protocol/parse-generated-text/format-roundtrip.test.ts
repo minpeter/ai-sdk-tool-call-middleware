@@ -26,7 +26,7 @@ describe("qwen3CoderProtocol", () => {
     });
     const calls = parsed.filter((x) => x.type === "tool-call");
     expect(calls).toHaveLength(1);
-    const call = calls[0];
+    const [call] = calls;
     if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
@@ -72,7 +72,7 @@ describe("qwen3CoderProtocol", () => {
     });
     const calls = parsed.filter((x) => x.type === "tool-call");
     expect(calls).toHaveLength(1);
-    const call = calls[0];
+    const [call] = calls;
     if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }

@@ -311,7 +311,7 @@ function processOpeningTagInExtract(options: {
   const tagInfo = parseTagName(xmlContent, i, len);
   const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
   const tagEnd = tagEndInfo.pos;
-  const isSelfClosing = tagEndInfo.isSelfClosing;
+  const { isSelfClosing } = tagEndInfo;
 
   let bestMatch: { start: number; end: number; depth: number } | null = null;
   if (tagInfo.name === target) {
@@ -391,7 +391,6 @@ export function extractRawInner(
   if (bestStart !== -1) {
     return xmlContent.slice(bestStart, bestEnd);
   }
-  return;
 }
 
 /**
@@ -473,7 +472,7 @@ export function findAllInnerRanges(
     const tagInfo = parseTagName(xmlContent, i, len);
     const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
     const tagEnd = tagEndInfo.pos;
-    const isSelfClosing = tagEndInfo.isSelfClosing;
+    const { isSelfClosing } = tagEndInfo;
 
     if (tagInfo.name !== target) {
       // Advance over this tag
@@ -521,7 +520,6 @@ function findTopLevelTargetRange(options: {
   if (closePos !== -1) {
     return { start: contentStart, end: closePos };
   }
-  return;
 }
 
 /**
@@ -577,7 +575,7 @@ export function findFirstTopLevelRange(
     const tagInfo = parseTagName(xmlContent, i, len);
     const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
     const tagEnd = tagEndInfo.pos;
-    const isSelfClosing = tagEndInfo.isSelfClosing;
+    const { isSelfClosing } = tagEndInfo;
 
     if (depth === 0 && tagInfo.name === target) {
       return findTopLevelTargetRange({
@@ -591,7 +589,6 @@ export function findFirstTopLevelRange(
     i = tagEnd + 1;
     depth += isSelfClosing ? 0 : 1;
   }
-  return;
 }
 
 /**

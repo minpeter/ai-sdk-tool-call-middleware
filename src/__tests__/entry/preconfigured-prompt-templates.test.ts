@@ -27,7 +27,7 @@ describe("preconfigured middleware prompt templates", () => {
       params: { prompt: [], tools },
     } as any);
 
-    const system = out.prompt[0];
+    const [system] = out.prompt;
     expect(system.role).toBe("system");
     const text = String(system.content);
     expect(text).toMatch(REGEX_FUNCTION_CALLING_MODEL);
@@ -41,7 +41,7 @@ describe("preconfigured middleware prompt templates", () => {
       params: { prompt: [], tools },
     } as any);
 
-    const system = out.prompt[0];
+    const [system] = out.prompt;
     expect(system.role).toBe("system");
     const text = String(system.content);
     expect(text).toMatch(REGEX_MAY_CALL_FUNCTIONS);
