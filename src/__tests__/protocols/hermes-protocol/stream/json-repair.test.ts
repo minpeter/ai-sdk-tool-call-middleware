@@ -1,4 +1,5 @@
 import type {
+  JSONSchema7Definition,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
@@ -13,7 +14,7 @@ import {
 
 function makeTool(
   name: string,
-  properties: Record<string, { type: string }>,
+  properties: Record<string, JSONSchema7Definition>,
   additionalProperties?: boolean
 ): LanguageModelV4FunctionTool {
   return {
@@ -27,11 +28,16 @@ function makeTool(
   };
 }
 
+// Intentionally accepts malformed schemas so tests can exercise runtime rejection.
 function makeSchemaTool(
   name: string,
-  inputSchema: LanguageModelV4FunctionTool["inputSchema"]
+  inputSchema: unknown
 ): LanguageModelV4FunctionTool {
-  return { type: "function", name, inputSchema };
+  return {
+    type: "function",
+    name,
+    inputSchema: inputSchema as LanguageModelV4FunctionTool["inputSchema"],
+  };
 }
 
 function hasStringToolCallId(value: unknown): value is { toolCallId: string } {
@@ -1599,10 +1605,7 @@ describe("hermesProtocol streaming JSON repair", () => {
   });
 
   it("rejects top-level boolean false input schemas", async () => {
-    const schemas: LanguageModelV4FunctionTool["inputSchema"][] = [
-      false,
-      { jsonSchema: false },
-    ];
+    const schemas: unknown[] = [false, { jsonSchema: false }];
     for (const inputSchema of schemas) {
       const onError = vi.fn();
       const protocol = hermesProtocol();
@@ -1638,10 +1641,7 @@ describe("hermesProtocol streaming JSON repair", () => {
   });
 
   it("rejects non-object arguments for top-level boolean false input schemas", async () => {
-    const schemas: LanguageModelV4FunctionTool["inputSchema"][] = [
-      false,
-      { jsonSchema: false },
-    ];
+    const schemas: unknown[] = [false, { jsonSchema: false }];
     const argumentBodies = ["[]", "null", '"x"'];
 
     for (const inputSchema of schemas) {
@@ -1681,7 +1681,7 @@ describe("hermesProtocol streaming JSON repair", () => {
 
   it("rejects non-object arguments for object input schemas", async () => {
     const argumentBodies = ["[]", "null", '"x"'];
-    const schemas: LanguageModelV4FunctionTool["inputSchema"][] = [
+    const schemas: unknown[] = [
       {
         type: "object",
         properties: {

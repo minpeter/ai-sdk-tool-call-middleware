@@ -1,3 +1,4 @@
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
@@ -9,7 +10,7 @@ import {
 // Malformed-but-recoverable shapes captured verbatim from live models
 // (Mistral Small, IBM Granite 4.0) running under the YAML-XML prompt.
 
-const writeFileTools = [
+const writeFileTools: LanguageModelV4FunctionTool[] = [
   {
     type: "function" as const,
     name: "write_file",

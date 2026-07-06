@@ -1,3 +1,4 @@
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { yamlXmlSystemPromptTemplate } from "../../../../core/prompts/yaml-xml-prompt";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
@@ -39,7 +40,7 @@ location: Tokyo
 
 describe("yamlXmlSystemPromptTemplate", () => {
   it("should include multiline example by default", () => {
-    const testTools = [
+    const testTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function" as const,
         name: "test",
@@ -57,7 +58,7 @@ describe("yamlXmlSystemPromptTemplate", () => {
   });
 
   it("should exclude multiline example when disabled", () => {
-    const testTools = [
+    const testTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function" as const,
         name: "test",

@@ -208,7 +208,7 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
           },
         },
       },
-    ] as LanguageModelV4FunctionTool[];
+    ] as unknown as LanguageModelV4FunctionTool[];
 
     const { input } = parseSendMessage(
       "<send_message>Wrapped synthetic message body.</send_message>",
@@ -234,7 +234,7 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
           required: ["message"],
         },
       },
-    ] as LanguageModelV4FunctionTool[];
+    ] as unknown as LanguageModelV4FunctionTool[];
 
     const { input } = parseSendMessage(
       "<send_message>Wrapped property synthetic message.</send_message>",

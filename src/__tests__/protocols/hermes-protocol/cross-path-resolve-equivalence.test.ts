@@ -1,4 +1,5 @@
 import type {
+  JSONSchema7Definition,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
@@ -25,7 +26,7 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 
 function makeTool(
   name: string,
-  properties: Record<string, { type: string }>,
+  properties: Record<string, JSONSchema7Definition>,
   additionalProperties?: boolean
 ): LanguageModelV4FunctionTool {
   return {
