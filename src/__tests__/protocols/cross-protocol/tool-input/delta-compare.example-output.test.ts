@@ -9,10 +9,10 @@ import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol"
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 
 const XML_CURRENT_VIEW_OBJECT_DELTA_RE =
-  /=== XML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seoul","unit":"celsius"/;
+  /[=]== XML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seoul","unit":"celsius"/;
 
 const YAML_CURRENT_VIEW_OBJECT_DELTA_RE =
-  /=== YAML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seoul","unit":"celsius"/;
+  /[=]== YAML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seoul","unit":"celsius"/;
 
 const tool: LanguageModelV4FunctionTool = {
   type: "function",

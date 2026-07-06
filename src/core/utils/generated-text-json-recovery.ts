@@ -93,7 +93,7 @@ function parseJsonCandidate(candidateText: string): unknown {
   try {
     return parseRJSON(candidateText);
   } catch {
-    return;
+    // swallow parse failures and return undefined
   }
 }
 
@@ -355,7 +355,7 @@ function isLikelyArgumentsShapeForTool(
     return false;
   }
 
-  const properties = unwrapped.properties;
+  const { properties } = unwrapped;
   if (!isRecord(properties)) {
     return false;
   }
@@ -405,7 +405,7 @@ function parseAsArgumentsOnly(
     return null;
   }
 
-  const tool = tools[0];
+  const [tool] = tools;
   if (
     !isLikelyArgumentsShapeForTool(payload, tool) ||
     containsPrototypeSensitiveKey(payload)
@@ -525,7 +525,7 @@ function findQwenCallCloseTag(
   let match = tagRegex.exec(body);
   while (match) {
     const tag = match[0] ?? "";
-    const parameterTagName = match[2];
+    const [, , parameterTagName] = match;
     if (parameterTagName) {
       const isClosingTag = (match[1] ?? "").length > 0;
       if (isClosingTag) {

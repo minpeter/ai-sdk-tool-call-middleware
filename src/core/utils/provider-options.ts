@@ -156,7 +156,7 @@ export function getToolCallMiddlewareOptions(
     return {};
   }
 
-  const toolCallMiddleware = providerOptions.toolCallMiddleware;
+  const { toolCallMiddleware } = providerOptions;
   if (!isRecord(toolCallMiddleware)) {
     return {};
   }

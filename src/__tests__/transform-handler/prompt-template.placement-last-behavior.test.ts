@@ -100,7 +100,7 @@ describe("placement last behaviour (default)", () => {
     } as any);
     const systems = out.prompt.filter((m: any) => m.role === "system");
     expect(systems).toHaveLength(1);
-    const system = systems[0];
+    const [system] = systems;
     const text = String(system.content);
     expect(text.startsWith("BASE")).toBe(true);
     expect(text).toContain("SYS:");

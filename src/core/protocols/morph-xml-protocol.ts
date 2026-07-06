@@ -450,7 +450,7 @@ function getRequiredMessageStringProperty(schema: unknown): string | null {
   }
 
   const schemaRecord = schema as Record<string, unknown>;
-  const required = schemaRecord.required;
+  const { required } = schemaRecord;
   if (
     !(
       Array.isArray(required) &&
@@ -471,7 +471,7 @@ function getOptionalMessageStringProperty(schema: unknown): string | null {
   }
 
   const schemaRecord = schema as Record<string, unknown>;
-  const required = schemaRecord.required;
+  const { required } = schemaRecord;
   if (Array.isArray(required) && required.length > 0) {
     return null;
   }
@@ -602,7 +602,7 @@ function findTrailingUnclosedStringTag(options: {
 
     let lastOpen = -1;
     for (const match of options.toolContent.matchAll(openPattern)) {
-      const index = match.index;
+      const { index } = match;
       if (index !== undefined) {
         lastOpen = index;
       }
@@ -614,7 +614,7 @@ function findTrailingUnclosedStringTag(options: {
 
     let lastClose = -1;
     for (const match of options.toolContent.matchAll(closePattern)) {
-      const index = match.index;
+      const { index } = match;
       if (index !== undefined) {
         lastClose = index;
       }
@@ -638,7 +638,7 @@ function getSchemaObjectProperty(
   }
 
   const schemaObject = schema as Record<string, unknown>;
-  const properties = schemaObject.properties;
+  const { properties } = schemaObject;
   if (!properties || typeof properties !== "object") {
     return null;
   }
@@ -688,7 +688,7 @@ function isStableXmlProgressCandidate(options: {
   }
 
   if (structure.topLevelTagNames.length === 1) {
-    const onlyTopLevelTag = structure.topLevelTagNames[0];
+    const [onlyTopLevelTag] = structure.topLevelTagNames;
     if (
       !schemaProperties ||
       schemaProperties.size === 0 ||
@@ -869,7 +869,7 @@ function findClosingTagEndFlexible(
       break;
     }
     const result = updateDepthWithToken(tok, toolName, depth);
-    depth = result.depth;
+    ({ depth } = result);
     if (result.closedAt !== undefined) {
       return result.closedAt;
     }
@@ -1203,9 +1203,9 @@ function findLinePrefixedXmlBodyEnd(
       result = handleCloseToken(token, depth);
     }
 
-    depth = result.depth;
+    ({ depth } = result);
     if (result.lastCompleteEnd !== -1) {
-      lastCompleteEnd = result.lastCompleteEnd;
+      ({ lastCompleteEnd } = result);
     }
     if (result.shouldBreak) {
       break;

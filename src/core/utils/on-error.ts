@@ -17,5 +17,4 @@ export function extractOnErrorOption(
       .toolCallMiddleware?.onError;
     return onError ? { onError } : undefined;
   }
-  return;
 }

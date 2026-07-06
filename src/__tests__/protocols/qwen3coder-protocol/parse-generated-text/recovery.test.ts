@@ -47,7 +47,7 @@ describe("qwen3CoderProtocol", () => {
       tools,
     });
 
-    const toolCall = out[0];
+    const [toolCall] = out;
     if (toolCall?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
@@ -68,7 +68,7 @@ describe("qwen3CoderProtocol", () => {
     const out = p.parseGeneratedText({ text, tools });
     const calls = out.filter((x) => x.type === "tool-call");
     expect(calls).toHaveLength(1);
-    const call = calls[0];
+    const [call] = calls;
     if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
@@ -146,7 +146,7 @@ describe("qwen3CoderProtocol", () => {
     const out = p.parseGeneratedText({ text, tools });
     const calls = out.filter((part) => part.type === "tool-call");
     expect(calls).toHaveLength(1);
-    const call = calls[0];
+    const [call] = calls;
     if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
@@ -179,7 +179,7 @@ describe("qwen3CoderProtocol", () => {
     const out = p.parseGeneratedText({ text, tools });
     const calls = out.filter((x) => x.type === "tool-call");
     expect(calls).toHaveLength(1);
-    const call = calls[0];
+    const [call] = calls;
     if (call?.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }
@@ -197,7 +197,7 @@ describe("qwen3CoderProtocol", () => {
     expect(out[0]).toEqual({ type: "text", text: "before " });
     expect(out[2]).toEqual({ type: "text", text: " after" });
 
-    const call = out[1];
+    const [, call] = out;
     if (call.type !== "tool-call") {
       throw new Error("Expected tool-call part");
     }

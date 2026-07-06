@@ -54,7 +54,7 @@ describe("createToolMiddleware transformParams positive paths", () => {
     expect(out.prompt[0].role).toBe("system");
     expect(String(out.prompt[0].content)).toContain("SYS:");
     // merged two user messages
-    const mergedUser = out.prompt[1];
+    const [, mergedUser] = out.prompt;
     expect(mergedUser.role).toBe("user");
     const text = (mergedUser.content as any[])
       .filter((c) => c.type === "text")

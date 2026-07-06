@@ -1417,7 +1417,7 @@ function getTopLevelPositionMap(argsBody: string): Uint8Array {
   let inStr = false;
   let esc = false;
   topLevelAtPosition[0] = 1;
-  for (let i = 0; i < argsBody.length; i++) {
+  for (let i = 0; i < argsBody.length; i += 1) {
     const ch = argsBody[i];
     if (esc) {
       esc = false;
@@ -1427,10 +1427,10 @@ function getTopLevelPositionMap(argsBody: string): Uint8Array {
       inStr = !inStr;
     } else if (!inStr) {
       if (ch === "{" || ch === "[") {
-        depth++;
+        depth += 1;
       }
       if (ch === "}" || ch === "]") {
-        depth--;
+        depth -= 1;
       }
     }
     topLevelAtPosition[i + 1] = depth === 0 ? 1 : 0;
@@ -1533,7 +1533,7 @@ function findRepairArgumentsBody(raw: string): string | null {
     return null;
   }
   let outerClose = -1;
-  for (let i = raw.length - 1; i >= argsStart; i--) {
+  for (let i = raw.length - 1; i >= argsStart; i -= 1) {
     if (raw.charAt(i) === "}") {
       outerClose = i;
       break;
@@ -1547,7 +1547,7 @@ function findRepairArgumentsBody(raw: string): string | null {
   }
 
   let argsClose = -1;
-  for (let j = outerClose - 1; j >= argsStart; j--) {
+  for (let j = outerClose - 1; j >= argsStart; j -= 1) {
     if (raw.charAt(j) === "}") {
       argsClose = j;
       break;
@@ -1666,7 +1666,7 @@ function parsePossiblyMalformedJsonString(value: string): unknown | undefined {
   try {
     return JSON.parse(`"${escaped}"`);
   } catch {
-    return;
+    // swallow parse failures and return undefined
   }
 }
 
@@ -2304,8 +2304,6 @@ function extractTopLevelStringProperty(
     }
     valueEnd += 1;
   }
-
-  return;
 }
 
 function extractStrictTopLevelStringProperty(
@@ -2333,8 +2331,6 @@ function extractStrictTopLevelStringProperty(
     }
     valueEnd += 1;
   }
-
-  return;
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Streaming JSON value slicing must handle nested arrays/objects and escaped strings.

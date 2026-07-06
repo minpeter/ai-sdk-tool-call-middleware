@@ -10,7 +10,6 @@ function normalizeBooleanString(value: string): boolean | undefined {
   if (normalized === "0" || normalized === "false" || normalized === "no") {
     return false;
   }
-  return;
 }
 
 export function getDebugLevel(): DebugLevel {

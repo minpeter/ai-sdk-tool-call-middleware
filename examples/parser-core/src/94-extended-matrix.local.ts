@@ -316,7 +316,7 @@ const scenarios: Scenario[] = [
         providerOptions: collectOnError(parserErrors),
         abortSignal: AbortSignal.timeout(TIMEOUT),
       });
-      const call = result.toolCalls.find((c) => c.toolName === "write_file");
+      const call = result.toolCalls.find((tc) => tc.toolName === "write_file");
       if (!call) {
         throw new Error(
           `no write_file call; text=${JSON.stringify(result.text.slice(0, 200))}`

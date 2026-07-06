@@ -108,8 +108,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
 
     // tools cleared; originalTools propagated into providerOptions
     expect(out.tools).toEqual([]);
-    const originalTools = (out.providerOptions as any).toolCallMiddleware
-      .originalTools;
+    const { originalTools } = (out.providerOptions as any).toolCallMiddleware;
     expect(originalTools).toEqual([
       {
         name: "t1",

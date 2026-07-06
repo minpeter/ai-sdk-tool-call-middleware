@@ -154,7 +154,7 @@ function addCharacterClassHints(
     const char = pattern.charAt(index);
     if (escaped) {
       const result = consumeEscapedClassHint(pattern, index, hints, previous);
-      previous = result.previous;
+      ({ previous } = result);
       index = result.nextIndex;
       escaped = false;
       continue;
@@ -233,7 +233,7 @@ function collectPatternCharacterHints(pattern: string): PatternCharacterHints {
         hints,
         literalRun
       );
-      literalRun = result.literalRun;
+      ({ literalRun } = result);
       index = result.nextIndex;
       escaped = false;
       continue;

@@ -29,10 +29,10 @@ export interface HeuristicResult {
 }
 
 export interface ToolCallHeuristic {
-  applies(ctx: IntermediateCall): boolean;
+  applies: (ctx: IntermediateCall) => boolean;
   id: string;
   phase: HeuristicPhase;
-  run(ctx: IntermediateCall): HeuristicResult;
+  run: (ctx: IntermediateCall) => HeuristicResult;
 }
 
 export interface PipelineConfig {

@@ -121,8 +121,8 @@ describe("heuristic-engine", () => {
         id: "normalize",
         phase: "pre-parse",
         applies: () => true,
-        run: (ctx) => ({
-          rawSegment: ctx.rawSegment.replace("BAD", "GOOD"),
+        run: (call) => ({
+          rawSegment: call.rawSegment.replace("BAD", "GOOD"),
         }),
       };
 
@@ -139,8 +139,8 @@ describe("heuristic-engine", () => {
         id: "fix-xml",
         phase: "fallback-reparse",
         applies: () => true,
-        run: (ctx) => ({
-          rawSegment: ctx.rawSegment.replace("invalid", "valid"),
+        run: (call) => ({
+          rawSegment: call.rawSegment.replace("invalid", "valid"),
           reparse: true,
         }),
       };
@@ -161,9 +161,9 @@ describe("heuristic-engine", () => {
       const postParseHeuristic: ToolCallHeuristic = {
         id: "transform",
         phase: "post-parse",
-        applies: (ctx) => ctx.parsed !== null,
-        run: (ctx) => ({
-          parsed: { ...(ctx.parsed as object), transformed: true },
+        applies: (call) => call.parsed !== null,
+        run: (call) => ({
+          parsed: { ...(call.parsed as object), transformed: true },
         }),
       };
 
@@ -244,7 +244,7 @@ describe("heuristic-engine", () => {
         phase: "fallback-reparse",
         applies: () => true,
         run: () => {
-          reparseCount++;
+          reparseCount += 1;
           return { rawSegment: "<still>invalid</still>", reparse: true };
         },
       };

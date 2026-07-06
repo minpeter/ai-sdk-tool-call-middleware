@@ -380,7 +380,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     ): boolean => {
       let index = 0;
       for (const match of matches) {
-        const full = match[0];
+        const [full] = match;
         const startIndex = match.index ?? -1;
         if (!full || startIndex < 0) {
           continue;
@@ -479,7 +479,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
       let index = 0;
       for (const match of matches) {
-        const full = match[0];
+        const [full] = match;
         const startIndex = match.index ?? -1;
         if (!full || startIndex < 0) {
           continue;
@@ -637,7 +637,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       if (callState.hasEmittedStart) {
         return;
       }
-      const toolName = callState.toolName;
+      const { toolName } = callState;
       if (!toolName || toolName.trim().length === 0) {
         return;
       }
@@ -657,7 +657,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       if (!callState.hasEmittedStart) {
         return;
       }
-      const toolName = callState.toolName;
+      const { toolName } = callState;
       if (!toolName) {
         return;
       }
@@ -1653,7 +1653,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         handlePassthroughChunk(controller, chunk);
         return;
       }
-      const delta = chunk.delta;
+      const { delta } = chunk;
       if (!delta) {
         return;
       }

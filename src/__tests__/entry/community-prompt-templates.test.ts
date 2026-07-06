@@ -71,7 +71,7 @@ describe("community middleware prompt templates", () => {
       params: { prompt: [], tools },
     });
 
-    const system = out.prompt[0];
+    const [system] = out.prompt;
     expect(system?.role).toBe("system");
     const text = String(system?.content ?? "");
     expect(text).toContain("# Input Examples");
@@ -112,7 +112,7 @@ describe("community middleware prompt templates", () => {
       params: { prompt: [], tools },
     });
 
-    const system = out.prompt[0];
+    const [system] = out.prompt;
     expect(system?.role).toBe("system");
     const text = String(system?.content ?? "");
     expect(text).toContain("# Input Examples");
@@ -153,7 +153,7 @@ describe("community middleware prompt templates", () => {
       params: { prompt: [], tools },
     });
 
-    const system = out.prompt[0];
+    const [system] = out.prompt;
     expect(system?.role).toBe("system");
     const text = String(system?.content ?? "");
     expect(text).toContain("# Input Examples");
@@ -194,7 +194,7 @@ describe("community middleware prompt templates", () => {
       params: { prompt: [], tools },
     });
 
-    const system = out.prompt[0];
+    const [system] = out.prompt;
     expect(system?.role).toBe("system");
     const text = String(system?.content ?? "");
     expect(text).toContain("# Input Examples");

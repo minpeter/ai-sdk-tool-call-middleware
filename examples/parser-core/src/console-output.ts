@@ -110,7 +110,7 @@ const unwrapToolOutput = (output: unknown): unknown => {
     return output;
   }
   const typed = output as Record<string, unknown>;
-  const type = typed.type;
+  const { type } = typed;
   switch (type) {
     case "text":
       return typed.value ?? "";

@@ -282,16 +282,16 @@ describe("YAML object-delta progressive invariants", () => {
   it("yaml progress incomplete-tail branch suppresses deltas when truncated reparse fails", async () => {
     const parseSpy = vi.spyOn(YAML, "parseDocument");
     let calls = 0;
-    parseSpy.mockImplementation(
-      () =>
-        ({
-          errors:
-            ++calls === 1 || calls === 3
-              ? []
-              : [{ message: "mock reparsing/final parse failure" }],
-          toJSON: () => ({ location: "Seoul", unit: null }),
-        }) as unknown as ReturnType<typeof YAML.parseDocument>
-    );
+    parseSpy.mockImplementation(() => {
+      calls += 1;
+      return {
+        errors:
+          calls === 1 || calls === 3
+            ? []
+            : [{ message: "mock reparsing/final parse failure" }],
+        toJSON: () => ({ location: "Seoul", unit: null }),
+      } as unknown as ReturnType<typeof YAML.parseDocument>;
+    });
 
     try {
       // A schema without properties keeps the schema-keyed raw-string salvage

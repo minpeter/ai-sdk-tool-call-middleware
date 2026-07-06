@@ -7,11 +7,9 @@ interface ToolInputExample {
 function getToolInputExamples(
   tool: LanguageModelV4FunctionTool
 ): ToolInputExample[] {
-  const inputExamples = (
-    tool as LanguageModelV4FunctionTool & {
-      inputExamples?: Array<{ input: unknown }>;
-    }
-  ).inputExamples;
+  const { inputExamples } = tool as LanguageModelV4FunctionTool & {
+    inputExamples?: Array<{ input: unknown }>;
+  };
 
   if (!Array.isArray(inputExamples)) {
     return [];

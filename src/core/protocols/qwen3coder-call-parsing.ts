@@ -280,7 +280,7 @@ export function sanitizePartialParamValueForProgress(
   if (!partial) {
     return null;
   }
-  let value = partial.value;
+  let { value } = partial;
   const cut = trailingPotentialTagStartIndex(value.toLowerCase(), [
     ...QWEN3CODER_PROGRESS_HOLDBACK_TAG_PREFIXES,
     ...extraHoldbackTags,
@@ -858,7 +858,7 @@ export function parseQwen3CoderToolParserParamTagAt(
     return { kind: "partial", start: startIndex, openEnd: null };
   }
 
-  const tagNameLower = tagNameParse.tagNameLower;
+  const { tagNameLower } = tagNameParse;
 
   const openEnd = findTagEndIndex(text, startIndex);
   if (openEnd == null) {
@@ -1147,7 +1147,7 @@ function extractToolCallInnerXml(segment: string): {
   }
 
   const openIndex = openMatch.index;
-  const openTag = openMatch[0];
+  const [openTag] = openMatch;
   const openEnd = openIndex + openTag.length;
 
   // Prefer the last closing tag to avoid early matches if nested content

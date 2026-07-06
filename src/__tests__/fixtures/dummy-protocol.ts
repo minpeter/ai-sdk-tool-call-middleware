@@ -7,7 +7,7 @@ function handleTextDelta(
   controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
   state: { currentTextId: string | null; hasEmittedText: boolean }
 ): void {
-  const delta = chunk.delta;
+  const { delta } = chunk;
   if (delta !== undefined && delta !== "") {
     if (!state.currentTextId) {
       state.currentTextId = generateId();

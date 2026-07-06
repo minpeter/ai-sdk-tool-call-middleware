@@ -62,7 +62,6 @@ export function getSchemaType(schema: unknown): string | undefined {
   ) {
     return "array";
   }
-  return;
 }
 
 /**
@@ -139,7 +138,7 @@ function schemaHasPropertyDirectly(
   ) {
     return true;
   }
-  const required = s.required;
+  const { required } = s;
   if (Array.isArray(required) && required.includes(key)) {
     return true;
   }
@@ -177,7 +176,7 @@ function schemaHasPropertyViaAdditional(s: Record<string, unknown>): boolean {
   if (Object.hasOwn(s, "additionalProperties")) {
     return false;
   }
-  const type = s.type;
+  const { type } = s;
   const isObjectType =
     type === "object" || (Array.isArray(type) && type.includes("object"));
   const hasObjectKeywords =
@@ -816,7 +815,6 @@ function parseLooseStructuredString(s: string): unknown {
   } catch {
     // not parseable as a structured value
   }
-  return;
 }
 
 /**
@@ -840,7 +838,7 @@ function parseXmlChildrenValue(s: string): Record<string, unknown> | null {
     if (!match) {
       return null;
     }
-    const key = match[1];
+    const [, key] = match;
     if (COERCE_PROTOTYPE_SENSITIVE_KEYS.has(key)) {
       return null;
     }
@@ -939,7 +937,7 @@ function getStrictObjectSchemaInfo(
     return null;
   }
 
-  const properties = unwrapped.properties;
+  const { properties } = unwrapped;
   if (
     !properties ||
     typeof properties !== "object" ||
@@ -1057,8 +1055,8 @@ function applySingularPluralRequiredKeyRename(
     return null;
   }
 
-  const targetKey = missingRequired[0];
-  const sourceKey = unexpectedKeys[0];
+  const [targetKey] = missingRequired;
+  const [sourceKey] = unexpectedKeys;
   if (!Object.hasOwn(schemaInfo.properties, targetKey)) {
     return null;
   }
@@ -1094,8 +1092,8 @@ function applyCaseStyleRequiredKeyRename(
     return null;
   }
 
-  const targetKey = missingRequired[0];
-  const sourceKey = unexpectedKeys[0];
+  const [targetKey] = missingRequired;
+  const [sourceKey] = unexpectedKeys;
   if (!Object.hasOwn(schemaInfo.properties, targetKey)) {
     return null;
   }
@@ -1262,7 +1260,7 @@ function coerceParallelArraysObjectToArray(
     return null;
   }
 
-  const properties = itemSchema.properties;
+  const { properties } = itemSchema;
   if (
     !properties ||
     typeof properties !== "object" ||
@@ -1297,7 +1295,7 @@ function coerceParallelArraysObjectToArray(
   if (lengths.length !== 1) {
     return null;
   }
-  const length = lengths[0];
+  const [length] = lengths;
   if (length < 2) {
     return null;
   }
@@ -1368,7 +1366,7 @@ function coerceObjectToArray(
   // Check for single field that contains an array or object (common XML pattern)
   // This handles both: { user: [{ name: "A" }, { name: "B" }] } and { user: { name: "A" } }
   if (keys.length === 1) {
-    const singleKey = keys[0];
+    const [singleKey] = keys;
     if (
       !(
         schemaIsUnconstrained(itemsSchema) ||
@@ -1506,7 +1504,7 @@ function unwrapMatchingQuotes(value: string): string | null {
   if (value.length < 2) {
     return null;
   }
-  const first = value[0];
+  const first = value.charAt(0);
   const last = value.at(-1);
   const isQuote =
     (first === SINGLE_QUOTE || first === DOUBLE_QUOTE) && first === last;

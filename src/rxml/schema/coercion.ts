@@ -24,7 +24,6 @@ export function getPropertySchema(toolSchema: unknown, key: string): unknown {
   if (props && Object.hasOwn(props, key)) {
     return (props as Record<string, unknown>)[key];
   }
-  return;
 }
 
 /**
@@ -136,7 +135,7 @@ function processChildElement(
     child.children.length === 1 &&
     typeof child.children[0] === "string"
   ) {
-    childValue = child.children[0];
+    [childValue] = child.children;
   } else {
     childValue = processComplexContent(
       child.children,
@@ -210,6 +209,7 @@ export function coerceDomBySchema(
   try {
     return baseCoerceBySchema(domObject, schema) as Record<string, unknown>;
   } catch (error) {
+    // biome-ignore lint/style/useErrorCause: RXML errors carry the original error via their positional cause parameter.
     throw new RXMLCoercionError("Failed to coerce DOM object by schema", error);
   }
 }
