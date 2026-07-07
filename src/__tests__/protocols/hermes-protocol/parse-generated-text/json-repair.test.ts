@@ -630,6 +630,18 @@ describe("parseGeneratedText JSON repair", () => {
     expect(metadataText).not.toContain("<prototype>");
   });
 
+  it("coerces top-level primitive string arguments by schema", () => {
+    const p = hermesProtocol();
+    const text = '<tool_call>{"name":"count","arguments":"42"}</tool_call>';
+    const tools = [makeSchemaTool("count", { type: "number" })];
+
+    const out = p.parseGeneratedText({ text, tools });
+    const tool = expectToolCall(out);
+
+    expect(tool.toolName).toBe("count");
+    expect(tool.input).toBe("42");
+  });
+
   it("accepts coercible keys before strict schema validation", () => {
     const p = hermesProtocol();
     const text =

@@ -611,6 +611,42 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(metadataText).not.toContain("<prototype>");
   });
 
+  it("coerces top-level primitive string arguments by schema", async () => {
+    const text = '<tool_call>{"name":"count","arguments":"42"}</tool_call>';
+    const tools = [makeSchemaTool("count", { type: "number" })];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({ tools });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: text,
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find(isToolCallPart);
+
+    expect(tool?.toolName).toBe("count");
+    expect(tool?.input).toBe("42");
+    expect(
+      out
+        .filter((part) => part.type === "tool-input-delta")
+        .map((part) => part.delta)
+        .join("")
+    ).toBe("42");
+  });
+
   it("rejects unquoted strict RJSON with prototype-sensitive argument keys", async () => {
     const onError = vi.fn();
     const tools = [

@@ -25,7 +25,10 @@ import {
 import { collectPatternPropertyNames } from "../utils/tool-call-pattern-properties";
 import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
 import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-schema-sanitization";
-import { emitToolInputProgressDelta } from "../utils/tool-input-streaming";
+import {
+  emitToolInputProgressDelta,
+  stringifyToolInputWithSchema,
+} from "../utils/tool-input-streaming";
 import { unsafeDeniedPatternMayMatchKey } from "../utils/unsafe-pattern";
 import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
 import type { ParserOptions } from "./protocol-interface";
@@ -313,6 +316,19 @@ export function canonicalizeToolInput(argumentsValue: unknown): string {
 
 function stringifyParsedToolInput(args: unknown): string {
   return args === null ? "null" : canonicalizeToolInput(args);
+}
+
+function stringifyResolvedToolInput(
+  toolName: string,
+  args: unknown,
+  tools: LanguageModelV4FunctionTool[]
+): string {
+  return stringifyToolInputWithSchema({
+    toolName,
+    args,
+    tools,
+    fallback: stringifyParsedToolInput,
+  });
 }
 
 export function isParsedToolCallRecord(
@@ -2123,7 +2139,11 @@ export function resolveToolCall(
     return {
       ok: true,
       toolName: parsedToolCall.name,
-      input: stringifyParsedToolInput(policyArguments.args),
+      input: stringifyResolvedToolInput(
+        parsedToolCall.name,
+        policyArguments.args,
+        tools
+      ),
     };
   } catch (error) {
     const parseError =
@@ -2138,7 +2158,11 @@ export function resolveToolCall(
         return {
           ok: true,
           toolName: repaired.name,
-          input: stringifyParsedToolInput(repaired.arguments),
+          input: stringifyResolvedToolInput(
+            repaired.name,
+            repaired.arguments,
+            tools
+          ),
         };
       } catch (repairError) {
         return {
