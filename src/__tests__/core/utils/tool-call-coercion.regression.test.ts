@@ -217,6 +217,48 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"steps":[{"action":"open"},{"label":"review"}]}');
   });
 
+  it("does not apply trailing items schemas to prefixItems entries", () => {
+    const input = coerceToolCallInput(
+      "batch",
+      {
+        steps: [
+          { action: "open", trailing: "not-for-prefix" },
+          { trailing: "rest", extra: "drop-me" },
+        ],
+      },
+      [
+        {
+          type: "function",
+          name: "batch",
+          inputSchema: {
+            type: "object",
+            properties: {
+              steps: {
+                type: "array",
+                prefixItems: [
+                  {
+                    type: "object",
+                    properties: {
+                      action: { type: "string" },
+                    },
+                  },
+                ],
+                items: {
+                  type: "object",
+                  properties: {
+                    trailing: { type: "string" },
+                  },
+                },
+              } as unknown as LanguageModelV4FunctionTool["inputSchema"],
+            },
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"steps":[{"action":"open"},{"trailing":"rest"}]}');
+  });
+
   it("does not keep required names whose property schema is false", () => {
     const input = coerceToolCallInput(
       "deny_admin",
@@ -238,6 +280,69 @@ describe("tool-call coercion regression coverage", () => {
     );
 
     expect(input).toBe('{"query":"status:open"}');
+  });
+
+  it("does not re-admit allOf-denied names through sibling required schemas", () => {
+    const input = coerceToolCallInput(
+      "deny_admin",
+      { query: "status:open", admin: true },
+      [
+        {
+          type: "function",
+          name: "deny_admin",
+          inputSchema: {
+            type: "object",
+            allOf: [
+              {
+                properties: {
+                  admin: false,
+                },
+              },
+              {
+                properties: {
+                  query: { type: "string" },
+                },
+                required: ["query", "admin"],
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"query":"status:open"}');
+  });
+
+  it("does not treat anyOf-denied names as globally denied", () => {
+    const input = coerceToolCallInput(
+      "allow_variant",
+      { query: "status:open", admin: true },
+      [
+        {
+          type: "function",
+          name: "allow_variant",
+          inputSchema: {
+            type: "object",
+            anyOf: [
+              {
+                properties: {
+                  admin: false,
+                },
+              },
+              {
+                properties: {
+                  query: { type: "string" },
+                  admin: { type: "boolean" },
+                },
+                required: ["query", "admin"],
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"query":"status:open","admin":true}');
   });
 
   it("fails closed on cyclic provider-native object inputs", () => {

@@ -20,6 +20,7 @@ import {
 import { recoverToolCallFromJsonCandidatesWithStatus } from "./core/utils/generated-text-json-recovery";
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
+import { safeToolCallMetadataText } from "./core/utils/protocol-utils";
 import {
   decodeOriginalToolsFromProviderOptions,
   getDroppedProviderTools,
@@ -88,7 +89,7 @@ async function handleToolChoice(
   const onError = extractOnErrorOption(params.providerOptions)?.onError;
 
   if (typeof firstText === "string" && getDebugLevel() === "parse") {
-    logRawChunk(firstText);
+    logRawChunk(safeToolCallMetadataText(firstText) ?? "");
   }
 
   const { toolName, input, originText } = resolveToolChoiceSelection({
@@ -136,7 +137,7 @@ function parseContent(
       return [contentItem];
     }
     if (getDebugLevel() === "stream") {
-      logRawChunk(contentItem.text);
+      logRawChunk(safeToolCallMetadataText(contentItem.text) ?? "");
     }
     const parsedByProtocol = protocol.parseGeneratedText({
       text: contentItem.text,
@@ -205,7 +206,7 @@ function computeDebugSummary(options: {
   const segments = protocol.extractToolCallSegments
     ? protocol.extractToolCallSegments({ text: allText, tools })
     : [];
-  const originalText = segments.join("\n\n");
+  const originalText = safeToolCallMetadataText(segments.join("\n\n")) ?? "";
 
   const toolCalls = newContent.filter(
     (p): p is Extract<LanguageModelV4Content, { type: "tool-call" }> =>

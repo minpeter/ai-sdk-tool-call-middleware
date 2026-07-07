@@ -136,4 +136,43 @@ describe("wrapGenerate forced tool choice v7 parity", () => {
     expect(JSON.stringify(debugSummary)).not.toContain("constructor");
     expect(JSON.stringify(debugSummary)).not.toContain("polluted");
   });
+
+  it("redacts parse debug raw logging for prototype-sensitive forced toolChoice payloads", async () => {
+    const previousDebug = process.env.DEBUG_PARSER_MW;
+    process.env.DEBUG_PARSER_MW = "parse";
+    const consoleSpy = vi
+      .spyOn(console, "log")
+      .mockImplementation(() => undefined);
+    let logged = "";
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: '{"name":"do","arguments":{"constructor":{"polluted":true},"x":1}}',
+        },
+      ],
+      finishReason: { unified: "stop", raw: "stop" },
+      warnings: [],
+    });
+
+    try {
+      await wrapGenerate({
+        protocol: dummyProtocol(),
+        doGenerate,
+        params: { providerOptions: forcedChoiceProviderOptions },
+      });
+      logged = JSON.stringify(consoleSpy.mock.calls);
+    } finally {
+      if (previousDebug === undefined) {
+        delete process.env.DEBUG_PARSER_MW;
+      } else {
+        process.env.DEBUG_PARSER_MW = previousDebug;
+      }
+      consoleSpy.mockRestore();
+    }
+
+    expect(logged).toContain("[redacted sensitive tool call]");
+    expect(logged).not.toContain("constructor");
+    expect(logged).not.toContain("polluted");
+  });
 });

@@ -51,6 +51,41 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
     expect(result?.content).toEqual([]);
   });
 
+  it("redacts debugSummary originalText for prototype-sensitive generated tool-call text", async () => {
+    const middleware = createToolMiddleware({
+      protocol: hermesProtocol({}),
+      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
+        `You have tools: ${JSON.stringify(toolDefs)}`,
+    });
+    const debugSummary: { originalText?: string; toolCalls?: string } = {};
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}}}</tool_call>',
+        },
+      ],
+    });
+
+    await middleware.wrapGenerate?.({
+      doGenerate,
+      params: {
+        prompt: [],
+        tools,
+        providerOptions: {
+          toolCallMiddleware: {
+            debugSummary,
+            originalTools: originalToolsSchema.encode(tools),
+          },
+        },
+      },
+    } as any);
+
+    expect(debugSummary.originalText).toBe("[redacted sensitive tool call]");
+    expect(JSON.stringify(debugSummary)).not.toContain("constructor");
+    expect(JSON.stringify(debugSummary)).not.toContain("polluted");
+  });
+
   it("does not leak prototype-sensitive bare JSON recovery candidates", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),

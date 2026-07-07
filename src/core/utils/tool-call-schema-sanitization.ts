@@ -1,6 +1,10 @@
 import { unwrapJsonSchema } from "../../schema-coerce";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
 import { getArrayItemSchema } from "./tool-call-array-schema";
+import {
+  collectAllOfDeniedPropertyNames,
+  collectFalsePropertyNames,
+} from "./tool-call-property-deny";
 
 const JSON_SCHEMA_COMBINATORS = ["allOf", "anyOf", "oneOf"] as const;
 
@@ -14,30 +18,10 @@ function getDeclaredToolInputPropertyNames(
   return collectDeclaredToolInputPropertyNames(schema, new Set());
 }
 
-function addPropertyName(names: Set<string>, key: unknown): void {
-  if (typeof key === "string") {
-    names.add(key);
-  }
-}
-
 function addSafePropertyName(names: Set<string>, key: unknown): void {
   if (typeof key === "string" && !isPrototypeSensitiveArgumentKey(key)) {
     names.add(key);
   }
-}
-
-function collectFalsePropertyNames(
-  schema: Record<string, unknown>
-): Set<string> {
-  const names = new Set<string>();
-  if (Object.hasOwn(schema, "properties") && isRecord(schema.properties)) {
-    for (const [key, propertySchema] of Object.entries(schema.properties)) {
-      if (propertySchema === false) {
-        addPropertyName(names, key);
-      }
-    }
-  }
-  return names;
 }
 
 function collectDirectDeclaredPropertyNames(
@@ -65,6 +49,12 @@ function collectDirectDeclaredPropertyNames(
 function addNames(target: Set<string>, source: Set<string>): void {
   for (const name of source) {
     target.add(name);
+  }
+}
+
+function removeNames(target: Set<string>, source: Set<string>): void {
+  for (const name of source) {
+    target.delete(name);
   }
 }
 
@@ -117,6 +107,7 @@ function collectDeclaredToolInputPropertyNames(
   if (combinatorNames) {
     addNames(names, combinatorNames);
   }
+  removeNames(names, collectAllOfDeniedPropertyNames(unwrapped, new Set(seen)));
 
   if (
     names.size === 0 &&

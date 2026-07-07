@@ -39,13 +39,14 @@ export function getArrayItemSchema(
   seen.add(unwrapped);
 
   const schemas: unknown[] = [];
-  if (
-    Array.isArray(unwrapped.prefixItems) &&
-    index < unwrapped.prefixItems.length
-  ) {
-    schemas.push(unwrapped.prefixItems[index]);
+  const prefixItems = Array.isArray(unwrapped.prefixItems)
+    ? unwrapped.prefixItems
+    : null;
+  const hasPrefixItem = prefixItems !== null && index < prefixItems.length;
+  if (hasPrefixItem) {
+    schemas.push(prefixItems[index]);
   }
-  if (unwrapped.items !== undefined) {
+  if (!hasPrefixItem && unwrapped.items !== undefined) {
     schemas.push(unwrapped.items);
   }
   schemas.push(
