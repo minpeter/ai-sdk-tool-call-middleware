@@ -95,4 +95,70 @@ describe("yamlXmlProtocol streaming onError metadata", () => {
     expect(metadataText).not.toContain(key);
     expect(metadataText).not.toContain("<get_weather>");
   });
+
+  it("redacts prototype-sensitive streaming stringify errors in metadata", async () => {
+    const onError = vi.fn();
+    const protocol = yamlXmlProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: basicTools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            "<get_weather>\nlocation: Seoul\nconstructor:\n  polluted: true\n</get_weather>",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const metadata = onError.mock.calls[0]?.[1] as
+      | { error?: unknown }
+      | undefined;
+    expect(metadata?.error).toBe("[redacted sensitive tool call]");
+  });
+
+  it("redacts prototype-sensitive streaming finish stringify errors in metadata", async () => {
+    const onError = vi.fn();
+    const protocol = yamlXmlProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: basicTools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            "<get_weather>\nlocation: Seoul\nconstructor:\n  polluted: true\n",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const metadata = onError.mock.calls[0]?.[1] as
+      | { error?: unknown }
+      | undefined;
+    expect(metadata?.error).toBe("[redacted sensitive tool call]");
+  });
 });

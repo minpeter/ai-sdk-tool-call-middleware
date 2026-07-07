@@ -114,6 +114,39 @@ describe("qwen3CoderProtocol streaming onError metadata", () => {
     expect(metadataText).not.toContain("<parameter=");
   });
 
+  it("redacts prototype-sensitive streaming stringify errors in metadata", async () => {
+    const onError = vi.fn();
+    const protocol = qwen3CoderProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [bookFlightTool],
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call><function=book_flight><parameter=constructor>{"polluted":true}</parameter></function></tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+
+    expect(onError).toHaveBeenCalled();
+    const metadata = onError.mock.calls[0]?.[1] as
+      | { error?: unknown }
+      | undefined;
+    expect(metadata?.error).toBe("[redacted sensitive tool call]");
+  });
+
   it.each(
     prototypeSensitiveParameterNames
   )("drops standalone prototype-sensitive parameter trailing text after wrapperless call for %s", async (parameterName) => {

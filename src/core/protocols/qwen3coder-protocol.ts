@@ -14,6 +14,7 @@ import { generateToolCallId } from "../utils/id";
 import {
   createFlushTextHandler,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
@@ -333,7 +334,9 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         toolName: toolName ?? undefined,
         toolCallId: generateToolCallId(),
         dropReason: "malformed-tool-call-body",
-        ...(error === undefined ? {} : { error }),
+        ...(error === undefined
+          ? {}
+          : { error: safeToolCallMetadataError(error, raw) }),
       });
       if (toolCallTextHasPrototypeSensitiveKey(raw)) {
         return;
@@ -940,7 +943,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             toolCall: safeToolCallMetadataText(rawToolCallText),
             toolName: resolvedToolName,
             dropReason: "malformed-tool-call-body",
-            error,
+            error: safeToolCallMetadataError(error, rawToolCallText),
           }
         );
         return false;

@@ -71,6 +71,10 @@ describe("qwen3CoderProtocol", () => {
         .join("")
     ).toBe("");
     expect(onError).toHaveBeenCalled();
+    const metadata = onError.mock.calls[0]?.[1] as
+      | { error?: unknown }
+      | undefined;
+    expect(metadata?.error).toBe("[redacted sensitive tool call]");
   });
 
   it("calls onError and drops raw text on self-closing prototype-sensitive args", () => {

@@ -104,4 +104,23 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
     expect(metadataText).not.toContain(key);
     expect(metadataText).not.toContain("<get_weather>");
   });
+
+  it("redacts prototype-sensitive stringify errors in metadata", () => {
+    const onError = vi.fn();
+    const protocol = yamlXmlProtocol();
+    const text =
+      "<get_weather>\nlocation: Seoul\nconstructor:\n  polluted: true\n</get_weather>";
+
+    protocol.parseGeneratedText({
+      text,
+      tools: basicTools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const metadata = onError.mock.calls[0]?.[1] as
+      | { error?: unknown }
+      | undefined;
+    expect(metadata?.error).toBe("[redacted sensitive tool call]");
+  });
 });

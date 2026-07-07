@@ -13,6 +13,7 @@ import {
   createFlushTextHandler,
   extractToolNames,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
@@ -884,7 +885,7 @@ function processToolCallMatch(
         toolName: tc.toolName,
         toolCallId: generateToolCallId(),
         dropReason: "malformed-tool-call-body",
-        error,
+        error: safeToolCallMetadataError(error, originalText),
       });
       if (!toolCallTextHasPrototypeSensitiveKey(originalText)) {
         processedElements.push({ type: "text", text: originalText });
@@ -1115,7 +1116,7 @@ export const yamlXmlProtocol = (
             toolName,
             toolCallId,
             dropReason: "malformed-tool-call-body",
-            error,
+            error: safeToolCallMetadataError(error, original),
           });
           return;
         }
@@ -1207,7 +1208,7 @@ export const yamlXmlProtocol = (
               toolCallId,
               toolName,
               dropReason: "malformed-tool-call-body",
-              error,
+              error: safeToolCallMetadataError(error, unfinishedContent),
             }
           );
           buffer = "";
