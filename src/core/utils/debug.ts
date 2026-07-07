@@ -121,7 +121,7 @@ export function logRawChunk(part: unknown) {
 
 export function logParsedChunk(part: unknown) {
   // Normalized middleware output
-  console.log(cGray("[debug:mw:out]"), cCyan(safeStringify(part)));
+  console.log(cGray("[debug:mw:out]"), cCyan(safeDebugText(part)));
 }
 
 function getHighlightStyle(): "inverse" | "underline" | "bold" | "bg" {
@@ -196,13 +196,17 @@ export function logParsedSummary({
   if (originalText) {
     const style = getHighlightStyle();
     const highlight = getHighlightFunction(style);
-    const rendered = renderHighlightedText(originalText, style, highlight);
+    const rendered = renderHighlightedText(
+      safeToolCallMetadataText(originalText) ?? "",
+      style,
+      highlight
+    );
 
     console.log(cGray("[debug:mw:origin]"), `\n${rendered}`);
   }
 
   if (toolCalls.length > 0) {
-    const styledSummary = safeStringify(toolCalls)
+    const styledSummary = safeDebugText(toolCalls)
       .split(LINE_SPLIT_REGEX)
       .map((line) => (line.length ? cBgBlue(line) : line))
       .join("\n");
