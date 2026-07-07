@@ -1220,7 +1220,7 @@ function extractParameters(
     schemaParamNames?: Map<string, string> | null;
   }
 ): Record<string, unknown> {
-  const args: Record<string, unknown> = {};
+  const args = Object.create(null) as Record<string, unknown>;
 
   const lower = xml.toLowerCase();
   let index = 0;

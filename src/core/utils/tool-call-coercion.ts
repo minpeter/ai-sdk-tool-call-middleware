@@ -15,9 +15,54 @@ const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
   "constructor",
   "prototype",
 ]);
+const PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX =
+  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function markUnseen(value: object, seen: Set<object>): boolean {
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+  return true;
+}
+
+function enqueueArrayItems(
+  value: unknown,
+  seen: Set<object>,
+  stack: unknown[]
+): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  if (markUnseen(value, seen)) {
+    stack.push(...value);
+  }
+  return true;
+}
+
+function hasUnsafePrototype(record: Record<string, unknown>): boolean {
+  const prototype = Object.getPrototypeOf(record);
+  return prototype !== null && prototype !== Object.prototype;
+}
+
+function enqueueRecordOwnValues(
+  record: Record<string, unknown>,
+  stack: unknown[]
+): boolean {
+  for (const key of Object.getOwnPropertyNames(record)) {
+    if (PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) {
+      return true;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (descriptor && "value" in descriptor) {
+      stack.push(descriptor.value);
+    }
+  }
+  return false;
 }
 
 export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
@@ -26,32 +71,35 @@ export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
 
   while (stack.length > 0) {
     const current = stack.pop();
-    if (Array.isArray(current)) {
-      if (seen.has(current)) {
-        continue;
-      }
-      seen.add(current);
-      for (const item of current) {
-        stack.push(item);
-      }
+    if (enqueueArrayItems(current, seen, stack)) {
       continue;
     }
     if (!isRecord(current)) {
       continue;
     }
-    if (seen.has(current)) {
+    if (!markUnseen(current, seen)) {
       continue;
     }
-    seen.add(current);
-    for (const key of Object.keys(current)) {
-      if (PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) {
-        return true;
-      }
-      stack.push(current[key]);
+    if (hasUnsafePrototype(current)) {
+      return true;
+    }
+    if (enqueueRecordOwnValues(current, stack)) {
+      return true;
     }
   }
 
   return false;
+}
+
+function toolCallInputHasPrototypeSensitiveKey(input: unknown): boolean {
+  if (typeof input !== "string") {
+    return hasPrototypeSensitiveStructuralKey(input);
+  }
+  try {
+    return hasPrototypeSensitiveStructuralKey(JSON.parse(input));
+  } catch {
+    return PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX.test(input);
+  }
 }
 
 function getDeclaredToolInputPropertyNames(
@@ -154,7 +202,7 @@ export function sanitizeToolCallArgsBySchema(
     return args;
   }
 
-  const sanitized: Record<string, unknown> = {};
+  const sanitized = Object.create(null) as Record<string, unknown>;
   for (const [key, value] of Object.entries(args)) {
     if (propertyNames.has(key)) {
       sanitized[key] = value;
@@ -245,6 +293,13 @@ export function coerceToolCallPart<T extends ToolCallLike>(
   part: T,
   tools: LanguageModelV4FunctionTool[]
 ): T {
+  if (toolCallInputHasPrototypeSensitiveKey(part.input)) {
+    return {
+      ...part,
+      input: "{}",
+    };
+  }
+
   const coercedInput = coerceToolCallInput(part.toolName, part.input, tools);
   if (coercedInput === undefined) {
     return part;

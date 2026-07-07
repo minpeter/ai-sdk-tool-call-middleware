@@ -3,7 +3,10 @@ import type {
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import type { OnErrorFn } from "./on-error";
-import { coerceToolCallInput } from "./tool-call-coercion";
+import {
+  coerceToolCallInput,
+  hasPrototypeSensitiveStructuralKey,
+} from "./tool-call-coercion";
 
 /**
  * First text content part of a forced-tool-choice generation. Providers may
@@ -114,6 +117,14 @@ export function parseToolChoicePayload({
     Array.isArray(rawArgs)
   ) {
     onError?.("toolChoice arguments must be a JSON object", {
+      toolName,
+      arguments: rawArgs,
+    });
+    return { toolName, input: "{}" };
+  }
+
+  if (hasPrototypeSensitiveStructuralKey(rawArgs)) {
+    onError?.("toolChoice arguments contain prototype-sensitive keys", {
       toolName,
       arguments: rawArgs,
     });

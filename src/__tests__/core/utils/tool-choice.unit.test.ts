@@ -66,4 +66,28 @@ describe("tool-choice utils", () => {
     expect(parsed).toEqual({ toolName: "calc", input: "{}" });
     expect(onError).toHaveBeenCalledOnce();
   });
+
+  it("returns empty arguments when arguments contains prototype-sensitive keys", () => {
+    const onError = vi.fn();
+    const parsed = parseToolChoicePayload({
+      text: '{"name":"calc","arguments":{"__proto__":{"polluted":true},"a":"10"}}',
+      tools: [
+        {
+          type: "function",
+          name: "calc",
+          inputSchema: {
+            type: "object",
+            properties: {
+              a: { type: "number" },
+            },
+          },
+        },
+      ],
+      onError,
+      errorMessage: "parse error",
+    });
+
+    expect(parsed).toEqual({ toolName: "calc", input: "{}" });
+    expect(onError).toHaveBeenCalledOnce();
+  });
 });

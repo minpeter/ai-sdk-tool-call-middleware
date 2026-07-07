@@ -69,12 +69,43 @@ describe("tool-call coercion utils", () => {
     expect(input).toBeUndefined();
   });
 
+  it("rejects objects whose prototype was changed by __proto__ assignment", () => {
+    const args = { city: "Seoul" };
+    Object.setPrototypeOf(args, { polluted: true });
+
+    const input = coerceToolCallInput("get_weather", args, weatherTools);
+
+    expect(input).toBeUndefined();
+  });
+
   it("rejects nested prototype-sensitive keys before schema coercion can drop them", () => {
     const input = coerceToolCallInput(
       "get_weather",
       { city: "Seoul", meta: { prototype: { polluted: true } } },
       weatherTools
     );
+
+    expect(input).toBeUndefined();
+  });
+
+  it("rejects prototype-sensitive keys nested inside arrays", () => {
+    const input = coerceToolCallInput(
+      "get_weather",
+      { city: "Seoul", meta: [{ prototype: { polluted: true } }] },
+      weatherTools
+    );
+
+    expect(input).toBeUndefined();
+  });
+
+  it("rejects prototype-sensitive keys nested behind non-enumerable properties", () => {
+    const args = { city: "Seoul" };
+    Object.defineProperty(args, "meta", {
+      value: { constructor: { polluted: true } },
+      enumerable: false,
+    });
+
+    const input = coerceToolCallInput("get_weather", args, weatherTools);
 
     expect(input).toBeUndefined();
   });
@@ -194,6 +225,29 @@ describe("tool-call coercion utils", () => {
     );
 
     expect(part.input).toBe('{"a":10}');
+  });
+
+  it("coerceToolCallPart replaces prototype-sensitive provider inputs with empty args", () => {
+    const part = coerceToolCallPart(
+      {
+        type: "tool-call" as const,
+        toolCallId: "id",
+        toolName: "calc",
+        input: '{"a":"10","constructor":{"polluted":true}}',
+      },
+      [
+        {
+          type: "function",
+          name: "calc",
+          inputSchema: {
+            type: "object",
+            properties: { a: { type: "number" } },
+          },
+        },
+      ]
+    );
+
+    expect(part.input).toBe("{}");
   });
 
   it("coerceToolCallPart leaves part unchanged when coercion fails", () => {

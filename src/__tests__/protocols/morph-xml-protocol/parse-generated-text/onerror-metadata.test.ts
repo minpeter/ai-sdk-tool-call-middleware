@@ -40,4 +40,26 @@ describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
     expect(metadata?.toolCall).toContain("<write_file>");
     expect(metadata?.toolCall).toContain("</write_file>");
   });
+
+  it("calls onError and keeps original text on __proto__ element args", () => {
+    const onError = vi.fn();
+    const protocol = morphXmlProtocol();
+    const text =
+      "<write_file><file_path>a</file_path><contents>x</contents><__proto__><polluted>true</polluted></__proto__></write_file>";
+
+    const out = protocol.parseGeneratedText({
+      text,
+      tools,
+      options: { onError },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe(text);
+    expect(onError).toHaveBeenCalled();
+  });
 });

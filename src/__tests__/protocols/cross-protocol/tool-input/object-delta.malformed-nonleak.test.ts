@@ -84,4 +84,43 @@ describe("XML/YAML malformed non-leak guarantees", () => {
     expect(xmlErrors.length).toBeGreaterThan(0);
     expect(yamlErrors.length).toBeGreaterThan(0);
   });
+
+  it("__proto__ stream args fail closed without throwing", async () => {
+    const xmlErrors: string[] = [];
+    const yamlErrors: string[] = [];
+
+    const [xmlOut, yamlOut] = await Promise.all([
+      runProtocolTextDeltaStream({
+        protocol: morphXmlProtocol(),
+        tools: [weatherTool],
+        chunks: [
+          "<get_weather><location>Seoul</location><__proto__><polluted>true</polluted></__proto__></get_weather>",
+        ],
+        options: { onError: (message) => xmlErrors.push(message) },
+      }),
+      runProtocolTextDeltaStream({
+        protocol: yamlXmlProtocol(),
+        tools: [weatherTool],
+        chunks: [
+          "<get_weather>\nlocation: Seoul\n__proto__:\n  polluted: true\n</get_weather>",
+        ],
+        options: { onError: (message) => yamlErrors.push(message) },
+      }),
+    ]);
+
+    expect(xmlOut.some((part) => part.type === "tool-call")).toBe(false);
+    expect(yamlOut.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      xmlOut.filter((part) => part.type === "tool-input-start")
+    ).toHaveLength(
+      xmlOut.filter((part) => part.type === "tool-input-end").length
+    );
+    expect(
+      yamlOut.filter((part) => part.type === "tool-input-start")
+    ).toHaveLength(
+      yamlOut.filter((part) => part.type === "tool-input-end").length
+    );
+    expect(xmlErrors.length).toBeGreaterThan(0);
+    expect(yamlErrors.length).toBeGreaterThan(0);
+  });
 });

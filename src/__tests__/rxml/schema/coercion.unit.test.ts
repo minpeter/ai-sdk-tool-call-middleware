@@ -140,6 +140,22 @@ describe("schema coercion", () => {
       });
     });
 
+    it("rejects prototype-sensitive top-level element names", () => {
+      const nodes = parseWithoutSchema(
+        "<__proto__><polluted>true</polluted></__proto__>"
+      );
+
+      expect(() => domToObject(nodes, {})).toThrow("Prototype-sensitive");
+    });
+
+    it("rejects prototype-sensitive nested element names", () => {
+      const nodes = parseWithoutSchema(
+        "<user><name>John</name><__proto__><polluted>true</polluted></__proto__></user>"
+      );
+
+      expect(() => domToObject(nodes, {})).toThrow("Prototype-sensitive");
+    });
+
     it("uses custom textNodeName", () => {
       const nodes = parseWithoutSchema('<item id="1">content</item>');
       const result = domToObject(nodes, {}, "_text");

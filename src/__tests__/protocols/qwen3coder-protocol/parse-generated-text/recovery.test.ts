@@ -57,6 +57,39 @@ describe("qwen3CoderProtocol", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("calls onError and keeps original text on __proto__ parameter args", () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text =
+      '<tool_call><function=book_flight><parameter=__proto__>{"polluted":true}</parameter></function></tool_call>';
+
+    const out = p.parseGeneratedText({
+      text,
+      tools: [
+        {
+          type: "function" as const,
+          name: "book_flight",
+          inputSchema: {
+            type: "object",
+            properties: {
+              cabin: { type: "string" },
+            },
+          },
+        },
+      ],
+      options: { onError },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe(text);
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("keeps original trailing text when incomplete <tool_call recovery fails", () => {
     const p = qwen3CoderProtocol();
     const text = "How to type <tool_call in docs?";

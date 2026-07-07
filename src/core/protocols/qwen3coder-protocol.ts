@@ -1137,7 +1137,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         partialParam: null,
         emittedInput: "",
         raw: openTag,
-        args: {},
+        args: Object.create(null) as Record<string, unknown>,
         buffer: "",
       };
 
@@ -1247,7 +1247,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               partialParam: null,
               emittedInput: "",
               raw: toolCall.outerOpenTag,
-              args: {},
+              args: Object.create(null) as Record<string, unknown>,
               buffer: "",
             };
             toolCall.activeCall = activeCall;
@@ -1365,7 +1365,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               partialParam: null,
               emittedInput: "",
               raw: openTag,
-              args: {},
+              args: Object.create(null) as Record<string, unknown>,
               buffer: "",
             };
             const ok = finalizeCall(
@@ -1391,7 +1391,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             partialParam: null,
             emittedInput: "",
             raw: openTag,
-            args: {},
+            args: Object.create(null) as Record<string, unknown>,
             buffer: "",
           };
 
@@ -1589,7 +1589,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
                 partialParam: null,
                 emittedInput: "",
                 raw: toolCall.outerOpenTag,
-                args: {},
+                args: Object.create(null) as Record<string, unknown>,
                 buffer: "",
               };
             }
