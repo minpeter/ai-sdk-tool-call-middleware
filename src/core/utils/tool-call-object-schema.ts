@@ -1,4 +1,7 @@
-import { unwrapJsonSchema } from "../../schema-coerce";
+import {
+  compileSafePatternPropertyRegex,
+  unwrapJsonSchema,
+} from "../../schema-coerce";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
 import {
   collectPatternPropertyNames,
@@ -57,6 +60,38 @@ function removeNames(target: Set<string>, source: Set<string>): void {
   }
 }
 
+function intersectNames(target: Set<string>, source: Set<string>): void {
+  for (const name of target) {
+    if (!source.has(name)) {
+      target.delete(name);
+    }
+  }
+}
+
+function hasStrictAdditionalProperties(schema: unknown): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  return isRecord(unwrapped) && unwrapped.additionalProperties === false;
+}
+
+function hasUnsafeFalsePatternProperties(
+  schema: Record<string, unknown>
+): boolean {
+  if (!isRecord(schema.patternProperties)) {
+    return false;
+  }
+  for (const [pattern, propertySchema] of Object.entries(
+    schema.patternProperties
+  )) {
+    if (
+      propertySchema === false &&
+      compileSafePatternPropertyRegex(pattern) === null
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function collectAllOfDeclaredPropertyNames(
   schema: Record<string, unknown>,
   value: unknown,
@@ -64,6 +99,7 @@ function collectAllOfDeclaredPropertyNames(
 ): Set<string> | null {
   const names = new Set<string>();
   let found = false;
+  let hasStrictVariant = false;
   if (!Array.isArray(schema.allOf)) {
     return null;
   }
@@ -74,8 +110,14 @@ function collectAllOfDeclaredPropertyNames(
       new Set(seen)
     );
     if (nestedNames) {
+      const currentStrictVariant = hasStrictAdditionalProperties(variant);
+      if (found && (hasStrictVariant || currentStrictVariant)) {
+        intersectNames(names, nestedNames);
+      } else {
+        addNames(names, nestedNames);
+      }
       found = true;
-      addNames(names, nestedNames);
+      hasStrictVariant ||= currentStrictVariant;
     }
   }
   return found ? names : null;
@@ -117,6 +159,10 @@ function collectDeclaredToolInputPropertyNames(
   const names = collectDirectDeclaredPropertyNames(unwrapped);
   const hasDirectProperties =
     Object.hasOwn(unwrapped, "properties") && isRecord(unwrapped.properties);
+  const hasAdditionalPropertiesPolicy = Object.hasOwn(
+    unwrapped,
+    "additionalProperties"
+  );
   const strictPatternProperties = hasStrictPatternProperties(unwrapped);
   const allOfNames = collectAllOfDeclaredPropertyNames(unwrapped, value, seen);
   const selectedVariantNames = collectSelectedVariantDeclaredPropertyNames(
@@ -132,17 +178,29 @@ function collectDeclaredToolInputPropertyNames(
   }
   if (
     hasDirectProperties ||
+    hasAdditionalPropertiesPolicy ||
     strictPatternProperties ||
     allOfNames ||
     selectedVariantNames
   ) {
     addNames(names, collectPatternPropertyNames(unwrapped, value));
   }
+  if (
+    (unwrapped.additionalProperties === true ||
+      isRecord(unwrapped.additionalProperties)) &&
+    !hasUnsafeFalsePatternProperties(unwrapped) &&
+    isRecord(value)
+  ) {
+    for (const key of Object.keys(value)) {
+      addSafePropertyName(names, key);
+    }
+  }
   removeNames(names, collectAllOfDeniedPropertyNames(unwrapped, new Set(seen)));
 
   if (
     names.size === 0 &&
     !hasDirectProperties &&
+    !hasAdditionalPropertiesPolicy &&
     !strictPatternProperties &&
     !allOfNames &&
     !selectedVariantNames
@@ -223,6 +281,15 @@ function getDeclaredPropertySchema(
   const patternSchema = getPatternPropertySchema(unwrapped, key);
   if (patternSchema !== undefined) {
     propertySchemas.push(patternSchema);
+  }
+  if (propertySchemas.some((propertySchema) => propertySchema === false)) {
+    return false;
+  }
+  if (
+    propertySchemas.length === 0 &&
+    isRecord(unwrapped.additionalProperties)
+  ) {
+    return unwrapped.additionalProperties;
   }
   return propertySchemas.length < 2
     ? propertySchemas[0]

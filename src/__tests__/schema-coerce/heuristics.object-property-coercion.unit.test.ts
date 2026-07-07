@@ -46,6 +46,22 @@ describe("Coercion Heuristic Handling", () => {
       expect(result).toEqual({ a: 1, b: 2 });
     });
 
+    it("should not mutate output prototypes from parsed __proto__ properties", () => {
+      const input = JSON.parse(
+        '{"__proto__":{"polluted":true},"a":"1"}'
+      ) as Record<string, unknown>;
+      const result = coerceBySchema(input, {
+        type: "object",
+        additionalProperties: true,
+      }) as Record<string, unknown>;
+
+      expect(Object.getPrototypeOf(result)).toBeNull();
+      expect(
+        Object.getOwnPropertyDescriptor(result, "__proto__")?.value
+      ).toEqual({ polluted: true });
+      expect("polluted" in result).toBe(false);
+    });
+
     it("should apply both properties and patternProperties schemas sequentially when both match", () => {
       // When a key matches both properties and patternProperties,
       // both schemas are applied sequentially (properties first, then patternProperties)

@@ -57,6 +57,39 @@ describe("qwen3CoderProtocol", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("calls onError and drops raw text on self-closing prototype-sensitive args", () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text =
+      "<tool_call><function=book_flight><parameter=constructor/></function></tool_call>";
+
+    const out = p.parseGeneratedText({
+      text,
+      tools: [
+        {
+          type: "function" as const,
+          name: "book_flight",
+          inputSchema: {
+            type: "object",
+            properties: {
+              cabin: { type: "string" },
+            },
+          },
+        },
+      ],
+      options: { onError },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("calls onError and drops raw text on __proto__ parameter args", () => {
     const onError = vi.fn();
     const p = qwen3CoderProtocol();

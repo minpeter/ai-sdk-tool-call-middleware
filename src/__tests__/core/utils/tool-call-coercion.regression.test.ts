@@ -49,7 +49,7 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"mood":"sunny"}');
   });
 
-  it("keeps keys when additionalProperties is false without declared properties", () => {
+  it("drops every key when additionalProperties is false without declared properties", () => {
     const input = coerceToolCallInput("shape_shift", { mood: "sunny" }, [
       {
         type: "function",
@@ -61,7 +61,51 @@ describe("tool-call coercion regression coverage", () => {
       },
     ]);
 
-    expect(input).toBe('{"mood":"sunny"}');
+    expect(input).toBe("{}");
+  });
+
+  it("preserves keys explicitly allowed by additionalProperties true", () => {
+    const input = coerceToolCallInput(
+      "shape_shift",
+      { mood: "sunny", extra: "kept" },
+      [
+        {
+          type: "function",
+          name: "shape_shift",
+          inputSchema: {
+            type: "object",
+            properties: {
+              mood: { type: "string" },
+            },
+            additionalProperties: true,
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"mood":"sunny","extra":"kept"}');
+  });
+
+  it("coerces keys explicitly allowed by additionalProperties schemas", () => {
+    const input = coerceToolCallInput(
+      "shape_shift",
+      { mood: "sunny", count: "42" },
+      [
+        {
+          type: "function",
+          name: "shape_shift",
+          inputSchema: {
+            type: "object",
+            properties: {
+              mood: { type: "string" },
+            },
+            additionalProperties: { type: "number" },
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"mood":"sunny","count":42}');
   });
 
   it("drops nested object keys that are not declared in nested properties schemas", () => {
@@ -142,6 +186,35 @@ describe("tool-call coercion regression coverage", () => {
     );
 
     expect(input).toBe('{"mode":"strict","payload":{"keep":"yes"}}');
+  });
+
+  it("drops direct properties forbidden by selected combinator branches", () => {
+    const input = coerceToolCallInput("edit", { mode: "safe", admin: true }, [
+      {
+        type: "function",
+        name: "edit",
+        inputSchema: {
+          type: "object",
+          properties: {
+            mode: { type: "string" },
+            admin: { type: "boolean" },
+          },
+          oneOf: [
+            {
+              type: "object",
+              properties: {
+                mode: { const: "safe" },
+                admin: false,
+              },
+              required: ["mode"],
+              additionalProperties: false,
+            },
+          ],
+        },
+      },
+    ]);
+
+    expect(input).toBe('{"mode":"safe"}');
   });
 
   it("drops nested object keys declared through combinator property schemas", () => {
@@ -716,6 +789,9 @@ describe("tool-call coercion regression coverage", () => {
       toolCallTextHasPrototypeSensitiveKey(
         "<parameter=constructor>{}</parameter>"
       )
+    ).toBe(true);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey("<parameter=constructor/>")
     ).toBe(true);
     expect(
       toolCallTextHasPrototypeSensitiveKey(

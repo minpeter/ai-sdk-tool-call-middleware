@@ -325,7 +325,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(args.extra).toBeUndefined();
   });
 
-  it("drops schema-unknown keys when additionalProperties is true", () => {
+  it("keeps schema-additional keys when additionalProperties is true", () => {
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"He said "hi" there","dynamic":"kept"}}</tool_call>';
@@ -346,7 +346,25 @@ describe("parseGeneratedText JSON repair", () => {
     }
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hi" there');
-    expect(args.dynamic).toBeUndefined();
+    expect(args.dynamic).toBe("kept");
+  });
+
+  it("coerces schema-additional keys when additionalProperties is a schema", () => {
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","count":"42"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        additionalProperties: { type: "number" },
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools });
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok", count: 42 });
   });
 
   it("drops schema-unknown keys when additionalProperties is false", () => {
@@ -1376,7 +1394,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("keeps args for schemas without declared properties even when additionalProperties is false", () => {
+  it("drops args for schemas without declared properties when additionalProperties is false", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1390,8 +1408,7 @@ describe("parseGeneratedText JSON repair", () => {
 
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
     const tool = expectToolCall(out);
-
-    expect(JSON.parse(tool.input)).toEqual({ "x-": "ok" });
+    expect(JSON.parse(tool.input)).toEqual({});
     expect(onError).not.toHaveBeenCalled();
   });
 
@@ -2056,6 +2073,39 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("rejects top-level oneOf inputs with keys from multiple pattern branches", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"x-a":"one","y-b":"two"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("edit", {
+        type: "object",
+        oneOf: [
+          {
+            type: "object",
+            patternProperties: {
+              "^x-": { type: "string" },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            patternProperties: {
+              "^y-": { type: "string" },
+            },
+            additionalProperties: false,
+          },
+        ],
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+
+    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("selects top-level oneOf branches by discriminator before dropping mixed keys", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
@@ -2094,6 +2144,38 @@ describe("parseGeneratedText JSON repair", () => {
       countOnly: 3,
     });
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("does not leak incomplete unicode-escaped Hermes candidates from direct parsing", () => {
+    const p = hermesProtocol();
+    const tools = [
+      makeTool("get_weather", { city: { type: "string" } }),
+      makeTool("lookup", { query: { type: "string" } }),
+    ];
+
+    const out = p.parseGeneratedText({
+      text: '<tool_call>{"n\\u0061me":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}',
+      tools,
+    });
+
+    expect(out).toEqual([]);
+  });
+
+  it("redacts prototype-sensitive error metadata", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","constructor":{"polluted":true}}}</tool_call>';
+    const tools = [makeTool("write", { content: { type: "string" } })];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+
+    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("constructor");
+    expect(metadataText).not.toContain("polluted");
   });
 
   it("applies every matching property and pattern schema", () => {

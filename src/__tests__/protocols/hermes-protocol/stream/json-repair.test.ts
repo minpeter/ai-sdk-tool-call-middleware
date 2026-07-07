@@ -1017,7 +1017,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("keeps args for schemas without declared properties even when additionalProperties is false", async () => {
+  it("drops args for schemas without declared properties when additionalProperties is false", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -1050,7 +1050,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       pipeWithTransformer(rs, transformer)
     );
     const tool = out.find(isToolCallPart);
-    expect(tool?.input).toBe('{"x-":"ok"}');
+    expect(tool?.input).toBe("{}");
     expect(onError).not.toHaveBeenCalled();
   });
 

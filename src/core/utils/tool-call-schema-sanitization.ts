@@ -34,9 +34,13 @@ function sanitizeToolCallObjectBySchema(
   const sanitized = Object.create(null) as Record<string, unknown>;
   for (const [key, nestedValue] of Object.entries(value)) {
     if (propertyNames.has(key)) {
+      const propertySchema = getToolInputPropertySchema(schema, key, value);
+      if (propertySchema === false) {
+        continue;
+      }
       sanitized[key] = sanitizeToolCallValueBySchema(
         nestedValue,
-        getToolInputPropertySchema(schema, key, value),
+        propertySchema,
         seen
       );
     }

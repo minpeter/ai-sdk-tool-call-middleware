@@ -14,11 +14,15 @@ import {
 import { logParseFailure } from "../utils/debug";
 import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
-import { safeToolCallMetadataText } from "../utils/protocol-utils";
+import {
+  safeToolCallMetadataError,
+  safeToolCallMetadataText,
+} from "../utils/protocol-utils";
 import {
   toolCallInputHasPrototypeSensitiveKey,
   toolCallTextHasPrototypeSensitiveKey,
 } from "../utils/prototype-sensitive-keys";
+import { collectPatternPropertyNames } from "../utils/tool-call-pattern-properties";
 import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
 import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-schema-sanitization";
 import { emitToolInputProgressDelta } from "../utils/tool-input-streaming";
@@ -545,6 +549,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function addNames(target: Set<string>, source: Set<string>): void {
+  for (const name of source) {
+    target.add(name);
+  }
+}
+
 function addDirectArgumentKnownKeys(
   keys: Set<string>,
   schema: Record<string, unknown>
@@ -803,9 +813,14 @@ function topLevelOneOfHasConflictingDeclaredKeys(
     return false;
   }
 
-  const branchNames = unwrapped.oneOf.map((variant) =>
-    collectSchemaSelectionPropertyNames(variant)
-  );
+  const branchNames = unwrapped.oneOf.map((variant) => {
+    const names = collectSchemaSelectionPropertyNames(variant);
+    const branchSchema = unwrapJsonSchema(variant);
+    if (isRecord(branchSchema)) {
+      addNames(names, collectPatternPropertyNames(branchSchema, args));
+    }
+    return names;
+  });
   const keyBranchCounts = new Map<string, number>();
   for (const names of branchNames) {
     for (const name of names) {
@@ -2287,7 +2302,7 @@ export function processToolCallJson(
     "Could not process JSON tool call, keeping original text.",
     {
       toolCall: safeToolCallMetadataText(fullMatch),
-      error: resolved.error,
+      error: safeToolCallMetadataError(resolved.error, fullMatch),
       toolName: salvagedToolName,
       toolCallId: salvagedToolCallId,
       dropReason: "malformed-tool-call-body",

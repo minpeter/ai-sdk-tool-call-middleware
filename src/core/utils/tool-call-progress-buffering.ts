@@ -1,6 +1,8 @@
 import { decodeStructuredTextEscapes } from "./structured-text-escapes";
 
 const YAML_MAPPING_KEY_TEXT_REGEX = /(?:^|\n)\s*[A-Za-z_][A-Za-z0-9_.-]*\s*:/;
+const PENDING_SENSITIVE_YAML_KEY_TEXT_REGEX =
+  /(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*$/i;
 
 function stringMayBecomeStructuredSensitiveInput(value: string): boolean {
   const trimmed = decodeStructuredTextEscapes(value).trimStart();
@@ -8,7 +10,8 @@ function stringMayBecomeStructuredSensitiveInput(value: string): boolean {
     trimmed.startsWith("{") ||
     trimmed.startsWith("[") ||
     trimmed.startsWith("<") ||
-    YAML_MAPPING_KEY_TEXT_REGEX.test(trimmed)
+    YAML_MAPPING_KEY_TEXT_REGEX.test(trimmed) ||
+    PENDING_SENSITIVE_YAML_KEY_TEXT_REGEX.test(trimmed)
   );
 }
 

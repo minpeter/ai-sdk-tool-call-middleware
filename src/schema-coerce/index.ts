@@ -830,7 +830,7 @@ function parseXmlChildrenValue(s: string): Record<string, unknown> | null {
   if (lines.length === 0 || !lines[0].startsWith("<")) {
     return null;
   }
-  const record: Record<string, unknown> = {};
+  const record = Object.create(null) as Record<string, unknown>;
   for (const line of lines) {
     const match =
       XML_CHILD_VALUE_CLOSED_RE.exec(line) ??
@@ -1143,7 +1143,7 @@ function coerceObjectToObject(
   unwrapped: Record<string, unknown>
 ): Record<string, unknown> {
   const normalizedInput = applyStrictRequiredKeyRename(value, unwrapped);
-  const out: Record<string, unknown> = {};
+  const out = Object.create(null) as Record<string, unknown>;
   for (const [k, v] of Object.entries(normalizedInput)) {
     out[k] = coerceValueForKey(v, k, unwrapped);
   }
@@ -1302,7 +1302,7 @@ function coerceParallelArraysObjectToArray(
 
   const zipped: Record<string, unknown>[] = [];
   for (let index = 0; index < length; index += 1) {
-    const item: Record<string, unknown> = {};
+    const item = Object.create(null) as Record<string, unknown>;
     for (const [key, value] of entries) {
       item[key] = (value as unknown[])[index];
     }
