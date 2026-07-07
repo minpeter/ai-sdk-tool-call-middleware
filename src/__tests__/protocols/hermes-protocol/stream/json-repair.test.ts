@@ -1054,7 +1054,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects patternProperties false matches for strict schemas", async () => {
+  it("drops patternProperties false matches for strict schemas", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -1092,14 +1092,18 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects false property schemas for strict schemas", async () => {
+  it("drops false property schemas for strict schemas", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -1135,11 +1139,15 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("fails closed for unsafe patternProperties without leaking tool-input events", async () => {
@@ -1187,7 +1195,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("fails closed for unsafe false patternProperties when unknown keys are allowed", async () => {
+  it("drops unsafe false patternProperties when unknown keys are allowed", async () => {
     const onError = vi.fn();
     const slowKey = `${"a".repeat(24)}!`;
     const tools = [
@@ -1225,14 +1233,18 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("fails closed for unsafe false patternProperties with character classes", async () => {
+  it("drops unsafe false patternProperties with character classes", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -1270,14 +1282,18 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("fails closed for unsafe false patternProperties with escaped literals", async () => {
+  it("drops unsafe false patternProperties with escaped literals", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -1315,14 +1331,18 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("fails closed for unsafe false patternProperties with unknown matchers", async () => {
+  it("drops unsafe false patternProperties with unknown matchers", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -1360,14 +1380,18 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("drops additional keys when an unsafe false pattern contains character classes", async () => {
+  it("preserves safe additional keys when an unsafe false pattern contains character classes", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -1409,6 +1433,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(tool).toBeTruthy();
     expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
       content: "ok",
+      note: "safe",
     });
     expect(onError).not.toHaveBeenCalled();
   });
@@ -3247,7 +3272,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("drops extra argument keys when a denied pattern is unsafe", async () => {
+  it("preserves safe additional keys when a denied pattern is unsafe", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -3289,6 +3314,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(tool).toBeTruthy();
     expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
       content: "ok",
+      note: "safe",
     });
     expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
@@ -3338,7 +3364,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("rejects unsafe false patternProperties that may match key substrings", async () => {
+  it("drops unsafe false patternProperties that may match key substrings", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -3376,14 +3402,18 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects unsafe false patternProperties that may match unanchored suffixes", async () => {
+  it("drops unsafe false patternProperties that may match unanchored suffixes", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -3421,11 +3451,15 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("does not emit stale speculative tool-calls after later invalid chunks", async () => {
@@ -3484,7 +3518,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     );
   });
 
-  it("rejects keys that may match unsafe false patterns with escaped range endpoints", async () => {
+  it("drops keys that may match unsafe false patterns with escaped range endpoints", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -3522,10 +3556,14 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool).toBeTruthy();
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      content: "ok",
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 });

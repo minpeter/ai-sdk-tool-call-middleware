@@ -50,6 +50,20 @@ const metadataTools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
+const unsafeAdditionalPropertiesTools: LanguageModelV4FunctionTool[] = [
+  {
+    type: "function",
+    name: "metadata_extra",
+    inputSchema: {
+      type: "object",
+      patternProperties: {
+        "^(a+)+$": false,
+      },
+      additionalProperties: true,
+    },
+  },
+];
+
 type ToolCallContent = Extract<LanguageModelV4Content, { type: "tool-call" }>;
 
 interface ProtocolCase {
@@ -146,6 +160,37 @@ other: drop
   <function=metadata>
     <parameter=x-count>3</parameter>
     <parameter=other>drop</parameter>
+  </function>
+</tool_call>`,
+  },
+];
+
+const unsafeAdditionalPropertiesProtocolCases: readonly ProtocolCase[] = [
+  {
+    name: "Hermes",
+    protocol: hermesProtocol(),
+    text: `<tool_call>{"name":"metadata_extra","arguments":{"safe":"ok","aaaa":"drop"}}</tool_call>`,
+  },
+  {
+    name: "Morph XML",
+    protocol: morphXmlProtocol(),
+    text: "<metadata_extra><safe>ok</safe><aaaa>drop</aaaa></metadata_extra>",
+  },
+  {
+    name: "YAML XML",
+    protocol: yamlXmlProtocol(),
+    text: `<metadata_extra>
+safe: ok
+aaaa: drop
+</metadata_extra>`,
+  },
+  {
+    name: "Qwen3Coder",
+    protocol: qwen3CoderProtocol(),
+    text: `<tool_call>
+  <function=metadata_extra>
+    <parameter=safe>ok</parameter>
+    <parameter=aaaa>drop</parameter>
   </function>
 </tool_call>`,
   },
@@ -253,6 +298,25 @@ describe("cross-protocol tool arg sanitization", () => {
 
     expect(toolCall.toolName).toBe("metadata");
     expect(input).toEqual({ "x-count": 3 });
+  });
+
+  it.each(
+    unsafeAdditionalPropertiesProtocolCases
+  )("$name parseGeneratedText preserves safe additionalProperties true args with unsafe false patterns", ({
+    protocol,
+    text,
+  }) => {
+    const parts = protocol.parseGeneratedText({
+      text,
+      tools: unsafeAdditionalPropertiesTools,
+      options: {},
+    });
+
+    const toolCall = extractSingleToolCall(parts);
+    const input: unknown = JSON.parse(toolCall.input);
+
+    expect(toolCall.toolName).toBe("metadata_extra");
+    expect(input).toEqual({ safe: "ok" });
   });
 
   it.each(

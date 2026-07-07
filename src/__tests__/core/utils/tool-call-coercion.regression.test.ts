@@ -147,6 +147,24 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"safe":1}');
   });
 
+  it("preserves additionalProperties true keys with unsafe false patterns", () => {
+    const input = coerceToolCallInput("metadata", { safe: "1", aaaa: "2" }, [
+      {
+        type: "function",
+        name: "metadata",
+        inputSchema: {
+          type: "object",
+          patternProperties: {
+            "^(a+)+$": false,
+          },
+          additionalProperties: true,
+        },
+      },
+    ]);
+
+    expect(input).toBe('{"safe":"1"}');
+  });
+
   it("drops keys denied by safe false patterns before additionalProperties true", () => {
     const input = coerceToolCallInput(
       "metadata",

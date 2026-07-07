@@ -4,7 +4,6 @@ import {
   collectPatternPropertyNames,
   getPatternPropertySchema,
   hasDeclaredPatternProperties,
-  hasUnsafeFalsePatternProperties,
   unsafeFalsePatternMayMatchKey,
 } from "./tool-call-pattern-properties";
 import {
@@ -185,8 +184,7 @@ function collectDeclaredToolInputPropertyNames(
     addNames(names, collectPatternPropertyNames(unwrapped, value));
   }
   if (
-    ((unwrapped.additionalProperties === true &&
-      !hasUnsafeFalsePatternProperties(unwrapped)) ||
+    (unwrapped.additionalProperties === true ||
       isRecord(unwrapped.additionalProperties)) &&
     isRecord(value)
   ) {

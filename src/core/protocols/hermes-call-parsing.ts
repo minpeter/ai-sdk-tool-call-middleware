@@ -524,14 +524,11 @@ export function normalizeJsonStringCtrl(json: string): string {
 }
 
 interface ArgumentKeyPolicy {
-  deniedKeys: Set<string>;
-  deniedPatterns: RegExp[];
-  keyPatterns: RegExp[];
   knownKeys: Set<string>;
   rejectAll: boolean;
   rejectNonRecordArguments: boolean;
   schema: unknown;
-  unsafeDeniedPatterns: string[];
+  unsafeConstrainedPatterns: string[];
 }
 
 class ArgumentKeyPolicyError extends Error {
@@ -671,59 +668,36 @@ function extractArgumentKeyPolicy(
   const schema = unwrapJsonSchema(tool?.inputSchema);
   if (schema === false) {
     return {
-      deniedKeys: new Set(),
-      deniedPatterns: [],
-      keyPatterns: [],
       knownKeys: new Set(),
       rejectAll: true,
       rejectNonRecordArguments: true,
       schema,
-      unsafeDeniedPatterns: [],
+      unsafeConstrainedPatterns: [],
     };
   }
   if (!isRecord(schema)) {
     return;
   }
-  const properties = isRecord(schema.properties) ? schema.properties : {};
-  const patternProperties = isRecord(schema.patternProperties)
-    ? schema.patternProperties
-    : {};
-  const deniedPatterns: RegExp[] = [];
-  const keyPatterns: RegExp[] = [];
-  const unsafeDeniedPatterns: string[] = [];
-  for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
-    const regex = compileSafePatternPropertyRegex(pattern);
-    if (patternSchema === false) {
-      if (regex) {
-        deniedPatterns.push(regex);
-      } else {
-        unsafeDeniedPatterns.push(pattern);
+  const unsafeConstrainedPatterns: string[] = [];
+  if (isRecord(schema.patternProperties)) {
+    for (const [pattern, patternSchema] of Object.entries(
+      schema.patternProperties
+    )) {
+      if (
+        patternSchema !== false &&
+        compileSafePatternPropertyRegex(pattern) === null &&
+        !schemaIsUnconstrained(patternSchema)
+      ) {
+        unsafeConstrainedPatterns.push(pattern);
       }
-      continue;
-    }
-    if (regex) {
-      keyPatterns.push(regex);
-    } else if (
-      patternSchema === false ||
-      !schemaIsUnconstrained(patternSchema)
-    ) {
-      unsafeDeniedPatterns.push(pattern);
     }
   }
-  const propertyEntries = Object.entries(properties);
   return {
-    deniedKeys: new Set(
-      propertyEntries
-        .filter(([, propertySchema]) => propertySchema === false)
-        .map(([key]) => key)
-    ),
-    deniedPatterns,
-    keyPatterns,
     knownKeys: collectArgumentKnownKeys(schema),
     rejectAll: false,
     rejectNonRecordArguments: schemaRejectsNonRecordArguments(schema),
     schema,
-    unsafeDeniedPatterns,
+    unsafeConstrainedPatterns,
   };
 }
 
@@ -737,10 +711,7 @@ function applyArgumentKeyPolicy(
   if (toolCallInputHasPrototypeSensitiveKey(args)) {
     return null;
   }
-  if (
-    keyPolicy &&
-    Object.keys(args).some((key) => argumentKeyDeniedByPolicy(key, keyPolicy))
-  ) {
+  if (keyPolicy && keysMatchUnsafeConstrainedPattern(args, keyPolicy)) {
     return null;
   }
   if (
@@ -758,9 +729,7 @@ function applyArgumentKeyPolicy(
   }
   if (
     keyPolicy &&
-    Object.keys(coercedPolicyArgs).some((key) =>
-      argumentKeyDeniedByPolicy(key, keyPolicy)
-    )
+    keysMatchUnsafeConstrainedPattern(coercedPolicyArgs, keyPolicy)
   ) {
     return null;
   }
@@ -768,6 +737,9 @@ function applyArgumentKeyPolicy(
     ? sanitizeArgsByArgumentKeyPolicy(coercedPolicyArgs, keyPolicy)
     : coercedPolicyArgs;
   if (!isRecord(policyArgs)) {
+    return null;
+  }
+  if (toolCallInputHasPrototypeSensitiveKey(policyArgs)) {
     return null;
   }
   if (
@@ -937,6 +909,17 @@ function schemaForArgumentSchemaKeyShapeValidation(
   return keyPolicy.schema;
 }
 
+function keysMatchUnsafeConstrainedPattern(
+  args: Record<string, unknown>,
+  keyPolicy: ArgumentKeyPolicy
+): boolean {
+  return Object.keys(args).some((key) =>
+    keyPolicy.unsafeConstrainedPatterns.some((pattern) =>
+      unsafeDeniedPatternMayMatchKey(pattern, key)
+    )
+  );
+}
+
 function schemaHasTopLevelCombinator(
   schema: unknown,
   seen: Set<object>
@@ -950,20 +933,6 @@ function schemaHasTopLevelCombinator(
     Array.isArray(unwrapped.allOf) ||
     Array.isArray(unwrapped.anyOf) ||
     Array.isArray(unwrapped.oneOf)
-  );
-}
-
-function argumentKeyDeniedByPolicy(
-  key: string,
-  keyPolicy: ArgumentKeyPolicy
-): boolean {
-  return (
-    PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key) ||
-    keyPolicy.deniedKeys.has(key) ||
-    keyPolicy.deniedPatterns.some((pattern) => pattern.test(key)) ||
-    keyPolicy.unsafeDeniedPatterns.some((pattern) =>
-      unsafeDeniedPatternMayMatchKey(pattern, key)
-    )
   );
 }
 
