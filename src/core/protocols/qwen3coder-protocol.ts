@@ -1527,7 +1527,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           dropReason: "unfinished-tool-call",
         }
       );
-      if (shouldEmitRaw) {
+      if (shouldEmitRaw && !toolCallTextHasPrototypeSensitiveKey(rawToolCall)) {
         flushText(controller, rawToolCall);
       }
     };
@@ -1549,7 +1549,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           dropReason: "unfinished-tool-call",
         }
       );
-      if (shouldEmitRaw) {
+      if (shouldEmitRaw && !toolCallTextHasPrototypeSensitiveKey(rawCallText)) {
         flushText(controller, rawCallText);
       }
     };

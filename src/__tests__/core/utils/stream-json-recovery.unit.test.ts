@@ -159,6 +159,30 @@ describe("createStreamJsonRecoveryTransform", () => {
     ]);
   });
 
+  it("drops prototype-sensitive known-tool JSON blocks instead of flushing text", async () => {
+    const out = await run([
+      ...textBlock(
+        '{"name":"get_weather","arguments":{"city":"Seoul","\\u0063onstructor":{"polluted":true}}}'
+      ),
+      finishPart,
+    ]);
+
+    expect(out.some((p) => p.type === "tool-call")).toBe(false);
+    expect(out.some((p) => p.type === "text-delta")).toBe(false);
+    expect(out).toEqual([finishPart]);
+  });
+
+  it("drops prototype-sensitive single-tool argument blocks", async () => {
+    const out = await run([
+      ...textBlock('{"city":"Seoul","constructor":{"polluted":true}}'),
+      finishPart,
+    ]);
+
+    expect(out.some((p) => p.type === "tool-call")).toBe(false);
+    expect(out.some((p) => p.type === "text-delta")).toBe(false);
+    expect(out).toEqual([finishPart]);
+  });
+
   it("does not delay blocks that start with prose", async () => {
     const transformer = createStreamJsonRecoveryTransform({ tools });
     const writer = transformer.writable.getWriter();

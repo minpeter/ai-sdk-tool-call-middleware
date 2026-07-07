@@ -49,6 +49,21 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"mood":"sunny"}');
   });
 
+  it("keeps keys when additionalProperties is false without declared properties", () => {
+    const input = coerceToolCallInput("shape_shift", { mood: "sunny" }, [
+      {
+        type: "function",
+        name: "shape_shift",
+        inputSchema: {
+          type: "object",
+          additionalProperties: false,
+        },
+      },
+    ]);
+
+    expect(input).toBe('{"mood":"sunny"}');
+  });
+
   it("fails closed on cyclic provider-native object inputs", () => {
     const input: Record<string, unknown> = { city: "Seoul" };
     input.self = input;

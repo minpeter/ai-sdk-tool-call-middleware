@@ -308,7 +308,10 @@ function emitIncompleteToolCall(
     snippet: errorContent,
   });
 
-  if (shouldEmitRawFallback) {
+  if (
+    shouldEmitRawFallback &&
+    !toolCallTextHasPrototypeSensitiveKey(errorContent)
+  ) {
     const errorId = generateId();
     controller.enqueue({
       type: "text-start",
@@ -529,7 +532,10 @@ function recoverNestedStreamingToolCall(options: {
     reason: "Abandoning malformed streaming tool call before nested start tag",
     snippet: droppedToolCall,
   });
-  if (shouldEmitRawFallback) {
+  if (
+    shouldEmitRawFallback &&
+    !toolCallTextHasPrototypeSensitiveKey(droppedToolCall)
+  ) {
     const errorId = generateId();
     controller.enqueue({
       type: "text-start",

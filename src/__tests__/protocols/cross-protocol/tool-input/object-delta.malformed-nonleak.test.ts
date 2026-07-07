@@ -178,4 +178,51 @@ describe("XML/YAML malformed non-leak guarantees", () => {
     expect(textOut).not.toContain("<tool_call>");
     expect(textOut).not.toContain("<get_weather>");
   });
+
+  it("Qwen3Coder does not emit unfinished prototype-sensitive raw fallback at finish", async () => {
+    const out = await runProtocolTextDeltaStream({
+      protocol: qwen3CoderProtocol(),
+      tools: [weatherTool],
+      chunks: [
+        '<tool_call>\n  <function=get_weather>\n    <parameter=location>Seoul</parameter>\n    <parameter=constructor>{"polluted":true}</parameter>',
+      ],
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    const textOut = extractTextDeltas(out);
+    expect(textOut).not.toContain("constructor");
+    expect(textOut).not.toContain("<tool_call>");
+  });
+
+  it("Hermes does not emit unfinished prototype-sensitive raw fallback at finish", async () => {
+    const out = await runProtocolTextDeltaStream({
+      protocol: hermesProtocol(),
+      tools: [weatherTool],
+      chunks: [
+        '<tool_call>{"name":"get_weather","arguments":{"location":"Seoul","constructor":{"polluted":true}}}',
+      ],
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    const textOut = extractTextDeltas(out);
+    expect(textOut).not.toContain("constructor");
+    expect(textOut).not.toContain("<tool_call>");
+  });
+
+  it("Hermes does not emit nested-start prototype-sensitive raw fallback", async () => {
+    const out = await runProtocolTextDeltaStream({
+      protocol: hermesProtocol(),
+      tools: [weatherTool],
+      chunks: [
+        '<tool_call>{"name":"get_weather","arguments":{"location":"Seoul","constructor":{"polluted":true}}}<tool_call>',
+      ],
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    const textOut = extractTextDeltas(out);
+    expect(textOut).not.toContain("constructor");
+  });
 });

@@ -50,4 +50,35 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
 
     expect(result?.content).toEqual([]);
   });
+
+  it("does not leak prototype-sensitive bare JSON recovery candidates", async () => {
+    const middleware = createToolMiddleware({
+      protocol: hermesProtocol({}),
+      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
+        `You have tools: ${JSON.stringify(toolDefs)}`,
+    });
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: '{"name":"get_weather","arguments":{"city":"Seoul","\\u0063onstructor":{"polluted":true}}}',
+        },
+      ],
+    });
+
+    const result = await middleware.wrapGenerate?.({
+      doGenerate,
+      params: {
+        prompt: [],
+        tools,
+        providerOptions: {
+          toolCallMiddleware: {
+            originalTools: originalToolsSchema.encode(tools),
+          },
+        },
+      },
+    } as any);
+
+    expect(result?.content).toEqual([]);
+  });
 });

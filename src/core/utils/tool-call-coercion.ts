@@ -94,6 +94,10 @@ function collectDeclaredToolInputPropertyNames(
   const names = collectDirectDeclaredPropertyNames(unwrapped);
   const hasDirectProperties =
     Object.hasOwn(unwrapped, "properties") && isRecord(unwrapped.properties);
+  const hasStrictPatternProperties =
+    Object.hasOwn(unwrapped, "patternProperties") &&
+    isRecord(unwrapped.patternProperties) &&
+    unwrapped.additionalProperties === false;
   const combinatorNames = collectCombinatorDeclaredPropertyNames(
     unwrapped,
     seen
@@ -105,7 +109,7 @@ function collectDeclaredToolInputPropertyNames(
   if (
     names.size === 0 &&
     !hasDirectProperties &&
-    unwrapped.additionalProperties !== false &&
+    !hasStrictPatternProperties &&
     !combinatorNames
   ) {
     return null;

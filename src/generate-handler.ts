@@ -17,7 +17,7 @@ import {
   normalizeToolCallsFinishReason,
   shouldRewriteFinishReasonToToolCalls,
 } from "./core/utils/finish-reason";
-import { recoverToolCallFromJsonCandidates } from "./core/utils/generated-text-json-recovery";
+import { recoverToolCallFromJsonCandidatesWithStatus } from "./core/utils/generated-text-json-recovery";
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
@@ -155,11 +155,17 @@ function parseContent(
       return parsedByProtocol;
     }
 
-    const recoveredFromJson = recoverToolCallFromJsonCandidates(
+    const recoveredFromJson = recoverToolCallFromJsonCandidatesWithStatus(
       contentItem.text,
       tools
     );
-    return recoveredFromJson ?? parsedByProtocol;
+    if (recoveredFromJson.kind === "recovered") {
+      return recoveredFromJson.content;
+    }
+    if (recoveredFromJson.kind === "dropped-sensitive-candidate") {
+      return [];
+    }
+    return parsedByProtocol;
   });
 
   // Provider-executed tool calls belong to the provider's own tools; their

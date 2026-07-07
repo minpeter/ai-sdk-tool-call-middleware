@@ -26,6 +26,19 @@ interface RecoveredCallSpan {
   startIndex: number;
 }
 
+interface DroppedSensitiveSpan {
+  dropReason: "prototype-sensitive-tool-candidate";
+  endIndex: number;
+  startIndex: number;
+}
+
+type RecoverySpan = DroppedSensitiveSpan | RecoveredCallSpan;
+
+export type ToolCallJsonRecoveryResult =
+  | { content: LanguageModelV4Content[]; kind: "recovered" }
+  | { kind: "dropped-sensitive-candidate" }
+  | { kind: "none" };
+
 interface JsonCandidate {
   endIndex: number;
   startIndex: number;
@@ -250,6 +263,10 @@ function pushRecoveredTextSegment(
 const TOOL_NAME_KEYS = ["name", "tool", "function"] as const;
 const TOOL_ARGS_KEYS = ["arguments", "parameters"] as const;
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function readToolNameField(payload: Record<string, unknown>): string | null {
   for (const key of TOOL_NAME_KEYS) {
     if (!Object.hasOwn(payload, key)) {
@@ -270,6 +287,49 @@ function readToolArgsField(payload: Record<string, unknown>): unknown {
     }
   }
   return {};
+}
+
+function hasNameEnvelope(payload: Record<string, unknown>): boolean {
+  return TOOL_NAME_KEYS.some(
+    (key) =>
+      Object.hasOwn(payload, key) &&
+      typeof payload[key] === "string" &&
+      (payload[key] as string).length > 0
+  );
+}
+
+function hasArgumentsEnvelope(payload: Record<string, unknown>): boolean {
+  return TOOL_ARGS_KEYS.some(
+    (key) =>
+      Object.hasOwn(payload, key) &&
+      (typeof payload[key] === "string" || isRecord(payload[key]))
+  );
+}
+
+function textHasKnownToolReference(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): boolean {
+  return tools.some((tool) => {
+    const name = escapeRegExp(tool.name);
+    const quotedNameEnvelope = new RegExp(
+      `["'](?:${TOOL_NAME_KEYS.join("|")})["']\\s*:\\s*["']${name}["']`,
+      "i"
+    );
+    const relaxedNameEnvelope = new RegExp(
+      `(?:^|[{,]\\s*)(?:${TOOL_NAME_KEYS.join("|")})\\s*:\\s*["']${name}["']`,
+      "i"
+    );
+    const qwenNameEnvelope = new RegExp(
+      `<\\s*(?:call|function|tool|invoke)\\b[^>]*(?:=\\s*["']?${name}["']?|\\bname\\s*=\\s*["']${name}["'])`,
+      "i"
+    );
+    return (
+      quotedNameEnvelope.test(text) ||
+      relaxedNameEnvelope.test(text) ||
+      qwenNameEnvelope.test(text)
+    );
+  });
 }
 
 function parseAsToolPayload(
@@ -349,18 +409,7 @@ function parseAsArgumentsOnly(
   if (!isRecord(payload)) {
     return null;
   }
-  const hasNameEnvelope = TOOL_NAME_KEYS.some(
-    (key) =>
-      Object.hasOwn(payload, key) &&
-      typeof payload[key] === "string" &&
-      (payload[key] as string).length > 0
-  );
-  const hasArgumentsEnvelope = TOOL_ARGS_KEYS.some(
-    (key) =>
-      Object.hasOwn(payload, key) &&
-      (typeof payload[key] === "string" || isRecord(payload[key]))
-  );
-  if (hasNameEnvelope || hasArgumentsEnvelope) {
+  if (hasNameEnvelope(payload) || hasArgumentsEnvelope(payload)) {
     return null;
   }
 
@@ -373,6 +422,51 @@ function parseAsArgumentsOnly(
   }
 
   return toToolCallCandidate(tool.name, payload, tools);
+}
+
+function looksLikeKnownToolCandidate(
+  payload: unknown,
+  tools: LanguageModelV4FunctionTool[]
+): boolean {
+  if (!isRecord(payload)) {
+    return false;
+  }
+
+  const toolName = readToolNameField(payload);
+  if (toolName && tools.some((tool) => tool.name === toolName)) {
+    return true;
+  }
+
+  if (
+    tools.length === 1 &&
+    !hasNameEnvelope(payload) &&
+    !hasArgumentsEnvelope(payload) &&
+    isLikelyArgumentsShapeForTool(payload, tools[0])
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function isSensitiveRejectedJsonCandidate(
+  candidate: JsonCandidate,
+  tools: LanguageModelV4FunctionTool[]
+): boolean {
+  const rawSensitive = toolCallTextHasPrototypeSensitiveKey(candidate.text);
+  const parsed = parseJsonCandidate(candidate.text);
+  const structuralSensitive =
+    parsed !== undefined && hasPrototypeSensitiveStructuralKey(parsed);
+
+  if (!(rawSensitive || structuralSensitive)) {
+    return false;
+  }
+
+  if (looksLikeKnownToolCandidate(parsed, tools)) {
+    return true;
+  }
+
+  return textHasKnownToolReference(candidate.text, tools);
 }
 
 function resolveCandidatePayload(
@@ -392,6 +486,10 @@ function resolveCandidatePayload(
   return (
     parseAsToolPayload(parsed, tools) ?? parseAsArgumentsOnly(parsed, tools)
   );
+}
+
+function isRecoveredSpan(span: RecoverySpan): span is RecoveredCallSpan {
+  return "payload" in span;
 }
 
 const QWEN_CALL_BLOCK_OPEN_REGEX = /<\s*(call|function|tool|invoke)\b[^>]*>/gi;
@@ -558,6 +656,50 @@ function extractFunctionBlockCallSpans(
   return spans;
 }
 
+function extractSensitiveFunctionBlockDropSpans(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): DroppedSensitiveSpan[] {
+  if (!toolCallTextHasPrototypeSensitiveKey(text)) {
+    return [];
+  }
+
+  const spans: DroppedSensitiveSpan[] = [];
+  const opens = [...text.matchAll(QWEN_CALL_BLOCK_OPEN_REGEX)];
+
+  for (let index = 0; index < opens.length; index += 1) {
+    const open = opens[index];
+    const tagName = (open[1] ?? "").toLowerCase();
+    const openTag = open[0] ?? "";
+    const bodyStart = open.index + open[0].length;
+    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
+    const selfClosing = isSelfClosingTag(openTag);
+    const close = selfClosing
+      ? null
+      : findQwenCallCloseTag(text, bodyStart, tagName, nextOpenIndex);
+    const bodyEnd = close?.start ?? nextOpenIndex;
+    const body = selfClosing ? "" : text.slice(bodyStart, bodyEnd);
+    const toolName = readQwenCallToolName(openTag, body);
+    if (!(toolName && tools.some((tool) => tool.name === toolName))) {
+      continue;
+    }
+
+    const endIndex = selfClosing
+      ? open.index + openTag.length
+      : (close?.end ?? nextOpenIndex);
+    const rawBlock = text.slice(open.index, endIndex);
+    if (toolCallTextHasPrototypeSensitiveKey(rawBlock)) {
+      spans.push({
+        startIndex: open.index,
+        endIndex,
+        dropReason: "prototype-sensitive-tool-candidate",
+      });
+    }
+  }
+
+  return spans;
+}
+
 const TOOL_CALL_BLOCK_OPEN_REGEX = /<tool_call\s*>/gi;
 // Colon included for namespaced garbage closes like `</functions:get_weather>`.
 const CLOSING_TAG_REGEX = /<\/\s*([A-Za-z_][\w.:-]*)\s*>/;
@@ -670,18 +812,18 @@ function extractYamlToolCallBlockSpans(
  *
  * Every non-overlapping candidate that resolves becomes a tool-call part, so
  * multi-call payloads (consecutive bare JSON objects, orphan `<tool_call>`
- * separators, array-wrapped lists) are all recovered. Returns null when no
- * candidate resolves.
+ * separators, array-wrapped lists) are all recovered. Prototype-sensitive
+ * known-tool candidates are consumed instead of falling back to visible text.
  */
-export function recoverToolCallFromJsonCandidates(
+export function recoverToolCallFromJsonCandidatesWithStatus(
   text: string,
   tools: LanguageModelV4FunctionTool[]
-): LanguageModelV4Content[] | null {
+): ToolCallJsonRecoveryResult {
   if (tools.length === 0) {
-    return null;
+    return { kind: "none" };
   }
 
-  const spans: RecoveredCallSpan[] = [];
+  const spans: RecoverySpan[] = [];
   for (const jsonCandidate of extractJsonLikeCandidates(text)) {
     const payload = resolveCandidatePayload(jsonCandidate, tools);
     if (payload) {
@@ -690,9 +832,16 @@ export function recoverToolCallFromJsonCandidates(
         endIndex: jsonCandidate.endIndex,
         payload,
       });
+    } else if (isSensitiveRejectedJsonCandidate(jsonCandidate, tools)) {
+      spans.push({
+        startIndex: jsonCandidate.startIndex,
+        endIndex: jsonCandidate.endIndex,
+        dropReason: "prototype-sensitive-tool-candidate",
+      });
     }
   }
   spans.push(...extractFunctionBlockCallSpans(text, tools));
+  spans.push(...extractSensitiveFunctionBlockDropSpans(text, tools));
   spans.push(...extractYamlToolCallBlockSpans(text, tools));
   spans.sort((a, b) =>
     a.startIndex === b.startIndex
@@ -703,6 +852,7 @@ export function recoverToolCallFromJsonCandidates(
   const out: LanguageModelV4Content[] = [];
   let cursor = 0;
   let recoveredAny = false;
+  let droppedSensitiveAny = false;
 
   for (const span of spans) {
     if (span.startIndex < cursor) {
@@ -711,15 +861,29 @@ export function recoverToolCallFromJsonCandidates(
       continue;
     }
     pushRecoveredTextSegment(out, text.slice(cursor, span.startIndex));
-    out.push(toToolCallPart(span.payload));
     cursor = span.endIndex;
-    recoveredAny = true;
+    if (isRecoveredSpan(span)) {
+      out.push(toToolCallPart(span.payload));
+      recoveredAny = true;
+    } else {
+      droppedSensitiveAny = true;
+    }
   }
 
   if (!recoveredAny) {
-    return null;
+    return droppedSensitiveAny
+      ? { kind: "dropped-sensitive-candidate" }
+      : { kind: "none" };
   }
 
   pushRecoveredTextSegment(out, text.slice(cursor));
-  return out;
+  return { kind: "recovered", content: out };
+}
+
+export function recoverToolCallFromJsonCandidates(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): LanguageModelV4Content[] | null {
+  const result = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+  return result.kind === "recovered" ? result.content : null;
 }
