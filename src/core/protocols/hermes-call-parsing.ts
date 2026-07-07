@@ -749,9 +749,6 @@ function applyArgumentKeyPolicy(
   if (!isRecord(policyArgs)) {
     return null;
   }
-  if (containsPrototypeSensitiveArgumentKey(policyArgs)) {
-    return null;
-  }
   if (
     keyPolicy &&
     shouldValidateArgumentSchemaKeyShape(keyPolicy) &&
