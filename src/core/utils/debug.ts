@@ -1,3 +1,5 @@
+import { safeToolCallMetadataText } from "./protocol-utils";
+
 export type DebugLevel = "off" | "stream" | "parse";
 
 const LINE_SPLIT_REGEX = /\r?\n/;
@@ -65,6 +67,10 @@ function safeStringify(value: unknown): string {
   }
 }
 
+function safeDebugText(value: unknown): string {
+  return safeToolCallMetadataText(safeStringify(value)) ?? "";
+}
+
 function formatError(error: unknown): string {
   if (error instanceof Error) {
     const stack = error.stack ? `\n${error.stack}` : "";
@@ -99,7 +105,7 @@ export function logParseFailure({
   console.log(cGray("[debug:mw:fail]"), label, cYellow(reason));
 
   if (snippet) {
-    const formatted = truncateSnippet(snippet);
+    const formatted = truncateSnippet(safeDebugText(snippet));
     console.log(cGray("[debug:mw:fail:snippet]"), formatted);
   }
 
@@ -110,7 +116,7 @@ export function logParseFailure({
 
 export function logRawChunk(part: unknown) {
   // Raw provider stream/generate output
-  console.log(cGray("[debug:mw:raw]"), cYellow(safeStringify(part)));
+  console.log(cGray("[debug:mw:raw]"), cYellow(safeDebugText(part)));
 }
 
 export function logParsedChunk(part: unknown) {

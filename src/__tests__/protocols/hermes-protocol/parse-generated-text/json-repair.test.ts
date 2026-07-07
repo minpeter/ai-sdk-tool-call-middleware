@@ -1572,7 +1572,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects nested tuple item keys through draft-07 items arrays", () => {
+  it("sanitizes nested tuple item keys through draft-07 items arrays", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1601,8 +1601,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    expect(out.find((x) => x.type === "tool-call")).toMatchObject({
+      type: "tool-call",
+      toolName: "write",
+      input: '{"rows":[{"value":"ok"}]}',
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects values that match multiple oneOf schemas", () => {

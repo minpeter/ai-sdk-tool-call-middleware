@@ -1,178 +1,11 @@
-import { unwrapJsonSchema } from "../../schema-coerce";
-import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
 import { getArrayItemSchema } from "./tool-call-array-schema";
 import {
-  collectAllOfDeniedPropertyNames,
-  collectFalsePropertyNames,
-} from "./tool-call-property-deny";
-
-const JSON_SCHEMA_COMBINATORS = ["allOf", "anyOf", "oneOf"] as const;
+  getToolInputPropertyNames,
+  getToolInputPropertySchema,
+} from "./tool-call-object-schema";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function getDeclaredToolInputPropertyNames(
-  schema: unknown
-): Set<string> | null {
-  return collectDeclaredToolInputPropertyNames(schema, new Set());
-}
-
-function addSafePropertyName(names: Set<string>, key: unknown): void {
-  if (typeof key === "string" && !isPrototypeSensitiveArgumentKey(key)) {
-    names.add(key);
-  }
-}
-
-function collectDirectDeclaredPropertyNames(
-  schema: Record<string, unknown>
-): Set<string> {
-  const names = new Set<string>();
-  const falsePropertyNames = collectFalsePropertyNames(schema);
-  if (Object.hasOwn(schema, "properties") && isRecord(schema.properties)) {
-    for (const [key, propertySchema] of Object.entries(schema.properties)) {
-      if (propertySchema !== false) {
-        addSafePropertyName(names, key);
-      }
-    }
-  }
-  if (Array.isArray(schema.required)) {
-    for (const key of schema.required) {
-      if (!(typeof key === "string" && falsePropertyNames.has(key))) {
-        addSafePropertyName(names, key);
-      }
-    }
-  }
-  return names;
-}
-
-function addNames(target: Set<string>, source: Set<string>): void {
-  for (const name of source) {
-    target.add(name);
-  }
-}
-
-function removeNames(target: Set<string>, source: Set<string>): void {
-  for (const name of source) {
-    target.delete(name);
-  }
-}
-
-function collectCombinatorDeclaredPropertyNames(
-  schema: Record<string, unknown>,
-  seen: Set<object>
-): Set<string> | null {
-  const names = new Set<string>();
-  let found = false;
-  for (const combinator of JSON_SCHEMA_COMBINATORS) {
-    const variants = schema[combinator];
-    if (!Array.isArray(variants)) {
-      continue;
-    }
-    for (const variant of variants) {
-      const nestedNames = collectDeclaredToolInputPropertyNames(
-        variant,
-        new Set(seen)
-      );
-      if (nestedNames) {
-        found = true;
-        addNames(names, nestedNames);
-      }
-    }
-  }
-  return found ? names : null;
-}
-
-function collectDeclaredToolInputPropertyNames(
-  schema: unknown,
-  seen: Set<object>
-): Set<string> | null {
-  const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
-    return null;
-  }
-  seen.add(unwrapped);
-
-  const names = collectDirectDeclaredPropertyNames(unwrapped);
-  const hasDirectProperties =
-    Object.hasOwn(unwrapped, "properties") && isRecord(unwrapped.properties);
-  const hasStrictPatternProperties =
-    Object.hasOwn(unwrapped, "patternProperties") &&
-    isRecord(unwrapped.patternProperties) &&
-    unwrapped.additionalProperties === false;
-  const combinatorNames = collectCombinatorDeclaredPropertyNames(
-    unwrapped,
-    seen
-  );
-  if (combinatorNames) {
-    addNames(names, combinatorNames);
-  }
-  removeNames(names, collectAllOfDeniedPropertyNames(unwrapped, new Set(seen)));
-
-  if (
-    names.size === 0 &&
-    !hasDirectProperties &&
-    !hasStrictPatternProperties &&
-    !combinatorNames
-  ) {
-    return null;
-  }
-  return names;
-}
-
-function collectPropertySchemaFromCombinators(
-  schema: Record<string, unknown>,
-  key: string,
-  seen: Set<object>
-): unknown {
-  const propertySchemas: unknown[] = [];
-  for (const combinator of JSON_SCHEMA_COMBINATORS) {
-    const variants = schema[combinator];
-    if (!Array.isArray(variants)) {
-      continue;
-    }
-    for (const variant of variants) {
-      const propertySchema = getDeclaredPropertySchema(
-        variant,
-        key,
-        new Set(seen)
-      );
-      if (propertySchema !== undefined) {
-        propertySchemas.push(propertySchema);
-      }
-    }
-  }
-  if (propertySchemas.length === 0) {
-    return;
-  }
-  if (propertySchemas.length === 1) {
-    return propertySchemas[0];
-  }
-  return { allOf: propertySchemas };
-}
-
-function getDeclaredPropertySchema(
-  schema: unknown,
-  key: string,
-  seen: Set<object>
-): unknown {
-  const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
-    return;
-  }
-  seen.add(unwrapped);
-
-  if (
-    isRecord(unwrapped.properties) &&
-    Object.hasOwn(unwrapped.properties, key)
-  ) {
-    return unwrapped.properties[key];
-  }
-  return collectPropertySchemaFromCombinators(unwrapped, key, seen);
-}
-
-function getDirectPropertySchema(schema: unknown, key: string): unknown {
-  return getDeclaredPropertySchema(schema, key, new Set());
 }
 
 function sanitizeToolCallArrayBySchema(
@@ -189,6 +22,25 @@ function sanitizeToolCallArrayBySchema(
   });
 }
 
+function sanitizeToolCallObjectBySchema(
+  value: Record<string, unknown>,
+  schema: unknown,
+  propertyNames: Set<string>,
+  seen: WeakSet<object>
+): Record<string, unknown> {
+  const sanitized = Object.create(null) as Record<string, unknown>;
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (propertyNames.has(key)) {
+      sanitized[key] = sanitizeToolCallValueBySchema(
+        nestedValue,
+        getToolInputPropertySchema(schema, key, value),
+        seen
+      );
+    }
+  }
+  return sanitized;
+}
+
 function sanitizeToolCallValueBySchema(
   value: unknown,
   schema: unknown,
@@ -202,7 +54,7 @@ function sanitizeToolCallValueBySchema(
     return sanitizeToolCallArrayBySchema(value, schema, seen);
   }
 
-  const propertyNames = getDeclaredToolInputPropertyNames(schema);
+  const propertyNames = getToolInputPropertyNames(schema, value);
   if (!(propertyNames && isRecord(value))) {
     return value;
   }
@@ -210,18 +62,7 @@ function sanitizeToolCallValueBySchema(
     return value;
   }
   seen.add(value);
-
-  const sanitized = Object.create(null) as Record<string, unknown>;
-  for (const [key, nestedValue] of Object.entries(value)) {
-    if (propertyNames.has(key)) {
-      sanitized[key] = sanitizeToolCallValueBySchema(
-        nestedValue,
-        getDirectPropertySchema(schema, key),
-        seen
-      );
-    }
-  }
-  return sanitized;
+  return sanitizeToolCallObjectBySchema(value, schema, propertyNames, seen);
 }
 
 export function sanitizeToolCallArgsBySchema(

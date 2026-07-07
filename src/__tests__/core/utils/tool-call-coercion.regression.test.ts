@@ -217,6 +217,48 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"steps":[{"action":"open"},{"label":"review"}]}');
   });
 
+  it("drops unknown keys from draft-07 tuple items object schemas", () => {
+    const input = coerceToolCallInput(
+      "batch",
+      {
+        steps: [
+          { action: "open", extra: "drop-me" },
+          { label: "review", secret: true },
+        ],
+      },
+      [
+        {
+          type: "function",
+          name: "batch",
+          inputSchema: {
+            type: "object",
+            properties: {
+              steps: {
+                type: "array",
+                items: [
+                  {
+                    type: "object",
+                    properties: {
+                      action: { type: "string" },
+                    },
+                  },
+                  {
+                    type: "object",
+                    properties: {
+                      label: { type: "string" },
+                    },
+                  },
+                ],
+              } as unknown as LanguageModelV4FunctionTool["inputSchema"],
+            },
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"steps":[{"action":"open"},{"label":"review"}]}');
+  });
+
   it("does not apply trailing items schemas to prefixItems entries", () => {
     const input = coerceToolCallInput(
       "batch",
@@ -343,6 +385,72 @@ describe("tool-call coercion regression coverage", () => {
     );
 
     expect(input).toBe('{"query":"status:open","admin":true}');
+  });
+
+  it("selects a single anyOf branch instead of merging mixed branch keys", () => {
+    const input = coerceToolCallInput(
+      "route",
+      { city: "Seoul", latitude: 37.5, stray: "drop-me" },
+      [
+        {
+          type: "function",
+          name: "route",
+          inputSchema: {
+            type: "object",
+            anyOf: [
+              {
+                properties: {
+                  city: { type: "string" },
+                },
+                required: ["city"],
+              },
+              {
+                properties: {
+                  latitude: { type: "number" },
+                  longitude: { type: "number" },
+                },
+                required: ["latitude", "longitude"],
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"city":"Seoul"}');
+  });
+
+  it("selects a single oneOf branch instead of merging mixed branch keys", () => {
+    const input = coerceToolCallInput(
+      "route",
+      { city: "Seoul", latitude: 37.5, stray: "drop-me" },
+      [
+        {
+          type: "function",
+          name: "route",
+          inputSchema: {
+            type: "object",
+            oneOf: [
+              {
+                properties: {
+                  city: { type: "string" },
+                },
+                required: ["city"],
+              },
+              {
+                properties: {
+                  latitude: { type: "number" },
+                  longitude: { type: "number" },
+                },
+                required: ["latitude", "longitude"],
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"city":"Seoul"}');
   });
 
   it("fails closed on cyclic provider-native object inputs", () => {
