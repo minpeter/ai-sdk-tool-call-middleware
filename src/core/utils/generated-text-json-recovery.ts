@@ -457,18 +457,30 @@ function isSensitiveRejectedJsonCandidate(
 ): boolean {
   const rawSensitive = toolCallTextHasPrototypeSensitiveKey(candidate.text);
   const parsed = parseJsonCandidate(candidate.text);
+  const knownToolCandidate = looksLikeKnownToolCandidate(parsed, tools);
   const structuralSensitive =
     parsed !== undefined && hasPrototypeSensitiveStructuralKey(parsed);
   const stringArgumentsSensitive =
     isRecord(parsed) &&
     typeof readToolArgsField(parsed) === "string" &&
     toolCallTextHasPrototypeSensitiveKey(readToolArgsField(parsed) as string);
+  const inputSensitive =
+    knownToolCandidate &&
+    parsed !== undefined &&
+    toolCallInputHasPrototypeSensitiveKey(parsed);
 
-  if (!(rawSensitive || structuralSensitive || stringArgumentsSensitive)) {
+  if (
+    !(
+      rawSensitive ||
+      structuralSensitive ||
+      stringArgumentsSensitive ||
+      inputSensitive
+    )
+  ) {
     return false;
   }
 
-  if (looksLikeKnownToolCandidate(parsed, tools)) {
+  if (knownToolCandidate) {
     return true;
   }
 

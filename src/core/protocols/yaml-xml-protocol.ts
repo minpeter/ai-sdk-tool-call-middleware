@@ -444,6 +444,22 @@ function yamlFailureCause(failure: YamlParseFailure): Record<string, unknown> {
   return { kind: "yaml-non-mapping" };
 }
 
+function safeYamlFailureCause(
+  failure: YamlParseFailure,
+  rawToolCallText: string
+): Record<string, unknown> {
+  if (!toolCallTextHasPrototypeSensitiveKey(rawToolCallText)) {
+    return yamlFailureCause(failure);
+  }
+  if (failure.kind === "yaml-parse-error") {
+    return {
+      kind: "yaml-parse-error",
+      errors: [safeToolCallMetadataText(rawToolCallText)],
+    };
+  }
+  return { kind: "yaml-non-mapping" };
+}
+
 /**
  * Parse YAML content from inside an XML tag.
  * Handles common LLM output issues like inconsistent indentation.
@@ -876,13 +892,12 @@ function processToolCallMatch(
     }
   } else {
     const originalText = text.slice(tc.startIndex, tc.endIndex);
-    const cause = yamlFailureCause(result.failure);
     options?.onError?.("Could not parse YAML tool call", {
       toolCall: safeToolCallMetadataText(originalText),
       toolName: tc.toolName,
       toolCallId: generateToolCallId(),
       dropReason: "malformed-tool-call-body",
-      cause,
+      cause: safeYamlFailureCause(result.failure, originalText),
     });
     if (!toolCallTextHasPrototypeSensitiveKey(originalText)) {
       processedElements.push({ type: "text", text: originalText });
@@ -1141,7 +1156,7 @@ export const yamlXmlProtocol = (
           toolName,
           toolCallId,
           dropReason: "malformed-tool-call-body",
-          cause: yamlFailureCause(result.failure),
+          cause: safeYamlFailureCause(result.failure, original),
         });
       }
     };
@@ -1229,7 +1244,7 @@ export const yamlXmlProtocol = (
             toolCallId,
             toolName,
             dropReason: "unfinished-tool-call",
-            cause: yamlFailureCause(result.failure),
+            cause: safeYamlFailureCause(result.failure, unfinishedContent),
           }
         );
       }

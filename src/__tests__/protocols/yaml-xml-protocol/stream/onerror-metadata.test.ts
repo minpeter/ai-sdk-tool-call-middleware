@@ -10,6 +10,12 @@ import {
 import { basicTools } from "../parse-generated-text/shared";
 
 describe("yamlXmlProtocol streaming onError metadata", () => {
+  const prototypeSensitiveKeys = [
+    "__proto__",
+    "constructor",
+    "prototype",
+  ] as const;
+
   it("populates toolName, toolCallId, and malformed-tool-call-body dropReason when streaming YAML body parse fails", async () => {
     const onError = vi.fn();
     const protocol = yamlXmlProtocol();
@@ -46,5 +52,47 @@ describe("yamlXmlProtocol streaming onError metadata", () => {
     expect(typeof metadata?.toolCallId).toBe("string");
     expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
     expect(metadata?.toolCall).toContain("<get_weather>");
+  });
+
+  it.each(
+    prototypeSensitiveKeys
+  )("redacts malformed XML-wrapped YAML keys for %s", async (key) => {
+    const onError = vi.fn();
+    const protocol = yamlXmlProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: basicTools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: `<get_weather>${key}: [</get_weather>`,
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+
+    expect(
+      out
+        .filter((part) => part.type === "text-delta")
+        .map((part) => part.delta)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalledTimes(1);
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain(key);
+    expect(metadataText).not.toContain("<get_weather>");
   });
 });
