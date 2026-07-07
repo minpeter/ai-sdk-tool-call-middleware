@@ -729,6 +729,17 @@ function parseXmlContentForStreamProgress({
       return null;
     }
   };
+  const tryStringify = (args: unknown): string | null => {
+    try {
+      return stringifyToolInputWithSchema({
+        toolName,
+        args,
+        tools,
+      });
+    } catch {
+      return null;
+    }
+  };
 
   const strictFull = tryParse(toolContent);
   if (
@@ -739,11 +750,7 @@ function parseXmlContentForStreamProgress({
       toolSchema,
     })
   ) {
-    return stringifyToolInputWithSchema({
-      toolName,
-      args: strictFull,
-      tools,
-    });
+    return tryStringify(strictFull);
   }
 
   const stringPropertyNames = getObjectSchemaStringPropertyNames(toolSchema);
@@ -756,11 +763,7 @@ function parseXmlContentForStreamProgress({
       const repaired = `${toolContent}</${trailingStringTag}>`;
       const parsedRepaired = tryParse(repaired);
       if (parsedRepaired !== null) {
-        return stringifyToolInputWithSchema({
-          toolName,
-          args: parsedRepaired,
-          tools,
-        });
+        return tryStringify(parsedRepaired);
       }
     }
   }
@@ -785,11 +788,7 @@ function parseXmlContentForStreamProgress({
         toolSchema,
       })
     ) {
-      return stringifyToolInputWithSchema({
-        toolName,
-        args: parsedCandidate,
-        tools,
-      });
+      return tryStringify(parsedCandidate);
     }
     searchEnd = gtIndex;
   }

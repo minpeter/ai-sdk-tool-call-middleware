@@ -32,6 +32,7 @@ import {
   findNextToolCallSpan,
   findToolCallBoundaryOutsideRjsonSyntax,
   hasPrototypeSensitiveKeyInJsonLikeObject,
+  isArgumentKeyPolicyError,
   isParsedToolCallRecord,
   normalizeInvalidJsonEscapes,
   normalizeJsonStringCtrl,
@@ -413,21 +414,23 @@ function emitToolCall(context: TagProcessingContext) {
     return;
   }
 
-  const salvagedCalls = recoverKnownToolCallsFromText(
-    state.currentToolCallJson,
-    tools
-  );
-  if (salvagedCalls && salvagedCalls.length > 0) {
-    closeTextBlock(state, controller);
-    for (const salvagedCall of salvagedCalls) {
-      emitResolvedToolCall(
-        state,
-        controller,
-        salvagedCall.toolName,
-        salvagedCall.input
-      );
+  if (!isArgumentKeyPolicyError(resolved.error)) {
+    const salvagedCalls = recoverKnownToolCallsFromText(
+      state.currentToolCallJson,
+      tools
+    );
+    if (salvagedCalls && salvagedCalls.length > 0) {
+      closeTextBlock(state, controller);
+      for (const salvagedCall of salvagedCalls) {
+        emitResolvedToolCall(
+          state,
+          controller,
+          salvagedCall.toolName,
+          salvagedCall.input
+        );
+      }
+      return;
     }
-    return;
   }
 
   const finalError = resolved.error;

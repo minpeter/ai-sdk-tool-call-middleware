@@ -7,6 +7,7 @@ import { parse as parseRJSON } from "../../rjson";
 import { unescapeXml } from "../../rxml/utils/helpers";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
 import { generateToolCallId } from "./id";
+import { coerceToolCallInput } from "./tool-call-coercion";
 
 interface ToolCallCandidate {
   input: string;
@@ -79,14 +80,6 @@ function containsPrototypeSensitiveKey(value: unknown): boolean {
   }
 
   return false;
-}
-
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value ?? {});
-  } catch {
-    return "{}";
-  }
 }
 
 function parseJsonCandidate(candidateText: string): unknown {
@@ -244,6 +237,15 @@ function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV4Content {
   };
 }
 
+function toToolCallCandidate(
+  toolName: string,
+  args: unknown,
+  tools: LanguageModelV4FunctionTool[]
+): ToolCallCandidate | null {
+  const input = coerceToolCallInput(toolName, args, tools);
+  return input === undefined ? null : { toolName, input };
+}
+
 const ORPHAN_TAG_BEFORE_CALL_REGEX = /(?:<\/?tool_call>\s*)+$/;
 const ORPHAN_TAG_AFTER_CALL_REGEX = /^(?:\s*<\/?tool_call>)+/;
 /**
@@ -337,10 +339,7 @@ function parseAsToolPayload(
     return null;
   }
 
-  return {
-    toolName,
-    input: safeStringify(rawArgs),
-  };
+  return toToolCallCandidate(toolName, rawArgs, tools);
 }
 
 function isLikelyArgumentsShapeForTool(
@@ -367,13 +366,6 @@ function isLikelyArgumentsShapeForTool(
 
   const knownKeys = keys.filter((key) => Object.hasOwn(properties, key));
   if (knownKeys.length === 0) {
-    return false;
-  }
-
-  if (
-    unwrapped.additionalProperties === false &&
-    knownKeys.length !== keys.length
-  ) {
     return false;
   }
 
@@ -413,10 +405,7 @@ function parseAsArgumentsOnly(
     return null;
   }
 
-  return {
-    toolName: tool.name,
-    input: safeStringify(payload),
-  };
+  return toToolCallCandidate(tool.name, payload, tools);
 }
 
 function resolveCandidatePayload(
@@ -586,11 +575,14 @@ function extractFunctionBlockCallSpans(
     const endIndex = selfClosing
       ? open.index + openTag.length
       : (close?.end ?? nextOpenIndex);
-    spans.push({
-      startIndex: open.index,
-      endIndex,
-      payload: { toolName, input: safeStringify(params) },
-    });
+    const payload = toToolCallCandidate(toolName, params, tools);
+    if (payload) {
+      spans.push({
+        startIndex: open.index,
+        endIndex,
+        payload,
+      });
+    }
   }
 
   return spans;
@@ -624,7 +616,7 @@ function resolveYamlBlockPayload(
     const rawArgs = readToolArgsField(mapping);
     const args = rawArgs === undefined || rawArgs === null ? {} : rawArgs;
     if (isRecord(args) && !containsPrototypeSensitiveKey(args)) {
-      return { toolName: envelopeName, input: safeStringify(args) };
+      return toToolCallCandidate(envelopeName, args, tools);
     }
     return null;
   }
@@ -638,13 +630,13 @@ function resolveYamlBlockPayload(
       tools.some((tool) => tool.name === name)
     );
     if (matched) {
-      return { toolName: matched, input: safeStringify(mapping) };
+      return toToolCallCandidate(matched, mapping, tools);
     }
   }
 
   // Bare-args form with a single tool whose schema matches.
   if (tools.length === 1 && isLikelyArgumentsShapeForTool(mapping, tools[0])) {
-    return { toolName: tools[0].name, input: safeStringify(mapping) };
+    return toToolCallCandidate(tools[0].name, mapping, tools);
   }
 
   return null;

@@ -59,6 +59,85 @@ describe("tool-call coercion utils", () => {
     expect(input).toBe('{"city":"Seoul","unit":"celsius"}');
   });
 
+  it("rejects prototype-sensitive keys before schema sanitization can drop them", () => {
+    const input = coerceToolCallInput(
+      "get_weather",
+      { city: "Seoul", constructor: { polluted: true } },
+      weatherTools
+    );
+
+    expect(input).toBeUndefined();
+  });
+
+  it("rejects nested prototype-sensitive keys before schema coercion can drop them", () => {
+    const input = coerceToolCallInput(
+      "get_weather",
+      { city: "Seoul", meta: { prototype: { polluted: true } } },
+      weatherTools
+    );
+
+    expect(input).toBeUndefined();
+  });
+
+  it("drops every key when a strict object schema declares no properties", () => {
+    const input = coerceToolCallInput("ping", { mood: "sunny" }, [
+      {
+        type: "function",
+        name: "ping",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+    ]);
+
+    expect(input).toBe("{}");
+  });
+
+  it("drops keys for strict patternProperties-only tool schemas", () => {
+    const input = coerceToolCallInput("metadata", { "x-debug": "yes" }, [
+      {
+        type: "function",
+        name: "metadata",
+        inputSchema: {
+          type: "object",
+          patternProperties: {
+            "^x-": { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      },
+    ]);
+
+    expect(input).toBe("{}");
+  });
+
+  it("drops schema-unknown top-level keys from allOf-wrapped schemas", () => {
+    const input = coerceToolCallInput(
+      "get_weather",
+      { city: "Seoul", mood: "sunny" },
+      [
+        {
+          type: "function",
+          name: "get_weather",
+          inputSchema: {
+            allOf: [
+              {
+                type: "object",
+                properties: {
+                  city: { type: "string" },
+                },
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"city":"Seoul"}');
+  });
+
   it("returns undefined when tool input is invalid JSON string", () => {
     const input = coerceToolCallInput("calc", "{", []);
     expect(input).toBeUndefined();

@@ -57,25 +57,92 @@ export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
 function getDeclaredToolInputPropertyNames(
   schema: unknown
 ): Set<string> | null {
+  return collectDeclaredToolInputPropertyNames(schema, new Set());
+}
+
+function addSafePropertyName(names: Set<string>, key: unknown): void {
+  if (typeof key === "string" && !PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) {
+    names.add(key);
+  }
+}
+
+function collectDirectDeclaredPropertyNames(
+  schema: Record<string, unknown>
+): Set<string> {
+  const names = new Set<string>();
+  if (Object.hasOwn(schema, "properties") && isRecord(schema.properties)) {
+    for (const [key, propertySchema] of Object.entries(schema.properties)) {
+      if (propertySchema !== false) {
+        addSafePropertyName(names, key);
+      }
+    }
+  }
+  if (Array.isArray(schema.required)) {
+    for (const key of schema.required) {
+      addSafePropertyName(names, key);
+    }
+  }
+  return names;
+}
+
+function addNames(target: Set<string>, source: Set<string>): void {
+  for (const name of source) {
+    target.add(name);
+  }
+}
+
+function collectCombinatorDeclaredPropertyNames(
+  schema: Record<string, unknown>,
+  seen: Set<object>
+): Set<string> | null {
+  const names = new Set<string>();
+  let found = false;
+  for (const combinator of ["allOf", "anyOf", "oneOf"] as const) {
+    const variants = schema[combinator];
+    if (!Array.isArray(variants)) {
+      continue;
+    }
+    for (const variant of variants) {
+      const nestedNames = collectDeclaredToolInputPropertyNames(
+        variant,
+        new Set(seen)
+      );
+      if (nestedNames) {
+        found = true;
+        addNames(names, nestedNames);
+      }
+    }
+  }
+  return found ? names : null;
+}
+
+function collectDeclaredToolInputPropertyNames(
+  schema: unknown,
+  seen: Set<object>
+): Set<string> | null {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!(isRecord(unwrapped) && isRecord(unwrapped.properties))) {
+  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
     return null;
   }
+  seen.add(unwrapped);
 
-  const propertyNames = Object.entries(unwrapped.properties).flatMap(
-    ([key, propertySchema]) =>
-      propertySchema !== false && !PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)
-        ? [key]
-        : []
+  const names = collectDirectDeclaredPropertyNames(unwrapped);
+  const combinatorNames = collectCombinatorDeclaredPropertyNames(
+    unwrapped,
+    seen
   );
-  const requiredNames = Array.isArray(unwrapped.required)
-    ? unwrapped.required.filter(
-        (key): key is string =>
-          typeof key === "string" && !PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)
-      )
-    : [];
-  const names = [...propertyNames, ...requiredNames];
-  return names.length > 0 ? new Set(names) : null;
+  if (combinatorNames) {
+    addNames(names, combinatorNames);
+  }
+
+  if (
+    names.size === 0 &&
+    unwrapped.additionalProperties !== false &&
+    !combinatorNames
+  ) {
+    return null;
+  }
+  return names;
 }
 
 export function sanitizeToolCallArgsBySchema(
@@ -159,6 +226,9 @@ export function coerceToolCallInput(
   const schema = tools.find((t) => t.name === toolName)?.inputSchema;
   if (args === null) {
     return schemaAllowsNull(schema) ? "null" : undefined;
+  }
+  if (hasPrototypeSensitiveStructuralKey(args)) {
+    return;
   }
   const coerced = coerceBySchema(args, schema);
   if (coerced === null) {

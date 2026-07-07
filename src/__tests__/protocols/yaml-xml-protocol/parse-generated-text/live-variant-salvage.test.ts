@@ -44,7 +44,7 @@ def fizzbuzz(n):
 // IBM Granite 4.0: Hermes-style JSON payload inside a <tool_call> wrapper,
 // unclosed and with an unbalanced tail.
 const HERMES_JSON_OUTPUT = `<tool_call>
-{"name":"write_file","arguments":{"path":"fizzbuzz.py","content":"def fizzbuzz(n):\\n    return str(n)\\n"}}`;
+{"name":"write_file","arguments":{"path":"fizzbuzz.py","content":"def fizzbuzz(n):\\n    return str(n)\\n","mood":"sunny"}}`;
 
 function toChunks(text: string, size: number): string[] {
   const chunks: string[] = [];
@@ -200,6 +200,12 @@ content:${contentWithTrailingSpaces}
         .join("");
       expect(leakedText).not.toContain("<tool_call");
       expect(leakedText).not.toContain('{"name"');
+
+      const toolInputDeltas = out
+        .filter((part) => part.type === "tool-input-delta")
+        .map((part) => (part as { delta: string }).delta)
+        .join("");
+      expect(toolInputDeltas).not.toContain("mood");
     });
   }
 

@@ -25,7 +25,7 @@ const tools: LanguageModelV4FunctionTool[] = [
 // Real-world shape observed from LiquidAI LFM2: a Hermes-style JSON payload
 // inside <tool_call> tags while the Qwen3-Coder prompt is active.
 const HERMES_JSON_UNDER_QWEN = `<tool_call>
-{"name": "book_flight", "arguments": {"passenger": {"name": "Jane Doe", "age": 34}, "legs": [{"from": "ICN", "to": "NRT"}], "cabin": "economy"}}
+{"name": "book_flight", "arguments": {"passenger": {"name": "Jane Doe", "age": 34}, "legs": [{"from": "ICN", "to": "NRT"}], "cabin": "economy", "seat": "12A"}}
 </tool_call>`;
 
 describe("qwen3CoderProtocol foreign-format salvage", () => {
@@ -46,6 +46,13 @@ describe("qwen3CoderProtocol foreign-format salvage", () => {
     const input = JSON.parse(call.input);
     expect(input.passenger).toEqual({ name: "Jane Doe", age: 34 });
     expect(input.legs).toEqual([{ from: "ICN", to: "NRT" }]);
+    expect(input.seat).toBeUndefined();
+
+    const toolInputDeltas = out
+      .filter((part) => part.type === "tool-input-delta")
+      .map((part) => (part as { delta: string }).delta)
+      .join("");
+    expect(toolInputDeltas).not.toContain("seat");
 
     const text = out
       .filter((part) => part.type === "text-delta")
@@ -68,6 +75,28 @@ describe("qwen3CoderProtocol foreign-format salvage", () => {
     );
 
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it("fails closed without throwing on prototype-sensitive XML args", async () => {
+    const errors: string[] = [];
+    const p = qwen3CoderProtocol();
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createChunkedStream(
+          '<tool_call>\n<function=book_flight>\n<parameter=constructor>{"polluted":true}</parameter>\n</function>\n</tool_call>'
+        ),
+        p.createStreamParser({
+          tools,
+          options: { onError: (message) => errors.push(message) },
+        })
+      )
+    );
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(out.filter((part) => part.type === "tool-input-start")).toHaveLength(
+      out.filter((part) => part.type === "tool-input-end").length
+    );
     expect(errors.length).toBeGreaterThan(0);
   });
 

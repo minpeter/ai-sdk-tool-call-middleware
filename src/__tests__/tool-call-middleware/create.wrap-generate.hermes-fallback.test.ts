@@ -67,6 +67,54 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
     });
   });
 
+  it("recovers single-tool bare arguments and drops schema-unknown keys", async () => {
+    const middleware = createJsonMiddleware();
+    const tools: LanguageModelV4FunctionTool[] = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "",
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+          },
+          required: ["city"],
+          additionalProperties: false,
+        },
+      },
+    ];
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: '{"city":"Seoul","mood":"sunny"}',
+        },
+      ],
+    });
+
+    const result = await middleware.wrapGenerate?.({
+      doGenerate,
+      params: {
+        prompt: [],
+        tools,
+        providerOptions: {
+          toolCallMiddleware: {
+            originalTools: originalToolsSchema.encode(tools),
+          },
+        },
+      },
+    } as any);
+
+    const toolCall = result?.content.find(
+      (part: unknown) => (part as { type?: string }).type === "tool-call"
+    ) as { toolName: string; input: string } | undefined;
+
+    expect(toolCall).toBeTruthy();
+    expect(toolCall?.toolName).toBe("get_weather");
+    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({ city: "Seoul" });
+  });
+
   it("preserves surrounding text when JSON fallback recovers from fenced payload", async () => {
     const middleware = createJsonMiddleware();
     const tools: LanguageModelV4FunctionTool[] = [

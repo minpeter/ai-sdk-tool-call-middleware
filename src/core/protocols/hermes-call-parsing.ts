@@ -15,10 +15,7 @@ import { logParseFailure } from "../utils/debug";
 import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
 import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-coercion";
-import {
-  emitToolInputProgressDelta,
-  stringifyToolInputWithSchema,
-} from "../utils/tool-input-streaming";
+import { emitToolInputProgressDelta } from "../utils/tool-input-streaming";
 import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
 import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 import type { ParserOptions } from "./protocol-interface";
@@ -304,17 +301,8 @@ export function canonicalizeToolInput(argumentsValue: unknown): string {
   return JSON.stringify(argumentsValue ?? {});
 }
 
-function stringifyParsedToolInput(
-  toolName: string,
-  args: unknown,
-  tools: LanguageModelV4FunctionTool[]
-): string {
-  return stringifyToolInputWithSchema({
-    toolName,
-    args,
-    tools,
-    fallback: canonicalizeToolInput,
-  });
+function stringifyParsedToolInput(args: unknown): string {
+  return args === null ? "null" : canonicalizeToolInput(args);
 }
 
 export function isParsedToolCallRecord(
@@ -536,8 +524,72 @@ interface ArgumentKeyPolicy {
   unsafeDeniedPatterns: string[];
 }
 
+class ArgumentKeyPolicyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArgumentKeyPolicyError";
+  }
+}
+
+export function isArgumentKeyPolicyError(error: unknown): boolean {
+  return error instanceof ArgumentKeyPolicyError;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function addDirectArgumentKnownKeys(
+  keys: Set<string>,
+  schema: Record<string, unknown>
+): void {
+  if (isRecord(schema.properties)) {
+    for (const [key, propertySchema] of Object.entries(schema.properties)) {
+      if (propertySchema !== false) {
+        keys.add(key);
+      }
+    }
+  }
+  if (Array.isArray(schema.required)) {
+    for (const key of schema.required) {
+      if (typeof key === "string" && key.length > 0) {
+        keys.add(key);
+      }
+    }
+  }
+}
+
+function addCombinatorArgumentKnownKeys(
+  keys: Set<string>,
+  schema: Record<string, unknown>,
+  seen: Set<object>
+): void {
+  for (const combinator of ["allOf", "anyOf", "oneOf"] as const) {
+    const variants = schema[combinator];
+    if (!Array.isArray(variants)) {
+      continue;
+    }
+    for (const variant of variants) {
+      for (const key of collectArgumentKnownKeys(variant, new Set(seen))) {
+        keys.add(key);
+      }
+    }
+  }
+}
+
+function collectArgumentKnownKeys(
+  schema: unknown,
+  seen = new Set<object>()
+): Set<string> {
+  const unwrapped = unwrapJsonSchema(schema);
+  const keys = new Set<string>();
+  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+    return keys;
+  }
+  seen.add(unwrapped);
+  addDirectArgumentKnownKeys(keys, unwrapped);
+  addCombinatorArgumentKnownKeys(keys, unwrapped, seen);
+  return keys;
 }
 
 function schemaRejectsNonRecordArguments(
@@ -651,11 +703,7 @@ function extractArgumentKeyPolicy(
     ),
     deniedPatterns,
     keyPatterns,
-    knownKeys: new Set(
-      propertyEntries
-        .filter(([, propertySchema]) => propertySchema !== false)
-        .map(([key]) => key)
-    ),
+    knownKeys: collectArgumentKnownKeys(schema),
     rejectAll: false,
     rejectNonRecordArguments: schemaRejectsNonRecordArguments(schema),
     schema,
@@ -695,7 +743,7 @@ function applyArgumentKeyPolicy(
     return null;
   }
   const policyArgs = keyPolicy
-    ? sanitizeToolCallArgsBySchema(coercedPolicyArgs, keyPolicy.schema)
+    ? sanitizeArgsByArgumentKeyPolicy(coercedPolicyArgs, keyPolicy)
     : coercedPolicyArgs;
   if (!isRecord(policyArgs)) {
     return null;
@@ -706,7 +754,9 @@ function applyArgumentKeyPolicy(
   if (
     keyPolicy &&
     !argumentValueMatchesSchemaKeyShape(
-      policyArgs,
+      shouldValidateCombinatorSchemaBeforeSanitization(keyPolicy)
+        ? coercedPolicyArgs
+        : policyArgs,
       keyPolicy.schema,
       new Set(),
       true
@@ -722,6 +772,54 @@ function coerceArgsForKeyPolicy(
   keyPolicy?: ArgumentKeyPolicy
 ): unknown {
   return keyPolicy ? coerceBySchema(args, keyPolicy.schema) : args;
+}
+
+function sanitizeArgsByArgumentKeyPolicy(
+  args: Record<string, unknown>,
+  keyPolicy: ArgumentKeyPolicy
+): Record<string, unknown> {
+  if (
+    keyPolicy.keyPatterns.length === 0 &&
+    !shouldValidateCombinatorSchemaBeforeSanitization(keyPolicy)
+  ) {
+    const sanitized = sanitizeToolCallArgsBySchema(args, keyPolicy.schema);
+    return isRecord(sanitized) ? sanitized : args;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  const allowPatternOnlyKeys = keyPolicy.knownKeys.size === 0;
+  for (const [key, value] of Object.entries(args)) {
+    if (
+      keyPolicy.knownKeys.has(key) ||
+      (allowPatternOnlyKeys &&
+        keyPolicy.keyPatterns.some((pattern) => pattern.test(key)))
+    ) {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
+function shouldValidateCombinatorSchemaBeforeSanitization(
+  keyPolicy: ArgumentKeyPolicy
+): boolean {
+  return schemaHasTopLevelCombinator(keyPolicy.schema, new Set());
+}
+
+function schemaHasTopLevelCombinator(
+  schema: unknown,
+  seen: Set<object>
+): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+    return false;
+  }
+  seen.add(unwrapped);
+  return (
+    Array.isArray(unwrapped.allOf) ||
+    Array.isArray(unwrapped.anyOf) ||
+    Array.isArray(unwrapped.oneOf)
+  );
 }
 
 function argumentKeyDeniedByPolicy(
@@ -1915,20 +2013,21 @@ export function resolveToolCall(
       tools
     );
     if (policyArguments === null) {
-      throw new Error("Tool call arguments contain schema-unknown keys");
+      throw new ArgumentKeyPolicyError(
+        "Tool call arguments were rejected by schema key policy"
+      );
     }
     return {
       ok: true,
       toolName: parsedToolCall.name,
-      input: stringifyParsedToolInput(
-        parsedToolCall.name,
-        policyArguments.args,
-        tools
-      ),
+      input: stringifyParsedToolInput(policyArguments.args),
     };
   } catch (error) {
     const parseError =
       error instanceof Error ? error : new Error(String(error));
+    if (isArgumentKeyPolicyError(parseError)) {
+      return { ok: false, error: parseError };
+    }
     // Attempt repair for unescaped quotes (best-effort).
     const repaired = repairToolCallJsonForTools(toolCallJson, tools);
     if (repaired) {
@@ -1936,11 +2035,7 @@ export function resolveToolCall(
         return {
           ok: true,
           toolName: repaired.name,
-          input: stringifyParsedToolInput(
-            repaired.name,
-            repaired.arguments,
-            tools
-          ),
+          input: stringifyParsedToolInput(repaired.arguments),
         };
       } catch (repairError) {
         return {
@@ -2017,11 +2112,7 @@ export function recoverKnownToolCallsFromText(
       calls.push({
         ok: true,
         toolName: part.toolName,
-        input: stringifyParsedToolInput(
-          part.toolName,
-          policyArguments.args,
-          tools
-        ),
+        input: stringifyParsedToolInput(policyArguments.args),
       });
     } catch {
       return null;
@@ -2049,17 +2140,19 @@ export function processToolCallJson(
     return;
   }
 
-  const salvagedCalls = recoverKnownToolCallsFromText(toolCallJson, tools);
-  if (salvagedCalls && salvagedCalls.length > 0) {
-    for (const salvagedCall of salvagedCalls) {
-      processedElements.push({
-        type: "tool-call",
-        toolCallId: generateToolCallId(),
-        toolName: salvagedCall.toolName,
-        input: salvagedCall.input,
-      });
+  if (!isArgumentKeyPolicyError(resolved.error)) {
+    const salvagedCalls = recoverKnownToolCallsFromText(toolCallJson, tools);
+    if (salvagedCalls && salvagedCalls.length > 0) {
+      for (const salvagedCall of salvagedCalls) {
+        processedElements.push({
+          type: "tool-call",
+          toolCallId: generateToolCallId(),
+          toolName: salvagedCall.toolName,
+          input: salvagedCall.input,
+        });
+      }
+      return;
     }
-    return;
   }
 
   const salvagedToolName =

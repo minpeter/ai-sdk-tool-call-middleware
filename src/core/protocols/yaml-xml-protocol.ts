@@ -1000,11 +1000,16 @@ export const yamlXmlProtocol = (
       if (parsedArgs === null) {
         return;
       }
-      const fullInput = stringifyToolInputWithSchema({
-        toolName: currentToolCall.name,
-        args: parsedArgs,
-        tools,
-      });
+      let fullInput: string;
+      try {
+        fullInput = stringifyToolInputWithSchema({
+          toolName: currentToolCall.name,
+          args: parsedArgs,
+          tools,
+        });
+      } catch {
+        return;
+      }
       if (fullInput === "{}" && toolContent.trim().length === 0) {
         return;
       }
@@ -1028,11 +1033,34 @@ export const yamlXmlProtocol = (
       );
       flushText(controller);
       if (result.ok) {
-        const finalInput = stringifyToolInputWithSchema({
-          toolName,
-          args: result.value,
-          tools,
-        });
+        let finalInput: string;
+        try {
+          finalInput = stringifyToolInputWithSchema({
+            toolName,
+            args: result.value,
+            tools,
+          });
+        } catch (error) {
+          const original = `<${toolName}>${toolContent}</${toolName}>`;
+          const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+          emitFailedToolInputLifecycle({
+            controller,
+            id: toolCallId,
+            emitRawToolCallTextOnError: emitRawFallback,
+            rawToolCallText: original,
+            emitRawText: (rawText) => {
+              flushText(controller, rawText);
+            },
+          });
+          options?.onError?.("Could not parse streaming YAML tool call", {
+            toolCall: original,
+            toolName,
+            toolCallId,
+            dropReason: "malformed-tool-call-body",
+            error,
+          });
+          return;
+        }
         if (currentToolCall && currentToolCall.toolCallId === toolCallId) {
           emitFinalizedToolInputLifecycle({
             controller,
@@ -1088,11 +1116,39 @@ export const yamlXmlProtocol = (
       );
       flushText(controller);
       if (result.ok) {
-        const finalInput = stringifyToolInputWithSchema({
-          toolName,
-          args: result.value,
-          tools,
-        });
+        let finalInput: string;
+        try {
+          finalInput = stringifyToolInputWithSchema({
+            toolName,
+            args: result.value,
+            tools,
+          });
+        } catch (error) {
+          const unfinishedContent = `<${toolName}>${buffer}`;
+          const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
+          emitFailedToolInputLifecycle({
+            controller,
+            id: toolCallId,
+            emitRawToolCallTextOnError: emitRawFallback,
+            rawToolCallText: unfinishedContent,
+            emitRawText: (rawText) => {
+              flushText(controller, rawText);
+            },
+          });
+          options?.onError?.(
+            "Could not complete streaming YAML tool call at finish.",
+            {
+              toolCall: unfinishedContent,
+              toolCallId,
+              toolName,
+              dropReason: "malformed-tool-call-body",
+              error,
+            }
+          );
+          buffer = "";
+          currentToolCall = null;
+          return;
+        }
         emitFinalizedToolInputLifecycle({
           controller,
           id: toolCallId,

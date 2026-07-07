@@ -64,6 +64,17 @@ import { parseCallContent } from "./qwen3coder-stream-call-content";
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
+interface ParsedQwenToolCall {
+  args: Record<string, unknown>;
+  toolName: string;
+}
+
+interface SerializedQwenToolCall {
+  input: string;
+  toolCallId: string;
+  toolName: string;
+}
+
 const XML_TAG_RE = /<\s*(\/)?\s*([A-Za-z_][\w.:-]*)\b[^>]*>/g;
 const XML_VALUE_TAG_NAMES = new Set(["parameter", "param", "argument", "arg"]);
 
@@ -198,6 +209,29 @@ function parseToolCallInput(input: string | null | undefined): unknown {
   }
 }
 
+function serializeQwenToolParserCalls(
+  calls: ParsedQwenToolCall[],
+  tools: LanguageModelV4FunctionTool[]
+): SerializedQwenToolCall[] | null {
+  const serializedCalls: SerializedQwenToolCall[] = [];
+  for (const call of calls) {
+    try {
+      serializedCalls.push({
+        toolCallId: generateToolCallId(),
+        toolName: call.toolName,
+        input: stringifyToolInputWithSchema({
+          tools,
+          toolName: call.toolName,
+          args: call.args,
+        }),
+      });
+    } catch {
+      return null;
+    }
+  }
+  return serializedCalls;
+}
+
 function toQwen3CoderToolParserParamText(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -283,6 +317,41 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
     };
 
+    const emitToolCallParseFailureAsText = (
+      raw: string,
+      message: string,
+      toolName: string | null | undefined,
+      error?: unknown
+    ) => {
+      options?.onError?.(message, {
+        toolCall: raw,
+        toolName: toolName ?? undefined,
+        toolCallId: generateToolCallId(),
+        dropReason: "malformed-tool-call-body",
+        ...(error === undefined ? {} : { error }),
+      });
+      processedElements.push({ type: "text", text: raw });
+    };
+
+    const tryEmitToolCalls = (
+      calls: Array<{ toolName: string; args: Record<string, unknown> }>,
+      fallbackText: string,
+      message: string
+    ): boolean => {
+      try {
+        emitToolCalls(calls);
+        return true;
+      } catch (error) {
+        emitToolCallParseFailureAsText(
+          fallbackText,
+          message,
+          calls[0]?.toolName,
+          error
+        );
+        return false;
+      }
+    };
+
     const pushText = (value: string) => {
       if (value.length === 0) {
         return;
@@ -299,33 +368,26 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         tools
       );
       if (!parsedCalls) {
-        options?.onError?.(
+        emitToolCallParseFailureAsText(
+          fallbackText,
           "Could not process Qwen3CoderToolParser XML tool call; keeping original text.",
-          {
-            toolCall: fallbackText,
-            toolName: extractQwen3CoderToolNameFromMarkup(segment),
-            toolCallId: generateToolCallId(),
-            dropReason: "malformed-tool-call-body",
-          }
+          extractQwen3CoderToolNameFromMarkup(segment)
         );
-        processedElements.push({ type: "text", text: fallbackText });
         return false;
       }
-      emitToolCalls(parsedCalls);
-      return true;
+      return tryEmitToolCalls(
+        parsedCalls,
+        fallbackText,
+        "Could not process Qwen3CoderToolParser XML tool call; keeping original text."
+      );
     };
 
     const emitWrapperlessCallParseFailureAsText = (raw: string) => {
-      options?.onError?.(
+      emitToolCallParseFailureAsText(
+        raw,
         "Could not process Qwen3CoderToolParser <function> call; keeping original text.",
-        {
-          toolCall: raw,
-          toolName: extractQwen3CoderToolNameFromMarkup(raw),
-          toolCallId: generateToolCallId(),
-          dropReason: "malformed-tool-call-body",
-        }
+        extractQwen3CoderToolNameFromMarkup(raw)
       );
-      processedElements.push({ type: "text", text: raw });
     };
 
     const tryParseCallBlocksWithoutWrapperByImplicitStarts = (
@@ -353,12 +415,19 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         );
         const parsed = parseSingleFunctionCallXml(callContent, null, tools);
         if (parsed) {
-          emitToolCalls([parsed]);
-          pushText(
-            stripTrailingToolCallCloseTags(
-              stripLeadingToolCallCloseTags(trailingText)
+          if (
+            tryEmitToolCalls(
+              [parsed],
+              full,
+              "Could not process Qwen3CoderToolParser <function> call; keeping original text."
             )
-          );
+          ) {
+            pushText(
+              stripTrailingToolCallCloseTags(
+                stripLeadingToolCallCloseTags(trailingText)
+              )
+            );
+          }
         } else {
           emitWrapperlessCallParseFailureAsText(full);
         }
@@ -394,7 +463,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
 
         const parsed = parseSingleFunctionCallXml(full, null, tools);
         if (parsed) {
-          emitToolCalls([parsed]);
+          tryEmitToolCalls(
+            [parsed],
+            full,
+            "Could not process Qwen3CoderToolParser <function> call; keeping original text."
+          );
         } else {
           emitWrapperlessCallParseFailureAsText(full);
         }
@@ -528,7 +601,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return true;
       }
 
-      emitToolCalls([parsed]);
+      tryEmitToolCalls(
+        [parsed],
+        trailing,
+        "Could not process Qwen3CoderToolParser <function> call; keeping original text."
+      );
       return true;
     };
 
@@ -668,11 +745,16 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           getProgressHoldbackTags(callState)
         )
       );
-      const fullInput = stringifyToolInputWithSchema({
-        tools,
-        toolName,
-        args: argsForProgress,
-      });
+      let fullInput: string;
+      try {
+        fullInput = stringifyToolInputWithSchema({
+          tools,
+          toolName,
+          args: argsForProgress,
+        });
+      } catch {
+        return;
+      }
       if (fullInput === "{}") {
         return;
       }
@@ -722,11 +804,39 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       maybeEmitToolInputStart(controller, callState);
       maybeEmitToolInputProgress(controller, callState);
 
-      const finalInput = stringifyToolInputWithSchema({
-        tools,
-        toolName: resolvedToolName,
-        args: callState.args,
-      });
+      let finalInput: string;
+      try {
+        finalInput = stringifyToolInputWithSchema({
+          tools,
+          toolName: resolvedToolName,
+          args: callState.args,
+        });
+      } catch (error) {
+        const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
+        emitFailedToolInputLifecycle({
+          controller,
+          id: callState.toolCallId,
+          endInput: callState.hasEmittedStart,
+          emitRawToolCallTextOnError: shouldEmitRaw,
+          rawToolCallText,
+          emitRawText: (rawText) => {
+            flushText(controller, rawText);
+          },
+        });
+        options?.onError?.(
+          shouldEmitRaw && rawToolCallText
+            ? "Could not process streaming Qwen3CoderToolParser XML tool call; emitting original text."
+            : "Could not process streaming Qwen3CoderToolParser XML tool call.",
+          {
+            toolCallId: callState.toolCallId,
+            toolCall: rawToolCallText,
+            toolName: resolvedToolName,
+            dropReason: "malformed-tool-call-body",
+            error,
+          }
+        );
+        return false;
+      }
       emitFinalizedToolInputLifecycle({
         controller,
         id: callState.toolCallId,
@@ -1361,30 +1471,28 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       if (!calls || calls.length === 0) {
         return false;
       }
-      for (const call of calls) {
-        const toolCallId = generateToolCallId();
-        const input = stringifyToolInputWithSchema({
-          tools,
-          toolName: call.toolName,
-          args: call.args,
-        });
+      const serializedCalls = serializeQwenToolParserCalls(calls, tools);
+      if (!serializedCalls) {
+        return false;
+      }
+      for (const call of serializedCalls) {
         controller.enqueue({
           type: "tool-input-start",
-          id: toolCallId,
+          id: call.toolCallId,
           toolName: call.toolName,
         });
-        if (input.length > 0) {
+        if (call.input.length > 0) {
           controller.enqueue({
             type: "tool-input-delta",
-            id: toolCallId,
-            delta: input,
+            id: call.toolCallId,
+            delta: call.input,
           });
         }
         enqueueToolInputEndAndCall({
           controller,
-          id: toolCallId,
+          id: call.toolCallId,
           toolName: call.toolName,
-          input,
+          input: call.input,
         });
       }
       return true;

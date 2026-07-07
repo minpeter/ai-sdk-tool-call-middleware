@@ -130,6 +130,28 @@ describe("recoverToolCallFromJsonCandidates", () => {
     expect(JSON.parse(tool.input)).toEqual({ city: "Seoul" });
   });
 
+  it("recovers arguments-only payloads after dropping schema-unknown keys", () => {
+    const text = '{"city":"Seoul","mood":"sunny"}';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, [
+      {
+        ...tools[1],
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      },
+    ]);
+
+    expect(recovered).not.toBeNull();
+    const tool = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(tool.toolName).toBe("get_weather");
+    expect(JSON.parse(tool.input)).toEqual({ city: "Seoul" });
+  });
+
   it("does not recover arguments-only payloads when multiple tools exist", () => {
     const text = '{"city":"Seoul"}';
 
@@ -253,7 +275,7 @@ describe("recoverToolCallFromJsonCandidates envelope variants", () => {
 describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
   it("recovers Qwen-style function blocks (Step 3.5 shape)", () => {
     const text =
-      "<tool_call>\n<function=get_weather>\n<parameter=city>\nSeoul\n</parameter>\n</function>\n</tool_call>";
+      "<tool_call>\n<function=get_weather>\n<parameter=city>\nSeoul\n</parameter>\n<parameter=mood>\nsunny\n</parameter>\n</function>\n</tool_call>";
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
@@ -385,7 +407,7 @@ describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
     const call = recovered?.find((part) => part.type === "tool-call") as any;
     expect(call).toBeDefined();
     expect(call.toolName).toBe("get_weather");
-    expect(JSON.parse(call.input)).toEqual({ city: "Seoul", unit: "celsius" });
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
   });
 
   it("recovers bare-args YAML blocks closed with the tool name", () => {
