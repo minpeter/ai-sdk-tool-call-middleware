@@ -723,7 +723,7 @@ describe("wrapStream tool-call coercion", () => {
     }
   });
 
-  it("streams long morph-xml string content before close while keeping coercion", async () => {
+  it("streams morph-xml structure before close without exposing open string content", async () => {
     const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
@@ -812,7 +812,8 @@ describe("wrapStream tool-call coercion", () => {
       false
     );
     expect(earlyJoined).toContain('"line_count":420');
-    expect(earlyJoined).toContain(contentHead.slice(0, 120));
+    expect(earlyJoined).toContain('"content":"');
+    expect(earlyJoined).not.toContain(contentHead.slice(0, 120));
 
     releaseSecondChunk();
 

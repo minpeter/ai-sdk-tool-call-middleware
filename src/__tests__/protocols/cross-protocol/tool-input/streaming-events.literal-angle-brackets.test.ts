@@ -102,7 +102,7 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
           variantName: "entity-escaped input",
           rawModelOutput:
             "<send_keys><value>&lt;Ctrl+C&gt;ahi, my name is pi&lt;Esc&gt;&lt;Enter&gt;</value></send_keys>",
-          deltaJoinExpectation: "diverges",
+          deltaJoinExpectation: "equal",
         },
         {
           variantName: "raw-angle input",
@@ -297,7 +297,7 @@ describe("cross-protocol tool-input streaming events: double-escaped entity lite
       protocol: morphXmlProtocol(),
       rawModelOutput:
         "<send_keys><value>&amp;lt;Ctrl+C&amp;gt;ahi, my name is pi&amp;lt;Esc&amp;gt;&amp;lt;Enter&amp;gt;</value></send_keys>",
-      deltaJoinExpectation: "diverges",
+      deltaJoinExpectation: "equal",
     },
     {
       name: "qwen3coder",

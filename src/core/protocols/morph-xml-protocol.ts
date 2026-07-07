@@ -640,6 +640,30 @@ function findTrailingUnclosedStringTag(options: {
   return bestName;
 }
 
+function buildEmptyTrailingStringTagProgressContent(options: {
+  tagName: string;
+  toolContent: string;
+}): string | null {
+  const openPattern = new RegExp(
+    `<${escapeRegExp(options.tagName)}(?:\\s[^>]*)?>`,
+    "gi"
+  );
+  let lastOpenEnd = -1;
+
+  for (const match of options.toolContent.matchAll(openPattern)) {
+    const { index } = match;
+    if (index !== undefined) {
+      lastOpenEnd = index + match[0].length;
+    }
+  }
+
+  if (lastOpenEnd === -1) {
+    return null;
+  }
+
+  return `${options.toolContent.slice(0, lastOpenEnd)}</${options.tagName}>`;
+}
+
 function getSchemaObjectProperty(
   schema: unknown,
   propertyName: string
@@ -767,7 +791,11 @@ function parseXmlContentForStreamProgress({
       stringPropertyNames,
     });
     if (trailingStringTag) {
-      const repaired = `${toolContent}</${trailingStringTag}>`;
+      const repaired =
+        buildEmptyTrailingStringTagProgressContent({
+          toolContent,
+          tagName: trailingStringTag,
+        }) ?? `${toolContent}</${trailingStringTag}>`;
       const parsedRepaired = tryParse(repaired);
       if (parsedRepaired !== null) {
         return tryStringify(parsedRepaired);
