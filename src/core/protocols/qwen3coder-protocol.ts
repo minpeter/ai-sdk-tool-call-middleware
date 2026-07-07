@@ -428,11 +428,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         }
         const endIndex = starts[i + 1] ?? sourceText.length;
 
-        pushText(
-          stripTrailingToolCallCloseTags(
-            stripLeadingToolCallCloseTags(sourceText.slice(index, startIndex))
-          )
-        );
+        const leadingText = sourceText.slice(index, startIndex);
+        pushRecoveredTrailingText(leadingText, leadingText);
 
         const full = sourceText.slice(startIndex, endIndex);
         const { callContent, trailingText } = splitImplicitCallAndTail(
@@ -457,11 +454,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         index = endIndex;
       }
 
-      pushText(
-        stripTrailingToolCallCloseTags(
-          stripLeadingToolCallCloseTags(sourceText.slice(index))
-        )
-      );
+      const trailingText = sourceText.slice(index);
+      pushRecoveredTrailingText(trailingText, trailingText);
       return true;
     };
 
@@ -477,11 +471,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           continue;
         }
 
-        pushText(
-          stripTrailingToolCallCloseTags(
-            stripLeadingToolCallCloseTags(sourceText.slice(index, startIndex))
-          )
-        );
+        const leadingText = sourceText.slice(index, startIndex);
+        pushRecoveredTrailingText(leadingText, leadingText);
 
         const parsed = parseSingleFunctionCallXml(full, null, tools);
         if (parsed) {
@@ -507,9 +498,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         );
       }
 
-      pushText(
-        stripTrailingToolCallCloseTags(stripLeadingToolCallCloseTags(trailing))
-      );
+      pushRecoveredTrailingText(trailing, trailing);
       return true;
     };
 
@@ -540,7 +529,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return;
       }
       if (!tryParseCallBlocksWithoutWrapperText(segment)) {
-        pushText(segment);
+        pushRecoveredTrailingText(segment, segment);
       }
     };
 
@@ -615,11 +604,14 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return false;
       }
 
-      pushText(stripTrailingToolCallCloseTags(text.slice(0, startIndex)));
+      const leadingText = stripTrailingToolCallCloseTags(
+        text.slice(0, startIndex)
+      );
+      pushRecoveredTrailingText(leadingText, leadingText);
       const trailing = stripLeadingToolCallCloseTags(text.slice(startIndex));
       const parsed = parseSingleFunctionCallXml(trailing, null, tools);
       if (!parsed) {
-        processedElements.push({ type: "text", text: trailing });
+        emitWrapperlessCallParseFailureAsText(trailing);
         return true;
       }
 
@@ -666,6 +658,12 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       "<call",
       "<tool",
       "<invoke",
+    ];
+    const standaloneParamPrefixesLower = [
+      "<parameter",
+      "<param",
+      "<argument",
+      "<arg",
     ];
 
     type ToolCallMode = "unknown" | "single" | "multi";
@@ -748,6 +746,27 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return;
       }
       flushText(controller, trailingText);
+    };
+
+    const flushRecoveredBufferText = (
+      controller: StreamController,
+      value: string
+    ) => {
+      const text = stripTrailingToolCallCloseTags(
+        stripLeadingToolCallCloseTags(value)
+      );
+      if (text.length === 0) {
+        return;
+      }
+      if (toolCallTextHasPrototypeSensitiveKey(text)) {
+        options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
+          toolCallId: generateToolCallId(),
+          toolCall: safeToolCallMetadataText(text),
+          dropReason: "sensitive-tool-call-trailing-text",
+        });
+        return;
+      }
+      flushText(controller, text);
     };
 
     const maybeEmitToolInputStart = (
@@ -1086,13 +1105,16 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         ...implicitCallPrefixesLower.map((prefix) =>
           getPotentialTagStartIndex(lower, prefix)
         ),
+        ...standaloneParamPrefixesLower.map((prefix) =>
+          getPotentialTagStartIndex(lower, prefix)
+        ),
       ].filter((value): value is number => value != null);
 
       const potentialIndex =
         potentialIndices.length > 0 ? Math.min(...potentialIndices) : null;
       if (potentialIndex == null) {
         if (buffer.length > 0) {
-          flushText(controller, buffer);
+          flushRecoveredBufferText(controller, buffer);
           buffer = "";
         }
         return;
@@ -1755,7 +1777,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
 
       if (buffer.length > 0) {
-        flushText(controller, buffer);
+        flushRecoveredBufferText(controller, buffer);
         buffer = "";
       }
 
@@ -1767,7 +1789,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       chunk: LanguageModelV4StreamPart
     ) => {
       if (!toolCall && buffer) {
-        flushText(controller, buffer);
+        flushRecoveredBufferText(controller, buffer);
         buffer = "";
       }
       controller.enqueue(chunk);
