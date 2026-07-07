@@ -291,4 +291,87 @@ describe("qwen3CoderProtocol streaming onError metadata", () => {
     expect(metadataText).not.toContain("polluted");
     expect(metadataText).not.toContain("&#99;onstructor");
   });
+
+  it("preserves safe text after dropped unquoted-name standalone prototype-sensitive parameter trailing text", async () => {
+    const onError = vi.fn();
+    const protocol = qwen3CoderProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [bookFlightTool],
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            "<function=book_flight><parameter=cabin>economy</parameter></function>" +
+            '<parameter name=constructor>{"polluted":true}</parameter> after',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+
+    expect(out.find((part) => part.type === "tool-call")).toMatchObject({
+      type: "tool-call",
+      toolName: "book_flight",
+      input: '{"cabin":"economy"}',
+    });
+    expect(
+      out
+        .filter((part) => part.type === "text-delta")
+        .map((part) => part.delta)
+        .join("")
+    ).toBe(" after");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("polluted");
+    expect(metadataText).not.toContain("name=constructor");
+  });
+
+  it("preserves ordinary prose that mentions constructor as a label", async () => {
+    const onError = vi.fn();
+    const protocol = qwen3CoderProtocol();
+    const transformer = protocol.createStreamParser({
+      tools: [],
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: "constructor: ordinary prose",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+
+    expect(
+      out
+        .filter((part) => part.type === "text-delta")
+        .map((part) => part.delta)
+        .join("")
+    ).toBe("constructor: ordinary prose");
+    expect(onError).not.toHaveBeenCalled();
+  });
 });

@@ -12,6 +12,7 @@ import { generateId, generateToolCallId } from "../utils/id";
 import {
   addTextSegment,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
@@ -482,7 +483,7 @@ function emitToolCall(context: TagProcessingContext) {
       : "Could not process streaming JSON tool call.",
     {
       toolCall: safeToolCallMetadataText(errorContent),
-      error: finalError,
+      error: safeToolCallMetadataError(finalError, errorContent),
       toolCallId: streamingToolCallId,
       toolName: streamingToolName,
       dropReason: "malformed-tool-call-body",

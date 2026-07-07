@@ -46,6 +46,27 @@ describe("relaxed-json", () => {
         expect(parse("{}")).toEqual({});
         expect(parse("[]")).toEqual([]);
       });
+
+      it("preserves __proto__ as an own data property", () => {
+        const parsed = parse(
+          '{"__proto__":{"polluted":"top"},"safe":{"__proto__":{"polluted":"nested"}}}'
+        ) as Record<string, unknown>;
+        const nested = parsed.safe as Record<string, unknown>;
+
+        expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
+        expect(Object.hasOwn(parsed, "__proto__")).toBe(true);
+        expect(
+          Object.getOwnPropertyDescriptor(parsed, "__proto__")?.value
+        ).toEqual({ polluted: "top" });
+        expect(Object.getPrototypeOf(nested)).toBe(Object.prototype);
+        expect(Object.hasOwn(nested, "__proto__")).toBe(true);
+        expect(
+          Object.getOwnPropertyDescriptor(nested, "__proto__")?.value
+        ).toEqual({ polluted: "nested" });
+        expect(
+          (Object.prototype as Record<string, unknown>).polluted
+        ).toBeUndefined();
+      });
     });
 
     describe("relaxed syntax", () => {

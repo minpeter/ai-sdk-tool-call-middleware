@@ -873,6 +873,79 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       });
     };
 
+    const failUnresolvedStreamingCall = (params: {
+      callState: StreamingCallState;
+      controller: StreamController;
+      fallbackToolName: string | null;
+      rawToolCallText: string | null;
+    }): false => {
+      const { callState, controller, fallbackToolName, rawToolCallText } =
+        params;
+      const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
+      emitFailedBufferedToolInputLifecycle({
+        bufferedParts: callState.pendingToolInputParts,
+        controller,
+        id: callState.toolCallId,
+        emitRawToolCallTextOnError: shouldEmitRaw,
+        endInputOnError: callState.hasEmittedStart,
+        rawToolCallText,
+        emitRawText: (rawText) => {
+          flushText(controller, rawText);
+        },
+      });
+      options?.onError?.(
+        shouldEmitRaw && rawToolCallText
+          ? "Could not resolve Qwen3CoderToolParser tool name for tool call; emitting original text."
+          : "Could not resolve Qwen3CoderToolParser tool name for tool call",
+        {
+          toolCallId: callState.toolCallId,
+          toolCall: safeToolCallMetadataText(rawToolCallText),
+          toolName: callState.toolName ?? fallbackToolName ?? undefined,
+          dropReason: "unresolved-tool-name",
+        }
+      );
+      return false;
+    };
+
+    const failSensitiveStreamingCall = (params: {
+      callState: StreamingCallState;
+      controller: StreamController;
+      rawToolCallText: string;
+      resolvedToolName: string;
+    }): false => {
+      const { callState, controller, rawToolCallText, resolvedToolName } =
+        params;
+      const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
+      const error = new Error(
+        "Tool call arguments contain prototype-sensitive keys"
+      );
+      emitFailedBufferedToolInputLifecycle({
+        bufferedParts: callState.pendingToolInputParts,
+        controller,
+        id: callState.toolCallId,
+        emitRawToolCallTextOnError: shouldEmitRaw,
+        endInputOnError: callState.hasEmittedStart,
+        hideBufferedInputOnError: true,
+        rawToolCallText,
+        emitRawText: (rawText) => {
+          flushText(controller, rawText);
+        },
+      });
+      options?.onError?.(
+        shouldEmitRaw
+          ? "Could not process streaming Qwen3CoderToolParser XML tool call; emitting original text."
+          : "Could not process streaming Qwen3CoderToolParser XML tool call.",
+        {
+          toolCallId: callState.toolCallId,
+          toolCall: safeToolCallMetadataText(rawToolCallText),
+          toolName: resolvedToolName,
+          dropReason: "malformed-tool-call-body",
+          error: safeToolCallMetadataError(error, rawToolCallText),
+        }
+      );
+      return false;
+    };
+
     const finalizeCall = (
       controller: StreamController,
       callState: StreamingCallState,
@@ -881,33 +954,27 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     ): boolean => {
       const resolvedToolName = callState.toolName ?? fallbackToolName;
       if (!resolvedToolName || resolvedToolName.trim().length === 0) {
-        const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
-        emitFailedBufferedToolInputLifecycle({
-          bufferedParts: callState.pendingToolInputParts,
+        return failUnresolvedStreamingCall({
+          callState,
           controller,
-          id: callState.toolCallId,
-          emitRawToolCallTextOnError: shouldEmitRaw,
-          endInputOnError: callState.hasEmittedStart,
+          fallbackToolName,
           rawToolCallText,
-          emitRawText: (rawText) => {
-            flushText(controller, rawText);
-          },
         });
-        options?.onError?.(
-          shouldEmitRaw && rawToolCallText
-            ? "Could not resolve Qwen3CoderToolParser tool name for tool call; emitting original text."
-            : "Could not resolve Qwen3CoderToolParser tool name for tool call",
-          {
-            toolCallId: callState.toolCallId,
-            toolCall: safeToolCallMetadataText(rawToolCallText),
-            toolName: callState.toolName ?? fallbackToolName ?? undefined,
-            dropReason: "unresolved-tool-name",
-          }
-        );
-        return false;
       }
 
       callState.toolName = resolvedToolName;
+
+      if (
+        rawToolCallText &&
+        toolCallTextHasPrototypeSensitiveKey(rawToolCallText)
+      ) {
+        return failSensitiveStreamingCall({
+          callState,
+          controller,
+          rawToolCallText,
+          resolvedToolName,
+        });
+      }
 
       maybeEmitToolInputStart(controller, callState);
       maybeEmitToolInputProgress(controller, callState);

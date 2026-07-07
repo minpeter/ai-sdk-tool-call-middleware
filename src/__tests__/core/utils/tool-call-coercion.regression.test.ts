@@ -883,6 +883,9 @@ describe("tool-call coercion regression coverage", () => {
       toolCallTextHasPrototypeSensitiveKey("notes mention constructor safely")
     ).toBe(false);
     expect(
+      toolCallTextHasPrototypeSensitiveKey("constructor: ordinary prose")
+    ).toBe(false);
+    expect(
       toolCallTextHasPrototypeSensitiveKey(
         "{'\\u005f\\u005fproto\\u005f\\u005f':{'polluted':true}}"
       )
@@ -912,7 +915,17 @@ describe("tool-call coercion regression coverage", () => {
     ).toBe(true);
     expect(
       toolCallTextHasPrototypeSensitiveKey(
+        "<parameter name=constructor>{}</parameter>"
+      )
+    ).toBe(true);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey(
         '<parameter name="&#99;onstructor">{}</parameter>'
+      )
+    ).toBe(true);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey(
+        "<parameter name=&#99;onstructor>{}</parameter>"
       )
     ).toBe(true);
     expect(

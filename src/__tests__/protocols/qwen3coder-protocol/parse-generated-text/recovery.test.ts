@@ -239,6 +239,37 @@ describe("qwen3CoderProtocol", () => {
     expect(metadataText).not.toContain("&#99;onstructor");
   });
 
+  it("preserves safe text after dropped unquoted-name standalone prototype-sensitive parameter trailing text", () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text =
+      "<function=book_flight><parameter=cabin>economy</parameter></function>" +
+      '<parameter name=constructor>{"polluted":true}</parameter> after';
+
+    const out = p.parseGeneratedText({
+      text,
+      tools: [bookFlightTool],
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(out.find((part) => part.type === "tool-call")).toMatchObject({
+      type: "tool-call",
+      toolName: "book_flight",
+      input: '{"cabin":"economy"}',
+    });
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe(" after");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("polluted");
+    expect(metadataText).not.toContain("name=constructor");
+  });
+
   it("drops bare standalone prototype-sensitive parameter text without a wrapperless call", () => {
     const onError = vi.fn();
     const p = qwen3CoderProtocol();
@@ -402,6 +433,59 @@ describe("qwen3CoderProtocol", () => {
         .join("")
     ).toBe("");
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("drops unquoted-name prototype-sensitive XML child params embedded inside string arg values", () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text =
+      '<tool_call><function=book_flight><parameter=payload><parameter name=constructor>{"polluted":true}</parameter></parameter></function></tool_call>';
+
+    const out = p.parseGeneratedText({
+      text,
+      tools: [
+        {
+          type: "function" as const,
+          name: "book_flight",
+          inputSchema: {
+            type: "object",
+            properties: {
+              payload: { type: "string" },
+            },
+          },
+        },
+      ],
+      options: { onError },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("preserves ordinary prose that mentions constructor as a label", () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text = "constructor: ordinary prose";
+
+    const out = p.parseGeneratedText({
+      text,
+      tools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe(text);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("keeps original trailing text when incomplete <tool_call recovery fails", () => {

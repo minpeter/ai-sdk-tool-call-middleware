@@ -220,6 +220,44 @@ describe("qwen3CoderProtocol foreign-format salvage", () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 
+  it("fails closed on unquoted-name prototype-sensitive XML child params embedded inside string arg values", async () => {
+    const errors: string[] = [];
+    const p = qwen3CoderProtocol();
+    const toolsWithPayload: LanguageModelV4FunctionTool[] = [
+      {
+        type: "function",
+        name: "book_flight",
+        inputSchema: {
+          type: "object",
+          properties: {
+            payload: { type: "string" },
+          },
+        },
+      },
+    ];
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createChunkedStream(
+          '<tool_call>\n<function=book_flight>\n<parameter=payload><parameter name=constructor>{"polluted":true}</parameter></parameter>\n</function>\n</tool_call>'
+        ),
+        p.createStreamParser({
+          tools: toolsWithPayload,
+          options: { onError: (message) => errors.push(message) },
+        })
+      )
+    );
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
+    expect(
+      out
+        .filter((part) => part.type === "tool-input-delta")
+        .map((part) => (part as { delta: string }).delta)
+        .join("")
+    ).not.toContain("constructor");
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
   it("emits raw text instead of salvaging XML calls mixed with trailing prose", async () => {
     const p = qwen3CoderProtocol();
     const raw =

@@ -501,6 +501,10 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
     expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
     expect(onError).toHaveBeenCalled();
+    const metadata = onError.mock.calls[0]?.[1] as
+      | { error?: unknown }
+      | undefined;
+    expect(metadata?.error).toBe("[redacted sensitive tool call]");
   });
 
   it("drops double-encoded unicode prototype-sensitive keys without raw fallback text", async () => {
