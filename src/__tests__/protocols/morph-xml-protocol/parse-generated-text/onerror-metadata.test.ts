@@ -107,11 +107,16 @@ describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("drops XML-wrapped YAML-like sensitive fallback without leaking raw text", () => {
+  it.each([
+    "constructor: true\nsecret: sentinel-secret",
+    'constructor: true\n"secret": sentinel-secret',
+    "constructor: true\n1secret: sentinel-secret",
+    "<![CDATA[constructor: true\nsecret: sentinel-secret]]>",
+  ] as const)("drops XML-wrapped YAML-like sensitive fallback without leaking raw text for %s", (contents) => {
     const onError = vi.fn();
     const protocol = morphXmlProtocol();
     const sentinel = "sentinel-secret";
-    const text = `<write_file><file_path>a</file_path><file_path>b</file_path><contents>constructor: true\nsecret: ${sentinel}</contents></write_file>`;
+    const text = `<write_file><file_path>a</file_path><file_path>b</file_path><contents>${contents}</contents></write_file>`;
 
     const out = protocol.parseGeneratedText({
       text,

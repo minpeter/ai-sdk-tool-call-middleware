@@ -1,6 +1,7 @@
 import { decodeStructuredTextEscapes } from "./structured-text-escapes";
 
-const YAML_MAPPING_KEY_TEXT_REGEX = /(?:^|\n)\s*[A-Za-z_][A-Za-z0-9_.-]*\s*:/;
+const YAML_MAPPING_KEY_TEXT_REGEX =
+  /(?:^|\n)\s*(?:"[^"\r\n]+"|'[^'\r\n]+'|[A-Za-z0-9_][A-Za-z0-9_.-]*)\s*:/;
 const PENDING_SENSITIVE_YAML_KEY_TEXT_REGEX =
   /(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*$/i;
 

@@ -71,7 +71,8 @@ describe("morphXmlProtocol streaming onError metadata", () => {
   it("drops XML-wrapped YAML-like sensitive fallback without leaking raw text", async () => {
     const onError = vi.fn();
     const protocol = morphXmlProtocol();
-    const sentinel = "sentinel-secret";
+    const pathSentinel = "sentinel-path-secret";
+    const contentSentinel = "sentinel-content-secret";
     const transformer = protocol.createStreamParser({
       tools,
       options: { emitRawToolCallTextOnError: true, onError },
@@ -81,7 +82,12 @@ describe("morphXmlProtocol streaming onError metadata", () => {
         ctrl.enqueue({
           type: "text-delta",
           id: "1",
-          delta: `<write_file><file_path>a</file_path><file_path>b</file_path><contents>constructor: true\nsecret: ${sentinel}</contents></write_file>`,
+          delta: `<write_file><file_path>${pathSentinel}</file_path>`,
+        });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: `<file_path>b</file_path><contents>constructor: true\n"secret": ${contentSentinel}</contents></write_file>`,
         });
         ctrl.enqueue({
           type: "finish",
@@ -99,11 +105,18 @@ describe("morphXmlProtocol streaming onError metadata", () => {
       .filter((part) => part.type === "text-delta")
       .map((part) => part.delta)
       .join("");
+    const joinedToolInput = out
+      .filter((part) => part.type === "tool-input-delta")
+      .map((part) => part.delta)
+      .join("");
     const metadataText = JSON.stringify(onError.mock.calls);
 
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
     expect(joinedText).toBe("");
+    expect(joinedToolInput).not.toContain(pathSentinel);
+    expect(joinedToolInput).not.toContain(contentSentinel);
     expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(sentinel);
+    expect(metadataText).not.toContain(pathSentinel);
+    expect(metadataText).not.toContain(contentSentinel);
   });
 });

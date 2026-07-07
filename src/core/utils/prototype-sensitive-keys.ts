@@ -14,7 +14,7 @@ const PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX =
 const PROTOTYPE_SENSITIVE_TEXT_REGEX =
   /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/|$)|<\s*(?:parameter|param|argument|arg)\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?\s*\/?>|$)|<\s*(?:parameter|param|argument|arg)\b(?=[^>]*\bname\s*=\s*(?:"\s*(?:__proto__|constructor|prototype)\s*"|'\s*(?:__proto__|constructor|prototype)\s*'|(?:__proto__|constructor|prototype)(?=[\s/>]|$)))|<\s*(?:parameter|param|argument|arg)\s*>\s*(?:__proto__|constructor|prototype)\s*<\s*\/\s*(?:parameter|param|argument|arg)\s*>/i;
 const PROTOTYPE_SENSITIVE_XML_TEXT_KEY_REGEX =
-  /<\s*[A-Za-z_][\w.:-]*\b[^>]*>\s*(?:__proto__\s*:|(?:constructor|prototype)\s*:\s*(?:$|\r?\n|[[{"']|[^\r\n<]*\r?\n\s*[A-Za-z_][A-Za-z0-9_.-]*\s*:))/i;
+  /<\s*[A-Za-z_][\w.:-]*\b[^>]*>\s*(?:<!\[CDATA\[)?\s*(?:__proto__\s*:|(?:constructor|prototype)\s*:\s*(?:$|\r?\n|[[{"']|[^\r\n<]*\r?\n\s*(?:"[^"\r\n]+"|'[^'\r\n]+'|[A-Za-z0-9_][A-Za-z0-9_.-]*)\s*:))/i;
 const PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX =
   /(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/i;
 const PROTO_PROPERTY_YAML_KEY_TEXT_REGEX = /(?:^|\n)\s*__proto__\s*:/i;
@@ -22,9 +22,10 @@ const PROTOTYPE_SENSITIVE_STRING_YAML_KEY_TEXT_REGEX =
   /(?:^|\n)\s*(?:constructor|prototype)\s*:\s*(?:$|\r?\n|[[{"'])/i;
 const PROTOTYPE_SENSITIVE_STRUCTURED_YAML_KEY_TEXT_REGEX =
   /(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:\s*(?:$|\r?\n|[[{"']|true\b|false\b|null\b|[-+]?\d)/i;
-const YAML_MAPPING_KEY_TEXT_REGEX = /(?:^|\n)\s*[A-Za-z_][A-Za-z0-9_.-]*\s*:/;
+const YAML_MAPPING_KEY_TEXT_REGEX =
+  /(?:^|\n)\s*(?:"[^"\r\n]+"|'[^'\r\n]+'|[A-Za-z0-9_][A-Za-z0-9_.-]*)\s*:/;
 const YAML_MAPPING_KEY_TEXT_GLOBAL_REGEX =
-  /(?:^|\n)\s*[A-Za-z_][A-Za-z0-9_.-]*\s*:/g;
+  /(?:^|\n)\s*(?:"[^"\r\n]+"|'[^'\r\n]+'|[A-Za-z0-9_][A-Za-z0-9_.-]*)\s*:/g;
 
 type JsonParseResult =
   | { readonly ok: true; readonly value: unknown }

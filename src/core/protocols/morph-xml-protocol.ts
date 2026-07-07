@@ -37,6 +37,8 @@ import {
 } from "./morph-xml-stream-state-machine";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
+const XML_PROGRESS_TAG_NAME_REGEX = /^[A-Za-z_][\w.:-]*/;
+
 export interface MorphXmlProtocolOptions {
   parseOptions?: {
     repair?: boolean;
@@ -1422,6 +1424,118 @@ function findToolCallsWithFallbacks(
   return { parseText, toolCalls };
 }
 
+function parseXmlProgressTagName(innerTag: string): string | null {
+  const tag = innerTag.trimStart();
+  const body = tag.startsWith("/") ? tag.slice(1).trimStart() : tag;
+  const match = XML_PROGRESS_TAG_NAME_REGEX.exec(body);
+  return match?.[0] ?? null;
+}
+
+function updateXmlProgressTagStack(innerTag: string, stack: string[]): void {
+  if (
+    innerTag.length === 0 ||
+    innerTag.startsWith("!") ||
+    innerTag.startsWith("?")
+  ) {
+    return;
+  }
+
+  const tagName = parseXmlProgressTagName(innerTag);
+  if (tagName === null) {
+    return;
+  }
+
+  if (innerTag.startsWith("/")) {
+    const openIndex = stack.lastIndexOf(tagName);
+    if (openIndex >= 0) {
+      stack.length = openIndex;
+    }
+    return;
+  }
+
+  if (!innerTag.endsWith("/")) {
+    stack.push(tagName);
+  }
+}
+
+function hasOpenTextElementAtProgressEnd(toolContent: string): boolean {
+  const stack: string[] = [];
+  const tagRegex = /<[^>]*>/g;
+  let lastTagEnd = 0;
+  let match = tagRegex.exec(toolContent);
+
+  while (match !== null) {
+    const [tag] = match;
+    const innerTag = tag.slice(1, -1).trim();
+    lastTagEnd = tagRegex.lastIndex;
+
+    updateXmlProgressTagStack(innerTag, stack);
+    match = tagRegex.exec(toolContent);
+  }
+
+  return stack.length > 0 && toolContent.slice(lastTagEnd).trim().length > 0;
+}
+
+function shouldBufferMorphToolInputProgress(
+  toolContent: string,
+  fullInput: string
+): boolean {
+  return (
+    shouldBufferToolInputProgress(fullInput) ||
+    !hasOpenTextElementAtProgressEnd(toolContent)
+  );
+}
+
+function isMorphToolInputProgressContainer(fullInput: string): boolean {
+  const trimmed = fullInput.trimStart();
+  return trimmed.startsWith("{") || trimmed.startsWith("[");
+}
+
+function isEmptyMorphToolInputProgress(
+  toolContent: string,
+  fullInput: string
+): boolean {
+  return fullInput === "{}" && toolContent.trim().length === 0;
+}
+
+function enqueueMorphToolInputProgressPart(options: {
+  controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
+  fullInput: string;
+  part: LanguageModelV4StreamPart;
+  toolCall: StreamingToolCallState;
+  toolContent: string;
+}): void {
+  if (
+    options.toolCall.pendingToolInputParts.length > 0 ||
+    shouldBufferMorphToolInputProgress(options.toolContent, options.fullInput)
+  ) {
+    options.toolCall.pendingToolInputParts.push(options.part);
+    return;
+  }
+
+  options.controller.enqueue(options.part);
+}
+
+function emitMorphToolInputProgressDelta(options: {
+  controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
+  fullInput: string;
+  toolCall: StreamingToolCallState;
+  toolContent: string;
+}): void {
+  if (!isMorphToolInputProgressContainer(options.fullInput)) {
+    return;
+  }
+
+  emitBufferedToolInputProgressDelta({
+    enqueue: (part) => {
+      enqueueMorphToolInputProgressPart({ ...options, part });
+    },
+    id: options.toolCall.toolCallId,
+    state: options.toolCall,
+    fullInput: options.fullInput,
+  });
+}
+
 function pushGeneratedTextSegment(
   processedElements: LanguageModelV4Content[],
   text: string,
@@ -1554,7 +1668,7 @@ export const morphXmlProtocol = (
       };
 
       const emitToolInputProgress = (
-        controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
+        _controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
         toolCall: StreamingToolCallState,
         toolContent: string
       ) => {
@@ -1568,19 +1682,13 @@ export const morphXmlProtocol = (
           if (cached == null) {
             return;
           }
-          if (cached === "{}" && toolContent.trim().length === 0) {
+          if (isEmptyMorphToolInputProgress(toolContent, cached)) {
             return;
           }
-          emitBufferedToolInputProgressDelta({
-            enqueue: (part) => {
-              if (shouldBufferToolInputProgress(cached)) {
-                toolCall.pendingToolInputParts.push(part);
-              } else {
-                controller.enqueue(part);
-              }
-            },
-            id: toolCall.toolCallId,
-            state: toolCall,
+          emitMorphToolInputProgressDelta({
+            controller: _controller,
+            toolCall,
+            toolContent,
             fullInput: cached,
           });
           return;
@@ -1600,19 +1708,13 @@ export const morphXmlProtocol = (
         if (fullInput == null) {
           return;
         }
-        if (fullInput === "{}" && toolContent.trim().length === 0) {
+        if (isEmptyMorphToolInputProgress(toolContent, fullInput)) {
           return;
         }
-        emitBufferedToolInputProgressDelta({
-          enqueue: (part) => {
-            if (shouldBufferToolInputProgress(fullInput)) {
-              toolCall.pendingToolInputParts.push(part);
-            } else {
-              controller.enqueue(part);
-            }
-          },
-          id: toolCall.toolCallId,
-          state: toolCall,
+        emitMorphToolInputProgressDelta({
+          controller: _controller,
+          toolCall,
+          toolContent,
           fullInput,
         });
       };
