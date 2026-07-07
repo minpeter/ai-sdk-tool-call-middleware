@@ -8,7 +8,7 @@ const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
 const PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX =
   /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
 const PROTOTYPE_SENSITIVE_TEXT_REGEX =
-  /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/|$)|<\s*(?:parameter|param|argument|arg)\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?>|$)|<\s*(?:parameter|param|argument|arg)\b(?=[^>]*\bname\s*=\s*["']\s*(?:__proto__|constructor|prototype)\s*["'])|<\s*(?:parameter|param|argument|arg)\s*>\s*(?:__proto__|constructor|prototype)\s*<\s*\/\s*(?:parameter|param|argument|arg)\s*>|(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/;
+  /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/|$)|<\s*(?:parameter|param|argument|arg)\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?>|$)|<\s*(?:parameter|param|argument|arg)\b(?=[^>]*\bname\s*=\s*["']\s*(?:__proto__|constructor|prototype)\s*["'])|<\s*(?:parameter|param|argument|arg)\s*>\s*(?:__proto__|constructor|prototype)\s*<\s*\/\s*(?:parameter|param|argument|arg)\s*>|(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/i;
 const PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX =
   /^(?:__proto__|constructor|prototype)\s*:/;
 const XML_ENTITY_REGEX = /&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/gi;
@@ -20,6 +20,7 @@ const XML_NAMED_ENTITIES: Record<string, string> = {
   quot: '"',
 };
 const MAX_XML_CODE_POINT = 0x10_ff_ff;
+const MAX_XML_ENTITY_DECODE_PASSES = 4;
 
 type JsonParseResult =
   | { readonly ok: true; readonly value: unknown }
@@ -109,7 +110,15 @@ function decodeXmlEntity(match: string, entity: string): string {
 }
 
 function decodeXmlEntities(text: string): string {
-  return text.replace(XML_ENTITY_REGEX, decodeXmlEntity);
+  let decoded = text;
+  for (let pass = 0; pass < MAX_XML_ENTITY_DECODE_PASSES; pass += 1) {
+    const next = decoded.replace(XML_ENTITY_REGEX, decodeXmlEntity);
+    if (next === decoded) {
+      return decoded;
+    }
+    decoded = next;
+  }
+  return decoded;
 }
 
 function decodeStructuredTextEscapes(text: string): string {

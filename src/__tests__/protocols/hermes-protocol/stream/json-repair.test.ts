@@ -2281,7 +2281,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("rejects unknown keys through strict allOf schemas", async () => {
+  it("drops unknown keys through strict allOf schemas", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -2321,11 +2321,15 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      safe: "ok",
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("sanitizes nested array item keys through allOf schemas", async () => {
@@ -3015,6 +3019,59 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(tool?.type).toBe("tool-call");
     expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
       payload: { content: "ok" },
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("drops stray keys before validating top-level anyOf branches", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeSchemaTool("edit", {
+        anyOf: [
+          {
+            type: "object",
+            properties: { city: { type: "string" } },
+            required: ["city"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: { latitude: { type: "number" } },
+            required: ["latitude"],
+            additionalProperties: false,
+          },
+        ],
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"edit","arguments":{"city":"Seoul","stray":"drop"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      city: "Seoul",
     });
     expect(onError).not.toHaveBeenCalled();
   });

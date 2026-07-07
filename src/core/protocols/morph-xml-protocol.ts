@@ -799,6 +799,51 @@ function parseXmlContentForStreamProgress({
   return null;
 }
 
+function stringMayBecomeStructuredSensitiveInput(value: string): boolean {
+  const trimmed = value.trimStart();
+  return (
+    trimmed.startsWith("{") ||
+    trimmed.startsWith("[") ||
+    trimmed.startsWith("<") ||
+    trimmed.startsWith("&lt;") ||
+    trimmed.startsWith("&amp;lt;")
+  );
+}
+
+function hasStructuredStringLeaf(value: unknown): boolean {
+  const seen = new Set<object>();
+  const stack: unknown[] = [value];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (typeof current === "string") {
+      if (stringMayBecomeStructuredSensitiveInput(current)) {
+        return true;
+      }
+      continue;
+    }
+    if (Array.isArray(current)) {
+      if (!seen.has(current)) {
+        seen.add(current);
+        stack.push(...current);
+      }
+      continue;
+    }
+    if (current && typeof current === "object" && !seen.has(current)) {
+      seen.add(current);
+      stack.push(...Object.values(current));
+    }
+  }
+  return false;
+}
+
+function shouldBufferToolInputProgress(fullInput: string): boolean {
+  try {
+    return hasStructuredStringLeaf(JSON.parse(fullInput));
+  } catch {
+    return false;
+  }
+}
+
 function handleStreamingToolCallEnd(
   params: HandleStreamingToolCallEndParams
 ): void {
@@ -1568,7 +1613,11 @@ export const morphXmlProtocol = (
           }
           emitBufferedToolInputProgressDelta({
             enqueue: (part) => {
-              controller.enqueue(part);
+              if (shouldBufferToolInputProgress(cached)) {
+                toolCall.pendingToolInputParts.push(part);
+              } else {
+                controller.enqueue(part);
+              }
             },
             id: toolCall.toolCallId,
             state: toolCall,
@@ -1596,7 +1645,11 @@ export const morphXmlProtocol = (
         }
         emitBufferedToolInputProgressDelta({
           enqueue: (part) => {
-            controller.enqueue(part);
+            if (shouldBufferToolInputProgress(fullInput)) {
+              toolCall.pendingToolInputParts.push(part);
+            } else {
+              controller.enqueue(part);
+            }
           },
           id: toolCall.toolCallId,
           state: toolCall,

@@ -1537,7 +1537,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("rejects unknown keys through strict allOf schemas", () => {
+  it("drops unknown keys through strict allOf schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1557,8 +1557,9 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ safe: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("sanitizes nested array item keys through allOf schemas", () => {
@@ -1990,6 +1991,36 @@ describe("parseGeneratedText JSON repair", () => {
     expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
       payload: { content: "ok" },
     });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("drops stray keys before validating top-level anyOf branches", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"city":"Seoul","stray":"drop"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("edit", {
+        anyOf: [
+          {
+            type: "object",
+            properties: { city: { type: "string" } },
+            required: ["city"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: { latitude: { type: "number" } },
+            required: ["latitude"],
+            additionalProperties: false,
+          },
+        ],
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ city: "Seoul" });
     expect(onError).not.toHaveBeenCalled();
   });
 

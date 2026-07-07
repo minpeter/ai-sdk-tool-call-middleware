@@ -7,6 +7,7 @@ import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protoc
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import {
   extractTextDeltas,
+  extractToolInputDeltas,
   runProtocolTextDeltaStream,
 } from "./streaming-events.shared";
 
@@ -192,6 +193,25 @@ describe("XML/YAML malformed non-leak guarantees", () => {
     expect(textOut).not.toContain("prototype");
     expect(textOut).not.toContain("<get_weather>");
     expect(textOut).not.toContain("<tool_call>");
+  });
+
+  it("Morph XML does not emit buffered progress deltas for split sensitive input", async () => {
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [weatherTool],
+      chunks: [
+        '<get_weather><unit>{"secret":"abc", ',
+        '"__proto__":{}}</unit></get_weather>',
+      ],
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
+    const toolInputOut = extractToolInputDeltas(out).join("");
+    expect(toolInputOut).not.toContain("secret");
+    expect(toolInputOut).not.toContain("__proto__");
+    expect(extractTextDeltas(out)).not.toContain("<get_weather>");
   });
 
   it("__proto__ stream args fail closed without throwing", async () => {

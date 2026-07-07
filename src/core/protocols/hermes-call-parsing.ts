@@ -757,9 +757,7 @@ function applyArgumentKeyPolicy(
     keyPolicy &&
     shouldValidateArgumentSchemaKeyShape(keyPolicy) &&
     !argumentValueMatchesSchemaKeyShape(
-      shouldValidateCombinatorSchemaBeforeSanitization(keyPolicy)
-        ? coercedPolicyArgs
-        : policyArgs,
+      policyArgs,
       schemaForArgumentSchemaKeyShapeValidation(keyPolicy),
       new Set(),
       true
@@ -783,12 +781,6 @@ function sanitizeArgsByArgumentKeyPolicy(
 ): Record<string, unknown> {
   const sanitized = sanitizeToolCallArgsBySchema(args, keyPolicy.schema);
   return isRecord(sanitized) ? sanitized : args;
-}
-
-function shouldValidateCombinatorSchemaBeforeSanitization(
-  keyPolicy: ArgumentKeyPolicy
-): boolean {
-  return schemaHasTopLevelCombinator(keyPolicy.schema, new Set());
 }
 
 function shouldValidateArgumentSchemaKeyShape(
