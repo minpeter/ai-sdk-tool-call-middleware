@@ -2285,7 +2285,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("rejects nested array item keys through allOf schemas", async () => {
+  it("sanitizes nested array item keys through allOf schemas", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -2333,11 +2333,15 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    expect(out.find((c) => c.type === "tool-call")).toMatchObject({
+      type: "tool-call",
+      toolName: "write",
+      input: '{"payload":[{"value":"ok"}]}',
+    });
+    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
+    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects nested tuple item keys through draft-07 items arrays", async () => {

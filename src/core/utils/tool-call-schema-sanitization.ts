@@ -1,5 +1,6 @@
 import { unwrapJsonSchema } from "../../schema-coerce";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
+import { getArrayItemSchema } from "./tool-call-array-schema";
 
 const JSON_SCHEMA_COMBINATORS = ["allOf", "anyOf", "oneOf"] as const;
 
@@ -13,16 +14,37 @@ function getDeclaredToolInputPropertyNames(
   return collectDeclaredToolInputPropertyNames(schema, new Set());
 }
 
+function addPropertyName(names: Set<string>, key: unknown): void {
+  if (typeof key === "string") {
+    names.add(key);
+  }
+}
+
 function addSafePropertyName(names: Set<string>, key: unknown): void {
   if (typeof key === "string" && !isPrototypeSensitiveArgumentKey(key)) {
     names.add(key);
   }
 }
 
+function collectFalsePropertyNames(
+  schema: Record<string, unknown>
+): Set<string> {
+  const names = new Set<string>();
+  if (Object.hasOwn(schema, "properties") && isRecord(schema.properties)) {
+    for (const [key, propertySchema] of Object.entries(schema.properties)) {
+      if (propertySchema === false) {
+        addPropertyName(names, key);
+      }
+    }
+  }
+  return names;
+}
+
 function collectDirectDeclaredPropertyNames(
   schema: Record<string, unknown>
 ): Set<string> {
   const names = new Set<string>();
+  const falsePropertyNames = collectFalsePropertyNames(schema);
   if (Object.hasOwn(schema, "properties") && isRecord(schema.properties)) {
     for (const [key, propertySchema] of Object.entries(schema.properties)) {
       if (propertySchema !== false) {
@@ -32,7 +54,9 @@ function collectDirectDeclaredPropertyNames(
   }
   if (Array.isArray(schema.required)) {
     for (const key of schema.required) {
-      addSafePropertyName(names, key);
+      if (!(typeof key === "string" && falsePropertyNames.has(key))) {
+        addSafePropertyName(names, key);
+      }
     }
   }
   return names;
@@ -160,26 +184,18 @@ function getDirectPropertySchema(schema: unknown, key: string): unknown {
   return getDeclaredPropertySchema(schema, key, new Set());
 }
 
-function getArrayItemSchema(schema: unknown): unknown {
-  const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped)) {
-    return;
-  }
-  return unwrapped.items;
-}
-
 function sanitizeToolCallArrayBySchema(
   values: readonly unknown[],
   schema: unknown,
   seen: WeakSet<object>
 ): unknown[] {
-  const itemSchema = getArrayItemSchema(schema);
-  if (itemSchema === undefined) {
-    return [...values];
-  }
-  return values.map((value) =>
-    sanitizeToolCallValueBySchema(value, itemSchema, seen)
-  );
+  return values.map((value, index) => {
+    const itemSchema = getArrayItemSchema(schema, index);
+    if (itemSchema === undefined) {
+      return value;
+    }
+    return sanitizeToolCallValueBySchema(value, itemSchema, seen);
+  });
 }
 
 function sanitizeToolCallValueBySchema(

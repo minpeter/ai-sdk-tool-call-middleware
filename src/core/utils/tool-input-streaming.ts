@@ -181,7 +181,7 @@ export function emitFailedBufferedToolInputLifecycle(options: {
     emitFailedToolInputLifecycle({
       controller: options.controller,
       id: options.id,
-      endInput: false,
+      endInput: options.endInputOnError === true,
       emitRawToolCallTextOnError: false,
       rawToolCallText: options.rawToolCallText,
       emitRawText: options.emitRawText,

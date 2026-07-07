@@ -106,8 +106,8 @@ describe("XML/YAML malformed non-leak guarantees", () => {
 
     expect(xmlOut.some((part) => part.type === "tool-call")).toBe(false);
     expect(yamlOut.some((part) => part.type === "tool-call")).toBe(false);
-    expect(xmlOut.some((part) => part.type === "tool-input-end")).toBe(false);
-    expect(yamlOut.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(xmlOut.some((part) => part.type === "tool-input-end")).toBe(true);
+    expect(yamlOut.some((part) => part.type === "tool-input-end")).toBe(true);
     expect(extractTextDeltas(xmlOut)).not.toContain("constructor");
     expect(extractTextDeltas(yamlOut)).not.toContain("constructor");
     expect(xmlErrors.length).toBeGreaterThan(0);
@@ -139,7 +139,7 @@ describe("XML/YAML malformed non-leak guarantees", () => {
         '<parameter=constructor>{"polluted":true}</parameter></function></tool_call>',
       ],
     },
-  ])("$name does not complete tool-input lifecycle when a late sensitive arg rejects", async ({
+  ])("$name closes tool-input lifecycle when a late sensitive arg rejects", async ({
     protocol,
     chunks,
   }) => {
@@ -151,7 +151,7 @@ describe("XML/YAML malformed non-leak guarantees", () => {
     });
 
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
     const textOut = extractTextDeltas(out);
     expect(textOut).not.toContain("constructor");
     expect(textOut).not.toContain("<get_weather>");
@@ -175,7 +175,7 @@ describe("XML/YAML malformed non-leak guarantees", () => {
         "<parameter=unit>&lt;prototype&gt;x&lt;/prototype&gt;</parameter></function></tool_call>",
       ],
     },
-  ])("$name does not complete tool-input lifecycle when decoded args are sensitive", async ({
+  ])("$name closes tool-input lifecycle when decoded args are sensitive", async ({
     protocol,
     chunks,
   }) => {
@@ -187,7 +187,7 @@ describe("XML/YAML malformed non-leak guarantees", () => {
     });
 
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
     const textOut = extractTextDeltas(out);
     expect(textOut).not.toContain("prototype");
     expect(textOut).not.toContain("<get_weather>");
@@ -219,8 +219,8 @@ describe("XML/YAML malformed non-leak guarantees", () => {
 
     expect(xmlOut.some((part) => part.type === "tool-call")).toBe(false);
     expect(yamlOut.some((part) => part.type === "tool-call")).toBe(false);
-    expect(xmlOut.some((part) => part.type === "tool-input-end")).toBe(false);
-    expect(yamlOut.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(xmlOut.some((part) => part.type === "tool-input-end")).toBe(true);
+    expect(yamlOut.some((part) => part.type === "tool-input-end")).toBe(true);
     expect(extractTextDeltas(xmlOut)).not.toContain("__proto__");
     expect(extractTextDeltas(yamlOut)).not.toContain("__proto__");
     expect(xmlErrors.length).toBeGreaterThan(0);

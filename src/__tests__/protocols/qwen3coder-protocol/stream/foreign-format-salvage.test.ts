@@ -94,7 +94,7 @@ describe("qwen3CoderProtocol foreign-format salvage", () => {
     );
 
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
     expect(errors.length).toBeGreaterThan(0);
   });
 
@@ -114,7 +114,7 @@ describe("qwen3CoderProtocol foreign-format salvage", () => {
     );
 
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
     expect(errors.length).toBeGreaterThan(0);
   });
 
@@ -178,7 +178,7 @@ describe("qwen3CoderProtocol foreign-format salvage", () => {
     );
 
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
     expect(
       out
         .filter((part) => part.type === "tool-input-delta")

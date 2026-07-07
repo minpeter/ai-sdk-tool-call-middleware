@@ -105,4 +105,35 @@ describe("wrapGenerate forced tool choice v7 parity", () => {
       raw: "length",
     });
   });
+
+  it("redacts debugSummary originalText for prototype-sensitive forced toolChoice payloads", async () => {
+    const debugSummary: { originalText?: string; toolCalls?: string } = {};
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: '{"name":"do","arguments":{"constructor":{"polluted":true},"x":1}}',
+        },
+      ],
+      finishReason: { unified: "stop", raw: "stop" },
+      warnings: [],
+    });
+
+    await wrapGenerate({
+      protocol: dummyProtocol(),
+      doGenerate,
+      params: {
+        providerOptions: {
+          toolCallMiddleware: {
+            ...forcedChoiceProviderOptions.toolCallMiddleware,
+            debugSummary,
+          },
+        },
+      },
+    });
+
+    expect(debugSummary.originalText).toBe("[redacted sensitive tool call]");
+    expect(JSON.stringify(debugSummary)).not.toContain("constructor");
+    expect(JSON.stringify(debugSummary)).not.toContain("polluted");
+  });
 });

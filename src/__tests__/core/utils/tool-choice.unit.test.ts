@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { parseToolChoicePayload } from "../../../core/utils/tool-choice";
+import {
+  parseToolChoicePayload,
+  resolveToolChoiceSelection,
+} from "../../../core/utils/tool-choice";
 
 describe("tool-choice utils", () => {
   it("parses and coerces valid toolChoice payload", () => {
@@ -41,6 +44,23 @@ describe("tool-choice utils", () => {
     expect(onError).toHaveBeenCalledOnce();
   });
 
+  it("redacts metadata when invalid JSON contains prototype-sensitive text", () => {
+    const onError = vi.fn();
+    const parsed = parseToolChoicePayload({
+      text: '{"name":"calc","arguments":{"constructor":{"polluted":true},"a":"10"',
+      tools: [],
+      onError,
+      errorMessage: "parse error",
+    });
+
+    expect(parsed).toEqual({ toolName: "unknown", input: "{}" });
+    expect(onError).toHaveBeenCalledOnce();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("constructor");
+    expect(metadataText).not.toContain("polluted");
+  });
+
   it("returns unknown payload when root payload is not an object", () => {
     const onError = vi.fn();
     const parsed = parseToolChoicePayload({
@@ -65,6 +85,40 @@ describe("tool-choice utils", () => {
 
     expect(parsed).toEqual({ toolName: "calc", input: "{}" });
     expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it("redacts metadata when string arguments contain prototype-sensitive input", () => {
+    const onError = vi.fn();
+    const parsed = parseToolChoicePayload({
+      text: '{"name":"calc","arguments":"{\\"constructor\\":{\\"polluted\\":true}}"}',
+      tools: [],
+      onError,
+      errorMessage: "parse error",
+    });
+
+    expect(parsed).toEqual({ toolName: "calc", input: "{}" });
+    expect(onError).toHaveBeenCalledOnce();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("constructor");
+    expect(metadataText).not.toContain("polluted");
+  });
+
+  it("redacts metadata when array arguments contain prototype-sensitive input", () => {
+    const onError = vi.fn();
+    const parsed = parseToolChoicePayload({
+      text: '{"name":"calc","arguments":[{"prototype":{"polluted":true}}]}',
+      tools: [],
+      onError,
+      errorMessage: "parse error",
+    });
+
+    expect(parsed).toEqual({ toolName: "calc", input: "{}" });
+    expect(onError).toHaveBeenCalledOnce();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("prototype");
+    expect(metadataText).not.toContain("polluted");
   });
 
   it("returns empty arguments when arguments contains prototype-sensitive keys", () => {
@@ -119,5 +173,22 @@ describe("tool-choice utils", () => {
 
     expect(parsed).toEqual({ toolName: "calc", input: "{}" });
     expect(onError).toHaveBeenCalledOnce();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("<prototype>");
+  });
+
+  it("redacts resolved originText for prototype-sensitive forced toolChoice payloads", () => {
+    const resolved = resolveToolChoiceSelection({
+      text: '{"name":"calc","arguments":{"constructor":{"polluted":true},"a":"10"}}',
+      tools: [],
+      errorMessage: "parse error",
+    });
+
+    expect(resolved).toEqual({
+      toolName: "calc",
+      input: "{}",
+      originText: "[redacted sensitive tool call]",
+    });
   });
 });

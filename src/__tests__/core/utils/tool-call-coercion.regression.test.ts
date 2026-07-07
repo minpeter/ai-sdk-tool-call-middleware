@@ -134,6 +134,112 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"options":{"unit":"celsius"}}');
   });
 
+  it("drops unknown keys from array items declared through combinator schemas", () => {
+    const input = coerceToolCallInput(
+      "filter_issues",
+      {
+        filters: [
+          { field: "status", value: "open", admin: true },
+          { field: "priority", value: "high", extra: "drop-me" },
+        ],
+      },
+      [
+        {
+          type: "function",
+          name: "filter_issues",
+          inputSchema: {
+            type: "object",
+            properties: {
+              filters: {
+                type: "array",
+                allOf: [
+                  {
+                    items: {
+                      type: "object",
+                      properties: {
+                        field: { type: "string" },
+                        value: { type: "string" },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe(
+      '{"filters":[{"field":"status","value":"open"},{"field":"priority","value":"high"}]}'
+    );
+  });
+
+  it("drops unknown keys from tuple prefixItems object schemas", () => {
+    const input = coerceToolCallInput(
+      "batch",
+      {
+        steps: [
+          { action: "open", extra: "drop-me" },
+          { label: "review", secret: true },
+        ],
+      },
+      [
+        {
+          type: "function",
+          name: "batch",
+          inputSchema: {
+            type: "object",
+            properties: {
+              steps: {
+                type: "array",
+                prefixItems: [
+                  {
+                    type: "object",
+                    properties: {
+                      action: { type: "string" },
+                    },
+                  },
+                  {
+                    type: "object",
+                    properties: {
+                      label: { type: "string" },
+                    },
+                  },
+                ],
+              } as unknown as LanguageModelV4FunctionTool["inputSchema"],
+            },
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"steps":[{"action":"open"},{"label":"review"}]}');
+  });
+
+  it("does not keep required names whose property schema is false", () => {
+    const input = coerceToolCallInput(
+      "deny_admin",
+      { query: "status:open", admin: true },
+      [
+        {
+          type: "function",
+          name: "deny_admin",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string" },
+              admin: false,
+            },
+            required: ["query", "admin"],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"query":"status:open"}');
+  });
+
   it("fails closed on cyclic provider-native object inputs", () => {
     const input: Record<string, unknown> = { city: "Seoul" };
     input.self = input;
