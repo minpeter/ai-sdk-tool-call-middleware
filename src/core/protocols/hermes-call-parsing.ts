@@ -14,7 +14,11 @@ import {
 import { logParseFailure } from "../utils/debug";
 import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
+import { safeToolCallMetadataText } from "../utils/protocol-utils";
+import {
+  toolCallInputHasPrototypeSensitiveKey,
+  toolCallTextHasPrototypeSensitiveKey,
+} from "../utils/prototype-sensitive-keys";
 import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-coercion";
 import { emitToolInputProgressDelta } from "../utils/tool-input-streaming";
 import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
@@ -719,7 +723,7 @@ function applyArgumentKeyPolicy(
   if (keyPolicy?.rejectAll) {
     return null;
   }
-  if (containsPrototypeSensitiveArgumentKey(args)) {
+  if (toolCallInputHasPrototypeSensitiveKey(args)) {
     return null;
   }
   if (
@@ -732,7 +736,7 @@ function applyArgumentKeyPolicy(
   if (!isRecord(coercedPolicyArgs)) {
     return null;
   }
-  if (containsPrototypeSensitiveArgumentKey(coercedPolicyArgs)) {
+  if (toolCallInputHasPrototypeSensitiveKey(coercedPolicyArgs)) {
     return null;
   }
   if (
@@ -2190,7 +2194,7 @@ export function processToolCallJson(
   options?.onError?.(
     "Could not process JSON tool call, keeping original text.",
     {
-      toolCall: fullMatch,
+      toolCall: safeToolCallMetadataText(fullMatch),
       error: resolved.error,
       toolName: salvagedToolName,
       toolCallId: salvagedToolCallId,

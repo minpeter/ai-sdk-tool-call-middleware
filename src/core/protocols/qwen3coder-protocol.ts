@@ -14,6 +14,7 @@ import { generateToolCallId } from "../utils/id";
 import {
   createFlushTextHandler,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
@@ -325,7 +326,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       error?: unknown
     ) => {
       options?.onError?.(message, {
-        toolCall: raw,
+        toolCall: safeToolCallMetadataText(raw),
         toolName: toolName ?? undefined,
         toolCallId: generateToolCallId(),
         dropReason: "malformed-tool-call-body",
@@ -795,7 +796,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             : "Could not resolve Qwen3CoderToolParser tool name for tool call",
           {
             toolCallId: callState.toolCallId,
-            toolCall: rawToolCallText,
+            toolCall: safeToolCallMetadataText(rawToolCallText),
             toolName: callState.toolName ?? fallbackToolName ?? undefined,
             dropReason: "unresolved-tool-name",
           }
@@ -833,7 +834,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             : "Could not process streaming Qwen3CoderToolParser XML tool call.",
           {
             toolCallId: callState.toolCallId,
-            toolCall: rawToolCallText,
+            toolCall: safeToolCallMetadataText(rawToolCallText),
             toolName: resolvedToolName,
             dropReason: "malformed-tool-call-body",
             error,
@@ -1521,7 +1522,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           ? "Could not complete streaming Qwen3CoderToolParser XML tool call at finish; emitting original text."
           : "Could not complete streaming Qwen3CoderToolParser XML tool call at finish.",
         {
-          toolCall: rawToolCall,
+          toolCall: safeToolCallMetadataText(rawToolCall),
           ...(metadata.toolCallId ? { toolCallId: metadata.toolCallId } : {}),
           ...(toolName ? { toolName } : {}),
           dropReason: "unfinished-tool-call",
@@ -1543,7 +1544,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           ? "Could not complete streaming Qwen3CoderToolParser call block at finish; emitting original text."
           : "Could not complete streaming Qwen3CoderToolParser call block at finish.",
         {
-          toolCall: rawCallText,
+          toolCall: safeToolCallMetadataText(rawCallText),
           toolCallId: callState.toolCallId,
           ...(callState.toolName ? { toolName: callState.toolName } : {}),
           dropReason: "unfinished-tool-call",

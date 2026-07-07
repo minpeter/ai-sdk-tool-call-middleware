@@ -95,6 +95,60 @@ describe("tool-call coercion regression coverage", () => {
     expect(part.input).toBe("{}");
   });
 
+  it("rejects prototype-sensitive XML child tags preserved inside string args", () => {
+    const input = coerceToolCallInput(
+      "echo",
+      { payload: "<prototype>x</prototype>" },
+      [
+        {
+          type: "function",
+          name: "echo",
+          inputSchema: {
+            type: "object",
+            properties: {
+              payload: { type: "string" },
+            },
+          },
+        },
+      ]
+    );
+
+    expect(input).toBeUndefined();
+  });
+
+  it("rejects prototype-sensitive XML child strings before schema sanitization can drop them", () => {
+    const input = coerceToolCallInput(
+      "get_weather",
+      { city: "Seoul", extra: "<prototype>x</prototype>" },
+      weatherTools
+    );
+
+    expect(input).toBeUndefined();
+  });
+
+  it("keeps harmless string args that merely mention prototype-like labels", () => {
+    const input = coerceToolCallInput(
+      "echo",
+      { payload: `{"name":"notes mention 'constructor': labels"}` },
+      [
+        {
+          type: "function",
+          name: "echo",
+          inputSchema: {
+            type: "object",
+            properties: {
+              payload: { type: "string" },
+            },
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe(
+      `{"payload":"{\\"name\\":\\"notes mention 'constructor': labels\\"}"}`
+    );
+  });
+
   it("detects prototype-sensitive text only in tool-argument-like syntax", () => {
     expect(
       toolCallTextHasPrototypeSensitiveKey("notes mention constructor safely")
@@ -111,6 +165,11 @@ describe("tool-call coercion regression coverage", () => {
     ).toBe(true);
     expect(
       toolCallTextHasPrototypeSensitiveKey(
+        '{"arguments":"{\\"\\\\u0063onstructor\\":{\\"polluted\\":true}}"}'
+      )
+    ).toBe(true);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey(
         "<parameter=constructor>{}</parameter>"
       )
     ).toBe(true);
@@ -119,5 +178,6 @@ describe("tool-call coercion regression coverage", () => {
         "<__proto__><polluted>true</polluted></__proto__>"
       )
     ).toBe(true);
+    expect(toolCallTextHasPrototypeSensitiveKey("<prototype")).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import {
-  hasPrototypeSensitiveStructuralKey,
+  toolCallInputHasPrototypeSensitiveKey,
   toolCallTextHasPrototypeSensitiveKey,
 } from "./prototype-sensitive-keys";
 import {
@@ -29,7 +29,7 @@ export function stringifyToolInputWithSchema(options: {
   tools: LanguageModelV4FunctionTool[];
   fallback?: (args: unknown) => string;
 }): string {
-  if (hasPrototypeSensitiveStructuralKey(options.args)) {
+  if (toolCallInputHasPrototypeSensitiveKey(options.args)) {
     throw new Error("Tool call arguments contain prototype-sensitive keys");
   }
 

@@ -8,7 +8,9 @@ const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
 const PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX =
   /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
 const PROTOTYPE_SENSITIVE_TEXT_REGEX =
-  /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/)|<\s*parameter\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?>)|(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/;
+  /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/|$)|<\s*parameter\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?>|$)|(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/;
+const PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX =
+  /^(?:__proto__|constructor|prototype)\s*:/;
 
 type JsonParseResult =
   | { readonly ok: true; readonly value: unknown }
@@ -58,7 +60,10 @@ function enqueueRecordOwnValues(
   stack: unknown[]
 ): boolean {
   for (const key of Object.getOwnPropertyNames(record)) {
-    if (isPrototypeSensitiveArgumentKey(key)) {
+    if (
+      isPrototypeSensitiveArgumentKey(key) ||
+      isPrototypeSensitiveArgumentKey(decodeJsonUnicodeEscapes(key))
+    ) {
       return true;
     }
     const descriptor = Object.getOwnPropertyDescriptor(record, key);
@@ -70,7 +75,7 @@ function enqueueRecordOwnValues(
 }
 
 function decodeJsonUnicodeEscapes(text: string): string {
-  return text.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex: string) =>
+  return text.replace(/\\+u([0-9a-fA-F]{4})/g, (_match, hex: string) =>
     String.fromCharCode(Number.parseInt(hex, 16))
   );
 }
@@ -116,6 +121,32 @@ export function toolCallTextHasPrototypeSensitiveKey(text: string): boolean {
   return PROTOTYPE_SENSITIVE_TEXT_REGEX.test(decodeJsonUnicodeEscapes(text));
 }
 
+function stringLeafHasPrototypeSensitiveArgumentKey(text: string): boolean {
+  const decoded = decodeJsonUnicodeEscapes(text).trimStart();
+  const looksJsonLike = decoded.startsWith("{") || decoded.startsWith("[");
+  if (looksJsonLike) {
+    const json = parseJsonText(text);
+    if (json.ok) {
+      return hasPrototypeSensitiveArgumentValue(json.value);
+    }
+    const relaxedJson = parseRelaxedJsonText(text);
+    if (relaxedJson.sawPrototypeSensitiveKey) {
+      return true;
+    }
+    if (relaxedJson.ok) {
+      return hasPrototypeSensitiveArgumentValue(relaxedJson.value);
+    }
+  }
+  const looksStructured =
+    looksJsonLike ||
+    decoded.startsWith("<") ||
+    PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX.test(decoded);
+  if (!looksStructured) {
+    return false;
+  }
+  return toolCallTextHasPrototypeSensitiveKey(text);
+}
+
 export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
   const seen = new Set<object>();
   const stack: unknown[] = [value];
@@ -142,20 +173,52 @@ export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
   return false;
 }
 
+function hasPrototypeSensitiveArgumentValue(value: unknown): boolean {
+  const seen = new Set<object>();
+  const stack: unknown[] = [value];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (typeof current === "string") {
+      if (stringLeafHasPrototypeSensitiveArgumentKey(current)) {
+        return true;
+      }
+      continue;
+    }
+    if (enqueueArrayItems(current, seen, stack)) {
+      continue;
+    }
+    if (!isRecord(current)) {
+      continue;
+    }
+    if (!markUnseen(current, seen)) {
+      continue;
+    }
+    if (hasUnsafePrototype(current)) {
+      return true;
+    }
+    if (enqueueRecordOwnValues(current, stack)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function toolCallInputHasPrototypeSensitiveKey(input: unknown): boolean {
   if (typeof input !== "string") {
-    return hasPrototypeSensitiveStructuralKey(input);
+    return hasPrototypeSensitiveArgumentValue(input);
   }
   const json = parseJsonText(input);
   if (json.ok) {
-    return hasPrototypeSensitiveStructuralKey(json.value);
+    return hasPrototypeSensitiveArgumentValue(json.value);
   }
   const relaxedJson = parseRelaxedJsonText(input);
   if (relaxedJson.sawPrototypeSensitiveKey) {
     return true;
   }
   if (relaxedJson.ok) {
-    return hasPrototypeSensitiveStructuralKey(relaxedJson.value);
+    return hasPrototypeSensitiveArgumentValue(relaxedJson.value);
   }
   return (
     PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX.test(input) ||

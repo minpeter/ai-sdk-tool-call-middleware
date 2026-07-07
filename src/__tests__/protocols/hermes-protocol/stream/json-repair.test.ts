@@ -503,6 +503,67 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("drops double-encoded unicode prototype-sensitive keys without raw fallback text", async () => {
+    const onError = vi.fn();
+    const argumentsText =
+      '{"\\\\u0063onstructor":{"polluted":true},"content":"ok"}';
+    const text = `<tool_call>${JSON.stringify({
+      name: "write",
+      arguments: argumentsText,
+    })}</tool_call>`;
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+        },
+        false
+      ),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: text,
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+
+    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+    expect(
+      out
+        .filter(isTextDeltaPart)
+        .map((part) => part.delta)
+        .join("")
+    ).not.toContain("<tool_call>");
+    expect(
+      out
+        .filter(isTextDeltaPart)
+        .map((part) => part.delta)
+        .join("")
+    ).not.toContain("\\u0063onstructor");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("\\u0063onstructor");
+  });
+
   it("rejects unquoted strict RJSON with prototype-sensitive argument keys", async () => {
     const onError = vi.fn();
     const tools = [

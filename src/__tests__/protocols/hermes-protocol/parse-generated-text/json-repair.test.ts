@@ -548,6 +548,44 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("drops double-encoded unicode prototype-sensitive keys without raw fallback text", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const argumentsText =
+      '{"\\\\u0063onstructor":{"polluted":true},"content":"ok"}';
+    const text = `<tool_call>${JSON.stringify({
+      name: "write",
+      arguments: argumentsText,
+    })}</tool_call>`;
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+        },
+        false
+      ),
+    ];
+
+    const out = p.parseGeneratedText({
+      text,
+      tools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    const joinedText = out
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(joinedText).not.toContain("<tool_call>");
+    expect(joinedText).not.toContain("\\u0063onstructor");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("\\u0063onstructor");
+  });
+
   it("accepts coercible keys before strict schema validation", () => {
     const p = hermesProtocol();
     const text =

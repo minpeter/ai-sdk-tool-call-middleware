@@ -13,6 +13,7 @@ import {
   createFlushTextHandler,
   extractToolNames,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
@@ -100,7 +101,7 @@ function processToolCall(params: ProcessToolCallParams): void {
     options?.onError?.(
       `Could not process XML tool call: ${toolCall.toolName}`,
       {
-        toolCall: originalCallText,
+        toolCall: safeToolCallMetadataText(originalCallText),
         error,
         toolName: toolCall.toolName,
         toolCallId: generateToolCallId(),
@@ -854,7 +855,7 @@ function handleStreamingToolCallEnd(
       },
     });
     options?.onError?.("Could not process streaming XML tool call", {
-      toolCall: original,
+      toolCall: safeToolCallMetadataText(original),
       error,
       toolName: currentToolCall.name,
       toolCallId: currentToolCall.toolCallId,
@@ -1649,7 +1650,7 @@ export const morphXmlProtocol = (
           options?.onError?.(
             "Could not complete streaming XML tool call at finish.",
             {
-              toolCall: unfinishedContent,
+              toolCall: safeToolCallMetadataText(unfinishedContent),
               toolCallId: currentToolCall.toolCallId,
               toolName: currentToolCall.name,
               dropReason: "unfinished-tool-call",

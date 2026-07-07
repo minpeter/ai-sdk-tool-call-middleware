@@ -11,6 +11,7 @@ import { generateId, generateToolCallId } from "../utils/id";
 import {
   addTextSegment,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import {
@@ -345,7 +346,7 @@ function emitIncompleteToolCall(
       ? "Could not complete streaming JSON tool call at finish; emitting original text."
       : "Could not complete streaming JSON tool call at finish.",
     {
-      toolCall: errorContent,
+      toolCall: safeToolCallMetadataText(errorContent),
       toolCallId: streamingToolCallId,
       toolName,
       dropReason: "unfinished-tool-call",
@@ -479,7 +480,7 @@ function emitToolCall(context: TagProcessingContext) {
       ? "Could not process streaming JSON tool call; emitting original text."
       : "Could not process streaming JSON tool call.",
     {
-      toolCall: errorContent,
+      toolCall: safeToolCallMetadataText(errorContent),
       error: finalError,
       toolCallId: streamingToolCallId,
       toolName: streamingToolName,
@@ -557,7 +558,7 @@ function recoverNestedStreamingToolCall(options: {
       ? "Could not process malformed streaming JSON tool call before nested start; emitting original text."
       : "Could not process malformed streaming JSON tool call before nested start.",
     {
-      toolCall: droppedToolCall,
+      toolCall: safeToolCallMetadataText(droppedToolCall),
       toolCallId: streamingToolCallId,
       toolName: streamingToolName,
       dropReason: "malformed-nested-tool-call",

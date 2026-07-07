@@ -5,7 +5,6 @@ import type {
 } from "@ai-sdk/provider";
 import { coerceBySchema, unwrapJsonSchema } from "../../schema-coerce";
 import {
-  hasPrototypeSensitiveStructuralKey,
   isPrototypeSensitiveArgumentKey,
   toolCallInputHasPrototypeSensitiveKey,
 } from "./prototype-sensitive-keys";
@@ -210,7 +209,7 @@ export function coerceToolCallInput(
   if (args === null) {
     return schemaAllowsNull(schema) ? "null" : undefined;
   }
-  if (hasPrototypeSensitiveStructuralKey(args)) {
+  if (toolCallInputHasPrototypeSensitiveKey(args)) {
     return;
   }
   const coerced = coerceBySchema(args, schema);
@@ -218,7 +217,7 @@ export function coerceToolCallInput(
     return schemaAllowsNull(schema) ? "null" : undefined;
   }
   const sanitized = sanitizeToolCallArgsBySchema(coerced ?? {}, schema);
-  if (hasPrototypeSensitiveStructuralKey(sanitized)) {
+  if (toolCallInputHasPrototypeSensitiveKey(sanitized)) {
     return;
   }
   return stringifyToolArgs(sanitized);

@@ -13,6 +13,7 @@ import {
   createFlushTextHandler,
   extractToolNames,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
@@ -861,7 +862,7 @@ function processToolCallMatch(
     } catch (error) {
       const originalText = text.slice(tc.startIndex, tc.endIndex);
       options?.onError?.("Could not parse YAML tool call", {
-        toolCall: originalText,
+        toolCall: safeToolCallMetadataText(originalText),
         toolName: tc.toolName,
         toolCallId: generateToolCallId(),
         dropReason: "malformed-tool-call-body",
@@ -875,7 +876,7 @@ function processToolCallMatch(
     const originalText = text.slice(tc.startIndex, tc.endIndex);
     const cause = yamlFailureCause(result.failure);
     options?.onError?.("Could not parse YAML tool call", {
-      toolCall: originalText,
+      toolCall: safeToolCallMetadataText(originalText),
       toolName: tc.toolName,
       toolCallId: generateToolCallId(),
       dropReason: "malformed-tool-call-body",
@@ -1080,7 +1081,7 @@ export const yamlXmlProtocol = (
             },
           });
           options?.onError?.("Could not parse streaming YAML tool call", {
-            toolCall: original,
+            toolCall: safeToolCallMetadataText(original),
             toolName,
             toolCallId,
             dropReason: "malformed-tool-call-body",
@@ -1118,7 +1119,7 @@ export const yamlXmlProtocol = (
           },
         });
         options?.onError?.("Could not parse streaming YAML tool call", {
-          toolCall: original,
+          toolCall: safeToolCallMetadataText(original),
           toolName,
           toolCallId,
           dropReason: "malformed-tool-call-body",
@@ -1165,7 +1166,7 @@ export const yamlXmlProtocol = (
           options?.onError?.(
             "Could not complete streaming YAML tool call at finish.",
             {
-              toolCall: unfinishedContent,
+              toolCall: safeToolCallMetadataText(unfinishedContent),
               toolCallId,
               toolName,
               dropReason: "malformed-tool-call-body",
@@ -1199,7 +1200,7 @@ export const yamlXmlProtocol = (
         options?.onError?.(
           "Could not complete streaming YAML tool call at finish.",
           {
-            toolCall: unfinishedContent,
+            toolCall: safeToolCallMetadataText(unfinishedContent),
             toolCallId,
             toolName,
             dropReason: "unfinished-tool-call",

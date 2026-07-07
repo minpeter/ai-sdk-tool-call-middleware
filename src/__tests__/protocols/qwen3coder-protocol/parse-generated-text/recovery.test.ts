@@ -90,6 +90,39 @@ describe("qwen3CoderProtocol", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("drops prototype-sensitive XML child tags embedded inside string arg values", () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text =
+      "<tool_call><function=book_flight><parameter=payload><prototype>x</prototype></parameter></function></tool_call>";
+
+    const out = p.parseGeneratedText({
+      text,
+      tools: [
+        {
+          type: "function" as const,
+          name: "book_flight",
+          inputSchema: {
+            type: "object",
+            properties: {
+              payload: { type: "string" },
+            },
+          },
+        },
+      ],
+      options: { onError },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("keeps original trailing text when incomplete <tool_call recovery fails", () => {
     const p = qwen3CoderProtocol();
     const text = "How to type <tool_call in docs?";

@@ -2,7 +2,7 @@ import type {
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { hermesProtocol } from "../../../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../../../core/protocols/morph-xml-protocol";
@@ -212,5 +212,28 @@ describe("cross-protocol tool arg sanitization", () => {
     expect(joinedText).not.toContain("constructor");
     expect(joinedText).not.toContain("<tool_call>");
     expect(joinedText).not.toContain("<get_weather>");
+  });
+
+  it.each(
+    prototypeSensitiveProtocolCases
+  )("$name parseGeneratedText redacts prototype-sensitive onError metadata", ({
+    protocol,
+    text,
+  }) => {
+    const onError = vi.fn();
+
+    protocol.parseGeneratedText({
+      text,
+      tools: weatherTools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("constructor");
+    expect(metadataText).not.toContain("<tool_call>");
+    expect(metadataText).not.toContain("<get_weather>");
+    expect(metadataText).not.toContain("<function=");
   });
 });

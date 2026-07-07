@@ -4,6 +4,9 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { generateId } from "./id";
+import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
+
+const REDACTED_SENSITIVE_TOOL_CALL_TEXT = "[redacted sensitive tool call]";
 
 export function formatToolsWithPromptTemplate(options: {
   tools: LanguageModelV4FunctionTool[];
@@ -25,6 +28,17 @@ export function addTextSegment(
   if (text.trim()) {
     processedElements.push({ type: "text", text });
   }
+}
+
+export function safeToolCallMetadataText(
+  text: string | null | undefined
+): string | null | undefined {
+  if (typeof text !== "string") {
+    return text;
+  }
+  return toolCallTextHasPrototypeSensitiveKey(text)
+    ? REDACTED_SENSITIVE_TOOL_CALL_TEXT
+    : text;
 }
 
 export function createFlushTextHandler(
