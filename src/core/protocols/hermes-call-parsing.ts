@@ -26,8 +26,8 @@ import { collectPatternPropertyNames } from "../utils/tool-call-pattern-properti
 import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
 import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-schema-sanitization";
 import { emitToolInputProgressDelta } from "../utils/tool-input-streaming";
+import { unsafeDeniedPatternMayMatchKey } from "../utils/unsafe-pattern";
 import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
-import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 import type { ParserOptions } from "./protocol-interface";
 
 /**

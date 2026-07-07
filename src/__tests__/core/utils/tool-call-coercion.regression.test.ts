@@ -108,6 +108,67 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"mood":"sunny","count":42}');
   });
 
+  it("drops non-matching keys from implicit patternProperties-only schemas", () => {
+    const input = coerceToolCallInput(
+      "metadata",
+      { "x-count": "3", other: "drop" },
+      [
+        {
+          type: "function",
+          name: "metadata",
+          inputSchema: {
+            type: "object",
+            patternProperties: {
+              "^x-": { type: "number" },
+            },
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"x-count":3}');
+  });
+
+  it("coerces additionalProperties schema keys with unsafe false patterns", () => {
+    const input = coerceToolCallInput("metadata", { safe: "1", aaaa: "2" }, [
+      {
+        type: "function",
+        name: "metadata",
+        inputSchema: {
+          type: "object",
+          patternProperties: {
+            "^(a+)+$": false,
+          },
+          additionalProperties: { type: "number" },
+        },
+      },
+    ]);
+
+    expect(input).toBe('{"safe":1}');
+  });
+
+  it("drops keys denied by safe false patterns before additionalProperties true", () => {
+    const input = coerceToolCallInput(
+      "metadata",
+      { "x-secret": "blocked", note: "ok" },
+      [
+        {
+          type: "function",
+          name: "metadata",
+          inputSchema: {
+            type: "object",
+            patternProperties: {
+              "^x-": false,
+            },
+            additionalProperties: true,
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"note":"ok"}');
+  });
+
   it("drops nested object keys that are not declared in nested properties schemas", () => {
     const input = coerceToolCallInput(
       "plan_trip",
@@ -509,6 +570,39 @@ describe("tool-call coercion regression coverage", () => {
     );
 
     expect(input).toBe('{"query":"status:open"}');
+  });
+
+  it("keeps keys declared by strict allOf branches", () => {
+    const input = coerceToolCallInput(
+      "keep_strict",
+      { foo: "ok", bar: "drop" },
+      [
+        {
+          type: "function",
+          name: "keep_strict",
+          inputSchema: {
+            type: "object",
+            allOf: [
+              {
+                type: "object",
+                properties: {
+                  foo: { type: "string" },
+                },
+                additionalProperties: false,
+              },
+              {
+                type: "object",
+                properties: {
+                  bar: { type: "string" },
+                },
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"foo":"ok"}');
   });
 
   it("does not treat anyOf-denied names as globally denied", () => {

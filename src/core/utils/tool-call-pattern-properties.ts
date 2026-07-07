@@ -1,18 +1,58 @@
 import { compileSafePatternPropertyRegex } from "../../schema-coerce";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
+import { unsafeDeniedPatternMayMatchKey } from "./unsafe-pattern";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function hasStrictPatternProperties(
+export function hasDeclaredPatternProperties(
   schema: Record<string, unknown>
 ): boolean {
   return (
     Object.hasOwn(schema, "patternProperties") &&
-    isRecord(schema.patternProperties) &&
-    schema.additionalProperties === false
+    isRecord(schema.patternProperties)
   );
+}
+
+export function hasUnsafeFalsePatternProperties(
+  schema: Record<string, unknown>
+): boolean {
+  if (!isRecord(schema.patternProperties)) {
+    return false;
+  }
+  for (const [pattern, propertySchema] of Object.entries(
+    schema.patternProperties
+  )) {
+    if (
+      propertySchema === false &&
+      compileSafePatternPropertyRegex(pattern) === null
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function unsafeFalsePatternMayMatchKey(
+  schema: Record<string, unknown>,
+  key: string
+): boolean {
+  if (!isRecord(schema.patternProperties)) {
+    return false;
+  }
+  for (const [pattern, propertySchema] of Object.entries(
+    schema.patternProperties
+  )) {
+    if (
+      propertySchema === false &&
+      compileSafePatternPropertyRegex(pattern) === null &&
+      unsafeDeniedPatternMayMatchKey(pattern, key)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function collectMatchingPatternSchemas(
@@ -30,9 +70,6 @@ function collectMatchingPatternSchemas(
   for (const [pattern, propertySchema] of Object.entries(
     schema.patternProperties
   )) {
-    if (propertySchema === false) {
-      continue;
-    }
     const regex = compileSafePatternPropertyRegex(pattern);
     if (regex?.test(key)) {
       schemas.push(propertySchema);
@@ -64,6 +101,9 @@ export function getPatternPropertySchema(
   const schemas = collectMatchingPatternSchemas(schema, key);
   if (schemas.length === 0) {
     return;
+  }
+  if (schemas.some((patternSchema) => patternSchema === false)) {
+    return false;
   }
   if (schemas.length === 1) {
     return schemas[0];

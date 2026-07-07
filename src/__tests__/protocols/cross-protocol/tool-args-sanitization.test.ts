@@ -37,6 +37,19 @@ const pingTools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
+const metadataTools: LanguageModelV4FunctionTool[] = [
+  {
+    type: "function",
+    name: "metadata",
+    inputSchema: {
+      type: "object",
+      patternProperties: {
+        "^x-": { type: "number" },
+      },
+    },
+  },
+];
+
 type ToolCallContent = Extract<LanguageModelV4Content, { type: "tool-call" }>;
 
 interface ProtocolCase {
@@ -102,6 +115,37 @@ extra: x
     text: `<tool_call>
   <function=ping>
     <parameter=extra>x</parameter>
+  </function>
+</tool_call>`,
+  },
+];
+
+const patternPropertiesProtocolCases: readonly ProtocolCase[] = [
+  {
+    name: "Hermes",
+    protocol: hermesProtocol(),
+    text: `<tool_call>{"name":"metadata","arguments":{"x-count":"3","other":"drop"}}</tool_call>`,
+  },
+  {
+    name: "Morph XML",
+    protocol: morphXmlProtocol(),
+    text: "<metadata><x-count>3</x-count><other>drop</other></metadata>",
+  },
+  {
+    name: "YAML XML",
+    protocol: yamlXmlProtocol(),
+    text: `<metadata>
+x-count: 3
+other: drop
+</metadata>`,
+  },
+  {
+    name: "Qwen3Coder",
+    protocol: qwen3CoderProtocol(),
+    text: `<tool_call>
+  <function=metadata>
+    <parameter=x-count>3</parameter>
+    <parameter=other>drop</parameter>
   </function>
 </tool_call>`,
   },
@@ -190,6 +234,25 @@ describe("cross-protocol tool arg sanitization", () => {
 
     expect(toolCall.toolName).toBe("ping");
     expect(input).toEqual({});
+  });
+
+  it.each(
+    patternPropertiesProtocolCases
+  )("$name parseGeneratedText drops non-matching patternProperties-only args", ({
+    protocol,
+    text,
+  }) => {
+    const parts = protocol.parseGeneratedText({
+      text,
+      tools: metadataTools,
+      options: {},
+    });
+
+    const toolCall = extractSingleToolCall(parts);
+    const input: unknown = JSON.parse(toolCall.input);
+
+    expect(toolCall.toolName).toBe("metadata");
+    expect(input).toEqual({ "x-count": 3 });
   });
 
   it.each(
