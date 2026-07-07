@@ -150,6 +150,38 @@ describe("qwen3CoderProtocol foreign-format salvage", () => {
     expect(metadataText).not.toContain("<tool_call>");
   });
 
+  it("redacts raw fallback for entity-encoded prototype-sensitive parameter name attributes", async () => {
+    const errors: [string, Record<string, unknown> | undefined][] = [];
+    const p = qwen3CoderProtocol();
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createChunkedStream(
+          '<tool_call>\n<function=book_flight>\n<param name="&#99;onstructor">{"polluted":true}</param>\n</function>\n</tool_call>'
+        ),
+        p.createStreamParser({
+          tools,
+          options: {
+            emitRawToolCallTextOnError: true,
+            onError: (message, metadata) => errors.push([message, metadata]),
+          },
+        })
+      )
+    );
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text-delta")
+        .map((part) => (part as { delta: string }).delta)
+        .join("")
+    ).toBe("");
+    expect(errors.length).toBeGreaterThan(0);
+    const metadataText = JSON.stringify(errors);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("&#99;onstructor");
+    expect(metadataText).not.toContain("<tool_call>");
+  });
+
   it("fails closed on prototype-sensitive XML child tags embedded inside string arg values", async () => {
     const errors: string[] = [];
     const p = qwen3CoderProtocol();

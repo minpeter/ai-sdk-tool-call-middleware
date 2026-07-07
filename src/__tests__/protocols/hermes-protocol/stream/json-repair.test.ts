@@ -564,6 +564,49 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(metadataText).not.toContain("\\u0063onstructor");
   });
 
+  it("rejects prototype-sensitive non-object string arguments", async () => {
+    const onError = vi.fn();
+    const text =
+      '<tool_call>{"name":"echo","arguments":"<prototype>x</prototype>"}</tool_call>';
+    const tools = [makeSchemaTool("echo", { type: "string" })];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: text,
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+
+    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+    expect(
+      out
+        .filter(isTextDeltaPart)
+        .map((part) => part.delta)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("<prototype>");
+  });
+
   it("rejects unquoted strict RJSON with prototype-sensitive argument keys", async () => {
     const onError = vi.fn();
     const tools = [

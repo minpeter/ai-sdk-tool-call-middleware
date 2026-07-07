@@ -586,6 +586,32 @@ describe("parseGeneratedText JSON repair", () => {
     expect(metadataText).not.toContain("\\u0063onstructor");
   });
 
+  it("rejects prototype-sensitive non-object string arguments", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"echo","arguments":"<prototype>x</prototype>"}</tool_call>';
+    const tools = [makeSchemaTool("echo", { type: "string" })];
+
+    const out = p.parseGeneratedText({
+      text,
+      tools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("<prototype>");
+  });
+
   it("accepts coercible keys before strict schema validation", () => {
     const p = hermesProtocol();
     const text =

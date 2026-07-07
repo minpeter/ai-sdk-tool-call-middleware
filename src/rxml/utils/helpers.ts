@@ -6,6 +6,8 @@ import { NAME_SPACER } from "../core/types";
 
 const NAME_START_CHAR_REGEX = /[A-Za-z_:]/;
 const NAME_CHAR_REGEX = /[A-Za-z0-9_.:-]/;
+const XML_CHAR_REF_REGEX = /&#(?:x([0-9a-fA-F]+)|(\d+));/g;
+const MAX_XML_CODE_POINT = 0x10_ff_ff;
 
 /**
  * Check if a character is a valid XML name start character
@@ -156,8 +158,28 @@ export function escapeXmlMinimalAttr(
 /**
  * Unescape XML entities
  */
+function decodeXmlCharacterReference(
+  match: string,
+  hex: string | undefined,
+  decimal: string | undefined
+): string {
+  const codePoint =
+    hex === undefined
+      ? Number.parseInt(decimal ?? "", 10)
+      : Number.parseInt(hex, 16);
+  if (
+    Number.isInteger(codePoint) &&
+    codePoint >= 0 &&
+    codePoint <= MAX_XML_CODE_POINT
+  ) {
+    return String.fromCodePoint(codePoint);
+  }
+  return match;
+}
+
 export function unescapeXml(text: string): string {
   return text
+    .replace(XML_CHAR_REF_REGEX, decodeXmlCharacterReference)
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')

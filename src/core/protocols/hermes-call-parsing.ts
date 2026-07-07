@@ -1441,6 +1441,9 @@ function applyNonRecordArgumentPolicy(
       ? { args }
       : null;
   }
+  if (toolCallInputHasPrototypeSensitiveKey(args)) {
+    return null;
+  }
   if (
     keyPolicy &&
     argumentValueMatchesSchemaKeyShape(args, keyPolicy.schema, new Set(), true)

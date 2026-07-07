@@ -11,6 +11,15 @@ const PROTOTYPE_SENSITIVE_TEXT_REGEX =
   /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/|$)|<\s*(?:parameter|param|argument|arg)\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?>|$)|<\s*(?:parameter|param|argument|arg)\b(?=[^>]*\bname\s*=\s*["']\s*(?:__proto__|constructor|prototype)\s*["'])|<\s*(?:parameter|param|argument|arg)\s*>\s*(?:__proto__|constructor|prototype)\s*<\s*\/\s*(?:parameter|param|argument|arg)\s*>|(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/;
 const PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX =
   /^(?:__proto__|constructor|prototype)\s*:/;
+const XML_ENTITY_REGEX = /&(#x[0-9a-fA-F]+|#\d+|amp|lt|gt|quot|apos);/gi;
+const XML_NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  quot: '"',
+};
+const MAX_XML_CODE_POINT = 0x10_ff_ff;
 
 type JsonParseResult =
   | { readonly ok: true; readonly value: unknown }
@@ -80,6 +89,35 @@ function decodeJsonUnicodeEscapes(text: string): string {
   );
 }
 
+function decodeXmlEntity(match: string, entity: string): string {
+  const normalized = entity.toLowerCase();
+  let codePoint: number | undefined;
+  if (normalized.startsWith("#x")) {
+    codePoint = Number.parseInt(normalized.slice(2), 16);
+  } else if (normalized.startsWith("#")) {
+    codePoint = Number.parseInt(normalized.slice(1), 10);
+  }
+  if (
+    codePoint !== undefined &&
+    Number.isInteger(codePoint) &&
+    codePoint >= 0 &&
+    codePoint <= MAX_XML_CODE_POINT
+  ) {
+    return String.fromCodePoint(codePoint);
+  }
+  return XML_NAMED_ENTITIES[normalized] ?? match;
+}
+
+function decodeXmlEntities(text: string): string {
+  return text.replace(XML_ENTITY_REGEX, decodeXmlEntity);
+}
+
+function decodeStructuredTextEscapes(text: string): string {
+  return decodeJsonUnicodeEscapes(
+    decodeXmlEntities(decodeJsonUnicodeEscapes(text))
+  );
+}
+
 function parseJsonText(text: string): JsonParseResult {
   try {
     return { ok: true, value: JSON.parse(text) };
@@ -118,11 +156,11 @@ export function isPrototypeSensitiveArgumentKey(key: string): boolean {
 }
 
 export function toolCallTextHasPrototypeSensitiveKey(text: string): boolean {
-  return PROTOTYPE_SENSITIVE_TEXT_REGEX.test(decodeJsonUnicodeEscapes(text));
+  return PROTOTYPE_SENSITIVE_TEXT_REGEX.test(decodeStructuredTextEscapes(text));
 }
 
 function stringLeafHasPrototypeSensitiveArgumentKey(text: string): boolean {
-  const decoded = decodeJsonUnicodeEscapes(text).trimStart();
+  const decoded = decodeStructuredTextEscapes(text).trimStart();
   const looksJsonLike = decoded.startsWith("{") || decoded.startsWith("[");
   if (looksJsonLike) {
     const json = parseJsonText(text);

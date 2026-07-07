@@ -127,6 +127,43 @@ describe("qwen3CoderProtocol", () => {
     expect(metadataText).not.toContain("<tool_call>");
   });
 
+  it("redacts raw fallback for entity-encoded prototype-sensitive parameter name attributes", () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text =
+      '<tool_call><function=book_flight><parameter name="&#99;onstructor">{"polluted":true}</parameter></function></tool_call>';
+
+    const out = p.parseGeneratedText({
+      text,
+      tools: [
+        {
+          type: "function" as const,
+          name: "book_flight",
+          inputSchema: {
+            type: "object",
+            properties: {
+              cabin: { type: "string" },
+            },
+          },
+        },
+      ],
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("&#99;onstructor");
+    expect(metadataText).not.toContain("<tool_call>");
+  });
+
   it("drops prototype-sensitive XML child tags embedded inside string arg values", () => {
     const onError = vi.fn();
     const p = qwen3CoderProtocol();
