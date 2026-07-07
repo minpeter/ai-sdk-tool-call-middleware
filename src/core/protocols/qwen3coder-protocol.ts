@@ -62,6 +62,7 @@ import {
   TOOL_CALL_CLOSE_RE,
   TOOL_CALL_OPEN_RE,
 } from "./qwen3coder-call-parsing";
+import { emitTextWithSensitiveStandaloneParamDrops } from "./qwen3coder-sensitive-standalone-param";
 import type { QwenStreamCallState } from "./qwen3coder-stream-call-content";
 import { parseCallContent } from "./qwen3coder-stream-call-content";
 
@@ -374,6 +375,21 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return;
       }
       if (toolCallTextHasPrototypeSensitiveKey(trailingText)) {
+        const droppedBoundedSpan = emitTextWithSensitiveStandaloneParamDrops({
+          text: trailingText,
+          emitText: pushText,
+          onSensitiveText: (sensitiveText) => {
+            options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
+              toolCall: safeToolCallMetadataText(sensitiveText),
+              toolName: extractQwen3CoderToolNameFromMarkup(raw) ?? undefined,
+              toolCallId: generateToolCallId(),
+              dropReason: "sensitive-tool-call-trailing-text",
+            });
+          },
+        });
+        if (droppedBoundedSpan) {
+          return;
+        }
         options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
           toolCall: safeToolCallMetadataText(raw),
           toolName: extractQwen3CoderToolNameFromMarkup(raw) ?? undefined,
@@ -759,6 +775,22 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return;
       }
       if (toolCallTextHasPrototypeSensitiveKey(text)) {
+        const droppedBoundedSpan = emitTextWithSensitiveStandaloneParamDrops({
+          text,
+          emitText: (segment) => {
+            flushText(controller, segment);
+          },
+          onSensitiveText: (sensitiveText) => {
+            options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
+              toolCallId: generateToolCallId(),
+              toolCall: safeToolCallMetadataText(sensitiveText),
+              dropReason: "sensitive-tool-call-trailing-text",
+            });
+          },
+        });
+        if (droppedBoundedSpan) {
+          return;
+        }
         options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
           toolCallId: generateToolCallId(),
           toolCall: safeToolCallMetadataText(text),

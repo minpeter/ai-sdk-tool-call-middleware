@@ -1428,7 +1428,10 @@ function pushGeneratedTextSegment(
   tools: LanguageModelV4FunctionTool[]
 ): void {
   const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
-  if (recovered.kind === "dropped-sensitive-candidate") {
+  if (
+    recovered.kind === "recovered" ||
+    recovered.kind === "dropped-sensitive-candidate"
+  ) {
     processedElements.push(...recovered.content);
     return;
   }

@@ -306,4 +306,35 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
       { type: "text", text: " after" },
     ]);
   });
+
+  it("does not leak mixed recovered and sensitive JSON candidates before Morph XML calls", async () => {
+    const result = await generateWithProtocol(
+      morphXmlProtocol({}),
+      [
+        '{"name":"lookup","arguments":{"query":"safe"}}',
+        '{"name":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}}}',
+        "<get_weather><city>Busan</city></get_weather>",
+      ].join(" "),
+      multiTools
+    );
+
+    const text = result?.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(text).toBe("");
+    expect(JSON.stringify(result?.content)).not.toContain("constructor");
+    expect(JSON.stringify(result?.content)).not.toContain("polluted");
+    expect(result?.content).toHaveLength(2);
+    expect(result?.content[0]).toMatchObject({
+      type: "tool-call",
+      toolName: "lookup",
+      input: '{"query":"safe"}',
+    });
+    expect(result?.content[1]).toMatchObject({
+      type: "tool-call",
+      toolName: "get_weather",
+      input: '{"city":"Busan"}',
+    });
+  });
 });
