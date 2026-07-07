@@ -13,12 +13,15 @@ function sanitizeToolCallArrayBySchema(
   schema: unknown,
   seen: WeakSet<object>
 ): unknown[] {
-  return values.map((value, index) => {
+  return values.flatMap((value, index) => {
     const itemSchema = getArrayItemSchema(schema, index);
-    if (itemSchema === undefined) {
-      return value;
+    if (itemSchema === false) {
+      return [];
     }
-    return sanitizeToolCallValueBySchema(value, itemSchema, seen);
+    if (itemSchema === undefined) {
+      return [value];
+    }
+    return [sanitizeToolCallValueBySchema(value, itemSchema, seen)];
   });
 }
 

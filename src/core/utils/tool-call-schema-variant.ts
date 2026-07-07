@@ -1,4 +1,5 @@
 import { unwrapJsonSchema } from "../../schema-coerce";
+import { collectSchemaSelectionPropertyNames } from "./tool-call-schema-property-names";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -54,6 +55,27 @@ function requiredPropertiesArePresent(
   return schema.required.every(
     (key) => typeof key !== "string" || Object.hasOwn(value, key)
   );
+}
+
+function literalMatches(expected: unknown, value: unknown): boolean {
+  return JSON.stringify(expected) === JSON.stringify(value);
+}
+
+function constMatches(
+  schema: Record<string, unknown>,
+  value: unknown
+): boolean {
+  if (!Object.hasOwn(schema, "const")) {
+    return true;
+  }
+  return literalMatches(schema.const, value);
+}
+
+function enumMatches(schema: Record<string, unknown>, value: unknown): boolean {
+  if (!Array.isArray(schema.enum)) {
+    return true;
+  }
+  return schema.enum.some((entry) => literalMatches(entry, value));
 }
 
 function declaredPropertiesAcceptValues(
@@ -139,6 +161,8 @@ function schemaAcceptsValue(
   seen.add(unwrapped);
   return (
     schemaTypeMatches(unwrapped.type, value) &&
+    constMatches(unwrapped, value) &&
+    enumMatches(unwrapped, value) &&
     requiredPropertiesArePresent(unwrapped, value) &&
     declaredPropertiesAcceptValues(unwrapped, value, seen) &&
     schemaAcceptsAllOf(unwrapped, value, seen) &&
@@ -147,45 +171,23 @@ function schemaAcceptsValue(
   );
 }
 
-function addPropertyNames(schema: unknown, names: Set<string>): void {
-  const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped)) {
-    return;
-  }
-  const falsePropertyNames = new Set<string>();
-  if (isRecord(unwrapped.properties)) {
-    for (const [key, propertySchema] of Object.entries(unwrapped.properties)) {
-      if (propertySchema === false) {
-        falsePropertyNames.add(key);
-      } else {
-        names.add(key);
-      }
-    }
-  }
-  if (Array.isArray(unwrapped.required)) {
-    for (const key of unwrapped.required) {
-      if (typeof key === "string" && !falsePropertyNames.has(key)) {
-        names.add(key);
-      }
-    }
-  }
-  if (Array.isArray(unwrapped.allOf)) {
-    for (const variant of unwrapped.allOf) {
-      addPropertyNames(variant, names);
-    }
-  }
-}
-
 function schemaSelectionScore(schema: unknown, value: unknown): number {
   if (!isRecord(value)) {
     return 0;
   }
-  const names = new Set<string>();
-  addPropertyNames(schema, names);
+  const names = collectSchemaSelectionPropertyNames(schema);
   let score = 0;
   for (const name of names) {
     if (Object.hasOwn(value, name)) {
       score += 1;
+    }
+  }
+  const unwrapped = unwrapJsonSchema(schema);
+  if (isRecord(unwrapped) && unwrapped.additionalProperties === false) {
+    for (const key of Object.keys(value)) {
+      if (!names.has(key)) {
+        score -= 1;
+      }
     }
   }
   return score;

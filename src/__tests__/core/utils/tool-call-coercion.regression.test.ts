@@ -301,6 +301,43 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"steps":[{"action":"open"},{"trailing":"rest"}]}');
   });
 
+  it("drops draft-07 tuple items rejected by additionalItems false", () => {
+    const input = coerceToolCallInput(
+      "batch",
+      {
+        steps: [
+          { action: "open", extra: "drop-me" },
+          { label: "should-not-remain", secret: true },
+        ],
+      },
+      [
+        {
+          type: "function",
+          name: "batch",
+          inputSchema: {
+            type: "object",
+            properties: {
+              steps: {
+                type: "array",
+                items: [
+                  {
+                    type: "object",
+                    properties: {
+                      action: { type: "string" },
+                    },
+                  },
+                ],
+                additionalItems: false,
+              } as unknown as LanguageModelV4FunctionTool["inputSchema"],
+            },
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"steps":[{"action":"open"}]}');
+  });
+
   it("does not keep required names whose property schema is false", () => {
     const input = coerceToolCallInput(
       "deny_admin",
@@ -451,6 +488,78 @@ describe("tool-call coercion regression coverage", () => {
     );
 
     expect(input).toBe('{"city":"Seoul"}');
+  });
+
+  it("selects anyOf branches by const discriminators before dropping mixed keys", () => {
+    const input = coerceToolCallInput(
+      "route",
+      { kind: "count", countOnly: 3, textOnly: "drop-me" },
+      [
+        {
+          type: "function",
+          name: "route",
+          inputSchema: {
+            type: "object",
+            anyOf: [
+              {
+                properties: {
+                  kind: { const: "text" },
+                  textOnly: { type: "string" },
+                },
+                required: ["kind", "textOnly"],
+                additionalProperties: false,
+              },
+              {
+                properties: {
+                  kind: { const: "count" },
+                  countOnly: { type: "number" },
+                },
+                required: ["kind", "countOnly"],
+                additionalProperties: false,
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"kind":"count","countOnly":3}');
+  });
+
+  it("selects oneOf branches by enum discriminators before dropping mixed keys", () => {
+    const input = coerceToolCallInput(
+      "route",
+      { kind: "count", countOnly: 3, textOnly: "drop-me" },
+      [
+        {
+          type: "function",
+          name: "route",
+          inputSchema: {
+            type: "object",
+            oneOf: [
+              {
+                properties: {
+                  kind: { enum: ["text"] },
+                  textOnly: { type: "string" },
+                },
+                required: ["kind", "textOnly"],
+                additionalProperties: false,
+              },
+              {
+                properties: {
+                  kind: { enum: ["count"] },
+                  countOnly: { type: "number" },
+                },
+                required: ["kind", "countOnly"],
+                additionalProperties: false,
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"kind":"count","countOnly":3}');
   });
 
   it("fails closed on cyclic provider-native object inputs", () => {
