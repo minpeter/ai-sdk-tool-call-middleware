@@ -107,6 +107,29 @@ describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("drops XML-wrapped YAML-like sensitive fallback without leaking raw text", () => {
+    const onError = vi.fn();
+    const protocol = morphXmlProtocol();
+    const sentinel = "sentinel-secret";
+    const text = `<write_file><file_path>a</file_path><file_path>b</file_path><contents>constructor: true\nsecret: ${sentinel}</contents></write_file>`;
+
+    const out = protocol.parseGeneratedText({
+      text,
+      tools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+    const joinedText = out
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    const metadataText = JSON.stringify(onError.mock.calls);
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(joinedText).toBe("");
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain(sentinel);
+  });
+
   it("drops sensitive YAML tool_call text fallback while preserving surrounding text", () => {
     const protocol = morphXmlProtocol();
     const text = `before <tool_call>
