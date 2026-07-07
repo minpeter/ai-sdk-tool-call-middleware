@@ -120,6 +120,14 @@ export function parseToolChoicePayload({
 
   const payload = parsed as Record<string, unknown>;
   const toolName = ensureNonEmptyToolName(payload.name);
+  if (toolCallInputHasPrototypeSensitiveKey(payload)) {
+    onError?.("toolChoice payload rejected for sensitive keys", {
+      toolName,
+      payload: REDACTED_SENSITIVE_TOOL_CALL_TEXT,
+    });
+    return { toolName, input: "{}" };
+  }
+
   const rawArgs = Object.hasOwn(payload, "arguments") ? payload.arguments : {};
 
   if (
@@ -135,7 +143,7 @@ export function parseToolChoicePayload({
   }
 
   if (toolCallInputHasPrototypeSensitiveKey(rawArgs)) {
-    onError?.("toolChoice arguments contain prototype-sensitive keys", {
+    onError?.("toolChoice arguments rejected for sensitive keys", {
       toolName,
       arguments: REDACTED_SENSITIVE_TOOL_CALL_TEXT,
     });

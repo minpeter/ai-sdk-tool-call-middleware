@@ -162,6 +162,36 @@ describe("tool-choice utils", () => {
     expect(metadataText).not.toContain("polluted");
   });
 
+  it("returns empty arguments when toolChoice payload envelope contains prototype-sensitive keys", () => {
+    for (const key of ["__proto__", "constructor", "prototype"] as const) {
+      const onError = vi.fn();
+      const parsed = parseToolChoicePayload({
+        text: `{"name":"calc","${key}":{"polluted":true},"arguments":{"a":"10"}}`,
+        tools: [
+          {
+            type: "function",
+            name: "calc",
+            inputSchema: {
+              type: "object",
+              properties: {
+                a: { type: "number" },
+              },
+            },
+          },
+        ],
+        onError,
+        errorMessage: "parse error",
+      });
+
+      expect(parsed).toEqual({ toolName: "calc", input: "{}" });
+      expect(onError).toHaveBeenCalledOnce();
+      const metadataText = JSON.stringify(onError.mock.calls);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain(key);
+      expect(metadataText).not.toContain("polluted");
+    }
+  });
+
   it("returns empty arguments when toolChoice arguments contain prototype-sensitive string leaves", () => {
     const onError = vi.fn();
     const parsed = parseToolChoicePayload({
