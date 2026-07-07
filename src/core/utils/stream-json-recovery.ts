@@ -129,7 +129,10 @@ export function createStreamJsonRecoveryTransform({
 
   const emitRecoveredParts = (
     controller: StreamController,
-    recovered: Extract<ToolCallJsonRecoveryResult, { kind: "recovered" }>
+    recovered: Extract<
+      ToolCallJsonRecoveryResult,
+      { kind: "dropped-sensitive-candidate" | "recovered" }
+    >
   ) => {
     for (const part of recovered.content) {
       if (part.type === "text") {
@@ -183,6 +186,7 @@ export function createStreamJsonRecoveryTransform({
     }
     if (recovered.kind === "dropped-sensitive-candidate") {
       held = null;
+      emitRecoveredParts(controller, recovered);
       return;
     }
     flushHeld(controller, closeBlock);

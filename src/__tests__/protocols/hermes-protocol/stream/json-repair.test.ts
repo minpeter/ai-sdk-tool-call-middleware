@@ -867,7 +867,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     });
   });
 
-  it("accepts non-capturing patternProperties groups for strict schemas", async () => {
+  it("drops non-capturing patternProperties-only keys for strict schemas", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -904,9 +904,46 @@ describe("hermesProtocol streaming JSON repair", () => {
     );
     const tool = out.find((c) => c.type === "tool-call");
     expect(tool?.type).toBe("tool-call");
-    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
-      "x-": "ok",
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual(
+      {}
+    );
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("keeps args for schemas without declared properties even when additionalProperties is false", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        additionalProperties: false,
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
     });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"write","arguments":{"x-":"ok"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find(isToolCallPart);
+    expect(tool?.input).toBe('{"x-":"ok"}');
     expect(onError).not.toHaveBeenCalled();
   });
 

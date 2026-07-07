@@ -36,7 +36,7 @@ type RecoverySpan = DroppedSensitiveSpan | RecoveredCallSpan;
 
 export type ToolCallJsonRecoveryResult =
   | { content: LanguageModelV4Content[]; kind: "recovered" }
-  | { kind: "dropped-sensitive-candidate" }
+  | { content: LanguageModelV4Content[]; kind: "dropped-sensitive-candidate" }
   | { kind: "none" };
 
 interface JsonCandidate {
@@ -457,8 +457,12 @@ function isSensitiveRejectedJsonCandidate(
   const parsed = parseJsonCandidate(candidate.text);
   const structuralSensitive =
     parsed !== undefined && hasPrototypeSensitiveStructuralKey(parsed);
+  const stringArgumentsSensitive =
+    isRecord(parsed) &&
+    typeof readToolArgsField(parsed) === "string" &&
+    toolCallTextHasPrototypeSensitiveKey(readToolArgsField(parsed) as string);
 
-  if (!(rawSensitive || structuralSensitive)) {
+  if (!(rawSensitive || structuralSensitive || stringArgumentsSensitive)) {
     return false;
   }
 
@@ -717,6 +721,18 @@ function parseYamlBlockMapping(body: string): Record<string, unknown> | null {
   return parsed;
 }
 
+function parseYamlBlockMappingUnsafe(
+  body: string
+): Record<string, unknown> | null {
+  let parsed: unknown;
+  try {
+    parsed = YAML.parse(body);
+  } catch {
+    return null;
+  }
+  return isRecord(parsed) ? parsed : null;
+}
+
 function resolveYamlBlockPayload(
   mapping: Record<string, unknown>,
   closeTagName: string | null,
@@ -802,6 +818,57 @@ function extractYamlToolCallBlockSpans(
   return spans;
 }
 
+function extractSensitiveYamlToolCallBlockDropSpans(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): DroppedSensitiveSpan[] {
+  const spans: DroppedSensitiveSpan[] = [];
+
+  TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = 0;
+  let match = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
+  while (match) {
+    const bodyStart = match.index + match[0].length;
+    TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = bodyStart;
+    const nextOpen = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
+    const blockEnd = nextOpen == null ? text.length : nextOpen.index;
+
+    let body = text.slice(bodyStart, blockEnd);
+    let endIndex = blockEnd;
+    let closeTagName: string | null = null;
+
+    const closeMatch = CLOSING_TAG_REGEX.exec(body);
+    if (closeMatch) {
+      closeTagName = closeMatch[1] ?? null;
+      endIndex = bodyStart + closeMatch.index + closeMatch[0].length;
+      body = body.slice(0, closeMatch.index);
+    }
+
+    const mapping = parseYamlBlockMappingUnsafe(body);
+    if (mapping && containsPrototypeSensitiveKey(mapping)) {
+      const envelopeName = readToolNameField(mapping);
+      const closeName = closeTagName?.split(":").at(-1) ?? "";
+      const knownEnvelope =
+        envelopeName !== null &&
+        tools.some((tool) => tool.name === envelopeName);
+      const knownClose =
+        closeName.length > 0 && tools.some((tool) => tool.name === closeName);
+      const likelySingleToolArgs =
+        tools.length === 1 && isLikelyArgumentsShapeForTool(mapping, tools[0]);
+      if (knownEnvelope || knownClose || likelySingleToolArgs) {
+        spans.push({
+          startIndex: match.index,
+          endIndex,
+          dropReason: "prototype-sensitive-tool-candidate",
+        });
+      }
+    }
+
+    match = nextOpen;
+  }
+
+  return spans;
+}
+
 /**
  * Recover tool calls embedded in plain text. Candidates come from three
  * scanners, each validated against the known tools:
@@ -843,6 +910,7 @@ export function recoverToolCallFromJsonCandidatesWithStatus(
   spans.push(...extractFunctionBlockCallSpans(text, tools));
   spans.push(...extractSensitiveFunctionBlockDropSpans(text, tools));
   spans.push(...extractYamlToolCallBlockSpans(text, tools));
+  spans.push(...extractSensitiveYamlToolCallBlockDropSpans(text, tools));
   spans.sort((a, b) =>
     a.startIndex === b.startIndex
       ? b.endIndex - a.endIndex
@@ -870,13 +938,16 @@ export function recoverToolCallFromJsonCandidatesWithStatus(
     }
   }
 
+  if (recoveredAny || droppedSensitiveAny) {
+    pushRecoveredTextSegment(out, text.slice(cursor));
+  }
+
   if (!recoveredAny) {
     return droppedSensitiveAny
-      ? { kind: "dropped-sensitive-candidate" }
+      ? { kind: "dropped-sensitive-candidate", content: out }
       : { kind: "none" };
   }
 
-  pushRecoveredTextSegment(out, text.slice(cursor));
   return { kind: "recovered", content: out };
 }
 

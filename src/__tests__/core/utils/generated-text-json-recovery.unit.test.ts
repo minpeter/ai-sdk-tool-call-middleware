@@ -1,7 +1,10 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { recoverToolCallFromJsonCandidates } from "../../../core/utils/generated-text-json-recovery";
+import {
+  recoverToolCallFromJsonCandidates,
+  recoverToolCallFromJsonCandidatesWithStatus,
+} from "../../../core/utils/generated-text-json-recovery";
 
 const tools: LanguageModelV4FunctionTool[] = [
   {
@@ -232,6 +235,45 @@ describe("recoverToolCallFromJsonCandidates prototype-sensitive keys", () => {
       '{"name":"calc","arguments":{"a":1,"nested":{"prototype":{}}}}';
 
     expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
+  });
+
+  it("preserves surrounding text when dropping sensitive known-tool candidates", () => {
+    const text =
+      'Before {"name":"get_weather","arguments":{"constructor":{}}} after';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [
+        { type: "text", text: "Before " },
+        { type: "text", text: " after" },
+      ],
+    });
+  });
+
+  it("drops double-encoded string arguments with prototype-sensitive keys", () => {
+    const text =
+      '{"name":"get_weather","arguments":"{\\"__proto__\\":{\\"polluted\\":true},\\"city\\":\\"Seoul\\"}"}';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [],
+    });
+  });
+
+  it("drops sensitive YAML tool-call blocks", () => {
+    const text =
+      "<tool_call>\nname: get_weather\narguments:\n  constructor: true\n  city: Seoul\n</tool_call>";
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [],
+    });
   });
 });
 

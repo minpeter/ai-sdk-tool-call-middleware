@@ -627,7 +627,7 @@ describe("parseGeneratedText JSON repair", () => {
     });
   });
 
-  it("accepts non-capturing patternProperties groups for strict schemas", () => {
+  it("drops non-capturing patternProperties-only keys for strict schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -644,9 +644,9 @@ describe("parseGeneratedText JSON repair", () => {
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
     const tool = out.find((x) => x.type === "tool-call");
     expect(tool?.type).toBe("tool-call");
-    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
-      "x-": "ok",
-    });
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual(
+      {}
+    );
     expect(onError).not.toHaveBeenCalled();
   });
 
@@ -1299,6 +1299,25 @@ describe("parseGeneratedText JSON repair", () => {
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(out).toContainEqual({ type: "text", text });
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("keeps args for schemas without declared properties even when additionalProperties is false", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"x-":"ok"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        additionalProperties: false,
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = expectToolCall(out);
+
+    expect(JSON.parse(tool.input)).toEqual({ "x-": "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects null for non-nullable typed object properties", () => {

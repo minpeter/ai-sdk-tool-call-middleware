@@ -172,6 +172,35 @@ describe("createStreamJsonRecoveryTransform", () => {
     expect(out).toEqual([finishPart]);
   });
 
+  it("preserves trailing text after dropped sensitive JSON blocks", async () => {
+    const out = await run([
+      ...textBlock(
+        '{"name":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}}} after'
+      ),
+      finishPart,
+    ]);
+
+    expect(out.some((p) => p.type === "tool-call")).toBe(false);
+    const text = out
+      .filter((p) => p.type === "text-delta")
+      .map((p) => (p as { delta: string }).delta)
+      .join("");
+    expect(text).toBe(" after");
+  });
+
+  it("drops prototype-sensitive YAML tool-call blocks", async () => {
+    const out = await run([
+      ...textBlock(
+        "<tool_call>\nname: get_weather\narguments:\n  constructor: true\n  city: Seoul\n</tool_call>"
+      ),
+      finishPart,
+    ]);
+
+    expect(out.some((p) => p.type === "tool-call")).toBe(false);
+    expect(out.some((p) => p.type === "text-delta")).toBe(false);
+    expect(out).toEqual([finishPart]);
+  });
+
   it("drops prototype-sensitive single-tool argument blocks", async () => {
     const out = await run([
       ...textBlock('{"city":"Seoul","constructor":{"polluted":true}}'),

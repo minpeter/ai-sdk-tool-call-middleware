@@ -163,7 +163,7 @@ function parseContent(
       return recoveredFromJson.content;
     }
     if (recoveredFromJson.kind === "dropped-sensitive-candidate") {
-      return [];
+      return recoveredFromJson.content;
     }
     return parsedByProtocol;
   });

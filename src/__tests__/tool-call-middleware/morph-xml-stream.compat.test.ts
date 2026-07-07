@@ -142,6 +142,43 @@ describe("createToolMiddleware morphXml stream compat", () => {
     });
   });
 
+  test("should not leak sensitive YAML tool_call fallback text", async () => {
+    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
+      start(controller) {
+        controller.enqueue({ type: "text-start", id: "text-1" });
+        controller.enqueue({
+          type: "text-delta",
+          id: "text-1",
+          delta:
+            "<tool_call>\nname: get_weather\narguments:\n  constructor: true\n  city: Seoul\n</tool_call>",
+        });
+        controller.enqueue({ type: "text-end", id: "text-1" });
+        controller.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: mockUsage(1, 1),
+        });
+        controller.close();
+      },
+    });
+
+    const result = await runMiddleware(mockStream);
+
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error("result is undefined");
+    }
+    const chunks = await convertReadableStreamToArray(result.stream);
+
+    expect(chunks.some((chunk) => chunk.type === "tool-call")).toBe(false);
+    const text = chunks
+      .filter((chunk) => chunk.type === "text-delta")
+      .map((chunk) => (chunk as { delta: string }).delta)
+      .join("");
+    expect(text).not.toContain("constructor");
+    expect(text).not.toContain("<tool_call>");
+  });
+
   test("should handle self-closing XML tool calls correctly (issue #84)", async () => {
     const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {

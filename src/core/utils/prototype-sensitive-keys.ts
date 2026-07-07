@@ -6,9 +6,9 @@ const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
   "prototype",
 ]);
 const PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX =
-  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
+  /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
 const PROTOTYPE_SENSITIVE_TEXT_REGEX =
-  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/)|<\s*parameter\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?>)|(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/;
+  /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/)|<\s*parameter\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?>)|(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/;
 
 type JsonParseResult =
   | { readonly ok: true; readonly value: unknown }

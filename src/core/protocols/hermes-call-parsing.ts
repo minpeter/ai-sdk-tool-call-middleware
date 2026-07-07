@@ -754,6 +754,7 @@ function applyArgumentKeyPolicy(
   }
   if (
     keyPolicy &&
+    shouldValidateArgumentSchemaKeyShape(keyPolicy) &&
     !argumentValueMatchesSchemaKeyShape(
       shouldValidateCombinatorSchemaBeforeSanitization(keyPolicy)
         ? coercedPolicyArgs
@@ -779,32 +780,30 @@ function sanitizeArgsByArgumentKeyPolicy(
   args: Record<string, unknown>,
   keyPolicy: ArgumentKeyPolicy
 ): Record<string, unknown> {
-  if (
-    keyPolicy.keyPatterns.length === 0 &&
-    !shouldValidateCombinatorSchemaBeforeSanitization(keyPolicy)
-  ) {
-    const sanitized = sanitizeToolCallArgsBySchema(args, keyPolicy.schema);
-    return isRecord(sanitized) ? sanitized : args;
-  }
-
-  const sanitized: Record<string, unknown> = {};
-  const allowPatternOnlyKeys = keyPolicy.knownKeys.size === 0;
-  for (const [key, value] of Object.entries(args)) {
-    if (
-      keyPolicy.knownKeys.has(key) ||
-      (allowPatternOnlyKeys &&
-        keyPolicy.keyPatterns.some((pattern) => pattern.test(key)))
-    ) {
-      sanitized[key] = value;
-    }
-  }
-  return sanitized;
+  const sanitized = sanitizeToolCallArgsBySchema(args, keyPolicy.schema);
+  return isRecord(sanitized) ? sanitized : args;
 }
 
 function shouldValidateCombinatorSchemaBeforeSanitization(
   keyPolicy: ArgumentKeyPolicy
 ): boolean {
   return schemaHasTopLevelCombinator(keyPolicy.schema, new Set());
+}
+
+function shouldValidateArgumentSchemaKeyShape(
+  keyPolicy: ArgumentKeyPolicy
+): boolean {
+  if (keyPolicy.knownKeys.size > 0) {
+    return true;
+  }
+  const schema = unwrapJsonSchema(keyPolicy.schema);
+  if (!isRecord(schema)) {
+    return true;
+  }
+  return (
+    isRecord(schema.patternProperties) ||
+    schemaHasTopLevelCombinator(schema, new Set())
+  );
 }
 
 function schemaHasTopLevelCombinator(
