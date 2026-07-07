@@ -18,10 +18,11 @@ import {
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
-  emitFailedToolInputLifecycle,
-  emitFinalizedToolInputLifecycle,
-  emitToolInputProgressDelta,
+  emitBufferedToolInputProgressDelta,
+  emitFailedBufferedToolInputLifecycle,
+  emitFinalizedBufferedToolInputLifecycle,
   enqueueToolInputEndAndCall,
+  isPrototypeSensitiveToolCallInputError,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
@@ -1002,6 +1003,8 @@ export const yamlXmlProtocol = (
       name: string;
       toolCallId: string;
       emittedInput: string;
+      hasEmittedStart: boolean;
+      pendingToolInputParts: LanguageModelV4StreamPart[];
     } | null = null;
     let currentTextId: string | null = null;
     let hasEmittedTextStart = false;
@@ -1041,8 +1044,10 @@ export const yamlXmlProtocol = (
       if (fullInput === "{}" && toolContent.trim().length === 0) {
         return;
       }
-      emitToolInputProgressDelta({
-        controller,
+      emitBufferedToolInputProgressDelta({
+        enqueue: (part) => {
+          controller.enqueue(part);
+        },
         id: currentToolCall.toolCallId,
         state: currentToolCall,
         fullInput,
@@ -1071,10 +1076,14 @@ export const yamlXmlProtocol = (
         } catch (error) {
           const original = `<${toolName}>${toolContent}</${toolName}>`;
           const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-          emitFailedToolInputLifecycle({
+          emitFailedBufferedToolInputLifecycle({
+            bufferedParts: currentToolCall?.pendingToolInputParts ?? [],
             controller,
             id: toolCallId,
             emitRawToolCallTextOnError: emitRawFallback,
+            endInputOnError: currentToolCall?.hasEmittedStart === true,
+            hideBufferedInputOnError:
+              isPrototypeSensitiveToolCallInputError(error),
             rawToolCallText: original,
             emitRawText: (rawText) => {
               flushText(controller, rawText);
@@ -1090,7 +1099,8 @@ export const yamlXmlProtocol = (
           return;
         }
         if (currentToolCall && currentToolCall.toolCallId === toolCallId) {
-          emitFinalizedToolInputLifecycle({
+          emitFinalizedBufferedToolInputLifecycle({
+            bufferedParts: currentToolCall.pendingToolInputParts,
             controller,
             id: toolCallId,
             state: currentToolCall,
@@ -1109,10 +1119,12 @@ export const yamlXmlProtocol = (
       } else {
         const original = `<${toolName}>${toolContent}</${toolName}>`;
         const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-        emitFailedToolInputLifecycle({
+        emitFailedBufferedToolInputLifecycle({
+          bufferedParts: currentToolCall?.pendingToolInputParts ?? [],
           controller,
           id: toolCallId,
           emitRawToolCallTextOnError: emitRawFallback,
+          endInputOnError: currentToolCall?.hasEmittedStart === true,
           rawToolCallText: original,
           emitRawText: (rawText) => {
             flushText(controller, rawText);
@@ -1154,10 +1166,14 @@ export const yamlXmlProtocol = (
         } catch (error) {
           const unfinishedContent = `<${toolName}>${buffer}`;
           const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-          emitFailedToolInputLifecycle({
+          emitFailedBufferedToolInputLifecycle({
+            bufferedParts: currentToolCall.pendingToolInputParts,
             controller,
             id: toolCallId,
             emitRawToolCallTextOnError: emitRawFallback,
+            endInputOnError: currentToolCall.hasEmittedStart,
+            hideBufferedInputOnError:
+              isPrototypeSensitiveToolCallInputError(error),
             rawToolCallText: unfinishedContent,
             emitRawText: (rawText) => {
               flushText(controller, rawText);
@@ -1177,7 +1193,8 @@ export const yamlXmlProtocol = (
           currentToolCall = null;
           return;
         }
-        emitFinalizedToolInputLifecycle({
+        emitFinalizedBufferedToolInputLifecycle({
+          bufferedParts: currentToolCall.pendingToolInputParts,
           controller,
           id: toolCallId,
           state: currentToolCall,
@@ -1188,10 +1205,12 @@ export const yamlXmlProtocol = (
       } else {
         const unfinishedContent = `<${toolName}>${buffer}`;
         const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-        emitFailedToolInputLifecycle({
+        emitFailedBufferedToolInputLifecycle({
+          bufferedParts: currentToolCall.pendingToolInputParts,
           controller,
           id: toolCallId,
           emitRawToolCallTextOnError: emitRawFallback,
+          endInputOnError: currentToolCall.hasEmittedStart,
           rawToolCallText: unfinishedContent,
           emitRawText: (rawText) => {
             flushText(controller, rawText);
@@ -1408,6 +1427,8 @@ export const yamlXmlProtocol = (
           name: tagName,
           toolCallId,
           emittedInput: "",
+          hasEmittedStart: true,
+          pendingToolInputParts: [],
         };
         controller.enqueue({
           type: "tool-input-start",
@@ -1423,6 +1444,8 @@ export const yamlXmlProtocol = (
           name: tagName,
           toolCallId: generateToolCallId(),
           emittedInput: "",
+          hasEmittedStart: true,
+          pendingToolInputParts: [],
         };
         controller.enqueue({
           type: "tool-input-start",

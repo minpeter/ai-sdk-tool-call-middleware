@@ -106,18 +106,92 @@ describe("XML/YAML malformed non-leak guarantees", () => {
 
     expect(xmlOut.some((part) => part.type === "tool-call")).toBe(false);
     expect(yamlOut.some((part) => part.type === "tool-call")).toBe(false);
-    expect(
-      xmlOut.filter((part) => part.type === "tool-input-start")
-    ).toHaveLength(
-      xmlOut.filter((part) => part.type === "tool-input-end").length
-    );
-    expect(
-      yamlOut.filter((part) => part.type === "tool-input-start")
-    ).toHaveLength(
-      yamlOut.filter((part) => part.type === "tool-input-end").length
-    );
+    expect(xmlOut.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(yamlOut.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(extractTextDeltas(xmlOut)).not.toContain("constructor");
+    expect(extractTextDeltas(yamlOut)).not.toContain("constructor");
     expect(xmlErrors.length).toBeGreaterThan(0);
     expect(yamlErrors.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    {
+      name: "Morph XML",
+      protocol: morphXmlProtocol(),
+      chunks: [
+        "<get_weather><location>Seoul</location>",
+        "<constructor><polluted>true</polluted></constructor></get_weather>",
+      ],
+    },
+    {
+      name: "YAML XML",
+      protocol: yamlXmlProtocol(),
+      chunks: [
+        "<get_weather>\nlocation: Seoul\n",
+        "constructor:\n  polluted: true\n</get_weather>",
+      ],
+    },
+    {
+      name: "Qwen3Coder",
+      protocol: qwen3CoderProtocol(),
+      chunks: [
+        "<tool_call><function=get_weather><parameter=location>Seoul</parameter>",
+        '<parameter=constructor>{"polluted":true}</parameter></function></tool_call>',
+      ],
+    },
+  ])("$name does not complete tool-input lifecycle when a late sensitive arg rejects", async ({
+    protocol,
+    chunks,
+  }) => {
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: [weatherTool],
+      chunks,
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    const textOut = extractTextDeltas(out);
+    expect(textOut).not.toContain("constructor");
+    expect(textOut).not.toContain("<get_weather>");
+    expect(textOut).not.toContain("<tool_call>");
+  });
+
+  it.each([
+    {
+      name: "Morph XML",
+      protocol: morphXmlProtocol(),
+      chunks: [
+        "<get_weather><location>Seoul</location>",
+        "<unit>&lt;prototype&gt;x&lt;/prototype&gt;</unit></get_weather>",
+      ],
+    },
+    {
+      name: "Qwen3Coder",
+      protocol: qwen3CoderProtocol(),
+      chunks: [
+        "<tool_call><function=get_weather><parameter=location>Seoul</parameter>",
+        "<parameter=unit>&lt;prototype&gt;x&lt;/prototype&gt;</parameter></function></tool_call>",
+      ],
+    },
+  ])("$name does not complete tool-input lifecycle when decoded args are sensitive", async ({
+    protocol,
+    chunks,
+  }) => {
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: [weatherTool],
+      chunks,
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    const textOut = extractTextDeltas(out);
+    expect(textOut).not.toContain("prototype");
+    expect(textOut).not.toContain("<get_weather>");
+    expect(textOut).not.toContain("<tool_call>");
   });
 
   it("__proto__ stream args fail closed without throwing", async () => {
@@ -145,16 +219,10 @@ describe("XML/YAML malformed non-leak guarantees", () => {
 
     expect(xmlOut.some((part) => part.type === "tool-call")).toBe(false);
     expect(yamlOut.some((part) => part.type === "tool-call")).toBe(false);
-    expect(
-      xmlOut.filter((part) => part.type === "tool-input-start")
-    ).toHaveLength(
-      xmlOut.filter((part) => part.type === "tool-input-end").length
-    );
-    expect(
-      yamlOut.filter((part) => part.type === "tool-input-start")
-    ).toHaveLength(
-      yamlOut.filter((part) => part.type === "tool-input-end").length
-    );
+    expect(xmlOut.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(yamlOut.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(extractTextDeltas(xmlOut)).not.toContain("__proto__");
+    expect(extractTextDeltas(yamlOut)).not.toContain("__proto__");
     expect(xmlErrors.length).toBeGreaterThan(0);
     expect(yamlErrors.length).toBeGreaterThan(0);
   });

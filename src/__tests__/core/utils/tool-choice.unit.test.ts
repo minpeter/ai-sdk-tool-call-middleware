@@ -90,4 +90,34 @@ describe("tool-choice utils", () => {
     expect(parsed).toEqual({ toolName: "calc", input: "{}" });
     expect(onError).toHaveBeenCalledOnce();
   });
+
+  it("redacts metadata when toolChoice arguments contain prototype-sensitive keys", () => {
+    const onError = vi.fn();
+    const parsed = parseToolChoicePayload({
+      text: '{"name":"calc","arguments":{"constructor":{"polluted":true},"a":"10"}}',
+      tools: [],
+      onError,
+      errorMessage: "parse error",
+    });
+
+    expect(parsed).toEqual({ toolName: "calc", input: "{}" });
+    expect(onError).toHaveBeenCalledOnce();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("constructor");
+    expect(metadataText).not.toContain("polluted");
+  });
+
+  it("returns empty arguments when toolChoice arguments contain prototype-sensitive string leaves", () => {
+    const onError = vi.fn();
+    const parsed = parseToolChoicePayload({
+      text: '{"name":"calc","arguments":{"body":"<prototype>x</prototype>","a":"10"}}',
+      tools: [],
+      onError,
+      errorMessage: "parse error",
+    });
+
+    expect(parsed).toEqual({ toolName: "calc", input: "{}" });
+    expect(onError).toHaveBeenCalledOnce();
+  });
 });

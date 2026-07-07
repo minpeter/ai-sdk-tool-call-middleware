@@ -8,10 +8,12 @@ import type { ParserOptions } from "./protocol-interface";
 
 export interface StreamingToolCallState {
   emittedInput: string;
+  hasEmittedStart: boolean;
   lastProgressContentLength: number | null;
   lastProgressFullInput: string | null;
   lastProgressGtIndex: number | null;
   name: string;
+  pendingToolInputParts: LanguageModelV4StreamPart[];
   toolCallId: string;
 }
 

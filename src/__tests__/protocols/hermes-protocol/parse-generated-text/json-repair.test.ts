@@ -1158,7 +1158,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("rejects nested schema-unknown argument keys", () => {
+  it("drops nested schema-unknown argument keys", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1180,11 +1180,15 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      payload: { value: "ok" },
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects nested argument keys disallowed by false schemas", () => {
+  it("drops nested argument keys disallowed by false schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1207,8 +1211,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      payload: { value: "ok" },
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects top-level boolean false input schemas", () => {
@@ -1917,7 +1925,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("does not let primitive oneOf branches bypass object key constraints", () => {
+  it("drops object keys not declared by primitive oneOf branches", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1942,8 +1950,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      payload: { content: "ok" },
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("applies every matching property and pattern schema", () => {

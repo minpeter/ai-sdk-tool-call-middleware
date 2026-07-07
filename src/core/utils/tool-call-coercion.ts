@@ -4,10 +4,8 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { coerceBySchema, unwrapJsonSchema } from "../../schema-coerce";
-import {
-  isPrototypeSensitiveArgumentKey,
-  toolCallInputHasPrototypeSensitiveKey,
-} from "./prototype-sensitive-keys";
+import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
+import { sanitizeToolCallArgsBySchema } from "./tool-call-schema-sanitization";
 
 type ToolCallLike = Extract<
   LanguageModelV4Content | LanguageModelV4StreamPart,
@@ -16,122 +14,6 @@ type ToolCallLike = Extract<
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function getDeclaredToolInputPropertyNames(
-  schema: unknown
-): Set<string> | null {
-  return collectDeclaredToolInputPropertyNames(schema, new Set());
-}
-
-function addSafePropertyName(names: Set<string>, key: unknown): void {
-  if (typeof key === "string" && !isPrototypeSensitiveArgumentKey(key)) {
-    names.add(key);
-  }
-}
-
-function collectDirectDeclaredPropertyNames(
-  schema: Record<string, unknown>
-): Set<string> {
-  const names = new Set<string>();
-  if (Object.hasOwn(schema, "properties") && isRecord(schema.properties)) {
-    for (const [key, propertySchema] of Object.entries(schema.properties)) {
-      if (propertySchema !== false) {
-        addSafePropertyName(names, key);
-      }
-    }
-  }
-  if (Array.isArray(schema.required)) {
-    for (const key of schema.required) {
-      addSafePropertyName(names, key);
-    }
-  }
-  return names;
-}
-
-function addNames(target: Set<string>, source: Set<string>): void {
-  for (const name of source) {
-    target.add(name);
-  }
-}
-
-function collectCombinatorDeclaredPropertyNames(
-  schema: Record<string, unknown>,
-  seen: Set<object>
-): Set<string> | null {
-  const names = new Set<string>();
-  let found = false;
-  for (const combinator of ["allOf", "anyOf", "oneOf"] as const) {
-    const variants = schema[combinator];
-    if (!Array.isArray(variants)) {
-      continue;
-    }
-    for (const variant of variants) {
-      const nestedNames = collectDeclaredToolInputPropertyNames(
-        variant,
-        new Set(seen)
-      );
-      if (nestedNames) {
-        found = true;
-        addNames(names, nestedNames);
-      }
-    }
-  }
-  return found ? names : null;
-}
-
-function collectDeclaredToolInputPropertyNames(
-  schema: unknown,
-  seen: Set<object>
-): Set<string> | null {
-  const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
-    return null;
-  }
-  seen.add(unwrapped);
-
-  const names = collectDirectDeclaredPropertyNames(unwrapped);
-  const hasDirectProperties =
-    Object.hasOwn(unwrapped, "properties") && isRecord(unwrapped.properties);
-  const hasStrictPatternProperties =
-    Object.hasOwn(unwrapped, "patternProperties") &&
-    isRecord(unwrapped.patternProperties) &&
-    unwrapped.additionalProperties === false;
-  const combinatorNames = collectCombinatorDeclaredPropertyNames(
-    unwrapped,
-    seen
-  );
-  if (combinatorNames) {
-    addNames(names, combinatorNames);
-  }
-
-  if (
-    names.size === 0 &&
-    !hasDirectProperties &&
-    !hasStrictPatternProperties &&
-    !combinatorNames
-  ) {
-    return null;
-  }
-  return names;
-}
-
-export function sanitizeToolCallArgsBySchema(
-  args: unknown,
-  schema: unknown
-): unknown {
-  const propertyNames = getDeclaredToolInputPropertyNames(schema);
-  if (!(propertyNames && isRecord(args))) {
-    return args;
-  }
-
-  const sanitized = Object.create(null) as Record<string, unknown>;
-  for (const [key, value] of Object.entries(args)) {
-    if (propertyNames.has(key)) {
-      sanitized[key] = value;
-    }
-  }
-  return sanitized;
 }
 
 function schemaAllowsNull(schema: unknown, seen = new Set<object>()): boolean {

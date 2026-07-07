@@ -3,7 +3,8 @@ import type {
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import type { OnErrorFn } from "./on-error";
-import { hasPrototypeSensitiveStructuralKey } from "./prototype-sensitive-keys";
+import { REDACTED_SENSITIVE_TOOL_CALL_TEXT } from "./protocol-utils";
+import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 import { coerceToolCallInput } from "./tool-call-coercion";
 
 /**
@@ -121,10 +122,10 @@ export function parseToolChoicePayload({
     return { toolName, input: "{}" };
   }
 
-  if (hasPrototypeSensitiveStructuralKey(rawArgs)) {
+  if (toolCallInputHasPrototypeSensitiveKey(rawArgs)) {
     onError?.("toolChoice arguments contain prototype-sensitive keys", {
       toolName,
-      arguments: rawArgs,
+      arguments: REDACTED_SENSITIVE_TOOL_CALL_TEXT,
     });
     return { toolName, input: "{}" };
   }

@@ -64,6 +64,76 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"mood":"sunny"}');
   });
 
+  it("drops nested object keys that are not declared in nested properties schemas", () => {
+    const input = coerceToolCallInput(
+      "plan_trip",
+      {
+        location: "Seoul",
+        options: {
+          unit: "celsius",
+          mood: "sunny",
+        },
+        extra: "drop-me",
+      },
+      [
+        {
+          type: "function",
+          name: "plan_trip",
+          inputSchema: {
+            type: "object",
+            properties: {
+              location: { type: "string" },
+              options: {
+                type: "object",
+                properties: {
+                  unit: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"location":"Seoul","options":{"unit":"celsius"}}');
+  });
+
+  it("drops nested object keys declared through combinator property schemas", () => {
+    const input = coerceToolCallInput(
+      "plan_trip",
+      {
+        options: {
+          unit: "celsius",
+          mood: "sunny",
+        },
+        extra: "drop-me",
+      },
+      [
+        {
+          type: "function",
+          name: "plan_trip",
+          inputSchema: {
+            type: "object",
+            allOf: [
+              {
+                properties: {
+                  options: {
+                    type: "object",
+                    properties: {
+                      unit: { type: "string" },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"options":{"unit":"celsius"}}');
+  });
+
   it("fails closed on cyclic provider-native object inputs", () => {
     const input: Record<string, unknown> = { city: "Seoul" };
     input.self = input;
@@ -172,6 +242,17 @@ describe("tool-call coercion regression coverage", () => {
       toolCallTextHasPrototypeSensitiveKey(
         "<parameter=constructor>{}</parameter>"
       )
+    ).toBe(true);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey(
+        '<parameter name="constructor">{}</parameter>'
+      )
+    ).toBe(true);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey('<param name="prototype">{}</param>')
+    ).toBe(true);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey("<arg=__proto__>{}</arg>")
     ).toBe(true);
     expect(
       toolCallTextHasPrototypeSensitiveKey(

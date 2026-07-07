@@ -4,8 +4,16 @@ export interface EmittedToolInputState {
   emittedInput: string;
 }
 
+type EnqueueStreamPart = (part: LanguageModelV4StreamPart) => void;
+
 interface EmitToolInputDeltaBaseParams {
   controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
+  id: string;
+  state: EmittedToolInputState;
+}
+
+interface EmitToolInputDeltaEnqueueParams {
+  enqueue: EnqueueStreamPart;
   id: string;
   state: EmittedToolInputState;
 }
@@ -14,7 +22,17 @@ interface EmitPrefixDeltaParams extends EmitToolInputDeltaBaseParams {
   candidate: string;
 }
 
+interface EmitPrefixDeltaWithEnqueueParams
+  extends EmitToolInputDeltaEnqueueParams {
+  candidate: string;
+}
+
 interface EmitChunkedPrefixDeltaParams extends EmitPrefixDeltaParams {
+  maxChunkChars?: number;
+}
+
+interface EmitChunkedPrefixDeltaWithEnqueueParams
+  extends EmitPrefixDeltaWithEnqueueParams {
   maxChunkChars?: number;
 }
 
@@ -23,12 +41,18 @@ interface EmitFinalRemainderParams extends EmitToolInputDeltaBaseParams {
   onMismatch?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 
+interface EmitFinalRemainderWithEnqueueParams
+  extends EmitToolInputDeltaEnqueueParams {
+  finalFullJson: string;
+  onMismatch?: (message: string, metadata?: Record<string, unknown>) => void;
+}
+
 function emitDelta({
-  controller,
+  enqueue,
   id,
   state,
   nextInput,
-}: EmitToolInputDeltaBaseParams & {
+}: EmitToolInputDeltaEnqueueParams & {
   nextInput: string;
 }): boolean {
   if (!nextInput.startsWith(state.emittedInput)) {
@@ -40,7 +64,7 @@ function emitDelta({
     return false;
   }
 
-  controller.enqueue({
+  enqueue({
     type: "tool-input-delta",
     id,
     delta,
@@ -87,6 +111,19 @@ export function toIncompleteJsonPrefix(fullJson: string): string {
 }
 
 export function emitPrefixDelta(params: EmitPrefixDeltaParams): boolean {
+  return emitPrefixDeltaWithEnqueue({
+    id: params.id,
+    state: params.state,
+    candidate: params.candidate,
+    enqueue: (part) => {
+      params.controller.enqueue(part);
+    },
+  });
+}
+
+export function emitPrefixDeltaWithEnqueue(
+  params: EmitPrefixDeltaWithEnqueueParams
+): boolean {
   return emitDelta({
     ...params,
     nextInput: params.candidate,
@@ -98,9 +135,23 @@ const DEFAULT_TOOL_INPUT_DELTA_CHUNK_CHARS = 512;
 export function emitChunkedPrefixDelta(
   params: EmitChunkedPrefixDeltaParams
 ): boolean {
+  return emitChunkedPrefixDeltaWithEnqueue({
+    id: params.id,
+    state: params.state,
+    candidate: params.candidate,
+    maxChunkChars: params.maxChunkChars,
+    enqueue: (part) => {
+      params.controller.enqueue(part);
+    },
+  });
+}
+
+export function emitChunkedPrefixDeltaWithEnqueue(
+  params: EmitChunkedPrefixDeltaWithEnqueueParams
+): boolean {
   const { maxChunkChars = DEFAULT_TOOL_INPUT_DELTA_CHUNK_CHARS } = params;
   if (maxChunkChars <= 0) {
-    return emitPrefixDelta(params);
+    return emitPrefixDeltaWithEnqueue(params);
   }
 
   const growth = params.candidate.length - params.state.emittedInput.length;
@@ -109,14 +160,14 @@ export function emitChunkedPrefixDelta(
   }
 
   if (growth <= maxChunkChars) {
-    return emitPrefixDelta(params);
+    return emitPrefixDeltaWithEnqueue(params);
   }
 
   let emittedAny = false;
   let cursor = params.state.emittedInput.length + maxChunkChars;
   while (cursor < params.candidate.length) {
-    const didEmit = emitPrefixDelta({
-      controller: params.controller,
+    const didEmit = emitPrefixDeltaWithEnqueue({
+      enqueue: params.enqueue,
       id: params.id,
       state: params.state,
       candidate: params.candidate.slice(0, cursor),
@@ -129,8 +180,8 @@ export function emitChunkedPrefixDelta(
   }
 
   return (
-    emitPrefixDelta({
-      controller: params.controller,
+    emitPrefixDeltaWithEnqueue({
+      enqueue: params.enqueue,
       id: params.id,
       state: params.state,
       candidate: params.candidate,
@@ -139,6 +190,20 @@ export function emitChunkedPrefixDelta(
 }
 
 export function emitFinalRemainder(params: EmitFinalRemainderParams): boolean {
+  return emitFinalRemainderWithEnqueue({
+    id: params.id,
+    state: params.state,
+    finalFullJson: params.finalFullJson,
+    onMismatch: params.onMismatch,
+    enqueue: (part) => {
+      params.controller.enqueue(part);
+    },
+  });
+}
+
+export function emitFinalRemainderWithEnqueue(
+  params: EmitFinalRemainderWithEnqueueParams
+): boolean {
   const result = emitDelta({
     ...params,
     nextInput: params.finalFullJson,

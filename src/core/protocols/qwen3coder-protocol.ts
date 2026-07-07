@@ -19,10 +19,11 @@ import {
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
 import {
-  emitFailedToolInputLifecycle,
-  emitFinalizedToolInputLifecycle,
-  emitToolInputProgressDelta,
+  emitBufferedToolInputProgressDelta,
+  emitFailedBufferedToolInputLifecycle,
+  emitFinalizedBufferedToolInputLifecycle,
   enqueueToolInputEndAndCall,
+  isPrototypeSensitiveToolCallInputError,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
@@ -763,8 +764,10 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       if (fullInput === "{}") {
         return;
       }
-      emitToolInputProgressDelta({
-        controller,
+      emitBufferedToolInputProgressDelta({
+        enqueue: (part) => {
+          controller.enqueue(part);
+        },
         id: callState.toolCallId,
         state: callState,
         fullInput,
@@ -780,11 +783,12 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       const resolvedToolName = callState.toolName ?? fallbackToolName;
       if (!resolvedToolName || resolvedToolName.trim().length === 0) {
         const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
-        emitFailedToolInputLifecycle({
+        emitFailedBufferedToolInputLifecycle({
+          bufferedParts: callState.pendingToolInputParts,
           controller,
           id: callState.toolCallId,
-          endInput: callState.hasEmittedStart,
           emitRawToolCallTextOnError: shouldEmitRaw,
+          endInputOnError: callState.hasEmittedStart,
           rawToolCallText,
           emitRawText: (rawText) => {
             flushText(controller, rawText);
@@ -818,11 +822,14 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         });
       } catch (error) {
         const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
-        emitFailedToolInputLifecycle({
+        emitFailedBufferedToolInputLifecycle({
+          bufferedParts: callState.pendingToolInputParts,
           controller,
           id: callState.toolCallId,
-          endInput: callState.hasEmittedStart,
           emitRawToolCallTextOnError: shouldEmitRaw,
+          endInputOnError: callState.hasEmittedStart,
+          hideBufferedInputOnError:
+            isPrototypeSensitiveToolCallInputError(error),
           rawToolCallText,
           emitRawText: (rawText) => {
             flushText(controller, rawText);
@@ -842,7 +849,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         );
         return false;
       }
-      emitFinalizedToolInputLifecycle({
+      emitFinalizedBufferedToolInputLifecycle({
+        bufferedParts: callState.pendingToolInputParts,
         controller,
         id: callState.toolCallId,
         state: callState,
@@ -1141,6 +1149,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         hasEmittedStart: false,
         partialParam: null,
         emittedInput: "",
+        pendingToolInputParts: [],
         raw: openTag,
         args: Object.create(null) as Record<string, unknown>,
         buffer: "",
@@ -1251,6 +1260,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               hasEmittedStart: false,
               partialParam: null,
               emittedInput: "",
+              pendingToolInputParts: [],
               raw: toolCall.outerOpenTag,
               args: Object.create(null) as Record<string, unknown>,
               buffer: "",
@@ -1369,6 +1379,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               hasEmittedStart: false,
               partialParam: null,
               emittedInput: "",
+              pendingToolInputParts: [],
               raw: openTag,
               args: Object.create(null) as Record<string, unknown>,
               buffer: "",
@@ -1395,6 +1406,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             hasEmittedStart: false,
             partialParam: null,
             emittedInput: "",
+            pendingToolInputParts: [],
             raw: openTag,
             args: Object.create(null) as Record<string, unknown>,
             buffer: "",
@@ -1593,6 +1605,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
                 hasEmittedStart: false,
                 partialParam: null,
                 emittedInput: "",
+                pendingToolInputParts: [],
                 raw: toolCall.outerOpenTag,
                 args: Object.create(null) as Record<string, unknown>,
                 buffer: "",

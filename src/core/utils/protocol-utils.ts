@@ -6,7 +6,8 @@ import type {
 import { generateId } from "./id";
 import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 
-const REDACTED_SENSITIVE_TOOL_CALL_TEXT = "[redacted sensitive tool call]";
+export const REDACTED_SENSITIVE_TOOL_CALL_TEXT =
+  "[redacted sensitive tool call]";
 
 export function formatToolsWithPromptTemplate(options: {
   tools: LanguageModelV4FunctionTool[];

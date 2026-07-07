@@ -19,7 +19,7 @@ import {
   toolCallInputHasPrototypeSensitiveKey,
   toolCallTextHasPrototypeSensitiveKey,
 } from "../utils/prototype-sensitive-keys";
-import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-coercion";
+import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-schema-sanitization";
 import { emitToolInputProgressDelta } from "../utils/tool-input-streaming";
 import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
 import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";

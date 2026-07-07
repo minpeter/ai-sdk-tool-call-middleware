@@ -19,9 +19,10 @@ import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensiti
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
-  emitFailedToolInputLifecycle,
-  emitFinalizedToolInputLifecycle,
-  emitToolInputProgressDelta,
+  emitBufferedToolInputProgressDelta,
+  emitFailedBufferedToolInputLifecycle,
+  emitFinalizedBufferedToolInputLifecycle,
+  isPrototypeSensitiveToolCallInputError,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
@@ -117,11 +118,7 @@ function processToolCall(params: ProcessToolCallParams): void {
 
 interface HandleStreamingToolCallEndParams {
   ctrl: TransformStreamDefaultController<LanguageModelV4StreamPart>;
-  currentToolCall: {
-    name: string;
-    toolCallId: string;
-    emittedInput: string;
-  };
+  currentToolCall: StreamingToolCallState;
   flushText: FlushTextFn;
   options?: ParserOptions;
   parseOptions?: Record<string, unknown>;
@@ -834,7 +831,8 @@ function handleStreamingToolCallEnd(
       args: parsedResult,
       tools,
     });
-    emitFinalizedToolInputLifecycle({
+    emitFinalizedBufferedToolInputLifecycle({
+      bufferedParts: currentToolCall.pendingToolInputParts,
       controller: ctrl,
       id: currentToolCall.toolCallId,
       state: currentToolCall,
@@ -845,10 +843,13 @@ function handleStreamingToolCallEnd(
   } catch (error) {
     const original = `<${currentToolCall.name}>${toolContent}</${currentToolCall.name}>`;
     const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-    emitFailedToolInputLifecycle({
+    emitFailedBufferedToolInputLifecycle({
+      bufferedParts: currentToolCall.pendingToolInputParts,
       controller: ctrl,
       id: currentToolCall.toolCallId,
       emitRawToolCallTextOnError: emitRawFallback,
+      endInputOnError: currentToolCall.hasEmittedStart,
+      hideBufferedInputOnError: isPrototypeSensitiveToolCallInputError(error),
       rawToolCallText: original,
       emitRawText: (rawText) => {
         flushText(ctrl, rawText);
@@ -1533,9 +1534,11 @@ export const morphXmlProtocol = (
           name: toolName,
           toolCallId: generateToolCallId(),
           emittedInput: "",
+          hasEmittedStart: true,
           lastProgressContentLength: null,
           lastProgressGtIndex: null,
           lastProgressFullInput: null,
+          pendingToolInputParts: [],
         };
         controller.enqueue({
           type: "tool-input-start",
@@ -1563,8 +1566,10 @@ export const morphXmlProtocol = (
           if (cached === "{}" && toolContent.trim().length === 0) {
             return;
           }
-          emitToolInputProgressDelta({
-            controller,
+          emitBufferedToolInputProgressDelta({
+            enqueue: (part) => {
+              controller.enqueue(part);
+            },
             id: toolCall.toolCallId,
             state: toolCall,
             fullInput: cached,
@@ -1589,8 +1594,10 @@ export const morphXmlProtocol = (
         if (fullInput === "{}" && toolContent.trim().length === 0) {
           return;
         }
-        emitToolInputProgressDelta({
-          controller,
+        emitBufferedToolInputProgressDelta({
+          enqueue: (part) => {
+            controller.enqueue(part);
+          },
           id: toolCall.toolCallId,
           state: toolCall,
           fullInput,
@@ -1627,7 +1634,8 @@ export const morphXmlProtocol = (
             args: parsedResult,
             tools,
           });
-          emitFinalizedToolInputLifecycle({
+          emitFinalizedBufferedToolInputLifecycle({
+            bufferedParts: currentToolCall.pendingToolInputParts,
             controller,
             id: currentToolCall.toolCallId,
             state: currentToolCall,
@@ -1638,10 +1646,14 @@ export const morphXmlProtocol = (
         } catch (error) {
           const unfinishedContent = `<${currentToolCall.name}>${buffer}`;
           const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-          emitFailedToolInputLifecycle({
+          emitFailedBufferedToolInputLifecycle({
+            bufferedParts: currentToolCall.pendingToolInputParts,
             controller,
             id: currentToolCall.toolCallId,
             emitRawToolCallTextOnError: emitRawFallback,
+            endInputOnError: currentToolCall.hasEmittedStart,
+            hideBufferedInputOnError:
+              isPrototypeSensitiveToolCallInputError(error),
             rawToolCallText: unfinishedContent,
             emitRawText: (rawText) => {
               flushText(controller, rawText);

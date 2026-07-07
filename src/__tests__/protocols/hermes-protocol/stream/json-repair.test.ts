@@ -1660,7 +1660,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("rejects nested schema-unknown argument keys", async () => {
+  it("drops nested schema-unknown argument keys", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -1702,14 +1702,15 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      payload: { value: "ok" },
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects nested argument keys disallowed by false schemas", async () => {
+  it("drops nested argument keys disallowed by false schemas", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -1752,11 +1753,12 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      payload: { value: "ok" },
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects top-level boolean false input schemas", async () => {
@@ -2913,7 +2915,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("does not let primitive oneOf branches bypass object key constraints", async () => {
+  it("drops object keys not declared by primitive oneOf branches", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("edit", {
@@ -2958,11 +2960,12 @@ describe("hermesProtocol streaming JSON repair", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((c) => c.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      payload: { content: "ok" },
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("applies every matching property and pattern schema", async () => {
