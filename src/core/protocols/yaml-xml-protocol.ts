@@ -824,12 +824,28 @@ function processToolCallMatch(
     buildSchemaPropNameSet(tc.toolName, tools)
   );
   if (result.ok) {
-    processedElements.push({
-      type: "tool-call",
-      toolCallId: generateToolCallId(),
-      toolName: tc.toolName,
-      input: JSON.stringify(result.value),
-    });
+    try {
+      processedElements.push({
+        type: "tool-call",
+        toolCallId: generateToolCallId(),
+        toolName: tc.toolName,
+        input: stringifyToolInputWithSchema({
+          toolName: tc.toolName,
+          args: result.value,
+          tools,
+        }),
+      });
+    } catch (error) {
+      const originalText = text.slice(tc.startIndex, tc.endIndex);
+      options?.onError?.("Could not parse YAML tool call", {
+        toolCall: originalText,
+        toolName: tc.toolName,
+        toolCallId: generateToolCallId(),
+        dropReason: "malformed-tool-call-body",
+        error,
+      });
+      processedElements.push({ type: "text", text: originalText });
+    }
   } else {
     const originalText = text.slice(tc.startIndex, tc.endIndex);
     const cause = yamlFailureCause(result.failure);

@@ -17,7 +17,10 @@ const tools: LanguageModelV4FunctionTool[] = [
     name: "get_weather",
     inputSchema: {
       type: "object",
-      properties: { city: { type: "string" } },
+      properties: {
+        city: { type: "string" },
+        unit: { type: "string" },
+      },
     },
   },
 ];

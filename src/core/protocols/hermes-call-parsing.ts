@@ -14,6 +14,7 @@ import {
 import { logParseFailure } from "../utils/debug";
 import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
+import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-coercion";
 import {
   emitToolInputProgressDelta,
   stringifyToolInputWithSchema,
@@ -525,7 +526,6 @@ export function normalizeJsonStringCtrl(json: string): string {
 }
 
 interface ArgumentKeyPolicy {
-  allowUnknownKeys: boolean;
   deniedKeys: Set<string>;
   deniedPatterns: RegExp[];
   keyPatterns: RegExp[];
@@ -603,7 +603,6 @@ function extractArgumentKeyPolicy(
   const schema = unwrapJsonSchema(tool?.inputSchema);
   if (schema === false) {
     return {
-      allowUnknownKeys: false,
       deniedKeys: new Set(),
       deniedPatterns: [],
       keyPatterns: [],
@@ -645,7 +644,6 @@ function extractArgumentKeyPolicy(
   }
   const propertyEntries = Object.entries(properties);
   return {
-    allowUnknownKeys: schema.additionalProperties !== false,
     deniedKeys: new Set(
       propertyEntries
         .filter(([, propertySchema]) => propertySchema === false)
@@ -681,39 +679,29 @@ function applyArgumentKeyPolicy(
   ) {
     return null;
   }
-  const policyArgs = coerceArgsForKeyPolicy(args, keyPolicy);
-  if (!isRecord(policyArgs)) {
+  const coercedPolicyArgs = coerceArgsForKeyPolicy(args, keyPolicy);
+  if (!isRecord(coercedPolicyArgs)) {
     return null;
   }
-  if (containsPrototypeSensitiveArgumentKey(policyArgs)) {
+  if (containsPrototypeSensitiveArgumentKey(coercedPolicyArgs)) {
     return null;
   }
   if (
     keyPolicy &&
-    Object.keys(policyArgs).some((key) =>
+    Object.keys(coercedPolicyArgs).some((key) =>
       argumentKeyDeniedByPolicy(key, keyPolicy)
     )
   ) {
     return null;
   }
-  if (keyPolicy && !keyPolicy.allowUnknownKeys) {
-    const rawUnknownKeys = Object.keys(args).filter(
-      (key) => !argumentKeyMatchesPolicy(key, keyPolicy)
-    );
-    const rawKnownKeys = new Set(
-      Object.keys(args).filter((key) =>
-        argumentKeyMatchesPolicy(key, keyPolicy)
-      )
-    );
-    const coercedKnownKeys = Object.keys(policyArgs).filter((key) =>
-      argumentKeyMatchesPolicy(key, keyPolicy)
-    );
-    const newCoercedKnownKeys = coercedKnownKeys.filter(
-      (key) => !rawKnownKeys.has(key)
-    );
-    if (newCoercedKnownKeys.length < rawUnknownKeys.length) {
-      return null;
-    }
+  const policyArgs = keyPolicy
+    ? sanitizeToolCallArgsBySchema(coercedPolicyArgs, keyPolicy.schema)
+    : coercedPolicyArgs;
+  if (!isRecord(policyArgs)) {
+    return null;
+  }
+  if (containsPrototypeSensitiveArgumentKey(policyArgs)) {
+    return null;
   }
   if (
     keyPolicy &&
@@ -747,16 +735,6 @@ function argumentKeyDeniedByPolicy(
     keyPolicy.unsafeDeniedPatterns.some((pattern) =>
       unsafeDeniedPatternMayMatchKey(pattern, key)
     )
-  );
-}
-
-function argumentKeyMatchesPolicy(
-  key: string,
-  keyPolicy: ArgumentKeyPolicy
-): boolean {
-  return (
-    keyPolicy.knownKeys.has(key) ||
-    keyPolicy.keyPatterns.some((pattern) => pattern.test(key))
   );
 }
 

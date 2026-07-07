@@ -10,6 +10,92 @@ type ToolCallLike = Extract<
   { type: "tool-call" }
 >;
 
+const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
+  const seen = new Set<object>();
+  const stack: unknown[] = [value];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (Array.isArray(current)) {
+      if (seen.has(current)) {
+        continue;
+      }
+      seen.add(current);
+      for (const item of current) {
+        stack.push(item);
+      }
+      continue;
+    }
+    if (!isRecord(current)) {
+      continue;
+    }
+    if (seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    for (const key of Object.keys(current)) {
+      if (PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) {
+        return true;
+      }
+      stack.push(current[key]);
+    }
+  }
+
+  return false;
+}
+
+function getDeclaredToolInputPropertyNames(
+  schema: unknown
+): Set<string> | null {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!(isRecord(unwrapped) && isRecord(unwrapped.properties))) {
+    return null;
+  }
+
+  const propertyNames = Object.entries(unwrapped.properties).flatMap(
+    ([key, propertySchema]) =>
+      propertySchema !== false && !PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)
+        ? [key]
+        : []
+  );
+  const requiredNames = Array.isArray(unwrapped.required)
+    ? unwrapped.required.filter(
+        (key): key is string =>
+          typeof key === "string" && !PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)
+      )
+    : [];
+  const names = [...propertyNames, ...requiredNames];
+  return names.length > 0 ? new Set(names) : null;
+}
+
+export function sanitizeToolCallArgsBySchema(
+  args: unknown,
+  schema: unknown
+): unknown {
+  const propertyNames = getDeclaredToolInputPropertyNames(schema);
+  if (!(propertyNames && isRecord(args))) {
+    return args;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (propertyNames.has(key)) {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 function schemaAllowsNull(schema: unknown, seen = new Set<object>()): boolean {
   const unwrapped = unwrapJsonSchema(schema);
   if (unwrapped === true) {
@@ -78,7 +164,11 @@ export function coerceToolCallInput(
   if (coerced === null) {
     return schemaAllowsNull(schema) ? "null" : undefined;
   }
-  return JSON.stringify(coerced ?? {});
+  const sanitized = sanitizeToolCallArgsBySchema(coerced ?? {}, schema);
+  if (hasPrototypeSensitiveStructuralKey(sanitized)) {
+    return;
+  }
+  return JSON.stringify(sanitized);
 }
 
 export function coerceToolCallPart<T extends ToolCallLike>(

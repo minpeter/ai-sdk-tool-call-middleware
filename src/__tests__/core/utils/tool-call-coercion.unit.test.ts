@@ -1,3 +1,4 @@
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,6 +7,20 @@ import {
 } from "../../../core/utils/tool-call-coercion";
 
 describe("tool-call coercion utils", () => {
+  const weatherTools: LanguageModelV4FunctionTool[] = [
+    {
+      type: "function",
+      name: "get_weather",
+      inputSchema: {
+        type: "object",
+        properties: {
+          city: { type: "string" },
+          unit: { type: "string" },
+        },
+      },
+    },
+  ];
+
   it("coerces stringified tool input by schema", () => {
     const input = coerceToolCallInput("calc", '{"a":"10","b":"false"}', [
       {
@@ -22,6 +37,26 @@ describe("tool-call coercion utils", () => {
     ]);
 
     expect(input).toBe('{"a":10,"b":false}');
+  });
+
+  it("drops schema-unknown top-level input keys when properties are declared", () => {
+    const input = coerceToolCallInput(
+      "get_weather",
+      { city: "Seoul", unit: "celsius", mood: "sunny" },
+      weatherTools
+    );
+
+    expect(input).toBe('{"city":"Seoul","unit":"celsius"}');
+  });
+
+  it("drops schema-unknown top-level keys from stringified input", () => {
+    const input = coerceToolCallInput(
+      "get_weather",
+      '{"city":"Seoul","unit":"celsius","mood":"sunny"}',
+      weatherTools
+    );
+
+    expect(input).toBe('{"city":"Seoul","unit":"celsius"}');
   });
 
   it("returns undefined when tool input is invalid JSON string", () => {

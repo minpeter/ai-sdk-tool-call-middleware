@@ -8,7 +8,10 @@ import {
   emitFinalRemainder,
   toIncompleteJsonPrefix,
 } from "./streamed-tool-input-delta";
-import { coerceToolCallInput } from "./tool-call-coercion";
+import {
+  coerceToolCallInput,
+  hasPrototypeSensitiveStructuralKey,
+} from "./tool-call-coercion";
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
@@ -25,6 +28,10 @@ export function stringifyToolInputWithSchema(options: {
   tools: LanguageModelV4FunctionTool[];
   fallback?: (args: unknown) => string;
 }): string {
+  if (hasPrototypeSensitiveStructuralKey(options.args)) {
+    throw new Error("Tool call arguments contain prototype-sensitive keys");
+  }
+
   const coerced = coerceToolCallInput(
     options.toolName,
     options.args,

@@ -307,7 +307,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(hasToolOrError).toBe(true);
   });
 
-  it("preserves schema-unknown keys when additionalProperties is implicit", () => {
+  it("drops schema-unknown keys when additionalProperties is implicit", () => {
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"He said "hi" there","extra":"debug","path":"/tmp/a"}}</tool_call>';
@@ -322,10 +322,10 @@ describe("parseGeneratedText JSON repair", () => {
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hi" there');
     expect(args.path).toBe("/tmp/a");
-    expect(args.extra).toBe("debug");
+    expect(args.extra).toBeUndefined();
   });
 
-  it("preserves schema-unknown keys when additionalProperties is true", () => {
+  it("drops schema-unknown keys when additionalProperties is true", () => {
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"He said "hi" there","dynamic":"kept"}}</tool_call>';
@@ -346,10 +346,10 @@ describe("parseGeneratedText JSON repair", () => {
     }
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hi" there');
-    expect(args.dynamic).toBe("kept");
+    expect(args.dynamic).toBeUndefined();
   });
 
-  it("calls onError for schema-unknown keys when additionalProperties is false", () => {
+  it("drops schema-unknown keys when additionalProperties is false", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -365,11 +365,16 @@ describe("parseGeneratedText JSON repair", () => {
       ),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    const args = JSON.parse(tool.input);
+    expect(args).toEqual({
+      content: 'He said "hi" there',
+      path: "/tmp/a",
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects schema-unknown keys in strict repair even when arguments parse cleanly", () => {
+  it("drops schema-unknown keys in strict repair even when arguments parse cleanly", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -385,11 +390,15 @@ describe("parseGeneratedText JSON repair", () => {
       ),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({
+      content: "ok",
+      path: "/tmp/a",
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects schema-unknown keys for jsonSchema-wrapped strict schemas", () => {
+  it("drops schema-unknown keys for jsonSchema-wrapped strict schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -407,11 +416,15 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({
+      content: "ok",
+      path: "/tmp/a",
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects schema-unknown keys for clean strict JSON", () => {
+  it("drops schema-unknown keys for clean strict JSON", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -427,8 +440,12 @@ describe("parseGeneratedText JSON repair", () => {
       ),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({
+      content: "ok",
+      path: "/tmp/a",
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects clean strict JSON with prototype-sensitive argument keys", () => {
@@ -579,7 +596,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("accepts common grouped and quantified patternProperties for strict schemas", () => {
+  it("drops patternProperties-only keys when properties are declared", () => {
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"ok","x-debug":"kept","y-trace":"yes","z-123":"num","path":"/tmp/a"}}}</tool_call>';
@@ -604,9 +621,10 @@ describe("parseGeneratedText JSON repair", () => {
       throw new Error("expected tool call");
     }
     const args = JSON.parse(tool.input);
-    expect(args["x-debug"]).toBe("kept");
-    expect(args["y-trace"]).toBe("yes");
-    expect(args["z-123"]).toBe("num");
+    expect(args).toEqual({
+      content: "ok",
+      path: "/tmp/a",
+    });
   });
 
   it("accepts non-capturing patternProperties groups for strict schemas", () => {
@@ -806,7 +824,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("preserves allowed keys when an unsafe false pattern contains character classes", () => {
+  it("drops additional keys when an unsafe false pattern contains character classes", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -828,7 +846,6 @@ describe("parseGeneratedText JSON repair", () => {
     expect(tool).toBeTruthy();
     expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
       content: "ok",
-      note: "safe",
     });
     expect(onError).not.toHaveBeenCalled();
   });
@@ -909,15 +926,9 @@ describe("parseGeneratedText JSON repair", () => {
     expect(args.b).toEqual({ c: 2 });
   });
 
-  it("bails out when all parsed keys are schema-unknown (no empty-args fallback)", () => {
+  it("emits empty args when all parsed keys are schema-unknown", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
-    // Tool schema knows "content" and "path", but the model hallucinates
-    // different key names ("foo", "bar") AND emits unescaped quotes so
-    // parseRJSON fails and repair runs. Without the guard, repair would
-    // skip every key via knownKeySet and return {name, arguments: {}} —
-    // emitting a tool call with empty args (worse than failing). The guard
-    // makes repair bail out to onError when no known key survives.
     const text =
       '<tool_call>{"name":"write","arguments":{"foo":"He said "hi" there","bar":"b"}}</tool_call>';
     const tools = [
@@ -931,10 +942,9 @@ describe("parseGeneratedText JSON repair", () => {
       ),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    const tool = out.find((x) => x.type === "tool-call");
-    expect(tool).toBeUndefined();
-    expect(out).toContainEqual({ type: "text", text });
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({});
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("falls through to text when malformed input uses relaxed-JSON syntax (repair is strict-JSON only)", () => {
@@ -1911,7 +1921,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("preserves allowed extra argument keys when a denied pattern is unsafe", () => {
+  it("drops extra argument keys when a denied pattern is unsafe", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1933,7 +1943,6 @@ describe("parseGeneratedText JSON repair", () => {
     expect(tool).toBeTruthy();
     expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
       content: "ok",
-      note: "safe",
     });
     expect(onError).not.toHaveBeenCalled();
   });

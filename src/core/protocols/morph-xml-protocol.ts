@@ -87,7 +87,11 @@ function processToolCall(params: ProcessToolCallParams): void {
       type: "tool-call",
       toolCallId: generateToolCallId(),
       toolName: toolCall.toolName,
-      input: JSON.stringify(parsed),
+      input: stringifyToolInputWithSchema({
+        toolName: toolCall.toolName,
+        args: parsed,
+        tools,
+      }),
     });
   } catch (error) {
     const originalCallText = text.slice(toolCall.startIndex, toolCall.endIndex);
