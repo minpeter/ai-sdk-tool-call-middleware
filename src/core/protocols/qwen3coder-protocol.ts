@@ -366,6 +366,25 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       processedElements.push({ type: "text", text: value });
     };
 
+    const pushRecoveredTrailingText = (value: string, raw: string) => {
+      const trailingText = stripTrailingToolCallCloseTags(
+        stripLeadingToolCallCloseTags(value)
+      );
+      if (trailingText.length === 0) {
+        return;
+      }
+      if (toolCallTextHasPrototypeSensitiveKey(trailingText)) {
+        options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
+          toolCall: safeToolCallMetadataText(raw),
+          toolName: extractQwen3CoderToolNameFromMarkup(raw) ?? undefined,
+          toolCallId: generateToolCallId(),
+          dropReason: "sensitive-tool-call-trailing-text",
+        });
+        return;
+      }
+      pushText(trailingText);
+    };
+
     const tryEmitToolCallSegment = (
       segment: string,
       fallbackText: string = segment
@@ -429,11 +448,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               "Could not process Qwen3CoderToolParser <function> call; keeping original text."
             )
           ) {
-            pushText(
-              stripTrailingToolCallCloseTags(
-                stripLeadingToolCallCloseTags(trailingText)
-              )
-            );
+            pushRecoveredTrailingText(trailingText, full);
           }
         } else {
           emitWrapperlessCallParseFailureAsText(full);
@@ -713,6 +728,27 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         hasEmittedTextStart = value;
       }
     );
+
+    const flushRecoveredTrailingText = (
+      controller: StreamController,
+      callState: StreamingCallState,
+      trailingText: string
+    ) => {
+      if (trailingText.length === 0) {
+        return;
+      }
+      if (toolCallTextHasPrototypeSensitiveKey(trailingText)) {
+        const raw = `${callState.raw}${trailingText}`;
+        options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
+          toolCallId: callState.toolCallId,
+          toolCall: safeToolCallMetadataText(raw),
+          ...(callState.toolName ? { toolName: callState.toolName } : {}),
+          dropReason: "sensitive-tool-call-trailing-text",
+        });
+        return;
+      }
+      flushText(controller, trailingText);
+    };
 
     const maybeEmitToolInputStart = (
       controller: StreamController,
@@ -1632,7 +1668,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             const shouldFlushTrailingText =
               result.ok || !shouldEmitRawToolCallTextOnError(options);
             if (shouldFlushTrailingText && result.trailingText.length > 0) {
-              flushText(controller, result.trailingText);
+              flushRecoveredTrailingText(
+                controller,
+                toolCall.activeCall,
+                result.trailingText
+              );
             }
             if (!result.ok && toolCall.emittedToolCallCount === 0) {
               reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
@@ -1655,7 +1695,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               const shouldFlushTrailingText =
                 result.ok || !shouldEmitRawToolCallTextOnError(options);
               if (shouldFlushTrailingText && result.trailingText.length > 0) {
-                flushText(controller, result.trailingText);
+                flushRecoveredTrailingText(
+                  controller,
+                  toolCall.activeCall,
+                  result.trailingText
+                );
               }
               if (!result.ok && toolCall.emittedToolCallCount === 0) {
                 reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
@@ -1691,7 +1735,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         const shouldFlushTrailingText =
           result.ok || !shouldEmitRawToolCallTextOnError(options);
         if (shouldFlushTrailingText && result.trailingText.length > 0) {
-          flushText(controller, result.trailingText);
+          flushRecoveredTrailingText(
+            controller,
+            callState,
+            result.trailingText
+          );
         }
         if (!result.ok && openTag) {
           reportUnfinishedImplicitCallAtFinish(

@@ -1,9 +1,25 @@
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import { emptyFunctionTools } from "../../../fixtures/function-tools";
 
 describe("qwen3CoderProtocol", () => {
   const tools = emptyFunctionTools;
+  const bookFlightTool = {
+    type: "function" as const,
+    name: "book_flight",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cabin: { type: "string" },
+      },
+    },
+  } satisfies LanguageModelV4FunctionTool;
+  const prototypeSensitiveParameterNames = [
+    "__proto__",
+    "constructor",
+    "prototype",
+  ] as const;
 
   it("calls onError and keeps original text on malformed segments", () => {
     const onError = vi.fn();
@@ -88,6 +104,38 @@ describe("qwen3CoderProtocol", () => {
         .join("")
     ).toBe("");
     expect(onError).toHaveBeenCalled();
+  });
+
+  it.each(
+    prototypeSensitiveParameterNames
+  )("drops wrapperless partial prototype-sensitive arg trailing text for %s", (parameterName) => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text = `<function=book_flight><parameter=${parameterName}`;
+
+    const out = p.parseGeneratedText({
+      text,
+      tools: [bookFlightTool],
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    const toolCall = out.find((part) => part.type === "tool-call");
+    expect(toolCall).toMatchObject({
+      type: "tool-call",
+      toolName: "book_flight",
+      input: "{}",
+    });
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain(parameterName);
+    expect(metadataText).not.toContain("<parameter=");
   });
 
   it("calls onError and drops raw text on __proto__ parameter args", () => {
