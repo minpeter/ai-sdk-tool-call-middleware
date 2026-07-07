@@ -204,6 +204,62 @@ describe("qwen3CoderProtocol", () => {
     expect(metadataText).not.toContain("<parameter=");
   });
 
+  it("preserves safe text after dropped entity-encoded standalone prototype-sensitive parameter trailing text", () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text =
+      "<function=book_flight><parameter=cabin>economy</parameter></function>" +
+      '<parameter name="&#99;onstructor">{"polluted":true}</parameter> after';
+
+    const out = p.parseGeneratedText({
+      text,
+      tools: [bookFlightTool],
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(out.find((part) => part.type === "tool-call")).toMatchObject({
+      type: "tool-call",
+      toolName: "book_flight",
+      input: '{"cabin":"economy"}',
+    });
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe(" after");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("polluted");
+    expect(metadataText).not.toContain("&#99;onstructor");
+  });
+
+  it("drops bare standalone prototype-sensitive parameter text without a wrapperless call", () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text = "safe<parameter=__proto__>leakmarker</parameter> tail";
+
+    const out = p.parseGeneratedText({
+      text,
+      tools: [bookFlightTool],
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe("safe tail");
+    expect(JSON.stringify(out)).not.toContain("leakmarker");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("leakmarker");
+    expect(metadataText).not.toContain("<parameter=");
+  });
+
   it("calls onError and drops raw text on __proto__ parameter args", () => {
     const onError = vi.fn();
     const p = qwen3CoderProtocol();

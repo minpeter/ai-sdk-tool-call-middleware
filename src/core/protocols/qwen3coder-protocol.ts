@@ -652,7 +652,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       return processedElements;
     }
 
-    return [{ type: "text", text }];
+    if (text.length === 0) {
+      return [{ type: "text", text }];
+    }
+    pushRecoveredTrailingText(text, text);
+    return processedElements;
   },
 
   extractToolCallSegments({ text }) {

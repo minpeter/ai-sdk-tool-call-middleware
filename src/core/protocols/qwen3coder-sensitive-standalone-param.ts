@@ -1,8 +1,8 @@
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
 
-const QWEN_STANDALONE_SENSITIVE_PARAM_OPEN_RE =
-  /<\s*(parameter|param|argument|arg)(?:\s*=\s*["']?(?:__proto__|constructor|prototype)(?=["'\s/>]|$)["']?|\b(?=[^>]*\bname\s*=\s*["']\s*(?:__proto__|constructor|prototype)\s*["']))[^>]*>/gi;
+const QWEN_STANDALONE_PARAM_OPEN_RE =
+  /<\s*(parameter|param|argument|arg)\b[^>]*>/gi;
 const XML_SELF_CLOSING_TAG_RE = /\/\s*>$/;
 
 interface SensitiveStandaloneParameterSpan {
@@ -25,8 +25,8 @@ function collectStandaloneSensitiveParameterSpans(
   text: string
 ): readonly SensitiveStandaloneParameterSpan[] {
   const spans: SensitiveStandaloneParameterSpan[] = [];
-  QWEN_STANDALONE_SENSITIVE_PARAM_OPEN_RE.lastIndex = 0;
-  let match = QWEN_STANDALONE_SENSITIVE_PARAM_OPEN_RE.exec(text);
+  QWEN_STANDALONE_PARAM_OPEN_RE.lastIndex = 0;
+  let match = QWEN_STANDALONE_PARAM_OPEN_RE.exec(text);
   while (match) {
     const startIndex = match.index;
     const openTag = match[0] ?? "";
@@ -40,18 +40,21 @@ function collectStandaloneSensitiveParameterSpans(
       );
       const closeMatch = closePattern.exec(text.slice(openEnd));
       if (!closeMatch) {
-        match = QWEN_STANDALONE_SENSITIVE_PARAM_OPEN_RE.exec(text);
+        match = QWEN_STANDALONE_PARAM_OPEN_RE.exec(text);
         continue;
       }
       endIndex = openEnd + (closeMatch.index ?? 0) + closeMatch[0].length;
     }
-    spans.push({
-      startIndex,
-      endIndex,
-      text: text.slice(startIndex, endIndex),
-    });
-    QWEN_STANDALONE_SENSITIVE_PARAM_OPEN_RE.lastIndex = endIndex;
-    match = QWEN_STANDALONE_SENSITIVE_PARAM_OPEN_RE.exec(text);
+    const spanText = text.slice(startIndex, endIndex);
+    if (toolCallTextHasPrototypeSensitiveKey(spanText)) {
+      spans.push({
+        startIndex,
+        endIndex,
+        text: spanText,
+      });
+    }
+    QWEN_STANDALONE_PARAM_OPEN_RE.lastIndex = endIndex;
+    match = QWEN_STANDALONE_PARAM_OPEN_RE.exec(text);
   }
   return spans;
 }
