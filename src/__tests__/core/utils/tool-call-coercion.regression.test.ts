@@ -878,6 +878,28 @@ describe("tool-call coercion regression coverage", () => {
     );
   });
 
+  it.each([
+    "constructor: ordinary prose",
+    "prototype: ordinary prose",
+    "constructor: true",
+    "prototype: 1",
+  ] as const)("keeps schema-valid string args that start with prototype-like label %s", (payload) => {
+    const input = coerceToolCallInput("echo", { payload }, [
+      {
+        type: "function",
+        name: "echo",
+        inputSchema: {
+          type: "object",
+          properties: {
+            payload: { type: "string" },
+          },
+        },
+      },
+    ]);
+
+    expect(input).toBe(JSON.stringify({ payload }));
+  });
+
   it("detects prototype-sensitive text only in tool-argument-like syntax", () => {
     expect(
       toolCallTextHasPrototypeSensitiveKey("notes mention constructor safely")
@@ -885,6 +907,22 @@ describe("tool-call coercion regression coverage", () => {
     expect(
       toolCallTextHasPrototypeSensitiveKey("constructor: ordinary prose")
     ).toBe(false);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey("prototype: ordinary prose")
+    ).toBe(false);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey(
+        "<unit>constructor: ordinary prose</unit>"
+      )
+    ).toBe(false);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey("<unit>constructor: true</unit>")
+    ).toBe(false);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey(
+        "<unit>prototype:\n  polluted: true</unit>"
+      )
+    ).toBe(true);
     expect(
       toolCallTextHasPrototypeSensitiveKey(
         "{'\\u005f\\u005fproto\\u005f\\u005f':{'polluted':true}}"

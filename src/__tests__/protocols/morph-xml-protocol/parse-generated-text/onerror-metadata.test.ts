@@ -79,6 +79,34 @@ describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it.each([
+    "constructor: ordinary prose",
+    "prototype: ordinary prose",
+    "constructor: true",
+  ] as const)("preserves schema-valid string element value %s", (contents) => {
+    const onError = vi.fn();
+    const protocol = morphXmlProtocol();
+    const text = `<write_file><file_path>a</file_path><contents>${contents}</contents></write_file>`;
+
+    const out = protocol.parseGeneratedText({
+      text,
+      tools,
+      options: { onError },
+    });
+    const tool = out.find((part) => part.type === "tool-call");
+
+    expect(tool?.type).toBe("tool-call");
+    if (tool?.type !== "tool-call") {
+      throw new Error("expected tool call");
+    }
+    expect(tool.toolName).toBe("write_file");
+    expect(JSON.parse(tool.input)).toEqual({
+      file_path: "a",
+      contents,
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("drops sensitive YAML tool_call text fallback while preserving surrounding text", () => {
     const protocol = morphXmlProtocol();
     const text = `before <tool_call>

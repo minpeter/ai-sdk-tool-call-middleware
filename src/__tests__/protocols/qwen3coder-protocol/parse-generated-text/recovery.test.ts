@@ -488,6 +488,31 @@ describe("qwen3CoderProtocol", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it.each([
+    "constructor: ordinary prose",
+    "prototype: ordinary prose",
+    "constructor: true",
+  ] as const)("preserves schema-valid string parameter value %s", (cabin) => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text = `<tool_call><function=book_flight><parameter=cabin>${cabin}</parameter></function></tool_call>`;
+
+    const out = p.parseGeneratedText({
+      text,
+      tools: [bookFlightTool],
+      options: { onError },
+    });
+    const tool = out.find((part) => part.type === "tool-call");
+
+    expect(tool?.type).toBe("tool-call");
+    if (tool?.type !== "tool-call") {
+      throw new Error("expected tool call");
+    }
+    expect(tool.toolName).toBe("book_flight");
+    expect(JSON.parse(tool.input)).toEqual({ cabin });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("keeps original trailing text when incomplete <tool_call recovery fails", () => {
     const p = qwen3CoderProtocol();
     const text = "How to type <tool_call in docs?";

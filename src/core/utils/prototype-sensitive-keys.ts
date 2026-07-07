@@ -12,9 +12,14 @@ const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
 const PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX =
   /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
 const PROTOTYPE_SENSITIVE_TEXT_REGEX =
-  /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/|$)|<\s*(?:parameter|param|argument|arg)\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?\s*\/?>|$)|<\s*(?:parameter|param|argument|arg)\b(?=[^>]*\bname\s*=\s*(?:"\s*(?:__proto__|constructor|prototype)\s*"|'\s*(?:__proto__|constructor|prototype)\s*'|(?:__proto__|constructor|prototype)(?=[\s/>]|$)))|<\s*(?:parameter|param|argument|arg)\s*>\s*(?:__proto__|constructor|prototype)\s*<\s*\/\s*(?:parameter|param|argument|arg)\s*>|<\s*[A-Za-z_][\w.:-]*\b[^>]*>\s*(?:__proto__|constructor|prototype)\s*:/i;
+  /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/|$)|<\s*(?:parameter|param|argument|arg)\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?\s*\/?>|$)|<\s*(?:parameter|param|argument|arg)\b(?=[^>]*\bname\s*=\s*(?:"\s*(?:__proto__|constructor|prototype)\s*"|'\s*(?:__proto__|constructor|prototype)\s*'|(?:__proto__|constructor|prototype)(?=[\s/>]|$)))|<\s*(?:parameter|param|argument|arg)\s*>\s*(?:__proto__|constructor|prototype)\s*<\s*\/\s*(?:parameter|param|argument|arg)\s*>/i;
+const PROTOTYPE_SENSITIVE_XML_TEXT_KEY_REGEX =
+  /<\s*[A-Za-z_][\w.:-]*\b[^>]*>\s*(?:__proto__\s*:|(?:constructor|prototype)\s*:\s*(?:$|\r?\n|[[{"']))/i;
 const PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX =
   /(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/i;
+const PROTO_PROPERTY_YAML_KEY_TEXT_REGEX = /(?:^|\n)\s*__proto__\s*:/i;
+const PROTOTYPE_SENSITIVE_STRING_YAML_KEY_TEXT_REGEX =
+  /(?:^|\n)\s*(?:constructor|prototype)\s*:\s*(?:$|\r?\n|[[{"'])/i;
 const PROTOTYPE_SENSITIVE_STRUCTURED_YAML_KEY_TEXT_REGEX =
   /(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:\s*(?:$|\r?\n|[[{"']|true\b|false\b|null\b|[-+]?\d)/i;
 const YAML_MAPPING_KEY_TEXT_REGEX = /(?:^|\n)\s*[A-Za-z_][A-Za-z0-9_.-]*\s*:/;
@@ -124,6 +129,7 @@ export function toolCallTextHasPrototypeSensitiveKey(text: string): boolean {
   const decoded = decodeStructuredTextEscapes(text);
   return (
     PROTOTYPE_SENSITIVE_TEXT_REGEX.test(decoded) ||
+    PROTOTYPE_SENSITIVE_XML_TEXT_KEY_REGEX.test(decoded) ||
     hasPrototypeSensitiveYamlKeyText(decoded)
   );
 }
@@ -133,6 +139,20 @@ function hasPrototypeSensitiveYamlKeyText(text: string): boolean {
     return false;
   }
   if (PROTOTYPE_SENSITIVE_STRUCTURED_YAML_KEY_TEXT_REGEX.test(text)) {
+    return true;
+  }
+  const mappingKeys = text.match(YAML_MAPPING_KEY_TEXT_GLOBAL_REGEX) ?? [];
+  return mappingKeys.length > 1;
+}
+
+function stringLeafHasPrototypeSensitiveYamlKeyText(text: string): boolean {
+  if (PROTO_PROPERTY_YAML_KEY_TEXT_REGEX.test(text)) {
+    return true;
+  }
+  if (!PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX.test(text)) {
+    return false;
+  }
+  if (PROTOTYPE_SENSITIVE_STRING_YAML_KEY_TEXT_REGEX.test(text)) {
     return true;
   }
   const mappingKeys = text.match(YAML_MAPPING_KEY_TEXT_GLOBAL_REGEX) ?? [];
@@ -163,8 +183,11 @@ function stringLeafHasPrototypeSensitiveArgumentKey(text: string): boolean {
   if (!looksStructured) {
     return false;
   }
-  if (PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX.test(decoded)) {
+  if (stringLeafHasPrototypeSensitiveYamlKeyText(decoded)) {
     return true;
+  }
+  if (PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX.test(decoded)) {
+    return false;
   }
   return toolCallTextHasPrototypeSensitiveKey(text);
 }

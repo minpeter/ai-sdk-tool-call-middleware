@@ -642,6 +642,33 @@ describe("parseGeneratedText JSON repair", () => {
     expect(tool.input).toBe("42");
   });
 
+  it.each([
+    "constructor: ordinary prose",
+    "prototype: ordinary prose",
+    "constructor: true",
+  ] as const)("preserves schema-valid string argument value %s", (note) => {
+    const p = hermesProtocol();
+    const text = `<tool_call>${JSON.stringify({
+      name: "write",
+      arguments: { note },
+    })}</tool_call>`;
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          note: { type: "string" },
+        },
+        additionalProperties: false,
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools });
+    const tool = expectToolCall(out);
+
+    expect(tool.toolName).toBe("write");
+    expect(JSON.parse(tool.input)).toEqual({ note });
+  });
+
   it("accepts coercible keys before strict schema validation", () => {
     const p = hermesProtocol();
     const text =
