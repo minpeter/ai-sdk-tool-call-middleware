@@ -701,6 +701,11 @@ describe("tool-call coercion regression coverage", () => {
     ).toBe(true);
     expect(
       toolCallTextHasPrototypeSensitiveKey(
+        "<unit>&amp;amp;amp;amp;lt;prototype&amp;amp;amp;amp;gt;x&amp;amp;amp;amp;lt;/prototype&amp;amp;amp;amp;gt;</unit>"
+      )
+    ).toBe(true);
+    expect(
+      toolCallTextHasPrototypeSensitiveKey(
         "<parameter>constructor</parameter>{}"
       )
     ).toBe(true);

@@ -2024,6 +2024,35 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("rejects top-level oneOf inputs with keys from multiple strict branches", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"city":"Seoul","latitude":37.5}}</tool_call>';
+    const tools = [
+      makeSchemaTool("edit", {
+        oneOf: [
+          {
+            type: "object",
+            properties: { city: { type: "string" } },
+            required: ["city"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: { latitude: { type: "number" } },
+            required: ["latitude"],
+            additionalProperties: false,
+          },
+        ],
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("applies every matching property and pattern schema", () => {
     const onError = vi.fn();
     const p = hermesProtocol();

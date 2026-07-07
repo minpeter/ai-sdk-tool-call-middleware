@@ -19,6 +19,7 @@ import {
   toolCallInputHasPrototypeSensitiveKey,
   toolCallTextHasPrototypeSensitiveKey,
 } from "../utils/prototype-sensitive-keys";
+import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
 import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-schema-sanitization";
 import { emitToolInputProgressDelta } from "../utils/tool-input-streaming";
 import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
@@ -732,6 +733,12 @@ function applyArgumentKeyPolicy(
   ) {
     return null;
   }
+  if (
+    keyPolicy &&
+    topLevelOneOfHasConflictingDeclaredKeys(args, keyPolicy.schema)
+  ) {
+    return null;
+  }
   const coercedPolicyArgs = coerceArgsForKeyPolicy(args, keyPolicy);
   if (!isRecord(coercedPolicyArgs)) {
     return null;
@@ -781,6 +788,37 @@ function sanitizeArgsByArgumentKeyPolicy(
 ): Record<string, unknown> {
   const sanitized = sanitizeToolCallArgsBySchema(args, keyPolicy.schema);
   return isRecord(sanitized) ? sanitized : args;
+}
+
+function topLevelOneOfHasConflictingDeclaredKeys(
+  args: Record<string, unknown>,
+  schema: unknown
+): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!(isRecord(unwrapped) && Array.isArray(unwrapped.oneOf))) {
+    return false;
+  }
+
+  const branchNames = unwrapped.oneOf.map((variant) =>
+    collectSchemaSelectionPropertyNames(variant)
+  );
+  const keyBranchCounts = new Map<string, number>();
+  for (const names of branchNames) {
+    for (const name of names) {
+      keyBranchCounts.set(name, (keyBranchCounts.get(name) ?? 0) + 1);
+    }
+  }
+
+  let matchedBranches = 0;
+  for (const names of branchNames) {
+    for (const name of names) {
+      if (keyBranchCounts.get(name) === 1 && Object.hasOwn(args, name)) {
+        matchedBranches += 1;
+        break;
+      }
+    }
+  }
+  return matchedBranches > 1;
 }
 
 function shouldValidateArgumentSchemaKeyShape(

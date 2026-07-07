@@ -4,10 +4,15 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { generateId } from "./id";
-import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
+import {
+  toolCallInputHasPrototypeSensitiveKey,
+  toolCallTextHasPrototypeSensitiveKey,
+} from "./prototype-sensitive-keys";
 
 export const REDACTED_SENSITIVE_TOOL_CALL_TEXT =
   "[redacted sensitive tool call]";
+const PROTOTYPE_SENSITIVE_ERROR_DETAIL_REGEX =
+  /\b(?:__proto__|constructor|prototype)\b|prototype-sensitive/i;
 
 export function formatToolsWithPromptTemplate(options: {
   tools: LanguageModelV4FunctionTool[];
@@ -40,6 +45,60 @@ export function safeToolCallMetadataText(
   return toolCallTextHasPrototypeSensitiveKey(text)
     ? REDACTED_SENSITIVE_TOOL_CALL_TEXT
     : text;
+}
+
+function errorCause(error: Error): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(error, "cause");
+  return descriptor && "value" in descriptor ? descriptor.value : undefined;
+}
+
+function errorHasPrototypeSensitiveDetails(error: Error): boolean {
+  if (
+    PROTOTYPE_SENSITIVE_ERROR_DETAIL_REGEX.test(error.message) ||
+    toolCallTextHasPrototypeSensitiveKey(error.message)
+  ) {
+    return true;
+  }
+  const cause = errorCause(error);
+  if (typeof cause === "string") {
+    return (
+      PROTOTYPE_SENSITIVE_ERROR_DETAIL_REGEX.test(cause) ||
+      toolCallTextHasPrototypeSensitiveKey(cause)
+    );
+  }
+  if (cause instanceof Error) {
+    return errorHasPrototypeSensitiveDetails(cause);
+  }
+  return cause != null && toolCallInputHasPrototypeSensitiveKey(cause);
+}
+
+export function safeToolCallMetadataValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return toolCallInputHasPrototypeSensitiveKey(value)
+      ? REDACTED_SENSITIVE_TOOL_CALL_TEXT
+      : value;
+  }
+  if (value instanceof Error) {
+    return errorHasPrototypeSensitiveDetails(value)
+      ? REDACTED_SENSITIVE_TOOL_CALL_TEXT
+      : value;
+  }
+  return toolCallInputHasPrototypeSensitiveKey(value)
+    ? REDACTED_SENSITIVE_TOOL_CALL_TEXT
+    : value;
+}
+
+export function safeToolCallMetadataError(
+  error: unknown,
+  sourceText?: string | null
+): unknown {
+  if (
+    typeof sourceText === "string" &&
+    toolCallTextHasPrototypeSensitiveKey(sourceText)
+  ) {
+    return REDACTED_SENSITIVE_TOOL_CALL_TEXT;
+  }
+  return safeToolCallMetadataValue(error);
 }
 
 export function createFlushTextHandler(

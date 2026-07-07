@@ -3076,6 +3076,58 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("rejects top-level oneOf inputs with keys from multiple strict branches", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeSchemaTool("edit", {
+        oneOf: [
+          {
+            type: "object",
+            properties: { city: { type: "string" } },
+            required: ["city"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: { latitude: { type: "number" } },
+            required: ["latitude"],
+            additionalProperties: false,
+          },
+        ],
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"edit","arguments":{"city":"Seoul","latitude":37.5}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
+    expect(out.some((part) => part.type === "tool-input-start")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(onError).toHaveBeenCalled();
+  });
+
   it("applies every matching property and pattern schema", async () => {
     const onError = vi.fn();
     const tools = [

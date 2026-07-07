@@ -1,4 +1,7 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONSchema7,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -23,6 +26,27 @@ const weatherTool: LanguageModelV4FunctionTool = {
     },
     required: ["location"],
   },
+};
+
+const pollutedPropertySchema: JSONSchema7 = { type: "boolean" };
+const constructorPropertySchema: JSONSchema7 = {
+  type: "object",
+  properties: {
+    polluted: pollutedPropertySchema,
+  },
+};
+const unsafeInputSchema: JSONSchema7 = {
+  type: "object",
+  properties: {
+    constructor: constructorPropertySchema,
+  },
+};
+
+const unsafeSchemaTool: LanguageModelV4FunctionTool = {
+  type: "function",
+  name: "unsafe",
+  description: "Unsafe schema fixture",
+  inputSchema: unsafeInputSchema,
 };
 
 interface PrototypeSensitiveStreamCase {
@@ -55,6 +79,42 @@ const prototypeSensitiveStreamCases: readonly PrototypeSensitiveStreamCase[] = [
 ];
 
 describe("XML/YAML malformed non-leak guarantees", () => {
+  it("Morph XML redacts prototype-sensitive parse error metadata", () => {
+    const metadata: Array<Record<string, unknown> | undefined> = [];
+    const out = morphXmlProtocol().parseGeneratedText({
+      text: "<unsafe><constructor><polluted>true</polluted></constructor></unsafe>",
+      tools: [unsafeSchemaTool],
+      options: {
+        onError: (_message, value) => {
+          metadata.push(value);
+        },
+      },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    const error = metadata[0]?.error;
+    let errorMessage: unknown;
+    if (typeof error === "string") {
+      errorMessage = error;
+    } else if (error && typeof error === "object") {
+      errorMessage = Object.getOwnPropertyDescriptor(error, "message")?.value;
+    }
+    const errorCause =
+      error && typeof error === "object"
+        ? Object.getOwnPropertyDescriptor(error, "cause")?.value
+        : undefined;
+    const causeMessage =
+      errorCause && typeof errorCause === "object"
+        ? Object.getOwnPropertyDescriptor(errorCause, "message")?.value
+        : undefined;
+    const errorText = [errorMessage, causeMessage]
+      .filter((message): message is string => typeof message === "string")
+      .join("\n");
+    expect(errorText).not.toContain("constructor");
+    expect(errorText).not.toContain("polluted");
+    expect(JSON.stringify(metadata[0]?.toolCall)).not.toContain("constructor");
+  });
+
   it("malformed xml/yaml do not leave dangling tool-input streams", async () => {
     const [xmlOut, yamlOut] = await Promise.all([
       runProtocolTextDeltaStream({
@@ -211,6 +271,60 @@ describe("XML/YAML malformed non-leak guarantees", () => {
     const toolInputOut = extractToolInputDeltas(out).join("");
     expect(toolInputOut).not.toContain("secret");
     expect(toolInputOut).not.toContain("__proto__");
+    expect(extractTextDeltas(out)).not.toContain("<get_weather>");
+  });
+
+  it("Morph XML buffers JSON-unicode structured split sensitive input", async () => {
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [weatherTool],
+      chunks: [
+        '<get_weather><unit>\\u007b"secret":"abc", ',
+        '"__proto__":{}}</unit></get_weather>',
+      ],
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    const toolInputOut = extractToolInputDeltas(out).join("");
+    expect(toolInputOut).not.toContain("secret");
+    expect(toolInputOut).not.toContain("__proto__");
+    expect(extractTextDeltas(out)).not.toContain("<get_weather>");
+  });
+
+  it.each([
+    {
+      name: "YAML XML",
+      protocol: yamlXmlProtocol(),
+      chunks: [
+        '<get_weather>\nlocation: Seoul\nunit: |\n  {"secret":"abc",\n',
+        '  "__proto__":{}}\n</get_weather>',
+      ],
+    },
+    {
+      name: "Qwen3Coder",
+      protocol: qwen3CoderProtocol(),
+      chunks: [
+        '<tool_call><function=get_weather><parameter=location>Seoul</parameter><parameter=unit>{"secret":"abc", ',
+        '"__proto__":{}}</parameter></function></tool_call>',
+      ],
+    },
+  ])("$name does not emit progress deltas for split sensitive string input", async ({
+    protocol,
+    chunks,
+  }) => {
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: [weatherTool],
+      chunks,
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    const toolInputOut = extractToolInputDeltas(out).join("");
+    expect(toolInputOut).not.toContain("secret");
+    expect(toolInputOut).not.toContain("__proto__");
+    expect(extractTextDeltas(out)).not.toContain("<tool_call>");
     expect(extractTextDeltas(out)).not.toContain("<get_weather>");
   });
 

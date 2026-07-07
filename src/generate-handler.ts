@@ -20,7 +20,10 @@ import {
 import { recoverToolCallFromJsonCandidatesWithStatus } from "./core/utils/generated-text-json-recovery";
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
-import { safeToolCallMetadataText } from "./core/utils/protocol-utils";
+import {
+  safeToolCallMetadataText,
+  safeToolCallMetadataValue,
+} from "./core/utils/protocol-utils";
 import {
   decodeOriginalToolsFromProviderOptions,
   getDroppedProviderTools,
@@ -44,7 +47,10 @@ function logDebugSummary(
     debugSummary.originalText = originText;
     try {
       debugSummary.toolCalls = JSON.stringify([
-        { toolName: toolCall.toolName, input: toolCall.input },
+        {
+          toolName: toolCall.toolName,
+          input: safeToolCallMetadataValue(toolCall.input),
+        },
       ]);
     } catch {
       // ignore
@@ -220,7 +226,7 @@ function computeDebugSummary(options: {
       dbg.toolCalls = JSON.stringify(
         toolCalls.map((tc) => ({
           toolName: tc.toolName,
-          input: tc.input as unknown,
+          input: safeToolCallMetadataValue(tc.input),
         }))
       );
     } catch {

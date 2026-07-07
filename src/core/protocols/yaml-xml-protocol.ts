@@ -17,6 +17,7 @@ import {
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
+import { shouldBufferToolInputProgress } from "../utils/tool-call-progress-buffering";
 import {
   emitBufferedToolInputProgressDelta,
   emitFailedBufferedToolInputLifecycle,
@@ -1027,6 +1028,7 @@ export const yamlXmlProtocol = (
       if (!currentToolCall) {
         return;
       }
+      const toolCall = currentToolCall;
       const parsedArgs = parseYamlContentForStreamProgress(toolContent);
       if (parsedArgs === null) {
         return;
@@ -1034,7 +1036,7 @@ export const yamlXmlProtocol = (
       let fullInput: string;
       try {
         fullInput = stringifyToolInputWithSchema({
-          toolName: currentToolCall.name,
+          toolName: toolCall.name,
           args: parsedArgs,
           tools,
         });
@@ -1046,10 +1048,14 @@ export const yamlXmlProtocol = (
       }
       emitBufferedToolInputProgressDelta({
         enqueue: (part) => {
-          controller.enqueue(part);
+          if (shouldBufferToolInputProgress(fullInput)) {
+            toolCall.pendingToolInputParts.push(part);
+          } else {
+            controller.enqueue(part);
+          }
         },
-        id: currentToolCall.toolCallId,
-        state: currentToolCall,
+        id: toolCall.toolCallId,
+        state: toolCall,
         fullInput,
       });
     };

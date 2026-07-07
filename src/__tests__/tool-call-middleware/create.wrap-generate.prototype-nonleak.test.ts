@@ -86,6 +86,45 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
     expect(JSON.stringify(debugSummary)).not.toContain("polluted");
   });
 
+  it("redacts debugSummary provider-executed tool inputs while preserving pass-through content", async () => {
+    const middleware = createToolMiddleware({
+      protocol: hermesProtocol({}),
+      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
+        `You have tools: ${JSON.stringify(toolDefs)}`,
+    });
+    const debugSummary: { originalText?: string; toolCalls?: string } = {};
+    const providerExecutedCall = {
+      type: "tool-call",
+      toolCallId: "provider-call-1",
+      toolName: "web_search",
+      providerExecuted: true,
+      input: '{"constructor":{"polluted":true}}',
+    };
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [providerExecutedCall],
+      finishReason: { raw: "stop", unified: "stop" },
+    });
+
+    const result = await middleware.wrapGenerate?.({
+      doGenerate,
+      params: {
+        prompt: [],
+        tools,
+        providerOptions: {
+          toolCallMiddleware: {
+            debugSummary,
+            originalTools: originalToolsSchema.encode(tools),
+          },
+        },
+      },
+    } as any);
+
+    expect(result?.content).toEqual([providerExecutedCall]);
+    expect(debugSummary.toolCalls).toContain("[redacted sensitive tool call]");
+    expect(debugSummary.toolCalls).not.toContain("constructor");
+    expect(debugSummary.toolCalls).not.toContain("polluted");
+  });
+
   it("does not leak prototype-sensitive bare JSON recovery candidates", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),

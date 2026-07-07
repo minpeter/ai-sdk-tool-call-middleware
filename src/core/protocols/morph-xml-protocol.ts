@@ -13,11 +13,13 @@ import {
   createFlushTextHandler,
   extractToolNames,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
+import { shouldBufferToolInputProgress } from "../utils/tool-call-progress-buffering";
 import {
   emitBufferedToolInputProgressDelta,
   emitFailedBufferedToolInputLifecycle,
@@ -103,7 +105,7 @@ function processToolCall(params: ProcessToolCallParams): void {
       `Could not process XML tool call: ${toolCall.toolName}`,
       {
         toolCall: safeToolCallMetadataText(originalCallText),
-        error,
+        error: safeToolCallMetadataError(error, originalCallText),
         toolName: toolCall.toolName,
         toolCallId: generateToolCallId(),
         dropReason: "malformed-tool-call-body",
@@ -799,51 +801,6 @@ function parseXmlContentForStreamProgress({
   return null;
 }
 
-function stringMayBecomeStructuredSensitiveInput(value: string): boolean {
-  const trimmed = value.trimStart();
-  return (
-    trimmed.startsWith("{") ||
-    trimmed.startsWith("[") ||
-    trimmed.startsWith("<") ||
-    trimmed.startsWith("&lt;") ||
-    trimmed.startsWith("&amp;lt;")
-  );
-}
-
-function hasStructuredStringLeaf(value: unknown): boolean {
-  const seen = new Set<object>();
-  const stack: unknown[] = [value];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (typeof current === "string") {
-      if (stringMayBecomeStructuredSensitiveInput(current)) {
-        return true;
-      }
-      continue;
-    }
-    if (Array.isArray(current)) {
-      if (!seen.has(current)) {
-        seen.add(current);
-        stack.push(...current);
-      }
-      continue;
-    }
-    if (current && typeof current === "object" && !seen.has(current)) {
-      seen.add(current);
-      stack.push(...Object.values(current));
-    }
-  }
-  return false;
-}
-
-function shouldBufferToolInputProgress(fullInput: string): boolean {
-  try {
-    return hasStructuredStringLeaf(JSON.parse(fullInput));
-  } catch {
-    return false;
-  }
-}
-
 function handleStreamingToolCallEnd(
   params: HandleStreamingToolCallEndParams
 ): void {
@@ -902,7 +859,7 @@ function handleStreamingToolCallEnd(
     });
     options?.onError?.("Could not process streaming XML tool call", {
       toolCall: safeToolCallMetadataText(original),
-      error,
+      error: safeToolCallMetadataError(error, original),
       toolName: currentToolCall.name,
       toolCallId: currentToolCall.toolCallId,
       dropReason: "malformed-tool-call-body",
@@ -1719,7 +1676,7 @@ export const morphXmlProtocol = (
               toolCallId: currentToolCall.toolCallId,
               toolName: currentToolCall.name,
               dropReason: "unfinished-tool-call",
-              error,
+              error: safeToolCallMetadataError(error, unfinishedContent),
             }
           );
         }
