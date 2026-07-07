@@ -18,6 +18,22 @@ const tools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
+const weatherTools: LanguageModelV4FunctionTool[] = [
+  {
+    type: "function",
+    name: "get_weather",
+    description: "Weather",
+    inputSchema: {
+      type: "object",
+      properties: {
+        city: { type: "string" },
+      },
+      required: ["city"],
+      additionalProperties: false,
+    },
+  },
+];
+
 describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
   it("populates toolName, toolCallId, and malformed-tool-call-body dropReason when XML body parse fails", () => {
     const onError = vi.fn();
@@ -61,5 +77,31 @@ describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
         .join("")
     ).toBe("");
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("drops sensitive YAML tool_call text fallback while preserving surrounding text", () => {
+    const protocol = morphXmlProtocol();
+    const text = `before <tool_call>
+name: get_weather
+arguments:
+  city: Seoul
+  constructor:
+    polluted: true
+</tool_call> after`;
+
+    const out = protocol.parseGeneratedText({
+      text,
+      tools: weatherTools,
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    const joinedText = out
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(joinedText).toBe("before  after");
+    expect(joinedText).not.toContain("constructor");
+    expect(joinedText).not.toContain("<tool_call>");
   });
 });

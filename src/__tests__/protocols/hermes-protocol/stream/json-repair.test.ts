@@ -1346,6 +1346,46 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("keeps patternProperties-matching args when unknown keys are allowed even if pattern value coercion fails", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        patternProperties: {
+          "^x-": { type: "number" },
+        },
+        additionalProperties: true,
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"write","arguments":{"x-debug":"not-number","other":"y"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find(isToolCallPart);
+    expect(tool?.input).toBe('{"x-debug":"not-number","other":"y"}');
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("fails closed for unsafe repeated patternProperties without groups", async () => {
     const onError = vi.fn();
     const slowKey = `${"a".repeat(24)}!`;

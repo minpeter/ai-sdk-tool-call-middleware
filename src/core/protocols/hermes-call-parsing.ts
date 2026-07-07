@@ -759,7 +759,7 @@ function applyArgumentKeyPolicy(
       shouldValidateCombinatorSchemaBeforeSanitization(keyPolicy)
         ? coercedPolicyArgs
         : policyArgs,
-      keyPolicy.schema,
+      schemaForArgumentSchemaKeyShapeValidation(keyPolicy),
       new Set(),
       true
     )
@@ -804,6 +804,32 @@ function shouldValidateArgumentSchemaKeyShape(
     isRecord(schema.patternProperties) ||
     schemaHasTopLevelCombinator(schema, new Set())
   );
+}
+
+function schemaWithoutPatternProperties(
+  schema: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key !== "patternProperties") {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function schemaForArgumentSchemaKeyShapeValidation(
+  keyPolicy: ArgumentKeyPolicy
+): unknown {
+  const schema = unwrapJsonSchema(keyPolicy.schema);
+  if (
+    isRecord(schema) &&
+    schema.additionalProperties === true &&
+    isRecord(schema.patternProperties)
+  ) {
+    return schemaWithoutPatternProperties(schema);
+  }
+  return keyPolicy.schema;
 }
 
 function schemaHasTopLevelCombinator(

@@ -7,6 +7,7 @@ import type {
 import { parse, stringify } from "../../rxml";
 import { unescapeXml } from "../../rxml/utils/helpers";
 import { unwrapJsonSchema } from "../../schema-coerce";
+import { recoverToolCallFromJsonCandidatesWithStatus } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
 import {
   createFlushTextHandler,
@@ -1417,6 +1418,19 @@ function findToolCallsWithFallbacks(
   return { parseText, toolCalls };
 }
 
+function pushGeneratedTextSegment(
+  processedElements: LanguageModelV4Content[],
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): void {
+  const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+  if (recovered.kind === "dropped-sensitive-candidate") {
+    processedElements.push(...recovered.content);
+    return;
+  }
+  processedElements.push({ type: "text", text });
+}
+
 export const morphXmlProtocol = (
   protocolOptions?: MorphXmlProtocolOptions
 ): TCMCoreProtocol => {
@@ -1463,10 +1477,11 @@ export const morphXmlProtocol = (
 
       for (const tc of toolCalls) {
         if (tc.startIndex > currentIndex) {
-          processedElements.push({
-            type: "text",
-            text: parseText.slice(currentIndex, tc.startIndex),
-          });
+          pushGeneratedTextSegment(
+            processedElements,
+            parseText.slice(currentIndex, tc.startIndex),
+            tools
+          );
         }
         processToolCall({
           toolCall: tc,
@@ -1480,10 +1495,11 @@ export const morphXmlProtocol = (
       }
 
       if (currentIndex < parseText.length) {
-        processedElements.push({
-          type: "text",
-          text: parseText.slice(currentIndex),
-        });
+        pushGeneratedTextSegment(
+          processedElements,
+          parseText.slice(currentIndex),
+          tools
+        );
       }
 
       return processedElements;

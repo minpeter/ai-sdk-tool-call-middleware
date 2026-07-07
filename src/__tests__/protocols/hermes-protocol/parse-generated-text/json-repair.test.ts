@@ -1986,6 +1986,29 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("keeps patternProperties-matching args when unknown keys are allowed even if pattern value coercion fails", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"x-debug":"not-number","other":"y"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        patternProperties: {
+          "^x-": { type: "number" },
+        },
+        additionalProperties: true,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({
+      "x-debug": "not-number",
+      other: "y",
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("rejects unsafe positive patternProperties that may match constrained keys", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
