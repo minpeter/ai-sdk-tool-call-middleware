@@ -6,6 +6,7 @@ import YAML from "yaml";
 import { parse as parseRJSON } from "../../rjson";
 import { unescapeXml } from "../../rxml/utils/helpers";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
+import { extractSensitiveIncompleteToolCallDropSpans } from "./generated-text-sensitive-candidates";
 import { generateToolCallId } from "./id";
 import {
   hasPrototypeSensitiveStructuralKey,
@@ -912,6 +913,7 @@ export function recoverToolCallFromJsonCandidatesWithStatus(
   spans.push(...extractSensitiveFunctionBlockDropSpans(text, tools));
   spans.push(...extractYamlToolCallBlockSpans(text, tools));
   spans.push(...extractSensitiveYamlToolCallBlockDropSpans(text, tools));
+  spans.push(...extractSensitiveIncompleteToolCallDropSpans(text, tools));
   spans.sort((a, b) =>
     a.startIndex === b.startIndex
       ? b.endIndex - a.endIndex

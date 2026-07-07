@@ -47,6 +47,28 @@ describe("debug logging", () => {
     expect(output).not.toContain("__proto__");
   });
 
+  it("redacts prototype-sensitive parse failure errors", () => {
+    process.env.DEBUG_PARSER_MW = "parse";
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = new Error(
+      'RXML: Prototype-sensitive XML key "constructor" is not allowed.'
+    );
+    error.stack =
+      'Error: RXML: Prototype-sensitive XML key "constructor" is not allowed.';
+
+    logParseFailure({
+      phase: "stream",
+      reason: "invalid XML",
+      snippet: "<tool><constructor>secret</constructor></tool>",
+      error,
+    });
+
+    const output = log.mock.calls.flat().join("\n");
+    expect(output).toContain(REDACTED_SENSITIVE_TOOL_CALL_TEXT);
+    expect(output).not.toContain("constructor");
+    expect(output).not.toContain("secret");
+  });
+
   it("redacts prototype-sensitive normalized output chunks", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
 

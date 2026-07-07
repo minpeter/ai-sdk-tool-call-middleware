@@ -660,7 +660,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("drops patternProperties-only keys when properties are declared", () => {
+  it("keeps patternProperties keys when properties are declared", () => {
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"ok","x-debug":"kept","y-trace":"yes","z-123":"num","path":"/tmp/a"}}}</tool_call>';
@@ -687,11 +687,14 @@ describe("parseGeneratedText JSON repair", () => {
     const args = JSON.parse(tool.input);
     expect(args).toEqual({
       content: "ok",
+      "x-debug": "kept",
+      "y-trace": "yes",
+      "z-123": "num",
       path: "/tmp/a",
     });
   });
 
-  it("drops non-capturing patternProperties-only keys for strict schemas", () => {
+  it("keeps non-capturing patternProperties-only keys for strict schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -708,9 +711,9 @@ describe("parseGeneratedText JSON repair", () => {
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
     const tool = out.find((x) => x.type === "tool-call");
     expect(tool?.type).toBe("tool-call");
-    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual(
-      {}
-    );
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      "x-": "ok",
+    });
     expect(onError).not.toHaveBeenCalled();
   });
 

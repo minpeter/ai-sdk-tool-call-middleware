@@ -252,6 +252,18 @@ describe("recoverToolCallFromJsonCandidates prototype-sensitive keys", () => {
     });
   });
 
+  it("preserves surrounding text when dropping incomplete sensitive known-tool candidates", () => {
+    const text =
+      'Before <tool_call>{"name":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [{ type: "text", text: "Before " }],
+    });
+  });
+
   it("drops double-encoded string arguments with prototype-sensitive keys", () => {
     const text =
       '{"name":"get_weather","arguments":"{\\"__proto__\\":{\\"polluted\\":true},\\"city\\":\\"Seoul\\"}"}';

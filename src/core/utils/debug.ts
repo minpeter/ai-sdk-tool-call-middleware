@@ -1,4 +1,7 @@
-import { safeToolCallMetadataText } from "./protocol-utils";
+import {
+  safeToolCallMetadataError,
+  safeToolCallMetadataText,
+} from "./protocol-utils";
 
 export type DebugLevel = "off" | "stream" | "parse";
 
@@ -72,11 +75,15 @@ function safeDebugText(value: unknown): string {
 }
 
 function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    const stack = error.stack ? `\n${error.stack}` : "";
-    return `\n${error.name}: ${error.message}${stack}`;
+  const safeError = safeToolCallMetadataError(error);
+  if (typeof safeError === "string") {
+    return `\n${safeError}`;
   }
-  return safeStringify(error);
+  if (safeError instanceof Error) {
+    const stack = safeError.stack ? `\n${safeError.stack}` : "";
+    return `\n${safeError.name}: ${safeError.message}${stack}`;
+  }
+  return safeStringify(safeError);
 }
 
 function truncateSnippet(snippet: string): string {

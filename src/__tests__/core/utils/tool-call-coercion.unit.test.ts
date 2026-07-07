@@ -126,22 +126,44 @@ describe("tool-call coercion utils", () => {
     expect(input).toBe("{}");
   });
 
-  it("drops keys for strict patternProperties-only tool schemas", () => {
-    const input = coerceToolCallInput("metadata", { "x-debug": "yes" }, [
+  it("keeps keys that match strict patternProperties-only tool schemas", () => {
+    const input = coerceToolCallInput(
+      "metadata",
+      { "x-debug": "yes", other: "no" },
+      [
+        {
+          type: "function",
+          name: "metadata",
+          inputSchema: {
+            type: "object",
+            patternProperties: {
+              "^x-": { type: "string" },
+            },
+            additionalProperties: false,
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"x-debug":"yes"}');
+  });
+
+  it("coerces values for keys that match patternProperties schemas", () => {
+    const input = coerceToolCallInput("metadata", { "x-count": "3" }, [
       {
         type: "function",
         name: "metadata",
         inputSchema: {
           type: "object",
           patternProperties: {
-            "^x-": { type: "string" },
+            "^x-": { type: "number" },
           },
           additionalProperties: false,
         },
       },
     ]);
 
-    expect(input).toBe("{}");
+    expect(input).toBe('{"x-count":3}');
   });
 
   it("drops schema-unknown top-level keys from allOf-wrapped schemas", () => {

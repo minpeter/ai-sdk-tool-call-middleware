@@ -1,6 +1,11 @@
 import { unwrapJsonSchema } from "../../schema-coerce";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
 import {
+  collectPatternPropertyNames,
+  getPatternPropertySchema,
+  hasStrictPatternProperties,
+} from "./tool-call-pattern-properties";
+import {
   collectAllOfDeniedPropertyNames,
   collectFalsePropertyNames,
 } from "./tool-call-property-deny";
@@ -112,10 +117,7 @@ function collectDeclaredToolInputPropertyNames(
   const names = collectDirectDeclaredPropertyNames(unwrapped);
   const hasDirectProperties =
     Object.hasOwn(unwrapped, "properties") && isRecord(unwrapped.properties);
-  const hasStrictPatternProperties =
-    Object.hasOwn(unwrapped, "patternProperties") &&
-    isRecord(unwrapped.patternProperties) &&
-    unwrapped.additionalProperties === false;
+  const strictPatternProperties = hasStrictPatternProperties(unwrapped);
   const allOfNames = collectAllOfDeclaredPropertyNames(unwrapped, value, seen);
   const selectedVariantNames = collectSelectedVariantDeclaredPropertyNames(
     unwrapped,
@@ -128,12 +130,20 @@ function collectDeclaredToolInputPropertyNames(
   if (selectedVariantNames) {
     addNames(names, selectedVariantNames);
   }
+  if (
+    hasDirectProperties ||
+    strictPatternProperties ||
+    allOfNames ||
+    selectedVariantNames
+  ) {
+    addNames(names, collectPatternPropertyNames(unwrapped, value));
+  }
   removeNames(names, collectAllOfDeniedPropertyNames(unwrapped, new Set(seen)));
 
   if (
     names.size === 0 &&
     !hasDirectProperties &&
-    !hasStrictPatternProperties &&
+    !strictPatternProperties &&
     !allOfNames &&
     !selectedVariantNames
   ) {
@@ -224,6 +234,10 @@ function getDeclaredPropertySchema(
     Object.hasOwn(unwrapped.properties, key)
   ) {
     return unwrapped.properties[key];
+  }
+  const patternSchema = getPatternPropertySchema(unwrapped, key);
+  if (patternSchema !== undefined) {
+    return patternSchema;
   }
   return collectPropertySchemaFromCombinators(unwrapped, key, value, seen);
 }

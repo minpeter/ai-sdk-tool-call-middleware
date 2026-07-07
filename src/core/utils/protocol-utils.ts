@@ -59,6 +59,13 @@ function errorHasPrototypeSensitiveDetails(error: Error): boolean {
   ) {
     return true;
   }
+  if (
+    typeof error.stack === "string" &&
+    (PROTOTYPE_SENSITIVE_ERROR_DETAIL_REGEX.test(error.stack) ||
+      toolCallTextHasPrototypeSensitiveKey(error.stack))
+  ) {
+    return true;
+  }
   const cause = errorCause(error);
   if (typeof cause === "string") {
     return (

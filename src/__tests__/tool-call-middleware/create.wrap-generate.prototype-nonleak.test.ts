@@ -1,9 +1,19 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamResult,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
+import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
 import { originalToolsSchema } from "../../core/utils/provider-options";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () => {
   const tools: LanguageModelV4FunctionTool[] = [
@@ -19,6 +29,48 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
       },
     },
   ];
+
+  function generateWithProtocol(protocol: TCMCoreProtocol, text: string) {
+    const middleware = createToolMiddleware({
+      protocol,
+      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
+        `You have tools: ${JSON.stringify(toolDefs)}`,
+    });
+    const generated = {
+      content: [{ type: "text", text }],
+      finishReason: stopFinishReason,
+      usage: zeroUsage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult;
+    const streamResult = {
+      stream: new ReadableStream(),
+    } satisfies LanguageModelV4StreamResult;
+    const doGenerate = vi.fn(async () => generated);
+    const doStream = vi.fn(async () => streamResult);
+    const params = {
+      prompt: [],
+      tools,
+      providerOptions: {
+        toolCallMiddleware: {
+          originalTools: originalToolsSchema.encode(tools),
+        },
+      },
+    } satisfies LanguageModelV4CallOptions;
+    const model: LanguageModelV4 = {
+      specificationVersion: "v4",
+      provider: "test",
+      modelId: "test",
+      supportedUrls: {},
+      doGenerate,
+      doStream,
+    };
+
+    const { wrapGenerate } = middleware;
+    if (!wrapGenerate) {
+      return;
+    }
+    return wrapGenerate({ doGenerate, doStream, params, model });
+  }
 
   it("does not leak prototype-sensitive Hermes tool-call text on generated-text fallback", async () => {
     const middleware = createToolMiddleware({
@@ -47,6 +99,33 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
         },
       },
     } as any);
+
+    expect(result?.content).toEqual([]);
+  });
+
+  it("does not leak prototype-sensitive incomplete Hermes tool-call text on generated-text fallback", async () => {
+    const result = await generateWithProtocol(
+      hermesProtocol({}),
+      '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}'
+    );
+
+    expect(result?.content).toEqual([]);
+  });
+
+  it("does not leak prototype-sensitive incomplete Morph XML tool-call text on generated-text fallback", async () => {
+    const result = await generateWithProtocol(
+      morphXmlProtocol({}),
+      "<get_weather><city>Seoul</city><constructor><polluted>true</polluted>"
+    );
+
+    expect(result?.content).toEqual([]);
+  });
+
+  it("does not leak prototype-sensitive incomplete YAML XML tool-call text on generated-text fallback", async () => {
+    const result = await generateWithProtocol(
+      yamlXmlProtocol({}),
+      "<get_weather>city: Seoul\nconstructor:\n  polluted: true"
+    );
 
     expect(result?.content).toEqual([]);
   });

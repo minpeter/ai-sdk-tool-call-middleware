@@ -923,7 +923,7 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("drops patternProperties-only keys when properties are declared", async () => {
+  it("keeps patternProperties keys when properties are declared", async () => {
     const tools = [
       makeSchemaTool("write", {
         type: "object",
@@ -967,11 +967,14 @@ describe("hermesProtocol streaming JSON repair", () => {
     const args = JSON.parse(tool.input);
     expect(args).toEqual({
       content: "ok",
+      "x-debug": "kept",
+      "y-trace": "yes",
+      "z-123": "num",
       path: "/tmp/a",
     });
   });
 
-  it("drops non-capturing patternProperties-only keys for strict schemas", async () => {
+  it("keeps non-capturing patternProperties-only keys for strict schemas", async () => {
     const onError = vi.fn();
     const tools = [
       makeSchemaTool("write", {
@@ -1008,9 +1011,9 @@ describe("hermesProtocol streaming JSON repair", () => {
     );
     const tool = out.find((c) => c.type === "tool-call");
     expect(tool?.type).toBe("tool-call");
-    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual(
-      {}
-    );
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      "x-": "ok",
+    });
     expect(onError).not.toHaveBeenCalled();
   });
 
