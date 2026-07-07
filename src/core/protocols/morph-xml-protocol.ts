@@ -13,6 +13,7 @@ import {
   extractToolNames,
   formatToolsWithPromptTemplate,
 } from "../utils/protocol-utils";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
@@ -105,6 +106,9 @@ function processToolCall(params: ProcessToolCallParams): void {
         dropReason: "malformed-tool-call-body",
       }
     );
+    if (toolCallTextHasPrototypeSensitiveKey(originalCallText)) {
+      return;
+    }
     processedElements.push({ type: "text", text: originalCallText });
   }
 }

@@ -4,102 +4,19 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { coerceBySchema, unwrapJsonSchema } from "../../schema-coerce";
+import {
+  hasPrototypeSensitiveStructuralKey,
+  isPrototypeSensitiveArgumentKey,
+  toolCallInputHasPrototypeSensitiveKey,
+} from "./prototype-sensitive-keys";
 
 type ToolCallLike = Extract<
   LanguageModelV4Content | LanguageModelV4StreamPart,
   { type: "tool-call" }
 >;
 
-const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
-const PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX =
-  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function markUnseen(value: object, seen: Set<object>): boolean {
-  if (seen.has(value)) {
-    return false;
-  }
-  seen.add(value);
-  return true;
-}
-
-function enqueueArrayItems(
-  value: unknown,
-  seen: Set<object>,
-  stack: unknown[]
-): boolean {
-  if (!Array.isArray(value)) {
-    return false;
-  }
-  if (markUnseen(value, seen)) {
-    stack.push(...value);
-  }
-  return true;
-}
-
-function hasUnsafePrototype(record: Record<string, unknown>): boolean {
-  const prototype = Object.getPrototypeOf(record);
-  return prototype !== null && prototype !== Object.prototype;
-}
-
-function enqueueRecordOwnValues(
-  record: Record<string, unknown>,
-  stack: unknown[]
-): boolean {
-  for (const key of Object.getOwnPropertyNames(record)) {
-    if (PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) {
-      return true;
-    }
-    const descriptor = Object.getOwnPropertyDescriptor(record, key);
-    if (descriptor && "value" in descriptor) {
-      stack.push(descriptor.value);
-    }
-  }
-  return false;
-}
-
-export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
-  const seen = new Set<object>();
-  const stack: unknown[] = [value];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (enqueueArrayItems(current, seen, stack)) {
-      continue;
-    }
-    if (!isRecord(current)) {
-      continue;
-    }
-    if (!markUnseen(current, seen)) {
-      continue;
-    }
-    if (hasUnsafePrototype(current)) {
-      return true;
-    }
-    if (enqueueRecordOwnValues(current, stack)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function toolCallInputHasPrototypeSensitiveKey(input: unknown): boolean {
-  if (typeof input !== "string") {
-    return hasPrototypeSensitiveStructuralKey(input);
-  }
-  try {
-    return hasPrototypeSensitiveStructuralKey(JSON.parse(input));
-  } catch {
-    return PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX.test(input);
-  }
 }
 
 function getDeclaredToolInputPropertyNames(
@@ -109,7 +26,7 @@ function getDeclaredToolInputPropertyNames(
 }
 
 function addSafePropertyName(names: Set<string>, key: unknown): void {
-  if (typeof key === "string" && !PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) {
+  if (typeof key === "string" && !isPrototypeSensitiveArgumentKey(key)) {
     names.add(key);
   }
 }
@@ -175,6 +92,8 @@ function collectDeclaredToolInputPropertyNames(
   seen.add(unwrapped);
 
   const names = collectDirectDeclaredPropertyNames(unwrapped);
+  const hasDirectProperties =
+    Object.hasOwn(unwrapped, "properties") && isRecord(unwrapped.properties);
   const combinatorNames = collectCombinatorDeclaredPropertyNames(
     unwrapped,
     seen
@@ -185,6 +104,7 @@ function collectDeclaredToolInputPropertyNames(
 
   if (
     names.size === 0 &&
+    !hasDirectProperties &&
     unwrapped.additionalProperties !== false &&
     !combinatorNames
   ) {

@@ -41,7 +41,7 @@ describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
     expect(metadata?.toolCall).toContain("</write_file>");
   });
 
-  it("calls onError and keeps original text on __proto__ element args", () => {
+  it("calls onError and drops raw text on __proto__ element args", () => {
     const onError = vi.fn();
     const protocol = morphXmlProtocol();
     const text =
@@ -59,7 +59,7 @@ describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
         .filter((part) => part.type === "text")
         .map((part) => part.text)
         .join("")
-    ).toBe(text);
+    ).toBe("");
     expect(onError).toHaveBeenCalled();
   });
 });

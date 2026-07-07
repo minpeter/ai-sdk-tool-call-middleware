@@ -1,0 +1,164 @@
+import { parse as parseRJSON } from "../../rjson";
+
+const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+const PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX =
+  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
+const PROTOTYPE_SENSITIVE_TEXT_REGEX =
+  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/)|<\s*parameter\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?>)|(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/;
+
+type JsonParseResult =
+  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false };
+
+type RelaxedJsonParseResult =
+  | {
+      readonly ok: true;
+      readonly sawPrototypeSensitiveKey: boolean;
+      readonly value: unknown;
+    }
+  | { readonly ok: false; readonly sawPrototypeSensitiveKey: boolean };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function markUnseen(value: object, seen: Set<object>): boolean {
+  if (seen.has(value)) {
+    return false;
+  }
+  seen.add(value);
+  return true;
+}
+
+function enqueueArrayItems(
+  value: unknown,
+  seen: Set<object>,
+  stack: unknown[]
+): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  if (markUnseen(value, seen)) {
+    stack.push(...value);
+  }
+  return true;
+}
+
+function hasUnsafePrototype(record: Record<string, unknown>): boolean {
+  const prototype = Object.getPrototypeOf(record);
+  return prototype !== null && prototype !== Object.prototype;
+}
+
+function enqueueRecordOwnValues(
+  record: Record<string, unknown>,
+  stack: unknown[]
+): boolean {
+  for (const key of Object.getOwnPropertyNames(record)) {
+    if (isPrototypeSensitiveArgumentKey(key)) {
+      return true;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (descriptor && "value" in descriptor) {
+      stack.push(descriptor.value);
+    }
+  }
+  return false;
+}
+
+function decodeJsonUnicodeEscapes(text: string): string {
+  return text.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex: string) =>
+    String.fromCharCode(Number.parseInt(hex, 16))
+  );
+}
+
+function parseJsonText(text: string): JsonParseResult {
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return { ok: false };
+    }
+    throw error;
+  }
+}
+
+function parseRelaxedJsonText(text: string): RelaxedJsonParseResult {
+  let sawPrototypeSensitiveKey = false;
+  try {
+    const parsed = parseRJSON(text, {
+      relaxed: true,
+      reviver: (key, value) => {
+        if (isPrototypeSensitiveArgumentKey(key)) {
+          sawPrototypeSensitiveKey = true;
+          return;
+        }
+        return value;
+      },
+    });
+    return { ok: true, sawPrototypeSensitiveKey, value: parsed };
+  } catch (error) {
+    if (error instanceof Error) {
+      return { ok: false, sawPrototypeSensitiveKey };
+    }
+    throw error;
+  }
+}
+
+export function isPrototypeSensitiveArgumentKey(key: string): boolean {
+  return PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key);
+}
+
+export function toolCallTextHasPrototypeSensitiveKey(text: string): boolean {
+  return PROTOTYPE_SENSITIVE_TEXT_REGEX.test(decodeJsonUnicodeEscapes(text));
+}
+
+export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
+  const seen = new Set<object>();
+  const stack: unknown[] = [value];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (enqueueArrayItems(current, seen, stack)) {
+      continue;
+    }
+    if (!isRecord(current)) {
+      continue;
+    }
+    if (!markUnseen(current, seen)) {
+      continue;
+    }
+    if (hasUnsafePrototype(current)) {
+      return true;
+    }
+    if (enqueueRecordOwnValues(current, stack)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function toolCallInputHasPrototypeSensitiveKey(input: unknown): boolean {
+  if (typeof input !== "string") {
+    return hasPrototypeSensitiveStructuralKey(input);
+  }
+  const json = parseJsonText(input);
+  if (json.ok) {
+    return hasPrototypeSensitiveStructuralKey(json.value);
+  }
+  const relaxedJson = parseRelaxedJsonText(input);
+  if (relaxedJson.sawPrototypeSensitiveKey) {
+    return true;
+  }
+  if (relaxedJson.ok) {
+    return hasPrototypeSensitiveStructuralKey(relaxedJson.value);
+  }
+  return (
+    PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX.test(input) ||
+    toolCallTextHasPrototypeSensitiveKey(input)
+  );
+}

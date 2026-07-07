@@ -14,6 +14,7 @@ import {
   extractToolNames,
   formatToolsWithPromptTemplate,
 } from "../utils/protocol-utils";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import {
   emitFailedToolInputLifecycle,
@@ -844,7 +845,9 @@ function processToolCallMatch(
         dropReason: "malformed-tool-call-body",
         error,
       });
-      processedElements.push({ type: "text", text: originalText });
+      if (!toolCallTextHasPrototypeSensitiveKey(originalText)) {
+        processedElements.push({ type: "text", text: originalText });
+      }
     }
   } else {
     const originalText = text.slice(tc.startIndex, tc.endIndex);
@@ -856,7 +859,9 @@ function processToolCallMatch(
       dropReason: "malformed-tool-call-body",
       cause,
     });
-    processedElements.push({ type: "text", text: originalText });
+    if (!toolCallTextHasPrototypeSensitiveKey(originalText)) {
+      processedElements.push({ type: "text", text: originalText });
+    }
   }
 
   return tc.endIndex;

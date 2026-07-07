@@ -14,6 +14,7 @@ import {
 import { logParseFailure } from "../utils/debug";
 import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-coercion";
 import { emitToolInputProgressDelta } from "../utils/tool-input-streaming";
 import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
@@ -2174,6 +2175,9 @@ export function processToolCallJson(
       dropReason: "malformed-tool-call-body",
     }
   );
+  if (toolCallTextHasPrototypeSensitiveKey(fullMatch)) {
+    return;
+  }
   processedElements.push({ type: "text", text: fullMatch });
 }
 

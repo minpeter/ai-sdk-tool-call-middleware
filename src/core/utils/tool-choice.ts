@@ -3,10 +3,8 @@ import type {
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import type { OnErrorFn } from "./on-error";
-import {
-  coerceToolCallInput,
-  hasPrototypeSensitiveStructuralKey,
-} from "./tool-call-coercion";
+import { hasPrototypeSensitiveStructuralKey } from "./prototype-sensitive-keys";
+import { coerceToolCallInput } from "./tool-call-coercion";
 
 /**
  * First text content part of a forced-tool-choice generation. Providers may

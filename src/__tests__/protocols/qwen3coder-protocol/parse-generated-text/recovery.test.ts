@@ -24,7 +24,7 @@ describe("qwen3CoderProtocol", () => {
     expect(rejoined).toContain(bad);
   });
 
-  it("calls onError and keeps original text on prototype-sensitive args", () => {
+  it("calls onError and drops raw text on prototype-sensitive args", () => {
     const onError = vi.fn();
     const p = qwen3CoderProtocol();
     const text =
@@ -53,11 +53,11 @@ describe("qwen3CoderProtocol", () => {
         .filter((part) => part.type === "text")
         .map((part) => part.text)
         .join("")
-    ).toBe(text);
+    ).toBe("");
     expect(onError).toHaveBeenCalled();
   });
 
-  it("calls onError and keeps original text on __proto__ parameter args", () => {
+  it("calls onError and drops raw text on __proto__ parameter args", () => {
     const onError = vi.fn();
     const p = qwen3CoderProtocol();
     const text =
@@ -86,7 +86,7 @@ describe("qwen3CoderProtocol", () => {
         .filter((part) => part.type === "text")
         .map((part) => part.text)
         .join("")
-    ).toBe(text);
+    ).toBe("");
     expect(onError).toHaveBeenCalled();
   });
 

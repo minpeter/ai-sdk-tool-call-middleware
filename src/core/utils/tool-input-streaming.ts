@@ -2,16 +2,14 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
+import { hasPrototypeSensitiveStructuralKey } from "./prototype-sensitive-keys";
 import {
   type EmittedToolInputState,
   emitChunkedPrefixDelta,
   emitFinalRemainder,
   toIncompleteJsonPrefix,
 } from "./streamed-tool-input-delta";
-import {
-  coerceToolCallInput,
-  hasPrototypeSensitiveStructuralKey,
-} from "./tool-call-coercion";
+import { coerceToolCallInput } from "./tool-call-coercion";
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;

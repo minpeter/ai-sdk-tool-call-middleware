@@ -51,7 +51,6 @@ const permissiveObjectTool: LanguageModelV4FunctionTool = {
   description: "Permissive schema for streaming stability checks",
   inputSchema: {
     type: "object",
-    properties: {},
   },
 };
 

@@ -15,6 +15,7 @@ import {
   createFlushTextHandler,
   formatToolsWithPromptTemplate,
 } from "../utils/protocol-utils";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
 import {
   emitFailedToolInputLifecycle,
@@ -330,6 +331,9 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         dropReason: "malformed-tool-call-body",
         ...(error === undefined ? {} : { error }),
       });
+      if (toolCallTextHasPrototypeSensitiveKey(raw)) {
+        return;
+      }
       processedElements.push({ type: "text", text: raw });
     };
 
