@@ -10,6 +10,7 @@ import { generateToolCallId } from "./id";
 import {
   hasPrototypeSensitiveStructuralKey,
   isPrototypeSensitiveArgumentKey,
+  toolCallInputHasPrototypeSensitiveKey,
   toolCallTextHasPrototypeSensitiveKey,
 } from "./prototype-sensitive-keys";
 import { coerceToolCallInput } from "./tool-call-coercion";
@@ -56,7 +57,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function containsPrototypeSensitiveKey(value: unknown): boolean {
-  return hasPrototypeSensitiveStructuralKey(value);
+  return toolCallInputHasPrototypeSensitiveKey(value);
 }
 
 function parseJsonCandidate(candidateText: string): unknown {

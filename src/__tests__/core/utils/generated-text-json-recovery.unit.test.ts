@@ -275,6 +275,18 @@ describe("recoverToolCallFromJsonCandidates prototype-sensitive keys", () => {
       content: [],
     });
   });
+
+  it("drops YAML tool-call blocks with prototype-sensitive string arguments", () => {
+    const text =
+      "<tool_call>\nname: get_weather\narguments:\n  city: <prototype>Seoul</prototype>\n</tool_call>";
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [],
+    });
+  });
 });
 
 describe("recoverToolCallFromJsonCandidates envelope variants", () => {

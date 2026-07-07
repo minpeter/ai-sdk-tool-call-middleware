@@ -1,5 +1,5 @@
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import { emptyFunctionTools } from "../../../fixtures/function-tools";
 import {
@@ -118,5 +118,61 @@ describe("qwen3CoderProtocol nameless parameter salvage", () => {
     }
     expect(call.toolName).toBe("get_weather");
     expect(JSON.parse(call.input)).toEqual({});
+  });
+
+  it("redacts raw fallback for prototype-sensitive nameless parameter keys", () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text =
+      '<tool_call><function=get_weather><parameter>constructor</parameter>{"polluted":true}</function></tool_call>';
+
+    const out = p.parseGeneratedText({
+      text,
+      tools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("constructor");
+    expect(metadataText).not.toContain("<tool_call>");
+  });
+
+  it("redacts streaming raw fallback for prototype-sensitive nameless parameter keys", async () => {
+    const onError = vi.fn();
+    const p = qwen3CoderProtocol();
+    const text =
+      '<tool_call><function=get_weather><parameter>constructor</parameter>{"polluted":true}</function></tool_call>';
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(
+        createChunkedStream(text),
+        p.createStreamParser({
+          tools,
+          options: { emitRawToolCallTextOnError: true, onError },
+        })
+      )
+    );
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text-delta")
+        .map((part) => (part as { delta: string }).delta)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("constructor");
+    expect(metadataText).not.toContain("<tool_call>");
   });
 });
