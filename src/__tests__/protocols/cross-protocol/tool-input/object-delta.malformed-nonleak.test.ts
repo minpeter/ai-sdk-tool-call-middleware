@@ -1,8 +1,14 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
+import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import type { TCMCoreProtocol } from "../../../../core/protocols/protocol-interface";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
-import { runProtocolTextDeltaStream } from "./streaming-events.shared";
+import {
+  extractTextDeltas,
+  runProtocolTextDeltaStream,
+} from "./streaming-events.shared";
 
 const weatherTool: LanguageModelV4FunctionTool = {
   type: "function",
@@ -17,6 +23,35 @@ const weatherTool: LanguageModelV4FunctionTool = {
     required: ["location"],
   },
 };
+
+interface PrototypeSensitiveStreamCase {
+  readonly name: string;
+  readonly protocol: TCMCoreProtocol;
+  readonly text: string;
+}
+
+const prototypeSensitiveStreamCases: readonly PrototypeSensitiveStreamCase[] = [
+  {
+    name: "Hermes",
+    protocol: hermesProtocol(),
+    text: '<tool_call>{"name":"get_weather","arguments":{"location":"Seoul","constructor":{"polluted":true}}}</tool_call>',
+  },
+  {
+    name: "Morph XML",
+    protocol: morphXmlProtocol(),
+    text: "<get_weather><location>Seoul</location><constructor><polluted>true</polluted></constructor></get_weather>",
+  },
+  {
+    name: "YAML XML",
+    protocol: yamlXmlProtocol(),
+    text: "<get_weather>\nlocation: Seoul\nconstructor:\n  polluted: true\n</get_weather>",
+  },
+  {
+    name: "Qwen3Coder",
+    protocol: qwen3CoderProtocol(),
+    text: '<tool_call>\n  <function=get_weather>\n    <parameter=location>Seoul</parameter>\n    <parameter=constructor>{"polluted":true}</parameter>\n  </function>\n</tool_call>',
+  },
+];
 
 describe("XML/YAML malformed non-leak guarantees", () => {
   it("malformed xml/yaml do not leave dangling tool-input streams", async () => {
@@ -122,5 +157,25 @@ describe("XML/YAML malformed non-leak guarantees", () => {
     );
     expect(xmlErrors.length).toBeGreaterThan(0);
     expect(yamlErrors.length).toBeGreaterThan(0);
+  });
+
+  it.each(
+    prototypeSensitiveStreamCases
+  )("$name does not emit prototype-sensitive raw fallback when raw-on-error is enabled", async ({
+    protocol,
+    text,
+  }) => {
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: [weatherTool],
+      chunks: [text],
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    const textOut = extractTextDeltas(out);
+    expect(textOut).not.toContain("constructor");
+    expect(textOut).not.toContain("<tool_call>");
+    expect(textOut).not.toContain("<get_weather>");
   });
 });

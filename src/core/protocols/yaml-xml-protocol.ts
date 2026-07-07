@@ -790,15 +790,37 @@ function addTextOrForeignToolCalls(
   }
   const recovered = recoverToolCallFromJsonCandidates(segment, tools);
   if (!recovered?.some((part) => part.type === "tool-call")) {
-    addTextSegment(segment, processedElements);
+    addForeignFallbackText(segment, processedElements);
     return;
   }
   for (const part of recovered) {
     if (part.type === "text") {
-      addTextSegment(part.text, processedElements);
+      addForeignFallbackText(part.text, processedElements);
     } else {
       processedElements.push(part);
     }
+  }
+}
+
+function addForeignFallbackText(
+  segment: string,
+  processedElements: LanguageModelV4Content[]
+): void {
+  const blockRegex = new RegExp(FOREIGN_TOOL_CALL_BLOCK_RE.source, "gi");
+  let cursor = 0;
+  for (const match of segment.matchAll(blockRegex)) {
+    const block = match[0] ?? "";
+    const start = match.index ?? 0;
+    if (start > cursor) {
+      addTextSegment(segment.slice(cursor, start), processedElements);
+    }
+    if (!toolCallTextHasPrototypeSensitiveKey(block)) {
+      addTextSegment(block, processedElements);
+    }
+    cursor = start + block.length;
+  }
+  if (cursor < segment.length) {
+    addTextSegment(segment.slice(cursor), processedElements);
   }
 }
 
@@ -1266,6 +1288,29 @@ export const yamlXmlProtocol = (
       }
     };
 
+    const flushTextBefore = (
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
+      end: number
+    ): void => {
+      if (end > 0) {
+        flushText(controller, buffer.slice(0, end));
+      }
+    };
+
+    const consumeSensitiveForeignBlock = (
+      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
+      block: string,
+      start: number,
+      end?: number
+    ): boolean => {
+      if (!toolCallTextHasPrototypeSensitiveKey(block)) {
+        return false;
+      }
+      flushTextBefore(controller, start);
+      buffer = end === undefined ? "" : buffer.slice(end);
+      return true;
+    };
+
     /**
      * Consumes a complete foreign `<tool_call>…</tool_call>` block from the
      * buffer, emitting salvaged calls (or flushing the block as text when the
@@ -1292,9 +1337,7 @@ export const yamlXmlProtocol = (
       const block = buffer.slice(start, end);
       const calls = recoverGatedForeignCalls(block, tools);
       if (calls) {
-        if (start > 0) {
-          flushText(controller, buffer.slice(0, start));
-        }
+        flushTextBefore(controller, start);
         emitSalvagedForeignCalls(controller, calls);
         buffer = buffer.slice(end);
         return true;
@@ -1303,6 +1346,9 @@ export const yamlXmlProtocol = (
       // stray wrapper; leave it to the normal tag path.
       if (findEarliestToolTag(block.slice(1), toolNames).index !== -1) {
         return false;
+      }
+      if (consumeSensitiveForeignBlock(controller, block, start, end)) {
+        return true;
       }
       flushText(controller, buffer.slice(0, end));
       buffer = buffer.slice(end);
@@ -1329,13 +1375,14 @@ export const yamlXmlProtocol = (
       const block = buffer.slice(start);
       const calls = recoverGatedForeignCalls(block, tools);
       if (!calls) {
+        if (consumeSensitiveForeignBlock(controller, block, start)) {
+          return;
+        }
         flushText(controller, buffer);
         buffer = "";
         return;
       }
-      if (start > 0) {
-        flushText(controller, buffer.slice(0, start));
-      }
+      flushTextBefore(controller, start);
       emitSalvagedForeignCalls(controller, calls);
       buffer = "";
     };

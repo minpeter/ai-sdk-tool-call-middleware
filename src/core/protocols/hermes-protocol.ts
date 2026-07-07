@@ -12,6 +12,7 @@ import {
   addTextSegment,
   formatToolsWithPromptTemplate,
 } from "../utils/protocol-utils";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import {
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
@@ -450,7 +451,10 @@ function emitToolCall(context: TagProcessingContext) {
     snippet: errorContent,
     error: finalError,
   });
-  if (shouldEmitRawFallback) {
+  if (
+    shouldEmitRawFallback &&
+    !toolCallTextHasPrototypeSensitiveKey(errorContent)
+  ) {
     const errorId = generateId();
     controller.enqueue({
       type: "text-start",

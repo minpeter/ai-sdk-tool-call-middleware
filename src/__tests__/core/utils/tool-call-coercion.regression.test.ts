@@ -49,6 +49,22 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"mood":"sunny"}');
   });
 
+  it("fails closed on cyclic provider-native object inputs", () => {
+    const input: Record<string, unknown> = { city: "Seoul" };
+    input.self = input;
+    const permissiveTools: LanguageModelV4FunctionTool[] = [
+      {
+        type: "function",
+        name: "shape_shift",
+        inputSchema: { type: "object" },
+      },
+    ];
+
+    expect(coerceToolCallInput("shape_shift", input, permissiveTools)).toBe(
+      undefined
+    );
+  });
+
   it("coerceToolCallPart detects unicode-escaped prototype keys in relaxed JSON provider inputs", () => {
     const part = coerceToolCallPart(
       {

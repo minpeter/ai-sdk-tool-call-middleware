@@ -2,7 +2,10 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { hasPrototypeSensitiveStructuralKey } from "./prototype-sensitive-keys";
+import {
+  hasPrototypeSensitiveStructuralKey,
+  toolCallTextHasPrototypeSensitiveKey,
+} from "./prototype-sensitive-keys";
 import {
   type EmittedToolInputState,
   emitChunkedPrefixDelta,
@@ -113,7 +116,8 @@ export function emitFailedToolInputLifecycle(options: {
   if (
     options.emitRawToolCallTextOnError &&
     typeof options.rawToolCallText === "string" &&
-    options.rawToolCallText.length > 0
+    options.rawToolCallText.length > 0 &&
+    !toolCallTextHasPrototypeSensitiveKey(options.rawToolCallText)
   ) {
     options.emitRawText?.(options.rawToolCallText);
   }

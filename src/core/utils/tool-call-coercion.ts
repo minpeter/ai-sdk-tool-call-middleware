@@ -171,6 +171,17 @@ function schemaAllowsNull(schema: unknown, seen = new Set<object>()): boolean {
   return oneOf?.some((item) => schemaAllowsNull(item, new Set(seen))) === true;
 }
 
+function stringifyToolArgs(value: unknown): string | undefined {
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return;
+    }
+    throw error;
+  }
+}
+
 export function coerceToolCallInput(
   toolName: string,
   input: unknown,
@@ -206,7 +217,7 @@ export function coerceToolCallInput(
   if (hasPrototypeSensitiveStructuralKey(sanitized)) {
     return;
   }
-  return JSON.stringify(sanitized);
+  return stringifyToolArgs(sanitized);
 }
 
 export function coerceToolCallPart<T extends ToolCallLike>(
@@ -222,6 +233,12 @@ export function coerceToolCallPart<T extends ToolCallLike>(
 
   const coercedInput = coerceToolCallInput(part.toolName, part.input, tools);
   if (coercedInput === undefined) {
+    if (isRecord(part.input)) {
+      return {
+        ...part,
+        input: "{}",
+      };
+    }
     return part;
   }
 

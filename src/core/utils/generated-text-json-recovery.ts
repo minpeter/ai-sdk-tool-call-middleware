@@ -7,6 +7,11 @@ import { parse as parseRJSON } from "../../rjson";
 import { unescapeXml } from "../../rxml/utils/helpers";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
 import { generateToolCallId } from "./id";
+import {
+  hasPrototypeSensitiveStructuralKey,
+  isPrototypeSensitiveArgumentKey,
+  toolCallTextHasPrototypeSensitiveKey,
+} from "./prototype-sensitive-keys";
 import { coerceToolCallInput } from "./tool-call-coercion";
 
 interface ToolCallCandidate {
@@ -37,49 +42,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const PROTOTYPE_SENSITIVE_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
-
-/**
- * Textual guard for prototype-sensitive keys in a JSON-like candidate.
- * Relaxed-JSON parsers may absorb a literal `__proto__` key into the object
- * prototype instead of surfacing it as an own property, so a post-parse
- * check alone cannot see it. Declining recovery on a textual match is safe:
- * the candidate simply stays plain text.
- */
-const PROTOTYPE_SENSITIVE_KEY_TEXT_REGEX =
-  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
-
 function containsPrototypeSensitiveKey(value: unknown): boolean {
-  const seen = new Set<object>();
-  const stack: unknown[] = [value];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (Array.isArray(current)) {
-      if (seen.has(current)) {
-        continue;
-      }
-      seen.add(current);
-      stack.push(...current);
-      continue;
-    }
-    if (!isRecord(current) || seen.has(current)) {
-      continue;
-    }
-    seen.add(current);
-    for (const key of Object.keys(current)) {
-      if (PROTOTYPE_SENSITIVE_KEYS.has(key)) {
-        return true;
-      }
-      stack.push(current[key]);
-    }
-  }
-
-  return false;
+  return hasPrototypeSensitiveStructuralKey(value);
 }
 
 function parseJsonCandidate(candidateText: string): unknown {
@@ -288,6 +252,9 @@ const TOOL_ARGS_KEYS = ["arguments", "parameters"] as const;
 
 function readToolNameField(payload: Record<string, unknown>): string | null {
   for (const key of TOOL_NAME_KEYS) {
+    if (!Object.hasOwn(payload, key)) {
+      continue;
+    }
     const value = payload[key];
     if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
@@ -328,7 +295,7 @@ function parseAsToolPayload(
   if (
     typeof rawArgs === "string" &&
     rawArgs.trimStart().startsWith("{") &&
-    !PROTOTYPE_SENSITIVE_KEY_TEXT_REGEX.test(rawArgs)
+    !toolCallTextHasPrototypeSensitiveKey(rawArgs)
   ) {
     const unwrapped = parseJsonCandidate(rawArgs);
     if (isRecord(unwrapped)) {
@@ -412,11 +379,14 @@ function resolveCandidatePayload(
   candidate: JsonCandidate,
   tools: LanguageModelV4FunctionTool[]
 ): ToolCallCandidate | null {
-  if (PROTOTYPE_SENSITIVE_KEY_TEXT_REGEX.test(candidate.text)) {
+  if (toolCallTextHasPrototypeSensitiveKey(candidate.text)) {
     return null;
   }
   const parsed = parseJsonCandidate(candidate.text);
   if (parsed === undefined) {
+    return null;
+  }
+  if (hasPrototypeSensitiveStructuralKey(parsed)) {
     return null;
   }
   return (
@@ -476,7 +446,7 @@ function readFunctionBlockParams(body: string): Record<string, unknown> | null {
       }
       return null;
     }
-    if (PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+    if (isPrototypeSensitiveArgumentKey(key)) {
       return null;
     }
     const valueStart = match.index + match[0].length;

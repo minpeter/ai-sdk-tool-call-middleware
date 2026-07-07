@@ -214,6 +214,13 @@ describe("recoverToolCallFromJsonCandidates prototype-sensitive keys", () => {
     expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
   });
 
+  it("rejects unicode-escaped __proto__ envelopes that inherit tool names", () => {
+    const text =
+      '{"\\u005f\\u005fproto\\u005f\\u005f":{"name":"calc"},"arguments":{"a":1}}';
+
+    expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
+  });
+
   it("rejects arguments-only payloads containing constructor keys", () => {
     const text = '{"city":"Seoul","constructor":{"bad":true}}';
 
