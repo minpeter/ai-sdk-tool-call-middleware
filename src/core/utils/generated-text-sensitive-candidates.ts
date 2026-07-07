@@ -1,5 +1,6 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
+import { decodeStructuredTextEscapes } from "./structured-text-escapes";
 
 export interface SensitiveToolCallDropSpan {
   dropReason: "prototype-sensitive-tool-candidate";
@@ -59,6 +60,7 @@ function findJsonObjectEnd(text: string, startIndex: number): number | null {
 }
 
 function hasKnownJsonToolReference(text: string, toolNames: string[]): boolean {
+  const normalizedText = decodeStructuredTextEscapes(text);
   return toolNames.some((toolName) => {
     const name = escapeRegExp(toolName);
     const quoted = new RegExp(
@@ -69,7 +71,7 @@ function hasKnownJsonToolReference(text: string, toolNames: string[]): boolean {
       `(?:^|[{,]\\s*)(?:name|tool|function)\\s*:\\s*["']${name}["']`,
       "i"
     );
-    return quoted.test(text) || relaxed.test(text);
+    return quoted.test(normalizedText) || relaxed.test(normalizedText);
   });
 }
 

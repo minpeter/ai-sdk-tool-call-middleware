@@ -198,25 +198,6 @@ function collectSelectedVariantPropertySchemas(
   return propertySchemas;
 }
 
-function collectPropertySchemaFromCombinators(
-  schema: Record<string, unknown>,
-  key: string,
-  value: unknown,
-  seen: Set<object>
-): unknown {
-  const propertySchemas = [
-    ...collectAllOfPropertySchemas(schema, key, value, seen),
-    ...collectSelectedVariantPropertySchemas(schema, key, value, seen),
-  ];
-  if (propertySchemas.length === 0) {
-    return;
-  }
-  if (propertySchemas.length === 1) {
-    return propertySchemas[0];
-  }
-  return { allOf: propertySchemas };
-}
-
 function getDeclaredPropertySchema(
   schema: unknown,
   key: string,
@@ -229,17 +210,23 @@ function getDeclaredPropertySchema(
   }
   seen.add(unwrapped);
 
+  const propertySchemas = [
+    ...collectAllOfPropertySchemas(unwrapped, key, value, seen),
+    ...collectSelectedVariantPropertySchemas(unwrapped, key, value, seen),
+  ];
   if (
     isRecord(unwrapped.properties) &&
     Object.hasOwn(unwrapped.properties, key)
   ) {
-    return unwrapped.properties[key];
+    propertySchemas.unshift(unwrapped.properties[key]);
   }
   const patternSchema = getPatternPropertySchema(unwrapped, key);
   if (patternSchema !== undefined) {
-    return patternSchema;
+    propertySchemas.push(patternSchema);
   }
-  return collectPropertySchemaFromCombinators(unwrapped, key, value, seen);
+  return propertySchemas.length < 2
+    ? propertySchemas[0]
+    : { allOf: propertySchemas };
 }
 
 export function getToolInputPropertyNames(

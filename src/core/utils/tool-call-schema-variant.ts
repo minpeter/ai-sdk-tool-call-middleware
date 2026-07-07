@@ -1,4 +1,8 @@
 import { unwrapJsonSchema } from "../../schema-coerce";
+import {
+  collectPatternPropertyNames,
+  getPatternPropertySchema,
+} from "./tool-call-pattern-properties";
 import { collectSchemaSelectionPropertyNames } from "./tool-call-schema-property-names";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -83,17 +87,28 @@ function declaredPropertiesAcceptValues(
   value: unknown,
   seen: Set<object>
 ): boolean {
-  if (!(isRecord(schema.properties) && isRecord(value))) {
+  if (!isRecord(value)) {
     return true;
   }
-  for (const [key, propertySchema] of Object.entries(schema.properties)) {
-    if (!Object.hasOwn(value, key)) {
-      continue;
+  if (isRecord(schema.properties)) {
+    for (const [key, propertySchema] of Object.entries(schema.properties)) {
+      if (!Object.hasOwn(value, key)) {
+        continue;
+      }
+      if (propertySchema === false) {
+        return false;
+      }
+      if (!schemaAcceptsValue(propertySchema, value[key], new Set(seen))) {
+        return false;
+      }
     }
-    if (propertySchema === false) {
-      return false;
-    }
-    if (!schemaAcceptsValue(propertySchema, value[key], new Set(seen))) {
+  }
+  for (const key of collectPatternPropertyNames(schema, value)) {
+    const propertySchema = getPatternPropertySchema(schema, key);
+    if (
+      propertySchema !== undefined &&
+      !schemaAcceptsValue(propertySchema, value[key], new Set(seen))
+    ) {
       return false;
     }
   }
@@ -176,13 +191,18 @@ function schemaSelectionScore(schema: unknown, value: unknown): number {
     return 0;
   }
   const names = collectSchemaSelectionPropertyNames(schema);
+  const unwrapped = unwrapJsonSchema(schema);
+  if (isRecord(unwrapped)) {
+    for (const name of collectPatternPropertyNames(unwrapped, value)) {
+      names.add(name);
+    }
+  }
   let score = 0;
   for (const name of names) {
     if (Object.hasOwn(value, name)) {
-      score += 1;
+      score += 2;
     }
   }
-  const unwrapped = unwrapJsonSchema(schema);
   if (isRecord(unwrapped) && unwrapped.additionalProperties === false) {
     for (const key of Object.keys(value)) {
       if (!names.has(key)) {

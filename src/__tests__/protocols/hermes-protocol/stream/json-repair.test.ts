@@ -3131,6 +3131,67 @@ describe("hermesProtocol streaming JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("selects top-level oneOf branches by discriminator before dropping mixed keys", async () => {
+    const onError = vi.fn();
+    const tools = [
+      makeSchemaTool("edit", {
+        type: "object",
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              kind: { enum: ["text"] },
+              textOnly: { type: "string" },
+            },
+            required: ["kind", "textOnly"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { enum: ["count"] },
+              countOnly: { type: "number" },
+            },
+            required: ["kind", "countOnly"],
+            additionalProperties: false,
+          },
+        ],
+      }),
+    ];
+    const protocol = hermesProtocol();
+    const transformer = protocol.createStreamParser({
+      tools,
+      options: { onError },
+    });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta:
+            '<tool_call>{"name":"edit","arguments":{"kind":"count","countOnly":3,"textOnly":"drop-me"}}</tool_call>',
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const tool = out.find((part) => part.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      kind: "count",
+      countOnly: 3,
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("applies every matching property and pattern schema", async () => {
     const onError = vi.fn();
     const tools = [

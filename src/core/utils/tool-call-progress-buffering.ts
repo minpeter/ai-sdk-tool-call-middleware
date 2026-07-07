@@ -1,11 +1,14 @@
 import { decodeStructuredTextEscapes } from "./structured-text-escapes";
 
+const YAML_MAPPING_KEY_TEXT_REGEX = /(?:^|\n)\s*[A-Za-z_][A-Za-z0-9_.-]*\s*:/;
+
 function stringMayBecomeStructuredSensitiveInput(value: string): boolean {
   const trimmed = decodeStructuredTextEscapes(value).trimStart();
   return (
     trimmed.startsWith("{") ||
     trimmed.startsWith("[") ||
-    trimmed.startsWith("<")
+    trimmed.startsWith("<") ||
+    YAML_MAPPING_KEY_TEXT_REGEX.test(trimmed)
   );
 }
 

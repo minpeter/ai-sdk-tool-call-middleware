@@ -328,6 +328,24 @@ describe("XML/YAML malformed non-leak guarantees", () => {
     expect(extractTextDeltas(out)).not.toContain("<get_weather>");
   });
 
+  it("Morph XML buffers YAML-shaped split sensitive string input", async () => {
+    const out = await runProtocolTextDeltaStream({
+      protocol: morphXmlProtocol(),
+      tools: [weatherTool],
+      chunks: [
+        "<get_weather><location>Seoul</location><unit>secret: abc\n",
+        "constructor:\n  polluted: true</unit></get_weather>",
+      ],
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    const toolInputOut = extractToolInputDeltas(out).join("");
+    expect(toolInputOut).not.toContain("secret");
+    expect(toolInputOut).not.toContain("constructor");
+    expect(extractTextDeltas(out)).not.toContain("<get_weather>");
+  });
+
   it("__proto__ stream args fail closed without throwing", async () => {
     const xmlErrors: string[] = [];
     const yamlErrors: string[] = [];

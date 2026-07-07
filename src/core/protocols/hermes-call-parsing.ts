@@ -799,6 +799,10 @@ function topLevelOneOfHasConflictingDeclaredKeys(
     return false;
   }
 
+  if (oneOfHasSingleLiteralDiscriminatorMatch(args, unwrapped.oneOf)) {
+    return false;
+  }
+
   const branchNames = unwrapped.oneOf.map((variant) =>
     collectSchemaSelectionPropertyNames(variant)
   );
@@ -819,6 +823,61 @@ function topLevelOneOfHasConflictingDeclaredKeys(
     }
   }
   return matchedBranches > 1;
+}
+
+function oneOfHasSingleLiteralDiscriminatorMatch(
+  args: Record<string, unknown>,
+  variants: unknown[]
+): boolean {
+  let matches = 0;
+  for (const variant of variants) {
+    if (variantHasLiteralDiscriminatorMatch(variant, args)) {
+      matches += 1;
+    }
+  }
+  return matches === 1;
+}
+
+function variantHasLiteralDiscriminatorMatch(
+  variant: unknown,
+  args: Record<string, unknown>
+): boolean {
+  const unwrapped = unwrapJsonSchema(variant);
+  if (!(isRecord(unwrapped) && isRecord(unwrapped.properties))) {
+    return false;
+  }
+  let sawMatch = false;
+  for (const [key, propertySchema] of Object.entries(unwrapped.properties)) {
+    if (!Object.hasOwn(args, key)) {
+      continue;
+    }
+    const literalMatch = propertySchemaLiteralMatch(propertySchema, args[key]);
+    if (literalMatch === false) {
+      return false;
+    }
+    if (literalMatch === true) {
+      sawMatch = true;
+    }
+  }
+  return sawMatch;
+}
+
+function propertySchemaLiteralMatch(
+  schema: unknown,
+  value: unknown
+): boolean | undefined {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!isRecord(unwrapped)) {
+    return;
+  }
+  if (Object.hasOwn(unwrapped, "const")) {
+    return JSON.stringify(unwrapped.const) === JSON.stringify(value);
+  }
+  if (Array.isArray(unwrapped.enum)) {
+    return unwrapped.enum.some(
+      (entry) => JSON.stringify(entry) === JSON.stringify(value)
+    );
+  }
 }
 
 function shouldValidateArgumentSchemaKeyShape(

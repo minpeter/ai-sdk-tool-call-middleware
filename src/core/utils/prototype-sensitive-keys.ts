@@ -15,6 +15,7 @@ const PROTOTYPE_SENSITIVE_TEXT_REGEX =
   /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:|<\s*(?:__proto__|constructor|prototype)(?:\s|>|\/|$)|<\s*(?:parameter|param|argument|arg)\s*=\s*["']?(?:__proto__|constructor|prototype)(?:["']?\s|["']?>|$)|<\s*(?:parameter|param|argument|arg)\b(?=[^>]*\bname\s*=\s*["']\s*(?:__proto__|constructor|prototype)\s*["'])|<\s*(?:parameter|param|argument|arg)\s*>\s*(?:__proto__|constructor|prototype)\s*<\s*\/\s*(?:parameter|param|argument|arg)\s*>|(?:^|\n)\s*(?:__proto__|constructor|prototype)\s*:/i;
 const PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX =
   /^(?:__proto__|constructor|prototype)\s*:/;
+const YAML_MAPPING_KEY_TEXT_REGEX = /(?:^|\n)\s*[A-Za-z_][A-Za-z0-9_.-]*\s*:/;
 
 type JsonParseResult =
   | { readonly ok: true; readonly value: unknown }
@@ -138,7 +139,8 @@ function stringLeafHasPrototypeSensitiveArgumentKey(text: string): boolean {
   const looksStructured =
     looksJsonLike ||
     decoded.startsWith("<") ||
-    PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX.test(decoded);
+    PROTOTYPE_SENSITIVE_YAML_KEY_TEXT_REGEX.test(decoded) ||
+    YAML_MAPPING_KEY_TEXT_REGEX.test(decoded);
   if (!looksStructured) {
     return false;
   }

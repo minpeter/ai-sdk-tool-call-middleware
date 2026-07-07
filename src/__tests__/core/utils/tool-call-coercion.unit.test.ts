@@ -166,6 +166,40 @@ describe("tool-call coercion utils", () => {
     expect(input).toBe('{"x-count":3}');
   });
 
+  it("keeps keys that match patternProperties inside selective combinator branches", () => {
+    const input = coerceToolCallInput(
+      "metadata",
+      { "y-count": "3", other: "drop" },
+      [
+        {
+          type: "function",
+          name: "metadata",
+          inputSchema: {
+            type: "object",
+            anyOf: [
+              {
+                type: "object",
+                patternProperties: {
+                  "^x-": { type: "string" },
+                },
+                additionalProperties: false,
+              },
+              {
+                type: "object",
+                patternProperties: {
+                  "^y-": { type: "number" },
+                },
+                additionalProperties: false,
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"y-count":3}');
+  });
+
   it("drops schema-unknown top-level keys from allOf-wrapped schemas", () => {
     const input = coerceToolCallInput(
       "get_weather",

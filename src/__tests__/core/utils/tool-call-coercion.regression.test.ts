@@ -98,6 +98,52 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"location":"Seoul","options":{"unit":"celsius"}}');
   });
 
+  it("applies selected combinator property schemas to direct property schemas", () => {
+    const input = coerceToolCallInput(
+      "edit",
+      {
+        mode: "strict",
+        payload: {
+          keep: "yes",
+          drop: "no",
+        },
+      },
+      [
+        {
+          type: "function",
+          name: "edit",
+          inputSchema: {
+            type: "object",
+            properties: {
+              mode: { type: "string" },
+              payload: {
+                type: "object",
+                additionalProperties: true,
+              },
+            },
+            oneOf: [
+              {
+                type: "object",
+                properties: {
+                  mode: { const: "strict" },
+                  payload: {
+                    type: "object",
+                    properties: {
+                      keep: { type: "string" },
+                    },
+                    additionalProperties: false,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"mode":"strict","payload":{"keep":"yes"}}');
+  });
+
   it("drops nested object keys declared through combinator property schemas", () => {
     const input = coerceToolCallInput(
       "plan_trip",

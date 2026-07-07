@@ -264,6 +264,50 @@ describe("recoverToolCallFromJsonCandidates prototype-sensitive keys", () => {
     });
   });
 
+  it("drops incomplete sensitive candidates with unicode-escaped tool envelopes", () => {
+    const text =
+      '<tool_call>{"n\\u0061me":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, [
+      ...tools,
+      {
+        type: "function",
+        name: "lookup",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+        },
+      },
+    ]);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [],
+    });
+  });
+
+  it("drops incomplete sensitive candidates with unicode-escaped tool names", () => {
+    const text =
+      '<tool_call>{"name":"get_\\u0077eather","arguments":{"city":"Seoul","constructor":{"polluted":true}';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, [
+      ...tools,
+      {
+        type: "function",
+        name: "lookup",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+        },
+      },
+    ]);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [],
+    });
+  });
+
   it("drops double-encoded string arguments with prototype-sensitive keys", () => {
     const text =
       '{"name":"get_weather","arguments":"{\\"__proto__\\":{\\"polluted\\":true},\\"city\\":\\"Seoul\\"}"}';

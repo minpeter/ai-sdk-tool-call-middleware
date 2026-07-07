@@ -29,12 +29,30 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
       },
     },
   ];
+  const multiTools: LanguageModelV4FunctionTool[] = [
+    ...tools,
+    {
+      type: "function",
+      name: "lookup",
+      description: "",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string" },
+        },
+      },
+    },
+  ];
 
-  function generateWithProtocol(protocol: TCMCoreProtocol, text: string) {
+  function generateWithProtocol(
+    protocol: TCMCoreProtocol,
+    text: string,
+    toolDefs = tools
+  ) {
     const middleware = createToolMiddleware({
       protocol,
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
-        `You have tools: ${JSON.stringify(toolDefs)}`,
+      toolSystemPromptTemplate: (promptToolDefs: unknown[]) =>
+        `You have tools: ${JSON.stringify(promptToolDefs)}`,
     });
     const generated = {
       content: [{ type: "text", text }],
@@ -49,10 +67,10 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
     const doStream = vi.fn(async () => streamResult);
     const params = {
       prompt: [],
-      tools,
+      tools: toolDefs,
       providerOptions: {
         toolCallMiddleware: {
-          originalTools: originalToolsSchema.encode(tools),
+          originalTools: originalToolsSchema.encode(toolDefs),
         },
       },
     } satisfies LanguageModelV4CallOptions;
@@ -107,6 +125,26 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
     const result = await generateWithProtocol(
       hermesProtocol({}),
       '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}'
+    );
+
+    expect(result?.content).toEqual([]);
+  });
+
+  it("does not leak prototype-sensitive incomplete Hermes text with unicode-escaped name keys", async () => {
+    const result = await generateWithProtocol(
+      hermesProtocol({}),
+      '<tool_call>{"n\\u0061me":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}',
+      multiTools
+    );
+
+    expect(result?.content).toEqual([]);
+  });
+
+  it("does not leak prototype-sensitive incomplete Hermes text with unicode-escaped tool names", async () => {
+    const result = await generateWithProtocol(
+      hermesProtocol({}),
+      '<tool_call>{"name":"get_\\u0077eather","arguments":{"city":"Seoul","constructor":{"polluted":true}',
+      multiTools
     );
 
     expect(result?.content).toEqual([]);
