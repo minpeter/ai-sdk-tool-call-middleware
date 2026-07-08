@@ -1042,6 +1042,14 @@ function computeMissingAndUnexpectedKeys(
   return { missingRequired, unexpectedKeys };
 }
 
+function findSingleMatchingUnexpectedKey(
+  unexpectedKeys: string[],
+  matches: (key: string) => boolean
+): string | null {
+  const matchingKeys = unexpectedKeys.filter(matches);
+  return matchingKeys.length === 1 ? (matchingKeys[0] ?? null) : null;
+}
+
 function applySingularPluralRequiredKeyRename(
   input: Record<string, unknown>,
   schemaInfo: StrictObjectSchemaInfo
@@ -1051,16 +1059,18 @@ function applySingularPluralRequiredKeyRename(
     schemaInfo
   );
 
-  if (missingRequired.length !== 1 || unexpectedKeys.length !== 1) {
+  if (missingRequired.length !== 1) {
     return null;
   }
 
   const [targetKey] = missingRequired;
-  const [sourceKey] = unexpectedKeys;
   if (!Object.hasOwn(schemaInfo.properties, targetKey)) {
     return null;
   }
-  if (!isSingularPluralPair(targetKey, sourceKey)) {
+  const sourceKey = findSingleMatchingUnexpectedKey(unexpectedKeys, (key) =>
+    isSingularPluralPair(targetKey, key)
+  );
+  if (sourceKey === null) {
     return null;
   }
   if (getSchemaType(schemaInfo.properties[targetKey]) !== "array") {
@@ -1088,16 +1098,18 @@ function applyCaseStyleRequiredKeyRename(
     schemaInfo
   );
 
-  if (missingRequired.length !== 1 || unexpectedKeys.length !== 1) {
+  if (missingRequired.length !== 1) {
     return null;
   }
 
   const [targetKey] = missingRequired;
-  const [sourceKey] = unexpectedKeys;
   if (!Object.hasOwn(schemaInfo.properties, targetKey)) {
     return null;
   }
-  if (!isCaseStylePair(targetKey, sourceKey)) {
+  const sourceKey = findSingleMatchingUnexpectedKey(unexpectedKeys, (key) =>
+    isCaseStylePair(targetKey, key)
+  );
+  if (sourceKey === null) {
     return null;
   }
   if (!Object.hasOwn(input, sourceKey) || Object.hasOwn(input, targetKey)) {

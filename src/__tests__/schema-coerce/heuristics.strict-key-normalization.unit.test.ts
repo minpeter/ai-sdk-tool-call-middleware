@@ -79,6 +79,34 @@ describe("Coercion Heuristic Handling", () => {
       });
     });
 
+    it("renames case-style required keys even when unrelated extra keys are present", () => {
+      const input = {
+        text: "Let's ship this today.",
+        target_language: "fr",
+        formality: "casual",
+        extra: "drop later",
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          text: { type: "string" },
+          targetLanguage: { type: "string" },
+          formality: { type: "string", enum: ["casual", "formal"] },
+        },
+        required: ["text", "targetLanguage", "formality"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({
+        text: "Let's ship this today.",
+        targetLanguage: "fr",
+        formality: "casual",
+        extra: "drop later",
+      });
+    });
+
     it("normalizes leading underscores when matching snake_case keys", () => {
       const input = {
         _target_language: "es",
@@ -185,6 +213,52 @@ describe("Coercion Heuristic Handling", () => {
       const result = coerceBySchema(input, schema) as any;
       expect(result).toEqual({
         filter: ["paid"],
+      });
+    });
+
+    it("renames singular required array keys even when unrelated extra keys are present", () => {
+      const input = {
+        filter: [
+          {
+            field: "status",
+            op: "=",
+            value: "paid",
+          },
+        ],
+        extra: "drop later",
+      };
+
+      const schema = {
+        type: "object",
+        properties: {
+          filters: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                field: { type: "string" },
+                op: { type: "string" },
+                value: { type: "string" },
+              },
+              required: ["field", "op", "value"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["filters"],
+        additionalProperties: false,
+      };
+
+      const result = coerceBySchema(input, schema) as any;
+      expect(result).toEqual({
+        filters: [
+          {
+            field: "status",
+            op: "=",
+            value: "paid",
+          },
+        ],
+        extra: "drop later",
       });
     });
   });
