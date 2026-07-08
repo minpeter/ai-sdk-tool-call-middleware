@@ -307,7 +307,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(hasToolOrError).toBe(true);
   });
 
-  it("preserves schema-unknown keys when additionalProperties is implicit", () => {
+  it("drops schema-unknown keys when additionalProperties is implicit", () => {
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"He said "hi" there","extra":"debug","path":"/tmp/a"}}</tool_call>';
@@ -322,10 +322,10 @@ describe("parseGeneratedText JSON repair", () => {
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hi" there');
     expect(args.path).toBe("/tmp/a");
-    expect(args.extra).toBe("debug");
+    expect(args.extra).toBeUndefined();
   });
 
-  it("preserves schema-unknown keys when additionalProperties is true", () => {
+  it("keeps schema-additional keys when additionalProperties is true", () => {
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"He said "hi" there","dynamic":"kept"}}</tool_call>';
@@ -349,7 +349,25 @@ describe("parseGeneratedText JSON repair", () => {
     expect(args.dynamic).toBe("kept");
   });
 
-  it("calls onError for schema-unknown keys when additionalProperties is false", () => {
+  it("coerces schema-additional keys when additionalProperties is a schema", () => {
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","count":"42"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          content: { type: "string" },
+        },
+        additionalProperties: { type: "number" },
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools });
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok", count: 42 });
+  });
+
+  it("drops schema-unknown keys when additionalProperties is false", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -365,11 +383,16 @@ describe("parseGeneratedText JSON repair", () => {
       ),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    const args = JSON.parse(tool.input);
+    expect(args).toEqual({
+      content: 'He said "hi" there',
+      path: "/tmp/a",
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects schema-unknown keys in strict repair even when arguments parse cleanly", () => {
+  it("drops schema-unknown keys in strict repair even when arguments parse cleanly", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -385,11 +408,15 @@ describe("parseGeneratedText JSON repair", () => {
       ),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({
+      content: "ok",
+      path: "/tmp/a",
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects schema-unknown keys for jsonSchema-wrapped strict schemas", () => {
+  it("drops schema-unknown keys for jsonSchema-wrapped strict schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -407,11 +434,15 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({
+      content: "ok",
+      path: "/tmp/a",
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects schema-unknown keys for clean strict JSON", () => {
+  it("drops schema-unknown keys for clean strict JSON", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -427,8 +458,12 @@ describe("parseGeneratedText JSON repair", () => {
       ),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({
+      content: "ok",
+      path: "/tmp/a",
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects clean strict JSON with prototype-sensitive argument keys", () => {
@@ -531,6 +566,109 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
+  it("drops double-encoded unicode prototype-sensitive keys without raw fallback text", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const argumentsText =
+      '{"\\\\u0063onstructor":{"polluted":true},"content":"ok"}';
+    const text = `<tool_call>${JSON.stringify({
+      name: "write",
+      arguments: argumentsText,
+    })}</tool_call>`;
+    const tools = [
+      makeTool(
+        "write",
+        {
+          content: { type: "string" },
+        },
+        false
+      ),
+    ];
+
+    const out = p.parseGeneratedText({
+      text,
+      tools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    const joinedText = out
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("");
+    expect(joinedText).not.toContain("<tool_call>");
+    expect(joinedText).not.toContain("\\u0063onstructor");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("\\u0063onstructor");
+  });
+
+  it("rejects prototype-sensitive non-object string arguments", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"echo","arguments":"<prototype>x</prototype>"}</tool_call>';
+    const tools = [makeSchemaTool("echo", { type: "string" })];
+
+    const out = p.parseGeneratedText({
+      text,
+      tools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("<prototype>");
+  });
+
+  it("coerces top-level primitive string arguments by schema", () => {
+    const p = hermesProtocol();
+    const text = '<tool_call>{"name":"count","arguments":"42"}</tool_call>';
+    const tools = [makeSchemaTool("count", { type: "number" })];
+
+    const out = p.parseGeneratedText({ text, tools });
+    const tool = expectToolCall(out);
+
+    expect(tool.toolName).toBe("count");
+    expect(tool.input).toBe("42");
+  });
+
+  it.each([
+    "constructor: ordinary prose",
+    "prototype: ordinary prose",
+    "constructor: true",
+  ] as const)("preserves schema-valid string argument value %s", (note) => {
+    const p = hermesProtocol();
+    const text = `<tool_call>${JSON.stringify({
+      name: "write",
+      arguments: { note },
+    })}</tool_call>`;
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        properties: {
+          note: { type: "string" },
+        },
+        additionalProperties: false,
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools });
+    const tool = expectToolCall(out);
+
+    expect(tool.toolName).toBe("write");
+    expect(JSON.parse(tool.input)).toEqual({ note });
+  });
+
   it("accepts coercible keys before strict schema validation", () => {
     const p = hermesProtocol();
     const text =
@@ -579,7 +717,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("accepts common grouped and quantified patternProperties for strict schemas", () => {
+  it("keeps patternProperties keys when properties are declared", () => {
     const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"ok","x-debug":"kept","y-trace":"yes","z-123":"num","path":"/tmp/a"}}}</tool_call>';
@@ -604,12 +742,16 @@ describe("parseGeneratedText JSON repair", () => {
       throw new Error("expected tool call");
     }
     const args = JSON.parse(tool.input);
-    expect(args["x-debug"]).toBe("kept");
-    expect(args["y-trace"]).toBe("yes");
-    expect(args["z-123"]).toBe("num");
+    expect(args).toEqual({
+      content: "ok",
+      "x-debug": "kept",
+      "y-trace": "yes",
+      "z-123": "num",
+      path: "/tmp/a",
+    });
   });
 
-  it("accepts non-capturing patternProperties groups for strict schemas", () => {
+  it("keeps non-capturing patternProperties-only keys for strict schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -632,7 +774,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects patternProperties false matches for strict schemas", () => {
+  it("drops patternProperties false matches for strict schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -650,11 +792,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects false property schemas for strict schemas", () => {
+  it("drops false property schemas for strict schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -670,8 +813,9 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("fails closed for unsafe patternProperties without regex backtracking", () => {
@@ -718,7 +862,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("fails closed for unsafe false patternProperties when unknown keys are allowed", () => {
+  it("drops unsafe false patternProperties when unknown keys are allowed", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const slowKey = `${"a".repeat(24)}!`;
@@ -736,11 +880,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("fails closed for unsafe false patternProperties with character classes", () => {
+  it("drops unsafe false patternProperties with character classes", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -758,11 +903,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("fails closed for unsafe false patternProperties with escaped literals", () => {
+  it("drops unsafe false patternProperties with escaped literals", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -780,11 +926,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("fails closed for unsafe false patternProperties with unknown matchers", () => {
+  it("drops unsafe false patternProperties with unknown matchers", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -802,11 +949,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("preserves allowed keys when an unsafe false pattern contains character classes", () => {
+  it("preserves safe additional keys when an unsafe false pattern contains character classes", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -909,15 +1057,9 @@ describe("parseGeneratedText JSON repair", () => {
     expect(args.b).toEqual({ c: 2 });
   });
 
-  it("bails out when all parsed keys are schema-unknown (no empty-args fallback)", () => {
+  it("emits empty args when all parsed keys are schema-unknown", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
-    // Tool schema knows "content" and "path", but the model hallucinates
-    // different key names ("foo", "bar") AND emits unescaped quotes so
-    // parseRJSON fails and repair runs. Without the guard, repair would
-    // skip every key via knownKeySet and return {name, arguments: {}} —
-    // emitting a tool call with empty args (worse than failing). The guard
-    // makes repair bail out to onError when no known key survives.
     const text =
       '<tool_call>{"name":"write","arguments":{"foo":"He said "hi" there","bar":"b"}}</tool_call>';
     const tools = [
@@ -931,10 +1073,9 @@ describe("parseGeneratedText JSON repair", () => {
       ),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    const tool = out.find((x) => x.type === "tool-call");
-    expect(tool).toBeUndefined();
-    expect(out).toContainEqual({ type: "text", text });
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({});
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("falls through to text when malformed input uses relaxed-JSON syntax (repair is strict-JSON only)", () => {
@@ -1110,7 +1251,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("rejects nested schema-unknown argument keys", () => {
+  it("drops nested schema-unknown argument keys", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1132,11 +1273,15 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      payload: { value: "ok" },
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects nested argument keys disallowed by false schemas", () => {
+  it("drops nested argument keys disallowed by false schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1159,8 +1304,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      payload: { value: "ok" },
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects top-level boolean false input schemas", () => {
@@ -1289,6 +1438,24 @@ describe("parseGeneratedText JSON repair", () => {
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(out).toContainEqual({ type: "text", text });
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("drops args for schemas without declared properties when additionalProperties is false", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"x-":"ok"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        additionalProperties: false,
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({});
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects null for non-nullable typed object properties", () => {
@@ -1436,7 +1603,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("rejects unknown keys through strict allOf schemas", () => {
+  it("drops unknown keys through strict allOf schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1456,11 +1623,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ safe: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects nested array item keys through allOf schemas", () => {
+  it("sanitizes nested array item keys through allOf schemas", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1488,11 +1656,16 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const call = out.find((x) => x.type === "tool-call");
+    expect(call).toMatchObject({
+      type: "tool-call",
+      toolName: "write",
+      input: '{"payload":[{"value":"ok"}]}',
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects nested tuple item keys through draft-07 items arrays", () => {
+  it("sanitizes nested tuple item keys through draft-07 items arrays", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1521,8 +1694,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    expect(out.find((x) => x.type === "tool-call")).toMatchObject({
+      type: "tool-call",
+      toolName: "write",
+      input: '{"rows":[{"value":"ok"}]}',
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects values that match multiple oneOf schemas", () => {
@@ -1850,7 +2027,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("does not let primitive oneOf branches bypass object key constraints", () => {
+  it("drops object keys not declared by primitive oneOf branches", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1875,8 +2052,176 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
+    const tool = out.find((x) => x.type === "tool-call");
+    expect(tool?.type).toBe("tool-call");
+    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
+      payload: { content: "ok" },
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("drops stray keys before validating top-level anyOf branches", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"city":"Seoul","stray":"drop"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("edit", {
+        anyOf: [
+          {
+            type: "object",
+            properties: { city: { type: "string" } },
+            required: ["city"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: { latitude: { type: "number" } },
+            required: ["latitude"],
+            additionalProperties: false,
+          },
+        ],
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ city: "Seoul" });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("rejects top-level oneOf inputs with keys from multiple strict branches", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"city":"Seoul","latitude":37.5}}</tool_call>';
+    const tools = [
+      makeSchemaTool("edit", {
+        oneOf: [
+          {
+            type: "object",
+            properties: { city: { type: "string" } },
+            required: ["city"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: { latitude: { type: "number" } },
+            required: ["latitude"],
+            additionalProperties: false,
+          },
+        ],
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("rejects top-level oneOf inputs with keys from multiple pattern branches", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"x-a":"one","y-b":"two"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("edit", {
+        type: "object",
+        oneOf: [
+          {
+            type: "object",
+            patternProperties: {
+              "^x-": { type: "string" },
+            },
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            patternProperties: {
+              "^y-": { type: "string" },
+            },
+            additionalProperties: false,
+          },
+        ],
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+
+    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+  });
+
+  it("selects top-level oneOf branches by discriminator before dropping mixed keys", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"edit","arguments":{"kind":"count","countOnly":3,"textOnly":"drop-me"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("edit", {
+        type: "object",
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              kind: { enum: ["text"] },
+              textOnly: { type: "string" },
+            },
+            required: ["kind", "textOnly"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { enum: ["count"] },
+              countOnly: { type: "number" },
+            },
+            required: ["kind", "countOnly"],
+            additionalProperties: false,
+          },
+        ],
+      }),
+    ];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({
+      kind: "count",
+      countOnly: 3,
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("does not leak incomplete unicode-escaped Hermes candidates from direct parsing", () => {
+    const p = hermesProtocol();
+    const tools = [
+      makeTool("get_weather", { city: { type: "string" } }),
+      makeTool("lookup", { query: { type: "string" } }),
+    ];
+
+    const out = p.parseGeneratedText({
+      text: '<tool_call>{"n\\u0061me":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}',
+      tools,
+    });
+
+    expect(out).toEqual([]);
+  });
+
+  it("redacts prototype-sensitive error metadata", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"content":"ok","constructor":{"polluted":true}}}</tool_call>';
+    const tools = [makeTool("write", { content: { type: "string" } })];
+
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+
+    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
+    expect(onError).toHaveBeenCalled();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("constructor");
+    expect(metadataText).not.toContain("polluted");
   });
 
   it("applies every matching property and pattern schema", () => {
@@ -1911,7 +2256,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("preserves allowed extra argument keys when a denied pattern is unsafe", () => {
+  it("preserves safe additional keys when a denied pattern is unsafe", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1958,6 +2303,29 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("keeps patternProperties-matching args when unknown keys are allowed even if pattern value coercion fails", () => {
+    const onError = vi.fn();
+    const p = hermesProtocol();
+    const text =
+      '<tool_call>{"name":"write","arguments":{"x-debug":"not-number","other":"y"}}</tool_call>';
+    const tools = [
+      makeSchemaTool("write", {
+        type: "object",
+        patternProperties: {
+          "^x-": { type: "number" },
+        },
+        additionalProperties: true,
+      }),
+    ];
+    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({
+      "x-debug": "not-number",
+      other: "y",
+    });
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it("rejects unsafe positive patternProperties that may match constrained keys", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
@@ -1977,7 +2345,7 @@ describe("parseGeneratedText JSON repair", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it("rejects unsafe false patternProperties that may match key substrings", () => {
+  it("drops unsafe false patternProperties that may match key substrings", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -1995,11 +2363,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects unsafe false patternProperties that may match unanchored suffixes", () => {
+  it("drops unsafe false patternProperties that may match unanchored suffixes", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -2017,11 +2386,12 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects keys that may match unsafe false patterns with escaped range endpoints", () => {
+  it("drops keys that may match unsafe false patterns with escaped range endpoints", () => {
     const onError = vi.fn();
     const p = hermesProtocol();
     const text =
@@ -2039,7 +2409,8 @@ describe("parseGeneratedText JSON repair", () => {
       }),
     ];
     const out = p.parseGeneratedText({ text, tools, options: { onError } });
-    expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
+    const tool = expectToolCall(out);
+    expect(JSON.parse(tool.input)).toEqual({ content: "ok" });
+    expect(onError).not.toHaveBeenCalled();
   });
 });

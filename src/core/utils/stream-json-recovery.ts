@@ -2,7 +2,10 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { recoverToolCallFromJsonCandidates } from "./generated-text-json-recovery";
+import {
+  recoverToolCallFromJsonCandidatesWithStatus,
+  type ToolCallJsonRecoveryResult,
+} from "./generated-text-json-recovery";
 import { generateId } from "./id";
 
 /**
@@ -126,9 +129,12 @@ export function createStreamJsonRecoveryTransform({
 
   const emitRecoveredParts = (
     controller: StreamController,
-    recovered: ReturnType<typeof recoverToolCallFromJsonCandidates>
+    recovered: Extract<
+      ToolCallJsonRecoveryResult,
+      { kind: "dropped-sensitive-candidate" | "recovered" }
+    >
   ) => {
-    for (const part of recovered ?? []) {
+    for (const part of recovered.content) {
       if (part.type === "text") {
         if (part.text.length === 0) {
           continue;
@@ -166,9 +172,19 @@ export function createStreamJsonRecoveryTransform({
     if (!held) {
       return;
     }
-    const recovered = recoverToolCallFromJsonCandidates(held.content, tools);
-    const hasToolCall = recovered?.some((part) => part.type === "tool-call");
-    if (recovered && hasToolCall) {
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(
+      held.content,
+      tools
+    );
+    const hasToolCall =
+      recovered.kind === "recovered" &&
+      recovered.content.some((part) => part.type === "tool-call");
+    if (recovered.kind === "recovered" && hasToolCall) {
+      held = null;
+      emitRecoveredParts(controller, recovered);
+      return;
+    }
+    if (recovered.kind === "dropped-sensitive-candidate") {
       held = null;
       emitRecoveredParts(controller, recovered);
       return;

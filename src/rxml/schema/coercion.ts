@@ -11,6 +11,20 @@ import {
 import type { RXMLNode } from "../core/types";
 import { RXMLCoercionError } from "../errors/types";
 
+const PROTOTYPE_SENSITIVE_XML_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+function assertSafeXmlObjectKey(key: string): void {
+  if (PROTOTYPE_SENSITIVE_XML_KEYS.has(key)) {
+    throw new RXMLCoercionError(
+      `RXML: Prototype-sensitive XML key "${key}" is not allowed.`
+    );
+  }
+}
+
 /**
  * Get property schema from a parent schema
  */
@@ -61,7 +75,8 @@ function addAttributesToValue(
   }
 
   if (typeof value === "string") {
-    const valueResult: Record<string, unknown> = { [textNodeName]: value };
+    const valueResult = Object.create(null) as Record<string, unknown>;
+    valueResult[textNodeName] = value;
     for (const [attrName, attrValue] of Object.entries(attributes)) {
       valueResult[`@_${attrName}`] = attrValue;
     }
@@ -85,6 +100,7 @@ function addToResult(
   tagName: string,
   value: unknown
 ): void {
+  assertSafeXmlObjectKey(tagName);
   if (result[tagName]) {
     if (!Array.isArray(result[tagName])) {
       result[tagName] = [result[tagName]];
@@ -103,7 +119,7 @@ export function domToObject(
   schema: unknown,
   textNodeName = "#text"
 ): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+  const result = Object.create(null) as Record<string, unknown>;
 
   for (const node of nodes) {
     if (typeof node === "string") {
@@ -185,7 +201,7 @@ function processComplexContent(
   textNodeName: string
 ): unknown {
   const textContent: string[] = [];
-  const elements: Record<string, unknown> = {};
+  const elements = Object.create(null) as Record<string, unknown>;
 
   for (const child of children) {
     if (typeof child === "string") {

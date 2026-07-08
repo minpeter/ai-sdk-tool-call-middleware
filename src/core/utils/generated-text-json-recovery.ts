@@ -6,7 +6,15 @@ import YAML from "yaml";
 import { parse as parseRJSON } from "../../rjson";
 import { unescapeXml } from "../../rxml/utils/helpers";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
+import { extractSensitiveIncompleteToolCallDropSpans } from "./generated-text-sensitive-candidates";
 import { generateToolCallId } from "./id";
+import {
+  hasPrototypeSensitiveStructuralKey,
+  isPrototypeSensitiveArgumentKey,
+  toolCallInputHasPrototypeSensitiveKey,
+  toolCallTextHasPrototypeSensitiveKey,
+} from "./prototype-sensitive-keys";
+import { coerceToolCallInput } from "./tool-call-coercion";
 
 interface ToolCallCandidate {
   input: string;
@@ -19,6 +27,19 @@ interface RecoveredCallSpan {
   payload: ToolCallCandidate;
   startIndex: number;
 }
+
+interface DroppedSensitiveSpan {
+  dropReason: "prototype-sensitive-tool-candidate";
+  endIndex: number;
+  startIndex: number;
+}
+
+type RecoverySpan = DroppedSensitiveSpan | RecoveredCallSpan;
+
+export type ToolCallJsonRecoveryResult =
+  | { content: LanguageModelV4Content[]; kind: "recovered" }
+  | { content: LanguageModelV4Content[]; kind: "dropped-sensitive-candidate" }
+  | { kind: "none" };
 
 interface JsonCandidate {
   endIndex: number;
@@ -36,57 +57,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const PROTOTYPE_SENSITIVE_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
-
-/**
- * Textual guard for prototype-sensitive keys in a JSON-like candidate.
- * Relaxed-JSON parsers may absorb a literal `__proto__` key into the object
- * prototype instead of surfacing it as an own property, so a post-parse
- * check alone cannot see it. Declining recovery on a textual match is safe:
- * the candidate simply stays plain text.
- */
-const PROTOTYPE_SENSITIVE_KEY_TEXT_REGEX =
-  /["'](?:__proto__|constructor|prototype)["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
-
 function containsPrototypeSensitiveKey(value: unknown): boolean {
-  const seen = new Set<object>();
-  const stack: unknown[] = [value];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (Array.isArray(current)) {
-      if (seen.has(current)) {
-        continue;
-      }
-      seen.add(current);
-      stack.push(...current);
-      continue;
-    }
-    if (!isRecord(current) || seen.has(current)) {
-      continue;
-    }
-    seen.add(current);
-    for (const key of Object.keys(current)) {
-      if (PROTOTYPE_SENSITIVE_KEYS.has(key)) {
-        return true;
-      }
-      stack.push(current[key]);
-    }
-  }
-
-  return false;
-}
-
-function safeStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value ?? {});
-  } catch {
-    return "{}";
-  }
+  return toolCallInputHasPrototypeSensitiveKey(value);
 }
 
 function parseJsonCandidate(candidateText: string): unknown {
@@ -244,6 +216,15 @@ function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV4Content {
   };
 }
 
+function toToolCallCandidate(
+  toolName: string,
+  args: unknown,
+  tools: LanguageModelV4FunctionTool[]
+): ToolCallCandidate | null {
+  const input = coerceToolCallInput(toolName, args, tools);
+  return input === undefined ? null : { toolName, input };
+}
+
 const ORPHAN_TAG_BEFORE_CALL_REGEX = /(?:<\/?tool_call>\s*)+$/;
 const ORPHAN_TAG_AFTER_CALL_REGEX = /^(?:\s*<\/?tool_call>)+/;
 /**
@@ -284,8 +265,15 @@ function pushRecoveredTextSegment(
 const TOOL_NAME_KEYS = ["name", "tool", "function"] as const;
 const TOOL_ARGS_KEYS = ["arguments", "parameters"] as const;
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function readToolNameField(payload: Record<string, unknown>): string | null {
   for (const key of TOOL_NAME_KEYS) {
+    if (!Object.hasOwn(payload, key)) {
+      continue;
+    }
     const value = payload[key];
     if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
@@ -301,6 +289,49 @@ function readToolArgsField(payload: Record<string, unknown>): unknown {
     }
   }
   return {};
+}
+
+function hasNameEnvelope(payload: Record<string, unknown>): boolean {
+  return TOOL_NAME_KEYS.some(
+    (key) =>
+      Object.hasOwn(payload, key) &&
+      typeof payload[key] === "string" &&
+      (payload[key] as string).length > 0
+  );
+}
+
+function hasArgumentsEnvelope(payload: Record<string, unknown>): boolean {
+  return TOOL_ARGS_KEYS.some(
+    (key) =>
+      Object.hasOwn(payload, key) &&
+      (typeof payload[key] === "string" || isRecord(payload[key]))
+  );
+}
+
+function textHasKnownToolReference(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): boolean {
+  return tools.some((tool) => {
+    const name = escapeRegExp(tool.name);
+    const quotedNameEnvelope = new RegExp(
+      `["'](?:${TOOL_NAME_KEYS.join("|")})["']\\s*:\\s*["']${name}["']`,
+      "i"
+    );
+    const relaxedNameEnvelope = new RegExp(
+      `(?:^|[{,]\\s*)(?:${TOOL_NAME_KEYS.join("|")})\\s*:\\s*["']${name}["']`,
+      "i"
+    );
+    const qwenNameEnvelope = new RegExp(
+      `<\\s*(?:call|function|tool|invoke)\\b[^>]*(?:=\\s*["']?${name}["']?|\\bname\\s*=\\s*["']${name}["'])`,
+      "i"
+    );
+    return (
+      quotedNameEnvelope.test(text) ||
+      relaxedNameEnvelope.test(text) ||
+      qwenNameEnvelope.test(text)
+    );
+  });
 }
 
 function parseAsToolPayload(
@@ -326,7 +357,7 @@ function parseAsToolPayload(
   if (
     typeof rawArgs === "string" &&
     rawArgs.trimStart().startsWith("{") &&
-    !PROTOTYPE_SENSITIVE_KEY_TEXT_REGEX.test(rawArgs)
+    !toolCallTextHasPrototypeSensitiveKey(rawArgs)
   ) {
     const unwrapped = parseJsonCandidate(rawArgs);
     if (isRecord(unwrapped)) {
@@ -337,10 +368,7 @@ function parseAsToolPayload(
     return null;
   }
 
-  return {
-    toolName,
-    input: safeStringify(rawArgs),
-  };
+  return toToolCallCandidate(toolName, rawArgs, tools);
 }
 
 function isLikelyArgumentsShapeForTool(
@@ -370,13 +398,6 @@ function isLikelyArgumentsShapeForTool(
     return false;
   }
 
-  if (
-    unwrapped.additionalProperties === false &&
-    knownKeys.length !== keys.length
-  ) {
-    return false;
-  }
-
   return true;
 }
 
@@ -390,18 +411,7 @@ function parseAsArgumentsOnly(
   if (!isRecord(payload)) {
     return null;
   }
-  const hasNameEnvelope = TOOL_NAME_KEYS.some(
-    (key) =>
-      Object.hasOwn(payload, key) &&
-      typeof payload[key] === "string" &&
-      (payload[key] as string).length > 0
-  );
-  const hasArgumentsEnvelope = TOOL_ARGS_KEYS.some(
-    (key) =>
-      Object.hasOwn(payload, key) &&
-      (typeof payload[key] === "string" || isRecord(payload[key]))
-  );
-  if (hasNameEnvelope || hasArgumentsEnvelope) {
+  if (hasNameEnvelope(payload) || hasArgumentsEnvelope(payload)) {
     return null;
   }
 
@@ -413,26 +423,91 @@ function parseAsArgumentsOnly(
     return null;
   }
 
-  return {
-    toolName: tool.name,
-    input: safeStringify(payload),
-  };
+  return toToolCallCandidate(tool.name, payload, tools);
+}
+
+function looksLikeKnownToolCandidate(
+  payload: unknown,
+  tools: LanguageModelV4FunctionTool[]
+): boolean {
+  if (!isRecord(payload)) {
+    return false;
+  }
+
+  const toolName = readToolNameField(payload);
+  if (toolName && tools.some((tool) => tool.name === toolName)) {
+    return true;
+  }
+
+  if (
+    tools.length === 1 &&
+    !hasNameEnvelope(payload) &&
+    !hasArgumentsEnvelope(payload) &&
+    isLikelyArgumentsShapeForTool(payload, tools[0])
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function isSensitiveRejectedJsonCandidate(
+  candidate: JsonCandidate,
+  tools: LanguageModelV4FunctionTool[]
+): boolean {
+  const rawSensitive = toolCallTextHasPrototypeSensitiveKey(candidate.text);
+  const parsed = parseJsonCandidate(candidate.text);
+  const knownToolCandidate = looksLikeKnownToolCandidate(parsed, tools);
+  const structuralSensitive =
+    parsed !== undefined && hasPrototypeSensitiveStructuralKey(parsed);
+  const stringArgumentsSensitive =
+    isRecord(parsed) &&
+    typeof readToolArgsField(parsed) === "string" &&
+    toolCallTextHasPrototypeSensitiveKey(readToolArgsField(parsed) as string);
+  const inputSensitive =
+    knownToolCandidate &&
+    parsed !== undefined &&
+    toolCallInputHasPrototypeSensitiveKey(parsed);
+
+  if (
+    !(
+      rawSensitive ||
+      structuralSensitive ||
+      stringArgumentsSensitive ||
+      inputSensitive
+    )
+  ) {
+    return false;
+  }
+
+  if (knownToolCandidate) {
+    return true;
+  }
+
+  return textHasKnownToolReference(candidate.text, tools);
 }
 
 function resolveCandidatePayload(
   candidate: JsonCandidate,
   tools: LanguageModelV4FunctionTool[]
 ): ToolCallCandidate | null {
-  if (PROTOTYPE_SENSITIVE_KEY_TEXT_REGEX.test(candidate.text)) {
+  if (toolCallTextHasPrototypeSensitiveKey(candidate.text)) {
     return null;
   }
   const parsed = parseJsonCandidate(candidate.text);
   if (parsed === undefined) {
     return null;
   }
+  if (hasPrototypeSensitiveStructuralKey(parsed)) {
+    return null;
+  }
   return (
     parseAsToolPayload(parsed, tools) ?? parseAsArgumentsOnly(parsed, tools)
   );
+}
+
+function isRecoveredSpan(span: RecoverySpan): span is RecoveredCallSpan {
+  return "payload" in span;
 }
 
 const QWEN_CALL_BLOCK_OPEN_REGEX = /<\s*(call|function|tool|invoke)\b[^>]*>/gi;
@@ -487,7 +562,7 @@ function readFunctionBlockParams(body: string): Record<string, unknown> | null {
       }
       return null;
     }
-    if (PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+    if (isPrototypeSensitiveArgumentKey(key)) {
       return null;
     }
     const valueStart = match.index + match[0].length;
@@ -586,11 +661,58 @@ function extractFunctionBlockCallSpans(
     const endIndex = selfClosing
       ? open.index + openTag.length
       : (close?.end ?? nextOpenIndex);
-    spans.push({
-      startIndex: open.index,
-      endIndex,
-      payload: { toolName, input: safeStringify(params) },
-    });
+    const payload = toToolCallCandidate(toolName, params, tools);
+    if (payload) {
+      spans.push({
+        startIndex: open.index,
+        endIndex,
+        payload,
+      });
+    }
+  }
+
+  return spans;
+}
+
+function extractSensitiveFunctionBlockDropSpans(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): DroppedSensitiveSpan[] {
+  if (!toolCallTextHasPrototypeSensitiveKey(text)) {
+    return [];
+  }
+
+  const spans: DroppedSensitiveSpan[] = [];
+  const opens = [...text.matchAll(QWEN_CALL_BLOCK_OPEN_REGEX)];
+
+  for (let index = 0; index < opens.length; index += 1) {
+    const open = opens[index];
+    const tagName = (open[1] ?? "").toLowerCase();
+    const openTag = open[0] ?? "";
+    const bodyStart = open.index + open[0].length;
+    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
+    const selfClosing = isSelfClosingTag(openTag);
+    const close = selfClosing
+      ? null
+      : findQwenCallCloseTag(text, bodyStart, tagName, nextOpenIndex);
+    const bodyEnd = close?.start ?? nextOpenIndex;
+    const body = selfClosing ? "" : text.slice(bodyStart, bodyEnd);
+    const toolName = readQwenCallToolName(openTag, body);
+    if (!(toolName && tools.some((tool) => tool.name === toolName))) {
+      continue;
+    }
+
+    const endIndex = selfClosing
+      ? open.index + openTag.length
+      : (close?.end ?? nextOpenIndex);
+    const rawBlock = text.slice(open.index, endIndex);
+    if (toolCallTextHasPrototypeSensitiveKey(rawBlock)) {
+      spans.push({
+        startIndex: open.index,
+        endIndex,
+        dropReason: "prototype-sensitive-tool-candidate",
+      });
+    }
   }
 
   return spans;
@@ -613,6 +735,18 @@ function parseYamlBlockMapping(body: string): Record<string, unknown> | null {
   return parsed;
 }
 
+function parseYamlBlockMappingUnsafe(
+  body: string
+): Record<string, unknown> | null {
+  let parsed: unknown;
+  try {
+    parsed = YAML.parse(body);
+  } catch {
+    return null;
+  }
+  return isRecord(parsed) ? parsed : null;
+}
+
 function resolveYamlBlockPayload(
   mapping: Record<string, unknown>,
   closeTagName: string | null,
@@ -624,7 +758,7 @@ function resolveYamlBlockPayload(
     const rawArgs = readToolArgsField(mapping);
     const args = rawArgs === undefined || rawArgs === null ? {} : rawArgs;
     if (isRecord(args) && !containsPrototypeSensitiveKey(args)) {
-      return { toolName: envelopeName, input: safeStringify(args) };
+      return toToolCallCandidate(envelopeName, args, tools);
     }
     return null;
   }
@@ -638,13 +772,13 @@ function resolveYamlBlockPayload(
       tools.some((tool) => tool.name === name)
     );
     if (matched) {
-      return { toolName: matched, input: safeStringify(mapping) };
+      return toToolCallCandidate(matched, mapping, tools);
     }
   }
 
   // Bare-args form with a single tool whose schema matches.
   if (tools.length === 1 && isLikelyArgumentsShapeForTool(mapping, tools[0])) {
-    return { toolName: tools[0].name, input: safeStringify(mapping) };
+    return toToolCallCandidate(tools[0].name, mapping, tools);
   }
 
   return null;
@@ -698,6 +832,57 @@ function extractYamlToolCallBlockSpans(
   return spans;
 }
 
+function extractSensitiveYamlToolCallBlockDropSpans(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): DroppedSensitiveSpan[] {
+  const spans: DroppedSensitiveSpan[] = [];
+
+  TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = 0;
+  let match = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
+  while (match) {
+    const bodyStart = match.index + match[0].length;
+    TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = bodyStart;
+    const nextOpen = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
+    const blockEnd = nextOpen == null ? text.length : nextOpen.index;
+
+    let body = text.slice(bodyStart, blockEnd);
+    let endIndex = blockEnd;
+    let closeTagName: string | null = null;
+
+    const closeMatch = CLOSING_TAG_REGEX.exec(body);
+    if (closeMatch) {
+      closeTagName = closeMatch[1] ?? null;
+      endIndex = bodyStart + closeMatch.index + closeMatch[0].length;
+      body = body.slice(0, closeMatch.index);
+    }
+
+    const mapping = parseYamlBlockMappingUnsafe(body);
+    if (mapping && containsPrototypeSensitiveKey(mapping)) {
+      const envelopeName = readToolNameField(mapping);
+      const closeName = closeTagName?.split(":").at(-1) ?? "";
+      const knownEnvelope =
+        envelopeName !== null &&
+        tools.some((tool) => tool.name === envelopeName);
+      const knownClose =
+        closeName.length > 0 && tools.some((tool) => tool.name === closeName);
+      const likelySingleToolArgs =
+        tools.length === 1 && isLikelyArgumentsShapeForTool(mapping, tools[0]);
+      if (knownEnvelope || knownClose || likelySingleToolArgs) {
+        spans.push({
+          startIndex: match.index,
+          endIndex,
+          dropReason: "prototype-sensitive-tool-candidate",
+        });
+      }
+    }
+
+    match = nextOpen;
+  }
+
+  return spans;
+}
+
 /**
  * Recover tool calls embedded in plain text. Candidates come from three
  * scanners, each validated against the known tools:
@@ -708,18 +893,18 @@ function extractYamlToolCallBlockSpans(
  *
  * Every non-overlapping candidate that resolves becomes a tool-call part, so
  * multi-call payloads (consecutive bare JSON objects, orphan `<tool_call>`
- * separators, array-wrapped lists) are all recovered. Returns null when no
- * candidate resolves.
+ * separators, array-wrapped lists) are all recovered. Prototype-sensitive
+ * known-tool candidates are consumed instead of falling back to visible text.
  */
-export function recoverToolCallFromJsonCandidates(
+export function recoverToolCallFromJsonCandidatesWithStatus(
   text: string,
   tools: LanguageModelV4FunctionTool[]
-): LanguageModelV4Content[] | null {
+): ToolCallJsonRecoveryResult {
   if (tools.length === 0) {
-    return null;
+    return { kind: "none" };
   }
 
-  const spans: RecoveredCallSpan[] = [];
+  const spans: RecoverySpan[] = [];
   for (const jsonCandidate of extractJsonLikeCandidates(text)) {
     const payload = resolveCandidatePayload(jsonCandidate, tools);
     if (payload) {
@@ -728,10 +913,19 @@ export function recoverToolCallFromJsonCandidates(
         endIndex: jsonCandidate.endIndex,
         payload,
       });
+    } else if (isSensitiveRejectedJsonCandidate(jsonCandidate, tools)) {
+      spans.push({
+        startIndex: jsonCandidate.startIndex,
+        endIndex: jsonCandidate.endIndex,
+        dropReason: "prototype-sensitive-tool-candidate",
+      });
     }
   }
   spans.push(...extractFunctionBlockCallSpans(text, tools));
+  spans.push(...extractSensitiveFunctionBlockDropSpans(text, tools));
   spans.push(...extractYamlToolCallBlockSpans(text, tools));
+  spans.push(...extractSensitiveYamlToolCallBlockDropSpans(text, tools));
+  spans.push(...extractSensitiveIncompleteToolCallDropSpans(text, tools));
   spans.sort((a, b) =>
     a.startIndex === b.startIndex
       ? b.endIndex - a.endIndex
@@ -741,6 +935,7 @@ export function recoverToolCallFromJsonCandidates(
   const out: LanguageModelV4Content[] = [];
   let cursor = 0;
   let recoveredAny = false;
+  let droppedSensitiveAny = false;
 
   for (const span of spans) {
     if (span.startIndex < cursor) {
@@ -749,15 +944,32 @@ export function recoverToolCallFromJsonCandidates(
       continue;
     }
     pushRecoveredTextSegment(out, text.slice(cursor, span.startIndex));
-    out.push(toToolCallPart(span.payload));
     cursor = span.endIndex;
-    recoveredAny = true;
+    if (isRecoveredSpan(span)) {
+      out.push(toToolCallPart(span.payload));
+      recoveredAny = true;
+    } else {
+      droppedSensitiveAny = true;
+    }
+  }
+
+  if (recoveredAny || droppedSensitiveAny) {
+    pushRecoveredTextSegment(out, text.slice(cursor));
   }
 
   if (!recoveredAny) {
-    return null;
+    return droppedSensitiveAny
+      ? { kind: "dropped-sensitive-candidate", content: out }
+      : { kind: "none" };
   }
 
-  pushRecoveredTextSegment(out, text.slice(cursor));
-  return out;
+  return { kind: "recovered", content: out };
+}
+
+export function recoverToolCallFromJsonCandidates(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): LanguageModelV4Content[] | null {
+  const result = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+  return result.kind === "recovered" ? result.content : null;
 }

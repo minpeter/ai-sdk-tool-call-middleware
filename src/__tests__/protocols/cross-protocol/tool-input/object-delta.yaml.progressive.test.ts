@@ -16,6 +16,8 @@ const nestedTool: LanguageModelV4FunctionTool = {
   inputSchema: {
     type: "object",
     properties: {
+      k0_1: { type: "boolean" },
+      k0_2: { type: "string" },
       location: { type: "string" },
       options: {
         type: "object",

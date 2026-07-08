@@ -3,6 +3,12 @@ import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import { basicTools } from "./shared";
 
 describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
+  const prototypeSensitiveKeys = [
+    "__proto__",
+    "constructor",
+    "prototype",
+  ] as const;
+
   it("populates toolName, toolCallId, and malformed-tool-call-body dropReason when YAML body parse fails", () => {
     const onError = vi.fn();
     const protocol = yamlXmlProtocol();
@@ -71,5 +77,50 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
     expect(cause).toMatchObject({ kind: "yaml-non-mapping" });
     expect(typeof metadata?.toolCallId).toBe("string");
     expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
+  });
+
+  it.each(
+    prototypeSensitiveKeys
+  )("redacts malformed XML-wrapped YAML keys for %s", (key) => {
+    const onError = vi.fn();
+    const protocol = yamlXmlProtocol();
+    const text = `<get_weather>${key}: [</get_weather>`;
+
+    const out = protocol.parseGeneratedText({
+      text,
+      tools: basicTools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(
+      out
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("")
+    ).toBe("");
+    expect(onError).toHaveBeenCalledTimes(1);
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain(key);
+    expect(metadataText).not.toContain("<get_weather>");
+  });
+
+  it("redacts prototype-sensitive stringify errors in metadata", () => {
+    const onError = vi.fn();
+    const protocol = yamlXmlProtocol();
+    const text =
+      "<get_weather>\nlocation: Seoul\nconstructor:\n  polluted: true\n</get_weather>";
+
+    protocol.parseGeneratedText({
+      text,
+      tools: basicTools,
+      options: { emitRawToolCallTextOnError: true, onError },
+    });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    const metadata = onError.mock.calls[0]?.[1] as
+      | { error?: unknown }
+      | undefined;
+    expect(metadata?.error).toBe("[redacted sensitive tool call]");
   });
 });

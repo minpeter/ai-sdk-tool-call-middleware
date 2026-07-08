@@ -118,6 +118,56 @@ describe("toolChoiceStream behavior", () => {
     expect(chunks.at(-1)).toMatchObject({ type: "finish" });
   });
 
+  it("redacts invalid JSON metadata for prototype-sensitive toolChoice text", async () => {
+    const onError = vi.fn();
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: '{"name":"do","arguments":{"constructor":{"polluted":true},"x":1',
+        },
+      ],
+    });
+
+    const { stream } = await toolChoiceStream({
+      doGenerate,
+      tools: [],
+      options: { onError },
+    });
+    await convertReadableStreamToArray(stream);
+
+    expect(onError).toHaveBeenCalledOnce();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("constructor");
+    expect(metadataText).not.toContain("polluted");
+  });
+
+  it("redacts non-object argument metadata for prototype-sensitive toolChoice args", async () => {
+    const onError = vi.fn();
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: '{"name":"do","arguments":"{\\"constructor\\":{\\"polluted\\":true}}"}',
+        },
+      ],
+    });
+
+    const { stream } = await toolChoiceStream({
+      doGenerate,
+      tools: [],
+      options: { onError },
+    });
+    await convertReadableStreamToArray(stream);
+
+    expect(onError).toHaveBeenCalledOnce();
+    const metadataText = JSON.stringify(onError.mock.calls);
+    expect(metadataText).toContain("[redacted sensitive tool call]");
+    expect(metadataText).not.toContain("constructor");
+    expect(metadataText).not.toContain("polluted");
+  });
+
   it("handles empty content by emitting default unknown tool and zeroed usage", async () => {
     const doGenerate = vi.fn().mockResolvedValue({ content: [] });
 

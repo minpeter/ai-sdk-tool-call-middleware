@@ -1,7 +1,10 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { recoverToolCallFromJsonCandidates } from "../../../core/utils/generated-text-json-recovery";
+import {
+  recoverToolCallFromJsonCandidates,
+  recoverToolCallFromJsonCandidatesWithStatus,
+} from "../../../core/utils/generated-text-json-recovery";
 
 const tools: LanguageModelV4FunctionTool[] = [
   {
@@ -130,6 +133,28 @@ describe("recoverToolCallFromJsonCandidates", () => {
     expect(JSON.parse(tool.input)).toEqual({ city: "Seoul" });
   });
 
+  it("recovers arguments-only payloads after dropping schema-unknown keys", () => {
+    const text = '{"city":"Seoul","mood":"sunny"}';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, [
+      {
+        ...tools[1],
+        inputSchema: {
+          type: "object",
+          properties: {
+            city: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      },
+    ]);
+
+    expect(recovered).not.toBeNull();
+    const tool = recovered?.find((part) => part.type === "tool-call") as any;
+    expect(tool.toolName).toBe("get_weather");
+    expect(JSON.parse(tool.input)).toEqual({ city: "Seoul" });
+  });
+
   it("does not recover arguments-only payloads when multiple tools exist", () => {
     const text = '{"city":"Seoul"}';
 
@@ -192,6 +217,13 @@ describe("recoverToolCallFromJsonCandidates prototype-sensitive keys", () => {
     expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
   });
 
+  it("rejects unicode-escaped __proto__ envelopes that inherit tool names", () => {
+    const text =
+      '{"\\u005f\\u005fproto\\u005f\\u005f":{"name":"calc"},"arguments":{"a":1}}';
+
+    expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
+  });
+
   it("rejects arguments-only payloads containing constructor keys", () => {
     const text = '{"city":"Seoul","constructor":{"bad":true}}';
 
@@ -203,6 +235,128 @@ describe("recoverToolCallFromJsonCandidates prototype-sensitive keys", () => {
       '{"name":"calc","arguments":{"a":1,"nested":{"prototype":{}}}}';
 
     expect(recoverToolCallFromJsonCandidates(text, tools)).toBeNull();
+  });
+
+  it("preserves surrounding text when dropping sensitive known-tool candidates", () => {
+    const text =
+      'Before {"name":"get_weather","arguments":{"constructor":{}}} after';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [
+        { type: "text", text: "Before " },
+        { type: "text", text: " after" },
+      ],
+    });
+  });
+
+  it("preserves surrounding text when dropping known-tool candidates with sensitive string leaves", () => {
+    const text =
+      'Before {"name":"get_weather","arguments":{"city":"__proto__: x"}} after';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [
+        { type: "text", text: "Before " },
+        { type: "text", text: " after" },
+      ],
+    });
+  });
+
+  it("preserves surrounding text when dropping incomplete sensitive known-tool candidates", () => {
+    const text =
+      'Before <tool_call>{"name":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [{ type: "text", text: "Before " }],
+    });
+  });
+
+  it("drops incomplete sensitive candidates with unicode-escaped tool envelopes", () => {
+    const text =
+      '<tool_call>{"n\\u0061me":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, [
+      ...tools,
+      {
+        type: "function",
+        name: "lookup",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+        },
+      },
+    ]);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [],
+    });
+  });
+
+  it("drops incomplete sensitive candidates with unicode-escaped tool names", () => {
+    const text =
+      '<tool_call>{"name":"get_\\u0077eather","arguments":{"city":"Seoul","constructor":{"polluted":true}';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, [
+      ...tools,
+      {
+        type: "function",
+        name: "lookup",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+        },
+      },
+    ]);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [],
+    });
+  });
+
+  it("drops double-encoded string arguments with prototype-sensitive keys", () => {
+    const text =
+      '{"name":"get_weather","arguments":"{\\"__proto__\\":{\\"polluted\\":true},\\"city\\":\\"Seoul\\"}"}';
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [],
+    });
+  });
+
+  it("drops sensitive YAML tool-call blocks", () => {
+    const text =
+      "<tool_call>\nname: get_weather\narguments:\n  constructor: true\n  city: Seoul\n</tool_call>";
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [],
+    });
+  });
+
+  it("drops YAML tool-call blocks with prototype-sensitive string arguments", () => {
+    const text =
+      "<tool_call>\nname: get_weather\narguments:\n  city: <prototype>Seoul</prototype>\n</tool_call>";
+
+    const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+
+    expect(recovered).toEqual({
+      kind: "dropped-sensitive-candidate",
+      content: [],
+    });
   });
 });
 
@@ -253,7 +407,7 @@ describe("recoverToolCallFromJsonCandidates envelope variants", () => {
 describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
   it("recovers Qwen-style function blocks (Step 3.5 shape)", () => {
     const text =
-      "<tool_call>\n<function=get_weather>\n<parameter=city>\nSeoul\n</parameter>\n</function>\n</tool_call>";
+      "<tool_call>\n<function=get_weather>\n<parameter=city>\nSeoul\n</parameter>\n<parameter=mood>\nsunny\n</parameter>\n</function>\n</tool_call>";
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
@@ -385,7 +539,7 @@ describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
     const call = recovered?.find((part) => part.type === "tool-call") as any;
     expect(call).toBeDefined();
     expect(call.toolName).toBe("get_weather");
-    expect(JSON.parse(call.input)).toEqual({ city: "Seoul", unit: "celsius" });
+    expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
   });
 
   it("recovers bare-args YAML blocks closed with the tool name", () => {

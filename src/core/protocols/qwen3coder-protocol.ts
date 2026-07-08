@@ -14,13 +14,17 @@ import { generateToolCallId } from "../utils/id";
 import {
   createFlushTextHandler,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataError,
+  safeToolCallMetadataText,
 } from "../utils/protocol-utils";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
 import {
-  emitFailedToolInputLifecycle,
-  emitFinalizedToolInputLifecycle,
-  emitToolInputProgressDelta,
+  emitBufferedToolInputProgressDelta,
+  emitFailedBufferedToolInputLifecycle,
+  emitFinalizedBufferedToolInputLifecycle,
   enqueueToolInputEndAndCall,
+  isPrototypeSensitiveToolCallInputError,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
@@ -58,11 +62,23 @@ import {
   TOOL_CALL_CLOSE_RE,
   TOOL_CALL_OPEN_RE,
 } from "./qwen3coder-call-parsing";
+import { emitTextWithSensitiveStandaloneParamDrops } from "./qwen3coder-sensitive-standalone-param";
 import type { QwenStreamCallState } from "./qwen3coder-stream-call-content";
 import { parseCallContent } from "./qwen3coder-stream-call-content";
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
+
+interface ParsedQwenToolCall {
+  args: Record<string, unknown>;
+  toolName: string;
+}
+
+interface SerializedQwenToolCall {
+  input: string;
+  toolCallId: string;
+  toolName: string;
+}
 
 const XML_TAG_RE = /<\s*(\/)?\s*([A-Za-z_][\w.:-]*)\b[^>]*>/g;
 const XML_VALUE_TAG_NAMES = new Set(["parameter", "param", "argument", "arg"]);
@@ -198,6 +214,29 @@ function parseToolCallInput(input: string | null | undefined): unknown {
   }
 }
 
+function serializeQwenToolParserCalls(
+  calls: ParsedQwenToolCall[],
+  tools: LanguageModelV4FunctionTool[]
+): SerializedQwenToolCall[] | null {
+  const serializedCalls: SerializedQwenToolCall[] = [];
+  for (const call of calls) {
+    try {
+      serializedCalls.push({
+        toolCallId: generateToolCallId(),
+        toolName: call.toolName,
+        input: stringifyToolInputWithSchema({
+          tools,
+          toolName: call.toolName,
+          args: call.args,
+        }),
+      });
+    } catch {
+      return null;
+    }
+  }
+  return serializedCalls;
+}
+
 function toQwen3CoderToolParserParamText(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -283,11 +322,85 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
     };
 
+    const emitToolCallParseFailureAsText = (
+      raw: string,
+      message: string,
+      toolName: string | null | undefined,
+      error?: unknown
+    ) => {
+      options?.onError?.(message, {
+        toolCall: safeToolCallMetadataText(raw),
+        toolName: toolName ?? undefined,
+        toolCallId: generateToolCallId(),
+        dropReason: "malformed-tool-call-body",
+        ...(error === undefined
+          ? {}
+          : { error: safeToolCallMetadataError(error, raw) }),
+      });
+      if (toolCallTextHasPrototypeSensitiveKey(raw)) {
+        return;
+      }
+      processedElements.push({ type: "text", text: raw });
+    };
+
+    const tryEmitToolCalls = (
+      calls: Array<{ toolName: string; args: Record<string, unknown> }>,
+      fallbackText: string,
+      message: string
+    ): boolean => {
+      try {
+        emitToolCalls(calls);
+        return true;
+      } catch (error) {
+        emitToolCallParseFailureAsText(
+          fallbackText,
+          message,
+          calls[0]?.toolName,
+          error
+        );
+        return false;
+      }
+    };
+
     const pushText = (value: string) => {
       if (value.length === 0) {
         return;
       }
       processedElements.push({ type: "text", text: value });
+    };
+
+    const pushRecoveredTrailingText = (value: string, raw: string) => {
+      const trailingText = stripTrailingToolCallCloseTags(
+        stripLeadingToolCallCloseTags(value)
+      );
+      if (trailingText.length === 0) {
+        return;
+      }
+      if (toolCallTextHasPrototypeSensitiveKey(trailingText)) {
+        const droppedBoundedSpan = emitTextWithSensitiveStandaloneParamDrops({
+          text: trailingText,
+          emitText: pushText,
+          onSensitiveText: (sensitiveText) => {
+            options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
+              toolCall: safeToolCallMetadataText(sensitiveText),
+              toolName: extractQwen3CoderToolNameFromMarkup(raw) ?? undefined,
+              toolCallId: generateToolCallId(),
+              dropReason: "sensitive-tool-call-trailing-text",
+            });
+          },
+        });
+        if (droppedBoundedSpan) {
+          return;
+        }
+        options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
+          toolCall: safeToolCallMetadataText(raw),
+          toolName: extractQwen3CoderToolNameFromMarkup(raw) ?? undefined,
+          toolCallId: generateToolCallId(),
+          dropReason: "sensitive-tool-call-trailing-text",
+        });
+        return;
+      }
+      pushText(trailingText);
     };
 
     const tryEmitToolCallSegment = (
@@ -299,33 +412,26 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         tools
       );
       if (!parsedCalls) {
-        options?.onError?.(
+        emitToolCallParseFailureAsText(
+          fallbackText,
           "Could not process Qwen3CoderToolParser XML tool call; keeping original text.",
-          {
-            toolCall: fallbackText,
-            toolName: extractQwen3CoderToolNameFromMarkup(segment),
-            toolCallId: generateToolCallId(),
-            dropReason: "malformed-tool-call-body",
-          }
+          extractQwen3CoderToolNameFromMarkup(segment)
         );
-        processedElements.push({ type: "text", text: fallbackText });
         return false;
       }
-      emitToolCalls(parsedCalls);
-      return true;
+      return tryEmitToolCalls(
+        parsedCalls,
+        fallbackText,
+        "Could not process Qwen3CoderToolParser XML tool call; keeping original text."
+      );
     };
 
     const emitWrapperlessCallParseFailureAsText = (raw: string) => {
-      options?.onError?.(
+      emitToolCallParseFailureAsText(
+        raw,
         "Could not process Qwen3CoderToolParser <function> call; keeping original text.",
-        {
-          toolCall: raw,
-          toolName: extractQwen3CoderToolNameFromMarkup(raw),
-          toolCallId: generateToolCallId(),
-          dropReason: "malformed-tool-call-body",
-        }
+        extractQwen3CoderToolNameFromMarkup(raw)
       );
-      processedElements.push({ type: "text", text: raw });
     };
 
     const tryParseCallBlocksWithoutWrapperByImplicitStarts = (
@@ -340,11 +446,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         }
         const endIndex = starts[i + 1] ?? sourceText.length;
 
-        pushText(
-          stripTrailingToolCallCloseTags(
-            stripLeadingToolCallCloseTags(sourceText.slice(index, startIndex))
-          )
-        );
+        const leadingText = sourceText.slice(index, startIndex);
+        pushRecoveredTrailingText(leadingText, leadingText);
 
         const full = sourceText.slice(startIndex, endIndex);
         const { callContent, trailingText } = splitImplicitCallAndTail(
@@ -353,12 +456,15 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         );
         const parsed = parseSingleFunctionCallXml(callContent, null, tools);
         if (parsed) {
-          emitToolCalls([parsed]);
-          pushText(
-            stripTrailingToolCallCloseTags(
-              stripLeadingToolCallCloseTags(trailingText)
+          if (
+            tryEmitToolCalls(
+              [parsed],
+              full,
+              "Could not process Qwen3CoderToolParser <function> call; keeping original text."
             )
-          );
+          ) {
+            pushRecoveredTrailingText(trailingText, full);
+          }
         } else {
           emitWrapperlessCallParseFailureAsText(full);
         }
@@ -366,11 +472,8 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         index = endIndex;
       }
 
-      pushText(
-        stripTrailingToolCallCloseTags(
-          stripLeadingToolCallCloseTags(sourceText.slice(index))
-        )
-      );
+      const trailingText = sourceText.slice(index);
+      pushRecoveredTrailingText(trailingText, trailingText);
       return true;
     };
 
@@ -386,15 +489,16 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           continue;
         }
 
-        pushText(
-          stripTrailingToolCallCloseTags(
-            stripLeadingToolCallCloseTags(sourceText.slice(index, startIndex))
-          )
-        );
+        const leadingText = sourceText.slice(index, startIndex);
+        pushRecoveredTrailingText(leadingText, leadingText);
 
         const parsed = parseSingleFunctionCallXml(full, null, tools);
         if (parsed) {
-          emitToolCalls([parsed]);
+          tryEmitToolCalls(
+            [parsed],
+            full,
+            "Could not process Qwen3CoderToolParser <function> call; keeping original text."
+          );
         } else {
           emitWrapperlessCallParseFailureAsText(full);
         }
@@ -412,9 +516,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         );
       }
 
-      pushText(
-        stripTrailingToolCallCloseTags(stripLeadingToolCallCloseTags(trailing))
-      );
+      pushRecoveredTrailingText(trailing, trailing);
       return true;
     };
 
@@ -445,7 +547,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return;
       }
       if (!tryParseCallBlocksWithoutWrapperText(segment)) {
-        pushText(segment);
+        pushRecoveredTrailingText(segment, segment);
       }
     };
 
@@ -520,15 +622,22 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return false;
       }
 
-      pushText(stripTrailingToolCallCloseTags(text.slice(0, startIndex)));
+      const leadingText = stripTrailingToolCallCloseTags(
+        text.slice(0, startIndex)
+      );
+      pushRecoveredTrailingText(leadingText, leadingText);
       const trailing = stripLeadingToolCallCloseTags(text.slice(startIndex));
       const parsed = parseSingleFunctionCallXml(trailing, null, tools);
       if (!parsed) {
-        processedElements.push({ type: "text", text: trailing });
+        emitWrapperlessCallParseFailureAsText(trailing);
         return true;
       }
 
-      emitToolCalls([parsed]);
+      tryEmitToolCalls(
+        [parsed],
+        trailing,
+        "Could not process Qwen3CoderToolParser <function> call; keeping original text."
+      );
       return true;
     };
 
@@ -545,7 +654,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       return processedElements;
     }
 
-    return [{ type: "text", text }];
+    if (text.length === 0) {
+      return [{ type: "text", text }];
+    }
+    pushRecoveredTrailingText(text, text);
+    return processedElements;
   },
 
   extractToolCallSegments({ text }) {
@@ -567,6 +680,12 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       "<call",
       "<tool",
       "<invoke",
+    ];
+    const standaloneParamPrefixesLower = [
+      "<parameter",
+      "<param",
+      "<argument",
+      "<arg",
     ];
 
     type ToolCallMode = "unknown" | "single" | "multi";
@@ -630,6 +749,64 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
     );
 
+    const flushRecoveredTrailingText = (
+      controller: StreamController,
+      callState: StreamingCallState,
+      trailingText: string
+    ) => {
+      if (trailingText.length === 0) {
+        return;
+      }
+      if (toolCallTextHasPrototypeSensitiveKey(trailingText)) {
+        const raw = `${callState.raw}${trailingText}`;
+        options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
+          toolCallId: callState.toolCallId,
+          toolCall: safeToolCallMetadataText(raw),
+          ...(callState.toolName ? { toolName: callState.toolName } : {}),
+          dropReason: "sensitive-tool-call-trailing-text",
+        });
+        return;
+      }
+      flushText(controller, trailingText);
+    };
+
+    const flushRecoveredBufferText = (
+      controller: StreamController,
+      value: string
+    ) => {
+      const text = stripTrailingToolCallCloseTags(
+        stripLeadingToolCallCloseTags(value)
+      );
+      if (text.length === 0) {
+        return;
+      }
+      if (toolCallTextHasPrototypeSensitiveKey(text)) {
+        const droppedBoundedSpan = emitTextWithSensitiveStandaloneParamDrops({
+          text,
+          emitText: (segment) => {
+            flushText(controller, segment);
+          },
+          onSensitiveText: (sensitiveText) => {
+            options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
+              toolCallId: generateToolCallId(),
+              toolCall: safeToolCallMetadataText(sensitiveText),
+              dropReason: "sensitive-tool-call-trailing-text",
+            });
+          },
+        });
+        if (droppedBoundedSpan) {
+          return;
+        }
+        options?.onError?.("Dropped sensitive Qwen3CoderToolParser text.", {
+          toolCallId: generateToolCallId(),
+          toolCall: safeToolCallMetadataText(text),
+          dropReason: "sensitive-tool-call-trailing-text",
+        });
+        return;
+      }
+      flushText(controller, text);
+    };
+
     const maybeEmitToolInputStart = (
       controller: StreamController,
       callState: StreamingCallState
@@ -651,7 +828,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     };
 
     const maybeEmitToolInputProgress = (
-      controller: StreamController,
+      _controller: StreamController,
       callState: StreamingCallState
     ) => {
       if (!callState.hasEmittedStart) {
@@ -668,20 +845,100 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           getProgressHoldbackTags(callState)
         )
       );
-      const fullInput = stringifyToolInputWithSchema({
-        tools,
-        toolName,
-        args: argsForProgress,
-      });
+      let fullInput: string;
+      try {
+        fullInput = stringifyToolInputWithSchema({
+          tools,
+          toolName,
+          args: argsForProgress,
+        });
+      } catch {
+        return;
+      }
       if (fullInput === "{}") {
         return;
       }
-      emitToolInputProgressDelta({
-        controller,
+      emitBufferedToolInputProgressDelta({
+        enqueue: (part) => {
+          callState.pendingToolInputParts.push(part);
+        },
         id: callState.toolCallId,
         state: callState,
         fullInput,
       });
+    };
+
+    const failUnresolvedStreamingCall = (params: {
+      callState: StreamingCallState;
+      controller: StreamController;
+      fallbackToolName: string | null;
+      rawToolCallText: string | null;
+    }): false => {
+      const { callState, controller, fallbackToolName, rawToolCallText } =
+        params;
+      const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
+      emitFailedBufferedToolInputLifecycle({
+        bufferedParts: callState.pendingToolInputParts,
+        controller,
+        id: callState.toolCallId,
+        emitRawToolCallTextOnError: shouldEmitRaw,
+        endInputOnError: callState.hasEmittedStart,
+        rawToolCallText,
+        emitRawText: (rawText) => {
+          flushText(controller, rawText);
+        },
+      });
+      options?.onError?.(
+        shouldEmitRaw && rawToolCallText
+          ? "Could not resolve Qwen3CoderToolParser tool name for tool call; emitting original text."
+          : "Could not resolve Qwen3CoderToolParser tool name for tool call",
+        {
+          toolCallId: callState.toolCallId,
+          toolCall: safeToolCallMetadataText(rawToolCallText),
+          toolName: callState.toolName ?? fallbackToolName ?? undefined,
+          dropReason: "unresolved-tool-name",
+        }
+      );
+      return false;
+    };
+
+    const failSensitiveStreamingCall = (params: {
+      callState: StreamingCallState;
+      controller: StreamController;
+      rawToolCallText: string;
+      resolvedToolName: string;
+    }): false => {
+      const { callState, controller, rawToolCallText, resolvedToolName } =
+        params;
+      const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
+      const error = new Error(
+        "Tool call arguments contain prototype-sensitive keys"
+      );
+      emitFailedBufferedToolInputLifecycle({
+        bufferedParts: callState.pendingToolInputParts,
+        controller,
+        id: callState.toolCallId,
+        emitRawToolCallTextOnError: shouldEmitRaw,
+        endInputOnError: callState.hasEmittedStart,
+        hideBufferedInputOnError: true,
+        rawToolCallText,
+        emitRawText: (rawText) => {
+          flushText(controller, rawText);
+        },
+      });
+      options?.onError?.(
+        shouldEmitRaw
+          ? "Could not process streaming Qwen3CoderToolParser XML tool call; emitting original text."
+          : "Could not process streaming Qwen3CoderToolParser XML tool call.",
+        {
+          toolCallId: callState.toolCallId,
+          toolCall: safeToolCallMetadataText(rawToolCallText),
+          toolName: resolvedToolName,
+          dropReason: "malformed-tool-call-body",
+          error: safeToolCallMetadataError(error, rawToolCallText),
+        }
+      );
+      return false;
     };
 
     const finalizeCall = (
@@ -692,12 +949,48 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     ): boolean => {
       const resolvedToolName = callState.toolName ?? fallbackToolName;
       if (!resolvedToolName || resolvedToolName.trim().length === 0) {
+        return failUnresolvedStreamingCall({
+          callState,
+          controller,
+          fallbackToolName,
+          rawToolCallText,
+        });
+      }
+
+      callState.toolName = resolvedToolName;
+
+      if (
+        rawToolCallText &&
+        toolCallTextHasPrototypeSensitiveKey(rawToolCallText)
+      ) {
+        return failSensitiveStreamingCall({
+          callState,
+          controller,
+          rawToolCallText,
+          resolvedToolName,
+        });
+      }
+
+      maybeEmitToolInputStart(controller, callState);
+      maybeEmitToolInputProgress(controller, callState);
+
+      let finalInput: string;
+      try {
+        finalInput = stringifyToolInputWithSchema({
+          tools,
+          toolName: resolvedToolName,
+          args: callState.args,
+        });
+      } catch (error) {
         const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
-        emitFailedToolInputLifecycle({
+        emitFailedBufferedToolInputLifecycle({
+          bufferedParts: callState.pendingToolInputParts,
           controller,
           id: callState.toolCallId,
-          endInput: callState.hasEmittedStart,
           emitRawToolCallTextOnError: shouldEmitRaw,
+          endInputOnError: callState.hasEmittedStart,
+          hideBufferedInputOnError:
+            isPrototypeSensitiveToolCallInputError(error),
           rawToolCallText,
           emitRawText: (rawText) => {
             flushText(controller, rawText);
@@ -705,29 +998,20 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         });
         options?.onError?.(
           shouldEmitRaw && rawToolCallText
-            ? "Could not resolve Qwen3CoderToolParser tool name for tool call; emitting original text."
-            : "Could not resolve Qwen3CoderToolParser tool name for tool call",
+            ? "Could not process streaming Qwen3CoderToolParser XML tool call; emitting original text."
+            : "Could not process streaming Qwen3CoderToolParser XML tool call.",
           {
             toolCallId: callState.toolCallId,
-            toolCall: rawToolCallText,
-            toolName: callState.toolName ?? fallbackToolName ?? undefined,
-            dropReason: "unresolved-tool-name",
+            toolCall: safeToolCallMetadataText(rawToolCallText),
+            toolName: resolvedToolName,
+            dropReason: "malformed-tool-call-body",
+            error: safeToolCallMetadataError(error, rawToolCallText),
           }
         );
         return false;
       }
-
-      callState.toolName = resolvedToolName;
-
-      maybeEmitToolInputStart(controller, callState);
-      maybeEmitToolInputProgress(controller, callState);
-
-      const finalInput = stringifyToolInputWithSchema({
-        tools,
-        toolName: resolvedToolName,
-        args: callState.args,
-      });
-      emitFinalizedToolInputLifecycle({
+      emitFinalizedBufferedToolInputLifecycle({
+        bufferedParts: callState.pendingToolInputParts,
         controller,
         id: callState.toolCallId,
         state: callState,
@@ -922,13 +1206,16 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         ...implicitCallPrefixesLower.map((prefix) =>
           getPotentialTagStartIndex(lower, prefix)
         ),
+        ...standaloneParamPrefixesLower.map((prefix) =>
+          getPotentialTagStartIndex(lower, prefix)
+        ),
       ].filter((value): value is number => value != null);
 
       const potentialIndex =
         potentialIndices.length > 0 ? Math.min(...potentialIndices) : null;
       if (potentialIndex == null) {
         if (buffer.length > 0) {
-          flushText(controller, buffer);
+          flushRecoveredBufferText(controller, buffer);
           buffer = "";
         }
         return;
@@ -1026,8 +1313,9 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         hasEmittedStart: false,
         partialParam: null,
         emittedInput: "",
+        pendingToolInputParts: [],
         raw: openTag,
-        args: {},
+        args: Object.create(null) as Record<string, unknown>,
         buffer: "",
       };
 
@@ -1136,8 +1424,9 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               hasEmittedStart: false,
               partialParam: null,
               emittedInput: "",
+              pendingToolInputParts: [],
               raw: toolCall.outerOpenTag,
-              args: {},
+              args: Object.create(null) as Record<string, unknown>,
               buffer: "",
             };
             toolCall.activeCall = activeCall;
@@ -1254,8 +1543,9 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               hasEmittedStart: false,
               partialParam: null,
               emittedInput: "",
+              pendingToolInputParts: [],
               raw: openTag,
-              args: {},
+              args: Object.create(null) as Record<string, unknown>,
               buffer: "",
             };
             const ok = finalizeCall(
@@ -1280,8 +1570,9 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             hasEmittedStart: false,
             partialParam: null,
             emittedInput: "",
+            pendingToolInputParts: [],
             raw: openTag,
-            args: {},
+            args: Object.create(null) as Record<string, unknown>,
             buffer: "",
           };
 
@@ -1361,30 +1652,28 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       if (!calls || calls.length === 0) {
         return false;
       }
-      for (const call of calls) {
-        const toolCallId = generateToolCallId();
-        const input = stringifyToolInputWithSchema({
-          tools,
-          toolName: call.toolName,
-          args: call.args,
-        });
+      const serializedCalls = serializeQwenToolParserCalls(calls, tools);
+      if (!serializedCalls) {
+        return false;
+      }
+      for (const call of serializedCalls) {
         controller.enqueue({
           type: "tool-input-start",
-          id: toolCallId,
+          id: call.toolCallId,
           toolName: call.toolName,
         });
-        if (input.length > 0) {
+        if (call.input.length > 0) {
           controller.enqueue({
             type: "tool-input-delta",
-            id: toolCallId,
-            delta: input,
+            id: call.toolCallId,
+            delta: call.input,
           });
         }
         enqueueToolInputEndAndCall({
           controller,
-          id: toolCallId,
+          id: call.toolCallId,
           toolName: call.toolName,
-          input,
+          input: call.input,
         });
       }
       return true;
@@ -1409,13 +1698,13 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           ? "Could not complete streaming Qwen3CoderToolParser XML tool call at finish; emitting original text."
           : "Could not complete streaming Qwen3CoderToolParser XML tool call at finish.",
         {
-          toolCall: rawToolCall,
+          toolCall: safeToolCallMetadataText(rawToolCall),
           ...(metadata.toolCallId ? { toolCallId: metadata.toolCallId } : {}),
           ...(toolName ? { toolName } : {}),
           dropReason: "unfinished-tool-call",
         }
       );
-      if (shouldEmitRaw) {
+      if (shouldEmitRaw && !toolCallTextHasPrototypeSensitiveKey(rawToolCall)) {
         flushText(controller, rawToolCall);
       }
     };
@@ -1431,13 +1720,13 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
           ? "Could not complete streaming Qwen3CoderToolParser call block at finish; emitting original text."
           : "Could not complete streaming Qwen3CoderToolParser call block at finish.",
         {
-          toolCall: rawCallText,
+          toolCall: safeToolCallMetadataText(rawCallText),
           toolCallId: callState.toolCallId,
           ...(callState.toolName ? { toolName: callState.toolName } : {}),
           dropReason: "unfinished-tool-call",
         }
       );
-      if (shouldEmitRaw) {
+      if (shouldEmitRaw && !toolCallTextHasPrototypeSensitiveKey(rawCallText)) {
         flushText(controller, rawCallText);
       }
     };
@@ -1480,8 +1769,9 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
                 hasEmittedStart: false,
                 partialParam: null,
                 emittedInput: "",
+                pendingToolInputParts: [],
                 raw: toolCall.outerOpenTag,
-                args: {},
+                args: Object.create(null) as Record<string, unknown>,
                 buffer: "",
               };
             }
@@ -1501,7 +1791,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
             const shouldFlushTrailingText =
               result.ok || !shouldEmitRawToolCallTextOnError(options);
             if (shouldFlushTrailingText && result.trailingText.length > 0) {
-              flushText(controller, result.trailingText);
+              flushRecoveredTrailingText(
+                controller,
+                toolCall.activeCall,
+                result.trailingText
+              );
             }
             if (!result.ok && toolCall.emittedToolCallCount === 0) {
               reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
@@ -1524,7 +1818,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
               const shouldFlushTrailingText =
                 result.ok || !shouldEmitRawToolCallTextOnError(options);
               if (shouldFlushTrailingText && result.trailingText.length > 0) {
-                flushText(controller, result.trailingText);
+                flushRecoveredTrailingText(
+                  controller,
+                  toolCall.activeCall,
+                  result.trailingText
+                );
               }
               if (!result.ok && toolCall.emittedToolCallCount === 0) {
                 reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
@@ -1560,7 +1858,11 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         const shouldFlushTrailingText =
           result.ok || !shouldEmitRawToolCallTextOnError(options);
         if (shouldFlushTrailingText && result.trailingText.length > 0) {
-          flushText(controller, result.trailingText);
+          flushRecoveredTrailingText(
+            controller,
+            callState,
+            result.trailingText
+          );
         }
         if (!result.ok && openTag) {
           reportUnfinishedImplicitCallAtFinish(
@@ -1576,7 +1878,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
 
       if (buffer.length > 0) {
-        flushText(controller, buffer);
+        flushRecoveredBufferText(controller, buffer);
         buffer = "";
       }
 
@@ -1588,7 +1890,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       chunk: LanguageModelV4StreamPart
     ) => {
       if (!toolCall && buffer) {
-        flushText(controller, buffer);
+        flushRecoveredBufferText(controller, buffer);
         buffer = "";
       }
       controller.enqueue(chunk);

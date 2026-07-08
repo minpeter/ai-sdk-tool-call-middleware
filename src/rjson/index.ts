@@ -627,6 +627,19 @@ function checkDuplicates(
   }
 }
 
+function defineObjectProperty(
+  obj: Record<string, unknown>,
+  propertyKey: string,
+  value: unknown
+): void {
+  Object.defineProperty(obj, propertyKey, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
+
 // Appends a key-value pair to an object, applying the reviver function if present
 // :: parseState -> any -> any -> any -> undefined
 function appendPair(
@@ -639,7 +652,7 @@ function appendPair(
   const finalValue = state.reviver ? state.reviver(key, value) : value;
   // The reviver can return undefined to omit the key/value pair
   if (finalValue !== undefined) {
-    obj[key] = finalValue;
+    defineObjectProperty(obj, key, finalValue);
   }
 }
 

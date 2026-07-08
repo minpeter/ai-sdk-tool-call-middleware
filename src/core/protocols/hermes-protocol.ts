@@ -6,12 +6,16 @@ import type {
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import { logParseFailure } from "../utils/debug";
+import { extractSensitiveIncompleteToolCallDropSpans } from "../utils/generated-text-sensitive-candidates";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
 import {
   addTextSegment,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataError,
+  safeToolCallMetadataText,
 } from "../utils/protocol-utils";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import {
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
@@ -32,6 +36,7 @@ import {
   findNextToolCallSpan,
   findToolCallBoundaryOutsideRjsonSyntax,
   hasPrototypeSensitiveKeyInJsonLikeObject,
+  isArgumentKeyPolicyError,
   isParsedToolCallRecord,
   normalizeInvalidJsonEscapes,
   normalizeJsonStringCtrl,
@@ -306,7 +311,10 @@ function emitIncompleteToolCall(
     snippet: errorContent,
   });
 
-  if (shouldEmitRawFallback) {
+  if (
+    shouldEmitRawFallback &&
+    !toolCallTextHasPrototypeSensitiveKey(errorContent)
+  ) {
     const errorId = generateId();
     controller.enqueue({
       type: "text-start",
@@ -340,7 +348,7 @@ function emitIncompleteToolCall(
       ? "Could not complete streaming JSON tool call at finish; emitting original text."
       : "Could not complete streaming JSON tool call at finish.",
     {
-      toolCall: errorContent,
+      toolCall: safeToolCallMetadataText(errorContent),
       toolCallId: streamingToolCallId,
       toolName,
       dropReason: "unfinished-tool-call",
@@ -413,21 +421,23 @@ function emitToolCall(context: TagProcessingContext) {
     return;
   }
 
-  const salvagedCalls = recoverKnownToolCallsFromText(
-    state.currentToolCallJson,
-    tools
-  );
-  if (salvagedCalls && salvagedCalls.length > 0) {
-    closeTextBlock(state, controller);
-    for (const salvagedCall of salvagedCalls) {
-      emitResolvedToolCall(
-        state,
-        controller,
-        salvagedCall.toolName,
-        salvagedCall.input
-      );
+  if (!isArgumentKeyPolicyError(resolved.error)) {
+    const salvagedCalls = recoverKnownToolCallsFromText(
+      state.currentToolCallJson,
+      tools
+    );
+    if (salvagedCalls && salvagedCalls.length > 0) {
+      closeTextBlock(state, controller);
+      for (const salvagedCall of salvagedCalls) {
+        emitResolvedToolCall(
+          state,
+          controller,
+          salvagedCall.toolName,
+          salvagedCall.input
+        );
+      }
+      return;
     }
-    return;
   }
 
   const finalError = resolved.error;
@@ -447,7 +457,10 @@ function emitToolCall(context: TagProcessingContext) {
     snippet: errorContent,
     error: finalError,
   });
-  if (shouldEmitRawFallback) {
+  if (
+    shouldEmitRawFallback &&
+    !toolCallTextHasPrototypeSensitiveKey(errorContent)
+  ) {
     const errorId = generateId();
     controller.enqueue({
       type: "text-start",
@@ -469,8 +482,8 @@ function emitToolCall(context: TagProcessingContext) {
       ? "Could not process streaming JSON tool call; emitting original text."
       : "Could not process streaming JSON tool call.",
     {
-      toolCall: errorContent,
-      error: finalError,
+      toolCall: safeToolCallMetadataText(errorContent),
+      error: safeToolCallMetadataError(finalError, errorContent),
       toolCallId: streamingToolCallId,
       toolName: streamingToolName,
       dropReason: "malformed-tool-call-body",
@@ -522,7 +535,10 @@ function recoverNestedStreamingToolCall(options: {
     reason: "Abandoning malformed streaming tool call before nested start tag",
     snippet: droppedToolCall,
   });
-  if (shouldEmitRawFallback) {
+  if (
+    shouldEmitRawFallback &&
+    !toolCallTextHasPrototypeSensitiveKey(droppedToolCall)
+  ) {
     const errorId = generateId();
     controller.enqueue({
       type: "text-start",
@@ -544,7 +560,7 @@ function recoverNestedStreamingToolCall(options: {
       ? "Could not process malformed streaming JSON tool call before nested start; emitting original text."
       : "Could not process malformed streaming JSON tool call before nested start.",
     {
-      toolCall: droppedToolCall,
+      toolCall: safeToolCallMetadataText(droppedToolCall),
       toolCallId: streamingToolCallId,
       toolName: streamingToolName,
       dropReason: "malformed-nested-tool-call",
@@ -672,6 +688,52 @@ function handlePartialTag(
   }
 }
 
+function dropSensitiveOrphanToolCall(options: {
+  currentIndex: number;
+  processedElements: LanguageModelV4Content[];
+  spanStartIndex: number;
+  text: string;
+  tools: LanguageModelV4FunctionTool[];
+}): number | null {
+  const sensitiveDrop = extractSensitiveIncompleteToolCallDropSpans(
+    options.text.slice(options.spanStartIndex),
+    options.tools
+  ).find((dropSpan) => dropSpan.startIndex === 0);
+  if (!sensitiveDrop) {
+    return null;
+  }
+  if (options.spanStartIndex > options.currentIndex) {
+    addTextSegment(
+      options.text.slice(options.currentIndex, options.spanStartIndex),
+      options.processedElements
+    );
+  }
+  return options.spanStartIndex + sensitiveDrop.endIndex;
+}
+
+function handleOrphanToolCallSpan(options: {
+  currentIndex: number;
+  processedElements: LanguageModelV4Content[];
+  spanStartIndex: number;
+  text: string;
+  toolCallStart: string;
+  tools: LanguageModelV4FunctionTool[];
+}): number {
+  const dropEndIndex = dropSensitiveOrphanToolCall(options);
+  if (dropEndIndex !== null) {
+    return dropEndIndex;
+  }
+
+  const skipTo = options.spanStartIndex + options.toolCallStart.length;
+  if (skipTo > options.currentIndex) {
+    addTextSegment(
+      options.text.slice(options.currentIndex, skipTo),
+      options.processedElements
+    );
+  }
+  return skipTo;
+}
+
 export const hermesProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
@@ -728,16 +790,15 @@ export const hermesProtocol = ({
       }
 
       if (!span.found) {
-        // Orphan start tag — emit everything up to and including it as text,
-        // then continue searching for subsequent tool calls. The original
-        // text is preserved verbatim here: the parser cannot be sure this is
-        // protocol markup, and dropped-call salvage happens downstream.
-        const skipTo = span.startIdx + toolCallStart.length;
-        if (skipTo > currentIndex) {
-          addTextSegment(text.slice(currentIndex, skipTo), processedElements);
-          currentIndex = skipTo;
-        }
-        searchFrom = skipTo;
+        currentIndex = handleOrphanToolCallSpan({
+          currentIndex,
+          processedElements,
+          spanStartIndex: span.startIdx,
+          text,
+          toolCallStart,
+          tools,
+        });
+        searchFrom = currentIndex;
         continue;
       }
 

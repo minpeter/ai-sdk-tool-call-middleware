@@ -44,7 +44,10 @@ def fizzbuzz(n):
 // IBM Granite 4.0: Hermes-style JSON payload inside a <tool_call> wrapper,
 // unclosed and with an unbalanced tail.
 const HERMES_JSON_OUTPUT = `<tool_call>
-{"name":"write_file","arguments":{"path":"fizzbuzz.py","content":"def fizzbuzz(n):\\n    return str(n)\\n"}}`;
+{"name":"write_file","arguments":{"path":"fizzbuzz.py","content":"def fizzbuzz(n):\\n    return str(n)\\n","mood":"sunny"}}`;
+const PROTOTYPE_SENSITIVE_HERMES_JSON_OUTPUT = `<tool_call>
+{"name":"write_file","arguments":{"path":"fizzbuzz.py","content":"body","constructor":{"polluted":true}}}
+</tool_call>`;
 
 function toChunks(text: string, size: number): string[] {
   const chunks: string[] = [];
@@ -174,6 +177,22 @@ content:${contentWithTrailingSpaces}
     });
   });
 
+  it("does not leak prototype-sensitive foreign JSON in parseGeneratedText", () => {
+    const p = yamlXmlProtocol();
+    const out = p.parseGeneratedText({
+      text: PROTOTYPE_SENSITIVE_HERMES_JSON_OUTPUT,
+      tools: writeFileTools,
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    const textOut = out
+      .filter((part) => part.type === "text")
+      .map((part) => (part as { text: string }).text)
+      .join("");
+    expect(textOut).not.toContain("constructor");
+    expect(textOut).not.toContain("<tool_call>");
+  });
+
   for (const chunkSize of [1, 7]) {
     it(`salvages Hermes-style JSON in <tool_call> when streamed with chunk size ${chunkSize}`, async () => {
       const p = yamlXmlProtocol();
@@ -200,6 +219,34 @@ content:${contentWithTrailingSpaces}
         .join("");
       expect(leakedText).not.toContain("<tool_call");
       expect(leakedText).not.toContain('{"name"');
+
+      const toolInputDeltas = out
+        .filter((part) => part.type === "tool-input-delta")
+        .map((part) => (part as { delta: string }).delta)
+        .join("");
+      expect(toolInputDeltas).not.toContain("mood");
+    });
+  }
+
+  for (const chunkSize of [1, 7]) {
+    it(`does not leak prototype-sensitive foreign JSON when streamed with chunk size ${chunkSize}`, async () => {
+      const p = yamlXmlProtocol();
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(
+          createChunkedStream(
+            toChunks(PROTOTYPE_SENSITIVE_HERMES_JSON_OUTPUT, chunkSize)
+          ),
+          p.createStreamParser({ tools: writeFileTools })
+        )
+      );
+
+      expect(out.some((part) => part.type === "tool-call")).toBe(false);
+      const textOut = out
+        .filter((part) => part.type === "text-delta")
+        .map((part) => (part as { delta: string }).delta)
+        .join("");
+      expect(textOut).not.toContain("constructor");
+      expect(textOut).not.toContain("<tool_call>");
     });
   }
 

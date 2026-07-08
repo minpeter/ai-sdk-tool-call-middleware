@@ -138,6 +138,53 @@ describe("wrapStream bare-JSON tool call recovery", () => {
       stopFinishReason
     );
   });
+
+  it("drops prototype-sensitive bare JSON tool candidates without text fallback", async () => {
+    const doStream = vi.fn().mockResolvedValue({
+      stream: providerStream([
+        { type: "stream-start", warnings: [] },
+        { type: "text-start", id: "t0" },
+        {
+          type: "text-delta",
+          id: "t0",
+          delta:
+            '{"name":"get_weather","arguments":{"city":"Seoul","\\u0063onstructor":{"polluted":true}}}',
+        },
+        { type: "text-end", id: "t0" },
+        {
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        },
+      ]),
+    });
+
+    const { stream } = await wrapStream({
+      protocol: hermesProtocol(),
+      doStream,
+      doGenerate: vi.fn(),
+      params: {
+        providerOptions: {
+          toolCallMiddleware: {
+            originalTools: originalToolsSchema.encode(tools),
+          },
+        },
+      },
+    });
+
+    const out = await convertReadableStreamToArray(stream);
+
+    expect(out.some((p) => p.type === "tool-call")).toBe(false);
+    const text = out
+      .filter((p) => p.type === "text-delta")
+      .map((p) => (p as { delta: string }).delta)
+      .join("");
+    expect(text).toBe("");
+    const finish = out.find((p) => p.type === "finish");
+    expect((finish as { finishReason?: unknown })?.finishReason).toEqual(
+      stopFinishReason
+    );
+  });
 });
 
 describe("wrapStream toolChoice none passthrough", () => {

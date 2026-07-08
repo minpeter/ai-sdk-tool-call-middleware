@@ -465,7 +465,7 @@ export function parse(
     string,
     unknown
   >;
-  const args: Record<string, unknown> = {};
+  const args = Object.create(null) as Record<string, unknown>;
 
   // Process each property with schema-aware handling
   for (const k of Object.keys(parsedArgsRestored || {})) {

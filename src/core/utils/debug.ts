@@ -1,3 +1,8 @@
+import {
+  safeToolCallMetadataError,
+  safeToolCallMetadataText,
+} from "./protocol-utils";
+
 export type DebugLevel = "off" | "stream" | "parse";
 
 const LINE_SPLIT_REGEX = /\r?\n/;
@@ -65,12 +70,20 @@ function safeStringify(value: unknown): string {
   }
 }
 
+function safeDebugText(value: unknown): string {
+  return safeToolCallMetadataText(safeStringify(value)) ?? "";
+}
+
 function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    const stack = error.stack ? `\n${error.stack}` : "";
-    return `\n${error.name}: ${error.message}${stack}`;
+  const safeError = safeToolCallMetadataError(error);
+  if (typeof safeError === "string") {
+    return `\n${safeError}`;
   }
-  return safeStringify(error);
+  if (safeError instanceof Error) {
+    const stack = safeError.stack ? `\n${safeError.stack}` : "";
+    return `\n${safeError.name}: ${safeError.message}${stack}`;
+  }
+  return safeStringify(safeError);
 }
 
 function truncateSnippet(snippet: string): string {
@@ -99,7 +112,7 @@ export function logParseFailure({
   console.log(cGray("[debug:mw:fail]"), label, cYellow(reason));
 
   if (snippet) {
-    const formatted = truncateSnippet(snippet);
+    const formatted = truncateSnippet(safeDebugText(snippet));
     console.log(cGray("[debug:mw:fail:snippet]"), formatted);
   }
 
@@ -110,12 +123,12 @@ export function logParseFailure({
 
 export function logRawChunk(part: unknown) {
   // Raw provider stream/generate output
-  console.log(cGray("[debug:mw:raw]"), cYellow(safeStringify(part)));
+  console.log(cGray("[debug:mw:raw]"), cYellow(safeDebugText(part)));
 }
 
 export function logParsedChunk(part: unknown) {
   // Normalized middleware output
-  console.log(cGray("[debug:mw:out]"), cCyan(safeStringify(part)));
+  console.log(cGray("[debug:mw:out]"), cCyan(safeDebugText(part)));
 }
 
 function getHighlightStyle(): "inverse" | "underline" | "bold" | "bg" {
@@ -190,13 +203,17 @@ export function logParsedSummary({
   if (originalText) {
     const style = getHighlightStyle();
     const highlight = getHighlightFunction(style);
-    const rendered = renderHighlightedText(originalText, style, highlight);
+    const rendered = renderHighlightedText(
+      safeToolCallMetadataText(originalText) ?? "",
+      style,
+      highlight
+    );
 
     console.log(cGray("[debug:mw:origin]"), `\n${rendered}`);
   }
 
   if (toolCalls.length > 0) {
-    const styledSummary = safeStringify(toolCalls)
+    const styledSummary = safeDebugText(toolCalls)
       .split(LINE_SPLIT_REGEX)
       .map((line) => (line.length ? cBgBlue(line) : line))
       .join("\n");

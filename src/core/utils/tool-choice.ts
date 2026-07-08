@@ -3,6 +3,11 @@ import type {
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import type { OnErrorFn } from "./on-error";
+import {
+  REDACTED_SENSITIVE_TOOL_CALL_TEXT,
+  safeToolCallMetadataText,
+} from "./protocol-utils";
+import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 import { coerceToolCallInput } from "./tool-call-coercion";
 
 /**
@@ -79,6 +84,15 @@ function safeStringify(value: unknown): string {
   }
 }
 
+function safeToolChoiceMetadataValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return safeToolCallMetadataText(value);
+  }
+  return toolCallInputHasPrototypeSensitiveKey(value)
+    ? REDACTED_SENSITIVE_TOOL_CALL_TEXT
+    : value;
+}
+
 export function parseToolChoicePayload({
   text,
   tools,
@@ -90,7 +104,7 @@ export function parseToolChoicePayload({
     parsed = JSON.parse(text);
   } catch (error) {
     onError?.(errorMessage, {
-      text,
+      text: safeToolCallMetadataText(text),
       error: error instanceof Error ? error.message : String(error),
     });
     return { toolName: "unknown", input: "{}" };
@@ -99,13 +113,21 @@ export function parseToolChoicePayload({
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     onError?.("toolChoice JSON payload must be an object", {
       parsedType: typeof parsed,
-      parsed,
+      parsed: safeToolChoiceMetadataValue(parsed),
     });
     return { toolName: "unknown", input: "{}" };
   }
 
   const payload = parsed as Record<string, unknown>;
   const toolName = ensureNonEmptyToolName(payload.name);
+  if (toolCallInputHasPrototypeSensitiveKey(payload)) {
+    onError?.("toolChoice payload rejected for sensitive keys", {
+      toolName,
+      payload: REDACTED_SENSITIVE_TOOL_CALL_TEXT,
+    });
+    return { toolName, input: "{}" };
+  }
+
   const rawArgs = Object.hasOwn(payload, "arguments") ? payload.arguments : {};
 
   if (
@@ -115,7 +137,15 @@ export function parseToolChoicePayload({
   ) {
     onError?.("toolChoice arguments must be a JSON object", {
       toolName,
-      arguments: rawArgs,
+      arguments: safeToolChoiceMetadataValue(rawArgs),
+    });
+    return { toolName, input: "{}" };
+  }
+
+  if (toolCallInputHasPrototypeSensitiveKey(rawArgs)) {
+    onError?.("toolChoice arguments rejected for sensitive keys", {
+      toolName,
+      arguments: REDACTED_SENSITIVE_TOOL_CALL_TEXT,
     });
     return { toolName, input: "{}" };
   }
@@ -159,6 +189,6 @@ export function resolveToolChoiceSelection({
 
   return {
     ...parsed,
-    originText: text,
+    originText: safeToolCallMetadataText(text) ?? "",
   };
 }

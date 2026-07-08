@@ -1,3 +1,5 @@
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
+
 export interface QwenStreamCallState {
   args: Record<string, unknown>;
   buffer: string;
@@ -5,6 +7,7 @@ export interface QwenStreamCallState {
   endTagName: string;
   hasEmittedStart: boolean;
   partialParam: { name: string; value: string } | null;
+  pendingToolInputParts: LanguageModelV4StreamPart[];
   raw: string;
   toolCallId: string;
   toolName: string | null;

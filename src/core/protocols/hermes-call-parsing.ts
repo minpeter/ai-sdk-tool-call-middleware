@@ -15,11 +15,22 @@ import { logParseFailure } from "../utils/debug";
 import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
 import {
+  safeToolCallMetadataError,
+  safeToolCallMetadataText,
+} from "../utils/protocol-utils";
+import {
+  toolCallInputHasPrototypeSensitiveKey,
+  toolCallTextHasPrototypeSensitiveKey,
+} from "../utils/prototype-sensitive-keys";
+import { collectPatternPropertyNames } from "../utils/tool-call-pattern-properties";
+import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
+import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-schema-sanitization";
+import {
   emitToolInputProgressDelta,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
+import { unsafeDeniedPatternMayMatchKey } from "../utils/unsafe-pattern";
 import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
-import { unsafeDeniedPatternMayMatchKey } from "./hermes-unsafe-pattern";
 import type { ParserOptions } from "./protocol-interface";
 
 /**
@@ -303,7 +314,11 @@ export function canonicalizeToolInput(argumentsValue: unknown): string {
   return JSON.stringify(argumentsValue ?? {});
 }
 
-function stringifyParsedToolInput(
+function stringifyParsedToolInput(args: unknown): string {
+  return args === null ? "null" : canonicalizeToolInput(args);
+}
+
+function stringifyResolvedToolInput(
   toolName: string,
   args: unknown,
   tools: LanguageModelV4FunctionTool[]
@@ -312,7 +327,7 @@ function stringifyParsedToolInput(
     toolName,
     args,
     tools,
-    fallback: canonicalizeToolInput,
+    fallback: stringifyParsedToolInput,
   });
 }
 
@@ -525,19 +540,85 @@ export function normalizeJsonStringCtrl(json: string): string {
 }
 
 interface ArgumentKeyPolicy {
-  allowUnknownKeys: boolean;
-  deniedKeys: Set<string>;
-  deniedPatterns: RegExp[];
-  keyPatterns: RegExp[];
   knownKeys: Set<string>;
   rejectAll: boolean;
   rejectNonRecordArguments: boolean;
   schema: unknown;
-  unsafeDeniedPatterns: string[];
+  unsafeConstrainedPatterns: string[];
+}
+
+class ArgumentKeyPolicyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ArgumentKeyPolicyError";
+  }
+}
+
+export function isArgumentKeyPolicyError(error: unknown): boolean {
+  return error instanceof ArgumentKeyPolicyError;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function addNames(target: Set<string>, source: Set<string>): void {
+  for (const name of source) {
+    target.add(name);
+  }
+}
+
+function addDirectArgumentKnownKeys(
+  keys: Set<string>,
+  schema: Record<string, unknown>
+): void {
+  if (isRecord(schema.properties)) {
+    for (const [key, propertySchema] of Object.entries(schema.properties)) {
+      if (propertySchema !== false) {
+        keys.add(key);
+      }
+    }
+  }
+  if (Array.isArray(schema.required)) {
+    for (const key of schema.required) {
+      if (typeof key === "string" && key.length > 0) {
+        keys.add(key);
+      }
+    }
+  }
+}
+
+function addCombinatorArgumentKnownKeys(
+  keys: Set<string>,
+  schema: Record<string, unknown>,
+  seen: Set<object>
+): void {
+  for (const combinator of ["allOf", "anyOf", "oneOf"] as const) {
+    const variants = schema[combinator];
+    if (!Array.isArray(variants)) {
+      continue;
+    }
+    for (const variant of variants) {
+      for (const key of collectArgumentKnownKeys(variant, new Set(seen))) {
+        keys.add(key);
+      }
+    }
+  }
+}
+
+function collectArgumentKnownKeys(
+  schema: unknown,
+  seen = new Set<object>()
+): Set<string> {
+  const unwrapped = unwrapJsonSchema(schema);
+  const keys = new Set<string>();
+  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+    return keys;
+  }
+  seen.add(unwrapped);
+  addDirectArgumentKnownKeys(keys, unwrapped);
+  addCombinatorArgumentKnownKeys(keys, unwrapped, seen);
+  return keys;
 }
 
 function schemaRejectsNonRecordArguments(
@@ -603,65 +684,36 @@ function extractArgumentKeyPolicy(
   const schema = unwrapJsonSchema(tool?.inputSchema);
   if (schema === false) {
     return {
-      allowUnknownKeys: false,
-      deniedKeys: new Set(),
-      deniedPatterns: [],
-      keyPatterns: [],
       knownKeys: new Set(),
       rejectAll: true,
       rejectNonRecordArguments: true,
       schema,
-      unsafeDeniedPatterns: [],
+      unsafeConstrainedPatterns: [],
     };
   }
   if (!isRecord(schema)) {
     return;
   }
-  const properties = isRecord(schema.properties) ? schema.properties : {};
-  const patternProperties = isRecord(schema.patternProperties)
-    ? schema.patternProperties
-    : {};
-  const deniedPatterns: RegExp[] = [];
-  const keyPatterns: RegExp[] = [];
-  const unsafeDeniedPatterns: string[] = [];
-  for (const [pattern, patternSchema] of Object.entries(patternProperties)) {
-    const regex = compileSafePatternPropertyRegex(pattern);
-    if (patternSchema === false) {
-      if (regex) {
-        deniedPatterns.push(regex);
-      } else {
-        unsafeDeniedPatterns.push(pattern);
+  const unsafeConstrainedPatterns: string[] = [];
+  if (isRecord(schema.patternProperties)) {
+    for (const [pattern, patternSchema] of Object.entries(
+      schema.patternProperties
+    )) {
+      if (
+        patternSchema !== false &&
+        compileSafePatternPropertyRegex(pattern) === null &&
+        !schemaIsUnconstrained(patternSchema)
+      ) {
+        unsafeConstrainedPatterns.push(pattern);
       }
-      continue;
-    }
-    if (regex) {
-      keyPatterns.push(regex);
-    } else if (
-      patternSchema === false ||
-      !schemaIsUnconstrained(patternSchema)
-    ) {
-      unsafeDeniedPatterns.push(pattern);
     }
   }
-  const propertyEntries = Object.entries(properties);
   return {
-    allowUnknownKeys: schema.additionalProperties !== false,
-    deniedKeys: new Set(
-      propertyEntries
-        .filter(([, propertySchema]) => propertySchema === false)
-        .map(([key]) => key)
-    ),
-    deniedPatterns,
-    keyPatterns,
-    knownKeys: new Set(
-      propertyEntries
-        .filter(([, propertySchema]) => propertySchema !== false)
-        .map(([key]) => key)
-    ),
+    knownKeys: collectArgumentKnownKeys(schema),
     rejectAll: false,
     rejectNonRecordArguments: schemaRejectsNonRecordArguments(schema),
     schema,
-    unsafeDeniedPatterns,
+    unsafeConstrainedPatterns,
   };
 }
 
@@ -672,54 +724,46 @@ function applyArgumentKeyPolicy(
   if (keyPolicy?.rejectAll) {
     return null;
   }
-  if (containsPrototypeSensitiveArgumentKey(args)) {
+  if (toolCallInputHasPrototypeSensitiveKey(args)) {
+    return null;
+  }
+  if (keyPolicy && keysMatchUnsafeConstrainedPattern(args, keyPolicy)) {
     return null;
   }
   if (
     keyPolicy &&
-    Object.keys(args).some((key) => argumentKeyDeniedByPolicy(key, keyPolicy))
+    topLevelOneOfHasConflictingDeclaredKeys(args, keyPolicy.schema)
   ) {
     return null;
   }
-  const policyArgs = coerceArgsForKeyPolicy(args, keyPolicy);
+  const coercedPolicyArgs = coerceArgsForKeyPolicy(args, keyPolicy);
+  if (!isRecord(coercedPolicyArgs)) {
+    return null;
+  }
+  if (toolCallInputHasPrototypeSensitiveKey(coercedPolicyArgs)) {
+    return null;
+  }
+  if (
+    keyPolicy &&
+    keysMatchUnsafeConstrainedPattern(coercedPolicyArgs, keyPolicy)
+  ) {
+    return null;
+  }
+  const policyArgs = keyPolicy
+    ? sanitizeArgsByArgumentKeyPolicy(coercedPolicyArgs, keyPolicy)
+    : coercedPolicyArgs;
   if (!isRecord(policyArgs)) {
     return null;
   }
-  if (containsPrototypeSensitiveArgumentKey(policyArgs)) {
+  if (toolCallInputHasPrototypeSensitiveKey(policyArgs)) {
     return null;
   }
   if (
     keyPolicy &&
-    Object.keys(policyArgs).some((key) =>
-      argumentKeyDeniedByPolicy(key, keyPolicy)
-    )
-  ) {
-    return null;
-  }
-  if (keyPolicy && !keyPolicy.allowUnknownKeys) {
-    const rawUnknownKeys = Object.keys(args).filter(
-      (key) => !argumentKeyMatchesPolicy(key, keyPolicy)
-    );
-    const rawKnownKeys = new Set(
-      Object.keys(args).filter((key) =>
-        argumentKeyMatchesPolicy(key, keyPolicy)
-      )
-    );
-    const coercedKnownKeys = Object.keys(policyArgs).filter((key) =>
-      argumentKeyMatchesPolicy(key, keyPolicy)
-    );
-    const newCoercedKnownKeys = coercedKnownKeys.filter(
-      (key) => !rawKnownKeys.has(key)
-    );
-    if (newCoercedKnownKeys.length < rawUnknownKeys.length) {
-      return null;
-    }
-  }
-  if (
-    keyPolicy &&
+    shouldValidateArgumentSchemaKeyShape(keyPolicy) &&
     !argumentValueMatchesSchemaKeyShape(
       policyArgs,
-      keyPolicy.schema,
+      schemaForArgumentSchemaKeyShapeValidation(keyPolicy),
       new Set(),
       true
     )
@@ -736,27 +780,175 @@ function coerceArgsForKeyPolicy(
   return keyPolicy ? coerceBySchema(args, keyPolicy.schema) : args;
 }
 
-function argumentKeyDeniedByPolicy(
-  key: string,
+function sanitizeArgsByArgumentKeyPolicy(
+  args: Record<string, unknown>,
+  keyPolicy: ArgumentKeyPolicy
+): Record<string, unknown> {
+  const sanitized = sanitizeToolCallArgsBySchema(args, keyPolicy.schema);
+  return isRecord(sanitized) ? sanitized : args;
+}
+
+function topLevelOneOfHasConflictingDeclaredKeys(
+  args: Record<string, unknown>,
+  schema: unknown
+): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!(isRecord(unwrapped) && Array.isArray(unwrapped.oneOf))) {
+    return false;
+  }
+
+  if (oneOfHasSingleLiteralDiscriminatorMatch(args, unwrapped.oneOf)) {
+    return false;
+  }
+
+  const branchNames = unwrapped.oneOf.map((variant) => {
+    const names = collectSchemaSelectionPropertyNames(variant);
+    const branchSchema = unwrapJsonSchema(variant);
+    if (isRecord(branchSchema)) {
+      addNames(names, collectPatternPropertyNames(branchSchema, args));
+    }
+    return names;
+  });
+  const keyBranchCounts = new Map<string, number>();
+  for (const names of branchNames) {
+    for (const name of names) {
+      keyBranchCounts.set(name, (keyBranchCounts.get(name) ?? 0) + 1);
+    }
+  }
+
+  let matchedBranches = 0;
+  for (const names of branchNames) {
+    for (const name of names) {
+      if (keyBranchCounts.get(name) === 1 && Object.hasOwn(args, name)) {
+        matchedBranches += 1;
+        break;
+      }
+    }
+  }
+  return matchedBranches > 1;
+}
+
+function oneOfHasSingleLiteralDiscriminatorMatch(
+  args: Record<string, unknown>,
+  variants: unknown[]
+): boolean {
+  let matches = 0;
+  for (const variant of variants) {
+    if (variantHasLiteralDiscriminatorMatch(variant, args)) {
+      matches += 1;
+    }
+  }
+  return matches === 1;
+}
+
+function variantHasLiteralDiscriminatorMatch(
+  variant: unknown,
+  args: Record<string, unknown>
+): boolean {
+  const unwrapped = unwrapJsonSchema(variant);
+  if (!(isRecord(unwrapped) && isRecord(unwrapped.properties))) {
+    return false;
+  }
+  let sawMatch = false;
+  for (const [key, propertySchema] of Object.entries(unwrapped.properties)) {
+    if (!Object.hasOwn(args, key)) {
+      continue;
+    }
+    const literalMatch = propertySchemaLiteralMatch(propertySchema, args[key]);
+    if (literalMatch === false) {
+      return false;
+    }
+    if (literalMatch === true) {
+      sawMatch = true;
+    }
+  }
+  return sawMatch;
+}
+
+function propertySchemaLiteralMatch(
+  schema: unknown,
+  value: unknown
+): boolean | undefined {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!isRecord(unwrapped)) {
+    return;
+  }
+  if (Object.hasOwn(unwrapped, "const")) {
+    return JSON.stringify(unwrapped.const) === JSON.stringify(value);
+  }
+  if (Array.isArray(unwrapped.enum)) {
+    return unwrapped.enum.some(
+      (entry) => JSON.stringify(entry) === JSON.stringify(value)
+    );
+  }
+}
+
+function shouldValidateArgumentSchemaKeyShape(
   keyPolicy: ArgumentKeyPolicy
 ): boolean {
+  if (keyPolicy.knownKeys.size > 0) {
+    return true;
+  }
+  const schema = unwrapJsonSchema(keyPolicy.schema);
+  if (!isRecord(schema)) {
+    return true;
+  }
   return (
-    PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key) ||
-    keyPolicy.deniedKeys.has(key) ||
-    keyPolicy.deniedPatterns.some((pattern) => pattern.test(key)) ||
-    keyPolicy.unsafeDeniedPatterns.some((pattern) =>
+    isRecord(schema.patternProperties) ||
+    schemaHasTopLevelCombinator(schema, new Set())
+  );
+}
+
+function schemaWithoutPatternProperties(
+  schema: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key !== "patternProperties") {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function schemaForArgumentSchemaKeyShapeValidation(
+  keyPolicy: ArgumentKeyPolicy
+): unknown {
+  const schema = unwrapJsonSchema(keyPolicy.schema);
+  if (
+    isRecord(schema) &&
+    schema.additionalProperties === true &&
+    isRecord(schema.patternProperties)
+  ) {
+    return schemaWithoutPatternProperties(schema);
+  }
+  return keyPolicy.schema;
+}
+
+function keysMatchUnsafeConstrainedPattern(
+  args: Record<string, unknown>,
+  keyPolicy: ArgumentKeyPolicy
+): boolean {
+  return Object.keys(args).some((key) =>
+    keyPolicy.unsafeConstrainedPatterns.some((pattern) =>
       unsafeDeniedPatternMayMatchKey(pattern, key)
     )
   );
 }
 
-function argumentKeyMatchesPolicy(
-  key: string,
-  keyPolicy: ArgumentKeyPolicy
+function schemaHasTopLevelCombinator(
+  schema: unknown,
+  seen: Set<object>
 ): boolean {
+  const unwrapped = unwrapJsonSchema(schema);
+  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+    return false;
+  }
+  seen.add(unwrapped);
   return (
-    keyPolicy.knownKeys.has(key) ||
-    keyPolicy.keyPatterns.some((pattern) => pattern.test(key))
+    Array.isArray(unwrapped.allOf) ||
+    Array.isArray(unwrapped.anyOf) ||
+    Array.isArray(unwrapped.oneOf)
   );
 }
 
@@ -1337,6 +1529,9 @@ function applyNonRecordArgumentPolicy(
     return topLevelNullArgumentMatchesToolSchema(toolName, tools)
       ? { args }
       : null;
+  }
+  if (toolCallInputHasPrototypeSensitiveKey(args)) {
+    return null;
   }
   if (
     keyPolicy &&
@@ -1937,12 +2132,14 @@ export function resolveToolCall(
       tools
     );
     if (policyArguments === null) {
-      throw new Error("Tool call arguments contain schema-unknown keys");
+      throw new ArgumentKeyPolicyError(
+        "Tool call arguments were rejected by schema key policy"
+      );
     }
     return {
       ok: true,
       toolName: parsedToolCall.name,
-      input: stringifyParsedToolInput(
+      input: stringifyResolvedToolInput(
         parsedToolCall.name,
         policyArguments.args,
         tools
@@ -1951,6 +2148,9 @@ export function resolveToolCall(
   } catch (error) {
     const parseError =
       error instanceof Error ? error : new Error(String(error));
+    if (isArgumentKeyPolicyError(parseError)) {
+      return { ok: false, error: parseError };
+    }
     // Attempt repair for unescaped quotes (best-effort).
     const repaired = repairToolCallJsonForTools(toolCallJson, tools);
     if (repaired) {
@@ -1958,7 +2158,7 @@ export function resolveToolCall(
         return {
           ok: true,
           toolName: repaired.name,
-          input: stringifyParsedToolInput(
+          input: stringifyResolvedToolInput(
             repaired.name,
             repaired.arguments,
             tools
@@ -2039,11 +2239,7 @@ export function recoverKnownToolCallsFromText(
       calls.push({
         ok: true,
         toolName: part.toolName,
-        input: stringifyParsedToolInput(
-          part.toolName,
-          policyArguments.args,
-          tools
-        ),
+        input: stringifyParsedToolInput(policyArguments.args),
       });
     } catch {
       return null;
@@ -2071,17 +2267,19 @@ export function processToolCallJson(
     return;
   }
 
-  const salvagedCalls = recoverKnownToolCallsFromText(toolCallJson, tools);
-  if (salvagedCalls && salvagedCalls.length > 0) {
-    for (const salvagedCall of salvagedCalls) {
-      processedElements.push({
-        type: "tool-call",
-        toolCallId: generateToolCallId(),
-        toolName: salvagedCall.toolName,
-        input: salvagedCall.input,
-      });
+  if (!isArgumentKeyPolicyError(resolved.error)) {
+    const salvagedCalls = recoverKnownToolCallsFromText(toolCallJson, tools);
+    if (salvagedCalls && salvagedCalls.length > 0) {
+      for (const salvagedCall of salvagedCalls) {
+        processedElements.push({
+          type: "tool-call",
+          toolCallId: generateToolCallId(),
+          toolName: salvagedCall.toolName,
+          input: salvagedCall.input,
+        });
+      }
+      return;
     }
-    return;
   }
 
   const salvagedToolName =
@@ -2096,13 +2294,16 @@ export function processToolCallJson(
   options?.onError?.(
     "Could not process JSON tool call, keeping original text.",
     {
-      toolCall: fullMatch,
-      error: resolved.error,
+      toolCall: safeToolCallMetadataText(fullMatch),
+      error: safeToolCallMetadataError(resolved.error, fullMatch),
       toolName: salvagedToolName,
       toolCallId: salvagedToolCallId,
       dropReason: "malformed-tool-call-body",
     }
   );
+  if (toolCallTextHasPrototypeSensitiveKey(fullMatch)) {
+    return;
+  }
   processedElements.push({ type: "text", text: fullMatch });
 }
 

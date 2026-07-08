@@ -55,4 +55,46 @@ describe("createToolMiddleware wrapGenerate morph", () => {
     });
     expect(result?.content[2]).toEqual({ type: "text", text: " more text" });
   });
+
+  it("does not leak sensitive YAML tool_call fallback text", async () => {
+    const middleware = createToolMiddleware({
+      protocol: morphXmlProtocol,
+      toolSystemPromptTemplate: mockToolSystemPromptTemplate,
+    });
+
+    const tools: LanguageModelV4FunctionTool[] = [
+      {
+        type: "function",
+        name: "get_weather",
+        description: "Gets weather",
+        inputSchema: {
+          type: "object",
+          properties: { city: { type: "string" } },
+        },
+      },
+    ];
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: "<tool_call>\nname: get_weather\narguments:\n  constructor: true\n  city: Seoul\n</tool_call>",
+        },
+      ],
+    });
+
+    const result = await middleware.wrapGenerate?.({
+      doGenerate,
+      params: {
+        prompt: [],
+        tools,
+        providerOptions: {
+          toolCallMiddleware: {
+            originalTools: originalToolsSchema.encode(tools),
+          },
+        },
+      },
+    } as any);
+
+    expect(result?.content).toEqual([]);
+  });
 });

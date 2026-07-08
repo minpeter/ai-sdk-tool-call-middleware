@@ -7,18 +7,24 @@ import type {
 import { parse, stringify } from "../../rxml";
 import { unescapeXml } from "../../rxml/utils/helpers";
 import { unwrapJsonSchema } from "../../schema-coerce";
+import { recoverToolCallFromJsonCandidatesWithStatus } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
 import {
   createFlushTextHandler,
   extractToolNames,
   formatToolsWithPromptTemplate,
+  safeToolCallMetadataError,
+  safeToolCallMetadataText,
 } from "../utils/protocol-utils";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
+import { shouldBufferToolInputProgress } from "../utils/tool-call-progress-buffering";
 import {
-  emitFailedToolInputLifecycle,
-  emitFinalizedToolInputLifecycle,
-  emitToolInputProgressDelta,
+  emitBufferedToolInputProgressDelta,
+  emitFailedBufferedToolInputLifecycle,
+  emitFinalizedBufferedToolInputLifecycle,
+  isPrototypeSensitiveToolCallInputError,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
@@ -30,6 +36,8 @@ import {
   type StreamingToolCallState,
 } from "./morph-xml-stream-state-machine";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
+
+const XML_PROGRESS_TAG_NAME_REGEX = /^[A-Za-z_][\w.:-]*/;
 
 export interface MorphXmlProtocolOptions {
   parseOptions?: {
@@ -87,31 +95,34 @@ function processToolCall(params: ProcessToolCallParams): void {
       type: "tool-call",
       toolCallId: generateToolCallId(),
       toolName: toolCall.toolName,
-      input: JSON.stringify(parsed),
+      input: stringifyToolInputWithSchema({
+        toolName: toolCall.toolName,
+        args: parsed,
+        tools,
+      }),
     });
   } catch (error) {
     const originalCallText = text.slice(toolCall.startIndex, toolCall.endIndex);
     options?.onError?.(
       `Could not process XML tool call: ${toolCall.toolName}`,
       {
-        toolCall: originalCallText,
-        error,
+        toolCall: safeToolCallMetadataText(originalCallText),
+        error: safeToolCallMetadataError(error, originalCallText),
         toolName: toolCall.toolName,
         toolCallId: generateToolCallId(),
         dropReason: "malformed-tool-call-body",
       }
     );
+    if (toolCallTextHasPrototypeSensitiveKey(originalCallText)) {
+      return;
+    }
     processedElements.push({ type: "text", text: originalCallText });
   }
 }
 
 interface HandleStreamingToolCallEndParams {
   ctrl: TransformStreamDefaultController<LanguageModelV4StreamPart>;
-  currentToolCall: {
-    name: string;
-    toolCallId: string;
-    emittedInput: string;
-  };
+  currentToolCall: StreamingToolCallState;
   flushText: FlushTextFn;
   options?: ParserOptions;
   parseOptions?: Record<string, unknown>;
@@ -629,6 +640,30 @@ function findTrailingUnclosedStringTag(options: {
   return bestName;
 }
 
+function buildEmptyTrailingStringTagProgressContent(options: {
+  tagName: string;
+  toolContent: string;
+}): string | null {
+  const openPattern = new RegExp(
+    `<${escapeRegExp(options.tagName)}(?:\\s[^>]*)?>`,
+    "gi"
+  );
+  let lastOpenEnd = -1;
+
+  for (const match of options.toolContent.matchAll(openPattern)) {
+    const { index } = match;
+    if (index !== undefined) {
+      lastOpenEnd = index + match[0].length;
+    }
+  }
+
+  if (lastOpenEnd === -1) {
+    return null;
+  }
+
+  return `${options.toolContent.slice(0, lastOpenEnd)}</${options.tagName}>`;
+}
+
 function getSchemaObjectProperty(
   schema: unknown,
   propertyName: string
@@ -725,6 +760,17 @@ function parseXmlContentForStreamProgress({
       return null;
     }
   };
+  const tryStringify = (args: unknown): string | null => {
+    try {
+      return stringifyToolInputWithSchema({
+        toolName,
+        args,
+        tools,
+      });
+    } catch {
+      return null;
+    }
+  };
 
   const strictFull = tryParse(toolContent);
   if (
@@ -735,11 +781,7 @@ function parseXmlContentForStreamProgress({
       toolSchema,
     })
   ) {
-    return stringifyToolInputWithSchema({
-      toolName,
-      args: strictFull,
-      tools,
-    });
+    return tryStringify(strictFull);
   }
 
   const stringPropertyNames = getObjectSchemaStringPropertyNames(toolSchema);
@@ -749,14 +791,14 @@ function parseXmlContentForStreamProgress({
       stringPropertyNames,
     });
     if (trailingStringTag) {
-      const repaired = `${toolContent}</${trailingStringTag}>`;
+      const repaired =
+        buildEmptyTrailingStringTagProgressContent({
+          toolContent,
+          tagName: trailingStringTag,
+        }) ?? `${toolContent}</${trailingStringTag}>`;
       const parsedRepaired = tryParse(repaired);
       if (parsedRepaired !== null) {
-        return stringifyToolInputWithSchema({
-          toolName,
-          args: parsedRepaired,
-          tools,
-        });
+        return tryStringify(parsedRepaired);
       }
     }
   }
@@ -781,11 +823,7 @@ function parseXmlContentForStreamProgress({
         toolSchema,
       })
     ) {
-      return stringifyToolInputWithSchema({
-        toolName,
-        args: parsedCandidate,
-        tools,
-      });
+      return tryStringify(parsedCandidate);
     }
     searchEnd = gtIndex;
   }
@@ -825,7 +863,8 @@ function handleStreamingToolCallEnd(
       args: parsedResult,
       tools,
     });
-    emitFinalizedToolInputLifecycle({
+    emitFinalizedBufferedToolInputLifecycle({
+      bufferedParts: currentToolCall.pendingToolInputParts,
       controller: ctrl,
       id: currentToolCall.toolCallId,
       state: currentToolCall,
@@ -836,18 +875,21 @@ function handleStreamingToolCallEnd(
   } catch (error) {
     const original = `<${currentToolCall.name}>${toolContent}</${currentToolCall.name}>`;
     const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-    emitFailedToolInputLifecycle({
+    emitFailedBufferedToolInputLifecycle({
+      bufferedParts: currentToolCall.pendingToolInputParts,
       controller: ctrl,
       id: currentToolCall.toolCallId,
       emitRawToolCallTextOnError: emitRawFallback,
+      endInputOnError: currentToolCall.hasEmittedStart,
+      hideBufferedInputOnError: isPrototypeSensitiveToolCallInputError(error),
       rawToolCallText: original,
       emitRawText: (rawText) => {
         flushText(ctrl, rawText);
       },
     });
     options?.onError?.("Could not process streaming XML tool call", {
-      toolCall: original,
-      error,
+      toolCall: safeToolCallMetadataText(original),
+      error: safeToolCallMetadataError(error, original),
       toolName: currentToolCall.name,
       toolCallId: currentToolCall.toolCallId,
       dropReason: "malformed-tool-call-body",
@@ -1410,6 +1452,134 @@ function findToolCallsWithFallbacks(
   return { parseText, toolCalls };
 }
 
+function parseXmlProgressTagName(innerTag: string): string | null {
+  const tag = innerTag.trimStart();
+  const body = tag.startsWith("/") ? tag.slice(1).trimStart() : tag;
+  const match = XML_PROGRESS_TAG_NAME_REGEX.exec(body);
+  return match?.[0] ?? null;
+}
+
+function updateXmlProgressTagStack(innerTag: string, stack: string[]): void {
+  if (
+    innerTag.length === 0 ||
+    innerTag.startsWith("!") ||
+    innerTag.startsWith("?")
+  ) {
+    return;
+  }
+
+  const tagName = parseXmlProgressTagName(innerTag);
+  if (tagName === null) {
+    return;
+  }
+
+  if (innerTag.startsWith("/")) {
+    const openIndex = stack.lastIndexOf(tagName);
+    if (openIndex >= 0) {
+      stack.length = openIndex;
+    }
+    return;
+  }
+
+  if (!innerTag.endsWith("/")) {
+    stack.push(tagName);
+  }
+}
+
+function hasOpenTextElementAtProgressEnd(toolContent: string): boolean {
+  const stack: string[] = [];
+  const tagRegex = /<[^>]*>/g;
+  let lastTagEnd = 0;
+  let match = tagRegex.exec(toolContent);
+
+  while (match !== null) {
+    const [tag] = match;
+    const innerTag = tag.slice(1, -1).trim();
+    lastTagEnd = tagRegex.lastIndex;
+
+    updateXmlProgressTagStack(innerTag, stack);
+    match = tagRegex.exec(toolContent);
+  }
+
+  return stack.length > 0 && toolContent.slice(lastTagEnd).trim().length > 0;
+}
+
+function shouldBufferMorphToolInputProgress(
+  toolContent: string,
+  fullInput: string
+): boolean {
+  return (
+    shouldBufferToolInputProgress(fullInput) ||
+    !hasOpenTextElementAtProgressEnd(toolContent)
+  );
+}
+
+function isMorphToolInputProgressContainer(fullInput: string): boolean {
+  const trimmed = fullInput.trimStart();
+  return trimmed.startsWith("{") || trimmed.startsWith("[");
+}
+
+function isEmptyMorphToolInputProgress(
+  toolContent: string,
+  fullInput: string
+): boolean {
+  return fullInput === "{}" && toolContent.trim().length === 0;
+}
+
+function enqueueMorphToolInputProgressPart(options: {
+  controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
+  fullInput: string;
+  part: LanguageModelV4StreamPart;
+  toolCall: StreamingToolCallState;
+  toolContent: string;
+}): void {
+  if (
+    options.toolCall.pendingToolInputParts.length > 0 ||
+    shouldBufferMorphToolInputProgress(options.toolContent, options.fullInput)
+  ) {
+    options.toolCall.pendingToolInputParts.push(options.part);
+    return;
+  }
+
+  options.controller.enqueue(options.part);
+}
+
+function emitMorphToolInputProgressDelta(options: {
+  controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
+  fullInput: string;
+  toolCall: StreamingToolCallState;
+  toolContent: string;
+}): void {
+  if (!isMorphToolInputProgressContainer(options.fullInput)) {
+    return;
+  }
+
+  emitBufferedToolInputProgressDelta({
+    enqueue: (part) => {
+      enqueueMorphToolInputProgressPart({ ...options, part });
+    },
+    id: options.toolCall.toolCallId,
+    state: options.toolCall,
+    fullInput: options.fullInput,
+  });
+}
+
+function pushGeneratedTextSegment(
+  processedElements: LanguageModelV4Content[],
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): void {
+  const recovered = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+  if (
+    recovered.kind === "recovered" ||
+    recovered.kind === "dropped-sensitive-candidate"
+  ) {
+    processedElements.push(...recovered.content);
+    return;
+  }
+  processedElements.push({ type: "text", text });
+}
+
 export const morphXmlProtocol = (
   protocolOptions?: MorphXmlProtocolOptions
 ): TCMCoreProtocol => {
@@ -1456,10 +1626,11 @@ export const morphXmlProtocol = (
 
       for (const tc of toolCalls) {
         if (tc.startIndex > currentIndex) {
-          processedElements.push({
-            type: "text",
-            text: parseText.slice(currentIndex, tc.startIndex),
-          });
+          pushGeneratedTextSegment(
+            processedElements,
+            parseText.slice(currentIndex, tc.startIndex),
+            tools
+          );
         }
         processToolCall({
           toolCall: tc,
@@ -1473,10 +1644,11 @@ export const morphXmlProtocol = (
       }
 
       if (currentIndex < parseText.length) {
-        processedElements.push({
-          type: "text",
-          text: parseText.slice(currentIndex),
-        });
+        pushGeneratedTextSegment(
+          processedElements,
+          parseText.slice(currentIndex),
+          tools
+        );
       }
 
       return processedElements;
@@ -1509,9 +1681,11 @@ export const morphXmlProtocol = (
           name: toolName,
           toolCallId: generateToolCallId(),
           emittedInput: "",
+          hasEmittedStart: true,
           lastProgressContentLength: null,
           lastProgressGtIndex: null,
           lastProgressFullInput: null,
+          pendingToolInputParts: [],
         };
         controller.enqueue({
           type: "tool-input-start",
@@ -1522,7 +1696,7 @@ export const morphXmlProtocol = (
       };
 
       const emitToolInputProgress = (
-        controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
+        _controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
         toolCall: StreamingToolCallState,
         toolContent: string
       ) => {
@@ -1536,13 +1710,13 @@ export const morphXmlProtocol = (
           if (cached == null) {
             return;
           }
-          if (cached === "{}" && toolContent.trim().length === 0) {
+          if (isEmptyMorphToolInputProgress(toolContent, cached)) {
             return;
           }
-          emitToolInputProgressDelta({
-            controller,
-            id: toolCall.toolCallId,
-            state: toolCall,
+          emitMorphToolInputProgressDelta({
+            controller: _controller,
+            toolCall,
+            toolContent,
             fullInput: cached,
           });
           return;
@@ -1562,13 +1736,13 @@ export const morphXmlProtocol = (
         if (fullInput == null) {
           return;
         }
-        if (fullInput === "{}" && toolContent.trim().length === 0) {
+        if (isEmptyMorphToolInputProgress(toolContent, fullInput)) {
           return;
         }
-        emitToolInputProgressDelta({
-          controller,
-          id: toolCall.toolCallId,
-          state: toolCall,
+        emitMorphToolInputProgressDelta({
+          controller: _controller,
+          toolCall,
+          toolContent,
           fullInput,
         });
       };
@@ -1603,7 +1777,8 @@ export const morphXmlProtocol = (
             args: parsedResult,
             tools,
           });
-          emitFinalizedToolInputLifecycle({
+          emitFinalizedBufferedToolInputLifecycle({
+            bufferedParts: currentToolCall.pendingToolInputParts,
             controller,
             id: currentToolCall.toolCallId,
             state: currentToolCall,
@@ -1614,10 +1789,14 @@ export const morphXmlProtocol = (
         } catch (error) {
           const unfinishedContent = `<${currentToolCall.name}>${buffer}`;
           const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-          emitFailedToolInputLifecycle({
+          emitFailedBufferedToolInputLifecycle({
+            bufferedParts: currentToolCall.pendingToolInputParts,
             controller,
             id: currentToolCall.toolCallId,
             emitRawToolCallTextOnError: emitRawFallback,
+            endInputOnError: currentToolCall.hasEmittedStart,
+            hideBufferedInputOnError:
+              isPrototypeSensitiveToolCallInputError(error),
             rawToolCallText: unfinishedContent,
             emitRawText: (rawText) => {
               flushText(controller, rawText);
@@ -1626,11 +1805,11 @@ export const morphXmlProtocol = (
           options?.onError?.(
             "Could not complete streaming XML tool call at finish.",
             {
-              toolCall: unfinishedContent,
+              toolCall: safeToolCallMetadataText(unfinishedContent),
               toolCallId: currentToolCall.toolCallId,
               toolName: currentToolCall.name,
               dropReason: "unfinished-tool-call",
-              error,
+              error: safeToolCallMetadataError(error, unfinishedContent),
             }
           );
         }

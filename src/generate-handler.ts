@@ -17,9 +17,13 @@ import {
   normalizeToolCallsFinishReason,
   shouldRewriteFinishReasonToToolCalls,
 } from "./core/utils/finish-reason";
-import { recoverToolCallFromJsonCandidates } from "./core/utils/generated-text-json-recovery";
+import { recoverToolCallFromJsonCandidatesWithStatus } from "./core/utils/generated-text-json-recovery";
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
+import {
+  safeToolCallMetadataText,
+  safeToolCallMetadataValue,
+} from "./core/utils/protocol-utils";
 import {
   decodeOriginalToolsFromProviderOptions,
   getDroppedProviderTools,
@@ -43,7 +47,10 @@ function logDebugSummary(
     debugSummary.originalText = originText;
     try {
       debugSummary.toolCalls = JSON.stringify([
-        { toolName: toolCall.toolName, input: toolCall.input },
+        {
+          toolName: toolCall.toolName,
+          input: safeToolCallMetadataValue(toolCall.input),
+        },
       ]);
     } catch {
       // ignore
@@ -88,7 +95,7 @@ async function handleToolChoice(
   const onError = extractOnErrorOption(params.providerOptions)?.onError;
 
   if (typeof firstText === "string" && getDebugLevel() === "parse") {
-    logRawChunk(firstText);
+    logRawChunk(safeToolCallMetadataText(firstText) ?? "");
   }
 
   const { toolName, input, originText } = resolveToolChoiceSelection({
@@ -136,7 +143,7 @@ function parseContent(
       return [contentItem];
     }
     if (getDebugLevel() === "stream") {
-      logRawChunk(contentItem.text);
+      logRawChunk(safeToolCallMetadataText(contentItem.text) ?? "");
     }
     const parsedByProtocol = protocol.parseGeneratedText({
       text: contentItem.text,
@@ -155,11 +162,17 @@ function parseContent(
       return parsedByProtocol;
     }
 
-    const recoveredFromJson = recoverToolCallFromJsonCandidates(
+    const recoveredFromJson = recoverToolCallFromJsonCandidatesWithStatus(
       contentItem.text,
       tools
     );
-    return recoveredFromJson ?? parsedByProtocol;
+    if (recoveredFromJson.kind === "recovered") {
+      return recoveredFromJson.content;
+    }
+    if (recoveredFromJson.kind === "dropped-sensitive-candidate") {
+      return recoveredFromJson.content;
+    }
+    return parsedByProtocol;
   });
 
   // Provider-executed tool calls belong to the provider's own tools; their
@@ -199,7 +212,7 @@ function computeDebugSummary(options: {
   const segments = protocol.extractToolCallSegments
     ? protocol.extractToolCallSegments({ text: allText, tools })
     : [];
-  const originalText = segments.join("\n\n");
+  const originalText = safeToolCallMetadataText(segments.join("\n\n")) ?? "";
 
   const toolCalls = newContent.filter(
     (p): p is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
@@ -213,7 +226,7 @@ function computeDebugSummary(options: {
       dbg.toolCalls = JSON.stringify(
         toolCalls.map((tc) => ({
           toolName: tc.toolName,
-          input: tc.input as unknown,
+          input: safeToolCallMetadataValue(tc.input),
         }))
       );
     } catch {
