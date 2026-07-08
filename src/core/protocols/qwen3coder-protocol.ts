@@ -19,7 +19,6 @@ import {
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
-import { shouldBufferToolInputProgress } from "../utils/tool-call-progress-buffering";
 import {
   emitBufferedToolInputProgressDelta,
   emitFailedBufferedToolInputLifecycle,
@@ -829,7 +828,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     };
 
     const maybeEmitToolInputProgress = (
-      controller: StreamController,
+      _controller: StreamController,
       callState: StreamingCallState
     ) => {
       if (!callState.hasEmittedStart) {
@@ -861,11 +860,7 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
       }
       emitBufferedToolInputProgressDelta({
         enqueue: (part) => {
-          if (shouldBufferToolInputProgress(fullInput)) {
-            callState.pendingToolInputParts.push(part);
-          } else {
-            controller.enqueue(part);
-          }
+          callState.pendingToolInputParts.push(part);
         },
         id: callState.toolCallId,
         state: callState,

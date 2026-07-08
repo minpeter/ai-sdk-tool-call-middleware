@@ -24,11 +24,12 @@ const passthroughProtocol: TCMCoreProtocol = {
   createStreamParser: () => new TransformStream(),
 };
 
-async function readUntilToolInputDelta(options: {
+async function readUntilStreamPart(options: {
   reader: ReadableStreamDefaultReader<LanguageModelV4StreamPart>;
+  stopType: LanguageModelV4StreamPart["type"];
   timeoutMs?: number;
 }): Promise<LanguageModelV4StreamPart[]> {
-  const { reader, timeoutMs = 2000 } = options;
+  const { reader, stopType, timeoutMs = 2000 } = options;
   const parts: LanguageModelV4StreamPart[] = [];
 
   const readWithTimeout = async (): Promise<
@@ -41,9 +42,7 @@ async function readUntilToolInputDelta(options: {
         new Promise<never>((_, reject) => {
           timeoutId = setTimeout(() => {
             reject(
-              new Error(
-                `Did not receive tool-input-delta within ${timeoutMs}ms`
-              )
+              new Error(`Did not receive ${stopType} within ${timeoutMs}ms`)
             );
           }, timeoutMs);
         }),
@@ -61,12 +60,26 @@ async function readUntilToolInputDelta(options: {
       break;
     }
     parts.push(value);
-    if (value.type === "tool-input-delta") {
+    if (value.type === stopType) {
       break;
     }
   }
 
   return parts;
+}
+
+function readUntilToolInputStart(options: {
+  reader: ReadableStreamDefaultReader<LanguageModelV4StreamPart>;
+  timeoutMs?: number;
+}): Promise<LanguageModelV4StreamPart[]> {
+  return readUntilStreamPart({ ...options, stopType: "tool-input-start" });
+}
+
+function readUntilToolInputDelta(options: {
+  reader: ReadableStreamDefaultReader<LanguageModelV4StreamPart>;
+  timeoutMs?: number;
+}): Promise<LanguageModelV4StreamPart[]> {
+  return readUntilStreamPart({ ...options, stopType: "tool-input-delta" });
 }
 
 describe("wrapStream tool-call coercion", () => {
@@ -345,7 +358,7 @@ describe("wrapStream tool-call coercion", () => {
     });
   }
 
-  it("streams tool-input-delta before delayed final chunk is released", async () => {
+  it("holds qwen tool-input-delta until delayed final chunk is validated", async () => {
     const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
@@ -404,7 +417,7 @@ describe("wrapStream tool-call coercion", () => {
     });
 
     const reader = result.stream.getReader();
-    const earlyParts = await readUntilToolInputDelta({ reader });
+    const earlyParts = await readUntilToolInputStart({ reader });
 
     releaseSecondChunk();
 
@@ -445,7 +458,7 @@ describe("wrapStream tool-call coercion", () => {
       true
     );
     expect(earlyParts.some((part) => part.type === "tool-input-delta")).toBe(
-      true
+      false
     );
     expect(earlyParts.some((part) => part.type === "tool-input-end")).toBe(
       false
@@ -461,7 +474,7 @@ describe("wrapStream tool-call coercion", () => {
     expect(joined).toBe(toolCall?.input);
   });
 
-  it("streams long single content argument before close while keeping coercion", async () => {
+  it("holds qwen long single content deltas until close while keeping coercion", async () => {
     const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
@@ -528,19 +541,7 @@ describe("wrapStream tool-call coercion", () => {
     });
 
     const reader = result.stream.getReader();
-    const earlyParts = await readUntilToolInputDelta({ reader });
-
-    const earlyJoined = earlyParts
-      .filter(
-        (
-          part
-        ): part is Extract<
-          LanguageModelV4StreamPart,
-          { type: "tool-input-delta" }
-        > => part.type === "tool-input-delta"
-      )
-      .map((part) => part.delta)
-      .join("");
+    const earlyParts = await readUntilToolInputStart({ reader });
 
     expect(earlyParts.some((part) => part.type === "tool-input-start")).toBe(
       true
@@ -549,8 +550,9 @@ describe("wrapStream tool-call coercion", () => {
     expect(earlyParts.some((part) => part.type === "tool-input-end")).toBe(
       false
     );
-    expect(earlyJoined).toContain('"line_count":420');
-    expect(earlyJoined).toContain(contentHead.slice(0, 120));
+    expect(earlyParts.some((part) => part.type === "tool-input-delta")).toBe(
+      false
+    );
 
     releaseSecondChunk();
 

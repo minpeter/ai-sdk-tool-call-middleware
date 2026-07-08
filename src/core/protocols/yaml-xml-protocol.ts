@@ -18,7 +18,6 @@ import {
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
-import { shouldBufferToolInputProgress } from "../utils/tool-call-progress-buffering";
 import {
   emitBufferedToolInputProgressDelta,
   emitFailedBufferedToolInputLifecycle,
@@ -1038,7 +1037,7 @@ export const yamlXmlProtocol = (
     );
 
     const emitToolInputProgress = (
-      controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
+      _controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
       toolContent: string
     ) => {
       if (!currentToolCall) {
@@ -1064,11 +1063,7 @@ export const yamlXmlProtocol = (
       }
       emitBufferedToolInputProgressDelta({
         enqueue: (part) => {
-          if (shouldBufferToolInputProgress(fullInput)) {
-            toolCall.pendingToolInputParts.push(part);
-          } else {
-            controller.enqueue(part);
-          }
+          toolCall.pendingToolInputParts.push(part);
         },
         id: toolCall.toolCallId,
         state: toolCall,

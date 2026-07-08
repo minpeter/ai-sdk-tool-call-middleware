@@ -221,6 +221,44 @@ describe("XML/YAML malformed non-leak guarantees", () => {
 
   it.each([
     {
+      name: "YAML XML",
+      protocol: yamlXmlProtocol(),
+      chunks: [
+        "<get_weather>\nlocation: first-chunk-scalar-secret\n",
+        "constructor:\n  polluted: true\n</get_weather>",
+      ],
+    },
+    {
+      name: "Qwen3Coder",
+      protocol: qwen3CoderProtocol(),
+      chunks: [
+        "<tool_call><function=get_weather><parameter=location>first-chunk-scalar-secret</parameter>",
+        '<parameter=constructor>{"polluted":true}</parameter></function></tool_call>',
+      ],
+    },
+  ])("$name does not emit scalar progress before late sensitive rejection", async ({
+    protocol,
+    chunks,
+  }) => {
+    const out = await runProtocolTextDeltaStream({
+      protocol,
+      tools: [weatherTool],
+      chunks,
+      options: { emitRawToolCallTextOnError: true },
+    });
+
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
+    const toolInputOut = extractToolInputDeltas(out).join("");
+    expect(toolInputOut).not.toContain("first-chunk-scalar-secret");
+    expect(toolInputOut).not.toContain("constructor");
+    expect(toolInputOut).not.toContain("polluted");
+    expect(extractTextDeltas(out)).not.toContain("<tool_call>");
+    expect(extractTextDeltas(out)).not.toContain("<get_weather>");
+  });
+
+  it.each([
+    {
       name: "Morph XML",
       protocol: morphXmlProtocol(),
       chunks: [
