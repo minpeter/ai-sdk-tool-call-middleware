@@ -147,6 +147,95 @@ describe("tool-call coercion regression coverage", () => {
     expect(input).toBe('{"safe":1}');
   });
 
+  it("preserves strict key normalization before dropping schema-unknown keys", () => {
+    const input = coerceToolCallInput(
+      "translate",
+      {
+        text: "ship it",
+        target_language: "ko",
+        formality: "casual",
+        extra: "drop",
+      },
+      [
+        {
+          type: "function",
+          name: "translate",
+          inputSchema: {
+            type: "object",
+            properties: {
+              text: { type: "string" },
+              targetLanguage: { type: "string" },
+              formality: { type: "string" },
+            },
+            required: ["text", "targetLanguage"],
+            additionalProperties: false,
+          },
+        },
+      ]
+    );
+
+    expect(JSON.parse(input ?? "null")).toEqual({
+      text: "ship it",
+      targetLanguage: "ko",
+      formality: "casual",
+    });
+  });
+
+  it("does not let a similar unknown key override an already-present declared key", () => {
+    const input = coerceToolCallInput(
+      "translate",
+      {
+        text: "ship it",
+        targetLanguage: "ko",
+        target_language: "ja",
+      },
+      [
+        {
+          type: "function",
+          name: "translate",
+          inputSchema: {
+            type: "object",
+            properties: {
+              text: { type: "string" },
+              targetLanguage: { type: "string" },
+            },
+            required: ["text", "targetLanguage"],
+            additionalProperties: false,
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"text":"ship it","targetLanguage":"ko"}');
+  });
+
+  it("does not normalize optional-only similar keys into optional declared keys", () => {
+    const input = coerceToolCallInput(
+      "get_weather",
+      {
+        city: "Seoul",
+        temperature_unit: "celsius",
+      },
+      [
+        {
+          type: "function",
+          name: "get_weather",
+          inputSchema: {
+            type: "object",
+            properties: {
+              city: { type: "string" },
+              temperatureUnit: { type: "string" },
+            },
+            required: ["city"],
+            additionalProperties: false,
+          },
+        },
+      ]
+    );
+
+    expect(input).toBe('{"city":"Seoul"}');
+  });
+
   it("preserves additionalProperties true keys with unsafe false patterns", () => {
     const input = coerceToolCallInput("metadata", { safe: "1", aaaa: "2" }, [
       {

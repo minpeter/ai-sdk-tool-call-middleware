@@ -105,6 +105,39 @@ mood: sunny
   },
 ];
 
+const reorderedArgsProtocolCases: readonly ProtocolCase[] = [
+  {
+    name: "Hermes",
+    protocol: hermesProtocol(),
+    text: `<tool_call>{"name":"get_weather","arguments":{"mood":"sunny","unit":"celsius","city":"Seoul"}}</tool_call>`,
+  },
+  {
+    name: "Morph XML",
+    protocol: morphXmlProtocol(),
+    text: "<get_weather><mood>sunny</mood><unit>celsius</unit><city>Seoul</city></get_weather>",
+  },
+  {
+    name: "YAML XML",
+    protocol: yamlXmlProtocol(),
+    text: `<get_weather>
+mood: sunny
+unit: celsius
+city: Seoul
+</get_weather>`,
+  },
+  {
+    name: "Qwen3Coder",
+    protocol: qwen3CoderProtocol(),
+    text: `<tool_call>
+  <function=get_weather>
+    <parameter=mood>sunny</parameter>
+    <parameter=unit>celsius</parameter>
+    <parameter=city>Seoul</parameter>
+  </function>
+</tool_call>`,
+  },
+];
+
 const emptyPropertiesProtocolCases: readonly ProtocolCase[] = [
   {
     name: "Hermes",
@@ -246,6 +279,25 @@ describe("cross-protocol tool arg sanitization", () => {
   it.each(
     protocolCases
   )("$name parseGeneratedText drops schema-unknown top-level args and emits the tool call", ({
+    protocol,
+    text,
+  }) => {
+    const parts = protocol.parseGeneratedText({
+      text,
+      tools: weatherTools,
+      options: {},
+    });
+
+    const toolCall = extractSingleToolCall(parts);
+    const input: unknown = JSON.parse(toolCall.input);
+
+    expect(toolCall.toolName).toBe("get_weather");
+    expect(input).toEqual({ city: "Seoul", unit: "celsius" });
+  });
+
+  it.each(
+    reorderedArgsProtocolCases
+  )("$name parseGeneratedText keeps declared args when optional args precede required args", ({
     protocol,
     text,
   }) => {
