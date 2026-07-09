@@ -596,6 +596,8 @@ describe("canonical v4 file content parts", () => {
   });
 
   it("normalizes string urls on canonical file parts to URL objects", () => {
+    // JSON-deserialized tool results often carry url as a string; repair to URL
+    // is intentional so model mode can still forward http(s) file parts.
     const out = normalizeToolResultForUserContent({
       type: "content",
       value: [
@@ -613,6 +615,35 @@ describe("canonical v4 file content parts", () => {
         data: { type: "url", url: new URL("https://example.com/cat.png") },
         mediaType: "image/png",
       },
+    ]);
+  });
+
+  it("rejects non-http(s) file urls as placeholders", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "url", url: new URL("file:///etc/passwd") },
+          mediaType: "text/plain",
+        },
+        {
+          type: "file",
+          data: { type: "url", url: "javascript:alert(1)" },
+          mediaType: "text/html",
+        },
+        {
+          type: "file",
+          data: { type: "url", url: "ftp://files.example.com/a.png" },
+          mediaType: "image/png",
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      { type: "text", text: "[File URL: file:///etc/passwd]" },
+      { type: "text", text: "[File URL: javascript:alert(1)]" },
+      { type: "text", text: "[Image URL: ftp://files.example.com/a.png]" },
     ]);
   });
 

@@ -79,7 +79,12 @@ const textOnlyMiddleware = createToolMiddleware({
     mediaStrategy: { mode: "placeholder" },
   }),
 });
+
+// YAML XML tool *responses* reuse Morph's response formatter — use the Morph
+// factory when you need mediaStrategy options with yamlXmlProtocol.
 ```
+
+Only `http:` / `https:` file URLs are forwarded as model file parts; other schemes become placeholders. String URLs from JSON-deserialized tool results are reparsed to `URL` objects intentionally.
 
 User-message images are unchanged — they pass through as-is.
 

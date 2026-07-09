@@ -7,6 +7,9 @@ import { toTextPart } from "./text-part";
 import { formatContentPartPlaceholder } from "./tool-result-placeholders";
 import type { ToolResponseUserContentPart } from "./tool-result-user-content";
 
+/** Only network-fetchable schemes are forwarded as model file URL parts. */
+const ALLOWED_FILE_URL_PROTOCOLS = new Set(["http:", "https:"]);
+
 function asPlaceholder(
   part: unknown,
   providerOptions?: LanguageModelV4FilePart["providerOptions"]
@@ -20,6 +23,33 @@ function parseUrl(url: string): URL | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Normalize and validate a file-part URL for model forwarding.
+ *
+ * Accepts either a `URL` instance or a string (JSON-deserialized tool results
+ * often lose the `URL` class). Only `http:` / `https:` with a non-empty host
+ * are allowed; everything else degrades to a placeholder.
+ */
+function toSafeFileUrl(rawUrl: unknown): URL | null {
+  let url: URL | null = null;
+  if (rawUrl instanceof URL) {
+    url = rawUrl;
+  } else if (typeof rawUrl === "string") {
+    url = parseUrl(rawUrl);
+  }
+
+  if (!url) {
+    return null;
+  }
+  if (!ALLOWED_FILE_URL_PROTOCOLS.has(url.protocol)) {
+    return null;
+  }
+  if (url.hostname.length === 0) {
+    return null;
+  }
+  return url;
 }
 
 function isMapping(value: unknown): value is Record<string, unknown> {
@@ -123,23 +153,12 @@ function normalizeCanonicalFilePart(
     }
     case "url": {
       const { url: rawUrl } = data;
-      if (rawUrl instanceof URL) {
-        return toValidatedFilePart({
-          data: { type: "url", url: rawUrl },
-          mediaType,
-          filename,
-          providerOptions,
-        });
-      }
-      if (typeof rawUrl !== "string") {
-        return asPlaceholder(part, providerOptions);
-      }
-      const parsed = parseUrl(rawUrl);
-      if (!parsed) {
+      const safeUrl = toSafeFileUrl(rawUrl);
+      if (!safeUrl) {
         return asPlaceholder(part, providerOptions);
       }
       return toValidatedFilePart({
-        data: { type: "url", url: parsed },
+        data: { type: "url", url: safeUrl },
         mediaType,
         filename,
         providerOptions,
