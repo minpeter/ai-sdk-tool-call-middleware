@@ -10,7 +10,8 @@ export default defineConfig([
       "schema-coerce": "src/schema-coerce/index.ts",
     },
     format: ["cjs", "esm"],
-    dts: true,
+    // TypeScript 7 has no stable Compiler API; generate .d.ts via `tsc --emitDeclarationOnly`.
+    dts: false,
     sourcemap: true,
     target: "es2018",
     platform: "node",

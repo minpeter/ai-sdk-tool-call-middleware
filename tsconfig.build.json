@@ -2,7 +2,19 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "composite": false,
-    "strictNullChecks": true,
-    "ignoreDeprecations": "6.0"
-  }
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "strictNullChecks": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "dist",
+    "build",
+    "node_modules",
+    "tsup.config.ts",
+    "vitest.config.ts",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts"
+  ]
 }
