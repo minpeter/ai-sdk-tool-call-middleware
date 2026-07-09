@@ -28,8 +28,9 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
       toolName: "get_weather",
       dropReason: "malformed-tool-call-body",
     });
-    expect(typeof metadata?.toolCallId).toBe("string");
-    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
+    const toolCallId = metadata?.toolCallId;
+    expect(typeof toolCallId).toBe("string");
+    expect((toolCallId as string).length).toBeGreaterThan(0);
     expect(metadata?.toolCall).toContain("<get_weather>");
   });
 
@@ -52,8 +53,9 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
     });
     const { cause } = metadata as { cause?: { kind?: string } };
     expect(cause).toMatchObject({ kind: "yaml-parse-error" });
-    expect(typeof metadata?.toolCallId).toBe("string");
-    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
+    const toolCallId = metadata?.toolCallId;
+    expect(typeof toolCallId).toBe("string");
+    expect((toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it("attaches yaml-non-mapping cause to the uniform malformed-tool-call-body onError metadata when the YAML document is not a mapping", () => {
@@ -75,8 +77,9 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
     });
     const { cause } = metadata as { cause?: { kind?: string } };
     expect(cause).toMatchObject({ kind: "yaml-non-mapping" });
-    expect(typeof metadata?.toolCallId).toBe("string");
-    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
+    const toolCallId = metadata?.toolCallId;
+    expect(typeof toolCallId).toBe("string");
+    expect((toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it.each(

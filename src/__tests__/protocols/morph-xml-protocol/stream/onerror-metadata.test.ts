@@ -62,8 +62,9 @@ describe("morphXmlProtocol streaming onError metadata", () => {
       toolName: "write_file",
       dropReason: "malformed-tool-call-body",
     });
-    expect(typeof metadata?.toolCallId).toBe("string");
-    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
+    const toolCallId = metadata?.toolCallId;
+    expect(typeof toolCallId).toBe("string");
+    expect((toolCallId as string).length).toBeGreaterThan(0);
     expect(metadata?.toolCall).toContain("<write_file>");
     expect(metadata?.toolCall).toContain("</write_file>");
   });
