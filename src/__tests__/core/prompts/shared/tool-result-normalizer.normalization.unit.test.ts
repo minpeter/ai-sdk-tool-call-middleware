@@ -312,34 +312,6 @@ describe("unwrapToolResult", () => {
       );
     });
 
-    it("returns raw content when media strategy is raw", () => {
-      const result = unwrapToolResult(
-        {
-          type: "content",
-          value: [
-            { type: "text", text: "visual" },
-            {
-              type: "image-data",
-              data: "base64...",
-              mediaType: "image/png",
-            },
-          ],
-        },
-        {
-          mode: "raw",
-        }
-      );
-
-      expect(result).toEqual([
-        { type: "text", text: "visual" },
-        {
-          type: "image-data",
-          data: "base64...",
-          mediaType: "image/png",
-        },
-      ]);
-    });
-
     it("returns raw content in auto mode when media capability is enabled", () => {
       const result = unwrapToolResult(
         {
@@ -418,34 +390,35 @@ describe("unwrapToolResult", () => {
 });
 
 describe("normalizeToolResultForUserContent", () => {
-  it("converts image-url content into model-recognizable file part in model mode", () => {
-    const result = normalizeToolResultForUserContent(
-      {
-        type: "content",
-        value: [{ type: "image-url", url: "https://example.com/a.png" }],
-      },
-      {
-        mode: "model",
-      }
-    );
+  it("passes canonical file content through by default", () => {
+    const result = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "url", url: new URL("https://example.com/a.png") },
+          mediaType: "image",
+        },
+      ],
+    });
 
     expect(result).toEqual([
       {
         type: "file",
-        data: { type: "data", data: "https://example.com/a.png" },
-        mediaType: "image/*",
+        data: { type: "url", url: new URL("https://example.com/a.png") },
+        mediaType: "image",
       },
     ]);
   });
 
-  it("converts file-data content into model-recognizable file part in model mode", () => {
+  it("passes data-tagged file content through in model mode", () => {
     const result = normalizeToolResultForUserContent(
       {
         type: "content",
         value: [
           {
-            type: "file-data",
-            data: "YWJj",
+            type: "file",
+            data: { type: "data", data: "YWJj" },
             mediaType: "application/pdf",
             filename: "report.pdf",
           },
@@ -466,7 +439,7 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 
-  it("falls back to text placeholder for file-id in model mode", () => {
+  it("falls back to text placeholder for non-canonical content parts in model mode", () => {
     const result = normalizeToolResultForUserContent(
       {
         type: "content",
@@ -485,11 +458,17 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 
-  it("returns text part output when mode is not model", () => {
+  it("returns text part output when mode is placeholder", () => {
     const result = normalizeToolResultForUserContent(
       {
         type: "content",
-        value: [{ type: "image-url", url: "https://example.com/a.png" }],
+        value: [
+          {
+            type: "file",
+            data: { type: "url", url: new URL("https://example.com/a.png") },
+            mediaType: "image/png",
+          },
+        ],
       },
       {
         mode: "placeholder",
@@ -614,5 +593,148 @@ describe("canonical v4 file content parts", () => {
     );
 
     expect(out).toEqual([filePart]);
+  });
+
+  it("normalizes string urls on canonical file parts to URL objects", () => {
+    // JSON-deserialized tool results often carry url as a string; repair to URL
+    // is intentional so model mode can still forward http(s) file parts.
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "url", url: "https://example.com/cat.png" },
+          mediaType: "image/png",
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      {
+        type: "file",
+        data: { type: "url", url: new URL("https://example.com/cat.png") },
+        mediaType: "image/png",
+      },
+    ]);
+  });
+
+  it("rejects non-http(s) file urls as placeholders", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "url", url: new URL("file:///etc/passwd") },
+          mediaType: "text/plain",
+        },
+        {
+          type: "file",
+          data: { type: "url", url: "javascript:alert(1)" },
+          mediaType: "text/html",
+        },
+        {
+          type: "file",
+          data: { type: "url", url: "ftp://files.example.com/a.png" },
+          mediaType: "image/png",
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      { type: "text", text: "[File URL: file:///etc/passwd]" },
+      { type: "text", text: "[File URL: javascript:alert(1)]" },
+      { type: "text", text: "[Image URL: ftp://files.example.com/a.png]" },
+    ]);
+  });
+
+  it("falls back to placeholders for unknown file data tags", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "nope" },
+          mediaType: "image/png",
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      {
+        type: "text",
+        text: "[Image: image/png]",
+      },
+    ]);
+  });
+
+  it("falls back to placeholders when tagged data payload is missing", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "data" },
+          mediaType: "application/pdf",
+          filename: "report.pdf",
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      {
+        type: "text",
+        text: "[File: report.pdf (application/pdf)]",
+      },
+    ]);
+  });
+
+  it("falls back to placeholders when mediaType is missing", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "data", data: "aGVsbG8=" },
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      {
+        type: "text",
+        text: "[File: application/octet-stream]",
+      },
+    ]);
+  });
+
+  it("passes reference and text tagged file parts through", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "reference", reference: { openai: "file-123" } },
+          mediaType: "application/pdf",
+        },
+        {
+          type: "file",
+          data: { type: "text", text: "inline doc" },
+          mediaType: "text/plain",
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      {
+        type: "file",
+        data: { type: "reference", reference: { openai: "file-123" } },
+        mediaType: "application/pdf",
+      },
+      {
+        type: "file",
+        data: { type: "text", text: "inline doc" },
+        mediaType: "text/plain",
+      },
+    ]);
   });
 });

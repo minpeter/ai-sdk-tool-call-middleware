@@ -2,6 +2,38 @@
 
 // Core Protocols (Agnostic)
 
+// Tool-response formatters + media strategy
+export {
+  createHermesToolResponseFormatter,
+  formatToolResponseAsHermes,
+  hermesSystemPromptTemplate,
+} from "./core/prompts/hermes-prompt";
+export {
+  createMorphXmlToolResponseFormatter,
+  morphFormatToolResponseAsXml,
+  morphXmlSystemPromptTemplate,
+} from "./core/prompts/morph-xml-prompt";
+export {
+  createQwen3CoderXmlToolResponseFormatter,
+  formatToolResponseAsQwen3CoderXml,
+  qwen3coderSystemPromptTemplate,
+} from "./core/prompts/qwen3coder-prompt";
+export type {
+  ToolResponseMediaCapabilities,
+  ToolResponseMediaMode,
+  ToolResponseMediaStrategy,
+  ToolResponseMediaType,
+  ToolResponseUserContentPart,
+} from "./core/prompts/shared/tool-result-normalizer";
+export type { ToolResponsePromptTemplateResult } from "./core/prompts/shared/tool-result-user-content";
+export {
+  createUserContentToolResponseTemplate,
+  toolRoleContentToUserTextMessage,
+} from "./core/prompts/shared/tool-role-to-user-message";
+export {
+  formatToolResponseAsYaml,
+  yamlXmlSystemPromptTemplate,
+} from "./core/prompts/yaml-xml-prompt";
 export * from "./core/protocols/hermes-protocol";
 export type { MorphXmlProtocolOptions } from "./core/protocols/morph-xml-protocol";
 export { morphXmlProtocol } from "./core/protocols/morph-xml-protocol";
@@ -13,6 +45,7 @@ export {
 } from "./core/protocols/qwen3coder-protocol";
 export type { YamlXmlProtocolOptions } from "./core/protocols/yaml-xml-protocol";
 export { yamlXmlProtocol } from "./core/protocols/yaml-xml-protocol";
+
 // Utilities (Agnostic)
 export * from "./core/utils/debug";
 export * from "./core/utils/dynamic-tool-schema";

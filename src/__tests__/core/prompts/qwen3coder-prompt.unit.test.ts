@@ -142,10 +142,11 @@ describe("formatToolResponseAsQwen3CoderXml", () => {
     expect(result).toBe("<tool_response>\nok\n</tool_response>");
   });
 
-  it("factory supports raw media strategy", () => {
+  it("factory supports auto media strategy with enabled image capability", () => {
     const formatter = createQwen3CoderXmlToolResponseFormatter({
       mediaStrategy: {
-        mode: "raw",
+        mode: "auto",
+        capabilities: { image: true },
       },
     });
 

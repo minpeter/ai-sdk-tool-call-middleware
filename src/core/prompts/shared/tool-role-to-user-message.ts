@@ -12,12 +12,16 @@ import { toTextPart } from "./text-part";
 import {
   normalizeToolResultForUserContent,
   type ToolResponseMediaStrategy,
-  type ToolResponseUserContentPart,
 } from "./tool-result-normalizer";
+import type {
+  ToolResponsePromptTemplateResult,
+  ToolResponseUserContentPart,
+} from "./tool-result-user-content";
 
-export type ToolResponsePromptTemplateResult =
-  | string
-  | ToolResponseUserContentPart[];
+export type {
+  ToolResponsePromptTemplateResult,
+  ToolResponseUserContentPart,
+} from "./tool-result-user-content";
 
 function formatApprovalResponse(part: ToolApprovalResponse): string {
   const status = part.approved ? "Approved" : "Denied";

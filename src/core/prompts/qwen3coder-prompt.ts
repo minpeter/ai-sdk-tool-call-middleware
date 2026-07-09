@@ -8,10 +8,9 @@ import {
   renderInputExamplesSection,
   safeStringifyInputExample,
 } from "./shared/input-examples";
-import {
-  type ToolResponseMediaStrategy,
-  unwrapToolResult,
-} from "./shared/tool-result-normalizer";
+import { formatToolResponseWithMedia } from "./shared/tool-response-with-media";
+import type { ToolResponseMediaStrategy } from "./shared/tool-result-normalizer";
+import type { ToolResponsePromptTemplateResult } from "./shared/tool-result-user-content";
 
 const QWEN3CODER_TOOL_HEADER =
   "# Tools\n\nYou have access to the following functions:\n\n";
@@ -241,24 +240,24 @@ function stringifyToolResponseContent(value: JSONValue): string {
 function formatToolResponseAsQwen3CoderXmlWithOptions(
   toolResult: ToolResultPart,
   options?: Qwen3CoderToolResponseFormatterOptions
-): string {
-  const unwrappedResult = unwrapToolResult(
-    toolResult.output,
-    options?.mediaStrategy
-  );
-  const content = stringifyToolResponseContent(unwrappedResult);
-  return `<tool_response>\n${content}\n</tool_response>`;
+): ToolResponsePromptTemplateResult {
+  return formatToolResponseWithMedia({
+    toolResult,
+    mediaStrategy: options?.mediaStrategy,
+    wrapContent: (content) =>
+      `<tool_response>\n${stringifyToolResponseContent(content)}\n</tool_response>`,
+  });
 }
 
 export function createQwen3CoderXmlToolResponseFormatter(
   options?: Qwen3CoderToolResponseFormatterOptions
-): (toolResult: ToolResultPart) => string {
+): (toolResult: ToolResultPart) => ToolResponsePromptTemplateResult {
   return (toolResult) =>
     formatToolResponseAsQwen3CoderXmlWithOptions(toolResult, options);
 }
 
 export function formatToolResponseAsQwen3CoderXml(
   toolResult: ToolResultPart
-): string {
+): ToolResponsePromptTemplateResult {
   return formatToolResponseAsQwen3CoderXmlWithOptions(toolResult);
 }

@@ -330,7 +330,7 @@ describe("formatToolResponseAsHermes", () => {
     expect(result).toContain("Network timeout");
   });
 
-  it("handles content type with images", () => {
+  it("emits real file parts for canonical file content by default", () => {
     const result = formatToolResponseAsHermes({
       type: "tool-result",
       toolCallId: "tc1",
@@ -339,10 +339,49 @@ describe("formatToolResponseAsHermes", () => {
         type: "content",
         value: [
           { type: "text", text: "Screenshot captured" },
-          { type: "image-data", data: "base64...", mediaType: "image/png" },
+          {
+            type: "file",
+            data: { type: "data", data: "base64..." },
+            mediaType: "image/png",
+          },
         ],
       },
     } satisfies ToolResultPart);
+
+    expect(result).toEqual([
+      {
+        type: "text",
+        text: '<tool_response>{"name":"screenshot","content":"Screenshot captured"}</tool_response>',
+      },
+      {
+        type: "file",
+        data: { type: "data", data: "base64..." },
+        mediaType: "image/png",
+      },
+    ]);
+  });
+
+  it("falls back to file placeholders when media strategy is placeholder", () => {
+    const formatter = createHermesToolResponseFormatter({
+      mediaStrategy: { mode: "placeholder" },
+    });
+    const result = formatter({
+      type: "tool-result",
+      toolCallId: "tc1",
+      toolName: "screenshot",
+      output: {
+        type: "content",
+        value: [
+          { type: "text", text: "Screenshot captured" },
+          {
+            type: "file",
+            data: { type: "data", data: "base64..." },
+            mediaType: "image/png",
+          },
+        ],
+      },
+    } satisfies ToolResultPart);
+
     expect(result).toContain("Screenshot captured");
     expect(result).toContain("[Image: image/png]");
   });
@@ -357,10 +396,11 @@ describe("formatToolResponseAsHermes", () => {
     expect(result).toContain('"content":"simple string"');
   });
 
-  it("factory supports raw media strategy", () => {
+  it("factory supports auto media strategy with enabled image capability", () => {
     const formatter = createHermesToolResponseFormatter({
       mediaStrategy: {
-        mode: "raw",
+        mode: "auto",
+        capabilities: { image: true },
       },
     });
 

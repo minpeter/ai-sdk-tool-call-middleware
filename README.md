@@ -52,6 +52,42 @@ pnpm add @ai-sdk-tool/parser
 - **Node.js `>=22` is required** (Node 18 is end-of-life).
 - Tool-result file parts now use the v4 tagged file shape (`{ type: "data", data }`) instead of a bare `data` string. This only affects code that constructs tool-result file parts directly.
 
+### Tool-result media (images / files)
+
+When a tool returns multimodal `output: { type: "content", value: [...] }`, the middleware projects that into the next model turn:
+
+| `mediaStrategy.mode` | Behavior |
+|---|---|
+| `model` (**default**) | Forward canonical `{ type: "file", data }` content as model file parts. Protocol wrappers stay as adjacent `text`. |
+| `placeholder` | Text-only fallback (`[Image: image/png]`, `[File URL: ...]`, …) for non-vision models. |
+| `auto` | Keep original tool content parts when `capabilities` enable that media kind; otherwise placeholder. |
+
+```ts
+import {
+  createHermesToolResponseFormatter,
+  createToolMiddleware,
+  hermesProtocol,
+  hermesSystemPromptTemplate,
+} from "@ai-sdk-tool/parser";
+
+// Default preconfigured middleware already uses model media mode.
+// For text-only models, opt into placeholders:
+const textOnlyMiddleware = createToolMiddleware({
+  protocol: hermesProtocol(),
+  toolSystemPromptTemplate: hermesSystemPromptTemplate,
+  toolResponsePromptTemplate: createHermesToolResponseFormatter({
+    mediaStrategy: { mode: "placeholder" },
+  }),
+});
+
+// YAML XML tool *responses* reuse Morph's response formatter — use the Morph
+// factory when you need mediaStrategy options with yamlXmlProtocol.
+```
+
+Only `http:` / `https:` file URLs are forwarded as model file parts; other schemes become placeholders. String URLs from JSON-deserialized tool results are reparsed to `URL` objects intentionally.
+
+User-message images are unchanged — they pass through as-is.
+
 **Status:** `5.0.0` is the stable release line. Pin an exact version if you need reproducible installs.
 
 ## Package map
