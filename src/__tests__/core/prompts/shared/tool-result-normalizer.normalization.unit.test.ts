@@ -418,10 +418,16 @@ describe("unwrapToolResult", () => {
 });
 
 describe("normalizeToolResultForUserContent", () => {
-  it("converts image-url content into a v4 url-tagged file part by default", () => {
+  it("passes canonical file content through by default", () => {
     const result = normalizeToolResultForUserContent({
       type: "content",
-      value: [{ type: "image-url", url: "https://example.com/a.png" }],
+      value: [
+        {
+          type: "file",
+          data: { type: "url", url: new URL("https://example.com/a.png") },
+          mediaType: "image",
+        },
+      ],
     });
 
     expect(result).toEqual([
@@ -433,14 +439,14 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 
-  it("converts file-data content into model-recognizable file part in model mode", () => {
+  it("passes data-tagged file content through in model mode", () => {
     const result = normalizeToolResultForUserContent(
       {
         type: "content",
         value: [
           {
-            type: "file-data",
-            data: "YWJj",
+            type: "file",
+            data: { type: "data", data: "YWJj" },
             mediaType: "application/pdf",
             filename: "report.pdf",
           },
@@ -461,7 +467,7 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 
-  it("falls back to text placeholder for bare string file-id in model mode", () => {
+  it("falls back to text placeholder for non-canonical content parts in model mode", () => {
     const result = normalizeToolResultForUserContent(
       {
         type: "content",
@@ -480,29 +486,17 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 
-  it("converts provider-keyed file-id into a reference-tagged file part", () => {
-    const result = normalizeToolResultForUserContent({
-      type: "content",
-      value: [{ type: "file-id", fileId: { openai: "file-123" } }],
-    });
-
-    expect(result).toEqual([
-      {
-        type: "file",
-        data: {
-          type: "reference",
-          reference: { openai: "file-123" },
-        },
-        mediaType: "application/octet-stream",
-      },
-    ]);
-  });
-
   it("returns text part output when mode is placeholder", () => {
     const result = normalizeToolResultForUserContent(
       {
         type: "content",
-        value: [{ type: "image-url", url: "https://example.com/a.png" }],
+        value: [
+          {
+            type: "file",
+            data: { type: "url", url: new URL("https://example.com/a.png") },
+            mediaType: "image/png",
+          },
+        ],
       },
       {
         mode: "placeholder",

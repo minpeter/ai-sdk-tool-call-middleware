@@ -58,7 +58,7 @@ When a tool returns multimodal `output: { type: "content", value: [...] }`, the 
 
 | `mediaStrategy.mode` | Behavior |
 |---|---|
-| `model` (**default**) | Convert media into model-recognizable `file` parts (AI SDK v4/v7 tagged `data` / `url` / `reference`). Protocol wrappers stay as adjacent `text`. |
+| `model` (**default**) | Forward canonical `{ type: "file", data }` content as model file parts. Protocol wrappers stay as adjacent `text`. |
 | `placeholder` | Text-only fallback (`[Image: image/png]`, `[File URL: ...]`, …) for non-vision models. |
 | `raw` / `auto` | Keep or selectively keep original tool content parts as JSON values. |
 

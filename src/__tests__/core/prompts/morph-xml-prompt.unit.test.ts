@@ -169,7 +169,7 @@ describe("morphFormatToolResponseAsXml", () => {
     expect(result).not.toContain('"type":"json"');
   });
 
-  it("emits real file parts for content images by default", () => {
+  it("emits real file parts for canonical file content by default", () => {
     const result = morphFormatToolResponseAsXml({
       type: "tool-result",
       toolCallId: "tc1",
@@ -178,7 +178,11 @@ describe("morphFormatToolResponseAsXml", () => {
         type: "content",
         value: [
           { type: "text", text: "Screenshot captured" },
-          { type: "image-data", data: "base64...", mediaType: "image/png" },
+          {
+            type: "file",
+            data: { type: "data", data: "base64..." },
+            mediaType: "image/png",
+          },
         ],
       },
     } satisfies ToolResultPart);
@@ -201,7 +205,7 @@ describe("morphFormatToolResponseAsXml", () => {
     ]);
   });
 
-  it("falls back to image placeholders when media strategy is placeholder", () => {
+  it("falls back to file placeholders when media strategy is placeholder", () => {
     const formatter = createMorphXmlToolResponseFormatter({
       mediaStrategy: { mode: "placeholder" },
     });
@@ -213,7 +217,11 @@ describe("morphFormatToolResponseAsXml", () => {
         type: "content",
         value: [
           { type: "text", text: "Screenshot captured" },
-          { type: "image-data", data: "base64...", mediaType: "image/png" },
+          {
+            type: "file",
+            data: { type: "data", data: "base64..." },
+            mediaType: "image/png",
+          },
         ],
       },
     } satisfies ToolResultPart);

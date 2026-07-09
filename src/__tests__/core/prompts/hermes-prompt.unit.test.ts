@@ -330,7 +330,7 @@ describe("formatToolResponseAsHermes", () => {
     expect(result).toContain("Network timeout");
   });
 
-  it("emits real file parts for content images by default", () => {
+  it("emits real file parts for canonical file content by default", () => {
     const result = formatToolResponseAsHermes({
       type: "tool-result",
       toolCallId: "tc1",
@@ -339,7 +339,11 @@ describe("formatToolResponseAsHermes", () => {
         type: "content",
         value: [
           { type: "text", text: "Screenshot captured" },
-          { type: "image-data", data: "base64...", mediaType: "image/png" },
+          {
+            type: "file",
+            data: { type: "data", data: "base64..." },
+            mediaType: "image/png",
+          },
         ],
       },
     } satisfies ToolResultPart);
@@ -357,7 +361,7 @@ describe("formatToolResponseAsHermes", () => {
     ]);
   });
 
-  it("falls back to image placeholders when media strategy is placeholder", () => {
+  it("falls back to file placeholders when media strategy is placeholder", () => {
     const formatter = createHermesToolResponseFormatter({
       mediaStrategy: { mode: "placeholder" },
     });
@@ -369,7 +373,11 @@ describe("formatToolResponseAsHermes", () => {
         type: "content",
         value: [
           { type: "text", text: "Screenshot captured" },
-          { type: "image-data", data: "base64...", mediaType: "image/png" },
+          {
+            type: "file",
+            data: { type: "data", data: "base64..." },
+            mediaType: "image/png",
+          },
         ],
       },
     } satisfies ToolResultPart);

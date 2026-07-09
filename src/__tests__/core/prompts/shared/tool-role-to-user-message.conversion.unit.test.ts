@@ -46,7 +46,16 @@ describe("toolRoleContentToUserTextMessage", () => {
           toolName: "vision",
           output: {
             type: "content",
-            value: [{ type: "image-url", url: "https://example.com/a.png" }],
+            value: [
+              {
+                type: "file",
+                data: {
+                  type: "url",
+                  url: new URL("https://example.com/a.png"),
+                },
+                mediaType: "image",
+              },
+            ],
           },
         },
       ] as ToolContent,
