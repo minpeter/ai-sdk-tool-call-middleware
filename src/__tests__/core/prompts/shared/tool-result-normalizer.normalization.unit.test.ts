@@ -615,4 +615,95 @@ describe("canonical v4 file content parts", () => {
       },
     ]);
   });
+
+  it("falls back to placeholders for unknown file data tags", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "nope" },
+          mediaType: "image/png",
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      {
+        type: "text",
+        text: "[Image: image/png]",
+      },
+    ]);
+  });
+
+  it("falls back to placeholders when tagged data payload is missing", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "data" },
+          mediaType: "application/pdf",
+          filename: "report.pdf",
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      {
+        type: "text",
+        text: "[File: report.pdf (application/pdf)]",
+      },
+    ]);
+  });
+
+  it("falls back to placeholders when mediaType is missing", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "data", data: "aGVsbG8=" },
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      {
+        type: "text",
+        text: "[File: application/octet-stream]",
+      },
+    ]);
+  });
+
+  it("passes reference and text tagged file parts through", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "reference", reference: { openai: "file-123" } },
+          mediaType: "application/pdf",
+        },
+        {
+          type: "file",
+          data: { type: "text", text: "inline doc" },
+          mediaType: "text/plain",
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      {
+        type: "file",
+        data: { type: "reference", reference: { openai: "file-123" } },
+        mediaType: "application/pdf",
+      },
+      {
+        type: "file",
+        data: { type: "text", text: "inline doc" },
+        mediaType: "text/plain",
+      },
+    ]);
+  });
 });
