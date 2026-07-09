@@ -26,8 +26,9 @@ describe("qwen3CoderProtocol parseGeneratedText onError metadata", () => {
     expect(metadata).toMatchObject({
       dropReason: "malformed-tool-call-body",
     });
-    expect(typeof metadata?.toolCallId).toBe("string");
-    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
+    const toolCallId = metadata?.toolCallId;
+    expect(typeof toolCallId).toBe("string");
+    expect((toolCallId as string).length).toBeGreaterThan(0);
     expect(metadata?.toolCall).toContain("<tool_call>");
   });
 
@@ -54,7 +55,8 @@ describe("qwen3CoderProtocol parseGeneratedText onError metadata", () => {
     const metadata = parseFail?.[1];
     expect(metadata?.toolName).toBe("alpha");
     expect(metadata?.dropReason).toBe("malformed-tool-call-body");
-    expect(typeof metadata?.toolCallId).toBe("string");
-    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
+    const toolCallId = metadata?.toolCallId;
+    expect(typeof toolCallId).toBe("string");
+    expect((toolCallId as string).length).toBeGreaterThan(0);
   });
 });

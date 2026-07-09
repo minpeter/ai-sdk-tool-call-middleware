@@ -63,8 +63,9 @@ describe("qwen3CoderProtocol streaming onError metadata", () => {
     expect(metadata).toMatchObject({
       dropReason: "unresolved-tool-name",
     });
-    expect(typeof metadata?.toolCallId).toBe("string");
-    expect((metadata?.toolCallId as string).length).toBeGreaterThan(0);
+    const toolCallId = metadata?.toolCallId;
+    expect(typeof toolCallId).toBe("string");
+    expect((toolCallId as string).length).toBeGreaterThan(0);
   });
 
   it.each(
