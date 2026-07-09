@@ -37,7 +37,7 @@ describe("toolRoleContentToUserTextMessage", () => {
     });
   });
 
-  it("supports model media mode and emits file parts for user content", () => {
+  it("defaults to model media mode and emits file parts for user content", () => {
     const result = toolRoleContentToUserTextMessage({
       toolContent: [
         {
@@ -50,11 +50,7 @@ describe("toolRoleContentToUserTextMessage", () => {
           },
         },
       ] as ToolContent,
-      toolResponsePromptTemplate: createUserContentToolResponseTemplate({
-        mediaStrategy: {
-          mode: "model",
-        },
-      }),
+      toolResponsePromptTemplate: createUserContentToolResponseTemplate(),
     });
 
     expect(result).toEqual({
@@ -62,8 +58,8 @@ describe("toolRoleContentToUserTextMessage", () => {
       content: [
         {
           type: "file",
-          data: { type: "data", data: "https://example.com/a.png" },
-          mediaType: "image/*",
+          data: { type: "url", url: new URL("https://example.com/a.png") },
+          mediaType: "image",
         },
       ],
     });

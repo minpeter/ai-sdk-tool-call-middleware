@@ -418,22 +418,17 @@ describe("unwrapToolResult", () => {
 });
 
 describe("normalizeToolResultForUserContent", () => {
-  it("converts image-url content into model-recognizable file part in model mode", () => {
-    const result = normalizeToolResultForUserContent(
-      {
-        type: "content",
-        value: [{ type: "image-url", url: "https://example.com/a.png" }],
-      },
-      {
-        mode: "model",
-      }
-    );
+  it("converts image-url content into a v4 url-tagged file part by default", () => {
+    const result = normalizeToolResultForUserContent({
+      type: "content",
+      value: [{ type: "image-url", url: "https://example.com/a.png" }],
+    });
 
     expect(result).toEqual([
       {
         type: "file",
-        data: { type: "data", data: "https://example.com/a.png" },
-        mediaType: "image/*",
+        data: { type: "url", url: new URL("https://example.com/a.png") },
+        mediaType: "image",
       },
     ]);
   });
@@ -466,7 +461,7 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 
-  it("falls back to text placeholder for file-id in model mode", () => {
+  it("falls back to text placeholder for bare string file-id in model mode", () => {
     const result = normalizeToolResultForUserContent(
       {
         type: "content",
@@ -485,7 +480,25 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 
-  it("returns text part output when mode is not model", () => {
+  it("converts provider-keyed file-id into a reference-tagged file part", () => {
+    const result = normalizeToolResultForUserContent({
+      type: "content",
+      value: [{ type: "file-id", fileId: { openai: "file-123" } }],
+    });
+
+    expect(result).toEqual([
+      {
+        type: "file",
+        data: {
+          type: "reference",
+          reference: { openai: "file-123" },
+        },
+        mediaType: "application/octet-stream",
+      },
+    ]);
+  });
+
+  it("returns text part output when mode is placeholder", () => {
     const result = normalizeToolResultForUserContent(
       {
         type: "content",
@@ -614,5 +627,26 @@ describe("canonical v4 file content parts", () => {
     );
 
     expect(out).toEqual([filePart]);
+  });
+
+  it("normalizes string urls on canonical file parts to URL objects", () => {
+    const out = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: { type: "url", url: "https://example.com/cat.png" },
+          mediaType: "image/png",
+        },
+      ],
+    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+
+    expect(out).toEqual([
+      {
+        type: "file",
+        data: { type: "url", url: new URL("https://example.com/cat.png") },
+        mediaType: "image/png",
+      },
+    ]);
   });
 });

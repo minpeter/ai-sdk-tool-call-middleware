@@ -4,10 +4,9 @@ import {
   renderInputExamplesSection,
   stringifyInputExampleAsJsonLiteral,
 } from "./shared/input-examples";
-import {
-  type ToolResponseMediaStrategy,
-  unwrapToolResult,
-} from "./shared/tool-result-normalizer";
+import { formatToolResponseWithMedia } from "./shared/tool-response-with-media";
+import type { ToolResponseMediaStrategy } from "./shared/tool-result-normalizer";
+import type { ToolResponsePromptTemplateResult } from "./shared/tool-result-user-content";
 
 interface HermesToolResponseFormatterOptions {
   mediaStrategy?: ToolResponseMediaStrategy;
@@ -16,25 +15,28 @@ interface HermesToolResponseFormatterOptions {
 function formatToolResponseAsHermesWithOptions(
   toolResult: ToolResultPart,
   options?: HermesToolResponseFormatterOptions
-): string {
-  const unwrappedResult = unwrapToolResult(
-    toolResult.output,
-    options?.mediaStrategy
-  );
-  return `<tool_response>${JSON.stringify({
-    name: toolResult.toolName,
-    content: unwrappedResult,
-  })}</tool_response>`;
+): ToolResponsePromptTemplateResult {
+  return formatToolResponseWithMedia({
+    toolResult,
+    mediaStrategy: options?.mediaStrategy,
+    wrapContent: (content) =>
+      `<tool_response>${JSON.stringify({
+        name: toolResult.toolName,
+        content,
+      })}</tool_response>`,
+  });
 }
 
 export function createHermesToolResponseFormatter(
   options?: HermesToolResponseFormatterOptions
-): (toolResult: ToolResultPart) => string {
+): (toolResult: ToolResultPart) => ToolResponsePromptTemplateResult {
   return (toolResult) =>
     formatToolResponseAsHermesWithOptions(toolResult, options);
 }
 
-export function formatToolResponseAsHermes(toolResult: ToolResultPart): string {
+export function formatToolResponseAsHermes(
+  toolResult: ToolResultPart
+): ToolResponsePromptTemplateResult {
   return formatToolResponseAsHermesWithOptions(toolResult);
 }
 

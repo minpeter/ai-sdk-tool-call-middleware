@@ -80,6 +80,8 @@ function renderYamlXmlInputExample(toolName: string, input: unknown): string {
   return `<${safeToolName}>\n${escapedYamlBody}\n</${safeToolName}>`;
 }
 
-export function formatToolResponseAsYaml(toolResult: ToolResultPart): string {
+export function formatToolResponseAsYaml(
+  toolResult: ToolResultPart
+): ReturnType<typeof morphFormatToolResponseAsXml> {
   return morphFormatToolResponseAsXml(toolResult);
 }

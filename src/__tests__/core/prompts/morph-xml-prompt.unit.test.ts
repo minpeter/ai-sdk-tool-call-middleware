@@ -169,7 +169,7 @@ describe("morphFormatToolResponseAsXml", () => {
     expect(result).not.toContain('"type":"json"');
   });
 
-  it("handles content type with images gracefully", () => {
+  it("emits real file parts for content images by default", () => {
     const result = morphFormatToolResponseAsXml({
       type: "tool-result",
       toolCallId: "tc1",
@@ -182,6 +182,42 @@ describe("morphFormatToolResponseAsXml", () => {
         ],
       },
     } satisfies ToolResultPart);
+
+    expect(result).toEqual([
+      {
+        type: "text",
+        text: [
+          "<tool_response>",
+          "  <tool_name>screenshot</tool_name>",
+          "  <result>Screenshot captured</result>",
+          "</tool_response>",
+        ].join("\n"),
+      },
+      {
+        type: "file",
+        data: { type: "data", data: "base64..." },
+        mediaType: "image/png",
+      },
+    ]);
+  });
+
+  it("falls back to image placeholders when media strategy is placeholder", () => {
+    const formatter = createMorphXmlToolResponseFormatter({
+      mediaStrategy: { mode: "placeholder" },
+    });
+    const result = formatter({
+      type: "tool-result",
+      toolCallId: "tc1",
+      toolName: "screenshot",
+      output: {
+        type: "content",
+        value: [
+          { type: "text", text: "Screenshot captured" },
+          { type: "image-data", data: "base64...", mediaType: "image/png" },
+        ],
+      },
+    } satisfies ToolResultPart);
+
     expect(result).toContain("Screenshot captured");
     expect(result).toContain("[Image: image/png]");
   });

@@ -11,10 +11,9 @@ import {
   renderInputExamplesSection,
   safeStringifyInputExample,
 } from "./shared/input-examples";
-import {
-  type ToolResponseMediaStrategy,
-  unwrapToolResult,
-} from "./shared/tool-result-normalizer";
+import { formatToolResponseWithMedia } from "./shared/tool-response-with-media";
+import type { ToolResponseMediaStrategy } from "./shared/tool-result-normalizer";
+import type { ToolResponsePromptTemplateResult } from "./shared/tool-result-user-content";
 
 export function morphXmlSystemPromptTemplate(
   tools: LanguageModelV4FunctionTool[]
@@ -397,31 +396,32 @@ function formatXmlNode(
 function morphFormatToolResponseAsXmlWithOptions(
   toolResult: ToolResultPart,
   options?: MorphXmlToolResponseFormatterOptions
-): string {
-  const unwrappedResult = unwrapToolResult(
-    toolResult.output,
-    options?.mediaStrategy
-  );
-  const toolNameXml = `<tool_name>${toolResult.toolName}</tool_name>`;
-  const resultLines = formatXmlNode("result", unwrappedResult, 1);
-
-  return [
-    "<tool_response>",
-    `  ${toolNameXml}`,
-    ...resultLines,
-    "</tool_response>",
-  ].join("\n");
+): ToolResponsePromptTemplateResult {
+  return formatToolResponseWithMedia({
+    toolResult,
+    mediaStrategy: options?.mediaStrategy,
+    wrapContent: (content) => {
+      const toolNameXml = `<tool_name>${toolResult.toolName}</tool_name>`;
+      const resultLines = formatXmlNode("result", content, 1);
+      return [
+        "<tool_response>",
+        `  ${toolNameXml}`,
+        ...resultLines,
+        "</tool_response>",
+      ].join("\n");
+    },
+  });
 }
 
 export function createMorphXmlToolResponseFormatter(
   options?: MorphXmlToolResponseFormatterOptions
-): (toolResult: ToolResultPart) => string {
+): (toolResult: ToolResultPart) => ToolResponsePromptTemplateResult {
   return (toolResult) =>
     morphFormatToolResponseAsXmlWithOptions(toolResult, options);
 }
 
 export function morphFormatToolResponseAsXml(
   toolResult: ToolResultPart
-): string {
+): ToolResponsePromptTemplateResult {
   return morphFormatToolResponseAsXmlWithOptions(toolResult);
 }
