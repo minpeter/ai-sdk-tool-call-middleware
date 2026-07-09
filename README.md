@@ -60,7 +60,7 @@ When a tool returns multimodal `output: { type: "content", value: [...] }`, the 
 |---|---|
 | `model` (**default**) | Forward canonical `{ type: "file", data }` content as model file parts. Protocol wrappers stay as adjacent `text`. |
 | `placeholder` | Text-only fallback (`[Image: image/png]`, `[File URL: ...]`, …) for non-vision models. |
-| `raw` / `auto` | Keep or selectively keep original tool content parts as JSON values. |
+| `auto` | Keep original tool content parts when `capabilities` enable that media kind; otherwise placeholder. |
 
 ```ts
 import {

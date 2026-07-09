@@ -312,34 +312,6 @@ describe("unwrapToolResult", () => {
       );
     });
 
-    it("returns raw content when media strategy is raw", () => {
-      const result = unwrapToolResult(
-        {
-          type: "content",
-          value: [
-            { type: "text", text: "visual" },
-            {
-              type: "image-data",
-              data: "base64...",
-              mediaType: "image/png",
-            },
-          ],
-        },
-        {
-          mode: "raw",
-        }
-      );
-
-      expect(result).toEqual([
-        { type: "text", text: "visual" },
-        {
-          type: "image-data",
-          data: "base64...",
-          mediaType: "image/png",
-        },
-      ]);
-    });
-
     it("returns raw content in auto mode when media capability is enabled", () => {
       const result = unwrapToolResult(
         {

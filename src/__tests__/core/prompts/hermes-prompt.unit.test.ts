@@ -396,10 +396,11 @@ describe("formatToolResponseAsHermes", () => {
     expect(result).toContain('"content":"simple string"');
   });
 
-  it("factory supports raw media strategy", () => {
+  it("factory supports auto media strategy with enabled image capability", () => {
     const formatter = createHermesToolResponseFormatter({
       mediaStrategy: {
-        mode: "raw",
+        mode: "auto",
+        capabilities: { image: true },
       },
     });
 

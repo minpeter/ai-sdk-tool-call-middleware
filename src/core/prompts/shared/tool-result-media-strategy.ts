@@ -11,12 +11,12 @@ export interface ToolResponseMediaCapabilities {
  * How tool-result media (`content` parts) is projected into the next model
  * prompt.
  *
- * - `model` (default): convert to model-recognizable `text` / `file` parts
+ * - `model` (default): forward canonical `text` / `file` parts to the model
  * - `placeholder`: degrade media to text placeholders (text-only fallback)
- * - `raw`: keep original tool-result content parts as a JSON value
- * - `auto`: pass raw when `capabilities` enable the media kind; else placeholder
+ * - `auto`: keep original content parts when `capabilities` enable the media
+ *   kind; otherwise placeholder
  */
-export type ToolResponseMediaMode = "placeholder" | "raw" | "auto" | "model";
+export type ToolResponseMediaMode = "placeholder" | "auto" | "model";
 
 export interface ToolResponseMediaStrategy {
   capabilities?: ToolResponseMediaCapabilities;
@@ -49,10 +49,7 @@ export function shouldPassRawByStrategy(
   strategy?: ToolResponseMediaStrategy
 ): boolean {
   const mode = getMediaMode(strategy);
-  if (mode === "raw") {
-    return true;
-  }
-  if (mode === "placeholder" || mode === "model") {
+  if (mode !== "auto") {
     return false;
   }
 

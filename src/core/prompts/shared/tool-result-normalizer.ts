@@ -25,11 +25,7 @@ function shouldPassRawContent(
   contentParts: unknown[],
   strategy?: ToolResponseMediaStrategy
 ): boolean {
-  const mode = getMediaMode(strategy);
-  if (mode === "raw") {
-    return true;
-  }
-  if (mode === "placeholder" || mode === "model") {
+  if (getMediaMode(strategy) !== "auto") {
     return false;
   }
 

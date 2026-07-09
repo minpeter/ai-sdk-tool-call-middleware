@@ -19,7 +19,7 @@ import type {
  *
  * Default media strategy (`model`) projects tool `content` media into real
  * `file` parts while keeping protocol wrappers as adjacent text. Opt into
- * `placeholder` / `raw` / `auto` via `mediaStrategy` for text-only or raw
+ * `placeholder` or `auto` via `mediaStrategy` for text-only or capability-gated
  * paths.
  */
 export function formatToolResponseWithMedia(options: {
