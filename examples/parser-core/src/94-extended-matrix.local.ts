@@ -597,7 +597,17 @@ const scenarios: Scenario[] = [
   },
 ];
 
+type ResultCategory =
+  | "pass"
+  | "expectation-miss"
+  | "malformed-output"
+  | "provider-error"
+  | "stream-invariant"
+  | "harness-error"
+  | "unclassified";
+
 interface RunResult {
+  category: ResultCategory;
   detail: string;
   middleware: string;
   model: string;
@@ -605,6 +615,61 @@ interface RunResult {
   ok: boolean;
   parserErrors: string[];
   scenario: string;
+}
+
+const EXPECTATION_MISS_PATTERNS = [
+  /^answer missing /,
+  /^bad /,
+  /^body lost /,
+  /^content not multi-line:/,
+  /^expected >=/,
+  /^no [a-z_]+ call;/,
+  /^type fidelity:/,
+];
+
+const PROVIDER_ERROR_PATTERNS = [
+  /AI_APICallError/i,
+  /fetch failed/i,
+  /model .* does not exist/i,
+  /operation was aborted/i,
+  /rate limit/i,
+  /status code [45]\d\d/i,
+];
+
+const STREAM_INVARIANT_PATTERNS = [
+  /CALL-WITHOUT-INPUT-START/,
+  /DELTA-BEFORE-START/,
+  /DELTA-MISMATCH/,
+  /DELTA-NOT-JSON/,
+  /DUP-INPUT-/,
+  /END-BEFORE-START/,
+  /NO-INPUT-END/,
+  /TEXT-LEAK/,
+];
+
+const HARNESS_ERROR_PATTERN =
+  /Cannot read properties|is not a function|ReferenceError|TypeError/;
+
+function classifyFailure(
+  detail: string,
+  parserErrors: string[]
+): ResultCategory {
+  if (parserErrors.length > 0) {
+    return "malformed-output";
+  }
+  if (PROVIDER_ERROR_PATTERNS.some((pattern) => pattern.test(detail))) {
+    return "provider-error";
+  }
+  if (STREAM_INVARIANT_PATTERNS.some((pattern) => pattern.test(detail))) {
+    return "stream-invariant";
+  }
+  if (HARNESS_ERROR_PATTERN.test(detail)) {
+    return "harness-error";
+  }
+  if (EXPECTATION_MISS_PATTERNS.some((pattern) => pattern.test(detail))) {
+    return "expectation-miss";
+  }
+  return "unclassified";
 }
 
 async function runOne(
@@ -617,6 +682,7 @@ async function runOne(
   try {
     const detail = await scenario.run(modelId, mw, parserErrors);
     return {
+      category: "pass",
       model: modelId,
       middleware: mw,
       scenario: scenario.name,
@@ -626,15 +692,56 @@ async function runOne(
       ms: Date.now() - start,
     };
   } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     return {
+      category: classifyFailure(detail, parserErrors),
       model: modelId,
       middleware: mw,
       scenario: scenario.name,
       ok: false,
-      detail: error instanceof Error ? error.message : String(error),
+      detail,
       parserErrors,
       ms: Date.now() - start,
     };
+  }
+}
+
+function printCategorySummary(results: RunResult[]): void {
+  const categories: ResultCategory[] = [
+    "pass",
+    "expectation-miss",
+    "malformed-output",
+    "provider-error",
+    "stream-invariant",
+    "harness-error",
+    "unclassified",
+  ];
+  console.log("\nBy category:");
+  for (const category of categories) {
+    const count = results.filter(
+      (result) => result.category === category
+    ).length;
+    console.log(`  ${category.padEnd(20)} ${count}`);
+  }
+}
+
+function printDimensionSummary(
+  results: RunResult[],
+  label: string,
+  select: (result: RunResult) => string
+): void {
+  const groups = new Map<string, RunResult[]>();
+  for (const result of results) {
+    const key = select(result);
+    groups.set(key, [...(groups.get(key) ?? []), result]);
+  }
+  console.log(`\nBy ${label}:`);
+  for (const [key, group] of [...groups].sort(([a], [b]) =>
+    a.localeCompare(b)
+  )) {
+    const passed = group.filter((result) => result.category === "pass").length;
+    const rate = ((passed / group.length) * 100).toFixed(1);
+    console.log(`  ${key.padEnd(42)} ${passed}/${group.length} (${rate}%)`);
   }
 }
 
@@ -651,7 +758,7 @@ async function main() {
           results.push(r);
           appendFileSync(OUT, `${JSON.stringify(r)}\n`);
           console.log(
-            `[${r.ok ? "PASS" : "FAIL"}] ${r.model} ${r.middleware} ${r.scenario} (${r.ms}ms)${r.ok ? ` ${r.detail.slice(0, 160)}` : ` — ${r.detail.slice(0, 200)}`}${r.parserErrors.length ? ` [onError x${r.parserErrors.length}]` : ""}`
+            `[${r.category.toUpperCase()}] ${r.model} ${r.middleware} ${r.scenario} (${r.ms}ms)${r.ok ? ` ${r.detail.slice(0, 160)}` : ` — ${r.detail.slice(0, 200)}`}${r.parserErrors.length ? ` [onError x${r.parserErrors.length}]` : ""}`
           );
         });
       }
@@ -674,9 +781,14 @@ async function main() {
   console.log(
     `\n=== ${results.length - failures.length}/${results.length} passed ===`
   );
+  printCategorySummary(results);
+  printDimensionSummary(results, "model", (result) => result.model);
+  printDimensionSummary(results, "middleware", (result) => result.middleware);
+  printDimensionSummary(results, "scenario", (result) => result.scenario);
+  console.log("\nFailure details:");
   for (const f of failures) {
     console.log(
-      `FAIL ${f.model} ${f.middleware} ${f.scenario}: ${f.detail.slice(0, 180)}`
+      `${f.category.toUpperCase()} ${f.model} ${f.middleware} ${f.scenario}: ${f.detail.slice(0, 180)}`
     );
   }
 }
