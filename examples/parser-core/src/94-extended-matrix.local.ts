@@ -460,7 +460,7 @@ const scenarios: Scenario[] = [
       const input = call.input as { content?: unknown };
       if (typeof input.content !== "string" || !input.content.includes("\n")) {
         throw new Error(
-          `content not multi-line: ${JSON.stringify(input.content).slice(0, 200)}`
+          `content not multi-line: ${String(JSON.stringify(input.content)).slice(0, 200)}`
         );
       }
       return `lines=${input.content.split("\n").length}${notes.length ? ` ${notes.join(" ")}` : ""}${leakCheck(text)}`;
