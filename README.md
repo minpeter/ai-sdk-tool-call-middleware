@@ -7,6 +7,9 @@
 
 AI SDK middleware for parsing tool calls from models that do not natively support `tools`.
 
+This package is ESM-only. Use `import` or dynamic `import()`; CommonJS
+`require()` is not supported.
+
 ## Install
 
 ```bash

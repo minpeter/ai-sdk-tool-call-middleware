@@ -57,7 +57,7 @@ export * from "./core/utils/type-guards";
 export { wrapGenerate } from "./generate-handler";
 // Pre-configured Middleware
 export * from "./preconfigured-middleware";
-export * from "./rjson";
+export * from "./rjson/index";
 export { toolChoiceStream, wrapStream } from "./stream-handler";
 // Tool Call Middleware Implementation
 export { createToolMiddleware } from "./tool-call-middleware";
