@@ -960,6 +960,42 @@ export function normalizeXmlTextValue(raw: string): string {
 }
 
 const NAMELESS_PARAM_IDENTIFIER_RE = /^[A-Za-z_][\w.-]{0,255}$/;
+const redundantNamelessParamCloseTagCache = new Map<string, RegExp>();
+
+function stripRedundantNamelessParamValueClose(options: {
+  rawValue: string;
+  paramName: string;
+  tagNameLower: string;
+  schemaParamNames?: Map<string, string> | null;
+}): string {
+  if (!options.schemaParamNames?.has(options.paramName.toLowerCase())) {
+    return options.rawValue;
+  }
+
+  let closeAtEnd = redundantNamelessParamCloseTagCache.get(
+    options.tagNameLower
+  );
+  if (!closeAtEnd) {
+    closeAtEnd = new RegExp(
+      `<\\s*\\/\\s*${escapeRegExp(options.tagNameLower)}\\s*>\\s*$`,
+      "i"
+    );
+    redundantNamelessParamCloseTagCache.set(options.tagNameLower, closeAtEnd);
+  }
+
+  const match = closeAtEnd.exec(options.rawValue);
+  if (!match || match.index === undefined) {
+    return options.rawValue;
+  }
+  return options.rawValue.slice(0, match.index);
+}
+
+function isSchemaBackedNamelessParam(
+  paramName: string,
+  schemaParamNames?: Map<string, string> | null
+): boolean {
+  return schemaParamNames?.has(paramName.toLowerCase()) === true;
+}
 
 /**
  * Salvage the nameless-tag variant some models (e.g. Qwen2.5) emit when they
@@ -1009,17 +1045,37 @@ function parseQwen3CoderNamelessParamTag(options: {
   );
   if (boundaryIndex == null) {
     if (!options.allowEndOfString) {
-      const rawProgressValue = text.slice(valueStart);
+      const rawProgressValue = stripRedundantNamelessParamValueClose({
+        rawValue: text.slice(valueStart),
+        paramName,
+        tagNameLower,
+        schemaParamNames: options.schemaParamNames,
+      });
       return {
         kind: "partial",
         start: startIndex,
         openEnd,
-        name: paramName,
-        value: rawProgressValue ? normalizeXmlTextValue(rawProgressValue) : "",
+        // Schema coercion can rewrite an incomplete nameless value (notably a
+        // JSON array or number), so only previously completed parameters are
+        // safe to stream. The current value is emitted once its boundary is
+        // known. Schema-less legacy salvage keeps its historical progress.
+        ...(isSchemaBackedNamelessParam(paramName, options.schemaParamNames)
+          ? {}
+          : {
+              name: paramName,
+              value: rawProgressValue
+                ? normalizeXmlTextValue(rawProgressValue)
+                : "",
+            }),
       };
     }
 
-    const rawValue = text.slice(valueStart);
+    const rawValue = stripRedundantNamelessParamValueClose({
+      rawValue: text.slice(valueStart),
+      paramName,
+      tagNameLower,
+      schemaParamNames: options.schemaParamNames,
+    });
     return {
       kind: "match",
       start: startIndex,
@@ -1029,7 +1085,12 @@ function parseQwen3CoderNamelessParamTag(options: {
     };
   }
 
-  const rawValue = text.slice(valueStart, boundaryIndex);
+  const rawValue = stripRedundantNamelessParamValueClose({
+    rawValue: text.slice(valueStart, boundaryIndex),
+    paramName,
+    tagNameLower,
+    schemaParamNames: options.schemaParamNames,
+  });
   return {
     kind: "match",
     start: startIndex,

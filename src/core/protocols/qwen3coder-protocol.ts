@@ -1951,6 +1951,14 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
         return;
       }
 
+      // Raw provider chunks are observational side-channel events and may be
+      // interleaved before every semantic text delta. They must not flush a
+      // partial `<tool_call>` / `<function>` prefix as recovered plain text.
+      if (chunk.type === "raw") {
+        controller.enqueue(chunk);
+        return;
+      }
+
       if (chunk.type !== "text-delta") {
         handlePassthroughChunk(controller, chunk);
         return;
