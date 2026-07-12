@@ -235,6 +235,50 @@ function isStrictToolCallArray(value: unknown): boolean {
 }
 
 /**
+ * Nemotron 3 Super has been observed separating adjacent calls with a fresh
+ * `<tool_call>` start while omitting only the previous `</tool_call>`. Treat
+ * that nested start as an implicit close only when the preceding body is a
+ * complete strict-JSON call for a known tool. The shared recovery path then
+ * reapplies the existing schema-key and prototype-safety policies.
+ */
+function recoverCompleteKnownCallBeforeNestedStart(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): { input: string; toolName: string } | null {
+  const candidate = text.trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed) ||
+    !Object.hasOwn(parsed, "name") ||
+    typeof (parsed as Record<string, unknown>).name !== "string" ||
+    !Object.hasOwn(parsed, "arguments")
+  ) {
+    return null;
+  }
+  const record = parsed as Record<string, unknown>;
+  if (
+    typeof record.arguments !== "object" ||
+    record.arguments === null ||
+    Array.isArray(record.arguments) ||
+    !tools.some((tool) => tool.name === record.name)
+  ) {
+    return null;
+  }
+
+  const resolved = resolveToolCall(candidate, tools);
+  return resolved.ok
+    ? { input: resolved.input, toolName: resolved.toolName }
+    : null;
+}
+
+/**
  * Seed 2.0 Lite has been observed completing a JSON array of calls and then
  * truncating only the wrapper close (`</tool`). Accept that shape only when a
  * proper prefix of the configured end delimiter is the final non-whitespace
@@ -620,6 +664,27 @@ function recoverNestedStreamingToolCall(options: {
     extractStreamingToolCallProgress(jsonSoFar.slice(0, nestedStartIndex))
       .toolName;
 
+  const recoveredCall = recoverCompleteKnownCallBeforeNestedStart(
+    jsonSoFar.slice(0, nestedStartIndex),
+    context.tools
+  );
+  if (recoveredCall) {
+    closeTextBlock(state, controller);
+    emitResolvedToolCall(
+      state,
+      controller,
+      recoveredCall.toolName,
+      recoveredCall.input
+    );
+    state.currentToolCallJson = "";
+    state.isInsideToolCall = false;
+    state.buffer =
+      jsonSoFar.slice(nestedStartIndex) +
+      toolCallEnd +
+      state.buffer.slice(startIndex + tag.length);
+    return getPotentialStartIndex(state.buffer, toolCallStart);
+  }
+
   logParseFailure({
     phase: "stream",
     reason: "Abandoning malformed streaming tool call before nested start tag",
@@ -803,6 +868,7 @@ function dropSensitiveOrphanToolCall(options: {
 
 function handleOrphanToolCallSpan(options: {
   currentIndex: number;
+  nestedStartIndex?: number;
   processedElements: LanguageModelV4Content[];
   spanStartIndex: number;
   text: string;
@@ -816,6 +882,27 @@ function handleOrphanToolCallSpan(options: {
   }
 
   const bodyStart = options.spanStartIndex + options.toolCallStart.length;
+  if (options.nestedStartIndex !== undefined) {
+    const recoveredCall = recoverCompleteKnownCallBeforeNestedStart(
+      options.text.slice(bodyStart, options.nestedStartIndex),
+      options.tools
+    );
+    if (recoveredCall) {
+      if (options.spanStartIndex > options.currentIndex) {
+        addTextSegment(
+          options.text.slice(options.currentIndex, options.spanStartIndex),
+          options.processedElements
+        );
+      }
+      options.processedElements.push({
+        type: "tool-call",
+        toolCallId: generateToolCallId(),
+        toolName: recoveredCall.toolName,
+        input: recoveredCall.input,
+      });
+      return options.nestedStartIndex;
+    }
+  }
   const arrayRecovery = recoverCompleteCallArrayBeforePartialEnd(
     options.text.slice(bodyStart),
     options.toolCallEnd,
@@ -908,6 +995,7 @@ export const hermesProtocol = ({
       if (!span.found) {
         currentIndex = handleOrphanToolCallSpan({
           currentIndex,
+          nestedStartIndex: span.nestedStartIndex,
           processedElements,
           spanStartIndex: span.startIdx,
           text,
