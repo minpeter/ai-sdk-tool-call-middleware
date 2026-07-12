@@ -17,6 +17,13 @@ export interface StreamingToolCallState {
   toolCallId: string;
 }
 
+export interface LinePrefixedToolCall {
+  content: string;
+  endIndex: number;
+  startIndex: number;
+  toolName: string;
+}
+
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
@@ -100,12 +107,22 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
 }
 
 interface ProcessNoToolCallInBufferParams {
+  allowLinePrefixedCallAtBufferEnd: boolean;
   buffer: string;
   controller: StreamController;
   emitToolInputStart: (
     controller: StreamController,
     toolName: string
   ) => StreamingToolCallState;
+  findLinePrefixedToolCall: (
+    buffer: string,
+    toolNames: string[],
+    allowAtBufferEnd: boolean
+  ) => LinePrefixedToolCall | null;
+  findPotentialLinePrefixedToolCallStart: (
+    buffer: string,
+    toolNames: string[]
+  ) => number;
   findPotentialToolTagStart: (buffer: string, toolNames: string[]) => number;
   flushText: FlushTextFn;
   handleStreamingToolCallEnd: HandleStreamingToolCallEnd;
@@ -114,6 +131,54 @@ interface ProcessNoToolCallInBufferParams {
   setBuffer: (buffer: string) => void;
   toolNames: string[];
   tools: LanguageModelV4FunctionTool[];
+}
+
+function processLinePrefixedToolCall(options: {
+  buffer: string;
+  controller: StreamController;
+  emitToolInputStart: (
+    controller: StreamController,
+    toolName: string
+  ) => StreamingToolCallState;
+  flushText: FlushTextFn;
+  handleStreamingToolCallEnd: HandleStreamingToolCallEnd;
+  linePrefixedCall: LinePrefixedToolCall;
+  parserOptions?: ParserOptions;
+  parseOptions?: Record<string, unknown>;
+  setBuffer: (buffer: string) => void;
+  tools: LanguageModelV4FunctionTool[];
+}): {
+  buffer: string;
+  currentToolCall: null;
+  shouldBreak: false;
+  shouldContinue: true;
+} {
+  const { linePrefixedCall } = options;
+  options.flushText(
+    options.controller,
+    options.buffer.slice(0, linePrefixedCall.startIndex)
+  );
+  const newBuffer = options.buffer.slice(linePrefixedCall.endIndex);
+  options.setBuffer(newBuffer);
+  const currentToolCall = options.emitToolInputStart(
+    options.controller,
+    linePrefixedCall.toolName
+  );
+  options.handleStreamingToolCallEnd({
+    toolContent: linePrefixedCall.content,
+    currentToolCall,
+    tools: options.tools,
+    options: options.parserOptions,
+    ctrl: options.controller,
+    flushText: options.flushText,
+    parseOptions: options.parseOptions,
+  });
+  return {
+    buffer: newBuffer,
+    currentToolCall: null,
+    shouldBreak: false,
+    shouldContinue: true,
+  };
 }
 
 function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
@@ -133,7 +198,10 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     setBuffer,
     emitToolInputStart,
     findPotentialToolTagStart,
+    findLinePrefixedToolCall,
+    findPotentialLinePrefixedToolCallStart,
     handleStreamingToolCallEnd,
+    allowLinePrefixedCallAtBufferEnd,
   } = params;
   const {
     index: earliestStartTagIndex,
@@ -141,9 +209,42 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     selfClosing,
     tagLength,
   } = findEarliestToolTag(buffer, toolNames);
+  const linePrefixedCall = findLinePrefixedToolCall(
+    buffer,
+    toolNames,
+    allowLinePrefixedCallAtBufferEnd
+  );
+
+  if (
+    linePrefixedCall &&
+    (earliestStartTagIndex === -1 ||
+      linePrefixedCall.startIndex < earliestStartTagIndex)
+  ) {
+    return processLinePrefixedToolCall({
+      buffer,
+      controller,
+      emitToolInputStart,
+      flushText,
+      handleStreamingToolCallEnd,
+      linePrefixedCall,
+      parserOptions: options,
+      parseOptions,
+      setBuffer,
+      tools,
+    });
+  }
 
   if (earliestStartTagIndex === -1) {
-    const potentialStart = findPotentialToolTagStart(buffer, toolNames);
+    const potentialTagStart = findPotentialToolTagStart(buffer, toolNames);
+    const potentialLineStart = findPotentialLinePrefixedToolCallStart(
+      buffer,
+      toolNames
+    );
+    const potentialStarts = [potentialTagStart, potentialLineStart].filter(
+      (start) => start >= 0
+    );
+    const potentialStart =
+      potentialStarts.length === 0 ? -1 : Math.min(...potentialStarts);
     const safeLen = Math.max(
       0,
       potentialStart === -1 ? buffer.length : potentialStart
@@ -215,9 +316,21 @@ export function createProcessBufferHandler(options: {
     toolName: string
   ) => StreamingToolCallState;
   findPotentialToolTagStart: (buffer: string, toolNames: string[]) => number;
+  findLinePrefixedToolCall: (
+    buffer: string,
+    toolNames: string[],
+    allowAtBufferEnd: boolean
+  ) => LinePrefixedToolCall | null;
+  findPotentialLinePrefixedToolCallStart: (
+    buffer: string,
+    toolNames: string[]
+  ) => number;
   handleStreamingToolCallEnd: HandleStreamingToolCallEnd;
-}): (controller: StreamController) => void {
-  return (controller: StreamController) => {
+}): (
+  controller: StreamController,
+  allowLinePrefixedCallAtBufferEnd?: boolean
+) => void {
+  return (controller, allowLinePrefixedCallAtBufferEnd = false) => {
     while (true) {
       const currentToolCall = options.getCurrentToolCall();
       if (currentToolCall) {
@@ -250,7 +363,11 @@ export function createProcessBufferHandler(options: {
           setBuffer: options.setBuffer,
           emitToolInputStart: options.emitToolInputStart,
           findPotentialToolTagStart: options.findPotentialToolTagStart,
+          findLinePrefixedToolCall: options.findLinePrefixedToolCall,
+          findPotentialLinePrefixedToolCallStart:
+            options.findPotentialLinePrefixedToolCallStart,
           handleStreamingToolCallEnd: options.handleStreamingToolCallEnd,
+          allowLinePrefixedCallAtBufferEnd,
         });
         options.setBuffer(result.buffer);
         options.setCurrentToolCall(result.currentToolCall);
