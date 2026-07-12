@@ -645,6 +645,7 @@ const EXPECTATION_MISS_PATTERNS = [
 
 const PROVIDER_ERROR_PATTERNS = [
   /AI_APICallError/i,
+  /Backend request failed with status \d+/i,
   /fetch failed/i,
   /Input validation error/i,
   /Invalid model:/i,
