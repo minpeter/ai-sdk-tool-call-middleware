@@ -15,7 +15,10 @@ import {
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
+import {
+  toolCallInputHasPrototypeSensitiveKey,
+  toolCallTextHasPrototypeSensitiveKey,
+} from "../utils/prototype-sensitive-keys";
 import {
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
@@ -207,6 +210,79 @@ function closeTextBlock(state: StreamState, controller: StreamController) {
   }
 }
 
+function isStrictToolCallArray(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length >= 2 &&
+    !toolCallInputHasPrototypeSensitiveKey(value) &&
+    value.every((item) => {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) {
+        return false;
+      }
+      const record = item as Record<string, unknown>;
+      const args = record.arguments;
+      return (
+        Object.hasOwn(record, "name") &&
+        typeof record.name === "string" &&
+        record.name.trim().length > 0 &&
+        Object.hasOwn(record, "arguments") &&
+        typeof args === "object" &&
+        args !== null &&
+        !Array.isArray(args)
+      );
+    })
+  );
+}
+
+/**
+ * Seed 2.0 Lite has been observed completing a JSON array of calls and then
+ * truncating only the wrapper close (`</tool`). Accept that shape only when a
+ * proper prefix of the configured end delimiter is the final non-whitespace
+ * text and the preceding body is a strict, complete JSON array of at least two
+ * object-argument calls. The recovered calls still pass through the shared
+ * known-tool, schema-key, and prototype-safety gates before emission.
+ */
+function stripPartialEndFromPossibleCallArray(
+  text: string,
+  toolCallEnd: string
+): string | null {
+  const trimmed = text.trimEnd();
+  const maxPrefixLength = Math.min(toolCallEnd.length - 1, trimmed.length);
+  for (let length = maxPrefixLength; length >= 2; length -= 1) {
+    const partialEnd = toolCallEnd.slice(0, length);
+    if (!trimmed.endsWith(partialEnd)) {
+      continue;
+    }
+    return trimmed.slice(0, -length).trimEnd();
+  }
+  return null;
+}
+
+function recoverCompleteCallArrayBeforePartialEnd(
+  text: string,
+  toolCallEnd: string,
+  tools: LanguageModelV4FunctionTool[]
+): {
+  matchedArrayShape: boolean;
+  recoveredCalls: ReturnType<typeof recoverKnownToolCallsFromText>;
+} {
+  const candidate = stripPartialEndFromPossibleCallArray(text, toolCallEnd);
+  if (candidate === null || !candidate.trimStart().startsWith("[")) {
+    return { matchedArrayShape: false, recoveredCalls: null };
+  }
+  try {
+    if (!isStrictToolCallArray(JSON.parse(candidate))) {
+      return { matchedArrayShape: true, recoveredCalls: null };
+    }
+  } catch {
+    return { matchedArrayShape: true, recoveredCalls: null };
+  }
+  return {
+    matchedArrayShape: true,
+    recoveredCalls: recoverKnownToolCallsFromText(candidate, tools),
+  };
+}
+
 /**
  * Salvage tool calls from an unterminated streaming tool-call body. A call
  * closed with the wrong tag (e.g. `<tool_call>{...}</think>`) or a run of
@@ -219,12 +295,17 @@ function salvageIncompleteToolCalls(
   state: StreamState,
   controller: StreamController,
   rawToolCallContent: string,
-  tools: LanguageModelV4FunctionTool[]
+  tools: LanguageModelV4FunctionTool[],
+  toolCallEnd: string
 ): boolean {
-  const recoveredCalls = recoverKnownToolCallsFromText(
+  const arrayRecovery = recoverCompleteCallArrayBeforePartialEnd(
     rawToolCallContent,
+    toolCallEnd,
     tools
   );
+  const recoveredCalls = arrayRecovery.matchedArrayShape
+    ? arrayRecovery.recoveredCalls
+    : recoverKnownToolCallsFromText(rawToolCallContent, tools);
   if (!recoveredCalls || recoveredCalls.length === 0) {
     return false;
   }
@@ -246,6 +327,7 @@ function emitIncompleteToolCall(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
+  toolCallEnd: string,
   trailingBuffer: string,
   tools: LanguageModelV4FunctionTool[],
   options?: ParserOptions
@@ -295,7 +377,13 @@ function emitIncompleteToolCall(
   const rawToolCallContent = `${state.currentToolCallJson}${trailingBuffer}`;
 
   if (
-    salvageIncompleteToolCalls(state, controller, rawToolCallContent, tools)
+    salvageIncompleteToolCalls(
+      state,
+      controller,
+      rawToolCallContent,
+      tools,
+      toolCallEnd
+    )
   ) {
     return;
   }
@@ -362,6 +450,7 @@ function handleFinishChunk(
   state: StreamState,
   controller: StreamController,
   toolCallStart: string,
+  toolCallEnd: string,
   tools: LanguageModelV4FunctionTool[],
   options: ParserOptions | undefined,
   chunk: LanguageModelV4StreamPart
@@ -373,6 +462,7 @@ function handleFinishChunk(
       state,
       controller,
       toolCallStart,
+      toolCallEnd,
       trailingBuffer,
       tools,
       options
@@ -716,12 +806,38 @@ function handleOrphanToolCallSpan(options: {
   processedElements: LanguageModelV4Content[];
   spanStartIndex: number;
   text: string;
+  toolCallEnd: string;
   toolCallStart: string;
   tools: LanguageModelV4FunctionTool[];
 }): number {
   const dropEndIndex = dropSensitiveOrphanToolCall(options);
   if (dropEndIndex !== null) {
     return dropEndIndex;
+  }
+
+  const bodyStart = options.spanStartIndex + options.toolCallStart.length;
+  const arrayRecovery = recoverCompleteCallArrayBeforePartialEnd(
+    options.text.slice(bodyStart),
+    options.toolCallEnd,
+    options.tools
+  );
+  const { recoveredCalls } = arrayRecovery;
+  if (recoveredCalls && recoveredCalls.length > 0) {
+    if (options.spanStartIndex > options.currentIndex) {
+      addTextSegment(
+        options.text.slice(options.currentIndex, options.spanStartIndex),
+        options.processedElements
+      );
+    }
+    for (const recoveredCall of recoveredCalls) {
+      options.processedElements.push({
+        type: "tool-call",
+        toolCallId: generateToolCallId(),
+        toolName: recoveredCall.toolName,
+        input: recoveredCall.input,
+      });
+    }
+    return options.text.length;
   }
 
   const skipTo = options.spanStartIndex + options.toolCallStart.length;
@@ -795,6 +911,7 @@ export const hermesProtocol = ({
           processedElements,
           spanStartIndex: span.startIdx,
           text,
+          toolCallEnd,
           toolCallStart,
           tools,
         });
@@ -861,6 +978,7 @@ export const hermesProtocol = ({
             state,
             controller,
             toolCallStart,
+            toolCallEnd,
             tools,
             options,
             chunk
