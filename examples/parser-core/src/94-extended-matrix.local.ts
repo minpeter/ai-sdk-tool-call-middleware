@@ -6,7 +6,12 @@
  * Run:
  *   LIVE_MATRIX_MODELS=a,b pnpm dlx tsx examples/parser-core/src/94-extended-matrix.local.ts
  */
-import { appendFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   generateText,
@@ -601,12 +606,14 @@ type ResultCategory =
   | "pass"
   | "expectation-miss"
   | "malformed-output"
+  | "output-leak"
   | "provider-error"
   | "stream-invariant"
   | "harness-error"
   | "unclassified";
 
 interface RunResult {
+  attempts: number;
   category: ResultCategory;
   detail: string;
   middleware: string;
@@ -616,6 +623,15 @@ interface RunResult {
   parserErrors: string[];
   scenario: string;
 }
+
+const PROVIDER_RETRIES = Number.parseInt(
+  process.env.LIVE_MATRIX_PROVIDER_RETRIES ?? "0",
+  10
+);
+const CONCURRENCY = Number.parseInt(
+  process.env.LIVE_MATRIX_CONCURRENCY ?? "10",
+  10
+);
 
 const EXPECTATION_MISS_PATTERNS = [
   /^answer missing /,
@@ -630,10 +646,29 @@ const EXPECTATION_MISS_PATTERNS = [
 const PROVIDER_ERROR_PATTERNS = [
   /AI_APICallError/i,
   /fetch failed/i,
+  /Input validation error/i,
+  /Invalid model:/i,
+  /Key limit exceeded/i,
+  /litellm\.APIError/i,
   /model .* does not exist/i,
+  /non-serverless model/i,
+  /only supports streaming responses/i,
   /operation was aborted/i,
   /rate limit/i,
   /status code [45]\d\d/i,
+  /subscription plan/i,
+  /System role not supported/i,
+  /Conversation roles must alternate/i,
+  /enum system not in user,assistant/i,
+  /Expected 'function\.name'/i,
+];
+
+const RETRYABLE_PROVIDER_ERROR_PATTERNS = [
+  /operation was aborted/i,
+  /rate limit/i,
+  /status code 429/i,
+  /status code 5\d\d/i,
+  /timeout/i,
 ];
 
 const STREAM_INVARIANT_PATTERNS = [
@@ -654,11 +689,11 @@ function classifyFailure(
   detail: string,
   parserErrors: string[]
 ): ResultCategory {
-  if (parserErrors.length > 0) {
-    return "malformed-output";
-  }
   if (PROVIDER_ERROR_PATTERNS.some((pattern) => pattern.test(detail))) {
     return "provider-error";
+  }
+  if (parserErrors.length > 0) {
+    return "malformed-output";
   }
   if (STREAM_INVARIANT_PATTERNS.some((pattern) => pattern.test(detail))) {
     return "stream-invariant";
@@ -672,37 +707,80 @@ function classifyFailure(
   return "unclassified";
 }
 
+function classifySuccess(
+  detail: string,
+  parserErrors: string[]
+): ResultCategory {
+  if (STREAM_INVARIANT_PATTERNS.some((pattern) => pattern.test(detail))) {
+    return "stream-invariant";
+  }
+  if (detail.includes("TEXT-LEAK")) {
+    return "output-leak";
+  }
+  if (parserErrors.length > 0) {
+    return "malformed-output";
+  }
+  return "pass";
+}
+
+function isRetryableProviderError(detail: string): boolean {
+  return RETRYABLE_PROVIDER_ERROR_PATTERNS.some((pattern) =>
+    pattern.test(detail)
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function runOne(
   modelId: string,
   mw: MwName,
   scenario: Scenario
 ): Promise<RunResult> {
-  const parserErrors: string[] = [];
   const start = Date.now();
-  try {
-    const detail = await scenario.run(modelId, mw, parserErrors);
-    return {
-      category: "pass",
-      model: modelId,
-      middleware: mw,
-      scenario: scenario.name,
-      ok: true,
-      detail,
-      parserErrors,
-      ms: Date.now() - start,
-    };
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    return {
-      category: classifyFailure(detail, parserErrors),
-      model: modelId,
-      middleware: mw,
-      scenario: scenario.name,
-      ok: false,
-      detail,
-      parserErrors,
-      ms: Date.now() - start,
-    };
+  for (let attempt = 1; ; attempt += 1) {
+    const parserErrors: string[] = [];
+    try {
+      const detail = await scenario.run(modelId, mw, parserErrors);
+      const category = classifySuccess(detail, parserErrors);
+      return {
+        attempts: attempt,
+        category,
+        model: modelId,
+        middleware: mw,
+        scenario: scenario.name,
+        ok: category === "pass",
+        detail,
+        parserErrors,
+        ms: Date.now() - start,
+      };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const category = classifyFailure(detail, parserErrors);
+      if (
+        category === "provider-error" &&
+        isRetryableProviderError(detail) &&
+        attempt <= PROVIDER_RETRIES
+      ) {
+        console.log(
+          `[RETRY ${attempt}/${PROVIDER_RETRIES}] ${modelId} ${mw} ${scenario.name} — ${detail.slice(0, 160)}`
+        );
+        await delay(2000 * attempt);
+        continue;
+      }
+      return {
+        attempts: attempt,
+        category,
+        model: modelId,
+        middleware: mw,
+        scenario: scenario.name,
+        ok: false,
+        detail,
+        parserErrors,
+        ms: Date.now() - start,
+      };
+    }
   }
 }
 
@@ -711,6 +789,7 @@ function printCategorySummary(results: RunResult[]): void {
     "pass",
     "expectation-miss",
     "malformed-output",
+    "output-leak",
     "provider-error",
     "stream-invariant",
     "harness-error",
@@ -746,26 +825,51 @@ function printDimensionSummary(
 }
 
 async function main() {
-  writeFileSync(OUT, "");
+  const resume = process.env.LIVE_MATRIX_RESUME === "1";
+  const existingResults: RunResult[] =
+    resume && existsSync(OUT)
+      ? readFileSync(OUT, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as RunResult)
+      : [];
+  if (!resume) {
+    writeFileSync(OUT, "");
+  }
   const jobs: Array<() => Promise<void>> = [];
-  const results: RunResult[] = [];
+  const results: RunResult[] = [...existingResults];
+  const completed = new Set(
+    existingResults.map(
+      (result) =>
+        `${result.model}\u0000${result.middleware}\u0000${result.scenario}`
+    )
+  );
 
-  for (const model of MODELS) {
+  for (const scenario of scenarios) {
     for (const mw of Object.keys(MIDDLEWARES) as MwName[]) {
-      for (const scenario of scenarios) {
+      for (const model of MODELS) {
+        const key = `${model}\u0000${mw}\u0000${scenario.name}`;
+        if (completed.has(key)) {
+          continue;
+        }
         jobs.push(async () => {
           const r = await runOne(model, mw, scenario);
           results.push(r);
           appendFileSync(OUT, `${JSON.stringify(r)}\n`);
           console.log(
-            `[${r.category.toUpperCase()}] ${r.model} ${r.middleware} ${r.scenario} (${r.ms}ms)${r.ok ? ` ${r.detail.slice(0, 160)}` : ` — ${r.detail.slice(0, 200)}`}${r.parserErrors.length ? ` [onError x${r.parserErrors.length}]` : ""}`
+            `[${r.category.toUpperCase()}] ${r.model} ${r.middleware} ${r.scenario} (${r.ms}ms, attempts=${r.attempts})${r.ok ? ` ${r.detail.slice(0, 160)}` : ` — ${r.detail.slice(0, 200)}`}${r.parserErrors.length ? ` [onError x${r.parserErrors.length}]` : ""}`
           );
         });
       }
     }
   }
 
-  const CONCURRENCY = 10;
+  if (existingResults.length > 0) {
+    console.log(
+      `Resuming with ${existingResults.length} completed results; ${jobs.length} remaining.`
+    );
+  }
+
   let cursor = 0;
   await Promise.all(
     Array.from({ length: CONCURRENCY }, async () => {
