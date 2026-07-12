@@ -442,7 +442,7 @@ type YamlParseResult =
 // that was already parsed. Buffer these bodies until the closing tool tag so
 // emitted JSON deltas can never disagree with the final parse.
 const YAML_BLOCK_SCALAR_HEADER_RE =
-  /^[^#\r\n]+:\s*[|>][1-9+-]{0,2}(?:\s+#.*)?\r?$/m;
+  /^(?:[^\r\n]*:\s*|[ \t]*-\s*)[|>][1-9+-]{0,2}(?:[ \t]+#.*)?\r?$/m;
 
 function yamlFailureCause(failure: YamlParseFailure): Record<string, unknown> {
   if (failure.kind === "yaml-parse-error") {
