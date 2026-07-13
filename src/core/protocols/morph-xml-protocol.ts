@@ -20,6 +20,7 @@ import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensiti
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import { shouldBufferToolInputProgress } from "../utils/tool-call-progress-buffering";
+import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
 import {
   emitBufferedToolInputProgressDelta,
   emitFailedBufferedToolInputLifecycle,
@@ -1219,7 +1220,8 @@ function handleCloseToken(
 function findLinePrefixedXmlBodyEnd(
   text: string,
   bodyStartIndex: number,
-  toolNames: string[]
+  toolNames: string[],
+  propertyNames: Set<string>
 ): number {
   let cursor = bodyStartIndex;
   let depth = 0;
@@ -1241,7 +1243,8 @@ function findLinePrefixedXmlBodyEnd(
       depth === 0 &&
       lastCompleteEnd !== -1 &&
       token.kind === "open" &&
-      toolNames.includes(token.name)
+      toolNames.includes(token.name) &&
+      !propertyNames.has(token.name)
     ) {
       break;
     }
@@ -1270,6 +1273,7 @@ function findLinePrefixedXmlBodyEnd(
 
 function resolveLinePrefixedCallBoundary(options: {
   contentEnd: number;
+  propertyNames: Set<string>;
   text: string;
   toolName: string;
   toolNames: string[];
@@ -1286,6 +1290,9 @@ function resolveLinePrefixedCallBoundary(options: {
     };
   }
   const nextIsKnownToolCall = options.toolNames.some((toolName) => {
+    if (options.propertyNames.has(toolName)) {
+      return false;
+    }
     const next = findNextToolTag(options.text, afterWhitespace, toolName);
     return next?.tagStart === afterWhitespace;
   });
@@ -1300,7 +1307,7 @@ function resolveLinePrefixedCallBoundary(options: {
 
 function findLinePrefixedToolCall(
   text: string,
-  toolNames: string[],
+  tools: LanguageModelV4FunctionTool[],
   searchFrom = 0
 ):
   | (LinePrefixedToolCall & { boundaryConfirmed: boolean; segment: string })
@@ -1311,6 +1318,7 @@ function findLinePrefixedToolCall(
         segment: string;
       })
     | null = null;
+  const toolNames = extractToolNames(tools);
 
   for (const toolName of toolNames) {
     const linePattern = new RegExp(
@@ -1328,10 +1336,14 @@ function findLinePrefixedToolCall(
         match = linePattern.exec(text);
         continue;
       }
+      const propertyNames = collectSchemaSelectionPropertyNames(
+        getToolSchema(tools, toolName)
+      );
       const contentEnd = findLinePrefixedXmlBodyEnd(
         text,
         contentStart,
-        toolNames
+        toolNames,
+        propertyNames
       );
       if (contentEnd === -1 || contentEnd <= contentStart) {
         match = linePattern.exec(text);
@@ -1340,6 +1352,7 @@ function findLinePrefixedToolCall(
       const content = text.slice(contentStart, contentEnd);
       const { boundaryConfirmed, endIndex } = resolveLinePrefixedCallBoundary({
         contentEnd,
+        propertyNames,
         text,
         toolName,
         toolNames,
@@ -1365,13 +1378,13 @@ function findLinePrefixedToolCall(
 
 function findLinePrefixedToolCalls(
   text: string,
-  toolNames: string[]
+  tools: LanguageModelV4FunctionTool[]
 ): Array<LinePrefixedToolCall & { segment: string }> {
   const calls: Array<LinePrefixedToolCall & { segment: string }> = [];
   let searchFrom = 0;
 
   while (searchFrom < text.length) {
-    const call = findLinePrefixedToolCall(text, toolNames, searchFrom);
+    const call = findLinePrefixedToolCall(text, tools, searchFrom);
     if (!call) {
       break;
     }
@@ -1474,10 +1487,10 @@ function findPotentialLinePrefixedToolCallStart(
 
 function findStreamingLinePrefixedToolCall(
   text: string,
-  toolNames: string[],
+  tools: LanguageModelV4FunctionTool[],
   allowAtBufferEnd: boolean
 ): LinePrefixedToolCall | null {
-  const candidate = findLinePrefixedToolCall(text, toolNames);
+  const candidate = findLinePrefixedToolCall(text, tools);
   if (!candidate) {
     return null;
   }
@@ -1595,23 +1608,30 @@ function findPotentialToolTagStart(
 
 function findToolCallsWithFallbacks(
   text: string,
-  toolNames: string[]
+  tools: LanguageModelV4FunctionTool[]
 ): { parseText: string; toolCalls: ReturnType<typeof findToolCalls> } {
   let parseText = text;
+  const toolNames = extractToolNames(tools);
   let toolCalls = findToolCalls(parseText, toolNames);
-  const linePrefixedCalls = findLinePrefixedToolCalls(parseText, toolNames);
+  const linePrefixedCalls = findLinePrefixedToolCalls(parseText, tools);
 
   if (linePrefixedCalls.length > 0) {
-    toolCalls.push(
-      ...linePrefixedCalls.filter((lineCall) =>
-        toolCalls.every(
-          (explicitCall) =>
-            lineCall.endIndex <= explicitCall.startIndex ||
-            lineCall.startIndex >= explicitCall.endIndex
-        )
-      )
+    const candidates = [...toolCalls, ...linePrefixedCalls].sort(
+      (left, right) =>
+        left.startIndex - right.startIndex || right.endIndex - left.endIndex
     );
-    toolCalls.sort((left, right) => left.startIndex - right.startIndex);
+    toolCalls = [];
+    for (const candidate of candidates) {
+      if (
+        toolCalls.every(
+          (selected) =>
+            candidate.endIndex <= selected.startIndex ||
+            candidate.startIndex >= selected.endIndex
+        )
+      ) {
+        toolCalls.push(candidate);
+      }
+    }
   }
 
   if (toolCalls.length === 0) {
@@ -1795,10 +1815,7 @@ export const morphXmlProtocol = (
       const processedElements: LanguageModelV4Content[] = [];
       let currentIndex = 0;
 
-      const { parseText, toolCalls } = findToolCallsWithFallbacks(
-        text,
-        toolNames
-      );
+      const { parseText, toolCalls } = findToolCallsWithFallbacks(text, tools);
 
       for (const tc of toolCalls) {
         if (tc.startIndex > currentIndex) {
@@ -2011,7 +2028,8 @@ export const morphXmlProtocol = (
         emitToolInputProgress,
         emitToolInputStart,
         findPotentialToolTagStart,
-        findLinePrefixedToolCall: findStreamingLinePrefixedToolCall,
+        findLinePrefixedToolCall: (text, _toolNames, allowAtBufferEnd) =>
+          findStreamingLinePrefixedToolCall(text, tools, allowAtBufferEnd),
         findPotentialLinePrefixedToolCallStart,
         handleStreamingToolCallEnd,
       });

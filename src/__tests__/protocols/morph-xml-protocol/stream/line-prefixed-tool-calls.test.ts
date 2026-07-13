@@ -33,6 +33,19 @@ const tools: LanguageModelV4FunctionTool[] = [
       additionalProperties: false,
     },
   },
+  {
+    type: "function",
+    name: "write_file",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        read_file: { type: "string" },
+      },
+      required: ["path", "read_file"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 // Exact structural shape observed from Devstral Medium: both opening root
@@ -200,6 +213,30 @@ describe("MorphXML streaming line-prefixed tool calls", () => {
         .map((part) => part.toolName)
     ).toEqual(["list_dir"]);
     expect(extractTextDeltas(parts)).toContain("Done.");
+  });
+
+  it("preserves a parameter whose name matches another tool", async () => {
+    const text =
+      "write_file\n" +
+      "<path>/tmp/result.txt</path>\n" +
+      "<read_file>/src/input.txt</read_file>\n" +
+      "</write_file>";
+    const expectedInput = {
+      path: "/tmp/result.txt",
+      read_file: "/src/input.txt",
+    };
+
+    const generated = generatedCalls(text);
+    expect(generated).toHaveLength(1);
+    expect(generated[0]?.toolName).toBe("write_file");
+    expect(JSON.parse(generated[0]?.input ?? "null")).toEqual(expectedInput);
+
+    const parts = await streamedParts({ chunks: Array.from(text) });
+    const streamed = parts.filter((part) => part.type === "tool-call");
+    expect(streamed).toHaveLength(1);
+    expect(streamed[0]?.toolName).toBe("write_file");
+    expect(JSON.parse(streamed[0]?.input ?? "null")).toEqual(expectedInput);
+    assertCanonicalAiSdkEventOrder(parts);
   });
 
   it.each([

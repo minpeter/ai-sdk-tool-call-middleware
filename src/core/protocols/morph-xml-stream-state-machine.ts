@@ -214,6 +214,15 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     toolNames,
     allowLinePrefixedCallAtBufferEnd
   );
+  const potentialLineStart = findPotentialLinePrefixedToolCallStart(
+    buffer,
+    toolNames
+  );
+  const potentialTagStart = findPotentialToolTagStart(buffer, toolNames);
+  const xmlStarts = [earliestStartTagIndex, potentialTagStart].filter(
+    (start) => start >= 0
+  );
+  const earliestXmlStart = xmlStarts.length === 0 ? -1 : Math.min(...xmlStarts);
 
   if (
     linePrefixedCall &&
@@ -234,12 +243,24 @@ function processNoToolCallInBuffer(params: ProcessNoToolCallInBufferParams): {
     });
   }
 
+  if (
+    potentialLineStart >= 0 &&
+    (earliestXmlStart === -1 || potentialLineStart < earliestXmlStart)
+  ) {
+    const remaining = buffer.slice(potentialLineStart);
+    if (potentialLineStart > 0) {
+      flushText(controller, buffer.slice(0, potentialLineStart));
+      setBuffer(remaining);
+    }
+    return {
+      buffer: remaining,
+      currentToolCall: null,
+      shouldBreak: true,
+      shouldContinue: false,
+    };
+  }
+
   if (earliestStartTagIndex === -1) {
-    const potentialTagStart = findPotentialToolTagStart(buffer, toolNames);
-    const potentialLineStart = findPotentialLinePrefixedToolCallStart(
-      buffer,
-      toolNames
-    );
     const potentialStarts = [potentialTagStart, potentialLineStart].filter(
       (start) => start >= 0
     );
