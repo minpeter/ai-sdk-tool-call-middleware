@@ -275,8 +275,9 @@ export function findToolCallBoundaryOutsideRjsonSyntax(
  * Returns:
  *   - `null`: no more start tags in the remaining text
  *   - `{ startIdx, found: true, jsonStart, endIdx }`: a valid span
- *   - `{ startIdx, found: false }`: an orphan start tag (caller should skip
- *     past it and resume scanning)
+ *   - `{ startIdx, found: false, nestedStartIndex? }`: an orphan start tag;
+ *     when the boundary was a nested start, its index is exposed so callers
+ *     may safely inspect the otherwise complete preceding body
  */
 export function findNextToolCallSpan(
   text: string,
@@ -285,7 +286,7 @@ export function findNextToolCallSpan(
   endTag: string
 ):
   | { startIdx: number; found: true; jsonStart: number; endIdx: number }
-  | { startIdx: number; found: false }
+  | { startIdx: number; found: false; nestedStartIndex?: number }
   | null {
   const startIdx = text.indexOf(startTag, searchFrom);
   if (startIdx === -1) {
@@ -305,7 +306,11 @@ export function findNextToolCallSpan(
   if (boundary.kind === "nested") {
     // Nested <tool_call> outside a string/comment — abandon this
     // start; its presumed </tool_call> belongs to a later call.
-    return { startIdx, found: false };
+    return {
+      startIdx,
+      found: false,
+      nestedStartIndex: boundary.nestedStartIndex,
+    };
   }
   return { startIdx, found: true, jsonStart, endIdx: boundary.endIdx };
 }

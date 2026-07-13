@@ -80,6 +80,55 @@ unit: celsius
     expect(args.location).toBe("Berlin");
   });
 
+  it("keeps a partial tool tag buffered across interleaved raw chunks", async () => {
+    const protocol = yamlXmlProtocol();
+    const transformer = protocol.createStreamParser({ tools: basicTools });
+    const rs = new ReadableStream<LanguageModelV4StreamPart>({
+      start(ctrl) {
+        ctrl.enqueue({ type: "text-delta", id: "1", delta: "<get_wea" });
+        ctrl.enqueue({
+          type: "raw",
+          rawValue: { choices: [{ delta: { content: "ther>\n" } }] },
+        });
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: "ther>\nlocation: Berlin\n</get_weather>",
+        });
+        ctrl.enqueue({
+          type: "finish",
+          finishReason: stopFinishReason,
+          usage: zeroUsage,
+        });
+        ctrl.close();
+      },
+    });
+
+    const out = await convertReadableStreamToArray(
+      pipeWithTransformer(rs, transformer)
+    );
+    const text = out
+      .filter((part) => part.type === "text-delta")
+      .map((part) => part.delta)
+      .join("");
+    const deltas = out
+      .filter((part) => part.type === "tool-input-delta")
+      .map((part) => part.delta)
+      .join("");
+    const tool = out.find((part) => part.type === "tool-call");
+
+    expect(text).toBe("");
+    expect(tool).toMatchObject({
+      type: "tool-call",
+      toolName: "get_weather",
+    });
+    if (tool?.type !== "tool-call") {
+      throw new Error("Expected tool call");
+    }
+    expect(deltas).toBe(tool.input);
+    expect(JSON.parse(tool.input)).toEqual({ location: "Berlin" });
+  });
+
   it("should handle self-closing tag in stream", async () => {
     const protocol = yamlXmlProtocol();
     const transformer = protocol.createStreamParser({ tools: basicTools });

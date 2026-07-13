@@ -437,6 +437,13 @@ type YamlParseResult =
   | { ok: true; value: Record<string, unknown> }
   | { ok: false; failure: YamlParseFailure };
 
+// A YAML block scalar is not prefix-stable while it is streaming: indentation
+// discovered by later lines and the final chomping decision can rewrite text
+// that was already parsed. Buffer these bodies until the closing tool tag so
+// emitted JSON deltas can never disagree with the final parse.
+const YAML_BLOCK_SCALAR_HEADER_RE =
+  /^(?:[^\r\n]*:\s*|[ \t]*-\s*)[|>][1-9+-]{0,2}(?:[ \t]+#.*)?\r?$/m;
+
 function yamlFailureCause(failure: YamlParseFailure): Record<string, unknown> {
   if (failure.kind === "yaml-parse-error") {
     return { kind: "yaml-parse-error", errors: failure.errors };
@@ -1043,6 +1050,9 @@ export const yamlXmlProtocol = (
       if (!currentToolCall) {
         return;
       }
+      if (YAML_BLOCK_SCALAR_HEADER_RE.test(toolContent)) {
+        return;
+      }
       const toolCall = currentToolCall;
       const parsedArgs = parseYamlContentForStreamProgress(toolContent);
       if (parsedArgs === null) {
@@ -1533,6 +1543,15 @@ export const yamlXmlProtocol = (
         // markup is excised), so the provider's original text-start/text-end
         // envelopes are dropped instead of producing empty duplicate blocks.
         if (chunk.type === "text-start" || chunk.type === "text-end") {
+          return;
+        }
+
+        // Raw provider chunks are observational side-channel events. With
+        // `includeRawChunks`, providers commonly interleave one before every
+        // semantic text-delta. Do not let those events force a buffered
+        // partial tag (for example `<write` + `_file>`) out as plain text.
+        if (chunk.type === "raw") {
+          controller.enqueue(chunk);
           return;
         }
 

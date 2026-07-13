@@ -20,6 +20,7 @@ import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensiti
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 import { shouldBufferToolInputProgress } from "../utils/tool-call-progress-buffering";
+import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
 import {
   emitBufferedToolInputProgressDelta,
   emitFailedBufferedToolInputLifecycle,
@@ -33,6 +34,7 @@ import { findNextToolTag } from "../utils/xml-tool-tag-scanner";
 import {
   createProcessBufferHandler,
   type FlushTextFn,
+  type LinePrefixedToolCall,
   type StreamingToolCallState,
 } from "./morph-xml-stream-state-machine";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
@@ -1217,7 +1219,9 @@ function handleCloseToken(
 
 function findLinePrefixedXmlBodyEnd(
   text: string,
-  bodyStartIndex: number
+  bodyStartIndex: number,
+  toolNames: string[],
+  propertyNames: Set<string>
 ): number {
   let cursor = bodyStartIndex;
   let depth = 0;
@@ -1233,6 +1237,15 @@ function findLinePrefixedXmlBodyEnd(
 
     const token = nextTagToken(text, cursor);
     if (token.kind === "eof") {
+      break;
+    }
+    if (
+      depth === 0 &&
+      lastCompleteEnd !== -1 &&
+      token.kind === "open" &&
+      toolNames.includes(token.name) &&
+      !propertyNames.has(token.name)
+    ) {
       break;
     }
 
@@ -1258,29 +1271,61 @@ function findLinePrefixedXmlBodyEnd(
   return lastCompleteEnd;
 }
 
+function resolveLinePrefixedCallBoundary(options: {
+  contentEnd: number;
+  propertyNames: Set<string>;
+  text: string;
+  toolName: string;
+  toolNames: string[];
+}): { boundaryConfirmed: boolean; endIndex: number } {
+  const afterWhitespace = consumeWhitespace(options.text, options.contentEnd);
+  const closeTagPattern = new RegExp(
+    `^</\\s*${escapeRegExp(options.toolName)}\\s*>`
+  );
+  const closeMatch = closeTagPattern.exec(options.text.slice(afterWhitespace));
+  if (closeMatch) {
+    return {
+      boundaryConfirmed: true,
+      endIndex: afterWhitespace + closeMatch[0].length,
+    };
+  }
+  const nextIsKnownToolCall = options.toolNames.some((toolName) => {
+    if (options.propertyNames.has(toolName)) {
+      return false;
+    }
+    const next = findNextToolTag(options.text, afterWhitespace, toolName);
+    return next?.tagStart === afterWhitespace;
+  });
+  return {
+    boundaryConfirmed:
+      nextIsKnownToolCall ||
+      (afterWhitespace < options.text.length &&
+        options.text.charAt(afterWhitespace) !== "<"),
+    endIndex: options.contentEnd,
+  };
+}
+
 function findLinePrefixedToolCall(
   text: string,
-  toolNames: string[]
-): {
-  toolName: string;
-  startIndex: number;
-  endIndex: number;
-  content: string;
-  segment: string;
-} | null {
-  let best: {
-    toolName: string;
-    startIndex: number;
-    endIndex: number;
-    content: string;
-    segment: string;
-  } | null = null;
+  tools: LanguageModelV4FunctionTool[],
+  searchFrom = 0
+):
+  | (LinePrefixedToolCall & { boundaryConfirmed: boolean; segment: string })
+  | null {
+  let best:
+    | (LinePrefixedToolCall & {
+        boundaryConfirmed: boolean;
+        segment: string;
+      })
+    | null = null;
+  const toolNames = extractToolNames(tools);
 
   for (const toolName of toolNames) {
     const linePattern = new RegExp(
       `(^|\\n)[\\t ]*${escapeRegExp(toolName)}[\\t ]*:?[\\t ]*(?:\\r?\\n|$)`,
       "g"
     );
+    linePattern.lastIndex = searchFrom;
 
     let match = linePattern.exec(text);
     while (match !== null) {
@@ -1291,19 +1336,35 @@ function findLinePrefixedToolCall(
         match = linePattern.exec(text);
         continue;
       }
-      const contentEnd = findLinePrefixedXmlBodyEnd(text, contentStart);
+      const propertyNames = collectSchemaSelectionPropertyNames(
+        getToolSchema(tools, toolName)
+      );
+      const contentEnd = findLinePrefixedXmlBodyEnd(
+        text,
+        contentStart,
+        toolNames,
+        propertyNames
+      );
       if (contentEnd === -1 || contentEnd <= contentStart) {
         match = linePattern.exec(text);
         continue;
       }
       const content = text.slice(contentStart, contentEnd);
+      const { boundaryConfirmed, endIndex } = resolveLinePrefixedCallBoundary({
+        contentEnd,
+        propertyNames,
+        text,
+        toolName,
+        toolNames,
+      });
 
       const candidate = {
         toolName,
         startIndex,
-        endIndex: contentEnd,
+        endIndex,
         content,
-        segment: text.slice(startIndex, contentEnd),
+        boundaryConfirmed,
+        segment: text.slice(startIndex, endIndex),
       };
       if (best === null || candidate.startIndex < best.startIndex) {
         best = candidate;
@@ -1313,6 +1374,127 @@ function findLinePrefixedToolCall(
   }
 
   return best;
+}
+
+function findLinePrefixedToolCalls(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): Array<LinePrefixedToolCall & { segment: string }> {
+  const calls: Array<LinePrefixedToolCall & { segment: string }> = [];
+  let searchFrom = 0;
+
+  while (searchFrom < text.length) {
+    const call = findLinePrefixedToolCall(text, tools, searchFrom);
+    if (!call) {
+      break;
+    }
+    calls.push(call);
+    searchFrom = call.endIndex;
+  }
+
+  return calls;
+}
+
+function consumeHorizontalWhitespace(text: string, index: number): number {
+  let cursor = index;
+  while (
+    cursor < text.length &&
+    (text.charAt(cursor) === " " || text.charAt(cursor) === "\t")
+  ) {
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function consumePotentialLineBreak(
+  text: string,
+  index: number
+): { nextIndex: number; valid: boolean } {
+  if (text.charAt(index) === "\n") {
+    return { nextIndex: index + 1, valid: true };
+  }
+  if (text.charAt(index) !== "\r") {
+    return { nextIndex: index, valid: false };
+  }
+  if (index + 1 === text.length) {
+    return { nextIndex: text.length, valid: true };
+  }
+  return text.charAt(index + 1) === "\n"
+    ? { nextIndex: index + 2, valid: true }
+    : { nextIndex: index, valid: false };
+}
+
+function isPotentialLinePrefixedToolNameAt(
+  text: string,
+  lineStart: number,
+  toolName: string
+): boolean {
+  let cursor = consumeHorizontalWhitespace(text, lineStart);
+
+  const availableNameLength = Math.min(toolName.length, text.length - cursor);
+  if (
+    text.slice(cursor, cursor + availableNameLength) !==
+    toolName.slice(0, availableNameLength)
+  ) {
+    return false;
+  }
+  cursor += availableNameLength;
+  if (availableNameLength < toolName.length) {
+    return cursor === text.length;
+  }
+
+  cursor = consumeHorizontalWhitespace(text, cursor);
+  if (cursor === text.length) {
+    return true;
+  }
+  if (text.charAt(cursor) === ":") {
+    cursor = consumeHorizontalWhitespace(text, cursor + 1);
+    if (cursor === text.length) {
+      return true;
+    }
+  }
+
+  const lineBreak = consumePotentialLineBreak(text, cursor);
+  if (!lineBreak.valid) {
+    return false;
+  }
+
+  cursor = consumeWhitespace(text, lineBreak.nextIndex);
+  return cursor === text.length || text.charAt(cursor) === "<";
+}
+
+function findPotentialLinePrefixedToolCallStart(
+  text: string,
+  toolNames: string[]
+): number {
+  let lineStart = 0;
+  while (lineStart <= text.length) {
+    if (
+      toolNames.some((toolName) =>
+        isPotentialLinePrefixedToolNameAt(text, lineStart, toolName)
+      )
+    ) {
+      return lineStart;
+    }
+    const newlineIndex = text.indexOf("\n", lineStart);
+    if (newlineIndex === -1) {
+      break;
+    }
+    lineStart = newlineIndex + 1;
+  }
+  return -1;
+}
+
+function findStreamingLinePrefixedToolCall(
+  text: string,
+  tools: LanguageModelV4FunctionTool[],
+  allowAtBufferEnd: boolean
+): LinePrefixedToolCall | null {
+  const candidate = findLinePrefixedToolCall(text, tools);
+  if (!candidate) {
+    return null;
+  }
+  return candidate.boundaryConfirmed || allowAtBufferEnd ? candidate : null;
 }
 
 function isOpenTagPrefix(suffix: string, toolName: string): boolean {
@@ -1426,15 +1608,29 @@ function findPotentialToolTagStart(
 
 function findToolCallsWithFallbacks(
   text: string,
-  toolNames: string[]
+  tools: LanguageModelV4FunctionTool[]
 ): { parseText: string; toolCalls: ReturnType<typeof findToolCalls> } {
   let parseText = text;
+  const toolNames = extractToolNames(tools);
   let toolCalls = findToolCalls(parseText, toolNames);
+  const linePrefixedCalls = findLinePrefixedToolCalls(parseText, tools);
 
-  if (toolCalls.length === 0) {
-    const fallbackToolCall = findLinePrefixedToolCall(parseText, toolNames);
-    if (fallbackToolCall !== null) {
-      toolCalls.push(fallbackToolCall);
+  if (linePrefixedCalls.length > 0) {
+    const candidates = [...toolCalls, ...linePrefixedCalls].sort(
+      (left, right) =>
+        left.startIndex - right.startIndex || right.endIndex - left.endIndex
+    );
+    toolCalls = [];
+    for (const candidate of candidates) {
+      if (
+        toolCalls.every(
+          (selected) =>
+            candidate.endIndex <= selected.startIndex ||
+            candidate.startIndex >= selected.endIndex
+        )
+      ) {
+        toolCalls.push(candidate);
+      }
     }
   }
 
@@ -1619,10 +1815,7 @@ export const morphXmlProtocol = (
       const processedElements: LanguageModelV4Content[] = [];
       let currentIndex = 0;
 
-      const { parseText, toolCalls } = findToolCallsWithFallbacks(
-        text,
-        toolNames
-      );
+      const { parseText, toolCalls } = findToolCallsWithFallbacks(text, tools);
 
       for (const tc of toolCalls) {
         if (tc.startIndex > currentIndex) {
@@ -1835,6 +2028,9 @@ export const morphXmlProtocol = (
         emitToolInputProgress,
         emitToolInputStart,
         findPotentialToolTagStart,
+        findLinePrefixedToolCall: (text, _toolNames, allowAtBufferEnd) =>
+          findStreamingLinePrefixedToolCall(text, tools, allowAtBufferEnd),
+        findPotentialLinePrefixedToolCallStart,
         handleStreamingToolCallEnd,
       });
 
@@ -1842,6 +2038,7 @@ export const morphXmlProtocol = (
         // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Stateful stream parsing requires branching over chunk lifecycle and parser states.
         transform(chunk, controller) {
           if (chunk.type === "finish") {
+            processBuffer(controller, true);
             if (currentToolCall) {
               finalizeUnclosedToolCall(controller);
             } else if (buffer) {
@@ -1864,7 +2061,10 @@ export const morphXmlProtocol = (
             if (currentToolCall) {
               // Keep an open XML tool call alive across non-text stream chunks
               // so mixed-mode streams (e.g. reasoning) can continue to complete it.
-            } else if (buffer) {
+            } else if (
+              buffer &&
+              findPotentialLinePrefixedToolCallStart(buffer, toolNames) === -1
+            ) {
               flushText(controller, buffer);
               buffer = "";
             }
@@ -1878,6 +2078,7 @@ export const morphXmlProtocol = (
           processBuffer(controller);
         },
         flush(controller) {
+          processBuffer(controller, true);
           if (currentToolCall) {
             finalizeUnclosedToolCall(controller);
           } else if (buffer) {

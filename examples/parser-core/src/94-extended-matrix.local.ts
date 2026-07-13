@@ -6,7 +6,12 @@
  * Run:
  *   LIVE_MATRIX_MODELS=a,b pnpm dlx tsx examples/parser-core/src/94-extended-matrix.local.ts
  */
-import { appendFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
   generateText,
@@ -23,6 +28,15 @@ import {
   qwen3CoderToolMiddleware,
   yamlXmlToolMiddleware,
 } from "../../../src/preconfigured-middleware";
+import {
+  type ClassifiableResult,
+  classifyFailure,
+  classifySuccess,
+  isRetryableProviderError,
+  normalizeStoredResult,
+  type ResultCategory,
+  summarizeResults,
+} from "./extended-matrix-reporting";
 
 const OUT = process.env.LIVE_MATRIX_OUT ?? "/tmp/extended-matrix.jsonl";
 const TIMEOUT = 120_000;
@@ -460,7 +474,7 @@ const scenarios: Scenario[] = [
       const input = call.input as { content?: unknown };
       if (typeof input.content !== "string" || !input.content.includes("\n")) {
         throw new Error(
-          `content not multi-line: ${JSON.stringify(input.content).slice(0, 200)}`
+          `content not multi-line: ${String(JSON.stringify(input.content)).slice(0, 200)}`
         );
       }
       return `lines=${input.content.split("\n").length}${notes.length ? ` ${notes.join(" ")}` : ""}${leakCheck(text)}`;
@@ -597,14 +611,25 @@ const scenarios: Scenario[] = [
   },
 ];
 
-interface RunResult {
-  detail: string;
+interface RunResult extends ClassifiableResult {
+  attempts: number;
   middleware: string;
   model: string;
   ms: number;
-  ok: boolean;
-  parserErrors: string[];
   scenario: string;
+}
+
+const PROVIDER_RETRIES = Number.parseInt(
+  process.env.LIVE_MATRIX_PROVIDER_RETRIES ?? "2",
+  10
+);
+const CONCURRENCY = Number.parseInt(
+  process.env.LIVE_MATRIX_CONCURRENCY ?? "10",
+  10
+);
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function runOne(
@@ -612,53 +637,141 @@ async function runOne(
   mw: MwName,
   scenario: Scenario
 ): Promise<RunResult> {
-  const parserErrors: string[] = [];
   const start = Date.now();
-  try {
-    const detail = await scenario.run(modelId, mw, parserErrors);
-    return {
-      model: modelId,
-      middleware: mw,
-      scenario: scenario.name,
-      ok: true,
-      detail,
-      parserErrors,
-      ms: Date.now() - start,
-    };
-  } catch (error) {
-    return {
-      model: modelId,
-      middleware: mw,
-      scenario: scenario.name,
-      ok: false,
-      detail: error instanceof Error ? error.message : String(error),
-      parserErrors,
-      ms: Date.now() - start,
-    };
+  for (let attempt = 1; ; attempt += 1) {
+    const parserErrors: string[] = [];
+    try {
+      const detail = await scenario.run(modelId, mw, parserErrors);
+      const category = classifySuccess(detail, parserErrors);
+      return {
+        attempts: attempt,
+        category,
+        model: modelId,
+        middleware: mw,
+        scenario: scenario.name,
+        ok: category === "pass",
+        detail,
+        parserErrors,
+        ms: Date.now() - start,
+      };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const category = classifyFailure(detail, parserErrors);
+      if (
+        category === "provider-error" &&
+        isRetryableProviderError(detail) &&
+        attempt <= PROVIDER_RETRIES
+      ) {
+        console.log(
+          `[RETRY ${attempt}/${PROVIDER_RETRIES}] ${modelId} ${mw} ${scenario.name} — ${detail.slice(0, 160)}`
+        );
+        await delay(2000 * attempt);
+        continue;
+      }
+      return {
+        attempts: attempt,
+        category,
+        model: modelId,
+        middleware: mw,
+        scenario: scenario.name,
+        ok: false,
+        detail,
+        parserErrors,
+        ms: Date.now() - start,
+      };
+    }
+  }
+}
+
+function printCategorySummary(results: RunResult[]): void {
+  const categories: ResultCategory[] = [
+    "pass",
+    "expectation-miss",
+    "malformed-output",
+    "output-leak",
+    "provider-error",
+    "stream-invariant",
+    "harness-error",
+    "unclassified",
+  ];
+  console.log("\nBy category:");
+  for (const category of categories) {
+    const count = results.filter(
+      (result) => result.category === category
+    ).length;
+    console.log(`  ${category.padEnd(20)} ${count}`);
+  }
+}
+
+function printDimensionSummary(
+  results: RunResult[],
+  label: string,
+  select: (result: RunResult) => string
+): void {
+  const groups = new Map<string, RunResult[]>();
+  for (const result of results) {
+    const key = select(result);
+    groups.set(key, [...(groups.get(key) ?? []), result]);
+  }
+  console.log(`\nBy ${label}:`);
+  for (const [key, group] of [...groups].sort(([a], [b]) =>
+    a.localeCompare(b)
+  )) {
+    const summary = summarizeResults(group);
+    const rate =
+      summary.passRate === null ? "—" : `${summary.passRate.toFixed(1)}%`;
+    console.log(
+      `  ${key.padEnd(42)} ${summary.passed}/${summary.evaluable} (${rate}) provider-unavailable=${summary.providerUnavailable}`
+    );
   }
 }
 
 async function main() {
-  writeFileSync(OUT, "");
+  const resume = process.env.LIVE_MATRIX_RESUME === "1";
+  const existingResults: RunResult[] =
+    resume && existsSync(OUT)
+      ? readFileSync(OUT, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => normalizeStoredResult(JSON.parse(line) as RunResult))
+      : [];
+  if (!resume) {
+    writeFileSync(OUT, "");
+  }
   const jobs: Array<() => Promise<void>> = [];
-  const results: RunResult[] = [];
+  const results: RunResult[] = [...existingResults];
+  const completed = new Set(
+    existingResults.map(
+      (result) =>
+        `${result.model}\u0000${result.middleware}\u0000${result.scenario}`
+    )
+  );
 
-  for (const model of MODELS) {
+  for (const scenario of scenarios) {
     for (const mw of Object.keys(MIDDLEWARES) as MwName[]) {
-      for (const scenario of scenarios) {
+      for (const model of MODELS) {
+        const key = `${model}\u0000${mw}\u0000${scenario.name}`;
+        if (completed.has(key)) {
+          continue;
+        }
         jobs.push(async () => {
           const r = await runOne(model, mw, scenario);
           results.push(r);
           appendFileSync(OUT, `${JSON.stringify(r)}\n`);
           console.log(
-            `[${r.ok ? "PASS" : "FAIL"}] ${r.model} ${r.middleware} ${r.scenario} (${r.ms}ms)${r.ok ? ` ${r.detail.slice(0, 160)}` : ` — ${r.detail.slice(0, 200)}`}${r.parserErrors.length ? ` [onError x${r.parserErrors.length}]` : ""}`
+            `[${r.category.toUpperCase()}] ${r.model} ${r.middleware} ${r.scenario} (${r.ms}ms, attempts=${r.attempts})${r.ok ? ` ${r.detail.slice(0, 160)}` : ` — ${r.detail.slice(0, 200)}`}${r.parserErrors.length ? ` [onError x${r.parserErrors.length}]` : ""}`
           );
         });
       }
     }
   }
 
-  const CONCURRENCY = 10;
+  if (existingResults.length > 0) {
+    console.log(
+      `Resuming with ${existingResults.length} completed results; ${jobs.length} remaining.`
+    );
+  }
+
   let cursor = 0;
   await Promise.all(
     Array.from({ length: CONCURRENCY }, async () => {
@@ -671,12 +784,20 @@ async function main() {
   );
 
   const failures = results.filter((r) => !r.ok);
+  const overall = summarizeResults(results);
+  const overallRate =
+    overall.passRate === null ? "—" : `${overall.passRate.toFixed(1)}%`;
   console.log(
-    `\n=== ${results.length - failures.length}/${results.length} passed ===`
+    `\n=== ${overall.passed}/${overall.evaluable} passed (${overallRate}); provider-unavailable=${overall.providerUnavailable} ===`
   );
+  printCategorySummary(results);
+  printDimensionSummary(results, "model", (result) => result.model);
+  printDimensionSummary(results, "middleware", (result) => result.middleware);
+  printDimensionSummary(results, "scenario", (result) => result.scenario);
+  console.log("\nFailure details:");
   for (const f of failures) {
     console.log(
-      `FAIL ${f.model} ${f.middleware} ${f.scenario}: ${f.detail.slice(0, 180)}`
+      `${f.category.toUpperCase()} ${f.model} ${f.middleware} ${f.scenario}: ${f.detail.slice(0, 180)}`
     );
   }
 }

@@ -230,7 +230,7 @@ describe("YAML object-delta progressive invariants", () => {
     });
   });
 
-  it("yaml protocol keeps block-scalar progress deltas prefix-safe while a heading line is still streaming", async () => {
+  it("yaml protocol buffers block scalars whose indentation and chomping are not prefix-stable", async () => {
     const chunks = [
       "<write_markdown_file>\nfile_path: stream-tool-input-visual-demo.md\ncontent: |\n #",
       " Stream",
@@ -259,7 +259,7 @@ describe("YAML object-delta progressive invariants", () => {
     );
     expect(joined).toBe(toolCall.input);
     expect(joined).toContain("Stream Tool Visual Demo");
-    expect(deltas.length).toBeGreaterThan(1);
+    expect(deltas).toEqual([toolCall.input]);
   });
 
   it("yaml progress parse with single-line malformed body emits no unstable deltas and no tool-call", async () => {

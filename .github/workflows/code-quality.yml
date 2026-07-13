@@ -76,6 +76,38 @@ jobs:
         run: |
           pnpm check:biome
 
+  package:
+    name: Package compatibility
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build package
+        run: pnpm build
+
+      - name: Check published type compatibility
+        run: pnpm attw
+
+      - name: Test packed package consumers
+        run: pnpm test:package-consumers
+
   test:
     name: Test Coverage
     timeout-minutes: 15
