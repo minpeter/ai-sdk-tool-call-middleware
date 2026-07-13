@@ -1,5 +1,5 @@
 ---
-"@ai-sdk-tool/parser": minor
+"@ai-sdk-tool/parser": patch
 ---
 
 Remove CommonJS builds and make the package ESM-only. Consumers must replace
