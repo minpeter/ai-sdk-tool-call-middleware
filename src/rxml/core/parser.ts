@@ -9,6 +9,7 @@ import {
   RXMLDuplicateStringTagError,
   RXMLParseError,
 } from "../errors/types";
+import { createPlaceholderRestorer } from "./placeholder-restorer";
 
 // Regex constants for performance
 const WHITESPACE_REGEX = /\s/;
@@ -34,70 +35,6 @@ function getTopLevelStringProps(s: unknown): Set<string> {
     }
   }
   return set;
-}
-
-/**
- * Restore a single string value from placeholder if needed
- */
-function restorePlaceholderString(
-  val: string,
-  placeholderMap: Map<string, string>
-): string {
-  if (val.startsWith("__RXML_PLACEHOLDER_")) {
-    const orig = placeholderMap.get(val);
-    return orig === undefined ? val : orig;
-  }
-  return val;
-}
-
-/**
- * Restore placeholders in an object
- */
-function restorePlaceholdersInObject(
-  obj: Record<string, unknown>,
-  textNodeName: string,
-  restorer: (val: unknown) => unknown
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    const restored = restorer(v);
-    // Trim when restoring into text node field to match tokenizer's default trimming
-    if (k === textNodeName && typeof restored === "string") {
-      out[k] = restored.trim();
-    } else {
-      out[k] = restored;
-    }
-  }
-  return out;
-}
-
-/**
- * Create a function to restore placeholders deeply in parsed structure
- */
-function createPlaceholderRestorer(
-  placeholderMap: Map<string, string>,
-  textNodeName: string
-): (val: unknown) => unknown {
-  const restorer = (val: unknown): unknown => {
-    if (val == null) {
-      return val;
-    }
-    if (typeof val === "string") {
-      return restorePlaceholderString(val, placeholderMap);
-    }
-    if (Array.isArray(val)) {
-      return val.map(restorer);
-    }
-    if (typeof val === "object") {
-      return restorePlaceholdersInObject(
-        val as Record<string, unknown>,
-        textNodeName,
-        restorer
-      );
-    }
-    return val;
-  };
-  return restorer;
 }
 
 /**
