@@ -7,9 +7,11 @@ const rootDirectory = new URL("..", import.meta.url);
 const temporaryDirectory = await mkdtemp(
   join(tmpdir(), "ai-sdk-tool-parser-consumer-")
 );
+const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 function run(command, args, cwd = temporaryDirectory) {
-  execFileSync(command, args, {
+  const resolvedCommand = command === "pnpm" ? pnpmCommand : command;
+  execFileSync(resolvedCommand, args, {
     cwd,
     env: { ...process.env, DO_NOT_TRACK: "1" },
     stdio: "inherit",
@@ -35,7 +37,7 @@ try {
     private: true,
     type: "module",
     dependencies: {
-      "@ai-sdk-tool/parser": `file:${join(temporaryDirectory, tarballName)}`,
+      "@ai-sdk-tool/parser": `file:./${tarballName}`,
       "@ai-sdk/provider": "4.0.2",
       "@ai-sdk/provider-utils": "5.0.6",
     },
@@ -131,7 +133,10 @@ void (async () => {
     return;
   }
   throw new Error("CommonJS require unexpectedly succeeded");
-})();
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
 `;
   await writeFile(join(temporaryDirectory, "commonjs.cjs"), commonJsSource);
 

@@ -3,18 +3,18 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const declarationPattern =
-  /(?:^|\s)(?:from\s+|import\s*\()(["'])(\.\.?\/[^"']+)\1/gm;
+  /((?:^|\s)(?:from\s+|import\s*\()(["']))(\.\.?\/[^"']+)\2/gm;
 
 function withExtension(source, extension) {
-  return source.replace(declarationPattern, (match, quote, specifier) => {
-    if (extname(specifier)) {
-      return match;
+  return source.replace(
+    declarationPattern,
+    (match, prefix, quote, specifier) => {
+      if (extname(specifier)) {
+        return match;
+      }
+      return `${prefix}${specifier}${extension}${quote}`;
     }
-    return match.replace(
-      `${quote}${specifier}${quote}`,
-      `${quote}${specifier}${extension}${quote}`
-    );
-  });
+  );
 }
 
 async function declarationFiles(directory) {

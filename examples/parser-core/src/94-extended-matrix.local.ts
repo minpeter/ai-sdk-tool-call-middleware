@@ -28,6 +28,15 @@ import {
   qwen3CoderToolMiddleware,
   yamlXmlToolMiddleware,
 } from "../../../src/preconfigured-middleware";
+import {
+  type ClassifiableResult,
+  classifyFailure,
+  classifySuccess,
+  isRetryableProviderError,
+  normalizeStoredResult,
+  type ResultCategory,
+  summarizeResults,
+} from "./extended-matrix-reporting";
 
 const OUT = process.env.LIVE_MATRIX_OUT ?? "/tmp/extended-matrix.jsonl";
 const TIMEOUT = 120_000;
@@ -602,133 +611,22 @@ const scenarios: Scenario[] = [
   },
 ];
 
-type ResultCategory =
-  | "pass"
-  | "expectation-miss"
-  | "malformed-output"
-  | "output-leak"
-  | "provider-error"
-  | "stream-invariant"
-  | "harness-error"
-  | "unclassified";
-
-interface RunResult {
+interface RunResult extends ClassifiableResult {
   attempts: number;
-  category: ResultCategory;
-  detail: string;
   middleware: string;
   model: string;
   ms: number;
-  ok: boolean;
-  parserErrors: string[];
   scenario: string;
 }
 
 const PROVIDER_RETRIES = Number.parseInt(
-  process.env.LIVE_MATRIX_PROVIDER_RETRIES ?? "0",
+  process.env.LIVE_MATRIX_PROVIDER_RETRIES ?? "2",
   10
 );
 const CONCURRENCY = Number.parseInt(
   process.env.LIVE_MATRIX_CONCURRENCY ?? "10",
   10
 );
-
-const EXPECTATION_MISS_PATTERNS = [
-  /^answer missing /,
-  /^bad /,
-  /^body lost /,
-  /^content not multi-line:/,
-  /^expected >=/,
-  /^no [a-z_]+ call;/,
-  /^type fidelity:/,
-];
-
-const PROVIDER_ERROR_PATTERNS = [
-  /AI_APICallError/i,
-  /Backend request failed with status \d+/i,
-  /fetch failed/i,
-  /Input validation error/i,
-  /Invalid model:/i,
-  /Key limit exceeded/i,
-  /litellm\.APIError/i,
-  /model .* does not exist/i,
-  /non-serverless model/i,
-  /only supports streaming responses/i,
-  /operation was aborted/i,
-  /rate limit/i,
-  /status code [45]\d\d/i,
-  /subscription plan/i,
-  /System role not supported/i,
-  /Conversation roles must alternate/i,
-  /enum system not in user,assistant/i,
-  /Expected 'function\.name'/i,
-];
-
-const RETRYABLE_PROVIDER_ERROR_PATTERNS = [
-  /operation was aborted/i,
-  /rate limit/i,
-  /status code 429/i,
-  /status code 5\d\d/i,
-  /timeout/i,
-];
-
-const STREAM_INVARIANT_PATTERNS = [
-  /CALL-WITHOUT-INPUT-START/,
-  /DELTA-BEFORE-START/,
-  /DELTA-MISMATCH/,
-  /DELTA-NOT-JSON/,
-  /DUP-INPUT-/,
-  /END-BEFORE-START/,
-  /NO-INPUT-END/,
-  /TEXT-LEAK/,
-];
-
-const HARNESS_ERROR_PATTERN =
-  /Cannot read properties|is not a function|ReferenceError|TypeError/;
-
-function classifyFailure(
-  detail: string,
-  parserErrors: string[]
-): ResultCategory {
-  if (PROVIDER_ERROR_PATTERNS.some((pattern) => pattern.test(detail))) {
-    return "provider-error";
-  }
-  if (parserErrors.length > 0) {
-    return "malformed-output";
-  }
-  if (STREAM_INVARIANT_PATTERNS.some((pattern) => pattern.test(detail))) {
-    return "stream-invariant";
-  }
-  if (HARNESS_ERROR_PATTERN.test(detail)) {
-    return "harness-error";
-  }
-  if (EXPECTATION_MISS_PATTERNS.some((pattern) => pattern.test(detail))) {
-    return "expectation-miss";
-  }
-  return "unclassified";
-}
-
-function classifySuccess(
-  detail: string,
-  parserErrors: string[]
-): ResultCategory {
-  if (STREAM_INVARIANT_PATTERNS.some((pattern) => pattern.test(detail))) {
-    return "stream-invariant";
-  }
-  if (detail.includes("TEXT-LEAK")) {
-    return "output-leak";
-  }
-  if (parserErrors.length > 0) {
-    return "malformed-output";
-  }
-  return "pass";
-}
-
-function isRetryableProviderError(detail: string): boolean {
-  return RETRYABLE_PROVIDER_ERROR_PATTERNS.some((pattern) =>
-    pattern.test(detail)
-  );
-}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -819,9 +717,12 @@ function printDimensionSummary(
   for (const [key, group] of [...groups].sort(([a], [b]) =>
     a.localeCompare(b)
   )) {
-    const passed = group.filter((result) => result.category === "pass").length;
-    const rate = ((passed / group.length) * 100).toFixed(1);
-    console.log(`  ${key.padEnd(42)} ${passed}/${group.length} (${rate}%)`);
+    const summary = summarizeResults(group);
+    const rate =
+      summary.passRate === null ? "—" : `${summary.passRate.toFixed(1)}%`;
+    console.log(
+      `  ${key.padEnd(42)} ${summary.passed}/${summary.evaluable} (${rate}) provider-unavailable=${summary.providerUnavailable}`
+    );
   }
 }
 
@@ -832,7 +733,7 @@ async function main() {
       ? readFileSync(OUT, "utf8")
           .split("\n")
           .filter(Boolean)
-          .map((line) => JSON.parse(line) as RunResult)
+          .map((line) => normalizeStoredResult(JSON.parse(line) as RunResult))
       : [];
   if (!resume) {
     writeFileSync(OUT, "");
@@ -883,8 +784,11 @@ async function main() {
   );
 
   const failures = results.filter((r) => !r.ok);
+  const overall = summarizeResults(results);
+  const overallRate =
+    overall.passRate === null ? "—" : `${overall.passRate.toFixed(1)}%`;
   console.log(
-    `\n=== ${results.length - failures.length}/${results.length} passed ===`
+    `\n=== ${overall.passed}/${overall.evaluable} passed (${overallRate}); provider-unavailable=${overall.providerUnavailable} ===`
   );
   printCategorySummary(results);
   printDimensionSummary(results, "model", (result) => result.model);
