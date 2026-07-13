@@ -3,14 +3,25 @@ import type {
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import YAML from "yaml";
-import { parse as parseRJSON } from "../../rjson";
-import { unescapeXml } from "../../rxml/utils/helpers";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
+import {
+  containsPrototypeSensitiveKey,
+  extractJsonLikeCandidates,
+  isRecord,
+  type JsonCandidate,
+  parseJsonCandidate,
+} from "./generated-text-json-candidates";
+import {
+  findQwenCallCloseTag,
+  isSelfClosingTag,
+  QWEN_CALL_BLOCK_OPEN_REGEX,
+  readFunctionBlockParams,
+  readQwenCallToolName,
+} from "./generated-text-qwen-markup";
 import { extractSensitiveIncompleteToolCallDropSpans } from "./generated-text-sensitive-candidates";
 import { generateToolCallId } from "./id";
 import {
   hasPrototypeSensitiveStructuralKey,
-  isPrototypeSensitiveArgumentKey,
   toolCallInputHasPrototypeSensitiveKey,
   toolCallTextHasPrototypeSensitiveKey,
 } from "./prototype-sensitive-keys";
@@ -40,172 +51,6 @@ export type ToolCallJsonRecoveryResult =
   | { content: LanguageModelV4Content[]; kind: "recovered" }
   | { content: LanguageModelV4Content[]; kind: "dropped-sensitive-candidate" }
   | { kind: "none" };
-
-interface JsonCandidate {
-  endIndex: number;
-  startIndex: number;
-  text: string;
-}
-
-interface JsonScanState {
-  depth: number;
-  escaping: boolean;
-  inString: boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function containsPrototypeSensitiveKey(value: unknown): boolean {
-  return toolCallInputHasPrototypeSensitiveKey(value);
-}
-
-function parseJsonCandidate(candidateText: string): unknown {
-  try {
-    return parseRJSON(candidateText);
-  } catch {
-    // swallow parse failures and return undefined
-  }
-}
-
-function extractCodeBlockCandidates(text: string): JsonCandidate[] {
-  const codeBlockRegex = /```(?:json|yaml|xml)?\s*([\s\S]*?)```/gi;
-  const candidates: JsonCandidate[] = [];
-  let match: RegExpExecArray | null;
-  while (true) {
-    match = codeBlockRegex.exec(text);
-    if (!match) {
-      break;
-    }
-    const body = match[1]?.trim();
-    if (body) {
-      const startIndex = match.index ?? 0;
-      const endIndex = startIndex + match[0].length;
-      candidates.push({
-        text: body,
-        startIndex,
-        endIndex,
-      });
-    }
-  }
-  return candidates;
-}
-
-function scanJsonChar(state: JsonScanState, char: string): JsonScanState {
-  if (state.inString) {
-    if (state.escaping) {
-      return { ...state, escaping: false };
-    }
-    if (char === "\\") {
-      return { ...state, escaping: true };
-    }
-    if (char === '"') {
-      return { ...state, inString: false };
-    }
-    return state;
-  }
-
-  if (char === '"') {
-    return { ...state, inString: true };
-  }
-  if (char === "{") {
-    return { ...state, depth: state.depth + 1 };
-  }
-  if (char === "}") {
-    return { ...state, depth: Math.max(0, state.depth - 1) };
-  }
-  return state;
-}
-
-function extractBalancedJsonObjects(text: string): JsonCandidate[] {
-  const maxCandidateLength = 10_000;
-  const candidates: JsonCandidate[] = [];
-  let state: JsonScanState = { depth: 0, inString: false, escaping: false };
-  let currentStart: number | null = null;
-  let ignoreCurrent = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-
-    if (!state.inString && char === "{" && state.depth === 0) {
-      currentStart = index;
-      ignoreCurrent = false;
-    }
-
-    state = scanJsonChar(state, char);
-
-    if (
-      currentStart !== null &&
-      !ignoreCurrent &&
-      index - currentStart + 1 > maxCandidateLength
-    ) {
-      ignoreCurrent = true;
-    }
-
-    if (!state.inString && char === "}" && state.depth === 0) {
-      if (currentStart !== null && !ignoreCurrent) {
-        const endIndex = index + 1;
-        const candidate = text.slice(currentStart, endIndex);
-        if (candidate.length > 1) {
-          candidates.push({
-            text: candidate,
-            startIndex: currentStart,
-            endIndex,
-          });
-        }
-      }
-      currentStart = null;
-      ignoreCurrent = false;
-    }
-  }
-
-  return candidates;
-}
-
-function extractTaggedToolCallCandidates(rawText: string): JsonCandidate[] {
-  const toolCallRegex = /<tool_call>([\s\S]*?)<\/tool_call>/gi;
-  const candidates: JsonCandidate[] = [];
-  let match: RegExpExecArray | null;
-  while (true) {
-    match = toolCallRegex.exec(rawText);
-    if (!match) {
-      break;
-    }
-    const body = match[1]?.trim();
-    if (!body) {
-      continue;
-    }
-    const startIndex = match.index ?? 0;
-    const endIndex = startIndex + match[0].length;
-    candidates.push({
-      text: body,
-      startIndex,
-      endIndex,
-    });
-  }
-  return candidates;
-}
-
-function extractJsonLikeCandidates(rawText: string): JsonCandidate[] {
-  return mergeJsonCandidatesByStart(
-    extractTaggedToolCallCandidates(rawText),
-    extractCodeBlockCandidates(rawText),
-    extractBalancedJsonObjects(rawText)
-  );
-}
-
-function mergeJsonCandidatesByStart(
-  tagged: JsonCandidate[],
-  codeBlocks: JsonCandidate[],
-  balanced: JsonCandidate[]
-): JsonCandidate[] {
-  return [...tagged, ...codeBlocks, ...balanced].sort((a, b) =>
-    a.startIndex === b.startIndex
-      ? b.endIndex - a.endIndex
-      : a.startIndex - b.startIndex
-  );
-}
 
 function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV4Content {
   return {
@@ -508,119 +353,6 @@ function resolveCandidatePayload(
 
 function isRecoveredSpan(span: RecoverySpan): span is RecoveredCallSpan {
   return "payload" in span;
-}
-
-const QWEN_CALL_BLOCK_OPEN_REGEX = /<\s*(call|function|tool|invoke)\b[^>]*>/gi;
-const QWEN_PARAM_OPEN_REGEX = /<\s*(?:parameter|param|argument|arg)\b[^>]*>/gi;
-const QWEN_PARAM_BOUNDARY_REGEX =
-  /<\s*(?:parameter|param|argument|arg)\b|<\s*\/\s*(?:parameter|param|argument|arg|call|function|tool|invoke)\s*>/i;
-const QWEN_NAME_CHILD_REGEX =
-  /<\s*(?:name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*(?:name|tool_name)\s*>/i;
-const SELF_CLOSING_TAG_REGEX = /\/\s*>$/;
-const QWEN_TAG_SHORTHAND_VALUE_REGEX =
-  /^<\s*[A-Za-z_][\w.-]*\b\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>/<]+))/i;
-const QWEN_NAME_ATTR_REGEX = /\bname\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
-
-function isSelfClosingTag(openTag: string): boolean {
-  return SELF_CLOSING_TAG_REGEX.test(openTag);
-}
-
-function readQwenTagValue(openTag: string): string | null {
-  const shorthand = QWEN_TAG_SHORTHAND_VALUE_REGEX.exec(openTag);
-  const value = shorthand?.[1] ?? shorthand?.[2] ?? shorthand?.[3];
-  if (value != null) {
-    return unescapeXml(value);
-  }
-
-  const nameAttr = QWEN_NAME_ATTR_REGEX.exec(openTag);
-  return nameAttr ? unescapeXml(nameAttr[1] ?? nameAttr[2] ?? "") : null;
-}
-
-function readQwenCallToolName(openTag: string, body: string): string | null {
-  const tagValue = readQwenTagValue(openTag);
-  if (tagValue?.trim()) {
-    return tagValue.trim();
-  }
-
-  const nameChild = QWEN_NAME_CHILD_REGEX.exec(body);
-  const childValue = nameChild?.[1];
-  return childValue?.trim() ? unescapeXml(childValue).trim() : null;
-}
-
-function readFunctionBlockParams(body: string): Record<string, unknown> | null {
-  const params: Record<string, unknown> = {};
-  QWEN_PARAM_OPEN_REGEX.lastIndex = 0;
-  let match = QWEN_PARAM_OPEN_REGEX.exec(body);
-  while (match) {
-    const openTag = match[0] ?? "";
-    const key = readQwenTagValue(openTag)?.trim() ?? "";
-    if (key.length === 0) {
-      if (isSelfClosingTag(openTag)) {
-        QWEN_PARAM_OPEN_REGEX.lastIndex = match.index + openTag.length;
-        match = QWEN_PARAM_OPEN_REGEX.exec(body);
-        continue;
-      }
-      return null;
-    }
-    if (isPrototypeSensitiveArgumentKey(key)) {
-      return null;
-    }
-    const valueStart = match.index + match[0].length;
-    if (isSelfClosingTag(openTag)) {
-      params[key] = "";
-      QWEN_PARAM_OPEN_REGEX.lastIndex = valueStart;
-      match = QWEN_PARAM_OPEN_REGEX.exec(body);
-      continue;
-    }
-    const boundaryMatch = QWEN_PARAM_BOUNDARY_REGEX.exec(
-      body.slice(valueStart)
-    );
-    const valueEnd =
-      boundaryMatch == null ? body.length : valueStart + boundaryMatch.index;
-    params[key] = body.slice(valueStart, valueEnd).trim();
-    QWEN_PARAM_OPEN_REGEX.lastIndex = valueEnd;
-    match = QWEN_PARAM_OPEN_REGEX.exec(body);
-  }
-  return params;
-}
-
-function findQwenCallCloseTag(
-  text: string,
-  startIndex: number,
-  tagName: string,
-  beforeIndex: number
-): { start: number; end: number } | null {
-  const body = text.slice(startIndex, beforeIndex);
-  const tagRegex = new RegExp(
-    `<\\s*(\\/?)\\s*(parameter|param|argument|arg)\\b[^>]*>|<\\s*\\/\\s*${tagName}\\b[^>]*>`,
-    "gi"
-  );
-  let parameterDepth = 0;
-  let fallbackClose: { start: number; end: number } | null = null;
-  let match = tagRegex.exec(body);
-  while (match) {
-    const tag = match[0] ?? "";
-    const [, , parameterTagName] = match;
-    if (parameterTagName) {
-      const isClosingTag = (match[1] ?? "").length > 0;
-      if (isClosingTag) {
-        parameterDepth = Math.max(0, parameterDepth - 1);
-      } else if (!isSelfClosingTag(tag)) {
-        parameterDepth += 1;
-      }
-      match = tagRegex.exec(body);
-      continue;
-    }
-
-    const start = startIndex + match.index;
-    const close = { start, end: start + tag.length };
-    if (parameterDepth === 0) {
-      return close;
-    }
-    fallbackClose ??= close;
-    match = tagRegex.exec(body);
-  }
-  return fallbackClose;
 }
 
 /**
