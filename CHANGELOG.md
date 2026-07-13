@@ -1,5 +1,25 @@
 # @ai-sdk-tool/parser
 
+## 5.1.3
+
+### Patch Changes
+
+- c6c71c0: Remove CommonJS builds and make the package ESM-only. Consumers must replace
+  `require("@ai-sdk-tool/parser")` with ESM `import` or dynamic `import()`.
+
+  Switch the JavaScript build to tsdown and publish Node-compatible declarations
+  for every package entrypoint.
+
+- c6c71c0: Recover Hermes call arrays with partial wrapper closes, stringified object
+  arguments, and adjacent calls that omit the previous closing tag.
+- c6c71c0: Recover line-prefixed MorphXML tool calls consistently in generated text and
+  streaming output, including adjacent calls, raw-event chunk boundaries, and
+  parameters whose names match another available tool.
+- c6c71c0: Recover schema-known Qwen3Coder name-then-value parameters while keeping
+  streaming deltas consistent across raw provider events.
+- c6c71c0: Preserve streaming tool-input consistency for YAML block scalars and keep
+  partial tool tags buffered across raw provider events.
+
 ## 5.1.2
 
 ### Patch Changes
