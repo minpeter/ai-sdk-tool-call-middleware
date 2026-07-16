@@ -55,47 +55,48 @@ describe("yamlXmlProtocol streaming onError metadata", () => {
     expect(metadata?.toolCall).toContain("<get_weather>");
   });
 
-  it.each(
-    prototypeSensitiveKeys
-  )("redacts malformed XML-wrapped YAML keys for %s", async (key) => {
-    const onError = vi.fn();
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: basicTools,
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: `<get_weather>${key}: [</get_weather>`,
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
+  it.each(prototypeSensitiveKeys)(
+    "redacts malformed XML-wrapped YAML keys for %s",
+    async (key) => {
+      const onError = vi.fn();
+      const protocol = yamlXmlProtocol();
+      const transformer = protocol.createStreamParser({
+        tools: basicTools,
+        options: { emitRawToolCallTextOnError: true, onError },
+      });
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
+        start(ctrl) {
+          ctrl.enqueue({
+            type: "text-delta",
+            id: "1",
+            delta: `<get_weather>${key}: [</get_weather>`,
+          });
+          ctrl.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          ctrl.close();
+        },
+      });
 
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(rs, transformer)
+      );
 
-    expect(
-      out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => part.delta)
-        .join("")
-    ).toBe("");
-    expect(onError).toHaveBeenCalledTimes(1);
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(key);
-    expect(metadataText).not.toContain("<get_weather>");
-  });
+      expect(
+        out
+          .filter((part) => part.type === "text-delta")
+          .map((part) => part.delta)
+          .join("")
+      ).toBe("");
+      expect(onError).toHaveBeenCalledTimes(1);
+      const metadataText = JSON.stringify(onError.mock.calls);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain(key);
+      expect(metadataText).not.toContain("<get_weather>");
+    }
+  );
 
   it("redacts prototype-sensitive streaming stringify errors in metadata", async () => {
     const onError = vi.fn();

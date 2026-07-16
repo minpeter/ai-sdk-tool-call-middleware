@@ -276,143 +276,129 @@ function extractSingleToolCall(
 }
 
 describe("cross-protocol tool arg sanitization", () => {
-  it.each(
-    protocolCases
-  )("$name parseGeneratedText drops schema-unknown top-level args and emits the tool call", ({
-    protocol,
-    text,
-  }) => {
-    const parts = protocol.parseGeneratedText({
-      text,
-      tools: weatherTools,
-      options: {},
-    });
+  it.each(protocolCases)(
+    "$name parseGeneratedText drops schema-unknown top-level args and emits the tool call",
+    ({ protocol, text }) => {
+      const parts = protocol.parseGeneratedText({
+        text,
+        tools: weatherTools,
+        options: {},
+      });
 
-    const toolCall = extractSingleToolCall(parts);
-    const input: unknown = JSON.parse(toolCall.input);
+      const toolCall = extractSingleToolCall(parts);
+      const input: unknown = JSON.parse(toolCall.input);
 
-    expect(toolCall.toolName).toBe("get_weather");
-    expect(input).toEqual({ city: "Seoul", unit: "celsius" });
-  });
+      expect(toolCall.toolName).toBe("get_weather");
+      expect(input).toEqual({ city: "Seoul", unit: "celsius" });
+    }
+  );
 
-  it.each(
-    reorderedArgsProtocolCases
-  )("$name parseGeneratedText keeps declared args when optional args precede required args", ({
-    protocol,
-    text,
-  }) => {
-    const parts = protocol.parseGeneratedText({
-      text,
-      tools: weatherTools,
-      options: {},
-    });
+  it.each(reorderedArgsProtocolCases)(
+    "$name parseGeneratedText keeps declared args when optional args precede required args",
+    ({ protocol, text }) => {
+      const parts = protocol.parseGeneratedText({
+        text,
+        tools: weatherTools,
+        options: {},
+      });
 
-    const toolCall = extractSingleToolCall(parts);
-    const input: unknown = JSON.parse(toolCall.input);
+      const toolCall = extractSingleToolCall(parts);
+      const input: unknown = JSON.parse(toolCall.input);
 
-    expect(toolCall.toolName).toBe("get_weather");
-    expect(input).toEqual({ city: "Seoul", unit: "celsius" });
-  });
+      expect(toolCall.toolName).toBe("get_weather");
+      expect(input).toEqual({ city: "Seoul", unit: "celsius" });
+    }
+  );
 
-  it.each(
-    emptyPropertiesProtocolCases
-  )("$name parseGeneratedText drops args for empty properties schemas", ({
-    protocol,
-    text,
-  }) => {
-    const parts = protocol.parseGeneratedText({
-      text,
-      tools: pingTools,
-      options: {},
-    });
+  it.each(emptyPropertiesProtocolCases)(
+    "$name parseGeneratedText drops args for empty properties schemas",
+    ({ protocol, text }) => {
+      const parts = protocol.parseGeneratedText({
+        text,
+        tools: pingTools,
+        options: {},
+      });
 
-    const toolCall = extractSingleToolCall(parts);
-    const input: unknown = JSON.parse(toolCall.input);
+      const toolCall = extractSingleToolCall(parts);
+      const input: unknown = JSON.parse(toolCall.input);
 
-    expect(toolCall.toolName).toBe("ping");
-    expect(input).toEqual({});
-  });
+      expect(toolCall.toolName).toBe("ping");
+      expect(input).toEqual({});
+    }
+  );
 
-  it.each(
-    patternPropertiesProtocolCases
-  )("$name parseGeneratedText drops non-matching patternProperties-only args", ({
-    protocol,
-    text,
-  }) => {
-    const parts = protocol.parseGeneratedText({
-      text,
-      tools: metadataTools,
-      options: {},
-    });
+  it.each(patternPropertiesProtocolCases)(
+    "$name parseGeneratedText drops non-matching patternProperties-only args",
+    ({ protocol, text }) => {
+      const parts = protocol.parseGeneratedText({
+        text,
+        tools: metadataTools,
+        options: {},
+      });
 
-    const toolCall = extractSingleToolCall(parts);
-    const input: unknown = JSON.parse(toolCall.input);
+      const toolCall = extractSingleToolCall(parts);
+      const input: unknown = JSON.parse(toolCall.input);
 
-    expect(toolCall.toolName).toBe("metadata");
-    expect(input).toEqual({ "x-count": 3 });
-  });
+      expect(toolCall.toolName).toBe("metadata");
+      expect(input).toEqual({ "x-count": 3 });
+    }
+  );
 
-  it.each(
-    unsafeAdditionalPropertiesProtocolCases
-  )("$name parseGeneratedText preserves safe additionalProperties true args with unsafe false patterns", ({
-    protocol,
-    text,
-  }) => {
-    const parts = protocol.parseGeneratedText({
-      text,
-      tools: unsafeAdditionalPropertiesTools,
-      options: {},
-    });
+  it.each(unsafeAdditionalPropertiesProtocolCases)(
+    "$name parseGeneratedText preserves safe additionalProperties true args with unsafe false patterns",
+    ({ protocol, text }) => {
+      const parts = protocol.parseGeneratedText({
+        text,
+        tools: unsafeAdditionalPropertiesTools,
+        options: {},
+      });
 
-    const toolCall = extractSingleToolCall(parts);
-    const input: unknown = JSON.parse(toolCall.input);
+      const toolCall = extractSingleToolCall(parts);
+      const input: unknown = JSON.parse(toolCall.input);
 
-    expect(toolCall.toolName).toBe("metadata_extra");
-    expect(input).toEqual({ safe: "ok" });
-  });
+      expect(toolCall.toolName).toBe("metadata_extra");
+      expect(input).toEqual({ safe: "ok" });
+    }
+  );
 
-  it.each(
-    prototypeSensitiveProtocolCases
-  )("$name parseGeneratedText does not leak prototype-sensitive raw text", ({
-    protocol,
-    text,
-  }) => {
-    const parts = protocol.parseGeneratedText({
-      text,
-      tools: weatherTools,
-      options: {},
-    });
+  it.each(prototypeSensitiveProtocolCases)(
+    "$name parseGeneratedText does not leak prototype-sensitive raw text",
+    ({ protocol, text }) => {
+      const parts = protocol.parseGeneratedText({
+        text,
+        tools: weatherTools,
+        options: {},
+      });
 
-    expect(parts.some((part) => part.type === "tool-call")).toBe(false);
-    const joinedText = parts
-      .filter((part) => part.type === "text")
-      .map((part) => part.text)
-      .join("");
-    expect(joinedText).not.toContain("constructor");
-    expect(joinedText).not.toContain("<tool_call>");
-    expect(joinedText).not.toContain("<get_weather>");
-  });
+      expect(parts.some((part) => part.type === "tool-call")).toBe(false);
+      const joinedText = parts
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("");
+      expect(joinedText).not.toContain("constructor");
+      expect(joinedText).not.toContain("<tool_call>");
+      expect(joinedText).not.toContain("<get_weather>");
+    }
+  );
 
-  it.each(
-    prototypeSensitiveProtocolCases
-  )("$name parseGeneratedText redacts prototype-sensitive onError metadata", ({
-    protocol,
-    text,
-  }) => {
-    const onError = vi.fn();
+  it.each(prototypeSensitiveProtocolCases)(
+    "$name parseGeneratedText redacts prototype-sensitive onError metadata",
+    ({ protocol, text }) => {
+      const onError = vi.fn();
 
-    protocol.parseGeneratedText({
-      text,
-      tools: weatherTools,
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
+      protocol.parseGeneratedText({
+        text,
+        tools: weatherTools,
+        options: { emitRawToolCallTextOnError: true, onError },
+      });
 
-    expect(onError).toHaveBeenCalled();
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain("constructor");
-    expect(metadataText).not.toContain("<tool_call>");
-    expect(metadataText).not.toContain("<get_weather>");
-    expect(metadataText).not.toContain("<function=");
-  });
+      expect(onError).toHaveBeenCalled();
+      const metadataText = JSON.stringify(onError.mock.calls);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain("constructor");
+      expect(metadataText).not.toContain("<tool_call>");
+      expect(metadataText).not.toContain("<get_weather>");
+      expect(metadataText).not.toContain("<function=");
+    }
+  );
 });

@@ -165,12 +165,12 @@ const cases: Array<{
 ];
 
 describe("hermesProtocol – streaming/non-streaming tool-call resolution parity", () => {
-  it.each(cases)("produces identical tool calls for both paths: $name", async ({
-    text,
-    tools,
-  }) => {
-    const nonStreaming = nonStreamingToolCalls(text, tools);
-    const streaming = await streamingToolCalls(text, tools);
-    expect(streaming).toEqual(nonStreaming);
-  });
+  it.each(cases)(
+    "produces identical tool calls for both paths: $name",
+    async ({ text, tools }) => {
+      const nonStreaming = nonStreamingToolCalls(text, tools);
+      const streaming = await streamingToolCalls(text, tools);
+      expect(streaming).toEqual(nonStreaming);
+    }
+  );
 });

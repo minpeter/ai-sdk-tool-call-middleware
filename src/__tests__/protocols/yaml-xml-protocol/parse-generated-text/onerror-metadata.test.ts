@@ -82,31 +82,32 @@ describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {
     expect((toolCallId as string).length).toBeGreaterThan(0);
   });
 
-  it.each(
-    prototypeSensitiveKeys
-  )("redacts malformed XML-wrapped YAML keys for %s", (key) => {
-    const onError = vi.fn();
-    const protocol = yamlXmlProtocol();
-    const text = `<get_weather>${key}: [</get_weather>`;
+  it.each(prototypeSensitiveKeys)(
+    "redacts malformed XML-wrapped YAML keys for %s",
+    (key) => {
+      const onError = vi.fn();
+      const protocol = yamlXmlProtocol();
+      const text = `<get_weather>${key}: [</get_weather>`;
 
-    const out = protocol.parseGeneratedText({
-      text,
-      tools: basicTools,
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
+      const out = protocol.parseGeneratedText({
+        text,
+        tools: basicTools,
+        options: { emitRawToolCallTextOnError: true, onError },
+      });
 
-    expect(
-      out
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("")
-    ).toBe("");
-    expect(onError).toHaveBeenCalledTimes(1);
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(key);
-    expect(metadataText).not.toContain("<get_weather>");
-  });
+      expect(
+        out
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      ).toBe("");
+      expect(onError).toHaveBeenCalledTimes(1);
+      const metadataText = JSON.stringify(onError.mock.calls);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain(key);
+      expect(metadataText).not.toContain("<get_weather>");
+    }
+  );
 
   it("redacts prototype-sensitive stringify errors in metadata", () => {
     const onError = vi.fn();
