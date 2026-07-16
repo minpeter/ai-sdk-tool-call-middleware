@@ -651,52 +651,55 @@ describe("hermesProtocol streaming JSON repair", () => {
     "constructor: ordinary prose",
     "prototype: ordinary prose",
     "constructor: true",
-  ] as const)("preserves schema-valid string argument value %s", async (note) => {
-    const text = `<tool_call>${JSON.stringify({
-      name: "write",
-      arguments: { note },
-    })}</tool_call>`;
-    const tools = [
-      makeSchemaTool("write", {
-        type: "object",
-        properties: {
-          note: { type: "string" },
+  ] as const)(
+    "preserves schema-valid string argument value %s",
+    async (note) => {
+      const text = `<tool_call>${JSON.stringify({
+        name: "write",
+        arguments: { note },
+      })}</tool_call>`;
+      const tools = [
+        makeSchemaTool("write", {
+          type: "object",
+          properties: {
+            note: { type: "string" },
+          },
+          additionalProperties: false,
+        }),
+      ];
+      const protocol = hermesProtocol();
+      const transformer = protocol.createStreamParser({ tools });
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
+        start(ctrl) {
+          ctrl.enqueue({
+            type: "text-delta",
+            id: "1",
+            delta: text,
+          });
+          ctrl.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          ctrl.close();
         },
-        additionalProperties: false,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: text,
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
+      });
 
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const tool = out.find(isToolCallPart);
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(rs, transformer)
+      );
+      const tool = out.find(isToolCallPart);
 
-    expect(tool?.toolName).toBe("write");
-    expect(tool?.input).toBe(JSON.stringify({ note }));
-    expect(
-      out
-        .filter((part) => part.type === "tool-input-delta")
-        .map((part) => part.delta)
-        .join("")
-    ).toBe(JSON.stringify({ note }));
-  });
+      expect(tool?.toolName).toBe("write");
+      expect(tool?.input).toBe(JSON.stringify({ note }));
+      expect(
+        out
+          .filter((part) => part.type === "tool-input-delta")
+          .map((part) => part.delta)
+          .join("")
+      ).toBe(JSON.stringify({ note }));
+    }
+  );
 
   it("rejects unquoted strict RJSON with prototype-sensitive argument keys", async () => {
     const onError = vi.fn();

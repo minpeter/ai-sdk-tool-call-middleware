@@ -200,24 +200,24 @@ describe("XML/YAML malformed non-leak guarantees", () => {
         '<parameter=constructor>{"polluted":true}</parameter></function></tool_call>',
       ],
     },
-  ])("$name closes tool-input lifecycle when a late sensitive arg rejects", async ({
-    protocol,
-    chunks,
-  }) => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: [weatherTool],
-      chunks,
-      options: { emitRawToolCallTextOnError: true },
-    });
+  ])(
+    "$name closes tool-input lifecycle when a late sensitive arg rejects",
+    async ({ protocol, chunks }) => {
+      const out = await runProtocolTextDeltaStream({
+        protocol,
+        tools: [weatherTool],
+        chunks,
+        options: { emitRawToolCallTextOnError: true },
+      });
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
-    const textOut = extractTextDeltas(out);
-    expect(textOut).not.toContain("constructor");
-    expect(textOut).not.toContain("<get_weather>");
-    expect(textOut).not.toContain("<tool_call>");
-  });
+      expect(out.some((part) => part.type === "tool-call")).toBe(false);
+      expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
+      const textOut = extractTextDeltas(out);
+      expect(textOut).not.toContain("constructor");
+      expect(textOut).not.toContain("<get_weather>");
+      expect(textOut).not.toContain("<tool_call>");
+    }
+  );
 
   it.each([
     {
@@ -236,26 +236,26 @@ describe("XML/YAML malformed non-leak guarantees", () => {
         '<parameter=constructor>{"polluted":true}</parameter></function></tool_call>',
       ],
     },
-  ])("$name does not emit scalar progress before late sensitive rejection", async ({
-    protocol,
-    chunks,
-  }) => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: [weatherTool],
-      chunks,
-      options: { emitRawToolCallTextOnError: true },
-    });
+  ])(
+    "$name does not emit scalar progress before late sensitive rejection",
+    async ({ protocol, chunks }) => {
+      const out = await runProtocolTextDeltaStream({
+        protocol,
+        tools: [weatherTool],
+        chunks,
+        options: { emitRawToolCallTextOnError: true },
+      });
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
-    const toolInputOut = extractToolInputDeltas(out).join("");
-    expect(toolInputOut).not.toContain("first-chunk-scalar-secret");
-    expect(toolInputOut).not.toContain("constructor");
-    expect(toolInputOut).not.toContain("polluted");
-    expect(extractTextDeltas(out)).not.toContain("<tool_call>");
-    expect(extractTextDeltas(out)).not.toContain("<get_weather>");
-  });
+      expect(out.some((part) => part.type === "tool-call")).toBe(false);
+      expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
+      const toolInputOut = extractToolInputDeltas(out).join("");
+      expect(toolInputOut).not.toContain("first-chunk-scalar-secret");
+      expect(toolInputOut).not.toContain("constructor");
+      expect(toolInputOut).not.toContain("polluted");
+      expect(extractTextDeltas(out)).not.toContain("<tool_call>");
+      expect(extractTextDeltas(out)).not.toContain("<get_weather>");
+    }
+  );
 
   it.each([
     {
@@ -274,24 +274,24 @@ describe("XML/YAML malformed non-leak guarantees", () => {
         "<parameter=unit>&lt;prototype&gt;x&lt;/prototype&gt;</parameter></function></tool_call>",
       ],
     },
-  ])("$name closes tool-input lifecycle when decoded args are sensitive", async ({
-    protocol,
-    chunks,
-  }) => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: [weatherTool],
-      chunks,
-      options: { emitRawToolCallTextOnError: true },
-    });
+  ])(
+    "$name closes tool-input lifecycle when decoded args are sensitive",
+    async ({ protocol, chunks }) => {
+      const out = await runProtocolTextDeltaStream({
+        protocol,
+        tools: [weatherTool],
+        chunks,
+        options: { emitRawToolCallTextOnError: true },
+      });
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
-    const textOut = extractTextDeltas(out);
-    expect(textOut).not.toContain("prototype");
-    expect(textOut).not.toContain("<get_weather>");
-    expect(textOut).not.toContain("<tool_call>");
-  });
+      expect(out.some((part) => part.type === "tool-call")).toBe(false);
+      expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
+      const textOut = extractTextDeltas(out);
+      expect(textOut).not.toContain("prototype");
+      expect(textOut).not.toContain("<get_weather>");
+      expect(textOut).not.toContain("<tool_call>");
+    }
+  );
 
   it("Morph XML does not emit buffered progress deltas for split sensitive input", async () => {
     const out = await runProtocolTextDeltaStream({
@@ -347,24 +347,24 @@ describe("XML/YAML malformed non-leak guarantees", () => {
         '"__proto__":{}}</parameter></function></tool_call>',
       ],
     },
-  ])("$name does not emit progress deltas for split sensitive string input", async ({
-    protocol,
-    chunks,
-  }) => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: [weatherTool],
-      chunks,
-      options: { emitRawToolCallTextOnError: true },
-    });
+  ])(
+    "$name does not emit progress deltas for split sensitive string input",
+    async ({ protocol, chunks }) => {
+      const out = await runProtocolTextDeltaStream({
+        protocol,
+        tools: [weatherTool],
+        chunks,
+        options: { emitRawToolCallTextOnError: true },
+      });
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    const toolInputOut = extractToolInputDeltas(out).join("");
-    expect(toolInputOut).not.toContain("secret");
-    expect(toolInputOut).not.toContain("__proto__");
-    expect(extractTextDeltas(out)).not.toContain("<tool_call>");
-    expect(extractTextDeltas(out)).not.toContain("<get_weather>");
-  });
+      expect(out.some((part) => part.type === "tool-call")).toBe(false);
+      const toolInputOut = extractToolInputDeltas(out).join("");
+      expect(toolInputOut).not.toContain("secret");
+      expect(toolInputOut).not.toContain("__proto__");
+      expect(extractTextDeltas(out)).not.toContain("<tool_call>");
+      expect(extractTextDeltas(out)).not.toContain("<get_weather>");
+    }
+  );
 
   it("Morph XML buffers YAML-shaped split sensitive string input", async () => {
     const out = await runProtocolTextDeltaStream({
@@ -409,24 +409,24 @@ describe("XML/YAML malformed non-leak guarantees", () => {
         ":\n  polluted: true</parameter></function></tool_call>",
       ],
     },
-  ])("$name buffers pre-colon YAML-sensitive string input", async ({
-    protocol,
-    chunks,
-  }) => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: [weatherTool],
-      chunks,
-      options: { emitRawToolCallTextOnError: true },
-    });
+  ])(
+    "$name buffers pre-colon YAML-sensitive string input",
+    async ({ protocol, chunks }) => {
+      const out = await runProtocolTextDeltaStream({
+        protocol,
+        tools: [weatherTool],
+        chunks,
+        options: { emitRawToolCallTextOnError: true },
+      });
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    const toolInputOut = extractToolInputDeltas(out).join("");
-    expect(toolInputOut).not.toContain("constructor");
-    expect(toolInputOut).not.toContain("polluted");
-    expect(extractTextDeltas(out)).not.toContain("<tool_call>");
-    expect(extractTextDeltas(out)).not.toContain("<get_weather>");
-  });
+      expect(out.some((part) => part.type === "tool-call")).toBe(false);
+      const toolInputOut = extractToolInputDeltas(out).join("");
+      expect(toolInputOut).not.toContain("constructor");
+      expect(toolInputOut).not.toContain("polluted");
+      expect(extractTextDeltas(out)).not.toContain("<tool_call>");
+      expect(extractTextDeltas(out)).not.toContain("<get_weather>");
+    }
+  );
 
   it("__proto__ stream args fail closed without throwing", async () => {
     const xmlErrors: string[] = [];
@@ -461,25 +461,23 @@ describe("XML/YAML malformed non-leak guarantees", () => {
     expect(yamlErrors.length).toBeGreaterThan(0);
   });
 
-  it.each(
-    prototypeSensitiveStreamCases
-  )("$name does not emit prototype-sensitive raw fallback when raw-on-error is enabled", async ({
-    protocol,
-    text,
-  }) => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: [weatherTool],
-      chunks: [text],
-      options: { emitRawToolCallTextOnError: true },
-    });
+  it.each(prototypeSensitiveStreamCases)(
+    "$name does not emit prototype-sensitive raw fallback when raw-on-error is enabled",
+    async ({ protocol, text }) => {
+      const out = await runProtocolTextDeltaStream({
+        protocol,
+        tools: [weatherTool],
+        chunks: [text],
+        options: { emitRawToolCallTextOnError: true },
+      });
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    const textOut = extractTextDeltas(out);
-    expect(textOut).not.toContain("constructor");
-    expect(textOut).not.toContain("<tool_call>");
-    expect(textOut).not.toContain("<get_weather>");
-  });
+      expect(out.some((part) => part.type === "tool-call")).toBe(false);
+      const textOut = extractTextDeltas(out);
+      expect(textOut).not.toContain("constructor");
+      expect(textOut).not.toContain("<tool_call>");
+      expect(textOut).not.toContain("<get_weather>");
+    }
+  );
 
   it("Qwen3Coder does not emit unfinished prototype-sensitive raw fallback at finish", async () => {
     const out = await runProtocolTextDeltaStream({

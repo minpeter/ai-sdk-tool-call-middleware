@@ -972,22 +972,25 @@ describe("tool-call coercion regression coverage", () => {
     "prototype: ordinary prose",
     "constructor: true",
     "prototype: 1",
-  ] as const)("keeps schema-valid string args that start with prototype-like label %s", (payload) => {
-    const input = coerceToolCallInput("echo", { payload }, [
-      {
-        type: "function",
-        name: "echo",
-        inputSchema: {
-          type: "object",
-          properties: {
-            payload: { type: "string" },
+  ] as const)(
+    "keeps schema-valid string args that start with prototype-like label %s",
+    (payload) => {
+      const input = coerceToolCallInput("echo", { payload }, [
+        {
+          type: "function",
+          name: "echo",
+          inputSchema: {
+            type: "object",
+            properties: {
+              payload: { type: "string" },
+            },
           },
         },
-      },
-    ]);
+      ]);
 
-    expect(input).toBe(JSON.stringify({ payload }));
-  });
+      expect(input).toBe(JSON.stringify({ payload }));
+    }
+  );
 
   it("detects prototype-sensitive text only in tool-argument-like syntax", () => {
     expect(

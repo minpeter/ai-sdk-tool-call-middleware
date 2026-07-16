@@ -110,103 +110,106 @@ describe("qwen3CoderProtocol", () => {
     expect(onError).toHaveBeenCalled();
   });
 
-  it.each(
-    prototypeSensitiveParameterNames
-  )("drops wrapperless partial prototype-sensitive arg trailing text for %s", (parameterName) => {
-    const onError = vi.fn();
-    const p = qwen3CoderProtocol();
-    const text = `<function=book_flight><parameter=${parameterName}`;
+  it.each(prototypeSensitiveParameterNames)(
+    "drops wrapperless partial prototype-sensitive arg trailing text for %s",
+    (parameterName) => {
+      const onError = vi.fn();
+      const p = qwen3CoderProtocol();
+      const text = `<function=book_flight><parameter=${parameterName}`;
 
-    const out = p.parseGeneratedText({
-      text,
-      tools: [bookFlightTool],
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
+      const out = p.parseGeneratedText({
+        text,
+        tools: [bookFlightTool],
+        options: { emitRawToolCallTextOnError: true, onError },
+      });
 
-    const toolCall = out.find((part) => part.type === "tool-call");
-    expect(toolCall).toMatchObject({
-      type: "tool-call",
-      toolName: "book_flight",
-      input: "{}",
-    });
-    expect(
-      out
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("")
-    ).toBe("");
-    expect(onError).toHaveBeenCalled();
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(parameterName);
-    expect(metadataText).not.toContain("<parameter=");
-  });
+      const toolCall = out.find((part) => part.type === "tool-call");
+      expect(toolCall).toMatchObject({
+        type: "tool-call",
+        toolName: "book_flight",
+        input: "{}",
+      });
+      expect(
+        out
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      ).toBe("");
+      expect(onError).toHaveBeenCalled();
+      const metadataText = JSON.stringify(onError.mock.calls);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain(parameterName);
+      expect(metadataText).not.toContain("<parameter=");
+    }
+  );
 
-  it.each(
-    prototypeSensitiveParameterNames
-  )("drops standalone prototype-sensitive parameter trailing text after wrapperless call for %s", (parameterName) => {
-    const onError = vi.fn();
-    const p = qwen3CoderProtocol();
-    const text =
-      "<function=book_flight><parameter=cabin>economy</parameter></function>" +
-      `<parameter=${parameterName}>{"polluted":true}</parameter>`;
+  it.each(prototypeSensitiveParameterNames)(
+    "drops standalone prototype-sensitive parameter trailing text after wrapperless call for %s",
+    (parameterName) => {
+      const onError = vi.fn();
+      const p = qwen3CoderProtocol();
+      const text =
+        "<function=book_flight><parameter=cabin>economy</parameter></function>" +
+        `<parameter=${parameterName}>{"polluted":true}</parameter>`;
 
-    const out = p.parseGeneratedText({
-      text,
-      tools: [bookFlightTool],
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
+      const out = p.parseGeneratedText({
+        text,
+        tools: [bookFlightTool],
+        options: { emitRawToolCallTextOnError: true, onError },
+      });
 
-    expect(out.find((part) => part.type === "tool-call")).toMatchObject({
-      type: "tool-call",
-      toolName: "book_flight",
-      input: '{"cabin":"economy"}',
-    });
-    expect(
-      out
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("")
-    ).toBe("");
-    expect(onError).toHaveBeenCalled();
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(parameterName);
-    expect(metadataText).not.toContain("<parameter=");
-  });
+      expect(out.find((part) => part.type === "tool-call")).toMatchObject({
+        type: "tool-call",
+        toolName: "book_flight",
+        input: '{"cabin":"economy"}',
+      });
+      expect(
+        out
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      ).toBe("");
+      expect(onError).toHaveBeenCalled();
+      const metadataText = JSON.stringify(onError.mock.calls);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain(parameterName);
+      expect(metadataText).not.toContain("<parameter=");
+    }
+  );
 
-  it.each(
-    prototypeSensitiveParameterNames
-  )("preserves safe text after dropped standalone prototype-sensitive parameter trailing text for %s", (parameterName) => {
-    const onError = vi.fn();
-    const p = qwen3CoderProtocol();
-    const text =
-      "<function=book_flight><parameter=cabin>economy</parameter></function>" +
-      `<parameter=${parameterName}>{"polluted":true}</parameter> after`;
+  it.each(prototypeSensitiveParameterNames)(
+    "preserves safe text after dropped standalone prototype-sensitive parameter trailing text for %s",
+    (parameterName) => {
+      const onError = vi.fn();
+      const p = qwen3CoderProtocol();
+      const text =
+        "<function=book_flight><parameter=cabin>economy</parameter></function>" +
+        `<parameter=${parameterName}>{"polluted":true}</parameter> after`;
 
-    const out = p.parseGeneratedText({
-      text,
-      tools: [bookFlightTool],
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
+      const out = p.parseGeneratedText({
+        text,
+        tools: [bookFlightTool],
+        options: { emitRawToolCallTextOnError: true, onError },
+      });
 
-    expect(out.find((part) => part.type === "tool-call")).toMatchObject({
-      type: "tool-call",
-      toolName: "book_flight",
-      input: '{"cabin":"economy"}',
-    });
-    expect(
-      out
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("")
-    ).toBe(" after");
-    expect(onError).toHaveBeenCalled();
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(parameterName);
-    expect(metadataText).not.toContain("<parameter=");
-  });
+      expect(out.find((part) => part.type === "tool-call")).toMatchObject({
+        type: "tool-call",
+        toolName: "book_flight",
+        input: '{"cabin":"economy"}',
+      });
+      expect(
+        out
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      ).toBe(" after");
+      expect(onError).toHaveBeenCalled();
+      const metadataText = JSON.stringify(onError.mock.calls);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain(parameterName);
+      expect(metadataText).not.toContain("<parameter=");
+    }
+  );
 
   it("preserves safe text after dropped entity-encoded standalone prototype-sensitive parameter trailing text", () => {
     const onError = vi.fn();

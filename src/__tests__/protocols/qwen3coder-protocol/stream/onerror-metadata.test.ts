@@ -68,52 +68,53 @@ describe("qwen3CoderProtocol streaming onError metadata", () => {
     expect((toolCallId as string).length).toBeGreaterThan(0);
   });
 
-  it.each(
-    prototypeSensitiveParameterNames
-  )("drops wrapperless partial prototype-sensitive arg trailing text for %s", async (parameterName) => {
-    const onError = vi.fn();
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: [bookFlightTool],
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: `<function=book_flight><parameter=${parameterName}`,
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
+  it.each(prototypeSensitiveParameterNames)(
+    "drops wrapperless partial prototype-sensitive arg trailing text for %s",
+    async (parameterName) => {
+      const onError = vi.fn();
+      const protocol = qwen3CoderProtocol();
+      const transformer = protocol.createStreamParser({
+        tools: [bookFlightTool],
+        options: { emitRawToolCallTextOnError: true, onError },
+      });
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
+        start(ctrl) {
+          ctrl.enqueue({
+            type: "text-delta",
+            id: "1",
+            delta: `<function=book_flight><parameter=${parameterName}`,
+          });
+          ctrl.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          ctrl.close();
+        },
+      });
 
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(rs, transformer)
+      );
 
-    expect(out.find((part) => part.type === "tool-call")).toMatchObject({
-      type: "tool-call",
-      toolName: "book_flight",
-      input: "{}",
-    });
-    expect(
-      out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => part.delta)
-        .join("")
-    ).toBe("");
-    expect(onError).toHaveBeenCalled();
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(parameterName);
-    expect(metadataText).not.toContain("<parameter=");
-  });
+      expect(out.find((part) => part.type === "tool-call")).toMatchObject({
+        type: "tool-call",
+        toolName: "book_flight",
+        input: "{}",
+      });
+      expect(
+        out
+          .filter((part) => part.type === "text-delta")
+          .map((part) => part.delta)
+          .join("")
+      ).toBe("");
+      expect(onError).toHaveBeenCalled();
+      const metadataText = JSON.stringify(onError.mock.calls);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain(parameterName);
+      expect(metadataText).not.toContain("<parameter=");
+    }
+  );
 
   it("redacts prototype-sensitive streaming stringify errors in metadata", async () => {
     const onError = vi.fn();
@@ -148,103 +149,105 @@ describe("qwen3CoderProtocol streaming onError metadata", () => {
     expect(metadata?.error).toBe("[redacted sensitive tool call]");
   });
 
-  it.each(
-    prototypeSensitiveParameterNames
-  )("drops standalone prototype-sensitive parameter trailing text after wrapperless call for %s", async (parameterName) => {
-    const onError = vi.fn();
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: [bookFlightTool],
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            "<function=book_flight><parameter=cabin>economy</parameter></function>" +
-            `<parameter=${parameterName}>{"polluted":true}</parameter>`,
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
+  it.each(prototypeSensitiveParameterNames)(
+    "drops standalone prototype-sensitive parameter trailing text after wrapperless call for %s",
+    async (parameterName) => {
+      const onError = vi.fn();
+      const protocol = qwen3CoderProtocol();
+      const transformer = protocol.createStreamParser({
+        tools: [bookFlightTool],
+        options: { emitRawToolCallTextOnError: true, onError },
+      });
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
+        start(ctrl) {
+          ctrl.enqueue({
+            type: "text-delta",
+            id: "1",
+            delta:
+              "<function=book_flight><parameter=cabin>economy</parameter></function>" +
+              `<parameter=${parameterName}>{"polluted":true}</parameter>`,
+          });
+          ctrl.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          ctrl.close();
+        },
+      });
 
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(rs, transformer)
+      );
 
-    expect(out.find((part) => part.type === "tool-call")).toMatchObject({
-      type: "tool-call",
-      toolName: "book_flight",
-      input: '{"cabin":"economy"}',
-    });
-    expect(
-      out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => part.delta)
-        .join("")
-    ).toBe("");
-    expect(onError).toHaveBeenCalled();
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(parameterName);
-    expect(metadataText).not.toContain("<parameter=");
-  });
+      expect(out.find((part) => part.type === "tool-call")).toMatchObject({
+        type: "tool-call",
+        toolName: "book_flight",
+        input: '{"cabin":"economy"}',
+      });
+      expect(
+        out
+          .filter((part) => part.type === "text-delta")
+          .map((part) => part.delta)
+          .join("")
+      ).toBe("");
+      expect(onError).toHaveBeenCalled();
+      const metadataText = JSON.stringify(onError.mock.calls);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain(parameterName);
+      expect(metadataText).not.toContain("<parameter=");
+    }
+  );
 
-  it.each(
-    prototypeSensitiveParameterNames
-  )("preserves safe text after dropped standalone prototype-sensitive parameter trailing text for %s", async (parameterName) => {
-    const onError = vi.fn();
-    const protocol = qwen3CoderProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: [bookFlightTool],
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            "<function=book_flight><parameter=cabin>economy</parameter></function>" +
-            `<parameter=${parameterName}>{"polluted":true}</parameter> after`,
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
+  it.each(prototypeSensitiveParameterNames)(
+    "preserves safe text after dropped standalone prototype-sensitive parameter trailing text for %s",
+    async (parameterName) => {
+      const onError = vi.fn();
+      const protocol = qwen3CoderProtocol();
+      const transformer = protocol.createStreamParser({
+        tools: [bookFlightTool],
+        options: { emitRawToolCallTextOnError: true, onError },
+      });
+      const rs = new ReadableStream<LanguageModelV4StreamPart>({
+        start(ctrl) {
+          ctrl.enqueue({
+            type: "text-delta",
+            id: "1",
+            delta:
+              "<function=book_flight><parameter=cabin>economy</parameter></function>" +
+              `<parameter=${parameterName}>{"polluted":true}</parameter> after`,
+          });
+          ctrl.enqueue({
+            type: "finish",
+            finishReason: stopFinishReason,
+            usage: zeroUsage,
+          });
+          ctrl.close();
+        },
+      });
 
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
+      const out = await convertReadableStreamToArray(
+        pipeWithTransformer(rs, transformer)
+      );
 
-    expect(out.find((part) => part.type === "tool-call")).toMatchObject({
-      type: "tool-call",
-      toolName: "book_flight",
-      input: '{"cabin":"economy"}',
-    });
-    expect(
-      out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => part.delta)
-        .join("")
-    ).toBe(" after");
-    expect(onError).toHaveBeenCalled();
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(parameterName);
-    expect(metadataText).not.toContain("<parameter=");
-  });
+      expect(out.find((part) => part.type === "tool-call")).toMatchObject({
+        type: "tool-call",
+        toolName: "book_flight",
+        input: '{"cabin":"economy"}',
+      });
+      expect(
+        out
+          .filter((part) => part.type === "text-delta")
+          .map((part) => part.delta)
+          .join("")
+      ).toBe(" after");
+      expect(onError).toHaveBeenCalled();
+      const metadataText = JSON.stringify(onError.mock.calls);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain(parameterName);
+      expect(metadataText).not.toContain("<parameter=");
+    }
+  );
 
   it("preserves safe text after dropped entity-encoded standalone prototype-sensitive parameter trailing text", async () => {
     const onError = vi.fn();

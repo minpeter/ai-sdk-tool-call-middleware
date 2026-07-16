@@ -200,23 +200,21 @@ describe("Hermes Seed array with partial wrapper close", () => {
     );
   });
 
-  it.each([
-    "</",
-    "</t",
-    "</tool_",
-    "</tool_call",
-  ])("accepts a complete array followed by the partial close %s", (partialClose) => {
-    const text = SEED_ARRAY_WITH_PARTIAL_CLOSE.replace(
-      TRAILING_PARTIAL_TOOL_CLOSE_RE,
-      partialClose
-    );
-    expect(
-      generatedCalls(text).map((call) => ({
-        toolName: call.toolName,
-        input: JSON.parse(call.input),
-      }))
-    ).toEqual(expectedSeedCalls);
-  });
+  it.each(["</", "</t", "</tool_", "</tool_call"])(
+    "accepts a complete array followed by the partial close %s",
+    (partialClose) => {
+      const text = SEED_ARRAY_WITH_PARTIAL_CLOSE.replace(
+        TRAILING_PARTIAL_TOOL_CLOSE_RE,
+        partialClose
+      );
+      expect(
+        generatedCalls(text).map((call) => ({
+          toolName: call.toolName,
+          input: JSON.parse(call.input),
+        }))
+      ).toEqual(expectedSeedCalls);
+    }
+  );
 
   it("preserves text before the recovered array without leaking wrapper markup", () => {
     const parts = generatedParts(`Before ${SEED_ARRAY_WITH_PARTIAL_CLOSE}`);
@@ -373,18 +371,23 @@ describe("Hermes stringified arguments compatibility", () => {
       name: "prototype-sensitive inner JSON",
       argumentsText: '{"path":"fizzbuzz.py","content":"ok","__proto__":{}}',
     },
-  ])("rejects $name without recursive or syntax repair", async ({
-    argumentsText,
-  }) => {
-    const encoded = JSON.stringify(argumentsText);
-    const text = `<tool_call>{"name":"write_file","arguments":${encoded}}</tool_call>`;
-    expect(generatedCalls(text)).toHaveLength(0);
+  ])(
+    "rejects $name without recursive or syntax repair",
+    async ({ argumentsText }) => {
+      const encoded = JSON.stringify(argumentsText);
+      const text = `<tool_call>{"name":"write_file","arguments":${encoded}}</tool_call>`;
+      expect(generatedCalls(text)).toHaveLength(0);
 
-    const onError = vi.fn();
-    const parts = await streamedParts({ chunks: [...text], onError });
-    expect(parts.some((part) => part.type === "tool-call")).toBe(false);
-    expect(parts.some((part) => part.type === "tool-input-start")).toBe(false);
-    expect(parts.some((part) => part.type === "tool-input-delta")).toBe(false);
-    expect(onError).toHaveBeenCalled();
-  });
+      const onError = vi.fn();
+      const parts = await streamedParts({ chunks: [...text], onError });
+      expect(parts.some((part) => part.type === "tool-call")).toBe(false);
+      expect(parts.some((part) => part.type === "tool-input-start")).toBe(
+        false
+      );
+      expect(parts.some((part) => part.type === "tool-input-delta")).toBe(
+        false
+      );
+      expect(onError).toHaveBeenCalled();
+    }
+  );
 });
