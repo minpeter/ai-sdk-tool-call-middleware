@@ -1,0 +1,78 @@
+{
+  "artifactVersion": 1,
+  "name": "tau3-base-complexity-stratified-20",
+  "tau2Commit": "a1e85084a3960281cb06997594133e8f39ea42a7",
+  "taskSplit": "base",
+  "datasetCounts": {
+    "airline": 50,
+    "retail": 114,
+    "telecom": 114,
+    "banking_knowledge": 97,
+    "total": 375
+  },
+  "selection": {
+    "allocation": "5 tasks per domain",
+    "eligibility": "complexityScore > 0 (exclude tasks with no enumerated evaluable criterion)",
+    "complexityScore": "len(initial_state.initialization_actions) + len(evaluation_criteria.actions) + len(evaluation_criteria.env_assertions) + len(evaluation_criteria.communicate_info) + len(evaluation_criteria.nl_assertions) + len(user_tools) + len(required_documents)",
+    "ordering": "ascending (complexityScore, task id)",
+    "positions": [
+      "0",
+      "floor((n - 1) / 4)",
+      "floor((n - 1) / 2)",
+      "floor(3 * (n - 1) / 4)",
+      "n - 1"
+    ],
+    "note": "This is a repository-defined parser-validity pilot, not an official tau3 benchmark split."
+  },
+  "domainOptions": {
+    "banking_knowledge": {
+      "retrievalConfig": "golden_retrieval",
+      "reason": "Pinned task-specific documents, offline, and identical across arms."
+    }
+  },
+  "domains": {
+    "airline": [
+      { "id": "0", "complexityScore": 1 },
+      { "id": "49", "complexityScore": 2 },
+      { "id": "35", "complexityScore": 4 },
+      { "id": "32", "complexityScore": 7 },
+      { "id": "44", "complexityScore": 24 }
+    ],
+    "retail": [
+      { "id": "50", "complexityScore": 1 },
+      { "id": "102", "complexityScore": 3 },
+      { "id": "110", "complexityScore": 6 },
+      { "id": "38", "complexityScore": 8 },
+      { "id": "43", "complexityScore": 15 }
+    ],
+    "telecom": [
+      {
+        "id": "[service_issue]airplane_mode_on|lock_sim_card_pin[PERSONA:Easy]",
+        "complexityScore": 5
+      },
+      {
+        "id": "[mms_issue]airplane_mode_on|bad_network_preference|data_usage_exceeded[PERSONA:None]",
+        "complexityScore": 9
+      },
+      {
+        "id": "[mms_issue]break_apn_mms_setting|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+        "complexityScore": 12
+      },
+      {
+        "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|bad_vpn|data_mode_off|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+        "complexityScore": 18
+      },
+      {
+        "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_off[PERSONA:Hard]",
+        "complexityScore": 28
+      }
+    ],
+    "banking_knowledge": [
+      { "id": "task_004", "complexityScore": 3 },
+      { "id": "task_034", "complexityScore": 12 },
+      { "id": "task_064", "complexityScore": 21 },
+      { "id": "task_028", "complexityScore": 28 },
+      { "id": "task_080", "complexityScore": 55 }
+    ]
+  }
+}

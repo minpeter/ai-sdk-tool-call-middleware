@@ -16,6 +16,7 @@ export default defineConfig({
       "**/*.ui.test.ts{,x}",
       "**/*.e2e.test.ts{,x}",
       "**/node_modules/**",
+      "**/.omo/**",
       "**/.omx/**",
     ],
     typecheck: {

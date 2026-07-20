@@ -1,0 +1,20 @@
+{
+  "aceRoot": "/tmp/acebench-function-calling",
+  "artifacts": [
+    "native-capture-manifest.jsonl",
+    "native-case-manifest.jsonl",
+    "same-byte-parser-comparison.jsonl",
+    "same-byte-parser-comparison.csv",
+    "strict-discordance.csv",
+    "envelope-errors.jsonl",
+    "summary.json",
+    "run-meta.json"
+  ],
+  "bfclRoot": "/tmp/bfcl-research/berkeley-function-call-leaderboard",
+  "generatedAt": "2026-07-17T07:30:00.000Z",
+  "providerCalls": 0,
+  "rawRequestMaterialWritten": false,
+  "resultsRoot": "/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/benchmarks/glm-5.2-tool-calling/results",
+  "scoring": "pinned BFCL/ACE official checkers",
+  "version": 1
+}

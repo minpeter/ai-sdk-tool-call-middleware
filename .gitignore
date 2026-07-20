@@ -46,8 +46,29 @@ yarn-error.log*
 # ai agent tool
 .opencode
 .sisyphus
+.omo/
 AGENTS.md
 .ralph-tui
 .omx/
 tasks
 package-lock.json
+
+# Local benchmark artifacts (harness source remains trackable)
+benchmarks/glm-5.2-tool-calling/results/*
+
+# Redacted, same-byte parser audit (no raw request/response material or secrets)
+!benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-native-parser-same-byte-audit-v1/
+!benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-native-parser-same-byte-audit-v1/**
+
+# Redacted GLM parser reference summaries (full natural replay rows stay local)
+!benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/
+benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/*
+!benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/summary.json
+!benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-parser-summary.csv
+!benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-pairwise-summary.csv
+!benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/synthetic-parser-summary.csv
+!benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/synthetic-corpus.jsonl
+
+# Source-driven report visuals and manifest (no raw provider captures)
+!benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-parser-superiority-report-v1/
+!benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-parser-superiority-report-v1/**

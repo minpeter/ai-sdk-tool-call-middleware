@@ -1,0 +1,14 @@
+{
+  "arms": [
+    { "family": "native", "id": "native" },
+    { "family": "glm5", "id": "glm5" }
+  ],
+  "expectedJobs": 4,
+  "mcpmarkCommit": "cd45b7f57923b9b3985467f5139927575f83141c",
+  "model": "fixture-model",
+  "tasks": [
+    { "category": "file_context", "id": "file_context/fixture_1" },
+    { "category": "file_context", "id": "file_context/fixture_2" }
+  ],
+  "trials": 1
+}

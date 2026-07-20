@@ -1,0 +1,13 @@
+suite,transport,candidate,baseline,wins,losses,ties
+bfcl,generate,vllmReference,productionGenerate,0,0,456
+bfcl,generate,sglangReference,productionGenerate,0,1,455
+bfcl,generate,productionStream,productionGenerate,0,0,456
+bfcl,generate,vllmPythonReference,productionGenerate,0,168,288
+ace,generate,vllmReference,productionGenerate,0,0,100
+ace,generate,sglangReference,productionGenerate,0,0,100
+ace,generate,productionStream,productionGenerate,0,0,100
+ace,generate,vllmPythonReference,productionGenerate,0,39,61
+bfcl,stream,vllmReference,productionGenerate,0,0,13
+bfcl,stream,sglangReference,productionGenerate,0,0,13
+bfcl,stream,productionStream,productionGenerate,0,0,13
+bfcl,stream,vllmPythonReference,productionGenerate,0,2,11

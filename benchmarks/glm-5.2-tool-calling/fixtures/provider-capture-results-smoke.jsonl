@@ -1,0 +1,2 @@
+{"arm":"native","caseId":"offline_1","category":"simple_python","rawCaptureIds":["offline-native-json"],"transport":"generate","transportOk":true,"trial":1}
+{"arm":"glm5","caseId":"offline_1","category":"simple_python","rawCaptureIds":["offline-glm5-sse"],"transport":"stream","transportOk":true,"trial":1}

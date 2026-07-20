@@ -1,0 +1,404 @@
+{
+  "artifactVersion": 1,
+  "caveat": "vLLM and SGLang are pinned deployment-reference reproductions; this does not identify the FreeRouter backend parser.",
+  "diagnosticPolicy": {
+    "fatal": "Decoder failures and invalid finalized JSON are written to parserErrors and invalidate protocol-strict scoring.",
+    "recovery": "Successful `Recovered malformed...` callbacks are preserved in parserRecoveries and do not invalidate an otherwise oracle-correct call."
+  },
+  "generatedAt": "2026-07-17T08:08:47.112Z",
+  "natural": {
+    "bfcl-generate": {
+      "acceptance": {
+        "vllmReference": {
+          "accepted": 329,
+          "exactVsProductionGenerate": 454,
+          "falsePositive": 11,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 456
+        },
+        "sglangReference": {
+          "accepted": 329,
+          "exactVsProductionGenerate": 451,
+          "falsePositive": 11,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 456
+        },
+        "productionGenerate": {
+          "accepted": 329,
+          "exactVsProductionGenerate": 456,
+          "falsePositive": 11,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 2,
+          "total": 456
+        },
+        "productionStream": {
+          "accepted": 329,
+          "exactVsProductionGenerate": 456,
+          "falsePositive": 11,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 2,
+          "total": 456
+        },
+        "vllmPythonReference": {
+          "accepted": 329,
+          "exactVsProductionGenerate": 245,
+          "falsePositive": 11,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 456
+        }
+      },
+      "cases": 456,
+      "detailPath": "/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-bfcl-generate.details.jsonl",
+      "rawPath": "/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-bfcl-generate.raw.jsonl",
+      "scoredPath": "/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-bfcl-generate.scored.jsonl",
+      "strict": {
+        "byParser": {
+          "vllmReference": {
+            "accuracy": 0.7456140350877193,
+            "correct": 340,
+            "protocolValid": 456,
+            "total": 456
+          },
+          "sglangReference": {
+            "accuracy": 0.743421052631579,
+            "correct": 339,
+            "protocolValid": 456,
+            "total": 456
+          },
+          "productionGenerate": {
+            "accuracy": 0.7456140350877193,
+            "correct": 340,
+            "protocolValid": 456,
+            "total": 456
+          },
+          "productionStream": {
+            "accuracy": 0.7456140350877193,
+            "correct": 340,
+            "protocolValid": 456,
+            "total": 456
+          },
+          "vllmPythonReference": {
+            "accuracy": 0.37719298245614036,
+            "correct": 172,
+            "protocolValid": 456,
+            "total": 456
+          }
+        },
+        "pairwiseVsProductionGenerate": {
+          "vllmReference": {
+            "losses": 0,
+            "ties": 456,
+            "wins": 0
+          },
+          "sglangReference": {
+            "losses": 1,
+            "ties": 455,
+            "wins": 0
+          },
+          "productionStream": {
+            "losses": 0,
+            "ties": 456,
+            "wins": 0
+          },
+          "vllmPythonReference": {
+            "losses": 168,
+            "ties": 288,
+            "wins": 0
+          }
+        }
+      }
+    },
+    "ace-generate": {
+      "acceptance": {
+        "vllmReference": {
+          "accepted": 60,
+          "exactVsProductionGenerate": 100,
+          "falsePositive": 0,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 100
+        },
+        "sglangReference": {
+          "accepted": 60,
+          "exactVsProductionGenerate": 100,
+          "falsePositive": 0,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 100
+        },
+        "productionGenerate": {
+          "accepted": 60,
+          "exactVsProductionGenerate": 100,
+          "falsePositive": 0,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 100
+        },
+        "productionStream": {
+          "accepted": 60,
+          "exactVsProductionGenerate": 100,
+          "falsePositive": 0,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 100
+        },
+        "vllmPythonReference": {
+          "accepted": 60,
+          "exactVsProductionGenerate": 48,
+          "falsePositive": 0,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 100
+        }
+      },
+      "cases": 100,
+      "detailPath": "/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-ace-generate.details.jsonl",
+      "rawPath": "/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-ace-generate.raw.jsonl",
+      "scoredPath": "/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-ace-generate.scored.jsonl",
+      "strict": {
+        "byParser": {
+          "vllmReference": {
+            "accuracy": 0.5,
+            "correct": 50,
+            "protocolValid": 100,
+            "total": 100
+          },
+          "sglangReference": {
+            "accuracy": 0.5,
+            "correct": 50,
+            "protocolValid": 100,
+            "total": 100
+          },
+          "productionGenerate": {
+            "accuracy": 0.5,
+            "correct": 50,
+            "protocolValid": 100,
+            "total": 100
+          },
+          "productionStream": {
+            "accuracy": 0.5,
+            "correct": 50,
+            "protocolValid": 100,
+            "total": 100
+          },
+          "vllmPythonReference": {
+            "accuracy": 0.11,
+            "correct": 11,
+            "protocolValid": 100,
+            "total": 100
+          }
+        },
+        "pairwiseVsProductionGenerate": {
+          "vllmReference": {
+            "losses": 0,
+            "ties": 100,
+            "wins": 0
+          },
+          "sglangReference": {
+            "losses": 0,
+            "ties": 100,
+            "wins": 0
+          },
+          "productionStream": {
+            "losses": 0,
+            "ties": 100,
+            "wins": 0
+          },
+          "vllmPythonReference": {
+            "losses": 39,
+            "ties": 61,
+            "wins": 0
+          }
+        }
+      }
+    },
+    "bfcl-stream": {
+      "acceptance": {
+        "vllmReference": {
+          "accepted": 6,
+          "exactVsProductionGenerate": 13,
+          "falsePositive": 0,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 13
+        },
+        "sglangReference": {
+          "accepted": 6,
+          "exactVsProductionGenerate": 13,
+          "falsePositive": 0,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 13
+        },
+        "productionGenerate": {
+          "accepted": 6,
+          "exactVsProductionGenerate": 13,
+          "falsePositive": 0,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 13
+        },
+        "productionStream": {
+          "accepted": 6,
+          "exactVsProductionGenerate": 13,
+          "falsePositive": 0,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 13
+        },
+        "vllmPythonReference": {
+          "accepted": 6,
+          "exactVsProductionGenerate": 10,
+          "falsePositive": 0,
+          "parserErrorRows": 0,
+          "parserRecoveryRows": 0,
+          "total": 13
+        }
+      },
+      "cases": 13,
+      "detailPath": "/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-bfcl-stream.details.jsonl",
+      "rawPath": "/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-bfcl-stream.raw.jsonl",
+      "scoredPath": "/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware/benchmarks/glm-5.2-tool-calling/results/2026-07-17-glm5-reference-parser-replay-v1/natural-bfcl-stream.scored.jsonl",
+      "strict": {
+        "byParser": {
+          "vllmReference": {
+            "accuracy": 0.5384615384615384,
+            "correct": 7,
+            "protocolValid": 13,
+            "total": 13
+          },
+          "sglangReference": {
+            "accuracy": 0.5384615384615384,
+            "correct": 7,
+            "protocolValid": 13,
+            "total": 13
+          },
+          "productionGenerate": {
+            "accuracy": 0.5384615384615384,
+            "correct": 7,
+            "protocolValid": 13,
+            "total": 13
+          },
+          "productionStream": {
+            "accuracy": 0.5384615384615384,
+            "correct": 7,
+            "protocolValid": 13,
+            "total": 13
+          },
+          "vllmPythonReference": {
+            "accuracy": 0.38461538461538464,
+            "correct": 5,
+            "protocolValid": 13,
+            "total": 13
+          }
+        },
+        "pairwiseVsProductionGenerate": {
+          "vllmReference": {
+            "losses": 0,
+            "ties": 13,
+            "wins": 0
+          },
+          "sglangReference": {
+            "losses": 0,
+            "ties": 13,
+            "wins": 0
+          },
+          "productionStream": {
+            "losses": 0,
+            "ties": 13,
+            "wins": 0
+          },
+          "vllmPythonReference": {
+            "losses": 2,
+            "ties": 11,
+            "wins": 0
+          }
+        }
+      }
+    }
+  },
+  "naturalProductionChunkInvariant": 569,
+  "naturalTotal": 569,
+  "providerCalls": 0,
+  "referenceSources": {
+    "sglang": {
+      "implementation": "sglang-glm47-moe-deployment-reference",
+      "path": "python/sglang/srt/function_call/glm47_moe_detector.py",
+      "revision": "619609aa5a2c4859cee79e9dd16a15cf1ff4c98a",
+      "sha256": "4ed06f8370249f6dafd91b5a25796851845a028a3ccc79efff2f68b6971a5af1"
+    },
+    "vllm": {
+      "implementation": "vllm-rust-glm47-moe-deployment-reference",
+      "paths": [
+        "rust/src/parser/src/tool/glm_xml/glm47_moe.rs",
+        "rust/src/parser/src/tool/glm_xml/mod.rs"
+      ],
+      "revision": "26c909ed74a6298952d0c3191fbfdf2b513d9e1d",
+      "sha256": [
+        "c6ad055e23f0aaf976e1de105e6d3a152c6c04673926adb47577c5c8bf0d0147",
+        "9792c1654ff17cba55897f805bc816a00aa13b89cbcc2c17f1fd02c1301f6ae8"
+      ]
+    },
+    "vllm-python": {
+      "implementation": "vllm-python-glm47-moe-deployment-reference",
+      "path": "vllm/parser/glm47_moe.py",
+      "revision": "26c909ed74a6298952d0c3191fbfdf2b513d9e1d",
+      "sha256": "ce3629319e56e882d25cb75d62e3e7088a4eec1518885fc69fc696eafb4a97b2"
+    }
+  },
+  "synthetic": {
+    "cases": 19,
+    "corpus": "official-template-derived-labeled-conformance-and-corruption",
+    "metrics": {
+      "vllmReference": {
+        "actionCorrect": 8,
+        "exactCorrect": 8,
+        "exactPrecision": 0.5555555555555556,
+        "exactRecall": 0.4166666666666667,
+        "falseNegative": 7,
+        "falsePositive": 4,
+        "total": 19
+      },
+      "sglangReference": {
+        "actionCorrect": 12,
+        "exactCorrect": 8,
+        "exactPrecision": 0.38461538461538464,
+        "exactRecall": 0.4166666666666667,
+        "falseNegative": 7,
+        "falsePositive": 8,
+        "total": 19
+      },
+      "productionGenerate": {
+        "actionCorrect": 19,
+        "exactCorrect": 19,
+        "exactPrecision": 1,
+        "exactRecall": 1,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "total": 19
+      },
+      "productionStream": {
+        "actionCorrect": 19,
+        "exactCorrect": 19,
+        "exactPrecision": 1,
+        "exactRecall": 1,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "total": 19
+      },
+      "vllmPythonReference": {
+        "actionCorrect": 12,
+        "exactCorrect": 5,
+        "exactPrecision": 0.15384615384615385,
+        "exactRecall": 0.16666666666666666,
+        "falseNegative": 10,
+        "falsePositive": 11,
+        "total": 19
+      }
+    },
+    "productionChunkInvariant": 19
+  }
+}

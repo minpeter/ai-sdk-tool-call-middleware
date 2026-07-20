@@ -1,0 +1,287 @@
+{
+  "artifactVersion": 1,
+  "publicationReady": true,
+  "sourceArtifacts": [
+    {
+      "role": "same-byte-summary",
+      "path": "results/2026-07-17-glm5-native-parser-same-byte-audit-v1/summary.json",
+      "sha256": "e21b875c129c0eb236f1e3793f260675689ffab42cdce9aafae23eac9f8608f3"
+    },
+    {
+      "role": "same-byte-strict-discordance",
+      "path": "results/2026-07-17-glm5-native-parser-same-byte-audit-v1/strict-discordance.csv",
+      "sha256": "61740461d0b63c40327e86677e7a82068e9f0f2cf2041bf1de9f8a5cf441431c"
+    },
+    {
+      "role": "same-byte-run-meta",
+      "path": "results/2026-07-17-glm5-native-parser-same-byte-audit-v1/run-meta.json",
+      "sha256": "25dfdfdf4d20724ed3ec14da9d416d14d4cfcf93b8699a8718650f2d9dcaa057"
+    },
+    {
+      "role": "reference-replay-summary",
+      "path": "results/2026-07-17-glm5-reference-parser-replay-v1/summary.json",
+      "sha256": "7e4fa69c3918eb0a4eb34b931ebf60545b13826ef1175e31948f878a5db312de"
+    }
+  ],
+  "metricSources": {
+    "callAcceptanceFunnel": {
+      "artifactRole": "same-byte-summary",
+      "jsonPointers": [
+        "/parser/nativeStructuredCalls",
+        "/parser/nativeStrictValidCalls",
+        "/parser/nativeMalformedCalls",
+        "/parser/repairedMalformedCalls",
+        "/parser/validNativeCallsPreserved",
+        "/parser/pairedMalformedCallAcceptanceExactMcNemarP"
+      ]
+    },
+    "strictChangedOutcomes": {
+      "artifactRole": "same-byte-strict-discordance",
+      "columns": [
+        "callsChanged",
+        "textChanged",
+        "baselineStrict",
+        "nativePlusStrict",
+        "scoreOutcome"
+      ]
+    },
+    "sameByteStreaming": {
+      "artifactRole": "same-byte-summary",
+      "jsonPointers": ["/corpus", "/stream"]
+    },
+    "referenceConformance": {
+      "artifactRole": "reference-replay-summary",
+      "jsonPointer": "/synthetic/metrics",
+      "status": "loaded"
+    },
+    "referenceStreaming": {
+      "artifactRole": "reference-replay-summary",
+      "jsonPointers": [
+        "/naturalProductionChunkInvariant",
+        "/naturalTotal",
+        "/synthetic/productionChunkInvariant",
+        "/synthetic/cases"
+      ],
+      "status": "loaded"
+    }
+  },
+  "sameByteEvidence": {
+    "structuredCalls": 1729,
+    "strictValidCalls": 1720,
+    "malformedCalls": 9,
+    "repairedCalls": 9,
+    "preservedValidCalls": 1720,
+    "wins": 5,
+    "neutralChanges": 3,
+    "losses": 0,
+    "chunkInvariant": 47,
+    "sseCaptures": 47
+  },
+  "referenceEvidence": {
+    "naturalCases": 569,
+    "naturalChunkInvariant": 569,
+    "syntheticCases": 19,
+    "syntheticChunkInvariant": 19,
+    "providerCalls": 0,
+    "syntheticMetrics": {
+      "vllmReference": {
+        "total": 19,
+        "actionCorrect": 8,
+        "exactCorrect": 8,
+        "falsePositive": 4,
+        "falseNegative": 7,
+        "exactPrecision": 0.5555555555555556,
+        "exactRecall": 0.4166666666666667
+      },
+      "sglangReference": {
+        "total": 19,
+        "actionCorrect": 12,
+        "exactCorrect": 8,
+        "falsePositive": 8,
+        "falseNegative": 7,
+        "exactPrecision": 0.38461538461538464,
+        "exactRecall": 0.4166666666666667
+      },
+      "productionGenerate": {
+        "total": 19,
+        "actionCorrect": 19,
+        "exactCorrect": 19,
+        "falsePositive": 0,
+        "falseNegative": 0,
+        "exactPrecision": 1.0,
+        "exactRecall": 1.0
+      },
+      "productionStream": {
+        "total": 19,
+        "actionCorrect": 19,
+        "exactCorrect": 19,
+        "falsePositive": 0,
+        "falseNegative": 0,
+        "exactPrecision": 1.0,
+        "exactRecall": 1.0
+      },
+      "vllmPythonReference": {
+        "total": 19,
+        "actionCorrect": 12,
+        "exactCorrect": 5,
+        "falsePositive": 11,
+        "falseNegative": 10,
+        "exactPrecision": 0.15384615384615385,
+        "exactRecall": 0.16666666666666666
+      }
+    },
+    "naturalStrict": {
+      "ace-generate": {
+        "vllmReference": {
+          "total": 100,
+          "correct": 50,
+          "protocolValid": 100,
+          "accuracy": 0.5
+        },
+        "vllmPythonReference": {
+          "total": 100,
+          "correct": 11,
+          "protocolValid": 100,
+          "accuracy": 0.11
+        },
+        "sglangReference": {
+          "total": 100,
+          "correct": 50,
+          "protocolValid": 100,
+          "accuracy": 0.5
+        },
+        "productionGenerate": {
+          "total": 100,
+          "correct": 50,
+          "protocolValid": 100,
+          "accuracy": 0.5
+        },
+        "productionStream": {
+          "total": 100,
+          "correct": 50,
+          "protocolValid": 100,
+          "accuracy": 0.5
+        }
+      },
+      "bfcl-generate": {
+        "vllmReference": {
+          "total": 456,
+          "correct": 340,
+          "protocolValid": 456,
+          "accuracy": 0.7456140350877193
+        },
+        "vllmPythonReference": {
+          "total": 456,
+          "correct": 172,
+          "protocolValid": 456,
+          "accuracy": 0.37719298245614036
+        },
+        "sglangReference": {
+          "total": 456,
+          "correct": 339,
+          "protocolValid": 456,
+          "accuracy": 0.743421052631579
+        },
+        "productionGenerate": {
+          "total": 456,
+          "correct": 340,
+          "protocolValid": 456,
+          "accuracy": 0.7456140350877193
+        },
+        "productionStream": {
+          "total": 456,
+          "correct": 340,
+          "protocolValid": 456,
+          "accuracy": 0.7456140350877193
+        }
+      },
+      "bfcl-stream": {
+        "vllmReference": {
+          "total": 13,
+          "correct": 7,
+          "protocolValid": 13,
+          "accuracy": 0.5384615384615384
+        },
+        "vllmPythonReference": {
+          "total": 13,
+          "correct": 5,
+          "protocolValid": 13,
+          "accuracy": 0.38461538461538464
+        },
+        "sglangReference": {
+          "total": 13,
+          "correct": 7,
+          "protocolValid": 13,
+          "accuracy": 0.5384615384615384
+        },
+        "productionGenerate": {
+          "total": 13,
+          "correct": 7,
+          "protocolValid": 13,
+          "accuracy": 0.5384615384615384
+        },
+        "productionStream": {
+          "total": 13,
+          "correct": 7,
+          "protocolValid": 13,
+          "accuracy": 0.5384615384615384
+        }
+      }
+    }
+  },
+  "charts": [
+    {
+      "svg": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/01-claim-boundary.svg",
+      "svgBytes": 7058,
+      "svgSha256": "1a1826875169a829410b7f0f339f1d135730cbbfe4109ebaaedec88de10111c9",
+      "png": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/01-claim-boundary.png",
+      "pngBytes": 397544,
+      "pngSha256": "8e5bda56b01f3918b117089df426184e957a601541ea15e0b4e187c770b312de"
+    },
+    {
+      "svg": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/02-call-acceptance-funnel.svg",
+      "svgBytes": 5294,
+      "svgSha256": "099a416205f3759ef3270be134c80f7e21e6e7a56d6ddbd051a5c105419ecee6",
+      "png": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/02-call-acceptance-funnel.png",
+      "pngBytes": 264391,
+      "pngSha256": "17600007b4369a3e17223f2b84c24c243c493749b83e1cf63c34228882c31507"
+    },
+    {
+      "svg": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/03-strict-changed-outcomes.svg",
+      "svgBytes": 4333,
+      "svgSha256": "a2dff31ca0bffe9f6271b84802430c2d46f754d9b7ed5efc87cd7d6d67aa11fe",
+      "png": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/03-strict-changed-outcomes.png",
+      "pngBytes": 234296,
+      "pngSha256": "80ac3fd0eadd54d83f576bb5336edf4bfcf0432e356fc489d997040aa60501a6"
+    },
+    {
+      "svg": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/04-conformance-heatmap.svg",
+      "svgBytes": 7831,
+      "svgSha256": "1af8836da8cfb2316528550046c19c1ed512dfa43f30e1d2b18a4373a60a500c",
+      "png": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/04-conformance-heatmap.png",
+      "pngBytes": 278061,
+      "pngSha256": "84ac5e2bb17ee93c185288beec6528cf1ae7f62a4ef8340aee38f3a895a655d1"
+    },
+    {
+      "svg": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/05-stream-invariance.svg",
+      "svgBytes": 6766,
+      "svgSha256": "a398ba357da36ee91fdf77ae9b4df3c88791fd7cdddff705b6518215282ab388",
+      "png": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/05-stream-invariance.png",
+      "pngBytes": 342857,
+      "pngSha256": "f91532a9d457591809d65fe7ef464140a858e26b1bad3414884e5a816dbc95c5"
+    },
+    {
+      "svg": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/06-native-plus-architecture.svg",
+      "svgBytes": 8403,
+      "svgSha256": "3967c6b1a261302f4e0adafa0a6dceb4e00882fd1ae68cc71b3d636ae6ed22c9",
+      "png": "results/2026-07-17-glm5-parser-superiority-report-v1/charts/06-native-plus-architecture.png",
+      "pngBytes": 438096,
+      "pngSha256": "9d8e6d5fee07fd19fc30186b3044394a42819aad9f9de5f893d854b55418261a"
+    }
+  ],
+  "report": {
+    "path": "REPORT-GLM5-PARSER-SUPERIORITY.ko.md",
+    "sha256": "9b6cfcea0edecac2d6f4cf10550f91a19c6b4e2ea14ef0610e9dd854267f4f56"
+  },
+  "outputDirectory": "results/2026-07-17-glm5-parser-superiority-report-v1"
+}
