@@ -2,10 +2,7 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import {
-  toolCallInputHasPrototypeSensitiveKey,
-  toolCallTextHasPrototypeSensitiveKey,
-} from "./prototype-sensitive-keys";
+import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 import {
   type EmittedToolInputState,
   emitChunkedPrefixDelta,
@@ -14,7 +11,10 @@ import {
   emitFinalRemainderWithEnqueue,
   toIncompleteJsonPrefix,
 } from "./streamed-tool-input-delta";
-import { coerceToolCallInput } from "./tool-call-coercion";
+import {
+  coerceToolCallInput,
+  toolCallInputHasSchemaAwarePrototypeSensitiveValue,
+} from "./tool-call-coercion";
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
@@ -46,7 +46,12 @@ export function stringifyToolInputWithSchema(options: {
   tools: LanguageModelV4FunctionTool[];
   fallback?: (args: unknown) => string;
 }): string {
-  if (toolCallInputHasPrototypeSensitiveKey(options.args)) {
+  const schema = options.tools.find(
+    (tool) => tool.name === options.toolName
+  )?.inputSchema;
+  if (
+    toolCallInputHasSchemaAwarePrototypeSensitiveValue(options.args, schema)
+  ) {
     throw new PrototypeSensitiveToolCallInputError();
   }
 

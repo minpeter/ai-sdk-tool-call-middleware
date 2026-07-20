@@ -19,10 +19,28 @@ function normalizeBooleanString(value: string): boolean | undefined {
 
 export function getDebugLevel(): DebugLevel {
   const envVal =
-    (typeof process !== "undefined" &&
-      process.env &&
-      process.env.DEBUG_PARSER_MW) ||
-    "off";
+    typeof process !== "undefined" && process.env
+      ? process.env.DEBUG_PARSER_MW
+      : undefined;
+  switch (envVal) {
+    case undefined:
+    case "":
+    case "off":
+    case "0":
+    case "false":
+    case "no":
+      return "off";
+    case "stream":
+    case "1":
+    case "true":
+    case "yes":
+      return "stream";
+    case "parse":
+    case "2":
+      return "parse";
+    default:
+      break;
+  }
   const envLower = String(envVal).toLowerCase();
   if (envLower === "stream" || envLower === "parse" || envLower === "off") {
     return envLower as DebugLevel;

@@ -54,6 +54,26 @@ function makeResult(text: string, finishReason: unknown) {
 }
 
 describe("wrapGenerate finishReason parity with streaming", () => {
+  it("skips debug segment extraction when debug output is disabled", async () => {
+    const extractToolCallSegments = vi.fn(() => []);
+    const protocol: TCMCoreProtocol = {
+      ...toolCallProtocol,
+      extractToolCallSegments,
+    };
+
+    await wrapGenerate({
+      protocol,
+      doGenerate: vi
+        .fn()
+        .mockResolvedValue(
+          makeResult("plain answer", mockFinishReason("stop"))
+        ),
+      params: makeParams(),
+    });
+
+    expect(extractToolCallSegments).not.toHaveBeenCalled();
+  });
+
   it("rewrites stop to tool-calls when a tool call was parsed", async () => {
     const doGenerate = vi
       .fn()

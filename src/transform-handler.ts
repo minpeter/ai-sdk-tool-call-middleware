@@ -26,15 +26,37 @@ import {
 } from "./core/utils/provider-options";
 
 /**
- * Build final prompt by merging system prompt with existing prompt
+ * Controls how historical assistant tool calls and tool results are encoded.
+ * `provider-native` preserves the original AI SDK assistant and tool messages.
+ */
+export type ToolCallHistoryMode = "converted-text" | "provider-native";
+
+/**
+ * Controls where the rendered tool system prompt is inserted.
+ * `standalone-first` prepends a new system turn without merging existing turns.
+ */
+export type ToolSystemPromptPlacement = "first" | "last" | "standalone-first";
+
+/**
+ * Build the final prompt by placing or merging the rendered system prompt.
  */
 function buildFinalPrompt(
   systemPrompt: string,
   processedPrompt: LanguageModelV4Prompt,
-  placement: "first" | "last"
+  placement: ToolSystemPromptPlacement
 ): LanguageModelV4Prompt {
   if (systemPrompt.trim().length === 0) {
     return processedPrompt;
+  }
+
+  if (placement === "standalone-first") {
+    return [
+      {
+        role: "system",
+        content: systemPrompt,
+      },
+      ...processedPrompt,
+    ];
   }
 
   const systemIndex = processedPrompt.findIndex((m) => m.role === "system");
@@ -243,6 +265,8 @@ export function transformParams({
   toolSystemPromptTemplate,
   toolResponsePromptTemplate,
   placement = "first",
+  historyMode = "converted-text",
+  suppressToolSystemPromptForForcedChoice = false,
 }: {
   params: {
     prompt?: LanguageModelV4Prompt;
@@ -259,7 +283,9 @@ export function transformParams({
   toolResponsePromptTemplate?: (
     toolResult: ToolResultPart
   ) => ToolResponsePromptTemplateResult;
-  placement?: "first" | "last";
+  placement?: ToolSystemPromptPlacement;
+  historyMode?: ToolCallHistoryMode;
+  suppressToolSystemPromptForForcedChoice?: boolean;
 }) {
   const resolvedProtocol = isTCMProtocolFactory(protocol)
     ? protocol()
@@ -269,10 +295,16 @@ export function transformParams({
     (t): t is LanguageModelV4FunctionTool => t.type === "function"
   );
 
-  const systemPrompt = resolvedProtocol.formatTools({
-    tools: functionTools,
-    toolSystemPromptTemplate,
-  });
+  const forcedToolChoice =
+    params.toolChoice?.type === "tool" ||
+    params.toolChoice?.type === "required";
+  const systemPrompt =
+    suppressToolSystemPromptForForcedChoice && forcedToolChoice
+      ? ""
+      : resolvedProtocol.formatTools({
+          tools: functionTools,
+          toolSystemPromptTemplate,
+        });
 
   let normalizedPrompt: LanguageModelV4Message[];
   if (Array.isArray(params.prompt)) {
@@ -282,17 +314,20 @@ export function transformParams({
   } else {
     normalizedPrompt = [];
   }
-  const processedPrompt = convertToolPrompt(
-    normalizedPrompt,
-    resolvedProtocol,
-    toolResponsePromptTemplate,
-    extractOnErrorOption(params.providerOptions)
-  );
+  const processedPrompt =
+    historyMode === "provider-native"
+      ? normalizedPrompt
+      : convertToolPrompt(
+          normalizedPrompt,
+          resolvedProtocol,
+          toolResponsePromptTemplate,
+          extractOnErrorOption(params.providerOptions)
+        );
 
   if (params.toolChoice?.type === "none") {
     // 'none' means the model must not call tools on this step. Tool-call
-    // history is still serialized to text above, but no tool definitions are
-    // injected and the wrap handlers skip tool-call parsing entirely.
+    // history retains its selected representation, but no tool definitions
+    // are injected and the wrap handlers skip tool-call parsing entirely.
     return {
       ...params,
       prompt: processedPrompt,
