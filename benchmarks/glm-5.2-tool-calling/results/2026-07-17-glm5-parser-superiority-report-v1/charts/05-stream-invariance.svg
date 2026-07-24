@@ -1,0 +1,282 @@
+<svg
+  aria-labelledby="title desc"
+  height="990"
+  role="img"
+  viewBox="0 0 1600 990"
+  width="1600"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <title id="title">Generate SSE and chunk-invariance evidence</title>
+  <desc id="desc">
+    Generate and SSE corpus coverage plus deterministic chunk-boundary parity
+    for same-byte and raw-text parser replays.
+  </desc>
+  <defs>
+    <filter height="140%" id="shadow" width="120%" x="-10%" y="-15%">
+      <feDropShadow
+        dx="0"
+        dy="4"
+        flood-color="#0f172a"
+        flood-opacity="0.09"
+        stdDeviation="7"
+      />
+    </filter>
+    <marker
+      id="arrow"
+      markerHeight="7"
+      markerWidth="7"
+      orient="auto-start-reverse"
+      refX="8.5"
+      refY="5"
+      viewBox="0 0 10 10"
+    >
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569" />
+    </marker>
+  </defs>
+  <rect fill="#f8fafc" height="100%" width="100%" />
+  <style>
+  text {
+    font-family:
+      Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial,
+      sans-serif;
+    fill: #0f172a;
+  }
+  .title {
+    font-family: Arial, sans-serif;
+    font-size: 34px;
+    font-weight: 700;
+  }
+  .subtitle {
+    font-size: 17px;
+    fill: #475569;
+  }
+  .section {
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .box-title {
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .body {
+    font-size: 14px;
+    fill: #475569;
+  }
+  .small {
+    font-size: 12px;
+    fill: #64748b;
+  }
+  .label {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .value {
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .metric {
+    font-size: 25px;
+    font-weight: 850;
+  }
+  .mono {
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 13px;
+    fill: #334155;
+  }
+  .shadow {
+    filter: url(#shadow);
+  }
+  </style>
+  <text class="title" x="64" y="70">
+    Generate, SSE, and chunk-invariance evidence
+  </text>
+  <text class="subtitle" x="64" y="110">
+    Transport coverage and rechunk parity are shown separately from semantic
+    benchmark accuracy.
+  </text>
+  <rect
+    class="shadow"
+    fill="#eff6ff"
+    height="198"
+    rx="16"
+    stroke="#93c5fd"
+    stroke-width="2"
+    width="452"
+    x="64"
+    y="174"
+  />
+  <text class="box-title" fill="#1d4ed8" x="86" y="208">
+    Same-byte capture corpus
+  </text>
+  <text class="body" text-anchor="start" x="86" y="240">
+    <tspan dy="0" x="86">Generate responses: 1,354</tspan>
+    <tspan dy="23" x="86">SSE responses: 47</tspan>
+    <tspan dy="23" x="86">Unique responses: 1,401</tspan>
+    <tspan dy="23" x="86">No provider re-generation during replay</tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#ecfdf5"
+    height="198"
+    rx="16"
+    stroke="#6ee7b7"
+    stroke-width="2"
+    width="452"
+    x="574"
+    y="174"
+  />
+  <text class="box-title" fill="#047857" x="596" y="208">
+    Native-Plus SSE invariance
+  </text>
+  <text class="body" text-anchor="start" x="596" y="240">
+    <tspan dy="0" x="596">Invariant: 47/47</tspan>
+    <tspan dy="23" x="596">Failures: 0</tspan>
+    <tspan dy="23" x="596">Raw SSE byte variants: up to 9</tspan>
+    <tspan dy="23" x="596">Internal delta variants: up to 9</tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#f5f3ff"
+    height="198"
+    rx="16"
+    stroke="#c4b5fd"
+    stroke-width="2"
+    width="452"
+    x="1084"
+    y="174"
+  />
+  <text class="box-title" fill="#7c3aed" x="1106" y="208">
+    Reference raw-text replay
+  </text>
+  <text class="body" text-anchor="start" x="1106" y="240">
+    <tspan dy="0" x="1106">Natural chunk invariant: 569 / 569</tspan>
+    <tspan dy="23" x="1106">Synthetic chunk invariant: 19 / 19</tspan>
+    <tspan dy="23" x="1106">
+      whole/captured, 1-char, 7-char, seeded chunk strategies
+    </tspan>
+    <tspan dy="23" x="1106">Custom generate is the parity baseline</tspan>
+  </text>
+  <line
+    stroke="#2563eb"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="516.0"
+    x2="574.0"
+    y1="273.0"
+    y2="273.0"
+  />
+  <polygon fill="#2563eb" points="574.0,273.0 561.0,279.0 561.0,267.0" />
+  <line
+    stroke="#7c3aed"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="1026.0"
+    x2="1084.0"
+    y1="273.0"
+    y2="273.0"
+  />
+  <polygon fill="#7c3aed" points="1084.0,273.0 1071.0,279.0 1071.0,267.0" />
+  <rect
+    class="shadow"
+    fill="#ffffff"
+    height="300"
+    rx="20"
+    stroke="#cbd5e1"
+    width="1472"
+    x="64"
+    y="454"
+  />
+  <text class="section" x="96" y="500">What chunk invariance means</text>
+  <rect
+    class="shadow"
+    fill="#f8fafc"
+    height="132"
+    rx="16"
+    stroke="#cbd5e1"
+    stroke-width="2"
+    width="384"
+    x="100"
+    y="538"
+  />
+  <text class="box-title" fill="#0f172a" x="122" y="572">
+    1 · Same text / bytes
+  </text>
+  <text class="body" text-anchor="start" x="122" y="604">
+    <tspan dy="0" x="122">Hold content constant</tspan>
+    <tspan dy="23" x="122">Only boundaries move</tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#f8fafc"
+    height="132"
+    rx="16"
+    stroke="#cbd5e1"
+    stroke-width="2"
+    width="384"
+    x="608"
+    y="538"
+  />
+  <text class="box-title" fill="#0f172a" x="630" y="572">
+    2 · Rechunk repeatedly
+  </text>
+  <text class="body" text-anchor="start" x="630" y="604">
+    <tspan dy="0" x="630">One-character + fixed + seeded</tspan>
+    <tspan dy="23" x="630">SSE byte and stream-delta layers</tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#f8fafc"
+    height="132"
+    rx="16"
+    stroke="#cbd5e1"
+    stroke-width="2"
+    width="384"
+    x="1116"
+    y="538"
+  />
+  <text class="box-title" fill="#0f172a" x="1138" y="572">
+    3 · Compare final lifecycle
+  </text>
+  <text class="body" text-anchor="start" x="1138" y="604">
+    <tspan dy="0" x="1138">Calls and text exact</tspan>
+    <tspan dy="23" x="1138">Balanced start/delta/end</tspan>
+  </text>
+  <line
+    stroke="#475569"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="484.0"
+    x2="608.0"
+    y1="604.0"
+    y2="604.0"
+  />
+  <polygon fill="#475569" points="608.0,604.0 595.0,610.0 595.0,598.0" />
+  <line
+    stroke="#475569"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="992.0"
+    x2="1116.0"
+    y1="604.0"
+    y2="604.0"
+  />
+  <polygon fill="#475569" points="1116.0,604.0 1103.0,610.0 1103.0,598.0" />
+  <rect
+    fill="#fefce8"
+    height="86"
+    rx="14"
+    stroke="#fde047"
+    width="1472"
+    x="64"
+    y="814"
+  />
+  <text class="label" fill="#854d0e" x="96" y="850">Scope boundary</text>
+  <text class="body" x="96" y="879">
+    This proves deterministic parsing under boundary changes; it does not
+    measure TTFT or first-tool-call latency.
+  </text>
+  <text class="small" x="64" y="956">
+    Sources: same-byte summary.stream and reference summary natural/synthetic
+    productionChunkInvariant.
+  </text>
+</svg>

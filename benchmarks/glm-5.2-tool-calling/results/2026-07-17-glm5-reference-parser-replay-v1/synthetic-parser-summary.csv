@@ -1,0 +1,6 @@
+parser,total,action_correct,exact_correct,false_positive,false_negative,exact_precision,exact_recall
+vllmReference,19,8,8,4,7,0.5555555555555556,0.4166666666666667
+sglangReference,19,12,8,8,7,0.38461538461538464,0.4166666666666667
+productionGenerate,19,19,19,0,0,1,1
+productionStream,19,19,19,0,0,1,1
+vllmPythonReference,19,12,5,11,10,0.15384615384615385,0.16666666666666666

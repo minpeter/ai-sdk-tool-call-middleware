@@ -1,6 +1,10 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { hermesToolMiddleware, morphXmlToolMiddleware } from "../../index";
+import {
+  glm5ToolMiddleware,
+  hermesToolMiddleware,
+  morphXmlToolMiddleware,
+} from "../../index";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -47,5 +51,20 @@ describe("preconfigured middleware prompt templates", () => {
     expect(text).toMatch(REGEX_MAY_CALL_FUNCTIONS);
     expect(text).toMatch(REGEX_TOOLS_TAG);
     expect(text).toMatch(REGEX_GET_WEATHER);
+  });
+
+  it("glm5ToolMiddleware prepends a standalone official tools turn", async () => {
+    const transformParams = glm5ToolMiddleware.transformParams as any;
+    const existingSystem = { role: "system", content: "Application rules" };
+    const out = await transformParams({
+      params: { prompt: [existingSystem], tools },
+    } as any);
+
+    expect(out.prompt).toHaveLength(2);
+    expect(out.prompt[0].role).toBe("system");
+    expect(String(out.prompt[0].content)).toMatch(REGEX_MAY_CALL_FUNCTIONS);
+    expect(String(out.prompt[0].content)).toMatch(REGEX_TOOLS_TAG);
+    expect(String(out.prompt[0].content)).toMatch(REGEX_GET_WEATHER);
+    expect(out.prompt[1]).toBe(existingSystem);
   });
 });

@@ -1,0 +1,345 @@
+<svg
+  aria-labelledby="title desc"
+  height="960"
+  role="img"
+  viewBox="0 0 1600 960"
+  width="1600"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <title id="title">GLM-5.2 Native-Plus parsing architecture</title>
+  <desc id="desc">
+    Provider-native calls stay primary while bounded repair, guarded text
+    fallback, and stream lifecycle handling converge into AI SDK output.
+  </desc>
+  <defs>
+    <filter height="140%" id="shadow" width="120%" x="-10%" y="-15%">
+      <feDropShadow
+        dx="0"
+        dy="4"
+        flood-color="#0f172a"
+        flood-opacity="0.09"
+        stdDeviation="7"
+      />
+    </filter>
+    <marker
+      id="arrow"
+      markerHeight="7"
+      markerWidth="7"
+      orient="auto-start-reverse"
+      refX="8.5"
+      refY="5"
+      viewBox="0 0 10 10"
+    >
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569" />
+    </marker>
+  </defs>
+  <rect fill="#f8fafc" height="100%" width="100%" />
+  <style>
+  text {
+    font-family:
+      Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial,
+      sans-serif;
+    fill: #0f172a;
+  }
+  .title {
+    font-family: Arial, sans-serif;
+    font-size: 34px;
+    font-weight: 700;
+  }
+  .subtitle {
+    font-size: 17px;
+    fill: #475569;
+  }
+  .section {
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .box-title {
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .body {
+    font-size: 14px;
+    fill: #475569;
+  }
+  .small {
+    font-size: 12px;
+    fill: #64748b;
+  }
+  .label {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .value {
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .metric {
+    font-size: 25px;
+    font-weight: 850;
+  }
+  .mono {
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 13px;
+    fill: #334155;
+  }
+  .shadow {
+    filter: url(#shadow);
+  }
+  </style>
+  <text class="title" x="64" y="70">
+    GLM-5.2 Native-Plus parsing architecture
+  </text>
+  <text class="subtitle" x="64" y="110">
+    Provider Native remains primary. Repair and text fallback are bounded,
+    schema-aware, and ordered by Native-wins arbitration.
+  </text>
+  <rect
+    class="shadow"
+    fill="#eff6ff"
+    height="132"
+    rx="16"
+    stroke="#93c5fd"
+    stroke-width="2"
+    width="320"
+    x="64"
+    y="178"
+  />
+  <text class="box-title" fill="#1d4ed8" x="86" y="212">Provider response</text>
+  <text class="body" text-anchor="start" x="86" y="244">
+    <tspan dy="0" x="86">Native structured calls</tspan>
+    <tspan dy="23" x="86">Assistant text · JSON or SSE</tspan>
+  </text>
+  <line
+    stroke="#2563eb"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="384.0"
+    x2="470.0"
+    y1="244.0"
+    y2="244.0"
+  />
+  <polygon fill="#2563eb" points="470.0,244.0 457.0,250.0 457.0,238.0" />
+  <rect
+    class="shadow"
+    fill="#ffffff"
+    height="132"
+    rx="16"
+    stroke="#cbd5e1"
+    stroke-width="2"
+    width="330"
+    x="470"
+    y="178"
+  />
+  <text class="box-title" fill="#0f172a" x="492" y="212">Envelope decode</text>
+  <text class="body" text-anchor="start" x="492" y="244">
+    <tspan dy="0" x="492">Generate or real SSE</tspan>
+    <tspan dy="23" x="492">Shared envelope errors stay shared</tspan>
+  </text>
+  <line
+    stroke="#2563eb"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="800.0"
+    x2="886.0"
+    y1="244.0"
+    y2="244.0"
+  />
+  <polygon fill="#2563eb" points="886.0,244.0 873.0,250.0 873.0,238.0" />
+  <rect
+    class="shadow"
+    fill="#f5f3ff"
+    height="132"
+    rx="16"
+    stroke="#c4b5fd"
+    stroke-width="2"
+    width="330"
+    x="886"
+    y="178"
+  />
+  <text class="box-title" fill="#7c3aed" x="908" y="212">
+    Native call present?
+  </text>
+  <text class="body" text-anchor="start" x="908" y="244">
+    <tspan dy="0" x="908">Yes → Native-primary lane</tspan>
+    <tspan dy="23" x="908">No → text-fallback lane</tspan>
+  </text>
+  <line
+    stroke="#2563eb"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="996.0"
+    x2="996.0"
+    y1="310.0"
+    y2="350.0"
+  />
+  <line
+    stroke="#2563eb"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="996.0"
+    x2="290.0"
+    y1="350.0"
+    y2="350.0"
+  />
+  <line
+    stroke="#2563eb"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="290.0"
+    x2="290.0"
+    y1="350.0"
+    y2="388.0"
+  />
+  <polygon fill="#2563eb" points="290.0,388.0 284.0,375.0 296.0,375.0" />
+  <line
+    stroke="#7c3aed"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="1106.0"
+    x2="1106.0"
+    y1="310.0"
+    y2="350.0"
+  />
+  <line
+    stroke="#7c3aed"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="1106.0"
+    x2="1310.0"
+    y1="350.0"
+    y2="350.0"
+  />
+  <line
+    stroke="#7c3aed"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="1310.0"
+    x2="1310.0"
+    y1="350.0"
+    y2="388.0"
+  />
+  <polygon fill="#7c3aed" points="1310.0,388.0 1304.0,375.0 1316.0,375.0" />
+  <rect
+    class="shadow"
+    fill="#eff6ff"
+    height="222"
+    rx="16"
+    stroke="#60a5fa"
+    stroke-width="2"
+    width="452"
+    x="64"
+    y="388"
+  />
+  <text class="box-title" fill="#1d4ed8" x="86" y="422">
+    Native-primary lane
+  </text>
+  <text class="body" text-anchor="start" x="86" y="454">
+    <tspan dy="0" x="86">Preserve already-valid structured calls</tspan>
+    <tspan dy="23" x="86">Repair bounded relaxed JSON / final delimiter</tspan>
+    <tspan dy="23" x="86">Recover opaque object references only where</tspan>
+    <tspan dy="23" x="86">schema explicitly permits arbitrary properties</tspan>
+    <tspan dy="23" x="86">Native call suppresses any text fallback</tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#fff7ed"
+    height="222"
+    rx="16"
+    stroke="#fdba74"
+    stroke-width="2"
+    width="452"
+    x="574"
+    y="388"
+  />
+  <text class="box-title" fill="#c2410c" x="596" y="422">
+    Fail-closed safety gates
+  </text>
+  <text class="body" text-anchor="start" x="596" y="454">
+    <tspan dy="0" x="596">Declared tool + schema validation</tspan>
+    <tspan dy="23" x="596">Duplicate / prototype-sensitive key rejection</tspan>
+    <tspan dy="23" x="596">Bounded bytes, depth, and named arguments</tspan>
+    <tspan dy="23" x="596">No operators, call arguments, or semicolons</tspan>
+    <tspan dy="23" x="596">
+      Ambiguous or unbounded truncation stays non-call
+    </tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#f5f3ff"
+    height="222"
+    rx="16"
+    stroke="#a78bfa"
+    stroke-width="2"
+    width="452"
+    x="1084"
+    y="388"
+  />
+  <text class="box-title" fill="#7c3aed" x="1106" y="422">
+    Text-fallback lane
+  </text>
+  <text class="body" text-anchor="start" x="1106" y="454">
+    <tspan dy="0" x="1106">Only when Native emitted zero calls</tspan>
+    <tspan dy="23" x="1106">Canonical GLM XML with schema coercion</tspan>
+    <tspan dy="23" x="1106">or whole-response anchored bare call</tspan>
+    <tspan dy="23" x="1106">Unknown tool / unsafe input rejected</tspan>
+    <tspan dy="23" x="1106">Fallback text removed only after acceptance</tspan>
+  </text>
+  <line
+    stroke="#d97706"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="516.0"
+    x2="574.0"
+    y1="500.0"
+    y2="500.0"
+  />
+  <polygon fill="#d97706" points="574.0,500.0 561.0,506.0 561.0,494.0" />
+  <line
+    stroke="#d97706"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="1084.0"
+    x2="1026.0"
+    y1="500.0"
+    y2="500.0"
+  />
+  <polygon fill="#d97706" points="1026.0,500.0 1039.0,494.0 1039.0,506.0" />
+  <line
+    stroke="#059669"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="800.0"
+    x2="800.0"
+    y1="610.0"
+    y2="704.0"
+  />
+  <polygon fill="#059669" points="800.0,704.0 794.0,691.0 806.0,691.0" />
+  <rect
+    class="shadow"
+    fill="#ecfdf5"
+    height="154"
+    rx="20"
+    stroke="#6ee7b7"
+    width="1472"
+    x="64"
+    y="704"
+  />
+  <text class="section" fill="#047857" x="96" y="748">
+    Unified AI SDK output and stream lifecycle
+  </text>
+  <text class="body" text-anchor="start" x="96" y="786">
+    <tspan dy="0" x="96">
+      Schema-valid tool-call parts + remaining assistant text · native-wins
+      arbitration
+    </tspan>
+    <tspan dy="27" x="96">
+      SSE finalization holds uncertain deltas until calls are accepted, then
+      balances start / delta / end.
+    </tspan>
+  </text>
+  <text class="small" x="64" y="926">
+    Sources: glm5-native-call-repair.ts, glm5-native-text-fallback.ts,
+    native-primary-stream.ts, preconfigured-middleware.ts.
+  </text>
+</svg>
