@@ -25,6 +25,7 @@ import {
   isParsedToolCallRecord,
   normalizeJsonStringCtrl,
 } from "./hermes-json-normalization";
+import { exceedsToolCallJsonNestingDepth } from "./hermes-json-object-key-scanner";
 import { normalizeInvalidJsonEscapes } from "./hermes-json-repair";
 import {
   emitToolInputDelta,
@@ -44,6 +45,9 @@ function emitStreamingToolInputProgress(options: {
   const { state, controller, toolCallJson, tools } = options;
   const progress = extractStreamingToolCallProgress(toolCallJson);
   if (!(progress.toolName && progress.argumentsComplete)) {
+    return false;
+  }
+  if (exceedsToolCallJsonNestingDepth(toolCallJson)) {
     return false;
   }
   try {
@@ -372,6 +376,9 @@ function emitIncompleteToolCall(
 
   if (state.currentToolCallJson) {
     try {
+      if (exceedsToolCallJsonNestingDepth(state.currentToolCallJson)) {
+        throw new Error("Tool call JSON nesting depth exceeds limit");
+      }
       const parsedToolCall = parseRJSON(
         normalizeInvalidJsonEscapes(
           normalizeJsonStringCtrl(state.currentToolCallJson)

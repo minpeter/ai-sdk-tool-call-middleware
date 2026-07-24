@@ -226,6 +226,79 @@ export interface JsonDepthScanState {
   inString: boolean;
 }
 
+/**
+ * Maximum structural nesting (`{`/`[`) accepted for tool-call JSON.
+ * Keeps recursive parsers/stringifiers from stack-overflowing on pathological
+ * input; matches MAX_ARGUMENT_SHAPE_DEPTH / bare-call nesting limits.
+ */
+export const MAX_TOOL_CALL_JSON_NESTING_DEPTH = 256;
+
+/**
+ * O(n) scan: true when `{`/`[` nesting (outside strings/comments) exceeds
+ * `maxDepth`. Used as a fail-closed preflight before recursive RJSON/JSON
+ * parse or stringify.
+ */
+export function exceedsToolCallJsonNestingDepth(
+  text: string,
+  maxDepth: number = MAX_TOOL_CALL_JSON_NESTING_DEPTH
+): boolean {
+  let depth = 0;
+  let quote: '"' | "'" | null = null;
+  let escaping = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text.charAt(index);
+
+    if (quote !== null) {
+      if (escaping) {
+        escaping = false;
+      } else if (char === "\\") {
+        escaping = true;
+      } else if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (char === "/" && text.charAt(index + 1) === "/") {
+      const lineEnd = text.indexOf("\n", index + 2);
+      if (lineEnd === -1) {
+        return false;
+      }
+      index = lineEnd;
+      continue;
+    }
+
+    if (char === "/" && text.charAt(index + 1) === "*") {
+      const blockEnd = text.indexOf("*/", index + 2);
+      if (blockEnd === -1) {
+        return false;
+      }
+      index = blockEnd + 1;
+      continue;
+    }
+
+    if (char === "{" || char === "[") {
+      depth += 1;
+      if (depth > maxDepth) {
+        return true;
+      }
+      continue;
+    }
+
+    if ((char === "}" || char === "]") && depth > 0) {
+      depth -= 1;
+    }
+  }
+
+  return false;
+}
+
 interface ObjectKeyCandidate {
   key?: string;
   nextIndex: number;
