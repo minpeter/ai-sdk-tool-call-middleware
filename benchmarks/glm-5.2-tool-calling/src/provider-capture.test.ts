@@ -22,6 +22,8 @@ import {
 
 const temporaryDirectories: string[] = [];
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
+const MISSING_SVG_PNG_CONVERTER_RE =
+  /rsvg-convert|ImageMagick|magick\/convert/i;
 
 function captureContext(transport: "generate" | "stream") {
   return {
@@ -453,9 +455,9 @@ describe("paired analysis denominators", () => {
         ],
         { cwd: process.cwd(), stdio: "pipe" }
       );
-      expect(readFileSync(join(chartsDir, "accuracy.png")).length).toBeGreaterThan(
-        0
-      );
+      expect(
+        readFileSync(join(chartsDir, "accuracy.png")).length
+      ).toBeGreaterThan(0);
     } catch (error) {
       const stderr =
         error && typeof error === "object" && "stderr" in error
@@ -463,8 +465,8 @@ describe("paired analysis denominators", () => {
           : "";
       const message = error instanceof Error ? error.message : String(error);
       const missingConverter =
-        /rsvg-convert|ImageMagick|magick\/convert/i.test(stderr) ||
-        /rsvg-convert|ImageMagick|magick\/convert/i.test(message);
+        MISSING_SVG_PNG_CONVERTER_RE.test(stderr) ||
+        MISSING_SVG_PNG_CONVERTER_RE.test(message);
       if (!missingConverter) {
         throw error;
       }

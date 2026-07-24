@@ -233,6 +233,66 @@ export interface JsonDepthScanState {
  */
 export const MAX_TOOL_CALL_JSON_NESTING_DEPTH = 256;
 
+interface NestingScanState {
+  depth: number;
+  escaping: boolean;
+  quote: '"' | "'" | null;
+}
+
+/** Advance past a string literal character; returns true while still inside. */
+function consumeNestingStringChar(
+  state: NestingScanState,
+  char: string
+): boolean {
+  if (state.quote === null) {
+    return false;
+  }
+  if (state.escaping) {
+    state.escaping = false;
+  } else if (char === "\\") {
+    state.escaping = true;
+  } else if (char === state.quote) {
+    state.quote = null;
+  }
+  return true;
+}
+
+/**
+ * Skip line (`//`) or block comments. Returns next index to scan, or -1 when
+ * the comment runs to EOF (caller should treat nesting as within limit).
+ */
+function skipNestingComment(text: string, index: number): number | null {
+  if (text.charAt(index) !== "/") {
+    return null;
+  }
+  const next = text.charAt(index + 1);
+  if (next === "/") {
+    const lineEnd = text.indexOf("\n", index + 2);
+    return lineEnd === -1 ? -1 : lineEnd;
+  }
+  if (next === "*") {
+    const blockEnd = text.indexOf("*/", index + 2);
+    return blockEnd === -1 ? -1 : blockEnd + 1;
+  }
+  return null;
+}
+
+/** Apply `{`/`[`/`}`/`]` to nesting depth; true when maxDepth is exceeded. */
+function applyNestingDepthChar(
+  state: NestingScanState,
+  char: string,
+  maxDepth: number
+): boolean {
+  if (char === "{" || char === "[") {
+    state.depth += 1;
+    return state.depth > maxDepth;
+  }
+  if ((char === "}" || char === "]") && state.depth > 0) {
+    state.depth -= 1;
+  }
+  return false;
+}
+
 /**
  * O(n) scan: true when `{`/`[` nesting (outside strings/comments) exceeds
  * `maxDepth`. Used as a fail-closed preflight before recursive RJSON/JSON
@@ -242,57 +302,31 @@ export function exceedsToolCallJsonNestingDepth(
   text: string,
   maxDepth: number = MAX_TOOL_CALL_JSON_NESTING_DEPTH
 ): boolean {
-  let depth = 0;
-  let quote: '"' | "'" | null = null;
-  let escaping = false;
+  const state: NestingScanState = { depth: 0, escaping: false, quote: null };
 
   for (let index = 0; index < text.length; index += 1) {
     const char = text.charAt(index);
 
-    if (quote !== null) {
-      if (escaping) {
-        escaping = false;
-      } else if (char === "\\") {
-        escaping = true;
-      } else if (char === quote) {
-        quote = null;
-      }
+    if (consumeNestingStringChar(state, char)) {
       continue;
     }
 
     if (char === '"' || char === "'") {
-      quote = char;
+      state.quote = char;
       continue;
     }
 
-    if (char === "/" && text.charAt(index + 1) === "/") {
-      const lineEnd = text.indexOf("\n", index + 2);
-      if (lineEnd === -1) {
+    const commentIndex = skipNestingComment(text, index);
+    if (commentIndex !== null) {
+      if (commentIndex === -1) {
         return false;
       }
-      index = lineEnd;
+      index = commentIndex;
       continue;
     }
 
-    if (char === "/" && text.charAt(index + 1) === "*") {
-      const blockEnd = text.indexOf("*/", index + 2);
-      if (blockEnd === -1) {
-        return false;
-      }
-      index = blockEnd + 1;
-      continue;
-    }
-
-    if (char === "{" || char === "[") {
-      depth += 1;
-      if (depth > maxDepth) {
-        return true;
-      }
-      continue;
-    }
-
-    if ((char === "}" || char === "]") && depth > 0) {
-      depth -= 1;
+    if (applyNestingDepthChar(state, char, maxDepth)) {
+      return true;
     }
   }
 
