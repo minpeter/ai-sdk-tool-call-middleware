@@ -122,7 +122,10 @@ function isDefinitelyPlainGlm5Text(text: string): boolean {
   return text[tail] !== ")";
 }
 
-function parseToolCallInput(input: string): unknown {
+function parseToolCallInput(input: unknown): unknown {
+  if (typeof input !== "string") {
+    return input;
+  }
   try {
     return JSON.parse(input) as unknown;
   } catch {
@@ -297,7 +300,8 @@ function parseGeneratedText(options: {
       const raw = options.text.slice(open.start, selected.close.end);
       reportFailure(options.parserOptions, raw);
       appendRawFallback(output, raw, options.parserOptions);
-      break;
+      cursor = selected.close.end;
+      continue;
     }
     const nestedOpenWithoutClose =
       !complete && findTag(options.text, open.end, TOOL_CALL_OPEN_RE) !== null;

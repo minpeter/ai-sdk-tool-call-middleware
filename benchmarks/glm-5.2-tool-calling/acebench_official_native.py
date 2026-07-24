@@ -22,7 +22,7 @@ from typing import Any
 
 
 ACE_ROOT = Path(
-    os.getenv("ACEBENCH_ROOT", "/home/minpeter/.cache/glm52-benchmarks/acebench")
+    os.getenv("ACEBENCH_ROOT", "/tmp/acebench-function-calling")
 ).resolve()
 sys.path.insert(0, str(ACE_ROOT))
 

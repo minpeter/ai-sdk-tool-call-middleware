@@ -21,6 +21,7 @@ import {
   enqueueToolInputEndAndCall,
   shouldEmitRawToolCallTextOnError,
 } from "../utils/tool-input-streaming";
+import { parseGlm5AnchoredBareToolCall } from "./glm5-bare-tool-call";
 import {
   hasExplicitlyClosedGlm5TaggedBody,
   MAX_GLM5_CALL_BODY_LENGTH,
@@ -559,7 +560,38 @@ export function createGlm5StreamParser({
   const flushSafeTextBuffer = (controller: StreamController) => {
     const potentialIndex = potentialOpenSuffixIndex(textBuffer);
     if (potentialIndex === null) {
-      flushText(controller, textBuffer);
+      const bareCall = parseGlm5AnchoredBareToolCall({
+        text: textBuffer,
+        tools,
+      });
+      if (bareCall) {
+        const id = generateToolCallId();
+        flushText(controller);
+        controller.enqueue({
+          type: "tool-input-start",
+          id,
+          toolName: bareCall.toolName,
+        });
+        enqueueToolInputEndAndCall({
+          controller,
+          id,
+          input: bareCall.input,
+          toolName: bareCall.toolName,
+        });
+      } else {
+        const trimmed = textBuffer.trimStart();
+        if (
+          tools.some(
+            (tool) =>
+              tool.name.startsWith(trimmed) ||
+              trimmed.startsWith(`${tool.name}(`)
+          ) &&
+          !trimmed.includes("\n")
+        ) {
+          return;
+        }
+        flushText(controller, textBuffer);
+      }
       textBuffer = "";
       return;
     }

@@ -840,6 +840,21 @@ describe("glm5Protocol streaming lifecycle", () => {
 });
 
 describe("glm5Protocol streaming/non-streaming equivalence", () => {
+  it("recovers an anchored bare call like the generate path", async () => {
+    const text = 'get-weather(city="Seoul")';
+    const protocol = glm5Protocol();
+    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
+    const streamed = await runProtocolTextDeltaStream({
+      protocol,
+      tools: glm5Tools,
+      chunks: text.split(""),
+    });
+
+    expect(normalizeStreamToolCalls(streamed)).toEqual(
+      normalizeContentToolCalls(generated)
+    );
+  });
+
   const cases = [
     {
       name: "canonical typed call",

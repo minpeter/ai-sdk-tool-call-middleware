@@ -7,10 +7,10 @@ if [[ "$MODE" != preflight && "$MODE" != full ]]; then
   exit 2
 fi
 
-REPO=/home/minpeter/github.com/minpeter/ai-sdk-tool-call-middleware
+REPO=${REPO:-$(cd "$(dirname "$0")/../.." && pwd)}
 BENCH="$REPO/benchmarks/glm-5.2-tool-calling"
 BASE="$BENCH/results/2026-07-18-acebench-full-2040-fresh-v3"
-ACE_ROOT=/home/minpeter/.cache/glm52-benchmarks/acebench
+ACE_ROOT=${ACE_ROOT:-/tmp/acebench-function-calling}
 ACE_PYTHON="$ACE_ROOT/.venv/bin/python"
 ADAPTER="$BENCH/acebench_official_native.py"
 PREFLIGHT="$BENCH/acebench_one_row_preflight.py"
