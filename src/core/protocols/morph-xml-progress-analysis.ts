@@ -253,10 +253,7 @@ export function getObjectSchemaPropertyNames(
   return result;
 }
 
-function computeObjectSchemaPropertyNames(
-  schema: object
-): Set<string> | null {
-
+function computeObjectSchemaPropertyNames(schema: object): Set<string> | null {
   const schemaObject = schema as {
     type?: unknown;
     properties?: unknown;
