@@ -116,7 +116,16 @@ export function getLineColumn(
  *
  * We conservatively escape &, <, >, ", ' using the predefined entities.
  */
+const XML_ESCAPE_CANDIDATE_REGEX = /[&<>"']/;
+const XML_MINIMAL_TEXT_CANDIDATE_REGEX = /[&<>]/;
+const XML_MINIMAL_ATTR_CANDIDATE_REGEX = /[&<"']/;
+
 export function escapeXml(text: string): string {
+  // Fast path: most content has no escapable characters; skip the five
+  // replace passes (and their intermediate allocations) entirely.
+  if (!XML_ESCAPE_CANDIDATE_REGEX.test(text)) {
+    return text;
+  }
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -131,6 +140,11 @@ export function escapeXml(text: string): string {
  * - Escape only the ']]>' sequence by turning '>' into '&gt;' in that context
  */
 export function escapeXmlMinimalText(text: string): string {
+  // Fast path: no '&', '<', or '>' means neither the always-escaped
+  // characters nor the ']]>' sequence can occur.
+  if (!XML_MINIMAL_TEXT_CANDIDATE_REGEX.test(text)) {
+    return text;
+  }
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -146,6 +160,10 @@ export function escapeXmlMinimalAttr(
   value: string,
   wrapper: '"' | "'" = '"'
 ): string {
+  // Fast path: no escapable character for either wrapper quote style.
+  if (!XML_MINIMAL_ATTR_CANDIDATE_REGEX.test(value)) {
+    return value;
+  }
   let escaped = value.replace(/&/g, "&amp;").replace(/</g, "&lt;");
   if (wrapper === '"') {
     escaped = escaped.replace(/"/g, "&quot;");
@@ -178,6 +196,10 @@ function decodeXmlCharacterReference(
 }
 
 export function unescapeXml(text: string): string {
+  // Fast path: every entity and character reference starts with '&'.
+  if (!text.includes("&")) {
+    return text;
+  }
   return text
     .replace(XML_CHAR_REF_REGEX, decodeXmlCharacterReference)
     .replace(/&lt;/g, "<")
