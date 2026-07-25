@@ -14,6 +14,7 @@ import {
   previousSignificantChar,
   readStrictJsonPropertyCandidate,
   skipJsonComment,
+  skipJsonWhitespace,
 } from "./hermes-json-object-key-scanner";
 import type { ParserOptions } from "./protocol-interface";
 
@@ -44,14 +45,6 @@ export interface TagProcessingContext {
 }
 
 const WHITESPACE_JSON_REGEX = /\s/;
-
-function skipJsonWhitespace(text: string, fromIndex: number): number {
-  let index = fromIndex;
-  while (index < text.length && WHITESPACE_JSON_REGEX.test(text[index])) {
-    index += 1;
-  }
-  return index;
-}
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Streaming JSON key/value scanning requires explicit string-depth state tracking.
 function findTopLevelPropertyValueStart(
