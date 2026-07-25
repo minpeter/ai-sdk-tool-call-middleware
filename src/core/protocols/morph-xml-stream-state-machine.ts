@@ -27,6 +27,20 @@ export interface LinePrefixedToolCall {
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
+// Module-level cache keyed by tool name, mirroring selfClosingTagCache in
+// xml-tool-tag-scanner.ts. The keyspace is bounded by the set of tool names
+// seen by the process, so eviction is unnecessary.
+const endTagPatternCache = new Map<string, RegExp>();
+
+function getEndTagPattern(toolName: string): RegExp {
+  let pattern = endTagPatternCache.get(toolName);
+  if (!pattern) {
+    pattern = new RegExp(`</\\s*${escapeRegExp(toolName)}\\s*>`);
+    endTagPatternCache.set(toolName, pattern);
+  }
+  return pattern;
+}
+
 export type FlushTextFn = (controller: StreamController, text?: string) => void;
 
 type HandleStreamingToolCallEnd = (params: {
@@ -73,9 +87,7 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     emitToolInputProgress,
     handleStreamingToolCallEnd,
   } = params;
-  const endTagPattern = new RegExp(
-    `</\\s*${escapeRegExp(currentToolCall.name)}\\s*>`
-  );
+  const endTagPattern = getEndTagPattern(currentToolCall.name);
   const endMatch = endTagPattern.exec(buffer);
   if (!endMatch || endMatch.index === undefined) {
     emitToolInputProgress(controller, currentToolCall, buffer);

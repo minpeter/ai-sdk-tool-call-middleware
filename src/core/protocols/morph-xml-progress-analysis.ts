@@ -3,6 +3,54 @@ import { unwrapJsonSchema } from "../../schema-coerce";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 
+// Module-level regex caches keyed by schema property name, mirroring
+// selfClosingTagCache in xml-tool-tag-scanner.ts. These patterns are rebuilt
+// on every streaming progress emission otherwise (once per chunk per
+// property). The keyspace is bounded by schema property names seen by the
+// process, so eviction is unnecessary. `lastIndex` is reset on every lookup
+// so cached global-flag patterns always scan from the start.
+function getCachedPattern(
+  cache: Map<string, RegExp>,
+  key: string,
+  build: (escapedKey: string) => RegExp
+): RegExp {
+  let pattern = cache.get(key);
+  if (!pattern) {
+    pattern = build(escapeRegExp(key));
+    cache.set(key, pattern);
+  }
+  pattern.lastIndex = 0;
+  return pattern;
+}
+
+const propertyOpenOrSelfClosingTagCache = new Map<string, RegExp>();
+const propertyOpenTagCache = new Map<string, RegExp>();
+const propertyCloseTagCache = new Map<string, RegExp>();
+
+function getPropertyOpenOrSelfClosingTagPattern(name: string): RegExp {
+  return getCachedPattern(
+    propertyOpenOrSelfClosingTagCache,
+    name,
+    (escaped) => new RegExp(`<${escaped}(?:\\s[^>]*)?\\s*/?>`, "i")
+  );
+}
+
+function getPropertyOpenTagPattern(name: string): RegExp {
+  return getCachedPattern(
+    propertyOpenTagCache,
+    name,
+    (escaped) => new RegExp(`<${escaped}(?:\\s[^>]*)?>`, "gi")
+  );
+}
+
+function getPropertyCloseTagPattern(name: string): RegExp {
+  return getCachedPattern(
+    propertyCloseTagCache,
+    name,
+    (escaped) => new RegExp(`</\\s*${escaped}\\s*>`, "gi")
+  );
+}
+
 function parseXmlTagName(rawTagBody: string): string {
   let index = 0;
   while (
@@ -443,10 +491,7 @@ export function plainTextBodyFallback(
     getRequiredMessageStringProperty(normalizedSchema) === propertyName;
   if (schemaProperties && !allowsPlainTextWithSchemaTags) {
     for (const name of schemaProperties) {
-      const propertyTagPattern = new RegExp(
-        `<${escapeRegExp(name)}(?:\\s[^>]*)?\\s*/?>`,
-        "i"
-      );
+      const propertyTagPattern = getPropertyOpenOrSelfClosingTagPattern(name);
       if (propertyTagPattern.test(normalized)) {
         return null;
       }
@@ -480,11 +525,8 @@ export function findTrailingUnclosedStringTag(options: {
   let bestOpenIndex = -1;
 
   for (const name of options.stringPropertyNames) {
-    const openPattern = new RegExp(
-      `<${escapeRegExp(name)}(?:\\s[^>]*)?>`,
-      "gi"
-    );
-    const closePattern = new RegExp(`</\\s*${escapeRegExp(name)}\\s*>`, "gi");
+    const openPattern = getPropertyOpenTagPattern(name);
+    const closePattern = getPropertyCloseTagPattern(name);
 
     let lastOpen = -1;
     for (const match of options.toolContent.matchAll(openPattern)) {
@@ -519,10 +561,7 @@ export function buildEmptyTrailingStringTagProgressContent(options: {
   tagName: string;
   toolContent: string;
 }): string | null {
-  const openPattern = new RegExp(
-    `<${escapeRegExp(options.tagName)}(?:\\s[^>]*)?>`,
-    "gi"
-  );
+  const openPattern = getPropertyOpenTagPattern(options.tagName);
   let lastOpenEnd = -1;
 
   for (const match of options.toolContent.matchAll(openPattern)) {
