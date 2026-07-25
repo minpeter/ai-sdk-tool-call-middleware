@@ -275,13 +275,33 @@ export function hasNonWhitespaceTopLevelText(fragment: string): boolean {
   return false;
 }
 
+// Schema introspection results are memoized by schema object identity.
+// Tool input schemas are stable references for the lifetime of a request
+// (tools are fixed when the stream parser is created), while these helpers
+// are invoked on every streamed chunk from the tool-input progress path.
+// WeakMap keying keeps the cache GC-safe. Returned Sets are shared across
+// calls and must be treated as readonly by callers.
+const objectSchemaPropertyNamesCache = new WeakMap<
+  object,
+  Set<string> | null
+>();
+
 export function getObjectSchemaPropertyNames(
   schema: unknown
 ): Set<string> | null {
   if (!schema || typeof schema !== "object") {
     return null;
   }
+  const cached = objectSchemaPropertyNamesCache.get(schema);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const result = computeObjectSchemaPropertyNames(schema);
+  objectSchemaPropertyNamesCache.set(schema, result);
+  return result;
+}
 
+function computeObjectSchemaPropertyNames(schema: object): Set<string> | null {
   const schemaObject = schema as {
     type?: unknown;
     properties?: unknown;
@@ -304,7 +324,22 @@ export function getObjectSchemaPropertyNames(
   );
 }
 
+const schemaAllowsArrayTypeCache = new WeakMap<object, boolean>();
+
 export function schemaAllowsArrayType(schema: unknown): boolean {
+  if (schema && typeof schema === "object") {
+    const cached = schemaAllowsArrayTypeCache.get(schema);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = computeSchemaAllowsArrayType(schema);
+    schemaAllowsArrayTypeCache.set(schema, result);
+    return result;
+  }
+  return computeSchemaAllowsArrayType(schema);
+}
+
+function computeSchemaAllowsArrayType(schema: unknown): boolean {
   const normalizedSchema = unwrapJsonSchema(schema);
   if (!normalizedSchema || typeof normalizedSchema !== "object") {
     return false;
@@ -360,7 +395,27 @@ function schemaAllowsStringType(schema: unknown): boolean {
   return false;
 }
 
+const objectSchemaStringPropertyNamesCache = new WeakMap<
+  object,
+  Set<string> | null
+>();
+
 export function getObjectSchemaStringPropertyNames(
+  schema: unknown
+): Set<string> | null {
+  if (schema && typeof schema === "object") {
+    const cached = objectSchemaStringPropertyNamesCache.get(schema);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = computeObjectSchemaStringPropertyNames(schema);
+    objectSchemaStringPropertyNamesCache.set(schema, result);
+    return result;
+  }
+  return computeObjectSchemaStringPropertyNames(schema);
+}
+
+function computeObjectSchemaStringPropertyNames(
   schema: unknown
 ): Set<string> | null {
   const propertyNames = getObjectSchemaPropertyNames(schema);
