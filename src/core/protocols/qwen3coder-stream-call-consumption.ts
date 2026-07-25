@@ -35,6 +35,41 @@ export function createQwenStreamCallConsumption({
   // Eviction is unnecessary because the keyspace is fixed and tiny.
   const closeTagCache = new Map<string, RegExp>();
 
+  // While a large parameter value streams in, every chunk used to rescan the
+  // whole accumulated call buffer (close-tag regex, next-call regex, and a
+  // full re-parse including toLowerCase), which is O(total) per chunk and
+  // quadratic overall. Scans are amortized instead: once the buffer exceeds
+  // SCAN_DEFER_MIN_BUFFER_LENGTH, a full scan only runs after the buffer has
+  // grown by ~1/8 since the previous scan. Geometric spacing keeps total scan
+  // work linear. Final results are unchanged — deferral only delays when a
+  // pending close tag is observed, and it is disabled (plus a catch-up scan
+  // runs) before finish reconciliation. Below the threshold, behavior is
+  // byte-identical, including tool-input progress timing.
+  const SCAN_DEFER_MIN_BUFFER_LENGTH = 4096;
+  const scanThresholds = new WeakMap<StreamingCallState, number>();
+  let scanDeferralEnabled = true;
+
+  const disableScanDeferral = () => {
+    scanDeferralEnabled = false;
+  };
+
+  const shouldDeferScan = (callState: StreamingCallState): boolean => {
+    if (!scanDeferralEnabled) {
+      return false;
+    }
+    const length = callState.buffer.length;
+    if (length <= SCAN_DEFER_MIN_BUFFER_LENGTH) {
+      return false;
+    }
+    const threshold = scanThresholds.get(callState);
+    return threshold !== undefined && length < threshold;
+  };
+
+  const scheduleNextScan = (callState: StreamingCallState) => {
+    const length = callState.buffer.length;
+    scanThresholds.set(callState, length + Math.max(512, length >> 3));
+  };
+
   const getCloseTagPattern = (endTagName: string): RegExp => {
     const cached = closeTagCache.get(endTagName);
     if (cached) {
@@ -113,6 +148,10 @@ export function createQwenStreamCallConsumption({
     callState.buffer += incoming;
     callState.raw += incoming;
 
+    if (shouldDeferScan(callState)) {
+      return { done: false, remainder: "" };
+    }
+
     const closeMatch = getCloseTagPattern(callState.endTagName).exec(
       callState.buffer
     );
@@ -137,6 +176,7 @@ export function createQwenStreamCallConsumption({
         callState.buffer,
         false
       );
+      scheduleNextScan(callState);
       return { done: false, remainder: "" };
     }
 
@@ -170,5 +210,5 @@ export function createQwenStreamCallConsumption({
     };
   };
 
-  return { consumeCall, finalizeCallAtFinish };
+  return { consumeCall, disableScanDeferral, finalizeCallAtFinish };
 }

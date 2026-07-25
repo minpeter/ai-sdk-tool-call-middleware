@@ -79,8 +79,8 @@ export function createQwen3CoderStreamParser({
   const { finalizeCall, maybeEmitToolInputStart, parseStreamingCallContent } =
     createQwenStreamCallLifecycle({ flushText, options, tools });
 
-  const { consumeCall, finalizeCallAtFinish } = createQwenStreamCallConsumption(
-    {
+  const { consumeCall, disableScanDeferral, finalizeCallAtFinish } =
+    createQwenStreamCallConsumption({
       finalizeCall,
       onFinalized: () => {
         if (toolCall) {
@@ -88,8 +88,7 @@ export function createQwen3CoderStreamParser({
         }
       },
       parseStreamingCallContent,
-    }
-  );
+    });
 
   const flushSafeTextPrefix = (controller: StreamController) => {
     const lower = buffer.toLowerCase();
@@ -482,6 +481,25 @@ export function createQwen3CoderStreamParser({
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Stream finish reconciliation is a best-effort state machine cleanup.
   const handleFinish = (controller: StreamController) => {
+    // Scan deferral (amortized large-buffer scanning) must not leave a
+    // pending close tag unobserved at finish: run catch-up scans so the
+    // live-path completion logic sees exactly what it would have seen
+    // without deferral.
+    disableScanDeferral();
+    if (implicitCall) {
+      const callState = implicitCall;
+      const { done, remainder } = consumeCall(controller, callState, "", null);
+      if (done) {
+        implicitCall = null;
+        implicitCallOpenTag = null;
+        if (remainder.length > 0) {
+          buffer = remainder + buffer;
+        }
+        stripLeadingToolCallCloseTagsFromBuffer();
+        flushSafeTextPrefix(controller);
+        drainStarts(controller);
+      }
+    }
     if (toolCall) {
       // Process any remaining complete structures first.
       processToolCall(controller);
