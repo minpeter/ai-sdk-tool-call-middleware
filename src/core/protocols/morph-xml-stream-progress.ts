@@ -61,7 +61,29 @@ function isStableXmlProgressCandidate(options: {
   return true;
 }
 
-export function parseXmlContentForStreamProgress({
+export interface XmlStreamProgressResult {
+  fullInput: string | null;
+  /**
+   * Name of the trailing unclosed string property tag when the progress
+   * result came from the empty-trailing-string-tag repair branch. While this
+   * branch is active, appended chunks that contain no tag boundary characters
+   * cannot change the progress result, which lets the streaming caller skip
+   * recomputation entirely (see emitToolInputProgress in morph-xml-protocol).
+   */
+  trailingStringTag: string | null;
+}
+
+export function parseXmlContentForStreamProgress(params: {
+  toolContent: string;
+  toolName: string;
+  toolSchema: unknown;
+  parseOptions?: Record<string, unknown>;
+  tools: LanguageModelV4FunctionTool[];
+}): string | null {
+  return parseXmlContentForStreamProgressWithMeta(params).fullInput;
+}
+
+export function parseXmlContentForStreamProgressWithMeta({
   toolContent,
   toolName,
   toolSchema,
@@ -73,7 +95,7 @@ export function parseXmlContentForStreamProgress({
   toolSchema: unknown;
   parseOptions?: Record<string, unknown>;
   tools: LanguageModelV4FunctionTool[];
-}): string | null {
+}): XmlStreamProgressResult {
   const tryParse = (content: string): unknown | null => {
     try {
       return parse(content, toolSchema, {
@@ -106,7 +128,7 @@ export function parseXmlContentForStreamProgress({
       toolSchema,
     })
   ) {
-    return tryStringify(strictFull);
+    return { fullInput: tryStringify(strictFull), trailingStringTag: null };
   }
 
   const stringPropertyNames = getObjectSchemaStringPropertyNames(toolSchema);
@@ -123,7 +145,10 @@ export function parseXmlContentForStreamProgress({
         }) ?? `${toolContent}</${trailingStringTag}>`;
       const parsedRepaired = tryParse(repaired);
       if (parsedRepaired !== null) {
-        return tryStringify(parsedRepaired);
+        return {
+          fullInput: tryStringify(parsedRepaired),
+          trailingStringTag,
+        };
       }
     }
   }
@@ -148,10 +173,13 @@ export function parseXmlContentForStreamProgress({
         toolSchema,
       })
     ) {
-      return tryStringify(parsedCandidate);
+      return {
+        fullInput: tryStringify(parsedCandidate),
+        trailingStringTag: null,
+      };
     }
     searchEnd = gtIndex;
   }
 
-  return null;
+  return { fullInput: null, trailingStringTag: null };
 }

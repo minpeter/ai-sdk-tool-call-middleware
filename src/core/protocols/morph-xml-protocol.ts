@@ -28,10 +28,13 @@ import {
   hasNonWhitespaceTopLevelText,
   plainTextBodyFallback,
 } from "./morph-xml-progress-analysis";
-import { parseXmlContentForStreamProgress } from "./morph-xml-stream-progress";
+import { parseXmlContentForStreamProgressWithMeta } from "./morph-xml-stream-progress";
 import {
+  appendToolCallContent,
   createProcessBufferHandler,
   type FlushTextFn,
+  getToolCallContent,
+  type LazyToolContent,
   type StreamingToolCallState,
 } from "./morph-xml-stream-state-machine";
 import {
@@ -279,13 +282,16 @@ function isEmptyMorphToolInputProgress(
 function enqueueMorphToolInputProgressPart(options: {
   controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
   fullInput: string;
+  getToolContent: () => string;
   part: LanguageModelV4StreamPart;
   toolCall: StreamingToolCallState;
-  toolContent: string;
 }): void {
   if (
     options.toolCall.pendingToolInputParts.length > 0 ||
-    shouldBufferMorphToolInputProgress(options.toolContent, options.fullInput)
+    shouldBufferMorphToolInputProgress(
+      options.getToolContent(),
+      options.fullInput
+    )
   ) {
     options.toolCall.pendingToolInputParts.push(options.part);
     return;
@@ -297,8 +303,8 @@ function enqueueMorphToolInputProgressPart(options: {
 function emitMorphToolInputProgressDelta(options: {
   controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
   fullInput: string;
+  getToolContent: () => string;
   toolCall: StreamingToolCallState;
-  toolContent: string;
 }): void {
   if (!isMorphToolInputProgressContainer(options.fullInput)) {
     return;
@@ -427,12 +433,18 @@ export const morphXmlProtocol = (
         const next: StreamingToolCallState = {
           name: toolName,
           toolCallId: generateToolCallId(),
+          contentFlat: "",
+          contentLength: 0,
+          contentParts: [],
           emittedInput: "",
           hasEmittedStart: true,
           lastProgressContentLength: null,
           lastProgressGtIndex: null,
           lastProgressFullInput: null,
+          lastProgressPendingOpenAngle: false,
+          lastProgressTrailingStringTag: null,
           pendingToolInputParts: [],
+          scanCarry: "",
         };
         controller.enqueue({
           type: "tool-input-start",
@@ -442,44 +454,117 @@ export const morphXmlProtocol = (
         return next;
       };
 
+      const emitCachedToolInputProgress = (
+        controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
+        toolCall: StreamingToolCallState,
+        toolContent: LazyToolContent
+      ) => {
+        const cached = toolCall.lastProgressFullInput;
+        if (cached == null) {
+          return;
+        }
+        if (cached === "{}" && toolContent.get().trim().length === 0) {
+          return;
+        }
+        emitMorphToolInputProgressDelta({
+          controller,
+          toolCall,
+          fullInput: cached,
+          getToolContent: toolContent.get,
+        });
+      };
+
+      /**
+       * While the last full computation resolved through the
+       * trailing-unclosed-string-tag branch, appended text without a tag
+       * boundary lands inside that tag's body and cannot change the progress
+       * result: the full-content parse still fails on the unclosed tag and
+       * the repaired candidate is sliced at the (unchanged) opening tag. A
+       * bare `>` is also inert unless an unterminated `<` precedes it.
+       * Returns true when the cached result provably still holds, updating
+       * the incremental bookkeeping — all without materializing the full
+       * accumulated content.
+       */
+      const tryIncrementalProgressShortcut = (
+        toolCall: StreamingToolCallState,
+        toolContent: LazyToolContent
+      ): boolean => {
+        const prevLength = toolCall.lastProgressContentLength;
+        if (
+          toolCall.lastProgressTrailingStringTag == null ||
+          prevLength == null ||
+          toolContent.length < prevLength
+        ) {
+          return false;
+        }
+
+        // The chars to inspect are [prevLength, toolContent.length). Use the
+        // appended tail when it covers that range; otherwise materialize.
+        const tail = toolContent.appendedTail;
+        const tailStart = toolContent.length - (tail?.length ?? 0);
+        const inspected =
+          tail !== undefined && tailStart <= prevLength
+            ? tail
+            : toolContent.get();
+        const inspectedStart = inspected === tail ? tailStart : 0;
+
+        let appendedGtIndex = -1;
+        for (let i = prevLength; i < toolContent.length; i += 1) {
+          const code = inspected.charCodeAt(i - inspectedStart);
+          if (code === 60 /* `<` */) {
+            return false;
+          }
+          if (code === 62 /* `>` */) {
+            if (toolCall.lastProgressPendingOpenAngle) {
+              return false;
+            }
+            appendedGtIndex = i;
+          }
+        }
+
+        toolCall.lastProgressContentLength = toolContent.length;
+        if (appendedGtIndex !== -1) {
+          toolCall.lastProgressGtIndex = appendedGtIndex;
+        }
+        return true;
+      };
+
       const emitToolInputProgress = (
         _controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
         toolCall: StreamingToolCallState,
-        toolContent: string
+        lazyContent: LazyToolContent
       ) => {
+        if (tryIncrementalProgressShortcut(toolCall, lazyContent)) {
+          emitCachedToolInputProgress(_controller, toolCall, lazyContent);
+          return;
+        }
+
+        const toolContent = lazyContent.get();
         const progressGtIndex = toolContent.lastIndexOf(">");
         const progressContentLength = toolContent.length;
         if (
           toolCall.lastProgressGtIndex === progressGtIndex &&
           toolCall.lastProgressContentLength === progressContentLength
         ) {
-          const cached = toolCall.lastProgressFullInput;
-          if (cached == null) {
-            return;
-          }
-          if (isEmptyMorphToolInputProgress(toolContent, cached)) {
-            return;
-          }
-          emitMorphToolInputProgressDelta({
-            controller: _controller,
-            toolCall,
-            toolContent,
-            fullInput: cached,
-          });
+          emitCachedToolInputProgress(_controller, toolCall, lazyContent);
           return;
         }
 
         const toolSchema = getToolSchema(tools, toolCall.name);
-        const fullInput = parseXmlContentForStreamProgress({
-          toolContent,
-          toolName: toolCall.name,
-          toolSchema,
-          parseOptions,
-          tools,
-        });
+        const { fullInput, trailingStringTag } =
+          parseXmlContentForStreamProgressWithMeta({
+            toolContent,
+            toolName: toolCall.name,
+            toolSchema,
+            parseOptions,
+            tools,
+          });
         toolCall.lastProgressGtIndex = progressGtIndex;
         toolCall.lastProgressContentLength = progressContentLength;
         toolCall.lastProgressFullInput = fullInput;
+        toolCall.lastProgressTrailingStringTag = trailingStringTag;
+        toolCall.lastProgressPendingOpenAngle =
+          toolContent.lastIndexOf("<") > progressGtIndex;
         if (fullInput == null) {
           return;
         }
@@ -489,8 +574,8 @@ export const morphXmlProtocol = (
         emitMorphToolInputProgressDelta({
           controller: _controller,
           toolCall,
-          toolContent,
           fullInput,
+          getToolContent: () => toolContent,
         });
       };
 
@@ -501,7 +586,17 @@ export const morphXmlProtocol = (
           return;
         }
 
-        emitToolInputProgress(controller, currentToolCall, buffer);
+        // Any buffered text that processBuffer did not consume (e.g. when the
+        // stream ends mid-chunk) still belongs to the unclosed call.
+        if (buffer.length > 0) {
+          appendToolCallContent(currentToolCall, buffer);
+          buffer = "";
+        }
+        const unclosedContent = getToolCallContent(currentToolCall);
+        emitToolInputProgress(controller, currentToolCall, {
+          length: unclosedContent.length,
+          get: () => unclosedContent,
+        });
         const parseConfig = {
           ...parseOptions,
           onError:
@@ -513,12 +608,12 @@ export const morphXmlProtocol = (
         const toolSchema = getToolSchema(tools, currentToolCall.name);
         flushText(controller);
         try {
-          if (hasNonWhitespaceTopLevelText(buffer)) {
+          if (hasNonWhitespaceTopLevelText(unclosedContent)) {
             throw new Error(
               "Cannot reconcile unclosed XML tool call with top-level plain text."
             );
           }
-          const parsedResult = parse(buffer, toolSchema, parseConfig);
+          const parsedResult = parse(unclosedContent, toolSchema, parseConfig);
           const finalInput = stringifyToolInputWithSchema({
             toolName: currentToolCall.name,
             args: parsedResult,
@@ -534,7 +629,7 @@ export const morphXmlProtocol = (
             onMismatch: options?.onError,
           });
         } catch (error) {
-          const unfinishedContent = `<${currentToolCall.name}>${buffer}`;
+          const unfinishedContent = `<${currentToolCall.name}>${unclosedContent}`;
           const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
           emitFailedBufferedToolInputLifecycle({
             bufferedParts: currentToolCall.pendingToolInputParts,
