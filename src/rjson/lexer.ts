@@ -1,19 +1,33 @@
 // --- Regex Constants (for performance) ---
+// Token regexes use the sticky flag (`y`) so the lexer can match at an
+// explicit offset (`lastIndex`) without slicing the remaining input on every
+// token, which would be O(n^2) in total string copying.
 const WHITESPACE_TEST_REGEX = /\s/;
-const WHITESPACE_REGEX = /^\s+/;
-const OBJECT_START_REGEX = /^\{/;
-const OBJECT_END_REGEX = /^\}/;
-const ARRAY_START_REGEX = /^\[/;
-const ARRAY_END_REGEX = /^\]/;
-const COMMA_REGEX = /^,/;
-const COLON_REGEX = /^:/;
-const KEYWORD_REGEX = /^(?:true|false|null)/;
-const NUMBER_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/;
-const STRING_DOUBLE_REGEX = /^"(?:[^"\\]|\\["bnrtf\\/]|\\u[0-9a-fA-F]{4})*"/;
-const STRING_SINGLE_REGEX = /^'((?:[^'\\]|\\['bnrtf\\/]|\\u[0-9a-fA-F]{4})*)'/;
-const COMMENT_SINGLE_REGEX = /^\/\/.*?(?:\r\n|\r|\n)/;
-const COMMENT_MULTI_REGEX = /^\/\*[\s\S]*?\*\//;
-const IDENTIFIER_REGEX = /^[$a-zA-Z0-9_\-+.*?!|&%^/#\\]+/;
+const WHITESPACE_REGEX = /\s+/y;
+const OBJECT_START_REGEX = /\{/y;
+const OBJECT_END_REGEX = /\}/y;
+const ARRAY_START_REGEX = /\[/y;
+const ARRAY_END_REGEX = /\]/y;
+const COMMA_REGEX = /,/y;
+const COLON_REGEX = /:/y;
+const KEYWORD_REGEX = /(?:true|false|null)/y;
+const NUMBER_REGEX = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+const STRING_DOUBLE_REGEX = /"(?:[^"\\]|\\["bnrtf\\/]|\\u[0-9a-fA-F]{4})*"/y;
+const STRING_SINGLE_REGEX = /'((?:[^'\\]|\\['bnrtf\\/]|\\u[0-9a-fA-F]{4})*)'/y;
+const COMMENT_SINGLE_REGEX = /\/\/.*?(?:\r\n|\r|\n)/y;
+const COMMENT_MULTI_REGEX = /\/\*[\s\S]*?\*\//y;
+const IDENTIFIER_REGEX = /[$a-zA-Z0-9_\-+.*?!|&%^/#\\]+/y;
+
+// Count newlines without a per-token regex pass.
+function countNewlines(text: string): number {
+  let count = 0;
+  let index = text.indexOf("\n");
+  while (index !== -1) {
+    count += 1;
+    index = text.indexOf("\n", index + 1);
+  }
+  return count;
+}
 
 // Custom 'some' function definition (slightly different from ES5, returns the truthy value directly)
 // :: array -> fn -> *
@@ -79,17 +93,20 @@ function makeLexer(tokenSpecs: TokenSpec[]): (contents: string) => Token[] {
   return (contents: string): Token[] => {
     const tokens: Token[] = [];
     let line = 1; // Start at line 1
-    let remainingContents = contents;
+    let pos = 0; // Current offset into `contents`
 
-    // Helper function to find the next token in the input string
+    // Helper function to find the next token at the current position.
+    // Sticky (`y`) regexes match at `lastIndex` exactly, so no slicing of the
+    // remaining input is needed.
     // :: -> { raw: string, matched: RawToken } | undefined
     function findToken(): { raw: string; matched: RawToken } | undefined {
       // Use the custom 'some' function to iterate through token specifications
       const result = some(tokenSpecs, (tokenSpec) => {
-        const m = tokenSpec.re.exec(remainingContents); // Try to match the regex at the current position
+        tokenSpec.re.lastIndex = pos;
+        const m = tokenSpec.re.exec(contents); // Try to match the regex at the current position
         if (m) {
           const [raw] = m; // The matched raw string
-          remainingContents = remainingContents.slice(raw.length); // Consume the matched part from the input
+          pos += raw.length; // Consume the matched part from the input
           return {
             raw,
             matched: tokenSpec.f(m), // Process the match using the spec's function
@@ -100,15 +117,15 @@ function makeLexer(tokenSpecs: TokenSpec[]): (contents: string) => Token[] {
     }
 
     // Main lexing loop
-    while (remainingContents !== "") {
+    while (pos < contents.length) {
       const matched = findToken(); // Find the next token
 
       if (!matched) {
         // If no token spec matches, it's a syntax error
         const err = new SyntaxError(
-          `Unexpected character: ${remainingContents[0]}; input: ${remainingContents.slice(
-            0,
-            100
+          `Unexpected character: ${contents[pos]}; input: ${contents.slice(
+            pos,
+            pos + 100
           )}`
         );
         // Attach line number to the error object (standard Error doesn't have it by default)
@@ -122,7 +139,7 @@ function makeLexer(tokenSpecs: TokenSpec[]): (contents: string) => Token[] {
       tokenWithLine.line = line;
 
       // Update line number count based on newlines in the matched raw string
-      line += matched.raw.replace(/[^\n]/g, "").length;
+      line += countNewlines(matched.raw);
 
       tokens.push(tokenWithLine); // Add the finalized token to the list
     }
