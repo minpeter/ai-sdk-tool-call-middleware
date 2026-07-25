@@ -1,5 +1,20 @@
 # @ai-sdk-tool/parser
 
+## 5.1.5
+
+### Patch Changes
+
+- e3f5bc1: Add fast paths to XML escape/unescape helpers for content without
+  escapable characters, and skip JSON whitespace with charCode checks on
+  the hermes streaming path.
+- ba67cac: Cache tool end-tag and schema property tag regexes in the morph-xml
+  streaming hot paths instead of recompiling them on every chunk.
+- 74858df: Switch the rjson lexer to sticky-flag regexes with offset tracking,
+  removing per-token string slicing and per-token regex line counting.
+- a00e391: Memoize morph-xml schema introspection (property-name sets, array-type
+  checks) by schema object identity so streamed chunks stop re-walking
+  tool input schemas.
+
 ## 5.1.4
 
 ### Patch Changes
