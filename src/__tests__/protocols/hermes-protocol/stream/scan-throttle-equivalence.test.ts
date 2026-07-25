@@ -1,0 +1,201 @@
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import { describe, expect, it } from "vitest";
+import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import {
+  pipeWithTransformer,
+  stopFinishReason,
+  zeroUsage,
+} from "../../../test-helpers";
+
+const tools = [
+  {
+    type: "function",
+    name: "write_file",
+    description: "write a file",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        content: { type: "string" },
+      },
+      required: ["path", "content"],
+    },
+  },
+  {
+    type: "function",
+    name: "get_weather",
+    description: "get weather",
+    inputSchema: {
+      type: "object",
+      properties: { city: { type: "string" } },
+      required: ["city"],
+    },
+  },
+] as any;
+
+async function streamInChunks(
+  text: string,
+  chunkSize: number
+): Promise<LanguageModelV4StreamPart[]> {
+  const protocol = hermesProtocol();
+  const transformer = protocol.createStreamParser({ tools });
+  const rs = new ReadableStream<LanguageModelV4StreamPart>({
+    start(ctrl) {
+      for (let pos = 0; pos < text.length; pos += chunkSize) {
+        ctrl.enqueue({
+          type: "text-delta",
+          id: "1",
+          delta: text.slice(pos, pos + chunkSize),
+        });
+      }
+      ctrl.enqueue({
+        type: "finish",
+        finishReason: stopFinishReason,
+        usage: zeroUsage,
+      });
+      ctrl.close();
+    },
+  });
+  return convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+}
+
+function summarize(parts: LanguageModelV4StreamPart[]): {
+  toolCalls: { toolName: string; input: string }[];
+  concatenatedDeltas: string;
+  text: string;
+} {
+  const toolCalls: { toolName: string; input: string }[] = [];
+  let concatenatedDeltas = "";
+  let text = "";
+  for (const part of parts) {
+    if (part.type === "tool-call") {
+      toolCalls.push({ toolName: part.toolName, input: part.input });
+    } else if (part.type === "tool-input-delta") {
+      concatenatedDeltas += part.delta;
+    } else if (part.type === "text-delta") {
+      text += part.delta;
+    }
+  }
+  return { toolCalls, concatenatedDeltas, text };
+}
+
+function largeBody(lines: number): string {
+  return Array.from(
+    { length: lines },
+    (_, i) => `line ${i}: const value_${i} = compute(${i});`
+  ).join("\n");
+}
+
+function hermesCall(toolName: string, args: unknown): string {
+  return `<tool_call>\n${JSON.stringify({ name: toolName, arguments: args })}\n</tool_call>`;
+}
+
+describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
+  // Deferral only activates once the accumulated tool-call JSON exceeds 4KB,
+  // so these payloads must be large enough to exercise the deferred path
+  // against the single-chunk run (which never defers).
+  it("produces identical final tool calls for large streamed arguments", async () => {
+    const text = hermesCall("write_file", {
+      path: "a.ts",
+      content: largeBody(500), // ~20KB
+    });
+
+    const whole = summarize(await streamInChunks(text, text.length));
+    expect(whole.toolCalls).toHaveLength(1);
+
+    for (const chunkSize of [7, 30, 301]) {
+      const chunked = summarize(await streamInChunks(text, chunkSize));
+      expect(chunked.toolCalls).toEqual(whole.toolCalls);
+    }
+  });
+
+  it("handles trailing text and a second tool call after a large one", async () => {
+    const text = `${hermesCall("write_file", {
+      path: "a.ts",
+      content: largeBody(400),
+    })}\nplain trailing text\n${hermesCall("get_weather", { city: "Seoul" })}`;
+
+    const whole = summarize(await streamInChunks(text, text.length));
+    expect(whole.toolCalls).toHaveLength(2);
+
+    for (const chunkSize of [13, 64]) {
+      const chunked = summarize(await streamInChunks(text, chunkSize));
+      expect(chunked.toolCalls).toEqual(whole.toolCalls);
+      expect(chunked.text.trim()).toBe(whole.text.trim());
+    }
+  });
+
+  it("completes a call whose end tag arrives right at stream end", async () => {
+    // No trailing content after </tool_call>: completion relies on either
+    // the carry-based tag trigger or the finish catch-up scan.
+    const text = hermesCall("write_file", {
+      path: "a.ts",
+      content: largeBody(400),
+    });
+
+    const whole = summarize(await streamInChunks(text, text.length));
+    for (const chunkSize of [3, 17]) {
+      const chunked = summarize(await streamInChunks(text, chunkSize));
+      expect(chunked.toolCalls).toEqual(whole.toolCalls);
+      const parsed = JSON.parse(chunked.toolCalls[0].input);
+      expect(parsed.content).toContain("line 399:");
+    }
+  });
+
+  it("is not fooled by end-tag text inside a large JSON string value", async () => {
+    // The literal tag text inside the string is a deferral-trigger false
+    // positive: the forced full scan must see it is inside a string and keep
+    // going until the real close tag.
+    const content = `${largeBody(200)}\nfake tag: </tool_call> inside string\n${largeBody(200)}`;
+    const text = hermesCall("write_file", { path: "a.ts", content });
+
+    const whole = summarize(await streamInChunks(text, text.length));
+    expect(whole.toolCalls).toHaveLength(1);
+
+    const chunked = summarize(await streamInChunks(text, 23));
+    expect(chunked.toolCalls).toEqual(whole.toolCalls);
+    const parsed = JSON.parse(chunked.toolCalls[0].input);
+    expect(parsed.content).toContain("fake tag: </tool_call> inside string");
+  });
+
+  it("recovers an unclosed large call at finish identically for any chunking", async () => {
+    const body = JSON.stringify({
+      name: "write_file",
+      arguments: { path: "a.ts", content: largeBody(400) },
+    });
+    const text = `<tool_call>\n${body}`; // missing </tool_call>
+
+    const whole = summarize(await streamInChunks(text, text.length));
+    for (const chunkSize of [11, 47]) {
+      const chunked = summarize(await streamInChunks(text, chunkSize));
+      expect(chunked.toolCalls).toEqual(whole.toolCalls);
+      expect(chunked.text.trim()).toBe(whole.text.trim());
+    }
+  });
+});
+
+describe("hermes large streamed tool call scaling", () => {
+  // Regression guard: before scan throttling, a ~177KB string argument
+  // streamed in 30-char chunks rescanned the accumulated JSON per chunk
+  // (O(n^2), ~2.1s on a dev machine). Amortized scanning is ~50x faster; the
+  // generous bound keeps slow CI stable while still failing loudly on a
+  // quadratic regression.
+  it("parses a ~177KB streamed string argument well under the quadratic regime", async () => {
+    const text = hermesCall("write_file", {
+      path: "a.ts",
+      content: largeBody(4000),
+    });
+
+    const start = performance.now();
+    const parts = await streamInChunks(text, 30);
+    const elapsedMs = performance.now() - start;
+
+    const { toolCalls } = summarize(parts);
+    expect(toolCalls).toHaveLength(1);
+    const parsed = JSON.parse(toolCalls[0].input);
+    expect(parsed.content).toContain("line 3999:");
+
+    expect(elapsedMs).toBeLessThan(1500);
+  }, 30_000);
+});

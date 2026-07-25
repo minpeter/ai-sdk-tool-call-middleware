@@ -298,6 +298,78 @@ function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
   return true;
 }
 
+// While a large tool-call JSON body streams in, every chunk used to rescan
+// the whole accumulated content (RJSON-aware boundary scan over
+// currentToolCallJson + buffer from position 0, plus streaming-progress
+// recomputation) — O(total) per chunk and quadratic overall. Once the
+// combined length exceeds SCAN_DEFER_MIN_LENGTH, scans are amortized: they
+// only run after ~1/8 growth since the last scan. Geometric spacing keeps
+// total scan work linear. Deferral only delays observing a pending close
+// tag; a catch-up scan runs before finish reconciliation, so final outputs
+// are unchanged. Below the threshold, behavior is byte-identical.
+const SCAN_DEFER_MIN_LENGTH = 4096;
+
+function shouldDeferToolCallScan(
+  state: StreamState,
+  appended: string,
+  toolCallStart: string,
+  toolCallEnd: string
+): boolean {
+  if (!state.isInsideToolCall) {
+    return false;
+  }
+  const length = state.currentToolCallJson.length + state.buffer.length;
+  if (length <= SCAN_DEFER_MIN_LENGTH) {
+    return false;
+  }
+  if (
+    state.toolCallScanDeferUntilLength === null ||
+    length >= state.toolCallScanDeferUntilLength
+  ) {
+    return false;
+  }
+  // Cheap boundary-tag trigger: a close (or nested start) tag arriving in
+  // the appended region forces an immediate full scan so tool-call
+  // completion is observed in the same chunk, exactly like the undeferred
+  // path. The carry covers tags split across chunk boundaries. A tag inside
+  // a JSON string is a false positive; the full scan then simply finds no
+  // boundary and deferral resumes.
+  const region = state.toolCallScanCarry + appended;
+  if (region.includes(toolCallEnd) || region.includes(toolCallStart)) {
+    return false;
+  }
+  const carryLength = Math.max(toolCallStart.length, toolCallEnd.length) - 1;
+  state.toolCallScanCarry = region.slice(-carryLength);
+  return true;
+}
+
+function scheduleNextToolCallScan(
+  state: StreamState,
+  toolCallStart: string,
+  toolCallEnd: string
+) {
+  if (!state.isInsideToolCall) {
+    state.toolCallScanDeferUntilLength = null;
+    state.toolCallScanCarry = "";
+    return;
+  }
+  const length = state.currentToolCallJson.length + state.buffer.length;
+  state.toolCallScanDeferUntilLength = length + Math.max(512, length >> 3);
+  // After a scan pass the buffer holds at most a small partial-tag tail;
+  // seed the carry from it so tags completing right after a scan are caught.
+  const carryLength = Math.max(toolCallStart.length, toolCallEnd.length) - 1;
+  state.toolCallScanCarry = state.buffer.slice(-carryLength);
+}
+
+function runDeferredToolCallScanCatchUp(context: TagProcessingContext) {
+  const { state, controller, toolCallStart, toolCallEnd, tools } = context;
+  state.hasDeferredToolCallScan = false;
+  processBufferTags(context);
+  if (state.isInsideToolCall) {
+    handlePartialTag(state, controller, toolCallStart, toolCallEnd, tools);
+  }
+}
+
 function processBufferTags(context: TagProcessingContext) {
   const { state, controller, toolCallStart } = context;
 
@@ -583,9 +655,12 @@ export const hermesProtocol = ({
       buffer: "",
       currentToolCallJson: "",
       currentTextId: null,
+      hasDeferredToolCallScan: false,
       hasEmittedTextStart: false,
       activeToolInput: null,
       pendingToolInputProgressVersion: 0,
+      toolCallScanCarry: "",
+      toolCallScanDeferUntilLength: null,
     };
 
     return new TransformStream<
@@ -594,6 +669,19 @@ export const hermesProtocol = ({
     >({
       transform(chunk, controller) {
         if (chunk.type === "finish") {
+          // A deferred boundary scan may hold a complete close tag (plus
+          // trailing content) in the buffer; catch up first so finish
+          // reconciliation sees exactly what the live path would have seen.
+          if (state.isInsideToolCall && state.hasDeferredToolCallScan) {
+            runDeferredToolCallScanCatchUp({
+              state,
+              controller,
+              toolCallStart,
+              toolCallEnd,
+              options,
+              tools,
+            });
+          }
           handleFinishChunk(
             state,
             controller,
@@ -620,6 +708,18 @@ export const hermesProtocol = ({
 
         const textContent = (chunk as { delta?: string }).delta ?? "";
         state.buffer += textContent;
+        if (
+          shouldDeferToolCallScan(
+            state,
+            textContent,
+            toolCallStart,
+            toolCallEnd
+          )
+        ) {
+          state.hasDeferredToolCallScan = true;
+          return;
+        }
+        state.hasDeferredToolCallScan = false;
         processBufferTags({
           state,
           controller,
@@ -629,6 +729,7 @@ export const hermesProtocol = ({
           tools,
         });
         handlePartialTag(state, controller, toolCallStart, toolCallEnd, tools);
+        scheduleNextToolCallScan(state, toolCallStart, toolCallEnd);
       },
     });
   },
