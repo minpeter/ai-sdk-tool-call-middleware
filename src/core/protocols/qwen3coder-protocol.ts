@@ -1,3 +1,16 @@
+/**
+ * Format lineage:
+ * - `<function=name>` syntax: Llama 3.1 official prompt format
+ *   (meta-llama/llama-models, models/llama3_1/prompt_format.md)
+ * - `<parameter=key>` tags + "ONLY reply ... with NO suffix" instruction:
+ *   OpenHands fn_call_converter (now: OpenHands/software-agent-sdk,
+ *   openhands/sdk/llm/mixins/fn_call_converter.py)
+ * - `<tool_call>` wrapper + first native chat-template adoption: Qwen3-Coder
+ *   (org-wide Qwen standard since Qwen3.5)
+ *
+ * Named after Qwen3-Coder, matching vLLM's `qwen3_coder` tool parser name.
+ * The wrapper-less OpenHands original shape is covered by `uiTarsXmlProtocol`.
+ */
 import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
 import {
   escapeXmlMinimalAttr,
