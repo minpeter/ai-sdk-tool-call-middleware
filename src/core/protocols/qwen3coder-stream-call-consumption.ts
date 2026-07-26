@@ -57,7 +57,7 @@ export function createQwenStreamCallConsumption({
     if (!scanDeferralEnabled) {
       return false;
     }
-    const length = callState.buffer.length;
+    const { length } = callState.buffer;
     if (length <= SCAN_DEFER_MIN_BUFFER_LENGTH) {
       return false;
     }
@@ -66,8 +66,11 @@ export function createQwenStreamCallConsumption({
   };
 
   const scheduleNextScan = (callState: StreamingCallState) => {
-    const length = callState.buffer.length;
-    scanThresholds.set(callState, length + Math.max(512, length >> 3));
+    const { length } = callState.buffer;
+    scanThresholds.set(
+      callState,
+      length + Math.max(512, Math.floor(length / 8))
+    );
   };
 
   const getCloseTagPattern = (endTagName: string): RegExp => {

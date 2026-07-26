@@ -34,7 +34,7 @@ const tools = [
   },
 ] as any;
 
-async function streamInChunks(
+function streamInChunks(
   text: string,
   chunkSize: number
 ): Promise<LanguageModelV4StreamPart[]> {
