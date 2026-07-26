@@ -27,9 +27,29 @@ export interface StreamState {
   buffer: string;
   currentTextId: string | null;
   currentToolCallJson: string;
+  /**
+   * True while chunks were accumulated into `buffer` without running the
+   * boundary scan (see toolCallScanDeferUntilLength). A catch-up scan must
+   * run before finish reconciliation so deferred close tags are observed.
+   */
+  hasDeferredToolCallScan: boolean;
   hasEmittedTextStart: boolean;
   isInsideToolCall: boolean;
   pendingToolInputProgressVersion: number;
+  /**
+   * Tail of the already-buffered content used to detect boundary tags that
+   * span deferred chunks (at most max(tag length) - 1 chars).
+   */
+  toolCallScanCarry: string;
+  /**
+   * Amortizes full rescans of the accumulated tool-call JSON. While inside a
+   * tool call, every chunk used to rescan `currentToolCallJson + buffer`
+   * from position 0 (RJSON-aware boundary scan) plus recompute streaming
+   * progress — O(total) per chunk and quadratic overall. Once the combined
+   * length exceeds a threshold, scans only run after ~1/8 growth; geometric
+   * spacing keeps total scan work linear. Null when no scan has happened yet.
+   */
+  toolCallScanDeferUntilLength: number | null;
 }
 
 export type StreamController =
