@@ -303,11 +303,15 @@ function processInsideToolCallBoundary(context: TagProcessingContext): boolean {
 // currentToolCallJson + buffer from position 0, plus streaming-progress
 // recomputation) — O(total) per chunk and quadratic overall. Once the
 // combined length exceeds SCAN_DEFER_MIN_LENGTH, scans are amortized: they
-// only run after ~1/8 growth since the last scan. Geometric spacing keeps
-// total scan work linear. Deferral only delays observing a pending close
-// tag; a catch-up scan runs before finish reconciliation, so final outputs
-// are unchanged. Below the threshold, behavior is byte-identical.
+// only run after ~1/8 growth, capped at SCAN_DEFER_MAX_INTERVAL so
+// tool-input progress keeps a steady ~1KB cadence for the UI. Total scan
+// work stays bounded (O(n^2/1024), negligible at realistic sizes). Deferral
+// only delays observing a pending close tag (the carry-based tag trigger
+// catches arriving tags in the same chunk); a catch-up scan runs before
+// finish reconciliation, so final outputs are unchanged. Below the
+// threshold, behavior is byte-identical.
 const SCAN_DEFER_MIN_LENGTH = 4096;
+const SCAN_DEFER_MAX_INTERVAL = 1024;
 
 function shouldDeferToolCallScan(
   state: StreamState,
@@ -355,7 +359,8 @@ function scheduleNextToolCallScan(
   }
   const length = state.currentToolCallJson.length + state.buffer.length;
   state.toolCallScanDeferUntilLength =
-    length + Math.max(512, Math.floor(length / 8));
+    length +
+    Math.max(512, Math.min(SCAN_DEFER_MAX_INTERVAL, Math.floor(length / 8)));
   // After a scan pass the buffer holds at most a small partial-tag tail;
   // seed the carry from it so tags completing right after a scan are caught.
   const carryLength = Math.max(toolCallStart.length, toolCallEnd.length) - 1;
