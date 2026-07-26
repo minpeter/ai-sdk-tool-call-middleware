@@ -279,6 +279,35 @@ function isEmptyMorphToolInputProgress(
   return fullInput === "{}" && toolContent.trim().length === 0;
 }
 
+/**
+ * Scan the appended content region [from, to) for characters that could
+ * change the structural parse: any `<`, or a `>` while an unterminated `<`
+ * is pending. Returns whether such a character was found and the absolute
+ * index of the last bare `>` seen before it (or before the region end).
+ */
+function scanAppendedRegionForStructuralChars(options: {
+  from: number;
+  inspected: string;
+  inspectedStart: number;
+  pendingOpenAngle: boolean;
+  to: number;
+}): { lastBareGtIndex: number; structural: boolean } {
+  let lastBareGtIndex = -1;
+  for (let i = options.from; i < options.to; i += 1) {
+    const code = options.inspected.charCodeAt(i - options.inspectedStart);
+    if (code === 60 /* `<` */) {
+      return { lastBareGtIndex, structural: true };
+    }
+    if (code === 62 /* `>` */) {
+      if (options.pendingOpenAngle) {
+        return { lastBareGtIndex, structural: true };
+      }
+      lastBareGtIndex = i;
+    }
+  }
+  return { lastBareGtIndex, structural: false };
+}
+
 function enqueueMorphToolInputProgressPart(options: {
   controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
   fullInput: string;
@@ -502,29 +531,22 @@ export const morphXmlProtocol = (
         // appended tail when it covers that range; otherwise materialize.
         const tail = toolContent.appendedTail;
         const tailStart = toolContent.length - (tail?.length ?? 0);
-        const inspected =
-          tail !== undefined && tailStart <= prevLength
-            ? tail
-            : toolContent.get();
-        const inspectedStart = inspected === tail ? tailStart : 0;
-
-        let appendedGtIndex = -1;
-        for (let i = prevLength; i < toolContent.length; i += 1) {
-          const code = inspected.charCodeAt(i - inspectedStart);
-          if (code === 60 /* `<` */) {
-            return false;
-          }
-          if (code === 62 /* `>` */) {
-            if (toolCall.lastProgressPendingOpenAngle) {
-              return false;
-            }
-            appendedGtIndex = i;
-          }
+        const useTail = tail !== undefined && tailStart <= prevLength;
+        const { lastBareGtIndex, structural } =
+          scanAppendedRegionForStructuralChars({
+            from: prevLength,
+            inspected: useTail ? tail : toolContent.get(),
+            inspectedStart: useTail ? tailStart : 0,
+            pendingOpenAngle: toolCall.lastProgressPendingOpenAngle,
+            to: toolContent.length,
+          });
+        if (structural) {
+          return false;
         }
 
         toolCall.lastProgressContentLength = toolContent.length;
-        if (appendedGtIndex !== -1) {
-          toolCall.lastProgressGtIndex = appendedGtIndex;
+        if (lastBareGtIndex !== -1) {
+          toolCall.lastProgressGtIndex = lastBareGtIndex;
         }
         return true;
       };
