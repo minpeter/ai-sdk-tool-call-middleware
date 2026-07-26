@@ -354,7 +354,8 @@ function scheduleNextToolCallScan(
     return;
   }
   const length = state.currentToolCallJson.length + state.buffer.length;
-  state.toolCallScanDeferUntilLength = length + Math.max(512, length >> 3);
+  state.toolCallScanDeferUntilLength =
+    length + Math.max(512, Math.floor(length / 8));
   // After a scan pass the buffer holds at most a small partial-tag tail;
   // seed the carry from it so tags completing right after a scan are caught.
   const carryLength = Math.max(toolCallStart.length, toolCallEnd.length) - 1;
