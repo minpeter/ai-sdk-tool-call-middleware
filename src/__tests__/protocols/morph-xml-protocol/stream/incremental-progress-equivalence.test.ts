@@ -173,6 +173,30 @@ describe("morph-xml incremental streaming progress equivalence", () => {
     }
   });
 
+  it("live-streams a large strictly-string value in capped bursts", async () => {
+    const body = Array.from(
+      { length: 300 },
+      (_, i) => `line ${i}: hello streaming world`
+    ).join("\n"); // ~9KB
+    const text = `<write_file>\n<path>a.ts</path>\n<content>\n${body}\n</content>\n</write_file>`;
+
+    const parts = await streamInChunks(text, [25]);
+    const { toolInputs, concatenatedDeltas } = summarize(parts);
+
+    expect(toolInputs).toHaveLength(1);
+    // The value body must stream while the tag is still open (capped ~1KB
+    // bursts), not arrive as one delta at the end: expect several deltas
+    // that already contain body content.
+    const deltaCount = parts.filter(
+      (part) => part.type === "tool-input-delta"
+    ).length;
+    expect(deltaCount).toBeGreaterThan(5);
+    // Raw-slice streaming must stay exactly prefix-consistent with the
+    // final input.
+    expect(toolInputs[0].startsWith(concatenatedDeltas)).toBe(true);
+    expect(concatenatedDeltas).toBe(toolInputs[0]);
+  });
+
   it("recovers unclosed tool calls at finish identically for any chunking", async () => {
     const text = "<write_file>\n<path>a.ts</path>\n<content>\nunclosed body";
     const whole = summarize(await streamInChunks(text, [text.length]));

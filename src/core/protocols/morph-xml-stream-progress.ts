@@ -8,6 +8,7 @@ import {
   getObjectSchemaPropertyNames,
   getObjectSchemaStringPropertyNames,
   getSchemaObjectProperty,
+  isStrictStringSchemaProperty,
   schemaAllowsArrayType,
 } from "./morph-xml-progress-analysis";
 
@@ -71,6 +72,17 @@ export interface XmlStreamProgressResult {
    * recomputation entirely (see emitToolInputProgress in morph-xml-protocol).
    */
   trailingStringTag: string | null;
+  /**
+   * Present when the trailing tag's value can be live-streamed: the property
+   * is exactly string-typed (raw-slice extraction is the identity transform,
+   * so a raw prefix is always a prefix of the final value) and the repaired
+   * parse produced an args object to build progress candidates from.
+   * `bodyStart` is the offset in toolContent where the raw value begins.
+   */
+  trailingValueStreaming: {
+    argsBase: Record<string, unknown>;
+    bodyStart: number;
+  } | null;
 }
 
 export function parseXmlContentForStreamProgress(params: {
@@ -81,6 +93,51 @@ export function parseXmlContentForStreamProgress(params: {
   tools: LanguageModelV4FunctionTool[];
 }): string | null {
   return parseXmlContentForStreamProgressWithMeta(params).fullInput;
+}
+
+function resolveTrailingStringTagProgress(options: {
+  toolContent: string;
+  toolSchema: unknown;
+  tryParse: (content: string) => unknown | null;
+  tryStringify: (args: unknown) => string | null;
+}): XmlStreamProgressResult | null {
+  const { toolContent, toolSchema, tryParse, tryStringify } = options;
+  const stringPropertyNames = getObjectSchemaStringPropertyNames(toolSchema);
+  if (!stringPropertyNames || stringPropertyNames.size === 0) {
+    return null;
+  }
+  const trailingStringTag = findTrailingUnclosedStringTag({
+    toolContent,
+    stringPropertyNames,
+  });
+  if (!trailingStringTag) {
+    return null;
+  }
+  const emptyRepair = buildEmptyTrailingStringTagProgressContent({
+    toolContent,
+    tagName: trailingStringTag,
+  });
+  const repaired =
+    emptyRepair?.content ?? `${toolContent}</${trailingStringTag}>`;
+  const parsedRepaired = tryParse(repaired);
+  if (parsedRepaired === null) {
+    return null;
+  }
+  const canStreamValue =
+    emptyRepair !== null &&
+    typeof parsedRepaired === "object" &&
+    !Array.isArray(parsedRepaired) &&
+    isStrictStringSchemaProperty(toolSchema, trailingStringTag);
+  return {
+    fullInput: tryStringify(parsedRepaired),
+    trailingStringTag,
+    trailingValueStreaming: canStreamValue
+      ? {
+          argsBase: parsedRepaired as Record<string, unknown>,
+          bodyStart: emptyRepair.bodyStart,
+        }
+      : null,
+  };
 }
 
 export function parseXmlContentForStreamProgressWithMeta({
@@ -128,29 +185,21 @@ export function parseXmlContentForStreamProgressWithMeta({
       toolSchema,
     })
   ) {
-    return { fullInput: tryStringify(strictFull), trailingStringTag: null };
+    return {
+      fullInput: tryStringify(strictFull),
+      trailingStringTag: null,
+      trailingValueStreaming: null,
+    };
   }
 
-  const stringPropertyNames = getObjectSchemaStringPropertyNames(toolSchema);
-  if (stringPropertyNames && stringPropertyNames.size > 0) {
-    const trailingStringTag = findTrailingUnclosedStringTag({
-      toolContent,
-      stringPropertyNames,
-    });
-    if (trailingStringTag) {
-      const repaired =
-        buildEmptyTrailingStringTagProgressContent({
-          toolContent,
-          tagName: trailingStringTag,
-        }) ?? `${toolContent}</${trailingStringTag}>`;
-      const parsedRepaired = tryParse(repaired);
-      if (parsedRepaired !== null) {
-        return {
-          fullInput: tryStringify(parsedRepaired),
-          trailingStringTag,
-        };
-      }
-    }
+  const trailingResult = resolveTrailingStringTagProgress({
+    toolContent,
+    toolSchema,
+    tryParse,
+    tryStringify,
+  });
+  if (trailingResult) {
+    return trailingResult;
   }
 
   let searchEnd = toolContent.length;
@@ -176,10 +225,15 @@ export function parseXmlContentForStreamProgressWithMeta({
       return {
         fullInput: tryStringify(parsedCandidate),
         trailingStringTag: null,
+        trailingValueStreaming: null,
       };
     }
     searchEnd = gtIndex;
   }
 
-  return { fullInput: null, trailingStringTag: null };
+  return {
+    fullInput: null,
+    trailingStringTag: null,
+    trailingValueStreaming: null,
+  };
 }

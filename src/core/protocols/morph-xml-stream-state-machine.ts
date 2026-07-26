@@ -46,6 +46,18 @@ export interface StreamingToolCallState {
    * be scanned per chunk; everything before it was proven closing-tag-free.
    */
   scanCarry: string;
+  /**
+   * Live-streaming state for the trailing unclosed string property value.
+   * Set when the last full progress computation identified a strictly
+   * string-typed trailing tag: the raw value accumulated so far, the args
+   * object to build candidates from, the absolute offset where the value
+   * body begins, and the content length at which the next progress candidate
+   * is built (capped bursts keep total stringify work bounded).
+   */
+  streamingValue: string;
+  streamingValueArgsBase: Record<string, unknown> | null;
+  streamingValueBodyStart: number | null;
+  streamingValueNextEmitLength: number;
   toolCallId: string;
 }
 

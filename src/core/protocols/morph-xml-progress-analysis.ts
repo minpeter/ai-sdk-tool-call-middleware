@@ -615,7 +615,7 @@ export function findTrailingUnclosedStringTag(options: {
 export function buildEmptyTrailingStringTagProgressContent(options: {
   tagName: string;
   toolContent: string;
-}): string | null {
+}): { content: string; bodyStart: number } | null {
   const openPattern = getPropertyOpenTagPattern(options.tagName);
   let lastOpenEnd = -1;
 
@@ -630,7 +630,33 @@ export function buildEmptyTrailingStringTagProgressContent(options: {
     return null;
   }
 
-  return `${options.toolContent.slice(0, lastOpenEnd)}</${options.tagName}>`;
+  return {
+    content: `${options.toolContent.slice(0, lastOpenEnd)}</${options.tagName}>`,
+    bodyStart: lastOpenEnd,
+  };
+}
+
+/**
+ * Whether the named schema property is exactly string-typed (no unions or
+ * alternative types). Streaming a raw value prefix is only prefix-stable
+ * under schema coercion when the property can never be coerced away from a
+ * string (e.g. "12" must not become the number 12 once complete).
+ */
+export function isStrictStringSchemaProperty(
+  toolSchema: unknown,
+  name: string
+): boolean {
+  const property = unwrapJsonSchema(getSchemaObjectProperty(toolSchema, name));
+  if (!property || typeof property !== "object") {
+    return false;
+  }
+  const typeValue = (property as Record<string, unknown>).type;
+  return (
+    typeValue === "string" ||
+    (Array.isArray(typeValue) &&
+      typeValue.length === 1 &&
+      typeValue[0] === "string")
+  );
 }
 
 export function getSchemaObjectProperty(

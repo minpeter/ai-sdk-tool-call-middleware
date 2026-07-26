@@ -280,6 +280,40 @@ function isEmptyMorphToolInputProgress(
 }
 
 /**
+ * Cap between progress-candidate rebuilds while live-streaming a trailing
+ * string value. Each rebuild stringifies the full args (O(total)), so bursts
+ * keep total work bounded while still updating the UI every ~1KB of content.
+ */
+const STREAMING_VALUE_EMIT_INTERVAL = 1024;
+
+/**
+ * Fold an inert appended region into the live-streamed trailing string
+ * value. Raw-slice extraction is the identity transform for strictly
+ * string-typed properties, so the accumulated raw chars stay a prefix of the
+ * final value.
+ */
+function foldInertRegionIntoStreamingValue(options: {
+  inspected: string;
+  inspectedStart: number;
+  prevLength: number;
+  to: number;
+  toolCall: StreamingToolCallState;
+}): void {
+  const { toolCall } = options;
+  if (
+    toolCall.streamingValueBodyStart === null ||
+    options.to <= options.prevLength
+  ) {
+    return;
+  }
+  toolCall.streamingValue += options.inspected.slice(
+    Math.max(options.prevLength, toolCall.streamingValueBodyStart) -
+      options.inspectedStart,
+    options.to - options.inspectedStart
+  );
+}
+
+/**
  * Scan the appended content region [from, to) for characters that could
  * change the structural parse: any `<`, or a `>` while an unterminated `<`
  * is pending. Returns whether such a character was found and the absolute
@@ -308,6 +342,40 @@ function scanAppendedRegionForStructuralChars(options: {
   return { lastBareGtIndex, structural: false };
 }
 
+// The buffering decision is O(fullInput) (JSON parse + walk); progress
+// bursts enqueue several 512-char parts for the same fullInput/content pair,
+// so memoize by reference identity per tool call.
+const shouldBufferDecisionCache = new WeakMap<
+  StreamingToolCallState,
+  { fullInput: string; result: boolean; toolContent: string }
+>();
+
+function shouldBufferMorphToolInputProgressCached(options: {
+  fullInput: string;
+  getToolContent: () => string;
+  toolCall: StreamingToolCallState;
+}): boolean {
+  const toolContent = options.getToolContent();
+  const cached = shouldBufferDecisionCache.get(options.toolCall);
+  if (
+    cached &&
+    cached.fullInput === options.fullInput &&
+    cached.toolContent === toolContent
+  ) {
+    return cached.result;
+  }
+  const result = shouldBufferMorphToolInputProgress(
+    toolContent,
+    options.fullInput
+  );
+  shouldBufferDecisionCache.set(options.toolCall, {
+    fullInput: options.fullInput,
+    result,
+    toolContent,
+  });
+  return result;
+}
+
 function enqueueMorphToolInputProgressPart(options: {
   controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
   fullInput: string;
@@ -317,10 +385,7 @@ function enqueueMorphToolInputProgressPart(options: {
 }): void {
   if (
     options.toolCall.pendingToolInputParts.length > 0 ||
-    shouldBufferMorphToolInputProgress(
-      options.getToolContent(),
-      options.fullInput
-    )
+    shouldBufferMorphToolInputProgressCached(options)
   ) {
     options.toolCall.pendingToolInputParts.push(options.part);
     return;
@@ -474,6 +539,10 @@ export const morphXmlProtocol = (
           lastProgressTrailingStringTag: null,
           pendingToolInputParts: [],
           scanCarry: "",
+          streamingValue: "",
+          streamingValueArgsBase: null,
+          streamingValueBodyStart: null,
+          streamingValueNextEmitLength: 0,
         };
         controller.enqueue({
           type: "tool-input-start",
@@ -532,11 +601,13 @@ export const morphXmlProtocol = (
         const tail = toolContent.appendedTail;
         const tailStart = toolContent.length - (tail?.length ?? 0);
         const useTail = tail !== undefined && tailStart <= prevLength;
+        const inspected = useTail ? tail : toolContent.get();
+        const inspectedStart = useTail ? tailStart : 0;
         const { lastBareGtIndex, structural } =
           scanAppendedRegionForStructuralChars({
             from: prevLength,
-            inspected: useTail ? tail : toolContent.get(),
-            inspectedStart: useTail ? tailStart : 0,
+            inspected,
+            inspectedStart,
             pendingOpenAngle: toolCall.lastProgressPendingOpenAngle,
             to: toolContent.length,
           });
@@ -544,10 +615,65 @@ export const morphXmlProtocol = (
           return false;
         }
 
+        foldInertRegionIntoStreamingValue({
+          inspected,
+          inspectedStart,
+          prevLength,
+          to: toolContent.length,
+          toolCall,
+        });
+
         toolCall.lastProgressContentLength = toolContent.length;
         if (lastBareGtIndex !== -1) {
           toolCall.lastProgressGtIndex = lastBareGtIndex;
         }
+        return true;
+      };
+
+      /**
+       * Emit a live progress candidate for the streaming trailing string
+       * value in capped bursts. Candidates are built by overriding the
+       * trailing property on the cached args base; schema coercion keeps
+       * strictly string-typed values as strings, so each candidate extends
+       * the previously emitted prefix.
+       */
+      const maybeEmitStreamingValueProgress = (
+        controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
+        toolCall: StreamingToolCallState,
+        lazyContent: LazyToolContent
+      ): boolean => {
+        if (
+          toolCall.streamingValueBodyStart === null ||
+          toolCall.streamingValueArgsBase === null ||
+          toolCall.lastProgressTrailingStringTag === null
+        ) {
+          return false;
+        }
+        if (lazyContent.length < toolCall.streamingValueNextEmitLength) {
+          return true; // streaming active, next burst not due yet
+        }
+        toolCall.streamingValueNextEmitLength =
+          lazyContent.length + STREAMING_VALUE_EMIT_INTERVAL;
+
+        let candidate: string;
+        try {
+          candidate = stringifyToolInputWithSchema({
+            toolName: toolCall.name,
+            args: {
+              ...toolCall.streamingValueArgsBase,
+              [toolCall.lastProgressTrailingStringTag]: toolCall.streamingValue,
+            },
+            tools,
+          });
+        } catch {
+          return true;
+        }
+        emitMorphToolInputProgressDelta({
+          controller,
+          toolCall,
+          fullInput: candidate,
+          getToolContent: lazyContent.get,
+        });
         return true;
       };
 
@@ -557,7 +683,11 @@ export const morphXmlProtocol = (
         lazyContent: LazyToolContent
       ) => {
         if (tryIncrementalProgressShortcut(toolCall, lazyContent)) {
-          emitCachedToolInputProgress(_controller, toolCall, lazyContent);
+          if (
+            !maybeEmitStreamingValueProgress(_controller, toolCall, lazyContent)
+          ) {
+            emitCachedToolInputProgress(_controller, toolCall, lazyContent);
+          }
           return;
         }
 
@@ -573,7 +703,7 @@ export const morphXmlProtocol = (
         }
 
         const toolSchema = getToolSchema(tools, toolCall.name);
-        const { fullInput, trailingStringTag } =
+        const { fullInput, trailingStringTag, trailingValueStreaming } =
           parseXmlContentForStreamProgressWithMeta({
             toolContent,
             toolName: toolCall.name,
@@ -587,6 +717,22 @@ export const morphXmlProtocol = (
         toolCall.lastProgressTrailingStringTag = trailingStringTag;
         toolCall.lastProgressPendingOpenAngle =
           toolContent.lastIndexOf("<") > progressGtIndex;
+        if (trailingValueStreaming) {
+          // (Re)base the live value on the structural recompute: raw body so
+          // far, args to build candidates from, and the next burst point.
+          toolCall.streamingValueArgsBase = trailingValueStreaming.argsBase;
+          toolCall.streamingValueBodyStart = trailingValueStreaming.bodyStart;
+          toolCall.streamingValue = toolContent.slice(
+            trailingValueStreaming.bodyStart
+          );
+          toolCall.streamingValueNextEmitLength =
+            toolContent.length + STREAMING_VALUE_EMIT_INTERVAL;
+        } else {
+          toolCall.streamingValueArgsBase = null;
+          toolCall.streamingValueBodyStart = null;
+          toolCall.streamingValue = "";
+          toolCall.streamingValueNextEmitLength = 0;
+        }
         if (fullInput == null) {
           return;
         }
