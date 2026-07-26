@@ -1,5 +1,34 @@
 # @ai-sdk-tool/parser
 
+## 5.1.6
+
+### Patch Changes
+
+- 49a69b1: Amortize hermes streaming tool-call JSON scans: once the accumulated
+  tool-call body exceeds 4KB, full boundary rescans and progress
+  recomputation run on a capped ~1KB cadence instead of every chunk, with
+  a carry-based close-tag trigger for same-chunk completion and a
+  catch-up scan before finish reconciliation. Final results are
+  unchanged and tool-input deltas keep a steady cadence; a ~177KB
+  streamed string argument now parses ~20x faster. Behavior below 4KB is
+  byte-identical.
+- 6059568: Make morph-xml streaming tool-call parsing incremental and live-stream
+  trailing string values: accumulated content is kept in chunk parts (no
+  per-chunk rope flattening), closing tags are scanned only in the
+  unproven tail, and strictly string-typed trailing values now emit
+  tool-input deltas in ~1KB bursts while streaming (previously the whole
+  value arrived as one delta when the tag closed). Large streamed string
+  arguments (~173KB) parse ~12x faster with bounded instead of quadratic
+  scan work.
+- 506f9e8: Amortize qwen3coder streaming call-buffer scans: once the buffer of a
+  streaming call exceeds 4KB, full rescans (close-tag search, next-call
+  search, parameter re-parse) run on a capped ~1KB cadence instead of
+  every chunk, with a carry-based close-tag trigger for same-chunk
+  completion and a catch-up scan before finish reconciliation. Final
+  results are unchanged and tool-input deltas keep a steady cadence; a
+  ~173KB streamed string argument now parses ~30x faster. Behavior below
+  4KB is byte-identical.
+
 ## 5.1.5
 
 ### Patch Changes
