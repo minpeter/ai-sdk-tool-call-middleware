@@ -7,14 +7,90 @@ import { findEarliestToolTag } from "../utils/xml-tool-tag-scanner";
 import type { ParserOptions } from "./protocol-interface";
 
 export interface StreamingToolCallState {
+  /**
+   * Cached flat join of contentParts; null when parts were appended since
+   * the last join. Joining collapses contentParts to a single element so
+   * repeated joins only pay for content added in between.
+   */
+  contentFlat: string | null;
+  /** Total accumulated tool-call content length. */
+  contentLength: number;
+  /**
+   * Accumulated tool-call content chunks. Content is kept as parts instead
+   * of one growing string so per-chunk scans never force V8 to flatten a
+   * rope of the whole content (an O(total) copy per chunk).
+   */
+  contentParts: string[];
   emittedInput: string;
   hasEmittedStart: boolean;
   lastProgressContentLength: number | null;
   lastProgressFullInput: string | null;
   lastProgressGtIndex: number | null;
+  /**
+   * Whether the tool-call content ends with an unterminated `<` sequence.
+   * Used with lastProgressTrailingStringTag to decide when appended text can
+   * be proven structurally inert (no new tag can complete without it).
+   */
+  lastProgressPendingOpenAngle: boolean;
+  /**
+   * Set when the last full progress computation resolved through the
+   * trailing-unclosed-string-tag branch. While set, appended chunks without
+   * tag boundary characters cannot change the progress result.
+   */
+  lastProgressTrailingStringTag: string | null;
   name: string;
   pendingToolInputParts: LanguageModelV4StreamPart[];
+  /**
+   * Suffix of the accumulated content that could still be the beginning of
+   * the closing tag (`</\s*name\s*>`). Only `scanCarry + newChunk` needs to
+   * be scanned per chunk; everything before it was proven closing-tag-free.
+   */
+  scanCarry: string;
+  /**
+   * Live-streaming state for the trailing unclosed string property value.
+   * Set when the last full progress computation identified a strictly
+   * string-typed trailing tag: the raw value accumulated so far, the args
+   * object to build candidates from, the absolute offset where the value
+   * body begins, and the content length at which the next progress candidate
+   * is built (capped bursts keep total stringify work bounded).
+   */
+  streamingValue: string;
+  streamingValueArgsBase: Record<string, unknown> | null;
+  streamingValueBodyStart: number | null;
+  streamingValueNextEmitLength: number;
   toolCallId: string;
+}
+
+/**
+ * Lazily materialized view of the accumulated tool-call content. `get()`
+ * joins the content parts (O(total), cached); `appendedTail`, when present,
+ * covers at least the content appended since the previous progress call so
+ * incremental consumers can avoid materializing the full content.
+ */
+export interface LazyToolContent {
+  appendedTail?: string;
+  get: () => string;
+  length: number;
+}
+
+export function appendToolCallContent(
+  state: StreamingToolCallState,
+  text: string
+): void {
+  if (text.length === 0) {
+    return;
+  }
+  state.contentParts.push(text);
+  state.contentLength += text.length;
+  state.contentFlat = null;
+}
+
+export function getToolCallContent(state: StreamingToolCallState): string {
+  if (state.contentFlat === null) {
+    state.contentFlat = state.contentParts.join("");
+    state.contentParts = [state.contentFlat];
+  }
+  return state.contentFlat;
 }
 
 export interface LinePrefixedToolCall {
@@ -41,6 +117,70 @@ function getEndTagPattern(toolName: string): RegExp {
   return pattern;
 }
 
+const END_TAG_WS_RE = /\s/;
+
+/**
+ * True when `suffix` (which starts with `<`) could still grow into
+ * `</\s*toolName\s*>` with future chunks. Used to compute how far the
+ * closing-tag search can safely skip on the next scan.
+ */
+function couldBeEndTagPrefix(suffix: string, toolName: string): boolean {
+  let i = 1; // suffix[0] === "<"
+  if (i >= suffix.length) {
+    return true;
+  }
+  if (suffix[i] !== "/") {
+    return false;
+  }
+  i += 1;
+  while (i < suffix.length && END_TAG_WS_RE.test(suffix[i])) {
+    i += 1;
+  }
+  let j = 0;
+  while (
+    i < suffix.length &&
+    j < toolName.length &&
+    suffix[i] === toolName[j]
+  ) {
+    i += 1;
+    j += 1;
+  }
+  if (i >= suffix.length) {
+    return true; // partial (or empty) name so far
+  }
+  if (j < toolName.length) {
+    return false; // diverged from the tool name
+  }
+  // Full name matched; only trailing whitespace may remain (a `>` here would
+  // have completed the tag and been found by the scan).
+  while (i < suffix.length && END_TAG_WS_RE.test(suffix[i])) {
+    i += 1;
+  }
+  return i >= suffix.length;
+}
+
+/**
+ * Suffix of `region` (the previous carry plus newly appended text) that
+ * could still grow into the closing tag with future chunks, or "" when the
+ * region tail is provably closing-tag-free. The closing-tag pattern contains
+ * no `<` after its first character, so only the last `<` can begin a match
+ * that completes later.
+ */
+function nextEndTagScanCarry(region: string, toolName: string): string {
+  let lastLt = -1;
+  for (let k = region.length - 1; k >= 0; k -= 1) {
+    if (region.charCodeAt(k) === 60 /* `<` */) {
+      lastLt = k;
+      break;
+    }
+  }
+  if (lastLt === -1) {
+    return "";
+  }
+  const suffix = region.slice(lastLt);
+  return couldBeEndTagPrefix(suffix, toolName) ? suffix : "";
+}
+
 export type FlushTextFn = (controller: StreamController, text?: string) => void;
 
 type HandleStreamingToolCallEnd = (params: {
@@ -60,7 +200,7 @@ interface ProcessToolCallInBufferParams {
   emitToolInputProgress: (
     controller: StreamController,
     currentToolCall: StreamingToolCallState,
-    toolContent: string
+    toolContent: LazyToolContent
   ) => void;
   flushText: FlushTextFn;
   handleStreamingToolCallEnd: HandleStreamingToolCallEnd;
@@ -87,18 +227,39 @@ function processToolCallInBuffer(params: ProcessToolCallInBufferParams): {
     emitToolInputProgress,
     handleStreamingToolCallEnd,
   } = params;
+
+  // Consume the pending buffer into the content accumulator; only
+  // `scanCarry + buffer` needs to be scanned for the closing tag.
+  const region = currentToolCall.scanCarry + buffer;
+  appendToolCallContent(currentToolCall, buffer);
+  setBuffer("");
+
   const endTagPattern = getEndTagPattern(currentToolCall.name);
-  const endMatch = endTagPattern.exec(buffer);
+  const endMatch = endTagPattern.exec(region);
   if (!endMatch || endMatch.index === undefined) {
-    emitToolInputProgress(controller, currentToolCall, buffer);
-    return { buffer, currentToolCall, shouldBreak: true };
+    currentToolCall.scanCarry = nextEndTagScanCarry(
+      region,
+      currentToolCall.name
+    );
+    emitToolInputProgress(controller, currentToolCall, {
+      length: currentToolCall.contentLength,
+      get: () => getToolCallContent(currentToolCall),
+      appendedTail: region,
+    });
+    return { buffer: "", currentToolCall, shouldBreak: true };
   }
 
-  const endIdx = endMatch.index;
+  // Translate the region-relative match back to absolute content offsets.
+  const regionStart = currentToolCall.contentLength - region.length;
+  const endIdx = regionStart + endMatch.index;
   const endPos = endIdx + endMatch[0].length;
-  const content = buffer.slice(0, endIdx);
-  emitToolInputProgress(controller, currentToolCall, content);
-  const remainder = buffer.slice(endPos);
+  const flatContent = getToolCallContent(currentToolCall);
+  const content = flatContent.slice(0, endIdx);
+  emitToolInputProgress(controller, currentToolCall, {
+    length: content.length,
+    get: () => content,
+  });
+  const remainder = flatContent.slice(endPos);
   setBuffer(remainder);
 
   handleStreamingToolCallEnd({
@@ -342,7 +503,7 @@ export function createProcessBufferHandler(options: {
   emitToolInputProgress: (
     controller: StreamController,
     currentToolCall: StreamingToolCallState,
-    toolContent: string
+    toolContent: LazyToolContent
   ) => void;
   emitToolInputStart: (
     controller: StreamController,
