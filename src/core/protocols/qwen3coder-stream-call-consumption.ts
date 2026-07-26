@@ -40,20 +40,27 @@ export function createQwenStreamCallConsumption({
   // full re-parse including toLowerCase), which is O(total) per chunk and
   // quadratic overall. Scans are amortized instead: once the buffer exceeds
   // SCAN_DEFER_MIN_BUFFER_LENGTH, a full scan only runs after the buffer has
-  // grown by ~1/8 since the previous scan. Geometric spacing keeps total scan
-  // work linear. Final results are unchanged — deferral only delays when a
-  // pending close tag is observed, and it is disabled (plus a catch-up scan
-  // runs) before finish reconciliation. Below the threshold, behavior is
+  // grown by ~1/8, capped at SCAN_DEFER_MAX_INTERVAL so tool-input progress
+  // keeps a steady ~1KB cadence for the UI. Total scan work stays bounded
+  // (O(n^2 / 1024), negligible for realistic sizes). Final results are
+  // unchanged — a cheap carry check forces an immediate scan when close-tag
+  // text arrives, and deferral is disabled (plus a catch-up scan runs)
+  // before finish reconciliation. Below the threshold, behavior is
   // byte-identical, including tool-input progress timing.
   const SCAN_DEFER_MIN_BUFFER_LENGTH = 4096;
+  const SCAN_DEFER_MAX_INTERVAL = 1024;
   const scanThresholds = new WeakMap<StreamingCallState, number>();
+  const scanCarries = new WeakMap<StreamingCallState, string>();
   let scanDeferralEnabled = true;
 
   const disableScanDeferral = () => {
     scanDeferralEnabled = false;
   };
 
-  const shouldDeferScan = (callState: StreamingCallState): boolean => {
+  const shouldDeferScan = (
+    callState: StreamingCallState,
+    incoming: string
+  ): boolean => {
     if (!scanDeferralEnabled) {
       return false;
     }
@@ -62,15 +69,39 @@ export function createQwenStreamCallConsumption({
       return false;
     }
     const threshold = scanThresholds.get(callState);
-    return threshold !== undefined && length < threshold;
+    if (threshold === undefined || length >= threshold) {
+      return false;
+    }
+    // Cheap close-tag trigger: when close-tag text arrives in the appended
+    // region (plus a small carry for tags split across chunks), force an
+    // immediate full scan so call completion is observed in the same chunk
+    // as the undeferred path. Flexible-whitespace variants (`< / tool >`)
+    // are not matched here; the capped threshold bounds their delay to
+    // ~1KB, and the finish catch-up covers stream end.
+    const closeHint = `</${callState.endTagName}`;
+    const carry = scanCarries.get(callState) ?? "";
+    const region = (carry + incoming).toLowerCase();
+    if (region.includes(closeHint)) {
+      return false;
+    }
+    scanCarries.set(
+      callState,
+      (carry + incoming).slice(-(closeHint.length - 1))
+    );
+    return true;
   };
 
   const scheduleNextScan = (callState: StreamingCallState) => {
     const { length } = callState.buffer;
     scanThresholds.set(
       callState,
-      length + Math.max(512, Math.floor(length / 8))
+      length +
+        Math.max(512, Math.min(SCAN_DEFER_MAX_INTERVAL, Math.floor(length / 8)))
     );
+    // Re-seed the carry from the already-scanned (and therefore flat) buffer
+    // tail so a close tag completing right after a scan is still caught.
+    const closeHintLength = 2 + callState.endTagName.length;
+    scanCarries.set(callState, callState.buffer.slice(-(closeHintLength - 1)));
   };
 
   const getCloseTagPattern = (endTagName: string): RegExp => {
@@ -151,7 +182,7 @@ export function createQwenStreamCallConsumption({
     callState.buffer += incoming;
     callState.raw += incoming;
 
-    if (shouldDeferScan(callState)) {
+    if (shouldDeferScan(callState, incoming)) {
       return { done: false, remainder: "" };
     }
 
