@@ -1,0 +1,15 @@
+{
+  "arms": [
+    { "family": "native", "id": "native" },
+    { "family": "glm5", "id": "glm5" }
+  ],
+  "categories": {
+    "simple_python": {
+      "count": 2,
+      "ids": ["fixture_1", "fixture_2"]
+    }
+  },
+  "expectedCases": 2,
+  "expectedJobs": 4,
+  "trials": 1
+}

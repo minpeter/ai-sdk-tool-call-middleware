@@ -16,7 +16,7 @@ import {
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
-  decodeOriginalToolsFromProviderOptions,
+  decodeOriginalToolsForMiddleware,
   getDroppedProviderTools,
   getToolCallMiddlewareOptions,
   isToolChoiceActive,
@@ -67,7 +67,7 @@ export async function wrapStream({
   }
 
   const onErrorOptions = extractOnErrorOption(params.providerOptions);
-  const tools = decodeOriginalToolsFromProviderOptions(
+  const tools = decodeOriginalToolsForMiddleware(
     params.providerOptions,
     onErrorOptions
   );
@@ -90,19 +90,22 @@ export async function wrapStream({
     ...getToolCallMiddlewareOptions(params.providerOptions),
   };
 
-  const coreStream = stream
-    .pipeThrough(
-      new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>(
-        {
-          transform(part, controller) {
-            if (debugLevel === "stream") {
+  const loggedStream =
+    debugLevel === "stream"
+      ? stream.pipeThrough(
+          new TransformStream<
+            LanguageModelV4StreamPart,
+            LanguageModelV4StreamPart
+          >({
+            transform(part, controller) {
               logRawChunk(part);
-            }
-            controller.enqueue(part);
-          },
-        }
-      )
-    )
+              controller.enqueue(part);
+            },
+          })
+        )
+      : stream;
+
+  const coreStream = loggedStream
     .pipeThrough(protocol.createStreamParser({ tools, options }))
     .pipeThrough(createStreamJsonRecoveryTransform({ tools }));
 

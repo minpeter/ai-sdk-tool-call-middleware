@@ -141,10 +141,64 @@ Use the preconfigured middleware exports from `src/preconfigured-middleware.ts`:
 
 | Middleware | Best for |
 |---|---|
+| `glm5ToolMiddleware` | GLM-5/5.2 official `<arg_key>/<arg_value>` text grammar, including true incremental streaming |
 | `hermesToolMiddleware` | JSON-style tool payloads |
 | `morphXmlToolMiddleware` | XML-style payloads with schema-aware coercion |
 | `yamlXmlToolMiddleware` | XML tool tags + YAML bodies |
 | `qwen3CoderToolMiddleware` | Qwen/UI-TARS style `<tool_call>` markup |
+
+### GLM-5.2
+
+`glm5ToolMiddleware` follows the official `zai-org/GLM-5.2`
+`chat_template.jinja` grammar pinned at revision
+`b4734de4facf877f85769a911abafc5283eab3d9`. It preserves provider-native
+assistant/tool history and inserts the tool catalog as a distinct leading
+system turn for automatic tool selection, matching the template's training-time
+layout. For `required` or fixed-tool selection it omits that XML catalog so it
+does not conflict with the middleware's JSON `responseFormat` constraint.
+
+This remains prompt-only middleware. AI SDK function definitions are rendered
+into that system turn and the transformed provider request always contains
+`tools: []` and no `toolChoice`. The provider returns ordinary generated text;
+the middleware parses GLM's `<tool_call>` text back into AI SDK tool-call parts.
+There is no provider-native or hybrid GLM transport in this package.
+
+```ts
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { glm5ToolMiddleware } from "@ai-sdk-tool/parser";
+import { wrapLanguageModel } from "ai";
+
+const provider = createOpenAICompatible({
+  name: "glm",
+  apiKey: process.env.GLM_API_KEY,
+  baseURL: process.env.GLM_BASE_URL,
+  // Required for schema-constrained `required` or fixed-tool selection.
+  // Omit this if the endpoint does not support `response_format.json_schema`.
+  supportsStructuredOutputs: true,
+});
+
+const model = wrapLanguageModel({
+  model: provider("zai-org/glm-5.2"),
+  middleware: glm5ToolMiddleware,
+});
+```
+
+The parser handles zero-argument and parallel calls, schema-aware scalar and
+JSON values, arbitrary stream chunk boundaries, and conservative recovery of
+truncated closing tags. Non-string values are buffered until they can be
+validated; long string values can emit `tool-input-delta` events before the
+closing tag arrives. For object leaves that explicitly allow arbitrary
+properties, it also preserves bounded bare handles such as `responseData` as
+strings instead of evaluating or completing an expression. Set
+`recoverOpaqueObjectReferences: false` on `glm5Protocol()` when strict JSON-only
+object values are required.
+
+Ambiguous or unsafe structure fails closed: duplicate and prototype-sensitive
+keys, as well as a complete nested call naming a declared tool, reject the
+whole call. A canonical marker placed directly inside a Markdown backtick
+delimiter is kept as non-executable text. The delimiter tracker is
+chunk-invariant and deliberately does not let an unrelated, unbalanced prose
+backtick swallow a later canonical call.
 
 ## Build custom middleware
 
@@ -162,7 +216,11 @@ export const myToolMiddleware = createToolMiddleware({
 
 - `toolChoice: "auto"` (default) parses tool calls out of the model text.
 - `toolChoice: "required"` and `toolChoice: { type: "tool", toolName }` are emulated through JSON `responseFormat` constraints.
-- `toolChoice: "none"` skips tool prompt injection and tool-call parsing entirely; tool-call history in the conversation is still serialized to text.
+- `toolChoice: "none"` skips tool prompt injection and tool-call parsing entirely; tool-call history retains the middleware's configured representation.
+
+Forced selection requires a provider that honors schema-bearing JSON response
+formats. With `createOpenAICompatible`, enable `supportsStructuredOutputs` only
+when the target endpoint supports `response_format.json_schema`.
 
 ## Streaming semantics
 

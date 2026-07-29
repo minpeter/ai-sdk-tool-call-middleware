@@ -1,0 +1,227 @@
+<svg
+  aria-labelledby="title desc"
+  height="960"
+  role="img"
+  viewBox="0 0 1600 960"
+  width="1600"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <title id="title">
+    Same-byte GLM-5.2 Native-Plus structured-call acceptance funnel
+  </title>
+  <desc id="desc">
+    Of all Native structured calls, already-valid calls were preserved and
+    malformed calls were repaired; text fallback calls are shown separately.
+  </desc>
+  <defs>
+    <filter height="140%" id="shadow" width="120%" x="-10%" y="-15%">
+      <feDropShadow
+        dx="0"
+        dy="4"
+        flood-color="#0f172a"
+        flood-opacity="0.09"
+        stdDeviation="7"
+      />
+    </filter>
+    <marker
+      id="arrow"
+      markerHeight="7"
+      markerWidth="7"
+      orient="auto-start-reverse"
+      refX="8.5"
+      refY="5"
+      viewBox="0 0 10 10"
+    >
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569" />
+    </marker>
+  </defs>
+  <rect fill="#f8fafc" height="100%" width="100%" />
+  <style>
+  text {
+    font-family:
+      Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial,
+      sans-serif;
+    fill: #0f172a;
+  }
+  .title {
+    font-family: Arial, sans-serif;
+    font-size: 34px;
+    font-weight: 700;
+  }
+  .subtitle {
+    font-size: 17px;
+    fill: #475569;
+  }
+  .section {
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .box-title {
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .body {
+    font-size: 14px;
+    fill: #475569;
+  }
+  .small {
+    font-size: 12px;
+    fill: #64748b;
+  }
+  .label {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .value {
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .metric {
+    font-size: 25px;
+    font-weight: 850;
+  }
+  .mono {
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 13px;
+    fill: #334155;
+  }
+  .shadow {
+    filter: url(#shadow);
+  }
+  </style>
+  <text class="title" x="64" y="70">
+    Same-byte structured-call acceptance funnel
+  </text>
+  <text class="subtitle" x="64" y="110">
+    Every count is read from the redacted audit summary; the denominator is
+    unchanged across stages.
+  </text>
+  <rect
+    class="shadow"
+    fill="#ffffff"
+    height="108"
+    rx="18"
+    stroke="#cbd5e1"
+    width="1468"
+    x="66"
+    y="164"
+  />
+  <text class="section" x="102" y="207">Native structured calls</text>
+  <text class="metric" text-anchor="end" x="1494" y="224">1,729</text>
+  <text class="body" x="102" y="244">
+    Same provider response bytes · accepted envelopes only
+  </text>
+  <line
+    stroke="#475569"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="800.0"
+    x2="800.0"
+    y1="272.0"
+    y2="326.0"
+  />
+  <polygon fill="#475569" points="800.0,326.0 794.0,313.0 806.0,313.0" />
+  <rect
+    class="shadow"
+    fill="#eff6ff"
+    height="178"
+    rx="16"
+    stroke="#93c5fd"
+    stroke-width="2"
+    width="700"
+    x="66"
+    y="326"
+  />
+  <text class="box-title" fill="#1d4ed8" x="88" y="360">
+    Already strict-valid
+  </text>
+  <text class="body" text-anchor="start" x="88" y="392">
+    <tspan dy="0" x="88">1,720 / 1,729 · 99.5%</tspan>
+    <tspan dy="23" x="88">Native-Plus preserved every call exactly</tspan>
+    <tspan dy="23" x="88">preserved: 1,720 / 1,720</tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#fff7ed"
+    height="178"
+    rx="16"
+    stroke="#fdba74"
+    stroke-width="2"
+    width="700"
+    x="834"
+    y="326"
+  />
+  <text class="box-title" fill="#c2410c" x="856" y="360">
+    Malformed Native arguments
+  </text>
+  <text class="body" text-anchor="start" x="856" y="392">
+    <tspan dy="0" x="856">9 / 1,729</tspan>
+    <tspan dy="23" x="856">Bounded repair accepted every malformed call</tspan>
+    <tspan dy="23" x="856">repaired: 9 / 9</tspan>
+  </text>
+  <line
+    stroke="#2563eb"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="416.0"
+    x2="416.0"
+    y1="504.0"
+    y2="580.0"
+  />
+  <polygon fill="#2563eb" points="416.0,580.0 410.0,567.0 422.0,567.0" />
+  <line
+    stroke="#d97706"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="1184.0"
+    x2="1184.0"
+    y1="504.0"
+    y2="580.0"
+  />
+  <polygon fill="#d97706" points="1184.0,580.0 1178.0,567.0 1190.0,567.0" />
+  <rect
+    class="shadow"
+    fill="#ecfdf5"
+    height="142"
+    rx="18"
+    stroke="#6ee7b7"
+    width="1468"
+    x="66"
+    y="580"
+  />
+  <text class="section" fill="#047857" x="102" y="626">
+    Native-Plus strict-valid output
+  </text>
+  <text class="metric" fill="#047857" text-anchor="end" x="1494" y="654">
+    1,729 / 1,729
+  </text>
+  <text class="body" x="102" y="674">
+    1,720 unchanged + 9 recovered · 100.0% acceptance
+  </text>
+  <text class="small" x="102" y="704">
+    Paired call-acceptance exact McNemar p = 0.00390625
+  </text>
+  <rect
+    fill="#f5f3ff"
+    height="94"
+    rx="16"
+    stroke="#c4b5fd"
+    width="1468"
+    x="66"
+    y="778"
+  />
+  <text class="label" fill="#7c3aed" x="102" y="817">
+    Separate fallback lane
+  </text>
+  <text class="metric" fill="#7c3aed" text-anchor="end" x="1494" y="830">
+    +2
+  </text>
+  <text class="body" x="102" y="850">
+    New text-derived calls are not part of the 1,729 Native structured-call
+    denominator.
+  </text>
+  <text class="small" x="66" y="925">
+    Interpretation: p-value above is parser acceptance, not case-level semantic
+    correctness.
+  </text>
+</svg>

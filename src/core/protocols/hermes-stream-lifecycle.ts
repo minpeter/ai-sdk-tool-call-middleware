@@ -25,6 +25,7 @@ import {
   isParsedToolCallRecord,
   normalizeJsonStringCtrl,
 } from "./hermes-json-normalization";
+import { exceedsToolCallJsonNestingDepth } from "./hermes-json-object-key-scanner";
 import { normalizeInvalidJsonEscapes } from "./hermes-json-repair";
 import {
   emitToolInputDelta,
@@ -44,6 +45,9 @@ function emitStreamingToolInputProgress(options: {
   const { state, controller, toolCallJson, tools } = options;
   const progress = extractStreamingToolCallProgress(toolCallJson);
   if (!(progress.toolName && progress.argumentsComplete)) {
+    return false;
+  }
+  if (exceedsToolCallJsonNestingDepth(toolCallJson)) {
     return false;
   }
   try {
@@ -356,6 +360,49 @@ function salvageIncompleteToolCalls(
   return true;
 }
 
+function tryEmitParsedIncompleteToolCall(
+  state: StreamState,
+  controller: StreamController,
+  tools: LanguageModelV4FunctionTool[]
+): boolean {
+  const toolCallJson = state.currentToolCallJson;
+  if (!toolCallJson || exceedsToolCallJsonNestingDepth(toolCallJson)) {
+    return false;
+  }
+  try {
+    const parsedToolCall = parseRJSON(
+      normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
+    );
+    if (!isParsedToolCallRecord(parsedToolCall)) {
+      return false;
+    }
+    if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
+      return false;
+    }
+    const policyArguments = applyToolArgumentKeyPolicy(
+      parsedToolCall.name,
+      parsedToolCall.arguments,
+      tools
+    );
+    if (policyArguments === null) {
+      return false;
+    }
+    emitToolCallFromParsed(
+      state,
+      controller,
+      { ...parsedToolCall, arguments: policyArguments.args },
+      tools
+    );
+    state.currentToolCallJson = "";
+    state.isInsideToolCall = false;
+    return true;
+  } catch {
+    // Incomplete tool calls (no closing </tool_call>) are not candidates
+    // for quote repair — the JSON may be genuinely truncated.
+    return false;
+  }
+}
+
 function emitIncompleteToolCall(
   state: StreamState,
   controller: StreamController,
@@ -370,41 +417,8 @@ function emitIncompleteToolCall(
     return;
   }
 
-  if (state.currentToolCallJson) {
-    try {
-      const parsedToolCall = parseRJSON(
-        normalizeInvalidJsonEscapes(
-          normalizeJsonStringCtrl(state.currentToolCallJson)
-        )
-      );
-      if (!isParsedToolCallRecord(parsedToolCall)) {
-        throw new Error("Tool call object is missing own name or arguments");
-      }
-      if (hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)) {
-        throw new Error("Tool call arguments contain prototype-sensitive keys");
-      }
-      const policyArguments = applyToolArgumentKeyPolicy(
-        parsedToolCall.name,
-        parsedToolCall.arguments,
-        tools
-      );
-      if (policyArguments === null) {
-        throw new Error("Tool call arguments contain schema-unknown keys");
-      }
-      emitToolCallFromParsed(
-        state,
-        controller,
-        { ...parsedToolCall, arguments: policyArguments.args },
-        tools
-      );
-      state.currentToolCallJson = "";
-      state.isInsideToolCall = false;
-      return;
-    } catch {
-      // Incomplete tool calls (no closing </tool_call>) are not candidates
-      // for quote repair — the JSON may be genuinely truncated.
-      // Fall through to balanced-JSON salvage, then text/error fallback.
-    }
+  if (tryEmitParsedIncompleteToolCall(state, controller, tools)) {
+    return;
   }
 
   const rawToolCallContent = `${state.currentToolCallJson}${trailingBuffer}`;

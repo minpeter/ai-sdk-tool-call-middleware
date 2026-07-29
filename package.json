@@ -63,6 +63,7 @@
     "test": "vitest run",
     "test:package-consumers": "node scripts/test-package-consumers.mjs",
     "attw": "attw --pack . --profile esm-only",
+    "check:benchmark-types": "tsc -p benchmarks/glm-5.2-tool-calling/tsconfig.json --pretty false",
     "check:biome": "biome check",
     "check:types": "tsc --noEmit",
     "check": "run-p check:*",

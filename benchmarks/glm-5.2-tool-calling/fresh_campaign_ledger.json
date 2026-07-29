@@ -1,0 +1,317 @@
+{
+  "formatVersion": 1,
+  "campaignId": "glm52-native-vs-prompt-only-expanded11-20260720-c1",
+  "arms": ["glm52-native", "glm52-prompt-only"],
+  "model": "zai-org/glm-5.2",
+  "status": "BLOCKED_PRELAUNCH",
+  "scopes": {
+    "primary9": {
+      "suiteCount": 9,
+      "casesPerArm": 75480,
+      "freshTrajectories": 150960,
+      "suiteIds": [
+        "acebench",
+        "mcpmark",
+        "bfcl",
+        "hammerbench",
+        "stabletoolbench",
+        "tau3",
+        "appworld",
+        "vakra",
+        "terminalbench21"
+      ]
+    },
+    "expanded11": {
+      "suiteCount": 11,
+      "casesPerArm": 77512,
+      "freshTrajectories": 155024,
+      "suiteIds": [
+        "acebench",
+        "mcpmark",
+        "bfcl",
+        "hammerbench",
+        "stabletoolbench",
+        "tau3",
+        "appworld",
+        "vakra",
+        "terminalbench21",
+        "toolsandbox",
+        "complexfuncbench"
+      ]
+    }
+  },
+  "freshness": {
+    "captureInputs": [],
+    "historicalResultInputs": [],
+    "preseed": false,
+    "resume": false,
+    "resumeStateInputs": [],
+    "reusedCases": 0,
+    "scoreComputed": false,
+    "scoreUnlocked": false,
+    "sourceRunRoots": []
+  },
+  "artifactContract": {
+    "manifest": {
+      "path": "task-manifest.json",
+      "requirements": [
+        "pinned benchmark revision",
+        "exact full-population denominator",
+        "taskSetSha256",
+        "row or task identity hashes"
+      ]
+    },
+    "runtimeFingerprint": {
+      "path": "runtime-fingerprint.json",
+      "schemaVersion": 1,
+      "exclusiveCreate": true,
+      "roles": ["parser", "bridge", "runner"],
+      "requirements": [
+        "git HEAD",
+        "repository-relative file paths",
+        "file byte lengths and SHA-256",
+        "Node loader SHA-256",
+        "Node executable SHA-256 and version",
+        "aggregateSha256"
+      ]
+    },
+    "binding": {
+      "path": "campaign-binding.json",
+      "requirements": [
+        "campaignId",
+        "suiteId",
+        "runId",
+        "canonical arms",
+        "taskSetSha256",
+        "runtimeFingerprint aggregateSha256",
+        "expected cases per arm",
+        "expected fresh trajectories",
+        "resume false",
+        "preseed false",
+        "historical inputs empty",
+        "reusedCases zero"
+      ]
+    },
+    "capture": {
+      "paths": ["requests.jsonl", "provider-raw.jsonl"],
+      "requirements": [
+        "zero rows before launch",
+        "fresh requests only",
+        "authorization header excluded",
+        "request and response linkage retained"
+      ]
+    },
+    "exactPopulation": {
+      "path": "trajectory-index.jsonl",
+      "requirements": [
+        "one row per arm and task key",
+        "identical task-key set between arms",
+        "exact denominator for both arms",
+        "fresh result path below suite root",
+        "result SHA-256",
+        "task-set and runtime fingerprint binding"
+      ]
+    },
+    "retryProof": {
+      "path": "retry-ledger.jsonl",
+      "requirements": [
+        "all logical requests covered",
+        "contiguous attempt numbers",
+        "one retry owner",
+        "identical requestSha256 within each retry chain",
+        "only transient transport, 408, 425, 429, or 5xx retries"
+      ]
+    },
+    "strictValidation": {
+      "path": "strict-validation.json",
+      "requirements": [
+        "score-free exact coverage PASS",
+        "official validator PASS",
+        "validator chain SHA-256",
+        "validation artifact SHA-256",
+        "full denominator complete"
+      ]
+    },
+    "scoreRelease": {
+      "path": "score-release.json",
+      "initialStatus": "LOCKED",
+      "requirements": [
+        "strict-validation receipt SHA-256",
+        "scoreComputed false before release",
+        "populationContribution zero before release",
+        "includedInFinalScore false before release",
+        "authorized score chain only"
+      ]
+    }
+  },
+  "admission": {
+    "configuredInitialGlobalCaps": {
+      "shortSingleCompletion": 8,
+      "agenticStableMcpmark": 4
+    },
+    "measuredMicroProbeCeiling": 16,
+    "microProbePromotionRequiresRepresentativeSoak": true,
+    "coLaunchSuites": false,
+    "pairFairnessRequired": true,
+    "retryOwner": "bridge",
+    "additionalTransientAttempts": 2,
+    "historicalCapsRejected": [100, 128],
+    "note": "The measured ceiling is diagnostic only; do not promote an initial cap until a representative soak and separate admission decision pass."
+  },
+  "hostGate": {
+    "status": "NO_GO",
+    "observedAt": "2026-07-20T07:21:05+09:00",
+    "observed": {
+      "rootFreeBytes": 28087431168,
+      "tmpFreeBytes": 11445321728,
+      "softNofile": 1024,
+      "swapPressure": true,
+      "swapUsedKiB": 7954668,
+      "ioFullAvg10": 0.0
+    },
+    "required": {
+      "rootPrelaunchFreeBytes": 79100000000,
+      "rootStopFloorBytes": 59100000000,
+      "tmpMinFreeBytes": 20000000000,
+      "softNofile": 65536,
+      "swapMustBeUnused": true,
+      "ioFullPressureMustBeZero": true
+    }
+  },
+  "collisionAudit": {
+    "checkedAt": "2026-07-20T07:20:14+09:00",
+    "resultsChildrenWith20260720Prefix": 0,
+    "allSuiteRootsAbsent": true,
+    "allSuiteBasenameCollisions": 0,
+    "campaignEvidenceRoot": "results/2026-07-20-glm52-native-vs-prompt-only-full11-zero-reuse-v1",
+    "campaignEvidenceRootAbsent": true
+  },
+  "suites": [
+    {
+      "id": "acebench",
+      "name": "ACEBench EN+ZH",
+      "primary9": true,
+      "casesPerArm": 2040,
+      "freshTrajectories": 4080,
+      "population": "EN 1,023 + ZH 1,017 across the complete pinned native-tool adaptation",
+      "taskSetSha256": "3967082cc1ed8e4a532ae290f099947241d6fe12e23e08f10c7109f5d7f01b74",
+      "armAliases": ["glm52-native-FC", "glm52-prompt-only-FC"],
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-acebench-2040-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-acebench"
+    },
+    {
+      "id": "mcpmark",
+      "name": "MCPMark Verified standard",
+      "primary9": true,
+      "casesPerArm": 127,
+      "freshTrajectories": 254,
+      "population": "filesystem 30 + notion 28 + github 23 + postgres 21 + playwright_webarena 21 + playwright 4",
+      "taskSetSha256": "50ed2fba29e005c617167423767bba6c6985d2cfb52bd59a39bdb34999fa2e56",
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-mcpmark-127-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-mcpmark"
+    },
+    {
+      "id": "bfcl",
+      "name": "BFCL V4 all_scoring",
+      "primary9": true,
+      "casesPerArm": 5217,
+      "freshTrajectories": 10434,
+      "population": "all_scoring across 22 categories",
+      "diagnosticOnlyCasesPerArm": 5200,
+      "diagnosticOnlyPopulation": "format_sensitivity; excluded from both campaign totals and final score",
+      "taskSetSha256": "79251a544ae4b55c269d30bad491a6eaedac861585760b1c8620cf30cdb795ba",
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-bfcl-5217-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-bfcl"
+    },
+    {
+      "id": "hammerbench",
+      "name": "HammerBench EN+ZH",
+      "primary9": true,
+      "casesPerArm": 61075,
+      "freshTrajectories": 122150,
+      "population": "EN multi 17,461 + EN single 13,054 + ZH multi 17,498 + ZH single 13,062",
+      "taskSetSha256": "33fa4c26bd826c43c18f32e88e3f4e3b26ab0e96bf9c09a9210da6ffe82eebc0",
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-hammerbench-61075-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-hammerbench"
+    },
+    {
+      "id": "stabletoolbench",
+      "name": "StableToolBench six groups",
+      "primary9": true,
+      "casesPerArm": 765,
+      "freshTrajectories": 1530,
+      "population": "G1_category 153 + G1_instruction 163 + G1_tool 158 + G2_category 124 + G2_instruction 106 + G3_instruction 61",
+      "taskSetSha256": "7d67c0db41139c97f944fa95b9d819fd9a83dca3d62cbbf7b53b7ed6e3f7094d",
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-stabletoolbench-765-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-stabletoolbench"
+    },
+    {
+      "id": "tau3",
+      "name": "tau3-bench base",
+      "primary9": true,
+      "casesPerArm": 375,
+      "freshTrajectories": 750,
+      "population": "airline 50 + retail 114 + telecom 114 + banking_knowledge 97",
+      "taskSetSha256": "f804b27333429ecea1fab28227a98b8990445cfdab064e994e46201ce1e2ef0d",
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-tau3-375-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-tau3"
+    },
+    {
+      "id": "appworld",
+      "name": "AppWorld",
+      "primary9": true,
+      "casesPerArm": 585,
+      "freshTrajectories": 1170,
+      "population": "test_normal 168 + test_challenge 417",
+      "taskSetSha256": "a74153fdca3eacda938014baf1ad6a97ceddbe0b78c85f11a4c8d646093be7f9",
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-appworld-585-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-appworld"
+    },
+    {
+      "id": "vakra",
+      "name": "VAKRA public test",
+      "primary9": true,
+      "casesPerArm": 5207,
+      "freshTrajectories": 10414,
+      "population": "capability 1 2,077 + capability 2 1,597 + capability 3 869 + capability 4 664",
+      "taskSetSha256": "7ec5c994f06feb43fce6f563e9fa890d2f3ebfa7547df7667b0375e196bbe539",
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-vakra-5207-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-vakra"
+    },
+    {
+      "id": "terminalbench21",
+      "name": "Terminal-Bench 2.1",
+      "primary9": true,
+      "casesPerArm": 89,
+      "freshTrajectories": 178,
+      "population": "exact terminal-bench-2-1 official Harbor task set",
+      "taskSetSha256": "df39331762272c4a0b71e147b806e4fa62e95dcb5a47ec3b7780188411e10331",
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-terminalbench21-89-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-terminalbench21"
+    },
+    {
+      "id": "toolsandbox",
+      "name": "ToolSandbox named_scenarios",
+      "primary9": false,
+      "casesPerArm": 1032,
+      "freshTrajectories": 2064,
+      "population": "509 without exposed RapidAPI + 523 exposed, including 304 necessary-expanded and 219 exposed-only",
+      "taskSetSha256": "a765aafc4403e9c4707c6042ce4751d18d3d494410e7c497e4b5c089198ce08d",
+      "fullPopulationBlocker": "523 tasks require an isolated RapidAPI environment; subsets contribute zero score",
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-toolsandbox-1032-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-toolsandbox"
+    },
+    {
+      "id": "complexfuncbench",
+      "name": "ComplexFuncBench official rows",
+      "primary9": false,
+      "casesPerArm": 1000,
+      "freshTrajectories": 2000,
+      "population": "Attraction 150 + Car-Rental 150 + Cross 400 + Flights 150 + Hotels 150",
+      "taskSetSha256": "1eee9f87f5bcb5c065f119693c3585fbd6085d0e78d6a30dbe7b3ee0cca3475d",
+      "fullPopulationBlocker": "all 1,000 rows require non-free Booking APIs and final-response judging; subsets contribute zero score",
+      "outputRoot": "results/2026-07-20-glm52-native-vs-prompt-only-complexfuncbench-1000-fresh-v1",
+      "runId": "glm52-native-vs-prompt-only-20260720-c1-complexfuncbench"
+    }
+  ]
+}

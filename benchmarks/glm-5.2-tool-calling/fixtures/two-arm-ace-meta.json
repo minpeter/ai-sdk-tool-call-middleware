@@ -1,0 +1,20 @@
+{
+  "arms": ["native", "glm5"],
+  "cases": [
+    {
+      "category": "normal_single_turn_single_function",
+      "id": "fixture_1",
+      "language": "en"
+    },
+    {
+      "category": "normal_single_turn_single_function",
+      "id": "fixture_2",
+      "language": "en"
+    }
+  ],
+  "categories": ["normal_single_turn_single_function"],
+  "expectedCases": 2,
+  "expectedJobs": 4,
+  "languages": ["en"],
+  "oracleInvalidCases": []
+}
