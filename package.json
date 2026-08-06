@@ -2,31 +2,13 @@
   "name": "@ai-sdk-tool/parser",
   "version": "5.1.6",
   "description": "AI SDK middleware for tool call parsing",
-  "type": "module",
-  "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "https://github.com/minpeter/ai-sdk-tool-call-middleware"
   },
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "typesVersions": {
-    "*": {
-      "community": [
-        "./dist/community/index.d.ts"
-      ],
-      "rxml": [
-        "./dist/rxml/index.d.ts"
-      ],
-      "rjson": [
-        "./dist/rjson/index.d.ts"
-      ],
-      "schema-coerce": [
-        "./dist/schema-coerce/index.d.ts"
-      ]
-    }
-  },
+  "license": "Apache-2.0",
+  "sideEffects": false,
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -49,69 +31,87 @@
       "import": "./dist/schema-coerce.js"
     }
   },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "community": [
+        "./dist/community/index.d.ts"
+      ],
+      "rxml": [
+        "./dist/rxml/index.d.ts"
+      ],
+      "rjson": [
+        "./dist/rjson/index.d.ts"
+      ],
+      "schema-coerce": [
+        "./dist/schema-coerce/index.d.ts"
+      ]
+    }
+  },
   "files": [
     "dist/**/*"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
+    "attw": "attw --pack . --profile esm-only",
     "build": "pnpm clean && tsdown && tsc -p tsconfig.build.json && node scripts/fix-declaration-imports.mjs",
     "build:watch": "pnpm clean && tsdown --watch",
-    "clean": "rimraf dist *.tsbuildinfo",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:package-consumers": "node scripts/test-package-consumers.mjs",
-    "attw": "attw --pack . --profile esm-only",
+    "changeset": "changeset",
+    "check": "run-p check:*",
     "check:biome": "biome check",
     "check:types": "tsc --noEmit",
-    "check": "run-p check:*",
-    "fmt:biome": "biome check --write",
-    "fmt": "run-p fmt:*",
-    "changeset": "changeset",
     "ci:release": "pnpm build && changeset publish",
-    "ci:version": "changeset version"
+    "ci:version": "changeset version",
+    "clean": "rimraf dist *.tsbuildinfo",
+    "fmt": "run-p fmt:*",
+    "fmt:biome": "biome check --write",
+    "test": "vitest run",
+    "test:package-consumers": "node scripts/test-package-consumers.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "dedent": "^1.7.2",
     "yaml": "^2.9.0"
   },
+  "devDependencies": {
+    "@ai-sdk/openai": "4.0.27",
+    "@ai-sdk/openai-compatible": "3.0.20",
+    "@ai-sdk/provider": "4.0.4",
+    "@ai-sdk/provider-utils": "5.0.18",
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@biomejs/biome": "2.5.6",
+    "@changesets/cli": "2.31.1",
+    "@types/node": "^26.1.2",
+    "@vitest/coverage-v8": "^4.1.10",
+    "ai": "7.0.48",
+    "npm-run-all": "^4.1.5",
+    "rimraf": "^6.1.3",
+    "tsdown": "^0.22.14",
+    "typescript": "7.0.2",
+    "ultracite": "7.10.0",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10",
+    "zod": "^4.4.3"
+  },
   "peerDependencies": {
     "@ai-sdk/provider": "^4.0.0",
     "@ai-sdk/provider-utils": "^5.0.0"
   },
-  "devDependencies": {
-    "@ai-sdk/openai": "4.0.21",
-    "@ai-sdk/openai-compatible": "3.0.15",
-    "@ai-sdk/provider": "4.0.4",
-    "@ai-sdk/provider-utils": "5.0.13",
-    "@biomejs/biome": "2.5.5",
-    "@changesets/cli": "2.31.1",
-    "@types/node": "^26.1.2",
-    "@vitest/coverage-v8": "^4.1.10",
-    "ai": "7.0.38",
-    "npm-run-all": "^4.1.5",
-    "rimraf": "^6.1.3",
-    "@arethetypeswrong/cli": "^0.18.2",
-    "tsdown": "^0.22.14",
-    "typescript": "7.0.2",
-    "ultracite": "7.9.4",
-    "vite": "^8.1.5",
-    "vitest": "^4.1.10",
-    "zod": "^4.4.3"
-  },
   "packageManager": "pnpm@10.32.1",
-  "pnpm": {
-    "overrides": {
-      "esbuild": "^0.28.1",
-      "vite": "^8.1.5",
-      "shell-quote": "^1.8.4",
-      "js-yaml@3": "^3.15.0",
-      "js-yaml@4": "^4.2.0"
-    }
-  },
   "engines": {
     "node": ">=22"
   },
-  "license": "Apache-2.0"
+  "publishConfig": {
+    "access": "public"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "^0.28.1",
+      "js-yaml@3": "^3.15.0",
+      "js-yaml@4": "^4.2.0",
+      "shell-quote": "^1.8.4",
+      "vite": "^8.2.0"
+    }
+  }
 }
