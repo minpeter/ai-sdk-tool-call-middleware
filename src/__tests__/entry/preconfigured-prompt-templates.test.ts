@@ -1,6 +1,10 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { hermesToolMiddleware, morphXmlToolMiddleware } from "../../index";
+import {
+  hermesToolMiddleware,
+  kExaone2ToolMiddleware,
+  morphXmlToolMiddleware,
+} from "../../index";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -20,6 +24,21 @@ describe("preconfigured middleware prompt templates", () => {
       inputSchema: { type: "object", properties: { city: { type: "string" } } },
     },
   ];
+
+  it("kExaone2ToolMiddleware injects the native K-EXAONE-2.0 tools section", async () => {
+    const transformParams = kExaone2ToolMiddleware.transformParams as any;
+    const out = await transformParams({
+      params: { prompt: [], tools },
+    } as any);
+
+    const [system] = out.prompt;
+    expect(system.role).toBe("system");
+    const text = String(system.content);
+    expect(text).toContain("# Tools");
+    expect(text).toContain("<tool>");
+    expect(text).toContain('"name":"get_weather"');
+    expect(text).toContain("# Tool Call Format");
+  });
 
   it("hermesToolMiddleware template appears in system prompt", async () => {
     const transformParams = hermesToolMiddleware.transformParams as any;

@@ -3,6 +3,10 @@ import {
   hermesSystemPromptTemplate,
 } from "./core/prompts/hermes-prompt";
 import {
+  formatToolResponseAsKExaone2,
+  kExaone2SystemPromptTemplate,
+} from "./core/prompts/k-exaone-2-prompt";
+import {
   morphFormatToolResponseAsXml,
   morphXmlSystemPromptTemplate,
 } from "./core/prompts/morph-xml-prompt";
@@ -15,10 +19,17 @@ import {
   yamlXmlSystemPromptTemplate,
 } from "./core/prompts/yaml-xml-prompt";
 import { hermesProtocol } from "./core/protocols/hermes-protocol";
+import { kExaone2Protocol } from "./core/protocols/k-exaone-2-protocol";
 import { morphXmlProtocol } from "./core/protocols/morph-xml-protocol";
 import { qwen3CoderProtocol } from "./core/protocols/qwen3coder-protocol";
 import { yamlXmlProtocol } from "./core/protocols/yaml-xml-protocol";
 import { createToolMiddleware } from "./tool-call-middleware";
+
+export const kExaone2ToolMiddleware = createToolMiddleware({
+  protocol: kExaone2Protocol(),
+  toolSystemPromptTemplate: kExaone2SystemPromptTemplate,
+  toolResponsePromptTemplate: formatToolResponseAsKExaone2,
+});
 
 export const hermesToolMiddleware = createToolMiddleware({
   protocol: hermesProtocol(),
