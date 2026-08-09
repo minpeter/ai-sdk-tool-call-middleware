@@ -1,7 +1,8 @@
-import type {
-  LanguageModelV4Content,
-  LanguageModelV4ToolCall,
-} from "@ai-sdk/provider";
+import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
+import {
+  escapeXmlMinimalAttr,
+  escapeXmlMinimalText,
+} from "../../rxml/utils/helpers";
 import { formatToolsWithPromptTemplate } from "../utils/protocol-utils";
 import type { TCMProtocol } from "./protocol-interface";
 import { TOOL_CALL_BLOCK_RE } from "./qwen3coder-call-syntax";
@@ -15,10 +16,9 @@ import { createQwen3CoderStreamParser } from "./qwen3coder-stream-parser";
  * - Not for earlier EXAONE / K-EXAONE-236B JSON-in-`<tool_call>` templates
  * - Template: LGAI-EXAONE/K-EXAONE-2.0-750B-A37B chat_template.jinja
  *
- * Parse/stream reuses qwen3coder; formatToolCall + non-stream `<think>` are local.
+ * Parse/stream reuses qwen3coder; formatToolCall is K-EXAONE-2.0-specific.
+ * Reasoning stays provider-native (for Friendli, use `parse_reasoning: true`).
  */
-const COMPLETE_THINK_BLOCK_RE = /<think>([\s\S]*?)<\/think>/gi;
-
 function parseToolCallInput(input: string | null | undefined): unknown {
   if (input == null) {
     return {};
@@ -27,64 +27,31 @@ function parseToolCallInput(input: string | null | undefined): unknown {
   try {
     return JSON.parse(input) as unknown;
   } catch {
-    return {};
+    return input;
   }
 }
 
 function renderParameterValue(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  return JSON.stringify(value) ?? "null";
+  const text =
+    typeof value === "string" ? value : (JSON.stringify(value) ?? "null");
+  return escapeXmlMinimalText(text);
 }
 
 function formatKExaone2ToolCall(toolCall: LanguageModelV4ToolCall): string {
   const input = parseToolCallInput(toolCall.input);
-  const parameters =
+  const entries: [string, unknown][] =
     typeof input === "object" && input !== null && !Array.isArray(input)
       ? Object.entries(input)
-          .map(
-            ([name, value]) =>
-              `<parameter=${name}>\n${renderParameterValue(value)}\n</parameter>`
-          )
-          .join("\n")
-      : "";
+      : [["input", input]];
+  const parameters = entries
+    .map(
+      ([name, value]) =>
+        `<parameter=${escapeXmlMinimalAttr(name, '"')}>\n${renderParameterValue(value)}\n</parameter>`
+    )
+    .join("\n");
   const parameterSection = parameters.length > 0 ? `\n${parameters}` : "";
 
-  return `<tool_call>\n<function=${toolCall.toolName}>${parameterSection}\n</function>\n</tool_call>`;
-}
-
-function parseKExaone2GeneratedText(
-  params: Parameters<typeof parseQwen3CoderGeneratedText>[0]
-): LanguageModelV4Content[] {
-  const matches = Array.from(params.text.matchAll(COMPLETE_THINK_BLOCK_RE));
-  if (matches.length === 0) {
-    return parseQwen3CoderGeneratedText(params);
-  }
-
-  const content: LanguageModelV4Content[] = [];
-  let index = 0;
-  for (const match of matches) {
-    const start = match.index ?? -1;
-    if (start < 0) {
-      continue;
-    }
-
-    const before = params.text.slice(index, start);
-    if (before.length > 0) {
-      content.push(
-        ...parseQwen3CoderGeneratedText({ ...params, text: before })
-      );
-    }
-    content.push({ type: "reasoning", text: match[1] ?? "" });
-    index = start + match[0].length;
-  }
-
-  const after = params.text.slice(index);
-  if (after.length > 0) {
-    content.push(...parseQwen3CoderGeneratedText({ ...params, text: after }));
-  }
-  return content;
+  return `<tool_call>\n<function=${escapeXmlMinimalAttr(toolCall.toolName, '"')}>${parameterSection}\n</function>\n</tool_call>`;
 }
 
 export const kExaone2Protocol = (): TCMProtocol => ({
@@ -97,7 +64,7 @@ export const kExaone2Protocol = (): TCMProtocol => ({
   },
 
   parseGeneratedText(params) {
-    return parseKExaone2GeneratedText(params);
+    return parseQwen3CoderGeneratedText(params);
   },
 
   extractToolCallSegments({ text }) {

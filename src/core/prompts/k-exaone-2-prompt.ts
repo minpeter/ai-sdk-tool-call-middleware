@@ -1,6 +1,10 @@
 import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
+  escapeXmlMinimalAttr,
+  escapeXmlMinimalText,
+} from "../../rxml/utils/helpers";
+import {
   renderInputExamplesSection,
   safeStringifyInputExample,
 } from "./shared/input-examples";
@@ -39,30 +43,38 @@ function normalizeInputSchema(inputSchema: unknown): unknown {
 }
 
 function renderTool(tool: LanguageModelV4FunctionTool): string {
-  return `<tool>${JSON.stringify({
+  const declaration = JSON.stringify({
     type: "function",
     function: {
       name: tool.name,
       description: tool.description,
       parameters: normalizeInputSchema(tool.inputSchema),
     },
-  })}</tool>`;
+  })
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026");
+  return `<tool>${declaration}</tool>`;
 }
 
 function renderParameterValue(value: unknown): string {
-  return typeof value === "string" ? value : safeStringifyInputExample(value);
+  const text =
+    typeof value === "string" ? value : safeStringifyInputExample(value);
+  return escapeXmlMinimalText(text);
 }
 
 function renderKExaone2InputExample(toolName: string, input: unknown): string {
-  const entries = isMapping(input) ? Object.entries(input) : [["input", input]];
+  const entries: [string, unknown][] = isMapping(input)
+    ? Object.entries(input)
+    : [["input", input]];
   const parameters = entries
     .map(
       ([name, value]) =>
-        `<parameter=${name}>\n${renderParameterValue(value)}\n</parameter>`
+        `<parameter=${escapeXmlMinimalAttr(name, '"')}>\n${renderParameterValue(value)}\n</parameter>`
     )
     .join("\n");
 
-  return `<tool_call>\n<function=${toolName}>\n${parameters}\n</function>\n</tool_call>`;
+  return `<tool_call>\n<function=${escapeXmlMinimalAttr(toolName, '"')}>\n${parameters}\n</function>\n</tool_call>`;
 }
 
 export function kExaone2SystemPromptTemplate(
