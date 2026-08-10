@@ -1,8 +1,5 @@
 import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
-import {
-  escapeXmlMinimalAttr,
-  escapeXmlMinimalText,
-} from "../../rxml/utils/helpers";
+import { stringifyKExaone2NativeJson } from "../prompts/k-exaone-2-prompt";
 import { formatToolsWithPromptTemplate } from "../utils/protocol-utils";
 import type { TCMProtocol } from "./protocol-interface";
 import { TOOL_CALL_BLOCK_RE } from "./qwen3coder-call-syntax";
@@ -32,9 +29,7 @@ function parseToolCallInput(input: string | null | undefined): unknown {
 }
 
 function renderParameterValue(value: unknown): string {
-  const text =
-    typeof value === "string" ? value : (JSON.stringify(value) ?? "null");
-  return escapeXmlMinimalText(text);
+  return typeof value === "string" ? value : stringifyKExaone2NativeJson(value);
 }
 
 function formatKExaone2ToolCall(toolCall: LanguageModelV4ToolCall): string {
@@ -46,12 +41,12 @@ function formatKExaone2ToolCall(toolCall: LanguageModelV4ToolCall): string {
   const parameters = entries
     .map(
       ([name, value]) =>
-        `<parameter=${escapeXmlMinimalAttr(name, '"')}>\n${renderParameterValue(value)}\n</parameter>`
+        `<parameter=${name}>\n${renderParameterValue(value)}\n</parameter>`
     )
     .join("\n");
   const parameterSection = parameters.length > 0 ? `\n${parameters}` : "";
 
-  return `<tool_call>\n<function=${escapeXmlMinimalAttr(toolCall.toolName, '"')}>${parameterSection}\n</function>\n</tool_call>`;
+  return `<tool_call>\n<function=${toolCall.toolName}>${parameterSection}\n</function>\n</tool_call>`;
 }
 
 export const kExaone2Protocol = (): TCMProtocol => ({

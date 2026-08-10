@@ -29,6 +29,7 @@ export const kExaone2ToolMiddleware = createToolMiddleware({
   protocol: kExaone2Protocol(),
   toolSystemPromptTemplate: kExaone2SystemPromptTemplate,
   toolResponsePromptTemplate: formatToolResponseAsKExaone2,
+  placement: "first",
 });
 
 export const hermesToolMiddleware = createToolMiddleware({
