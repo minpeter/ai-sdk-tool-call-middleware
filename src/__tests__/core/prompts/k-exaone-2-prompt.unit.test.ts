@@ -182,6 +182,26 @@ describe("kExaone2SystemPromptTemplate", () => {
       ])
     );
   });
+
+  it("rejects oversized schema arrays before reading their elements", () => {
+    const oversized: string[] = [];
+    oversized.length = 100_001;
+    Object.defineProperty(oversized, 0, {
+      get() {
+        throw new RangeError("Oversized array element was read");
+      },
+    });
+
+    expectControlledSerializationFailure(() =>
+      kExaone2SystemPromptTemplate([
+        {
+          type: "function",
+          name: "oversized_schema",
+          inputSchema: { type: "object", required: oversized },
+        },
+      ])
+    );
+  });
 });
 
 describe("formatToolResponseAsKExaone2", () => {

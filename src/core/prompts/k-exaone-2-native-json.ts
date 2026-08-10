@@ -99,11 +99,15 @@ function pushContainerTasks(options: {
   readonly value: Mapping | unknown[];
   readonly depth: number;
   readonly context: NativeJsonContext;
-}): void {
-  const { tasks, value, depth, context } = options;
+  readonly remainingValues: number;
+}): number {
+  const { tasks, value, depth, context, remainingValues } = options;
   tasks.push({ kind: "leave", container: value });
 
   if (Array.isArray(value)) {
+    if (value.length > remainingValues) {
+      throw new KExaone2SerializationError("size");
+    }
     tasks.push({ kind: "text", text: "]" });
     for (let index = value.length - 1; index >= 0; index -= 1) {
       tasks.push({ kind: "value", value: value[index], depth: depth + 1 });
@@ -112,10 +116,14 @@ function pushContainerTasks(options: {
       }
     }
     tasks.push({ kind: "text", text: "[" });
-    return;
+    return value.length;
   }
 
-  const keys = Object.keys(value).filter((key) => {
+  const objectKeys = Object.keys(value);
+  if (objectKeys.length > remainingValues) {
+    throw new KExaone2SerializationError("size");
+  }
+  const keys = objectKeys.filter((key) => {
     const property = value[key];
     return (
       property !== undefined &&
@@ -140,6 +148,7 @@ function pushContainerTasks(options: {
     }
   }
   tasks.push({ kind: "text", text: "{" });
+  return keys.length;
 }
 
 function stringifyPrimitive(
@@ -158,7 +167,7 @@ function stringifyWithContext(
   const activeContainers = new WeakSet<object>();
   const chunks: string[] = [];
   const tasks: SerializationTask[] = [{ kind: "value", value, depth: 0 }];
-  let serializedValues = 0;
+  let scheduledValues = 1;
 
   while (tasks.length > 0) {
     const task = tasks.pop();
@@ -175,11 +184,6 @@ function stringifyWithContext(
       continue;
     }
 
-    serializedValues += 1;
-    if (serializedValues > MAX_SERIALIZED_VALUES) {
-      throw new KExaone2SerializationError("size");
-    }
-
     const { value: currentValue } = task;
     if (Array.isArray(currentValue) || isMapping(currentValue)) {
       if (task.depth > MAX_NESTING_DEPTH) {
@@ -189,12 +193,14 @@ function stringifyWithContext(
         throw new KExaone2SerializationError("cycle");
       }
       activeContainers.add(currentValue);
-      pushContainerTasks({
+      const childCount = pushContainerTasks({
         tasks,
         value: currentValue,
         depth: task.depth,
         context,
+        remainingValues: MAX_SERIALIZED_VALUES - scheduledValues,
       });
+      scheduledValues += childCount;
       continue;
     }
 
