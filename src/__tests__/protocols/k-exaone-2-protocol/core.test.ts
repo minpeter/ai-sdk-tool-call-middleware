@@ -1,5 +1,6 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
+import { KExaone2SerializationError } from "../../../core/prompts/k-exaone-2-serialization-error";
 import { kExaone2Protocol } from "../../../core/protocols/k-exaone-2-protocol";
 
 const tools: LanguageModelV4FunctionTool[] = [
@@ -212,14 +213,23 @@ describe("kExaone2Protocol", () => {
   it("rejects oversized raw history before parsing", () => {
     const input = `{"value":"${"x".repeat(256_000)}"}`;
 
-    expectControlledSerializationFailure(() =>
+    try {
       kExaone2Protocol().formatToolCall({
         type: "tool-call",
         toolCallId: "tc-oversized-input",
         toolName: "echo",
         input,
-      })
-    );
+      });
+    } catch (error) {
+      expect(error).toBeInstanceOf(KExaone2SerializationError);
+      if (!(error instanceof KExaone2SerializationError)) {
+        throw error;
+      }
+      expect(error.reason).toBe("input-size");
+      expect(error.message).toContain("256000 input characters");
+      return;
+    }
+    throw new Error("Expected serialization to fail");
   });
 
   it("replays XML delimiters with Friendli native history bytes", () => {

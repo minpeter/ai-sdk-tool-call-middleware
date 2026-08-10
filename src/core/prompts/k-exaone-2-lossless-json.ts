@@ -242,7 +242,7 @@ export function isKExaone2HistoryNumber(
 
 export function parseKExaone2LosslessJson(input: string): unknown {
   if (input.length > K_EXAONE_2_MAX_JSON_INPUT_LENGTH) {
-    throw new KExaone2SerializationError("size");
+    throw new KExaone2SerializationError("input-size");
   }
   const rewritten = rewriteLosslessJson(input);
   return JSON.parse(rewritten, (_key, value: unknown) => {
