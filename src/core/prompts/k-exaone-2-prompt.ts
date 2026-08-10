@@ -109,21 +109,23 @@ function stringifyKExaone2NativeJsonWithContext(
   }
 
   if (isMapping(value)) {
-    const properties = Object.keys(value)
-      .sort(compareByCodePoint)
-      .flatMap((key) => {
-        const property = value[key];
-        if (
-          property === undefined ||
-          typeof property === "function" ||
-          typeof property === "symbol"
-        ) {
-          return [];
-        }
-        return [
-          `${JSON.stringify(key)}: ${stringifyKExaone2NativeJsonWithContext(property, context)}`,
-        ];
-      });
+    const keys = Object.keys(value);
+    if (context === "schema") {
+      keys.sort(compareByCodePoint);
+    }
+    const properties = keys.flatMap((key) => {
+      const property = value[key];
+      if (
+        property === undefined ||
+        typeof property === "function" ||
+        typeof property === "symbol"
+      ) {
+        return [];
+      }
+      return [
+        `${JSON.stringify(key)}: ${stringifyKExaone2NativeJsonWithContext(property, context)}`,
+      ];
+    });
     return `{${properties.join(", ")}}`;
   }
 

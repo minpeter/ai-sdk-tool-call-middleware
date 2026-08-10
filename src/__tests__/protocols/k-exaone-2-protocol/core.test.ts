@@ -65,7 +65,7 @@ describe("kExaone2Protocol", () => {
     });
 
     expect(formatted).toBe(
-      '<tool_call>\n<function=get_weather>\n<parameter=city>\n서울\n</parameter>\n<parameter=options>\n{"days": 2, "units": "metric"}\n</parameter>\n</function>\n</tool_call>'
+      '<tool_call>\n<function=get_weather>\n<parameter=city>\n서울\n</parameter>\n<parameter=options>\n{"units": "metric", "days": 2}\n</parameter>\n</function>\n</tool_call>'
     );
 
     const [call] = protocol
