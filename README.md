@@ -145,6 +145,7 @@ Use the preconfigured middleware exports from `src/preconfigured-middleware.ts`:
 | `morphXmlToolMiddleware` | XML-style payloads with schema-aware coercion |
 | `yamlXmlToolMiddleware` | XML tool tags + YAML bodies |
 | `qwen3CoderToolMiddleware` | Qwen/UI-TARS style `<tool_call>` markup |
+| `kExaone2ToolMiddleware` | K-EXAONE-2.0 native tool declarations, calls, and `<tool_result>` responses |
 
 ## Build custom middleware
 
@@ -167,6 +168,7 @@ export const myToolMiddleware = createToolMiddleware({
 ## Streaming semantics
 
 - Stream parsers emit `tool-input-start`, `tool-input-delta`, and `tool-input-end` when a tool input can be incrementally reconstructed.
+- `kExaone2ToolMiddleware` leaves reasoning parsing to the provider so generate and stream behave consistently. With Friendli, set `parse_reasoning: true`; provider reasoning events pass through unchanged.
 - `tool-input-start.id`, `tool-input-end.id`, and final `tool-call.toolCallId` are reconciled to the same ID.
 - `emitRawToolCallTextOnError` defaults to `false`; malformed tool-call markup is suppressed from `text-delta` unless explicitly enabled.
 - Text blocks that consist of a bare `{"name": ..., "arguments": ...}` payload (or a fenced ```json block) for a known tool are recovered into tool calls in both generate and stream paths, and `finishReason` is normalized to `tool-calls` whenever tool calls were parsed.

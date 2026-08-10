@@ -2,14 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   createHermesToolResponseFormatter,
+  createKExaone2ToolResponseFormatter,
   createMorphXmlToolResponseFormatter,
   createQwen3CoderXmlToolResponseFormatter,
   createToolMiddleware,
   createUserContentToolResponseTemplate,
+  formatToolResponseAsKExaone2,
   formatToolResponseAsYaml,
   hermesProtocol,
   hermesSystemPromptTemplate,
   hermesToolMiddleware,
+  kExaone2Protocol,
+  kExaone2SystemPromptTemplate,
+  kExaone2ToolMiddleware,
   morphXmlSystemPromptTemplate,
   morphXmlToolMiddleware,
   qwen3coderSystemPromptTemplate,
@@ -23,6 +28,14 @@ describe("entry exports surface", () => {
 
   it("exports morphXmlToolMiddleware", () => {
     expect(morphXmlToolMiddleware).toBeDefined();
+  });
+
+  it("exports K-EXAONE-2.0 protocol, prompt, formatter, and middleware", () => {
+    expect(typeof kExaone2Protocol).toBe("function");
+    expect(typeof kExaone2SystemPromptTemplate).toBe("function");
+    expect(typeof createKExaone2ToolResponseFormatter).toBe("function");
+    expect(typeof formatToolResponseAsKExaone2).toBe("function");
+    expect(kExaone2ToolMiddleware).toBeDefined();
   });
 
   it("exports hermesProtocol", () => {

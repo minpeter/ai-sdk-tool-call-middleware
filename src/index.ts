@@ -9,6 +9,11 @@ export {
   hermesSystemPromptTemplate,
 } from "./core/prompts/hermes-prompt";
 export {
+  createKExaone2ToolResponseFormatter,
+  formatToolResponseAsKExaone2,
+  kExaone2SystemPromptTemplate,
+} from "./core/prompts/k-exaone-2-prompt";
+export {
   createMorphXmlToolResponseFormatter,
   morphFormatToolResponseAsXml,
   morphXmlSystemPromptTemplate,
@@ -35,6 +40,10 @@ export {
   yamlXmlSystemPromptTemplate,
 } from "./core/prompts/yaml-xml-prompt";
 export * from "./core/protocols/hermes-protocol";
+export {
+  KExaone2ToolParser,
+  kExaone2Protocol,
+} from "./core/protocols/k-exaone-2-protocol";
 export type { MorphXmlProtocolOptions } from "./core/protocols/morph-xml-protocol";
 export { morphXmlProtocol } from "./core/protocols/morph-xml-protocol";
 export * from "./core/protocols/protocol-interface";
