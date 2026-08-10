@@ -234,12 +234,12 @@ function stringifyWithContext(
     }
 
     const { value: currentValue } = task;
-    if (isKExaone2HistoryNumber(currentValue)) {
+    if (context === "history" && isKExaone2HistoryNumber(currentValue)) {
       chunks.push(stringifyLosslessHistoryNumber(currentValue));
       continue;
     }
     if (Array.isArray(currentValue) || isMapping(currentValue)) {
-      if (task.depth > K_EXAONE_2_MAX_NESTING_DEPTH) {
+      if (task.depth >= K_EXAONE_2_MAX_NESTING_DEPTH) {
         throw new KExaone2SerializationError("depth");
       }
       if (activeContainers.has(currentValue)) {

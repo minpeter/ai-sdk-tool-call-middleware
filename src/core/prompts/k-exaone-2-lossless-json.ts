@@ -5,11 +5,12 @@ import {
   K_EXAONE_2_HISTORY_NUMBER_PREFIX,
   K_EXAONE_2_HISTORY_STRING_PREFIX,
   K_EXAONE_2_JSON_NUMBER_RE,
-  type KExaone2HistoryNumber,
+  KExaone2HistoryNumber,
   readKExaone2JsonString,
   skipKExaone2JsonWhitespace,
 } from "./k-exaone-2-lossless-json-tokens";
 import {
+  K_EXAONE_2_MAX_JSON_INPUT_LENGTH,
   K_EXAONE_2_MAX_NESTING_DEPTH,
   K_EXAONE_2_MAX_SERIALIZATION_WORK_ITEMS,
   KExaone2SerializationError,
@@ -236,27 +237,22 @@ export function decodeKExaone2HistoryKey(key: string): string {
 export function isKExaone2HistoryNumber(
   value: unknown
 ): value is KExaone2HistoryNumber {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    value.type === "k-exaone-history-number" &&
-    "raw" in value &&
-    typeof value.raw === "string"
-  );
+  return value instanceof KExaone2HistoryNumber;
 }
 
 export function parseKExaone2LosslessJson(input: string): unknown {
+  if (input.length > K_EXAONE_2_MAX_JSON_INPUT_LENGTH) {
+    throw new KExaone2SerializationError("size");
+  }
   const rewritten = rewriteLosslessJson(input);
   return JSON.parse(rewritten, (_key, value: unknown) => {
     if (typeof value !== "string") {
       return value;
     }
     if (value.startsWith(K_EXAONE_2_HISTORY_NUMBER_PREFIX)) {
-      return {
-        raw: value.slice(K_EXAONE_2_HISTORY_NUMBER_PREFIX.length),
-        type: "k-exaone-history-number",
-      } satisfies KExaone2HistoryNumber;
+      return new KExaone2HistoryNumber(
+        value.slice(K_EXAONE_2_HISTORY_NUMBER_PREFIX.length)
+      );
     }
     return value.startsWith(K_EXAONE_2_HISTORY_STRING_PREFIX)
       ? value.slice(K_EXAONE_2_HISTORY_STRING_PREFIX.length)

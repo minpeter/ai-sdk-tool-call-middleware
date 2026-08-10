@@ -4,11 +4,14 @@ export const K_EXAONE_2_HISTORY_STRING_PREFIX = "\u0000kexaone:string:";
 export const K_EXAONE_2_JSON_NUMBER_RE =
   /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/;
 
-const JSON_WHITESPACE_RE = /\s/;
+const JSON_WHITESPACE_RE = /[ \t\n\r]/;
 
-export interface KExaone2HistoryNumber {
+export class KExaone2HistoryNumber {
   readonly raw: string;
-  readonly type: "k-exaone-history-number";
+
+  constructor(raw: string) {
+    this.raw = raw;
+  }
 }
 
 export function createKExaone2JsonSyntaxError(): SyntaxError {

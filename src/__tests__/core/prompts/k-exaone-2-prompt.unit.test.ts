@@ -1,6 +1,7 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
+import { stringifyKExaone2NativeSchemaJson } from "../../../core/prompts/k-exaone-2-native-json";
 import {
   formatToolResponseAsKExaone2,
   kExaone2SystemPromptTemplate,
@@ -247,6 +248,46 @@ describe("kExaone2SystemPromptTemplate", () => {
 
     expect(prompt).toContain('"x-dynamic": 1');
     expect(reads).toBe(1);
+  });
+
+  it("does not inspect history marker fields before schema preflight", () => {
+    const reads: string[] = [];
+    const inputSchema: LanguageModelV4FunctionTool["inputSchema"] = {};
+    for (const [key, value] of [
+      ["type", "object"],
+      ["raw", "7"],
+    ] satisfies Array<readonly [string, string]>) {
+      Object.defineProperty(inputSchema, key, {
+        enumerable: true,
+        get() {
+          reads.push(key);
+          return value;
+        },
+      });
+    }
+
+    const prompt = kExaone2SystemPromptTemplate([
+      {
+        type: "function",
+        name: "marker_fields",
+        inputSchema,
+      },
+    ]);
+
+    expect(prompt).toContain('"raw": "7", "type": "object"');
+    expect(reads).toEqual(["type", "raw"]);
+  });
+
+  it("enforces the schema depth limit at 256 containers", () => {
+    let allowed: unknown = null;
+    for (let depth = 0; depth < 256; depth += 1) {
+      allowed = [allowed];
+    }
+    expect(() => stringifyKExaone2NativeSchemaJson(allowed)).not.toThrow();
+
+    expectControlledSerializationFailure(() =>
+      stringifyKExaone2NativeSchemaJson([allowed])
+    );
   });
 });
 

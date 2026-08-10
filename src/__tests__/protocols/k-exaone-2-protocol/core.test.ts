@@ -148,6 +148,80 @@ describe("kExaone2Protocol", () => {
     );
   });
 
+  it("does not confuse ordinary history objects with internal numbers", () => {
+    const formatted = kExaone2Protocol().formatToolCall({
+      type: "tool-call",
+      toolCallId: "tc-marker",
+      toolName: "echo",
+      input:
+        '{"value":{"type":"k-exaone-history-number","raw":"7","extra":"kept"}}',
+    });
+
+    expect(formatted).toContain(
+      '<parameter=value>\n{"type": "k-exaone-history-number", "raw": "7", "extra": "kept"}\n</parameter>'
+    );
+  });
+
+  it("matches native last-wins behavior for duplicate members", () => {
+    const formatted = kExaone2Protocol().formatToolCall({
+      type: "tool-call",
+      toolCallId: "tc-duplicates",
+      toolName: "echo",
+      input: '{"dup":1,"dup":2,"nested":{"a":1,"a":2}}',
+    });
+
+    expect(formatted).toContain("<parameter=dup>\n2\n</parameter>");
+    expect(formatted).toContain('<parameter=nested>\n{"a": 2}\n</parameter>');
+  });
+
+  it("falls back raw when JSON contains non-standard whitespace", () => {
+    const input = '{"value":\u000b1}';
+    const formatted = kExaone2Protocol().formatToolCall({
+      type: "tool-call",
+      toolCallId: "tc-whitespace",
+      toolName: "echo",
+      input,
+    });
+
+    expect(formatted).toContain(`<parameter=input>\n${input}\n</parameter>`);
+    expect(formatted).not.toContain("<parameter=value>");
+  });
+
+  it("enforces the history depth limit at 256 containers", () => {
+    const allowed = `${"[".repeat(256)}null${"]".repeat(256)}`;
+    expect(() =>
+      kExaone2Protocol().formatToolCall({
+        type: "tool-call",
+        toolCallId: "tc-depth-allowed",
+        toolName: "echo",
+        input: allowed,
+      })
+    ).not.toThrow();
+
+    const rejected = `[${allowed}]`;
+    expectControlledSerializationFailure(() =>
+      kExaone2Protocol().formatToolCall({
+        type: "tool-call",
+        toolCallId: "tc-depth-rejected",
+        toolName: "echo",
+        input: rejected,
+      })
+    );
+  });
+
+  it("rejects oversized raw history before parsing", () => {
+    const input = `{"value":"${"x".repeat(256_000)}"}`;
+
+    expectControlledSerializationFailure(() =>
+      kExaone2Protocol().formatToolCall({
+        type: "tool-call",
+        toolCallId: "tc-oversized-input",
+        toolName: "echo",
+        input,
+      })
+    );
+  });
+
   it("replays XML delimiters with Friendli native history bytes", () => {
     const protocol = kExaone2Protocol();
     const formatted = protocol.formatToolCall({
