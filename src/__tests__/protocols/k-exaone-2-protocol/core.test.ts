@@ -30,6 +30,21 @@ const tools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
+function expectControlledSerializationFailure(run: () => void): void {
+  try {
+    run();
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(RangeError);
+    if (!(error instanceof Error)) {
+      throw error;
+    }
+    expect(error.name).toBe("KExaone2SerializationError");
+    return;
+  }
+  throw new Error("Expected serialization to fail");
+}
+
 describe("kExaone2Protocol", () => {
   it("parses native tool calls while preserving surrounding text order", () => {
     const result = kExaone2Protocol().parseGeneratedText({
@@ -186,5 +201,21 @@ describe("kExaone2Protocol", () => {
         text: "<think>Need weather data.</think>Answer",
       },
     ]);
+  });
+
+  it("fails closed on excessively deep history arguments", () => {
+    let input = "null";
+    for (let depth = 0; depth < 2500; depth += 1) {
+      input = `{"value":${input}}`;
+    }
+
+    expectControlledSerializationFailure(() =>
+      kExaone2Protocol().formatToolCall({
+        type: "tool-call",
+        toolCallId: "tc-deep",
+        toolName: "echo",
+        input,
+      })
+    );
   });
 });

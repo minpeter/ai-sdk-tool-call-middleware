@@ -19,6 +19,21 @@ const tools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
+function expectControlledSerializationFailure(run: () => void): void {
+  try {
+    run();
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(RangeError);
+    if (!(error instanceof Error)) {
+      throw error;
+    }
+    expect(error.name).toBe("KExaone2SerializationError");
+    return;
+  }
+  throw new Error("Expected serialization to fail");
+}
+
 describe("kExaone2SystemPromptTemplate", () => {
   it("renders native K-EXAONE-2.0 tool declarations and call instructions", () => {
     const prompt = kExaone2SystemPromptTemplate(tools);
@@ -131,6 +146,41 @@ describe("kExaone2SystemPromptTemplate", () => {
 
     expect(prompt).toBe(kExaone2SystemPromptTemplate(tools));
     expect(prompt).not.toContain("injected");
+  });
+
+  it("fails closed on excessively deep tool schemas", () => {
+    let schema: Record<string, unknown> = { type: "null" };
+    for (let depth = 0; depth < 2500; depth += 1) {
+      schema = {
+        type: "object",
+        properties: { value: schema },
+      };
+    }
+
+    expectControlledSerializationFailure(() =>
+      kExaone2SystemPromptTemplate([
+        {
+          type: "function",
+          name: "deep_schema",
+          inputSchema: schema,
+        },
+      ])
+    );
+  });
+
+  it("fails closed on cyclic tool schemas", () => {
+    const schema: Record<string, unknown> = { type: "object" };
+    schema.properties = { self: schema };
+
+    expectControlledSerializationFailure(() =>
+      kExaone2SystemPromptTemplate([
+        {
+          type: "function",
+          name: "cyclic_schema",
+          inputSchema: schema,
+        },
+      ])
+    );
   });
 });
 

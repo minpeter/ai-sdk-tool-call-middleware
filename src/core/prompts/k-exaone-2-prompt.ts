@@ -1,5 +1,6 @@
 import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
+import { stringifyKExaone2NativeSchemaJson } from "./k-exaone-2-native-json";
 import { formatToolResponseWithMedia } from "./shared/tool-response-with-media";
 import type { ToolResponseMediaStrategy } from "./shared/tool-result-normalizer";
 import type { ToolResponsePromptTemplateResult } from "./shared/tool-result-user-content";
@@ -16,22 +17,6 @@ value1
 </function>
 </tool_call>`;
 
-const JSON_EXPONENT_RE = /e([+-])(\d+)$/;
-// Friendli's renderer canonicalizes schema numbers through Python-style JSON,
-// while replayed arguments retain signed/unsigned 64-bit integers before
-// falling back to float notation. These are separate byte-level contracts.
-const PYTHON_SCIENTIFIC_NOTATION_THRESHOLD = 1e16;
-const SCHEMA_LARGE_DECIMAL_THRESHOLD = 1e15;
-const SIGNED_64_BIT_LOWER_BOUND = -(2 ** 63);
-const UNSIGNED_64_BIT_LIMIT = 2 ** 64;
-
-type Mapping = Record<string, unknown>;
-type NativeJsonContext = "history" | "schema";
-
-function isMapping(value: unknown): value is Mapping {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function normalizeInputSchema(inputSchema: unknown): unknown {
   if (typeof inputSchema !== "string") {
     return inputSchema;
@@ -44,109 +29,13 @@ function normalizeInputSchema(inputSchema: unknown): unknown {
   }
 }
 
-function compareByCodePoint(left: string, right: string): number {
-  const leftCharacters = Array.from(left);
-  const rightCharacters = Array.from(right);
-  const length = Math.min(leftCharacters.length, rightCharacters.length);
-  for (let index = 0; index < length; index += 1) {
-    const leftCodePoint = leftCharacters[index]?.codePointAt(0) ?? -1;
-    const rightCodePoint = rightCharacters[index]?.codePointAt(0) ?? -1;
-    if (leftCodePoint !== rightCodePoint) {
-      return leftCodePoint - rightCodePoint;
-    }
-  }
-  return leftCharacters.length - rightCharacters.length;
-}
-
-function stringifyPythonExponent(value: number): string {
-  return value
-    .toExponential()
-    .replace(
-      JSON_EXPONENT_RE,
-      (_match, sign: string, exponent: string) =>
-        `e${sign}${exponent.padStart(2, "0")}`
-    );
-}
-
-function stringifyNativeNumber(
-  value: number,
-  context: NativeJsonContext
-): string {
-  if (value !== 0 && Math.abs(value) < 0.0001 && Number.isFinite(value)) {
-    return stringifyPythonExponent(value);
-  }
-
-  const serialized = JSON.stringify(value);
-  const absoluteValue = Math.abs(value);
-  if (
-    context === "schema" &&
-    Number.isInteger(value) &&
-    absoluteValue >= SCHEMA_LARGE_DECIMAL_THRESHOLD &&
-    serialized.endsWith("0")
-  ) {
-    return absoluteValue < PYTHON_SCIENTIFIC_NOTATION_THRESHOLD
-      ? `${serialized}.0`
-      : stringifyPythonExponent(value);
-  }
-  if (
-    context === "history" &&
-    Number.isInteger(value) &&
-    (value <= SIGNED_64_BIT_LOWER_BOUND || value >= UNSIGNED_64_BIT_LIMIT)
-  ) {
-    return stringifyPythonExponent(value);
-  }
-  return serialized;
-}
-
-function stringifyKExaone2NativeJsonWithContext(
-  value: unknown,
-  context: NativeJsonContext
-): string {
-  if (Array.isArray(value)) {
-    return `[${value
-      .map((item) => stringifyKExaone2NativeJsonWithContext(item, context))
-      .join(", ")}]`;
-  }
-
-  if (isMapping(value)) {
-    const keys = Object.keys(value);
-    if (context === "schema") {
-      keys.sort(compareByCodePoint);
-    }
-    const properties = keys.flatMap((key) => {
-      const property = value[key];
-      if (
-        property === undefined ||
-        typeof property === "function" ||
-        typeof property === "symbol"
-      ) {
-        return [];
-      }
-      return [
-        `${JSON.stringify(key)}: ${stringifyKExaone2NativeJsonWithContext(property, context)}`,
-      ];
-    });
-    return `{${properties.join(", ")}}`;
-  }
-
-  if (typeof value === "number") {
-    return stringifyNativeNumber(value, context);
-  }
-
-  return JSON.stringify(value) ?? "null";
-}
-
-export function stringifyKExaone2NativeJson(value: unknown): string {
-  return stringifyKExaone2NativeJsonWithContext(value, "history");
-}
-
 function renderTool(tool: LanguageModelV4FunctionTool): string {
   const functionProperties = [
     `"name": ${JSON.stringify(tool.name)}`,
     ...(tool.description === undefined
       ? []
       : [`"description": ${JSON.stringify(tool.description)}`]),
-    `"parameters": ${stringifyKExaone2NativeJsonWithContext(normalizeInputSchema(tool.inputSchema), "schema")}`,
+    `"parameters": ${stringifyKExaone2NativeSchemaJson(normalizeInputSchema(tool.inputSchema))}`,
   ];
   const declaration = `{"type": "function", "function": {${functionProperties.join(", ")}}}`;
   return `<tool>${declaration}</tool>`;

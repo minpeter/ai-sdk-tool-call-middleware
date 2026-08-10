@@ -1,5 +1,5 @@
 import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
-import { stringifyKExaone2NativeJson } from "../prompts/k-exaone-2-prompt";
+import { stringifyKExaone2NativeJson } from "../prompts/k-exaone-2-native-json";
 import { formatToolsWithPromptTemplate } from "../utils/protocol-utils";
 import type { TCMProtocol } from "./protocol-interface";
 import { TOOL_CALL_BLOCK_RE } from "./qwen3coder-call-syntax";
