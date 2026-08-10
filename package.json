@@ -75,22 +75,22 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@ai-sdk/openai": "4.0.27",
-    "@ai-sdk/openai-compatible": "3.0.20",
-    "@ai-sdk/provider": "4.0.4",
-    "@ai-sdk/provider-utils": "5.0.18",
+    "@ai-sdk/openai": "4.0.33",
+    "@ai-sdk/openai-compatible": "3.0.25",
+    "@ai-sdk/provider": "4.0.6",
+    "@ai-sdk/provider-utils": "5.0.23",
     "@arethetypeswrong/cli": "^0.18.2",
-    "@biomejs/biome": "2.5.6",
+    "@biomejs/biome": "2.5.7",
     "@changesets/cli": "2.31.1",
     "@types/node": "^26.1.2",
     "@vitest/coverage-v8": "^4.1.10",
-    "ai": "7.0.48",
+    "ai": "7.0.55",
     "npm-run-all": "^4.1.5",
     "rimraf": "^6.1.3",
     "tsdown": "^0.22.14",
     "typescript": "7.0.2",
-    "ultracite": "7.10.0",
-    "vite": "^8.2.0",
+    "ultracite": "7.10.1",
+    "vite": "^8.2.1",
     "vitest": "^4.1.10",
     "zod": "^4.4.3"
   },
@@ -111,7 +111,7 @@
       "js-yaml@3": "^3.15.0",
       "js-yaml@4": "^4.2.0",
       "shell-quote": "^1.8.4",
-      "vite": "^8.2.0"
+      "vite": "^8.2.1"
     }
   }
 }
