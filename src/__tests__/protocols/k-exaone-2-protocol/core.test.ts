@@ -134,6 +134,20 @@ describe("kExaone2Protocol", () => {
     );
   });
 
+  it("preserves unsafe integer lexemes and integer-like key order", () => {
+    const formatted = kExaone2Protocol().formatToolCall({
+      type: "tool-call",
+      toolCallId: "tc-lossless",
+      toolName: "echo",
+      input:
+        '{"safePlusOne":9007199254740993,"signedMin":-9223372036854775808,"unsignedMax":18446744073709551615,"outside":18446744073709551616,"floatOne":1.0,"nested":{"2":"two","1":"one","01":"leading"}}',
+    });
+
+    expect(formatted).toBe(
+      '<tool_call>\n<function=echo>\n<parameter=safePlusOne>\n9007199254740993\n</parameter>\n<parameter=signedMin>\n-9223372036854775808\n</parameter>\n<parameter=unsignedMax>\n18446744073709551615\n</parameter>\n<parameter=outside>\n1.8446744073709552e+19\n</parameter>\n<parameter=floatOne>\n1.0\n</parameter>\n<parameter=nested>\n{"2": "two", "1": "one", "01": "leading"}\n</parameter>\n</function>\n</tool_call>'
+    );
+  });
+
   it("replays XML delimiters with Friendli native history bytes", () => {
     const protocol = kExaone2Protocol();
     const formatted = protocol.formatToolCall({

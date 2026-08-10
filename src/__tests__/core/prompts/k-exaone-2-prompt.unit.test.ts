@@ -202,6 +202,52 @@ describe("kExaone2SystemPromptTemplate", () => {
       ])
     );
   });
+
+  it("snapshots schema array length and values once in forward order", () => {
+    const reads: PropertyKey[] = [];
+    const values = new Proxy([1, 2], {
+      get(target, property, receiver) {
+        reads.push(property);
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    const prompt = kExaone2SystemPromptTemplate([
+      {
+        type: "function",
+        name: "array_accessors",
+        inputSchema: { enum: values },
+      },
+    ]);
+
+    expect(prompt).toContain('"enum": [1, 2]');
+    expect(reads).toEqual(["length", "0", "1"]);
+  });
+
+  it("snapshots schema object accessors once before sorting", () => {
+    let reads = 0;
+    const inputSchema: LanguageModelV4FunctionTool["inputSchema"] = {
+      type: "object",
+    };
+    Object.defineProperty(inputSchema, "x-dynamic", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads;
+      },
+    });
+
+    const prompt = kExaone2SystemPromptTemplate([
+      {
+        type: "function",
+        name: "object_accessors",
+        inputSchema,
+      },
+    ]);
+
+    expect(prompt).toContain('"x-dynamic": 1');
+    expect(reads).toBe(1);
+  });
 });
 
 describe("formatToolResponseAsKExaone2", () => {

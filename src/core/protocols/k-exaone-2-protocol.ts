@@ -1,5 +1,11 @@
 import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
+import {
+  decodeKExaone2HistoryKey,
+  isKExaone2HistoryNumber,
+  parseKExaone2LosslessJson,
+} from "../prompts/k-exaone-2-lossless-json";
 import { stringifyKExaone2NativeJson } from "../prompts/k-exaone-2-native-json";
+import { KExaone2SerializationError } from "../prompts/k-exaone-2-serialization-error";
 import { formatToolsWithPromptTemplate } from "../utils/protocol-utils";
 import type { TCMProtocol } from "./protocol-interface";
 import { TOOL_CALL_BLOCK_RE } from "./qwen3coder-call-syntax";
@@ -22,8 +28,11 @@ function parseToolCallInput(input: string | null | undefined): unknown {
   }
 
   try {
-    return JSON.parse(input) as unknown;
-  } catch {
+    return parseKExaone2LosslessJson(input);
+  } catch (error) {
+    if (error instanceof KExaone2SerializationError) {
+      throw error;
+    }
     return input;
   }
 }
@@ -35,8 +44,14 @@ function renderParameterValue(value: unknown): string {
 function formatKExaone2ToolCall(toolCall: LanguageModelV4ToolCall): string {
   const input = parseToolCallInput(toolCall.input);
   const entries: [string, unknown][] =
-    typeof input === "object" && input !== null && !Array.isArray(input)
-      ? Object.entries(input)
+    typeof input === "object" &&
+    input !== null &&
+    !Array.isArray(input) &&
+    !isKExaone2HistoryNumber(input)
+      ? Object.entries(input).map(([name, value]) => [
+          decodeKExaone2HistoryKey(name),
+          value,
+        ])
       : [["input", input]];
   const parameters = entries
     .map(
