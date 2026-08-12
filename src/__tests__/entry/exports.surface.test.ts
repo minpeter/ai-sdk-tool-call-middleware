@@ -12,12 +12,17 @@ import {
   hermesProtocol,
   hermesSystemPromptTemplate,
   hermesToolMiddleware,
+  KExaone236BToolParser,
   kExaone2Protocol,
   kExaone2SystemPromptTemplate,
   kExaone2ToolMiddleware,
+  kExaone236BProtocol,
+  kExaone236BToolDeclaration,
+  kExaone236BToolMiddleware,
   morphXmlSystemPromptTemplate,
   morphXmlToolMiddleware,
   qwen3coderSystemPromptTemplate,
+  transformKExaone236BParams,
   yamlXmlSystemPromptTemplate,
 } from "../../index";
 
@@ -36,6 +41,14 @@ describe("entry exports surface", () => {
     expect(typeof createKExaone2ToolResponseFormatter).toBe("function");
     expect(typeof formatToolResponseAsKExaone2).toBe("function");
     expect(kExaone2ToolMiddleware).toBeDefined();
+  });
+
+  it("exports the complete K-EXAONE-236B surface", () => {
+    expect(typeof kExaone236BProtocol).toBe("function");
+    expect(typeof KExaone236BToolParser).toBe("function");
+    expect(typeof kExaone236BToolDeclaration).toBe("function");
+    expect(typeof transformKExaone236BParams).toBe("function");
+    expect(kExaone236BToolMiddleware).toBeDefined();
   });
 
   it("exports hermesProtocol", () => {
