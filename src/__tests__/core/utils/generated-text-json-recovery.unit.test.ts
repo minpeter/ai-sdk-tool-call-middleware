@@ -31,15 +31,17 @@ const tools: LanguageModelV4FunctionTool[] = [
 
 describe("recoverToolCallFromJsonCandidates", () => {
   it("ignores null tagged and fenced candidates", () => {
-    expect(() =>
+    const recover = () =>
       recoverToolCallFromJsonCandidates(
         "<tool_call>null</tool_call>\n```json\nnull\n```",
         tools,
         () => {
           throw new Error("resolver should not run");
         }
-      )
-    ).not.toThrow();
+      );
+
+    expect(recover).not.toThrow();
+    expect(recover()).toBeNull();
   });
 
   it("recovers every resolvable JSON candidate in order", () => {
