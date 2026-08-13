@@ -44,4 +44,25 @@ describe("kExaone236BToolDeclaration", () => {
     // Then
     expect(declaration).toBe("");
   });
+
+  it("renders multiple tools without an undefined description", () => {
+    const tools = [
+      {
+        type: "function",
+        name: "first",
+        inputSchema:
+          '{"type":"object","properties":{"value":{"type":"string"}}}' as unknown as LanguageModelV4FunctionTool["inputSchema"],
+      },
+      {
+        type: "function",
+        name: "second",
+        description: "Second tool.",
+        inputSchema: { type: "object" },
+      },
+    ] satisfies LanguageModelV4FunctionTool[];
+
+    expect(kExaone236BToolDeclaration(tools)).toBe(
+      '# Tools\n<tool>{"type": "function", "function": {"name": "first", "parameters": {"properties": {"value": {"type": "string"}}, "type": "object"}}}</tool>\n<tool>{"type": "function", "function": {"name": "second", "description": "Second tool.", "parameters": {"type": "object"}}}</tool>\n'
+    );
+  });
 });

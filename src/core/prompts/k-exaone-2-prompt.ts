@@ -29,7 +29,9 @@ function normalizeInputSchema(inputSchema: unknown): unknown {
   }
 }
 
-function renderTool(tool: LanguageModelV4FunctionTool): string {
+export function renderKExaoneNativeTool(
+  tool: LanguageModelV4FunctionTool
+): string {
   const functionProperties = [
     `"name": ${JSON.stringify(tool.name)}`,
     ...(tool.description === undefined
@@ -48,7 +50,7 @@ export function kExaone2SystemPromptTemplate(
     return "";
   }
 
-  const declarations = tools.map(renderTool).join("\n");
+  const declarations = tools.map(renderKExaoneNativeTool).join("\n");
   const prompt = `# Tools
 The available tools are defined below in JSON format.
 When calling a tool, use XML with <function=...> and one <parameter=...> block per argument.
