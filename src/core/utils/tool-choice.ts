@@ -176,7 +176,7 @@ export function resolveToolChoiceSelection({
       { errorMessage }
     );
     return {
-      toolName: "unknown",
+      toolName: expectedToolName ?? "unknown",
       input: "{}",
       originText: "",
     };
@@ -193,16 +193,32 @@ export function resolveToolChoiceSelection({
       expectedToolName,
       toolName: parsed.toolName,
     });
-    let originalArguments: unknown = {};
+    let originalArguments: unknown;
     try {
-      const originalPayload = JSON.parse(text) as Record<string, unknown>;
-      originalArguments = originalPayload.arguments ?? {};
+      const originalPayload = JSON.parse(text) as unknown;
+      if (
+        typeof originalPayload === "object" &&
+        originalPayload !== null &&
+        !Array.isArray(originalPayload) &&
+        Object.hasOwn(originalPayload, "arguments")
+      ) {
+        originalArguments = (originalPayload as Record<string, unknown>)
+          .arguments;
+      }
     } catch {
-      originalArguments = {};
+      originalArguments = undefined;
     }
     parsed.toolName = expectedToolName;
-    parsed.input =
-      coerceToolCallInput(expectedToolName, originalArguments, tools) ?? "{}";
+    parsed.input = "{}";
+    if (
+      originalArguments &&
+      typeof originalArguments === "object" &&
+      !Array.isArray(originalArguments) &&
+      !toolCallInputHasPrototypeSensitiveKey(originalArguments)
+    ) {
+      parsed.input =
+        coerceToolCallInput(expectedToolName, originalArguments, tools) ?? "{}";
+    }
   }
 
   return {

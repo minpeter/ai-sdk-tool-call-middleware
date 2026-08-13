@@ -9,6 +9,8 @@ import {
   stringifyKExaone2NativeJson,
 } from "../prompts/k-exaone-2-native-json";
 import { resolveToolCall } from "./hermes-call-parsing";
+import { normalizeJsonStringCtrl } from "./hermes-json-normalization";
+import { normalizeInvalidJsonEscapes } from "./hermes-json-repair";
 import { hermesProtocol } from "./hermes-protocol";
 import { extractStreamingToolCallProgress } from "./hermes-streaming-progress";
 import { parseKExaoneToolCallInput } from "./k-exaone-tool-call-input";
@@ -43,7 +45,15 @@ function overlayLosslessNumbers(
     return Object.fromEntries(
       Object.entries(validatedValue).map(([key, value]) => [
         key,
-        overlayLosslessNumbers(rawEntries.get(key), value),
+        overlayLosslessNumbers(
+          rawEntries.get(key) ??
+            [...rawEntries.entries()].find(
+              ([rawKey]) =>
+                rawKey.replaceAll("_", "").toLowerCase() ===
+                key.replaceAll("_", "").toLowerCase()
+            )?.[1],
+          value
+        ),
       ])
     );
   }
@@ -64,7 +74,12 @@ function resolveKExaone236BToolCall(
       return validated;
     }
     const validatedInput = JSON.parse(validated.input) as unknown;
-    const losslessInput = parseKExaone2LosslessJson(progress.argumentsText);
+    const normalizedArguments = normalizeInvalidJsonEscapes(
+      normalizeJsonStringCtrl(progress.argumentsText)
+    )
+      .replaceAll("'", '"')
+      .replace(/,(\s*[}\]])/g, "$1");
+    const losslessInput = parseKExaone2LosslessJson(normalizedArguments);
     return {
       ok: true,
       toolName: validated.toolName,

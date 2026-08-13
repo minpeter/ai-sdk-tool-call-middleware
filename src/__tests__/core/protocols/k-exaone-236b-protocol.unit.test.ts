@@ -113,6 +113,45 @@ describe("kExaone236BProtocol", () => {
 
   it.each([
     [
+      "relaxed JSON",
+      "{'name':'record_numbers','arguments':{'unsafeInteger':9007199254740993,'decimal':1.0,}}",
+      '{"unsafeInteger":9007199254740993,"decimal":1.0}',
+    ],
+    [
+      "strict key normalization",
+      '{"name":"record_numbers","arguments":{"user_id":9007199254740993}}',
+      '{"userId":9007199254740993}',
+    ],
+  ])("preserves numeric lexemes through %s", (_name, body, expectedInput) => {
+    const numericTools = [
+      {
+        type: "function",
+        name: "record_numbers",
+        inputSchema: {
+          type: "object",
+          properties: {
+            unsafeInteger: { type: "integer" },
+            decimal: { type: "number" },
+            userId: { type: "integer" },
+          },
+          required: expectedInput.includes("userId") ? ["userId"] : undefined,
+          additionalProperties: false,
+        },
+      },
+    ] satisfies LanguageModelV4FunctionTool[];
+
+    const content = kExaone236BProtocol().parseGeneratedText({
+      text: `<tool_call>${body}</tool_call>`,
+      tools: numericTools,
+    });
+
+    expect(content).toContainEqual(
+      expect.objectContaining({ type: "tool-call", input: expectedInput })
+    );
+  });
+
+  it.each([
+    [
       "nested-start recovery",
       '<tool_call>{"name":"record_numbers","arguments":{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07}}\n<tool_call>{"name":"record_numbers","arguments":{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07}}</tool_call>',
     ],
@@ -120,7 +159,7 @@ describe("kExaone236BProtocol", () => {
       "finish salvage",
       '<tool_call>{"name":"record_numbers","arguments":{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07}}',
     ],
-  ])("preserves numeric lexemes through %s", async (_name, text) => {
+  ])("preserves numeric lexemes through %s", async (name, text) => {
     const numericTools = [
       {
         type: "function",
@@ -142,7 +181,7 @@ describe("kExaone236BProtocol", () => {
     const streamed = await runStream([text], numericTools);
     const calls = streamed.filter((part) => part.type === "tool-call");
 
-    expect(calls.length).toBeGreaterThan(0);
+    expect(calls).toHaveLength(name === "nested-start recovery" ? 2 : 1);
     expect(calls.every((call) => call.input === expectedInput)).toBe(true);
   });
 

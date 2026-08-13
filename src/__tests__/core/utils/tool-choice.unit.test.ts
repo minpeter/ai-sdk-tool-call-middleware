@@ -279,4 +279,49 @@ describe("tool-choice utils", () => {
         '{"name":"other","arguments":{"selectedValue":"kept","otherValue":"drop"}}',
     });
   });
+
+  it.each([
+    ['{"name":"other","arguments":"bad"}', "{}"],
+    ['{"name":"other","arguments":{"__proto__":{"polluted":true}}}', "{}"],
+  ])("rejects malformed mismatched arguments: %s", (text, input) => {
+    expect(
+      resolveToolChoiceSelection({
+        text,
+        tools: [
+          {
+            type: "function",
+            name: "safe",
+            inputSchema: { type: "object" },
+          },
+          {
+            type: "function",
+            name: "other",
+            inputSchema: { type: "object" },
+          },
+        ],
+        expectedToolName: "safe",
+        errorMessage: "parse error",
+      })
+    ).toMatchObject({ toolName: "safe", input });
+  });
+
+  it.each(["", "not JSON"])(
+    "preserves the forced tool name for invalid output: %j",
+    (text) => {
+      expect(
+        resolveToolChoiceSelection({
+          text,
+          tools: [
+            {
+              type: "function",
+              name: "safe",
+              inputSchema: { type: "object" },
+            },
+          ],
+          expectedToolName: "safe",
+          errorMessage: "parse error",
+        })
+      ).toMatchObject({ toolName: "safe", input: "{}" });
+    }
+  );
 });
