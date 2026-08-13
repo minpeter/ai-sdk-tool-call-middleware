@@ -1,5 +1,13 @@
 # @ai-sdk-tool/parser
 
+## 5.2.0
+
+### Minor Changes
+
+- 52aa3b0: Add public K-EXAONE-2.0 middleware and protocol exports, including native tool
+  declarations, XML tool-call formatting, `<tool_result>` responses, and Friendli
+  reasoning integration.
+
 ## 5.1.6
 
 ### Patch Changes
