@@ -569,6 +569,32 @@ function handleOrphanToolCallSpan(options: {
   return skipTo;
 }
 
+function findUnclosedJsonToolCallStart(
+  text: string,
+  searchFrom: number,
+  toolCallStart: string,
+  toolCallEnd: string,
+  tools: LanguageModelV4FunctionTool[]
+): number | null {
+  const startIndex = text.indexOf(toolCallStart, searchFrom);
+  if (startIndex === -1) {
+    return null;
+  }
+  const bodyStart = startIndex + toolCallStart.length;
+  if (!text.slice(bodyStart).trimStart().startsWith("{")) {
+    return null;
+  }
+  if (
+    extractSensitiveIncompleteToolCallDropSpans(
+      text.slice(startIndex),
+      tools
+    ).some((span) => span.startIndex === 0)
+  ) {
+    return null;
+  }
+  return text.indexOf(toolCallEnd, bodyStart) === -1 ? startIndex : null;
+}
+
 export const hermesProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
@@ -615,6 +641,24 @@ export const hermesProtocol = ({
     let searchFrom = 0;
 
     while (searchFrom < text.length) {
+      const unclosedStartIndex = findUnclosedJsonToolCallStart(
+        text,
+        searchFrom,
+        toolCallStart,
+        toolCallEnd,
+        tools
+      );
+      if (unclosedStartIndex !== null) {
+        if (unclosedStartIndex > currentIndex) {
+          addTextSegment(
+            text.slice(currentIndex, unclosedStartIndex),
+            processedElements
+          );
+        }
+        addTextSegment(text.slice(unclosedStartIndex), processedElements);
+        currentIndex = text.length;
+        break;
+      }
       const span = findNextToolCallSpan(
         text,
         searchFrom,
