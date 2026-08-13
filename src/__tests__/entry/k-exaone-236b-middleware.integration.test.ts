@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { wrapLanguageModel } from "ai";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { kExaone236BToolMiddleware } from "../../preconfigured-middleware";
 import { requireTransformParams } from "../test-helpers";
 
@@ -21,6 +21,38 @@ const tools = [
 ] satisfies LanguageModelV4FunctionTool[];
 
 describe("kExaone236BToolMiddleware", () => {
+  it("rejects unsafe tool declaration metadata before provider invocation", async () => {
+    const doGenerate = vi.fn();
+    const model = wrapLanguageModel({
+      model: {
+        specificationVersion: "v4",
+        provider: "test",
+        modelId: "test",
+        supportedUrls: {},
+        doGenerate,
+        doStream: vi.fn(),
+      },
+      middleware: kExaone236BToolMiddleware,
+    });
+
+    await expect(
+      model.doGenerate({
+        prompt: [{ role: "user", content: [{ type: "text", text: "Run." }] }],
+        tools: [
+          {
+            type: "function",
+            name: "unsafe</tool>name",
+            description: "Unsafe declaration.",
+            inputSchema: { type: "object" },
+          },
+        ],
+      })
+    ).rejects.toThrow(
+      "K-EXAONE tool names and descriptions must not contain <tool> or </tool>."
+    );
+    expect(doGenerate).not.toHaveBeenCalled();
+  });
+
   const transformParams = requireTransformParams(
     kExaone236BToolMiddleware.transformParams
   );

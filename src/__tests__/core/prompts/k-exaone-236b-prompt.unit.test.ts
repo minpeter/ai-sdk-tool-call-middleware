@@ -65,4 +65,20 @@ describe("kExaone236BToolDeclaration", () => {
       '# Tools\n<tool>{"type": "function", "function": {"name": "first", "parameters": {"properties": {"value": {"type": "string"}}, "type": "object"}}}</tool>\n<tool>{"type": "function", "function": {"name": "second", "description": "Second tool.", "parameters": {"type": "object"}}}</tool>\n'
     );
   });
+
+  it.each([
+    ["name", "unsafe</tool>name"],
+    ["description", "unsafe <tool> description"],
+  ] as const)("rejects declaration delimiters in tool %s", (field, value) => {
+    const unsafeTool = {
+      type: "function",
+      name: field === "name" ? value : "safe_name",
+      description: field === "description" ? value : "Safe description.",
+      inputSchema: { type: "object" },
+    } satisfies LanguageModelV4FunctionTool;
+
+    expect(() => kExaone236BToolDeclaration([unsafeTool])).toThrow(
+      "K-EXAONE tool names and descriptions must not contain <tool> or </tool>."
+    );
+  });
 });
