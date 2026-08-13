@@ -348,7 +348,12 @@ function resolveCandidatePayload(
   if (hasPrototypeSensitiveStructuralKey(parsed)) {
     return null;
   }
-  if (resolver && looksLikeKnownToolCandidate(parsed, tools)) {
+  if (
+    resolver &&
+    looksLikeKnownToolCandidate(parsed, tools) &&
+    isRecord(parsed) &&
+    Object.hasOwn(parsed, "arguments")
+  ) {
     const resolved = resolver(candidate.text, tools);
     if (resolved.ok) {
       return { toolName: resolved.toolName, input: resolved.input };

@@ -111,6 +111,33 @@ describe("kExaone236BProtocol", () => {
     );
   });
 
+  it("preserves supported parameters aliases during recovery", async () => {
+    const aliasTools = [
+      {
+        type: "function",
+        name: "record_numbers",
+        inputSchema: {
+          type: "object",
+          properties: { value: { type: "integer" } },
+          required: ["value"],
+          additionalProperties: false,
+        },
+      },
+    ] satisfies LanguageModelV4FunctionTool[];
+    const text =
+      '<tool_call>{"name":"record_numbers","parameters":{"value":9007199254740993}}';
+
+    const streamed = await runStream([text], aliasTools);
+
+    expect(streamed).toContainEqual(
+      expect.objectContaining({
+        type: "tool-call",
+        toolName: "record_numbers",
+        input: '{"value":9007199254740993}',
+      })
+    );
+  });
+
   it.each([
     [
       "relaxed JSON",

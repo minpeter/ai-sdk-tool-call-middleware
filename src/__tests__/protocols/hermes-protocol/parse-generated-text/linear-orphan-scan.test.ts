@@ -12,7 +12,7 @@ function parseRepeatedMalformedCalls(repetitions: number) {
     .spyOn(String.prototype, "indexOf")
     .mockImplementation(function (this: string, searchString, position) {
       if (String(this) === text && searchString === "</tool_call>") {
-        delimiterChecks += 1;
+        delimiterChecks += text.length - (position ?? 0);
       }
       return originalIndexOf.call(String(this), searchString, position);
     });

@@ -16,6 +16,8 @@ import { extractStreamingToolCallProgress } from "./hermes-streaming-progress";
 import { parseKExaoneToolCallInput } from "./k-exaone-tool-call-input";
 import type { TCMProtocol } from "./protocol-interface";
 
+const PARAMETERS_FIELD_REGEX = /([,{]\s*)(["'])parameters\2\s*:/;
+
 function overlayLosslessNumbers(
   rawValue: unknown,
   validatedValue: unknown
@@ -64,12 +66,16 @@ function resolveKExaone236BToolCall(
   toolCallJson: string,
   tools: Parameters<typeof resolveToolCall>[1]
 ): ReturnType<typeof resolveToolCall> {
-  const validated = resolveToolCall(toolCallJson, tools);
+  const canonicalToolCallJson = toolCallJson.replace(
+    PARAMETERS_FIELD_REGEX,
+    "$1$2arguments$2:"
+  );
+  const validated = resolveToolCall(canonicalToolCallJson, tools);
   if (!validated.ok) {
     return validated;
   }
   try {
-    const progress = extractStreamingToolCallProgress(toolCallJson);
+    const progress = extractStreamingToolCallProgress(canonicalToolCallJson);
     if (!(progress.argumentsComplete && progress.argumentsText)) {
       return validated;
     }
