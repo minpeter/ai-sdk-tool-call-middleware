@@ -221,4 +221,107 @@ describe("tool-choice utils", () => {
       originText: "[redacted sensitive tool call]",
     });
   });
+
+  it("enforces the selected tool name", () => {
+    const resolved = resolveToolChoiceSelection({
+      text: '{"name":"other","arguments":{"value":1}}',
+      tools: [
+        {
+          type: "function",
+          name: "safe",
+          inputSchema: {
+            type: "object",
+            properties: { value: { type: "number" } },
+          },
+        },
+      ],
+      expectedToolName: "safe",
+      errorMessage: "parse error",
+    });
+
+    expect(resolved).toMatchObject({
+      toolName: "safe",
+      input: '{"value":1}',
+    });
+  });
+
+  it("coerces mismatched tool arguments with the selected tool schema", () => {
+    const resolved = resolveToolChoiceSelection({
+      text: '{"name":"other","arguments":{"selectedValue":"kept","otherValue":"drop"}}',
+      tools: [
+        {
+          type: "function",
+          name: "safe",
+          inputSchema: {
+            type: "object",
+            properties: { selectedValue: { type: "string" } },
+            additionalProperties: false,
+          },
+        },
+        {
+          type: "function",
+          name: "other",
+          inputSchema: {
+            type: "object",
+            properties: { otherValue: { type: "string" } },
+            additionalProperties: false,
+          },
+        },
+      ],
+      expectedToolName: "safe",
+      errorMessage: "parse error",
+    });
+
+    expect(resolved).toEqual({
+      toolName: "safe",
+      input: '{"selectedValue":"kept"}',
+      originText:
+        '{"name":"other","arguments":{"selectedValue":"kept","otherValue":"drop"}}',
+    });
+  });
+
+  it.each([
+    ['{"name":"other","arguments":"bad"}', "{}"],
+    ['{"name":"other","arguments":{"__proto__":{"polluted":true}}}', "{}"],
+  ])("rejects malformed mismatched arguments: %s", (text, input) => {
+    expect(
+      resolveToolChoiceSelection({
+        text,
+        tools: [
+          {
+            type: "function",
+            name: "safe",
+            inputSchema: { type: "object" },
+          },
+          {
+            type: "function",
+            name: "other",
+            inputSchema: { type: "object" },
+          },
+        ],
+        expectedToolName: "safe",
+        errorMessage: "parse error",
+      })
+    ).toMatchObject({ toolName: "safe", input });
+  });
+
+  it.each(["", "not JSON"])(
+    "preserves the forced tool name for invalid output: %j",
+    (text) => {
+      expect(
+        resolveToolChoiceSelection({
+          text,
+          tools: [
+            {
+              type: "function",
+              name: "safe",
+              inputSchema: { type: "object" },
+            },
+          ],
+          expectedToolName: "safe",
+          errorMessage: "parse error",
+        })
+      ).toMatchObject({ toolName: "safe", input: "{}" });
+    }
+  );
 });

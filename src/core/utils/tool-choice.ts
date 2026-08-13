@@ -63,6 +63,7 @@ interface ParseToolChoiceOptions {
 
 interface ResolveToolChoiceSelectionOptions {
   errorMessage: string;
+  expectedToolName?: string;
   onError?: OnErrorFn;
   text?: string;
   tools: LanguageModelV4FunctionTool[];
@@ -163,6 +164,7 @@ export function resolveToolChoiceSelection({
   tools,
   onError,
   errorMessage,
+  expectedToolName,
 }: ResolveToolChoiceSelectionOptions): {
   input: string;
   originText: string;
@@ -174,7 +176,7 @@ export function resolveToolChoiceSelection({
       { errorMessage }
     );
     return {
-      toolName: "unknown",
+      toolName: expectedToolName ?? "unknown",
       input: "{}",
       originText: "",
     };
@@ -186,6 +188,38 @@ export function resolveToolChoiceSelection({
     onError,
     errorMessage,
   });
+  if (expectedToolName && parsed.toolName !== expectedToolName) {
+    onError?.("toolChoice generation returned an unexpected tool name", {
+      expectedToolName,
+      toolName: parsed.toolName,
+    });
+    let originalArguments: unknown;
+    try {
+      const originalPayload = JSON.parse(text) as unknown;
+      if (
+        typeof originalPayload === "object" &&
+        originalPayload !== null &&
+        !Array.isArray(originalPayload) &&
+        Object.hasOwn(originalPayload, "arguments")
+      ) {
+        originalArguments = (originalPayload as Record<string, unknown>)
+          .arguments;
+      }
+    } catch {
+      originalArguments = undefined;
+    }
+    parsed.toolName = expectedToolName;
+    parsed.input = "{}";
+    if (
+      originalArguments &&
+      typeof originalArguments === "object" &&
+      !Array.isArray(originalArguments) &&
+      !toolCallInputHasPrototypeSensitiveKey(originalArguments)
+    ) {
+      parsed.input =
+        coerceToolCallInput(expectedToolName, originalArguments, tools) ?? "{}";
+    }
+  }
 
   return {
     ...parsed,
