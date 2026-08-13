@@ -203,7 +203,8 @@ function recoverNestedStreamingToolCall(options: {
 
   const recoveredCall = recoverCompleteKnownCallBeforeNestedStart(
     jsonSoFar.slice(0, nestedStartIndex),
-    context.tools
+    context.tools,
+    context.resolveToolCall
   );
   if (recoveredCall) {
     closeTextBlock(state, controller);
@@ -507,6 +508,7 @@ function handleOrphanToolCallSpan(options: {
   toolCallEnd: string;
   toolCallStart: string;
   tools: LanguageModelV4FunctionTool[];
+  resolveToolCall: ProtocolToolCallResolver;
 }): number {
   const dropEndIndex = dropSensitiveOrphanToolCall(options);
   if (dropEndIndex !== null) {
@@ -517,7 +519,8 @@ function handleOrphanToolCallSpan(options: {
   if (options.nestedStartIndex !== undefined) {
     const recoveredCall = recoverCompleteKnownCallBeforeNestedStart(
       options.text.slice(bodyStart, options.nestedStartIndex),
-      options.tools
+      options.tools,
+      options.resolveToolCall
     );
     if (recoveredCall) {
       if (options.spanStartIndex > options.currentIndex) {
@@ -538,7 +541,8 @@ function handleOrphanToolCallSpan(options: {
   const arrayRecovery = recoverCompleteCallArrayBeforePartialEnd(
     options.text.slice(bodyStart),
     options.toolCallEnd,
-    options.tools
+    options.tools,
+    options.resolveToolCall
   );
   const { recoveredCalls } = arrayRecovery;
   if (recoveredCalls && recoveredCalls.length > 0) {
@@ -679,6 +683,7 @@ export const hermesProtocol = ({
           toolCallEnd,
           toolCallStart,
           tools,
+          resolveToolCall: toolCallResolver,
         });
         searchFrom = currentIndex;
         continue;
@@ -764,7 +769,8 @@ export const hermesProtocol = ({
             toolCallEnd,
             tools,
             options,
-            chunk
+            chunk,
+            toolCallResolver
           );
           return;
         }

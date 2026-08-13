@@ -244,4 +244,39 @@ describe("tool-choice utils", () => {
       input: '{"value":1}',
     });
   });
+
+  it("coerces mismatched tool arguments with the selected tool schema", () => {
+    const resolved = resolveToolChoiceSelection({
+      text: '{"name":"other","arguments":{"selectedValue":"kept","otherValue":"drop"}}',
+      tools: [
+        {
+          type: "function",
+          name: "safe",
+          inputSchema: {
+            type: "object",
+            properties: { selectedValue: { type: "string" } },
+            additionalProperties: false,
+          },
+        },
+        {
+          type: "function",
+          name: "other",
+          inputSchema: {
+            type: "object",
+            properties: { otherValue: { type: "string" } },
+            additionalProperties: false,
+          },
+        },
+      ],
+      expectedToolName: "safe",
+      errorMessage: "parse error",
+    });
+
+    expect(resolved).toEqual({
+      toolName: "safe",
+      input: '{"selectedValue":"kept"}',
+      originText:
+        '{"name":"other","arguments":{"selectedValue":"kept","otherValue":"drop"}}',
+    });
+  });
 });

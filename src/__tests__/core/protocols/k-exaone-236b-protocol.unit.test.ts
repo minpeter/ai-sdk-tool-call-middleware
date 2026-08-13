@@ -111,6 +111,41 @@ describe("kExaone236BProtocol", () => {
     );
   });
 
+  it.each([
+    [
+      "nested-start recovery",
+      '<tool_call>{"name":"record_numbers","arguments":{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07}}\n<tool_call>{"name":"record_numbers","arguments":{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07}}</tool_call>',
+    ],
+    [
+      "finish salvage",
+      '<tool_call>{"name":"record_numbers","arguments":{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07}}',
+    ],
+  ])("preserves numeric lexemes through %s", async (_name, text) => {
+    const numericTools = [
+      {
+        type: "function",
+        name: "record_numbers",
+        inputSchema: {
+          type: "object",
+          properties: {
+            unsafeInteger: { type: "integer" },
+            decimal: { type: "number" },
+            negativeZero: { type: "number" },
+            exponent: { type: "number" },
+          },
+        },
+      },
+    ] satisfies LanguageModelV4FunctionTool[];
+    const expectedInput =
+      '{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07}';
+
+    const streamed = await runStream([text], numericTools);
+    const calls = streamed.filter((part) => part.type === "tool-call");
+
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((call) => call.input === expectedInput)).toBe(true);
+  });
+
   it("formats history calls with native spacing and lossless number lexemes", () => {
     const protocol = kExaone236BProtocol();
 

@@ -253,7 +253,8 @@ function isStrictToolCallArray(value: unknown): boolean {
  */
 export function recoverCompleteKnownCallBeforeNestedStart(
   text: string,
-  tools: LanguageModelV4FunctionTool[]
+  tools: LanguageModelV4FunctionTool[],
+  resolver: ProtocolToolCallResolver = resolveToolCall
 ): { input: string; toolName: string } | null {
   const candidate = text.trim();
   let parsed: unknown;
@@ -282,7 +283,7 @@ export function recoverCompleteKnownCallBeforeNestedStart(
     return null;
   }
 
-  const resolved = resolveToolCall(candidate, tools);
+  const resolved = resolver(candidate, tools);
   return resolved.ok
     ? { input: resolved.input, toolName: resolved.toolName }
     : null;
@@ -315,7 +316,8 @@ function stripPartialEndFromPossibleCallArray(
 export function recoverCompleteCallArrayBeforePartialEnd(
   text: string,
   toolCallEnd: string,
-  tools: LanguageModelV4FunctionTool[]
+  tools: LanguageModelV4FunctionTool[],
+  resolver: ProtocolToolCallResolver = resolveToolCall
 ): {
   matchedArrayShape: boolean;
   recoveredCalls: ReturnType<typeof recoverKnownToolCallsFromText>;
@@ -333,7 +335,7 @@ export function recoverCompleteCallArrayBeforePartialEnd(
   }
   return {
     matchedArrayShape: true,
-    recoveredCalls: recoverKnownToolCallsFromText(candidate, tools),
+    recoveredCalls: recoverKnownToolCallsFromText(candidate, tools, resolver),
   };
 }
 
@@ -350,16 +352,18 @@ function salvageIncompleteToolCalls(
   controller: StreamController,
   rawToolCallContent: string,
   tools: LanguageModelV4FunctionTool[],
-  toolCallEnd: string
+  toolCallEnd: string,
+  resolver: ProtocolToolCallResolver
 ): boolean {
   const arrayRecovery = recoverCompleteCallArrayBeforePartialEnd(
     rawToolCallContent,
     toolCallEnd,
-    tools
+    tools,
+    resolver
   );
   const recoveredCalls = arrayRecovery.matchedArrayShape
     ? arrayRecovery.recoveredCalls
-    : recoverKnownToolCallsFromText(rawToolCallContent, tools);
+    : recoverKnownToolCallsFromText(rawToolCallContent, tools, resolver);
   if (!recoveredCalls || recoveredCalls.length === 0) {
     return false;
   }
@@ -384,7 +388,8 @@ function emitIncompleteToolCall(
   toolCallEnd: string,
   trailingBuffer: string,
   tools: LanguageModelV4FunctionTool[],
-  options?: ParserOptions
+  options: ParserOptions | undefined,
+  resolver: ProtocolToolCallResolver
 ) {
   if (!state.currentToolCallJson && trailingBuffer.length === 0) {
     state.isInsideToolCall = false;
@@ -393,30 +398,18 @@ function emitIncompleteToolCall(
 
   if (state.currentToolCallJson) {
     try {
-      const parsedToolCall = parseRJSON(
-        normalizeInvalidJsonEscapes(
-          normalizeJsonStringCtrl(state.currentToolCallJson)
-        )
-      );
-      if (!isParsedToolCallRecord(parsedToolCall)) {
-        throw new Error("Tool call object is missing own name or arguments");
+      const resolved = resolver(state.currentToolCallJson, tools);
+      if (!resolved.ok) {
+        throw resolved.error;
       }
-      if (hasPrototypeSensitiveKeyInJsonLikeObject(state.currentToolCallJson)) {
-        throw new Error("Tool call arguments contain prototype-sensitive keys");
+      if (state.currentToolCallJson.includes("<tool_call>")) {
+        throw new Error("Tool call body contains nested call separators");
       }
-      const policyArguments = applyToolArgumentKeyPolicy(
-        parsedToolCall.name,
-        parsedToolCall.arguments,
-        tools
-      );
-      if (policyArguments === null) {
-        throw new Error("Tool call arguments contain schema-unknown keys");
-      }
-      emitToolCallFromParsed(
+      emitResolvedToolCall(
         state,
         controller,
-        { ...parsedToolCall, arguments: policyArguments.args },
-        tools
+        resolved.toolName,
+        resolved.input
       );
       state.currentToolCallJson = "";
       state.isInsideToolCall = false;
@@ -436,7 +429,8 @@ function emitIncompleteToolCall(
       controller,
       rawToolCallContent,
       tools,
-      toolCallEnd
+      toolCallEnd,
+      resolver
     )
   ) {
     return;
@@ -507,7 +501,8 @@ export function handleFinishChunk(
   toolCallEnd: string,
   tools: LanguageModelV4FunctionTool[],
   options: ParserOptions | undefined,
-  chunk: LanguageModelV4StreamPart
+  chunk: LanguageModelV4StreamPart,
+  resolver: ProtocolToolCallResolver = resolveToolCall
 ) {
   if (state.isInsideToolCall) {
     const trailingBuffer = state.buffer;
@@ -519,7 +514,8 @@ export function handleFinishChunk(
       toolCallEnd,
       trailingBuffer,
       tools,
-      options
+      options,
+      resolver
     );
   } else if (state.buffer.length > 0) {
     flushBuffer(state, controller);

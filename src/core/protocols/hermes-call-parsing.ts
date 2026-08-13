@@ -28,7 +28,6 @@ import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
 import {
   isParsedToolCallRecord,
   normalizeJsonStringCtrl,
-  stringifyParsedToolInput,
   stringifyResolvedToolInput,
 } from "./hermes-json-normalization";
 import {
@@ -228,13 +227,18 @@ const MARKUP_ONLY_TEXT_REGEX = /^\s*(?:<[^<>\n]*>\s*)*$/;
  */
 export function recoverKnownToolCallsFromText(
   text: string,
-  tools: LanguageModelV4FunctionTool[]
+  tools: LanguageModelV4FunctionTool[],
+  resolver?: ProtocolToolCallResolver
 ): Extract<ResolvedProtocolToolCall, { ok: true }>[] | null {
   if (hasPrototypeSensitiveKeyInJsonLikeObject(text)) {
     return null;
   }
 
-  const recoveredParts = recoverToolCallFromJsonCandidates(text, tools);
+  const recoveredParts = recoverToolCallFromJsonCandidates(
+    text,
+    tools,
+    resolver
+  );
   if (!recoveredParts) {
     return null;
   }
@@ -270,7 +274,7 @@ export function recoverKnownToolCallsFromText(
       calls.push({
         ok: true,
         toolName: part.toolName,
-        input: stringifyParsedToolInput(policyArguments.args),
+        input: part.input,
       });
     } catch {
       return null;
@@ -300,7 +304,11 @@ export function processToolCallJson(
   }
 
   if (!isArgumentKeyPolicyError(resolved.error)) {
-    const salvagedCalls = recoverKnownToolCallsFromText(toolCallJson, tools);
+    const salvagedCalls = recoverKnownToolCallsFromText(
+      toolCallJson,
+      tools,
+      resolver
+    );
     if (salvagedCalls && salvagedCalls.length > 0) {
       for (const salvagedCall of salvagedCalls) {
         processedElements.push({

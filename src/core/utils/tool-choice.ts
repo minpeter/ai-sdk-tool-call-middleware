@@ -193,10 +193,16 @@ export function resolveToolChoiceSelection({
       expectedToolName,
       toolName: parsed.toolName,
     });
+    let originalArguments: unknown = {};
+    try {
+      const originalPayload = JSON.parse(text) as Record<string, unknown>;
+      originalArguments = originalPayload.arguments ?? {};
+    } catch {
+      originalArguments = {};
+    }
     parsed.toolName = expectedToolName;
     parsed.input =
-      coerceToolCallInput(expectedToolName, JSON.parse(parsed.input), tools) ??
-      "{}";
+      coerceToolCallInput(expectedToolName, originalArguments, tools) ?? "{}";
   }
 
   return {
