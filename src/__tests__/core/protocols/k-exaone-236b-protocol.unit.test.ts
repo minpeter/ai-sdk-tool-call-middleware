@@ -141,8 +141,8 @@ describe("kExaone236BProtocol", () => {
   it.each([
     [
       "relaxed JSON",
-      "{'name':'record_numbers','arguments':{'unsafeInteger':9007199254740993,'decimal':1.0,}}",
-      '{"unsafeInteger":9007199254740993,"decimal":1.0}',
+      `{'name':'record_numbers','arguments':{'unsafeInteger':9007199254740993,'decimal':1.0,'label':"O'Brien",}}`,
+      `{"unsafeInteger":9007199254740993,"decimal":1.0,"label":"O'Brien"}`,
     ],
     [
       "strict key normalization",
@@ -160,6 +160,7 @@ describe("kExaone236BProtocol", () => {
             unsafeInteger: { type: "integer" },
             decimal: { type: "number" },
             userId: { type: "integer" },
+            label: { type: "string" },
           },
           required: expectedInput.includes("userId") ? ["userId"] : undefined,
           additionalProperties: false,

@@ -17,6 +17,37 @@ import { parseKExaoneToolCallInput } from "./k-exaone-tool-call-input";
 import type { TCMProtocol } from "./protocol-interface";
 
 const PARAMETERS_FIELD_REGEX = /([,{]\s*)(["'])parameters\2\s*:/;
+const TRAILING_COMMA_REGEX = /,(\s*[}\]])/g;
+
+function normalizeRelaxedJsonQuotes(text: string): string {
+  let normalized = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  for (const character of text) {
+    if (escaped) {
+      normalized += character;
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      normalized += character;
+      escaped = true;
+      continue;
+    }
+    if (quote === null && (character === "'" || character === '"')) {
+      quote = character;
+      normalized += '"';
+      continue;
+    }
+    if (character === quote) {
+      quote = null;
+      normalized += '"';
+      continue;
+    }
+    normalized += character;
+  }
+  return normalized;
+}
 
 function overlayLosslessNumbers(
   rawValue: unknown,
@@ -80,11 +111,11 @@ function resolveKExaone236BToolCall(
       return validated;
     }
     const validatedInput = JSON.parse(validated.input) as unknown;
-    const normalizedArguments = normalizeInvalidJsonEscapes(
-      normalizeJsonStringCtrl(progress.argumentsText)
-    )
-      .replaceAll("'", '"')
-      .replace(/,(\s*[}\]])/g, "$1");
+    const normalizedArguments = normalizeRelaxedJsonQuotes(
+      normalizeInvalidJsonEscapes(
+        normalizeJsonStringCtrl(progress.argumentsText)
+      )
+    ).replace(TRAILING_COMMA_REGEX, "$1");
     const losslessInput = parseKExaone2LosslessJson(normalizedArguments);
     return {
       ok: true,
