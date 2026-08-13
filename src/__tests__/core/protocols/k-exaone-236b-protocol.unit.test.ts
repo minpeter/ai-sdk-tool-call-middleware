@@ -203,6 +203,36 @@ describe("kExaone236BProtocol", () => {
     );
   });
 
+  it("preserves numeric lexemes while repairing invalid escapes", () => {
+    const escapedTools = [
+      {
+        type: "function",
+        name: "record",
+        inputSchema: {
+          type: "object",
+          properties: {
+            value: { type: "integer" },
+            label: { type: "string" },
+          },
+          required: ["value", "label"],
+          additionalProperties: false,
+        },
+      },
+    ] satisfies LanguageModelV4FunctionTool[];
+
+    const content = kExaone236BProtocol().parseGeneratedText({
+      text: String.raw`<tool_call>{"name":"record","arguments":{"value":9007199254740993,"label":"cost \$5"}}</tool_call>`,
+      tools: escapedTools,
+    });
+
+    expect(content).toContainEqual(
+      expect.objectContaining({
+        type: "tool-call",
+        input: '{"value":9007199254740993,"label":"cost $5"}',
+      })
+    );
+  });
+
   it.each([
     [
       "relaxed JSON",

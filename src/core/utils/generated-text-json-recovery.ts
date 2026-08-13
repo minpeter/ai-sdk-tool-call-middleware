@@ -350,8 +350,9 @@ function resolveCandidatePayload(
   }
   if (
     resolver &&
-    Object.hasOwn(parsed as object, "arguments") &&
-    looksLikeKnownToolCandidate(parsed, tools)
+    looksLikeKnownToolCandidate(parsed, tools) &&
+    isRecord(parsed) &&
+    Object.hasOwn(parsed, "arguments")
   ) {
     const resolved = resolver(candidate.text, tools);
     if (resolved.ok) {

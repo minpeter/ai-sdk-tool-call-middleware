@@ -10,6 +10,7 @@ import {
 } from "../prompts/k-exaone-2-native-json";
 import { resolveToolCall } from "./hermes-call-parsing";
 import { normalizeJsonStringCtrl } from "./hermes-json-normalization";
+import { normalizeInvalidJsonEscapes } from "./hermes-json-repair";
 import { hermesProtocol } from "./hermes-protocol";
 import { extractStreamingToolCallProgress } from "./hermes-streaming-progress";
 import { parseKExaoneToolCallInput } from "./k-exaone-tool-call-input";
@@ -130,7 +131,9 @@ function resolveKExaone236BToolCall(
     }
     const validatedInput = JSON.parse(validated.input) as unknown;
     const normalizedArguments = normalizeRelaxedJsonQuotes(
-      normalizeJsonStringCtrl(progress.argumentsText)
+      normalizeInvalidJsonEscapes(
+        normalizeJsonStringCtrl(progress.argumentsText)
+      )
     ).replace(TRAILING_COMMA_REGEX, "$1");
     const losslessInput = parseKExaone2LosslessJson(normalizedArguments);
     return {
