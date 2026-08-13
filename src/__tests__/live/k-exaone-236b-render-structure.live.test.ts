@@ -38,9 +38,56 @@ const tools = [
   },
 ] satisfies LanguageModelV4FunctionTool[];
 
+const multiTools = [
+  {
+    type: "function",
+    name: "inspect_payload",
+    description: "Inspect a nested payload with Unicode labels.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        label: { type: "string", description: 'Quoted "label" with 한글.' },
+        nested: {
+          type: "object",
+          properties: {
+            order: {
+              type: "array",
+              items: {
+                anyOf: [
+                  { type: "string" },
+                  {
+                    type: "object",
+                    properties: { count: { type: "number" } },
+                    required: ["count"],
+                  },
+                ],
+              },
+            },
+          },
+          required: ["order"],
+        },
+      },
+      required: ["label", "nested"],
+    },
+  },
+  {
+    type: "function",
+    name: "record_payload",
+    description: "Record a payload status across paths /a/b and line\nbreaks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: ["ready", "done"] },
+      },
+      required: ["status"],
+    },
+  },
+] as const satisfies readonly LanguageModelV4FunctionTool[];
+
 interface CaptureOptions {
   readonly middleware?: LanguageModelV4Middleware;
   readonly prompt: LanguageModelV4Prompt;
+  readonly tools?: readonly LanguageModelV4FunctionTool[];
 }
 
 async function captureProviderBody(
@@ -88,7 +135,10 @@ async function captureProviderBody(
     ? wrapLanguageModel({ model: rawModel, middleware: options.middleware })
     : rawModel;
 
-  await model.doGenerate({ prompt: options.prompt, tools });
+  await model.doGenerate({
+    prompt: options.prompt,
+    tools: [...(options.tools ?? tools)],
+  });
   return capturedBodySchema.parse(body);
 }
 
@@ -122,59 +172,211 @@ async function renderFriendli(options: {
 
 const describeLive = FRIENDLI_API_KEY ? describe : describe.skip;
 
-describeLive("K-EXAONE-236B Friendli render structure", () => {
-  it.each([
-    { id: "no-system-thinking-on", enableThinking: true, system: undefined },
-    { id: "no-system-thinking-off", enableThinking: false, system: undefined },
-    {
-      id: "system-thinking-on",
-      enableThinking: true,
-      system: "SYSTEM_SENTINEL",
-    },
-    {
-      id: "system-thinking-off",
-      enableThinking: false,
-      system: "SYSTEM_SENTINEL",
-    },
-  ])(
+const benchmarkScenarios: Array<{
+  readonly id: string;
+  readonly enableThinking: boolean;
+  readonly prompt: LanguageModelV4Prompt;
+  readonly tools?: readonly LanguageModelV4FunctionTool[];
+}> = [
+  {
+    id: "no-system-thinking-on",
+    enableThinking: true,
+    prompt: [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Run the probe." }],
+      },
+    ],
+  },
+  {
+    id: "no-system-thinking-off",
+    enableThinking: false,
+    prompt: [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Run the probe." }],
+      },
+    ],
+  },
+  {
+    id: "system-thinking-on",
+    enableThinking: true,
+    prompt: [
+      { role: "system", content: "SYSTEM_SENTINEL" },
+      {
+        role: "user",
+        content: [{ type: "text", text: "Run the probe." }],
+      },
+    ],
+  },
+  {
+    id: "system-thinking-off",
+    enableThinking: false,
+    prompt: [
+      { role: "system", content: "SYSTEM_SENTINEL" },
+      {
+        role: "user",
+        content: [{ type: "text", text: "Run the probe." }],
+      },
+    ],
+  },
+  {
+    id: "multiple-tools-complex-schema",
+    enableThinking: true,
+    tools: multiTools,
+    prompt: [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Inspect and record this payload." }],
+      },
+    ],
+  },
+  {
+    id: "unicode-and-escaping",
+    enableThinking: false,
+    tools: multiTools,
+    prompt: [
+      { role: "system", content: '시스템 "인용" / 경로\n다음 줄' },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: '서울 payload: {"path":"/a/b","note":"line\\nbreak"}',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "reasoning-single-call-history",
+    enableThinking: true,
+    prompt: [
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "reasoning sentinel" },
+          {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "edge_probe",
+            input: { zed: 1e-7, alpha: 1, raw: "서울" },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "edge_probe",
+            output: { type: "json", value: { ok: true, city: "서울" } },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "Continue after inspection." }],
+      },
+    ],
+  },
+  {
+    id: "parallel-two-call-history",
+    enableThinking: false,
+    tools: multiTools,
+    prompt: [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-inspect",
+            toolName: "inspect_payload",
+            input: {
+              label: "서울",
+              nested: { order: ["alpha", { count: 2 }] },
+            },
+          },
+          {
+            type: "tool-call",
+            toolCallId: "call-record",
+            toolName: "record_payload",
+            input: { status: "done" },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-inspect",
+            toolName: "inspect_payload",
+            output: {
+              type: "json",
+              value: {
+                label: "서울",
+                nested: { order: ["alpha", { count: 2 }] },
+              },
+            },
+          },
+          {
+            type: "tool-result",
+            toolCallId: "call-record",
+            toolName: "record_payload",
+            output: { type: "text", value: "recorded:done" },
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "Summarize both results." }],
+      },
+    ],
+  },
+];
+
+describeLive("K-EXAONE-236B Friendli render benchmark", () => {
+  it.each(benchmarkScenarios)(
     "$id preserves the native declaration before the Hermes guide",
     async (scenario) => {
-      // Given
-      const prompt: LanguageModelV4Prompt = [
-        ...(scenario.system === undefined
-          ? []
-          : [{ role: "system" as const, content: scenario.system }]),
-        {
-          role: "user",
-          content: [{ type: "text", text: "Run the probe." }],
-        },
-      ];
-
-      // When
-      const nativeBody = await captureProviderBody({ prompt });
+      const nativeBody = await captureProviderBody({
+        prompt: scenario.prompt,
+        tools: scenario.tools,
+      });
       const middlewareBody = await captureProviderBody({
         middleware: kExaone236BToolMiddleware,
-        prompt,
+        prompt: scenario.prompt,
+        tools: scenario.tools,
       });
+      const nativeStartedAt = performance.now();
       const native = await renderFriendli({
         body: nativeBody,
         enableThinking: scenario.enableThinking,
       });
+      const nativeDurationMs = performance.now() - nativeStartedAt;
+      const middlewareStartedAt = performance.now();
       const middleware = await renderFriendli({
         body: middlewareBody,
         enableThinking: scenario.enableThinking,
       });
+      const middlewareDurationMs = performance.now() - middlewareStartedAt;
 
-      // Then
       const turnBoundary = "<|endofturn|>\n";
       const nativeDeclarationEnd =
         native.indexOf(turnBoundary) + turnBoundary.length;
       const middlewareGuideStart = middleware.indexOf("<|system|>");
-      expect(nativeDeclarationEnd).toBeGreaterThan(turnBoundary.length - 1);
-      expect(middlewareGuideStart).toBe(nativeDeclarationEnd);
-      expect(middleware.slice(0, middlewareGuideStart)).toBe(
+      const nativeDeclarationBytes = new TextEncoder().encode(
         native.slice(0, nativeDeclarationEnd)
       );
+      const middlewareDeclarationBytes = new TextEncoder().encode(
+        middleware.slice(0, middlewareGuideStart)
+      );
+
+      expect(nativeDeclarationEnd).toBeGreaterThan(turnBoundary.length - 1);
+      expect(middlewareGuideStart).toBe(nativeDeclarationEnd);
+      expect(middlewareDeclarationBytes).toEqual(nativeDeclarationBytes);
       expect(middleware).toContain(
         "# Tool Call Format\nWhen calling a tool, output exactly one JSON object inside <tool_call> tags:"
       );
@@ -184,6 +386,8 @@ describeLive("K-EXAONE-236B Friendli render structure", () => {
       expect(middleware.indexOf("<|system|>")).toBeLessThan(
         middleware.indexOf("<|user|>")
       );
+      expect(nativeDurationMs).toBeGreaterThanOrEqual(0);
+      expect(middlewareDurationMs).toBeGreaterThanOrEqual(0);
     }
   );
 });
