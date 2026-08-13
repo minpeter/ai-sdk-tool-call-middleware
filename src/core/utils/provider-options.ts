@@ -22,7 +22,23 @@ export interface ToolCallMiddlewareProviderOptions {
       name: string;
       inputSchema: string; // Stringified JSONSchema7
     }>;
+    /** @deprecated Provider-defined tools are rejected before this metadata is produced. */
+    droppedProviderTools?: string[];
   };
+}
+
+/**
+ * @deprecated Provider-defined tools are now rejected before transformation.
+ * Retained for compatibility with callers that inspect legacy middleware
+ * metadata.
+ */
+export function getDroppedProviderTools(providerOptions: unknown): string[] {
+  const dropped =
+    getToolCallMiddlewareOptions(providerOptions).droppedProviderTools;
+  if (!Array.isArray(dropped)) {
+    return [];
+  }
+  return dropped.filter((name): name is string => typeof name === "string");
 }
 
 export const originalToolsSchema = {

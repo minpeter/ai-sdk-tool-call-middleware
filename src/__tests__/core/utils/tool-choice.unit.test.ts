@@ -221,4 +221,27 @@ describe("tool-choice utils", () => {
       originText: "[redacted sensitive tool call]",
     });
   });
+
+  it("enforces the selected tool name", () => {
+    const resolved = resolveToolChoiceSelection({
+      text: '{"name":"other","arguments":{"value":1}}',
+      tools: [
+        {
+          type: "function",
+          name: "safe",
+          inputSchema: {
+            type: "object",
+            properties: { value: { type: "number" } },
+          },
+        },
+      ],
+      expectedToolName: "safe",
+      errorMessage: "parse error",
+    });
+
+    expect(resolved).toMatchObject({
+      toolName: "safe",
+      input: '{"value":1}',
+    });
+  });
 });

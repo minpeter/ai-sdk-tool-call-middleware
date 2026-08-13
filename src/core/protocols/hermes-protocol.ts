@@ -25,9 +25,14 @@ import {
   recoverCompleteKnownCallBeforeNestedStart,
   scheduleStreamingToolInputProgress,
 } from "./hermes-stream-lifecycle";
-import type { ParserOptions, TCMProtocol } from "./protocol-interface";
+import type {
+  ParserOptions,
+  ProtocolToolCallResolver,
+  TCMProtocol,
+} from "./protocol-interface";
 
 interface HermesProtocolOptions {
+  resolveToolCall?: ProtocolToolCallResolver;
   toolCallEnd?: string;
   toolCallStart?: string;
 }
@@ -78,7 +83,7 @@ function publishText(
 function emitToolCall(context: TagProcessingContext) {
   const { state, controller, toolCallStart, toolCallEnd, options, tools } =
     context;
-  const resolved = resolveToolCall(state.currentToolCallJson, tools);
+  const resolved = context.resolveToolCall(state.currentToolCallJson, tools);
   if (resolved.ok) {
     // Mirror the original emit order: close any open text block before
     // streaming the tool-input lifecycle (was inside emitToolCallFromParsed).
@@ -368,11 +373,25 @@ function scheduleNextToolCallScan(
 }
 
 function runDeferredToolCallScanCatchUp(context: TagProcessingContext) {
-  const { state, controller, toolCallStart, toolCallEnd, tools } = context;
+  const {
+    state,
+    controller,
+    toolCallStart,
+    toolCallEnd,
+    tools,
+    resolveToolCall: toolCallResolver,
+  } = context;
   state.hasDeferredToolCallScan = false;
   processBufferTags(context);
   if (state.isInsideToolCall) {
-    handlePartialTag(state, controller, toolCallStart, toolCallEnd, tools);
+    handlePartialTag(
+      state,
+      controller,
+      toolCallStart,
+      toolCallEnd,
+      tools,
+      toolCallResolver
+    );
   }
 }
 
@@ -411,7 +430,8 @@ function handlePartialTag(
   controller: StreamController,
   toolCallStart: string,
   toolCallEnd: string,
-  tools: LanguageModelV4FunctionTool[]
+  tools: LanguageModelV4FunctionTool[],
+  toolCallResolver: ProtocolToolCallResolver
 ) {
   if (state.isInsideToolCall) {
     const potentialEndIndex = getPotentialStartIndex(state.buffer, toolCallEnd);
@@ -425,6 +445,7 @@ function handlePartialTag(
         controller,
         toolCallJson: state.currentToolCallJson,
         tools,
+        resolveToolCall: toolCallResolver,
       });
       state.buffer = state.buffer.slice(potentialEndIndex);
     } else {
@@ -434,6 +455,7 @@ function handlePartialTag(
         controller,
         toolCallJson: state.currentToolCallJson,
         tools,
+        resolveToolCall: toolCallResolver,
       });
       state.buffer = "";
     }
@@ -550,6 +572,7 @@ function handleOrphanToolCallSpan(options: {
 export const hermesProtocol = ({
   toolCallStart = "<tool_call>",
   toolCallEnd = "</tool_call>",
+  resolveToolCall: toolCallResolver = resolveToolCall,
 }: HermesProtocolOptions = {}): TCMProtocol => ({
   ...validateNonEmptyDelimiters(toolCallStart, toolCallEnd),
 
@@ -635,7 +658,8 @@ export const hermesProtocol = ({
         fullMatch,
         processedElements,
         tools,
-        options
+        options,
+        toolCallResolver
       );
       currentIndex = span.endIdx + toolCallEnd.length;
       searchFrom = currentIndex;
@@ -686,6 +710,7 @@ export const hermesProtocol = ({
               toolCallEnd,
               options,
               tools,
+              resolveToolCall: toolCallResolver,
             });
           }
           handleFinishChunk(
@@ -733,8 +758,16 @@ export const hermesProtocol = ({
           toolCallEnd,
           options,
           tools,
+          resolveToolCall: toolCallResolver,
         });
-        handlePartialTag(state, controller, toolCallStart, toolCallEnd, tools);
+        handlePartialTag(
+          state,
+          controller,
+          toolCallStart,
+          toolCallEnd,
+          tools,
+          toolCallResolver
+        );
         scheduleNextToolCallScan(state, toolCallStart, toolCallEnd);
       },
     });

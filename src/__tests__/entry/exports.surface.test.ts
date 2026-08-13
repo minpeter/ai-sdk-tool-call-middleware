@@ -9,6 +9,7 @@ import {
   createUserContentToolResponseTemplate,
   formatToolResponseAsKExaone2,
   formatToolResponseAsYaml,
+  getDroppedProviderTools,
   hermesProtocol,
   hermesSystemPromptTemplate,
   hermesToolMiddleware,
@@ -49,6 +50,14 @@ describe("entry exports surface", () => {
     expect(typeof kExaone236BToolDeclaration).toBe("function");
     expect(typeof transformKExaone236BParams).toBe("function");
     expect(kExaone236BToolMiddleware).toBeDefined();
+    expect(getDroppedProviderTools).toBeTypeOf("function");
+    expect(
+      getDroppedProviderTools({
+        toolCallMiddleware: {
+          droppedProviderTools: ["provider.one", 2, "provider.two"],
+        },
+      })
+    ).toEqual(["provider.one", "provider.two"]);
   });
 
   it("exports hermesProtocol", () => {

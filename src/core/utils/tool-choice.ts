@@ -63,6 +63,7 @@ interface ParseToolChoiceOptions {
 
 interface ResolveToolChoiceSelectionOptions {
   errorMessage: string;
+  expectedToolName?: string;
   onError?: OnErrorFn;
   text?: string;
   tools: LanguageModelV4FunctionTool[];
@@ -163,6 +164,7 @@ export function resolveToolChoiceSelection({
   tools,
   onError,
   errorMessage,
+  expectedToolName,
 }: ResolveToolChoiceSelectionOptions): {
   input: string;
   originText: string;
@@ -186,6 +188,16 @@ export function resolveToolChoiceSelection({
     onError,
     errorMessage,
   });
+  if (expectedToolName && parsed.toolName !== expectedToolName) {
+    onError?.("toolChoice generation returned an unexpected tool name", {
+      expectedToolName,
+      toolName: parsed.toolName,
+    });
+    parsed.toolName = expectedToolName;
+    parsed.input =
+      coerceToolCallInput(expectedToolName, JSON.parse(parsed.input), tools) ??
+      "{}";
+  }
 
   return {
     ...parsed,

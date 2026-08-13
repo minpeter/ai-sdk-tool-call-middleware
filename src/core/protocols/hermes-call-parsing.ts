@@ -37,7 +37,11 @@ import {
   topLevelNullArgumentMatchesToolSchema,
 } from "./hermes-json-repair";
 import { extractStreamingToolCallProgress } from "./hermes-streaming-progress";
-import type { ParserOptions } from "./protocol-interface";
+import type {
+  ParserOptions,
+  ProtocolToolCallResolver,
+  ResolvedProtocolToolCall,
+} from "./protocol-interface";
 
 /**
  * Hermes call-parsing primitives shared by the generate-path parser and the
@@ -123,10 +127,6 @@ export function applyToolArgumentKeyPolicy(
   return policyArgs === null ? null : { args: policyArgs };
 }
 
-type ResolvedToolCall =
-  | { ok: true; toolName: string; input: string }
-  | { ok: false; error: unknown };
-
 /**
  * Single source of truth for turning a raw `<tool_call>` JSON body into a
  * canonical `{ toolName, input }` pair (or a failure). Performs, in order:
@@ -146,7 +146,7 @@ type ResolvedToolCall =
 export function resolveToolCall(
   toolCallJson: string,
   tools: LanguageModelV4FunctionTool[]
-): ResolvedToolCall {
+): ResolvedProtocolToolCall {
   try {
     const parsedToolCall = parseRJSON(
       normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
@@ -229,7 +229,7 @@ const MARKUP_ONLY_TEXT_REGEX = /^\s*(?:<[^<>\n]*>\s*)*$/;
 export function recoverKnownToolCallsFromText(
   text: string,
   tools: LanguageModelV4FunctionTool[]
-): Extract<ResolvedToolCall, { ok: true }>[] | null {
+): Extract<ResolvedProtocolToolCall, { ok: true }>[] | null {
   if (hasPrototypeSensitiveKeyInJsonLikeObject(text)) {
     return null;
   }
@@ -239,7 +239,7 @@ export function recoverKnownToolCallsFromText(
     return null;
   }
 
-  const calls: Extract<ResolvedToolCall, { ok: true }>[] = [];
+  const calls: Extract<ResolvedProtocolToolCall, { ok: true }>[] = [];
   for (const part of recoveredParts) {
     if (part.type === "text") {
       if (!MARKUP_ONLY_TEXT_REGEX.test(part.text)) {
@@ -285,9 +285,10 @@ export function processToolCallJson(
   fullMatch: string,
   processedElements: LanguageModelV4Content[],
   tools: LanguageModelV4FunctionTool[],
-  options?: ParserOptions
+  options?: ParserOptions,
+  resolver: ProtocolToolCallResolver = resolveToolCall
 ) {
-  const resolved = resolveToolCall(toolCallJson, tools);
+  const resolved = resolver(toolCallJson, tools);
   if (resolved.ok) {
     processedElements.push({
       type: "tool-call",

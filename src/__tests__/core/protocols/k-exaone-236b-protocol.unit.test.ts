@@ -26,10 +26,13 @@ const tools = [
   },
 ] satisfies LanguageModelV4FunctionTool[];
 
-function runStream(chunks: string[]): Promise<LanguageModelV4StreamPart[]> {
+function runStream(
+  chunks: string[],
+  streamTools: LanguageModelV4FunctionTool[] = tools
+): Promise<LanguageModelV4StreamPart[]> {
   const protocol = kExaone236BProtocol();
   const transformer = protocol.createStreamParser({
-    tools,
+    tools: streamTools,
     options: {},
   });
   return convertReadableStreamToArray(
@@ -69,6 +72,42 @@ describe("kExaone236BProtocol", () => {
         toolName: "lookup_shipment",
         input: '{"trackingNumber":"TRK-77"}',
       })
+    );
+  });
+
+  it("preserves numeric argument lexemes in generated and streamed calls", async () => {
+    const numericTools = [
+      {
+        type: "function",
+        name: "record_numbers",
+        inputSchema: {
+          type: "object",
+          properties: {
+            unsafeInteger: { type: "integer" },
+            decimal: { type: "number" },
+            negativeZero: { type: "number" },
+            exponent: { type: "number" },
+          },
+          additionalProperties: false,
+        },
+      },
+    ] satisfies LanguageModelV4FunctionTool[];
+    const call =
+      '<tool_call>{"name":"record_numbers","arguments":{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07,"ignored":9.0}}</tool_call>';
+    const expectedInput =
+      '{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07}';
+
+    const generated = kExaone236BProtocol().parseGeneratedText({
+      text: call,
+      tools: numericTools,
+    });
+    const streamed = await runStream([call], numericTools);
+
+    expect(generated).toMatchObject([
+      { type: "tool-call", input: expectedInput },
+    ]);
+    expect(streamed).toContainEqual(
+      expect.objectContaining({ type: "tool-call", input: expectedInput })
     );
   });
 

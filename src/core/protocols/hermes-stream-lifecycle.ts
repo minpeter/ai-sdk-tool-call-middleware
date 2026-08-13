@@ -33,18 +33,37 @@ import {
   type StreamController,
   type StreamState,
 } from "./hermes-streaming-progress";
-import type { ParserOptions } from "./protocol-interface";
+import type {
+  ParserOptions,
+  ProtocolToolCallResolver,
+} from "./protocol-interface";
 
 function emitStreamingToolInputProgress(options: {
   state: StreamState;
   controller: StreamController;
   toolCallJson: string;
   tools: LanguageModelV4FunctionTool[];
+  resolveToolCall?: ProtocolToolCallResolver;
 }): boolean {
-  const { state, controller, toolCallJson, tools } = options;
+  const {
+    state,
+    controller,
+    toolCallJson,
+    tools,
+    resolveToolCall: resolver,
+  } = options;
   const progress = extractStreamingToolCallProgress(toolCallJson);
   if (!(progress.toolName && progress.argumentsComplete)) {
     return false;
+  }
+  if (resolver) {
+    const resolved = resolver(toolCallJson, tools);
+    if (!resolved.ok) {
+      return false;
+    }
+    ensureToolInputStart(state, controller, resolved.toolName);
+    emitToolInputDelta(state, controller, resolved.input);
+    return true;
   }
   try {
     const parsedToolCall = parseRJSON(
@@ -83,6 +102,7 @@ export function scheduleStreamingToolInputProgress(options: {
   controller: StreamController;
   toolCallJson: string;
   tools: LanguageModelV4FunctionTool[];
+  resolveToolCall?: ProtocolToolCallResolver;
 }) {
   const { state, controller, toolCallJson, tools } = options;
   state.pendingToolInputProgressVersion += 1;
@@ -100,6 +120,7 @@ export function scheduleStreamingToolInputProgress(options: {
       controller,
       toolCallJson,
       tools,
+      resolveToolCall: options.resolveToolCall,
     });
   });
 }

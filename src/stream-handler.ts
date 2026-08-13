@@ -57,6 +57,11 @@ export async function wrapStream({
     return toolChoiceStream({
       doGenerate,
       tools,
+      expectedToolName: (
+        getToolCallMiddlewareOptions(params.providerOptions).toolChoice as
+          | { toolName?: string }
+          | undefined
+      )?.toolName,
       options: onErrorOptions,
     });
   }
@@ -155,9 +160,11 @@ function enqueueReasoningContent(
 export async function toolChoiceStream({
   doGenerate,
   tools,
+  expectedToolName,
   options,
 }: {
   doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
+  expectedToolName?: string;
   tools?: LanguageModelV4FunctionTool[];
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
@@ -170,6 +177,7 @@ export async function toolChoiceStream({
     tools: normalizedTools,
     onError: options?.onError,
     errorMessage: "Failed to parse toolChoice JSON from streamed model output",
+    expectedToolName,
   });
 
   const toolCallId = generateToolCallId();
