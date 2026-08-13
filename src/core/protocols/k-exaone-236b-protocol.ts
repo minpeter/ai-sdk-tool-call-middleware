@@ -10,14 +10,14 @@ import {
 } from "../prompts/k-exaone-2-native-json";
 import { resolveToolCall } from "./hermes-call-parsing";
 import { normalizeJsonStringCtrl } from "./hermes-json-normalization";
-import { normalizeInvalidJsonEscapes } from "./hermes-json-repair";
 import { hermesProtocol } from "./hermes-protocol";
 import { extractStreamingToolCallProgress } from "./hermes-streaming-progress";
 import { parseKExaoneToolCallInput } from "./k-exaone-tool-call-input";
 import type { TCMProtocol } from "./protocol-interface";
 
-const PARAMETERS_FIELD_REGEX = /([,{]\s*)(["'])parameters\2\s*:/;
 const TRAILING_COMMA_REGEX = /,(\s*[}\]])/g;
+const ARGUMENTS_FIELD_REGEX = /([,{]\s*)(["'])arguments\2\s*:/;
+const PARAMETERS_FIELD_REGEX = /([,{]\s*)(["'])parameters\2\s*:/;
 
 function normalizeRelaxedJsonQuotes(text: string): string {
   let normalized = "";
@@ -25,7 +25,11 @@ function normalizeRelaxedJsonQuotes(text: string): string {
   let escaped = false;
   for (const character of text) {
     if (escaped) {
-      normalized += character;
+      if (quote === "'" && character === "'") {
+        normalized = `${normalized.slice(0, -1)}'`;
+      } else {
+        normalized += character;
+      }
       escaped = false;
       continue;
     }
@@ -44,9 +48,23 @@ function normalizeRelaxedJsonQuotes(text: string): string {
       normalized += '"';
       continue;
     }
+    if (quote === "'" && character === '"') {
+      normalized += '\\"';
+      continue;
+    }
     normalized += character;
   }
   return normalized;
+}
+
+function canonicalizeParametersAlias(toolCallJson: string): string {
+  const normalizedEnvelope = normalizeRelaxedJsonQuotes(
+    normalizeJsonStringCtrl(toolCallJson)
+  ).replace(TRAILING_COMMA_REGEX, "$1");
+  if (ARGUMENTS_FIELD_REGEX.test(normalizedEnvelope)) {
+    return normalizedEnvelope;
+  }
+  return normalizedEnvelope.replace(PARAMETERS_FIELD_REGEX, '$1"arguments":');
 }
 
 function overlayLosslessNumbers(
@@ -97,24 +115,22 @@ function resolveKExaone236BToolCall(
   toolCallJson: string,
   tools: Parameters<typeof resolveToolCall>[1]
 ): ReturnType<typeof resolveToolCall> {
-  const canonicalToolCallJson = toolCallJson.replace(
-    PARAMETERS_FIELD_REGEX,
-    "$1$2arguments$2:"
-  );
-  const validated = resolveToolCall(canonicalToolCallJson, tools);
+  const canonicalToolCallJson = canonicalizeParametersAlias(toolCallJson);
+  const normalizedToolCallJson = normalizeRelaxedJsonQuotes(
+    normalizeJsonStringCtrl(canonicalToolCallJson)
+  ).replace(TRAILING_COMMA_REGEX, "$1");
+  const validated = resolveToolCall(normalizedToolCallJson, tools);
   if (!validated.ok) {
     return validated;
   }
   try {
-    const progress = extractStreamingToolCallProgress(canonicalToolCallJson);
+    const progress = extractStreamingToolCallProgress(normalizedToolCallJson);
     if (!(progress.argumentsComplete && progress.argumentsText)) {
       return validated;
     }
     const validatedInput = JSON.parse(validated.input) as unknown;
     const normalizedArguments = normalizeRelaxedJsonQuotes(
-      normalizeInvalidJsonEscapes(
-        normalizeJsonStringCtrl(progress.argumentsText)
-      )
+      normalizeJsonStringCtrl(progress.argumentsText)
     ).replace(TRAILING_COMMA_REGEX, "$1");
     const losslessInput = parseKExaone2LosslessJson(normalizedArguments);
     return {

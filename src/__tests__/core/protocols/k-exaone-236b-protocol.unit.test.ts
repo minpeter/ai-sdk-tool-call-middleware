@@ -111,7 +111,7 @@ describe("kExaone236BProtocol", () => {
     );
   });
 
-  it("preserves supported parameters aliases during recovery", async () => {
+  it("preserves supported parameters aliases during recovery", () => {
     const aliasTools = [
       {
         type: "function",
@@ -124,16 +124,81 @@ describe("kExaone236BProtocol", () => {
         },
       },
     ] satisfies LanguageModelV4FunctionTool[];
-    const text =
-      '<tool_call>{"name":"record_numbers","parameters":{"value":9007199254740993}}';
+    const content = kExaone236BProtocol().parseGeneratedText({
+      text: '<tool_call>{"name":"record_numbers","parameters":{"value":9007199254740993}}</tool_call>',
+      tools: aliasTools,
+    });
 
-    const streamed = await runStream([text], aliasTools);
-
-    expect(streamed).toContainEqual(
+    expect(content).toContainEqual(
       expect.objectContaining({
         type: "tool-call",
         toolName: "record_numbers",
         input: '{"value":9007199254740993}',
+      })
+    );
+  });
+
+  it("preserves a nested argument named parameters", () => {
+    const nestedTools = [
+      {
+        type: "function",
+        name: "configure",
+        inputSchema: {
+          type: "object",
+          properties: {
+            parameters: {
+              type: "object",
+              properties: { value: { type: "integer" } },
+              required: ["value"],
+              additionalProperties: false,
+            },
+          },
+          required: ["parameters"],
+          additionalProperties: false,
+        },
+      },
+    ] satisfies LanguageModelV4FunctionTool[];
+
+    const content = kExaone236BProtocol().parseGeneratedText({
+      text: '<tool_call>{"name":"configure","arguments":{"parameters":{"value":9007199254740993}}}</tool_call>',
+      tools: nestedTools,
+    });
+
+    expect(content).toContainEqual(
+      expect.objectContaining({
+        type: "tool-call",
+        toolName: "configure",
+        input: '{"parameters":{"value":9007199254740993}}',
+      })
+    );
+  });
+
+  it("preserves escaped quotes in single-quoted relaxed JSON", () => {
+    const quotedTools = [
+      {
+        type: "function",
+        name: "record",
+        inputSchema: {
+          type: "object",
+          properties: {
+            value: { type: "integer" },
+            label: { type: "string" },
+          },
+          required: ["value", "label"],
+          additionalProperties: false,
+        },
+      },
+    ] satisfies LanguageModelV4FunctionTool[];
+
+    const content = kExaone236BProtocol().parseGeneratedText({
+      text: `<tool_call>{'name':'record','arguments':{'value':9007199254740993,'label':'O\\'Brien said "hi"'}}}</tool_call>`,
+      tools: quotedTools,
+    });
+
+    expect(content).toContainEqual(
+      expect.objectContaining({
+        type: "tool-call",
+        input: `{"value":9007199254740993,"label":"O'Brien said \\"hi\\""}`,
       })
     );
   });
