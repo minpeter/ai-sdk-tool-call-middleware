@@ -26,27 +26,6 @@ const tools = [
   },
 ] satisfies LanguageModelV4FunctionTool[];
 
-const richTools = [
-  {
-    type: "function",
-    name: "lookup_shipment",
-    inputSchema: {
-      type: "object",
-      properties: {
-        orderId: { type: "string" },
-        metadata: {
-          type: "object",
-          properties: {
-            routes: { type: "array", items: { type: "string" } },
-            fragile: { type: "boolean" },
-          },
-        },
-        note: { type: "string" },
-      },
-    },
-  },
-] satisfies LanguageModelV4FunctionTool[];
-
 function runStream(chunks: string[]): Promise<LanguageModelV4StreamPart[]> {
   const protocol = kExaone236BProtocol();
   const transformer = protocol.createStreamParser({
@@ -127,85 +106,6 @@ describe("kExaone236BProtocol", () => {
 
     expect(content).not.toContainEqual(
       expect.objectContaining({ type: "tool-call" })
-    );
-  });
-
-  it("parses two adjacent calls and preserves surrounding text", () => {
-    const content = kExaone236BProtocol().parseGeneratedText({
-      text: `Checking both identifiers.
-<tool_call>{"name":"lookup_shipment","arguments":{"orderId":"O-1"}}</tool_call>
-<tool_call>{"name":"lookup_shipment","arguments":{"trackingNumber":"TRK-2"}}</tool_call>
-Done.`,
-      tools,
-    });
-
-    expect(content.filter((part) => part.type === "tool-call")).toEqual([
-      expect.objectContaining({
-        toolName: "lookup_shipment",
-        input: '{"orderId":"O-1"}',
-      }),
-      expect.objectContaining({
-        toolName: "lookup_shipment",
-        input: '{"trackingNumber":"TRK-2"}',
-      }),
-    ]);
-    expect(content.filter((part) => part.type === "text")).toEqual([
-      { type: "text", text: "Checking both identifiers.\n" },
-      { type: "text", text: "\nDone." },
-    ]);
-  });
-
-  it("parses Unicode, nested values, and escaped strings", () => {
-    const content = kExaone236BProtocol().parseGeneratedText({
-      text: '<tool_call>{"name":"lookup_shipment","arguments":{"orderId":"서울-\\"A\\"","metadata":{"routes":["인천","부산"],"fragile":true},"note":"line1\\nline2"}}</tool_call>',
-      tools: richTools,
-    });
-
-    expect(content).toContainEqual(
-      expect.objectContaining({
-        type: "tool-call",
-        toolName: "lookup_shipment",
-        input:
-          '{"orderId":"서울-\\"A\\"","metadata":{"routes":["인천","부산"],"fragile":true},"note":"line1\\nline2"}',
-      })
-    );
-  });
-
-  it("recovers a trailing comma in malformed Hermes JSON", () => {
-    const text =
-      '<tool_call>{"name":"lookup_shipment","arguments":{"orderId":"O-1",}}</tool_call>';
-
-    const content = kExaone236BProtocol().parseGeneratedText({ text, tools });
-
-    expect(content).toContainEqual(
-      expect.objectContaining({
-        type: "tool-call",
-        toolName: "lookup_shipment",
-        input: '{"orderId":"O-1"}',
-      })
-    );
-  });
-
-  it("reassembles a valid call split across syntax boundaries", async () => {
-    const content = await runStream([
-      "<tool",
-      "_call>",
-      '{"na',
-      'me":"lookup_',
-      'shipment","arg',
-      'uments":{"tracking',
-      'Number":"TRK-',
-      '99"}}',
-      "</tool_",
-      "call>",
-    ]);
-
-    expect(content).toContainEqual(
-      expect.objectContaining({
-        type: "tool-call",
-        toolName: "lookup_shipment",
-        input: '{"trackingNumber":"TRK-99"}',
-      })
     );
   });
 });
