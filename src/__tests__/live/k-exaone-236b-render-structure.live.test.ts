@@ -386,8 +386,8 @@ describeLive("K-EXAONE-236B Friendli render benchmark", () => {
       expect(middleware.indexOf("<|system|>")).toBeLessThan(
         middleware.indexOf("<|user|>")
       );
-      expect(nativeDurationMs).toBeGreaterThanOrEqual(0);
-      expect(middlewareDurationMs).toBeGreaterThanOrEqual(0);
+      expect(nativeDurationMs).toBeLessThan(30_000);
+      expect(middlewareDurationMs).toBeLessThan(30_000);
     }
   );
 });
