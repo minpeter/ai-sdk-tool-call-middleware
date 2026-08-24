@@ -57,7 +57,7 @@ jobs:
 
       - name: Create Release Pull Request or Publish to registry
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           branch: ${{ github.ref_name }}
           version: pnpm ci:version
