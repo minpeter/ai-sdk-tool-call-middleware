@@ -3,6 +3,7 @@ import type {
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
   LanguageModelV4ToolCall,
+  SharedV4Warning,
 } from "@ai-sdk/provider";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import {
@@ -25,6 +26,7 @@ import {
 } from "./core/utils/protocol-utils";
 import {
   decodeOriginalToolsFromProviderOptions,
+  getDroppedProviderTools,
   getToolCallMiddlewareOptions,
   isToolChoiceActive,
   isToolChoiceNone,
@@ -56,6 +58,31 @@ function logDebugSummary(
   } else if (getDebugLevel() === "parse") {
     logParsedSummary({ toolCalls: [toolCall], originalText: originText });
   }
+}
+
+/**
+ * Prompt-based tool calling can only express function tools; provider tools
+ * are dropped in transformParams and surfaced here as spec warnings.
+ */
+function appendDroppedProviderToolWarnings(
+  warnings: SharedV4Warning[] | undefined,
+  providerOptions: unknown
+): SharedV4Warning[] {
+  const dropped = getDroppedProviderTools(providerOptions);
+  if (dropped.length === 0) {
+    return warnings ?? [];
+  }
+  return [
+    ...(warnings ?? []),
+    ...dropped.map(
+      (name): SharedV4Warning => ({
+        type: "unsupported",
+        feature: `provider tool ${name}`,
+        details:
+          "Prompt-based tool-call middleware only supports function tools; the provider tool was removed from the request.",
+      })
+    ),
+  ];
 }
 
 async function handleToolChoice(
@@ -102,6 +129,10 @@ async function handleToolChoice(
   return {
     ...result,
     content: [...nonTextContent, toolCall],
+    warnings: appendDroppedProviderToolWarnings(
+      result.warnings,
+      params.providerOptions
+    ),
     finishReason: normalizeForcedToolChoiceFinishReason(result.finishReason),
   };
 }
@@ -241,7 +272,13 @@ export async function wrapGenerate({
   const result = await doGenerate();
 
   if (result.content.length === 0) {
-    return result;
+    return {
+      ...result,
+      warnings: appendDroppedProviderToolWarnings(
+        result.warnings,
+        params.providerOptions
+      ),
+    };
   }
 
   const newContent = parseContent(
@@ -269,6 +306,10 @@ export async function wrapGenerate({
   return {
     ...result,
     content: newContent,
+    warnings: appendDroppedProviderToolWarnings(
+      result.warnings,
+      params.providerOptions
+    ),
     finishReason:
       hasParsedToolCall &&
       shouldRewriteFinishReasonToToolCalls(result.finishReason)

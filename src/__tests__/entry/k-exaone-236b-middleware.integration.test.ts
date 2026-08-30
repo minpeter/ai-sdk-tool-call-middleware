@@ -259,26 +259,27 @@ describe("kExaone236BToolMiddleware", () => {
     expect(transformed.toolChoice).toBeUndefined();
   });
 
-  it("rejects provider-defined tools through the preset", async () => {
-    await expect(
-      transformParams({
-        type: "generate",
-        model: {} as never,
-        params: {
-          prompt: [],
-          tools: [
-            ...tools,
-            {
-              type: "provider",
-              id: "openai.web_search",
-              name: "web_search",
-              args: {},
-            },
-          ],
-        },
-      })
-    ).rejects.toThrow(
-      "Provider-defined tools are not supported by this middleware"
-    );
+  it("drops provider-defined tools through the preset with warning metadata", async () => {
+    const transformed = await transformParams({
+      type: "generate",
+      model: {} as never,
+      params: {
+        prompt: [],
+        tools: [
+          ...tools,
+          {
+            type: "provider",
+            id: "openai.web_search",
+            name: "web_search",
+            args: {},
+          },
+        ],
+      },
+    });
+
+    expect(transformed.tools).toEqual([]);
+    expect(transformed.providerOptions).toMatchObject({
+      toolCallMiddleware: { droppedProviderTools: ["web_search"] },
+    });
   });
 });

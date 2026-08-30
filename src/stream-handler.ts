@@ -4,6 +4,7 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
   LanguageModelV4Usage,
+  SharedV4Warning,
 } from "@ai-sdk/provider";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import { getDebugLevel, logParsedChunk, logRawChunk } from "./core/utils/debug";
@@ -16,6 +17,7 @@ import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   decodeOriginalToolsFromProviderOptions,
+  getDroppedProviderTools,
   getToolCallMiddlewareOptions,
   isToolChoiceActive,
   isToolChoiceNone,
@@ -27,6 +29,23 @@ import {
   findToolChoiceTextContent,
   resolveToolChoiceSelection,
 } from "./core/utils/tool-choice";
+
+/**
+ * Prompt-based tool calling can only express function tools; provider tools
+ * are dropped in transformParams and surfaced here as spec warnings.
+ */
+function droppedProviderToolWarnings(
+  providerOptions: unknown
+): SharedV4Warning[] {
+  return getDroppedProviderTools(providerOptions).map(
+    (name): SharedV4Warning => ({
+      type: "unsupported",
+      feature: `provider tool ${name}`,
+      details:
+        "Prompt-based tool-call middleware only supports function tools; the provider tool was removed from the request.",
+    })
+  );
+}
 
 export async function wrapStream({
   protocol,
@@ -53,6 +72,8 @@ export async function wrapStream({
     onErrorOptions
   );
 
+  const extraWarnings = droppedProviderToolWarnings(params.providerOptions);
+
   if (isToolChoiceActive(params)) {
     return toolChoiceStream({
       doGenerate,
@@ -63,6 +84,7 @@ export async function wrapStream({
           | undefined
       )?.toolName,
       options: onErrorOptions,
+      extraWarnings,
     });
   }
 
@@ -90,9 +112,27 @@ export async function wrapStream({
     .pipeThrough(createStreamJsonRecoveryTransform({ tools }));
 
   let seenToolCall = false;
+  let emittedExtraWarnings = extraWarnings.length === 0;
   const outputStream = coreStream.pipeThrough(
     new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
       transform(part, controller) {
+        if (part.type === "stream-start" && extraWarnings.length > 0) {
+          emittedExtraWarnings = true;
+          controller.enqueue({
+            ...part,
+            warnings: [...(part.warnings ?? []), ...extraWarnings],
+          });
+          return;
+        }
+
+        if (!emittedExtraWarnings) {
+          emittedExtraWarnings = true;
+          controller.enqueue({
+            type: "stream-start",
+            warnings: extraWarnings,
+          });
+        }
+
         // Provider-executed tool calls pass through byte-identical and do not
         // trigger the tool-calls finish rewrite: the provider already ran them.
         let normalizedPart =
@@ -162,6 +202,7 @@ export async function toolChoiceStream({
   tools,
   expectedToolName,
   options,
+  extraWarnings = [],
 }: {
   doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
   expectedToolName?: string;
@@ -169,6 +210,7 @@ export async function toolChoiceStream({
   options?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
+  extraWarnings?: SharedV4Warning[];
 }) {
   const normalizedTools = Array.isArray(tools) ? tools : [];
   const result = await doGenerate();
@@ -185,7 +227,7 @@ export async function toolChoiceStream({
     start(controller) {
       controller.enqueue({
         type: "stream-start",
-        warnings: result?.warnings ?? [],
+        warnings: [...(result?.warnings ?? []), ...extraWarnings],
       });
       const { id, timestamp, modelId } = result?.response ?? {};
       if (

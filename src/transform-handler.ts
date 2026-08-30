@@ -98,6 +98,16 @@ function buildBaseReturnParams(
   finalPrompt: LanguageModelV4Prompt,
   functionTools: LanguageModelV4FunctionTool[]
 ) {
+  const droppedProviderTools = (params.tools ?? [])
+    .filter((t) => t.type !== "function")
+    .map((t) => {
+      const named = t as { name?: unknown; id?: unknown };
+      if (typeof named.name === "string") {
+        return named.name;
+      }
+      return typeof named.id === "string" ? named.id : "unknown";
+    });
+
   return {
     ...params,
     prompt: finalPrompt,
@@ -105,8 +115,25 @@ function buildBaseReturnParams(
     toolChoice: undefined,
     providerOptions: mergeToolCallMiddlewareOptions(params.providerOptions, {
       originalTools: originalToolsSchema.encode(functionTools),
+      ...(droppedProviderTools.length > 0 ? { droppedProviderTools } : {}),
     }),
   };
+}
+
+/**
+ * Find provider-defined tool matching the selected tool name
+ */
+function findProviderDefinedTool(
+  tools: Array<LanguageModelV4FunctionTool | { type: string }>,
+  selectedToolName: string
+) {
+  return tools.find((t) => {
+    if (t.type === "function") {
+      return false;
+    }
+    const anyTool = t as unknown as { id?: string; name?: string };
+    return anyTool.id === selectedToolName || anyTool.name === selectedToolName;
+  });
 }
 
 /**
@@ -122,6 +149,16 @@ function handleToolChoiceTool(
   const selectedToolName = params.toolChoice?.toolName;
   if (!selectedToolName) {
     throw new Error("Tool name is required for 'tool' toolChoice type.");
+  }
+
+  const providerDefinedMatch = findProviderDefinedTool(
+    params.tools ?? [],
+    selectedToolName
+  );
+  if (providerDefinedMatch) {
+    throw new Error(
+      "Provider-defined tools are not supported by this middleware. Please use custom tools."
+    );
   }
 
   const selectedTool = (params.tools ?? []).find(
@@ -224,12 +261,6 @@ export function transformParams({
   ) => ToolResponsePromptTemplateResult;
   placement?: "first" | "last";
 }) {
-  if ((params.tools ?? []).some((tool) => tool.type !== "function")) {
-    throw new Error(
-      "Provider-defined tools are not supported by this middleware. Please use custom function tools."
-    );
-  }
-
   const resolvedProtocol = isTCMProtocolFactory(protocol)
     ? protocol()
     : protocol;
