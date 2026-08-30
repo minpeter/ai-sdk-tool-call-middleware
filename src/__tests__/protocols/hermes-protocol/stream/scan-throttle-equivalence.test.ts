@@ -114,6 +114,20 @@ function hermesCall(toolName: string, args: unknown): string {
   return `<tool_call>\n${JSON.stringify({ name: toolName, arguments: args })}\n</tool_call>`;
 }
 
+const scalingChunkSize = 30;
+
+function naiveEveryChunkRescanCharacters(textLength: number): number {
+  let characters = 0;
+  for (
+    let length = scalingChunkSize;
+    length < textLength;
+    length += scalingChunkSize
+  ) {
+    characters += length;
+  }
+  return characters + textLength;
+}
+
 describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
   // Deferral only activates once the accumulated tool-call JSON exceeds 4KB,
   // so these payloads must be large enough to exercise the deferred path
@@ -199,20 +213,37 @@ describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
 });
 
 describe("hermes large streamed tool call scaling", () => {
-  it("bounds boundary-scan work for a ~177KB streamed string argument", async () => {
-    const text = hermesCall("write_file", {
-      path: "a.ts",
-      content: largeBody(4000),
-    });
+  // Before #398, every 30-character chunk rescanned the accumulated JSON:
+  // the exact arithmetic-series sum below models that O(n^2) work. Capped
+  // scan deferral intentionally remains O(n^2 / 1024), so comparing against
+  // a linear text-length budget is not scale invariant. Requiring at least a
+  // 10x reduction from naive rescanning preserves the algorithmic regression
+  // signal at every fixture size.
+  //
+  // #398 measured roughly 2.1s -> 38ms on its development setup (before the
+  // final steady-cadence cap). That plain-machine figure is not an absolute
+  // CI SLA: at this exact head the same case measured 298ms plain versus
+  // 1444ms with V8 coverage, with identical outputs and scan work. The work
+  // ratio isolates parser complexity from instrumentation and runner load.
+  it.each([1000, 2000, 4000])(
+    "reduces boundary-scan work by at least 10x for %i streamed lines",
+    async (lines) => {
+      const text = hermesCall("write_file", {
+        path: "a.ts",
+        content: largeBody(lines),
+      });
 
-    boundaryScanWork.characters = 0;
-    const parts = await streamInChunks(text, 30);
+      boundaryScanWork.characters = 0;
+      const parts = await streamInChunks(text, scalingChunkSize);
 
-    const { toolCalls } = summarize(parts);
-    expect(toolCalls).toHaveLength(1);
-    const parsed = JSON.parse(toolCalls[0].input);
-    expect(parsed.content).toContain("line 3999:");
+      const { toolCalls } = summarize(parts);
+      expect(toolCalls).toHaveLength(1);
+      const parsed = JSON.parse(toolCalls[0].input);
+      expect(parsed.content).toContain(`line ${lines - 1}:`);
 
-    expect(boundaryScanWork.characters).toBeLessThan(text.length * 200);
-  }, 30_000);
+      const naiveCharacters = naiveEveryChunkRescanCharacters(text.length);
+      expect(boundaryScanWork.characters * 10).toBeLessThan(naiveCharacters);
+    },
+    30_000
+  );
 });

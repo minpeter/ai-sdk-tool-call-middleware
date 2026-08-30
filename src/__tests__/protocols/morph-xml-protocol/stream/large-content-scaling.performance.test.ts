@@ -88,6 +88,11 @@ async function streamLargeToolCall(lines: number): Promise<{
 }
 
 describe("morph-xml large streamed tool call scaling", () => {
+  // Before #396, each 30-character chunk reparsed the accumulated XML
+  // progress (O(n^2), roughly 2.6s on its development setup). The incremental
+  // path limits full progress parsing to about 2x input length, so this linear
+  // work budget preserves the original ~40x algorithmic regression signal
+  // without depending on coverage instrumentation or runner speed.
   it("bounds full progress parsing work for a ~173KB streamed string argument", async () => {
     fullProgressParseWork.characters = 0;
     const { input, textLength } = await streamLargeToolCall(4000);
