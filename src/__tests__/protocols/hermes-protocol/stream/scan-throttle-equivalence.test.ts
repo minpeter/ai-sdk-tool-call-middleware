@@ -1,12 +1,35 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
   zeroUsage,
 } from "../../../test-helpers";
+
+const boundaryScanWork = vi.hoisted(() => ({ characters: 0 }));
+
+vi.mock(
+  "../../../../core/protocols/hermes-call-boundary",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../../../core/protocols/hermes-call-boundary")
+      >();
+    return {
+      ...actual,
+      findToolCallBoundaryOutsideRjsonSyntax: (
+        ...args: Parameters<
+          typeof actual.findToolCallBoundaryOutsideRjsonSyntax
+        >
+      ) => {
+        boundaryScanWork.characters += args[0].length;
+        return actual.findToolCallBoundaryOutsideRjsonSyntax(...args);
+      },
+    };
+  }
+);
 
 const tools = [
   {
@@ -176,26 +199,20 @@ describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
 });
 
 describe("hermes large streamed tool call scaling", () => {
-  // Regression guard: before scan throttling, a ~177KB string argument
-  // streamed in 30-char chunks rescanned the accumulated JSON per chunk
-  // (O(n^2), ~2.1s on a dev machine). Amortized scanning is ~50x faster; the
-  // generous bound keeps slow CI stable while still failing loudly on a
-  // quadratic regression.
-  it("parses a ~177KB streamed string argument well under the quadratic regime", async () => {
+  it("bounds boundary-scan work for a ~177KB streamed string argument", async () => {
     const text = hermesCall("write_file", {
       path: "a.ts",
       content: largeBody(4000),
     });
 
-    const start = performance.now();
+    boundaryScanWork.characters = 0;
     const parts = await streamInChunks(text, 30);
-    const elapsedMs = performance.now() - start;
 
     const { toolCalls } = summarize(parts);
     expect(toolCalls).toHaveLength(1);
     const parsed = JSON.parse(toolCalls[0].input);
     expect(parsed.content).toContain("line 3999:");
 
-    expect(elapsedMs).toBeLessThan(1500);
+    expect(boundaryScanWork.characters).toBeLessThan(text.length * 200);
   }, 30_000);
 });
