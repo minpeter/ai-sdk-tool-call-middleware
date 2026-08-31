@@ -3,15 +3,10 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import {
-  consumeMarkdownCodeText,
-  createMarkdownCodeContext,
-  markdownCodeContextSuppressesToolCall,
-} from "../utils/markdown-code-context";
-import { createFlushTextHandler } from "../utils/protocol-utils";
-import {
   MAX_GLM5_CALL_BODY_LENGTH,
   type ResolvedGlm5ProtocolOptions,
 } from "./glm5-call-parsing";
+import { createGlm5MarkdownStream } from "./glm5-markdown-stream";
 import {
   createGlm5StreamBody,
   sliceGlm5StreamBody,
@@ -47,27 +42,10 @@ export function createGlm5StreamParser({
 }): TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart> {
   let textBuffer = "";
   let activeCall: ActiveGlm5Call | null = null;
-  let currentTextId: string | null = null;
-  let hasEmittedTextStart = false;
-  const markdownContext = createMarkdownCodeContext();
   let streamPoisoned = false;
 
-  const baseFlushText = createFlushTextHandler(
-    () => currentTextId,
-    (value) => {
-      currentTextId = value;
-    },
-    () => hasEmittedTextStart,
-    (value) => {
-      hasEmittedTextStart = value;
-    }
-  );
-  const flushText = (controller: StreamController, text?: string) => {
-    if (text) {
-      consumeMarkdownCodeText(markdownContext, text);
-    }
-    baseFlushText(controller, text);
-  };
+  const markdownStream = createGlm5MarkdownStream();
+  const { flushText } = markdownStream;
   const lifecycle = createGlm5StreamLifecycle({
     bodyLengthLimit,
     flushText,
@@ -98,6 +76,16 @@ export function createGlm5StreamParser({
     }
     const close = scanGlm5ToolCallClose(call, protocolOptions, tools);
     if (!close) {
+      if (textBuffer.length > 0 && call.markdownCodePrefixed) {
+        markdownStream.beginOversizedFence(
+          controller,
+          materializeRawGlm5Call(call)
+        );
+        activeCall = null;
+        const resync = markdownStream.resynchronize(controller, textBuffer);
+        textBuffer = resync.remainder;
+        return resync.closed;
+      }
       if (textBuffer.length > 0) {
         lifecycle.markCallOversized(controller, call);
       } else {
@@ -139,8 +127,7 @@ export function createGlm5StreamParser({
       if (prefix.length > 0) {
         flushText(controller, prefix);
       }
-      const insideMarkdownCode =
-        markdownCodeContextSuppressesToolCall(markdownContext);
+      const insideMarkdownCode = markdownStream.isInsideCode();
       flushText(controller);
       const body = textBuffer.slice(open.end, open.end + bodyLengthLimit);
       const remainderStart = open.end + body.length;
@@ -171,6 +158,11 @@ export function createGlm5StreamParser({
   };
 
   const finalizePending = (controller: StreamController) => {
+    if (markdownStream.finalizeOversizedFence(controller)) {
+      textBuffer = "";
+      flushText(controller);
+      return;
+    }
     if (streamPoisoned) {
       if (activeCall) {
         lifecycle.closeToolInput(controller, activeCall);
@@ -210,6 +202,33 @@ export function createGlm5StreamParser({
     flushText(controller);
   };
 
+  const processTextDelta = (controller: StreamController, delta: string) => {
+    if (activeCall) {
+      const retainedLength = Math.max(
+        0,
+        bodyLengthLimit - activeCall.body.length
+      );
+      const retained = delta.slice(0, retainedLength);
+      appendGlm5ScannedStreamBody(activeCall, retained);
+      const overflow = delta.slice(retainedLength);
+      textBuffer += overflow;
+      if (
+        overflow.length === 0 &&
+        !STRUCTURAL_TRIGGER_RE.test(retained) &&
+        activeCall.body.length < activeCall.nextProgressParseLength
+      ) {
+        return;
+      }
+    } else {
+      textBuffer += delta;
+    }
+    const resync = markdownStream.resynchronize(controller, textBuffer);
+    textBuffer = resync.remainder;
+    if (resync.closed) {
+      processBufferedText(controller);
+    }
+  };
+
   return new TransformStream<
     LanguageModelV4StreamPart,
     LanguageModelV4StreamPart
@@ -226,26 +245,7 @@ export function createGlm5StreamParser({
         return;
       }
       if (part.type === "text-delta") {
-        if (activeCall) {
-          const retainedLength = Math.max(
-            0,
-            bodyLengthLimit - activeCall.body.length
-          );
-          const retained = part.delta.slice(0, retainedLength);
-          appendGlm5ScannedStreamBody(activeCall, retained);
-          const overflow = part.delta.slice(retainedLength);
-          textBuffer += overflow;
-          if (
-            overflow.length === 0 &&
-            !STRUCTURAL_TRIGGER_RE.test(retained) &&
-            activeCall.body.length < activeCall.nextProgressParseLength
-          ) {
-            return;
-          }
-        } else {
-          textBuffer += part.delta;
-        }
-        processBufferedText(controller);
+        processTextDelta(controller, part.delta);
         return;
       }
       if (part.type === "finish") {

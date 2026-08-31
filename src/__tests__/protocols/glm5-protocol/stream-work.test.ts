@@ -32,7 +32,7 @@ vi.mock("../../../core/protocols/glm5-stream-body", async (importOriginal) => {
 
 async function runParser(
   parser: TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>,
-  chunks: readonly string[],
+  chunks: readonly (LanguageModelV4StreamPart | string)[],
   partsBeforeFinish: readonly LanguageModelV4StreamPart[] = []
 ): Promise<LanguageModelV4StreamPart[]> {
   const writer = parser.writable.getWriter();
@@ -47,8 +47,12 @@ async function runParser(
       parts.push(result.value);
     }
   })();
-  for (const delta of chunks) {
-    await writer.write({ type: "text-delta", id: "fixture", delta });
+  for (const chunk of chunks) {
+    await writer.write(
+      typeof chunk === "string"
+        ? { type: "text-delta", id: "fixture", delta: chunk }
+        : chunk
+    );
   }
   for (const part of partsBeforeFinish) {
     await writer.write(part);
@@ -216,6 +220,39 @@ describe("GLM-5 stream work bounds", () => {
       expect(streamed.at(-1)?.type).toBe("finish");
     }
   );
+
+  it("preserves a bounded fenced marker and resumes later stream parts when its body exceeds the limit", async () => {
+    const bodyLengthLimit = 64;
+    const body = `echo<arg_key>message</arg_key><arg_value>${"x".repeat(80)}</arg_value>`;
+    const closingFenceAndProse = "\n```\nFollowing prose survives.";
+    const onError = vi.fn();
+    const streamed = await runParser(
+      createGlm5StreamParser({
+        bodyLengthLimit,
+        options: { onError },
+        protocolOptions: resolveGlm5ProtocolOptions(),
+        tools: glm5Tools,
+      }),
+      [
+        `\`\`\`xml\n<tool_call>${body}</tool_call>\n\``,
+        "``\nFollowing prose survives.",
+        { type: "response-metadata", id: "after-fence" },
+      ]
+    );
+
+    expect(normalizeStreamToolCalls(streamed)).toEqual([]);
+    expect(extractTextDeltas(streamed)).toBe(
+      `\`\`\`xml\n<tool_call>${body.slice(0, bodyLengthLimit)}${closingFenceAndProse}`
+    );
+    expect(streamed).toContainEqual({
+      type: "response-metadata",
+      id: "after-fence",
+    });
+    expect(streamed.at(-1)?.type).toBe("finish");
+    expect(onError).not.toHaveBeenCalled();
+    const lifecycle = extractToolInputTimeline(streamed);
+    expect(lifecycle.starts).toHaveLength(lifecycle.ends.length);
+  });
 
   it("preserves safe malformed call text when raw fallback is enabled", async () => {
     const onError = vi.fn();
