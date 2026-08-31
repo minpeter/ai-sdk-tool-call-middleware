@@ -22,12 +22,12 @@ import {
 import { createGlm5StreamLifecycle } from "./glm5-stream-lifecycle";
 import { type ActiveGlm5Call, createActiveGlm5Call } from "./glm5-stream-state";
 import { createFlushSafeGlm5TextBuffer } from "./glm5-stream-text-buffer";
+import { createGlm5StreamTransform } from "./glm5-stream-transform";
 import type { ParserOptions } from "./protocol-interface";
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
-// allow: SIZE_OK - this module is one incremental stream state machine.
 const STRUCTURAL_TRIGGER_RE = /[<>]/;
 
 export function createGlm5StreamParser({
@@ -246,31 +246,9 @@ export function createGlm5StreamParser({
     }
   };
 
-  return new TransformStream<
-    LanguageModelV4StreamPart,
-    LanguageModelV4StreamPart
-  >({
-    flush(controller) {
-      finalizePending(controller);
-    },
-
-    transform(part, controller) {
-      if (streamPoisoned && part.type !== "error" && part.type !== "finish") {
-        return;
-      }
-      if (part.type === "text-start" || part.type === "text-end") {
-        return;
-      }
-      if (part.type === "text-delta") {
-        processTextDelta(controller, part.delta);
-        return;
-      }
-      if (part.type === "finish") {
-        finalizePending(controller);
-        controller.enqueue(part);
-        return;
-      }
-      controller.enqueue(part);
-    },
+  return createGlm5StreamTransform({
+    finalizePending,
+    isPoisoned: () => streamPoisoned,
+    processTextDelta,
   });
 }
