@@ -219,11 +219,7 @@ export function createGlm5StreamParser({
     },
 
     transform(part, controller) {
-      if (streamPoisoned) {
-        if (part.type === "finish") {
-          finalizePending(controller);
-          controller.enqueue(part);
-        }
+      if (streamPoisoned && part.type !== "error" && part.type !== "finish") {
         return;
       }
       if (part.type === "text-start" || part.type === "text-end") {

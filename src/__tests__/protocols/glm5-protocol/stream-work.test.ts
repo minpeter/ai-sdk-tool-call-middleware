@@ -32,7 +32,8 @@ vi.mock("../../../core/protocols/glm5-stream-body", async (importOriginal) => {
 
 async function runParser(
   parser: TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>,
-  chunks: readonly string[]
+  chunks: readonly string[],
+  partsBeforeFinish: readonly LanguageModelV4StreamPart[] = []
 ): Promise<LanguageModelV4StreamPart[]> {
   const writer = parser.writable.getWriter();
   const reader = parser.readable.getReader();
@@ -48,6 +49,9 @@ async function runParser(
   })();
   for (const delta of chunks) {
     await writer.write({ type: "text-delta", id: "fixture", delta });
+  }
+  for (const part of partsBeforeFinish) {
+    await writer.write(part);
   }
   await writer.write({
     type: "finish",
@@ -164,6 +168,54 @@ describe("GLM-5 stream work bounds", () => {
     const lifecycle = extractToolInputTimeline(streamed);
     expect(lifecycle.starts).toHaveLength(lifecycle.ends.length);
   });
+
+  it.each([
+    {
+      bodyLengthLimit: 32,
+      chunks: ["safe text"],
+      expectedTypes: [
+        "text-start",
+        "text-delta",
+        "error",
+        "text-end",
+        "finish",
+      ],
+      name: "normally",
+    },
+    {
+      bodyLengthLimit: 32,
+      chunks: [
+        `<tool_call>${"x".repeat(33)}`,
+        "unsafe text<tool_call>ping</tool_call>",
+      ],
+      expectedTypes: ["error", "finish"],
+      name: "after an oversized call poisons the stream",
+    },
+  ])(
+    "preserves provider error ordering $name",
+    async ({ bodyLengthLimit, chunks, expectedTypes }) => {
+      const providerError: LanguageModelV4StreamPart = {
+        type: "error",
+        error: new Error("provider failed"),
+      };
+      const streamed = await runParser(
+        createGlm5StreamParser({
+          bodyLengthLimit,
+          protocolOptions: resolveGlm5ProtocolOptions(),
+          tools: glm5Tools,
+        }),
+        chunks,
+        [providerError]
+      );
+
+      expect(streamed.map((part) => part.type)).toEqual(expectedTypes);
+      expect(streamed.find((part) => part.type === "error")).toBe(
+        providerError
+      );
+      expect(normalizeStreamToolCalls(streamed)).toEqual([]);
+      expect(streamed.at(-1)?.type).toBe("finish");
+    }
+  );
 
   it("preserves safe malformed call text when raw fallback is enabled", async () => {
     const onError = vi.fn();
