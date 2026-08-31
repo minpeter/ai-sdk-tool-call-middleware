@@ -1,8 +1,5 @@
 import type { LanguageModelV4Middleware } from "@ai-sdk/provider";
-import {
-  formatToolResponseAsGlm5,
-  glm5SystemPromptTemplate,
-} from "./core/prompts/glm5-prompt";
+import { glm5SystemPromptTemplate } from "./core/prompts/glm5-prompt";
 import {
   formatToolResponseAsHermes,
   hermesSystemPromptTemplate,
@@ -78,7 +75,6 @@ export const hermesToolMiddleware = createToolMiddleware({
 export const glm5ToolMiddleware = createToolMiddleware({
   protocol: glm5Protocol(),
   toolSystemPromptTemplate: glm5SystemPromptTemplate,
-  toolResponsePromptTemplate: formatToolResponseAsGlm5,
   placement: "standalone-first",
   historyMode: "provider-native",
   suppressToolSystemPromptForForcedChoice: true,
