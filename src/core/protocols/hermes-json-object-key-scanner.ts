@@ -4,8 +4,19 @@ const WHITESPACE_JSON_REGEX = /\s/;
 
 export function skipJsonWhitespace(text: string, fromIndex: number): number {
   let index = fromIndex;
-  while (index < text.length && WHITESPACE_JSON_REGEX.test(text[index])) {
-    index += 1;
+  while (index < text.length) {
+    const code = text.charCodeAt(index);
+    // Fast path for ASCII whitespace: /\s/ matches \t \n \v \f \r and space.
+    if ((code >= 9 && code <= 13) || code === 32) {
+      index += 1;
+      continue;
+    }
+    // Non-ASCII whitespace (NBSP, unicode spaces, ...) still matches /\s/.
+    if (code > 127 && WHITESPACE_JSON_REGEX.test(text[index])) {
+      index += 1;
+      continue;
+    }
+    break;
   }
   return index;
 }

@@ -34,21 +34,40 @@ import {
   type StreamController,
   type StreamState,
 } from "./hermes-streaming-progress";
-import type { ParserOptions } from "./protocol-interface";
+import type {
+  ParserOptions,
+  ProtocolToolCallResolver,
+} from "./protocol-interface";
 
 function emitStreamingToolInputProgress(options: {
   state: StreamState;
   controller: StreamController;
   toolCallJson: string;
   tools: LanguageModelV4FunctionTool[];
+  resolveToolCall?: ProtocolToolCallResolver;
 }): boolean {
-  const { state, controller, toolCallJson, tools } = options;
+  const {
+    state,
+    controller,
+    toolCallJson,
+    tools,
+    resolveToolCall: resolver,
+  } = options;
   const progress = extractStreamingToolCallProgress(toolCallJson);
   if (!(progress.toolName && progress.argumentsComplete)) {
     return false;
   }
   if (exceedsToolCallJsonNestingDepth(toolCallJson)) {
     return false;
+  }
+  if (resolver) {
+    const resolved = resolver(toolCallJson, tools);
+    if (!resolved.ok) {
+      return false;
+    }
+    ensureToolInputStart(state, controller, resolved.toolName);
+    emitToolInputDelta(state, controller, resolved.input);
+    return true;
   }
   try {
     const parsedToolCall = parseRJSON(
@@ -87,6 +106,7 @@ export function scheduleStreamingToolInputProgress(options: {
   controller: StreamController;
   toolCallJson: string;
   tools: LanguageModelV4FunctionTool[];
+  resolveToolCall?: ProtocolToolCallResolver;
 }) {
   const { state, controller, toolCallJson, tools } = options;
   state.pendingToolInputProgressVersion += 1;
@@ -104,6 +124,7 @@ export function scheduleStreamingToolInputProgress(options: {
       controller,
       toolCallJson,
       tools,
+      resolveToolCall: options.resolveToolCall,
     });
   });
 }
@@ -236,7 +257,8 @@ function isStrictToolCallArray(value: unknown): boolean {
  */
 export function recoverCompleteKnownCallBeforeNestedStart(
   text: string,
-  tools: LanguageModelV4FunctionTool[]
+  tools: LanguageModelV4FunctionTool[],
+  resolver: ProtocolToolCallResolver = resolveToolCall
 ): { input: string; toolName: string } | null {
   const candidate = text.trim();
   let parsed: unknown;
@@ -265,7 +287,7 @@ export function recoverCompleteKnownCallBeforeNestedStart(
     return null;
   }
 
-  const resolved = resolveToolCall(candidate, tools);
+  const resolved = resolver(candidate, tools);
   return resolved.ok
     ? { input: resolved.input, toolName: resolved.toolName }
     : null;
@@ -298,7 +320,8 @@ function stripPartialEndFromPossibleCallArray(
 export function recoverCompleteCallArrayBeforePartialEnd(
   text: string,
   toolCallEnd: string,
-  tools: LanguageModelV4FunctionTool[]
+  tools: LanguageModelV4FunctionTool[],
+  resolver: ProtocolToolCallResolver = resolveToolCall
 ): {
   matchedArrayShape: boolean;
   recoveredCalls: ReturnType<typeof recoverKnownToolCallsFromText>;
@@ -316,7 +339,7 @@ export function recoverCompleteCallArrayBeforePartialEnd(
   }
   return {
     matchedArrayShape: true,
-    recoveredCalls: recoverKnownToolCallsFromText(candidate, tools),
+    recoveredCalls: recoverKnownToolCallsFromText(candidate, tools, resolver),
   };
 }
 
@@ -333,16 +356,18 @@ function salvageIncompleteToolCalls(
   controller: StreamController,
   rawToolCallContent: string,
   tools: LanguageModelV4FunctionTool[],
-  toolCallEnd: string
+  toolCallEnd: string,
+  resolver: ProtocolToolCallResolver
 ): boolean {
   const arrayRecovery = recoverCompleteCallArrayBeforePartialEnd(
     rawToolCallContent,
     toolCallEnd,
-    tools
+    tools,
+    resolver
   );
   const recoveredCalls = arrayRecovery.matchedArrayShape
     ? arrayRecovery.recoveredCalls
-    : recoverKnownToolCallsFromText(rawToolCallContent, tools);
+    : recoverKnownToolCallsFromText(rawToolCallContent, tools, resolver);
   if (!recoveredCalls || recoveredCalls.length === 0) {
     return false;
   }
@@ -360,49 +385,6 @@ function salvageIncompleteToolCalls(
   return true;
 }
 
-function tryEmitParsedIncompleteToolCall(
-  state: StreamState,
-  controller: StreamController,
-  tools: LanguageModelV4FunctionTool[]
-): boolean {
-  const toolCallJson = state.currentToolCallJson;
-  if (!toolCallJson || exceedsToolCallJsonNestingDepth(toolCallJson)) {
-    return false;
-  }
-  try {
-    const parsedToolCall = parseRJSON(
-      normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
-    );
-    if (!isParsedToolCallRecord(parsedToolCall)) {
-      return false;
-    }
-    if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
-      return false;
-    }
-    const policyArguments = applyToolArgumentKeyPolicy(
-      parsedToolCall.name,
-      parsedToolCall.arguments,
-      tools
-    );
-    if (policyArguments === null) {
-      return false;
-    }
-    emitToolCallFromParsed(
-      state,
-      controller,
-      { ...parsedToolCall, arguments: policyArguments.args },
-      tools
-    );
-    state.currentToolCallJson = "";
-    state.isInsideToolCall = false;
-    return true;
-  } catch {
-    // Incomplete tool calls (no closing </tool_call>) are not candidates
-    // for quote repair — the JSON may be genuinely truncated.
-    return false;
-  }
-}
-
 function emitIncompleteToolCall(
   state: StreamState,
   controller: StreamController,
@@ -410,15 +392,37 @@ function emitIncompleteToolCall(
   toolCallEnd: string,
   trailingBuffer: string,
   tools: LanguageModelV4FunctionTool[],
-  options?: ParserOptions
+  options: ParserOptions | undefined,
+  resolver: ProtocolToolCallResolver
 ) {
   if (!state.currentToolCallJson && trailingBuffer.length === 0) {
     state.isInsideToolCall = false;
     return;
   }
 
-  if (tryEmitParsedIncompleteToolCall(state, controller, tools)) {
-    return;
+  if (state.currentToolCallJson) {
+    try {
+      const resolved = resolver(state.currentToolCallJson, tools);
+      if (!resolved.ok) {
+        throw resolved.error;
+      }
+      if (state.currentToolCallJson.includes("<tool_call>")) {
+        throw new Error("Tool call body contains nested call separators");
+      }
+      emitResolvedToolCall(
+        state,
+        controller,
+        resolved.toolName,
+        resolved.input
+      );
+      state.currentToolCallJson = "";
+      state.isInsideToolCall = false;
+      return;
+    } catch {
+      // Incomplete tool calls (no closing </tool_call>) are not candidates
+      // for quote repair — the JSON may be genuinely truncated.
+      // Fall through to balanced-JSON salvage, then text/error fallback.
+    }
   }
 
   const rawToolCallContent = `${state.currentToolCallJson}${trailingBuffer}`;
@@ -429,7 +433,8 @@ function emitIncompleteToolCall(
       controller,
       rawToolCallContent,
       tools,
-      toolCallEnd
+      toolCallEnd,
+      resolver
     )
   ) {
     return;
@@ -500,7 +505,8 @@ export function handleFinishChunk(
   toolCallEnd: string,
   tools: LanguageModelV4FunctionTool[],
   options: ParserOptions | undefined,
-  chunk: LanguageModelV4StreamPart
+  chunk: LanguageModelV4StreamPart,
+  resolver: ProtocolToolCallResolver = resolveToolCall
 ) {
   if (state.isInsideToolCall) {
     const trailingBuffer = state.buffer;
@@ -512,7 +518,8 @@ export function handleFinishChunk(
       toolCallEnd,
       trailingBuffer,
       tools,
-      options
+      options,
+      resolver
     );
   } else if (state.buffer.length > 0) {
     flushBuffer(state, controller);

@@ -104,6 +104,11 @@ async function handleToolChoice(
     tools,
     onError,
     errorMessage: "Failed to parse toolChoice JSON from generated model output",
+    expectedToolName: (
+      getToolCallMiddlewareOptions(params.providerOptions).toolChoice as
+        | { toolName?: string }
+        | undefined
+    )?.toolName,
   });
 
   const toolCall: LanguageModelV4ToolCall = {

@@ -3,6 +3,54 @@ import { unwrapJsonSchema } from "../../schema-coerce";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 
+// Module-level regex caches keyed by schema property name, mirroring
+// selfClosingTagCache in xml-tool-tag-scanner.ts. These patterns are rebuilt
+// on every streaming progress emission otherwise (once per chunk per
+// property). The keyspace is bounded by schema property names seen by the
+// process, so eviction is unnecessary. `lastIndex` is reset on every lookup
+// so cached global-flag patterns always scan from the start.
+function getCachedPattern(
+  cache: Map<string, RegExp>,
+  key: string,
+  build: (escapedKey: string) => RegExp
+): RegExp {
+  let pattern = cache.get(key);
+  if (!pattern) {
+    pattern = build(escapeRegExp(key));
+    cache.set(key, pattern);
+  }
+  pattern.lastIndex = 0;
+  return pattern;
+}
+
+const propertyOpenOrSelfClosingTagCache = new Map<string, RegExp>();
+const propertyOpenTagCache = new Map<string, RegExp>();
+const propertyCloseTagCache = new Map<string, RegExp>();
+
+function getPropertyOpenOrSelfClosingTagPattern(name: string): RegExp {
+  return getCachedPattern(
+    propertyOpenOrSelfClosingTagCache,
+    name,
+    (escaped) => new RegExp(`<${escaped}(?:\\s[^>]*)?\\s*/?>`, "i")
+  );
+}
+
+function getPropertyOpenTagPattern(name: string): RegExp {
+  return getCachedPattern(
+    propertyOpenTagCache,
+    name,
+    (escaped) => new RegExp(`<${escaped}(?:\\s[^>]*)?>`, "gi")
+  );
+}
+
+function getPropertyCloseTagPattern(name: string): RegExp {
+  return getCachedPattern(
+    propertyCloseTagCache,
+    name,
+    (escaped) => new RegExp(`</\\s*${escaped}\\s*>`, "gi")
+  );
+}
+
 function parseXmlTagName(rawTagBody: string): string {
   let index = 0;
   while (
@@ -227,13 +275,33 @@ export function hasNonWhitespaceTopLevelText(fragment: string): boolean {
   return false;
 }
 
+// Schema introspection results are memoized by schema object identity.
+// Tool input schemas are stable references for the lifetime of a request
+// (tools are fixed when the stream parser is created), while these helpers
+// are invoked on every streamed chunk from the tool-input progress path.
+// WeakMap keying keeps the cache GC-safe. Returned Sets are shared across
+// calls and must be treated as readonly by callers.
+const objectSchemaPropertyNamesCache = new WeakMap<
+  object,
+  Set<string> | null
+>();
+
 export function getObjectSchemaPropertyNames(
   schema: unknown
 ): Set<string> | null {
   if (!schema || typeof schema !== "object") {
     return null;
   }
+  const cached = objectSchemaPropertyNamesCache.get(schema);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const result = computeObjectSchemaPropertyNames(schema);
+  objectSchemaPropertyNamesCache.set(schema, result);
+  return result;
+}
 
+function computeObjectSchemaPropertyNames(schema: object): Set<string> | null {
   const schemaObject = schema as {
     type?: unknown;
     properties?: unknown;
@@ -256,7 +324,22 @@ export function getObjectSchemaPropertyNames(
   );
 }
 
+const schemaAllowsArrayTypeCache = new WeakMap<object, boolean>();
+
 export function schemaAllowsArrayType(schema: unknown): boolean {
+  if (schema && typeof schema === "object") {
+    const cached = schemaAllowsArrayTypeCache.get(schema);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = computeSchemaAllowsArrayType(schema);
+    schemaAllowsArrayTypeCache.set(schema, result);
+    return result;
+  }
+  return computeSchemaAllowsArrayType(schema);
+}
+
+function computeSchemaAllowsArrayType(schema: unknown): boolean {
   const normalizedSchema = unwrapJsonSchema(schema);
   if (!normalizedSchema || typeof normalizedSchema !== "object") {
     return false;
@@ -312,7 +395,27 @@ function schemaAllowsStringType(schema: unknown): boolean {
   return false;
 }
 
+const objectSchemaStringPropertyNamesCache = new WeakMap<
+  object,
+  Set<string> | null
+>();
+
 export function getObjectSchemaStringPropertyNames(
+  schema: unknown
+): Set<string> | null {
+  if (schema && typeof schema === "object") {
+    const cached = objectSchemaStringPropertyNamesCache.get(schema);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const result = computeObjectSchemaStringPropertyNames(schema);
+    objectSchemaStringPropertyNamesCache.set(schema, result);
+    return result;
+  }
+  return computeObjectSchemaStringPropertyNames(schema);
+}
+
+function computeObjectSchemaStringPropertyNames(
   schema: unknown
 ): Set<string> | null {
   const propertyNames = getObjectSchemaPropertyNames(schema);
@@ -443,10 +546,7 @@ export function plainTextBodyFallback(
     getRequiredMessageStringProperty(normalizedSchema) === propertyName;
   if (schemaProperties && !allowsPlainTextWithSchemaTags) {
     for (const name of schemaProperties) {
-      const propertyTagPattern = new RegExp(
-        `<${escapeRegExp(name)}(?:\\s[^>]*)?\\s*/?>`,
-        "i"
-      );
+      const propertyTagPattern = getPropertyOpenOrSelfClosingTagPattern(name);
       if (propertyTagPattern.test(normalized)) {
         return null;
       }
@@ -480,11 +580,8 @@ export function findTrailingUnclosedStringTag(options: {
   let bestOpenIndex = -1;
 
   for (const name of options.stringPropertyNames) {
-    const openPattern = new RegExp(
-      `<${escapeRegExp(name)}(?:\\s[^>]*)?>`,
-      "gi"
-    );
-    const closePattern = new RegExp(`</\\s*${escapeRegExp(name)}\\s*>`, "gi");
+    const openPattern = getPropertyOpenTagPattern(name);
+    const closePattern = getPropertyCloseTagPattern(name);
 
     let lastOpen = -1;
     for (const match of options.toolContent.matchAll(openPattern)) {
@@ -518,11 +615,8 @@ export function findTrailingUnclosedStringTag(options: {
 export function buildEmptyTrailingStringTagProgressContent(options: {
   tagName: string;
   toolContent: string;
-}): string | null {
-  const openPattern = new RegExp(
-    `<${escapeRegExp(options.tagName)}(?:\\s[^>]*)?>`,
-    "gi"
-  );
+}): { content: string; bodyStart: number } | null {
+  const openPattern = getPropertyOpenTagPattern(options.tagName);
   let lastOpenEnd = -1;
 
   for (const match of options.toolContent.matchAll(openPattern)) {
@@ -536,7 +630,33 @@ export function buildEmptyTrailingStringTagProgressContent(options: {
     return null;
   }
 
-  return `${options.toolContent.slice(0, lastOpenEnd)}</${options.tagName}>`;
+  return {
+    content: `${options.toolContent.slice(0, lastOpenEnd)}</${options.tagName}>`,
+    bodyStart: lastOpenEnd,
+  };
+}
+
+/**
+ * Whether the named schema property is exactly string-typed (no unions or
+ * alternative types). Streaming a raw value prefix is only prefix-stable
+ * under schema coercion when the property can never be coerced away from a
+ * string (e.g. "12" must not become the number 12 once complete).
+ */
+export function isStrictStringSchemaProperty(
+  toolSchema: unknown,
+  name: string
+): boolean {
+  const property = unwrapJsonSchema(getSchemaObjectProperty(toolSchema, name));
+  if (!property || typeof property !== "object") {
+    return false;
+  }
+  const typeValue = (property as Record<string, unknown>).type;
+  return (
+    typeValue === "string" ||
+    (Array.isArray(typeValue) &&
+      typeValue.length === 1 &&
+      typeValue[0] === "string")
+  );
 }
 
 export function getSchemaObjectProperty(

@@ -4,6 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import YAML from "yaml";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
+import type { ProtocolToolCallResolver } from "../protocols/protocol-interface";
 import {
   containsPrototypeSensitiveKey,
   extractJsonLikeCandidates,
@@ -334,7 +335,8 @@ function isSensitiveRejectedJsonCandidate(
 
 function resolveCandidatePayload(
   candidate: JsonCandidate,
-  tools: LanguageModelV4FunctionTool[]
+  tools: LanguageModelV4FunctionTool[],
+  resolver?: ProtocolToolCallResolver
 ): ToolCallCandidate | null {
   if (toolCallTextHasPrototypeSensitiveKey(candidate.text)) {
     return null;
@@ -345,6 +347,17 @@ function resolveCandidatePayload(
   }
   if (hasPrototypeSensitiveStructuralKey(parsed)) {
     return null;
+  }
+  if (
+    resolver &&
+    looksLikeKnownToolCandidate(parsed, tools) &&
+    isRecord(parsed) &&
+    Object.hasOwn(parsed, "arguments")
+  ) {
+    const resolved = resolver(candidate.text, tools);
+    if (resolved.ok) {
+      return { toolName: resolved.toolName, input: resolved.input };
+    }
   }
   return (
     parseAsToolPayload(parsed, tools) ?? parseAsArgumentsOnly(parsed, tools)
@@ -630,7 +643,8 @@ function extractSensitiveYamlToolCallBlockDropSpans(
  */
 export function recoverToolCallFromJsonCandidatesWithStatus(
   text: string,
-  tools: LanguageModelV4FunctionTool[]
+  tools: LanguageModelV4FunctionTool[],
+  resolver?: ProtocolToolCallResolver
 ): ToolCallJsonRecoveryResult {
   if (tools.length === 0) {
     return { kind: "none" };
@@ -638,7 +652,7 @@ export function recoverToolCallFromJsonCandidatesWithStatus(
 
   const spans: RecoverySpan[] = [];
   for (const jsonCandidate of extractJsonLikeCandidates(text)) {
-    const payload = resolveCandidatePayload(jsonCandidate, tools);
+    const payload = resolveCandidatePayload(jsonCandidate, tools, resolver);
     if (payload) {
       spans.push({
         startIndex: jsonCandidate.startIndex,
@@ -700,8 +714,13 @@ export function recoverToolCallFromJsonCandidatesWithStatus(
 
 export function recoverToolCallFromJsonCandidates(
   text: string,
-  tools: LanguageModelV4FunctionTool[]
+  tools: LanguageModelV4FunctionTool[],
+  resolver?: ProtocolToolCallResolver
 ): LanguageModelV4Content[] | null {
-  const result = recoverToolCallFromJsonCandidatesWithStatus(text, tools);
+  const result = recoverToolCallFromJsonCandidatesWithStatus(
+    text,
+    tools,
+    resolver
+  );
   return result.kind === "recovered" ? result.content : null;
 }

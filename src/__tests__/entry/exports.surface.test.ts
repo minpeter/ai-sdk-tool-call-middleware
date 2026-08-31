@@ -3,20 +3,31 @@ import { describe, expect, it } from "vitest";
 import {
   createGlm5ToolResponseFormatter,
   createHermesToolResponseFormatter,
+  createKExaone2ToolResponseFormatter,
   createMorphXmlToolResponseFormatter,
   createQwen3CoderXmlToolResponseFormatter,
   createToolMiddleware,
   createUserContentToolResponseTemplate,
+  formatToolResponseAsKExaone2,
   formatToolResponseAsYaml,
+  getDroppedProviderTools,
   glm5Protocol,
   glm5SystemPromptTemplate,
   glm5ToolMiddleware,
   hermesProtocol,
   hermesSystemPromptTemplate,
   hermesToolMiddleware,
+  KExaone236BToolParser,
+  kExaone2Protocol,
+  kExaone2SystemPromptTemplate,
+  kExaone2ToolMiddleware,
+  kExaone236BProtocol,
+  kExaone236BToolDeclaration,
+  kExaone236BToolMiddleware,
   morphXmlSystemPromptTemplate,
   morphXmlToolMiddleware,
   qwen3coderSystemPromptTemplate,
+  transformKExaone236BParams,
   yamlXmlSystemPromptTemplate,
 } from "../../index";
 
@@ -27,6 +38,30 @@ describe("entry exports surface", () => {
 
   it("exports morphXmlToolMiddleware", () => {
     expect(morphXmlToolMiddleware).toBeDefined();
+  });
+
+  it("exports K-EXAONE-2.0 protocol, prompt, formatter, and middleware", () => {
+    expect(typeof kExaone2Protocol).toBe("function");
+    expect(typeof kExaone2SystemPromptTemplate).toBe("function");
+    expect(typeof createKExaone2ToolResponseFormatter).toBe("function");
+    expect(typeof formatToolResponseAsKExaone2).toBe("function");
+    expect(kExaone2ToolMiddleware).toBeDefined();
+  });
+
+  it("exports the complete K-EXAONE-236B surface", () => {
+    expect(typeof kExaone236BProtocol).toBe("function");
+    expect(typeof KExaone236BToolParser).toBe("function");
+    expect(typeof kExaone236BToolDeclaration).toBe("function");
+    expect(typeof transformKExaone236BParams).toBe("function");
+    expect(kExaone236BToolMiddleware).toBeDefined();
+    expect(getDroppedProviderTools).toBeTypeOf("function");
+    expect(
+      getDroppedProviderTools({
+        toolCallMiddleware: {
+          droppedProviderTools: ["provider.one", 2, "provider.two"],
+        },
+      })
+    ).toEqual(["provider.one", "provider.two"]);
   });
 
   it("exports the GLM-5.2 protocol, prompt, formatter, and middleware", () => {
