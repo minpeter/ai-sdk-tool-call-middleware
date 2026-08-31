@@ -112,7 +112,12 @@ export async function wrapStream({
 
   const coreStream = loggedStream
     .pipeThrough(protocol.createStreamParser({ tools, options }))
-    .pipeThrough(createStreamJsonRecoveryTransform({ tools }));
+    .pipeThrough(
+      createStreamJsonRecoveryTransform({
+        allowsRecovery: protocol.allowsGeneratedTextJsonRecovery,
+        tools,
+      })
+    );
 
   let seenToolCall = false;
   let emittedExtraWarnings = extraWarnings.length === 0;

@@ -28,6 +28,12 @@ export type ProtocolToolCallResolver = (
 ) => ResolvedProtocolToolCall;
 
 export interface TCMProtocol {
+  /**
+   * Return false when protocol parsing has terminally consumed this text and
+   * generic JSON recovery must not reinterpret its contents as tool calls.
+   */
+  allowsGeneratedTextJsonRecovery?: (text: string) => boolean;
+
   createStreamParser: ({
     tools,
     options,

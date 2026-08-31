@@ -245,10 +245,15 @@ function parseTextContent(options: {
     return parsedByProtocol;
   }
 
+  const recoveryText = recoveryTextIsMaterialized
+    ? (evaluatedRecoveryText as string)
+    : contentItem.text;
+  if (protocol.allowsGeneratedTextJsonRecovery?.(recoveryText) === false) {
+    return parsedByProtocol;
+  }
+
   const recoveredFromJson = recoverToolCallFromJsonCandidatesWithStatus(
-    recoveryTextIsMaterialized
-      ? (evaluatedRecoveryText as string)
-      : contentItem.text,
+    recoveryText,
     tools
   );
   return recoveredFromJson.kind === "none"
