@@ -108,6 +108,28 @@ describe("GLM-5 stream work bounds", () => {
     assertCanonicalAiSdkEventOrder(output);
   });
 
+  it("does not rematerialize retained bodies for angle-heavy one-character chunks", async () => {
+    const structuralNoise = "<".repeat(8000);
+    const text = `<tool_call>${structuralNoise}</tool_call>`;
+
+    const output = await runProtocolTextDeltaStream({
+      protocol: glm5Protocol(),
+      tools: glm5Tools,
+      chunks: text.split(""),
+    });
+
+    const retainedBodyLength = text.length - "<tool_call>".length;
+    const naiveConcatenationVolume =
+      (retainedBodyLength * (retainedBodyLength + 1)) / 2;
+    expect(normalizeStreamToolCalls(output)).toEqual([]);
+    expect(bodyWork.materializedCharacters).toBeLessThanOrEqual(
+      retainedBodyLength * 8
+    );
+    expect(bodyWork.materializedCharacters * 100).toBeLessThan(
+      naiveConcatenationVolume
+    );
+  });
+
   it("bounds an overflow transition and discards every later call", async () => {
     const bodyLengthLimit = 4096;
     const onError = vi.fn();

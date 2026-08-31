@@ -22,6 +22,7 @@ import {
   createGlm5CloseTagScanner,
   findGlm5ToolCallOpen,
   materializeRawGlm5Call,
+  queueGlm5CloseScannerText,
   scanGlm5ToolCallClose,
 } from "./glm5-stream-close-scanner";
 import { createGlm5StreamLifecycle } from "./glm5-stream-lifecycle";
@@ -144,9 +145,11 @@ export function createGlm5StreamParser({
       flushText(controller);
       const body = textBuffer.slice(open.end, open.end + bodyLengthLimit);
       const remainderStart = open.end + body.length;
+      const closeScanner = createGlm5CloseTagScanner();
+      queueGlm5CloseScannerText(closeScanner, body);
       activeCall = createActiveGlm5Call({
         body: createGlm5StreamBody(body),
-        closeScanner: createGlm5CloseTagScanner(),
+        closeScanner,
         markdownCodePrefixed: insideMarkdownCode,
         openTag: open.raw,
       });
@@ -237,6 +240,7 @@ export function createGlm5StreamParser({
           );
           const retained = part.delta.slice(0, retainedLength);
           appendGlm5StreamBody(activeCall.body, retained);
+          queueGlm5CloseScannerText(activeCall.closeScanner, retained);
           const overflow = part.delta.slice(retainedLength);
           textBuffer += overflow;
           if (

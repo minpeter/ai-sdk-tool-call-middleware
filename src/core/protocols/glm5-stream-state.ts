@@ -8,12 +8,14 @@ export interface Glm5TagMatch {
 
 export interface Glm5CloseTagScanner {
   argValueDepth: number;
+  candidateParts: string[] | null;
   candidateStart: number;
   closeCandidateCount: number;
   cursor: number;
   firstClose: Glm5TagMatch | null;
   nestedToolCallDepth: number;
   nestedToolCallSeen: boolean;
+  pendingChunks: string[];
   pendingClose: Glm5TagMatch | null;
 }
 

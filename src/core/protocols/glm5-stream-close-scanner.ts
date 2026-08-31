@@ -111,6 +111,7 @@ export function hasPotentialGlm5StructuralTagSuffix(text: string): boolean {
 export function createGlm5CloseTagScanner(): Glm5CloseTagScanner {
   return {
     argValueDepth: 0,
+    candidateParts: null,
     candidateStart: -1,
     closeCandidateCount: 0,
     cursor: 0,
@@ -118,7 +119,17 @@ export function createGlm5CloseTagScanner(): Glm5CloseTagScanner {
     nestedToolCallDepth: 0,
     nestedToolCallSeen: false,
     pendingClose: null,
+    pendingChunks: [],
   };
+}
+
+export function queueGlm5CloseScannerText(
+  scanner: Glm5CloseTagScanner,
+  text: string
+): void {
+  if (text.length > 0) {
+    scanner.pendingChunks.push(text);
+  }
 }
 
 function hasStructuralRecovery(
@@ -134,88 +145,96 @@ export function scanGlm5ToolCallClose(
   tools: LanguageModelV4FunctionTool[]
 ): Glm5TagMatch | null {
   const { closeScanner: scanner } = call;
-  const materializedBody = materializeGlm5StreamBody(call.body);
-  while (scanner.cursor < materializedBody.length) {
-    const index = scanner.cursor;
-    const character = materializedBody[index] ?? "";
-    scanner.cursor += 1;
+  while (scanner.pendingChunks.length > 0) {
+    const chunk = scanner.pendingChunks.shift() ?? "";
+    let offset = 0;
+    while (offset < chunk.length) {
+      const character = chunk[offset] ?? "";
+      offset += 1;
+      const index = scanner.cursor;
+      scanner.cursor += 1;
 
-    if (scanner.candidateStart < 0) {
-      if (character === "<") {
-        scanner.candidateStart = index;
-      }
-      continue;
-    }
-    if (character === "<") {
-      scanner.candidateStart = index;
-      continue;
-    }
-    if (character !== ">") {
-      continue;
-    }
-
-    const start = scanner.candidateStart;
-    scanner.candidateStart = -1;
-    const raw = materializedBody.slice(start, scanner.cursor);
-    const match = STREAM_STRUCTURAL_TAG_RE.exec(raw);
-    if (!match) {
-      continue;
-    }
-    const closing = match[1] === "/";
-    const name = match[2]?.toLowerCase();
-
-    if (name === "arg_value") {
-      if (closing) {
-        scanner.argValueDepth = Math.max(0, scanner.argValueDepth - 1);
-        if (scanner.argValueDepth === 0) {
-          scanner.firstClose = null;
-          scanner.nestedToolCallDepth = 0;
-          scanner.nestedToolCallSeen = false;
-          scanner.pendingClose = null;
+      if (scanner.candidateStart < 0) {
+        if (character === "<") {
+          scanner.candidateParts = ["<"];
+          scanner.candidateStart = index;
         }
-      } else {
-        scanner.argValueDepth += 1;
+        continue;
       }
-      continue;
-    }
+      if (character === "<") {
+        scanner.candidateParts = ["<"];
+        scanner.candidateStart = index;
+        continue;
+      }
+      scanner.candidateParts?.push(character);
+      if (character !== ">") {
+        continue;
+      }
 
-    if (!closing) {
-      scanner.nestedToolCallDepth += 1;
-      scanner.nestedToolCallSeen = true;
-      continue;
-    }
-    const close = { end: scanner.cursor, raw, start };
-    scanner.closeCandidateCount += 1;
-    scanner.firstClose ??= close;
-    if (scanner.closeCandidateCount > MAX_GLM5_TOOL_CALL_CLOSE_CANDIDATES) {
-      call.closeSelectionRejected = true;
-      call.suppressRemainderResync = true;
-      return close;
-    }
+      const start = scanner.candidateStart;
+      scanner.candidateStart = -1;
+      const raw = scanner.candidateParts?.join("") ?? "";
+      scanner.candidateParts = null;
+      const match = STREAM_STRUCTURAL_TAG_RE.exec(raw);
+      if (!match) {
+        continue;
+      }
+      const closing = match[1] === "/";
+      const name = match[2]?.toLowerCase();
 
-    const body = materializedBody.slice(0, close.start);
-    let parsed: ReturnType<typeof parseGlm5CallBody> = null;
-    try {
-      parsed = parseGlm5CallBody({
-        body,
-        complete: true,
-        protocolOptions,
-        tools,
-      });
-    } catch {
-      parsed = null;
-    }
-    if (!parsed && hasExplicitlyClosedGlm5TaggedBody(body)) {
-      return close;
-    }
-    if (parsed && !hasStructuralRecovery(parsed)) {
-      return close;
-    }
-    if (parsed) {
-      scanner.pendingClose ??= close;
-    }
-    if (scanner.nestedToolCallDepth > 0) {
-      scanner.nestedToolCallDepth -= 1;
+      if (name === "arg_value") {
+        if (closing) {
+          scanner.argValueDepth = Math.max(0, scanner.argValueDepth - 1);
+          if (scanner.argValueDepth === 0) {
+            scanner.firstClose = null;
+            scanner.nestedToolCallDepth = 0;
+            scanner.nestedToolCallSeen = false;
+            scanner.pendingClose = null;
+          }
+        } else {
+          scanner.argValueDepth += 1;
+        }
+        continue;
+      }
+
+      if (!closing) {
+        scanner.nestedToolCallDepth += 1;
+        scanner.nestedToolCallSeen = true;
+        continue;
+      }
+      const close = { end: scanner.cursor, raw, start };
+      scanner.closeCandidateCount += 1;
+      scanner.firstClose ??= close;
+      if (scanner.closeCandidateCount > MAX_GLM5_TOOL_CALL_CLOSE_CANDIDATES) {
+        call.closeSelectionRejected = true;
+        call.suppressRemainderResync = true;
+        return close;
+      }
+
+      const body = materializeGlm5StreamBody(call.body).slice(0, close.start);
+      let parsed: ReturnType<typeof parseGlm5CallBody> = null;
+      try {
+        parsed = parseGlm5CallBody({
+          body,
+          complete: true,
+          protocolOptions,
+          tools,
+        });
+      } catch {
+        parsed = null;
+      }
+      if (!parsed && hasExplicitlyClosedGlm5TaggedBody(body)) {
+        return close;
+      }
+      if (parsed && !hasStructuralRecovery(parsed)) {
+        return close;
+      }
+      if (parsed) {
+        scanner.pendingClose ??= close;
+      }
+      if (scanner.nestedToolCallDepth > 0) {
+        scanner.nestedToolCallDepth -= 1;
+      }
     }
   }
   return null;
