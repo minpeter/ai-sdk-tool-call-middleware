@@ -268,6 +268,13 @@ export function stringifyKExaone2NativeJson(value: unknown): string {
   return stringifyWithContext(value, "history");
 }
 
+export function stringifyKExaone2CompactJson(value: unknown): string {
+  return stringifyKExaone2NativeJson(value).replace(
+    /("(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)|\s+/g,
+    "$1"
+  );
+}
+
 export function stringifyKExaone2NativeSchemaJson(value: unknown): string {
   return stringifyWithContext(value, "schema");
 }

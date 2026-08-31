@@ -28,7 +28,6 @@ import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
 import {
   isParsedToolCallRecord,
   normalizeJsonStringCtrl,
-  stringifyParsedToolInput,
   stringifyResolvedToolInput,
 } from "./hermes-json-normalization";
 import {
@@ -37,7 +36,11 @@ import {
   topLevelNullArgumentMatchesToolSchema,
 } from "./hermes-json-repair";
 import { extractStreamingToolCallProgress } from "./hermes-streaming-progress";
-import type { ParserOptions } from "./protocol-interface";
+import type {
+  ParserOptions,
+  ProtocolToolCallResolver,
+  ResolvedProtocolToolCall,
+} from "./protocol-interface";
 
 /**
  * Hermes call-parsing primitives shared by the generate-path parser and the
@@ -123,10 +126,6 @@ export function applyToolArgumentKeyPolicy(
   return policyArgs === null ? null : { args: policyArgs };
 }
 
-type ResolvedToolCall =
-  | { ok: true; toolName: string; input: string }
-  | { ok: false; error: unknown };
-
 /**
  * Single source of truth for turning a raw `<tool_call>` JSON body into a
  * canonical `{ toolName, input }` pair (or a failure). Performs, in order:
@@ -146,7 +145,7 @@ type ResolvedToolCall =
 export function resolveToolCall(
   toolCallJson: string,
   tools: LanguageModelV4FunctionTool[]
-): ResolvedToolCall {
+): ResolvedProtocolToolCall {
   try {
     const parsedToolCall = parseRJSON(
       normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
@@ -228,18 +227,23 @@ const MARKUP_ONLY_TEXT_REGEX = /^\s*(?:<[^<>\n]*>\s*)*$/;
  */
 export function recoverKnownToolCallsFromText(
   text: string,
-  tools: LanguageModelV4FunctionTool[]
-): Extract<ResolvedToolCall, { ok: true }>[] | null {
+  tools: LanguageModelV4FunctionTool[],
+  resolver?: ProtocolToolCallResolver
+): Extract<ResolvedProtocolToolCall, { ok: true }>[] | null {
   if (hasPrototypeSensitiveKeyInJsonLikeObject(text)) {
     return null;
   }
 
-  const recoveredParts = recoverToolCallFromJsonCandidates(text, tools);
+  const recoveredParts = recoverToolCallFromJsonCandidates(
+    text,
+    tools,
+    resolver
+  );
   if (!recoveredParts) {
     return null;
   }
 
-  const calls: Extract<ResolvedToolCall, { ok: true }>[] = [];
+  const calls: Extract<ResolvedProtocolToolCall, { ok: true }>[] = [];
   for (const part of recoveredParts) {
     if (part.type === "text") {
       if (!MARKUP_ONLY_TEXT_REGEX.test(part.text)) {
@@ -270,7 +274,7 @@ export function recoverKnownToolCallsFromText(
       calls.push({
         ok: true,
         toolName: part.toolName,
-        input: stringifyParsedToolInput(policyArguments.args),
+        input: part.input,
       });
     } catch {
       return null;
@@ -285,9 +289,10 @@ export function processToolCallJson(
   fullMatch: string,
   processedElements: LanguageModelV4Content[],
   tools: LanguageModelV4FunctionTool[],
-  options?: ParserOptions
+  options?: ParserOptions,
+  resolver: ProtocolToolCallResolver = resolveToolCall
 ) {
-  const resolved = resolveToolCall(toolCallJson, tools);
+  const resolved = resolver(toolCallJson, tools);
   if (resolved.ok) {
     processedElements.push({
       type: "tool-call",
@@ -299,7 +304,11 @@ export function processToolCallJson(
   }
 
   if (!isArgumentKeyPolicyError(resolved.error)) {
-    const salvagedCalls = recoverKnownToolCallsFromText(toolCallJson, tools);
+    const salvagedCalls = recoverKnownToolCallsFromText(
+      toolCallJson,
+      tools,
+      resolver
+    );
     if (salvagedCalls && salvagedCalls.length > 0) {
       for (const salvagedCall of salvagedCalls) {
         processedElements.push({

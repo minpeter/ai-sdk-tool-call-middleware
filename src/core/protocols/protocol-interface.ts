@@ -18,6 +18,15 @@ export interface ParserOptions {
   onError?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 
+export type ResolvedProtocolToolCall =
+  | { ok: true; toolName: string; input: string }
+  | { ok: false; error: unknown };
+
+export type ProtocolToolCallResolver = (
+  toolCallJson: string,
+  tools: LanguageModelV4FunctionTool[]
+) => ResolvedProtocolToolCall;
+
 export interface TCMProtocol {
   createStreamParser: ({
     tools,

@@ -29,7 +29,24 @@ function normalizeInputSchema(inputSchema: unknown): unknown {
   }
 }
 
-function renderTool(tool: LanguageModelV4FunctionTool): string {
+const K_EXAONE_TOOL_DELIMITER_ERROR =
+  "K-EXAONE tool names and descriptions must not contain <tool> or </tool>.";
+
+function containsToolDelimiter(value: string | undefined): boolean {
+  return (
+    value?.includes("<tool>") === true || value?.includes("</tool>") === true
+  );
+}
+
+export function renderKExaoneNativeTool(
+  tool: LanguageModelV4FunctionTool
+): string {
+  if (
+    containsToolDelimiter(tool.name) ||
+    containsToolDelimiter(tool.description)
+  ) {
+    throw new Error(K_EXAONE_TOOL_DELIMITER_ERROR);
+  }
   const functionProperties = [
     `"name": ${JSON.stringify(tool.name)}`,
     ...(tool.description === undefined
@@ -48,7 +65,7 @@ export function kExaone2SystemPromptTemplate(
     return "";
   }
 
-  const declarations = tools.map(renderTool).join("\n");
+  const declarations = tools.map(renderKExaoneNativeTool).join("\n");
   const prompt = `# Tools
 The available tools are defined below in JSON format.
 When calling a tool, use XML with <function=...> and one <parameter=...> block per argument.

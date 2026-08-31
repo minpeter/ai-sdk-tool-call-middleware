@@ -146,6 +146,43 @@ Use the preconfigured middleware exports from `src/preconfigured-middleware.ts`:
 | `yamlXmlToolMiddleware` | XML tool tags + YAML bodies |
 | `qwen3CoderToolMiddleware` | Qwen/UI-TARS style `<tool_call>` markup |
 | `kExaone2ToolMiddleware` | K-EXAONE-2.0 native tool declarations, calls, and `<tool_result>` responses |
+| `kExaone236BToolMiddleware` | Friendli K-EXAONE-236B native `tool_declare`, Hermes JSON calls, reasoning, and structured history |
+
+### Friendli K-EXAONE-236B
+
+`kExaone236BToolMiddleware` is a Friendli-specific compatibility preset. It
+injects the model's native tool declaration as the first `tool_declare`
+message, follows it with a separate system message that demonstrates the
+Hermes JSON-in-`<tool_call>` format, and preserves assistant reasoning/tool
+calls and tool-result history.
+
+```ts
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { kExaone236BToolMiddleware } from "@ai-sdk-tool/parser";
+import { wrapLanguageModel } from "ai";
+
+const friendli = createOpenAICompatible({
+  name: "friendli",
+  apiKey: process.env.FRIENDLI_API_KEY,
+  baseURL: "https://api.friendli.ai/serverless/v1",
+  transformRequestBody: (body) => ({
+    ...body,
+    parse_reasoning: true,
+    chat_template_kwargs: { enable_thinking: false },
+  }),
+});
+
+const model = wrapLanguageModel({
+  model: friendli.chatModel("LGAI-EXAONE/K-EXAONE-236B-A23B"),
+  middleware: kExaone236BToolMiddleware,
+});
+```
+
+This preset relies on two version-sensitive behaviors: the AI SDK
+OpenAI-compatible message-role override and Friendli accepting the undocumented
+`tool_declare` role. Friendli reported a Serverless deprecation date of
+2026-08-20 for this model; validate availability and `/chat/render` structure
+when pinning a new provider or model version.
 
 ## Build custom middleware
 
@@ -164,11 +201,19 @@ export const myToolMiddleware = createToolMiddleware({
 - `toolChoice: "auto"` (default) parses tool calls out of the model text.
 - `toolChoice: "required"` and `toolChoice: { type: "tool", toolName }` are emulated through JSON `responseFormat` constraints.
 - `toolChoice: "none"` skips tool prompt injection and tool-call parsing entirely; tool-call history in the conversation is still serialized to text.
+- `kExaone236BToolMiddleware` is the exception: with `toolChoice: "none"` it
+  preserves the provider-native structured assistant/tool history and only
+  skips declaration and format-guide injection.
+- Prompt-based middleware omits provider-defined tools and reports each omission
+  as an unsupported warning in generate and stream results. Explicitly choosing
+  a provider-defined tool by name is rejected because it has no function-tool
+  schema; use custom function tools instead.
 
 ## Streaming semantics
 
 - Stream parsers emit `tool-input-start`, `tool-input-delta`, and `tool-input-end` when a tool input can be incrementally reconstructed.
 - `kExaone2ToolMiddleware` leaves reasoning parsing to the provider so generate and stream behave consistently. With Friendli, set `parse_reasoning: true`; provider reasoning events pass through unchanged.
+- `kExaone236BToolMiddleware` also leaves reasoning provider-native and preserves structured assistant/tool history instead of converting it to prompt text.
 - `tool-input-start.id`, `tool-input-end.id`, and final `tool-call.toolCallId` are reconciled to the same ID.
 - `emitRawToolCallTextOnError` defaults to `false`; malformed tool-call markup is suppressed from `text-delta` unless explicitly enabled.
 - Text blocks that consist of a bare `{"name": ..., "arguments": ...}` payload (or a fenced ```json block) for a known tool are recovered into tool calls in both generate and stream paths, and `finishReason` is normalized to `tool-calls` whenever tool calls were parsed.

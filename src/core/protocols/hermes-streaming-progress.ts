@@ -16,7 +16,10 @@ import {
   skipJsonComment,
   skipJsonWhitespace,
 } from "./hermes-json-object-key-scanner";
-import type { ParserOptions } from "./protocol-interface";
+import type {
+  ParserOptions,
+  ProtocolToolCallResolver,
+} from "./protocol-interface";
 
 export interface StreamState {
   activeToolInput: {
@@ -58,6 +61,7 @@ export type StreamController =
 export interface TagProcessingContext {
   controller: StreamController;
   options?: ParserOptions;
+  resolveToolCall: ProtocolToolCallResolver;
   state: StreamState;
   toolCallEnd: string;
   toolCallStart: string;
