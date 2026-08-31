@@ -17,6 +17,7 @@ import type {
 export type { ActiveGlm5Call } from "./glm5-stream-state";
 
 const TOOL_CALL_OPEN_RE = /<\s*tool_call\s*>/i;
+const TOOL_CALL_CLOSE_AT_START_RE = /^<\s*\/\s*tool_call\s*>/i;
 const TOOL_CALL_NAME = "tool_call";
 const GLM5_STRUCTURAL_TAG_NAMES = [
   "arg_key",
@@ -97,6 +98,27 @@ export function potentialGlm5OpenSuffixIndex(text: string): number | null {
     )
     ? candidateStart
     : null;
+}
+
+export function findGlm5ToolCallCloseAtStart(
+  text: string
+): Glm5TagMatch | null {
+  const match = TOOL_CALL_CLOSE_AT_START_RE.exec(text);
+  return match ? { end: match[0].length, raw: match[0], start: 0 } : null;
+}
+
+export function isPotentialGlm5ToolCallClosePrefix(text: string): boolean {
+  if (!text.startsWith("<")) {
+    return false;
+  }
+  let cursor = 1;
+  while (isWhitespace(text[cursor])) {
+    cursor += 1;
+  }
+  return (
+    (text[cursor] === undefined || text[cursor] === "/") &&
+    isPotentialNamedTagPrefix(text, [TOOL_CALL_NAME], true)
+  );
 }
 
 export function hasPotentialGlm5StructuralTagSuffix(text: string): boolean {

@@ -15,7 +15,9 @@ import {
 import {
   appendGlm5ScannedStreamBody,
   createGlm5CloseTagScanner,
+  findGlm5ToolCallCloseAtStart,
   findGlm5ToolCallOpen,
+  isPotentialGlm5ToolCallClosePrefix,
   materializeRawGlm5Call,
   scanGlm5ToolCallClose,
 } from "./glm5-stream-close-scanner";
@@ -81,6 +83,19 @@ export function createGlm5StreamParser({
     const call = activeCall;
     if (!call || call.oversized) {
       return false;
+    }
+    if (call.body.length === bodyLengthLimit && textBuffer.length > 0) {
+      const boundaryClose = findGlm5ToolCallCloseAtStart(textBuffer);
+      if (boundaryClose) {
+        appendGlm5StreamBody(call.body, boundaryClose.raw);
+        textBuffer = textBuffer.slice(boundaryClose.end);
+      } else if (isPotentialGlm5ToolCallClosePrefix(textBuffer)) {
+        lifecycle.updateToolInputProgress(controller, call);
+        return false;
+      } else {
+        lifecycle.markCallOversized(controller, call);
+        return false;
+      }
     }
     const close = scanGlm5ToolCallClose(call, protocolOptions, tools);
     if (!close) {
