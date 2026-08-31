@@ -29,13 +29,22 @@ import {
   type ResolvedGlm5ProtocolOptions,
   stringifyGlm5CallInput,
 } from "./glm5-call-parsing";
+import {
+  appendGlm5StreamBody,
+  clearGlm5StreamBody,
+  createGlm5StreamBody,
+  type Glm5StreamBody,
+  materializeGlm5StreamBody,
+  sliceGlm5StreamBody,
+  truncateGlm5StreamBody,
+} from "./glm5-stream-body";
 import type { ParserOptions } from "./protocol-interface";
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
 interface ActiveCall {
-  body: string;
+  body: Glm5StreamBody;
   closeScanner: CloseTagScanner;
   closeSelectionRejected: boolean;
   emittedInput: string;
@@ -83,6 +92,7 @@ const MAX_GLM5_TOOL_CALL_CLOSE_CANDIDATES = 256;
 const OVERSIZED_GLM5_TOOL_CALL_METADATA =
   "[oversized GLM-5.2 tool call omitted]";
 const WHITESPACE_RE = /\s/;
+const STRUCTURAL_TRIGGER_RE = /[<>]/;
 
 function findTag(text: string, from: number, pattern: RegExp): TagMatch | null {
   const match = pattern.exec(text.slice(from));
@@ -187,9 +197,10 @@ function scanToolCallClose(
   tools: LanguageModelV4FunctionTool[]
 ): TagMatch | null {
   const { closeScanner: scanner } = call;
-  while (scanner.cursor < call.body.length) {
+  const materializedBody = materializeGlm5StreamBody(call.body);
+  while (scanner.cursor < materializedBody.length) {
     const index = scanner.cursor;
-    const character = call.body[index] ?? "";
+    const character = materializedBody[index] ?? "";
     scanner.cursor += 1;
 
     if (scanner.candidateStart < 0) {
@@ -208,7 +219,7 @@ function scanToolCallClose(
 
     const start = scanner.candidateStart;
     scanner.candidateStart = -1;
-    const raw = call.body.slice(start, scanner.cursor);
+    const raw = materializedBody.slice(start, scanner.cursor);
     const match = STREAM_STRUCTURAL_TAG_RE.exec(raw);
     if (!match) {
       continue;
@@ -245,7 +256,7 @@ function scanToolCallClose(
       return close;
     }
 
-    const body = call.body.slice(0, close.start);
+    const body = materializedBody.slice(0, close.start);
     let parsed: ReturnType<typeof parseGlm5CallBody> = null;
     try {
       parsed = parseGlm5CallBody({
@@ -274,14 +285,16 @@ function scanToolCallClose(
 }
 
 function rawCall(activeCall: ActiveCall, closeTag = ""): string {
-  return `${activeCall.openTag}${activeCall.body}${closeTag}`;
+  return `${activeCall.openTag}${materializeGlm5StreamBody(activeCall.body)}${closeTag}`;
 }
 
 export function createGlm5StreamParser({
+  bodyLengthLimit = MAX_GLM5_CALL_BODY_LENGTH,
   tools,
   options,
   protocolOptions,
 }: {
+  bodyLengthLimit?: number;
   tools: LanguageModelV4FunctionTool[];
   options?: ParserOptions;
   protocolOptions: ResolvedGlm5ProtocolOptions;
@@ -376,7 +389,7 @@ export function createGlm5StreamParser({
   ) => {
     if (!call.failed) {
       options?.onError?.("Could not parse streaming GLM-5.2 tool call.", {
-        bodyLengthLimit: MAX_GLM5_CALL_BODY_LENGTH,
+        bodyLengthLimit,
         dropReason: "malformed-glm5-tool-call",
         toolCall: OVERSIZED_GLM5_TOOL_CALL_METADATA,
         toolCallId: call.id ?? undefined,
@@ -390,7 +403,7 @@ export function createGlm5StreamParser({
     // the hard limit is crossed there is no safe structural boundary at which
     // to resume, so poison the remainder of this model stream. Drop all large
     // retained strings immediately and never reconstruct a raw fallback.
-    call.body = "";
+    clearGlm5StreamBody(call.body);
     call.closeScanner = createCloseTagScanner();
     call.emittedInput = "";
     call.openTag = "";
@@ -414,14 +427,15 @@ export function createGlm5StreamParser({
     }
     call.nextProgressParseLength =
       call.body.length === 0 ? 1 : call.body.length * 2;
-    if (hasPotentialStructuralTagSuffix(call.body)) {
+    const materializedBody = materializeGlm5StreamBody(call.body);
+    if (hasPotentialStructuralTagSuffix(materializedBody)) {
       return;
     }
 
     let snapshot: ReturnType<typeof parseGlm5CallBody>;
     try {
       snapshot = parseGlm5CallBody({
-        body: call.body,
+        body: materializedBody,
         complete: false,
         protocolOptions,
         tools,
@@ -464,7 +478,7 @@ export function createGlm5StreamParser({
     let snapshot: ReturnType<typeof parseGlm5CallBody>;
     try {
       snapshot = parseGlm5CallBody({
-        body: call.body,
+        body: materializeGlm5StreamBody(call.body),
         complete: true,
         protocolOptions,
         tools,
@@ -622,8 +636,8 @@ export function createGlm5StreamParser({
       return false;
     }
 
-    const remainder = call.body.slice(close.end);
-    call.body = call.body.slice(0, close.start);
+    const remainder = sliceGlm5StreamBody(call.body, close.end);
+    truncateGlm5StreamBody(call.body, close.start);
     if (call.closeSelectionRejected) {
       markCallFailed(controller, call, rawCall(call, close.raw));
     }
@@ -654,13 +668,10 @@ export function createGlm5StreamParser({
       const insideMarkdownCode =
         markdownCodeContextSuppressesToolCall(markdownContext);
       flushText(controller);
-      const body = textBuffer.slice(
-        open.end,
-        open.end + MAX_GLM5_CALL_BODY_LENGTH
-      );
+      const body = textBuffer.slice(open.end, open.end + bodyLengthLimit);
       const remainderStart = open.end + body.length;
       activeCall = {
-        body,
+        body: createGlm5StreamBody(body),
         closeSelectionRejected: false,
         closeScanner: createCloseTagScanner(),
         emittedInput: "",
@@ -686,8 +697,8 @@ export function createGlm5StreamParser({
       return false;
     }
     const completedCall = activeCall;
-    const remainder = completedCall.body.slice(close.end);
-    completedCall.body = completedCall.body.slice(0, close.start);
+    const remainder = sliceGlm5StreamBody(completedCall.body, close.end);
+    truncateGlm5StreamBody(completedCall.body, close.start);
     finalizeCall(controller, completedCall, close.raw, false);
     activeCall = null;
     queueRemainder(completedCall, remainder);
@@ -753,10 +764,19 @@ export function createGlm5StreamParser({
         if (activeCall) {
           const retainedLength = Math.max(
             0,
-            MAX_GLM5_CALL_BODY_LENGTH - activeCall.body.length
+            bodyLengthLimit - activeCall.body.length
           );
-          activeCall.body += part.delta.slice(0, retainedLength);
-          textBuffer += part.delta.slice(retainedLength);
+          const retained = part.delta.slice(0, retainedLength);
+          appendGlm5StreamBody(activeCall.body, retained);
+          const overflow = part.delta.slice(retainedLength);
+          textBuffer += overflow;
+          if (
+            overflow.length === 0 &&
+            !STRUCTURAL_TRIGGER_RE.test(retained) &&
+            activeCall.body.length < activeCall.nextProgressParseLength
+          ) {
+            return;
+          }
         } else {
           textBuffer += part.delta;
         }

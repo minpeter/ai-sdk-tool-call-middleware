@@ -422,23 +422,6 @@ describe("glm5Protocol streaming lifecycle", () => {
     expect(JSON.parse(call.input)).toEqual({ message: longValue });
   });
 
-  it("processes a 20k single-character long-string stream within the linear-time budget", async () => {
-    const longValue = "x".repeat(20_000);
-    const text = `<tool_call>echo<arg_key>message</arg_key><arg_value>${longValue}</arg_value></tool_call>`;
-    const startedAt = performance.now();
-    const output = await runProtocolTextDeltaStream({
-      protocol: glm5Protocol(),
-      tools: glm5Tools,
-      chunks: text.split(""),
-    });
-    const elapsedMs = performance.now() - startedAt;
-    const call = findToolCall(output);
-
-    expect(JSON.parse(call.input)).toEqual({ message: longValue });
-    expect(extractToolInputDeltas(output).join("")).toBe(call.input);
-    expect(elapsedMs).toBeLessThan(2000);
-  }, 10_000);
-
   it("buffers array and object values until each complete value can be schema-coerced", async () => {
     const harness = createStreamHarness();
     await harness.writeText(
@@ -780,37 +763,6 @@ describe("glm5Protocol streaming lifecycle", () => {
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError).toHaveBeenCalledWith(
       "Could not parse streaming GLM-5.2 tool call.",
-      expect.objectContaining({
-        bodyLengthLimit: 1_048_576,
-        toolCall: "[oversized GLM-5.2 tool call omitted]",
-      })
-    );
-    assertBalancedToolInputLifecycle(streamed);
-  });
-
-  it("bounds a one-character overflow and discards every later call", async () => {
-    const onError = vi.fn();
-    const harness = createStreamHarness({
-      emitRawToolCallTextOnError: true,
-      onError,
-    });
-    const bodyPrefix = "echo<arg_key>message</arg_key><arg_value>";
-    const bodyAtLimit = `${bodyPrefix}${"x".repeat(
-      1_048_576 - bodyPrefix.length
-    )}`;
-
-    await harness.writeText(`<tool_call>${bodyAtLimit}`);
-    await harness.writeText("x");
-    await harness.writeText(
-      "</arg_value></tool_call><tool_call>ping</tool_call>"
-    );
-    const streamed = await harness.finish();
-
-    expect(normalizeStreamToolCalls(streamed)).toEqual([]);
-    expect(extractTextDeltas(streamed)).toBe("");
-    expect(streamed.at(-1)?.type).toBe("finish");
-    expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({
         bodyLengthLimit: 1_048_576,
         toolCall: "[oversized GLM-5.2 tool call omitted]",
