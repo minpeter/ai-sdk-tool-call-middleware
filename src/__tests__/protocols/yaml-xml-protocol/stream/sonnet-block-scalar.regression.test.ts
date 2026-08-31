@@ -163,7 +163,7 @@ const EDGE_FIXTURES = [
       });
     },
   },
-] as const;
+];
 
 const EDGE_BOUNDARY_CASES = EDGE_FIXTURES.flatMap((fixture) =>
   everySplit(fixture.text).map((split) => ({ fixture, split }))
