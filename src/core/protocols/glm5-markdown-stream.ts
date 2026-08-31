@@ -13,8 +13,10 @@ type FlushText = (controller: StreamController, text?: string) => void;
 
 export interface Glm5MarkdownStream {
   beginOversizedFence: (controller: StreamController, raw: string) => void;
+  disableBareCallRecovery: () => void;
   finalizeOversizedFence: (controller: StreamController) => boolean;
   flushText: FlushText;
+  isBareCallRecoveryEligible: () => boolean;
   isInsideCode: () => boolean;
   resynchronize: (
     controller: StreamController,
@@ -25,6 +27,7 @@ export interface Glm5MarkdownStream {
 export function createGlm5MarkdownStream(): Glm5MarkdownStream {
   const context = createMarkdownCodeContext();
   let currentTextId: string | null = null;
+  let bareCallRecoveryEligible = true;
   let fenceTail = "";
   let hasEmittedTextStart = false;
   let resynchronizing = false;
@@ -41,6 +44,7 @@ export function createGlm5MarkdownStream(): Glm5MarkdownStream {
 
   const flushText: FlushText = (controller, text) => {
     if (text) {
+      bareCallRecoveryEligible = false;
       consumeMarkdownCodeText(context, text);
     }
     baseFlushText(controller, text);
@@ -90,8 +94,12 @@ export function createGlm5MarkdownStream(): Glm5MarkdownStream {
       flushText(controller, raw);
       resynchronizing = true;
     },
+    disableBareCallRecovery() {
+      bareCallRecoveryEligible = false;
+    },
     finalizeOversizedFence,
     flushText,
+    isBareCallRecoveryEligible: () => bareCallRecoveryEligible,
     isInsideCode: () => markdownCodeContextSuppressesToolCall(context),
     resynchronize,
   };

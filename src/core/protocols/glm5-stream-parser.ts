@@ -12,17 +12,20 @@ import {
   sliceGlm5StreamBody,
   truncateGlm5StreamBody,
 } from "./glm5-stream-body";
+import { resolveGlm5BodyLimitBoundary } from "./glm5-stream-boundary";
 import {
   appendGlm5ScannedStreamBody,
   createGlm5CloseTagScanner,
-  findGlm5ToolCallCloseAtStart,
   findGlm5ToolCallOpen,
-  isPotentialGlm5ToolCallClosePrefix,
   materializeRawGlm5Call,
   scanGlm5ToolCallClose,
 } from "./glm5-stream-close-scanner";
 import { createGlm5StreamLifecycle } from "./glm5-stream-lifecycle";
-import { type ActiveGlm5Call, createActiveGlm5Call } from "./glm5-stream-state";
+import {
+  type ActiveGlm5Call,
+  createActiveGlm5Call,
+  prependGlm5StreamRemainder,
+} from "./glm5-stream-state";
 import { createFlushSafeGlm5TextBuffer } from "./glm5-stream-text-buffer";
 import { createGlm5StreamTransform } from "./glm5-stream-transform";
 import type { ParserOptions } from "./protocol-interface";
@@ -45,17 +48,10 @@ export function createGlm5StreamParser({
 }): TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart> {
   let textBuffer = "";
   let activeCall: ActiveGlm5Call | null = null;
-  let bareCallRecoveryEligible = true;
   let streamPoisoned = false;
 
   const markdownStream = createGlm5MarkdownStream();
-  const baseFlushText = markdownStream.flushText;
-  const flushText = (controller: StreamController, text?: string) => {
-    if (text) {
-      bareCallRecoveryEligible = false;
-    }
-    baseFlushText(controller, text);
-  };
+  const { flushText } = markdownStream;
   const lifecycle = createGlm5StreamLifecycle({
     bodyLengthLimit,
     flushText,
@@ -73,29 +69,21 @@ export function createGlm5StreamParser({
     tools,
   });
 
-  const queueRemainder = (call: ActiveGlm5Call, remainder: string) => {
-    if (!call.suppressRemainderResync) {
-      textBuffer = `${remainder}${textBuffer}`;
-    }
-  };
-
   const processActiveCall = (controller: StreamController): boolean => {
     const call = activeCall;
     if (!call || call.oversized) {
       return false;
     }
-    if (call.body.length === bodyLengthLimit && textBuffer.length > 0) {
-      const boundaryClose = findGlm5ToolCallCloseAtStart(textBuffer);
-      if (boundaryClose) {
-        appendGlm5StreamBody(call.body, boundaryClose.raw);
-        textBuffer = textBuffer.slice(boundaryClose.end);
-      } else if (isPotentialGlm5ToolCallClosePrefix(textBuffer)) {
-        lifecycle.updateToolInputProgress(controller, call);
-        return false;
-      } else {
-        lifecycle.markCallOversized(controller, call);
-        return false;
-      }
+    const boundary = resolveGlm5BodyLimitBoundary({
+      bodyLengthLimit,
+      call,
+      controller,
+      lifecycle,
+      textBuffer,
+    });
+    ({ textBuffer } = boundary);
+    if (boundary.stop) {
+      return false;
     }
     const close = scanGlm5ToolCallClose(call, protocolOptions, tools);
     if (!close) {
@@ -128,7 +116,7 @@ export function createGlm5StreamParser({
     }
     lifecycle.finalizeCall(controller, call, close.raw, false);
     activeCall = null;
-    queueRemainder(call, remainder);
+    textBuffer = prependGlm5StreamRemainder(call, remainder, textBuffer);
     return true;
   };
 
@@ -146,7 +134,7 @@ export function createGlm5StreamParser({
 
       const open = findGlm5ToolCallOpen(textBuffer, 0);
       if (!open) {
-        if (terminal && !bareCallRecoveryEligible) {
+        if (terminal && !markdownStream.isBareCallRecoveryEligible()) {
           flushText(controller, textBuffer);
           textBuffer = "";
           return;
@@ -154,7 +142,7 @@ export function createGlm5StreamParser({
         textBuffer = flushSafeTextBuffer(controller, textBuffer, terminal);
         return;
       }
-      bareCallRecoveryEligible = false;
+      markdownStream.disableBareCallRecovery();
       const prefix = textBuffer.slice(0, open.start);
       if (prefix.length > 0) {
         flushText(controller, prefix);
@@ -185,7 +173,11 @@ export function createGlm5StreamParser({
     truncateGlm5StreamBody(completedCall.body, close.start);
     lifecycle.finalizeCall(controller, completedCall, close.raw, false);
     activeCall = null;
-    queueRemainder(completedCall, remainder);
+    textBuffer = prependGlm5StreamRemainder(
+      completedCall,
+      remainder,
+      textBuffer
+    );
     return true;
   };
 

@@ -62,3 +62,13 @@ export function createActiveGlm5Call({
     toolName: null,
   };
 }
+
+export function prependGlm5StreamRemainder(
+  call: ActiveGlm5Call,
+  remainder: string,
+  textBuffer: string
+): string {
+  return call.suppressRemainderResync
+    ? textBuffer
+    : `${remainder}${textBuffer}`;
+}
