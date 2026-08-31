@@ -935,13 +935,18 @@ describe("glm5Protocol raw delimiter disambiguation", () => {
     ).toEqual([]);
   });
 
-  it("resynchronizes after a structurally closed rejected call", () => {
-    const rejected = [
-      "<tool_call>echo",
-      "<arg_key>message</arg_key><arg_value>first</arg_value>",
-      "<arg_key>message</arg_key><arg_value>second</arg_value>",
-      "</tool_call>",
-    ].join("");
+  it.each([
+    ["unknown tool", "<tool_call>unknown</tool_call>"],
+    [
+      "duplicate argument",
+      [
+        "<tool_call>echo",
+        "<arg_key>message</arg_key><arg_value>first</arg_value>",
+        "<arg_key>message</arg_key><arg_value>second</arg_value>",
+        "</tool_call>",
+      ].join(""),
+    ],
+  ])("resynchronizes after a rejected %s call", (_name, rejected) => {
     const valid = "<tool_call>ping</tool_call>";
     const protocol = glm5Protocol();
 

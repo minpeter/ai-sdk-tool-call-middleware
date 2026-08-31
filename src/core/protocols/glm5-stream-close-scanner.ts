@@ -213,6 +213,9 @@ export function scanGlm5ToolCallClose(
       }
 
       if (!closing) {
+        if (scanner.firstClose && scanner.argValueDepth === 0) {
+          return scanner.firstClose;
+        }
         scanner.nestedToolCallDepth += 1;
         scanner.nestedToolCallSeen = true;
         continue;

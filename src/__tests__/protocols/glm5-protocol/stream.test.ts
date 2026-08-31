@@ -747,30 +747,41 @@ describe("glm5Protocol streaming lifecycle", () => {
     assertBalancedToolInputLifecycle(streamed);
   });
 
-  it("resynchronizes after a structurally closed rejected call", async () => {
-    const rejected = [
-      "<tool_call>echo",
-      "<arg_key>message</arg_key><arg_value>first</arg_value>",
-      "<arg_key>message</arg_key><arg_value>second</arg_value>",
-      "</tool_call>",
-    ].join("");
-    const text = `${rejected}<tool_call>ping</tool_call>`;
-    const protocol = glm5Protocol();
-    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    const streamed = await runProtocolTextDeltaStream({
-      protocol,
-      tools: glm5Tools,
-      chunks: text.split(""),
-    });
+  it.each([
+    ["unknown tool", "<tool_call>unknown</tool_call>"],
+    [
+      "duplicate argument",
+      [
+        "<tool_call>echo",
+        "<arg_key>message</arg_key><arg_value>first</arg_value>",
+        "<arg_key>message</arg_key><arg_value>second</arg_value>",
+        "</tool_call>",
+      ].join(""),
+    ],
+  ])(
+    "resynchronizes after a rejected %s call under one-character chunks",
+    async (_name, rejected) => {
+      const text = `${rejected}<tool_call>ping</tool_call>`;
+      const protocol = glm5Protocol();
+      const generated = protocol.parseGeneratedText({
+        text,
+        tools: glm5Tools,
+      });
+      const streamed = await runProtocolTextDeltaStream({
+        protocol,
+        tools: glm5Tools,
+        chunks: text.split(""),
+      });
 
-    expect(normalizeStreamToolCalls(streamed)).toEqual([
-      { toolName: "ping", input: {} },
-    ]);
-    expect(normalizeStreamToolCalls(streamed)).toEqual(
-      normalizeContentToolCalls(generated)
-    );
-    assertBalancedToolInputLifecycle(streamed);
-  });
+      expect(normalizeStreamToolCalls(streamed)).toEqual([
+        { toolName: "ping", input: {} },
+      ]);
+      expect(normalizeStreamToolCalls(streamed)).toEqual(
+        normalizeContentToolCalls(generated)
+      );
+      assertBalancedToolInputLifecycle(streamed);
+    }
+  );
 
   it("poisons a chunked stream after an oversized body", async () => {
     const onError = vi.fn();

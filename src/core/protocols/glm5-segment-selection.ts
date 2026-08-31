@@ -11,6 +11,7 @@ import {
   parseGlm5CallBody,
   type ResolvedGlm5ProtocolOptions,
 } from "./glm5-call-parsing";
+import { scanGlm5StructuralTags } from "./glm5-tag-scanning";
 
 export interface Glm5TagMatch {
   end: number;
@@ -61,6 +62,32 @@ function hasStructuralRecovery(call: Glm5CallSnapshot): boolean {
   return call.recoveries.some((code) => STRUCTURAL_RECOVERY_CODES.has(code));
 }
 
+function isClosedRejectedCallBoundary(
+  body: string,
+  close: Glm5TagMatch,
+  nestedOpen: Glm5TagMatch | null
+): boolean {
+  if (hasExplicitlyClosedGlm5TaggedBody(body)) {
+    return true;
+  }
+  if (!(nestedOpen && close.end <= nestedOpen.start)) {
+    return false;
+  }
+  const tags = scanGlm5StructuralTags(body);
+  if (!tags) {
+    return false;
+  }
+  let argValueDepth = 0;
+  for (const tag of tags) {
+    if (tag.name === "arg_value") {
+      argValueDepth = tag.closing
+        ? Math.max(0, argValueDepth - 1)
+        : argValueDepth + 1;
+    }
+  }
+  return argValueDepth === 0;
+}
+
 export function selectClosedGlm5Call(options: {
   open: Glm5TagMatch;
   protocolOptions: ResolvedGlm5ProtocolOptions;
@@ -101,7 +128,7 @@ export function selectClosedGlm5Call(options: {
     });
     first ??= { close, parsed };
     last = { close, parsed };
-    if (!parsed && hasExplicitlyClosedGlm5TaggedBody(body)) {
+    if (!parsed && isClosedRejectedCallBoundary(body, close, nestedOpen)) {
       return { close, parsed: null, rejected: false };
     }
     if (parsed && !hasStructuralRecovery(parsed)) {
