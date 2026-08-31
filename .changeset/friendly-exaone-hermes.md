@@ -1,5 +1,5 @@
 ---
-"@ai-sdk-tool/parser": patch
+"@ai-sdk-tool/parser": minor
 ---
 
 Add an experimental Friendli K-EXAONE-236B middleware preset with byte-matched

@@ -204,9 +204,10 @@ export const myToolMiddleware = createToolMiddleware({
 - `kExaone236BToolMiddleware` is the exception: with `toolChoice: "none"` it
   preserves the provider-native structured assistant/tool history and only
   skips declaration and format-guide injection.
-- Provider-defined tools cannot be combined with this prompt-based middleware.
-  Any request containing one is rejected before provider invocation; use custom
-  function tools instead.
+- Prompt-based middleware omits provider-defined tools and reports each omission
+  as an unsupported warning in generate and stream results. Explicitly choosing
+  a provider-defined tool by name is rejected because it has no function-tool
+  schema; use custom function tools instead.
 
 ## Streaming semantics
 
