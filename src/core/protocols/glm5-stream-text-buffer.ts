@@ -3,7 +3,7 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { generateToolCallId } from "../utils/id";
-import { enqueueToolInputEndAndCall } from "../utils/tool-input-streaming";
+import { emitFinalizedToolInputLifecycle } from "../utils/tool-input-streaming";
 import { parseGlm5AnchoredBareToolCall } from "./glm5-bare-tool-call";
 import { potentialGlm5OpenSuffixIndex } from "./glm5-stream-close-scanner";
 
@@ -17,20 +17,20 @@ interface Glm5TextBufferOptions {
 
 export type FlushSafeGlm5TextBuffer = (
   controller: StreamController,
-  textBuffer: string
+  textBuffer: string,
+  terminal: boolean
 ) => string;
 
 export function createFlushSafeGlm5TextBuffer({
   flushText,
   tools,
 }: Glm5TextBufferOptions): FlushSafeGlm5TextBuffer {
-  return (controller, textBuffer) => {
+  return (controller, textBuffer, terminal) => {
     const potentialIndex = potentialGlm5OpenSuffixIndex(textBuffer);
     if (potentialIndex === null) {
-      const bareCall = parseGlm5AnchoredBareToolCall({
-        text: textBuffer,
-        tools,
-      });
+      const bareCall = terminal
+        ? parseGlm5AnchoredBareToolCall({ text: textBuffer, tools })
+        : null;
       if (bareCall) {
         const id = generateToolCallId();
         flushText(controller);
@@ -39,15 +39,17 @@ export function createFlushSafeGlm5TextBuffer({
           id,
           toolName: bareCall.toolName,
         });
-        enqueueToolInputEndAndCall({
+        emitFinalizedToolInputLifecycle({
           controller,
+          finalInput: bareCall.input,
           id,
-          input: bareCall.input,
+          state: { emittedInput: "" },
           toolName: bareCall.toolName,
         });
       } else {
         const trimmed = textBuffer.trimStart();
         if (
+          !terminal &&
           tools.some(
             (tool) =>
               tool.name.startsWith(trimmed) ||

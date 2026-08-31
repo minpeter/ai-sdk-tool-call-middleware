@@ -819,7 +819,26 @@ describe("glm5Protocol streaming lifecycle", () => {
 });
 
 describe("glm5Protocol streaming/non-streaming equivalence", () => {
-  it("recovers an anchored bare call like the generate path", async () => {
+  it("keeps a complete bare-call prefix as text when later prose arrives", async () => {
+    const prefix = 'get-weather(city="Seoul")';
+    const text = `${prefix} is an example.`;
+    const protocol = glm5Protocol();
+    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
+    const harness = createStreamHarness();
+
+    await harness.writeText(prefix);
+    expect(normalizeStreamToolCalls(harness.parts)).toEqual([]);
+    await harness.writeText(" is an example.");
+    const streamed = await harness.finish();
+
+    expect(normalizeStreamToolCalls(streamed)).toEqual(
+      normalizeContentToolCalls(generated)
+    );
+    expect(extractTextDeltas(streamed)).toBe(text);
+    assertBalancedToolInputLifecycle(streamed);
+  });
+
+  it("recovers a terminal anchored bare call like the generate path", async () => {
     const text = 'get-weather(city="Seoul")';
     const protocol = glm5Protocol();
     const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
@@ -832,6 +851,8 @@ describe("glm5Protocol streaming/non-streaming equivalence", () => {
     expect(normalizeStreamToolCalls(streamed)).toEqual(
       normalizeContentToolCalls(generated)
     );
+    expect(extractTextDeltas(streamed)).toBe("");
+    assertBalancedToolInputLifecycle(streamed);
   });
 
   const cases = [

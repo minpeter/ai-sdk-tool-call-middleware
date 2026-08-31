@@ -27,6 +27,7 @@ import type { ParserOptions } from "./protocol-interface";
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 
+// allow: SIZE_OK - this module is one incremental stream state machine.
 const STRUCTURAL_TRIGGER_RE = /[<>]/;
 
 export function createGlm5StreamParser({
@@ -42,10 +43,17 @@ export function createGlm5StreamParser({
 }): TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart> {
   let textBuffer = "";
   let activeCall: ActiveGlm5Call | null = null;
+  let bareCallRecoveryEligible = true;
   let streamPoisoned = false;
 
   const markdownStream = createGlm5MarkdownStream();
-  const { flushText } = markdownStream;
+  const baseFlushText = markdownStream.flushText;
+  const flushText = (controller: StreamController, text?: string) => {
+    if (text) {
+      bareCallRecoveryEligible = false;
+    }
+    baseFlushText(controller, text);
+  };
   const lifecycle = createGlm5StreamLifecycle({
     bodyLengthLimit,
     flushText,
@@ -109,7 +117,10 @@ export function createGlm5StreamParser({
     return true;
   };
 
-  const processBufferedText = (controller: StreamController) => {
+  const processBufferedText = (
+    controller: StreamController,
+    terminal = false
+  ) => {
     while (true) {
       if (activeCall) {
         if (!processActiveCall(controller)) {
@@ -120,9 +131,15 @@ export function createGlm5StreamParser({
 
       const open = findGlm5ToolCallOpen(textBuffer, 0);
       if (!open) {
-        textBuffer = flushSafeTextBuffer(controller, textBuffer);
+        if (terminal && !bareCallRecoveryEligible) {
+          flushText(controller, textBuffer);
+          textBuffer = "";
+          return;
+        }
+        textBuffer = flushSafeTextBuffer(controller, textBuffer, terminal);
         return;
       }
+      bareCallRecoveryEligible = false;
       const prefix = textBuffer.slice(0, open.start);
       if (prefix.length > 0) {
         flushText(controller, prefix);
@@ -172,7 +189,7 @@ export function createGlm5StreamParser({
       flushText(controller);
       return;
     }
-    processBufferedText(controller);
+    processBufferedText(controller, true);
     if (activeCall?.closeScanner.nestedToolCallSeen) {
       activeCall.suppressRemainderResync = true;
       lifecycle.markCallFailed(
