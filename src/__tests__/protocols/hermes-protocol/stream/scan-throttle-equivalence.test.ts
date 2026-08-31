@@ -1,12 +1,35 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
   zeroUsage,
 } from "../../../test-helpers";
+
+const boundaryScanWork = vi.hoisted(() => ({ characters: 0 }));
+
+vi.mock(
+  "../../../../core/protocols/hermes-call-boundary",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../../../core/protocols/hermes-call-boundary")
+      >();
+    return {
+      ...actual,
+      findToolCallBoundaryOutsideRjsonSyntax: (
+        ...args: Parameters<
+          typeof actual.findToolCallBoundaryOutsideRjsonSyntax
+        >
+      ) => {
+        boundaryScanWork.characters += args[0].length;
+        return actual.findToolCallBoundaryOutsideRjsonSyntax(...args);
+      },
+    };
+  }
+);
 
 const tools = [
   {
@@ -89,6 +112,20 @@ function largeBody(lines: number): string {
 
 function hermesCall(toolName: string, args: unknown): string {
   return `<tool_call>\n${JSON.stringify({ name: toolName, arguments: args })}\n</tool_call>`;
+}
+
+const scalingChunkSize = 30;
+
+function naiveEveryChunkRescanCharacters(textLength: number): number {
+  let characters = 0;
+  for (
+    let length = scalingChunkSize;
+    length < textLength;
+    length += scalingChunkSize
+  ) {
+    characters += length;
+  }
+  return characters + textLength;
 }
 
 describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
@@ -176,26 +213,37 @@ describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
 });
 
 describe("hermes large streamed tool call scaling", () => {
-  // Regression guard: before scan throttling, a ~177KB string argument
-  // streamed in 30-char chunks rescanned the accumulated JSON per chunk
-  // (O(n^2), ~2.1s on a dev machine). Amortized scanning is ~50x faster; the
-  // generous bound keeps slow CI stable while still failing loudly on a
-  // quadratic regression.
-  it("parses a ~177KB streamed string argument well under the quadratic regime", async () => {
-    const text = hermesCall("write_file", {
-      path: "a.ts",
-      content: largeBody(4000),
-    });
+  // Before #398, every 30-character chunk rescanned the accumulated JSON:
+  // the exact arithmetic-series sum below models that O(n^2) work. Capped
+  // scan deferral intentionally remains O(n^2 / 1024), so comparing against
+  // a linear text-length budget is not scale invariant. Requiring at least a
+  // 10x reduction from naive rescanning preserves the algorithmic regression
+  // signal at every fixture size.
+  //
+  // #398 measured roughly 2.1s -> 38ms on its development setup (before the
+  // final steady-cadence cap). That plain-machine figure is not an absolute
+  // CI SLA: at this exact head the same case measured 298ms plain versus
+  // 1444ms with V8 coverage, with identical outputs and scan work. The work
+  // ratio isolates parser complexity from instrumentation and runner load.
+  it.each([1000, 2000, 4000])(
+    "reduces boundary-scan work by at least 10x for %i streamed lines",
+    async (lines) => {
+      const text = hermesCall("write_file", {
+        path: "a.ts",
+        content: largeBody(lines),
+      });
 
-    const start = performance.now();
-    const parts = await streamInChunks(text, 30);
-    const elapsedMs = performance.now() - start;
+      boundaryScanWork.characters = 0;
+      const parts = await streamInChunks(text, scalingChunkSize);
 
-    const { toolCalls } = summarize(parts);
-    expect(toolCalls).toHaveLength(1);
-    const parsed = JSON.parse(toolCalls[0].input);
-    expect(parsed.content).toContain("line 3999:");
+      const { toolCalls } = summarize(parts);
+      expect(toolCalls).toHaveLength(1);
+      const parsed = JSON.parse(toolCalls[0].input);
+      expect(parsed.content).toContain(`line ${lines - 1}:`);
 
-    expect(elapsedMs).toBeLessThan(1500);
-  }, 30_000);
+      const naiveCharacters = naiveEveryChunkRescanCharacters(text.length);
+      expect(boundaryScanWork.characters * 10).toBeLessThan(naiveCharacters);
+    },
+    30_000
+  );
 });

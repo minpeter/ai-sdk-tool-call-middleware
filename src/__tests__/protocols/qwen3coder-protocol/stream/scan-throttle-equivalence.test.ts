@@ -1,12 +1,39 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
   zeroUsage,
 } from "../../../test-helpers";
+
+const fullCallParseWork = vi.hoisted(() => ({ characters: 0 }));
+
+vi.mock(
+  "../../../../core/protocols/qwen3coder-stream-call-consumption",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../../../core/protocols/qwen3coder-stream-call-consumption")
+      >();
+    return {
+      ...actual,
+      createQwenStreamCallConsumption: (
+        ...args: Parameters<typeof actual.createQwenStreamCallConsumption>
+      ) => {
+        const [options] = args;
+        return actual.createQwenStreamCallConsumption({
+          ...options,
+          parseStreamingCallContent: (...parseArgs) => {
+            fullCallParseWork.characters += parseArgs[2].length;
+            return options.parseStreamingCallContent(...parseArgs);
+          },
+        });
+      },
+    };
+  }
+);
 
 const tools = [
   {
@@ -87,6 +114,32 @@ function largeBody(lines: number): string {
   ).join("\n");
 }
 
+const scalingChunkSize = 30;
+
+function naiveEveryChunkRescanCharacters(textLength: number): number {
+  let characters = 0;
+  for (
+    let length = scalingChunkSize;
+    length < textLength;
+    length += scalingChunkSize
+  ) {
+    characters += length;
+  }
+  return characters + textLength;
+}
+
+function qwenCall(lines: number): string {
+  const body = largeBody(lines);
+  return `<tool_call>
+<function=write_file>
+<parameter=path>a.ts</parameter>
+<parameter=content>
+${body}
+</parameter>
+</function>
+</tool_call>`;
+}
+
 describe("qwen3coder scan-throttle equivalence (deferral active above 4KB)", () => {
   // Deferral only activates once the call buffer exceeds 4KB, so these
   // payloads must be large enough to exercise the deferred path against the
@@ -150,24 +203,29 @@ describe("qwen3coder scan-throttle equivalence (deferral active above 4KB)", () 
 });
 
 describe("qwen3coder large streamed tool call scaling", () => {
-  // Regression guard: before scan throttling, a ~173KB string argument
-  // streamed in 30-char chunks rescanned the whole call buffer per chunk
-  // (O(n^2), ~6.8s on a dev machine). Amortized scanning is ~120x faster;
-  // the generous bound keeps slow CI stable while still failing loudly on a
-  // quadratic regression.
-  it("parses a ~173KB streamed string argument well under the quadratic regime", async () => {
-    const body = largeBody(4000);
-    const text = `<tool_call>\n<function=write_file>\n<parameter=path>a.ts</parameter>\n<parameter=content>\n${body}\n</parameter>\n</function>\n</tool_call>`;
+  // Before #397, every 30-character chunk rescanned and reparsed the whole
+  // accumulated call buffer (O(n^2), roughly 6.8s -> 55ms on its development
+  // setup). As with Hermes, the capped 1KB cadence deliberately leaves
+  // O(n^2 / 1024) work. Comparing measured full-parse characters with the
+  // exact naive arithmetic-series sum remains scale invariant and avoids the
+  // same coverage/runner sensitivity that put this guard at 1272ms/1500ms in
+  // the failing main CI run.
+  it.each([1000, 2000, 4000])(
+    "reduces full call parsing work by at least 10x for %i streamed lines",
+    async (lines) => {
+      const text = qwenCall(lines);
 
-    const start = performance.now();
-    const parts = await streamInChunks(text, 30);
-    const elapsedMs = performance.now() - start;
+      fullCallParseWork.characters = 0;
+      const parts = await streamInChunks(text, scalingChunkSize);
 
-    const { toolCalls } = summarize(parts);
-    expect(toolCalls).toHaveLength(1);
-    const parsed = JSON.parse(toolCalls[0].input);
-    expect(parsed.content).toContain("line 3999:");
+      const { toolCalls } = summarize(parts);
+      expect(toolCalls).toHaveLength(1);
+      const parsed = JSON.parse(toolCalls[0].input);
+      expect(parsed.content).toContain(`line ${lines - 1}:`);
 
-    expect(elapsedMs).toBeLessThan(1500);
-  }, 30_000);
+      const naiveCharacters = naiveEveryChunkRescanCharacters(text.length);
+      expect(fullCallParseWork.characters * 10).toBeLessThan(naiveCharacters);
+    },
+    30_000
+  );
 });
