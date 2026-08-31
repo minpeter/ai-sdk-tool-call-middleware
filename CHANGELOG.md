@@ -1,5 +1,26 @@
 # @ai-sdk-tool/parser
 
+## 5.2.0
+
+### Minor Changes
+
+- ef84008: Add an experimental Friendli K-EXAONE-236B middleware preset with byte-matched
+  native tool declarations, structured reasoning/tool history replay, Hermes JSON
+  calls, and a separate system guide that keeps unconstrained generation on the
+  Hermes tool-call format. Existing provider-defined tools remain unsupported by
+  the prompt format and continue to be dropped with an unsupported-feature
+  warning.
+- 69ad49e: Add `glm5ToolMiddleware` for the official GLM-5.2 chat-template tool-call
+  grammar (`<tool_call>` with `<arg_key>`/`<arg_value>`), including streaming
+  and parse-generated-text paths.
+  
+  Harden shared tool-call parsing against pathologically nested payloads and
+  exact prototype-sensitive JSON-like keys while preserving ordinary keys that
+  only begin with labels such as `__proto__`, `constructor`, or `prototype`.
+- 52aa3b0: Add public K-EXAONE-2.0 middleware and protocol exports, including native tool
+  declarations, XML tool-call formatting, `<tool_result>` responses, and Friendli
+  reasoning integration.
+
 ## 5.1.6
 
 ### Patch Changes
