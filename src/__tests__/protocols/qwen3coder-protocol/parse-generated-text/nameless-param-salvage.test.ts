@@ -66,6 +66,11 @@ null
 </function>
 </tool_call>`;
 
+const DEEPSEEK_NAME_THEN_VALUE_SPLITS = Array.from(
+  { length: DEEPSEEK_NAME_THEN_VALUE_OUTPUT.length - 1 },
+  (_, index) => index + 1
+);
+
 const expectedAlarmInput = {
   time: "07:30",
   days: ["mon", "tue", "wed", "thu", "fri"],
@@ -115,14 +120,10 @@ describe("qwen3CoderProtocol nameless parameter salvage", () => {
     expect(JSON.parse(call.input)).toEqual(expectedAlarmInput);
   });
 
-  it("keeps DeepSeek name-then-value streaming deltas final-input consistent at every split", async () => {
-    const p = qwen3CoderProtocol();
-
-    for (
-      let split = 1;
-      split < DEEPSEEK_NAME_THEN_VALUE_OUTPUT.length;
-      split += 1
-    ) {
+  it.each(DEEPSEEK_NAME_THEN_VALUE_SPLITS)(
+    "keeps DeepSeek name-then-value streaming deltas final-input consistent at split $split",
+    async (split) => {
+      const p = qwen3CoderProtocol();
       const onError = vi.fn();
       const out = await convertReadableStreamToArray(
         pipeWithTransformer(
@@ -151,7 +152,7 @@ describe("qwen3CoderProtocol nameless parameter salvage", () => {
       expect(deltas.map((part) => part.delta).join("")).toBe(call.input);
       expect(JSON.parse(call.input)).toEqual(expectedAlarmInput);
     }
-  });
+  );
 
   it("keeps DeepSeek name-then-value parameters consistent one character at a time", async () => {
     const onError = vi.fn();

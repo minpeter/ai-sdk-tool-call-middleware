@@ -106,6 +106,69 @@ const SONNET_45_TEXT_DELTAS = [
   ">\n</write_file>",
 ] as const;
 
+const BLOCK_SCALAR_HEADERS = [
+  "|",
+  "|-",
+  "|+",
+  "|2",
+  "|2-",
+  "|-2",
+  ">",
+  ">-",
+  ">+",
+  ">2+ # folded with explicit indentation",
+] as const;
+
+const MULTILINE_SCALAR_BODIES = [
+  'content: "alpha 🧪\n  beta\\nvalue\n  omega"',
+  "content: 'alpha 🧪\n  beta''s value\n  omega'",
+  "content: alpha 🧪\n  beta value\n  omega",
+] as const;
+
+function everySplit(text: string): number[] {
+  return Array.from({ length: text.length - 1 }, (_, index) => index + 1);
+}
+
+const BLOCK_SCALAR_BOUNDARY_CASES = BLOCK_SCALAR_HEADERS.flatMap((header) => {
+  const text = `<write_file>\npath: example.py\ncontent: ${header}\n  alpha 🧪\n    indented\n  omega\n</write_file>`;
+  return everySplit(text).map((split) => ({ header, split, text }));
+});
+
+const MULTILINE_SCALAR_BOUNDARY_CASES = MULTILINE_SCALAR_BODIES.flatMap(
+  (body) => {
+    const text = `<write_file>\npath: example.py\n${body}\n</write_file>`;
+    return everySplit(text).map((split) => ({ body, split, text }));
+  }
+);
+
+const EDGE_FIXTURES = [
+  {
+    name: "CRLF and blank lines",
+    text: "<write_file>\r\npath: windows.py\r\ncontent: |-\r\n  alpha\r\n\r\n  omega\r\n</write_file>",
+    tools: [writeFileTool],
+    assertInput(input: Record<string, unknown>) {
+      expect(input).toEqual({
+        path: "windows.py",
+        content: "alpha\n\nomega",
+      });
+    },
+  },
+  {
+    name: "block scalars nested in sequences",
+    text: "<save_list>\nitems:\n  - |-\n    alpha\n      indented\n  - >+\n    beta\n    gamma\n\n</save_list>",
+    tools: [saveListTool],
+    assertInput(input: Record<string, unknown>) {
+      expect(input).toEqual({
+        items: ["alpha\n  indented", "beta gamma\n\n"],
+      });
+    },
+  },
+] as const;
+
+const EDGE_BOUNDARY_CASES = EDGE_FIXTURES.flatMap((fixture) =>
+  everySplit(fixture.text).map((split) => ({ fixture, split }))
+);
+
 function interleaveRawEvents(chunks: readonly string[]) {
   return chunks.flatMap<LanguageModelV4StreamPart>((delta) => [
     {
@@ -168,68 +231,51 @@ describe("yamlXmlProtocol Sonnet block-scalar streaming regression", () => {
     );
   });
 
-  it("keeps every chunk boundary consistent for all YAML block-scalar header forms", async () => {
-    const headers = [
-      "|",
-      "|-",
-      "|+",
-      "|2",
-      "|2-",
-      "|-2",
-      ">",
-      ">-",
-      ">+",
-      ">2+ # folded with explicit indentation",
-    ];
+  it.each(BLOCK_SCALAR_BOUNDARY_CASES)(
+    "keeps YAML block-scalar header $header consistent at split $split",
+    async ({ header, split, text }) => {
+      const onError = vi.fn();
+      const parts = await runProtocolStreamParser({
+        protocol: yamlXmlProtocol(),
+        tools: [writeFileTool],
+        parserOptions: { onError },
+        stream: createInterleavedStream(
+          interleaveRawEvents([text.slice(0, split), text.slice(split)])
+        ),
+      });
 
-    for (const header of headers) {
-      const text = `<write_file>\npath: example.py\ncontent: ${header}\n  alpha 🧪\n    indented\n  omega\n</write_file>`;
-      for (let split = 1; split < text.length; split += 1) {
-        const onError = vi.fn();
-        const parts = await runProtocolStreamParser({
-          protocol: yamlXmlProtocol(),
-          tools: [writeFileTool],
-          parserOptions: { onError },
-          stream: createInterleavedStream(
-            interleaveRawEvents([text.slice(0, split), text.slice(split)])
-          ),
-        });
-
-        const input = expectOneConsistentCall(parts);
-        expect(onError, `${header} split at ${split}`).not.toHaveBeenCalled();
-        expect(input.path).toBe("example.py");
-        expect(input.content).toContain("alpha 🧪");
-        expect(input.content).toContain("omega");
-      }
+      const input = expectOneConsistentCall(parts);
+      expect(onError, `${header} split at ${split}`).not.toHaveBeenCalled();
+      expect(input.path).toBe("example.py");
+      expect(input.content).toContain("alpha 🧪");
+      expect(input.content).toContain("omega");
     }
-  });
+  );
 
-  it("keeps multiline quoted scalars consistent at every chunk boundary", async () => {
-    const bodies = [
-      'content: "alpha 🧪\n  beta\\nvalue\n  omega"',
-      "content: 'alpha 🧪\n  beta''s value\n  omega'",
-      "content: alpha 🧪\n  beta value\n  omega",
-    ];
+  it.each(MULTILINE_SCALAR_BOUNDARY_CASES)(
+    "keeps multiline scalar $body consistent at split $split",
+    async ({ body, split, text }) => {
+      const onError = vi.fn();
+      const parts = await runProtocolStreamParser({
+        protocol: yamlXmlProtocol(),
+        tools: [writeFileTool],
+        parserOptions: { onError },
+        stream: createInterleavedStream(
+          interleaveRawEvents([text.slice(0, split), text.slice(split)])
+        ),
+      });
 
-    for (const body of bodies) {
+      const input = expectOneConsistentCall(parts);
+      expect(onError, `split at ${split}: ${body}`).not.toHaveBeenCalled();
+      expect(input.content).toContain("alpha 🧪");
+      expect(input.content).toContain("omega");
+    }
+  );
+
+  it.each(MULTILINE_SCALAR_BODIES)(
+    "keeps multiline scalar character-chunked: %s",
+    async (body) => {
       const text = `<write_file>\npath: example.py\n${body}\n</write_file>`;
-      for (let split = 1; split < text.length; split += 1) {
-        const onError = vi.fn();
-        const parts = await runProtocolStreamParser({
-          protocol: yamlXmlProtocol(),
-          tools: [writeFileTool],
-          parserOptions: { onError },
-          stream: createInterleavedStream(
-            interleaveRawEvents([text.slice(0, split), text.slice(split)])
-          ),
-        });
-
-        const input = expectOneConsistentCall(parts);
-        expect(onError, `split at ${split}: ${body}`).not.toHaveBeenCalled();
-        expect(input.content).toContain("alpha 🧪");
-        expect(input.content).toContain("omega");
-      }
-
       const onError = vi.fn();
       const characterParts = await runProtocolStreamParser({
         protocol: yamlXmlProtocol(),
@@ -242,50 +288,27 @@ describe("yamlXmlProtocol Sonnet block-scalar streaming regression", () => {
       expect(characterInput.content).toContain("alpha 🧪");
       expect(characterInput.content).toContain("omega");
     }
-  });
+  );
 
-  it("covers CRLF, blank lines, and block scalars nested in sequences", async () => {
-    const fixtures = [
-      {
-        text: "<write_file>\r\npath: windows.py\r\ncontent: |-\r\n  alpha\r\n\r\n  omega\r\n</write_file>",
-        tools: [writeFileTool],
-        assertInput(input: Record<string, unknown>) {
-          expect(input).toEqual({
-            path: "windows.py",
-            content: "alpha\n\nomega",
-          });
-        },
-      },
-      {
-        text: "<save_list>\nitems:\n  - |-\n    alpha\n      indented\n  - >+\n    beta\n    gamma\n\n</save_list>",
-        tools: [saveListTool],
-        assertInput(input: Record<string, unknown>) {
-          expect(input).toEqual({
-            items: ["alpha\n  indented", "beta gamma\n\n"],
-          });
-        },
-      },
-    ];
+  it.each(EDGE_BOUNDARY_CASES)(
+    "keeps $fixture.name consistent at split $split",
+    async ({ fixture, split }) => {
+      const onError = vi.fn();
+      const parts = await runProtocolStreamParser({
+        protocol: yamlXmlProtocol(),
+        tools: fixture.tools,
+        parserOptions: { onError },
+        stream: createInterleavedStream(
+          interleaveRawEvents([
+            fixture.text.slice(0, split),
+            fixture.text.slice(split),
+          ])
+        ),
+      });
 
-    for (const fixture of fixtures) {
-      for (let split = 1; split < fixture.text.length; split += 1) {
-        const onError = vi.fn();
-        const parts = await runProtocolStreamParser({
-          protocol: yamlXmlProtocol(),
-          tools: fixture.tools,
-          parserOptions: { onError },
-          stream: createInterleavedStream(
-            interleaveRawEvents([
-              fixture.text.slice(0, split),
-              fixture.text.slice(split),
-            ])
-          ),
-        });
-
-        const input = expectOneConsistentCall(parts);
-        expect(onError, `split at ${split}`).not.toHaveBeenCalled();
-        fixture.assertInput(input);
-      }
+      const input = expectOneConsistentCall(parts);
+      expect(onError, `split at ${split}`).not.toHaveBeenCalled();
+      fixture.assertInput(input);
     }
-  });
+  );
 });
