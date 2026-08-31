@@ -575,28 +575,32 @@ function handleOrphanToolCallSpan(options: {
 
 function findUnclosedJsonToolCallStart(
   text: string,
-  searchFrom: number,
+  span: NonNullable<ReturnType<typeof findNextToolCallSpan>>,
   toolCallStart: string,
   toolCallEnd: string,
   tools: LanguageModelV4FunctionTool[]
 ): number | null {
-  const startIndex = text.indexOf(toolCallStart, searchFrom);
-  if (startIndex === -1) {
+  if (span.found) {
     return null;
   }
+  const { startIdx: startIndex } = span;
   const bodyStart = startIndex + toolCallStart.length;
-  if (!text.slice(bodyStart).trimStart().startsWith("{")) {
+  let jsonStart = bodyStart;
+  while (jsonStart < text.length && text[jsonStart]?.trim().length === 0) {
+    jsonStart += 1;
+  }
+  if (text[jsonStart] !== "{" || text.indexOf(toolCallEnd, bodyStart) !== -1) {
     return null;
   }
   if (
     extractSensitiveIncompleteToolCallDropSpans(
       text.slice(startIndex),
       tools
-    ).some((span) => span.startIndex === 0)
+    ).some((dropSpan) => dropSpan.startIndex === 0)
   ) {
     return null;
   }
-  return text.indexOf(toolCallEnd, bodyStart) === -1 ? startIndex : null;
+  return startIndex;
 }
 
 export const hermesProtocol = ({
@@ -645,9 +649,18 @@ export const hermesProtocol = ({
     let searchFrom = 0;
 
     while (searchFrom < text.length) {
-      const unclosedStartIndex = findUnclosedJsonToolCallStart(
+      const span = findNextToolCallSpan(
         text,
         searchFrom,
+        toolCallStart,
+        toolCallEnd
+      );
+      if (span === null) {
+        break;
+      }
+      const unclosedStartIndex = findUnclosedJsonToolCallStart(
+        text,
+        span,
         toolCallStart,
         toolCallEnd,
         tools
@@ -661,15 +674,6 @@ export const hermesProtocol = ({
         }
         addTextSegment(text.slice(unclosedStartIndex), processedElements);
         currentIndex = text.length;
-        break;
-      }
-      const span = findNextToolCallSpan(
-        text,
-        searchFrom,
-        toolCallStart,
-        toolCallEnd
-      );
-      if (span === null) {
         break;
       }
 

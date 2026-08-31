@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 
 const malformedUnit = "<tool_call>{\n";
+const closedMalformedUnit = "<tool_call>{}</tool_call>";
 const originalIndexOf = String.prototype.indexOf;
+const originalSlice = String.prototype.slice;
 
 function parseRepeatedMalformedCalls(repetitions: number) {
   const text = malformedUnit.repeat(repetitions);
@@ -24,6 +26,27 @@ function parseRepeatedMalformedCalls(repetitions: number) {
   }
 }
 
+function parseClosedCallsBeforeMalformedTail(repetitions: number) {
+  const text = closedMalformedUnit.repeat(repetitions) + malformedUnit;
+  let suffixWork = 0;
+  const slice = vi
+    .spyOn(String.prototype, "slice")
+    .mockImplementation(function (this: string, start, end) {
+      const source = String(this);
+      const result = originalSlice.call(source, start, end);
+      if (source === text && end === undefined && start !== undefined) {
+        suffixWork += result.length;
+      }
+      return result;
+    });
+  try {
+    hermesProtocol().parseGeneratedText({ text, tools: [] });
+    return { text, work: suffixWork };
+  } finally {
+    slice.mockRestore();
+  }
+}
+
 describe("Hermes orphan scan complexity", () => {
   it("preserves repeated unterminated calls as text", () => {
     const { content, text } = parseRepeatedMalformedCalls(32);
@@ -36,9 +59,9 @@ describe("Hermes orphan scan complexity", () => {
     );
   });
 
-  it("bounds scan work when malformed input doubles", () => {
-    const small = parseRepeatedMalformedCalls(256);
-    const large = parseRepeatedMalformedCalls(512);
+  it("bounds whole-suffix work when closed spans double", () => {
+    const small = parseClosedCallsBeforeMalformedTail(128);
+    const large = parseClosedCallsBeforeMalformedTail(256);
 
     expect(small.work).toBeGreaterThan(0);
     expect(large.work).toBeGreaterThan(0);
