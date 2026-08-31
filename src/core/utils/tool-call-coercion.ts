@@ -3,16 +3,9 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import {
-  coerceBySchema,
-  getSchemaType,
-  unwrapJsonSchema,
-} from "../../schema-coerce";
-import {
-  hasPrototypeSensitiveStructuralKey,
-  toolCallInputHasPrototypeSensitiveKey,
-} from "./prototype-sensitive-keys";
-import { getToolInputPropertySchema } from "./tool-call-object-schema";
+import { coerceBySchema, unwrapJsonSchema } from "../../schema-coerce";
+import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
+import { toolCallInputHasSchemaAwarePrototypeSensitiveValue as inputHasSchemaAwarePrototypeSensitiveValue } from "./tool-call-schema-aware-prototype";
 import { sanitizeToolCallArgsBySchema } from "./tool-call-schema-sanitization";
 
 type ToolCallLike = Extract<
@@ -20,131 +13,15 @@ type ToolCallLike = Extract<
   { type: "tool-call" }
 >;
 
-const SAFE_PROTOTYPE_LABEL_SCALAR_RE =
-  /^\s*(?:constructor|prototype)\s*:\s*(?![[{"'])(?![^\r\n]*\b[A-Za-z0-9_.-]+\s*:)[^\r\n]+$/i;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseJsonDocumentString(value: string): object | null {
-  const trimmed = value.trim();
-  if (
-    !(
-      (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
-      (trimmed.startsWith("[") && trimmed.endsWith("]"))
-    )
-  ) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    return typeof parsed === "object" && parsed !== null ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function jsonDocumentEntryIsUnsafe(key: string, value: unknown): boolean {
-  if (key === "__proto__") {
-    return true;
-  }
-  if (
-    (key === "constructor" || key === "prototype") &&
-    typeof value !== "string"
-  ) {
-    return true;
-  }
-  return (
-    typeof value === "string" && toolCallInputHasPrototypeSensitiveKey(value)
-  );
-}
-
-function jsonDocumentHasUnsafeStructuredValue(value: object): boolean {
-  const stack: unknown[] = [value];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (Array.isArray(current)) {
-      stack.push(...current);
-      continue;
-    }
-    if (!isRecord(current)) {
-      continue;
-    }
-    for (const [key, item] of Object.entries(current)) {
-      if (jsonDocumentEntryIsUnsafe(key, item)) {
-        return true;
-      }
-      if (typeof item === "object" && item !== null) {
-        stack.push(item);
-      }
-    }
-  }
-  return false;
-}
-
-function isSafeJsonDocumentString(value: string): boolean {
-  const parsed = parseJsonDocumentString(value);
-  return parsed !== null && !jsonDocumentHasUnsafeStructuredValue(parsed);
-}
-
-function arrayItemSchema(schema: unknown, index: number): unknown {
-  const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped)) {
-    return;
-  }
-  if (
-    Array.isArray(unwrapped.prefixItems) &&
-    index < unwrapped.prefixItems.length
-  ) {
-    return unwrapped.prefixItems[index];
-  }
-  return unwrapped.items;
-}
-
 export function toolCallInputHasSchemaAwarePrototypeSensitiveValue(
   value: unknown,
-  schema: unknown,
-  seen = new Set<object>()
+  schema: unknown
 ): boolean {
-  if (typeof value === "string") {
-    if (getSchemaType(schema) === "string") {
-      if (
-        isSafeJsonDocumentString(value) ||
-        SAFE_PROTOTYPE_LABEL_SCALAR_RE.test(value)
-      ) {
-        return false;
-      }
-      return toolCallInputHasPrototypeSensitiveKey(value);
-    }
-    return toolCallInputHasPrototypeSensitiveKey(value);
-  }
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  if (seen.has(value)) {
-    return false;
-  }
-  seen.add(value);
-  if (hasPrototypeSensitiveStructuralKey(value)) {
-    return true;
-  }
-  if (Array.isArray(value)) {
-    return value.some((item, index) =>
-      toolCallInputHasSchemaAwarePrototypeSensitiveValue(
-        item,
-        arrayItemSchema(schema, index),
-        seen
-      )
-    );
-  }
-  return Object.entries(value).some(([key, item]) =>
-    toolCallInputHasSchemaAwarePrototypeSensitiveValue(
-      item,
-      getToolInputPropertySchema(schema, key, value),
-      seen
-    )
-  );
+  return inputHasSchemaAwarePrototypeSensitiveValue(value, schema);
 }
 
 function schemaAllowsNull(schema: unknown, seen = new Set<object>()): boolean {

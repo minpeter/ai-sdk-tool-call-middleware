@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   coerceToolCallInput,
   coerceToolCallPart,
+  toolCallInputHasSchemaAwarePrototypeSensitiveValue,
 } from "../../../core/utils/tool-call-coercion";
 
 describe("tool-call coercion utils", () => {
@@ -108,6 +109,24 @@ describe("tool-call coercion utils", () => {
     const input = coerceToolCallInput("get_weather", args, weatherTools);
 
     expect(input).toBeUndefined();
+  });
+
+  it("handles deeply nested object and array input without exhausting the call stack", () => {
+    let input: unknown = "constructor: ordinary prose";
+    let schema: unknown = { type: "string" };
+    for (let depth = 0; depth < 5000; depth += 1) {
+      if (depth % 2 === 0) {
+        input = { value: input };
+        schema = { type: "object", properties: { value: schema } };
+      } else {
+        input = [input];
+        schema = { type: "array", items: schema };
+      }
+    }
+
+    expect(
+      toolCallInputHasSchemaAwarePrototypeSensitiveValue(input, schema)
+    ).toBe(false);
   });
 
   it("drops every key when a strict object schema declares no properties", () => {
