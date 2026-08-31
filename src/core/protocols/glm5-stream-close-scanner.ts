@@ -4,7 +4,10 @@ import {
   parseGlm5CallBody,
   type ResolvedGlm5ProtocolOptions,
 } from "./glm5-call-parsing";
-import { materializeGlm5StreamBody } from "./glm5-stream-body";
+import {
+  appendGlm5StreamBody,
+  materializeGlm5StreamBody,
+} from "./glm5-stream-body";
 import type {
   ActiveGlm5Call,
   Glm5CloseTagScanner,
@@ -108,8 +111,10 @@ export function hasPotentialGlm5StructuralTagSuffix(text: string): boolean {
   );
 }
 
-export function createGlm5CloseTagScanner(): Glm5CloseTagScanner {
-  return {
+export function createGlm5CloseTagScanner(
+  initialText = ""
+): Glm5CloseTagScanner {
+  const scanner = {
     argValueDepth: 0,
     candidateParts: null,
     candidateStart: -1,
@@ -121,6 +126,16 @@ export function createGlm5CloseTagScanner(): Glm5CloseTagScanner {
     pendingClose: null,
     pendingChunks: [],
   };
+  queueGlm5CloseScannerText(scanner, initialText);
+  return scanner;
+}
+
+export function appendGlm5ScannedStreamBody(
+  call: ActiveGlm5Call,
+  text: string
+): void {
+  appendGlm5StreamBody(call.body, text);
+  queueGlm5CloseScannerText(call.closeScanner, text);
 }
 
 export function queueGlm5CloseScannerText(
