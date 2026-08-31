@@ -581,12 +581,14 @@ describe("glm5Protocol argument safety", () => {
   });
 
   it.each([
-    ["bare", ""],
-    ["language-labeled", "xml"],
+    ["bare", "", ""],
+    ["language-labeled", "xml", ""],
+    ["bare with preceding fenced content", "", "example\n"],
+    ["language-labeled with preceding fenced content", "xml", "example\n"],
   ])(
     "keeps a canonical call inside a %s fenced block non-executable",
-    (_name, language) => {
-      const text = `\`\`\`${language}\n<tool_call>ping</tool_call>\n\`\`\``;
+    (_name, language, fencedPrefix) => {
+      const text = `\`\`\`${language}\n${fencedPrefix}<tool_call>ping</tool_call>\n\`\`\``;
       const protocol = glm5Protocol();
       const output = protocol.parseGeneratedText({
         text,

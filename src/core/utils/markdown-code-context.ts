@@ -76,13 +76,16 @@ export function consumeMarkdownCodeText(
 }
 
 /**
- * Suppress only a marker that begins directly inside a code delimiter (aside
- * from whitespace). Unbalanced prose backticks must not swallow a later,
- * otherwise valid tool call.
+ * Fenced blocks keep every marker non-executable until the matching fence.
+ * Inline spans suppress only a marker that begins directly inside the
+ * delimiter; unbalanced prose backticks must not swallow a later call.
  */
 export function markdownCodeContextSuppressesToolCall(
   context: MarkdownCodeContext
 ): boolean {
   commitPendingBackticks(context);
-  return context.delimiterLength > 0 && !context.activeContentHasNonWhitespace;
+  return (
+    context.delimiterLength >= 3 ||
+    (context.delimiterLength > 0 && !context.activeContentHasNonWhitespace)
+  );
 }

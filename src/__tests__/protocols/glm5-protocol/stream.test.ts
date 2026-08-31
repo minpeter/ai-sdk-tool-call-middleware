@@ -291,12 +291,14 @@ describe("glm5Protocol streaming lifecycle", () => {
   });
 
   it.each([
-    ["bare", ""],
-    ["language-labeled", "xml"],
+    ["bare", "", ""],
+    ["language-labeled", "xml", ""],
+    ["bare with preceding fenced content", "", "example\n"],
+    ["language-labeled with preceding fenced content", "xml", "example\n"],
   ])(
     "keeps a canonical call inside a %s fenced block non-executable under one-character chunks",
-    async (_name, language) => {
-      const text = `\`\`\`${language}\n<tool_call>ping</tool_call>\n\`\`\``;
+    async (_name, language, fencedPrefix) => {
+      const text = `\`\`\`${language}\n${fencedPrefix}<tool_call>ping</tool_call>\n\`\`\``;
       const protocol = glm5Protocol();
       const generated = protocol.parseGeneratedText({
         text,
