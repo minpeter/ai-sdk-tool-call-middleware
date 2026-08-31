@@ -5,6 +5,14 @@ import { glm5Tools } from "./shared";
 const echoCall =
   "<tool_call>echo<arg_key>message</arg_key><arg_value>hello</arg_value></tool_call>";
 
+function extractSegments(text: string): string[] {
+  const extract = glm5Protocol().extractToolCallSegments;
+  if (!extract) {
+    throw new Error("GLM-5 protocol must expose segment extraction");
+  }
+  return extract({ text, tools: glm5Tools });
+}
+
 describe("GLM-5 protocol formatting", () => {
   it("formats string, numeric, boolean, and null arguments", () => {
     expect(
@@ -50,42 +58,32 @@ describe("GLM-5 protocol segment extraction", () => {
       "\n"
     );
 
-    expect(
-      glm5Protocol().extractToolCallSegments({ text, tools: glm5Tools })
-    ).toEqual([echoCall]);
+    expect(extractSegments(text)).toEqual([echoCall]);
   });
 
   it("ignores one incomplete call that begins directly inside fenced code", () => {
     const text = "```\n<tool_call>echo";
 
-    expect(
-      glm5Protocol().extractToolCallSegments({ text, tools: glm5Tools })
-    ).toEqual([]);
+    expect(extractSegments(text)).toEqual([]);
   });
 
   it("recovers one terminal incomplete call", () => {
     const text = "<tool_call>echo<arg_key>message</arg_key><arg_value>hello";
 
-    expect(
-      glm5Protocol().extractToolCallSegments({ text, tools: glm5Tools })
-    ).toEqual([text]);
+    expect(extractSegments(text)).toEqual([text]);
   });
 
   it("rejects nested incomplete calls instead of recovering an outer prefix", () => {
     const text =
       "<tool_call>echo<arg_key>message</arg_key><arg_value>bad<tool_call>ping";
 
-    expect(
-      glm5Protocol().extractToolCallSegments({ text, tools: glm5Tools })
-    ).toEqual([]);
+    expect(extractSegments(text)).toEqual([]);
   });
 
   it("extracts an anchored bare function call", () => {
     const text = '  echo(message="hello")  ';
 
-    expect(
-      glm5Protocol().extractToolCallSegments({ text, tools: glm5Tools })
-    ).toEqual(['echo(message="hello")']);
+    expect(extractSegments(text)).toEqual(['echo(message="hello")']);
   });
 });
 
