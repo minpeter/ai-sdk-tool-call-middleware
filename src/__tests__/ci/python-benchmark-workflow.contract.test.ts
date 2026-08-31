@@ -37,6 +37,9 @@ describe("Python benchmark workflow contract", () => {
     expect(node?.with?.["node-version"]).toBe(22);
     expect(python?.with?.["python-version"]).toBe("3.12");
     expect(uv?.with?.version).toBe("0.11.28");
+    expect(commands).toContain(
+      "sudo apt-get update && sudo apt-get install --yes --no-install-recommends librsvg2-bin"
+    );
     expect(commands).toContain("uv sync --locked --only-group benchmark-test");
     expect(commands).toContain("uv run --locked --no-sync pytest");
     expect(commands).toContain("pnpm test:benchmarks");

@@ -184,6 +184,9 @@ jobs:
           version: "0.11.28"
           enable-cache: true
 
+      - name: Install SVG renderer
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends librsvg2-bin
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
