@@ -64,6 +64,20 @@ beforeEach(() => {
 });
 
 describe("GLM-5 stream work bounds", () => {
+  it.each(["plain </tail", "plain <tool_X tail"])(
+    "preserves a non-structural tag prefix as text: %s",
+    async (text) => {
+      const output = await runProtocolTextDeltaStream({
+        protocol: glm5Protocol(),
+        tools: glm5Tools,
+        chunks: text.split(""),
+      });
+
+      expect(extractTextDeltas(output)).toBe(text);
+      expect(normalizeStreamToolCalls(output)).toEqual([]);
+    }
+  );
+
   it("bounds retained-body materialization across one-character chunks", async () => {
     const longValue = "x".repeat(20_000);
     const text = `<tool_call>echo<arg_key>message</arg_key><arg_value>${longValue}</arg_value></tool_call>`;
@@ -127,5 +141,22 @@ describe("GLM-5 stream work bounds", () => {
     );
     const lifecycle = extractToolInputTimeline(streamed);
     expect(lifecycle.starts).toHaveLength(lifecycle.ends.length);
+  });
+
+  it("preserves safe malformed call text when raw fallback is enabled", async () => {
+    const onError = vi.fn();
+    const text = "<tool_call>unknown</tool_call>";
+    const streamed = await runParser(
+      createGlm5StreamParser({
+        options: { emitRawToolCallTextOnError: true, onError },
+        protocolOptions: resolveGlm5ProtocolOptions(),
+        tools: glm5Tools,
+      }),
+      [text]
+    );
+
+    expect(extractTextDeltas(streamed)).toBe(text);
+    expect(normalizeStreamToolCalls(streamed)).toEqual([]);
+    expect(onError).toHaveBeenCalledTimes(1);
   });
 });
