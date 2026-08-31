@@ -580,6 +580,32 @@ describe("glm5Protocol argument safety", () => {
     ).toEqual([]);
   });
 
+  it.each([
+    ["bare", ""],
+    ["language-labeled", "xml"],
+  ])(
+    "keeps a canonical call inside a %s fenced block non-executable",
+    (_name, language) => {
+      const text = `\`\`\`${language}\n<tool_call>ping</tool_call>\n\`\`\``;
+      const protocol = glm5Protocol();
+      const output = protocol.parseGeneratedText({
+        text,
+        tools: glm5Tools,
+      });
+
+      expect(normalizeContentToolCalls(output)).toEqual([]);
+      expect(
+        output
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      ).toBe(text);
+      expect(
+        protocol.extractToolCallSegments?.({ text, tools: glm5Tools })
+      ).toEqual([]);
+    }
+  );
+
   it("executes calls after a balanced Markdown code span even when the closing backtick is adjacent", () => {
     const text = "Use `CellResult`<tool_call>ping</tool_call>";
     const output = glm5Protocol().parseGeneratedText({

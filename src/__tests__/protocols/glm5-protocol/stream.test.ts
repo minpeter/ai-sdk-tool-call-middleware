@@ -290,6 +290,31 @@ describe("glm5Protocol streaming lifecycle", () => {
     assertBalancedToolInputLifecycle(streamed);
   });
 
+  it.each([
+    ["bare", ""],
+    ["language-labeled", "xml"],
+  ])(
+    "keeps a canonical call inside a %s fenced block non-executable under one-character chunks",
+    async (_name, language) => {
+      const text = `\`\`\`${language}\n<tool_call>ping</tool_call>\n\`\`\``;
+      const protocol = glm5Protocol();
+      const generated = protocol.parseGeneratedText({
+        text,
+        tools: glm5Tools,
+      });
+      const streamed = await runProtocolTextDeltaStream({
+        protocol,
+        tools: glm5Tools,
+        chunks: text.split(""),
+      });
+
+      expect(normalizeContentToolCalls(generated)).toEqual([]);
+      expect(normalizeStreamToolCalls(streamed)).toEqual([]);
+      expect(extractTextDeltas(streamed)).toBe(text);
+      assertBalancedToolInputLifecycle(streamed);
+    }
+  );
+
   it("keeps calls after balanced code spans executable under one-character chunks", async () => {
     const text = [
       "Use `CellResult`",

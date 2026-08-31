@@ -3,6 +3,7 @@ const WHITESPACE_RE = /\s/u;
 export interface MarkdownCodeContext {
   activeContentHasNonWhitespace: boolean;
   delimiterLength: number;
+  openingFenceLine: boolean;
   pendingBackticks: number;
   trailingBackslashes: number;
 }
@@ -11,6 +12,7 @@ export function createMarkdownCodeContext(): MarkdownCodeContext {
   return {
     activeContentHasNonWhitespace: false,
     delimiterLength: 0,
+    openingFenceLine: false,
     pendingBackticks: 0,
     trailingBackslashes: 0,
   };
@@ -23,9 +25,11 @@ function commitPendingBackticks(context: MarkdownCodeContext): void {
   if (context.delimiterLength === 0) {
     context.delimiterLength = context.pendingBackticks;
     context.activeContentHasNonWhitespace = false;
+    context.openingFenceLine = context.pendingBackticks >= 3;
   } else if (context.pendingBackticks === context.delimiterLength) {
     context.delimiterLength = 0;
     context.activeContentHasNonWhitespace = false;
+    context.openingFenceLine = false;
   }
   context.pendingBackticks = 0;
 }
@@ -51,7 +55,16 @@ export function consumeMarkdownCodeText(
     }
 
     commitPendingBackticks(context);
-    if (context.delimiterLength > 0 && !WHITESPACE_RE.test(character)) {
+    if (
+      context.openingFenceLine &&
+      (character === "\n" || character === "\r")
+    ) {
+      context.openingFenceLine = false;
+    } else if (
+      context.delimiterLength > 0 &&
+      !context.openingFenceLine &&
+      !WHITESPACE_RE.test(character)
+    ) {
       context.activeContentHasNonWhitespace = true;
     }
     if (character === "\\") {
