@@ -168,21 +168,20 @@ describe("yamlXmlProtocol Sonnet block-scalar streaming regression", () => {
     );
   });
 
-  it("keeps every chunk boundary consistent for all YAML block-scalar header forms", async () => {
-    const headers = [
-      "|",
-      "|-",
-      "|+",
-      "|2",
-      "|2-",
-      "|-2",
-      ">",
-      ">-",
-      ">+",
-      ">2+ # folded with explicit indentation",
-    ];
-
-    for (const header of headers) {
+  it.each([
+    "|",
+    "|-",
+    "|+",
+    "|2",
+    "|2-",
+    "|-2",
+    ">",
+    ">-",
+    ">+",
+    ">2+ # folded with explicit indentation",
+  ])(
+    "keeps every chunk boundary consistent for YAML block-scalar header %s",
+    async (header) => {
       const text = `<write_file>\npath: example.py\ncontent: ${header}\n  alpha 🧪\n    indented\n  omega\n</write_file>`;
       for (let split = 1; split < text.length; split += 1) {
         const onError = vi.fn();
@@ -202,7 +201,7 @@ describe("yamlXmlProtocol Sonnet block-scalar streaming regression", () => {
         expect(input.content).toContain("omega");
       }
     }
-  });
+  );
 
   it("keeps multiline quoted scalars consistent at every chunk boundary", async () => {
     const bodies = [
