@@ -68,6 +68,7 @@
     "fmt": "run-p fmt:*",
     "fmt:biome": "biome check --write",
     "test": "vitest run",
+    "test:benchmarks": "vitest run --config vitest.benchmarks.config.ts",
     "test:package-consumers": "node scripts/test-package-consumers.mjs",
     "typecheck": "tsc --noEmit"
   },

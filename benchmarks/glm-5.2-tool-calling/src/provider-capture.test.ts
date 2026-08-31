@@ -445,6 +445,16 @@ describe("paired analysis denominators", () => {
     expect(
       readFileSync(join(chartsDir, "accuracy.svg"), "utf8").length
     ).toBeGreaterThan(0);
+  });
+
+  it("renders a single SVG chart to PNG when a converter is available", () => {
+    const chartsDir = mkdtempSync(join(tmpdir(), "glm5-chart-render-"));
+    temporaryDirectories.push(chartsDir);
+    writeFileSync(
+      join(chartsDir, "single.svg"),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#000"/></svg>'
+    );
+
     try {
       execFileSync(
         "python3",
@@ -456,7 +466,7 @@ describe("paired analysis denominators", () => {
         { cwd: process.cwd(), stdio: "pipe" }
       );
       expect(
-        readFileSync(join(chartsDir, "accuracy.png")).length
+        readFileSync(join(chartsDir, "single.png")).length
       ).toBeGreaterThan(0);
     } catch (error) {
       const stderr =
