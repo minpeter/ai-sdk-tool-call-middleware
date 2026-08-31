@@ -57,22 +57,22 @@ jobs:
 
       - name: Create Release Pull Request or Publish to registry
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          branch: ${{ github.ref_name }}
-          version: pnpm ci:version
-          publish: pnpm ci:release
-          setupGitUser: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pr-base-branch: ${{ github.ref_name }}
+          version-script: pnpm ci:version
+          publish-script: pnpm ci:release
+          push-with-git-cli: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ""
 
       - name: Cleanup apps changesets
-        if: steps.changesets.outputs.hasChangesets == 'true'
+        if: steps.changesets.outputs.has-changesets == 'true'
         run: node .github/scripts/cleanup-apps-changesets.mjs
 
       - name: Commit cleanup changes
-        if: steps.changesets.outputs.hasChangesets == 'true'
+        if: steps.changesets.outputs.has-changesets == 'true'
         run: |
           git add .
           git diff --staged --quiet || git commit -m "chore: cleanup apps changesets"
