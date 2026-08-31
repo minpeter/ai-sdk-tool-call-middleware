@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import ast
 from pathlib import Path
-import re
 import unittest
 
 import stabletoolbench_official_native as official
@@ -14,9 +13,35 @@ import stabletoolbench_official_native as official
 
 HERE = Path(__file__).resolve().parent
 ADAPTER = HERE / "stabletoolbench_official_native.py"
-UPSTREAM = Path(
-    "/home/minpeter/.cache/glm52-benchmarks/stabletoolbench/toolbench/"
-    "inference/Downstream_tasks/rapidapi_multithread.py"
+PINNED_UPSTREAM_ARGUMENTS = frozenset(
+    {
+        "api_customization",
+        "backbone_model",
+        "base_url",
+        "chatgpt_model",
+        "corpus_tsv_path",
+        "disable_tqdm",
+        "input_query_file",
+        "lora",
+        "lora_path",
+        "max_observation_length",
+        "max_query_count",
+        "max_sequence_length",
+        "max_source_sequence_length",
+        "method",
+        "model_path",
+        "num_thread",
+        "observ_compress_method",
+        "openai_key",
+        "output_answer_file",
+        "rapidapi_key",
+        "retrieval_model_path",
+        "retrieved_api_nums",
+        "single_chain_max_step",
+        "tool_root_dir",
+        "toolbench_key",
+        "use_rapidapi_key",
+    }
 )
 
 
@@ -100,9 +125,7 @@ class StableToolBenchRunnerArgsTest(unittest.TestCase):
                 continue
             supplied.update(keyword.arg for keyword in node.keywords if keyword.arg)
 
-        source = UPSTREAM.read_text(encoding="utf-8")
-        required = set(re.findall(r"(?:self\.)?args\.([A-Za-z_][A-Za-z0-9_]*)", source))
-        self.assertEqual(required - supplied, set())
+        self.assertEqual(PINNED_UPSTREAM_ARGUMENTS - supplied, set())
 
     def test_thread_count_is_bounded(self) -> None:
         tree = ast.parse(ADAPTER.read_text(encoding="utf-8"))

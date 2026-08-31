@@ -9,11 +9,18 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import MagicMock, patch
 
 
-acebench_one_row_preflight = importlib.import_module("acebench_one_row_preflight")
+acebench_adapter = types.ModuleType("acebench_official_native")
+acebench_adapter.ACE_ROOT = Path("/unused/acebench")
+acebench_adapter.NativeAgent = type("NativeAgent", (), {})
+acebench_adapter.NativeUser = type("NativeUser", (), {})
+acebench_adapter.PROVIDER_MAX_TOKENS = 16_384
+with patch.dict(sys.modules, {"acebench_official_native": acebench_adapter}):
+    acebench_one_row_preflight = importlib.import_module("acebench_one_row_preflight")
 prepare_acebench_fresh_run = importlib.import_module("prepare_acebench_fresh_run")
 validate_acebench_official = importlib.import_module("validate_acebench_official")
 validate_bfcl_official = importlib.import_module("validate_bfcl_official")

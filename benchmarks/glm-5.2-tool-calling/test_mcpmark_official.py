@@ -3,20 +3,76 @@
 
 from __future__ import annotations
 
-import importlib
+import importlib.util
 import os
+from pathlib import Path
+import sys
+import types
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 import unittest
 from unittest.mock import AsyncMock, patch
 
-if TYPE_CHECKING:
-    from . import mcpmark_official as official
-else:
-    module_name = (
-        f"{__package__}.mcpmark_official" if __package__ else "mcpmark_official"
-    )
-    official = importlib.import_module(module_name)
+
+SCRIPT = Path(__file__).with_name("mcpmark_official.py")
+
+
+class StubModelConfig:
+    MODEL_CONFIGS: dict[str, dict[str, str]] = {}
+
+
+class StubMCPStdioServer:
+    def __init__(self, **values) -> None:
+        del values
+
+
+class StubMCPMarkAgent:
+    async def _maybe_compact_litellm_messages(self, *args):
+        return list(args)
+
+    def _create_stdio_server(self) -> StubMCPStdioServer:
+        return StubMCPStdioServer()
+
+    def _extract_litellm_text(self, response: SimpleNamespace) -> str:
+        return str(response.choices[0].message.content)
+
+
+def module(name: str, **values) -> types.ModuleType:
+    value = types.ModuleType(name)
+    value.__dict__.update(values)
+    return value
+
+
+class AdapterLoadError(RuntimeError):
+    pass
+
+
+def load_adapter() -> types.ModuleType:
+    async def completion(**_) -> None:
+        return None
+
+    stubs = {
+        "litellm": module("litellm", acompletion=completion),
+        "src": module("src"),
+        "src.agents": module("src.agents"),
+        "src.agents.mcp": module(
+            "src.agents.mcp", MCPStdioServer=StubMCPStdioServer
+        ),
+        "src.agents.mcpmark_agent": module(
+            "src.agents.mcpmark_agent", MCPMarkAgent=StubMCPMarkAgent
+        ),
+        "src.model_config": module("src.model_config", ModelConfig=StubModelConfig),
+    }
+    spec = importlib.util.spec_from_file_location("mcpmark_official", SCRIPT)
+    if spec is None or spec.loader is None:
+        raise AdapterLoadError("could not load MCPMark adapter")
+    adapter = importlib.util.module_from_spec(spec)
+    with patch.dict(sys.modules, stubs):
+        spec.loader.exec_module(adapter)
+    sys.modules[spec.name] = adapter
+    return adapter
+
+
+official = load_adapter()
 
 
 class MCPMarkModelAliasTest(unittest.TestCase):

@@ -1,0 +1,19 @@
+[project]
+name = "ai-sdk-tool-call-middleware-benchmark-tests"
+version = "0.0.0"
+description = "Locked Python environment for offline benchmark harness tests"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+benchmark-test = [
+  "pytest==8.4.2",
+  "tau2 @ git+https://github.com/sierra-research/tau2-bench@a1e85084a3960281cb06997594133e8f39ea42a7",
+]
+
+[tool.uv]
+default-groups = []
+
+[tool.pytest.ini_options]
+addopts = ["--strict-config", "--strict-markers"]
+testpaths = ["benchmarks/glm-5.2-tool-calling"]

@@ -173,8 +173,25 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Use Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.28"
+          enable-cache: true
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run benchmark harness tests
+      - name: Install Python benchmark test dependencies
+        run: uv sync --locked --only-group benchmark-test
+
+      - name: Run Python benchmark harness tests
+        run: uv run --locked --no-sync pytest
+
+      - name: Run TypeScript benchmark harness tests
         run: pnpm test:benchmarks

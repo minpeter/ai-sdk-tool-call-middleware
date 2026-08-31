@@ -1,17 +1,91 @@
 #!/usr/bin/env python3
 
 import importlib
+import importlib.util
 import json
 import os
+import sys
 import tempfile
+import types
 import unittest
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
-from validate_bfcl_official import result_ids
 
-bfcl_official = importlib.import_module("bfcl_official")
+SCRIPT = Path(__file__).with_name("bfcl_official.py")
+result_ids = cast(
+    Callable[[Path], tuple[list[str], int]],
+    importlib.import_module("validate_bfcl_official").result_ids,
+)
+
+
+class StubOpenAICompletionsHandler:
+    def _build_client_kwargs(self) -> dict[str, float | int]:
+        return {}
+
+
+class StubModelConfig:
+    def __init__(self, **values) -> None:
+        del values
+
+
+class StubWebSearchAPI:
+    show_snippet = False
+
+
+def module(name: str, **values) -> types.ModuleType:
+    value = types.ModuleType(name)
+    value.__dict__.update(values)
+    return value
+
+
+class AdapterLoadError(RuntimeError):
+    pass
+
+
+def load_adapter() -> types.ModuleType:
+    stubs = {
+        "bs4": module("bs4", BeautifulSoup=type("BeautifulSoup", (), {})),
+        "bfcl_eval": module("bfcl_eval"),
+        "bfcl_eval.__main__": module("bfcl_eval.__main__", cli=lambda: None),
+        "bfcl_eval.constants": module("bfcl_eval.constants"),
+        "bfcl_eval.constants.model_config": module(
+            "bfcl_eval.constants.model_config",
+            MODEL_CONFIG_MAPPING={},
+            ModelConfig=StubModelConfig,
+        ),
+        "bfcl_eval.eval_checker": module("bfcl_eval.eval_checker"),
+        "bfcl_eval.eval_checker.multi_turn_eval": module(
+            "bfcl_eval.eval_checker.multi_turn_eval"
+        ),
+        "bfcl_eval.eval_checker.multi_turn_eval.func_source_code": module(
+            "bfcl_eval.eval_checker.multi_turn_eval.func_source_code"
+        ),
+        "bfcl_eval.eval_checker.multi_turn_eval.func_source_code.web_search": module(
+            "bfcl_eval.eval_checker.multi_turn_eval.func_source_code.web_search",
+            WebSearchAPI=StubWebSearchAPI,
+        ),
+        "bfcl_eval.model_handler": module("bfcl_eval.model_handler"),
+        "bfcl_eval.model_handler.api_inference": module(
+            "bfcl_eval.model_handler.api_inference"
+        ),
+        "bfcl_eval.model_handler.api_inference.openai_completion": module(
+            "bfcl_eval.model_handler.api_inference.openai_completion",
+            OpenAICompletionsHandler=StubOpenAICompletionsHandler,
+        ),
+    }
+    spec = importlib.util.spec_from_file_location("bfcl_official", SCRIPT)
+    if spec is None or spec.loader is None:
+        raise AdapterLoadError("could not load BFCL adapter")
+    adapter = importlib.util.module_from_spec(spec)
+    with patch.dict(sys.modules, stubs):
+        spec.loader.exec_module(adapter)
+    return adapter
+
+
+bfcl_official = load_adapter()
 BRIDGE_RETRY_WINDOW_SECONDS = cast(
     float, bfcl_official.BRIDGE_RETRY_WINDOW_SECONDS
 )
