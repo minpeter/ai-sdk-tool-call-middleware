@@ -2,6 +2,14 @@
 
 // Core Protocols (Agnostic)
 
+export {
+  createGlm5ToolResponseFormatter,
+  formatToolResponseAsGlm5,
+  GLM5_CHAT_TEMPLATE_REVISION,
+  GLM5_CHAT_TEMPLATE_SHA256,
+  glm5SystemPromptTemplate,
+  renderGlm5ToolDefinition,
+} from "./core/prompts/glm5-prompt";
 // Tool-response formatters + media strategy
 export {
   createHermesToolResponseFormatter,
@@ -40,6 +48,11 @@ export {
   formatToolResponseAsYaml,
   yamlXmlSystemPromptTemplate,
 } from "./core/prompts/yaml-xml-prompt";
+export type {
+  Glm5ProtocolOptions,
+  Glm5StringBoundaryNormalization,
+} from "./core/protocols/glm5-call-parsing";
+export { glm5Protocol } from "./core/protocols/glm5-protocol";
 export * from "./core/protocols/hermes-protocol";
 export {
   KExaone2ToolParser,
@@ -76,4 +89,8 @@ export * from "./rjson/index";
 export { toolChoiceStream, wrapStream } from "./stream-handler";
 // Tool Call Middleware Implementation
 export { createToolMiddleware } from "./tool-call-middleware";
+export type {
+  ToolCallHistoryMode,
+  ToolSystemPromptPlacement,
+} from "./transform-handler";
 export { transformParams } from "./transform-handler";

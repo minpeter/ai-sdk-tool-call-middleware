@@ -1,0 +1,9 @@
+captureId,resultDir,caseKey,suite,transport,callsChanged,textChanged,nativeMalformedCalls,nativePlusMalformedCalls,baselineStrict,nativePlusStrict,scoreOutcome
+1a38e483-797f-4c81-bb75-7703a95c2050,2026-07-17-glm5-native-ace-normal-100-generate,ace:en:normal_atom_object_deep:normal_atom_object_deep_39,ace,generate,true,false,1,0,false,false,neutral-failure
+c5e96946-12f2-4cd5-a133-e60d550e84d0,2026-07-17-glm5-native-ace-normal-100-generate,ace:en:normal_single_turn_parallel_function:normal_single_turn_parallel_function_52,ace,generate,true,false,4,0,false,true,win
+1675d9ae-8ebf-424d-81f6-cee6163e39fe,2026-07-17-glm5-native-ace-normal-100-generate,ace:zh:normal_similar_api:normal_similar_api_12,ace,generate,true,true,0,0,false,true,win
+959f5ece-42e2-4312-8c63-b96c72a71c1b,2026-07-17-glm5-native-ace-normal-100-generate,ace:zh:normal_single_turn_parallel_function:normal_single_turn_parallel_function_40,ace,generate,true,false,1,0,false,true,win
+214361e3-9d5f-45c5-8fb2-3d5565a88ec2,2026-07-17-glm5-native-bfcl-v4-456-generate,bfcl:-:simple_java:simple_java_45,bfcl,generate,true,false,1,0,false,true,win
+ac623c02-ad23-44b4-8ca2-4f44598193d3,2026-07-17-glm5-native-bfcl-v4-13-sse,bfcl:-:simple_javascript:simple_javascript_19,bfcl,stream,true,false,1,0,false,false,neutral-failure
+43426cad-10e3-40d4-9614-b99215573273,2026-07-17-glm5-native-plus-bfcl-v4-456-generate-v1,bfcl:-:simple_javascript:simple_javascript_5,bfcl,generate,true,true,0,0,false,false,neutral-failure
+6434c245-6ce2-4b23-8bf7-ee39b8a38723,2026-07-17-glm5-native-bfcl-v4-456-generate,bfcl:-:simple_javascript:simple_javascript_9,bfcl,generate,true,false,1,0,false,true,win

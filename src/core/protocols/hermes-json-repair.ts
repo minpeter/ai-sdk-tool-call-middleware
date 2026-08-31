@@ -10,6 +10,7 @@ import {
   consumeJsonDepthClose,
   consumeJsonDepthOpen,
   consumeJsonStringScanChar,
+  exceedsToolCallJsonNestingDepth,
   type JsonDepthScanState,
   skipJsonWhitespace,
 } from "./hermes-json-object-key-scanner";
@@ -406,6 +407,9 @@ function repairToolCallJson(
   toolName: string,
   keyPolicy?: ArgumentKeyPolicy
 ): { name: string; arguments: Record<string, unknown> } | null {
+  if (exceedsToolCallJsonNestingDepth(raw)) {
+    return null;
+  }
   if (hasPrototypeSensitiveKeyInJsonLikeObject(raw)) {
     return null;
   }

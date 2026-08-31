@@ -1,0 +1,55 @@
+{
+  "corpus": {
+    "caseGroups": 622,
+    "duplicateCaptureRecords": 0,
+    "generateCaptures": 1354,
+    "rawNativeCaptureRecords": 1401,
+    "sseCaptures": 47,
+    "uniqueNativeCaptures": 1401,
+    "uniqueResponseBodies": 1401
+  },
+  "envelope": {
+    "accepted": 1374,
+    "nativeEnvelopeErrors": 0,
+    "nativePlusEnvelopeErrors": 0,
+    "sharedEnvelopeErrors": 27,
+    "sharedParserErrors": 0
+  },
+  "generatedAt": "2026-07-17T07:30:00.000Z",
+  "method": "Replay every unique Native response body through plain Native and production GLM-5.2 Native-Plus, then score linked BFCL/ACE rows with the pinned official checkers.",
+  "parser": {
+    "callAndTextExact": 1393,
+    "callsChanged": 8,
+    "changedCaptures": 8,
+    "nativeAccepted": 1368,
+    "nativeMalformedCalls": 9,
+    "nativeMalformedResponseCaptures": 6,
+    "nativeStrictValidCalls": 1720,
+    "nativeStructuredCalls": 1729,
+    "nativePlusAccepted": 1374,
+    "nativePlusMalformedCalls": 0,
+    "newTextFallbackCalls": 2,
+    "pairedMalformedCallAcceptanceExactMcNemarP": 0.00390625,
+    "repairedMalformedCalls": 9,
+    "textChanged": 2,
+    "unchangedAcceptedCaptures": 1366,
+    "validNativeCallsPreserved": 1720
+  },
+  "scoring": {
+    "comparable": 1212,
+    "exactMcNemarP": 0.0625,
+    "losses": 0,
+    "neutralFailures": 191,
+    "neutralSuccesses": 1016,
+    "notScoreable": 189,
+    "wins": 5
+  },
+  "stream": {
+    "chunkInvariant": 47,
+    "chunkInvariantFailures": 0,
+    "maxSseByteChunkVariants": 9,
+    "maxStreamDeltaChunkVariants": 9,
+    "sseCaptures": 47
+  },
+  "version": 1
+}

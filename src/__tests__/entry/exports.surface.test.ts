@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createGlm5ToolResponseFormatter,
   createHermesToolResponseFormatter,
   createKExaone2ToolResponseFormatter,
   createMorphXmlToolResponseFormatter,
@@ -10,6 +11,9 @@ import {
   formatToolResponseAsKExaone2,
   formatToolResponseAsYaml,
   getDroppedProviderTools,
+  glm5Protocol,
+  glm5SystemPromptTemplate,
+  glm5ToolMiddleware,
   hermesProtocol,
   hermesSystemPromptTemplate,
   hermesToolMiddleware,
@@ -58,6 +62,32 @@ describe("entry exports surface", () => {
         },
       })
     ).toEqual(["provider.one", "provider.two"]);
+  });
+
+  it("exports the GLM-5.2 protocol, prompt, formatter, and middleware", () => {
+    expect(typeof glm5Protocol).toBe("function");
+    expect(typeof glm5SystemPromptTemplate).toBe("function");
+    expect(typeof createGlm5ToolResponseFormatter).toBe("function");
+    expect(glm5ToolMiddleware).toBeDefined();
+    expect(glm5ToolMiddleware.specificationVersion).toBe("v4");
+  });
+
+  it("does not expose a provider-native GLM transport", async () => {
+    // Given: the package's runtime entry surface.
+    const forbiddenExports = [
+      "createGlm5NativePlusMiddleware",
+      "glm5NativePlusSystemPromptTemplate",
+      "glm5NativePlusToolMiddleware",
+    ];
+    const packageEntry = await import("../../index");
+
+    // When: provider-native GLM symbols are selected from that surface.
+    const exposedForbiddenExports = forbiddenExports.filter(
+      (name) => name in packageEntry
+    );
+
+    // Then: no bypass around prompt-only transport is public.
+    expect(exposedForbiddenExports).toEqual([]);
   });
 
   it("exports hermesProtocol", () => {

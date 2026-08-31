@@ -152,3 +152,49 @@ jobs:
         if: ${{ !cancelled() }}
         uses: getsentry/prevent-action@v0
         continue-on-error: true
+
+  benchmark-tests:
+    name: Benchmark harness tests
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Use Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.28"
+          enable-cache: true
+
+      - name: Install SVG renderer
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends librsvg2-bin
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Python benchmark test dependencies
+        run: uv sync --locked --only-group benchmark-test
+
+      - name: Run Python benchmark harness tests
+        run: uv run --locked --no-sync pytest
+
+      - name: Run TypeScript benchmark harness tests
+        run: pnpm test:benchmarks

@@ -20,6 +20,20 @@ describe("tool-call coercion regression coverage", () => {
     },
   ];
 
+  it.each(["__proto__foo", "constructorName", "prototypeValue"])(
+    "preserves a safe key that only begins with a sensitive label: %s",
+    (key) => {
+      expect(
+        toolCallTextHasPrototypeSensitiveKey(
+          JSON.stringify({
+            name: "safe_key",
+            arguments: { [key]: "kept" },
+          })
+        )
+      ).toBe(false);
+    }
+  );
+
   it("drops every key when an object schema declares empty properties", () => {
     const input = coerceToolCallInput("ping", { mood: "sunny" }, [
       {

@@ -96,8 +96,10 @@ function recoverableTagStillViable(leading: string): boolean {
  * generate path's per-content-item recovery.
  */
 export function createStreamJsonRecoveryTransform({
+  allowsRecovery,
   tools,
 }: {
+  allowsRecovery?: (text: string) => boolean;
   tools: LanguageModelV4FunctionTool[];
 }): TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart> {
   if (tools.length === 0) {
@@ -170,6 +172,10 @@ export function createStreamJsonRecoveryTransform({
 
   const resolveHeld = (controller: StreamController, closeBlock: boolean) => {
     if (!held) {
+      return;
+    }
+    if (allowsRecovery?.(held.content) === false) {
+      flushHeld(controller, closeBlock);
       return;
     }
     const recovered = recoverToolCallFromJsonCandidatesWithStatus(

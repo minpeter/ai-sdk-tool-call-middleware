@@ -25,6 +25,7 @@ import {
   isParsedToolCallRecord,
   normalizeJsonStringCtrl,
 } from "./hermes-json-normalization";
+import { exceedsToolCallJsonNestingDepth } from "./hermes-json-object-key-scanner";
 import { normalizeInvalidJsonEscapes } from "./hermes-json-repair";
 import {
   emitToolInputDelta,
@@ -54,6 +55,9 @@ function emitStreamingToolInputProgress(options: {
   } = options;
   const progress = extractStreamingToolCallProgress(toolCallJson);
   if (!(progress.toolName && progress.argumentsComplete)) {
+    return false;
+  }
+  if (exceedsToolCallJsonNestingDepth(toolCallJson)) {
     return false;
   }
   if (resolver) {

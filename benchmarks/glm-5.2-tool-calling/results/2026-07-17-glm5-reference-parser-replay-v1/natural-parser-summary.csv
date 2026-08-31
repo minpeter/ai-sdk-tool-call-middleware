@@ -1,0 +1,16 @@
+suite,transport,parser,total,accepted,exact_vs_production_generate,false_positive,parser_error_rows,parser_recovery_rows,strict_correct,strict_total,strict_accuracy,protocol_valid
+bfcl,generate,vllmReference,456,329,454,11,0,0,340,456,0.7456140350877193,456
+bfcl,generate,sglangReference,456,329,451,11,0,0,339,456,0.743421052631579,456
+bfcl,generate,productionGenerate,456,329,456,11,0,2,340,456,0.7456140350877193,456
+bfcl,generate,productionStream,456,329,456,11,0,2,340,456,0.7456140350877193,456
+bfcl,generate,vllmPythonReference,456,329,245,11,0,0,172,456,0.37719298245614036,456
+ace,generate,vllmReference,100,60,100,0,0,0,50,100,0.5,100
+ace,generate,sglangReference,100,60,100,0,0,0,50,100,0.5,100
+ace,generate,productionGenerate,100,60,100,0,0,0,50,100,0.5,100
+ace,generate,productionStream,100,60,100,0,0,0,50,100,0.5,100
+ace,generate,vllmPythonReference,100,60,48,0,0,0,11,100,0.11,100
+bfcl,stream,vllmReference,13,6,13,0,0,0,7,13,0.5384615384615384,13
+bfcl,stream,sglangReference,13,6,13,0,0,0,7,13,0.5384615384615384,13
+bfcl,stream,productionGenerate,13,6,13,0,0,0,7,13,0.5384615384615384,13
+bfcl,stream,productionStream,13,6,13,0,0,0,7,13,0.5384615384615384,13
+bfcl,stream,vllmPythonReference,13,6,10,0,0,0,5,13,0.38461538461538464,13

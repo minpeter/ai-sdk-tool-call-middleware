@@ -30,6 +30,7 @@ import {
   normalizeJsonStringCtrl,
   stringifyResolvedToolInput,
 } from "./hermes-json-normalization";
+import { exceedsToolCallJsonNestingDepth } from "./hermes-json-object-key-scanner";
 import {
   normalizeInvalidJsonEscapes,
   repairToolCallJsonForTools,
@@ -146,6 +147,14 @@ export function resolveToolCall(
   toolCallJson: string,
   tools: LanguageModelV4FunctionTool[]
 ): ResolvedProtocolToolCall {
+  // Fail closed before recursive RJSON/JSON.parse/stringify can hang or
+  // stack-overflow on pathologically nested arguments (arrays/objects).
+  if (exceedsToolCallJsonNestingDepth(toolCallJson)) {
+    return {
+      ok: false,
+      error: new Error("Tool call JSON nesting depth exceeds limit"),
+    };
+  }
   try {
     const parsedToolCall = parseRJSON(
       normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))

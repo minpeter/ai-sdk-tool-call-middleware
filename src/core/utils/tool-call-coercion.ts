@@ -5,6 +5,7 @@ import type {
 } from "@ai-sdk/provider";
 import { coerceBySchema, unwrapJsonSchema } from "../../schema-coerce";
 import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
+import { toolCallInputHasSchemaAwarePrototypeSensitiveValue as inputHasSchemaAwarePrototypeSensitiveValue } from "./tool-call-schema-aware-prototype";
 import { sanitizeToolCallArgsBySchema } from "./tool-call-schema-sanitization";
 
 type ToolCallLike = Extract<
@@ -14,6 +15,13 @@ type ToolCallLike = Extract<
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function toolCallInputHasSchemaAwarePrototypeSensitiveValue(
+  value: unknown,
+  schema: unknown
+): boolean {
+  return inputHasSchemaAwarePrototypeSensitiveValue(value, schema);
 }
 
 function schemaAllowsNull(schema: unknown, seen = new Set<object>()): boolean {
@@ -91,7 +99,7 @@ export function coerceToolCallInput(
   if (args === null) {
     return schemaAllowsNull(schema) ? "null" : undefined;
   }
-  if (toolCallInputHasPrototypeSensitiveKey(args)) {
+  if (toolCallInputHasSchemaAwarePrototypeSensitiveValue(args, schema)) {
     return;
   }
   const coerced = coerceBySchema(args, schema);
@@ -99,7 +107,7 @@ export function coerceToolCallInput(
     return schemaAllowsNull(schema) ? "null" : undefined;
   }
   const sanitized = sanitizeToolCallArgsBySchema(coerced ?? {}, schema);
-  if (toolCallInputHasPrototypeSensitiveKey(sanitized)) {
+  if (toolCallInputHasSchemaAwarePrototypeSensitiveValue(sanitized, schema)) {
     return;
   }
   return stringifyToolArgs(sanitized);
@@ -109,15 +117,17 @@ export function coerceToolCallPart<T extends ToolCallLike>(
   part: T,
   tools: LanguageModelV4FunctionTool[]
 ): T {
-  if (toolCallInputHasPrototypeSensitiveKey(part.input)) {
-    return {
-      ...part,
-      input: "{}",
-    };
-  }
-
+  const inputHasSensitiveStructuredText = toolCallInputHasPrototypeSensitiveKey(
+    part.input
+  );
   const coercedInput = coerceToolCallInput(part.toolName, part.input, tools);
   if (coercedInput === undefined) {
+    if (inputHasSensitiveStructuredText) {
+      return {
+        ...part,
+        input: "{}",
+      };
+    }
     if (isRecord(part.input)) {
       return {
         ...part,

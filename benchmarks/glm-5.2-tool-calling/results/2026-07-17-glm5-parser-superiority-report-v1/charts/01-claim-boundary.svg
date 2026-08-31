@@ -1,0 +1,283 @@
+<svg
+  aria-labelledby="title desc"
+  height="930"
+  role="img"
+  viewBox="0 0 1600 930"
+  width="1600"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <title id="title">GLM-5.2 parser evidence and claim boundary</title>
+  <desc id="desc">
+    Two controlled replay planes support separate parser claims while the
+    FreeRouter backend implementation remains unknown.
+  </desc>
+  <defs>
+    <filter height="140%" id="shadow" width="120%" x="-10%" y="-15%">
+      <feDropShadow
+        dx="0"
+        dy="4"
+        flood-color="#0f172a"
+        flood-opacity="0.09"
+        stdDeviation="7"
+      />
+    </filter>
+    <marker
+      id="arrow"
+      markerHeight="7"
+      markerWidth="7"
+      orient="auto-start-reverse"
+      refX="8.5"
+      refY="5"
+      viewBox="0 0 10 10"
+    >
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569" />
+    </marker>
+  </defs>
+  <rect fill="#f8fafc" height="100%" width="100%" />
+  <style>
+  text {
+    font-family:
+      Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial,
+      sans-serif;
+    fill: #0f172a;
+  }
+  .title {
+    font-family: Arial, sans-serif;
+    font-size: 34px;
+    font-weight: 700;
+  }
+  .subtitle {
+    font-size: 17px;
+    fill: #475569;
+  }
+  .section {
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .box-title {
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .body {
+    font-size: 14px;
+    fill: #475569;
+  }
+  .small {
+    font-size: 12px;
+    fill: #64748b;
+  }
+  .label {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .value {
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .metric {
+    font-size: 25px;
+    font-weight: 850;
+  }
+  .mono {
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 13px;
+    fill: #334155;
+  }
+  .shadow {
+    filter: url(#shadow);
+  }
+  </style>
+  <text class="title" x="64" y="70">
+    What the evidence can — and cannot — claim
+  </text>
+  <text class="subtitle" x="64" y="110">
+    Two controlled replay planes support two different conclusions. The unknown
+    serving backend stays outside both.
+  </text>
+  <rect
+    class="shadow"
+    fill="#eff6ff"
+    height="146"
+    rx="16"
+    stroke="#93c5fd"
+    stroke-width="2"
+    width="430"
+    x="64"
+    y="178"
+  />
+  <text class="box-title" fill="#1d4ed8" x="86" y="212">
+    Observed FreeRouter response bytes
+  </text>
+  <text class="body" text-anchor="start" x="86" y="244">
+    <tspan dy="0" x="86">Exact same JSON/SSE body</tspan>
+    <tspan dy="23" x="86">No second model inference</tspan>
+    <tspan dy="23" x="86">Native capture corpus</tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#f5f3ff"
+    height="146"
+    rx="16"
+    stroke="#c4b5fd"
+    stroke-width="2"
+    width="430"
+    x="584"
+    y="178"
+  />
+  <text class="box-title" fill="#7c3aed" x="606" y="212">
+    Raw canonical GLM text
+  </text>
+  <text class="body" text-anchor="start" x="606" y="244">
+    <tspan dy="0" x="606">Exact same emitted text</tspan>
+    <tspan dy="23" x="606">Pinned reference semantics</tspan>
+    <tspan dy="23" x="606">5 parser arms · 19 labeled cases</tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#fff7ed"
+    height="146"
+    rx="16"
+    stroke="#fdba74"
+    stroke-width="2"
+    width="432"
+    x="1104"
+    y="178"
+  />
+  <text class="box-title" fill="#c2410c" x="1126" y="212">
+    FreeRouter backend implementation
+  </text>
+  <text class="body" text-anchor="start" x="1126" y="244">
+    <tspan dy="0" x="1126">Parser identity not exposed</tspan>
+    <tspan dy="23" x="1126">Routing / revision unknown</tspan>
+    <tspan dy="23" x="1126">No backend replacement observed</tspan>
+  </text>
+  <line
+    stroke="#2563eb"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="279.0"
+    x2="279.0"
+    y1="324.0"
+    y2="414.0"
+  />
+  <polygon fill="#2563eb" points="279.0,414.0 273.0,401.0 285.0,401.0" />
+  <line
+    stroke="#7c3aed"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="799.0"
+    x2="799.0"
+    y1="324.0"
+    y2="414.0"
+  />
+  <polygon fill="#7c3aed" points="799.0,414.0 793.0,401.0 805.0,401.0" />
+  <line
+    stroke="#d97706"
+    stroke-dasharray="8 7"
+    stroke-linecap="round"
+    stroke-width="3"
+    x1="1320.0"
+    x2="1320.0"
+    y1="324.0"
+    y2="414.0"
+  />
+  <polygon fill="#d97706" points="1320.0,414.0 1314.0,401.0 1326.0,401.0" />
+  <rect
+    class="shadow"
+    fill="#ffffff"
+    height="224"
+    rx="16"
+    stroke="#60a5fa"
+    stroke-width="2"
+    width="430"
+    x="64"
+    y="414"
+  />
+  <text class="box-title" fill="#1d4ed8" x="86" y="448">
+    Plane A · same-byte Native audit
+  </text>
+  <text class="body" text-anchor="start" x="86" y="480">
+    <tspan dy="0" x="86">Compare plain Native client parsing</tspan>
+    <tspan dy="23" x="86">with production Native-Plus normalization.</tspan>
+    <tspan dy="23" x="86">
+      Supports: repaired acceptance + preserved calls
+    </tspan>
+    <tspan dy="23" x="86">and oracle-scored case wins/losses.</tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#ffffff"
+    height="224"
+    rx="16"
+    stroke="#a78bfa"
+    stroke-width="2"
+    width="430"
+    x="584"
+    y="414"
+  />
+  <text class="box-title" fill="#7c3aed" x="606" y="448">
+    Plane B · deployment-reference replay
+  </text>
+  <text class="body" text-anchor="start" x="606" y="480">
+    <tspan dy="0" x="606">Compare pinned vLLM / SGLang reproductions</tspan>
+    <tspan dy="23" x="606">with custom generate + stream parsing.</tspan>
+    <tspan dy="23" x="606">
+      Supports: labeled conformance precision/recall
+    </tspan>
+    <tspan dy="23" x="606">and raw-text chunk parity.</tspan>
+  </text>
+  <rect
+    class="shadow"
+    fill="#fff7ed"
+    height="224"
+    rx="16"
+    stroke="#fb923c"
+    stroke-width="2"
+    width="432"
+    x="1104"
+    y="414"
+  />
+  <text class="box-title" fill="#c2410c" x="1126" y="448">
+    Explicit non-claim
+  </text>
+  <text class="body" text-anchor="start" x="1126" y="480">
+    <tspan dy="0" x="1126">
+      The FreeRouter server parser was not inspected.
+    </tspan>
+    <tspan dy="23" x="1126">
+      Reference implementations are deployment options,
+    </tspan>
+    <tspan dy="23" x="1126">
+      not evidence of the endpoint&#x27;s internals.
+    </tspan>
+    <tspan dy="23" x="1126">
+      Serving nondeterminism is a separate live-run issue.
+    </tspan>
+  </text>
+  <rect
+    fill="#ecfdf5"
+    height="132"
+    rx="18"
+    stroke="#6ee7b7"
+    width="1472"
+    x="64"
+    y="708"
+  />
+  <text class="section" fill="#047857" x="96" y="750">
+    Defensible combined conclusion
+  </text>
+  <text class="body" text-anchor="start" x="96" y="786">
+    <tspan dy="0" x="96">
+      Native-Plus improves bounded post-provider normalization on identical
+      captured responses;
+    </tspan>
+    <tspan dy="26" x="96">
+      the custom raw-text parser is evaluated separately against pinned
+      deployment references.
+    </tspan>
+  </text>
+  <text class="small" x="64" y="900">
+    Source: same-byte summary + strict discordance; reference-replay summary.
+    Dashed orange lane denotes unavailable internal evidence.
+  </text>
+</svg>
