@@ -3568,10 +3568,17 @@ describe("hermesProtocol streaming JSON repair", () => {
       LanguageModelV4StreamPart
     >();
     const out: LanguageModelV4StreamPart[] = [];
+    let resolveInputStart!: () => void;
+    const inputStartObserved = new Promise<void>((resolve) => {
+      resolveInputStart = resolve;
+    });
     const done = input.readable.pipeThrough(transformer).pipeTo(
       new WritableStream<LanguageModelV4StreamPart>({
         write(part) {
           out.push(part);
+          if (part.type === "tool-input-start") {
+            resolveInputStart();
+          }
         },
       })
     );
@@ -3582,7 +3589,7 @@ describe("hermesProtocol streaming JSON repair", () => {
       id: "1",
       delta: '<tool_call>{"name":"edit","arguments":{"content":"ok"}}',
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await inputStartObserved;
     await writer.write({
       type: "text-delta",
       id: "1",

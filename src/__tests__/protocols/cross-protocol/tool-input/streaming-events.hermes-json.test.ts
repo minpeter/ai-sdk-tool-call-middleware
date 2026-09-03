@@ -56,16 +56,29 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
       LanguageModelV4StreamPart,
       LanguageModelV4StreamPart
     >();
+    const expectedArguments = '{"location":"Seoul","unit":"celsius"}';
     const out: LanguageModelV4StreamPart[] = [];
+    let resolveArgumentsComplete!: () => void;
+    let rejectArgumentsComplete!: (error: Error) => void;
+    const argumentsComplete = new Promise<void>((resolve, reject) => {
+      resolveArgumentsComplete = resolve;
+      rejectArgumentsComplete = reject;
+    });
     const done = input.readable
       .pipeThrough(protocol.createStreamParser({ tools: fixture.tools }))
       .pipeTo(
         new WritableStream<LanguageModelV4StreamPart>({
           write(part) {
             out.push(part);
+            const timeline = extractToolInputTimeline(out);
+            const joined = timeline.deltas.map((delta) => delta.delta).join("");
+            if (timeline.starts.length > 0 && joined === expectedArguments) {
+              resolveArgumentsComplete();
+            }
           },
         })
       );
+    done.catch(rejectArgumentsComplete);
     const writer = input.writable.getWriter();
 
     await writer.write({
@@ -74,13 +87,9 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
       delta:
         '<tool_call>{"name":"get_weather","arguments":{"location":"Seoul","unit":"celsius"}}',
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
+    await argumentsComplete;
     const beforeClose = extractToolInputTimeline(out);
     expect(beforeClose.starts).toHaveLength(1);
-    expect(beforeClose.deltas.map((delta) => delta.delta).join("")).toBe(
-      '{"location":"Seoul","unit":"celsius"}'
-    );
     expect(beforeClose.ends).toHaveLength(0);
     expect(out.some((part) => part.type === "tool-call")).toBe(false);
 
