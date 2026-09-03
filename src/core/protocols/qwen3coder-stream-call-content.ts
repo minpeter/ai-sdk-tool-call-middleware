@@ -1,7 +1,9 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 
+export type QwenRawArguments = Record<string, string | string[]>;
+
 export interface QwenStreamCallState {
-  args: Record<string, unknown>;
+  args: QwenRawArguments;
   buffer: string;
   emittedInput: string;
   endTagName: string;
@@ -81,7 +83,7 @@ function consumeSingleParamTag(options: {
     }
   ) => QwenParamTagParseResult | null;
   mergeParamValue: (
-    args: Record<string, unknown>,
+    args: QwenRawArguments,
     name: string,
     value: string
   ) => void;
@@ -157,7 +159,7 @@ function consumeParamTags(options: {
     }
   ) => QwenParamTagParseResult | null;
   mergeParamValue: (
-    args: Record<string, unknown>,
+    args: QwenRawArguments,
     name: string,
     value: string
   ) => void;
@@ -221,7 +223,7 @@ export function parseCallContent(options: {
     }
   ) => QwenParamTagParseResult | null;
   mergeParamValue: (
-    args: Record<string, unknown>,
+    args: QwenRawArguments,
     name: string,
     value: string
   ) => void;

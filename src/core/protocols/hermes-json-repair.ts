@@ -1,4 +1,10 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import {
+  isJSONObject,
+  isJSONValue,
+  type JSONObject,
+  type JSONValue,
+  type LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import {
   type ArgumentKeyPolicy,
   applyArgumentKeyPolicy,
@@ -49,29 +55,27 @@ interface JsonRepairKeyPosition {
   valueStart: number;
 }
 
+type RepairArguments = JSONObject;
+
 function getTopLevelPositionMap(argsBody: string): Uint8Array {
   const topLevelAtPosition = new Uint8Array(argsBody.length + 1);
-  let depth = 0;
-  let inStr = false;
-  let esc = false;
+  const state: JsonDepthScanState = {
+    depth: 0,
+    escaping: false,
+    inString: false,
+  };
   topLevelAtPosition[0] = 1;
-  for (let i = 0; i < argsBody.length; i += 1) {
-    const ch = argsBody[i];
-    if (esc) {
-      esc = false;
-    } else if (ch === "\\" && inStr) {
-      esc = true;
-    } else if (ch === '"') {
-      inStr = !inStr;
-    } else if (!inStr) {
-      if (ch === "{" || ch === "[") {
-        depth += 1;
-      }
-      if (ch === "}" || ch === "]") {
-        depth -= 1;
-      }
+  for (let index = 0; index < argsBody.length; index += 1) {
+    const char = argsBody[index];
+    if (
+      !(
+        consumeJsonStringScanChar(state, char) ||
+        consumeJsonDepthOpen(state, char)
+      )
+    ) {
+      consumeJsonDepthClose(state, char);
     }
-    topLevelAtPosition[i + 1] = depth === 0 ? 1 : 0;
+    topLevelAtPosition[index + 1] = state.depth === 0 ? 1 : 0;
   }
   return topLevelAtPosition;
 }
@@ -200,10 +204,14 @@ function findRepairArgumentsBody(raw: string): string | null {
 function parseArgsBodyWithoutRepair(
   argsBody: string,
   keyPolicy?: ArgumentKeyPolicy
-): Record<string, unknown> | null {
+): RepairArguments | null {
   try {
-    const parsedArgs = JSON.parse(`{${argsBody}}`) as Record<string, unknown>;
-    return applyArgumentKeyPolicy(parsedArgs, keyPolicy);
+    const parsedArgs = JSON.parse(`{${argsBody}}`);
+    if (!isJSONObject(parsedArgs)) {
+      return null;
+    }
+    const policyArgs = applyArgumentKeyPolicy(parsedArgs, keyPolicy);
+    return isJSONObject(policyArgs) ? policyArgs : null;
   } catch {
     return null;
   }
@@ -292,7 +300,9 @@ function lastQuoteIndex(value: string): number {
   return cursor;
 }
 
-function parsePossiblyMalformedJsonString(value: string): unknown | undefined {
+function parsePossiblyMalformedJsonString(
+  value: string
+): JSONValue | undefined {
   if (value.charAt(0) !== '"') {
     return;
   }
@@ -302,9 +312,10 @@ function parsePossiblyMalformedJsonString(value: string): unknown | undefined {
   }
   const escaped = escapeMalformedStringInner(value.slice(1, quoteEnd));
   try {
-    return JSON.parse(`"${escaped}"`);
+    const parsed = JSON.parse(`"${escaped}"`);
+    return isJSONValue(parsed) ? parsed : undefined;
   } catch {
-    // swallow parse failures and return undefined
+    return undefined;
   }
 }
 
@@ -357,9 +368,10 @@ function chooseRepairKeyPositions(
     : firstPositions;
 }
 
-function parseRepairValue(value: string): unknown | undefined {
+function parseRepairValue(value: string): JSONValue | undefined {
   try {
-    return JSON.parse(value);
+    const parsed = JSON.parse(value);
+    return isJSONValue(parsed) ? parsed : undefined;
   } catch {
     return parsePossiblyMalformedJsonString(value);
   }
@@ -369,8 +381,8 @@ function parseRepairArguments(
   argsBody: string,
   positions: JsonRepairKeyPosition[],
   keyPolicy?: ArgumentKeyPolicy
-): Record<string, unknown> | null {
-  const args = Object.create(null) as Record<string, unknown>;
+): RepairArguments | null {
+  const args: RepairArguments = Object.create(null);
   for (let index = 0; index < positions.length; index += 1) {
     const valueEnd =
       index + 1 < positions.length
@@ -388,7 +400,8 @@ function parseRepairArguments(
   if (Object.keys(args).length === 0) {
     return null;
   }
-  return applyArgumentKeyPolicy(args, keyPolicy);
+  const policyArgs = applyArgumentKeyPolicy(args, keyPolicy);
+  return isJSONObject(policyArgs) ? policyArgs : null;
 }
 
 /**
@@ -406,7 +419,7 @@ function repairToolCallJson(
   raw: string,
   toolName: string,
   keyPolicy?: ArgumentKeyPolicy
-): { name: string; arguments: Record<string, unknown> } | null {
+): { name: string; arguments: RepairArguments } | null {
   if (exceedsToolCallJsonNestingDepth(raw)) {
     return null;
   }
@@ -446,7 +459,7 @@ function repairToolCallJson(
 export function repairToolCallJsonForTools(
   raw: string,
   tools: LanguageModelV4FunctionTool[]
-): { name: string; arguments: Record<string, unknown> } | null {
+): { name: string; arguments: RepairArguments } | null {
   try {
     const toolName = extractStrictTopLevelStringProperty(raw, "name");
     if (!toolName) {

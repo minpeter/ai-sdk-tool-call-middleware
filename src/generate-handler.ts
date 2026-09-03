@@ -190,9 +190,9 @@ function parseTextContent(options: {
     ...getToolCallMiddlewareOptions(providerOptions),
   };
 
-  let evaluatedParser: unknown;
-  let evaluatedText: unknown;
-  let evaluatedRecoveryText: unknown;
+  let evaluatedParser: TCMCoreProtocol["parseGeneratedText"] | undefined;
+  let evaluatedText = "";
+  let evaluatedRecoveryText = "";
   let synthesizedPlainText: LanguageModelV4Content[] | undefined;
   let recoveryTextIsMaterialized = false;
   if (debugLevel === "off") {
@@ -246,7 +246,7 @@ function parseTextContent(options: {
   }
 
   const recoveryText = recoveryTextIsMaterialized
-    ? (evaluatedRecoveryText as string)
+    ? evaluatedRecoveryText
     : contentItem.text;
   if (protocol.allowsGeneratedTextJsonRecovery?.(recoveryText) === false) {
     return parsedByProtocol;

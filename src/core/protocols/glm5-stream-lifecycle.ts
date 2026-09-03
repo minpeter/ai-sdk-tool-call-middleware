@@ -56,7 +56,7 @@ export interface Glm5StreamLifecycle {
     controller: StreamController,
     call: ActiveGlm5Call,
     raw: string,
-    error?: unknown
+    error?: Error
   ) => void;
   markCallOversized: (
     controller: StreamController,
@@ -88,11 +88,7 @@ export function createGlm5StreamLifecycle({
     }
   };
 
-  const reportFailure = (
-    raw: string,
-    call: ActiveGlm5Call,
-    error?: unknown
-  ) => {
+  const reportFailure = (raw: string, call: ActiveGlm5Call, error?: Error) => {
     options?.onError?.("Could not parse streaming GLM-5.2 tool call.", {
       dropReason: "malformed-glm5-tool-call",
       ...(error === undefined
@@ -137,7 +133,7 @@ export function createGlm5StreamLifecycle({
     controller: StreamController,
     call: ActiveGlm5Call,
     raw: string,
-    error?: unknown
+    error?: Error
   ) => {
     if (!call.failed) {
       reportFailure(raw, call, error);
@@ -175,16 +171,58 @@ export function createGlm5StreamLifecycle({
     onStreamPoisoned();
   };
 
+  const shouldSkipProgress = (call: ActiveGlm5Call) =>
+    call.failed ||
+    call.markdownCodePrefixed ||
+    call.closeScanner.firstClose ||
+    call.body.length < call.nextProgressParseLength;
+
+  const tryParseProgressSnapshot = (
+    controller: StreamController,
+    call: ActiveGlm5Call,
+    materializedBody: string
+  ): ReturnType<typeof parseGlm5CallBody> => {
+    try {
+      return parseGlm5CallBody({
+        body: materializedBody,
+        complete: false,
+        protocolOptions,
+        tools,
+      });
+    } catch (caught) {
+      const error =
+        caught instanceof Error ? caught : new Error(String(caught));
+      markCallFailed(controller, call, materializeRawGlm5Call(call), error);
+      return null;
+    }
+  };
+
+  const tryEmitProgressSnapshot = (
+    controller: StreamController,
+    call: ActiveGlm5Call,
+    id: string,
+    snapshot: NonNullable<ReturnType<typeof parseGlm5CallBody>>
+  ) => {
+    try {
+      const fullInput = stringifyGlm5CallInput(snapshot, tools);
+      emitToolInputProgressDelta({
+        controller,
+        fullInput,
+        id,
+        state: call,
+      });
+    } catch (caught) {
+      const error =
+        caught instanceof Error ? caught : new Error(String(caught));
+      markCallFailed(controller, call, materializeRawGlm5Call(call), error);
+    }
+  };
+
   const updateToolInputProgress = (
     controller: StreamController,
     call: ActiveGlm5Call
   ) => {
-    if (
-      call.failed ||
-      call.markdownCodePrefixed ||
-      call.closeScanner.firstClose ||
-      call.body.length < call.nextProgressParseLength
-    ) {
+    if (shouldSkipProgress(call)) {
       return;
     }
     call.nextProgressParseLength =
@@ -194,18 +232,11 @@ export function createGlm5StreamLifecycle({
       return;
     }
 
-    let snapshot: ReturnType<typeof parseGlm5CallBody>;
-    try {
-      snapshot = parseGlm5CallBody({
-        body: materializedBody,
-        complete: false,
-        protocolOptions,
-        tools,
-      });
-    } catch (error) {
-      markCallFailed(controller, call, materializeRawGlm5Call(call), error);
-      return;
-    }
+    const snapshot = tryParseProgressSnapshot(
+      controller,
+      call,
+      materializedBody
+    );
     if (!snapshot) {
       return;
     }
@@ -213,17 +244,7 @@ export function createGlm5StreamLifecycle({
     if (!(call.id && call.toolName === snapshot.toolName)) {
       return;
     }
-    try {
-      const fullInput = stringifyGlm5CallInput(snapshot, tools);
-      emitToolInputProgressDelta({
-        controller,
-        fullInput,
-        id: call.id,
-        state: call,
-      });
-    } catch (error) {
-      markCallFailed(controller, call, materializeRawGlm5Call(call), error);
-    }
+    tryEmitProgressSnapshot(controller, call, call.id, snapshot);
   };
 
   const finalizeCall = createGlm5CallFinalizer({

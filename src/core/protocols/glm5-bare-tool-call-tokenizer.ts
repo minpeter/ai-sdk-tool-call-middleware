@@ -2,6 +2,17 @@ const MAX_BARE_TOOL_CALL_NESTING_DEPTH = 256;
 const MAX_BARE_TOOL_CALL_ARGUMENTS = 1024;
 
 type JsonishQuote = '"' | "'";
+type StructuralCharacterResult = "consumed" | "rejected" | "unhandled";
+
+interface BareArgumentScannerState {
+  readonly arguments: ScannedBareArgument[];
+  readonly body: string;
+  equals: number;
+  escaping: boolean;
+  quote: JsonishQuote | null;
+  segmentStart: number;
+  readonly stack: ("[" | "{")[];
+}
 
 export interface ScannedBareArgument {
   readonly key: string;
@@ -31,12 +42,80 @@ function appendScannedArgument(options: {
   return true;
 }
 
+function consumeQuotedCharacter(
+  state: BareArgumentScannerState,
+  character: string
+): boolean {
+  if (state.quote === null) {
+    return false;
+  }
+  if (state.escaping) {
+    state.escaping = false;
+  } else if (character === "\\") {
+    state.escaping = true;
+  } else if (character === state.quote) {
+    state.quote = null;
+  }
+  return true;
+}
+
+function consumeStructuralCharacter(
+  state: BareArgumentScannerState,
+  character: string
+): StructuralCharacterResult {
+  if (character === '"' || character === "'") {
+    state.quote = character;
+    return "consumed";
+  }
+  if (character === "{" || character === "[") {
+    state.stack.push(character);
+    return state.stack.length > MAX_BARE_TOOL_CALL_NESTING_DEPTH
+      ? "rejected"
+      : "consumed";
+  }
+  if (character === "}" || character === "]") {
+    const expected = character === "}" ? "{" : "[";
+    return state.stack.pop() === expected ? "consumed" : "rejected";
+  }
+  return character === "(" || character === ")" ? "rejected" : "unhandled";
+}
+
+function consumeTopLevelDelimiter(
+  state: BareArgumentScannerState,
+  character: string,
+  index: number
+): boolean {
+  if (character === "=") {
+    if (state.equals !== -1) {
+      return false;
+    }
+    state.equals = index;
+    return true;
+  }
+  if (character !== ",") {
+    return true;
+  }
+  if (
+    !appendScannedArgument({
+      arguments_: state.arguments,
+      body: state.body,
+      end: index,
+      equals: state.equals,
+      start: state.segmentStart,
+    })
+  ) {
+    return false;
+  }
+  state.segmentStart = index + 1;
+  state.equals = -1;
+  return true;
+}
+
 /**
  * Split only top-level `key=value` pairs. Quotes and JSON-ish containers own
  * their commas and equals signs; malformed or incomplete structure is never
  * completed by this fallback.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keeping scanner state transitions together makes its fail-closed grammar auditable.
 export function scanBareNamedArguments(
   body: string
 ): ScannedBareArgument[] | null {
@@ -45,82 +124,43 @@ export function scanBareNamedArguments(
   }
 
   const arguments_: ScannedBareArgument[] = [];
-  const stack: ("[" | "{")[] = [];
-  let quote: JsonishQuote | null = null;
-  let escaping = false;
-  let segmentStart = 0;
-  let equals = -1;
+  const state: BareArgumentScannerState = {
+    arguments: arguments_,
+    body,
+    equals: -1,
+    escaping: false,
+    quote: null,
+    segmentStart: 0,
+    stack: [],
+  };
 
   for (let index = 0; index < body.length; index += 1) {
-    const char = body.charAt(index);
-    if (quote !== null) {
-      if (escaping) {
-        escaping = false;
-      } else if (char === "\\") {
-        escaping = true;
-      } else if (char === quote) {
-        quote = null;
-      }
+    const character = body.charAt(index);
+    if (consumeQuotedCharacter(state, character)) {
       continue;
     }
-
-    if (char === '"' || char === "'") {
-      quote = char;
-      continue;
-    }
-    if (char === "{" || char === "[") {
-      stack.push(char);
-      if (stack.length > MAX_BARE_TOOL_CALL_NESTING_DEPTH) {
-        return null;
-      }
-      continue;
-    }
-    if (char === "}" || char === "]") {
-      const expected = char === "}" ? "{" : "[";
-      if (stack.pop() !== expected) {
-        return null;
-      }
-      continue;
-    }
-    if (char === "(" || char === ")") {
+    const structural = consumeStructuralCharacter(state, character);
+    if (structural === "rejected") {
       return null;
     }
-    if (stack.length > 0) {
-      continue;
-    }
-    if (char === "=") {
-      if (equals !== -1) {
-        return null;
-      }
-      equals = index;
-      continue;
-    }
-    if (char === ",") {
-      if (
-        !appendScannedArgument({
-          arguments_,
-          body,
-          end: index,
-          equals,
-          start: segmentStart,
-        })
-      ) {
-        return null;
-      }
-      segmentStart = index + 1;
-      equals = -1;
+    if (
+      structural === "unhandled" &&
+      state.stack.length === 0 &&
+      !consumeTopLevelDelimiter(state, character, index)
+    ) {
+      return null;
     }
   }
 
-  if (quote !== null || escaping || stack.length > 0) {
+  if (state.quote !== null || state.escaping || state.stack.length > 0) {
     return null;
   }
   return appendScannedArgument({
     arguments_,
     body,
     end: body.length,
-    equals,
-    start: segmentStart,
+    equals: state.equals,
+    start: state.segmentStart,
   })
     ? arguments_
     : null;

@@ -7,38 +7,36 @@ export interface Glm5FastPaths {
 type Glm5Parser = TCMCoreProtocol["parseGeneratedText"];
 
 const glm5FastPathRegistrations = new WeakMap<Glm5Parser, Glm5FastPaths>();
+const TRIM_END_WHITESPACE = new Set([
+  "\u0009",
+  "\u000a",
+  "\u000b",
+  "\u000c",
+  "\u000d",
+  "\u0020",
+  "\u00a0",
+  "\u1680",
+  "\u2000",
+  "\u2001",
+  "\u2002",
+  "\u2003",
+  "\u2004",
+  "\u2005",
+  "\u2006",
+  "\u2007",
+  "\u2008",
+  "\u2009",
+  "\u200a",
+  "\u2028",
+  "\u2029",
+  "\u202f",
+  "\u205f",
+  "\u3000",
+  "\ufeff",
+]);
 
 function isTrimEndWhitespace(character: string | undefined): boolean {
-  switch (character) {
-    case "\u0009":
-    case "\u000a":
-    case "\u000b":
-    case "\u000c":
-    case "\u000d":
-    case "\u0020":
-    case "\u00a0":
-    case "\u1680":
-    case "\u2000":
-    case "\u2001":
-    case "\u2002":
-    case "\u2003":
-    case "\u2004":
-    case "\u2005":
-    case "\u2006":
-    case "\u2007":
-    case "\u2008":
-    case "\u2009":
-    case "\u200a":
-    case "\u2028":
-    case "\u2029":
-    case "\u202f":
-    case "\u205f":
-    case "\u3000":
-    case "\ufeff":
-      return true;
-    default:
-      return false;
-  }
+  return character !== undefined && TRIM_END_WHITESPACE.has(character);
 }
 
 export function isDefinitelyPlainGlm5Text(text: string): boolean {
@@ -82,9 +80,7 @@ export function registerGlm5FastPaths(
 
 /** Look up only an already-evaluated parser value; getters stay caller-owned. */
 export function glm5FastPathsForParser(
-  parser: unknown
+  parser: Glm5Parser
 ): Glm5FastPaths | undefined {
-  return typeof parser === "function"
-    ? glm5FastPathRegistrations.get(parser as Glm5Parser)
-    : undefined;
+  return glm5FastPathRegistrations.get(parser);
 }

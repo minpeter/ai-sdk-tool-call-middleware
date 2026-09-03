@@ -1,4 +1,4 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
@@ -44,20 +44,48 @@ describe("morphXmlSystemPromptTemplate", () => {
     expect(prompt).toContain("<city>Busan</city>");
   });
 
-  it("renders scalar root input examples", () => {
-    const tools = [
+  it("renders the parameters summary with type, required, and enum labels", () => {
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
-        name: "normalize_text",
-        description: "Normalize text",
+        name: "get_weather",
         inputSchema: {
-          type: "string",
+          type: "object",
+          properties: {
+            city: { type: "string" },
+            unit: { type: "string", enum: ["celsius", "fahrenheit"] },
+            mixed: { enum: ["auto", 1] },
+          },
+          required: ["city"],
         },
-        inputExamples: [{ input: "hello world" }, { input: 42 }],
       },
-    ] as unknown as LanguageModelV4FunctionTool[];
+    ];
 
     const prompt = morphXmlSystemPromptTemplate(tools);
+
+    expect(prompt).toContain("- city (string, required)");
+    expect(prompt).toContain(
+      '- unit (string, optional) - enum: ["celsius", "fahrenheit"]'
+    );
+    expect(prompt).toContain('- mixed (any, optional) - enum: ["auto", 1]');
+  });
+
+  it("renders scalar root input examples", () => {
+    const scalarExamples: Array<{ input: JSONValue }> = [
+      { input: "hello world" },
+      { input: 42 },
+    ];
+    const scalarExampleTool: LanguageModelV4FunctionTool = {
+      type: "function",
+      name: "normalize_text",
+      description: "Normalize text",
+      inputSchema: {
+        type: "string",
+      },
+    };
+    Object.assign(scalarExampleTool, { inputExamples: scalarExamples });
+
+    const prompt = morphXmlSystemPromptTemplate([scalarExampleTool]);
 
     expect(prompt).toContain("Tool: normalize_text");
     expect(prompt).toContain("<normalize_text>hello world</normalize_text>");

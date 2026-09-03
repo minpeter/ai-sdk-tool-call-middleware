@@ -150,7 +150,7 @@ export function findToolCall(
 }
 
 function assertCondition(
-  condition: unknown,
+  condition: boolean,
   message: string
 ): asserts condition {
   if (!condition) {
@@ -176,136 +176,13 @@ export function assertCanonicalAiSdkEventOrder(
   >();
 
   parts.forEach((part, index) => {
-    if (part.type === "text-start") {
-      assertCondition(
-        !openTextSegments.has(part.id),
-        `Duplicate text-start for id '${part.id}'`
-      );
-      openTextSegments.set(part.id, index);
+    if (handleTextSegment(part, index, openTextSegments)) {
       return;
     }
-
-    if (part.type === "text-delta") {
-      assertCondition(
-        openTextSegments.has(part.id),
-        `text-delta without text-start for id '${part.id}'`
-      );
+    if (handleReasoningSegment(part, index, openReasoningSegments)) {
       return;
     }
-
-    if (part.type === "text-end") {
-      const startIndex = openTextSegments.get(part.id);
-      assertCondition(
-        startIndex !== undefined,
-        `text-end without text-start for id '${part.id}'`
-      );
-      assertCondition(
-        (startIndex ?? index) < index,
-        `text-end must occur after text-start for id '${part.id}'`
-      );
-      openTextSegments.delete(part.id);
-      return;
-    }
-
-    if (part.type === "reasoning-start") {
-      assertCondition(
-        !openReasoningSegments.has(part.id),
-        `Duplicate reasoning-start for id '${part.id}'`
-      );
-      openReasoningSegments.set(part.id, index);
-      return;
-    }
-
-    if (part.type === "reasoning-delta") {
-      assertCondition(
-        openReasoningSegments.has(part.id),
-        `reasoning-delta without reasoning-start for id '${part.id}'`
-      );
-      return;
-    }
-
-    if (part.type === "reasoning-end") {
-      const startIndex = openReasoningSegments.get(part.id);
-      assertCondition(
-        startIndex !== undefined,
-        `reasoning-end without reasoning-start for id '${part.id}'`
-      );
-      assertCondition(
-        (startIndex ?? index) < index,
-        `reasoning-end must occur after reasoning-start for id '${part.id}'`
-      );
-      openReasoningSegments.delete(part.id);
-      return;
-    }
-
-    if (part.type === "tool-input-start") {
-      assertCondition(
-        !toolInputWindows.has(part.id),
-        `Duplicate tool-input-start for id '${part.id}'`
-      );
-      toolInputWindows.set(part.id, {
-        startIndex: index,
-        endIndex: null,
-        toolCallSeen: false,
-      });
-      return;
-    }
-
-    if (part.type === "tool-input-delta") {
-      const window = toolInputWindows.get(part.id);
-      assertCondition(
-        window !== undefined,
-        `tool-input-delta without tool-input-start for id '${part.id}'`
-      );
-      assertCondition(
-        (window?.startIndex ?? index) < index,
-        `tool-input-delta must occur after tool-input-start for id '${part.id}'`
-      );
-      assertCondition(
-        window?.endIndex == null,
-        `tool-input-delta appears after tool-input-end for id '${part.id}'`
-      );
-      return;
-    }
-
-    if (part.type === "tool-input-end") {
-      const window = toolInputWindows.get(part.id);
-      assertCondition(
-        window !== undefined,
-        `tool-input-end without tool-input-start for id '${part.id}'`
-      );
-      assertCondition(
-        (window?.startIndex ?? index) < index,
-        `tool-input-end must occur after tool-input-start for id '${part.id}'`
-      );
-      assertCondition(
-        window?.endIndex == null,
-        `Duplicate tool-input-end for id '${part.id}'`
-      );
-      if (window) {
-        window.endIndex = index;
-      }
-      return;
-    }
-
-    if (part.type === "tool-call") {
-      const window = toolInputWindows.get(part.toolCallId);
-      assertCondition(
-        window !== undefined,
-        `tool-call without tool-input-start for id '${part.toolCallId}'`
-      );
-      assertCondition(
-        window?.endIndex != null,
-        `tool-call before tool-input-end for id '${part.toolCallId}'`
-      );
-      assertCondition(
-        (window?.endIndex ?? index) < index,
-        `tool-call must occur after tool-input-end for id '${part.toolCallId}'`
-      );
-      if (window) {
-        window.toolCallSeen = true;
-      }
-    }
+    handleToolInputEvent(part, index, toolInputWindows);
   });
 
   assertCondition(
@@ -326,6 +203,160 @@ export function assertCanonicalAiSdkEventOrder(
       window.toolCallSeen,
       "tool-input window closed without a corresponding tool-call"
     );
+  }
+}
+
+function handleTextSegment(
+  part: LanguageModelV4StreamPart,
+  index: number,
+  openTextSegments: Map<string, number>
+): boolean {
+  if (part.type === "text-start") {
+    assertCondition(
+      !openTextSegments.has(part.id),
+      `Duplicate text-start for id '${part.id}'`
+    );
+    openTextSegments.set(part.id, index);
+    return true;
+  }
+
+  if (part.type === "text-delta") {
+    assertCondition(
+      openTextSegments.has(part.id),
+      `text-delta without text-start for id '${part.id}'`
+    );
+    return true;
+  }
+
+  if (part.type === "text-end") {
+    const startIndex = openTextSegments.get(part.id);
+    assertCondition(
+      startIndex !== undefined,
+      `text-end without text-start for id '${part.id}'`
+    );
+    assertCondition(
+      (startIndex ?? index) < index,
+      `text-end must occur after text-start for id '${part.id}'`
+    );
+    openTextSegments.delete(part.id);
+    return true;
+  }
+  return false;
+}
+
+function handleReasoningSegment(
+  part: LanguageModelV4StreamPart,
+  index: number,
+  openReasoningSegments: Map<string, number>
+): boolean {
+  if (part.type === "reasoning-start") {
+    assertCondition(
+      !openReasoningSegments.has(part.id),
+      `Duplicate reasoning-start for id '${part.id}'`
+    );
+    openReasoningSegments.set(part.id, index);
+    return true;
+  }
+
+  if (part.type === "reasoning-delta") {
+    assertCondition(
+      openReasoningSegments.has(part.id),
+      `reasoning-delta without reasoning-start for id '${part.id}'`
+    );
+    return true;
+  }
+
+  if (part.type === "reasoning-end") {
+    const startIndex = openReasoningSegments.get(part.id);
+    assertCondition(
+      startIndex !== undefined,
+      `reasoning-end without reasoning-start for id '${part.id}'`
+    );
+    assertCondition(
+      (startIndex ?? index) < index,
+      `reasoning-end must occur after reasoning-start for id '${part.id}'`
+    );
+    openReasoningSegments.delete(part.id);
+    return true;
+  }
+  return false;
+}
+
+function handleToolInputEvent(
+  part: LanguageModelV4StreamPart,
+  index: number,
+  toolInputWindows: Map<
+    string,
+    { startIndex: number; endIndex: number | null; toolCallSeen: boolean }
+  >
+): void {
+  if (part.type === "tool-input-start") {
+    assertCondition(
+      !toolInputWindows.has(part.id),
+      `Duplicate tool-input-start for id '${part.id}'`
+    );
+    toolInputWindows.set(part.id, {
+      startIndex: index,
+      endIndex: null,
+      toolCallSeen: false,
+    });
+    return;
+  }
+
+  if (part.type === "tool-input-delta") {
+    const window = toolInputWindows.get(part.id);
+    assertCondition(
+      window !== undefined,
+      `tool-input-delta without tool-input-start for id '${part.id}'`
+    );
+    assertCondition(
+      (window?.startIndex ?? index) < index,
+      `tool-input-delta must occur after tool-input-start for id '${part.id}'`
+    );
+    assertCondition(
+      window?.endIndex == null,
+      `tool-input-delta appears after tool-input-end for id '${part.id}'`
+    );
+    return;
+  }
+
+  if (part.type === "tool-input-end") {
+    const window = toolInputWindows.get(part.id);
+    assertCondition(
+      window !== undefined,
+      `tool-input-end without tool-input-start for id '${part.id}'`
+    );
+    assertCondition(
+      (window?.startIndex ?? index) < index,
+      `tool-input-end must occur after tool-input-start for id '${part.id}'`
+    );
+    assertCondition(
+      window?.endIndex == null,
+      `Duplicate tool-input-end for id '${part.id}'`
+    );
+    if (window) {
+      window.endIndex = index;
+    }
+    return;
+  }
+
+  if (part.type === "tool-call") {
+    const window = toolInputWindows.get(part.toolCallId);
+    assertCondition(
+      window !== undefined,
+      `tool-call without tool-input-start for id '${part.toolCallId}'`
+    );
+    assertCondition(
+      window?.endIndex != null,
+      `tool-call before tool-input-end for id '${part.toolCallId}'`
+    );
+    assertCondition(
+      (window?.endIndex ?? index) < index,
+      `tool-call must occur after tool-input-end for id '${part.toolCallId}'`
+    );
+    if (window) {
+      window.toolCallSeen = true;
+    }
   }
 }
 

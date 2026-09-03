@@ -1,7 +1,10 @@
-import type {
-  JSONSchema7,
-  JSONValue,
-  LanguageModelV4FunctionTool,
+import {
+  isJSONObject,
+  isJSONValue,
+  type JSONObject,
+  type JSONSchema7,
+  type JSONValue,
+  type LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import dedent from "dedent";
@@ -85,9 +88,12 @@ function renderToolForXmlPrompt(tool: LanguageModelV4FunctionTool): string {
   return lines.join("\n");
 }
 
-function renderMorphXmlInputExample(toolName: string, input: unknown): string {
+function renderMorphXmlInputExample(
+  toolName: string,
+  input: JSONValue
+): string {
   try {
-    return stringify(toolName, input as JSONValue, {
+    return stringify(toolName, input, {
       suppressEmptyNode: false,
       format: true,
       minimalEscaping: true,
@@ -104,7 +110,12 @@ function renderInputExamplesForXmlPrompt(
 ): string {
   return renderInputExamplesSection({
     tools,
-    renderExample: renderMorphXmlInputExample,
+    renderExample: (toolName, input) =>
+      isJSONValue(input)
+        ? renderMorphXmlInputExample(toolName, input)
+        : `<${toolName}>${escapeXmlMinimalText(
+            safeStringifyInputExample(input)
+          )}</${toolName}>`,
   });
 }
 
@@ -113,7 +124,8 @@ function normalizeSchema(
 ): JSONSchema7 | boolean | undefined {
   if (typeof schema === "string") {
     try {
-      return JSON.parse(schema) as JSONSchema7;
+      const parsed = JSON.parse(schema);
+      return isJSONObject(parsed) ? parsed : { type: "string", const: schema };
     } catch {
       return { type: "string", const: schema };
     }
@@ -163,10 +175,7 @@ function renderParametersSummary(
 
     const lines: string[] = [];
     for (const propName of propertyNames) {
-      const propSchema = properties[propName] as
-        | JSONSchema7
-        | boolean
-        | undefined;
+      const propSchema = properties[propName];
       lines.push(
         renderPropertySummaryLine({
           indent,
@@ -226,6 +235,30 @@ function collectPropertyExtras(
   return extras;
 }
 
+function inferSchemaBaseType(schema: JSONSchema7): string {
+  const schemaType = schema.type;
+
+  if (Array.isArray(schemaType) && schemaType.length) {
+    return schemaType.join(" | ");
+  }
+  if (typeof schemaType === "string") {
+    return schemaType;
+  }
+  if (schema.enum) {
+    const inferred: string[] = Array.from(
+      new Set(schema.enum.map((value: JSONValue) => typeof value))
+    );
+    if (inferred.length === 1) {
+      return inferred[0] ?? "";
+    }
+    return "any";
+  }
+  if (schema.const !== undefined) {
+    return typeof schema.const;
+  }
+  return "any";
+}
+
 function summarizeType(schema: JSONSchema7 | boolean | undefined): string {
   if (schema === undefined || schema === null) {
     return "unknown";
@@ -243,27 +276,7 @@ function summarizeType(schema: JSONSchema7 | boolean | undefined): string {
     return String(schema);
   }
 
-  const schemaType = schema.type;
-  let baseType = "";
-
-  if (Array.isArray(schemaType) && schemaType.length) {
-    baseType = schemaType.join(" | ");
-  } else if (typeof schemaType === "string") {
-    baseType = schemaType;
-  } else if (schema.enum) {
-    const inferred: string[] = Array.from(
-      new Set(schema.enum.map((value: unknown) => typeof value))
-    );
-    if (inferred.length === 1) {
-      baseType = inferred[0] ?? "";
-    }
-  } else if (schema.const !== undefined) {
-    baseType = typeof schema.const;
-  }
-
-  if (!baseType) {
-    baseType = "any";
-  }
+  const baseType = inferSchemaBaseType(schema);
 
   if (baseType === "array" && schema.items) {
     const itemType = Array.isArray(schema.items)
@@ -284,7 +297,7 @@ function summarizeType(schema: JSONSchema7 | boolean | undefined): string {
 const ENUM_MAX_INLINE = 6;
 const ENUM_PREVIEW_LIMIT = 5;
 
-function formatEnumForSummary(values: unknown[]): string {
+function formatEnumForSummary(values: JSONValue[]): string {
   if (values.length <= ENUM_MAX_INLINE) {
     return formatValue(values);
   }
@@ -295,7 +308,7 @@ function formatEnumForSummary(values: unknown[]): string {
   return `[${preview.join(", ")}, ... (${values.length} total)]`;
 }
 
-function formatValue(value: unknown): string {
+function formatValue(value: JSONValue): string {
   if (typeof value === "string") {
     return JSON.stringify(value);
   }
@@ -323,16 +336,18 @@ function stringifySchema(schema: JSONSchema7 | boolean | undefined): string {
   return JSON.stringify(stripSchemaKeys(schema));
 }
 
-function stripSchemaKeys(value: unknown): unknown {
+function stripSchemaKeys(value: JSONValue): JSONValue;
+function stripSchemaKeys(value: undefined): undefined;
+function stripSchemaKeys(value: JSONValue | undefined): JSONValue | undefined;
+function stripSchemaKeys(value: JSONValue | undefined): JSONValue | undefined {
   if (Array.isArray(value)) {
     return value.map((entry) => stripSchemaKeys(entry));
   }
 
   if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    const cleaned: Record<string, unknown> = {};
+    const cleaned: JSONObject = {};
 
-    for (const [key, entry] of Object.entries(record)) {
+    for (const [key, entry] of Object.entries(value)) {
       if (key === "$schema") {
         continue;
       }
@@ -351,7 +366,7 @@ interface MorphXmlToolResponseFormatterOptions {
 
 function formatXmlNode(
   tagName: string,
-  value: JSONValue,
+  value: JSONValue | undefined,
   depth: number
 ): string[] {
   const indent = "  ".repeat(depth);
@@ -374,13 +389,13 @@ function formatXmlNode(
     }
     const lines = [`${indent}<${tagName}>`];
     for (const item of value) {
-      lines.push(...formatXmlNode("item", item as JSONValue, depth + 1));
+      lines.push(...formatXmlNode("item", item, depth + 1));
     }
     lines.push(`${indent}</${tagName}>`);
     return lines;
   }
 
-  const entries = Object.entries(value as Record<string, JSONValue>);
+  const entries = Object.entries(value);
   if (entries.length === 0) {
     return [`${indent}<${tagName}></${tagName}>`];
   }

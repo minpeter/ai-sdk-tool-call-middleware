@@ -1,6 +1,8 @@
-import type {
-  LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
+import {
+  isJSONValue,
+  type JSONValue,
+  type LanguageModelV4FunctionTool,
+  type LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import { logParseFailure } from "../utils/debug";
@@ -21,7 +23,6 @@ import {
   resolveToolCall,
 } from "./hermes-call-parsing";
 import {
-  canonicalizeToolInput,
   isParsedToolCallRecord,
   normalizeJsonStringCtrl,
 } from "./hermes-json-normalization";
@@ -38,6 +39,10 @@ import type {
   ParserOptions,
   ProtocolToolCallResolver,
 } from "./protocol-interface";
+
+function canonicalizeToolInputFallback<T>(args: T): string {
+  return JSON.stringify(args ?? {});
+}
 
 function emitStreamingToolInputProgress(options: {
   state: StreamState;
@@ -73,7 +78,9 @@ function emitStreamingToolInputProgress(options: {
     const parsedToolCall = parseRJSON(
       normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
     );
-    if (!isParsedToolCallRecord(parsedToolCall)) {
+    if (
+      !(isJSONValue(parsedToolCall) && isParsedToolCallRecord(parsedToolCall))
+    ) {
       return false;
     }
     if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
@@ -91,7 +98,7 @@ function emitStreamingToolInputProgress(options: {
       toolName: parsedToolCall.name,
       args: policyArguments.args,
       tools,
-      fallback: canonicalizeToolInput,
+      fallback: canonicalizeToolInputFallback,
     });
     ensureToolInputStart(state, controller, parsedToolCall.name);
     emitToolInputDelta(state, controller, input);
@@ -171,7 +178,7 @@ export function emitResolvedToolCall(
 export function emitToolCallFromParsed(
   state: StreamState,
   controller: StreamController,
-  parsedToolCall: { name: string; arguments: unknown },
+  parsedToolCall: { name: string; arguments: JSONValue | undefined },
   tools: LanguageModelV4FunctionTool[]
 ) {
   closeTextBlock(state, controller);
@@ -183,7 +190,7 @@ export function emitToolCallFromParsed(
     toolName,
     args: parsedToolCall.arguments,
     tools,
-    fallback: canonicalizeToolInput,
+    fallback: canonicalizeToolInputFallback,
   });
   emitResolvedToolCall(state, controller, toolName, input);
 }

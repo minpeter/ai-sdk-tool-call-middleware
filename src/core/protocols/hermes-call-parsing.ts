@@ -1,6 +1,7 @@
-import type {
-  LanguageModelV4Content,
-  LanguageModelV4FunctionTool,
+import {
+  isJSONValue,
+  type LanguageModelV4Content,
+  type LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import { logParseFailure } from "../utils/debug";
@@ -143,6 +144,68 @@ export function applyToolArgumentKeyPolicy(
  * through to the repair path exactly as it did when this logic was inlined in
  * each caller — the two paths must stay byte-for-byte equivalent here.
  */
+function parseToolCallJson(
+  toolCallJson: string,
+  tools: LanguageModelV4FunctionTool[]
+): Extract<ResolvedProtocolToolCall, { ok: true }> {
+  const parsedToolCall = parseRJSON(
+    normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
+  );
+  if (
+    !(isJSONValue(parsedToolCall) && isParsedToolCallRecord(parsedToolCall))
+  ) {
+    throw new Error("Tool call object is missing own name or arguments");
+  }
+  if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
+    throw new Error("Tool call arguments contain prototype-sensitive keys");
+  }
+  const policyArguments = applyToolArgumentKeyPolicy(
+    parsedToolCall.name,
+    parsedToolCall.arguments,
+    tools
+  );
+  if (policyArguments === null || !isJSONValue(policyArguments.args)) {
+    throw new ArgumentKeyPolicyError(
+      "Tool call arguments were rejected by schema key policy"
+    );
+  }
+  return {
+    ok: true,
+    toolName: parsedToolCall.name,
+    input: stringifyResolvedToolInput(
+      parsedToolCall.name,
+      policyArguments.args,
+      tools
+    ),
+  };
+}
+
+function repairToolCall(
+  toolCallJson: string,
+  tools: LanguageModelV4FunctionTool[]
+): ResolvedProtocolToolCall | null {
+  const repaired = repairToolCallJsonForTools(toolCallJson, tools);
+  if (!repaired) {
+    return null;
+  }
+  try {
+    return {
+      ok: true,
+      toolName: repaired.name,
+      input: stringifyResolvedToolInput(
+        repaired.name,
+        repaired.arguments,
+        tools
+      ),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
+}
+
 export function resolveToolCall(
   toolCallJson: string,
   tools: LanguageModelV4FunctionTool[]
@@ -156,34 +219,7 @@ export function resolveToolCall(
     };
   }
   try {
-    const parsedToolCall = parseRJSON(
-      normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
-    );
-    if (!isParsedToolCallRecord(parsedToolCall)) {
-      throw new Error("Tool call object is missing own name or arguments");
-    }
-    if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
-      throw new Error("Tool call arguments contain prototype-sensitive keys");
-    }
-    const policyArguments = applyToolArgumentKeyPolicy(
-      parsedToolCall.name,
-      parsedToolCall.arguments,
-      tools
-    );
-    if (policyArguments === null) {
-      throw new ArgumentKeyPolicyError(
-        "Tool call arguments were rejected by schema key policy"
-      );
-    }
-    return {
-      ok: true,
-      toolName: parsedToolCall.name,
-      input: stringifyResolvedToolInput(
-        parsedToolCall.name,
-        policyArguments.args,
-        tools
-      ),
-    };
+    return parseToolCallJson(toolCallJson, tools);
   } catch (error) {
     const parseError =
       error instanceof Error ? error : new Error(String(error));
@@ -191,29 +227,9 @@ export function resolveToolCall(
       return { ok: false, error: parseError };
     }
     // Attempt repair for unescaped quotes (best-effort).
-    const repaired = repairToolCallJsonForTools(toolCallJson, tools);
-    if (repaired) {
-      try {
-        return {
-          ok: true,
-          toolName: repaired.name,
-          input: stringifyResolvedToolInput(
-            repaired.name,
-            repaired.arguments,
-            tools
-          ),
-        };
-      } catch (repairError) {
-        return {
-          ok: false,
-          error:
-            repairError instanceof Error
-              ? repairError
-              : new Error(String(repairError)),
-        };
-      }
-    }
-    return { ok: false, error: parseError };
+    return (
+      repairToolCall(toolCallJson, tools) ?? { ok: false, error: parseError }
+    );
   }
 }
 
@@ -234,6 +250,23 @@ const MARKUP_ONLY_TEXT_REGEX = /^\s*(?:<[^<>\n]*>\s*)*$/;
  *   - prototype-sensitive keys are re-checked on the raw text, and recovered
  *     arguments go through the same argument key policy as the primary path.
  */
+function normalizeRecoveredToolCall(
+  toolName: string,
+  input: string,
+  tools: LanguageModelV4FunctionTool[]
+): Extract<ResolvedProtocolToolCall, { ok: true }> | null {
+  let parsedArgs: unknown;
+  try {
+    parsedArgs = JSON.parse(input);
+  } catch {
+    return null;
+  }
+  if (applyToolArgumentKeyPolicy(toolName, parsedArgs, tools) === null) {
+    return null;
+  }
+  return { ok: true, toolName, input };
+}
+
 export function recoverKnownToolCallsFromText(
   text: string,
   tools: LanguageModelV4FunctionTool[],
@@ -263,31 +296,11 @@ export function recoverKnownToolCallsFromText(
     if (part.type !== "tool-call") {
       return null;
     }
-
-    let parsedArgs: unknown;
-    try {
-      parsedArgs = JSON.parse(part.input);
-    } catch {
+    const call = normalizeRecoveredToolCall(part.toolName, part.input, tools);
+    if (call === null) {
       return null;
     }
-    const policyArguments = applyToolArgumentKeyPolicy(
-      part.toolName,
-      parsedArgs,
-      tools
-    );
-    if (policyArguments === null) {
-      return null;
-    }
-
-    try {
-      calls.push({
-        ok: true,
-        toolName: part.toolName,
-        input: part.input,
-      });
-    } catch {
-      return null;
-    }
+    calls.push(call);
   }
 
   return calls.length > 0 ? calls : null;
