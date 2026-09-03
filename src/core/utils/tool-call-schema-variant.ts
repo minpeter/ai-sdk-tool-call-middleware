@@ -1,15 +1,18 @@
 import { unwrapJsonSchema } from "../../schema-coerce";
+import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 import {
   collectPatternPropertyNames,
   getPatternPropertySchema,
 } from "./tool-call-pattern-properties";
 import { collectSchemaSelectionPropertyNames } from "./tool-call-schema-property-names";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
+
+function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function jsonTypeMatches(schemaType: string, value: unknown): boolean {
+function jsonTypeMatches<Value>(schemaType: string, value: Value): boolean {
   if (schemaType === "object") {
     return isRecord(value);
   }
@@ -34,7 +37,10 @@ function jsonTypeMatches(schemaType: string, value: unknown): boolean {
   return true;
 }
 
-function schemaTypeMatches(schemaType: unknown, value: unknown): boolean {
+function schemaTypeMatches<Value>(
+  schemaType: SchemaBoundaryValue,
+  value: Value
+): boolean {
   if (typeof schemaType === "string") {
     return jsonTypeMatches(schemaType, value);
   }
@@ -46,9 +52,9 @@ function schemaTypeMatches(schemaType: unknown, value: unknown): boolean {
   );
 }
 
-function requiredPropertiesArePresent(
-  schema: Record<string, unknown>,
-  value: unknown
+function requiredPropertiesArePresent<Value>(
+  schema: SchemaBoundaryRecord,
+  value: Value
 ): boolean {
   if (!Array.isArray(schema.required)) {
     return true;
@@ -61,13 +67,16 @@ function requiredPropertiesArePresent(
   );
 }
 
-function literalMatches(expected: unknown, value: unknown): boolean {
+function literalMatches<Value>(
+  expected: SchemaBoundaryValue,
+  value: Value
+): boolean {
   return JSON.stringify(expected) === JSON.stringify(value);
 }
 
-function constMatches(
-  schema: Record<string, unknown>,
-  value: unknown
+function constMatches<Value>(
+  schema: SchemaBoundaryRecord,
+  value: Value
 ): boolean {
   if (!Object.hasOwn(schema, "const")) {
     return true;
@@ -75,16 +84,19 @@ function constMatches(
   return literalMatches(schema.const, value);
 }
 
-function enumMatches(schema: Record<string, unknown>, value: unknown): boolean {
+function enumMatches<Value>(
+  schema: SchemaBoundaryRecord,
+  value: Value
+): boolean {
   if (!Array.isArray(schema.enum)) {
     return true;
   }
   return schema.enum.some((entry) => literalMatches(entry, value));
 }
 
-function declaredPropertiesAcceptValues(
-  schema: Record<string, unknown>,
-  value: unknown,
+function declaredPropertiesAcceptValues<Value>(
+  schema: SchemaBoundaryRecord,
+  value: Value,
   seen: Set<object>
 ): boolean {
   if (!isRecord(value)) {
@@ -115,9 +127,9 @@ function declaredPropertiesAcceptValues(
   return true;
 }
 
-function schemaAcceptsAllOf(
-  schema: Record<string, unknown>,
-  value: unknown,
+function schemaAcceptsAllOf<Value>(
+  schema: SchemaBoundaryRecord,
+  value: Value,
   seen: Set<object>
 ): boolean {
   if (!Array.isArray(schema.allOf)) {
@@ -128,9 +140,9 @@ function schemaAcceptsAllOf(
   );
 }
 
-function schemaAcceptsAnyOf(
-  schema: Record<string, unknown>,
-  value: unknown,
+function schemaAcceptsAnyOf<Value>(
+  schema: SchemaBoundaryRecord,
+  value: Value,
   seen: Set<object>
 ): boolean {
   if (!Array.isArray(schema.anyOf)) {
@@ -141,9 +153,9 @@ function schemaAcceptsAnyOf(
   );
 }
 
-function schemaAcceptsOneOf(
-  schema: Record<string, unknown>,
-  value: unknown,
+function schemaAcceptsOneOf<Value>(
+  schema: SchemaBoundaryRecord,
+  value: Value,
   seen: Set<object>
 ): boolean {
   if (!Array.isArray(schema.oneOf)) {
@@ -158,9 +170,9 @@ function schemaAcceptsOneOf(
   return matches === 1;
 }
 
-function schemaAcceptsValue(
-  schema: unknown,
-  value: unknown,
+function schemaAcceptsValue<Value>(
+  schema: SchemaBoundaryValue,
+  value: Value,
   seen: Set<object>
 ): boolean {
   const unwrapped = unwrapJsonSchema(schema);
@@ -186,7 +198,10 @@ function schemaAcceptsValue(
   );
 }
 
-function schemaSelectionScore(schema: unknown, value: unknown): number {
+function schemaSelectionScore<Value>(
+  schema: SchemaBoundaryValue,
+  value: Value
+): number {
   if (!isRecord(value)) {
     return 0;
   }
@@ -213,16 +228,16 @@ function schemaSelectionScore(schema: unknown, value: unknown): number {
   return score;
 }
 
-export function selectSchemaVariant(
-  variants: unknown,
-  value: unknown,
+export function selectSchemaVariant<Schema, Value>(
+  variants: Schema,
+  value: Value,
   seen: Set<object>
-): unknown {
+): SchemaBoundaryValue {
   if (!Array.isArray(variants)) {
     return;
   }
 
-  let bestVariant: unknown;
+  let bestVariant: SchemaBoundaryValue;
   let bestScore = 0;
   for (const variant of variants) {
     if (!schemaAcceptsValue(variant, value, new Set(seen))) {

@@ -14,18 +14,34 @@ import { selectSchemaVariant } from "./tool-call-schema-variant";
 
 const SELECTIVE_JSON_SCHEMA_COMBINATORS = ["anyOf", "oneOf"] as const;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export type SchemaBoundaryValue =
+  | object
+  | CallableFunction
+  | string
+  | number
+  | bigint
+  | boolean
+  | symbol
+  | null
+  | undefined;
+
+type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
+
+function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function addSafePropertyName(names: Set<string>, key: unknown): void {
+function addSafePropertyName(
+  names: Set<string>,
+  key: SchemaBoundaryValue
+): void {
   if (typeof key === "string" && !isPrototypeSensitiveArgumentKey(key)) {
     names.add(key);
   }
 }
 
 function collectDirectDeclaredPropertyNames(
-  schema: Record<string, unknown>
+  schema: SchemaBoundaryRecord
 ): Set<string> {
   const names = new Set<string>();
   const falsePropertyNames = collectFalsePropertyNames(schema);
@@ -58,14 +74,14 @@ function removeNames(target: Set<string>, source: Set<string>): void {
   }
 }
 
-function hasStrictAdditionalProperties(schema: unknown): boolean {
+function hasStrictAdditionalProperties(schema: SchemaBoundaryValue): boolean {
   const unwrapped = unwrapJsonSchema(schema);
   return isRecord(unwrapped) && unwrapped.additionalProperties === false;
 }
 
-function collectAllOfDeclaredPropertyNames(
-  schema: Record<string, unknown>,
-  value: unknown,
+function collectAllOfDeclaredPropertyNames<Value>(
+  schema: SchemaBoundaryRecord,
+  value: Value,
   seen: Set<object>
 ): Set<string> | null {
   const names = new Set<string>();
@@ -87,9 +103,9 @@ function collectAllOfDeclaredPropertyNames(
   return found ? names : null;
 }
 
-function collectStrictAllOfDeniedPropertyNames(
-  schema: Record<string, unknown>,
-  value: unknown,
+function collectStrictAllOfDeniedPropertyNames<Value>(
+  schema: SchemaBoundaryRecord,
+  value: Value,
   seen: Set<object>
 ): Set<string> {
   const names = new Set<string>();
@@ -121,9 +137,9 @@ function collectStrictAllOfDeniedPropertyNames(
   return names;
 }
 
-function collectSelectedVariantDeclaredPropertyNames(
-  schema: Record<string, unknown>,
-  value: unknown,
+function collectSelectedVariantDeclaredPropertyNames<Value>(
+  schema: SchemaBoundaryRecord,
+  value: Value,
   seen: Set<object>
 ): Set<string> | null {
   const names = new Set<string>();
@@ -143,9 +159,9 @@ function collectSelectedVariantDeclaredPropertyNames(
   return found ? names : null;
 }
 
-function collectDeclaredToolInputPropertyNames(
-  schema: unknown,
-  value: unknown,
+function collectDeclaredToolInputPropertyNames<Schema, Value>(
+  schema: Schema,
+  value: Value,
   seen: Set<object>
 ): Set<string> | null {
   const unwrapped = unwrapJsonSchema(schema);
@@ -174,13 +190,14 @@ function collectDeclaredToolInputPropertyNames(
   if (selectedVariantNames) {
     addNames(names, selectedVariantNames);
   }
-  if (
-    hasDirectProperties ||
-    hasAdditionalPropertiesPolicy ||
-    declaredPatternProperties ||
-    allOfNames ||
-    selectedVariantNames
-  ) {
+  const hasPropertySelectionPolicy = [
+    hasDirectProperties,
+    hasAdditionalPropertiesPolicy,
+    declaredPatternProperties,
+    allOfNames,
+    selectedVariantNames,
+  ].some(Boolean);
+  if (hasPropertySelectionPolicy) {
     addNames(names, collectPatternPropertyNames(unwrapped, value));
   }
   if (
@@ -200,30 +217,23 @@ function collectDeclaredToolInputPropertyNames(
     collectStrictAllOfDeniedPropertyNames(unwrapped, value, new Set(seen))
   );
 
-  if (
-    names.size === 0 &&
-    !hasDirectProperties &&
-    !hasAdditionalPropertiesPolicy &&
-    !declaredPatternProperties &&
-    !allOfNames &&
-    !selectedVariantNames
-  ) {
+  if (names.size === 0 && !hasPropertySelectionPolicy) {
     return null;
   }
   return names;
 }
 
-export function getToolInputPropertyNames(
-  schema: unknown,
-  value: unknown
+export function getToolInputPropertyNames<Schema, Value>(
+  schema: Schema,
+  value: Value
 ): Set<string> | null {
   return collectDeclaredToolInputPropertyNames(schema, value, new Set());
 }
 
-export function getToolInputPropertySchema(
-  schema: unknown,
+export function getToolInputPropertySchema<Schema, Value>(
+  schema: Schema,
   key: string,
-  value: unknown
-): unknown {
+  value: Value
+): SchemaBoundaryValue {
   return getDeclaredPropertySchema(schema, key, value, new Set());
 }

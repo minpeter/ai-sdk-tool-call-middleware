@@ -1,18 +1,21 @@
 import { getArrayItemSchema } from "./tool-call-array-schema";
+import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 import {
   getToolInputPropertyNames,
   getToolInputPropertySchema,
 } from "./tool-call-object-schema";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
+
+function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function sanitizeToolCallArrayBySchema(
-  values: readonly unknown[],
-  schema: unknown,
+function sanitizeToolCallArrayBySchema<Schema>(
+  values: readonly SchemaBoundaryValue[],
+  schema: Schema,
   seen: WeakSet<object>
-): unknown[] {
+): SchemaBoundaryValue[] {
   return values.flatMap((value, index) => {
     const itemSchema = getArrayItemSchema(schema, index);
     if (itemSchema === false) {
@@ -25,13 +28,13 @@ function sanitizeToolCallArrayBySchema(
   });
 }
 
-function sanitizeToolCallObjectBySchema(
-  value: Record<string, unknown>,
-  schema: unknown,
+function sanitizeToolCallObjectBySchema<Schema>(
+  value: SchemaBoundaryRecord,
+  schema: Schema,
   propertyNames: Set<string>,
   seen: WeakSet<object>
-): Record<string, unknown> {
-  const sanitized = Object.create(null) as Record<string, unknown>;
+): SchemaBoundaryRecord {
+  const sanitized: SchemaBoundaryRecord = Object.create(null);
   for (const [key, nestedValue] of Object.entries(value)) {
     if (propertyNames.has(key)) {
       const propertySchema = getToolInputPropertySchema(schema, key, value);
@@ -48,11 +51,11 @@ function sanitizeToolCallObjectBySchema(
   return sanitized;
 }
 
-function sanitizeToolCallValueBySchema(
-  value: unknown,
-  schema: unknown,
+function sanitizeToolCallValueBySchema<Value, Schema>(
+  value: Value,
+  schema: Schema,
   seen: WeakSet<object>
-): unknown {
+): Value | SchemaBoundaryValue {
   if (Array.isArray(value)) {
     if (seen.has(value)) {
       return value;
@@ -72,9 +75,9 @@ function sanitizeToolCallValueBySchema(
   return sanitizeToolCallObjectBySchema(value, schema, propertyNames, seen);
 }
 
-export function sanitizeToolCallArgsBySchema(
-  args: unknown,
-  schema: unknown
-): unknown {
+export function sanitizeToolCallArgsBySchema<Args, Schema>(
+  args: Args,
+  schema: Schema
+): Args | SchemaBoundaryValue {
   return sanitizeToolCallValueBySchema(args, schema, new WeakSet());
 }
