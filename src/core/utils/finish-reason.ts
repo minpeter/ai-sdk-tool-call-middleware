@@ -1,32 +1,71 @@
 import type { LanguageModelV4FinishReason } from "@ai-sdk/provider";
+import type { ProviderBoundaryRecord } from "./on-error";
 
+const FINISH_REASONS = new Set([
+  "stop",
+  "length",
+  "content-filter",
+  "tool-calls",
+  "error",
+  "other",
+]);
 const TERMINAL_FINISH_REASONS = new Set(["length", "content-filter", "error"]);
+
+type TerminalFinishReason = Extract<
+  LanguageModelV4FinishReason["unified"],
+  "length" | "content-filter" | "error"
+>;
+
+function isProviderBoundaryRecord<Value>(
+  value: Value
+): value is Value & ProviderBoundaryRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function isTerminalFinishReason<Value>(
+  value: Value
+): value is Value & TerminalFinishReason {
+  return typeof value === "string" && TERMINAL_FINISH_REASONS.has(value);
+}
+
+function isLanguageModelFinishReason<Value>(
+  value: Value
+): value is Value & LanguageModelV4FinishReason {
+  if (!isProviderBoundaryRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.unified === "string" &&
+    FINISH_REASONS.has(value.unified) &&
+    (!("raw" in value) ||
+      value.raw === undefined ||
+      typeof value.raw === "string")
+  );
+}
 
 /**
  * Build a `tool-calls` finish reason while preserving the provider's raw
  * value. Accepts the loose shapes seen across providers (plain string,
  * `{ raw }`, `{ unified }`) so both wrap handlers can share one normalizer.
  */
-export function normalizeToolCallsFinishReason(
-  finishReason: unknown
+export function normalizeToolCallsFinishReason<FinishReason>(
+  finishReason: FinishReason
 ): LanguageModelV4FinishReason {
   let raw = "tool-calls";
   if (typeof finishReason === "string") {
     raw = finishReason;
   } else if (
-    finishReason &&
-    typeof finishReason === "object" &&
+    isProviderBoundaryRecord(finishReason) &&
     "raw" in finishReason &&
-    typeof (finishReason as { raw?: unknown }).raw === "string"
+    typeof finishReason.raw === "string"
   ) {
-    ({ raw } = finishReason as { raw: string });
+    ({ raw } = finishReason);
   } else if (
-    finishReason &&
-    typeof finishReason === "object" &&
+    isProviderBoundaryRecord(finishReason) &&
     "unified" in finishReason &&
-    typeof (finishReason as { unified?: unknown }).unified === "string"
+    typeof finishReason.unified === "string"
   ) {
-    raw = (finishReason as { unified: string }).unified;
+    raw = finishReason.unified;
   }
 
   return {
@@ -42,14 +81,13 @@ export function normalizeToolCallsFinishReason(
  * reason for plain end-of-turn. Meaningful reasons (`length`,
  * `content-filter`, `error`) are preserved.
  */
-export function shouldRewriteFinishReasonToToolCalls(
-  finishReason: unknown
+export function shouldRewriteFinishReasonToToolCalls<FinishReason>(
+  finishReason: FinishReason
 ): boolean {
-  if (!finishReason || typeof finishReason !== "object") {
+  if (!isLanguageModelFinishReason(finishReason)) {
     return false;
   }
-  const { unified } = finishReason as { unified?: unknown };
-  return unified === "stop" || unified === "other";
+  return finishReason.unified === "stop" || finishReason.unified === "other";
 }
 
 /**
@@ -58,23 +96,23 @@ export function shouldRewriteFinishReasonToToolCalls(
  * (`length`, `content-filter`, `error`) are preserved so callers can detect
  * truncation or filtering instead of seeing a fabricated `tool-calls`.
  */
-export function normalizeForcedToolChoiceFinishReason(
-  finishReason: unknown
+export function normalizeForcedToolChoiceFinishReason<FinishReason>(
+  finishReason: FinishReason
 ): LanguageModelV4FinishReason {
-  if (
-    typeof finishReason === "string" &&
-    TERMINAL_FINISH_REASONS.has(finishReason)
-  ) {
+  if (isTerminalFinishReason(finishReason)) {
     return {
-      unified: finishReason as LanguageModelV4FinishReason["unified"],
+      unified: finishReason,
       raw: finishReason,
     };
   }
-  if (finishReason && typeof finishReason === "object") {
-    const { unified } = finishReason as { unified?: unknown };
-    if (typeof unified === "string" && TERMINAL_FINISH_REASONS.has(unified)) {
-      return finishReason as LanguageModelV4FinishReason;
-    }
+  if (
+    isProviderBoundaryRecord(finishReason) &&
+    isTerminalFinishReason(finishReason.unified)
+  ) {
+    return {
+      unified: finishReason.unified,
+      raw: typeof finishReason.raw === "string" ? finishReason.raw : undefined,
+    };
   }
   return normalizeToolCallsFinishReason(finishReason);
 }

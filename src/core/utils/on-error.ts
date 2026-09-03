@@ -1,20 +1,57 @@
-export type OnErrorFn = (
-  message: string,
-  metadata?: Record<string, unknown>
-) => void;
+import type { ParserOptions } from "../protocols/protocol-interface";
 
-interface ProviderOptionsWithOnError {
-  toolCallMiddleware?: {
-    onError?: OnErrorFn;
-  };
+export type ProviderBoundaryValue =
+  | object
+  | CallableFunction
+  | string
+  | number
+  | bigint
+  | boolean
+  | symbol
+  | null
+  | undefined;
+
+export type ProviderBoundaryRecord = Record<string, ProviderBoundaryValue>;
+
+export type OnErrorFn = NonNullable<ParserOptions["onError"]>;
+
+export type OnErrorValue =
+  | OnErrorFn
+  | Exclude<ProviderBoundaryValue, null | undefined | false>;
+
+function isProviderBoundaryRecord<Value>(
+  value: Value
+): value is Value & ProviderBoundaryRecord {
+  return typeof value === "object" && value !== null;
 }
 
 export function extractOnErrorOption(
-  providerOptions?: unknown
-): { onError?: OnErrorFn } | undefined {
-  if (providerOptions && typeof providerOptions === "object") {
-    const onError = (providerOptions as ProviderOptionsWithOnError)
-      .toolCallMiddleware?.onError;
-    return onError ? { onError } : undefined;
+  providerOptions?:
+    | {
+        readonly toolCallMiddleware?: {
+          readonly onError?: OnErrorFn;
+          readonly toolChoice?: { readonly type: string };
+        };
+      }
+    | {
+        readonly toolCallMiddleware?: {
+          readonly toolChoice?: { readonly type: string };
+        };
+      }
+): { readonly onError: OnErrorFn } | undefined;
+export function extractOnErrorOption<ProviderOptions>(
+  providerOptions?: ProviderOptions
+): { readonly onError: OnErrorValue } | undefined;
+export function extractOnErrorOption<ProviderOptions>(
+  providerOptions?: ProviderOptions
+): { readonly onError: OnErrorValue } | undefined {
+  if (!isProviderBoundaryRecord(providerOptions)) {
+    return;
   }
+  const middlewareOptions = providerOptions.toolCallMiddleware;
+  if (!isProviderBoundaryRecord(middlewareOptions)) {
+    return;
+  }
+  const { onError } = middlewareOptions;
+  return onError ? { onError } : undefined;
 }

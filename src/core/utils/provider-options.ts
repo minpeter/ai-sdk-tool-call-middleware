@@ -3,28 +3,37 @@ import type {
   LanguageModelV4FunctionTool,
   SharedV4ProviderOptions,
 } from "@ai-sdk/provider";
-import type { OnErrorFn } from "./on-error";
+import type {
+  OnErrorFn,
+  ProviderBoundaryRecord,
+  ProviderBoundaryValue,
+} from "./on-error";
+
+export interface ToolChoiceLike {
+  readonly toolName?: string;
+  readonly type: string;
+}
 
 export interface ToolCallMiddlewareProviderOptions {
-  toolCallMiddleware?: {
-    // onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  readonly toolCallMiddleware?: {
+    readonly onError?: OnErrorFn;
     // Optional debug summary container that middleware can populate.
     // Values must be JSON-safe.
-    debugSummary?: {
+    readonly debugSummary?: {
       originalText?: string;
       toolCalls?: string; // JSON string of array of { toolName, input }
     };
 
     // INTERNAL: Set by transform-handler. Used for internal propagation of tool-choice.
-    toolChoice?: { type: string; toolName?: string };
+    readonly toolChoice?: ToolChoiceLike;
     // INTERNAL: Set by transform-handler. Used for internal propagation of params.tools.
-    originalTools?: Array<{
-      name: string;
-      inputSchema: string; // Stringified JSONSchema7
+    readonly originalTools?: Array<{
+      readonly name: string;
+      readonly inputSchema: string; // Stringified JSONSchema7
     }>;
     // INTERNAL: Set by transform-handler. Names of provider tools that were
     // dropped because prompt-based tool calling only supports function tools.
-    droppedProviderTools?: string[];
+    readonly droppedProviderTools?: string[];
   };
 }
 
@@ -32,10 +41,11 @@ export interface ToolCallMiddlewareProviderOptions {
  * Names of provider tools dropped by transformParams, so the wrap handlers
  * can surface a spec warning instead of discarding them silently.
  */
-export function getDroppedProviderTools(providerOptions: unknown): string[] {
+export function getDroppedProviderTools<ProviderOptions>(
+  providerOptions: ProviderOptions
+): string[] {
   const middlewareOptions = getToolCallMiddlewareOptions(providerOptions);
-  const dropped = (middlewareOptions as { droppedProviderTools?: unknown })
-    .droppedProviderTools;
+  const dropped = middlewareOptions.droppedProviderTools;
   if (!Array.isArray(dropped)) {
     return [];
   }
@@ -408,13 +418,15 @@ export function extractToolNamesFromOriginalTools(
   return originalTools?.map((t) => t.name) || [];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord<Value>(
+  value: Value
+): value is Value & ProviderBoundaryRecord {
   return typeof value === "object" && value !== null;
 }
 
-export function getToolCallMiddlewareOptions(
-  providerOptions?: unknown
-): Record<string, unknown> {
+export function getToolCallMiddlewareOptions<ProviderOptions>(
+  providerOptions?: ProviderOptions
+): ProviderBoundaryRecord {
   if (!isRecord(providerOptions)) {
     return {};
   }
@@ -427,17 +439,51 @@ export function getToolCallMiddlewareOptions(
   return toolCallMiddleware;
 }
 
+type ObjectBoundary<Value> = Value extends object ? Value : object;
+type MiddlewareBoundary<ProviderOptions> = ProviderOptions extends {
+  readonly toolCallMiddleware?: infer MiddlewareOptions;
+}
+  ? ObjectBoundary<NonNullable<MiddlewareOptions>>
+  : object;
+
+type KnownProviderKeys<ProviderOptions> = Exclude<
+  Extract<keyof ObjectBoundary<ProviderOptions>, string>,
+  "toolCallMiddleware"
+>;
+
+export type MergedProviderOptions<
+  ProviderOptions,
+  Overrides extends ProviderBoundaryRecord,
+> = string extends keyof ObjectBoundary<ProviderOptions>
+  ? ProviderBoundaryRecord
+  : Record<KnownProviderKeys<ProviderOptions>, ProviderBoundaryValue> &
+      ObjectBoundary<ProviderOptions> & {
+        readonly toolCallMiddleware: MiddlewareBoundary<ProviderOptions> &
+          Overrides;
+      };
+
 export function mergeToolCallMiddlewareOptions(
-  providerOptions: unknown,
-  overrides: Record<string, unknown>
-): SharedV4ProviderOptions {
+  providerOptions: SharedV4ProviderOptions | undefined,
+  overrides: SharedV4ProviderOptions[string]
+): SharedV4ProviderOptions;
+export function mergeToolCallMiddlewareOptions<
+  ProviderOptions,
+  Overrides extends ProviderBoundaryRecord,
+>(
+  providerOptions: ProviderOptions,
+  overrides: Overrides
+): MergedProviderOptions<ProviderOptions, Overrides>;
+export function mergeToolCallMiddlewareOptions<
+  ProviderOptions,
+  Overrides extends ProviderBoundaryRecord,
+>(providerOptions: ProviderOptions, overrides: Overrides) {
   return {
     ...(isRecord(providerOptions) ? providerOptions : {}),
     toolCallMiddleware: {
       ...getToolCallMiddlewareOptions(providerOptions),
       ...overrides,
     },
-  } as SharedV4ProviderOptions;
+  };
 }
 
 export function isToolChoiceActive(params: {

@@ -2,7 +2,11 @@ import type {
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
-import type { OnErrorFn } from "./on-error";
+import type {
+  OnErrorFn,
+  ProviderBoundaryRecord,
+  ProviderBoundaryValue,
+} from "./on-error";
 import {
   REDACTED_SENSITIVE_TOOL_CALL_TEXT,
   safeToolCallMetadataText,
@@ -31,7 +35,7 @@ export function findFirstNonEmptyTextContent(
 
 function isJsonObjectText(text: string): boolean {
   try {
-    const parsed: unknown = JSON.parse(text);
+    const parsed: ProviderBoundaryValue = JSON.parse(text);
     return Boolean(
       parsed && typeof parsed === "object" && !Array.isArray(parsed)
     );
@@ -69,7 +73,13 @@ interface ResolveToolChoiceSelectionOptions {
   tools: LanguageModelV4FunctionTool[];
 }
 
-function ensureNonEmptyToolName(name: unknown): string {
+function isProviderBoundaryRecord<Value>(
+  value: Value
+): value is Value & ProviderBoundaryRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function ensureNonEmptyToolName(name: ProviderBoundaryValue): string {
   if (typeof name !== "string") {
     return "unknown";
   }
@@ -77,7 +87,7 @@ function ensureNonEmptyToolName(name: unknown): string {
   return trimmed.length > 0 ? trimmed : "unknown";
 }
 
-function safeStringify(value: unknown): string {
+function safeStringify(value: ProviderBoundaryValue): string {
   try {
     return JSON.stringify(value ?? {});
   } catch {
@@ -85,7 +95,9 @@ function safeStringify(value: unknown): string {
   }
 }
 
-function safeToolChoiceMetadataValue(value: unknown): unknown {
+function safeToolChoiceMetadataValue(
+  value: ProviderBoundaryValue
+): ProviderBoundaryValue {
   if (typeof value === "string") {
     return safeToolCallMetadataText(value);
   }
@@ -100,7 +112,7 @@ export function parseToolChoicePayload({
   onError,
   errorMessage,
 }: ParseToolChoiceOptions): { toolName: string; input: string } {
-  let parsed: unknown;
+  let parsed: ProviderBoundaryValue;
   try {
     parsed = JSON.parse(text);
   } catch (error) {
@@ -111,7 +123,7 @@ export function parseToolChoicePayload({
     return { toolName: "unknown", input: "{}" };
   }
 
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isProviderBoundaryRecord(parsed) || Array.isArray(parsed)) {
     onError?.("toolChoice JSON payload must be an object", {
       parsedType: typeof parsed,
       parsed: safeToolChoiceMetadataValue(parsed),
@@ -119,7 +131,7 @@ export function parseToolChoicePayload({
     return { toolName: "unknown", input: "{}" };
   }
 
-  const payload = parsed as Record<string, unknown>;
+  const payload = parsed;
   const toolName = ensureNonEmptyToolName(payload.name);
   if (toolCallInputHasPrototypeSensitiveKey(payload)) {
     onError?.("toolChoice payload rejected for sensitive keys", {
@@ -193,17 +205,15 @@ export function resolveToolChoiceSelection({
       expectedToolName,
       toolName: parsed.toolName,
     });
-    let originalArguments: unknown;
+    let originalArguments: ProviderBoundaryValue;
     try {
-      const originalPayload = JSON.parse(text) as unknown;
+      const originalPayload: ProviderBoundaryValue = JSON.parse(text);
       if (
-        typeof originalPayload === "object" &&
-        originalPayload !== null &&
+        isProviderBoundaryRecord(originalPayload) &&
         !Array.isArray(originalPayload) &&
         Object.hasOwn(originalPayload, "arguments")
       ) {
-        originalArguments = (originalPayload as Record<string, unknown>)
-          .arguments;
+        originalArguments = originalPayload.arguments;
       }
     } catch {
       originalArguments = undefined;
