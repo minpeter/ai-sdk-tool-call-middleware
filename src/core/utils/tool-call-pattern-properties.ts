@@ -1,24 +1,26 @@
 import { compileSafePatternPropertyRegex } from "../../schema-coerce";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
+import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 import { unsafeDeniedPatternMayMatchKey } from "./unsafe-pattern";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
+
+function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function hasDeclaredPatternProperties(
-  schema: Record<string, unknown>
-): boolean {
+export function hasDeclaredPatternProperties<Schema>(schema: Schema): boolean {
   return (
+    isRecord(schema) &&
     Object.hasOwn(schema, "patternProperties") &&
     isRecord(schema.patternProperties)
   );
 }
 
-export function hasUnsafeFalsePatternProperties(
-  schema: Record<string, unknown>
+export function hasUnsafeFalsePatternProperties<Schema>(
+  schema: Schema
 ): boolean {
-  if (!isRecord(schema.patternProperties)) {
+  if (!(isRecord(schema) && isRecord(schema.patternProperties))) {
     return false;
   }
   for (const [pattern, propertySchema] of Object.entries(
@@ -34,11 +36,11 @@ export function hasUnsafeFalsePatternProperties(
   return false;
 }
 
-export function unsafeFalsePatternMayMatchKey(
-  schema: Record<string, unknown>,
+export function unsafeFalsePatternMayMatchKey<Schema>(
+  schema: Schema,
   key: string
 ): boolean {
-  if (!isRecord(schema.patternProperties)) {
+  if (!(isRecord(schema) && isRecord(schema.patternProperties))) {
     return false;
   }
   for (const [pattern, propertySchema] of Object.entries(
@@ -56,9 +58,9 @@ export function unsafeFalsePatternMayMatchKey(
 }
 
 function collectMatchingPatternSchemas(
-  schema: Record<string, unknown>,
+  schema: SchemaBoundaryRecord,
   key: string
-): unknown[] {
+): SchemaBoundaryValue[] {
   if (
     isPrototypeSensitiveArgumentKey(key) ||
     !isRecord(schema.patternProperties)
@@ -66,7 +68,7 @@ function collectMatchingPatternSchemas(
     return [];
   }
 
-  const schemas: unknown[] = [];
+  const schemas: SchemaBoundaryValue[] = [];
   for (const [pattern, propertySchema] of Object.entries(
     schema.patternProperties
   )) {
@@ -78,12 +80,12 @@ function collectMatchingPatternSchemas(
   return schemas;
 }
 
-export function collectPatternPropertyNames(
-  schema: Record<string, unknown>,
-  value: unknown
+export function collectPatternPropertyNames<Schema, Value>(
+  schema: Schema,
+  value: Value
 ): Set<string> {
   const names = new Set<string>();
-  if (!isRecord(value)) {
+  if (!(isRecord(schema) && isRecord(value))) {
     return names;
   }
   for (const key of Object.keys(value)) {
@@ -94,10 +96,13 @@ export function collectPatternPropertyNames(
   return names;
 }
 
-export function getPatternPropertySchema(
-  schema: Record<string, unknown>,
+export function getPatternPropertySchema<Schema>(
+  schema: Schema,
   key: string
-): unknown {
+): SchemaBoundaryValue {
+  if (!isRecord(schema)) {
+    return;
+  }
   const schemas = collectMatchingPatternSchemas(schema, key);
   if (schemas.length === 0) {
     return;

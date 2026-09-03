@@ -3,18 +3,21 @@ import {
   hasPrototypeSensitiveStructuralKey,
   toolCallInputHasPrototypeSensitiveKey,
 } from "./prototype-sensitive-keys";
+import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 import { getToolInputPropertySchema } from "./tool-call-object-schema";
 
 const SAFE_PROTOTYPE_LABEL_SCALAR_RE =
   /^\s*(?:constructor|prototype)\s*:\s*(?![[{"'])(?![^\r\n]*\b[A-Za-z0-9_.-]+\s*:)[^\r\n]+$/i;
 const MAX_SCHEMA_AWARE_PROTOTYPE_TRAVERSAL_WORK = 100_000;
 
-interface SchemaAwarePrototypeTraversalFrame {
-  readonly schema: unknown;
-  readonly value: unknown;
+type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
+
+interface SchemaAwarePrototypeTraversalFrame<Value, Schema> {
+  readonly schema: Schema | SchemaBoundaryValue;
+  readonly value: Value | SchemaBoundaryValue;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -29,14 +32,14 @@ function parseJsonDocumentString(value: string): object | null {
     return null;
   }
   try {
-    const parsed: unknown = JSON.parse(trimmed);
+    const parsed: SchemaBoundaryValue = JSON.parse(trimmed);
     return typeof parsed === "object" && parsed !== null ? parsed : null;
   } catch {
     return null;
   }
 }
 
-function jsonDocumentEntryIsUnsafe(key: string, value: unknown): boolean {
+function jsonDocumentEntryIsUnsafe<Value>(key: string, value: Value): boolean {
   if (key === "__proto__") {
     return true;
   }
@@ -52,7 +55,7 @@ function jsonDocumentEntryIsUnsafe(key: string, value: unknown): boolean {
 }
 
 function jsonDocumentHasUnsafeStructuredValue(value: object): boolean {
-  const stack: unknown[] = [value];
+  const stack: SchemaBoundaryValue[] = [value];
   while (stack.length > 0) {
     const current = stack.pop();
     if (Array.isArray(current)) {
@@ -79,7 +82,10 @@ function isSafeJsonDocumentString(value: string): boolean {
   return parsed !== null && !jsonDocumentHasUnsafeStructuredValue(parsed);
 }
 
-function arrayItemSchema(schema: unknown, index: number): unknown {
+function arrayItemSchema<Schema>(
+  schema: Schema | SchemaBoundaryValue,
+  index: number
+): SchemaBoundaryValue {
   const unwrapped = unwrapJsonSchema(schema);
   if (!isRecord(unwrapped)) {
     return;
@@ -93,9 +99,9 @@ function arrayItemSchema(schema: unknown, index: number): unknown {
   return unwrapped.items;
 }
 
-function schemaAwareStringIsPrototypeSensitive(
+function schemaAwareStringIsPrototypeSensitive<Schema>(
   value: string,
-  schema: unknown
+  schema: Schema | SchemaBoundaryValue
 ): boolean {
   if (
     getSchemaType(schema) === "string" &&
@@ -107,16 +113,18 @@ function schemaAwareStringIsPrototypeSensitive(
   return toolCallInputHasPrototypeSensitiveKey(value);
 }
 
-export function toolCallInputHasSchemaAwarePrototypeSensitiveValue(
-  value: unknown,
-  schema: unknown
-): boolean {
+export function toolCallInputHasSchemaAwarePrototypeSensitiveValue<
+  Schema,
+  Value,
+>(value: Value, schema: Schema): boolean {
   if (hasPrototypeSensitiveStructuralKey(value)) {
     return true;
   }
 
   const seen = new Set<object>();
-  const stack: SchemaAwarePrototypeTraversalFrame[] = [{ schema, value }];
+  const stack: SchemaAwarePrototypeTraversalFrame<Value, Schema>[] = [
+    { schema, value },
+  ];
   for (let work = 0; stack.length > 0; work += 1) {
     if (work >= MAX_SCHEMA_AWARE_PROTOTYPE_TRAVERSAL_WORK) {
       return true;

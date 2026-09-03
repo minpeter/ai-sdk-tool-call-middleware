@@ -3,6 +3,7 @@ import {
   decodeJsonUnicodeEscapes,
   decodeStructuredTextEscapes,
 } from "./structured-text-escapes";
+import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 
 const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
   "__proto__",
@@ -27,19 +28,21 @@ const YAML_MAPPING_KEY_TEXT_REGEX =
 const YAML_MAPPING_KEY_TEXT_GLOBAL_REGEX =
   /(?:^|\n)\s*(?:"[^"\r\n]+"|'[^'\r\n]+'|[A-Za-z0-9_][A-Za-z0-9_.-]*)\s*:/g;
 
+type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
+
 type JsonParseResult =
-  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: true; readonly value: SchemaBoundaryValue }
   | { readonly ok: false };
 
 type RelaxedJsonParseResult =
   | {
       readonly ok: true;
       readonly sawPrototypeSensitiveKey: boolean;
-      readonly value: unknown;
+      readonly value: SchemaBoundaryValue;
     }
   | { readonly ok: false; readonly sawPrototypeSensitiveKey: boolean };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -51,10 +54,10 @@ function markUnseen(value: object, seen: Set<object>): boolean {
   return true;
 }
 
-function enqueueArrayItems(
-  value: unknown,
+function enqueueArrayItems<Value>(
+  value: Value,
   seen: Set<object>,
-  stack: unknown[]
+  stack: SchemaBoundaryValue[]
 ): boolean {
   if (!Array.isArray(value)) {
     return false;
@@ -65,14 +68,14 @@ function enqueueArrayItems(
   return true;
 }
 
-function hasUnsafePrototype(record: Record<string, unknown>): boolean {
+function hasUnsafePrototype(record: SchemaBoundaryRecord): boolean {
   const prototype = Object.getPrototypeOf(record);
   return prototype !== null && prototype !== Object.prototype;
 }
 
 function enqueueRecordOwnValues(
-  record: Record<string, unknown>,
-  stack: unknown[]
+  record: SchemaBoundaryRecord,
+  stack: SchemaBoundaryValue[]
 ): boolean {
   for (const key of Object.getOwnPropertyNames(record)) {
     if (
@@ -89,9 +92,28 @@ function enqueueRecordOwnValues(
   return false;
 }
 
+function toSchemaBoundaryValue<Value>(value: Value): SchemaBoundaryValue {
+  if (value === null) {
+    return null;
+  }
+  switch (typeof value) {
+    case "object":
+    case "function":
+    case "string":
+    case "number":
+    case "bigint":
+    case "boolean":
+    case "symbol":
+    case "undefined":
+      return value;
+    default:
+      return;
+  }
+}
+
 function parseJsonText(text: string): JsonParseResult {
   try {
-    return { ok: true, value: JSON.parse(text) };
+    return { ok: true, value: toSchemaBoundaryValue(JSON.parse(text)) };
   } catch (error) {
     if (error instanceof SyntaxError) {
       return { ok: false };
@@ -113,7 +135,11 @@ function parseRelaxedJsonText(text: string): RelaxedJsonParseResult {
         return value;
       },
     });
-    return { ok: true, sawPrototypeSensitiveKey, value: parsed };
+    return {
+      ok: true,
+      sawPrototypeSensitiveKey,
+      value: toSchemaBoundaryValue(parsed),
+    };
   } catch (error) {
     if (error instanceof Error) {
       return { ok: false, sawPrototypeSensitiveKey };
@@ -193,9 +219,11 @@ function stringLeafHasPrototypeSensitiveArgumentKey(text: string): boolean {
   return toolCallTextHasPrototypeSensitiveKey(text);
 }
 
-export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
+export function hasPrototypeSensitiveStructuralKey<Value>(
+  value: Value
+): boolean {
   const seen = new Set<object>();
-  const stack: unknown[] = [value];
+  const stack: SchemaBoundaryValue[] = [toSchemaBoundaryValue(value)];
 
   while (stack.length > 0) {
     const current = stack.pop();
@@ -219,9 +247,9 @@ export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
   return false;
 }
 
-function hasPrototypeSensitiveArgumentValue(value: unknown): boolean {
+function hasPrototypeSensitiveArgumentValue<Value>(value: Value): boolean {
   const seen = new Set<object>();
-  const stack: unknown[] = [value];
+  const stack: SchemaBoundaryValue[] = [toSchemaBoundaryValue(value)];
 
   while (stack.length > 0) {
     const current = stack.pop();
@@ -251,7 +279,9 @@ function hasPrototypeSensitiveArgumentValue(value: unknown): boolean {
   return false;
 }
 
-export function toolCallInputHasPrototypeSensitiveKey(input: unknown): boolean {
+export function toolCallInputHasPrototypeSensitiveKey<Input>(
+  input: Input
+): boolean {
   if (typeof input !== "string") {
     return hasPrototypeSensitiveArgumentValue(input);
   }

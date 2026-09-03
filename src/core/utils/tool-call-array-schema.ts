@@ -1,15 +1,18 @@
 import { unwrapJsonSchema } from "../../schema-coerce";
+import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
+
+function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function collectArrayItemSchemasForVariants(
-  variants: unknown,
+  variants: SchemaBoundaryValue,
   index: number,
   seen: Set<object>
-): unknown[] {
-  const itemSchemas: unknown[] = [];
+): SchemaBoundaryValue[] {
+  const itemSchemas: SchemaBoundaryValue[] = [];
   if (!Array.isArray(variants)) {
     return itemSchemas;
   }
@@ -23,11 +26,11 @@ function collectArrayItemSchemasForVariants(
 }
 
 function collectArrayItemSchemasFromCombinators(
-  schema: Record<string, unknown>,
+  schema: SchemaBoundaryRecord,
   index: number,
   seen: Set<object>
-): unknown[] {
-  const itemSchemas: unknown[] = [];
+): SchemaBoundaryValue[] {
+  const itemSchemas: SchemaBoundaryValue[] = [];
   itemSchemas.push(
     ...collectArrayItemSchemasForVariants(schema.allOf, index, seen)
   );
@@ -53,10 +56,10 @@ function collectArrayItemSchemasFromCombinators(
 }
 
 function collectDirectArrayItemSchemas(
-  schema: Record<string, unknown>,
+  schema: SchemaBoundaryRecord,
   index: number
-): unknown[] {
-  const schemas: unknown[] = [];
+): SchemaBoundaryValue[] {
+  const schemas: SchemaBoundaryValue[] = [];
   const prefixItems = Array.isArray(schema.prefixItems)
     ? schema.prefixItems
     : null;
@@ -81,11 +84,11 @@ function collectDirectArrayItemSchemas(
   return schemas;
 }
 
-export function getArrayItemSchema(
-  schema: unknown,
+export function getArrayItemSchema<Schema>(
+  schema: Schema,
   index: number,
   seen = new Set<object>()
-): unknown {
+): SchemaBoundaryValue {
   const unwrapped = unwrapJsonSchema(schema);
   if (!isRecord(unwrapped) || seen.has(unwrapped)) {
     return;

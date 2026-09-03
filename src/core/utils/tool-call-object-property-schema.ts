@@ -1,20 +1,22 @@
 import { unwrapJsonSchema } from "../../schema-coerce";
+import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 import { getPatternPropertySchema } from "./tool-call-pattern-properties";
 import { selectSchemaVariant } from "./tool-call-schema-variant";
 
 const SELECTIVE_JSON_SCHEMA_COMBINATORS = ["anyOf", "oneOf"] as const;
+type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function collectAllOfPropertySchemas(
-  schema: Record<string, unknown>,
+function collectAllOfPropertySchemas<Value>(
+  schema: SchemaBoundaryRecord,
   key: string,
-  value: unknown,
+  value: Value,
   seen: Set<object>
-): unknown[] {
-  const propertySchemas: unknown[] = [];
+): SchemaBoundaryValue[] {
+  const propertySchemas: SchemaBoundaryValue[] = [];
   if (!Array.isArray(schema.allOf)) {
     return propertySchemas;
   }
@@ -32,13 +34,13 @@ function collectAllOfPropertySchemas(
   return propertySchemas;
 }
 
-function collectSelectedVariantPropertySchemas(
-  schema: Record<string, unknown>,
+function collectSelectedVariantPropertySchemas<Value>(
+  schema: SchemaBoundaryRecord,
   key: string,
-  value: unknown,
+  value: Value,
   seen: Set<object>
-): unknown[] {
-  const propertySchemas: unknown[] = [];
+): SchemaBoundaryValue[] {
+  const propertySchemas: SchemaBoundaryValue[] = [];
   for (const combinator of SELECTIVE_JSON_SCHEMA_COMBINATORS) {
     const variant = selectSchemaVariant(schema[combinator], value, seen);
     const propertySchema = getDeclaredPropertySchema(
@@ -54,12 +56,12 @@ function collectSelectedVariantPropertySchemas(
   return propertySchemas;
 }
 
-export function getDeclaredPropertySchema(
-  schema: unknown,
+export function getDeclaredPropertySchema<Schema, Value>(
+  schema: Schema,
   key: string,
-  value: unknown,
+  value: Value,
   seen: Set<object>
-): unknown {
+): SchemaBoundaryValue {
   const unwrapped = unwrapJsonSchema(schema);
   if (!isRecord(unwrapped) || seen.has(unwrapped)) {
     return;
