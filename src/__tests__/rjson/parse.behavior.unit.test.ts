@@ -209,8 +209,8 @@ describe("relaxed-json", () => {
         function readSibling(
           this: Record<string, JSONValue>,
           key: string,
-          value: JSONValue
-        ): JSONValue {
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
           return key === "a" ? this.b : value;
         }
         const text = '{"a":1,"b":2}';
@@ -223,8 +223,8 @@ describe("relaxed-json", () => {
         function readNextElement(
           this: JSONValue[],
           key: string,
-          value: JSONValue
-        ): JSONValue {
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
           return key === "0" ? this[1] : value;
         }
         const text = "[1,2]";
@@ -237,7 +237,7 @@ describe("relaxed-json", () => {
       it("preserves reviver deletion like JSON.parse", () => {
         function deleteProperty(
           key: string,
-          value: JSONValue
+          value: JSONValue | undefined
         ): JSONValue | undefined {
           return key === "a" ? undefined : value;
         }
@@ -248,10 +248,36 @@ describe("relaxed-json", () => {
         );
       });
 
+      it("passes undefined when an earlier callback deletes a later sibling", () => {
+        const text = '{"a":1,"b":2}';
+        const rjsonValues: Array<JSONValue | undefined> = [];
+        const nativeValues: Array<JSONValue | undefined> = [];
+        const createReviver = (values: Array<JSONValue | undefined>) =>
+          function deleteLaterSibling(
+            this: Record<string, JSONValue | undefined>,
+            key: string,
+            value: JSONValue | undefined
+          ): JSONValue | undefined {
+            if (key === "a") {
+              Reflect.deleteProperty(this, "b");
+            } else if (key === "b") {
+              values.push(value);
+            }
+            return value;
+          };
+
+        const revived = parse(text, createReviver(rjsonValues));
+        const native = JSON.parse(text, createReviver(nativeValues));
+
+        expect(revived).toEqual(native);
+        expect(rjsonValues).toEqual([undefined]);
+        expect(rjsonValues).toEqual(nativeValues);
+      });
+
       it("preserves reviver-created array holes like JSON.parse", () => {
         function deleteElement(
           key: string,
-          value: JSONValue
+          value: JSONValue | undefined
         ): JSONValue | undefined {
           return key === "0" ? undefined : value;
         }
@@ -270,8 +296,8 @@ describe("relaxed-json", () => {
         function inspectRoot(
           this: Record<string, JSONValue>,
           key: string,
-          value: JSONValue
-        ): JSONValue {
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
           if (key === "") {
             holderKeys.push(Object.keys(this));
           }
@@ -286,8 +312,8 @@ describe("relaxed-json", () => {
         function freezeHolder(
           this: Record<string, JSONValue>,
           key: string,
-          value: JSONValue
-        ): JSONValue {
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
           if (key === "a") {
             Object.freeze(this);
           }
@@ -305,8 +331,8 @@ describe("relaxed-json", () => {
         function lockSibling(
           this: Record<string, JSONValue>,
           key: string,
-          value: JSONValue
-        ): JSONValue {
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
           if (key === "a") {
             Object.defineProperty(this, "b", {
               configurable: false,
@@ -326,8 +352,8 @@ describe("relaxed-json", () => {
         function readSibling(
           this: Record<string, JSONValue>,
           key: string,
-          value: JSONValue
-        ): JSONValue {
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
           return key === "a" ? this.b : value;
         }
         const text = '{"a":0,"a":1,"b":2}';

@@ -55,7 +55,7 @@ export type RevivedValue<Extension> =
 
 export type Reviver<Extension> = (
   key: string,
-  value: RevivedValue<Extension>
+  value: RevivedValue<Extension> | undefined
 ) => RevivedValue<Extension> | undefined;
 
 // Mutable parser cursor and warning accumulator.
@@ -86,7 +86,7 @@ export interface ParseOptions<Extension = never> {
   /**
    * Optional reviver function to transform parsed values (same as JSON.parse reviver)
    * @param key - The object key or array index
-   * @param value - The parsed value
+   * @param value - The parsed value, or undefined if an earlier callback deleted it
    * @returns The transformed value
    */
   readonly reviver?: Reviver<Extension>;

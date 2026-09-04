@@ -44,44 +44,6 @@ import type {
 } from "./parser-types";
 import { parseAny } from "./parser-value";
 
-type JsonReviver<Output extends JSONValue | undefined> = (
-  key: string,
-  value: JSONValue
-) => Output;
-
-type DeclaredSignatures<Factory> = Factory extends {
-  (...args: infer First): infer FirstOutput;
-  (...args: infer Second): infer SecondOutput;
-  (...args: infer Third): infer ThirdOutput;
-  (...args: infer Fourth): infer FourthOutput;
-  (...args: infer Fifth): infer FifthOutput;
-}
-  ?
-      | { readonly output: FirstOutput; readonly parameters: First }
-      | { readonly output: SecondOutput; readonly parameters: Second }
-      | { readonly output: ThirdOutput; readonly parameters: Third }
-      | { readonly output: FourthOutput; readonly parameters: Fourth }
-      | { readonly output: FifthOutput; readonly parameters: Fifth }
-  : never;
-
-type DeclaredParameterLists<Factory> =
-  DeclaredSignatures<Factory>["parameters"];
-
-// TypeScript exposes overloads only through a finite signature pattern. Checking
-// five signatures rejects parameterized overloads while preserving ordinary
-// zero-argument factories; callables with more overloads retain that compiler
-// limitation.
-type FunctionWithNoParameters<Factory extends (...args: never[]) => void> =
-  Factory & (DeclaredParameterLists<Factory> extends [] ? Factory : never);
-
-type ParseConfiguration = Omit<ParseOptions<never>, "reviver">;
-
-type FactoryOptionResult<Tolerant, Warnings, Output> = true extends
-  | Tolerant
-  | Warnings
-  ? Output | undefined
-  : Output;
-
 type ParseOptionsExtension<Options> =
   Options extends ParseOptions<infer Extension> ? Extension : never;
 
@@ -96,14 +58,9 @@ type CheckedParseOptions<Options> =
     ? Options
     : never;
 
-type PresentRecursiveReviver<Extension> = (
-  key: string,
-  value: RevivedValue<Extension>
-) => RevivedValue<Extension>;
-
 type RecursiveReviver<Extension> = (
   key: string,
-  value: RevivedValue<Extension>
+  value: RevivedValue<NoInfer<Extension>> | undefined
 ) => RevivedValue<Extension> | undefined;
 
 type ParseOptionResult<Options, Output> = Options extends {
@@ -251,21 +208,16 @@ function reviveValue<Extension>(
  * parse('malformed json', { tolerant: true, warnings: true })
  * ```
  */
-function parse<Output extends JSONValue | undefined>(
+// Zero-argument callbacks are still invoked as revivers with (key, value), so
+// inferring an exact factory ReturnType would be unsound for overloaded or rest
+// callables. All callbacks therefore use the recursive reviver domain.
+function parse<Extension = never>(
   text: string,
-  reviver: JsonReviver<Output>
-): Output;
-function parse<Factory extends (...args: never[]) => void>(
-  text: string,
-  reviver: FunctionWithNoParameters<Factory>
-): ReturnType<Factory>;
-function parse<Extension>(
-  text: string,
-  reviver: PresentRecursiveReviver<Extension>
-): RevivedValue<Extension>;
-function parse<Extension>(
-  text: string,
-  reviver: RecursiveReviver<Extension>
+  optsOrReviver:
+    | RecursiveReviver<Extension>
+    | (Omit<ParseOptions<NoInfer<Extension>>, "reviver"> & {
+        readonly reviver: Reviver<NoInfer<Extension>>;
+      })
 ): RevivedValue<Extension> | undefined;
 function parse(
   text: string,
@@ -275,24 +227,6 @@ function parse<Options extends ParseOptionsWithoutReviver>(
   text: string,
   options: Options
 ): ParseOptionResult<Options, JSONValue>;
-function parse<
-  Factory extends (...args: never[]) => void,
-  Tolerant extends boolean | undefined = undefined,
-  Warnings extends boolean | undefined = undefined,
->(
-  text: string,
-  options: ParseConfiguration & {
-    readonly reviver: FunctionWithNoParameters<Factory>;
-    readonly tolerant?: Tolerant;
-    readonly warnings?: Warnings;
-  }
-): FactoryOptionResult<Tolerant, Warnings, ReturnType<Factory>>;
-function parse<Extension = never>(
-  text: string,
-  options: Omit<ParseOptions<NoInfer<Extension>>, "reviver"> & {
-    readonly reviver: Reviver<NoInfer<Extension>>;
-  }
-): RevivedValue<Extension> | undefined;
 function parse<Options>(
   text: string,
   options: Options & CheckedParseOptions<Options>
