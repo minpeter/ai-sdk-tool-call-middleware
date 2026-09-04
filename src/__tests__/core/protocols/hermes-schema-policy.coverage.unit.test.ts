@@ -1,4 +1,3 @@
-// allow: SIZE_OK - deterministic coverage matrices dominate this test module.
 import type {
   JSONObject,
   JSONValue,

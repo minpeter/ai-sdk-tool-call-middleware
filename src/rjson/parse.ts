@@ -49,8 +49,30 @@ type JsonReviver<Output extends JSONValue | undefined> = (
   value: JSONValue
 ) => Output;
 
+type DeclaredSignatures<Factory> = Factory extends {
+  (...args: infer First): infer FirstOutput;
+  (...args: infer Second): infer SecondOutput;
+  (...args: infer Third): infer ThirdOutput;
+  (...args: infer Fourth): infer FourthOutput;
+  (...args: infer Fifth): infer FifthOutput;
+}
+  ?
+      | { readonly output: FirstOutput; readonly parameters: First }
+      | { readonly output: SecondOutput; readonly parameters: Second }
+      | { readonly output: ThirdOutput; readonly parameters: Third }
+      | { readonly output: FourthOutput; readonly parameters: Fourth }
+      | { readonly output: FifthOutput; readonly parameters: Fifth }
+  : never;
+
+type DeclaredParameterLists<Factory> =
+  DeclaredSignatures<Factory>["parameters"];
+
+// TypeScript exposes overloads only through a finite signature pattern. Checking
+// five signatures rejects parameterized overloads while preserving ordinary
+// zero-argument factories; callables with more overloads retain that compiler
+// limitation.
 type FunctionWithNoParameters<Factory extends (...args: never[]) => void> =
-  Factory & (Parameters<Factory> extends [] ? Factory : never);
+  Factory & (DeclaredParameterLists<Factory> extends [] ? Factory : never);
 
 type ParseConfiguration = Omit<ParseOptions<never>, "reviver">;
 
@@ -64,10 +86,10 @@ type ParseOptionsExtension<Options> =
   Options extends ParseOptions<infer Extension> ? Extension : never;
 
 type GeneralParseOptionResult<Options> = Options extends {
-  readonly reviver: Reviver<ParseOptionsExtension<Options>>;
+  readonly reviver?: never;
 }
-  ? RevivedValue<ParseOptionsExtension<Options>> | undefined
-  : ParseOptionResult<Options, JSONValue>;
+  ? ParseOptionResult<Options, JSONValue>
+  : RevivedValue<ParseOptionsExtension<Options>> | undefined;
 
 type CheckedParseOptions<Options> =
   Options extends ParseOptions<ParseOptionsExtension<Options>>
@@ -158,7 +180,7 @@ function setRevivedProperty<Extension>(
     Reflect.deleteProperty(holder, key);
     return;
   }
-  Object.defineProperty(holder, key, {
+  Reflect.defineProperty(holder, key, {
     configurable: true,
     enumerable: true,
     value: revived,

@@ -5,12 +5,12 @@ import {
   type LanguageModelV4StreamPart,
   type LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
+import type { RxmlValue } from "../../rxml/builders/stringify";
 import {
   parse,
   type ParseOptions as RxmlParseOptions,
   stringify,
-} from "../../rxml";
-import type { RxmlValue } from "../../rxml/builders/stringify";
+} from "../../rxml/index";
 import {
   isSchemaDefinition,
   type ToolInputSchemaDefinition,

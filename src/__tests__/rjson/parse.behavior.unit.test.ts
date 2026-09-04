@@ -234,6 +234,37 @@ describe("relaxed-json", () => {
         );
       });
 
+      it("preserves reviver deletion like JSON.parse", () => {
+        function deleteProperty(
+          key: string,
+          value: JSONValue
+        ): JSONValue | undefined {
+          return key === "a" ? undefined : value;
+        }
+        const text = '{"a":1,"b":2}';
+
+        expect(parse(text, deleteProperty)).toEqual(
+          JSON.parse(text, deleteProperty)
+        );
+      });
+
+      it("preserves reviver-created array holes like JSON.parse", () => {
+        function deleteElement(
+          key: string,
+          value: JSONValue
+        ): JSONValue | undefined {
+          return key === "0" ? undefined : value;
+        }
+        const text = "[1,2]";
+        const revived = parse(text, deleteElement);
+
+        expect(revived).toEqual(JSON.parse(text, deleteElement));
+        if (!Array.isArray(revived)) {
+          throw new TypeError("Expected revived JSON array");
+        }
+        expect(Object.hasOwn(revived, 0)).toBe(false);
+      });
+
       it("binds the root reviver to a wrapper like JSON.parse", () => {
         const holderKeys: string[][] = [];
         function inspectRoot(
@@ -249,6 +280,46 @@ describe("relaxed-json", () => {
 
         expect(parse("1", inspectRoot)).toEqual(JSON.parse("1", inspectRoot));
         expect(holderKeys).toEqual([[""], [""]]);
+      });
+
+      it("ignores property recreation after a reviver freezes its holder", () => {
+        function freezeHolder(
+          this: Record<string, JSONValue>,
+          key: string,
+          value: JSONValue
+        ): JSONValue {
+          if (key === "a") {
+            Object.freeze(this);
+          }
+          return value;
+        }
+        const text = '{"a":1,"b":2}';
+
+        expect(parse(text, freezeHolder)).toEqual(
+          JSON.parse(text, freezeHolder)
+        );
+        expect(parse(text, freezeHolder)).toEqual({ a: 1, b: 2 });
+      });
+
+      it("keeps a sibling made non-configurable by an earlier callback", () => {
+        function lockSibling(
+          this: Record<string, JSONValue>,
+          key: string,
+          value: JSONValue
+        ): JSONValue {
+          if (key === "a") {
+            Object.defineProperty(this, "b", {
+              configurable: false,
+              enumerable: true,
+              value: 7,
+            });
+          }
+          return key === "b" ? 9 : value;
+        }
+        const text = '{"a":1,"b":2}';
+
+        expect(parse(text, lockSibling)).toEqual(JSON.parse(text, lockSibling));
+        expect(parse(text, lockSibling)).toEqual({ a: 1, b: 7 });
       });
 
       it("visits only the final duplicate value with a holder like JSON.parse", () => {

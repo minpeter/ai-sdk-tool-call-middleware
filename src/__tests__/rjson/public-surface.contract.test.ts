@@ -105,16 +105,27 @@ describe("RJSON public surface", () => {
   it("rejects parameterized callbacks from the value-factory overloads", () => {
     const mixedReviver = (_key = "", value = 0) =>
       typeof value === "number" ? new Date(0) : value;
+    function overloaded(key: string, value: JSONValue): JSONValue;
+    function overloaded(): Date;
+    function overloaded(_key?: string, value?: JSONValue): JSONValue | Date {
+      return _key === undefined && value === undefined
+        ? new Date(0)
+        : (value ?? null);
+    }
 
     // @ts-expect-error A factory must declare no parameters, including optional ones.
     parse("null", mixedReviver);
     // @ts-expect-error The options-form factory has the same zero-parameter rule.
     parse("null", { reviver: mixedReviver });
+    // @ts-expect-error A parameterized overload prevents factory classification.
+    const overloadedResult: Date = parse("1", { reviver: overloaded });
+    expect(overloadedResult).toBe(1);
   });
 
   it("infers factory output only for callbacks with no parameters", () => {
-    const direct = parse("null", () => new Date(0));
-    const options = parse("null", { reviver: () => new Date(0) });
+    const factory = () => new Date(0);
+    const direct = parse("null", factory);
+    const options = parse("null", { reviver: factory });
 
     expectTypeOf(direct).toEqualTypeOf<Date>();
     expectTypeOf(options).toEqualTypeOf<Date>();
@@ -124,6 +135,9 @@ describe("RJSON public surface", () => {
     const withReviver = {
       reviver: (_key: string, value: RevivedValue<Date>) => value,
     } satisfies ParseOptions<Date>;
+    const broadWithReviver: ParseOptions<Date> = {
+      reviver: (_key: string, _value: RevivedValue<Date>) => new Date(0),
+    };
     const broadWithoutReviver: ParseOptions<Date> = { relaxed: false };
     const withoutReviver: ParseOptions<Date> & {
       readonly relaxed: false;
@@ -136,14 +150,20 @@ describe("RJSON public surface", () => {
     } satisfies ParseOptions<Date>;
 
     const revived = parse("null", withReviver);
+    const broadRevived = parse("null", broadWithReviver);
     const broadParsed = parse("null", broadWithoutReviver);
     const parsed = parse("null", withoutReviver);
     const tolerant = parse("null", tolerantWithoutReviver);
 
+    // @ts-expect-error A broad option type may contain a non-JSON reviver.
+    const jsonOnly: JSONValue | undefined = parse("null", broadWithReviver);
+
     expectTypeOf(revived).toEqualTypeOf<RevivedValue<Date> | undefined>();
-    expectTypeOf(broadParsed).toEqualTypeOf<JSONValue | undefined>();
+    expectTypeOf(broadRevived).toEqualTypeOf<RevivedValue<Date> | undefined>();
+    expectTypeOf(broadParsed).toEqualTypeOf<RevivedValue<Date> | undefined>();
     expectTypeOf(parsed).toEqualTypeOf<JSONValue>();
     expectTypeOf(tolerant).toEqualTypeOf<JSONValue | undefined>();
+    expect(jsonOnly).toBeInstanceOf(Date);
   });
 
   it("preserves exact unconditional callback outputs", () => {

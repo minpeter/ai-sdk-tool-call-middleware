@@ -138,6 +138,18 @@ jobs:
         run: |
           pnpm test --coverage
 
+      - name: Check type quality
+        run: pnpm quality:types
+
+      - name: Check dead code
+        run: pnpm quality:dead-code
+
+      - name: Check duplicate code
+        run: pnpm quality:duplicates
+
+      - name: Check source metrics and CRAP scores
+        run: pnpm quality:metrics --coverage coverage/lcov.info
+
       # https://docs.codecov.com/docs/environment-specific-requirements#github-actions
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
