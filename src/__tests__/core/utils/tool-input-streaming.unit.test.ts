@@ -12,16 +12,10 @@ import {
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../../../core/utils/tool-input-streaming";
-
-function createMockController(
-  out: LanguageModelV4StreamPart[]
-): TransformStreamDefaultController<LanguageModelV4StreamPart> {
-  return {
-    enqueue(part: LanguageModelV4StreamPart) {
-      out.push(part);
-    },
-  } as unknown as TransformStreamDefaultController<LanguageModelV4StreamPart>;
-}
+import {
+  createRecordingController,
+  expectSingleToolInputDelta,
+} from "./tool-input-delta.shared";
 
 describe("tool-input-streaming", () => {
   it("stringifyToolInputWithSchema returns coerced JSON when schema coercion succeeds", () => {
@@ -65,7 +59,7 @@ describe("tool-input-streaming", () => {
 
   it("emitToolInputProgressDelta emits incomplete-json-prefix deltas by default", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const state = { emittedInput: "" };
 
     emitToolInputProgressDelta({
@@ -75,23 +69,13 @@ describe("tool-input-streaming", () => {
       fullInput: '{"city":"Seoul"}',
     });
 
-    const deltas = out.filter(
-      (
-        part
-      ): part is Extract<
-        LanguageModelV4StreamPart,
-        { type: "tool-input-delta" }
-      > => part.type === "tool-input-delta"
-    );
-
-    expect(deltas).toHaveLength(1);
-    expect(deltas[0].delta).toBe('{"city":"Seoul');
+    expectSingleToolInputDelta(out, '{"city":"Seoul');
     expect(state.emittedInput).toBe('{"city":"Seoul');
   });
 
   it("emitToolInputProgressDelta emits full-json deltas in full-json mode", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const state = { emittedInput: "" };
 
     emitToolInputProgressDelta({
@@ -102,23 +86,13 @@ describe("tool-input-streaming", () => {
       mode: "full-json",
     });
 
-    const deltas = out.filter(
-      (
-        part
-      ): part is Extract<
-        LanguageModelV4StreamPart,
-        { type: "tool-input-delta" }
-      > => part.type === "tool-input-delta"
-    );
-
-    expect(deltas).toHaveLength(1);
-    expect(deltas[0].delta).toBe('{"city":"Seoul"}');
+    expectSingleToolInputDelta(out, '{"city":"Seoul"}');
     expect(state.emittedInput).toBe('{"city":"Seoul"}');
   });
 
   it("emitFinalizedToolInputLifecycle emits final remainder then end and call", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const state = { emittedInput: '{"city":"Seoul' };
 
     emitFinalizedToolInputLifecycle({
@@ -150,7 +124,7 @@ describe("tool-input-streaming", () => {
 
   it("enqueueToolInputEndAndCall enqueues end and call in order", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
 
     enqueueToolInputEndAndCall({
       controller,
@@ -175,7 +149,7 @@ describe("tool-input-streaming", () => {
 
   it("enqueueToolInputEnd enqueues only tool-input-end", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
 
     enqueueToolInputEnd({
       controller,
@@ -192,7 +166,7 @@ describe("tool-input-streaming", () => {
 
   it("emitFailedToolInputLifecycle emits end and raw fallback when enabled", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const emitRawText = vi.fn();
 
     emitFailedToolInputLifecycle({
@@ -215,7 +189,7 @@ describe("tool-input-streaming", () => {
 
   it("emitFailedToolInputLifecycle skips end and raw fallback when configured", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const emitRawText = vi.fn();
 
     emitFailedToolInputLifecycle({

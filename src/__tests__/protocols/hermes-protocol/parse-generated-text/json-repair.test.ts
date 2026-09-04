@@ -1,85 +1,83 @@
 import type {
   JSONSchema7Definition,
-  JSONValue,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import type { ParserOptions } from "../../../../core/protocols/protocol-interface";
+import { runGeneratedJsonRepair } from "../../shared/duplicate-harness";
 
 function makeTool(
   name: string,
   properties: Record<string, JSONSchema7Definition>,
   additionalProperties?: boolean
 ): LanguageModelV4FunctionTool {
+  const policy =
+    additionalProperties === undefined ? {} : { additionalProperties };
   return {
-    type: "function",
+    inputSchema: { properties, type: "object", ...policy },
     name,
-    inputSchema: {
-      type: "object",
-      properties,
-      ...(additionalProperties === undefined ? {} : { additionalProperties }),
-    },
+    type: "function",
   };
 }
 
 // Intentionally accepts malformed schemas so tests can exercise runtime rejection.
 function makeSchemaTool(
   name: string,
-  inputSchema: JSONValue
+  inputSchema: LanguageModelV4FunctionTool["inputSchema"]
 ): LanguageModelV4FunctionTool {
-  return {
-    type: "function",
-    name,
-    inputSchema: inputSchema as LanguageModelV4FunctionTool["inputSchema"],
-  };
+  return { type: "function", name, inputSchema };
 }
 
 type ToolCallContent = Extract<LanguageModelV4Content, { type: "tool-call" }>;
 
 function expectToolCall(output: LanguageModelV4Content[]): ToolCallContent {
-  const tool = output.find(
-    (part): part is ToolCallContent => part.type === "tool-call"
-  );
-  expect(tool?.type).toBe("tool-call");
-  if (!tool) {
-    throw new Error("Expected tool call");
+  for (const content of output) {
+    if (content.type === "tool-call") {
+      expect(content.type).toBe("tool-call");
+      return content;
+    }
   }
-  return tool;
+  throw new Error("Expected tool call");
+}
+
+interface DirectRepairFixture {
+  readonly onError?: ParserOptions["onError"];
+  readonly text: string;
+  readonly tools?: LanguageModelV4FunctionTool[];
+}
+
+function parseRepair(fixture: DirectRepairFixture): LanguageModelV4Content[] {
+  return runGeneratedJsonRepair({
+    protocol: hermesProtocol(),
+    text: fixture.text,
+    tools: fixture.tools ?? [],
+    parserOptions: { onError: fixture.onError },
+  });
 }
 
 describe("json-repair.test split 1", () => {
   it("repairs unescaped quotes in a string value", () => {
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"edit","arguments":{"content":"He said "hello" to me"}}</tool_call>';
-    const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call");
-    expect(tool?.type).toBe("tool-call");
-    if (tool?.type !== "tool-call") {
-      throw new Error("Expected tool call");
-    }
+    const out = parseRepair({ text });
+    const tool = expectToolCall(out);
     expect(tool.toolName).toBe("edit");
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hello" to me');
   });
 
   it("repairs unescaped quotes before a right brace character in a string", () => {
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"edit","arguments":{"content":"He said "}" there"}}</tool_call>';
     const tools = [makeTool("edit", { content: { type: "string" } }, false)];
-    const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call");
-    expect(tool?.type).toBe("tool-call");
-    if (tool?.type !== "tool-call") {
-      throw new Error("Expected repaired tool call");
-    }
+    const out = parseRepair({ text, tools });
+    const tool = expectToolCall(out);
     expect(JSON.parse(tool.input)).toEqual({ content: 'He said "}" there' });
   });
 
   it("repairs multiple arguments with one having unescaped quotes", () => {
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"path":"/tmp/a.txt","content":"use "strict"; var x = 1;"}}</tool_call>';
     const tools = [
@@ -88,12 +86,8 @@ describe("json-repair.test split 1", () => {
         content: { type: "string" },
       }),
     ];
-    const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call");
-    expect(tool?.type).toBe("tool-call");
-    if (tool?.type !== "tool-call") {
-      throw new Error("Expected tool call");
-    }
+    const out = parseRepair({ text, tools });
+    const tool = expectToolCall(out);
     expect(tool.toolName).toBe("write");
     const args = JSON.parse(tool.input);
     expect(args.path).toBe("/tmp/a.txt");
@@ -102,7 +96,6 @@ describe("json-repair.test split 1", () => {
 
   it('does not silently corrupt content when a ,"unknown": pattern appears inside broken quotes', () => {
     const onError = vi.fn();
-    const p = hermesProtocol();
     // Ambiguous input: ,"fake": could be (a) a real schema-unknown key
     // boundary or (b) part of the preceding content value wrapped in
     // broken quotes. We prefer correct boundary detection (so adjacent
@@ -116,7 +109,7 @@ describe("json-repair.test split 1", () => {
     const text =
       '<tool_call>{"name":"edit","arguments":{"content":"value with ,"fake": inside"}}</tool_call>';
     const tools = [makeTool("edit", { content: { type: "string" } })];
-    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const out = parseRepair({ text, tools, onError });
     const tool = out.find((x): x is ToolCallContent => x.type === "tool-call");
     if (tool) {
       const args = JSON.parse(tool.input);
@@ -127,10 +120,9 @@ describe("json-repair.test split 1", () => {
   });
 
   it("does not alter already valid JSON", () => {
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"read","arguments":{"path":"/tmp/file.txt"}}</tool_call>';
-    const out = p.parseGeneratedText({ text, tools: [] });
+    const out = parseRepair({ text });
     const tool = expectToolCall(out);
     expect(tool.toolName).toBe("read");
     expect(JSON.parse(tool.input)).toEqual({ path: "/tmp/file.txt" });
@@ -138,27 +130,24 @@ describe("json-repair.test split 1", () => {
 
   it("rejects inherited tool call fields from __proto__ wrappers", () => {
     const onError = vi.fn();
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"__proto__":{"name":"write","arguments":{"content":"ok"}}}</tool_call>';
     const tools = [makeTool("write", { content: { type: "string" } })];
-    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const out = parseRepair({ text, tools, onError });
     expect(out.find((x) => x.type === "tool-call")).toBeUndefined();
     expect(onError).toHaveBeenCalled();
   });
 
   it("falls through to error for completely broken JSON (no name field)", () => {
     const onError = vi.fn();
-    const p = hermesProtocol();
     const text = "<tool_call>{totally broken}</tool_call>";
-    const out = p.parseGeneratedText({ text, tools: [], options: { onError } });
+    const out = parseRepair({ text, onError });
     expect(onError).toHaveBeenCalled();
     const rejoined = out.map((x) => (x.type === "text" ? x.text : "")).join("");
     expect(rejoined).toContain("{totally broken}");
   });
 
   it("repairs alongside numeric and boolean arguments", () => {
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"update","arguments":{"content":"He said "hi" there","count":42,"enabled":true}}</tool_call>';
     const tools = [
@@ -168,7 +157,7 @@ describe("json-repair.test split 1", () => {
         enabled: { type: "boolean" },
       }),
     ];
-    const out = p.parseGeneratedText({ text, tools });
+    const out = parseRepair({ text, tools });
     const tool = expectToolCall(out);
     expect(tool.toolName).toBe("update");
     const args = JSON.parse(tool.input);
@@ -178,12 +167,11 @@ describe("json-repair.test split 1", () => {
   });
 
   it("handles nested object in arguments without false key splits", () => {
-    const p = hermesProtocol();
     // Valid JSON with a nested object — the ,"b":2 inside opts must NOT
     // be treated as a top-level key split.
     const text =
       '<tool_call>{"name":"x","arguments":{"opts":{"a":1,"b":2},"content":"say \\"hi\\""}}</tool_call>';
-    const out = p.parseGeneratedText({ text, tools: [] });
+    const out = parseRepair({ text });
     const tool = expectToolCall(out);
     expect(tool.toolName).toBe("x");
     const args = JSON.parse(tool.input);
@@ -192,10 +180,9 @@ describe("json-repair.test split 1", () => {
   });
 
   it("handles array value in arguments without false key splits", () => {
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"x","arguments":{"items":[1,2,3],"text":"a \\"b\\" c"}}</tool_call>';
-    const out = p.parseGeneratedText({ text, tools: [] });
+    const out = parseRepair({ text });
     const tool = expectToolCall(out);
     expect(tool.toolName).toBe("x");
     const args = JSON.parse(tool.input);
@@ -205,9 +192,8 @@ describe("json-repair.test split 1", () => {
 
   it("falls through to error when repair is impossible (no arguments field)", () => {
     const onError = vi.fn();
-    const p = hermesProtocol();
     const text = '<tool_call>{"name":"x","params":{"a":1}}</tool_call>';
-    const out = p.parseGeneratedText({ text, tools: [], options: { onError } });
+    const out = parseRepair({ text, onError });
     // rjson may handle this, but the tool call should either parse or
     // fall through to onError; it should not crash.
     const hasToolOrError =
@@ -216,7 +202,6 @@ describe("json-repair.test split 1", () => {
   });
 
   it("repairs nested object arguments when JSON is malformed", () => {
-    const p = hermesProtocol();
     // Malformed: unescaped quotes in content, plus a nested opts object
     const text =
       '<tool_call>{"name":"x","arguments":{"opts":{"a":1,"b":2},"content":"say "hi" there"}}</tool_call>';
@@ -226,16 +211,12 @@ describe("json-repair.test split 1", () => {
         content: { type: "string" },
       }),
     ];
-    const out = p.parseGeneratedText({ text, tools });
-    const tool = expectToolCall(out);
-    expect(tool.toolName).toBe("x");
-    const args = JSON.parse(tool.input);
-    expect(args.opts).toEqual({ a: 1, b: 2 });
+    const args = JSON.parse(expectToolCall(parseRepair({ text, tools })).input);
     expect(args.content).toBe('say "hi" there');
+    expect(args.opts).toEqual({ a: 1, b: 2 });
   });
 
   it("does not confuse nested 'name' inside arguments with tool name", () => {
-    const p = hermesProtocol();
     // The arguments object contains a "name" key — the top-level "name"
     // (which is the tool name) should be extracted, not the nested one.
     const text =
@@ -246,7 +227,7 @@ describe("json-repair.test split 1", () => {
         content: { type: "string" },
       }),
     ];
-    const out = p.parseGeneratedText({ text, tools });
+    const out = parseRepair({ text, tools });
     const tool = expectToolCall(out);
     expect(tool.toolName).toBe("edit");
     const args = JSON.parse(tool.input);
@@ -255,33 +236,30 @@ describe("json-repair.test split 1", () => {
   });
 
   it("accepts valid non-string values alongside broken string values", () => {
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"update","arguments":{"count":42,"flag":true,"label":null,"content":"He said "hi" there"}}</tool_call>';
     const tools = [
       makeSchemaTool("update", {
         type: "object",
         properties: {
-          count: { type: "number" },
-          flag: { type: "boolean" },
-          label: { type: ["string", "null"] },
           content: { type: "string" },
+          label: { type: ["string", "null"] },
+          flag: { type: "boolean" },
+          count: { type: "number" },
         },
       }),
     ];
-    const out = p.parseGeneratedText({ text, tools });
-    const tool = expectToolCall(out);
-    expect(tool.toolName).toBe("update");
+    const tool = expectToolCall(parseRepair({ tools, text }));
     const args = JSON.parse(tool.input);
-    expect(args.count).toBe(42);
-    expect(args.flag).toBe(true);
     expect(args.label).toBeNull();
+    expect(args.flag).toBe(true);
+    expect(args.count).toBe(42);
+    expect(tool.toolName).toBe("update");
     expect(args.content).toBe('He said "hi" there');
   });
 
   it("returns error when non-string value is broken (type coercion prevention)", () => {
     const onError = vi.fn();
-    const p = hermesProtocol();
     // A broken number value (not a string) — repair should fail gracefully
     const text =
       '<tool_call>{"name":"calc","arguments":{"value":4.2.3,"label":"ok"}}</tool_call>';
@@ -291,7 +269,7 @@ describe("json-repair.test split 1", () => {
         label: { type: "string" },
       }),
     ];
-    const out = p.parseGeneratedText({ text, tools, options: { onError } });
+    const out = parseRepair({ text, tools, onError });
     // rjson may still recover this, but if it reaches repair, repair
     // should not silently coerce "4.2.3" to a string.
     // Either rjson handles it or onError is called.
@@ -301,7 +279,6 @@ describe("json-repair.test split 1", () => {
   });
 
   it("drops schema-unknown keys when additionalProperties is implicit", () => {
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"He said "hi" there","extra":"debug","path":"/tmp/a"}}</tool_call>';
     const tools = [
@@ -310,7 +287,7 @@ describe("json-repair.test split 1", () => {
         path: { type: "string" },
       }),
     ];
-    const out = p.parseGeneratedText({ text, tools });
+    const out = parseRepair({ text, tools });
     const tool = expectToolCall(out);
     const args = JSON.parse(tool.input);
     expect(args.content).toBe('He said "hi" there');
@@ -319,7 +296,6 @@ describe("json-repair.test split 1", () => {
   });
 
   it("keeps schema-additional keys when additionalProperties is true", () => {
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"He said "hi" there","dynamic":"kept"}}</tool_call>';
     const tools = [
@@ -331,19 +307,13 @@ describe("json-repair.test split 1", () => {
         true
       ),
     ];
-    const out = p.parseGeneratedText({ text, tools });
-    const tool = out.find((x) => x.type === "tool-call");
-    expect(tool).toBeTruthy();
-    if (tool?.type !== "tool-call") {
-      throw new Error("expected tool call");
-    }
-    const args = JSON.parse(tool.input);
+    const out = parseRepair({ text, tools });
+    const args = JSON.parse(expectToolCall(out).input);
     expect(args.content).toBe('He said "hi" there');
     expect(args.dynamic).toBe("kept");
   });
 
   it("coerces schema-additional keys when additionalProperties is a schema", () => {
-    const p = hermesProtocol();
     const text =
       '<tool_call>{"name":"write","arguments":{"content":"ok","count":"42"}}</tool_call>';
     const tools = [
@@ -355,7 +325,7 @@ describe("json-repair.test split 1", () => {
         additionalProperties: { type: "number" },
       }),
     ];
-    const out = p.parseGeneratedText({ text, tools });
+    const out = parseRepair({ text, tools });
     const tool = expectToolCall(out);
     expect(JSON.parse(tool.input)).toEqual({ content: "ok", count: 42 });
   });

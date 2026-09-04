@@ -121,7 +121,3 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     return createQwen3CoderStreamParser(params);
   },
 });
-
-export const uiTarsXmlProtocol = qwen3CoderProtocol;
-
-export const Qwen3CoderToolParser = qwen3CoderProtocol;

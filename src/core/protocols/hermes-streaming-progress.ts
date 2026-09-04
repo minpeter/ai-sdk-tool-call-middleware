@@ -16,6 +16,11 @@ import {
   skipJsonComment,
   skipJsonWhitespace,
 } from "./hermes-json-object-key-scanner";
+import {
+  consumeJsonQuotedScanChar,
+  findQuotedKeyEnd,
+  type JsonQuotedScanState,
+} from "./hermes-json-significant-char-index";
 import type {
   ParserOptions,
   ProtocolToolCallResolver,
@@ -70,27 +75,8 @@ export interface TagProcessingContext {
 
 const JSON_PRIMITIVE_END_RE = /[,\s}]/;
 
-interface RelaxedPropertyScanState {
+interface RelaxedPropertyScanState extends JsonQuotedScanState {
   depth: number;
-  escaping: boolean;
-  quoteChar: string | null;
-}
-
-function consumeRelaxedPropertyString(
-  state: RelaxedPropertyScanState,
-  char: string
-): boolean {
-  if (state.quoteChar === null) {
-    return false;
-  }
-  if (state.escaping) {
-    state.escaping = false;
-  } else if (char === "\\") {
-    state.escaping = true;
-  } else if (char === state.quoteChar) {
-    state.quoteChar = null;
-  }
-  return true;
 }
 
 function readRelaxedPropertyValueStart(
@@ -158,7 +144,7 @@ function findTopLevelPropertyValueStart(
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
-    if (consumeRelaxedPropertyString(state, char)) {
+    if (consumeJsonQuotedScanChar(state, char)) {
       continue;
     }
     const commentEnd = skipJsonComment(text, index);
@@ -244,17 +230,8 @@ function extractJsonStringAt(
   if (valueStart == null || text.charAt(valueStart) !== '"') {
     return;
   }
-  let escaped = false;
-  for (let valueEnd = valueStart + 1; valueEnd < text.length; valueEnd += 1) {
-    const char = text.charAt(valueEnd);
-    if (escaped) {
-      escaped = false;
-    } else if (char === "\\") {
-      escaped = true;
-    } else if (char === '"') {
-      return text.slice(valueStart + 1, valueEnd);
-    }
-  }
+  const valueEnd = findQuotedKeyEnd(text, valueStart, '"');
+  return valueEnd === null ? undefined : text.slice(valueStart + 1, valueEnd);
 }
 
 function extractTopLevelStringProperty(
@@ -320,18 +297,10 @@ function extractJsonQuotedSlice(
   text: string,
   valueStart: number
 ): JsonValueSlice {
-  let escaping = false;
-  for (let index = valueStart + 1; index < text.length; index += 1) {
-    const char = text.charAt(index);
-    if (escaping) {
-      escaping = false;
-    } else if (char === "\\") {
-      escaping = true;
-    } else if (char === '"') {
-      return { text: text.slice(valueStart, index + 1), complete: true };
-    }
-  }
-  return { text: text.slice(valueStart), complete: false };
+  const valueEnd = findQuotedKeyEnd(text, valueStart, '"');
+  return valueEnd === null
+    ? { text: text.slice(valueStart), complete: false }
+    : { text: text.slice(valueStart, valueEnd + 1), complete: true };
 }
 
 function extractJsonPrimitiveSlice(

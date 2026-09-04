@@ -1,3 +1,4 @@
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
@@ -5,6 +6,23 @@ import { toolChoiceStream } from "../../stream-handler";
 import { mockUsage } from "../test-helpers";
 
 const TOOL_CALL_ID_RE = /^call_[A-Za-z0-9]{24}$/;
+
+function requireToolCall(parts: LanguageModelV4StreamPart[]) {
+  const calls = parts.filter((part) => part.type === "tool-call");
+  const [call] = calls;
+  if (call === undefined) {
+    throw new TypeError("Expected tool-call stream part");
+  }
+  return call;
+}
+
+function expectRedacted(onError: ReturnType<typeof vi.fn>): void {
+  const serializedCalls = JSON.stringify(onError.mock.calls);
+  expect(onError).toHaveBeenCalledOnce();
+  expect(serializedCalls).not.toContain("polluted");
+  expect(serializedCalls).not.toContain("constructor");
+  expect(serializedCalls).toContain("[redacted sensitive tool call]");
+}
 
 describe("toolChoiceStream behavior", () => {
   it("emits the full tool-input lifecycle and finish from valid JSON text", async () => {
@@ -41,12 +59,7 @@ describe("toolChoiceStream behavior", () => {
       delta: '{"x":1}',
     });
 
-    const toolCall = chunks[4] as {
-      type: string;
-      toolCallId: string;
-      toolName: string;
-      input: string;
-    };
+    const toolCall = requireToolCall(chunks);
     expect(toolCall).toMatchObject({
       type: "tool-call",
       toolName: "do",
@@ -55,9 +68,15 @@ describe("toolChoiceStream behavior", () => {
     expect(toolCall.toolCallId).toMatch(TOOL_CALL_ID_RE);
 
     // The tool-input lifecycle ids reconcile with the final toolCallId.
-    expect((chunks[1] as { id?: string }).id).toBe(toolCall.toolCallId);
-    expect((chunks[2] as { id?: string }).id).toBe(toolCall.toolCallId);
-    expect((chunks[3] as { id?: string }).id).toBe(toolCall.toolCallId);
+    expect(
+      chunks[1]?.type === "tool-input-start" ? chunks[1].id : undefined
+    ).toBe(toolCall.toolCallId);
+    expect(
+      chunks[2]?.type === "tool-input-delta" ? chunks[2].id : undefined
+    ).toBe(toolCall.toolCallId);
+    expect(
+      chunks[3]?.type === "tool-input-end" ? chunks[3].id : undefined
+    ).toBe(toolCall.toolCallId);
 
     expect(chunks[5]).toMatchObject({
       type: "finish",
@@ -112,9 +131,7 @@ describe("toolChoiceStream behavior", () => {
       toolName: "unknown",
       input: "{}",
     });
-    expect((toolCall as { toolCallId?: string }).toolCallId).toMatch(
-      TOOL_CALL_ID_RE
-    );
+    expect(requireToolCall(chunks).toolCallId).toMatch(TOOL_CALL_ID_RE);
     expect(chunks.at(-1)).toMatchObject({ type: "finish" });
   });
 
@@ -136,11 +153,7 @@ describe("toolChoiceStream behavior", () => {
     });
     await convertReadableStreamToArray(stream);
 
-    expect(onError).toHaveBeenCalledOnce();
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain("constructor");
-    expect(metadataText).not.toContain("polluted");
+    expectRedacted(onError);
   });
 
   it("redacts non-object argument metadata for prototype-sensitive toolChoice args", async () => {
@@ -161,11 +174,7 @@ describe("toolChoiceStream behavior", () => {
     });
     await convertReadableStreamToArray(stream);
 
-    expect(onError).toHaveBeenCalledOnce();
-    const metadataText = JSON.stringify(onError.mock.calls);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain("constructor");
-    expect(metadataText).not.toContain("polluted");
+    expectRedacted(onError);
   });
 
   it("handles empty content by emitting default unknown tool and zeroed usage", async () => {

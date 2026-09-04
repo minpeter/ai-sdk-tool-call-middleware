@@ -27,9 +27,6 @@ import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensiti
 import { shouldBufferToolInputProgress } from "../utils/tool-call-progress-buffering";
 import {
   emitBufferedToolInputProgressDelta,
-  emitFailedBufferedToolInputLifecycle,
-  emitFinalizedBufferedToolInputLifecycle,
-  isPrototypeSensitiveToolCallInputError,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
@@ -44,6 +41,7 @@ import {
   findToolCallsWithFallbacks,
 } from "./morph-xml-tool-call-finder";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
+import { finalizeBufferedToolInput } from "./protocol-stream-shared";
 
 const XML_PROGRESS_TAG_NAME_REGEX = /^[A-Za-z_][\w.:-]*/;
 
@@ -77,7 +75,7 @@ interface ProcessToolCallParams {
   tools: LanguageModelV4FunctionTool[];
 }
 
-export function allowPlainTextBodyFallback(
+function allowPlainTextBodyFallback(
   parseOptions?: MorphXmlParseOptions
 ): boolean {
   return parseOptions?.repair !== false;
@@ -160,55 +158,29 @@ export function handleStreamingToolCallEnd(
     onError: options?.onError ?? parseOptions?.onError,
   };
 
-  flushText(ctrl);
-  try {
-    const parsedResult =
+  const original = `<${currentToolCall.name}>${toolContent}</${currentToolCall.name}>`;
+  finalizeBufferedToolInput({
+    controller: ctrl,
+    emitRawToolCallTextOnError: shouldEmitRawToolCallTextOnError(options),
+    flushText,
+    onMismatch: options?.onError,
+    parseInput: () =>
       (allowPlainTextBodyFallback(parseOptions)
         ? plainTextBodyFallback(toolContent, toolSchema)
-        : null) ?? parse(toolContent, toolSchema, parseConfig);
-    if (!isJSONObject(parsedResult)) {
-      throw new Error("XML tool call arguments must be an object");
-    }
-    const finalInput = stringifyToolInputWithSchema({
-      toolName: currentToolCall.name,
-      args: parsedResult,
-      tools,
-    });
-    emitFinalizedBufferedToolInputLifecycle({
-      bufferedParts: currentToolCall.pendingToolInputParts,
-      controller: ctrl,
-      id: currentToolCall.toolCallId,
-      state: currentToolCall,
-      toolName: currentToolCall.name,
-      finalInput,
-      onMismatch: options?.onError,
-    });
-  } catch (error) {
-    const caughtError =
-      error instanceof Error ? error : new Error(String(error));
-    const original = `<${currentToolCall.name}>${toolContent}</${currentToolCall.name}>`;
-    const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-    emitFailedBufferedToolInputLifecycle({
-      bufferedParts: currentToolCall.pendingToolInputParts,
-      controller: ctrl,
-      id: currentToolCall.toolCallId,
-      emitRawToolCallTextOnError: emitRawFallback,
-      endInputOnError: currentToolCall.hasEmittedStart,
-      hideBufferedInputOnError:
-        isPrototypeSensitiveToolCallInputError(caughtError),
-      rawToolCallText: original,
-      emitRawText: (rawText) => {
-        flushText(ctrl, rawText);
-      },
-    });
-    options?.onError?.("Could not process streaming XML tool call", {
-      toolCall: safeToolCallMetadataText(original),
-      error: safeToolCallMetadataError(caughtError, original),
-      toolName: currentToolCall.name,
-      toolCallId: currentToolCall.toolCallId,
-      dropReason: "malformed-tool-call-body",
-    });
-  }
+        : null) ?? parse(toolContent, toolSchema, parseConfig),
+    rawToolCallText: original,
+    state: currentToolCall,
+    tools,
+    onFailure(caughtError) {
+      options?.onError?.("Could not process streaming XML tool call", {
+        toolCall: safeToolCallMetadataText(original),
+        error: safeToolCallMetadataError(caughtError, original),
+        toolName: currentToolCall.name,
+        toolCallId: currentToolCall.toolCallId,
+        dropReason: "malformed-tool-call-body",
+      });
+    },
+  });
 }
 
 function parseXmlProgressTagName(innerTag: string): string | null {
@@ -356,7 +328,7 @@ const shouldBufferDecisionCache = new WeakMap<
   { fullInput: string; result: boolean; toolContent: string }
 >();
 
-export function shouldBufferMorphToolInputProgressCached(options: {
+function shouldBufferMorphToolInputProgressCached(options: {
   fullInput: string;
   getToolContent: () => string;
   toolCall: StreamingToolCallState;
@@ -382,7 +354,7 @@ export function shouldBufferMorphToolInputProgressCached(options: {
   return result;
 }
 
-export function enqueueMorphToolInputProgressPart(options: {
+function enqueueMorphToolInputProgressPart(options: {
   controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
   fullInput: string;
   getToolContent: () => string;

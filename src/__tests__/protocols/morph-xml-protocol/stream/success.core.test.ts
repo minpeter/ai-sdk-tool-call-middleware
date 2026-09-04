@@ -1,430 +1,228 @@
 import type {
-  JSONObject,
-  JSONValue,
+  JSONSchema7Definition,
   LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  collectTextDeltas,
+  parseToolCallObject,
+  requireToolCall,
+  runProtocolTextStream,
+  selectToolCalls,
+} from "../../shared/duplicate-harness";
+
+function morphTool(
+  name: string,
+  description: string,
+  properties: Record<string, JSONSchema7Definition>
+): LanguageModelV4FunctionTool {
+  return {
+    description,
+    inputSchema: { properties, type: "object" },
+    name,
+    type: "function",
+  };
+}
+
+function runSuccess(
+  chunks: readonly string[],
+  tools: LanguageModelV4FunctionTool[]
+) {
+  return runProtocolTextStream({
+    chunks,
+    id: "morph-success-core",
+    protocol: morphXmlProtocol(),
+    tools,
+  });
+}
+
+function expectHidden(text: string, tags: readonly string[]): void {
+  for (const tag of tags) {
+    expect(text).not.toContain(tag);
+  }
+}
+
+const weatherTool = morphTool("get_weather", "Get weather for a city", {
+  city: { type: "string" },
+});
 
 describe("morphXmlProtocol streaming success core path", () => {
   it("parses <tool>...</tool> into tool-call and flushes pending text", async () => {
-    const protocol = morphXmlProtocol();
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "calc",
-        description: "",
-        inputSchema: { type: "object" },
-      },
-    ];
-    const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "pre " });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta: "<calc><a>1</a><b> 2 </b></calc>",
-        });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: " post" });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+    const out = await runSuccess(
+      ["pre ", "<calc><a>1</a><b> 2 </b></calc>", " post"],
+      [
+        {
+          type: "function",
+          name: "calc",
+          description: "",
+          inputSchema: { type: "object" },
+        },
+      ]
     );
-    const tool = out.find((c) => c.type === "tool-call");
-    const text = out
-      .filter((c) => c.type === "text-delta")
-      .map((c) => c.delta)
-      .join("");
-
-    expect(tool?.toolName).toBe("calc");
-    if (tool?.type !== "tool-call") {
-      throw new TypeError("Expected tool-call part");
-    }
-    const parsed: JSONValue = JSON.parse(tool.input);
-    expect(parsed).toEqual({ a: 1, b: 2 }); // In the case of XML, type casting should automatically convert to numbers.
+    const tool = requireToolCall(out);
+    const text = collectTextDeltas(out);
+    expect(tool.toolName).toBe("calc");
+    expect(parseToolCallObject(tool)).toEqual({ a: 1, b: 2 });
     expect(text).toContain("pre ");
     expect(text).toContain(" post");
-    // ensure text-end is emitted eventually
-    expect(out.some((c) => c.type === "text-end")).toBe(true);
+    expect(out.some((part) => part.type === "text-end")).toBe(true);
   });
 
   it("does not expose nested XML tags in text output", async () => {
-    const protocol = morphXmlProtocol();
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "get_weather",
-        description: "Get weather for a city",
-        inputSchema: {
-          type: "object",
-          properties: {
-            city: { type: "string" },
-          },
-        },
-      },
-    ];
-    const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta: "Let me check the weather.\n\n",
-        });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta: "<get_weather>\n  <city>New York</city>\n</get_weather>",
-        });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta: "\n\nThe weather looks good!",
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+    const out = await runSuccess(
+      [
+        "Let me check the weather.\n\n",
+        "<get_weather>\n  <city>New York</city>\n</get_weather>",
+        "\n\nThe weather looks good!",
+      ],
+      [weatherTool]
     );
-    const tool = out.find((c) => c.type === "tool-call");
-    const textParts = out
-      .filter((c) => c.type === "text-delta")
-      .map((c) => c.delta);
-    const fullText = textParts.join("");
-
-    // Verify tool call was parsed correctly
-    expect(tool?.toolName).toBe("get_weather");
-    if (tool?.type !== "tool-call") {
-      throw new TypeError("Expected tool-call part");
-    }
-    const parsed: JSONValue = JSON.parse(tool.input);
-    expect(parsed).toEqual({ city: "New York" });
-
-    // Verify nested XML tags are NOT in the output text
-    expect(fullText).not.toContain("<city>");
-    expect(fullText).not.toContain("</city>");
-    expect(fullText).not.toContain("<get_weather>");
-    expect(fullText).not.toContain("</get_weather>");
-
-    // Verify only the surrounding text is present
+    const tool = requireToolCall(out);
+    const fullText = collectTextDeltas(out);
+    expect(tool.toolName).toBe("get_weather");
+    expect(parseToolCallObject(tool)).toEqual({ city: "New York" });
+    expectHidden(fullText, [
+      "<city>",
+      "</city>",
+      "<get_weather>",
+      "</get_weather>",
+    ]);
     expect(fullText).toContain("Let me check the weather.");
     expect(fullText).toContain("The weather looks good!");
   });
 
   it("handles multiple consecutive tool calls without exposing XML tags", async () => {
-    const protocol = morphXmlProtocol();
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "get_location",
-        description: "Get user location",
-        inputSchema: { type: "object", properties: {} },
-      },
-      {
-        type: "function",
-        name: "get_weather",
-        description: "Get weather for a city",
-        inputSchema: {
-          type: "object",
-          properties: { city: { type: "string" } },
-        },
-      },
-    ];
-    const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "First, " });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta: "<get_location></get_location>",
-        });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: " then " });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta: "<get_weather>\n  <city>Tokyo</city>\n</get_weather>",
-        });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: " done!" });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+    const locationTool = morphTool("get_location", "Get user location", {});
+    const out = await runSuccess(
+      [
+        "First, ",
+        "<get_location></get_location>",
+        " then ",
+        "<get_weather>\n  <city>Tokyo</city>\n</get_weather>",
+        " done!",
+      ],
+      [locationTool, weatherTool]
     );
-    const toolCalls = out.filter((c) => c.type === "tool-call");
-    const textParts = out
-      .filter((c) => c.type === "text-delta")
-      .map((c) => c.delta);
-    const fullText = textParts.join("");
-
-    // Verify both tool calls were parsed
+    const toolCalls = selectToolCalls(out);
+    const fullText = collectTextDeltas(out);
     expect(toolCalls).toHaveLength(2);
-    const [locationCall, weatherCall] = toolCalls;
-    if (
-      locationCall?.type !== "tool-call" ||
-      weatherCall?.type !== "tool-call"
-    ) {
-      throw new TypeError("Expected two tool-call parts");
-    }
-    expect(locationCall.toolName).toBe("get_location");
-    expect(weatherCall.toolName).toBe("get_weather");
-
-    // Verify no XML tags in output
-    expect(fullText).not.toContain("<get_location>");
-    expect(fullText).not.toContain("</get_location>");
-    expect(fullText).not.toContain("<get_weather>");
-    expect(fullText).not.toContain("</get_weather>");
-    expect(fullText).not.toContain("<city>");
-    expect(fullText).not.toContain("</city>");
-
-    // Verify only surrounding text
+    expect(toolCalls[0]?.toolName).toBe("get_location");
+    expect(toolCalls[1]?.toolName).toBe("get_weather");
+    expectHidden(fullText, [
+      "<get_location>",
+      "</get_location>",
+      "<get_weather>",
+      "</get_weather>",
+      "<city>",
+      "</city>",
+    ]);
     expect(fullText).toContain("First,");
     expect(fullText).toContain(" then ");
     expect(fullText).toContain(" done!");
   });
 
   it("handles deeply nested XML parameters without exposing internal tags", async () => {
-    const protocol = morphXmlProtocol();
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "send_email",
-        description: "Send an email",
-        inputSchema: {
-          type: "object",
-          properties: {
-            to: { type: "string" },
-            subject: { type: "string" },
-            body: { type: "string" },
-          },
-        },
-      },
-    ];
-    const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta: "Sending email:\n",
-        });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta:
-            "<send_email>\n  <to>user@example.com</to>\n  <subject>Hello World</subject>\n  <body>This is a test message.</body>\n</send_email>",
-        });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "\nEmail sent!" });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
+    const emailTool = morphTool("send_email", "Send an email", {
+      to: { type: "string" },
+      subject: { type: "string" },
+      body: { type: "string" },
     });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+    const out = await runSuccess(
+      [
+        "Sending email:\n",
+        "<send_email>\n  <to>user@example.com</to>\n  <subject>Hello World</subject>\n  <body>This is a test message.</body>\n</send_email>",
+        "\nEmail sent!",
+      ],
+      [emailTool]
     );
-    const tool = out.find((c) => c.type === "tool-call");
-    const textParts = out
-      .filter((c) => c.type === "text-delta")
-      .map((c) => c.delta);
-    const fullText = textParts.join("");
-
-    // Verify tool call parsed correctly
-    expect(tool?.toolName).toBe("send_email");
-    if (tool?.type !== "tool-call") {
-      throw new TypeError("Expected tool-call part");
-    }
-    const parsed: JSONValue = JSON.parse(tool.input);
-    expect(parsed).toEqual({
+    const tool = requireToolCall(out);
+    const fullText = collectTextDeltas(out);
+    expect(tool.toolName).toBe("send_email");
+    expect(parseToolCallObject(tool)).toEqual({
       to: "user@example.com",
       subject: "Hello World",
       body: "This is a test message.",
     });
-
-    // Verify no XML tags in output
-    expect(fullText).not.toContain("<send_email>");
-    expect(fullText).not.toContain("</send_email>");
-    expect(fullText).not.toContain("<to>");
-    expect(fullText).not.toContain("<subject>");
-    expect(fullText).not.toContain("<body>");
-
-    // Verify only surrounding text
+    expectHidden(fullText, [
+      "<send_email>",
+      "</send_email>",
+      "<to>",
+      "<subject>",
+      "<body>",
+    ]);
     expect(fullText).toContain("Sending email:");
     expect(fullText).toContain("Email sent!");
   });
 
   it("handles tool call split across multiple chunks without exposing tags", async () => {
-    const protocol = morphXmlProtocol();
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "calculate",
-        description: "Perform calculation",
-        inputSchema: {
-          type: "object",
-          properties: {
-            operation: { type: "string" },
-            x: { type: "number" },
-            y: { type: "number" },
-          },
-        },
-      },
-    ];
-    const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "Computing: " });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "<calculate>\n" });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "  <operation>" });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "add" });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "</operation>\n" });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "  <x>10</x>\n" });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "  <y>20</y>\n" });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "</calculate>" });
-        ctrl.enqueue({ type: "text-delta", id: "t", delta: "\nResult ready!" });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
+    const calculateTool = morphTool("calculate", "Perform calculation", {
+      operation: { type: "string" },
+      x: { type: "number" },
+      y: { type: "number" },
     });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+    const out = await runSuccess(
+      [
+        "Computing: ",
+        "<calculate>\n",
+        "  <operation>",
+        "add",
+        "</operation>\n",
+        "  <x>10</x>\n",
+        "  <y>20</y>\n",
+        "</calculate>",
+        "\nResult ready!",
+      ],
+      [calculateTool]
     );
-    const tool = out.find((c) => c.type === "tool-call");
-    const textParts = out
-      .filter((c) => c.type === "text-delta")
-      .map((c) => c.delta);
-    const fullText = textParts.join("");
-
-    // Verify tool call parsed correctly
-    expect(tool?.toolName).toBe("calculate");
-    if (tool?.type !== "tool-call") {
-      throw new TypeError("Expected tool-call part");
-    }
-    const parsed: JSONValue = JSON.parse(tool.input);
-    expect(parsed).toEqual({ operation: "add", x: 10, y: 20 });
-
-    // Verify no XML tags in output
-    expect(fullText).not.toContain("<calculate>");
-    expect(fullText).not.toContain("</calculate>");
-    expect(fullText).not.toContain("<operation>");
-    expect(fullText).not.toContain("<x>");
-    expect(fullText).not.toContain("<y>");
-
-    // Verify only surrounding text
+    const tool = requireToolCall(out);
+    const fullText = collectTextDeltas(out);
+    expect(tool.toolName).toBe("calculate");
+    expect(parseToolCallObject(tool)).toEqual({
+      operation: "add",
+      x: 10,
+      y: 20,
+    });
+    expectHidden(fullText, [
+      "<calculate>",
+      "</calculate>",
+      "<operation>",
+      "<x>",
+      "<y>",
+    ]);
     expect(fullText).toContain("Computing:");
     expect(fullText).toContain("Result ready!");
   });
 
   it("handles array parameters with repeated tags without exposing internal XML", async () => {
-    const protocol = morphXmlProtocol();
-    const tools: LanguageModelV4FunctionTool[] = [
+    const messagesTool = morphTool(
+      "send_messages",
+      "Send messages to multiple recipients",
       {
-        type: "function",
-        name: "send_messages",
-        description: "Send messages to multiple recipients",
-        inputSchema: {
-          type: "object",
-          properties: {
-            recipient: { type: "array", items: { type: "string" } },
-            message: { type: "string" },
-          },
-        },
-      },
-    ];
-    const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta: "Sending to all:\n",
-        });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta:
-            "<send_messages>\n  <recipient>alice@example.com</recipient>\n  <recipient>bob@example.com</recipient>\n  <message>Hello!</message>\n</send_messages>",
-        });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "t",
-          delta: "\nMessages sent!",
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+        recipient: { type: "array", items: { type: "string" } },
+        message: { type: "string" },
+      }
     );
-    const tool = out.find((c) => c.type === "tool-call");
-    const textParts = out
-      .filter((c) => c.type === "text-delta")
-      .map((c) => c.delta);
-    const fullText = textParts.join("");
-
-    // Verify tool call parsed correctly
-    expect(tool?.toolName).toBe("send_messages");
-    if (tool?.type !== "tool-call") {
-      throw new TypeError("Expected tool-call part");
-    }
-    const parsed: JSONObject = JSON.parse(tool.input);
-    expect(parsed.recipient).toEqual(["alice@example.com", "bob@example.com"]);
-    expect(parsed.message).toBe("Hello!");
-
-    // Verify no XML tags in output
-    expect(fullText).not.toContain("<send_messages>");
-    expect(fullText).not.toContain("</send_messages>");
-    expect(fullText).not.toContain("<recipient>");
-    expect(fullText).not.toContain("</recipient>");
-    expect(fullText).not.toContain("<message>");
-    expect(fullText).not.toContain("</message>");
-
-    // Verify only surrounding text
+    const out = await runSuccess(
+      [
+        "Sending to all:\n",
+        "<send_messages>\n  <recipient>alice@example.com</recipient>\n  <recipient>bob@example.com</recipient>\n  <message>Hello!</message>\n</send_messages>",
+        "\nMessages sent!",
+      ],
+      [messagesTool]
+    );
+    const args = parseToolCallObject(requireToolCall(out));
+    const fullText = collectTextDeltas(out);
+    expect(args.recipient).toEqual(["alice@example.com", "bob@example.com"]);
+    expect(args.message).toBe("Hello!");
+    expectHidden(fullText, [
+      "<send_messages>",
+      "</send_messages>",
+      "<recipient>",
+      "</recipient>",
+      "<message>",
+      "</message>",
+    ]);
     expect(fullText).toContain("Sending to all:");
     expect(fullText).toContain("Messages sent!");
   });

@@ -1,10 +1,11 @@
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 
 describe("createToolMiddleware lifecycle", () => {
-  const mockToolSystemPromptTemplate = (tools: unknown[]) =>
+  const mockToolSystemPromptTemplate = (tools: LanguageModelV4FunctionTool[]) =>
     `You have tools: ${JSON.stringify(tools)}`;
 
   it("creates middleware with required v3 hooks", () => {

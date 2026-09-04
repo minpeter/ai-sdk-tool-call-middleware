@@ -1,4 +1,5 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
+import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveGlm5ProtocolOptions } from "../../../core/protocols/glm5-call-parsing";
 import { glm5Protocol } from "../../../core/protocols/glm5-protocol";
@@ -36,17 +37,7 @@ async function runParser(
   partsBeforeFinish: readonly LanguageModelV4StreamPart[] = []
 ): Promise<LanguageModelV4StreamPart[]> {
   const writer = parser.writable.getWriter();
-  const reader = parser.readable.getReader();
-  const parts: LanguageModelV4StreamPart[] = [];
-  const collect = (async () => {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) {
-        return;
-      }
-      parts.push(result.value);
-    }
-  })();
+  const collected = convertReadableStreamToArray(parser.readable);
   for (const chunk of chunks) {
     await writer.write(
       typeof chunk === "string"
@@ -63,8 +54,13 @@ async function runParser(
     usage: zeroUsage,
   });
   await writer.close();
-  await collect;
-  return parts;
+  return collected;
+}
+
+function assertDiscardedStream(parts: LanguageModelV4StreamPart[]): void {
+  expect(normalizeStreamToolCalls(parts)).toEqual([]);
+  expect(extractTextDeltas(parts)).toBe("");
+  expect(parts.at(-1)?.type).toBe("finish");
 }
 
 beforeEach(() => {
@@ -159,9 +155,7 @@ describe("GLM-5 stream work bounds", () => {
       ]
     );
 
-    expect(normalizeStreamToolCalls(streamed)).toEqual([]);
-    expect(extractTextDeltas(streamed)).toBe("");
-    expect(streamed.at(-1)?.type).toBe("finish");
+    assertDiscardedStream(streamed);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({

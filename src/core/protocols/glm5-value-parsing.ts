@@ -6,6 +6,7 @@ import {
   type JSONValue,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
+import type { ParseOptionsWithoutReviver } from "../../rjson/parser-types";
 import {
   coerceBySchema,
   getSchemaType,
@@ -27,11 +28,11 @@ const PROTOTYPE_REFERENCE_SEGMENT_RE =
   /(?:^|\.)(?:__proto__|constructor|prototype)(?=$|[.(])/;
 type Glm5Schema = JSONSchema7 | undefined;
 
-const STRICT_JSON_OPTIONS = {
+const STRICT_JSON_OPTIONS: ParseOptionsWithoutReviver = {
   duplicate: false,
   relaxed: false,
   tolerant: false,
-} as const;
+};
 
 function isExplicitlyOpenObjectSchema(schema: Glm5Schema): boolean {
   const unwrapped = unwrapJsonSchema(schema);
@@ -90,9 +91,6 @@ export function isIncrementallyStreamableGlm5StringSchema(
   if (!unwrapped || typeof unwrapped !== "object" || Array.isArray(unwrapped)) {
     return true;
   }
-  if (!isJSONObject(unwrapped)) {
-    return true;
-  }
   return !(Object.hasOwn(unwrapped, "const") || Array.isArray(unwrapped.enum));
 }
 
@@ -108,10 +106,6 @@ export function safeAssignGlm5Arg(
   }
   if (Object.hasOwn(args, key)) {
     recoveries.push("rejected-duplicate-key");
-    return false;
-  }
-  if (!isJSONValue(value)) {
-    recoveries.push("rejected-non-json-value");
     return false;
   }
   if (hasPrototypeSensitiveStructuralKey(value)) {
@@ -130,15 +124,28 @@ type ParsedGlm5Value =
     }
   | { ok: false };
 
+function acceptCoercedGlm5Value(
+  value: string,
+  propertySchema: Glm5Schema
+): ParsedGlm5Value {
+  const coerced = coerceBySchema(value, propertySchema);
+  if (!isJSONValue(coerced)) {
+    return { ok: false };
+  }
+  return toolCallInputHasSchemaAwarePrototypeSensitiveValue(
+    coerced,
+    propertySchema
+  )
+    ? { ok: false }
+    : { ok: true, value: coerced };
+}
+
 function parseStructuredGlm5Value(
   value: string,
   propertySchema: Glm5Schema
 ): ParsedGlm5Value {
   try {
     const parsed = parseRJSON(value, STRICT_JSON_OPTIONS);
-    if (!isJSONValue(parsed)) {
-      return { ok: false };
-    }
     const coerced = coerceBySchema(parsed, propertySchema);
     if (!isJSONValue(coerced)) {
       return { ok: false };
@@ -167,16 +174,7 @@ export function parseCompletedGlm5Value(
   });
   const schemaType = getSchemaType(propertySchema);
   if (schemaType === "string") {
-    const value = coerceBySchema(normalized, propertySchema);
-    if (!isJSONValue(value)) {
-      return { ok: false };
-    }
-    return toolCallInputHasSchemaAwarePrototypeSensitiveValue(
-      value,
-      propertySchema
-    )
-      ? { ok: false }
-      : { ok: true, value };
+    return acceptCoercedGlm5Value(normalized, propertySchema);
   }
   if (
     schemaType === "array" ||
@@ -210,14 +208,5 @@ export function parseCompletedGlm5Value(
   ) {
     return parseStructuredGlm5Value(trimmed, propertySchema);
   }
-  const value = coerceBySchema(normalized, propertySchema);
-  if (!isJSONValue(value)) {
-    return { ok: false };
-  }
-  return toolCallInputHasSchemaAwarePrototypeSensitiveValue(
-    value,
-    propertySchema
-  )
-    ? { ok: false }
-    : { ok: true, value };
+  return acceptCoercedGlm5Value(normalized, propertySchema);
 }

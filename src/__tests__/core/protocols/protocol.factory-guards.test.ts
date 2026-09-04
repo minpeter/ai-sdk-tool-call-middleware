@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { TCMCoreProtocol } from "../../../core/protocols/protocol-interface";
+import { isTCMProtocolFactory } from "../../../core/protocols/compat-aliases";
 import {
   isProtocolFactory,
-  isTCMProtocolFactory,
+  type TCMCoreProtocol,
 } from "../../../core/protocols/protocol-interface";
 
 describe("utils/protocol - isTCMProtocolFactory", () => {

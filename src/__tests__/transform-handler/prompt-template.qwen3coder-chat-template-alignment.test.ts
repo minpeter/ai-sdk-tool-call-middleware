@@ -1,3 +1,4 @@
+import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 import {
   formatToolResponseAsQwen3CoderXml,
@@ -11,24 +12,7 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-// Regex constants for performance
-const _REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
-const _REGEX_TOOL_CALL_FENCE = /```tool_call/;
-const _REGEX_TOOL_RESPONSE_FENCE = /```tool_response/;
-const _REGEX_GET_WEATHER = /get_weather/;
-const _REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
-const _REGEX_MAY_CALL_FUNCTIONS = /You may call one or more functions/;
-const _REGEX_TOOLS_TAG = /<tools>/;
-const _REGEX_NONE = /none/;
-const _REGEX_NOT_FOUND = /not found/;
-const _REGEX_PROVIDER_DEFINED = /Provider-defined tools/;
-const _REGEX_REQUIRED_NO_TOOLS =
-  /Tool choice type 'required' is set, but no tools are provided/;
-const _REGEX_REQUIRED_NO_FUNCTION_TOOLS = /no function tools are provided/;
-const _REGEX_TOOL_CALL_TAG = /<tool_call>/;
-const _REGEX_TOOL_RESPONSE_TAG = /<tool_response>/;
-const _REGEX_GET_WEATHER_TAG = /<get_weather>/;
-const _REGEX_TOOL_CALL_WORD = /tool_call/;
+const model = new MockLanguageModelV4();
 
 describe("qwen3coder chat-template alignment via existing transform pipeline", () => {
   it("keeps existing system text first, renders tools section, converts assistant tool-call markup, and maps tool messages to user <tool_response>", async () => {
@@ -41,6 +25,8 @@ describe("qwen3coder chat-template alignment via existing transform pipeline", (
     const transformParams = requireTransformParams(mw.transformParams);
 
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           { role: "system", content: "Follow policy." },
@@ -92,7 +78,7 @@ describe("qwen3coder chat-template alignment via existing transform pipeline", (
           },
         ],
       },
-    } as any);
+    });
 
     const system = out.prompt.find((m) => m.role === "system");
     if (!system) {
@@ -104,9 +90,7 @@ describe("qwen3coder chat-template alignment via existing transform pipeline", (
     expect(systemText).toContain("<function>");
     expect(systemText).toContain("<name>get_weather</name>");
 
-    const assistant = out.prompt.find((m) => m.role === "assistant") as
-      | { content: Array<{ type: string; text?: string }> }
-      | undefined;
+    const assistant = out.prompt.find((m) => m.role === "assistant");
     if (!assistant) {
       throw new Error("assistant message not found");
     }
@@ -122,9 +106,7 @@ describe("qwen3coder chat-template alignment via existing transform pipeline", (
     expect(assistantText).toContain('<parameter="days">3</parameter>');
     expect(assistantText).toContain('<parameter="strict">False</parameter>');
 
-    const user = out.prompt.find((m) => m.role === "user") as
-      | { content: Array<{ type: string; text?: string }> }
-      | undefined;
+    const user = out.prompt.find((m) => m.role === "user");
     if (!user) {
       throw new Error("user message not found");
     }

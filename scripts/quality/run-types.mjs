@@ -1,9 +1,16 @@
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const require = createRequire(import.meta.url);
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
-const astGrepPath = fileURLToPath(
-  new URL("../../node_modules/.bin/ast-grep", import.meta.url)
+const astGrepPackageRoot = dirname(
+  require.resolve("@ast-grep/cli/package.json")
+);
+const astGrepPath = join(
+  astGrepPackageRoot,
+  process.platform === "win32" ? "ast-grep.exe" : "ast-grep"
 );
 
 const result = spawnSync(

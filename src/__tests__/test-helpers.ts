@@ -1,14 +1,14 @@
-import type {
-  LanguageModelV4FinishReason,
-  LanguageModelV4Middleware,
-  LanguageModelV4StreamPart,
-  LanguageModelV4Usage,
+import {
+  isJSONObject,
+  type JSONObject,
+  type JSONValue,
+  type LanguageModelV4FinishReason,
+  type LanguageModelV4Middleware,
+  type LanguageModelV4StreamPart,
+  type LanguageModelV4Usage,
 } from "@ai-sdk/provider";
 
-/**
- * Helper to pipe a ReadableStream through a transformer with relaxed types.
- * Needed because tests create LanguageModelV4StreamPart streams.
- */
+/** Pipe test model streams through protocol transformers. */
 export function pipeWithTransformer(
   stream: ReadableStream<LanguageModelV4StreamPart>,
   transformer: TransformStream<
@@ -16,7 +16,7 @@ export function pipeWithTransformer(
     LanguageModelV4StreamPart
   >
 ): ReadableStream<LanguageModelV4StreamPart> {
-  return stream.pipeThrough(transformer as unknown as TransformStream);
+  return stream.pipeThrough(transformer);
 }
 
 export function mockUsage(
@@ -53,6 +53,12 @@ export function mockFinishReason(
 export const zeroUsage = mockUsage(0, 0);
 
 export const stopFinishReason = mockFinishReason("stop");
+
+export function isStrictJSONObject(
+  value: JSONValue | undefined
+): value is JSONObject {
+  return isJSONObject(value) && !Array.isArray(value);
+}
 
 export function createChunkedStream(
   input: string | string[],

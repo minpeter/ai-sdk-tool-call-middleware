@@ -260,27 +260,31 @@ function isPrimitiveMatchForSchemaType(
   return typeof value === "boolean";
 }
 
+function coercePrimitiveSingleton(
+  value: { readonly [key: string]: RxmlValue },
+  schemaType: "string" | "number" | "integer" | "boolean",
+  schema: ToolInputSchemaDefinition | undefined
+): RxmlValue {
+  const keys = Object.keys(value);
+  if (keys.length !== 1) {
+    return null;
+  }
+  const singleValue = value[keys[0]];
+  if (singleValue && typeof singleValue === "object") {
+    return null;
+  }
+  const coerced = coerceBySchema(singleValue, schema);
+  return isPrimitiveMatchForSchemaType(coerced, schemaType) ? coerced : null;
+}
+
 function coercePrimitiveWrappedObject(
   value: { readonly [key: string]: RxmlValue },
   itemsSchema: ToolInputSchemaDefinition | undefined
 ): RxmlValue {
   const schemaType = getSchemaType(itemsSchema);
-  if (!isPrimitiveSchemaType(schemaType)) {
-    return null;
-  }
-
-  const keys = Object.keys(value);
-  if (keys.length !== 1) {
-    return null;
-  }
-
-  const singleValue = value[keys[0]];
-  if (singleValue && typeof singleValue === "object") {
-    return null;
-  }
-
-  const coerced = coerceBySchema(singleValue, itemsSchema);
-  return isPrimitiveMatchForSchemaType(coerced, schemaType) ? coerced : null;
+  return isPrimitiveSchemaType(schemaType)
+    ? coercePrimitiveSingleton(value, schemaType, itemsSchema)
+    : null;
 }
 
 /**
@@ -586,18 +590,7 @@ function coerceObjectToPrimitive(
   schemaType: "string" | "number" | "integer" | "boolean",
   fullSchema: ToolInputSchema
 ): RxmlValue {
-  const keys = Object.keys(value);
-  if (keys.length !== 1) {
-    return null;
-  }
-
-  const singleValue = value[keys[0]];
-  if (singleValue && typeof singleValue === "object") {
-    return null;
-  }
-
-  const coerced = coerceBySchema(singleValue, fullSchema);
-  return isPrimitiveMatchForSchemaType(coerced, schemaType) ? coerced : null;
+  return coercePrimitiveSingleton(value, schemaType, fullSchema);
 }
 
 function coerceStringValue(

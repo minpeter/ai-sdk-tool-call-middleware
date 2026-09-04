@@ -28,10 +28,11 @@ describe("toolChoiceStream compat", () => {
       usage: mockUsage(1, 1),
     });
 
-    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
-    const chunks = await convertReadableStreamToArray(stream);
+    const generatedStream = await toolChoiceStream({ doGenerate, tools: [] });
+    const chunks = await convertReadableStreamToArray(generatedStream.stream);
+    const finish = chunks.at(-1);
 
-    expect(chunks.at(-1)).toMatchObject({
+    expect(finish).toMatchObject({
       type: "finish",
       finishReason: {
         unified: "tool-calls",
@@ -46,8 +47,8 @@ describe("toolChoiceStream compat", () => {
       usage: { inputTokens: 7, outputTokens: 11 },
     });
 
-    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
-    const chunks = await convertReadableStreamToArray(stream);
+    const generatedStream = await toolChoiceStream({ doGenerate, tools: [] });
+    const chunks = await convertReadableStreamToArray(generatedStream.stream);
 
     expect(chunks.at(-1)).toMatchObject({
       type: "finish",

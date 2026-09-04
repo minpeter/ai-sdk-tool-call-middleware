@@ -67,7 +67,7 @@ function logDebugSummary(
  */
 function appendDroppedProviderToolWarnings(
   warnings: SharedV4Warning[] | undefined,
-  providerOptions: unknown
+  providerOptions: ToolCallMiddlewareProviderOptions | undefined
 ): SharedV4Warning[] {
   const dropped = getDroppedProviderTools(providerOptions);
   if (dropped.length === 0) {
@@ -201,7 +201,8 @@ function parseTextContent(options: {
     // that already-materialized callable is an exact built-in parser closure.
     evaluatedParser = protocol.parseGeneratedText;
     evaluatedText = contentItem.text;
-    const fastPaths = (parserOptions as Record<string, unknown>).debugSummary
+    const debugSummary = providerOptions?.toolCallMiddleware?.debugSummary;
+    const fastPaths = debugSummary
       ? undefined
       : glm5FastPathsForParser(evaluatedParser);
     if (

@@ -26,6 +26,56 @@ const tools = [
   },
 ] satisfies LanguageModelV4FunctionTool[];
 
+function numericLexemeTool(
+  additionalProperties?: false
+): LanguageModelV4FunctionTool {
+  return {
+    type: "function",
+    name: "record_numbers",
+    inputSchema: {
+      type: "object",
+      properties: {
+        unsafeInteger: { type: "integer" },
+        decimal: { type: "number" },
+        negativeZero: { type: "number" },
+        exponent: { type: "number" },
+      },
+      additionalProperties,
+    },
+  };
+}
+
+const recordTool: LanguageModelV4FunctionTool = {
+  type: "function",
+  name: "record",
+  inputSchema: {
+    type: "object",
+    properties: {
+      value: { type: "integer" },
+      label: { type: "string" },
+    },
+    required: ["value", "label"],
+    additionalProperties: false,
+  },
+};
+
+const recordRepairCases: readonly {
+  readonly expectedInput: string;
+  readonly name: string;
+  readonly text: string;
+}[] = [
+  {
+    name: "preserves escaped quotes in single-quoted relaxed JSON",
+    text: `<tool_call>{'name':'record','arguments':{'value':9007199254740993,'label':'O\\'Brien said "hi"'}}}</tool_call>`,
+    expectedInput: `{"value":9007199254740993,"label":"O'Brien said \\"hi\\""}`,
+  },
+  {
+    name: "preserves numeric lexemes while repairing invalid escapes",
+    text: String.raw`<tool_call>{"name":"record","arguments":{"value":9007199254740993,"label":"cost \$5"}}</tool_call>`,
+    expectedInput: '{"value":9007199254740993,"label":"cost $5"}',
+  },
+];
+
 function runStream(
   chunks: string[],
   streamTools: LanguageModelV4FunctionTool[] = tools
@@ -76,22 +126,7 @@ describe("kExaone236BProtocol", () => {
   });
 
   it("preserves numeric argument lexemes in generated and streamed calls", async () => {
-    const numericTools = [
-      {
-        type: "function",
-        name: "record_numbers",
-        inputSchema: {
-          type: "object",
-          properties: {
-            unsafeInteger: { type: "integer" },
-            decimal: { type: "number" },
-            negativeZero: { type: "number" },
-            exponent: { type: "number" },
-          },
-          additionalProperties: false,
-        },
-      },
-    ] satisfies LanguageModelV4FunctionTool[];
+    const numericTools = [numericLexemeTool(false)];
     const call =
       '<tool_call>{"name":"record_numbers","arguments":{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07,"ignored":9.0}}</tool_call>';
     const expectedInput =
@@ -173,65 +208,20 @@ describe("kExaone236BProtocol", () => {
     );
   });
 
-  it("preserves escaped quotes in single-quoted relaxed JSON", () => {
-    const quotedTools = [
-      {
-        type: "function",
-        name: "record",
-        inputSchema: {
-          type: "object",
-          properties: {
-            value: { type: "integer" },
-            label: { type: "string" },
-          },
-          required: ["value", "label"],
-          additionalProperties: false,
-        },
-      },
-    ] satisfies LanguageModelV4FunctionTool[];
-
-    const content = kExaone236BProtocol().parseGeneratedText({
-      text: `<tool_call>{'name':'record','arguments':{'value':9007199254740993,'label':'O\\'Brien said "hi"'}}}</tool_call>`,
-      tools: quotedTools,
+  for (const scenario of recordRepairCases) {
+    it(scenario.name, () => {
+      const content = kExaone236BProtocol().parseGeneratedText({
+        text: scenario.text,
+        tools: [recordTool],
+      });
+      expect(content).toContainEqual(
+        expect.objectContaining({
+          type: "tool-call",
+          input: scenario.expectedInput,
+        })
+      );
     });
-
-    expect(content).toContainEqual(
-      expect.objectContaining({
-        type: "tool-call",
-        input: `{"value":9007199254740993,"label":"O'Brien said \\"hi\\""}`,
-      })
-    );
-  });
-
-  it("preserves numeric lexemes while repairing invalid escapes", () => {
-    const escapedTools = [
-      {
-        type: "function",
-        name: "record",
-        inputSchema: {
-          type: "object",
-          properties: {
-            value: { type: "integer" },
-            label: { type: "string" },
-          },
-          required: ["value", "label"],
-          additionalProperties: false,
-        },
-      },
-    ] satisfies LanguageModelV4FunctionTool[];
-
-    const content = kExaone236BProtocol().parseGeneratedText({
-      text: String.raw`<tool_call>{"name":"record","arguments":{"value":9007199254740993,"label":"cost \$5"}}</tool_call>`,
-      tools: escapedTools,
-    });
-
-    expect(content).toContainEqual(
-      expect.objectContaining({
-        type: "tool-call",
-        input: '{"value":9007199254740993,"label":"cost $5"}',
-      })
-    );
-  });
+  }
 
   it.each([
     [
@@ -283,21 +273,7 @@ describe("kExaone236BProtocol", () => {
       '<tool_call>{"name":"record_numbers","arguments":{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07}}',
     ],
   ])("preserves numeric lexemes through %s", async (name, text) => {
-    const numericTools = [
-      {
-        type: "function",
-        name: "record_numbers",
-        inputSchema: {
-          type: "object",
-          properties: {
-            unsafeInteger: { type: "integer" },
-            decimal: { type: "number" },
-            negativeZero: { type: "number" },
-            exponent: { type: "number" },
-          },
-        },
-      },
-    ] satisfies LanguageModelV4FunctionTool[];
+    const numericTools = [numericLexemeTool()];
     const expectedInput =
       '{"unsafeInteger":9007199254740993,"decimal":1.0,"negativeZero":-0.0,"exponent":1e-07}';
 

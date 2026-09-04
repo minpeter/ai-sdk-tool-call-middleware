@@ -3,6 +3,26 @@ import { z } from "zod";
 
 import { parse } from "../../../rxml/parse";
 
+const htmlFileSchema = z.toJSONSchema(
+  z.object({
+    path: z.string(),
+    content: z.string(),
+  })
+);
+
+interface HtmlFile {
+  readonly content: string;
+  readonly path: string;
+}
+
+function parseHtmlFile(xml: string): HtmlFile {
+  const { path, content } = parse(xml, htmlFileSchema);
+  if (typeof path !== "string" || typeof content !== "string") {
+    throw new TypeError("Expected string path and HTML content");
+  }
+  return { path, content };
+}
+
 describe("html related", () => {
   it("preserves raw HTML doctype content inside string-typed field", () => {
     const xml = `
@@ -26,14 +46,7 @@ describe("html related", () => {
 </file_write>
 `;
 
-    const schema = z.toJSONSchema(
-      z.object({
-        path: z.string(),
-        content: z.string(),
-      })
-    );
-
-    const result = parse(xml, schema) as { path: string; content: string };
+    const result = parseHtmlFile(xml);
 
     expect(result.path.trim()).toBe("test.html");
     expect(result.content).toContain("<!DOCTYPE html>");
@@ -53,14 +66,7 @@ describe("html related", () => {
 &lt;/html&gt;</content></file_write>
 `;
 
-    const schema = z.toJSONSchema(
-      z.object({
-        path: z.string(),
-        content: z.string(),
-      })
-    );
-
-    const result = parse(xml, schema) as { path: string; content: string };
+    const result = parseHtmlFile(xml);
 
     expect(result.path).toBe("test.html");
     expect(result.content).toContain("<!DOCTYPE html>");

@@ -2,6 +2,10 @@ import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import { emptyFunctionTools } from "../../../fixtures/function-tools";
+import {
+  collectTextDeltas,
+  selectToolCalls,
+} from "../../shared/duplicate-harness";
 
 // Regression tests for streaming latency: text containing tag-like substrings
 // such as `<callback>` or `<toolbar>` must not be withheld until finish.
@@ -42,10 +46,7 @@ describe("qwen3CoderProtocol stream text flushing", () => {
       3
     );
 
-    const text = out
-      .filter((p) => p.type === "text-delta")
-      .map((p) => (p as { delta: string }).delta)
-      .join("");
+    const text = collectTextDeltas(out);
     expect(text).toContain("<callback> API here.");
     expect(text).toContain("More text.");
   });
@@ -56,10 +57,7 @@ describe("qwen3CoderProtocol stream text flushing", () => {
       2
     );
 
-    const text = out
-      .filter((p) => p.type === "text-delta")
-      .map((p) => (p as { delta: string }).delta)
-      .join("");
+    const text = collectTextDeltas(out);
     expect(text).toBe("Use <toolbar> and <invoker> tags.");
   });
 });
@@ -99,19 +97,16 @@ describe("qwen3CoderProtocol trailing partial after invalid full occurrence", ()
     await writes;
     await writer.close();
 
-    const text = collected
-      .filter((p) => p.type === "text-delta")
-      .map((p) => (p as { delta: string }).delta)
-      .join("");
+    const text = collectTextDeltas(collected);
     // The prose before the call streams out; the tag itself must not leak.
     expect(text).toContain("<tool_callback> page.");
     expect(text).not.toContain("<tool_call>");
 
-    const call = collected.find((p) => p.type === "tool-call") as Extract<
-      LanguageModelV4StreamPart,
-      { type: "tool-call" }
-    >;
+    const [call] = selectToolCalls(collected);
     expect(call).toBeDefined();
+    if (call === undefined) {
+      throw new Error("Expected streamed tool call");
+    }
     expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
   });
 });

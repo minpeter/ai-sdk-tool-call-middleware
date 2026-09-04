@@ -4,6 +4,28 @@ import { describe, expect, it, vi } from "vitest";
 import { toolChoiceStream } from "../../stream-handler";
 import { mockUsage } from "../test-helpers";
 
+function contentStream(
+  content: Array<{ readonly type: "text"; readonly text: string }>
+) {
+  const doGenerate = vi.fn().mockResolvedValue({
+    content,
+    usage: mockUsage(3, 5),
+  });
+  return toolChoiceStream({ doGenerate, tools: [] });
+}
+
+async function expectForcedCall(
+  content: Array<{ readonly type: "text"; readonly text: string }>
+): Promise<void> {
+  const result = await contentStream(content);
+  const chunks = await convertReadableStreamToArray(result.stream);
+  expect(chunks.at(-2)).toMatchObject({
+    type: "tool-call",
+    toolName: "do",
+    input: '{"x":1}',
+  });
+}
+
 describe("toolChoiceStream v7 parity", () => {
   it("parses the JSON payload when reasoning precedes the text part", async () => {
     const doGenerate = vi.fn().mockResolvedValue({
@@ -36,42 +58,18 @@ describe("toolChoiceStream v7 parity", () => {
   });
 
   it("skips empty text parts before the toolChoice JSON payload", async () => {
-    const doGenerate = vi.fn().mockResolvedValue({
-      content: [
-        { type: "text", text: "" },
-        { type: "text", text: "   " },
-        { type: "text", text: '{"name":"do","arguments":{"x":1}}' },
-      ],
-      usage: mockUsage(3, 5),
-    });
-
-    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
-    const chunks = await convertReadableStreamToArray(stream);
-
-    expect(chunks.at(-2)).toMatchObject({
-      type: "tool-call",
-      toolName: "do",
-      input: '{"x":1}',
-    });
+    await expectForcedCall([
+      { type: "text", text: "" },
+      { type: "text", text: "   " },
+      { type: "text", text: '{"name":"do","arguments":{"x":1}}' },
+    ]);
   });
 
   it("uses the first parseable JSON text part for forced tool choice", async () => {
-    const doGenerate = vi.fn().mockResolvedValue({
-      content: [
-        { type: "text", text: "I will call the tool now." },
-        { type: "text", text: '{"name":"do","arguments":{"x":1}}' },
-      ],
-      usage: mockUsage(3, 5),
-    });
-
-    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
-    const chunks = await convertReadableStreamToArray(stream);
-
-    expect(chunks.at(-2)).toMatchObject({
-      type: "tool-call",
-      toolName: "do",
-      input: '{"x":1}',
-    });
+    await expectForcedCall([
+      { type: "text", text: "I will call the tool now." },
+      { type: "text", text: '{"name":"do","arguments":{"x":1}}' },
+    ]);
   });
 
   it("emits response-metadata when the generate result carries response info", async () => {
@@ -91,15 +89,19 @@ describe("toolChoiceStream v7 parity", () => {
   });
 
   it("preserves a length finish reason instead of masking truncation", async () => {
-    const doGenerate = vi.fn().mockResolvedValue({
-      content: [{ type: "text", text: '{"name":"do","arg' }],
-      finishReason: { unified: "length", raw: "max_tokens" },
+    const truncatedContent = { type: "text", text: '{"name":"do","arg' };
+    const lengthReason = { unified: "length", raw: "max_tokens" };
+    const doGenerate = vi.fn();
+    doGenerate.mockResolvedValue({
+      finishReason: lengthReason,
+      content: [truncatedContent],
     });
 
     const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
     const chunks = await convertReadableStreamToArray(stream);
 
-    expect(chunks.at(-1)).toMatchObject({
+    const finalChunk = chunks.at(-1);
+    expect(finalChunk).toMatchObject({
       type: "finish",
       finishReason: { unified: "length", raw: "max_tokens" },
     });

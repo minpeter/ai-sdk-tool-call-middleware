@@ -1,54 +1,32 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  parseToolCallObject,
+  requireToolCall,
+  runProtocolTextStream,
+} from "../../shared/duplicate-harness";
 import { fileTools } from "../parse-generated-text/shared";
 
 describe("yamlXmlProtocol streaming multiline YAML", () => {
   it("should handle multiline YAML values split across chunks", async () => {
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({ tools: fileTools });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: "<write_file>\n",
-        });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: "file_path: /tmp/test.txt\n",
-        });
-        ctrl.enqueue({ type: "text-delta", id: "1", delta: "contents: |\n" });
-        ctrl.enqueue({ type: "text-delta", id: "1", delta: "  Line one\n" });
-        ctrl.enqueue({ type: "text-delta", id: "1", delta: "  Line two\n" });
-        ctrl.enqueue({ type: "text-delta", id: "1", delta: "</write_file>" });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
+    const out = await runProtocolTextStream({
+      protocol: yamlXmlProtocol(),
+      tools: fileTools,
+      id: "1",
+      chunks: [
+        "<write_file>\n",
+        "file_path: /tmp/test.txt\n",
+        "contents: |\n",
+        "  Line one\n",
+        "  Line two\n",
+        "</write_file>",
+      ],
     });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const tool = out.find((c) => c.type === "tool-call") as {
-      toolName: string;
-      input: string;
-    };
-    expect(tool.toolName).toBe("write_file");
-    const args = JSON.parse(tool.input);
-    expect(args.file_path).toBe("/tmp/test.txt");
-    expect(args.contents).toContain("Line one");
-    expect(args.contents).toContain("Line two");
+    const toolCall = requireToolCall(out);
+    expect(toolCall.toolName).toBe("write_file");
+    const input = parseToolCallObject(toolCall);
+    expect(input.file_path).toBe("/tmp/test.txt");
+    expect(input.contents).toContain("Line one");
+    expect(input.contents).toContain("Line two");
   });
 });

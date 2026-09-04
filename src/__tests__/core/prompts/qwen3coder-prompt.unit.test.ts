@@ -6,6 +6,10 @@ import {
   formatToolResponseAsQwen3CoderXml,
   qwen3coderSystemPromptTemplate,
 } from "../../../core/prompts/qwen3coder-prompt";
+import {
+  imageUrlToolResult,
+  weatherInputExampleTool,
+} from "./shared/prompt-duplicate-fixtures";
 
 describe("qwen3coderSystemPromptTemplate", () => {
   it("renders the Qwen3-Coder tools section without chat-role wrappers", () => {
@@ -82,31 +86,7 @@ describe("qwen3coderSystemPromptTemplate", () => {
   });
 
   it("renders Input Examples from tool.inputExamples", () => {
-    const prompt = qwen3coderSystemPromptTemplate([
-      {
-        type: "function",
-        name: "get_weather",
-        description: "Get weather by city",
-        inputSchema: {
-          type: "object",
-          properties: {
-            city: { type: "string" },
-            unit: { type: "string" },
-          },
-          required: ["city"],
-        },
-        inputExamples: [
-          {
-            input: {
-              city: "Seoul",
-              unit: "celsius",
-            },
-          },
-        ],
-      } satisfies LanguageModelV4FunctionTool & {
-        inputExamples: Array<{ input: unknown }>;
-      },
-    ]);
+    const prompt = qwen3coderSystemPromptTemplate([weatherInputExampleTool]);
 
     expect(prompt).toContain("# Input Examples");
     expect(prompt).toContain("Tool: get_weather");
@@ -150,15 +130,7 @@ describe("formatToolResponseAsQwen3CoderXml", () => {
       },
     });
 
-    const result = formatter({
-      type: "tool-result",
-      toolCallId: "tc1",
-      toolName: "vision",
-      output: {
-        type: "content",
-        value: [{ type: "image-url", url: "https://example.com/a.png" }],
-      },
-    } satisfies ToolResultPart);
+    const result = formatter(imageUrlToolResult);
 
     expect(result).toBe(
       '<tool_response>\n[{"type":"image-url","url":"https://example.com/a.png"}]\n</tool_response>'

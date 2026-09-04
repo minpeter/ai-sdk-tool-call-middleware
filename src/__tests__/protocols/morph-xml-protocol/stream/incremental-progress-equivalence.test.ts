@@ -1,82 +1,68 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import type {
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import type { ProtocolMetadata } from "../../../../core/protocols/protocol-interface";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  collectTextDeltas,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
 
-const tools = [
-  {
-    type: "function",
-    name: "write_file",
-    description: "write a file",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string" },
-        content: { type: "string" },
-      },
-      required: ["path", "content"],
+const writeFileTool: LanguageModelV4FunctionTool = {
+  type: "function",
+  name: "write_file",
+  description: "write a file",
+  inputSchema: {
+    type: "object",
+    required: ["path", "content"],
+    properties: {
+      path: { type: "string" },
+      content: { type: "string" },
     },
   },
-] as any;
+};
+
+function splitBySizes(text: string, chunkSizes: readonly number[]): string[] {
+  const chunks: string[] = [];
+  let position = 0;
+  let sizeIndex = 0;
+  while (position < text.length) {
+    const size = chunkSizes[sizeIndex % chunkSizes.length];
+    if (size === undefined) {
+      throw new RangeError("At least one chunk size is required");
+    }
+    chunks.push(text.slice(position, position + size));
+    position += size;
+    sizeIndex += 1;
+  }
+  return chunks;
+}
 
 function streamInChunks(
   text: string,
-  chunkSizes: number[],
-  onError?: (message: string, metadata?: Record<string, unknown>) => void
+  chunkSizes: readonly number[],
+  onError?: (message: string, metadata?: ProtocolMetadata) => void
 ): Promise<LanguageModelV4StreamPart[]> {
-  const protocol = morphXmlProtocol();
-  const transformer = protocol.createStreamParser({
-    tools,
-    options: onError ? { onError } : undefined,
+  return runProtocolTextStream({
+    chunks: splitBySizes(text, chunkSizes),
+    id: "1",
+    protocol: morphXmlProtocol(),
+    tools: [writeFileTool],
+    ...(onError === undefined ? {} : { parserOptions: { onError } }),
   });
-  const rs = new ReadableStream<LanguageModelV4StreamPart>({
-    start(ctrl) {
-      let pos = 0;
-      let sizeIndex = 0;
-      while (pos < text.length) {
-        const size = chunkSizes[sizeIndex % chunkSizes.length];
-        sizeIndex += 1;
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: text.slice(pos, pos + size),
-        });
-        pos += size;
-      }
-      ctrl.enqueue({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-      });
-      ctrl.close();
-    },
-  });
-  return convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
 }
 
-function summarize(parts: LanguageModelV4StreamPart[]): {
-  toolInputs: string[];
-  concatenatedDeltas: string;
-  text: string;
-} {
-  const toolInputs: string[] = [];
-  let concatenatedDeltas = "";
-  let text = "";
-  for (const part of parts) {
-    if (part.type === "tool-call") {
-      toolInputs.push(part.input);
-    } else if (part.type === "tool-input-delta") {
-      concatenatedDeltas += part.delta;
-    } else if (part.type === "text-delta") {
-      text += part.delta;
-    }
-  }
-  return { toolInputs, concatenatedDeltas, text };
+function summarize(parts: readonly LanguageModelV4StreamPart[]) {
+  const timeline = selectToolInputTimeline(parts);
+  return {
+    toolInputs: selectToolCalls(parts).map((part) => part.input),
+    concatenatedDeltas: timeline.deltas.map((part) => part.delta).join(""),
+    text: collectTextDeltas(parts),
+  };
 }
 
 // Deterministic PRNG (Park-Miller LCG) so failures are reproducible.
@@ -108,11 +94,14 @@ const BODY_FRAGMENTS = [
 function randomToolCallText(rand: () => number): string {
   const bodyParts: string[] = [];
   const count = 3 + Math.floor(rand() * 20);
-  for (let i = 0; i < count; i += 1) {
-    bodyParts.push(BODY_FRAGMENTS[Math.floor(rand() * BODY_FRAGMENTS.length)]);
+  for (let index = 0; index < count; index += 1) {
+    const fragment = BODY_FRAGMENTS[Math.floor(rand() * BODY_FRAGMENTS.length)];
+    if (fragment === undefined) {
+      throw new RangeError("Generated fragment index must be in range");
+    }
+    bodyParts.push(fragment);
   }
-  const body = bodyParts.join("");
-  return `before text <write_file>\n<path>src/a.ts</path>\n<content>\n${body}</content>\n</write_file> after text`;
+  return `before text <write_file>\n<path>src/a.ts</path>\n<content>\n${bodyParts.join("")}</content>\n</write_file> after text`;
 }
 
 describe("morph-xml incremental streaming progress equivalence", () => {
@@ -126,7 +115,7 @@ describe("morph-xml incremental streaming progress equivalence", () => {
       // Random small chunk sizes exercise every split point class: inside
       // tags, across the closing tag, inside entities, etc.
       const sizes: number[] = [];
-      for (let i = 0; i < 8; i += 1) {
+      for (let index = 0; index < 8; index += 1) {
         sizes.push(1 + Math.floor(rand() * 17));
       }
       let sawMismatch = false;
@@ -151,7 +140,7 @@ describe("morph-xml incremental streaming progress equivalence", () => {
         // input.
         if (!sawMismatch) {
           expect(
-            whole.toolInputs[0].startsWith(chunked.concatenatedDeltas)
+            whole.toolInputs[0]?.startsWith(chunked.concatenatedDeltas)
           ).toBe(true);
         }
       }
@@ -169,14 +158,16 @@ describe("morph-xml incremental streaming progress equivalence", () => {
     for (const sizes of [[1], [2], [3], [5], [7], [text.length]]) {
       const out = summarize(await streamInChunks(text, sizes));
       expect(out.toolInputs).toHaveLength(1);
-      expect(JSON.parse(out.toolInputs[0])).toMatchObject({ path: "a.ts" });
+      expect(JSON.parse(out.toolInputs[0] ?? "{}")).toMatchObject({
+        path: "a.ts",
+      });
     }
   });
 
   it("live-streams a large strictly-string value in capped bursts", async () => {
     const body = Array.from(
       { length: 300 },
-      (_, i) => `line ${i}: hello streaming world`
+      (_, index) => `line ${index}: hello streaming world`
     ).join("\n"); // ~9KB
     const text = `<write_file>\n<path>a.ts</path>\n<content>\n${body}\n</content>\n</write_file>`;
 
@@ -187,13 +178,12 @@ describe("morph-xml incremental streaming progress equivalence", () => {
     // The value body must stream while the tag is still open (capped ~1KB
     // bursts), not arrive as one delta at the end: expect several deltas
     // that already contain body content.
-    const deltaCount = parts.filter(
-      (part) => part.type === "tool-input-delta"
-    ).length;
-    expect(deltaCount).toBeGreaterThan(5);
+    expect(
+      parts.filter((part) => part.type === "tool-input-delta").length
+    ).toBeGreaterThan(5);
     // Raw-slice streaming must stay exactly prefix-consistent with the
     // final input.
-    expect(toolInputs[0].startsWith(concatenatedDeltas)).toBe(true);
+    expect(toolInputs[0]?.startsWith(concatenatedDeltas)).toBe(true);
     expect(concatenatedDeltas).toBe(toolInputs[0]);
   });
 

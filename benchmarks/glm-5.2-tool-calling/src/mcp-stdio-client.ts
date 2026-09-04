@@ -76,7 +76,7 @@ export class McpRpcError extends Error {
   }
 }
 
-export class McpTransportError extends Error {
+class McpTransportError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "McpTransportError";

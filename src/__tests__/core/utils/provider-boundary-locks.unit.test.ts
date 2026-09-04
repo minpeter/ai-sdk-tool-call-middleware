@@ -86,7 +86,7 @@ describe("provider boundary behavior locks", () => {
     expect(normalized).toEqual({ unified: "error", raw: undefined });
   });
 
-  it("passes through function and truthy string onError values", () => {
+  it("passes through callable onError and rejects truthy strings", () => {
     // Given
     const onError = vi.fn();
 
@@ -100,7 +100,7 @@ describe("provider boundary behavior locks", () => {
 
     // Then
     expect(functionOption).toEqual({ onError });
-    expect(stringOption).toEqual({ onError: "not callable" });
+    expect(stringOption).toBeUndefined();
   });
 
   it.each([

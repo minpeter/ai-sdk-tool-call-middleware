@@ -1,97 +1,59 @@
-import type {
-  LanguageModelV4CallOptions,
-  LanguageModelV4Middleware,
-  LanguageModelV4TextPart,
-} from "@ai-sdk/provider";
-import { describe, expect, it, vi } from "vitest";
+import { MockLanguageModelV4 } from "ai/test";
+import { describe, expect, it } from "vitest";
 import { formatToolResponseAsHermes } from "../../core/prompts/hermes-prompt";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { requireTransformParams } from "../test-helpers";
 
-function requireTransformParams(
-  value: LanguageModelV4Middleware["transformParams"]
-): (options: {
-  params: LanguageModelV4CallOptions;
-}) => PromiseLike<LanguageModelV4CallOptions> {
-  if (!value) {
-    throw new Error("transformParams is required for middleware");
-  }
+const model = new MockLanguageModelV4();
+const toolResponsePattern = /<tool_response>/g;
 
-  return value as (options: {
-    params: LanguageModelV4CallOptions;
-  }) => PromiseLike<LanguageModelV4CallOptions>;
+function hermesTransform(toolResponses = false) {
+  const middleware = createToolMiddleware({
+    protocol: hermesProtocol,
+    placement: "first",
+    toolSystemPromptTemplate: (tools) => `T:${tools}`,
+    ...(toolResponses
+      ? { toolResponsePromptTemplate: formatToolResponseAsHermes }
+      : {}),
+  });
+  return requireTransformParams(middleware.transformParams);
 }
-
-vi.mock("@ai-sdk/provider-utils", () => ({
-  generateId: vi.fn(() => "mock-id"),
-}));
-
-// Regex constants for performance
-const _REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
-const _REGEX_TOOL_CALL_FENCE = /```tool_call/;
-const _REGEX_TOOL_RESPONSE_FENCE = /```tool_response/;
-const _REGEX_GET_WEATHER = /get_weather/;
-const _REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
-const _REGEX_MAY_CALL_FUNCTIONS = /You may call one or more functions/;
-const _REGEX_TOOLS_TAG = /<tools>/;
-const _REGEX_NONE = /none/;
-const _REGEX_NOT_FOUND = /not found/;
-const _REGEX_PROVIDER_DEFINED = /Provider-defined tools/;
-const _REGEX_REQUIRED_NO_TOOLS =
-  /Tool choice type 'required' is set, but no tools are provided/;
-const _REGEX_REQUIRED_NO_FUNCTION_TOOLS = /no function tools are provided/;
-const _REGEX_TOOL_CALL_TAG = /<tool_call>/;
-const _REGEX_TOOL_RESPONSE_TAG = /<tool_response>/;
-const _REGEX_GET_WEATHER_TAG = /<get_weather>/;
-const _REGEX_TOOL_CALL_WORD = /tool_call/;
 
 describe("transformParams merges adjacent user messages", () => {
   it("merges two consecutive user messages into one with newline", async () => {
-    const mw = createToolMiddleware({
-      protocol: hermesProtocol,
-      placement: "first",
-      toolSystemPromptTemplate: (t) => `T:${t}`,
-    });
-
-    const transformParams = requireTransformParams(mw.transformParams);
-    const out = await transformParams({
+    const out = await hermesTransform()({
+      type: "generate",
+      model,
       params: {
         prompt: [
           { role: "user", content: [{ type: "text", text: "first" }] },
           { role: "user", content: [{ type: "text", text: "second" }] },
         ],
         tools: [],
-      } satisfies LanguageModelV4CallOptions,
+      },
     });
 
     // After inserting system, the merged user should be at index 1
-    const user = out.prompt.find((m) => m.role === "user");
+    const user = out.prompt.find((message) => message.role === "user");
     if (!user) {
       throw new Error("user message not found");
     }
     const text = user.content
-      .filter(
-        (content): content is LanguageModelV4TextPart => content.type === "text"
-      )
+      .filter((content) => content.type === "text")
       .map((content) => content.text)
       .join("");
     expect(text).toBe("first\nsecond");
   });
 
   it("condenses multiple tool_response messages into single user text content", async () => {
-    const mw = createToolMiddleware({
-      protocol: hermesProtocol,
-      placement: "first",
-      toolSystemPromptTemplate: (t) => `T:${t}`,
-      toolResponsePromptTemplate: formatToolResponseAsHermes,
-    });
-
-    const transformParams = requireTransformParams(mw.transformParams);
-    const out = await transformParams({
+    const out = await hermesTransform(true)({
+      type: "generate",
+      model,
       params: {
         prompt: [
           {
-            role: "tool" as const,
+            role: "tool",
             content: [
               {
                 type: "tool-result",
@@ -124,16 +86,16 @@ describe("transformParams merges adjacent user messages", () => {
         ],
         tools: [
           {
-            type: "function" as const,
+            type: "function",
             name: "get_weather",
             description: "",
             inputSchema: { type: "object" },
           },
         ],
-      } satisfies LanguageModelV4CallOptions,
+      },
     });
 
-    const userMsgs = out.prompt.filter((m) => m.role === "user");
+    const userMsgs = out.prompt.filter((message) => message.role === "user");
     expect(userMsgs).toHaveLength(1);
     const [user] = userMsgs;
     if (user?.role !== "user") {
@@ -141,9 +103,7 @@ describe("transformParams merges adjacent user messages", () => {
     }
     // Single text content only
     expect(
-      user.content.filter(
-        (content): content is LanguageModelV4TextPart => content.type === "text"
-      )
+      user.content.filter((content) => content.type === "text")
     ).toHaveLength(1);
     const [textPart] = user.content;
     if (textPart?.type !== "text") {
@@ -151,7 +111,7 @@ describe("transformParams merges adjacent user messages", () => {
     }
     const { text } = textPart;
     // Contains two tool_response blocks
-    expect((text.match(/<tool_response>/g) || []).length).toBe(2);
+    expect((text.match(toolResponsePattern) || []).length).toBe(2);
     expect(user.content.length).toBe(1);
   });
 });

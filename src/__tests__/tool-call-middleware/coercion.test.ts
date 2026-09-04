@@ -1,4 +1,5 @@
 import type {
+  JSONSchema7,
   LanguageModelV4,
   LanguageModelV4FunctionTool,
   LanguageModelV4GenerateResult,
@@ -59,17 +60,15 @@ describe("tool-call-middleware coercion (utils)", () => {
       protocol: dummyProtocol,
       toolSystemPromptTemplate: () => "",
     });
-
+    const numericInput = { type: "number" } satisfies JSONSchema7;
+    const booleanInput = { type: "boolean" } satisfies JSONSchema7;
     const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "calc",
         inputSchema: {
           type: "object",
-          properties: {
-            a: { type: "number" },
-            b: { type: "boolean" },
-          },
+          properties: { a: numericInput, b: booleanInput },
         },
       },
     ];

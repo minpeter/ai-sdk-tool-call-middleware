@@ -107,7 +107,7 @@ export function appendGlm5ScannedStreamBody(
   queueGlm5CloseScannerText(call.closeScanner, text);
 }
 
-export function queueGlm5CloseScannerText(
+function queueGlm5CloseScannerText(
   scanner: Glm5CloseTagScanner,
   text: string
 ): void {

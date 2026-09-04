@@ -1,29 +1,12 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { kExaone236BToolDeclaration } from "../../../core/prompts/k-exaone-236b-prompt";
+import { edgeProbeTools } from "../../entry/provider-capture.shared";
 
 describe("kExaone236BToolDeclaration", () => {
   it("matches the Friendli native declaration bytes", () => {
     // Given
-    const tools = [
-      {
-        type: "function",
-        name: "edge_probe",
-        description: "Probe exact JSON rendering.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            zed: { type: "number", minimum: 1e-7, maximum: 1e21 },
-            alpha: { type: "integer" },
-            raw: { type: "string" },
-          },
-          required: ["zed"],
-          additionalProperties: false,
-        },
-        strict: true,
-        inputExamples: [{ input: { zed: 1 } }],
-      },
-    ] satisfies LanguageModelV4FunctionTool[];
+    const tools = edgeProbeTools(true);
 
     // When
     const declaration = kExaone236BToolDeclaration(tools);
@@ -50,8 +33,10 @@ describe("kExaone236BToolDeclaration", () => {
       {
         type: "function",
         name: "first",
-        inputSchema:
-          '{"type":"object","properties":{"value":{"type":"string"}}}' as unknown as LanguageModelV4FunctionTool["inputSchema"],
+        inputSchema: {
+          type: "object",
+          properties: { value: { type: "string" } },
+        },
       },
       {
         type: "function",

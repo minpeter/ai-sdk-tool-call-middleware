@@ -148,7 +148,7 @@ export function closeToolInput(
   controller.enqueue({
     type: "tool-input-end",
     id: state.activeToolInput.id,
-  } as LanguageModelV4StreamPart);
+  });
   state.activeToolInput = null;
 }
 
@@ -174,7 +174,7 @@ export function emitResolvedToolCall(
     toolCallId,
     toolName,
     input,
-  } as LanguageModelV4StreamPart);
+  });
 }
 
 export function emitToolCallFromParsed(
@@ -197,25 +197,46 @@ export function emitToolCallFromParsed(
   emitResolvedToolCall(state, controller, toolName, input);
 }
 
+export function emitTextDelta(
+  state: StreamState,
+  controller: StreamController,
+  text: string
+): void {
+  if (text.length === 0) {
+    return;
+  }
+  if (!state.currentTextId) {
+    state.currentTextId = generateId();
+    controller.enqueue({ type: "text-start", id: state.currentTextId });
+    state.hasEmittedTextStart = true;
+  }
+  controller.enqueue({
+    type: "text-delta",
+    id: state.currentTextId,
+    delta: text,
+  });
+}
+
+export function emitRawTextLifecycle(
+  controller: StreamController,
+  text: string,
+  enabled: boolean
+): boolean {
+  if (!(enabled && !toolCallTextHasPrototypeSensitiveKey(text))) {
+    return false;
+  }
+  const id = generateId();
+  controller.enqueue({ type: "text-start", id });
+  controller.enqueue({ type: "text-delta", id, delta: text });
+  controller.enqueue({ type: "text-end", id });
+  return true;
+}
+
 export function flushBuffer(state: StreamState, controller: StreamController) {
   if (state.buffer.length === 0) {
     return;
   }
-
-  if (!state.currentTextId) {
-    state.currentTextId = generateId();
-    controller.enqueue({
-      type: "text-start",
-      id: state.currentTextId,
-    } as LanguageModelV4StreamPart);
-    state.hasEmittedTextStart = true;
-  }
-
-  controller.enqueue({
-    type: "text-delta",
-    id: state.currentTextId,
-    delta: state.buffer,
-  } as LanguageModelV4StreamPart);
+  emitTextDelta(state, controller, state.buffer);
   state.buffer = "";
 }
 
@@ -227,7 +248,7 @@ export function closeTextBlock(
     controller.enqueue({
       type: "text-end",
       id: state.currentTextId,
-    } as LanguageModelV4StreamPart);
+    });
     state.currentTextId = null;
     state.hasEmittedTextStart = false;
   }
@@ -448,25 +469,7 @@ function emitIncompleteToolCall(
     snippet: errorContent,
   });
 
-  if (
-    shouldEmitRawFallback &&
-    !toolCallTextHasPrototypeSensitiveKey(errorContent)
-  ) {
-    const errorId = generateId();
-    controller.enqueue({
-      type: "text-start",
-      id: errorId,
-    } as LanguageModelV4StreamPart);
-    controller.enqueue({
-      type: "text-delta",
-      id: errorId,
-      delta: errorContent,
-    } as LanguageModelV4StreamPart);
-    controller.enqueue({
-      type: "text-end",
-      id: errorId,
-    } as LanguageModelV4StreamPart);
-  }
+  emitRawTextLifecycle(controller, errorContent, shouldEmitRawFallback);
   // Capture structured tool-call context before closeToolInput clears
   // state.activeToolInput. If streaming already identified the name/id we use
   // them directly; otherwise fall back to re-scanning the raw JSON for the name

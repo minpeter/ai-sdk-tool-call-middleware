@@ -1,9 +1,17 @@
 import type {
+  JSONArray,
   JSONObject,
-  JSONSchema7,
   JSONValue,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isCycleSafeJsonValue,
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaCandidate,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import {
   coerceBySchema,
   compileSafePatternPropertyRegex,
@@ -12,6 +20,7 @@ import {
   unwrapJsonSchema,
 } from "../../schema-coerce";
 import { toolCallInputHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
+import { getToolInputPropertyNames } from "../utils/tool-call-object-schema";
 import { collectPatternPropertyNames } from "../utils/tool-call-pattern-properties";
 import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
 import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-schema-sanitization";
@@ -25,11 +34,11 @@ import {
 import type { ResolvedProtocolToolCall } from "./protocol-interface";
 
 export interface ArgumentKeyPolicy {
-  knownKeys: Set<string>;
-  rejectAll: boolean;
-  rejectNonRecordArguments: boolean;
-  schema: JSONSchema7 | boolean;
-  unsafeConstrainedPatterns: string[];
+  readonly knownKeys: Set<string>;
+  readonly rejectAll: boolean;
+  readonly rejectNonRecordArguments: boolean;
+  readonly schema: ToolInputSchemaDefinition;
+  readonly unsafeConstrainedPatterns: readonly string[];
 }
 
 export class ArgumentKeyPolicyError extends Error {
@@ -45,22 +54,24 @@ export function isArgumentKeyPolicyError(
   return error instanceof ArgumentKeyPolicyError;
 }
 
-function isJsonObject(
-  value: JSONValue | object | undefined
-): value is JSONObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isJsonObject(value: RxmlValue): value is JSONObject {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === null || prototype === Object.prototype;
 }
 
 function isSchemaObject(
-  value: JSONSchema7 | boolean | object | undefined
-): value is JSONSchema7 {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  value: ToolInputSchemaCandidate
+): value is ToolInputSchema {
+  return isSchemaRecord(value);
 }
 
 function isSchemaMap(
-  value: object | undefined
-): value is Record<string, JSONSchema7 | boolean> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  value: ToolInputSchemaCandidate
+): value is Record<string, ToolInputSchemaDefinition> {
+  return isSchemaRecord(value);
 }
 
 function addNames(target: Set<string>, source: Set<string>): void {
@@ -71,7 +82,7 @@ function addNames(target: Set<string>, source: Set<string>): void {
 
 function addDirectArgumentKnownKeys(
   keys: Set<string>,
-  schema: JSONSchema7
+  schema: ToolInputSchema
 ): void {
   if (isSchemaMap(schema.properties)) {
     for (const [key, propertySchema] of Object.entries(schema.properties)) {
@@ -82,7 +93,7 @@ function addDirectArgumentKnownKeys(
   }
   if (Array.isArray(schema.required)) {
     for (const key of schema.required) {
-      if (typeof key === "string" && key.length > 0) {
+      if (key.length > 0) {
         keys.add(key);
       }
     }
@@ -91,8 +102,8 @@ function addDirectArgumentKnownKeys(
 
 function addCombinatorArgumentKnownKeys(
   keys: Set<string>,
-  schema: JSONSchema7,
-  seen: Set<object>
+  schema: ToolInputSchema,
+  seen: Set<ToolInputSchema>
 ): void {
   for (const combinator of ["allOf", "anyOf", "oneOf"] as const) {
     const variants = schema[combinator];
@@ -108,8 +119,8 @@ function addCombinatorArgumentKnownKeys(
 }
 
 function collectArgumentKnownKeys(
-  schema: JSONSchema7 | boolean | undefined,
-  seen = new Set<object>()
+  schema: ToolInputSchemaDefinition | undefined,
+  seen = new Set<ToolInputSchema>()
 ): Set<string> {
   const unwrapped = unwrapJsonSchema(schema);
   const keys = new Set<string>();
@@ -123,8 +134,8 @@ function collectArgumentKnownKeys(
 }
 
 function schemaRejectsNonRecordArguments(
-  schema: JSONSchema7 | boolean | undefined,
-  seen = new Set<object>()
+  schema: ToolInputSchemaDefinition | undefined,
+  seen = new Set<ToolInputSchema>()
 ): boolean {
   const unwrapped = unwrapJsonSchema(schema);
   if (unwrapped === false) {
@@ -149,7 +160,7 @@ function schemaRejectsNonRecordArguments(
 
   const allOf = Array.isArray(unwrapped.allOf) ? unwrapped.allOf : undefined;
   if (
-    allOf?.some((subSchema: JSONSchema7 | boolean) =>
+    allOf?.some((subSchema: ToolInputSchemaDefinition) =>
       schemaRejectsNonRecordArguments(subSchema, new Set(seen))
     )
   ) {
@@ -160,7 +171,7 @@ function schemaRejectsNonRecordArguments(
   if (
     anyOf &&
     anyOf.length > 0 &&
-    anyOf.every((subSchema: JSONSchema7 | boolean) =>
+    anyOf.every((subSchema: ToolInputSchemaDefinition) =>
       schemaRejectsNonRecordArguments(subSchema, new Set(seen))
     )
   ) {
@@ -171,7 +182,7 @@ function schemaRejectsNonRecordArguments(
   return (
     oneOf !== undefined &&
     oneOf.length > 0 &&
-    oneOf.every((subSchema: JSONSchema7 | boolean) =>
+    oneOf.every((subSchema: ToolInputSchemaDefinition) =>
       schemaRejectsNonRecordArguments(subSchema, new Set(seen))
     )
   );
@@ -222,6 +233,9 @@ export function applyArgumentKeyPolicy(
   args: JSONObject,
   keyPolicy?: ArgumentKeyPolicy
 ): JSONObject | null {
+  if (!isCycleSafeJsonValue(args)) {
+    return null;
+  }
   if (keyPolicy?.rejectAll) {
     return null;
   }
@@ -253,12 +267,6 @@ export function applyArgumentKeyPolicy(
   const policyArgs = keyPolicy
     ? sanitizeArgsByArgumentKeyPolicy(coercedPolicyArgs, keyPolicy)
     : coercedPolicyArgs;
-  if (!isJsonObject(policyArgs)) {
-    return null;
-  }
-  if (toolCallInputHasPrototypeSensitiveKey(policyArgs)) {
-    return null;
-  }
   if (
     keyPolicy &&
     shouldValidateArgumentSchemaKeyShape(keyPolicy) &&
@@ -285,13 +293,19 @@ function sanitizeArgsByArgumentKeyPolicy(
   args: JSONObject,
   keyPolicy: ArgumentKeyPolicy
 ): JSONObject {
-  const sanitized = sanitizeToolCallArgsBySchema(args, keyPolicy.schema);
-  return isJsonObject(sanitized) ? sanitized : args;
+  if (getToolInputPropertyNames(keyPolicy.schema, args) === null) {
+    return args;
+  }
+  const sanitized: JSONObject = Object.create(null);
+  return Object.assign(
+    sanitized,
+    sanitizeToolCallArgsBySchema(args, keyPolicy.schema)
+  );
 }
 
 function topLevelOneOfHasConflictingDeclaredKeys(
   args: JSONObject,
-  schema: JSONSchema7 | boolean
+  schema: ToolInputSchemaDefinition
 ): boolean {
   const unwrapped = unwrapJsonSchema(schema);
   if (!(isSchemaObject(unwrapped) && Array.isArray(unwrapped.oneOf))) {
@@ -302,7 +316,7 @@ function topLevelOneOfHasConflictingDeclaredKeys(
     return false;
   }
 
-  const branchNames = unwrapped.oneOf.map((variant: JSONSchema7 | boolean) => {
+  const branchNames = unwrapped.oneOf.map((variant) => {
     const names = collectSchemaSelectionPropertyNames(variant);
     const branchSchema = unwrapJsonSchema(variant);
     if (isSchemaObject(branchSchema)) {
@@ -331,7 +345,7 @@ function topLevelOneOfHasConflictingDeclaredKeys(
 
 function oneOfHasSingleLiteralDiscriminatorMatch(
   args: JSONObject,
-  variants: NonNullable<JSONSchema7["oneOf"]>
+  variants: NonNullable<ToolInputSchema["oneOf"]>
 ): boolean {
   let matches = 0;
   for (const variant of variants) {
@@ -343,7 +357,7 @@ function oneOfHasSingleLiteralDiscriminatorMatch(
 }
 
 function variantHasLiteralDiscriminatorMatch(
-  variant: JSONSchema7 | boolean,
+  variant: ToolInputSchemaDefinition,
   args: JSONObject
 ): boolean {
   const unwrapped = unwrapJsonSchema(variant);
@@ -367,7 +381,7 @@ function variantHasLiteralDiscriminatorMatch(
 }
 
 function propertySchemaLiteralMatch(
-  schema: JSONSchema7 | boolean,
+  schema: ToolInputSchemaDefinition,
   value: JSONValue | undefined
 ): boolean | undefined {
   const unwrapped = unwrapJsonSchema(schema);
@@ -395,19 +409,20 @@ function shouldValidateArgumentSchemaKeyShape(
     return true;
   }
   return (
-    isSchemaMap(schema.patternProperties) ||
-    schemaHasTopLevelCombinator(schema, new Set())
+    isSchemaMap(schema.patternProperties) || schemaHasTopLevelCombinator(schema)
   );
 }
 
-function schemaWithoutPatternProperties(schema: JSONSchema7): JSONSchema7 {
+function schemaWithoutPatternProperties(
+  schema: ToolInputSchema
+): ToolInputSchema {
   const { patternProperties: _patternProperties, ...out } = schema;
   return out;
 }
 
 function schemaForArgumentSchemaKeyShapeValidation(
   keyPolicy: ArgumentKeyPolicy
-): JSONSchema7 | boolean {
+): ToolInputSchemaDefinition {
   const schema = unwrapJsonSchema(keyPolicy.schema);
   if (
     isSchemaObject(schema) &&
@@ -431,18 +446,14 @@ function keysMatchUnsafeConstrainedPattern(
 }
 
 function schemaHasTopLevelCombinator(
-  schema: JSONSchema7 | boolean,
-  seen: Set<object>
+  schema: ToolInputSchemaDefinition
 ): boolean {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!isSchemaObject(unwrapped) || seen.has(unwrapped)) {
-    return false;
-  }
-  seen.add(unwrapped);
   return (
-    Array.isArray(unwrapped.allOf) ||
-    Array.isArray(unwrapped.anyOf) ||
-    Array.isArray(unwrapped.oneOf)
+    isSchemaObject(unwrapped) &&
+    (Array.isArray(unwrapped.allOf) ||
+      Array.isArray(unwrapped.anyOf) ||
+      Array.isArray(unwrapped.oneOf))
   );
 }
 
@@ -455,7 +466,7 @@ const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
 export function containsPrototypeSensitiveArgumentKey(
   value: JSONValue
 ): boolean {
-  const seen = new Set<object>();
+  const seen = new Set<JSONArray | JSONObject>();
   const stack: (JSONValue | undefined)[] = [value];
 
   while (stack.length > 0) {

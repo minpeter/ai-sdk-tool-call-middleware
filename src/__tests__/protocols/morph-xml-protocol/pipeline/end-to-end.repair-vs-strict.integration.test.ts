@@ -4,16 +4,17 @@ import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 
 describe("morphXmlProtocol pipeline repair-vs-strict integration", () => {
+  const locationProperty = {
+    type: "string",
+  } satisfies LanguageModelV4FunctionTool["inputSchema"];
   const simpleTools: LanguageModelV4FunctionTool[] = [
     {
-      type: "function",
-      name: "get_weather",
       inputSchema: {
+        properties: { location: locationProperty },
         type: "object",
-        properties: {
-          location: { type: "string" },
-        },
       },
+      name: "get_weather",
+      type: "function",
     },
   ];
 

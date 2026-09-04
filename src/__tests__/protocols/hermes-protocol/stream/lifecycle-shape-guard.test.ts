@@ -12,6 +12,7 @@ vi.mock("@ai-sdk/provider", async (importOriginal) => {
 
 import { scheduleStreamingToolInputProgress } from "../../../../core/protocols/hermes-stream-lifecycle";
 import type { StreamState } from "../../../../core/protocols/hermes-streaming-progress";
+import { stopFinishReason, zeroUsage } from "../../../test-helpers";
 
 const tool: LanguageModelV4FunctionTool = {
   type: "function",
@@ -55,20 +56,8 @@ describe("Hermes streaming parsed-shape guard", () => {
           start(controller) {
             controller.enqueue({
               type: "finish",
-              finishReason: { unified: "stop", raw: undefined },
-              usage: {
-                inputTokens: {
-                  total: 0,
-                  noCache: undefined,
-                  cacheRead: undefined,
-                  cacheWrite: undefined,
-                },
-                outputTokens: {
-                  total: 0,
-                  text: undefined,
-                  reasoning: undefined,
-                },
-              },
+              finishReason: stopFinishReason,
+              usage: zeroUsage,
             });
             controller.close();
           },

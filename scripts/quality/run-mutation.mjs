@@ -9,6 +9,9 @@ const SHARD_COUNT = 24;
 const TYPESCRIPT_FILE = /\.(?:cts|mts|tsx?)$/;
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const reportsDirectory = join(repositoryRoot, "reports", "mutation");
+const vitestRunnerPlugin = import.meta.resolve(
+  "@stryker-mutator/vitest-runner"
+);
 
 function collectProductionFiles(directory) {
   const files = [];
@@ -100,7 +103,7 @@ async function runShard(shard, files) {
         fileName: join(reportsDirectory, `shard-${shardLabel}.json`),
       },
       mutate: shardFiles,
-      plugins: ["@stryker-mutator/vitest-runner"],
+      plugins: [vitestRunnerPlugin],
       reporters: ["progress", "json"],
       tempDirName: temporaryDirectory,
       testRunner: "vitest",

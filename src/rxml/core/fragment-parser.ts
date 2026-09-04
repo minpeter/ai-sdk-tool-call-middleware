@@ -3,7 +3,7 @@ import { XMLTokenizer } from "./tokenizer";
 import type { ParseOptions, RXMLNode } from "./types";
 
 function shouldRethrowParseError(
-  error: unknown,
+  error: Error,
   xmlString: string
 ): error is RXMLParseError {
   if (!(error instanceof RXMLParseError)) {

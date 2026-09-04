@@ -48,28 +48,25 @@ export {
   formatToolResponseAsYaml,
   yamlXmlSystemPromptTemplate,
 } from "./core/prompts/yaml-xml-prompt";
+export {
+  isTCMProtocolFactory,
+  KExaone2ToolParser,
+  KExaone236BToolParser,
+  Qwen3CoderToolParser,
+  uiTarsXmlProtocol,
+} from "./core/protocols/compat-aliases";
 export type {
   Glm5ProtocolOptions,
   Glm5StringBoundaryNormalization,
 } from "./core/protocols/glm5-call-parsing";
 export { glm5Protocol } from "./core/protocols/glm5-protocol";
 export * from "./core/protocols/hermes-protocol";
-export {
-  KExaone2ToolParser,
-  kExaone2Protocol,
-} from "./core/protocols/k-exaone-2-protocol";
-export {
-  KExaone236BToolParser,
-  kExaone236BProtocol,
-} from "./core/protocols/k-exaone-236b-protocol";
+export { kExaone2Protocol } from "./core/protocols/k-exaone-2-protocol";
+export { kExaone236BProtocol } from "./core/protocols/k-exaone-236b-protocol";
 export type { MorphXmlProtocolOptions } from "./core/protocols/morph-xml-protocol";
 export { morphXmlProtocol } from "./core/protocols/morph-xml-protocol";
 export * from "./core/protocols/protocol-interface";
-export {
-  Qwen3CoderToolParser,
-  qwen3CoderProtocol,
-  uiTarsXmlProtocol,
-} from "./core/protocols/qwen3coder-protocol";
+export { qwen3CoderProtocol } from "./core/protocols/qwen3coder-protocol";
 export type { YamlXmlProtocolOptions } from "./core/protocols/yaml-xml-protocol";
 export { yamlXmlProtocol } from "./core/protocols/yaml-xml-protocol";
 

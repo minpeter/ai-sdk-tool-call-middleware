@@ -4,9 +4,12 @@ import type {
 } from "@ai-sdk/provider";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateToolCallId } from "../utils/id";
-import { createFlushTextHandler } from "../utils/protocol-utils";
 import { shouldEmitRawToolCallTextOnError } from "../utils/tool-input-streaming";
 import type { ParserOptions } from "./protocol-interface";
+import {
+  createProtocolSemanticChunkTransform,
+  createProtocolTextLifecycle,
+} from "./protocol-stream-shared";
 import {
   getPotentialTagStartIndex,
   normalizeToolCallInnerOpenVariants,
@@ -59,19 +62,8 @@ export function createQwen3CoderStreamParser({
   let toolCall: ToolCallContainerState | null = null;
   let implicitCall: StreamingCallState | null = null;
   let implicitCallOpenTag: string | null = null;
-  let currentTextId: string | null = null;
-  let hasEmittedTextStart = false;
-
-  const flushText = createFlushTextHandler(
-    () => currentTextId,
-    (id) => {
-      currentTextId = id;
-    },
-    () => hasEmittedTextStart,
-    (value) => {
-      hasEmittedTextStart = value;
-    }
-  );
+  const textLifecycle = createProtocolTextLifecycle();
+  const { flushText } = textLifecycle;
 
   const { flushRecoveredBufferText, flushRecoveredTrailingText } =
     createQwenStreamTextRecovery({ flushText, options });
@@ -207,38 +199,41 @@ export function createQwen3CoderStreamParser({
     implicitCallOpenTag = openTag;
   };
 
-  const processImplicitCall = (controller: StreamController) => {
-    while (implicitCall) {
-      const callState = implicitCall;
-      const { done, remainder } = consumeCall(
-        controller,
-        callState,
-        buffer,
-        null
-      );
-      buffer = "";
-      if (!done) {
-        return;
-      }
-
-      implicitCall = null;
-      implicitCallOpenTag = null;
-      if (remainder.length > 0) {
-        buffer = remainder;
-      }
-
-      stripLeadingToolCallCloseTagsFromBuffer();
-      flushSafeTextPrefix(controller);
-      startToolCallIfPresent();
-      if (toolCall) {
-        processToolCall(controller);
-        return;
-      }
-      startImplicitCallIfPresent(controller);
+  function consumeImplicitCall(
+    controller: StreamController,
+    delta: string,
+    prependRemainder: boolean
+  ): boolean {
+    if (!implicitCall) {
+      return false;
     }
-  };
+    const { done, remainder } = consumeCall(
+      controller,
+      implicitCall,
+      delta,
+      null
+    );
+    if (!done) {
+      return false;
+    }
+    implicitCall = null;
+    implicitCallOpenTag = null;
+    if (remainder.length > 0) {
+      buffer = prependRemainder ? remainder + buffer : remainder;
+    }
+    stripLeadingToolCallCloseTagsFromBuffer();
+    flushSafeTextPrefix(controller);
+    drainStarts(controller);
+    return true;
+  }
 
-  const drainStarts = (controller: StreamController) => {
+  function processImplicitCall(controller: StreamController): void {
+    const pending = buffer;
+    buffer = "";
+    consumeImplicitCall(controller, pending, false);
+  }
+
+  function drainStarts(controller: StreamController): void {
     while (true) {
       const before = buffer;
       startToolCallIfPresent();
@@ -259,7 +254,7 @@ export function createQwen3CoderStreamParser({
       stripLeadingToolCallCloseTagsFromBuffer();
       flushSafeTextPrefix(controller);
     }
-  };
+  }
 
   const processToolCall = createQwenStreamToolCallProcessor({
     consumeCall,
@@ -289,19 +284,7 @@ export function createQwen3CoderStreamParser({
     if (!implicitCall) {
       return;
     }
-    const callState = implicitCall;
-    const { done, remainder } = consumeCall(controller, callState, "", null);
-    if (!done) {
-      return;
-    }
-    implicitCall = null;
-    implicitCallOpenTag = null;
-    if (remainder.length > 0) {
-      buffer = remainder + buffer;
-    }
-    stripLeadingToolCallCloseTagsFromBuffer();
-    flushSafeTextPrefix(controller);
-    drainStarts(controller);
+    consumeImplicitCall(controller, "", true);
   };
 
   const normalizeUnfinishedToolCall = (
@@ -473,24 +456,7 @@ export function createQwen3CoderStreamParser({
     }
 
     if (implicitCall) {
-      const callState = implicitCall;
-      const { done, remainder } = consumeCall(
-        controller,
-        callState,
-        delta,
-        null
-      );
-      if (!done) {
-        return;
-      }
-      implicitCall = null;
-      implicitCallOpenTag = null;
-      if (remainder.length > 0) {
-        buffer = remainder + buffer;
-      }
-      stripLeadingToolCallCloseTagsFromBuffer();
-      flushSafeTextPrefix(controller);
-      drainStarts(controller);
+      consumeImplicitCall(controller, delta, true);
       return;
     }
 
@@ -500,47 +466,24 @@ export function createQwen3CoderStreamParser({
     drainStarts(controller);
   };
 
-  const handleTransformChunk = (
-    controller: StreamController,
-    chunk: LanguageModelV4StreamPart
-  ) => {
-    if (chunk.type === "finish") {
+  return createProtocolSemanticChunkTransform({
+    finish(controller) {
       handleFinish(controller);
-      controller.enqueue(chunk);
-      return;
-    }
-    // The parser re-segments text under its own synthetic ids (tool-call
-    // markup is excised), so the provider's original text-start/text-end
-    // envelopes are dropped instead of producing empty duplicate blocks.
-    if (chunk.type === "text-start" || chunk.type === "text-end") {
-      return;
-    }
-
-    // Raw provider chunks are observational side-channel events and may be
-    // interleaved before every semantic text delta. They must not flush a
-    // partial `<tool_call>` / `<function>` prefix as recovered plain text.
-    if (chunk.type === "raw") {
-      controller.enqueue(chunk);
-      return;
-    }
-
-    if (chunk.type !== "text-delta") {
-      handlePassthroughChunk(controller, chunk);
-      return;
-    }
-    const { delta } = chunk;
-    if (!delta) {
-      return;
-    }
-    handleTextDeltaChunk(controller, delta);
-  };
-
-  return new TransformStream({
-    transform(chunk, controller) {
-      handleTransformChunk(controller, chunk);
     },
     flush(controller) {
       handleFinish(controller);
+    },
+    passthrough(controller, chunk) {
+      handlePassthroughChunk(controller, chunk);
+    },
+    // Raw side-channel events must not flush partial semantic tags.
+    raw(controller, chunk) {
+      controller.enqueue(chunk);
+    },
+    textDelta(controller, delta) {
+      if (delta) {
+        handleTextDeltaChunk(controller, delta);
+      }
     },
   });
 }

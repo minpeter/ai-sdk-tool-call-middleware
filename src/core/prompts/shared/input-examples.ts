@@ -15,8 +15,8 @@ function getToolInputExamples(
 }
 
 export function safeStringifyInputExample(
-  input: unknown,
-  sourceError?: unknown
+  input: JSONValue | undefined,
+  sourceError?: ErrorOptions["cause"]
 ): string {
   try {
     const serialized = JSON.stringify(input);

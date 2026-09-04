@@ -25,7 +25,7 @@ import {
   YAML_BLOCK_SCALAR_HEADER_RE,
 } from "./yaml-xml-parsing";
 
-export interface BufferedYamlToolCall {
+interface BufferedYamlToolCall {
   emittedInput: string;
   hasEmittedStart: boolean;
   readonly name: string;
@@ -33,7 +33,7 @@ export interface BufferedYamlToolCall {
   readonly toolCallId: string;
 }
 
-export interface YamlXmlStreamState {
+interface YamlXmlStreamState {
   buffer: string;
   currentToolCall: BufferedYamlToolCall | null;
 }
@@ -118,36 +118,42 @@ interface CompletedYamlToolCall {
   readonly name: string;
 }
 
-export function processYamlToolCallEnd(
-  context: YamlXmlLifecycleContext,
-  controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
-  call: CompletedYamlToolCall
-): void {
-  const { content: toolContent, id: toolCallId, name: toolName } = call;
+function prepareFinalYamlInput(options: {
+  readonly atFinish: boolean;
+  readonly call: CompletedYamlToolCall;
+  readonly context: YamlXmlLifecycleContext;
+  readonly controller: TransformStreamDefaultController<LanguageModelV4StreamPart>;
+  readonly original: string;
+}): string | null {
+  const { atFinish, call, context, controller, original } = options;
+  const { content, id: toolCallId, name: toolName } = call;
   const result = parseYamlContent(
-    toolContent,
+    content,
     buildSchemaPropNameSet(toolName, context.tools)
   );
   context.flushText(controller);
-  const original = `<${toolName}>${toolContent}</${toolName}>`;
+  const message = atFinish
+    ? "Could not complete streaming YAML tool call at finish."
+    : "Could not parse streaming YAML tool call";
   if (!result.ok) {
     emitYamlToolCallFailure(context, controller, {
       original,
       toolName,
       toolCallId,
     });
-    context.options?.onError?.("Could not parse streaming YAML tool call", {
+    context.options?.onError?.(message, {
       toolCall: safeToolCallMetadataText(original),
       toolName,
       toolCallId,
-      dropReason: "malformed-tool-call-body",
+      dropReason: atFinish
+        ? "unfinished-tool-call"
+        : "malformed-tool-call-body",
       cause: safeYamlFailureCause(result.failure, original),
     });
-    return;
+    return null;
   }
-  let finalInput: string;
   try {
-    finalInput = stringifyToolInputWithSchema({
+    return stringifyToolInputWithSchema({
       toolName,
       args: result.value,
       tools: context.tools,
@@ -161,13 +167,31 @@ export function processYamlToolCallEnd(
       toolName,
       toolCallId,
     });
-    context.options?.onError?.("Could not parse streaming YAML tool call", {
+    context.options?.onError?.(message, {
       toolCall: safeToolCallMetadataText(original),
-      toolName,
       toolCallId,
+      toolName,
       dropReason: "malformed-tool-call-body",
       error: safeToolCallMetadataError(caughtError, original),
     });
+    return null;
+  }
+}
+
+export function processYamlToolCallEnd(
+  context: YamlXmlLifecycleContext,
+  controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
+  call: CompletedYamlToolCall
+): void {
+  const { content, id: toolCallId, name: toolName } = call;
+  const finalInput = prepareFinalYamlInput({
+    atFinish: false,
+    call,
+    context,
+    controller,
+    original: `<${toolName}>${content}</${toolName}>`,
+  });
+  if (finalInput === null) {
     return;
   }
   const toolCall = context.state.currentToolCall;
@@ -202,71 +226,24 @@ export function finalizeUnclosedYamlToolCall(
   emitYamlToolInputProgress(context, context.state.buffer);
   const { name: toolName, toolCallId } = toolCall;
   const content = stripTrailingPartialCloseTag(context.state.buffer, toolName);
-  const result = parseYamlContent(
-    content,
-    buildSchemaPropNameSet(toolName, context.tools)
-  );
-  context.flushText(controller);
-  const unfinishedContent = `<${toolName}>${context.state.buffer}`;
-  if (!result.ok) {
-    emitYamlToolCallFailure(context, controller, {
-      original: unfinishedContent,
-      toolName,
-      toolCallId,
-    });
-    context.options?.onError?.(
-      "Could not complete streaming YAML tool call at finish.",
-      {
-        toolCall: safeToolCallMetadataText(unfinishedContent),
-        toolCallId,
-        toolName,
-        dropReason: "unfinished-tool-call",
-        cause: safeYamlFailureCause(result.failure, unfinishedContent),
-      }
-    );
-    context.state.buffer = "";
-    context.state.currentToolCall = null;
-    return;
-  }
-  let finalInput: string;
-  try {
-    finalInput = stringifyToolInputWithSchema({
-      toolName,
-      args: result.value,
-      tools: context.tools,
-    });
-  } catch (error) {
-    const caughtError =
-      error instanceof Error ? error : new Error(String(error));
-    emitYamlToolCallFailure(context, controller, {
-      error: caughtError,
-      original: unfinishedContent,
-      toolName,
-      toolCallId,
-    });
-    context.options?.onError?.(
-      "Could not complete streaming YAML tool call at finish.",
-      {
-        toolCall: safeToolCallMetadataText(unfinishedContent),
-        toolCallId,
-        toolName,
-        dropReason: "malformed-tool-call-body",
-        error: safeToolCallMetadataError(caughtError, unfinishedContent),
-      }
-    );
-    context.state.buffer = "";
-    context.state.currentToolCall = null;
-    return;
-  }
-  emitFinalizedBufferedToolInputLifecycle({
-    bufferedParts: toolCall.pendingToolInputParts,
+  const finalInput = prepareFinalYamlInput({
+    atFinish: true,
+    call: { content, id: toolCallId, name: toolName },
+    context,
     controller,
-    id: toolCallId,
-    state: toolCall,
-    toolName,
-    finalInput,
-    onMismatch: context.options?.onError,
+    original: `<${toolName}>${context.state.buffer}`,
   });
+  if (finalInput !== null) {
+    emitFinalizedBufferedToolInputLifecycle({
+      bufferedParts: toolCall.pendingToolInputParts,
+      controller,
+      id: toolCallId,
+      state: toolCall,
+      toolName,
+      finalInput,
+      onMismatch: context.options?.onError,
+    });
+  }
   context.state.buffer = "";
   context.state.currentToolCall = null;
 }

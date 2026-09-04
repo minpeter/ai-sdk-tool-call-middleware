@@ -30,7 +30,7 @@ export function findTagEndIndex(
   return null;
 }
 
-export function parseShorthandValue(
+function parseShorthandValue(
   openTag: string,
   tagNameLower: string
 ): string | null {

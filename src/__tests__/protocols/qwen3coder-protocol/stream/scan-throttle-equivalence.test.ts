@@ -1,12 +1,15 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import type {
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  collectTextDeltas,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
 
 const fullCallParseWork = vi.hoisted(() => ({ characters: 0 }));
 
@@ -35,7 +38,7 @@ vi.mock(
   }
 );
 
-const tools = [
+const tools: LanguageModelV4FunctionTool[] = [
   {
     type: "function",
     name: "write_file",
@@ -59,32 +62,23 @@ const tools = [
       required: ["city"],
     },
   },
-] as any;
+];
 
 function streamInChunks(
   text: string,
   chunkSize: number
 ): Promise<LanguageModelV4StreamPart[]> {
-  const protocol = qwen3CoderProtocol();
-  const transformer = protocol.createStreamParser({ tools });
-  const rs = new ReadableStream<LanguageModelV4StreamPart>({
-    start(ctrl) {
-      for (let pos = 0; pos < text.length; pos += chunkSize) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: text.slice(pos, pos + chunkSize),
-        });
-      }
-      ctrl.enqueue({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-      });
-      ctrl.close();
-    },
+  const chunkCount = Math.ceil(text.length / chunkSize);
+  const chunks = Array.from({ length: chunkCount }, (_, index) => {
+    const start = index * chunkSize;
+    return text.slice(start, start + chunkSize);
   });
-  return convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
+  return runProtocolTextStream({
+    chunks,
+    id: "1",
+    protocol: qwen3CoderProtocol(),
+    tools,
+  });
 }
 
 function summarize(parts: LanguageModelV4StreamPart[]): {
@@ -92,19 +86,14 @@ function summarize(parts: LanguageModelV4StreamPart[]): {
   concatenatedDeltas: string;
   text: string;
 } {
-  const toolCalls: { toolName: string; input: string }[] = [];
-  let concatenatedDeltas = "";
-  let text = "";
-  for (const part of parts) {
-    if (part.type === "tool-call") {
-      toolCalls.push({ toolName: part.toolName, input: part.input });
-    } else if (part.type === "tool-input-delta") {
-      concatenatedDeltas += part.delta;
-    } else if (part.type === "text-delta") {
-      text += part.delta;
-    }
-  }
-  return { toolCalls, concatenatedDeltas, text };
+  const toolCalls = selectToolCalls(parts).map(({ input, toolName }) => ({
+    toolName,
+    input,
+  }));
+  const concatenatedDeltas = selectToolInputTimeline(parts)
+    .deltas.map((part) => part.delta)
+    .join("");
+  return { toolCalls, concatenatedDeltas, text: collectTextDeltas(parts) };
 }
 
 function largeBody(lines: number): string {

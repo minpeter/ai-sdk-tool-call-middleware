@@ -1,10 +1,6 @@
 import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
-import {
-  isSchemaRecord,
-  type ToolInputSchema,
-  type ToolInputSchemaCandidate,
-} from "../../schema/tool-input-schema";
+import { normalizeToolInputSchema } from "../../schema/tool-input-schema";
 import { formatToolResponseWithMedia } from "./shared/tool-response-with-media";
 import type { ToolResponseMediaStrategy } from "./shared/tool-result-normalizer";
 import type { ToolResponsePromptTemplateResult } from "./shared/tool-result-user-content";
@@ -37,30 +33,11 @@ interface Glm5ToolResponseFormatterOptions {
   mediaStrategy?: ToolResponseMediaStrategy;
 }
 
-function normalizeInputSchema(
-  inputSchema: LanguageModelV4FunctionTool["inputSchema"] | string
-): ToolInputSchema | string {
-  if (typeof inputSchema !== "string") {
-    return isSchemaRecord(inputSchema)
-      ? inputSchema
-      : JSON.stringify(inputSchema);
-  }
-
-  try {
-    const parsed: ToolInputSchemaCandidate = JSON.parse(inputSchema);
-    return typeof parsed === "object" && isSchemaRecord(parsed)
-      ? parsed
-      : inputSchema;
-  } catch {
-    return inputSchema;
-  }
-}
-
 /** Render the same function object emitted by GLM-5.2's Jinja template. */
 export function renderGlm5ToolDefinition(
   tool: LanguageModelV4FunctionTool
 ): string {
-  const parameters = normalizeInputSchema(tool.inputSchema);
+  const parameters = normalizeToolInputSchema(tool.inputSchema);
   if (tool.description === undefined) {
     return JSON.stringify({ name: tool.name, parameters });
   }

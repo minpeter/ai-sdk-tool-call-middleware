@@ -1,7 +1,7 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { Glm5DecodedCall } from "./glm5-reference-decoders";
 
-export type Glm5CorpusFamily =
+type Glm5CorpusFamily =
   | "canonical-valid"
   | "format-variant"
   | "missing-close"

@@ -13,19 +13,35 @@ import {
   getShorthandValue as getShorthandValueImpl,
   normalizeXmlTextValue as normalizeXmlTextValueImpl,
   parseQwen3CoderToolParserParamName,
-  parseShorthandValue as parseShorthandValueImpl,
 } from "./qwen3coder-param-values";
 
 export const findClosingTagEnd = findClosingTagEndImpl;
 export const findTagEndIndex = findTagEndIndexImpl;
-export const findUnclosedParamBoundaryIndex =
-  findUnclosedParamBoundaryIndexImpl;
+const findUnclosedParamBoundaryIndex = findUnclosedParamBoundaryIndexImpl;
 export const toSupportedCallEndTagName = toSupportedCallEndTagNameImpl;
 export const getAttributeValue = getAttributeValueImpl;
 export const getOpeningTag = getOpeningTagImpl;
 export const getShorthandValue = getShorthandValueImpl;
 export const normalizeXmlTextValue = normalizeXmlTextValueImpl;
-export const parseShorthandValue = parseShorthandValueImpl;
+
+type ParamTagMatch = Extract<
+  Qwen3CoderToolParserParamTagParseResult,
+  { kind: "match" }
+>;
+
+function createSelfClosingParamMatch(
+  start: number,
+  openEnd: number,
+  name: string
+): ParamTagMatch {
+  return {
+    kind: "match",
+    start,
+    end: openEnd + 1,
+    name,
+    value: "",
+  };
+}
 
 function parseQwen3CoderToolParserUnclosedParamValue(options: {
   text: string;
@@ -93,13 +109,7 @@ function parseQwen3CoderToolParserSchemaParamTag(options: {
     options;
 
   if (options.selfClosing) {
-    return {
-      kind: "match",
-      start: startIndex,
-      end: openEnd + 1,
-      name: paramName,
-      value: "",
-    };
+    return createSelfClosingParamMatch(startIndex, openEnd, paramName);
   }
 
   const valueStart = openEnd + 1;
@@ -199,13 +209,7 @@ export function parseQwen3CoderToolParserParamTagAt(
   }
 
   if (selfClosing) {
-    return {
-      kind: "match",
-      start: startIndex,
-      end: openEnd + 1,
-      name: paramName,
-      value: "",
-    };
+    return createSelfClosingParamMatch(startIndex, openEnd, paramName);
   }
 
   const valueStart = openEnd + 1;

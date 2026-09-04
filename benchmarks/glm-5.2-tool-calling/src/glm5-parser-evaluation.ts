@@ -195,7 +195,7 @@ function stableValue(value: unknown): unknown {
   return value;
 }
 
-export function canonicalCalls(calls: readonly Glm5DecodedCall[]): string {
+function canonicalCalls(calls: readonly Glm5DecodedCall[]): string {
   return JSON.stringify(
     calls.map((call) => ({
       arguments: stableValue(call.arguments),

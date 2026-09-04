@@ -1,4 +1,5 @@
 import type {
+  JSONSchema7,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
@@ -15,6 +16,11 @@ import {
   findToolCall,
   runProtocolTextDeltaStream,
 } from "../cross-protocol/tool-input/streaming-events.shared";
+import {
+  runGeneratedJsonRepair,
+  runProtocolTextStream,
+  selectToolInputTimeline,
+} from "../shared/duplicate-harness";
 import {
   glm5Tools,
   normalizeContentToolCalls,
@@ -42,15 +48,10 @@ function createStreamHarness(options?: ParserOptions): StreamHarness {
     options,
   });
   const writer = transformer.writable.getWriter();
-  const reader = transformer.readable.getReader();
   const parts: LanguageModelV4StreamPart[] = [];
   const collect = (async () => {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) {
-        return;
-      }
-      parts.push(result.value);
+    for await (const part of transformer.readable) {
+      parts.push(part);
     }
   })();
 
@@ -91,23 +92,54 @@ function hasUnpairedSurrogate(value: string): boolean {
 function assertBalancedToolInputLifecycle(
   parts: LanguageModelV4StreamPart[]
 ): void {
-  const timeline = extractToolInputTimeline(parts);
-  expect(timeline.starts.length).toBe(timeline.ends.length);
-  for (const start of timeline.starts) {
-    expect(timeline.ends.filter((end) => end.id === start.id)).toHaveLength(1);
+  const lifecycle = selectToolInputTimeline(parts);
+  expect(lifecycle.ends).toHaveLength(lifecycle.starts.length);
+  for (const start of lifecycle.starts) {
+    const matchingEnds = lifecycle.ends.filter(({ id }) => id === start.id);
+    expect(matchingEnds).toHaveLength(1);
   }
   for (const call of parts.filter((part) => part.type === "tool-call")) {
-    expect(timeline.starts.some((start) => start.id === call.toolCallId)).toBe(
-      true
-    );
-    expect(timeline.ends.some((end) => end.id === call.toolCallId)).toBe(true);
+    const matchesCall = ({ id }: { readonly id: string }) =>
+      id === call.toolCallId;
+    expect(lifecycle.starts.some(matchesCall)).toBe(true);
+    expect(lifecycle.ends.some(matchesCall)).toBe(true);
     expect(
-      timeline.deltas
-        .filter((delta) => delta.id === call.toolCallId)
-        .map((delta) => delta.delta)
+      lifecycle.deltas
+        .filter(matchesCall)
+        .map(({ delta }) => delta)
         .join("")
     ).toBe(call.input);
   }
+}
+
+async function collectGeneratedAndCharacterStream(text: string) {
+  const protocol = glm5Protocol();
+  return {
+    generated: runGeneratedJsonRepair({ protocol, text, tools: glm5Tools }),
+    streamed: await runProtocolTextStream({
+      protocol,
+      tools: glm5Tools,
+      chunks: text.split(""),
+      id: "fixture",
+    }),
+  };
+}
+
+function assertRejectedLifecycle(parts: LanguageModelV4StreamPart[]): void {
+  const timeline = selectToolInputTimeline(parts);
+  expect(parts.some((part) => part.type === "tool-call")).toBe(false);
+  expect(timeline.starts.length).toBe(timeline.ends.length);
+}
+
+function assertNonExecutableText(
+  generated: ReturnType<typeof runGeneratedJsonRepair>,
+  streamed: LanguageModelV4StreamPart[],
+  text: string
+): void {
+  expect(normalizeContentToolCalls(generated)).toEqual([]);
+  expect(normalizeStreamToolCalls(streamed)).toEqual([]);
+  expect(extractTextDeltas(streamed)).toBe(text);
+  assertBalancedToolInputLifecycle(streamed);
 }
 
 describe("glm5Protocol streaming lifecycle", () => {
@@ -242,18 +274,15 @@ describe("glm5Protocol streaming lifecycle", () => {
   });
 
   it("keeps opaque object-reference recovery invariant under one-character chunks", async () => {
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "consume",
-        inputSchema: {
-          type: "object",
-          properties: {
-            payload: { type: "object", additionalProperties: true },
-          },
-          required: ["payload"],
-        },
+    const opaquePayloadSchema = {
+      type: "object",
+      properties: {
+        payload: { type: "object", additionalProperties: true },
       },
+      required: ["payload"],
+    } satisfies JSONSchema7;
+    const tools: LanguageModelV4FunctionTool[] = [
+      { type: "function", name: "consume", inputSchema: opaquePayloadSchema },
     ];
     const text =
       "<tool_call>consume<arg_key>payload</arg_key><arg_value>responseData</arg_value></tool_call>";
@@ -276,18 +305,10 @@ describe("glm5Protocol streaming lifecycle", () => {
 
   it("keeps Markdown code examples non-executable under one-character chunks", async () => {
     const text = "Example only, do not execute: `<tool_call>ping</tool_call>`.";
-    const protocol = glm5Protocol();
-    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    const streamed = await runProtocolTextDeltaStream({
-      protocol,
-      tools: glm5Tools,
-      chunks: text.split(""),
-    });
+    const { generated, streamed } =
+      await collectGeneratedAndCharacterStream(text);
 
-    expect(normalizeContentToolCalls(generated)).toEqual([]);
-    expect(normalizeStreamToolCalls(streamed)).toEqual([]);
-    expect(extractTextDeltas(streamed)).toBe(text);
-    assertBalancedToolInputLifecycle(streamed);
+    assertNonExecutableText(generated, streamed, text);
   });
 
   it.each([
@@ -299,21 +320,10 @@ describe("glm5Protocol streaming lifecycle", () => {
     "keeps a canonical call inside a %s fenced block non-executable under one-character chunks",
     async (_name, language, fencedPrefix) => {
       const text = `\`\`\`${language}\n${fencedPrefix}<tool_call>ping</tool_call>\n\`\`\``;
-      const protocol = glm5Protocol();
-      const generated = protocol.parseGeneratedText({
-        text,
-        tools: glm5Tools,
-      });
-      const streamed = await runProtocolTextDeltaStream({
-        protocol,
-        tools: glm5Tools,
-        chunks: text.split(""),
-      });
+      const { generated, streamed } =
+        await collectGeneratedAndCharacterStream(text);
 
-      expect(normalizeContentToolCalls(generated)).toEqual([]);
-      expect(normalizeStreamToolCalls(streamed)).toEqual([]);
-      expect(extractTextDeltas(streamed)).toBe(text);
-      assertBalancedToolInputLifecycle(streamed);
+      assertNonExecutableText(generated, streamed, text);
     }
   );
 
@@ -323,13 +333,8 @@ describe("glm5Protocol streaming lifecycle", () => {
       "<tool_call>ping</tool_call>",
       "<tool_call>ping</tool_call>",
     ].join("");
-    const protocol = glm5Protocol();
-    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    const streamed = await runProtocolTextDeltaStream({
-      protocol,
-      tools: glm5Tools,
-      chunks: text.split(""),
-    });
+    const { generated, streamed } =
+      await collectGeneratedAndCharacterStream(text);
 
     expect(normalizeContentToolCalls(generated)).toEqual([
       { toolName: "ping", input: {} },
@@ -345,13 +350,8 @@ describe("glm5Protocol streaming lifecycle", () => {
   it("keeps a canonical call after malformed prose backticks chunk-invariant", async () => {
     const text =
       "Repository `https://example.test/repo%60 from `/home/user` right away.<tool_call>ping</tool_call>";
-    const protocol = glm5Protocol();
-    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    const streamed = await runProtocolTextDeltaStream({
-      protocol,
-      tools: glm5Tools,
-      chunks: text.split(""),
-    });
+    const { generated, streamed } =
+      await collectGeneratedAndCharacterStream(text);
 
     expect(normalizeContentToolCalls(generated)).toEqual([
       { toolName: "ping", input: {} },
@@ -365,13 +365,8 @@ describe("glm5Protocol streaming lifecycle", () => {
   it("rejects a nested complete call naming a declared tool in generate and stream", async () => {
     const text =
       "<tool_call>echo<arg_key>message</arg_key><arg_value>outer <tool_call>ping</tool_call></arg_value></tool_call>";
-    const protocol = glm5Protocol();
-    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    const streamed = await runProtocolTextDeltaStream({
-      protocol,
-      tools: glm5Tools,
-      chunks: text.split(""),
-    });
+    const { generated, streamed } =
+      await collectGeneratedAndCharacterStream(text);
 
     expect(normalizeContentToolCalls(generated)).toEqual([]);
     expect(normalizeStreamToolCalls(streamed)).toEqual([]);
@@ -576,10 +571,7 @@ describe("glm5Protocol streaming lifecycle", () => {
       ],
       options: { onError },
     });
-    const timeline = extractToolInputTimeline(output);
-
-    expect(output.some((part) => part.type === "tool-call")).toBe(false);
-    expect(timeline.starts.length).toBe(timeline.ends.length);
+    assertRejectedLifecycle(output);
     expect(onError).toHaveBeenCalledWith(
       "Could not parse streaming GLM-5.2 tool call.",
       expect.objectContaining({ dropReason: "malformed-glm5-tool-call" })
@@ -631,10 +623,7 @@ describe("glm5Protocol streaming lifecycle", () => {
         tools: glm5Tools,
         chunks: text.split(""),
       });
-      const timeline = extractToolInputTimeline(output);
-
-      expect(output.some((part) => part.type === "tool-call")).toBe(false);
-      expect(timeline.starts.length).toBe(timeline.ends.length);
+      assertRejectedLifecycle(output);
     }
   );
 
@@ -650,10 +639,7 @@ describe("glm5Protocol streaming lifecycle", () => {
       ],
       options: { onError },
     });
-    const timeline = extractToolInputTimeline(output);
-
-    expect(output.some((part) => part.type === "tool-call")).toBe(false);
-    expect(timeline.starts.length).toBe(timeline.ends.length);
+    assertRejectedLifecycle(output);
     expect(output.at(-1)?.type).toBe("finish");
     expect(onError).toHaveBeenCalled();
   });

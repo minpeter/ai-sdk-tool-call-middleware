@@ -6,6 +6,10 @@ import {
   morphFormatToolResponseAsXml,
   morphXmlSystemPromptTemplate,
 } from "../../../core/prompts/morph-xml-prompt";
+import {
+  canonicalFileToolResult,
+  imageUrlToolResult,
+} from "./shared/prompt-duplicate-fixtures";
 
 describe("morphXmlSystemPromptTemplate", () => {
   it("renders Morph XML examples from inputExamples", () => {
@@ -198,22 +202,7 @@ describe("morphFormatToolResponseAsXml", () => {
   });
 
   it("emits real file parts for canonical file content by default", () => {
-    const result = morphFormatToolResponseAsXml({
-      type: "tool-result",
-      toolCallId: "tc1",
-      toolName: "screenshot",
-      output: {
-        type: "content",
-        value: [
-          { type: "text", text: "Screenshot captured" },
-          {
-            type: "file",
-            data: { type: "data", data: "base64..." },
-            mediaType: "image/png",
-          },
-        ],
-      },
-    } satisfies ToolResultPart);
+    const result = morphFormatToolResponseAsXml(canonicalFileToolResult);
 
     expect(result).toEqual([
       {
@@ -237,22 +226,7 @@ describe("morphFormatToolResponseAsXml", () => {
     const formatter = createMorphXmlToolResponseFormatter({
       mediaStrategy: { mode: "placeholder" },
     });
-    const result = formatter({
-      type: "tool-result",
-      toolCallId: "tc1",
-      toolName: "screenshot",
-      output: {
-        type: "content",
-        value: [
-          { type: "text", text: "Screenshot captured" },
-          {
-            type: "file",
-            data: { type: "data", data: "base64..." },
-            mediaType: "image/png",
-          },
-        ],
-      },
-    } satisfies ToolResultPart);
+    const result = formatter(canonicalFileToolResult);
 
     expect(result).toContain("Screenshot captured");
     expect(result).toContain("[Image: image/png]");
@@ -291,15 +265,7 @@ describe("morphFormatToolResponseAsXml", () => {
       },
     });
 
-    const result = formatter({
-      type: "tool-result",
-      toolCallId: "tc1",
-      toolName: "vision",
-      output: {
-        type: "content",
-        value: [{ type: "image-url", url: "https://example.com/a.png" }],
-      },
-    } satisfies ToolResultPart);
+    const result = formatter(imageUrlToolResult);
 
     expect(result).toContain("<type>image-url</type>");
     expect(result).toContain("<url>https://example.com/a.png</url>");

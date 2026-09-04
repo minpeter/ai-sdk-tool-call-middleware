@@ -33,19 +33,6 @@ const NAME_START_CHAR_RE = /[A-Za-z_:]/;
 const STEP_TAG_RE = /<step>([\s\S]*?)<\/step>/i;
 const STATUS_TAG_RE = /<status>([\s\S]*?)<\/status>/i;
 
-function isToolInputSchemaCandidate(
-  value: IntermediateCall["schema"]
-): value is ToolInputSchemaCandidate {
-  return (
-    value === null ||
-    value === undefined ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    typeof value === "object"
-  );
-}
-
 export const normalizeCloseTagsHeuristic: ToolCallHeuristic = {
   id: "normalize-close-tags",
   phase: "pre-parse",
@@ -106,12 +93,9 @@ export const dedupeShellStringTagsHeuristic: ToolCallHeuristic = {
   id: "dedupe-shell-string-tags",
   phase: "fallback-reparse",
   applies: (ctx: IntermediateCall): boolean =>
-    isToolInputSchemaCandidate(ctx.schema) &&
     shouldDeduplicateStringTags(ctx.schema),
   run: (ctx: IntermediateCall): HeuristicResult => {
-    const names = isToolInputSchemaCandidate(ctx.schema)
-      ? getStringPropertyNames(ctx.schema)
-      : [];
+    const names = getStringPropertyNames(ctx.schema);
     let deduped = ctx.rawSegment;
     for (const key of names) {
       deduped = dedupeSingleTag(deduped, key);
@@ -126,19 +110,10 @@ export const dedupeShellStringTagsHeuristic: ToolCallHeuristic = {
 export const repairAgainstSchemaHeuristic: ToolCallHeuristic = {
   id: "repair-against-schema",
   phase: "post-parse",
-  applies: (ctx: IntermediateCall): boolean =>
-    isJSONObject(ctx.parsed) &&
-    !Array.isArray(ctx.parsed) &&
-    isToolInputSchemaCandidate(ctx.schema),
+  applies: (ctx: IntermediateCall): boolean => isJSONObject(ctx.parsed),
   run: (ctx: IntermediateCall): HeuristicResult => {
-    const repaired =
-      isJSONObject(ctx.parsed) &&
-      !Array.isArray(ctx.parsed) &&
-      isToolInputSchemaCandidate(ctx.schema)
-        ? repairParsedAgainstSchema(ctx.parsed, ctx.schema)
-        : ctx.parsed;
-    if (repaired !== ctx.parsed) {
-      return { parsed: repaired };
+    if (isJSONObject(ctx.parsed)) {
+      repairParsedAgainstSchema(ctx.parsed, ctx.schema);
     }
     return {};
   },
@@ -355,16 +330,15 @@ function dedupeSingleTag(xml: string, key: string): string {
   if (matches.length <= 1) {
     return xml;
   }
-  const last = matches.at(-1);
   let result = "";
   let cursor = 0;
-  for (const m of matches) {
-    const idx = m.index ?? 0;
+  for (const [position, match] of matches.entries()) {
+    const idx = xml.indexOf(match[0], cursor);
     result += xml.slice(cursor, idx);
-    if (last && idx === (last.index ?? -1)) {
-      result += m[0];
+    if (position === matches.length - 1) {
+      result += match[0];
     }
-    cursor = idx + m[0].length;
+    cursor = idx + match[0].length;
   }
   result += xml.slice(cursor);
   return result;
@@ -382,7 +356,7 @@ function repairParsedAgainstSchema(
   input: JSONValue | undefined,
   schema: ToolInputSchemaCandidate
 ): JSONValue | undefined {
-  if (!isJSONObject(input) || Array.isArray(input)) {
+  if (!isJSONObject(input)) {
     return input;
   }
   const properties = extractSchemaProperties(schema);
@@ -455,8 +429,7 @@ function tryParseStringToSchemaObject(
 ): JSONObject | null {
   try {
     const normalized = xml.replace(MALFORMED_CLOSE_RE_G, "</$1>");
-    const fixed = parse(normalized, itemSchema, { noChildNodes: [] });
-    return isJSONObject(fixed) && !Array.isArray(fixed) ? fixed : null;
+    return parse(normalized, itemSchema, { noChildNodes: [] });
   } catch {
     return null;
   }

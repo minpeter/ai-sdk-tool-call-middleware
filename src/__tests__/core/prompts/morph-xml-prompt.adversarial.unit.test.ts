@@ -55,7 +55,7 @@ describe("morphXmlSystemPromptTemplate adversarial runtime schemas", () => {
     const originalIterator = Array.prototype[Symbol.iterator];
     Object.defineProperty(Array.prototype, Symbol.iterator, {
       configurable: true,
-      *value(this: unknown[]) {
+      *value(this: string[]) {
         if (this.length === 1 && this[0] === "uniterable_property") {
           return;
         }

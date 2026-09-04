@@ -1,7 +1,6 @@
 import type {
   JSONSchema7,
   LanguageModelV4FunctionTool,
-  SharedV4ProviderOptions,
 } from "@ai-sdk/provider";
 import type {
   OnErrorFn,
@@ -41,8 +40,8 @@ export interface ToolCallMiddlewareProviderOptions {
  * Names of provider tools dropped by transformParams, so the wrap handlers
  * can surface a spec warning instead of discarding them silently.
  */
-export function getDroppedProviderTools<ProviderOptions>(
-  providerOptions: ProviderOptions
+export function getDroppedProviderTools<ProviderOptions extends object>(
+  providerOptions: ProviderOptions | undefined
 ): string[] {
   const middlewareOptions = getToolCallMiddlewareOptions(providerOptions);
   const dropped = middlewareOptions.droppedProviderTools;
@@ -110,18 +109,16 @@ const encodedOriginalToolsCache = new WeakMap<
 >();
 const sharedOriginalToolsCache: SharedOriginalToolsCacheEntry[] = [];
 const nativeArrayMap = Array.prototype.map;
-const { apply: applyFunction } = Reflect;
 
 function encodedOriginalToolsSignature(
   encodedTools: EncodedOriginalTool[]
 ): string | null {
   const parts = [String(encodedTools.length), "|"];
   for (const entry of encodedTools) {
-    if (
-      !entry ||
-      typeof entry.name !== "string" ||
-      typeof entry.inputSchema !== "string"
-    ) {
+    if (!entry || typeof entry.name !== "string") {
+      throw new TypeError("tools.map returned an invalid tool name");
+    }
+    if (typeof entry.inputSchema !== "string") {
       return null;
     }
     parts.push(
@@ -141,11 +138,10 @@ function nativeEncodedCatalogIsCacheable(
 ): boolean {
   const valid = encodedTools.length >= 0;
   for (const entry of encodedTools) {
-    if (
-      !entry ||
-      typeof entry.name !== "string" ||
-      typeof entry.inputSchema !== "string"
-    ) {
+    if (!entry || typeof entry.name !== "string") {
+      throw new TypeError("tools.map returned an invalid tool name");
+    }
+    if (typeof entry.inputSchema !== "string") {
       return false;
     }
   }
@@ -217,29 +213,21 @@ function promoteSharedCatalog(
   if (!shared) {
     return;
   }
-  for (let cursor = index; cursor > 0; cursor -= 1) {
-    sharedOriginalToolsCache[cursor] = sharedOriginalToolsCache[
-      cursor - 1
-    ] as SharedOriginalToolsCacheEntry;
-  }
+  sharedOriginalToolsCache.copyWithin(1, 0, index);
   sharedOriginalToolsCache[0] = shared;
   return shared;
 }
 
 function insertSharedCatalog(shared: SharedOriginalToolsCacheEntry): void {
-  const lastIndex = Math.min(
-    sharedOriginalToolsCache.length,
-    MAX_SHARED_ORIGINAL_TOOL_CATALOGS - 1
+  if (sharedOriginalToolsCache.length < MAX_SHARED_ORIGINAL_TOOL_CATALOGS) {
+    sharedOriginalToolsCache.push(shared);
+  }
+  sharedOriginalToolsCache.copyWithin(
+    1,
+    0,
+    sharedOriginalToolsCache.length - 1
   );
-  for (let index = lastIndex; index > 0; index -= 1) {
-    sharedOriginalToolsCache[index] = sharedOriginalToolsCache[
-      index - 1
-    ] as SharedOriginalToolsCacheEntry;
-  }
   sharedOriginalToolsCache[0] = shared;
-  if (sharedOriginalToolsCache.length > MAX_SHARED_ORIGINAL_TOOL_CATALOGS) {
-    sharedOriginalToolsCache.length = MAX_SHARED_ORIGINAL_TOOL_CATALOGS;
-  }
 }
 
 function cacheEncodedOriginalTools(
@@ -264,13 +252,14 @@ export function encodeOriginalTools(
     throw new TypeError("tools?.map is not a function");
   }
   const encodedTools = mapTools
-    ? ((applyFunction(mapTools, tools, [
-        (t: LanguageModelV4FunctionTool) => ({
-          name: t.name,
-          inputSchema: JSON.stringify(t.inputSchema),
-        }),
-      ]) || []) as EncodedOriginalTool[])
+    ? (mapTools<EncodedOriginalTool>).call(tools, (tool) => ({
+        name: tool.name,
+        inputSchema: JSON.stringify(tool.inputSchema),
+      }))
     : [];
+  if (!Array.isArray(encodedTools)) {
+    throw new TypeError("tools.map must return an array");
+  }
   const usesNativeArrayMap = mapTools === nativeArrayMap;
   // A custom map can legally return an Array Proxy. Preserve the former
   // signature iterator and exact-match transcript only on that cold path;
@@ -331,7 +320,7 @@ export function decodeOriginalTools(
     if (!tool || typeof tool.name !== "string") {
       options?.onError?.("Invalid originalTools entry: missing tool name", {
         index,
-        tool,
+        tool: null,
       });
       continue;
     }
@@ -418,13 +407,13 @@ export function extractToolNamesFromOriginalTools(
   return originalTools?.map((t) => t.name) || [];
 }
 
-function isRecord<Value>(
+function isRecord<Value extends object | ProviderBoundaryValue>(
   value: Value
 ): value is Value & ProviderBoundaryRecord {
   return typeof value === "object" && value !== null;
 }
 
-export function getToolCallMiddlewareOptions<ProviderOptions>(
+export function getToolCallMiddlewareOptions<ProviderOptions extends object>(
   providerOptions?: ProviderOptions
 ): ProviderBoundaryRecord {
   if (!isRecord(providerOptions)) {
@@ -439,44 +428,31 @@ export function getToolCallMiddlewareOptions<ProviderOptions>(
   return toolCallMiddleware;
 }
 
-type ObjectBoundary<Value> = Value extends object ? Value : object;
-type MiddlewareBoundary<ProviderOptions> = ProviderOptions extends {
-  readonly toolCallMiddleware?: infer MiddlewareOptions;
-}
-  ? ObjectBoundary<NonNullable<MiddlewareOptions>>
-  : object;
-
-type KnownProviderKeys<ProviderOptions> = Exclude<
-  Extract<keyof ObjectBoundary<ProviderOptions>, string>,
-  "toolCallMiddleware"
->;
+type MiddlewareBoundary<ProviderOptions extends object> =
+  ProviderOptions extends {
+    readonly toolCallMiddleware?: infer MiddlewareOptions extends object;
+  }
+    ? MiddlewareOptions
+    : Record<never, never>;
 
 export type MergedProviderOptions<
-  ProviderOptions,
-  Overrides extends ProviderBoundaryRecord,
-> = string extends keyof ObjectBoundary<ProviderOptions>
-  ? ProviderBoundaryRecord
-  : Record<KnownProviderKeys<ProviderOptions>, ProviderBoundaryValue> &
-      ObjectBoundary<ProviderOptions> & {
-        readonly toolCallMiddleware: MiddlewareBoundary<ProviderOptions> &
-          Overrides;
-      };
+  ProviderOptions extends object,
+  Overrides extends object,
+> = Omit<ProviderOptions, "toolCallMiddleware"> & {
+  readonly toolCallMiddleware: MiddlewareBoundary<ProviderOptions> & Overrides;
+};
 
-export function mergeToolCallMiddlewareOptions(
-  providerOptions: SharedV4ProviderOptions | undefined,
-  overrides: SharedV4ProviderOptions[string]
-): SharedV4ProviderOptions;
 export function mergeToolCallMiddlewareOptions<
-  ProviderOptions,
-  Overrides extends ProviderBoundaryRecord,
+  ProviderOptions extends object,
+  Overrides extends object,
 >(
-  providerOptions: ProviderOptions,
+  providerOptions: ProviderOptions | undefined,
   overrides: Overrides
 ): MergedProviderOptions<ProviderOptions, Overrides>;
 export function mergeToolCallMiddlewareOptions<
-  ProviderOptions,
-  Overrides extends ProviderBoundaryRecord,
->(providerOptions: ProviderOptions, overrides: Overrides) {
+  ProviderOptions extends object,
+  Overrides extends object,
+>(providerOptions: ProviderOptions | undefined, overrides: Overrides) {
   return {
     ...(isRecord(providerOptions) ? providerOptions : {}),
     toolCallMiddleware: {

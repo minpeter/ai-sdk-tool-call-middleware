@@ -1,6 +1,5 @@
 import {
   isJSONObject,
-  isJSONValue,
   type JSONObject,
   type LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
@@ -13,7 +12,6 @@ import type {
   ResolvedGlm5ProtocolOptions,
 } from "./glm5-call-types";
 import { resolveGlm5ToolName } from "./glm5-name-resolution";
-import { safeAssignGlm5Arg } from "./glm5-value-parsing";
 
 const STRICT_JSON_OPTIONS = {
   duplicate: false,
@@ -92,9 +90,6 @@ export function appendJsonFallbackGlm5Args(options: {
     return "none";
   }
   for (const [key, value] of Object.entries(parsed)) {
-    if (!isJSONValue(value)) {
-      return "rejected";
-    }
     const propertySchema = getToolInputPropertySchema(
       options.schema,
       key,
@@ -105,9 +100,11 @@ export function appendJsonFallbackGlm5Args(options: {
     ) {
       return "rejected";
     }
-    if (!safeAssignGlm5Arg(options.args, key, value, options.recoveries)) {
+    if (Object.hasOwn(options.args, key)) {
+      options.recoveries.push("rejected-duplicate-key");
       return "rejected";
     }
+    options.args[key] = value;
   }
   options.recoveries.push("recovered-json-arguments-body");
   return "appended";

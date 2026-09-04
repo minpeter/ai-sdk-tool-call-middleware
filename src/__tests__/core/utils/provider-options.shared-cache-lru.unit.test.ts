@@ -2,11 +2,12 @@ import type {
   JSONSchema7,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import {
   decodeOriginalToolsForMiddleware,
   encodeOriginalTools,
+  mergeToolCallMiddlewareOptions,
 } from "../../../core/utils/provider-options";
 
 function tool(
@@ -20,7 +21,9 @@ function tool(
   };
 }
 
-function decode(encoded: ReturnType<typeof encodeOriginalTools>) {
+function decode(
+  encoded: Array<{ readonly inputSchema: string; readonly name: string }>
+) {
   return decodeOriginalToolsForMiddleware({
     toolCallMiddleware: { originalTools: encoded },
   });
@@ -51,6 +54,17 @@ describe("shared original-tools exact-entry LRU", () => {
         properties: { value: { type: "string" } },
       }),
     ]);
+
+    const merged = mergeToolCallMiddlewareOptions(
+      {
+        provider: { mode: "strict" },
+        toolCallMiddleware: { preserved: "original" },
+      },
+      { enabled: true }
+    );
+    expectTypeOf(merged.provider).toEqualTypeOf<{ mode: string }>();
+    expectTypeOf(merged.toolCallMiddleware.enabled).toEqualTypeOf<boolean>();
+    expectTypeOf(merged.toolCallMiddleware.preserved).toEqualTypeOf<string>();
   });
 
   it("evicts the least-recently-used catalog at the seventeenth entry", () => {
@@ -339,11 +353,19 @@ describe("shared original-tools exact-entry LRU", () => {
     expect(events).toEqual(["catalog:iterator:throw"]);
   });
 
-  it("preserves the non-callable map TypeError", () => {
-    const catalog: LanguageModelV4FunctionTool[] = [];
-    Object.defineProperty(catalog, "map", { value: 42 });
-    expect(() => encodeOriginalTools(catalog)).toThrow(
+  it("rejects map implementations that violate the array contract", () => {
+    const nonCallableMapCatalog: LanguageModelV4FunctionTool[] = [];
+    Object.defineProperty(nonCallableMapCatalog, "map", { value: 42 });
+    expect(() => encodeOriginalTools(nonCallableMapCatalog)).toThrow(
       new TypeError("tools?.map is not a function")
+    );
+
+    const invalidOutputCatalog: LanguageModelV4FunctionTool[] = [];
+    Object.defineProperty(invalidOutputCatalog, "map", {
+      value: () => [{ name: Symbol("invalid"), inputSchema: "{}" }],
+    });
+    expect(() => encodeOriginalTools(invalidOutputCatalog)).toThrow(
+      new TypeError("tools.map returned an invalid tool name")
     );
   });
 });

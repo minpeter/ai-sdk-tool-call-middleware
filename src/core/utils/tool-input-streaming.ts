@@ -7,7 +7,6 @@ import type { OnErrorFn } from "./on-error";
 import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 import {
   type EmittedToolInputState,
-  emitChunkedPrefixDelta,
   emitChunkedPrefixDeltaWithEnqueue,
   emitFinalRemainder,
   emitFinalRemainderWithEnqueue,
@@ -21,6 +20,10 @@ import {
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 type EnqueueStreamPart = (part: LanguageModelV4StreamPart) => void;
+type CompleteToolCall = Extract<
+  LanguageModelV4StreamPart,
+  { type: "tool-call" }
+>;
 
 interface RawFallbackOptions {
   emitRawToolCallTextOnError?: boolean;
@@ -73,37 +76,18 @@ export function stringifyToolInputWithSchema(options: {
   return JSON.stringify(options.args ?? {});
 }
 
-export function emitToolInputProgressDelta(options: {
-  controller: StreamController;
-  id: string;
-  state: EmittedToolInputState;
-  fullInput: string;
-  mode?: "full-json" | "incomplete-json-prefix";
-}): boolean {
-  const mode = options.mode ?? "incomplete-json-prefix";
-  const candidate =
-    mode === "full-json"
-      ? options.fullInput
-      : toIncompleteJsonPrefix(options.fullInput);
-
-  return emitChunkedPrefixDelta({
-    controller: options.controller,
-    id: options.id,
-    state: options.state,
-    candidate,
-  });
+interface ToolInputProgressOptions {
+  readonly fullInput: string;
+  readonly id: string;
+  readonly mode?: "full-json" | "incomplete-json-prefix";
+  readonly state: EmittedToolInputState;
 }
 
-export function emitBufferedToolInputProgressDelta(options: {
-  enqueue: EnqueueStreamPart;
-  id: string;
-  state: EmittedToolInputState;
-  fullInput: string;
-  mode?: "full-json" | "incomplete-json-prefix";
-}): boolean {
-  const mode = options.mode ?? "incomplete-json-prefix";
+function emitToolInputProgressDeltaWithEnqueue(
+  options: ToolInputProgressOptions & { readonly enqueue: EnqueueStreamPart }
+): boolean {
   const candidate =
-    mode === "full-json"
+    options.mode === "full-json"
       ? options.fullInput
       : toIncompleteJsonPrefix(options.fullInput);
 
@@ -115,22 +99,68 @@ export function emitBufferedToolInputProgressDelta(options: {
   });
 }
 
+export function emitToolInputProgressDelta(
+  options: ToolInputProgressOptions & { readonly controller: StreamController }
+): boolean {
+  return emitToolInputProgressDeltaWithEnqueue({
+    ...options,
+    enqueue: (part) => options.controller.enqueue(part),
+  });
+}
+
+export function emitBufferedToolInputProgressDelta(
+  options: ToolInputProgressOptions & { readonly enqueue: EnqueueStreamPart }
+): boolean {
+  return emitToolInputProgressDeltaWithEnqueue(options);
+}
+
+function enqueueToolInputEndAndCallWithEnqueue(
+  enqueue: EnqueueStreamPart,
+  call: CompleteToolCall
+): void {
+  enqueue({ type: "tool-input-end", id: call.toolCallId });
+  enqueue(call);
+}
+
+export function enqueueCompleteToolCallLifecycle(options: {
+  readonly call: CompleteToolCall;
+  readonly controller: StreamController;
+  readonly emitEmptyInputDelta?: boolean;
+}): void {
+  const { call, controller } = options;
+  controller.enqueue({
+    type: "tool-input-start",
+    id: call.toolCallId,
+    toolName: call.toolName,
+  });
+  if (call.input.length > 0 || options.emitEmptyInputDelta === true) {
+    controller.enqueue({
+      type: "tool-input-delta",
+      id: call.toolCallId,
+      delta: call.input,
+    });
+  }
+  enqueueToolInputEndAndCallWithEnqueue(
+    (part) => controller.enqueue(part),
+    call
+  );
+}
+
 export function enqueueToolInputEndAndCall(options: {
   controller: StreamController;
   id: string;
   toolName: string;
   input: string;
 }): void {
-  enqueueToolInputEnd({
-    controller: options.controller,
-    id: options.id,
-  });
-  options.controller.enqueue({
-    type: "tool-call",
-    toolCallId: options.id,
-    toolName: options.toolName,
-    input: options.input,
-  });
+  enqueueToolInputEndAndCallWithEnqueue(
+    (part) => options.controller.enqueue(part),
+    {
+      type: "tool-call",
+      toolCallId: options.id,
+      toolName: options.toolName,
+      input: options.input,
+    }
+  );
 }
 
 export function enqueueToolInputEnd(options: {
@@ -256,20 +286,16 @@ export function emitFinalizedBufferedToolInputLifecycle(options: {
     onMismatch: options.onMismatch,
   });
 
-  options.bufferedParts.push({
-    type: "tool-input-end",
-    id: options.id,
-  });
-  for (const part of options.bufferedParts) {
-    options.controller.enqueue(part);
-  }
-  options.bufferedParts.length = 0;
-  options.controller.enqueue({
+  enqueueToolInputEndAndCallWithEnqueue(enqueueBufferedPart, {
     type: "tool-call",
     toolCallId: options.id,
     toolName: options.toolName,
     input: options.finalInput,
   });
+  for (const part of options.bufferedParts) {
+    options.controller.enqueue(part);
+  }
+  options.bufferedParts.length = 0;
 }
 
 export function shouldEmitRawToolCallTextOnError(

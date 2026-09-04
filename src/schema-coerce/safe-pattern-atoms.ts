@@ -5,8 +5,12 @@ interface RegexAtomRead {
 }
 
 const REGEX_ATOM_CHAR_RE = /^[A-Za-z0-9_$-]$/;
+const QUANTIFIER_PART_RE = /^[0-9,]$/;
 
-function quantifierEnd(pattern: string, index: number): number | null {
+export function findQuantifierEnd(
+  pattern: string,
+  index: number
+): number | null {
   const char = pattern.charAt(index);
   if (char === "*" || char === "+" || char === "?") {
     return index;
@@ -17,7 +21,7 @@ function quantifierEnd(pattern: string, index: number): number | null {
   let cursor = index + 1;
   while (cursor < pattern.length && pattern.charAt(cursor) !== "}") {
     const part = pattern.charAt(cursor);
-    if (!(part === "," || (part >= "0" && part <= "9"))) {
+    if (!QUANTIFIER_PART_RE.test(part)) {
       return null;
     }
     cursor += 1;
@@ -25,19 +29,20 @@ function quantifierEnd(pattern: string, index: number): number | null {
   return cursor < pattern.length ? cursor : null;
 }
 
+function escapedCharacterEnd(pattern: string, index: number): number | null {
+  return pattern.charAt(index) === "\\"
+    ? Math.min(index + 1, pattern.length - 1)
+    : null;
+}
+
 function findCharClassEnd(pattern: string, start: number): number | null {
-  let escaped = false;
   for (let index = start + 1; index < pattern.length; index += 1) {
-    const char = pattern.charAt(index);
-    if (escaped) {
-      escaped = false;
+    const escapedEnd = escapedCharacterEnd(pattern, index);
+    if (escapedEnd !== null) {
+      index = escapedEnd;
       continue;
     }
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-    if (char === "]") {
+    if (pattern.charAt(index) === "]") {
       return index;
     }
   }
@@ -45,19 +50,15 @@ function findCharClassEnd(pattern: string, start: number): number | null {
 }
 
 function findGroupEnd(pattern: string, start: number): number | null {
-  let escaped = false;
   let inCharClass = false;
   let depth = 0;
   for (let index = start; index < pattern.length; index += 1) {
+    const escapedEnd = escapedCharacterEnd(pattern, index);
+    if (escapedEnd !== null) {
+      index = escapedEnd;
+      continue;
+    }
     const char = pattern.charAt(index);
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
     if (char === "[" && !inCharClass) {
       inCharClass = true;
       continue;
@@ -109,7 +110,7 @@ function readRegexAtom(pattern: string, index: number): RegexAtomRead | null {
     }
     return {
       atom: null,
-      end: quantifierEnd(pattern, groupEnd + 1) ?? groupEnd,
+      end: findQuantifierEnd(pattern, groupEnd + 1) ?? groupEnd,
       resetPrevious: true,
     };
   }
@@ -130,7 +131,7 @@ export function hasAdjacentRepeatedQuantifiedAtoms(pattern: string): boolean {
       index = read.end;
       continue;
     }
-    const end = quantifierEnd(pattern, read.end + 1);
+    const end = findQuantifierEnd(pattern, read.end + 1);
     if (read.atom && end != null) {
       if (previousQuantifiedAtom === read.atom) {
         return true;

@@ -23,8 +23,8 @@ describe("qwen3CoderProtocol", () => {
 
     const out = p.parseGeneratedText({ text, tools });
     expect(out).toHaveLength(3);
-    expect(out[0]).toEqual({ type: "text", text: "before " });
-    expect(out[2]).toEqual({ type: "text", text: " after" });
+    expect(out.at(0)).toEqual({ type: "text", text: "before " });
+    expect(out.at(-1)).toEqual({ type: "text", text: " after" });
 
     const [, toolCall] = out;
     if (toolCall.type !== "tool-call") {
@@ -93,13 +93,14 @@ describe("qwen3CoderProtocol", () => {
       "text",
     ]);
 
-    const [alpha, beta] = out.filter((x) => x.type === "tool-call");
-    if (alpha?.type !== "tool-call" || beta?.type !== "tool-call") {
+    const toolParts = out.filter((part) => part.type === "tool-call");
+    const alpha = toolParts.at(0);
+    const beta = toolParts.at(1);
+    if (alpha === undefined || beta === undefined) {
       throw new Error("Expected tool-call parts");
     }
-    expect(alpha.toolName).toBe("alpha");
+    expect([alpha.toolName, beta.toolName]).toEqual(["alpha", "beta"]);
     expect(JSON.parse(alpha.input)).toEqual({ x: "1" });
-    expect(beta.toolName).toBe("beta");
     expect(JSON.parse(beta.input)).toEqual({ y: ["2", "3"] });
   });
 
@@ -126,14 +127,7 @@ describe("qwen3CoderProtocol", () => {
     const out = p.parseGeneratedText({ text, tools });
     expect(out).toHaveLength(3);
 
-    const toolCall = out.find((part) => part.type === "tool-call") as
-      | {
-          type: "tool-call";
-          toolCallId: string;
-          toolName: string;
-          input: string;
-        }
-      | undefined;
+    const toolCall = out.find((part) => part.type === "tool-call");
     expect(toolCall).toBeTruthy();
     expect(toolCall?.toolName).toBe("get_weather");
     expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({});

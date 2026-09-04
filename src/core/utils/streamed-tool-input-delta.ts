@@ -1,4 +1,4 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
+import type { JSONObject, LanguageModelV4StreamPart } from "@ai-sdk/provider";
 
 export interface EmittedToolInputState {
   emittedInput: string;
@@ -27,10 +27,6 @@ interface EmitPrefixDeltaWithEnqueueParams
   candidate: string;
 }
 
-interface EmitChunkedPrefixDeltaParams extends EmitPrefixDeltaParams {
-  maxChunkChars?: number;
-}
-
 interface EmitChunkedPrefixDeltaWithEnqueueParams
   extends EmitPrefixDeltaWithEnqueueParams {
   maxChunkChars?: number;
@@ -38,13 +34,13 @@ interface EmitChunkedPrefixDeltaWithEnqueueParams
 
 interface EmitFinalRemainderParams extends EmitToolInputDeltaBaseParams {
   finalFullJson: string;
-  onMismatch?: (message: string, metadata?: Record<string, unknown>) => void;
+  onMismatch?: (message: string, metadata?: JSONObject) => void;
 }
 
 interface EmitFinalRemainderWithEnqueueParams
   extends EmitToolInputDeltaEnqueueParams {
   finalFullJson: string;
-  onMismatch?: (message: string, metadata?: Record<string, unknown>) => void;
+  onMismatch?: (message: string, metadata?: JSONObject) => void;
 }
 
 function emitDelta({
@@ -121,7 +117,7 @@ export function emitPrefixDelta(params: EmitPrefixDeltaParams): boolean {
   });
 }
 
-export function emitPrefixDeltaWithEnqueue(
+function emitPrefixDeltaWithEnqueue(
   params: EmitPrefixDeltaWithEnqueueParams
 ): boolean {
   return emitDelta({
@@ -131,20 +127,6 @@ export function emitPrefixDeltaWithEnqueue(
 }
 
 const DEFAULT_TOOL_INPUT_DELTA_CHUNK_CHARS = 512;
-
-export function emitChunkedPrefixDelta(
-  params: EmitChunkedPrefixDeltaParams
-): boolean {
-  return emitChunkedPrefixDeltaWithEnqueue({
-    id: params.id,
-    state: params.state,
-    candidate: params.candidate,
-    maxChunkChars: params.maxChunkChars,
-    enqueue: (part) => {
-      params.controller.enqueue(part);
-    },
-  });
-}
 
 export function emitChunkedPrefixDeltaWithEnqueue(
   params: EmitChunkedPrefixDeltaWithEnqueueParams

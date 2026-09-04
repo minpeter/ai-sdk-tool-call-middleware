@@ -8,6 +8,24 @@ import type {
 /**
  * Options for parsing tool calls and handling errors
  */
+export type ProtocolMetadataJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | Error
+  | readonly ProtocolMetadataJsonValue[]
+  | ProtocolMetadataJsonObject;
+
+export interface ProtocolMetadataJsonObject {
+  readonly [key: string]: ProtocolMetadataJsonValue;
+}
+
+export type ProtocolMetadataValue = ProtocolMetadataJsonValue;
+export type ProtocolMetadata = ProtocolMetadataJsonObject;
+export type ProtocolError = ProtocolMetadataJsonValue;
+
 export interface ParserOptions {
   /**
    * When true, stream parsers may emit malformed raw tool-call text as
@@ -15,12 +33,12 @@ export interface ParserOptions {
    * protocol/internal markup to end users.
    */
   emitRawToolCallTextOnError?: boolean;
-  onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  onError?: (message: string, metadata?: ProtocolMetadata) => void;
 }
 
 export type ResolvedProtocolToolCall =
   | { ok: true; toolName: string; input: string }
-  | { ok: false; error: unknown };
+  | { ok: false; error: ProtocolError };
 
 export type ProtocolToolCallResolver = (
   toolCallJson: string,
@@ -77,5 +95,3 @@ export function isProtocolFactory(
 ): protocol is () => TCMProtocol {
   return typeof protocol === "function";
 }
-
-export const isTCMProtocolFactory = isProtocolFactory;

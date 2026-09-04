@@ -1,13 +1,12 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { glm5Protocol } from "../../../core/protocols/glm5-protocol";
-import type { ParserOptions } from "../../../core/protocols/protocol-interface";
 import { stopFinishReason, zeroUsage } from "../../test-helpers";
 import {
-  extractTextDeltas,
-  extractToolInputTimeline,
-  runProtocolTextDeltaStream,
-} from "../cross-protocol/tool-input/streaming-events.shared";
+  collectTextDeltas,
+  runProtocolTextStream,
+  selectToolInputTimeline,
+} from "../shared/duplicate-harness";
 import {
   glm5Tools,
   normalizeContentToolCalls,
@@ -23,65 +22,30 @@ const CANONICAL_CALL = [
   "</tool_call>",
 ].join("");
 
-interface StreamHarness {
-  finish: () => Promise<LanguageModelV4StreamPart[]>;
-  parts: LanguageModelV4StreamPart[];
-  writeText: (delta: string) => Promise<void>;
-}
-
-function createStreamHarness(options?: ParserOptions): StreamHarness {
-  const transformer = glm5Protocol().createStreamParser({
+function streamByCharacter(text: string): Promise<LanguageModelV4StreamPart[]> {
+  return runProtocolTextStream({
+    protocol: glm5Protocol(),
     tools: glm5Tools,
-    options,
+    chunks: text.split(""),
+    id: "fixture",
   });
-  const writer = transformer.writable.getWriter();
-  const reader = transformer.readable.getReader();
-  const parts: LanguageModelV4StreamPart[] = [];
-  const collect = (async () => {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) {
-        return;
-      }
-      parts.push(result.value);
-    }
-  })();
-
-  return {
-    parts,
-    async writeText(delta) {
-      await writer.write({ type: "text-delta", id: "fixture", delta });
-    },
-    async finish() {
-      await writer.write({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-      });
-      await writer.close();
-      await collect;
-      return parts;
-    },
-  };
 }
 
 function assertBalancedToolInputLifecycle(
   parts: LanguageModelV4StreamPart[]
 ): void {
-  const timeline = extractToolInputTimeline(parts);
-  expect(timeline.starts.length).toBe(timeline.ends.length);
-  for (const start of timeline.starts) {
-    expect(timeline.ends.filter((end) => end.id === start.id)).toHaveLength(1);
+  const { starts, deltas, ends } = selectToolInputTimeline(parts);
+  expect(starts.length).toBe(ends.length);
+  for (const start of starts) {
+    expect(ends.filter(({ id }) => id === start.id)).toHaveLength(1);
   }
   for (const call of parts.filter((part) => part.type === "tool-call")) {
-    expect(timeline.starts.some((start) => start.id === call.toolCallId)).toBe(
-      true
-    );
-    expect(timeline.ends.some((end) => end.id === call.toolCallId)).toBe(true);
+    expect(starts.some(({ id }) => id === call.toolCallId)).toBe(true);
+    expect(ends.some(({ id }) => id === call.toolCallId)).toBe(true);
     expect(
-      timeline.deltas
-        .filter((delta) => delta.id === call.toolCallId)
-        .map((delta) => delta.delta)
+      deltas
+        .filter(({ id }) => id === call.toolCallId)
+        .map(({ delta }) => delta)
         .join("")
     ).toBe(call.input);
   }
@@ -93,34 +57,51 @@ describe("glm5Protocol streaming/non-streaming equivalence", () => {
     const text = `${prefix} is an example.`;
     const protocol = glm5Protocol();
     const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    const harness = createStreamHarness();
+    const transformer = protocol.createStreamParser({ tools: glm5Tools });
+    const writer = transformer.writable.getWriter();
+    const streamed: LanguageModelV4StreamPart[] = [];
+    const collected = transformer.readable.pipeTo(
+      new WritableStream({
+        write(part) {
+          streamed.push(part);
+        },
+      })
+    );
 
-    await harness.writeText(prefix);
-    expect(normalizeStreamToolCalls(harness.parts)).toEqual([]);
-    await harness.writeText(" is an example.");
-    const streamed = await harness.finish();
+    await writer.write({ type: "text-delta", id: "fixture", delta: prefix });
+    expect(normalizeStreamToolCalls(streamed)).toEqual([]);
+    await writer.write({
+      type: "text-delta",
+      id: "fixture",
+      delta: " is an example.",
+    });
+    await writer.write({
+      type: "finish",
+      finishReason: stopFinishReason,
+      usage: zeroUsage,
+    });
+    await writer.close();
+    await collected;
 
     expect(normalizeStreamToolCalls(streamed)).toEqual(
       normalizeContentToolCalls(generated)
     );
-    expect(extractTextDeltas(streamed)).toBe(text);
+    expect(collectTextDeltas(streamed)).toBe(text);
     assertBalancedToolInputLifecycle(streamed);
   });
 
   it("recovers a terminal anchored bare call like the generate path", async () => {
     const text = 'get-weather(city="Seoul")';
-    const protocol = glm5Protocol();
-    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    const streamed = await runProtocolTextDeltaStream({
-      protocol,
+    const generated = glm5Protocol().parseGeneratedText({
+      text,
       tools: glm5Tools,
-      chunks: text.split(""),
     });
+    const streamed = await streamByCharacter(text);
 
     expect(normalizeStreamToolCalls(streamed)).toEqual(
       normalizeContentToolCalls(generated)
     );
-    expect(extractTextDeltas(streamed)).toBe("");
+    expect(collectTextDeltas(streamed)).toBe("");
     assertBalancedToolInputLifecycle(streamed);
   });
 
@@ -156,13 +137,11 @@ describe("glm5Protocol streaming/non-streaming equivalence", () => {
   ];
 
   it.each(cases)("produces identical final calls: $name", async ({ text }) => {
-    const protocol = glm5Protocol();
-    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    const streamed = await runProtocolTextDeltaStream({
-      protocol,
+    const generated = glm5Protocol().parseGeneratedText({
+      text,
       tools: glm5Tools,
-      chunks: text.split(""),
     });
+    const streamed = await streamByCharacter(text);
 
     expect(normalizeStreamToolCalls(streamed)).toEqual(
       normalizeContentToolCalls(generated)

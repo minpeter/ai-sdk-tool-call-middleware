@@ -1,3 +1,5 @@
+import type { JSONValue } from "@ai-sdk/provider";
+
 export const K_EXAONE_2_HISTORY_KEY_PREFIX = "\u0000kexaone:key:";
 export const K_EXAONE_2_HISTORY_NUMBER_PREFIX = "\u0000kexaone:number:";
 export const K_EXAONE_2_HISTORY_STRING_PREFIX = "\u0000kexaone:string:";
@@ -46,7 +48,7 @@ export function readKExaone2JsonString(
     }
     if (char === '"') {
       const token = input.slice(cursor, index + 1);
-      const value: unknown = JSON.parse(token);
+      const value: JSONValue = JSON.parse(token);
       if (typeof value !== "string") {
         throw createKExaone2JsonSyntaxError();
       }

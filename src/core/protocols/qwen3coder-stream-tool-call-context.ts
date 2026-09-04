@@ -7,7 +7,7 @@ import type {
   ToolCallContainerState,
 } from "./qwen3coder-stream-types";
 
-export interface CallConsumption {
+interface CallConsumption {
   readonly done: boolean;
   readonly remainder: string;
 }

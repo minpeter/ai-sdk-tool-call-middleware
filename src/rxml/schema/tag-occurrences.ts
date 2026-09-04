@@ -1,4 +1,5 @@
-import { isNameChar, isNameStartChar, skipQuoted } from "../utils/helpers";
+import { isNameChar, isNameStartChar } from "../utils/helpers";
+import { skipToTagEnd } from "./xml-tag-scanner";
 
 function isPositionExcluded(
   pos: number,
@@ -16,30 +17,6 @@ function isPositionExcluded(
 }
 
 /**
- * Helper to skip comment in counting
- */
-function skipCommentInCounting(
-  xmlContent: string,
-  i: number,
-  len: number
-): number {
-  const close = xmlContent.indexOf("-->", i + 4);
-  return close === -1 ? len : close + 3;
-}
-
-/**
- * Helper to skip CDATA in counting
- */
-function skipCdataInCounting(
-  xmlContent: string,
-  i: number,
-  len: number
-): number {
-  const close = xmlContent.indexOf("]]>", i + 9);
-  return close === -1 ? len : close + 3;
-}
-
-/**
  * Helper to handle special constructs in counting
  */
 function skipSpecialInCounting(
@@ -49,12 +26,6 @@ function skipSpecialInCounting(
   len: number
 ): number {
   if (ch === "!") {
-    if (xmlContent.startsWith("!--", i + 1)) {
-      return skipCommentInCounting(xmlContent, i, len);
-    }
-    if (xmlContent.startsWith("![CDATA[", i + 1)) {
-      return skipCdataInCounting(xmlContent, i, len);
-    }
     const gt = xmlContent.indexOf(">", i + 1);
     return gt === -1 ? len : gt + 1;
   }
@@ -89,24 +60,9 @@ function parseAndCountTag(options: {
     }
   }
   const name = xmlContent.slice(i, j);
-  let k = j;
-  while (k < len) {
-    const c = xmlContent[k];
-    if (c === '"' || c === "'") {
-      k = skipQuoted(xmlContent, k);
-      continue;
-    }
-    if (c === ">") {
-      break;
-    }
-    if (c === "/" && xmlContent[k + 1] === ">") {
-      k += 1;
-      break;
-    }
-    k += 1;
-  }
+  const tagEnd = skipToTagEnd(xmlContent, j, len);
   const shouldCount = name === target && !isPositionExcluded(lt, excludeRanges);
-  return { nextPos: k + 1, shouldCount };
+  return { nextPos: tagEnd.pos + 1, shouldCount };
 }
 
 /**

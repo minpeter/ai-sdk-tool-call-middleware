@@ -8,9 +8,10 @@ import {
 } from "./hermes-json-normalization";
 import {
   collectPreviousSignificantChars as buildPreviousSignificantCharIndex,
+  consumeJsonQuotedScanChar,
   skipJsonComment as findJsonCommentEnd,
-  previousSignificantChar as findPreviousSignificantChar,
   findQuotedKeyEnd,
+  type JsonQuotedScanState,
 } from "./hermes-json-significant-char-index";
 
 const WHITESPACE_CHAR_RE = /\s/;
@@ -31,10 +32,6 @@ export function skipJsonWhitespace(text: string, fromIndex: number): number {
 
 export function collectPreviousSignificantChars(text: string): string[] {
   return buildPreviousSignificantCharIndex(text);
-}
-
-export function previousSignificantChar(text: string, index: number): string {
-  return findPreviousSignificantChar(text, index);
 }
 
 export function skipJsonComment(text: string, index: number): number | null {
@@ -118,11 +115,6 @@ export function parseUnquotedObjectKey(
   return { key: text.slice(keyStart, index), end: index - 1 };
 }
 
-interface QuotedScanState {
-  escaping: boolean;
-  quoteChar: string | null;
-}
-
 export type JsonDepthScanState = NormalizationJsonDepthScanState;
 
 export function consumeExistingJsonString(
@@ -165,9 +157,9 @@ export function consumeJsonObjectDepth(
  * Keeps recursive parsers/stringifiers from stack-overflowing on pathological
  * input; matches MAX_ARGUMENT_SHAPE_DEPTH / bare-call nesting limits.
  */
-export const MAX_TOOL_CALL_JSON_NESTING_DEPTH = 256;
+const MAX_TOOL_CALL_JSON_NESTING_DEPTH = 256;
 
-interface NestingScanState extends QuotedScanState {
+interface NestingScanState extends JsonQuotedScanState {
   depth: number;
 }
 
@@ -204,7 +196,7 @@ export function exceedsToolCallJsonNestingDepth(
 
   for (let index = 0; index < text.length; index += 1) {
     const char = text.charAt(index);
-    if (consumeQuotedScanChar(state, char)) {
+    if (consumeJsonQuotedScanChar(state, char)) {
       continue;
     }
     if (QUOTE_RE.test(char)) {
@@ -248,20 +240,6 @@ interface StrictJsonPropertyCandidate {
   key?: string;
   nextIndex: number;
   valueStart?: number;
-}
-
-function consumeQuotedScanChar(state: QuotedScanState, char: string): boolean {
-  if (!state.quoteChar) {
-    return false;
-  }
-  if (state.escaping) {
-    state.escaping = false;
-  } else if (char === "\\") {
-    state.escaping = true;
-  } else if (char === state.quoteChar) {
-    state.quoteChar = null;
-  }
-  return true;
 }
 
 export function readStrictJsonPropertyCandidate(
@@ -330,14 +308,17 @@ export function collectObjectKeys(
   }
 
   const keys: string[] = [];
-  const quoteState: QuotedScanState = { escaping: false, quoteChar: null };
+  const quoteState: JsonQuotedScanState = {
+    escaping: false,
+    quoteChar: null,
+  };
   const depthState = { depth: 0 };
   const previousByIndex = collectPreviousSignificantChars(text);
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
 
-    if (consumeQuotedScanChar(quoteState, char)) {
+    if (consumeJsonQuotedScanChar(quoteState, char)) {
       continue;
     }
 

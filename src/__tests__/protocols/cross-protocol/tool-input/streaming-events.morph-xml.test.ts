@@ -6,37 +6,57 @@ import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import {
+  collectTextDeltas,
+  requireToolCall,
+  runStreamingEventCase,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
+import {
   createInterleavedStream,
-  extractToolInputTimeline,
   runProtocolStreamParser,
-  runProtocolTextDeltaStream,
 } from "./streaming-events.shared";
 
 describe("cross-protocol tool-input streaming events: morph xml", () => {
   const fixture = toolInputStreamFixtures.xml;
   const protocol = morphXmlProtocol();
 
-  it("xml protocol streams tool input deltas and emits matching tool-call id", async () => {
-    const out = await runProtocolTextDeltaStream({
+  function runMorphStream(
+    chunks: readonly string[],
+    tools: LanguageModelV4FunctionTool[] = fixture.tools
+  ) {
+    return runStreamingEventCase({
       protocol,
-      tools: fixture.tools,
-      chunks: fixture.progressiveChunks,
+      tools,
+      chunks,
+      id: "fixture",
     });
+  }
 
-    const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      input: string;
-    };
+  function expectCompleteTimeline(
+    out: readonly LanguageModelV4StreamPart[],
+    expectsDelta: boolean
+  ) {
+    const timeline = selectToolInputTimeline(out);
+    const toolCall = requireToolCall(out);
+    expect(timeline.starts).toHaveLength(1);
+    expect(timeline.ends).toHaveLength(1);
+    if (expectsDelta) {
+      expect(timeline.deltas.length).toBeGreaterThan(0);
+    }
+    expect(toolCall.toolCallId).toBe(timeline.starts[0]?.id);
+    return { timeline, toolCall };
+  }
 
-    expect(starts).toHaveLength(1);
-    expect(deltas.length).toBeGreaterThan(0);
-    expect(ends).toHaveLength(1);
-    expect(starts[0].id).toBe(ends[0].id);
-    expect(toolCall.toolCallId).toBe(starts[0].id);
+  it("xml protocol streams tool input deltas and emits matching tool-call id", async () => {
+    const out = await runMorphStream(fixture.progressiveChunks);
+    const { timeline, toolCall } = expectCompleteTimeline(out, true);
+
+    expect(timeline.starts[0]?.id).toBe(timeline.ends[0]?.id);
     expect(toolCall.input).toBe('{"location":"Seoul","unit":"celsius"}');
-    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+    expect(timeline.deltas.map((delta) => delta.delta).join("")).toBe(
+      toolCall.input
+    );
   });
 
   it("xml protocol emits progress deltas for union-typed object schemas", async () => {
@@ -53,72 +73,43 @@ describe("cross-protocol tool-input streaming events: morph xml", () => {
         required: ["location"],
       },
     };
+    const out = await runMorphStream(fixture.progressiveChunks, [
+      unionWeatherTool,
+    ]);
+    const { timeline, toolCall } = expectCompleteTimeline(out, true);
 
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: [unionWeatherTool],
-      chunks: fixture.progressiveChunks,
-    });
-
-    const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      input: string;
-    };
-
-    expect(starts).toHaveLength(1);
-    expect(deltas.length).toBeGreaterThan(0);
-    expect(ends).toHaveLength(1);
-    expect(toolCall.toolCallId).toBe(starts[0].id);
-    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
+    expect(timeline.deltas.map((delta) => delta.delta).join("")).toBe(
+      toolCall.input
+    );
   });
 
   it("xml protocol force-completes unclosed tool block at finish when content is parseable", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: fixture.finishReconcileChunks,
-    });
+    const out = await runMorphStream(fixture.finishReconcileChunks);
+    const { toolCall } = expectCompleteTimeline(out, false);
 
-    const { starts, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      input: string;
-    };
-
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
-    expect(toolCall.toolCallId).toBe(starts[0].id);
     expect(toolCall.input).toBe(fixture.expectedFinishInput);
   });
 
-  it("xml finish reconciliation rejects unclosed payloads with trailing plain text", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: ["<get_weather><location>Seoul</location> done"],
+  const rejectedFinishCases = [
+    {
+      name: "xml finish reconciliation rejects unclosed payloads with trailing plain text",
+      chunk: "<get_weather><location>Seoul</location> done",
+    },
+    {
+      name: "xml finish reconciliation rejects unclosed payloads with tagless plain text body",
+      chunk: "<get_weather>hello",
+    },
+  ];
+
+  for (const testCase of rejectedFinishCases) {
+    it(testCase.name, async () => {
+      const out = await runMorphStream([testCase.chunk]);
+      const timeline = selectToolInputTimeline(out);
+      expect(out.some((part) => part.type === "tool-call")).toBe(false);
+      expect(timeline.starts).toHaveLength(1);
+      expect(timeline.ends).toHaveLength(1);
     });
-
-    const { starts, ends } = extractToolInputTimeline(out);
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-  });
-
-  it("xml finish reconciliation rejects unclosed payloads with tagless plain text body", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: ["<get_weather>hello"],
-    });
-
-    const { starts, ends } = extractToolInputTimeline(out);
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-  });
+  }
 
   it("xml protocol does not prematurely finalize tool call when non-text chunks are interleaved", async () => {
     const out = await runProtocolStreamParser({
@@ -143,34 +134,21 @@ describe("cross-protocol tool-input streaming events: morph xml", () => {
         },
       ]),
     });
-
-    const parsedCalls = out.filter(
-      (part) => part.type === "tool-call" && part.toolName === "get_weather"
-    ) as Array<{
-      type: "tool-call";
-      toolName: string;
-      input: string;
-    }>;
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const parsedCalls = selectToolCalls(out).filter(
+      ({ toolName }) => toolName === "get_weather"
+    );
+    const leakedText = collectTextDeltas(out);
 
     expect(parsedCalls).toHaveLength(1);
-    expect(parsedCalls[0].input).toBe('{"location":"Seoul","unit":"celsius"}');
+    expect(parsedCalls[0]?.input).toBe('{"location":"Seoul","unit":"celsius"}');
     expect(leakedText).not.toContain("<get_weather>");
     expect(leakedText).not.toContain("</get_weather>");
   });
 
   it("xml malformed fixture does not leave dangling tool-input stream", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: fixture.malformedChunks,
-    });
-
-    const { starts, ends } = extractToolInputTimeline(out);
-    expect(starts.length).toBe(ends.length);
+    const out = await runMorphStream(fixture.malformedChunks);
+    const timeline = selectToolInputTimeline(out);
     expect(out.some((part) => part.type === "finish")).toBe(true);
+    expect(timeline.starts.length).toBe(timeline.ends.length);
   });
 });

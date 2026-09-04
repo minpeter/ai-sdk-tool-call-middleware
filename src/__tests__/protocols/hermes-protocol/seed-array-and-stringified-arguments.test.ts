@@ -1,49 +1,27 @@
 import type {
+  JSONObject,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../core/protocols/hermes-protocol";
+import type { ProtocolMetadata } from "../../../core/protocols/protocol-interface";
 import {
   createInterleavedStream,
   extractToolInputTimeline,
   runProtocolStreamParser,
 } from "../cross-protocol/tool-input/streaming-events.shared";
+import { createObjectTool } from "../shared/duplicate-harness";
 
 const tools: LanguageModelV4FunctionTool[] = [
-  {
-    type: "function",
-    name: "list_dir",
-    inputSchema: {
-      type: "object",
-      properties: { path: { type: "string" } },
-      required: ["path"],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "read_file",
-    inputSchema: {
-      type: "object",
-      properties: { path: { type: "string" } },
-      required: ["path"],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "write_file",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string" },
-        content: { type: "string" },
-      },
-      required: ["path", "content"],
-      additionalProperties: false,
-    },
-  },
+  createObjectTool("list_dir", { path: { type: "string" } }, false, ["path"]),
+  createObjectTool("read_file", { path: { type: "string" } }, false, ["path"]),
+  createObjectTool(
+    "write_file",
+    { path: { type: "string" }, content: { type: "string" } },
+    false,
+    ["path", "content"]
+  ),
 ];
 
 // Exact structural shape observed from ByteDance Seed 2.0 Lite: both calls
@@ -97,12 +75,12 @@ function generatedParts(text: string) {
   return hermesProtocol().parseGeneratedText({ text, tools });
 }
 
-async function streamedParts(options: {
+function streamedParts(options: {
   chunks: readonly string[];
-  onError?: (message: string, metadata?: Record<string, unknown>) => void;
+  onError?: (message: string, metadata?: ProtocolMetadata) => void;
   withRaw?: boolean;
 }) {
-  return await runProtocolStreamParser({
+  return runProtocolStreamParser({
     protocol: hermesProtocol(),
     tools,
     parserOptions: { onError: options.onError },
@@ -116,7 +94,7 @@ async function streamedParts(options: {
 
 function expectAtomicCalls(
   parts: LanguageModelV4StreamPart[],
-  expected: Array<{ toolName: string; input: Record<string, unknown> }>
+  expected: readonly { readonly toolName: string; readonly input: JSONObject }[]
 ) {
   const calls = parts.filter((part) => part.type === "tool-call");
   const timeline = extractToolInputTimeline(parts);
@@ -150,6 +128,17 @@ function expectAtomicCalls(
       .map((part) => part.delta)
       .join("")
   ).toBe("");
+}
+
+async function expectRejectedAcrossPaths(text: string): Promise<void> {
+  expect(generatedCalls(text)).toHaveLength(0);
+
+  const onError = vi.fn();
+  const parts = await streamedParts({ chunks: [...text], onError });
+  expect(parts.some((part) => part.type === "tool-call")).toBe(false);
+  expect(parts.some((part) => part.type === "tool-input-start")).toBe(false);
+  expect(parts.some((part) => part.type === "tool-input-delta")).toBe(false);
+  expect(onError).toHaveBeenCalled();
 }
 
 const expectedSeedCalls = [
@@ -281,14 +270,7 @@ describe("Hermes Seed array with partial wrapper close", () => {
     },
   ])("rejects $name atomically", async ({ body, includesClose }) => {
     const text = `<tool_call>${body}${includesClose ? "" : "\n</tool"}`;
-    expect(generatedCalls(text)).toHaveLength(0);
-
-    const onError = vi.fn();
-    const parts = await streamedParts({ chunks: [...text], onError });
-    expect(parts.some((part) => part.type === "tool-call")).toBe(false);
-    expect(parts.some((part) => part.type === "tool-input-start")).toBe(false);
-    expect(parts.some((part) => part.type === "tool-input-delta")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+    await expectRejectedAcrossPaths(text);
   });
 });
 
@@ -376,18 +358,7 @@ describe("Hermes stringified arguments compatibility", () => {
     async ({ argumentsText }) => {
       const encoded = JSON.stringify(argumentsText);
       const text = `<tool_call>{"name":"write_file","arguments":${encoded}}</tool_call>`;
-      expect(generatedCalls(text)).toHaveLength(0);
-
-      const onError = vi.fn();
-      const parts = await streamedParts({ chunks: [...text], onError });
-      expect(parts.some((part) => part.type === "tool-call")).toBe(false);
-      expect(parts.some((part) => part.type === "tool-input-start")).toBe(
-        false
-      );
-      expect(parts.some((part) => part.type === "tool-input-delta")).toBe(
-        false
-      );
-      expect(onError).toHaveBeenCalled();
+      await expectRejectedAcrossPaths(text);
     }
   );
 });

@@ -12,6 +12,17 @@ import {
   normalizeStreamToolCalls,
 } from "./shared";
 
+async function collectGeneratedAndStreamed(text: string) {
+  const protocol = glm5Protocol();
+  const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
+  const streamed = await runProtocolTextDeltaStream({
+    protocol,
+    tools: glm5Tools,
+    chunks: text.split(""),
+  });
+  return { generated, streamed };
+}
+
 function assertBalancedToolInputLifecycle(
   parts: LanguageModelV4StreamPart[]
 ): void {
@@ -62,16 +73,7 @@ describe("glm5Protocol stream close policy", () => {
       for (const right of tokens) {
         const message = `before ${left} middle ${right} after`;
         const text = `<tool_call>echo<arg_key>message</arg_key><arg_value>${message}</arg_value></tool_call>`;
-        const protocol = glm5Protocol();
-        const generated = protocol.parseGeneratedText({
-          text,
-          tools: glm5Tools,
-        });
-        const streamed = await runProtocolTextDeltaStream({
-          protocol,
-          tools: glm5Tools,
-          chunks: text.split(""),
-        });
+        const { generated, streamed } = await collectGeneratedAndStreamed(text);
         const generatedSignature = {
           calls: normalizeContentToolCalls(generated),
           text: generated
@@ -103,13 +105,7 @@ describe("glm5Protocol stream close policy", () => {
     "matches non-stream close selection for raw marker mix: %s",
     async (message) => {
       const text = `<tool_call>echo<arg_key>message</arg_key><arg_value>${message}</arg_value></tool_call>`;
-      const protocol = glm5Protocol();
-      const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-      const streamed = await runProtocolTextDeltaStream({
-        protocol,
-        tools: glm5Tools,
-        chunks: text.split(""),
-      });
+      const { generated, streamed } = await collectGeneratedAndStreamed(text);
 
       expect(normalizeStreamToolCalls(streamed)).toEqual(
         normalizeContentToolCalls(generated)
@@ -121,13 +117,7 @@ describe("glm5Protocol stream close policy", () => {
   it("enforces the bounded close-candidate policy", async () => {
     const message = "x</tool_call>".repeat(300);
     const text = `<tool_call>echo<arg_key>message</arg_key><arg_value>${message}</arg_value></tool_call>`;
-    const protocol = glm5Protocol();
-    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    const streamed = await runProtocolTextDeltaStream({
-      protocol,
-      tools: glm5Tools,
-      chunks: text.split(""),
-    });
+    const { generated, streamed } = await collectGeneratedAndStreamed(text);
 
     expect(normalizeContentToolCalls(generated)).toEqual([]);
     expect(normalizeStreamToolCalls(streamed)).toEqual([]);
@@ -149,16 +139,7 @@ describe("glm5Protocol stream close policy", () => {
     "resynchronizes after a rejected %s call under one-character chunks",
     async (_name, rejected) => {
       const text = `${rejected}<tool_call>ping</tool_call>`;
-      const protocol = glm5Protocol();
-      const generated = protocol.parseGeneratedText({
-        text,
-        tools: glm5Tools,
-      });
-      const streamed = await runProtocolTextDeltaStream({
-        protocol,
-        tools: glm5Tools,
-        chunks: text.split(""),
-      });
+      const { generated, streamed } = await collectGeneratedAndStreamed(text);
 
       expect(normalizeStreamToolCalls(streamed)).toEqual([
         { toolName: "ping", input: {} },
@@ -201,13 +182,7 @@ describe("glm5Protocol stream close policy", () => {
       "<tool_call>echo<arg_key>message</arg_key><arg_value>first",
       "</tool_call> middle </tool_call> trailing",
     ].join("");
-    const protocol = glm5Protocol();
-    const generated = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    const streamed = await runProtocolTextDeltaStream({
-      protocol,
-      tools: glm5Tools,
-      chunks: text.split(""),
-    });
+    const { generated, streamed } = await collectGeneratedAndStreamed(text);
 
     expect(normalizeStreamToolCalls(streamed)).toEqual(
       normalizeContentToolCalls(generated)

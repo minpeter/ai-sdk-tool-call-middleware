@@ -7,14 +7,6 @@ import { addTextSegment } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 
-export interface YamlXmlProtocolOptions {
-  /**
-   * Whether to include a system prompt example showing YAML multiline syntax.
-   * @default true
-   */
-  includeMultilineExample?: boolean;
-}
-
 const FOREIGN_SALVAGE_MARKUP_ONLY_RE = /^\s*(?:<[^<>\n]*>\s*)*$/;
 
 const FOREIGN_TOOL_CALL_BLOCK_RE =
@@ -166,7 +158,7 @@ export function addTextOrForeignToolCalls(
   }
 }
 
-export function addForeignFallbackText(
+function addForeignFallbackText(
   segment: string,
   processedElements: LanguageModelV4Content[]
 ): void {

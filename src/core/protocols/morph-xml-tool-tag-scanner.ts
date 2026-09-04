@@ -2,6 +2,14 @@ import { escapeRegExp } from "../utils/regex";
 import { findNextToolTag } from "../utils/xml-tool-tag-scanner";
 import { findClosingTagEndFlexible } from "./morph-xml-tag-tokenizer";
 
+interface ToolCallTagMatch {
+  content: string;
+  endIndex: number;
+  segment: string;
+  startIndex: number;
+  toolName: string;
+}
+
 function findLastCloseTagStart(segment: string, toolName: string): number {
   const closeTagPattern = new RegExp(
     `</\\s*${escapeRegExp(toolName)}\\s*>`,
@@ -20,13 +28,7 @@ function findLastCloseTagStart(segment: string, toolName: string): number {
 }
 
 function pushSelfClosingToolCall(
-  toolCalls: Array<{
-    toolName: string;
-    startIndex: number;
-    endIndex: number;
-    content: string;
-    segment: string;
-  }>,
+  toolCalls: ToolCallTagMatch[],
   toolName: string,
   text: string,
   tagStart: number,
@@ -44,13 +46,7 @@ function pushSelfClosingToolCall(
 }
 
 function appendOpenToolCallIfComplete(
-  toolCalls: Array<{
-    toolName: string;
-    startIndex: number;
-    endIndex: number;
-    content: string;
-    segment: string;
-  }>,
+  toolCalls: ToolCallTagMatch[],
   text: string,
   toolName: string,
   tagStart: number,
@@ -80,20 +76,8 @@ function appendOpenToolCallIfComplete(
 function findToolCallsForName(
   text: string,
   toolName: string
-): Array<{
-  toolName: string;
-  startIndex: number;
-  endIndex: number;
-  content: string;
-  segment: string;
-}> {
-  const toolCalls: Array<{
-    toolName: string;
-    startIndex: number;
-    endIndex: number;
-    content: string;
-    segment: string;
-  }> = [];
+): ToolCallTagMatch[] {
+  const toolCalls: ToolCallTagMatch[] = [];
   const startTag = `<${toolName}>`;
   let searchIndex = 0;
 
@@ -127,20 +111,8 @@ function findToolCallsForName(
 export function findToolCalls(
   text: string,
   toolNames: string[]
-): Array<{
-  toolName: string;
-  startIndex: number;
-  endIndex: number;
-  content: string;
-  segment: string;
-}> {
-  const toolCalls: Array<{
-    toolName: string;
-    startIndex: number;
-    endIndex: number;
-    content: string;
-    segment: string;
-  }> = [];
+): ToolCallTagMatch[] {
+  const toolCalls: ToolCallTagMatch[] = [];
 
   for (const toolName of toolNames) {
     const calls = findToolCallsForName(text, toolName);

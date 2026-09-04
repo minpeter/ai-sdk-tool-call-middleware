@@ -10,6 +10,7 @@
  */
 
 import type { JSONObject } from "@ai-sdk/provider";
+import type { ToolInputSchemaCandidate } from "../../schema/tool-input-schema";
 import type { RxmlValue } from "../builders/stringify";
 
 type HeuristicPhase = "pre-parse" | "fallback-reparse" | "post-parse";
@@ -19,7 +20,7 @@ export interface IntermediateCall {
   meta?: JSONObject;
   parsed: RxmlValue | null;
   rawSegment: string;
-  schema: unknown;
+  schema: ToolInputSchemaCandidate;
   toolName: string;
 }
 
@@ -47,7 +48,7 @@ export interface PipelineConfig {
 interface HeuristicEngineOptions {
   maxReparses?: number;
   onError?: (message: string, metadata?: JSONObject) => void;
-  parse: (xml: string, schema: unknown) => unknown;
+  parse: (xml: string, schema: ToolInputSchemaCandidate) => RxmlValue;
 }
 
 function applyWarningsUpdate(
@@ -71,10 +72,10 @@ function applyWarningsUpdate(
 
 interface RxmlValueFrame {
   readonly leaving: boolean;
-  readonly value: unknown;
+  readonly value: RxmlValue;
 }
 
-function isRxmlValue(value: unknown): value is RxmlValue {
+function isRxmlValue(value: RxmlValue): boolean {
   const active = new Set<object>();
   const stack: RxmlValueFrame[] = [{ leaving: false, value }];
   while (stack.length > 0) {
@@ -238,7 +239,7 @@ export function applyHeuristicPipeline(
 export function createIntermediateCall(
   toolName: string,
   rawSegment: string,
-  schema: unknown
+  schema: ToolInputSchemaCandidate
 ): IntermediateCall {
   return {
     toolName,

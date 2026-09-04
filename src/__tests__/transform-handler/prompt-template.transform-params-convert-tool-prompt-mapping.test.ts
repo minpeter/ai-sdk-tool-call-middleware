@@ -1,11 +1,11 @@
 import type {
+  LanguageModelV4,
   LanguageModelV4CallOptions,
   LanguageModelV4Content,
-  LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { formatToolResponseAsHermes } from "../../core/prompts/hermes-prompt";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { formatToolResponseAsHermes as renderHermesToolResponse } from "../../core/prompts/hermes-prompt";
+import { hermesProtocol as createHermesProtocol } from "../../core/protocols/hermes-protocol";
 import type { ToolInputSchema } from "../../schema/tool-input-schema";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
@@ -14,55 +14,39 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-const model = {
-  specificationVersion: "v4",
-  provider: "test",
+const model: LanguageModelV4 = {
   modelId: "test",
+  provider: "test",
   supportedUrls: {},
-  doGenerate: () => {
+  specificationVersion: "v4",
+  doStream() {
     throw new Error("unused");
   },
-  doStream: () => {
+  doGenerate() {
     throw new Error("unused");
   },
-} satisfies import("@ai-sdk/provider").LanguageModelV4;
+};
 
-// Regex constants for performance
-const _REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
-const _REGEX_TOOL_CALL_FENCE = /```tool_call/;
-const _REGEX_TOOL_RESPONSE_FENCE = /```tool_response/;
-const _REGEX_GET_WEATHER = /get_weather/;
-const _REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
-const _REGEX_MAY_CALL_FUNCTIONS = /You may call one or more functions/;
-const _REGEX_TOOLS_TAG = /<tools>/;
-const _REGEX_NONE = /none/;
-const _REGEX_NOT_FOUND = /not found/;
-const _REGEX_PROVIDER_DEFINED = /Provider-defined tools/;
-const _REGEX_REQUIRED_NO_TOOLS =
-  /Tool choice type 'required' is set, but no tools are provided/;
-const _REGEX_REQUIRED_NO_FUNCTION_TOOLS = /no function tools are provided/;
 const REGEX_TOOL_CALL_TAG = /<tool_call>/;
 const REGEX_TOOL_RESPONSE_TAG = /<tool_response>/;
-const _REGEX_GET_WEATHER_TAG = /<get_weather>/;
-const _REGEX_TOOL_CALL_WORD = /tool_call/;
 
 describe("transformParams convertToolPrompt mapping and merge", () => {
   const mw = createToolMiddleware({
-    protocol: hermesProtocol,
+    protocol: createHermesProtocol,
     placement: "first",
     toolSystemPromptTemplate: (t) => `TOOLS:${t}`,
-    toolResponsePromptTemplate: formatToolResponseAsHermes,
+    toolResponsePromptTemplate: renderHermesToolResponse,
   });
 
   it("converts assistant tool-call and tool role messages, merges adjacent user texts, and preserves providerOptions", async () => {
-    const params = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [
         {
-          role: "user" as const,
-          content: [{ type: "text" as const, text: "hello" }],
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
         },
         {
-          role: "assistant" as const,
+          role: "assistant",
           content: [
             {
               type: "tool-call",
@@ -75,7 +59,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
           ],
         },
         {
-          role: "tool" as const,
+          role: "tool",
           content: [
             {
               type: "tool-result",
@@ -94,14 +78,14 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       ],
       tools: [
         {
-          type: "function" as const,
+          type: "function",
           name: "t1",
           description: "desc",
           inputSchema: { type: "object" } satisfies ToolInputSchema,
-        } satisfies LanguageModelV4FunctionTool,
-      ] satisfies LanguageModelV4FunctionTool[],
+        },
+      ],
       providerOptions: { toolCallMiddleware: { existing: true } },
-    } satisfies LanguageModelV4CallOptions;
+    };
 
     const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({ type: "generate", model, params });
@@ -144,13 +128,13 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
   });
 
   it("condenses multiple text parts in a single user message into one", async () => {
-    const params = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [
         {
-          role: "user" as const,
+          role: "user",
           content: [
-            { type: "text" as const, text: "line1" },
-            { type: "text" as const, text: "line2" },
+            { type: "text", text: "line1" },
+            { type: "text", text: "line2" },
           ],
         },
       ],
@@ -176,19 +160,19 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
   });
 
   it("preserves assistant reasoning parts and formats tool-call", async () => {
-    const params = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [
         {
-          role: "assistant" as const,
+          role: "assistant",
           content: [
             {
-              type: "tool-call" as const,
+              type: "tool-call",
               toolCallId: "tc1",
               toolName: "t1",
               input: "{}",
             },
             {
-              type: "reasoning" as const,
+              type: "reasoning",
               text: "thinking...",
             },
           ],
@@ -196,12 +180,12 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       ],
       tools: [
         {
-          type: "function" as const,
+          type: "function",
           name: "t1",
           description: "desc",
           inputSchema: { type: "object" } satisfies ToolInputSchema,
-        } satisfies LanguageModelV4FunctionTool,
-      ] satisfies LanguageModelV4FunctionTool[],
+        },
+      ],
     };
 
     const transformParams = requireTransformParams(mw.transformParams);

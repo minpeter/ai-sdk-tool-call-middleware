@@ -1,9 +1,10 @@
 import type {
   LanguageModelV2Usage,
-  LanguageModelV4,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
+  LanguageModelV4GenerateResult,
   LanguageModelV4StreamPart,
+  LanguageModelV4StreamResult,
   LanguageModelV4Usage,
   SharedV4Warning,
 } from "@ai-sdk/provider";
@@ -56,8 +57,8 @@ export async function wrapStream({
   params,
 }: {
   protocol: TCMCoreProtocol;
-  doStream: () => ReturnType<LanguageModelV4["doStream"]>;
-  doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
+  doStream: () => PromiseLike<LanguageModelV4StreamResult>;
+  doGenerate: () => PromiseLike<LanguageModelV4GenerateResult>;
   params: {
     providerOptions?: ToolCallMiddlewareProviderOptions;
   };
@@ -214,7 +215,7 @@ export async function toolChoiceStream({
   options,
   extraWarnings = [],
 }: {
-  doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
+  doGenerate: () => PromiseLike<LanguageModelV4GenerateResult>;
   expectedToolName?: string;
   tools?: LanguageModelV4FunctionTool[];
   options?: {

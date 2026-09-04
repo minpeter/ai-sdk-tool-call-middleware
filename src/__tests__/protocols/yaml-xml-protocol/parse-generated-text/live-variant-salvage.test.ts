@@ -1,18 +1,28 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { chunkText } from "../../morph-xml-protocol/heuristic-test-harness";
 import {
-  createChunkedStream,
-  pipeWithTransformer,
-} from "../../../test-helpers";
+  collectTextDeltas,
+  parseToolCallObject,
+  requireToolCall,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
+import {
+  collectGeneratedText,
+  parseGeneratedToolInput,
+  parseYamlGenerated,
+  requireGeneratedToolCall,
+  selectGeneratedToolCalls,
+} from "./shared";
 
 // Malformed-but-recoverable shapes captured verbatim from live models
 // (Mistral Small, IBM Granite 4.0) running under the YAML-XML prompt.
-
 const writeFileTools: LanguageModelV4FunctionTool[] = [
   {
-    type: "function" as const,
+    type: "function",
     name: "write_file",
     description: "Write a file.",
     inputSchema: {
@@ -49,28 +59,22 @@ const PROTOTYPE_SENSITIVE_HERMES_JSON_OUTPUT = `<tool_call>
 {"name":"write_file","arguments":{"path":"fizzbuzz.py","content":"body","constructor":{"polluted":true}}}
 </tool_call>`;
 
-function toChunks(text: string, size: number): string[] {
-  const chunks: string[] = [];
-  for (let i = 0; i < text.length; i += size) {
-    chunks.push(text.slice(i, i + size));
-  }
-  return chunks;
+function streamYaml(text: string, chunkSize: number) {
+  return runProtocolTextStream({
+    chunks: chunkText(text, chunkSize),
+    id: "1",
+    protocol: yamlXmlProtocol(),
+    tools: writeFileTools,
+  });
 }
 
 describe("yamlXmlProtocol live-variant salvage", () => {
   it("recovers unquoted multi-line string scalars via schema-keyed salvage", () => {
-    const p = yamlXmlProtocol();
-    const out = p.parseGeneratedText({
-      text: UNQUOTED_MULTILINE_OUTPUT,
-      tools: writeFileTools,
-    });
+    const out = parseYamlGenerated(UNQUOTED_MULTILINE_OUTPUT, writeFileTools);
+    const call = requireGeneratedToolCall(out);
+    const input = parseGeneratedToolInput(call);
 
-    const call = out.find((part) => part.type === "tool-call");
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
     expect(call.toolName).toBe("write_file");
-    const input = JSON.parse(call.input) as Record<string, string>;
     expect(input.path).toBe("fizzbuzz.py");
     expect(input.content).toContain('"""Classic interview question.');
     expect(input.content).toContain("def fizzbuzz(n):");
@@ -78,192 +82,126 @@ describe("yamlXmlProtocol live-variant salvage", () => {
   });
 
   it("preserves leading and trailing whitespace in schema-keyed raw strings", () => {
-    const p = yamlXmlProtocol();
     const contentWithTrailingSpaces = `   leading spaces
   indented line
 ${"trailing spaces   "}`;
-    const out = p.parseGeneratedText({
-      text: `<write_file>
+    const call = requireGeneratedToolCall(
+      parseYamlGenerated(
+        `<write_file>
 path: out.txt
 content:${contentWithTrailingSpaces}
 </write_file>`,
-      tools: writeFileTools,
-    });
+        writeFileTools
+      )
+    );
 
-    const call = out.find((part) => part.type === "tool-call");
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
-    const input = JSON.parse(call.input) as Record<string, string>;
-    expect(input.content).toBe(
+    expect(parseGeneratedToolInput(call).content).toBe(
       "  leading spaces\n  indented line\ntrailing spaces   \n"
     );
   });
 
   for (const chunkSize of [1, 7]) {
     it(`recovers unquoted multi-line scalars when streamed with chunk size ${chunkSize}`, async () => {
-      const p = yamlXmlProtocol();
-      const out = await convertReadableStreamToArray(
-        pipeWithTransformer(
-          createChunkedStream(toChunks(UNQUOTED_MULTILINE_OUTPUT, chunkSize)),
-          p.createStreamParser({ tools: writeFileTools })
-        )
-      );
+      const out = await streamYaml(UNQUOTED_MULTILINE_OUTPUT, chunkSize);
+      const call = requireToolCall(out);
+      const input = parseToolCallObject(call);
 
-      const call = out.find((part) => part.type === "tool-call");
-      if (call?.type !== "tool-call") {
-        throw new Error("Expected streamed tool-call part");
-      }
       expect(call.toolName).toBe("write_file");
-      const input = JSON.parse(call.input) as Record<string, string>;
       expect(input.path).toBe("fizzbuzz.py");
       expect(input.content).toContain("def fizzbuzz(n):");
     });
   }
 
   it("salvages Hermes-style JSON inside <tool_call> in parseGeneratedText", () => {
-    const p = yamlXmlProtocol();
-    const out = p.parseGeneratedText({
-      text: HERMES_JSON_OUTPUT,
-      tools: writeFileTools,
-    });
+    const call = requireGeneratedToolCall(
+      parseYamlGenerated(HERMES_JSON_OUTPUT, writeFileTools)
+    );
 
-    const call = out.find((part) => part.type === "tool-call");
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
     expect(call.toolName).toBe("write_file");
-    expect(JSON.parse(call.input)).toEqual({
+    expect(parseGeneratedToolInput(call)).toEqual({
       path: "fizzbuzz.py",
       content: "def fizzbuzz(n):\n    return str(n)\n",
     });
   });
 
   it("does not treat prefixed wrapper tags as foreign tool_call blocks", () => {
-    const p = yamlXmlProtocol();
     const text =
       '<tool_callback>\n{"name":"write_file","arguments":{"path":"x.txt","content":"body"}}\n</tool_call>';
-    const out = p.parseGeneratedText({
-      text,
-      tools: writeFileTools,
-    });
+    const out = parseYamlGenerated(text, writeFileTools);
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(
-      out
-        .filter((part) => part.type === "text")
-        .map((part) => (part as { text: string }).text)
-        .join("")
-    ).toBe(text);
+    expect(selectGeneratedToolCalls(out)).toHaveLength(0);
+    expect(collectGeneratedText(out)).toBe(text);
   });
 
   it("salvages foreign JSON even when a JSON string mentions a real tool tag", () => {
-    const p = yamlXmlProtocol();
-    const out = p.parseGeneratedText({
-      text: `<tool_call>
+    const call = requireGeneratedToolCall(
+      parseYamlGenerated(
+        `<tool_call>
 {"name":"write_file","arguments":{"path":"notes.txt","content":"literal <write_file> text"}}
 </tool_call>`,
-      tools: writeFileTools,
-    });
+        writeFileTools
+      )
+    );
 
-    const call = out.find((part) => part.type === "tool-call");
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
     expect(call.toolName).toBe("write_file");
-    expect(JSON.parse(call.input)).toEqual({
+    expect(parseGeneratedToolInput(call)).toEqual({
       path: "notes.txt",
       content: "literal <write_file> text",
     });
   });
 
   it("does not leak prototype-sensitive foreign JSON in parseGeneratedText", () => {
-    const p = yamlXmlProtocol();
-    const out = p.parseGeneratedText({
-      text: PROTOTYPE_SENSITIVE_HERMES_JSON_OUTPUT,
-      tools: writeFileTools,
-    });
+    const out = parseYamlGenerated(
+      PROTOTYPE_SENSITIVE_HERMES_JSON_OUTPUT,
+      writeFileTools
+    );
+    const textOut = collectGeneratedText(out);
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    const textOut = out
-      .filter((part) => part.type === "text")
-      .map((part) => (part as { text: string }).text)
-      .join("");
+    expect(selectGeneratedToolCalls(out)).toHaveLength(0);
     expect(textOut).not.toContain("constructor");
     expect(textOut).not.toContain("<tool_call>");
   });
 
   for (const chunkSize of [1, 7]) {
     it(`salvages Hermes-style JSON in <tool_call> when streamed with chunk size ${chunkSize}`, async () => {
-      const p = yamlXmlProtocol();
-      const out = await convertReadableStreamToArray(
-        pipeWithTransformer(
-          createChunkedStream(toChunks(HERMES_JSON_OUTPUT, chunkSize)),
-          p.createStreamParser({ tools: writeFileTools })
-        )
-      );
+      const out = await streamYaml(HERMES_JSON_OUTPUT, chunkSize);
+      const call = requireToolCall(out);
 
-      const call = out.find((part) => part.type === "tool-call");
-      if (call?.type !== "tool-call") {
-        throw new Error("Expected streamed tool-call part");
-      }
       expect(call.toolName).toBe("write_file");
-      expect(JSON.parse(call.input)).toEqual({
+      expect(parseToolCallObject(call)).toEqual({
         path: "fizzbuzz.py",
         content: "def fizzbuzz(n):\n    return str(n)\n",
       });
-
-      const leakedText = out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => (part as { delta: string }).delta)
-        .join("");
+      const leakedText = collectTextDeltas(out);
       expect(leakedText).not.toContain("<tool_call");
       expect(leakedText).not.toContain('{"name"');
-
-      const toolInputDeltas = out
-        .filter((part) => part.type === "tool-input-delta")
-        .map((part) => (part as { delta: string }).delta)
-        .join("");
-      expect(toolInputDeltas).not.toContain("mood");
+      expect(
+        selectToolInputTimeline(out)
+          .deltas.map((part) => part.delta)
+          .join("")
+      ).not.toContain("mood");
     });
   }
 
   for (const chunkSize of [1, 7]) {
     it(`does not leak prototype-sensitive foreign JSON when streamed with chunk size ${chunkSize}`, async () => {
-      const p = yamlXmlProtocol();
-      const out = await convertReadableStreamToArray(
-        pipeWithTransformer(
-          createChunkedStream(
-            toChunks(PROTOTYPE_SENSITIVE_HERMES_JSON_OUTPUT, chunkSize)
-          ),
-          p.createStreamParser({ tools: writeFileTools })
-        )
+      const out = await streamYaml(
+        PROTOTYPE_SENSITIVE_HERMES_JSON_OUTPUT,
+        chunkSize
       );
+      const textOut = collectTextDeltas(out);
 
-      expect(out.some((part) => part.type === "tool-call")).toBe(false);
-      const textOut = out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => (part as { delta: string }).delta)
-        .join("");
+      expect(selectToolCalls(out)).toHaveLength(0);
       expect(textOut).not.toContain("constructor");
       expect(textOut).not.toContain("<tool_call>");
     });
   }
 
   it("keeps ordinary prose mentioning tool_call as plain text", async () => {
-    const p = yamlXmlProtocol();
     const text = "The <tool_call> wrapper is not used by this format.";
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(toChunks(text, 3)),
-        p.createStreamParser({ tools: writeFileTools })
-      )
-    );
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    const flushed = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
-    expect(flushed).toBe(text);
+    const out = await streamYaml(text, 3);
+
+    expect(selectToolCalls(out)).toHaveLength(0);
+    expect(collectTextDeltas(out)).toBe(text);
   });
 });

@@ -4,19 +4,37 @@ const LINE_END_RE = /[\n\r]/;
 const QUOTE_RE = /^["']$/;
 const WHITESPACE_CHAR_RE = /\s/;
 
+export interface JsonQuotedScanState {
+  escaping: boolean;
+  quoteChar: string | null;
+}
+
+export function consumeJsonQuotedScanChar(
+  state: JsonQuotedScanState,
+  char: string
+): boolean {
+  if (state.quoteChar === null) {
+    return false;
+  }
+  if (state.escaping) {
+    state.escaping = false;
+  } else if (char === "\\") {
+    state.escaping = true;
+  } else if (char === state.quoteChar) {
+    state.quoteChar = null;
+  }
+  return true;
+}
+
 export function findQuotedKeyEnd(
   text: string,
   keyStart: number,
   quote: string
 ): number | null {
-  let escaping = false;
+  const state: JsonQuotedScanState = { escaping: false, quoteChar: quote };
   for (let index = keyStart + 1; index < text.length; index += 1) {
-    const char = text.charAt(index);
-    if (escaping) {
-      escaping = false;
-    } else if (char === "\\") {
-      escaping = true;
-    } else if (char === quote) {
+    consumeJsonQuotedScanChar(state, text.charAt(index));
+    if (state.quoteChar === null) {
       return index;
     }
   }
@@ -76,8 +94,4 @@ export function collectPreviousSignificantChars(text: string): string[] {
   }
   previousByIndex[text.length] = previous;
   return previousByIndex;
-}
-
-export function previousSignificantChar(text: string, index: number): string {
-  return collectPreviousSignificantChars(text)[index] ?? "";
 }

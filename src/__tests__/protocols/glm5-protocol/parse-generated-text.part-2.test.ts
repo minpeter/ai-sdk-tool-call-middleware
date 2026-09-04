@@ -3,6 +3,21 @@ import { describe, expect, it, vi } from "vitest";
 import { glm5Protocol } from "../../../core/protocols/glm5-protocol";
 import { glm5Tools, normalizeContentToolCalls, toolCallInput } from "./shared";
 
+function assertNonExecutableMarkdownCall(text: string): void {
+  const protocol = glm5Protocol();
+  const output = protocol.parseGeneratedText({ text, tools: glm5Tools });
+  expect(normalizeContentToolCalls(output)).toEqual([]);
+  expect(
+    output
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("")
+  ).toBe(text);
+  expect(
+    protocol.extractToolCallSegments?.({ text, tools: glm5Tools })
+  ).toEqual([]);
+}
+
 describe("parse-generated-text.test split 2", () => {
   it("rejects ambiguous generated-name digest and stem recovery", () => {
     const tools: LanguageModelV4FunctionTool[] = [
@@ -220,19 +235,7 @@ describe("parse-generated-text.test split 2", () => {
 
   it("keeps a canonical-looking call inside Markdown code as non-executable text", () => {
     const text = "Example only, do not execute: `<tool_call>ping</tool_call>`.";
-    const protocol = glm5Protocol();
-
-    const output = protocol.parseGeneratedText({ text, tools: glm5Tools });
-    expect(normalizeContentToolCalls(output)).toEqual([]);
-    expect(
-      output
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("")
-    ).toBe(text);
-    expect(
-      protocol.extractToolCallSegments?.({ text, tools: glm5Tools })
-    ).toEqual([]);
+    assertNonExecutableMarkdownCall(text);
   });
 
   it.each([
@@ -244,22 +247,7 @@ describe("parse-generated-text.test split 2", () => {
     "keeps a canonical call inside a %s fenced block non-executable",
     (_name, language, fencedPrefix) => {
       const text = `\`\`\`${language}\n${fencedPrefix}<tool_call>ping</tool_call>\n\`\`\``;
-      const protocol = glm5Protocol();
-      const output = protocol.parseGeneratedText({
-        text,
-        tools: glm5Tools,
-      });
-
-      expect(normalizeContentToolCalls(output)).toEqual([]);
-      expect(
-        output
-          .filter((part) => part.type === "text")
-          .map((part) => part.text)
-          .join("")
-      ).toBe(text);
-      expect(
-        protocol.extractToolCallSegments?.({ text, tools: glm5Tools })
-      ).toEqual([]);
+      assertNonExecutableMarkdownCall(text);
     }
   );
 

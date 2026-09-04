@@ -3,7 +3,7 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
-import { enqueueToolInputEndAndCall } from "../utils/tool-input-streaming";
+import { enqueueCompleteToolCallLifecycle } from "../utils/tool-input-streaming";
 import { findEarliestToolTag } from "../utils/xml-tool-tag-scanner";
 import {
   FOREIGN_TOOL_CALL_CLOSE_RE,
@@ -30,23 +30,10 @@ function emitSalvagedForeignCalls(
 ): void {
   context.flushText(controller);
   for (const call of calls) {
-    controller.enqueue({
-      type: "tool-input-start",
-      id: call.toolCallId,
-      toolName: call.toolName,
-    });
-    if (call.input.length > 0) {
-      controller.enqueue({
-        type: "tool-input-delta",
-        id: call.toolCallId,
-        delta: call.input,
-      });
-    }
-    enqueueToolInputEndAndCall({
+    enqueueCompleteToolCallLifecycle({
       controller,
-      id: call.toolCallId,
-      toolName: call.toolName,
-      input: call.input,
+      call,
+      emitEmptyInputDelta: true,
     });
   }
 }

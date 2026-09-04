@@ -22,41 +22,65 @@ import {
 } from "./generated-text-tool-candidates";
 import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 
+interface QwenFunctionBlock {
+  readonly body: string;
+  readonly endIndex: number;
+  readonly openTag: string;
+  readonly startIndex: number;
+}
+
+function* readQwenFunctionBlocks(text: string): Generator<QwenFunctionBlock> {
+  const opens = [...text.matchAll(QWEN_CALL_BLOCK_OPEN_REGEX)];
+  for (let index = 0; index < opens.length; index += 1) {
+    const open = opens[index];
+    const openTag = open[0] ?? "";
+    const bodyStart = open.index + openTag.length;
+    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
+    const selfClosing = isSelfClosingTag(openTag);
+    const close = selfClosing
+      ? null
+      : findQwenCallCloseTag(
+          text,
+          bodyStart,
+          (open[1] ?? "").toLowerCase(),
+          nextOpenIndex
+        );
+    yield {
+      body: selfClosing
+        ? ""
+        : text.slice(bodyStart, close?.start ?? nextOpenIndex),
+      endIndex: selfClosing
+        ? open.index + openTag.length
+        : (close?.end ?? nextOpenIndex),
+      openTag,
+      startIndex: open.index,
+    };
+  }
+}
+
 export function extractFunctionBlockCallSpans(
   text: string,
   tools: LanguageModelV4FunctionTool[]
 ): RecoveredCallSpan[] {
   const spans: RecoveredCallSpan[] = [];
-  const opens = [...text.matchAll(QWEN_CALL_BLOCK_OPEN_REGEX)];
-
-  for (let index = 0; index < opens.length; index += 1) {
-    const open = opens[index];
-    const tagName = (open[1] ?? "").toLowerCase();
-    const openTag = open[0] ?? "";
-    const bodyStart = open.index + open[0].length;
-    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
-    const selfClosing = isSelfClosingTag(openTag);
-    const close = selfClosing
-      ? null
-      : findQwenCallCloseTag(text, bodyStart, tagName, nextOpenIndex);
-    const bodyEnd = close?.start ?? nextOpenIndex;
-    const body = selfClosing ? "" : text.slice(bodyStart, bodyEnd);
-    const toolName = readQwenCallToolName(openTag, body);
+  for (const block of readQwenFunctionBlocks(text)) {
+    const toolName = readQwenCallToolName(block.openTag, block.body);
     if (!(toolName && tools.some((tool) => tool.name === toolName))) {
       continue;
     }
 
-    const params = readFunctionBlockParams(body);
+    const params = readFunctionBlockParams(block.body);
     if (!isJSONObject(params)) {
       continue;
     }
 
-    const endIndex = selfClosing
-      ? open.index + openTag.length
-      : (close?.end ?? nextOpenIndex);
     const payload = toToolCallCandidate(toolName, params, tools);
     if (payload) {
-      spans.push({ startIndex: open.index, endIndex, payload });
+      spans.push({
+        startIndex: block.startIndex,
+        endIndex: block.endIndex,
+        payload,
+      });
     }
   }
 
@@ -72,33 +96,17 @@ export function extractSensitiveFunctionBlockDropSpans(
   }
 
   const spans: DroppedSensitiveSpan[] = [];
-  const opens = [...text.matchAll(QWEN_CALL_BLOCK_OPEN_REGEX)];
-  for (let index = 0; index < opens.length; index += 1) {
-    const open = opens[index];
-    const tagName = (open[1] ?? "").toLowerCase();
-    const openTag = open[0] ?? "";
-    const bodyStart = open.index + open[0].length;
-    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
-    const selfClosing = isSelfClosingTag(openTag);
-    const close = selfClosing
-      ? null
-      : findQwenCallCloseTag(text, bodyStart, tagName, nextOpenIndex);
-    const endIndex = selfClosing
-      ? open.index + openTag.length
-      : (close?.end ?? nextOpenIndex);
-    const rawBlock = text.slice(open.index, endIndex);
-    const toolName = readQwenCallToolName(
-      openTag,
-      selfClosing ? "" : text.slice(bodyStart, close?.start ?? nextOpenIndex)
-    );
+  for (const block of readQwenFunctionBlocks(text)) {
+    const rawBlock = text.slice(block.startIndex, block.endIndex);
+    const toolName = readQwenCallToolName(block.openTag, block.body);
     if (
       toolName &&
       tools.some((tool) => tool.name === toolName) &&
       toolCallTextHasPrototypeSensitiveKey(rawBlock)
     ) {
       spans.push({
-        startIndex: open.index,
-        endIndex,
+        startIndex: block.startIndex,
+        endIndex: block.endIndex,
         dropReason: "prototype-sensitive-tool-candidate",
       });
     }

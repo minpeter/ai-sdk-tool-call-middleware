@@ -1,326 +1,158 @@
 import type {
-  JSONValue,
+  JSONSchema7,
   LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  requireToolCall,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
 
-// Intentionally accepts malformed schemas so tests can exercise runtime rejection.
-function makeSchemaTool(
-  name: string,
-  inputSchema: JSONValue
-): LanguageModelV4FunctionTool {
-  return {
-    type: "function",
-    name,
-    inputSchema: inputSchema as LanguageModelV4FunctionTool["inputSchema"],
-  };
-}
+const acceptedPatternCases = [
+  {
+    name: "accepts unconstrained unsafe patternProperties when unknown keys are allowed",
+    schema: {
+      type: "object",
+      patternProperties: { "^(a+)+$": {} },
+      additionalProperties: true,
+    },
+    text: '<tool_call>{"name":"write","arguments":{"aaaa":"ok"}}</tool_call>',
+    input: '{"aaaa":"ok"}',
+  },
+  {
+    name: "keeps patternProperties-matching args when unknown keys are allowed even if pattern value coercion fails",
+    schema: {
+      type: "object",
+      patternProperties: { "^x-": { type: "number" } },
+      additionalProperties: true,
+    },
+    text: '<tool_call>{"name":"write","arguments":{"x-debug":"not-number","other":"y"}}</tool_call>',
+    input: '{"x-debug":"not-number","other":"y"}',
+  },
+] as const satisfies readonly {
+  readonly input: string;
+  readonly name: string;
+  readonly schema: JSONSchema7;
+  readonly text: string;
+}[];
 
-type ToolCallPart = Extract<LanguageModelV4StreamPart, { type: "tool-call" }>;
-
-function isToolCallPart(part: LanguageModelV4StreamPart): part is ToolCallPart {
-  return part.type === "tool-call";
-}
+const blockedArgumentCases = [
+  {
+    name: "fails closed for unsafe repeated patternProperties without groups",
+    toolName: "write",
+    schema: {
+      type: "object",
+      properties: { content: { type: "string" } },
+      patternProperties: { "^a+a+$": { type: "string" } },
+      additionalProperties: false,
+    },
+    text: `<tool_call>{"name":"write","arguments":{"content":"ok","${"a".repeat(24)}!":"blocked"}}</tool_call>`,
+  },
+  {
+    name: "rejects prototype-sensitive argument keys without a schema policy",
+    toolName: "edit",
+    text: '<tool_call>{"name":"edit","arguments":{"constructor":"pollute"}}</tool_call>',
+  },
+  {
+    name: "rejects nested prototype-sensitive argument keys",
+    toolName: "edit",
+    schema: {
+      type: "object",
+      properties: {
+        payload: {
+          type: "object",
+          properties: { value: { type: "string" } },
+          additionalProperties: true,
+        },
+      },
+      additionalProperties: false,
+    },
+    text: '<tool_call>{"name":"edit","arguments":{"payload":{"prototype":"pollute"}}}</tool_call>',
+  },
+  {
+    name: "rejects nested __proto__ argument keys parsed onto prototypes",
+    toolName: "edit",
+    schema: {
+      type: "object",
+      properties: {
+        payload: { type: "object", additionalProperties: true },
+      },
+      additionalProperties: false,
+    },
+    text: '<tool_call>{"name":"edit","arguments":{"payload":{"__proto__":{"polluted":true}}}}</tool_call>',
+  },
+  {
+    name: "rejects missing required argument keys",
+    toolName: "write",
+    schema: {
+      type: "object",
+      properties: { content: { type: "string" } },
+      required: ["content"],
+      additionalProperties: false,
+    },
+    text: '<tool_call>{"name":"write","arguments":{}}</tool_call>',
+  },
+] as const satisfies readonly {
+  readonly name: string;
+  readonly schema?: JSONSchema7;
+  readonly text: string;
+  readonly toolName: string;
+}[];
 
 describe("json-repair.test split 6", () => {
-  it("accepts unconstrained unsafe patternProperties when unknown keys are allowed", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("write", {
-        type: "object",
-        patternProperties: {
-          "^(a+)+$": {},
-        },
-        additionalProperties: true,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"write","arguments":{"aaaa":"ok"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const tool = out.find(isToolCallPart);
-    expect(tool?.input).toBe('{"aaaa":"ok"}');
-    expect(onError).not.toHaveBeenCalled();
-  });
-
-  it("keeps patternProperties-matching args when unknown keys are allowed even if pattern value coercion fails", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("write", {
-        type: "object",
-        patternProperties: {
-          "^x-": { type: "number" },
-        },
-        additionalProperties: true,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"write","arguments":{"x-debug":"not-number","other":"y"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const tool = out.find(isToolCallPart);
-    expect(tool?.input).toBe('{"x-debug":"not-number","other":"y"}');
-    expect(onError).not.toHaveBeenCalled();
-  });
-
-  it("fails closed for unsafe repeated patternProperties without groups", async () => {
-    const onError = vi.fn();
-    const slowKey = `${"a".repeat(24)}!`;
-    const tools = [
-      makeSchemaTool("write", {
-        type: "object",
-        properties: {
-          content: { type: "string" },
-        },
-        patternProperties: {
-          "^a+a+$": { type: "string" },
-        },
-        additionalProperties: false,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: `<tool_call>{"name":"write","arguments":{"content":"ok","${slowKey}":"blocked"}}</tool_call>`,
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
-  });
-
-  it("rejects prototype-sensitive argument keys without a schema policy", async () => {
-    const onError = vi.fn();
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: [],
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"edit","arguments":{"constructor":"pollute"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
-  });
-
-  it("rejects nested prototype-sensitive argument keys", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("edit", {
-        type: "object",
-        properties: {
-          payload: {
-            type: "object",
-            properties: {
-              value: { type: "string" },
-            },
-            additionalProperties: true,
+  for (const testCase of acceptedPatternCases) {
+    it(testCase.name, async () => {
+      const onError = vi.fn();
+      const result = await runProtocolTextStream({
+        chunks: [testCase.text],
+        id: "1",
+        protocol: hermesProtocol(),
+        tools: [
+          {
+            type: "function",
+            name: "write",
+            inputSchema: testCase.schema,
           },
-        },
-        additionalProperties: false,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"edit","arguments":{"payload":{"prototype":"pollute"}}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
-  });
+        ],
+        parserOptions: { onError },
+      });
 
-  it("rejects nested __proto__ argument keys parsed onto prototypes", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("edit", {
-        type: "object",
-        properties: {
-          payload: {
-            type: "object",
-            additionalProperties: true,
-          },
-        },
-        additionalProperties: false,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
+      expect(requireToolCall(result).input).toBe(testCase.input);
+      expect(onError).not.toHaveBeenCalled();
     });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"edit","arguments":{"payload":{"__proto__":{"polluted":true}}}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
-  });
+  }
 
-  it("rejects missing required argument keys", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("write", {
-        type: "object",
-        properties: {
-          content: { type: "string" },
-        },
-        required: ["content"],
-        additionalProperties: false,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
+  for (const testCase of blockedArgumentCases) {
+    it(testCase.name, async () => {
+      const onError = vi.fn();
+      const tools: LanguageModelV4FunctionTool[] =
+        "schema" in testCase
+          ? [
+              {
+                type: "function",
+                name: testCase.toolName,
+                inputSchema: testCase.schema,
+              },
+            ]
+          : [];
+      const result = await runProtocolTextStream({
+        chunks: [testCase.text],
+        id: "1",
+        protocol: hermesProtocol(),
+        tools,
+        parserOptions: { onError },
+      });
+
+      expect(selectToolCalls(result)).toHaveLength(0);
+      expect(selectToolInputTimeline(result)).toStrictEqual({
+        starts: [],
+        deltas: [],
+        ends: [],
+      });
+      expect(onError).toHaveBeenCalled();
     });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: '<tool_call>{"name":"write","arguments":{}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
-  });
+  }
 });

@@ -2,6 +2,7 @@ import type {
   LanguageModelV4,
   LanguageModelV4GenerateResult,
   LanguageModelV4StreamResult,
+  LanguageModelV4ToolChoice,
 } from "@ai-sdk/provider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -37,6 +38,33 @@ describe("createToolMiddleware branches", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+
+  function runToolChoiceStream(
+    toolChoice: LanguageModelV4ToolChoice,
+    text: string
+  ) {
+    const middleware = createToolMiddleware({
+      protocol: hermesProtocol,
+      toolSystemPromptTemplate: () => "",
+    });
+    if (!middleware.wrapStream) {
+      throw new Error("wrapStream is not defined");
+    }
+    return middleware.wrapStream({
+      doStream: vi.fn().mockResolvedValue({ stream: new ReadableStream() }),
+      doGenerate: vi.fn().mockResolvedValue({
+        content: [{ type: "text", text }],
+        finishReason: stopFinishReason,
+        usage: zeroUsage,
+        warnings: [],
+      } satisfies LanguageModelV4GenerateResult),
+      params: {
+        prompt: [],
+        providerOptions: { toolCallMiddleware: { toolChoice } },
+      },
+      model,
+    });
+  }
   it("wrapGenerate returns tool-call content when toolChoice active", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
@@ -70,36 +98,10 @@ describe("createToolMiddleware branches", () => {
   });
 
   it("wrapStream handles toolChoice 'required' via stream handler", async () => {
-    const mw = createToolMiddleware({
-      protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
-    });
-
-    if (!mw.wrapStream) {
-      throw new Error("wrapStream is not defined");
-    }
-    const result = await mw.wrapStream({
-      doStream: vi.fn().mockResolvedValue({
-        stream: new ReadableStream({
-          start(c) {
-            c.close();
-          },
-        }),
-      }),
-      doGenerate: vi.fn().mockResolvedValue({
-        content: [{ type: "text", text: '{"name":"n","arguments":{}}' }],
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-        warnings: [],
-      } satisfies LanguageModelV4GenerateResult),
-      params: {
-        prompt: [],
-        providerOptions: {
-          toolCallMiddleware: { toolChoice: { type: "required" } },
-        },
-      },
-      model,
-    });
+    const result = await runToolChoiceStream(
+      { type: "required" },
+      '{"name":"n","arguments":{}}'
+    );
     expect(result.stream).toBeDefined();
   });
 
@@ -150,36 +152,10 @@ describe("createToolMiddleware branches", () => {
   });
 
   it("wrapStream handles toolChoice 'tool' via stream handler", async () => {
-    const mw = createToolMiddleware({
-      protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
-    });
-
-    if (!mw.wrapStream) {
-      throw new Error("wrapStream is not defined");
-    }
-    const result = await mw.wrapStream({
-      doStream: vi.fn().mockResolvedValue({
-        stream: new ReadableStream({
-          start(c) {
-            c.close();
-          },
-        }),
-      }),
-      doGenerate: vi.fn().mockResolvedValue({
-        content: [{ type: "text", text: '{"name":"x","arguments":{}}' }],
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-        warnings: [],
-      } satisfies LanguageModelV4GenerateResult),
-      params: {
-        prompt: [],
-        providerOptions: {
-          toolCallMiddleware: { toolChoice: { type: "tool", toolName: "x" } },
-        },
-      },
-      model,
-    });
+    const result = await runToolChoiceStream(
+      { type: "tool", toolName: "x" },
+      '{"name":"x","arguments":{}}'
+    );
     expect(result.stream).toBeDefined();
   });
 

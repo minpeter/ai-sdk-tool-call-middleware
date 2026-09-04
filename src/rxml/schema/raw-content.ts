@@ -1,9 +1,4 @@
-import {
-  findMatchingCloseTag,
-  parseTagName,
-  skipSpecialConstruct,
-  skipToTagEnd,
-} from "./xml-tag-scanner";
+import { findMatchingCloseTag, walkXmlOpeningTags } from "./xml-tag-scanner";
 
 function updateBestMatch(
   depth: number,
@@ -45,63 +40,6 @@ function processTargetTag(options: {
 }
 
 /**
- * Helper to handle closing tag in extractRawInner
- */
-function handleClosingTagInExtract(
-  xmlContent: string,
-  i: number,
-  len: number,
-  depth: number
-): { newPos: number; newDepth: number } {
-  const gt = xmlContent.indexOf(">", i + 1);
-  return {
-    newPos: gt === -1 ? len : gt + 1,
-    newDepth: Math.max(0, depth - 1),
-  };
-}
-
-/**
- * Helper to process opening tag in extractRawInner
- */
-function processOpeningTagInExtract(options: {
-  xmlContent: string;
-  i: number;
-  len: number;
-  target: string;
-  depth: number;
-  bestDepth: number;
-}): {
-  newPos: number;
-  newDepth: number;
-  bestMatch: { start: number; end: number; depth: number } | null;
-} {
-  const { xmlContent, i, len, target, depth, bestDepth } = options;
-  const tagInfo = parseTagName(xmlContent, i, len);
-  const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
-  const tagEnd = tagEndInfo.pos;
-  const { isSelfClosing } = tagEndInfo;
-
-  let bestMatch: { start: number; end: number; depth: number } | null = null;
-  if (tagInfo.name === target) {
-    bestMatch = processTargetTag({
-      xmlContent,
-      tagEnd,
-      isSelfClosing,
-      target,
-      len,
-      depth,
-      bestDepth,
-    });
-  }
-
-  return {
-    newPos: tagEnd + 1,
-    newDepth: depth + (isSelfClosing ? 0 : 1),
-    bestMatch,
-  };
-}
-
-/**
  * Extract raw inner content from XML string for a specific tag
  * This is used for string-typed properties to preserve exact content
  */
@@ -115,46 +53,26 @@ export function extractRawInner(
   let bestEnd = -1;
   let bestDepth = Number.POSITIVE_INFINITY;
 
-  let i = 0;
-  let depth = 0;
-
-  while (i < len) {
-    const lt = xmlContent.indexOf("<", i);
-    if (lt === -1 || lt + 1 >= len) {
-      return;
+  walkXmlOpeningTags(xmlContent, (tag) => {
+    if (tag.name !== target) {
+      return "continue";
     }
-    i = lt + 1;
-
-    const ch = xmlContent[i];
-    const specialPos = skipSpecialConstruct(xmlContent, i, len);
-    if (specialPos !== -1) {
-      i = specialPos;
-      continue;
-    }
-
-    if (ch === "/") {
-      const result = handleClosingTagInExtract(xmlContent, i, len, depth);
-      i = result.newPos;
-      depth = result.newDepth;
-      continue;
-    }
-
-    const result = processOpeningTagInExtract({
+    const bestMatch = processTargetTag({
       xmlContent,
-      i,
-      len,
+      tagEnd: tag.tagEnd,
+      isSelfClosing: tag.isSelfClosing,
       target,
-      depth,
+      len,
+      depth: tag.depth,
       bestDepth,
     });
-    if (result.bestMatch) {
-      bestStart = result.bestMatch.start;
-      bestEnd = result.bestMatch.end;
-      bestDepth = result.bestMatch.depth;
+    if (bestMatch) {
+      bestStart = bestMatch.start;
+      bestEnd = bestMatch.end;
+      bestDepth = bestMatch.depth;
     }
-    i = result.newPos;
-    depth = result.newDepth;
-  }
+    return "continue";
+  });
 
   if (bestStart !== -1) {
     return xmlContent.slice(bestStart, bestEnd);

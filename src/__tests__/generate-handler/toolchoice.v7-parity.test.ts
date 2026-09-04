@@ -1,32 +1,71 @@
+import type {
+  LanguageModelV4Content,
+  LanguageModelV4FinishReason,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { wrapGenerate } from "../../generate-handler";
 import { dummyProtocol } from "../fixtures/dummy-protocol";
 
-const forcedChoiceProviderOptions = {
+type ProviderOptions = NonNullable<
+  Parameters<typeof wrapGenerate>[0]["params"]["providerOptions"]
+>;
+
+const forcedChoiceProviderOptions: ProviderOptions = {
   toolCallMiddleware: {
-    toolChoice: { type: "required" as const },
+    toolChoice: { type: "required" },
     originalTools: [{ name: "do", inputSchema: '{"type":"object"}' }],
   },
 };
 
+type V7FinishReason = LanguageModelV4FinishReason | "length";
+
+function runForcedChoice(
+  content: LanguageModelV4Content[],
+  finishReason: V7FinishReason
+) {
+  return wrapGenerate({
+    protocol: dummyProtocol(),
+    doGenerate: vi
+      .fn()
+      .mockResolvedValue({ content, finishReason, warnings: [] }),
+    params: { providerOptions: forcedChoiceProviderOptions },
+  });
+}
+
+const lengthCases: readonly {
+  readonly content: LanguageModelV4Content[];
+  readonly expected: LanguageModelV4FinishReason;
+  readonly finishReason: V7FinishReason;
+  readonly name: string;
+  readonly expectsUnknownCall: boolean;
+}[] = [
+  {
+    name: "preserves a length finish reason instead of masking truncation",
+    content: [{ type: "text", text: '{"name":"do","arg' }],
+    finishReason: { unified: "length", raw: "max_tokens" },
+    expected: { unified: "length", raw: "max_tokens" },
+    expectsUnknownCall: true,
+  },
+  {
+    name: "preserves a string length finish reason instead of masking truncation",
+    content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],
+    finishReason: "length",
+    expected: { unified: "length", raw: "length" },
+    expectsUnknownCall: false,
+  },
+];
+
 describe("wrapGenerate forced tool choice v7 parity", () => {
   it("keeps reasoning content alongside the forced tool call", async () => {
-    const doGenerate = vi.fn().mockResolvedValue({
-      content: [
+    const result = await runForcedChoice(
+      [
         { type: "reasoning", text: "let me think" },
         { type: "text", text: '{"name":"do","arguments":{"x":1}}' },
       ],
-      finishReason: { unified: "stop", raw: "stop" },
-      warnings: [],
-    });
+      { unified: "stop", raw: "stop" }
+    );
 
-    const result = await wrapGenerate({
-      protocol: dummyProtocol(),
-      doGenerate,
-      params: { providerOptions: forcedChoiceProviderOptions },
-    });
-
-    expect(result.content.map((part: { type: string }) => part.type)).toEqual([
+    expect(result.content.map((part) => part.type)).toEqual([
       "reasoning",
       "tool-call",
     ]);
@@ -42,20 +81,13 @@ describe("wrapGenerate forced tool choice v7 parity", () => {
   });
 
   it("uses the first parseable JSON text part for forced tool choice", async () => {
-    const doGenerate = vi.fn().mockResolvedValue({
-      content: [
+    const result = await runForcedChoice(
+      [
         { type: "text", text: "I will call the tool now." },
         { type: "text", text: '{"name":"do","arguments":{"x":1}}' },
       ],
-      finishReason: { unified: "stop", raw: "stop" },
-      warnings: [],
-    });
-
-    const result = await wrapGenerate({
-      protocol: dummyProtocol(),
-      doGenerate,
-      params: { providerOptions: forcedChoiceProviderOptions },
-    });
+      { unified: "stop", raw: "stop" }
+    );
 
     expect(result.content.at(-1)).toMatchObject({
       type: "tool-call",
@@ -64,47 +96,21 @@ describe("wrapGenerate forced tool choice v7 parity", () => {
     });
   });
 
-  it("preserves a length finish reason instead of masking truncation", async () => {
-    const doGenerate = vi.fn().mockResolvedValue({
-      content: [{ type: "text", text: '{"name":"do","arg' }],
-      finishReason: { unified: "length", raw: "max_tokens" },
-      warnings: [],
+  for (const scenario of lengthCases) {
+    it(scenario.name, async () => {
+      const result = await runForcedChoice(
+        scenario.content,
+        scenario.finishReason
+      );
+      expect(result.finishReason).toEqual(scenario.expected);
+      if (scenario.expectsUnknownCall) {
+        expect(result.content.at(-1)).toMatchObject({
+          type: "tool-call",
+          toolName: "unknown",
+        });
+      }
     });
-
-    const result = await wrapGenerate({
-      protocol: dummyProtocol(),
-      doGenerate,
-      params: { providerOptions: forcedChoiceProviderOptions },
-    });
-
-    expect(result.finishReason).toEqual({
-      unified: "length",
-      raw: "max_tokens",
-    });
-    expect(result.content.at(-1)).toMatchObject({
-      type: "tool-call",
-      toolName: "unknown",
-    });
-  });
-
-  it("preserves a string length finish reason instead of masking truncation", async () => {
-    const doGenerate = vi.fn().mockResolvedValue({
-      content: [{ type: "text", text: '{"name":"do","arguments":{}}' }],
-      finishReason: "length",
-      warnings: [],
-    });
-
-    const result = await wrapGenerate({
-      protocol: dummyProtocol(),
-      doGenerate,
-      params: { providerOptions: forcedChoiceProviderOptions },
-    });
-
-    expect(result.finishReason).toEqual({
-      unified: "length",
-      raw: "length",
-    });
-  });
+  }
 
   it("redacts debugSummary originalText for prototype-sensitive forced toolChoice payloads", async () => {
     const debugSummary: { originalText?: string; toolCalls?: string } = {};

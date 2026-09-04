@@ -1,3 +1,4 @@
+import { parse } from "../../rjson/parse";
 import {
   createKExaone2JsonSyntaxError,
   encodeKExaone2JsonString,
@@ -9,6 +10,7 @@ import {
   readKExaone2JsonString,
   skipKExaone2JsonWhitespace,
 } from "./k-exaone-2-lossless-json-tokens";
+import type { KExaone2Value } from "./k-exaone-2-native-json";
 import {
   K_EXAONE_2_MAX_JSON_INPUT_LENGTH,
   K_EXAONE_2_MAX_NESTING_DEPTH,
@@ -21,6 +23,16 @@ type ObjectState = "colon" | "comma-or-end" | "key-or-end" | "value";
 type ParserFrame =
   | { readonly kind: "array"; state: ArrayState }
   | { readonly kind: "object"; state: ObjectState };
+interface RewriteContext {
+  readonly frames: ParserFrame[];
+  readonly input: string;
+  readonly output: string[];
+  readonly rootState: { done: boolean };
+  readonly start: number;
+}
+type ContainerRewriteContext<Frame extends ParserFrame> = RewriteContext & {
+  readonly frame: Frame;
+};
 
 function markValueConsumed(
   frames: ParserFrame[],
@@ -45,13 +57,7 @@ function pushFrame(frames: ParserFrame[], kind: ParserFrame["kind"]): void {
   frames.push({ kind, state: "key-or-end" });
 }
 
-function rewriteValue(options: {
-  readonly frames: ParserFrame[];
-  readonly input: string;
-  readonly output: string[];
-  readonly rootState: { done: boolean };
-  readonly start: number;
-}): number {
+function rewriteValue(options: RewriteContext): number {
   const { frames, input, output, rootState, start } = options;
   markValueConsumed(frames, rootState);
   const char = input[start];
@@ -86,14 +92,9 @@ function rewriteValue(options: {
   return start + number.length;
 }
 
-function rewriteObjectToken(options: {
-  readonly frame: Extract<ParserFrame, { kind: "object" }>;
-  readonly frames: ParserFrame[];
-  readonly input: string;
-  readonly output: string[];
-  readonly rootState: { done: boolean };
-  readonly start: number;
-}): number {
+function rewriteObjectToken(
+  options: ContainerRewriteContext<Extract<ParserFrame, { kind: "object" }>>
+): number {
   const { frame, frames, input, output, rootState, start } = options;
   const char = input[start];
   if (frame.state === "key-or-end") {
@@ -136,14 +137,9 @@ function rewriteObjectToken(options: {
   throw createKExaone2JsonSyntaxError();
 }
 
-function rewriteArrayToken(options: {
-  readonly frame: Extract<ParserFrame, { kind: "array" }>;
-  readonly frames: ParserFrame[];
-  readonly input: string;
-  readonly output: string[];
-  readonly rootState: { done: boolean };
-  readonly start: number;
-}): number {
+function rewriteArrayToken(
+  options: ContainerRewriteContext<Extract<ParserFrame, { kind: "array" }>>
+): number {
   const { frame, frames, input, output, rootState, start } = options;
   const char = input[start];
   if (frame.state === "value-or-end") {
@@ -234,28 +230,30 @@ export function decodeKExaone2HistoryKey(key: string): string {
     : key;
 }
 
-export function isKExaone2HistoryNumber(
-  value: unknown
-): value is KExaone2HistoryNumber {
-  return value instanceof KExaone2HistoryNumber;
-}
-
-export function parseKExaone2LosslessJson(input: string): unknown {
+export function parseKExaone2LosslessJson(input: string): KExaone2Value {
   if (input.length > K_EXAONE_2_MAX_JSON_INPUT_LENGTH) {
     throw new KExaone2SerializationError("input-size");
   }
   const rewritten = rewriteLosslessJson(input);
-  return JSON.parse(rewritten, (_key, value: unknown) => {
-    if (typeof value !== "string") {
-      return value;
-    }
-    if (value.startsWith(K_EXAONE_2_HISTORY_NUMBER_PREFIX)) {
-      return new KExaone2HistoryNumber(
-        value.slice(K_EXAONE_2_HISTORY_NUMBER_PREFIX.length)
-      );
-    }
-    return value.startsWith(K_EXAONE_2_HISTORY_STRING_PREFIX)
-      ? value.slice(K_EXAONE_2_HISTORY_STRING_PREFIX.length)
-      : value;
+  const parsed = parse<KExaone2HistoryNumber>(rewritten, {
+    duplicate: true,
+    relaxed: false,
+    reviver: (_key, value) => {
+      if (typeof value !== "string") {
+        return value;
+      }
+      if (value.startsWith(K_EXAONE_2_HISTORY_NUMBER_PREFIX)) {
+        return new KExaone2HistoryNumber(
+          value.slice(K_EXAONE_2_HISTORY_NUMBER_PREFIX.length)
+        );
+      }
+      return value.startsWith(K_EXAONE_2_HISTORY_STRING_PREFIX)
+        ? value.slice(K_EXAONE_2_HISTORY_STRING_PREFIX.length)
+        : value;
+    },
   });
+  if (parsed === undefined) {
+    throw createKExaone2JsonSyntaxError();
+  }
+  return parsed;
 }

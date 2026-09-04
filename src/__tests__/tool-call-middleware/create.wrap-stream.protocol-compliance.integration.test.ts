@@ -9,61 +9,66 @@ import { createToolMiddleware } from "../../tool-call-middleware";
 import { dummyProtocol } from "../fixtures/dummy-protocol";
 import { mockUsage, stopFinishReason, zeroUsage } from "../test-helpers";
 
-describe("createToolMiddleware wrapStream protocol compliance integration", () => {
+const complianceGenerateResult = {
+  content: [],
+  finishReason: stopFinishReason,
+  usage: zeroUsage,
+  warnings: [],
+} satisfies LanguageModelV4GenerateResult;
+
+const complianceModel: LanguageModelV4 = {
+  specificationVersion: "v4",
+  provider: "test",
+  modelId: "test",
+  supportedUrls: {},
+  doGenerate: async () => complianceGenerateResult,
+  doStream: async () => ({ stream: new ReadableStream() }),
+};
+
+function partStream(
+  parts: readonly LanguageModelV4StreamPart[]
+): ReadableStream<LanguageModelV4StreamPart> {
+  return new ReadableStream({
+    start(controller) {
+      for (const part of parts) {
+        controller.enqueue(part);
+      }
+      controller.close();
+    },
+  });
+}
+
+async function collectCompliantStream(
+  parts: readonly LanguageModelV4StreamPart[]
+): Promise<LanguageModelV4StreamPart[]> {
   const middleware = createToolMiddleware({
     protocol: dummyProtocol,
     toolSystemPromptTemplate: () => "",
   });
-  const generateResult = {
-    content: [],
-    finishReason: stopFinishReason,
-    usage: zeroUsage,
-    warnings: [],
-  } satisfies LanguageModelV4GenerateResult;
-  const model: LanguageModelV4 = {
-    specificationVersion: "v4",
-    provider: "test",
-    modelId: "test",
-    supportedUrls: {},
-    doGenerate: async () => generateResult,
-    doStream: async () => ({ stream: new ReadableStream() }),
-  };
+  if (!middleware.wrapStream) {
+    throw new Error("wrapStream is not defined");
+  }
+  const result = await middleware.wrapStream({
+    doGenerate: async () => complianceGenerateResult,
+    doStream: async () => ({ stream: partStream(parts) }),
+    params: { prompt: [] },
+    model: complianceModel,
+  });
+  return convertReadableStreamToArray(result.stream);
+}
 
-  const runMiddleware = (stream: ReadableStream<LanguageModelV4StreamPart>) => {
-    const mockDoStream = () => Promise.resolve({ stream });
-    if (!middleware.wrapStream) {
-      throw new Error("wrapStream is not defined");
-    }
-    return middleware.wrapStream({
-      doGenerate: async () => generateResult,
-      doStream: mockDoStream,
-      params: { prompt: [] },
-      model,
-    });
-  };
-
+describe("createToolMiddleware wrapStream protocol compliance integration", () => {
   test("should produce compliant start/delta/end pattern for text", async () => {
-    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
-      start(controller) {
-        controller.enqueue({
-          type: "text-delta",
-          id: "text-1",
-          delta: "Hello world",
-        });
-        controller.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: mockUsage(1, 1),
-        });
-        controller.close();
+    const chunks = await collectCompliantStream([
+      { type: "text-delta", id: "text-1", delta: "Hello world" },
+      {
+        type: "finish",
+        finishReason: stopFinishReason,
+        usage: mockUsage(1, 1),
       },
-    });
-
-    const result = await runMiddleware(mockStream);
-    const chunks = await convertReadableStreamToArray(result.stream);
-
-    const MINIMUM_EXPECTED_CHUNKS = 3;
-    expect(chunks.length).toBeGreaterThanOrEqual(MINIMUM_EXPECTED_CHUNKS);
+    ]);
+    const minimumExpectedChunks = 3;
+    expect(chunks.length).toBeGreaterThanOrEqual(minimumExpectedChunks);
     const [firstChunk] = chunks;
     expect(firstChunk?.type).toBe("text-start");
     if (firstChunk?.type !== "text-start") {
@@ -78,28 +83,17 @@ describe("createToolMiddleware wrapStream protocol compliance integration", () =
   });
 
   test("handles empty text chunks correctly", async () => {
-    const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
-      start(controller) {
-        controller.enqueue({ type: "text-delta", id: "text-1", delta: "" });
-        controller.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        controller.close();
-      },
-    });
-
-    const result = await runMiddleware(mockStream);
-    const chunks = await convertReadableStreamToArray(result.stream);
-
+    const chunks = await collectCompliantStream([
+      { type: "text-delta", id: "text-1", delta: "" },
+      { type: "finish", finishReason: stopFinishReason, usage: zeroUsage },
+    ]);
     const textChunks = chunks.filter(
-      (c) =>
-        c.type === "text-delta" ||
-        c.type === "text-start" ||
-        c.type === "text-end"
+      (chunk) =>
+        chunk.type === "text-delta" ||
+        chunk.type === "text-start" ||
+        chunk.type === "text-end"
     );
     expect(textChunks).toHaveLength(0);
-    expect(chunks.find((c) => c.type === "finish")).toBeDefined();
+    expect(chunks.find((chunk) => chunk.type === "finish")).toBeDefined();
   });
 });

@@ -1,10 +1,28 @@
+import type { JSONValue } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import { emptyFunctionTools } from "../../../fixtures/function-tools";
 
-describe("qwen3CoderProtocol", () => {
-  const tools = emptyFunctionTools;
+function expectRoundTrip(
+  formatted: string,
+  toolName: string,
+  input: Record<string, JSONValue>
+): void {
+  const parsed = qwen3CoderProtocol().parseGeneratedText({
+    text: `prefix ${formatted} suffix`,
+    tools: emptyFunctionTools,
+  });
+  const calls = parsed.filter((part) => part.type === "tool-call");
+  expect(calls).toHaveLength(1);
+  const [call] = calls;
+  if (call === undefined) {
+    throw new Error("Expected tool-call part");
+  }
+  expect(call.toolName).toBe(toolName);
+  expect(JSON.parse(call.input)).toEqual(input);
+}
 
+describe("qwen3CoderProtocol", () => {
   it("formatToolCall emits Qwen3CoderProtocol markup that round-trips through parseGeneratedText", () => {
     const p = qwen3CoderProtocol();
     const formatted = p.formatToolCall({
@@ -20,18 +38,7 @@ describe("qwen3CoderProtocol", () => {
     expect(formatted).toContain('<parameter="y">2</parameter>');
     expect(formatted).toContain('<parameter="y">3</parameter>');
 
-    const parsed = p.parseGeneratedText({
-      text: `prefix ${formatted} suffix`,
-      tools,
-    });
-    const calls = parsed.filter((x) => x.type === "tool-call");
-    expect(calls).toHaveLength(1);
-    const [call] = calls;
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
-    expect(call.toolName).toBe("test_tool");
-    expect(JSON.parse(call.input)).toEqual({ x: "1", y: ["2", "3"] });
+    expectRoundTrip(formatted, "test_tool", { x: "1", y: ["2", "3"] });
   });
 
   it("formatToolCall serializes boolean/null values using Qwen3-Coder template string semantics", () => {
@@ -66,18 +73,7 @@ describe("qwen3CoderProtocol", () => {
       '<parameter="display name">Weather</parameter>'
     );
 
-    const parsed = p.parseGeneratedText({
-      text: `prefix ${formatted} suffix`,
-      tools,
-    });
-    const calls = parsed.filter((x) => x.type === "tool-call");
-    expect(calls).toHaveLength(1);
-    const [call] = calls;
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
-    expect(call.toolName).toBe("group/search tool");
-    expect(JSON.parse(call.input)).toEqual({
+    expectRoundTrip(formatted, "group/search tool", {
       "icon/default": "star",
       "display name": "Weather",
     });

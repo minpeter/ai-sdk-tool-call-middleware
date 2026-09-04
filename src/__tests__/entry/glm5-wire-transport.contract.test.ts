@@ -1,53 +1,39 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { wrapLanguageModel } from "ai";
+import {
+  isJSONObject,
+  isJSONValue,
+  type JSONArray,
+  type JSONObject,
+  type JSONValue,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { glm5ToolMiddleware } from "../../preconfigured-middleware";
+import { captureProviderBody } from "./provider-capture.shared";
+
+type Glm5RequestBody = JSONObject & {
+  readonly messages: JSONArray;
+};
+
+function isGlm5RequestBody(value: JSONValue): value is Glm5RequestBody {
+  return isJSONObject(value) && Array.isArray(value.messages);
+}
+
+function parseGlm5RequestBody(source: string): Glm5RequestBody {
+  const value = JSON.parse(source);
+  if (!(isJSONValue(value) && isGlm5RequestBody(value))) {
+    throw new TypeError("Expected a GLM-5 request body");
+  }
+  return value;
+}
 
 describe("glm5ToolMiddleware wire transport", () => {
   it("injects declarations while preserving provider-native tool history", async () => {
-    let capturedBody: unknown;
-    const provider = createOpenAICompatible({
+    const capturedBody = await captureProviderBody({
+      name: "glm5-capture",
       apiKey: "test-key",
       baseURL: "https://capture.invalid/v1",
-      fetch: (_input, init) => {
-        if (typeof init?.body !== "string") {
-          throw new TypeError("Expected a JSON request body");
-        }
-        capturedBody = JSON.parse(init.body);
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: "response-1",
-              created: 0,
-              model: "probe-model",
-              choices: [
-                {
-                  index: 0,
-                  finish_reason: "stop",
-                  message: { role: "assistant", content: "done" },
-                },
-              ],
-              usage: {
-                prompt_tokens: 1,
-                completion_tokens: 1,
-                total_tokens: 2,
-              },
-            }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            }
-          )
-        );
-      },
-      name: "glm5-capture",
-    });
-    const model = wrapLanguageModel({
+      modelId: "probe-model",
       middleware: glm5ToolMiddleware,
-      model: provider.chatModel("probe-model"),
-    });
-
-    await model.doGenerate({
+      parseBody: parseGlm5RequestBody,
       prompt: [
         {
           role: "assistant",

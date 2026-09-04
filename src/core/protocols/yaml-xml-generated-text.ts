@@ -10,7 +10,7 @@ import {
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { stringifyToolInputWithSchema } from "../utils/tool-input-streaming";
-import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
+import { findToolCallsWithRootRepair } from "./morph-xml-tool-call-finder";
 import type { ParserOptions } from "./protocol-interface";
 import { addTextOrForeignToolCalls } from "./yaml-xml-foreign-recovery";
 import {
@@ -102,21 +102,14 @@ export function parseYamlXmlGeneratedText({
     return [{ type: "text", text }];
   }
 
+  const { parseText, toolCalls } = findToolCallsWithRootRepair({
+    findCalls: findToolCalls,
+    parseText: text,
+    toolCalls: findToolCalls(text, toolNames),
+    toolNames,
+  });
   const processedElements: LanguageModelV4Content[] = [];
   let currentIndex = 0;
-  let parseText = text;
-
-  let toolCalls = findToolCalls(parseText, toolNames);
-  if (toolCalls.length === 0) {
-    const repaired = tryRepairXmlSelfClosingRootWithBody(parseText, toolNames);
-    if (repaired) {
-      const repairedCalls = findToolCalls(repaired, toolNames);
-      if (repairedCalls.length > 0) {
-        parseText = repaired;
-        toolCalls = repairedCalls;
-      }
-    }
-  }
 
   for (const tc of toolCalls) {
     currentIndex = processToolCallMatch(

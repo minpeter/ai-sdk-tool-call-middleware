@@ -5,20 +5,30 @@ import {
   parseWithoutSchema,
   simplify,
 } from "../../../rxml/core/parser";
+import type { RXMLNode } from "../../../rxml/core/types";
+
+const isRXMLNode = (value: RXMLNode | string | undefined): value is RXMLNode =>
+  typeof value === "object";
 
 describe("robust-xml integration", () => {
   describe("TXML feature compatibility", () => {
     it("supports CDATA sections like TXML", () => {
       const xml = "<xml><![CDATA[some data]]></xml>";
       const result = parseWithoutSchema(xml);
-      const xmlNode = result[0] as any;
+      const [xmlNode] = result;
+      if (!isRXMLNode(xmlNode)) {
+        expect.fail("xml was not an XML node");
+      }
       expect(xmlNode.children[0]).toBe("some data");
     });
 
     it("supports comments when enabled", () => {
       const xml = "<test><!-- test --></test>";
       const result = parseWithoutSchema(xml, { keepComments: true });
-      const testNode = result[0] as any;
+      const [testNode] = result;
+      if (!isRXMLNode(testNode)) {
+        expect.fail("test was not an XML node");
+      }
       expect(testNode.children).toContain("<!-- test -->");
     });
 

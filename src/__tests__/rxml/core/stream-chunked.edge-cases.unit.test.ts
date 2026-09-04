@@ -1,41 +1,21 @@
-import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
-import { processXMLStream } from "../../../rxml/core/stream";
-import type { RXMLNode } from "../../../rxml/core/types";
 import {
   CHUNK_SIZE,
+  collectStreamElements,
   createChunkedStream,
+  createManualChunkStream,
+  requireNode,
   testXmlSamples,
 } from "./stream-chunked.shared";
-
-function requireNode(node: RXMLNode | string | undefined): RXMLNode {
-  if (typeof node === "object") {
-    return node;
-  }
-  throw new TypeError("Expected streamed XML node");
-}
 
 describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
   describe("Edge cases with chunking", () => {
     it("should handle tag boundaries split across chunks", async () => {
       const manualChunks = ["<tool><", "name>te", "st</na", "me></t", "ool>"];
-
-      const stream = new Readable({
-        read() {
-          const chunk = manualChunks.shift();
-          if (chunk) {
-            this.push(chunk);
-          } else {
-            this.push(null);
-          }
-        },
-      });
-
-      const results: (RXMLNode | string)[] = [];
-      for await (const element of processXMLStream(stream)) {
-        results.push(element);
-      }
+      const results = await collectStreamElements(
+        createManualChunkStream(manualChunks)
+      );
 
       expect(results).toHaveLength(2);
       const toolElement = requireNode(results[0]);
@@ -57,21 +37,9 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         "</tool>",
       ];
 
-      const stream = new Readable({
-        read() {
-          const chunk = manualChunks.shift();
-          if (chunk) {
-            this.push(chunk);
-          } else {
-            this.push(null);
-          }
-        },
-      });
-
-      const results: (RXMLNode | string)[] = [];
-      for await (const element of processXMLStream(stream)) {
-        results.push(element);
-      }
+      const results = await collectStreamElements(
+        createManualChunkStream(manualChunks)
+      );
 
       expect(results).toHaveLength(1);
       expect(results[0]).toMatchObject({
@@ -85,12 +53,9 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
     });
 
     it("should handle CDATA sections split across chunks", async () => {
-      const stream = createChunkedStream(testXmlSamples.withCdata, CHUNK_SIZE);
-      const results: (RXMLNode | string)[] = [];
-
-      for await (const element of processXMLStream(stream)) {
-        results.push(element);
-      }
+      const results = await collectStreamElements(
+        createChunkedStream(testXmlSamples.withCdata, CHUNK_SIZE)
+      );
 
       const codeElement = requireNode(
         results.find(
@@ -107,13 +72,9 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         testXmlSamples.withComments,
         CHUNK_SIZE
       );
-      const results: (RXMLNode | string)[] = [];
-
-      for await (const element of processXMLStream(stream, 0, {
+      const results = await collectStreamElements(stream, {
         keepComments: true,
-      })) {
-        results.push(element);
-      }
+      });
 
       const comments = results.filter(
         (r) => typeof r === "string" && r.includes("<!--")

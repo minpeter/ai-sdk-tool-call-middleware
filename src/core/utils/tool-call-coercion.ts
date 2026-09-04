@@ -1,5 +1,4 @@
 import type {
-  JSONObject,
   JSONValue,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
@@ -45,10 +44,7 @@ function isJsonValueBoundary(value: RxmlValue): value is JSONValue {
     { allowUndefined: false, leaving: false, value },
   ];
   while (stack.length > 0) {
-    const frame = stack.pop();
-    if (frame === undefined) {
-      continue;
-    }
+    const [frame] = stack.splice(-1, 1);
     if (frame.leaving) {
       active.delete(frame.value);
       continue;
@@ -71,15 +67,6 @@ function isJsonValueBoundary(value: RxmlValue): value is JSONValue {
     }
   }
   return true;
-}
-
-function isJsonObjectBoundary(value: RxmlValue): value is JSONObject {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    isJsonValueBoundary(value)
-  );
 }
 
 export function toolCallInputHasSchemaAwarePrototypeSensitiveValue(
@@ -152,8 +139,8 @@ function parseToolCallInput(input: RxmlValue): JSONValue | undefined {
     return isJsonValueBoundary(input) ? input : undefined;
   }
   try {
-    const parsed = JSON.parse(input);
-    return isJsonValueBoundary(parsed) ? parsed : undefined;
+    const parsed: JSONValue = JSON.parse(input);
+    return parsed;
   } catch (error) {
     if (error instanceof SyntaxError) {
       return;
@@ -183,9 +170,6 @@ export function coerceToolCallInput(
     return;
   }
   const coerced = coerceBySchema(args, schema);
-  if (coerced === null) {
-    return schemaAllowsNull(schema) ? "null" : undefined;
-  }
   const valueToSanitize: JSONValue = isJsonValueBoundary(coerced)
     ? coerced
     : {};
@@ -212,12 +196,6 @@ export function coerceToolCallPart<T extends ToolCallLike>(
   const coercedInput = coerceToolCallInput(part.toolName, part.input, tools);
   if (coercedInput === undefined) {
     if (inputHasSensitiveStructuredText) {
-      return {
-        ...part,
-        input: "{}",
-      };
-    }
-    if (isJsonObjectBoundary(part.input)) {
       return {
         ...part,
         input: "{}",

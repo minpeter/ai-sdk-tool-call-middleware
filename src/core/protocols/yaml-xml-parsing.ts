@@ -1,6 +1,6 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { isJSONObject, type JSONObject } from "@ai-sdk/provider";
-import { unescapeXml } from "../../rxml/utils/helpers";
+import { parseXmlChildrenValue } from "../../schema-coerce/loose-structured-string";
 import { safeToolCallMetadataText } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import {
@@ -12,14 +12,6 @@ import {
   findToolCalls as findToolCallsImpl,
   type ToolCallMatch as ToolCallMatchImpl,
 } from "./yaml-xml-tool-call-finder";
-
-export interface YamlXmlProtocolOptions {
-  /**
-   * Whether to include a system prompt example showing YAML multiline syntax.
-   * @default true
-   */
-  includeMultilineExample?: boolean;
-}
 
 export type ToolCallMatch = ToolCallMatchImpl;
 
@@ -84,60 +76,21 @@ export function safeYamlFailureCause(
  * (`toolCall`, `toolName`, `toolCallId`, `dropReason`) with the underlying
  * helper cause attached as context.
  */
-const XML_CHILD_CLOSED_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)<\/\1\s*>$/;
-// The open form requires a non-empty value so that a lone nesting tag like
-// `<passenger>` never gets misread as an empty flat parameter.
-const XML_CHILD_OPEN_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*\S[^<]*|\S)$/;
 const PROTOTYPE_SENSITIVE_PARAM_KEYS = new Set([
   "__proto__",
   "constructor",
   "prototype",
 ]);
 
-function mergeXmlChildArg(args: JSONObject, key: string, value: string): void {
-  const existing = args[key];
-  if (existing === undefined) {
-    args[key] = value;
-  } else if (Array.isArray(existing)) {
-    existing.push(value);
-  } else {
-    args[key] = [existing, value];
-  }
-}
-
 /**
  * Fallback for models that answer the YAML-body prompt with XML child tags
  * instead (`<city>Seoul</city>`, observed live on Amazon Nova 2 Lite —
- * effectively the morph-xml body format). Parses line-oriented
- * `<key>value</key>` pairs, tolerating a missing close tag on a line
- * (`<unit>celsius`), and declines on anything else so genuine YAML failures
- * keep their normal error handling.
+ * effectively the morph-xml body format). The copy preserves this boundary's
+ * normal-object result while the canonical loose parser stays null-prototype.
  */
 function parseXmlChildrenAsArgs(content: string): JSONObject | null {
-  const lines = content
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  if (lines.length === 0 || !lines[0].startsWith("<")) {
-    return null;
-  }
-
-  const args: JSONObject = {};
-  for (const line of lines) {
-    const match =
-      XML_CHILD_CLOSED_LINE_REGEX.exec(line) ??
-      XML_CHILD_OPEN_LINE_REGEX.exec(line);
-    if (!match) {
-      return null;
-    }
-    const [, key] = match;
-    if (PROTOTYPE_SENSITIVE_PARAM_KEYS.has(key)) {
-      return null;
-    }
-    mergeXmlChildArg(args, key, unescapeXml((match[2] ?? "").trim()));
-  }
-
-  return args;
+  const parsed = parseXmlChildrenValue(content);
+  return parsed === null ? null : { ...parsed };
 }
 
 /** Canonical property names declared in a tool's input schema. */

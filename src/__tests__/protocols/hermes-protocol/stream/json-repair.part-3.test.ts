@@ -1,51 +1,58 @@
-import type {
-  JSONSchema7Definition,
-  JSONValue,
-  LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
-} from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
-import { describe, expect, it, vi } from "vitest";
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import type { JSONSchema7 } from "@ai-sdk/provider";
+import { describe, expect, it } from "vitest";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  requireToolCall,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
+import {
+  expectRejectedStreamRepair,
+  runWriteStreamRepair,
+} from "./json-repair-parts-3-4-harness";
 
-function makeTool(
-  name: string,
-  properties: Record<string, JSONSchema7Definition>,
-  additionalProperties?: boolean
-): LanguageModelV4FunctionTool {
-  return {
-    type: "function",
-    name,
-    inputSchema: {
-      type: "object",
-      properties,
-      ...(additionalProperties === undefined ? {} : { additionalProperties }),
-    },
-  };
-}
+const stringNoteSchema: JSONSchema7 = {
+  type: "object",
+  properties: { note: { type: "string" } },
+  additionalProperties: false,
+};
 
-// Intentionally accepts malformed schemas so tests can exercise runtime rejection.
-function makeSchemaTool(
-  name: string,
-  inputSchema: JSONValue
-): LanguageModelV4FunctionTool {
-  return {
-    type: "function",
-    name,
-    inputSchema: inputSchema as LanguageModelV4FunctionTool["inputSchema"],
-  };
-}
-
-type ToolCallPart = Extract<LanguageModelV4StreamPart, { type: "tool-call" }>;
-
-function isToolCallPart(part: LanguageModelV4StreamPart): part is ToolCallPart {
-  return part.type === "tool-call";
-}
+const rejectedRepairCases = [
+  {
+    name: "rejects unquoted strict RJSON with prototype-sensitive argument keys",
+    additionalProperties: false,
+    texts: [
+      '<tool_call>{name:"write",arguments:{__proto__:{polluted:true},content:"ok"}}</tool_call>',
+    ],
+  },
+  {
+    name: "rejects unquoted prototype-sensitive RJSON keys after comments",
+    additionalProperties: false,
+    texts: [
+      '<tool_call>{name:"write",arguments:{/* comment */__proto__:{polluted:true},content:"ok"}}</tool_call>',
+      '<tool_call>{name:"write",arguments:{// comment\n__proto__:{polluted:true},content:"ok"}}</tool_call>',
+    ],
+  },
+  {
+    name: "rejects prototype-sensitive RJSON keys after leading comments",
+    additionalProperties: true,
+    texts: [
+      '<tool_call>/*{}*/{name:"write",arguments:{__proto__:{polluted:true},content:"ok"}}</tool_call>',
+    ],
+  },
+  {
+    name: "rejects prototype-sensitive argument keys even when unknown keys are allowed",
+    additionalProperties: true,
+    texts: [
+      '<tool_call>{"name":"write","arguments":{"content":"ok","constructor":{"polluted":true}}}</tool_call>',
+    ],
+  },
+  {
+    name: "rejects escaped single-quoted strict RJSON prototype-sensitive argument keys",
+    additionalProperties: false,
+    texts: [
+      '<tool_call>{name:"write",arguments:{\'\\u005f\\u005fproto__\':{polluted:true},content:"ok"}}</tool_call>',
+    ],
+  },
+] as const;
 
 describe("json-repair.test split 3", () => {
   it.each([
@@ -55,287 +62,54 @@ describe("json-repair.test split 3", () => {
   ] as const)(
     "preserves schema-valid string argument value %s",
     async (note) => {
-      const text = `<tool_call>${JSON.stringify({
-        name: "write",
-        arguments: { note },
-      })}</tool_call>`;
-      const tools = [
-        makeSchemaTool("write", {
-          type: "object",
-          properties: {
-            note: { type: "string" },
-          },
-          additionalProperties: false,
-        }),
-      ];
-      const protocol = hermesProtocol();
-      const transformer = protocol.createStreamParser({ tools });
-      const rs = new ReadableStream<LanguageModelV4StreamPart>({
-        start(ctrl) {
-          ctrl.enqueue({
-            type: "text-delta",
-            id: "1",
-            delta: text,
-          });
-          ctrl.enqueue({
-            type: "finish",
-            finishReason: stopFinishReason,
-            usage: zeroUsage,
-          });
-          ctrl.close();
-        },
-      });
-
-      const out = await convertReadableStreamToArray(
-        pipeWithTransformer(rs, transformer)
+      const input = JSON.stringify({ note });
+      const result = await runWriteStreamRepair(
+        `<tool_call>${JSON.stringify({
+          name: "write",
+          arguments: { note },
+        })}</tool_call>`,
+        stringNoteSchema
       );
-      const tool = out.find(isToolCallPart);
+      const tool = requireToolCall(result.parts);
+      const { deltas } = selectToolInputTimeline(result.parts);
 
-      expect(tool?.toolName).toBe("write");
-      expect(tool?.input).toBe(JSON.stringify({ note }));
-      expect(
-        out
-          .filter((part) => part.type === "tool-input-delta")
-          .map((part) => part.delta)
-          .join("")
-      ).toBe(JSON.stringify({ note }));
+      expect(tool.toolName).toBe("write");
+      expect(tool.input).toBe(input);
+      expect(deltas.map((part) => part.delta).join("")).toBe(input);
     }
   );
 
-  it("rejects unquoted strict RJSON with prototype-sensitive argument keys", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeTool(
-        "write",
-        {
-          content: { type: "string" },
-        },
-        false
-      ),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{name:"write",arguments:{__proto__:{polluted:true},content:"ok"}}</tool_call>',
+  for (const testCase of rejectedRepairCases) {
+    it(testCase.name, async () => {
+      for (const text of testCase.texts) {
+        const result = await runWriteStreamRepair(text, {
+          type: "object",
+          properties: { content: { type: "string" } },
+          additionalProperties: testCase.additionalProperties,
         });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
-  });
 
-  it("rejects unquoted prototype-sensitive RJSON keys after comments", async () => {
-    const tools = [makeTool("write", { content: { type: "string" } }, false)];
-    for (const prefix of ["/* comment */", "// comment\n"]) {
-      const onError = vi.fn();
-      const protocol = hermesProtocol();
-      const transformer = protocol.createStreamParser({
-        tools,
-        options: { onError },
-      });
-      const rs = new ReadableStream<LanguageModelV4StreamPart>({
-        start(ctrl) {
-          ctrl.enqueue({
-            type: "text-delta",
-            id: "1",
-            delta: `<tool_call>{name:"write",arguments:{${prefix}__proto__:{polluted:true},content:"ok"}}</tool_call>`,
-          });
-          ctrl.enqueue({
-            type: "finish",
-            finishReason: stopFinishReason,
-            usage: zeroUsage,
-          });
-          ctrl.close();
-        },
-      });
-      const out = await convertReadableStreamToArray(
-        pipeWithTransformer(rs, transformer)
-      );
-      expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-      expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-      expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-      expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-      expect(onError).toHaveBeenCalled();
-    }
-  });
-
-  it("rejects prototype-sensitive RJSON keys after leading comments", async () => {
-    const onError = vi.fn();
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: [makeTool("write", { content: { type: "string" } }, true)],
-      options: { onError },
+        expectRejectedStreamRepair(result);
+      }
     });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>/*{}*/{name:"write",arguments:{__proto__:{polluted:true},content:"ok"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
-  });
-
-  it("rejects prototype-sensitive argument keys even when unknown keys are allowed", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeTool(
-        "write",
-        {
-          content: { type: "string" },
-        },
-        true
-      ),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"write","arguments":{"content":"ok","constructor":{"polluted":true}}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
-  });
-
-  it("rejects escaped single-quoted strict RJSON prototype-sensitive argument keys", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeTool(
-        "write",
-        {
-          content: { type: "string" },
-        },
-        false
-      ),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{name:"write",arguments:{\'\\u005f\\u005fproto__\':{polluted:true},content:"ok"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
-  });
+  }
 
   it("accepts coercible keys before strict schema validation", async () => {
-    const tools = [
-      makeSchemaTool("translate", {
-        type: "object",
-        properties: {
-          text: { type: "string" },
-          targetLanguage: { type: "string" },
-          formality: { type: "string" },
-        },
-        required: ["text", "targetLanguage", "formality"],
+    const result = await runWriteStreamRepair(
+      '<tool_call>{"name":"translate","arguments":{"text":"Ship","target_language":"fr","formality":"casual"}}</tool_call>',
+      {
         additionalProperties: false,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({ tools });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"translate","arguments":{"text":"Ship","target_language":"fr","formality":"casual"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
+        required: ["text", "targetLanguage", "formality"],
+        properties: {
+          formality: { type: "string" },
+          targetLanguage: { type: "string" },
+          text: { type: "string" },
+        },
+        type: "object",
       },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+      "translate"
     );
-    const tool = out.find((c) => c.type === "tool-call");
-    expect(tool).toBeTruthy();
-    if (tool?.type !== "tool-call") {
-      throw new Error("expected tool call");
-    }
-    expect(JSON.parse(tool.input)).toEqual({
+
+    expect(JSON.parse(requireToolCall(result.parts).input)).toEqual({
       text: "Ship",
       targetLanguage: "fr",
       formality: "casual",

@@ -1,9 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { stringify } from "../../rjson/index";
+import { type Rjson, stringify } from "../../rjson/index";
 
 describe("relaxed-json", () => {
   describe("stringify", () => {
+    it("accepts the complete recursive RJSON value contract", () => {
+      const value = {
+        array: [1, undefined, { nested: undefined }],
+      } satisfies Rjson;
+
+      const result = stringify(value);
+
+      expectTypeOf(result).toEqualTypeOf<string>();
+      expect(result).toBe('{"array":[1,null,{"nested":null}]}');
+    });
+
     it("should stringify objects", () => {
       const result = stringify({ key: "value", num: 42 });
       const parsed = JSON.parse(result);
@@ -56,21 +67,19 @@ describe("relaxed-json", () => {
       expect(result).toBe('{"a":2,"m":3,"z":1}');
     });
 
-    it("should handle functions and symbols as null", () => {
-      expect(
-        stringify(() => {
+    it("should handle unsupported runtime functions and symbols as null", () => {
+      const value = {
+        fn: () => {
           /* empty */
-        })
-      ).toBe("null");
-      expect(stringify(Symbol("test"))).toBe("null");
-      expect(
-        stringify({
-          fn: () => {
-            /* empty */
-          },
-          sym: Symbol("test"),
-        })
-      ).toBe('{"fn":null,"sym":null}');
+        },
+        sym: Symbol("test"),
+      };
+
+      expect(Reflect.apply(stringify, undefined, [value.fn])).toBe("null");
+      expect(Reflect.apply(stringify, undefined, [value.sym])).toBe("null");
+      expect(Reflect.apply(stringify, undefined, [value])).toBe(
+        '{"fn":null,"sym":null}'
+      );
     });
   });
 });

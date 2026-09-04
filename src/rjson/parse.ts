@@ -31,47 +31,78 @@
   Follows the license of the original code.
 */
 
+import type { JSONValue } from "@ai-sdk/provider";
+
 import { lexer, strictLexer, stripTrailingComma } from "./lexer";
-import type { ParseOptions, ParseState } from "./parser-types";
+import type {
+  ParseOptions,
+  ParseOptionsWithoutReviver,
+  ParseState,
+  PresentParseOptions,
+  RevivedValue,
+  Reviver,
+} from "./parser-types";
 import { parseAny } from "./parser-value";
 
-function normalizeParseOptions(
-  optsOrReviver?: ParseOptions | ((key: string, value: unknown) => unknown)
-): ParseOptions {
-  let options: ParseOptions = {};
+type JsonReviver<Output extends JSONValue | undefined> = (
+  key: string,
+  value: JSONValue
+) => Output;
+
+type ValueFactory<Output> = () => Output;
+
+type PresentRecursiveReviver<Extension> = (
+  key: string,
+  value: RevivedValue<Extension>
+) => RevivedValue<Extension>;
+
+type RecursiveReviver<Extension> = (
+  key: string,
+  value: RevivedValue<Extension>
+) => RevivedValue<Extension> | undefined;
+
+type ParseOptionResult<Options, Output> = Options extends {
+  readonly tolerant?: false;
+  readonly warnings?: false;
+}
+  ? Output
+  : Output | undefined;
+
+function normalizeParseOptions<Output>(
+  optsOrReviver: ParseOptions<Output> | Reviver<Output> | undefined
+): ParseOptions<Output> {
+  let options: ParseOptions<Output>;
 
   if (typeof optsOrReviver === "function") {
-    options.reviver = optsOrReviver;
+    options = { reviver: optsOrReviver };
   } else if (optsOrReviver !== null && typeof optsOrReviver === "object") {
     options = { ...optsOrReviver };
-  } else if (optsOrReviver !== undefined) {
+  } else if (optsOrReviver === undefined) {
+    options = {};
+  } else {
     throw new TypeError(
       "Second argument must be a reviver function or an options object."
     );
   }
 
-  // Set default for relaxed mode
-  if (options.relaxed === undefined) {
-    if (options.warnings === true || options.tolerant === true) {
-      options.relaxed = true;
-    } else if (options.warnings === false && options.tolerant === false) {
-      options.relaxed = false;
-    } else {
-      options.relaxed = true;
-    }
-  }
+  const relaxed =
+    options.relaxed ??
+    !(options.warnings === false && options.tolerant === false);
 
-  options.tolerant = options.tolerant || options.warnings;
-  options.duplicate = options.duplicate ?? false;
-
-  return options;
+  return {
+    ...options,
+    duplicate: options.duplicate ?? false,
+    relaxed,
+    tolerant: options.tolerant || options.warnings,
+  };
 }
 
 // Helper to create parser state
-function createParseState(options: ParseOptions): ParseState {
+function createParseState<Extension>(
+  options: ParseOptions<Extension>
+): ParseState {
   return {
     pos: 0,
-    reviver: options.reviver,
     tolerant: options.tolerant ?? false,
     duplicate: options.duplicate ?? false,
     warnings: [],
@@ -79,7 +110,10 @@ function createParseState(options: ParseOptions): ParseState {
 }
 
 // Helper to use custom parser with tokens
-function parseWithCustomParser(text: string, options: ParseOptions): unknown {
+function parseWithCustomParser<Extension>(
+  text: string,
+  options: ParseOptions<Extension>
+): JSONValue | undefined {
   const lexerToUse = options.relaxed ? lexer : strictLexer;
   let tokens = lexerToUse(text);
 
@@ -92,15 +126,61 @@ function parseWithCustomParser(text: string, options: ParseOptions): unknown {
   return parseAny(tokens, state, true);
 }
 
-// Helper to use native JSON.parse with transformation
-function parseWithTransform(text: string, options: ParseOptions): unknown {
-  let tokens = lexer(text);
-  tokens = stripTrailingComma(tokens);
-  const newtext = tokens.reduce((str, token) => str + token.match, "");
-  return JSON.parse(
-    newtext,
-    options.reviver as (key: string, value: unknown) => unknown
-  );
+function reviveArray<Extension>(
+  value: JSONValue[],
+  reviver: Reviver<Extension>
+): RevivedValue<Extension>[] {
+  const result: RevivedValue<Extension>[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const element = value[index];
+    if (element === undefined) {
+      result.length += 1;
+      continue;
+    }
+    const revived = reviveValue(String(index), element, reviver);
+    if (revived === undefined) {
+      result.length += 1;
+    } else {
+      result[index] = revived;
+    }
+  }
+  return result;
+}
+
+function reviveObject<Extension>(
+  value: { [key: string]: JSONValue | undefined },
+  reviver: Reviver<Extension>
+): { [key: string]: RevivedValue<Extension> | undefined } {
+  const result: { [key: string]: RevivedValue<Extension> | undefined } = {};
+  for (const [key, property] of Object.entries(value)) {
+    if (property === undefined) {
+      continue;
+    }
+    const revived = reviveValue(key, property, reviver);
+    if (revived !== undefined) {
+      Object.defineProperty(result, key, {
+        configurable: true,
+        enumerable: true,
+        value: revived,
+        writable: true,
+      });
+    }
+  }
+  return result;
+}
+
+function reviveValue<Extension>(
+  key: string,
+  value: JSONValue,
+  reviver: Reviver<Extension>
+): RevivedValue<Extension> | undefined {
+  if (Array.isArray(value)) {
+    return reviver(key, reviveArray(value, reviver));
+  }
+  if (typeof value === "object" && value !== null) {
+    return reviver(key, reviveObject(value, reviver));
+  }
+  return reviver(key, value);
 }
 
 // --- Main Parse Function ---
@@ -114,7 +194,7 @@ function parseWithTransform(text: string, options: ParseOptions): unknown {
  * @param text - The JSON string to parse
  * @param optsOrReviver - Either a ParseOptions object for configuration, or a reviver function (like JSON.parse)
  *
- * @returns The parsed JavaScript value
+ * @returns The parsed value, or undefined when tolerant input contains no value
  *
  * @throws {SyntaxError} When parsing fails in strict mode, or when warnings are collected in tolerant mode
  *
@@ -136,30 +216,52 @@ function parseWithTransform(text: string, options: ParseOptions): unknown {
  * parse('malformed json', { tolerant: true, warnings: true })
  * ```
  */
+function parse<Output extends JSONValue | undefined>(
+  text: string,
+  reviver: JsonReviver<Output>
+): Output;
+function parse<Output>(text: string, reviver: ValueFactory<Output>): Output;
+function parse<Extension>(
+  text: string,
+  reviver: PresentRecursiveReviver<Extension>
+): RevivedValue<Extension>;
+function parse<Extension>(
+  text: string,
+  reviver: RecursiveReviver<Extension>
+): RevivedValue<Extension> | undefined;
 function parse(
   text: string,
-  optsOrReviver?: ParseOptions | ((key: string, value: unknown) => unknown)
-): unknown {
+  options?: PresentParseOptions<never> & { readonly reviver?: never }
+): JSONValue;
+function parse<Options extends ParseOptionsWithoutReviver>(
+  text: string,
+  options: Options
+): ParseOptionResult<Options, JSONValue>;
+function parse<Extension = never>(
+  text: string,
+  options: Omit<ParseOptions<NoInfer<Extension>>, "reviver"> & {
+    readonly reviver: Reviver<NoInfer<Extension>>;
+  }
+): RevivedValue<Extension> | undefined;
+function parse<Output, Options extends Omit<ParseOptions<Output>, "reviver">>(
+  text: string,
+  options: Options & { readonly reviver: ValueFactory<Output> }
+): ParseOptionResult<Options, Output>;
+function parse<Extension = never>(
+  text: string,
+  options: ParseOptions<Extension>
+): RevivedValue<Extension> | undefined;
+
+function parse<Output>(
+  text: string,
+  optsOrReviver?: ParseOptions<Output> | Reviver<Output>
+): RevivedValue<Output> | undefined {
   const options = normalizeParseOptions(optsOrReviver);
-
-  // Strategy 1: Strict JSON with duplicate allowance -> use native JSON.parse
-  if (
-    !(options.relaxed || options.warnings || options.tolerant) &&
-    options.duplicate
-  ) {
-    return JSON.parse(
-      text,
-      options.reviver as (key: string, value: unknown) => unknown
-    );
+  const parsed = parseWithCustomParser(text, options);
+  if (parsed === undefined || options.reviver === undefined) {
+    return parsed;
   }
-
-  // Strategy 2: Need custom parser (warnings, tolerant, or duplicate checking)
-  if (options.warnings || options.tolerant || !options.duplicate) {
-    return parseWithCustomParser(text, options);
-  }
-
-  // Strategy 3: Relaxed syntax without warnings/tolerance -> transform and use native
-  return parseWithTransform(text, options);
+  return reviveValue("", parsed, options.reviver);
 }
 
 export { parse };

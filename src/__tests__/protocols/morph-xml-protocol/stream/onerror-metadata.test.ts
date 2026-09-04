@@ -1,15 +1,18 @@
-import type {
-  LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
-} from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
-import { describe, expect, it, vi } from "vitest";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import type { ProtocolMetadata } from "../../../../core/protocols/protocol-interface";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  collectTextDeltas,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
+
+interface ErrorRecord {
+  readonly message: string;
+  readonly metadata?: ProtocolMetadata;
+}
 
 const tools: LanguageModelV4FunctionTool[] = [
   {
@@ -27,147 +30,92 @@ const tools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
+async function observeFailure(
+  chunks: readonly string[],
+  emitRawToolCallTextOnError = false
+) {
+  const errors: ErrorRecord[] = [];
+  const out = await runProtocolTextStream({
+    protocol: morphXmlProtocol(),
+    tools,
+    id: "1",
+    chunks,
+    parserOptions: {
+      emitRawToolCallTextOnError,
+      onError(message, metadata) {
+        errors.push({ message, metadata });
+      },
+    },
+  });
+  return {
+    errors,
+    out,
+    joinedText: collectTextDeltas(out),
+    joinedToolInput: selectToolInputTimeline(out)
+      .deltas.map((part) => part.delta)
+      .join(""),
+    metadataText: JSON.stringify(errors),
+  };
+}
+
+function expectNoSensitiveOutput(
+  observation: Awaited<ReturnType<typeof observeFailure>>,
+  sentinels: readonly string[]
+): void {
+  expect(selectToolCalls(observation.out)).toHaveLength(0);
+  expect(observation.joinedText).toBe("");
+  for (const sentinel of sentinels) {
+    expect(observation.joinedToolInput).not.toContain(sentinel);
+    expect(observation.metadataText).not.toContain(sentinel);
+  }
+  expect(observation.metadataText).toContain("[redacted sensitive tool call]");
+}
+
 describe("morphXmlProtocol streaming onError metadata", () => {
   it("populates toolName, toolCallId, and malformed-tool-call-body dropReason when streaming XML body parse fails", async () => {
-    const onError = vi.fn();
-    const protocol = morphXmlProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            "<write_file><file_path>a</file_path><file_path>b</file_path></write_file>",
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
-
-    const parseFail = onError.mock.calls.find(([message]) =>
-      String(message).includes("Could not process streaming XML tool call")
+    const observation = await observeFailure([
+      "<write_file><file_path>a</file_path><file_path>b</file_path></write_file>",
+    ]);
+    const parseFail = observation.errors.find(({ message }) =>
+      message.includes("Could not process streaming XML tool call")
     );
     expect(parseFail).toBeDefined();
-    const metadata = parseFail?.[1];
-    expect(metadata).toMatchObject({
+    expect(parseFail?.metadata).toMatchObject({
       toolName: "write_file",
       dropReason: "malformed-tool-call-body",
     });
-    const toolCallId = metadata?.toolCallId;
+    const toolCallId = parseFail?.metadata?.toolCallId;
     expect(typeof toolCallId).toBe("string");
-    expect((toolCallId as string).length).toBeGreaterThan(0);
-    expect(metadata?.toolCall).toContain("<write_file>");
-    expect(metadata?.toolCall).toContain("</write_file>");
+    if (typeof toolCallId !== "string") {
+      throw new TypeError("Expected error metadata toolCallId");
+    }
+    expect(toolCallId.length).toBeGreaterThan(0);
+    expect(parseFail?.metadata?.toolCall).toContain("<write_file>");
+    expect(parseFail?.metadata?.toolCall).toContain("</write_file>");
   });
 
   it("drops XML-wrapped YAML-like sensitive fallback without leaking raw text", async () => {
-    const onError = vi.fn();
-    const protocol = morphXmlProtocol();
     const pathSentinel = "sentinel-path-secret";
     const contentSentinel = "sentinel-content-secret";
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: `<write_file><file_path>${pathSentinel}</file_path>`,
-        });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: `<file_path>b</file_path><contents>constructor: true\n"secret": ${contentSentinel}</contents></write_file>`,
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+    const observation = await observeFailure(
+      [
+        `<write_file><file_path>${pathSentinel}</file_path>`,
+        `<file_path>b</file_path><contents>constructor: true\n"secret": ${contentSentinel}</contents></write_file>`,
+      ],
+      true
     );
-    const joinedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => part.delta)
-      .join("");
-    const joinedToolInput = out
-      .filter((part) => part.type === "tool-input-delta")
-      .map((part) => part.delta)
-      .join("");
-    const metadataText = JSON.stringify(onError.mock.calls);
-
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(joinedText).toBe("");
-    expect(joinedToolInput).not.toContain(pathSentinel);
-    expect(joinedToolInput).not.toContain(contentSentinel);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(pathSentinel);
-    expect(metadataText).not.toContain(contentSentinel);
+    expectNoSensitiveOutput(observation, [pathSentinel, contentSentinel]);
   });
 
   it("does not leak open string progress before a later prototype-sensitive failure", async () => {
-    const onError = vi.fn();
-    const protocol = morphXmlProtocol();
     const sentinel = "first-chunk-scalar-secret";
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { emitRawToolCallTextOnError: true, onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: `<write_file><contents>${sentinel}`,
-        });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            "</contents><file_path>a</file_path><file_path>b</file_path><constructor><polluted>true</polluted></constructor></write_file>",
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+    const observation = await observeFailure(
+      [
+        `<write_file><contents>${sentinel}`,
+        "</contents><file_path>a</file_path><file_path>b</file_path><constructor><polluted>true</polluted></constructor></write_file>",
+      ],
+      true
     );
-    const joinedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => part.delta)
-      .join("");
-    const joinedToolInput = out
-      .filter((part) => part.type === "tool-input-delta")
-      .map((part) => part.delta)
-      .join("");
-    const metadataText = JSON.stringify(onError.mock.calls);
-
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(joinedText).toBe("");
-    expect(joinedToolInput).not.toContain(sentinel);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain(sentinel);
+    expectNoSensitiveOutput(observation, [sentinel]);
   });
 });

@@ -1,4 +1,7 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONSchema7Definition,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import {
   extractQwen3CoderToolNameFromMarkup,
@@ -6,26 +9,33 @@ import {
 } from "../../../core/protocols/qwen3coder-call-parsing";
 import { CALL_BLOCK_RE } from "../../../core/protocols/qwen3coder-call-syntax";
 
-const tools: LanguageModelV4FunctionTool[] = [
+interface CoverageToolDefinition {
+  readonly description: string;
+  readonly name: string;
+  readonly properties: Readonly<Record<string, JSONSchema7Definition>>;
+}
+
+const coverageToolDefinitions: readonly CoverageToolDefinition[] = [
   {
-    type: "function",
     name: "search",
     description: "Search",
-    inputSchema: {
-      type: "object",
-      properties: {
-        QueryText: { type: "string" },
-        raw: {},
-      },
-    },
+    properties: { QueryText: { type: "string" }, raw: {} },
   },
   {
-    type: "function",
     name: "other",
     description: "Other",
-    inputSchema: { type: "object", properties: { id: { type: "string" } } },
+    properties: { id: { type: "string" } },
   },
 ];
+
+const tools: LanguageModelV4FunctionTool[] = coverageToolDefinitions.map(
+  ({ description, name, properties }) => ({
+    type: "function",
+    name,
+    description,
+    inputSchema: { type: "object", properties },
+  })
+);
 
 const wrap = (body: string, attributes = ""): string =>
   `<tool_call${attributes}>${body}</tool_call>`;
@@ -37,27 +47,36 @@ describe("Qwen tool-call segment parsing", () => {
       Array.prototype,
       "push"
     );
-    const originalPush = Array.prototype.push;
+    if (!pushDescriptor) {
+      throw new TypeError("Array.prototype.push descriptor is unavailable");
+    }
     Object.defineProperty(Array.prototype, "push", {
       configurable: true,
       writable: true,
-      value(this: unknown[], ...items: unknown[]): number {
-        const values = typeof items[0] === "number" ? [undefined] : items;
-        return Reflect.apply(originalPush, this, values);
+      value<T>(this: T[], ...items: T[]): number {
+        if (items.length === 1 && typeof items[0] === "number") {
+          this.length += 1;
+          return this.length;
+        }
+        for (const item of items) {
+          this[this.length] = item;
+        }
+        return this.length;
       },
     });
 
-    // When an implicit call is parsed
-    const result = parseQwen3CoderToolParserToolCallSegment(
-      wrap("<function=search>"),
-      tools
-    );
-    if (pushDescriptor) {
+    try {
+      // When an implicit call is parsed
+      const result = parseQwen3CoderToolParserToolCallSegment(
+        wrap("<function=search>"),
+        tools
+      );
+
+      // Then the defensive zero start still recovers the call
+      expect(result).toEqual([{ toolName: "search", args: {} }]);
+    } finally {
       Object.defineProperty(Array.prototype, "push", pushDescriptor);
     }
-
-    // Then the defensive zero start still recovers the call
-    expect(result).toEqual([{ toolName: "search", args: {} }]);
   });
 
   it("rejects extraction when the located closing token disappears", () => {

@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
+import type { RxmlValue } from "../../rxml/builders/stringify";
 import type { ToolInputSchema } from "../../schema/tool-input-schema";
 import { coerceBySchema } from "../../schema-coerce";
+
+type ValueType = "boolean" | "number" | "string";
+
+function expectTupleResult(
+  result: RxmlValue,
+  expected: readonly RxmlValue[],
+  expectedTypes: readonly ValueType[]
+): void {
+  expect(result).toEqual(expected);
+  if (!Array.isArray(result)) {
+    throw new TypeError("Expected tuple coercion to produce an array");
+  }
+  for (const [index, expectedType] of expectedTypes.entries()) {
+    expect(typeof result[index]).toBe(expectedType);
+  }
+}
 
 describe("Coercion Heuristic Handling", () => {
   describe("Tuple handling with prefixItems", () => {
@@ -19,13 +36,11 @@ describe("Coercion Heuristic Handling", () => {
       } satisfies ToolInputSchema;
 
       const result = coerceBySchema(input, schema);
-      expect(result).toEqual([10.5, "hello", true]);
-      if (!Array.isArray(result)) {
-        throw new TypeError("Expected tuple coercion to produce an array");
-      }
-      expect(typeof result[0]).toBe("number");
-      expect(typeof result[1]).toBe("string");
-      expect(typeof result[2]).toBe("boolean");
+      expectTupleResult(
+        result,
+        [10.5, "hello", true],
+        ["number", "string", "boolean"]
+      );
     });
 
     it("should handle numeric keys with prefixItems", () => {
@@ -45,13 +60,11 @@ describe("Coercion Heuristic Handling", () => {
       } satisfies ToolInputSchema;
 
       const result = coerceBySchema(input, schema);
-      expect(result).toEqual([123, "hello", 45.67]);
-      if (!Array.isArray(result)) {
-        throw new TypeError("Expected tuple coercion to produce an array");
-      }
-      expect(typeof result[0]).toBe("number");
-      expect(typeof result[1]).toBe("string");
-      expect(typeof result[2]).toBe("number");
+      expectTupleResult(
+        result,
+        [123, "hello", 45.67],
+        ["number", "string", "number"]
+      );
     });
 
     it("should handle single numeric key with prefixItems", () => {

@@ -43,29 +43,43 @@ function consumeClosingTag(
   return { matched: false, endPos };
 }
 
+interface TagNameCursor {
+  readonly name: string;
+  readonly nextPos: number;
+  readonly start: number;
+}
+
+function readTagName(text: string, start: number): TagNameCursor {
+  let nextPos = start;
+  while (nextPos < text.length && WHITESPACE_REGEX.test(text[nextPos])) {
+    nextPos += 1;
+  }
+  const nameStart = nextPos;
+  while (nextPos < text.length && NAME_CHAR_RE.test(text.charAt(nextPos))) {
+    nextPos += 1;
+  }
+  return {
+    name: text.slice(nameStart, nextPos),
+    nextPos,
+    start: nameStart,
+  };
+}
+
 function consumeOpenTag(
   text: string,
   lt: number
 ): { name: string; selfClosing: boolean; nextPos: number } | null {
-  let p = lt + 1;
-  while (p < text.length && WHITESPACE_REGEX.test(text[p])) {
-    p += 1;
-  }
-  const nameStart = p;
-  while (p < text.length && NAME_CHAR_RE.test(text.charAt(p))) {
-    p += 1;
-  }
-  const name = text.slice(nameStart, p);
-  const q = text.indexOf(">", p);
+  const tagName = readTagName(text, lt + 1);
+  const q = text.indexOf(">", tagName.nextPos);
   if (q === -1) {
     return null;
   }
   let r = q - 1;
-  while (r >= nameStart && WHITESPACE_REGEX.test(text[r])) {
+  while (r >= tagName.start && WHITESPACE_REGEX.test(text[r])) {
     r -= 1;
   }
   const selfClosing = text[r] === "/";
-  return { name, selfClosing, nextPos: q + 1 };
+  return { name: tagName.name, selfClosing, nextPos: q + 1 };
 }
 
 function updateDepthWithToken(
@@ -107,16 +121,8 @@ export function nextTagToken(
   }
   if (next === "/") {
     const closing = consumeClosingTag(text, lt);
-    let p = lt + 2;
-    while (p < text.length && WHITESPACE_REGEX.test(text[p])) {
-      p += 1;
-    }
-    const nameStart = p;
-    while (p < text.length && NAME_CHAR_RE.test(text.charAt(p))) {
-      p += 1;
-    }
-    const name = text.slice(nameStart, p);
-    return { kind: "close", name, nextPos: closing.endPos };
+    const tagName = readTagName(text, lt + 2);
+    return { kind: "close", name: tagName.name, nextPos: closing.endPos };
   }
   const open = consumeOpenTag(text, lt);
   if (open === null) {

@@ -7,6 +7,10 @@ import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import {
+  parseToolCallObject,
+  runProtocolTextStream,
+} from "../../shared/duplicate-harness";
 
 const XML_CURRENT_VIEW_OBJECT_DELTA_RE =
   /[=]== XML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seoul","unit":"celsius"/;
@@ -31,7 +35,7 @@ const tool: LanguageModelV4FunctionTool = {
 const scenarios = [
   {
     name: "JSON protocol",
-    parser: hermesProtocol().createStreamParser({ tools: [tool] }),
+    protocol: hermesProtocol(),
     chunks: [
       "Before ",
       '<tool_call>{"na',
@@ -48,7 +52,7 @@ const scenarios = [
   },
   {
     name: "XML protocol",
-    parser: morphXmlProtocol().createStreamParser({ tools: [tool] }),
+    protocol: morphXmlProtocol(),
     chunks: [
       "Before ",
       "<get_weather>\n<location>Seo",
@@ -64,7 +68,7 @@ const scenarios = [
   },
   {
     name: "YAML protocol",
-    parser: yamlXmlProtocol().createStreamParser({ tools: [tool] }),
+    protocol: yamlXmlProtocol(),
     chunks: [
       "Before ",
       "<get_weather>\nlocation: Seo",
@@ -79,51 +83,6 @@ const scenarios = [
     ],
   },
 ];
-
-function createInputStream(chunks: string[]) {
-  return new ReadableStream<LanguageModelV4StreamPart>({
-    start(controller) {
-      for (const chunk of chunks) {
-        controller.enqueue({
-          type: "text-delta",
-          id: "demo",
-          delta: chunk,
-        });
-      }
-      controller.enqueue({
-        type: "finish",
-        finishReason: { unified: "stop", raw: "stop" },
-        usage: {
-          inputTokens: {
-            total: 0,
-            noCache: undefined,
-            cacheRead: undefined,
-            cacheWrite: undefined,
-          },
-          outputTokens: {
-            total: 0,
-            text: undefined,
-            reasoning: undefined,
-          },
-        },
-      });
-      controller.close();
-    },
-  });
-}
-
-async function readAll(stream: ReadableStream<LanguageModelV4StreamPart>) {
-  const reader = stream.getReader();
-  const parts: LanguageModelV4StreamPart[] = [];
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-    parts.push(value);
-  }
-  return parts;
-}
 
 function formatPart(part: LanguageModelV4StreamPart) {
   if (part.type === "text-delta") {
@@ -174,10 +133,12 @@ describe("tool-input delta compare example output", () => {
     // some sandboxes) and instead run the example logic in-process.
     const lines: string[] = [];
     for (const scenario of scenarios) {
-      const parsedStream = createInputStream(scenario.chunks).pipeThrough(
-        scenario.parser as unknown as TransformStream
-      );
-      const parts = await readAll(parsedStream);
+      const parts = await runProtocolTextStream({
+        chunks: scenario.chunks,
+        id: "demo",
+        protocol: scenario.protocol,
+        tools: [tool],
+      });
       printComparison(scenario.name, parts, (line) => {
         lines.push(line);
       });
@@ -204,5 +165,13 @@ describe("tool-input delta compare example output", () => {
     );
     expect(output).toMatch(XML_CURRENT_VIEW_OBJECT_DELTA_RE);
     expect(output).toMatch(YAML_CURRENT_VIEW_OBJECT_DELTA_RE);
+    expect(() =>
+      parseToolCallObject({
+        type: "tool-call",
+        toolCallId: "array-input",
+        toolName: "get_weather",
+        input: "[]",
+      })
+    ).toThrow(TypeError);
   });
 });

@@ -3,6 +3,10 @@ import { generateText, stepCountIs, tool, wrapLanguageModel } from "ai";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { kExaone236BToolMiddleware } from "../../preconfigured-middleware";
+import {
+  type KExaoneRequestBody,
+  parseKExaoneRequestBody,
+} from "./k-exaone-request-body.shared";
 
 const firstStepResponse = {
   id: "response-1",
@@ -48,7 +52,7 @@ const finalStepResponse = {
 describe("kExaone236BToolMiddleware multistep replay", () => {
   it("replays parsed calls, reasoning, and consecutive results natively", async () => {
     // Given
-    const requestBodies: unknown[] = [];
+    const requestBodies: KExaoneRequestBody[] = [];
     const provider = createOpenAICompatible({
       name: "friendli-capture",
       apiKey: "test-key",
@@ -57,7 +61,7 @@ describe("kExaone236BToolMiddleware multistep replay", () => {
         if (typeof init?.body !== "string") {
           throw new TypeError("Expected a JSON request body");
         }
-        requestBodies.push(JSON.parse(init.body));
+        requestBodies.push(parseKExaoneRequestBody(init.body));
         const responseBody =
           requestBodies.length === 1 ? firstStepResponse : finalStepResponse;
         return Promise.resolve(

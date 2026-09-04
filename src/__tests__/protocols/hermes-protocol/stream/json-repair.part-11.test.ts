@@ -1,282 +1,198 @@
 import type {
+  JSONSchema7,
   JSONValue,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import type { ParserOptions } from "../../../../core/protocols/protocol-interface";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  requireToolCall,
+  runProtocolTextStream,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
 
-// Intentionally accepts malformed schemas so tests can exercise runtime rejection.
-function makeSchemaTool(
-  name: string,
-  inputSchema: JSONValue
-): LanguageModelV4FunctionTool {
-  return {
-    type: "function",
-    name,
-    inputSchema: inputSchema as LanguageModelV4FunctionTool["inputSchema"],
-  };
+type ErrorReporter = NonNullable<ParserOptions["onError"]>;
+
+const contentBranch: JSONSchema7 = {
+  type: "object",
+  properties: { content: { type: "string" } },
+  required: ["content"],
+  additionalProperties: false,
+};
+const primitivePayloadSchema: JSONSchema7 = {
+  type: "object",
+  properties: { payload: { oneOf: [contentBranch, { type: "string" }] } },
+  additionalProperties: false,
+};
+
+const constPayloadSchema: JSONSchema7 = {
+  type: "object",
+  properties: {
+    payload: {
+      oneOf: [
+        {
+          type: "object",
+          properties: {
+            kind: { const: "text" },
+            value: { type: "string" },
+          },
+          required: ["kind", "value"],
+          additionalProperties: false,
+        },
+        {
+          type: "object",
+          properties: {
+            kind: { const: "count" },
+            value: { type: "integer" },
+          },
+          required: ["kind", "value"],
+          additionalProperties: false,
+        },
+      ],
+    },
+  },
+  additionalProperties: false,
+};
+
+function editTool(inputSchema: JSONSchema7): LanguageModelV4FunctionTool {
+  return { name: "edit", type: "function", inputSchema };
+}
+
+function repairArguments(
+  inputSchema: JSONSchema7,
+  argumentsText: string,
+  onError: ErrorReporter
+): Promise<LanguageModelV4StreamPart[]> {
+  const text = `<tool_call>{"name":"edit","arguments":${argumentsText}}</tool_call>`;
+  return runProtocolTextStream({
+    chunks: [text],
+    id: "1",
+    parserOptions: { onError },
+    protocol: hermesProtocol(),
+    tools: [editTool(inputSchema)],
+  });
+}
+
+function assertLifecyclePresent(parts: LanguageModelV4StreamPart[]): void {
+  const timeline = selectToolInputTimeline(parts);
+  expect(timeline.starts.length > 0).toBe(true);
+  expect(timeline.deltas.length > 0).toBe(true);
+  expect(timeline.ends.length > 0).toBe(true);
+}
+
+function assertParsedCall(
+  parts: LanguageModelV4StreamPart[],
+  expected: JSONValue,
+  onError: ErrorReporter
+): void {
+  expect(parts.find((part) => part.type === "tool-call")?.type).toBe(
+    "tool-call"
+  );
+  expect(JSON.parse(requireToolCall(parts).input)).toEqual(expected);
+  assertLifecyclePresent(parts);
+  expect(onError).not.toHaveBeenCalled();
+}
+
+function assertQuietCall(
+  parts: LanguageModelV4StreamPart[],
+  expected: JSONValue,
+  onError: ErrorReporter
+): void {
+  const call = parts.find((part) => part.type === "tool-call");
+  expect(call?.type).toBe("tool-call");
+  expect(JSON.parse(requireToolCall(parts).input)).toEqual(expected);
+  expect(onError).not.toHaveBeenCalled();
+}
+
+function assertNoLifecycle(
+  parts: LanguageModelV4StreamPart[],
+  onError: ErrorReporter
+): void {
+  const timeline = selectToolInputTimeline(parts);
+  expect(parts.find((part) => part.type === "tool-call")).toBeUndefined();
+  expect(timeline.starts.length > 0).toBe(false);
+  expect(timeline.deltas.length > 0).toBe(false);
+  expect(timeline.ends.length > 0).toBe(false);
+  expect(onError).toHaveBeenCalled();
 }
 
 describe("json-repair.test split 11", () => {
   it("accepts oneOf object branches distinguished by nested enum values", async () => {
-    const tools = [
-      makeSchemaTool("edit", {
-        type: "object",
-        properties: {
-          payload: {
-            oneOf: [
-              {
-                type: "object",
-                properties: { value: { type: "string", enum: ["a"] } },
-                required: ["value"],
-                additionalProperties: false,
-              },
-              {
-                type: "object",
-                properties: { value: { type: "string", enum: ["b"] } },
-                required: ["value"],
-                additionalProperties: false,
-              },
-            ],
-          },
+    const toolsSchema: JSONSchema7 = {
+      type: "object",
+      properties: {
+        payload: {
+          oneOf: ["a", "b"].map((value) => ({
+            type: "object",
+            properties: { value: { type: "string", enum: [value] } },
+            required: ["value"],
+            additionalProperties: false,
+          })),
         },
-        additionalProperties: false,
-      }),
-    ];
+      },
+      additionalProperties: false,
+    };
     for (const value of ["a", "b"]) {
-      const onError = vi.fn();
-      const protocol = hermesProtocol();
-      const transformer = protocol.createStreamParser({
-        tools,
-        options: { onError },
-      });
-      const rs = new ReadableStream<LanguageModelV4StreamPart>({
-        start(ctrl) {
-          ctrl.enqueue({
-            type: "text-delta",
-            id: "1",
-            delta: `<tool_call>{"name":"edit","arguments":{"payload":{"value":"${value}"}}}</tool_call>`,
-          });
-          ctrl.enqueue({
-            type: "finish",
-            finishReason: stopFinishReason,
-            usage: zeroUsage,
-          });
-          ctrl.close();
-        },
-      });
-      const out = await convertReadableStreamToArray(
-        pipeWithTransformer(rs, transformer)
+      const onError = vi.fn<ErrorReporter>();
+      const out = await repairArguments(
+        toolsSchema,
+        JSON.stringify({ payload: { value } }),
+        onError
       );
-      const tool = out.find((c) => c.type === "tool-call");
-      expect(tool?.type).toBe("tool-call");
-      expect(
-        tool?.type === "tool-call" ? JSON.parse(tool.input) : null
-      ).toEqual({
-        payload: { value },
-      });
-      expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
-      expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
-      expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
-      expect(onError).not.toHaveBeenCalled();
+
+      assertParsedCall(out, { payload: { value } }, onError);
     }
   });
 
   it("accepts oneOf object branches distinguished by nested const values", async () => {
-    const tools = [
-      makeSchemaTool("edit", {
-        type: "object",
-        properties: {
-          payload: {
-            oneOf: [
-              {
-                type: "object",
-                properties: {
-                  kind: { const: "text" },
-                  value: { type: "string" },
-                },
-                required: ["kind", "value"],
-                additionalProperties: false,
-              },
-              {
-                type: "object",
-                properties: {
-                  kind: { const: "count" },
-                  value: { type: "integer" },
-                },
-                required: ["kind", "value"],
-                additionalProperties: false,
-              },
-            ],
-          },
-        },
-        additionalProperties: false,
-      }),
-    ];
-    for (const [kind, value] of [
+    const cases: readonly (readonly [string, string])[] = [
       ["text", '"hello"'],
       ["count", "3"],
-    ]) {
-      const onError = vi.fn();
-      const protocol = hermesProtocol();
-      const transformer = protocol.createStreamParser({
-        tools,
-        options: { onError },
-      });
-      const rs = new ReadableStream<LanguageModelV4StreamPart>({
-        start(ctrl) {
-          ctrl.enqueue({
-            type: "text-delta",
-            id: "1",
-            delta: `<tool_call>{"name":"edit","arguments":{"payload":{"kind":"${kind}","value":${value}}}}</tool_call>`,
-          });
-          ctrl.enqueue({
-            type: "finish",
-            finishReason: stopFinishReason,
-            usage: zeroUsage,
-          });
-          ctrl.close();
-        },
-      });
-      const out = await convertReadableStreamToArray(
-        pipeWithTransformer(rs, transformer)
+    ];
+    for (const [kind, value] of cases) {
+      const onError = vi.fn<ErrorReporter>();
+      const out = await repairArguments(
+        constPayloadSchema,
+        `{"payload":{"kind":"${kind}","value":${value}}}`,
+        onError
       );
-      const tool = out.find((c) => c.type === "tool-call");
-      expect(tool?.type).toBe("tool-call");
-      expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
-      expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
-      expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+
+      expect(out.find((part) => part.type === "tool-call")?.type).toBe(
+        "tool-call"
+      );
+      assertLifecyclePresent(out);
       expect(onError).not.toHaveBeenCalled();
     }
   });
 
   it("rejects oneOf object branches with mismatched const values", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("edit", {
-        type: "object",
-        properties: {
-          payload: {
-            oneOf: [
-              {
-                type: "object",
-                properties: {
-                  kind: { const: "text" },
-                  value: { type: "string" },
-                },
-                required: ["kind", "value"],
-                additionalProperties: false,
-              },
-              {
-                type: "object",
-                properties: {
-                  kind: { const: "count" },
-                  value: { type: "integer" },
-                },
-                required: ["kind", "value"],
-                additionalProperties: false,
-              },
-            ],
-          },
-        },
-        additionalProperties: false,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"edit","arguments":{"payload":{"kind":"count","value":"hello"}}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+    const onError = vi.fn<ErrorReporter>();
+    const out = await repairArguments(
+      constPayloadSchema,
+      '{"payload":{"kind":"count","value":"hello"}}',
+      onError
     );
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(false);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(false);
-    expect(onError).toHaveBeenCalled();
+
+    assertNoLifecycle(out, onError);
   });
 
   it("drops object keys not declared by primitive oneOf branches", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("edit", {
-        type: "object",
-        properties: {
-          payload: {
-            oneOf: [
-              {
-                type: "object",
-                properties: { content: { type: "string" } },
-                required: ["content"],
-                additionalProperties: false,
-              },
-              { type: "string" },
-            ],
-          },
-        },
-        additionalProperties: false,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"edit","arguments":{"payload":{"content":"ok","extra":"bad"}}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+    const onError = vi.fn<ErrorReporter>();
+    const out = await repairArguments(
+      primitivePayloadSchema,
+      '{"payload":{"content":"ok","extra":"bad"}}',
+      onError
     );
-    const tool = out.find((c) => c.type === "tool-call");
-    expect(tool?.type).toBe("tool-call");
-    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
-      payload: { content: "ok" },
-    });
-    expect(onError).not.toHaveBeenCalled();
+
+    assertQuietCall(out, { payload: { content: "ok" } }, onError);
   });
 
   it("drops stray keys before validating top-level anyOf branches", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("edit", {
+    const onError = vi.fn<ErrorReporter>();
+    const out = await repairArguments(
+      {
         anyOf: [
           {
             type: "object",
@@ -291,38 +207,11 @@ describe("json-repair.test split 11", () => {
             additionalProperties: false,
           },
         ],
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"edit","arguments":{"city":"Seoul","stray":"drop"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
       },
-    });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
+      '{"city":"Seoul","stray":"drop"}',
+      onError
     );
-    const tool = out.find((c) => c.type === "tool-call");
-    expect(tool?.type).toBe("tool-call");
-    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
-      city: "Seoul",
-    });
-    expect(onError).not.toHaveBeenCalled();
+
+    assertQuietCall(out, { city: "Seoul" }, onError);
   });
 });

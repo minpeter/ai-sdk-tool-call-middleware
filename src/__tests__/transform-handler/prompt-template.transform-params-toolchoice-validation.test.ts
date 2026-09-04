@@ -1,70 +1,49 @@
 import type {
+  JSONSchema7Definition,
   LanguageModelV4CallOptions,
   LanguageModelV4FunctionTool,
-  LanguageModelV4Middleware,
 } from "@ai-sdk/provider";
-import { describe, expect, it, vi } from "vitest";
+import { MockLanguageModelV4 } from "ai/test";
+import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { requireTransformParams } from "../test-helpers";
 
-function requireTransformParams(
-  value: LanguageModelV4Middleware["transformParams"]
-): (options: {
-  params: LanguageModelV4CallOptions;
-}) => PromiseLike<LanguageModelV4CallOptions> {
-  if (!value) {
-    throw new Error("transformParams is required for middleware");
-  }
+const model = new MockLanguageModelV4();
 
-  return value as (options: {
-    params: LanguageModelV4CallOptions;
-  }) => PromiseLike<LanguageModelV4CallOptions>;
+function functionTool(
+  name: string,
+  description: string,
+  properties: Record<string, JSONSchema7Definition> = {}
+): LanguageModelV4FunctionTool {
+  return {
+    type: "function",
+    name,
+    description,
+    inputSchema: { type: "object", properties },
+  };
 }
 
-vi.mock("@ai-sdk/provider-utils", () => ({
-  generateId: vi.fn(() => "mock-id"),
-}));
-
-// Regex constants for performance
-const _REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
-const _REGEX_TOOL_CALL_FENCE = /```tool_call/;
-const _REGEX_TOOL_RESPONSE_FENCE = /```tool_response/;
-const _REGEX_GET_WEATHER = /get_weather/;
-const _REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
-const _REGEX_MAY_CALL_FUNCTIONS = /You may call one or more functions/;
-const _REGEX_TOOLS_TAG = /<tools>/;
-const _REGEX_NONE = /none/;
-const _REGEX_NOT_FOUND = /not found/;
-const _REGEX_PROVIDER_DEFINED = /Provider-defined tools/;
-const _REGEX_REQUIRED_NO_TOOLS =
-  /Tool choice type 'required' is set, but no tools are provided/;
-const _REGEX_REQUIRED_NO_FUNCTION_TOOLS = /no function tools are provided/;
-const _REGEX_TOOL_CALL_TAG = /<tool_call>/;
-const _REGEX_TOOL_RESPONSE_TAG = /<tool_response>/;
-const _REGEX_GET_WEATHER_TAG = /<get_weather>/;
-const _REGEX_TOOL_CALL_WORD = /tool_call/;
+function transform(params: LanguageModelV4CallOptions) {
+  const middleware = createToolMiddleware({
+    protocol: hermesProtocol,
+    toolSystemPromptTemplate: () =>
+      params.toolChoice?.type === "none" ? "TOOL PROMPT" : "",
+  });
+  return requireTransformParams(middleware.transformParams)({
+    type: "generate",
+    model,
+    params,
+  });
+}
 
 describe("transformParams toolChoice validation", () => {
   it("transformParams handles toolChoice type none without tool prompt injection", async () => {
-    const mw = createToolMiddleware({
-      protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "TOOL PROMPT",
-    });
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "get_weather",
-        description: "d",
-        inputSchema: { type: "object", properties: { a: { type: "string" } } },
-      },
-    ];
-    const transformParams = requireTransformParams(mw.transformParams);
-    const result = await transformParams({
-      params: {
-        prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
-        tools,
-        toolChoice: { type: "none" },
-      } satisfies LanguageModelV4CallOptions,
+    const tools = [functionTool("get_weather", "d", { a: { type: "string" } })];
+    const result = await transform({
+      prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      tools,
+      toolChoice: { type: "none" },
     });
 
     // No tool definitions are forwarded and no tool system prompt is added.
@@ -82,26 +61,13 @@ describe("transformParams toolChoice validation", () => {
   });
 
   it("transformParams validates specific tool selection and builds JSON schema", async () => {
-    const mw = createToolMiddleware({
-      protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+    const tools = [functionTool("t1", "d", { a: { type: "string" } })];
+    const result = await transform({
+      prompt: [],
+      tools,
+      toolChoice: { type: "tool", toolName: "t1" },
     });
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "t1",
-        description: "d",
-        inputSchema: { type: "object", properties: { a: { type: "string" } } },
-      },
-    ];
-    const transformParams = requireTransformParams(mw.transformParams);
-    const result = await transformParams({
-      params: {
-        prompt: [],
-        tools,
-        toolChoice: { type: "tool", toolName: "t1" },
-      } satisfies LanguageModelV4CallOptions,
-    });
+
     expect(result.responseFormat).toMatchObject({ type: "json", name: "t1" });
     expect(result.providerOptions?.toolCallMiddleware?.toolChoice).toEqual({
       type: "tool",
@@ -110,32 +76,13 @@ describe("transformParams toolChoice validation", () => {
   });
 
   it("transformParams required builds if/then/else schema", async () => {
-    const mw = createToolMiddleware({
-      protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+    const tools = [functionTool("a", ""), functionTool("b", "")];
+    const result = await transform({
+      prompt: [],
+      tools,
+      toolChoice: { type: "required" },
     });
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "a",
-        description: "",
-        inputSchema: { type: "object" },
-      },
-      {
-        type: "function",
-        name: "b",
-        description: "",
-        inputSchema: { type: "object" },
-      },
-    ];
-    const transformParams = requireTransformParams(mw.transformParams);
-    const result = await transformParams({
-      params: {
-        prompt: [],
-        tools,
-        toolChoice: { type: "required" },
-      } satisfies LanguageModelV4CallOptions,
-    });
+
     expect(result.responseFormat).toMatchObject({ type: "json" });
     expect(result.providerOptions?.toolCallMiddleware?.toolChoice).toEqual({
       type: "required",

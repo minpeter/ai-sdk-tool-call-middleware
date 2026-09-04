@@ -1,58 +1,62 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, test } from "vitest";
-
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { runGeneratedJsonRepair } from "../../shared/duplicate-harness";
+
+const tools: LanguageModelV4FunctionTool[] = [
+  {
+    type: "function",
+    name: "get_location",
+    description: "Get the location",
+    inputSchema: { type: "object" },
+  },
+  {
+    type: "function",
+    name: "get_weather",
+    description: "Get the weather",
+    inputSchema: {
+      type: "object",
+      properties: { location: { type: "string" } },
+    },
+  },
+];
+
+type ToolCall = Extract<LanguageModelV4Content, { type: "tool-call" }>;
+
+function parseTags(text: string): LanguageModelV4Content[] {
+  return runGeneratedJsonRepair({
+    protocol: morphXmlProtocol(),
+    text,
+    tools,
+  });
+}
+
+function callsFrom(parts: LanguageModelV4Content[]): ToolCall[] {
+  return parts.filter((part): part is ToolCall => part.type === "tool-call");
+}
+
+const locationCall = {
+  type: "tool-call",
+  toolName: "get_location",
+  input: "{}",
+};
 
 describe("morphXmlProtocol parseGeneratedText self-closing tags", () => {
-  const tools: LanguageModelV4FunctionTool[] = [
-    {
-      type: "function",
-      name: "get_location",
-      description: "Get the location",
-      inputSchema: { type: "object" },
-    },
-    {
-      type: "function",
-      name: "get_weather",
-      description: "Get the weather",
-      inputSchema: {
-        type: "object",
-        properties: {
-          location: { type: "string" },
-        },
-      },
-    },
-  ];
-
   test("should parse self-closing tool call without arguments (issue #84)", () => {
-    const protocol = morphXmlProtocol();
-    const text = "<get_location/>";
-    const out = protocol.parseGeneratedText({ text, tools, options: {} });
-
-    const toolCalls = out.filter((c) => c.type === "tool-call");
+    const toolCalls = callsFrom(parseTags("<get_location/>"));
     expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0]).toMatchObject({
-      type: "tool-call",
-      toolName: "get_location",
-      input: "{}",
-    });
+    expect(toolCalls[0]).toMatchObject(locationCall);
   });
 
   test("should parse self-closing tool call with surrounding text (issue #84)", () => {
-    const protocol = morphXmlProtocol();
-    const text = "Getting your location now... <get_location/> Done!";
-    const out = protocol.parseGeneratedText({ text, tools, options: {} });
-
-    const toolCalls = out.filter((c) => c.type === "tool-call");
-    const textParts = out.filter((c) => c.type === "text");
-
+    const out = parseTags("Getting your location now... <get_location/> Done!");
+    const toolCalls = callsFrom(out);
+    const textParts = out.filter((part) => part.type === "text");
     expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0]).toMatchObject({
-      type: "tool-call",
-      toolName: "get_location",
-      input: "{}",
-    });
-
+    expect(toolCalls[0]).toMatchObject(locationCall);
     expect(textParts).toHaveLength(2);
     expect(textParts[0]).toMatchObject({
       text: "Getting your location now... ",
@@ -61,42 +65,23 @@ describe("morphXmlProtocol parseGeneratedText self-closing tags", () => {
   });
 
   test("should parse multiple self-closing tool calls", () => {
-    const protocol = morphXmlProtocol();
-    const text = "<get_location/><get_location/>";
-    const out = protocol.parseGeneratedText({ text, tools, options: {} });
-
-    const toolCalls = out.filter((c) => c.type === "tool-call");
+    const toolCalls = callsFrom(parseTags("<get_location/><get_location/>"));
     expect(toolCalls).toHaveLength(2);
-    expect(toolCalls[0]).toMatchObject({
-      type: "tool-call",
-      toolName: "get_location",
-      input: "{}",
-    });
-    expect(toolCalls[1]).toMatchObject({
-      type: "tool-call",
-      toolName: "get_location",
-      input: "{}",
-    });
+    for (const call of toolCalls) {
+      expect(call).toMatchObject(locationCall);
+    }
   });
 
   test("should parse mixed self-closing and regular tool calls", () => {
-    const protocol = morphXmlProtocol();
     const text =
       "<get_location/><get_weather><location>Seoul</location></get_weather>";
-    const out = protocol.parseGeneratedText({ text, tools, options: {} });
-
-    const toolCalls = out.filter((c) => c.type === "tool-call");
+    const toolCalls = callsFrom(parseTags(text));
     expect(toolCalls).toHaveLength(2);
-    expect(toolCalls[0]).toMatchObject({
-      type: "tool-call",
-      toolName: "get_location",
-      input: "{}",
-    });
+    expect(toolCalls[0]).toMatchObject(locationCall);
     expect(toolCalls[1]).toMatchObject({
       type: "tool-call",
       toolName: "get_weather",
     });
-    const weatherArgs = JSON.parse((toolCalls[1] as { input: string }).input);
-    expect(weatherArgs.location).toBe("Seoul");
+    expect(JSON.parse(toolCalls[1]?.input ?? "{}").location).toBe("Seoul");
   });
 });

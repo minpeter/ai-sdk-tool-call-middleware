@@ -3,31 +3,38 @@ import { describe, expect, it } from "vitest";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import {
+  collectTextDeltas,
+  parseToolCallObject,
+  requireToolCall,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
+import {
   assertCanonicalAiSdkEventOrder,
   assertCoreAiSdkEventCoverage,
   createInterleavedStream,
-  extractToolInputTimeline,
   runProtocolStreamParser,
-  runProtocolTextDeltaStream,
 } from "./streaming-events.shared";
 
 describe("cross-protocol tool-input streaming events: yaml xml", () => {
   const fixture = toolInputStreamFixtures.yaml;
   const protocol = yamlXmlProtocol();
 
-  it("yaml protocol streams tool input deltas and emits matching tool-call id", async () => {
-    const out = await runProtocolTextDeltaStream({
+  function runYamlTextStream(chunks: readonly string[]) {
+    return runProtocolTextStream({
+      chunks,
+      id: "fixture",
       protocol,
       tools: fixture.tools,
-      chunks: fixture.progressiveChunks,
     });
+  }
 
-    const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      input: string;
-    };
+  it("yaml protocol streams tool input deltas and emits matching tool-call id", async () => {
+    const out = await runYamlTextStream(fixture.progressiveChunks);
+
+    const { starts, deltas, ends } = selectToolInputTimeline(out);
+    const toolCall = requireToolCall(out);
 
     expect(starts).toHaveLength(1);
     expect(deltas.length).toBeGreaterThan(0);
@@ -42,29 +49,25 @@ describe("cross-protocol tool-input streaming events: yaml xml", () => {
   });
 
   it("yaml protocol preserves canonical order for all emitted AI SDK stream events", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: ["Before ", ...fixture.progressiveChunks, " After"],
-    });
+    const out = await runYamlTextStream([
+      "Before ",
+      ...fixture.progressiveChunks,
+      " After",
+    ]);
 
     assertCanonicalAiSdkEventOrder(out);
     assertCoreAiSdkEventCoverage(out);
   });
 
   it("yaml protocol emits '{}' tool-input-delta for self-closing tags", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: ["Before ", "<get_weather/>", " After"],
-    });
+    const out = await runYamlTextStream([
+      "Before ",
+      "<get_weather/>",
+      " After",
+    ]);
 
-    const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      input: string;
-    };
+    const { starts, deltas, ends } = selectToolInputTimeline(out);
+    const toolCall = requireToolCall(out);
 
     expect(starts).toHaveLength(1);
     expect(ends).toHaveLength(1);
@@ -75,50 +78,31 @@ describe("cross-protocol tool-input streaming events: yaml xml", () => {
   });
 
   it("yaml protocol force-completes unclosed tool block at finish when content is parseable", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: fixture.finishReconcileChunks,
-    });
+    const out = await runYamlTextStream(fixture.finishReconcileChunks);
 
-    const { starts, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      input: string;
-    };
+    const { starts, ends } = selectToolInputTimeline(out);
+    const toolCall = requireToolCall(out);
 
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
-    expect(toolCall.toolCallId).toBe(starts[0].id);
     expect(toolCall.input).toBe(fixture.expectedFinishInput);
+    expect(starts).toHaveLength(1);
+    expect(toolCall.toolCallId).toBe(starts[0].id);
+    expect(ends).toHaveLength(1);
   });
 
   it("yaml finish reconciliation ignores trailing partial close-tag and still emits tool-call", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: ["<get_weather>\nlocation: Seoul\nunit: celsius\n</get_wea"],
-    });
+    const out = await runYamlTextStream([
+      "<get_weather>\nlocation: Seoul\nunit: celsius\n</get_wea",
+    ]);
 
-    const { starts, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as
-      | {
-          type: "tool-call";
-          toolCallId: string;
-          input: string;
-        }
-      | undefined;
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const { starts, ends } = selectToolInputTimeline(out);
+    const toolCall = requireToolCall(out);
+    const leakedText = collectTextDeltas(out);
 
     expect(starts).toHaveLength(1);
     expect(ends).toHaveLength(1);
     expect(toolCall).toBeTruthy();
-    expect(toolCall?.toolCallId).toBe(starts[0].id);
-    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({
+    expect(toolCall.toolCallId).toBe(starts[0].id);
+    expect(parseToolCallObject(toolCall)).toEqual({
       location: "Seoul",
       unit: "celsius",
     });
@@ -149,17 +133,10 @@ describe("cross-protocol tool-input streaming events: yaml xml", () => {
       ]),
     });
 
-    const parsedCalls = out.filter(
-      (part) => part.type === "tool-call" && part.toolName === "get_weather"
-    ) as Array<{
-      type: "tool-call";
-      toolName: string;
-      input: string;
-    }>;
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const parsedCalls = selectToolCalls(out).filter(
+      (part) => part.toolName === "get_weather"
+    );
+    const leakedText = collectTextDeltas(out);
 
     expect(parsedCalls).toHaveLength(1);
     expect(parsedCalls[0].input).toBe('{"location":"Seoul","unit":"celsius"}');
@@ -168,17 +145,10 @@ describe("cross-protocol tool-input streaming events: yaml xml", () => {
   });
 
   it("yaml malformed fixture stays non-leaking without dangling tool-input stream", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: fixture.malformedChunks,
-    });
+    const out = await runYamlTextStream(fixture.malformedChunks);
 
-    const { starts, ends } = extractToolInputTimeline(out);
-    const text = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const { starts, ends } = selectToolInputTimeline(out);
+    const text = collectTextDeltas(out);
     expect(starts.length).toBe(ends.length);
     expect(text).not.toContain("<get_weather>");
     expect(out.some((part) => part.type === "finish")).toBe(true);

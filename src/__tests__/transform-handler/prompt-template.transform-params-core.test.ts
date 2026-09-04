@@ -1,26 +1,15 @@
 import type {
   LanguageModelV4CallOptions,
   LanguageModelV4FunctionTool,
-  LanguageModelV4Middleware,
 } from "@ai-sdk/provider";
+import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import type { ToolInputSchema } from "../../schema/tool-input-schema";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { requireTransformParams } from "../test-helpers";
 
-function requireTransformParams(
-  value: LanguageModelV4Middleware["transformParams"]
-): (options: {
-  params: LanguageModelV4CallOptions;
-}) => PromiseLike<LanguageModelV4CallOptions> {
-  if (!value) {
-    throw new Error("transformParams is required for middleware");
-  }
-
-  return value as (options: {
-    params: LanguageModelV4CallOptions;
-  }) => PromiseLike<LanguageModelV4CallOptions>;
-}
+const model = new MockLanguageModelV4();
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -77,6 +66,8 @@ describe("transformParams", () => {
 
     const transformParams = requireTransformParams(middleware.transformParams);
     const result = await transformParams({
+      type: "generate",
+      model,
       params: params satisfies LanguageModelV4CallOptions,
     });
     expect(result.prompt).toBeDefined();
@@ -93,6 +84,8 @@ describe("transformParams", () => {
     const transformParams = requireTransformParams(middleware.transformParams);
 
     const result = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           {

@@ -21,7 +21,7 @@ import type {
   ParserOptions,
   TCMCoreProtocol,
 } from "./core/protocols/protocol-interface";
-import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
+import { isProtocolFactory } from "./core/protocols/protocol-interface";
 import { createDynamicIfThenElseSchema } from "./core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
@@ -42,6 +42,25 @@ export type ToolCallHistoryMode = "converted-text" | "provider-native";
  * `standalone-first` prepends a new system turn without merging existing turns.
  */
 export type ToolSystemPromptPlacement = "first" | "last" | "standalone-first";
+
+export interface ToolCallTransformSettings {
+  readonly historyMode?: ToolCallHistoryMode;
+  readonly placement?: ToolSystemPromptPlacement;
+  readonly protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
+  /**
+   * Omit the protocol-specific tool catalog when `toolChoice` is `required` or
+   * selects a fixed tool. The forced-choice handlers request JSON through
+   * `responseFormat`, so protocols that instruct a different output grammar
+   * can opt out of issuing contradictory system instructions.
+   */
+  readonly suppressToolSystemPromptForForcedChoice?: boolean;
+  readonly toolResponsePromptTemplate?: (
+    toolResult: ToolResultPart
+  ) => ToolResponsePromptTemplateResult;
+  readonly toolSystemPromptTemplate: (
+    tools: LanguageModelV4FunctionTool[]
+  ) => string;
+}
 
 type TransformCallOptions = Omit<
   LanguageModelV4CallOptions,
@@ -253,20 +272,8 @@ export function transformParams({
   placement = "first",
   historyMode = "converted-text",
   suppressToolSystemPromptForForcedChoice = false,
-}: {
-  params: TransformCallOptions;
-  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
-  toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
-  toolResponsePromptTemplate?: (
-    toolResult: ToolResultPart
-  ) => ToolResponsePromptTemplateResult;
-  placement?: ToolSystemPromptPlacement;
-  historyMode?: ToolCallHistoryMode;
-  suppressToolSystemPromptForForcedChoice?: boolean;
-}) {
-  const resolvedProtocol = isTCMProtocolFactory(protocol)
-    ? protocol()
-    : protocol;
+}: ToolCallTransformSettings & { readonly params: TransformCallOptions }) {
+  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
   const functionTools = (params.tools ?? []).filter(
     (t): t is LanguageModelV4FunctionTool => t.type === "function"

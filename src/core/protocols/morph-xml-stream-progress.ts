@@ -90,16 +90,6 @@ export interface XmlStreamProgressResult {
   } | null;
 }
 
-export function parseXmlContentForStreamProgress(params: {
-  toolContent: string;
-  toolName: string;
-  toolSchema: ToolInputSchemaDefinition | undefined;
-  parseOptions?: ParseOptions;
-  tools: LanguageModelV4FunctionTool[];
-}): string | null {
-  return parseXmlContentForStreamProgressWithMeta(params).fullInput;
-}
-
 function resolveTrailingStringTagProgress(options: {
   toolContent: string;
   toolSchema: ToolInputSchemaDefinition | undefined;

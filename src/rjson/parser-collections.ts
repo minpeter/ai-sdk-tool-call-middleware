@@ -31,10 +31,13 @@
   Follows the license of the original code.
 */
 
+import type { JSONArray, JSONObject, JSONValue } from "@ai-sdk/provider";
+
 import type { Token } from "./lexer";
 import {
   appendPair,
   checkDuplicates,
+  hasValue,
   popToken,
   raiseError,
   raiseUnexpected,
@@ -44,14 +47,10 @@ import {
 import type { ParseManyOpts, ParseState } from "./parser-types";
 import { parseAny } from "./parser-value";
 
-function parsePair(
-  tokens: Token[],
-  state: ParseState,
-  obj: { [key: string]: unknown }
-): void {
+function parsePair(tokens: Token[], state: ParseState, obj: JSONObject): void {
   // Skip leading punctuation, expecting a string key (or ':' in tolerant mode)
   let token = skipPunctuation(tokens, state, [":", "string", "number", "atom"]); // Allow recovery
-  let value: unknown;
+  let value: JSONValue | undefined;
 
   // --- Key Parsing ---
   if (token.type !== "string") {
@@ -89,7 +88,7 @@ function parsePair(
             match: '"null"',
             line: token.line,
           }); // Check duplicate for "null" key
-          appendPair(state, obj, "null", value); // Append with "null" key
+          appendPair(obj, "null", value); // Append with "null" key
           return; // Finished parsing this "pair"
         case "eof": // Reached end unexpectedly
           return; // Cannot recover
@@ -113,7 +112,7 @@ function parsePair(
   value = parseAny(tokens, state); // Parse the value recursively
 
   // --- Appending Pair ---
-  appendPair(state, obj, key, value);
+  appendPair(obj, key, value);
 }
 
 // Parses an element within an array
@@ -121,25 +120,25 @@ function parsePair(
 function parseElement(
   tokens: Token[],
   state: ParseState,
-  arr: unknown[]
+  arr: JSONArray
 ): void {
   const key = arr.length; // Key is the current array index
   // Skip potential leading punctuation (like extra commas in tolerant mode)
   // skipPunctuation used inside parseAny handles this implicitly
   const value = parseAny(tokens, state); // Recursively parse the element value
-  // Apply reviver using the index as a string key
-  arr[key] = state.reviver ? state.reviver(String(key), value) : value;
+  if (!hasValue(value)) {
+    arr.length += 1;
+    return;
+  }
+  arr[key] = value;
 }
 
 // Parses a JSON object structure: '{' key:value, ... '}'
 // :: array parseToken -> parseState -> {}
-export function parseObject(
-  tokens: Token[],
-  state: ParseState
-): { [key: string]: unknown } {
-  const obj = {};
+export function parseObject(tokens: Token[], state: ParseState): JSONObject {
+  const obj: JSONObject = {};
   // Call parseMany to handle the structure { pair1, pair2, ... }
-  return parseMany<{ [key: string]: unknown }>(tokens, state, obj, {
+  return parseMany(tokens, state, obj, {
     skip: [":", "}"], // Initially skip over colon or closing brace (for empty/tolerant cases)
     elementParser: parsePair, // Use parsePair to parse each key-value element
     elementName: "string key", // Expected element type for errors
@@ -149,10 +148,10 @@ export function parseObject(
 
 // Parses a JSON array structure: '[' element, ... ']'
 // :: array parseToken -> parseState -> array
-export function parseArray(tokens: Token[], state: ParseState): unknown[] {
-  const arr: unknown[] = [];
+export function parseArray(tokens: Token[], state: ParseState): JSONArray {
+  const arr: JSONArray = [];
   // Call parseMany to handle the structure [ element1, element2, ... ]
-  return parseMany<unknown[]>(tokens, state, arr, {
+  return parseMany(tokens, state, arr, {
     skip: ["]"], // Initially skip over closing bracket (for empty/tolerant cases)
     elementParser: parseElement, // Use parseElement to parse each array item
     elementName: "json value", // Expected element type for errors
@@ -160,33 +159,13 @@ export function parseArray(tokens: Token[], state: ParseState): unknown[] {
   });
 }
 
-// Helper to handle invalid tokens in parseMany
-function handleInvalidToken<T>(
-  token: Token,
-  state: ParseState,
-  opts: ParseManyOpts<T>,
-  result: T
-): T | null {
-  raiseUnexpected(state, token, `',' or '${opts.endSymbol}'`);
-
-  if (state.tolerant) {
-    if (token.type === "eof") {
-      return result;
-    }
-    // Assume a comma was missing and put the token back
-    state.pos -= 1;
-    return null; // Signal to continue parsing
-  }
-  return result; // Should be unreachable in strict mode
-}
-
 // Helper to handle comma tokens in parseMany
 interface HandleCommaTokenParams<T> {
-  opts: ParseManyOpts<T>;
-  result: T;
-  state: ParseState;
-  token: Token;
-  tokens: Token[];
+  readonly opts: ParseManyOpts<T>;
+  readonly result: T;
+  readonly state: ParseState;
+  readonly token: Token;
+  readonly tokens: Token[];
 }
 
 function handleCommaToken<T>(params: HandleCommaTokenParams<T>): T | null {
@@ -225,18 +204,20 @@ function parseManyInitialElement<T>(
 
 // Helper to process a token in parseMany loop
 function parseManyProcessToken<T>(params: {
-  token: Token;
-  tokens: Token[];
-  state: ParseState;
-  opts: ParseManyOpts<T>;
-  result: T;
+  readonly token: Token;
+  readonly tokens: Token[];
+  readonly state: ParseState;
+  readonly opts: ParseManyOpts<T>;
+  readonly result: T;
 }): T | undefined {
   const { token, tokens, state, opts, result } = params;
   if (token.type !== opts.endSymbol && token.type !== ",") {
-    const handledResult = handleInvalidToken(token, state, opts, result);
-    if (handledResult !== null) {
-      return handledResult;
+    raiseUnexpected(state, token, `',' or '${opts.endSymbol}'`);
+    if (token.type === "eof") {
+      return result;
     }
+    // Tolerant mode assumes a comma was missing and retries this token.
+    state.pos -= 1;
   }
 
   if (token.type === opts.endSymbol) {

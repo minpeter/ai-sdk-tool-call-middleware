@@ -16,7 +16,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import {
   FILESYSTEM_MCP_PACKAGE,
   McpStdioClient,
@@ -25,7 +25,7 @@ import {
 
 export const MCPMARK_COMMIT = "cd45b7f57923b9b3985467f5139927575f83141c";
 
-export const MCPMARK_TASK_INSTRUCTION_SUFFIX =
+const MCPMARK_TASK_INSTRUCTION_SUFFIX =
   "Note: Based on your understanding, solve the task all at once by yourself, don't ask for my opinions on anything.";
 
 const SECRET_ENVIRONMENT_NAME =
@@ -55,9 +55,9 @@ export const OFFICIAL_EASY_TASK_IDS = [
   "student_database/recommender_name",
 ] as const;
 
-export type OfficialEasyTaskId = (typeof OFFICIAL_EASY_TASK_IDS)[number];
+type OfficialEasyTaskId = (typeof OFFICIAL_EASY_TASK_IDS)[number];
 
-export interface FilesystemDataset {
+interface FilesystemDataset {
   category: FilesystemCategory;
   etag: string;
   lastModified?: string;
@@ -65,7 +65,7 @@ export interface FilesystemDataset {
   url: string;
 }
 
-export const FILESYSTEM_DATASETS: readonly FilesystemDataset[] = [
+const FILESYSTEM_DATASETS: readonly FilesystemDataset[] = [
   {
     category: "file_context",
     etag: "0ce9f9d6191e58921636effc04c95e6f",
@@ -147,7 +147,7 @@ export interface VerifierResult {
   timedOut: boolean;
 }
 
-export function normalizeError(error: unknown): string {
+function normalizeError(error: unknown): string {
   if (error instanceof Error) {
     return `${error.name}: ${error.message}`.slice(0, 8000);
   }
@@ -178,7 +178,7 @@ export function requireEnv(name: string): string {
   return value;
 }
 
-export function sha256File(path: string): string {
+function sha256File(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
@@ -619,8 +619,4 @@ export async function preflightFilesystemServer(options: {
 
 export function resultPathFromOut(out: string, filename: string): string {
   return join(dirname(resolve(out)), filename);
-}
-
-export function shortPath(path: string): string {
-  return `${basename(dirname(path))}/${basename(path)}`;
 }

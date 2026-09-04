@@ -25,36 +25,29 @@
   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-import { transform as transformRelaxedJson } from "./lexer";
-import { parse as parseJson } from "./parse";
-import type { ParseOptions } from "./parser-types";
-import { stringify as stringifyValue } from "./stringify";
+import { transform as transformSource } from "./lexer";
+import { parse as parseSource } from "./parse";
+import { stringify as stringifySource } from "./stringify";
 
 /**
- * Parse a JSON string with enhanced features beyond standard JSON.parse().
+ * Parse a JSON string with enhanced features beyond standard `JSON.parse`.
  *
- * Supports both strict JSON and relaxed JSON syntax with configurable error
- * handling and duplicate key validation.
+ * Supports strict and relaxed JSON syntax, duplicate-key handling, tolerant
+ * parsing, and JSON-compatible revivers. Revivers that emit non-JSON values
+ * receive their recursively revived extension through `RevivedValue`.
  *
  * @param text - The JSON string to parse
- * @param optsOrReviver - Either parser options or a JSON.parse-compatible reviver
- * @returns The parsed JavaScript value
+ * @param options - Parser options or a reviver callback
+ * @returns A JSON value or reviver output; tolerant empty input returns `undefined`
  * @throws {SyntaxError} When parsing fails in strict or warning mode
  */
-function parse(
-  text: string,
-  optsOrReviver?: ParseOptions | ((key: string, value: unknown) => unknown)
-): unknown {
-  return parseJson(text, optsOrReviver);
-}
+export const parse: typeof parseSource = parseSource;
 
-function transform(text: string): string {
-  return transformRelaxedJson(text);
-}
+/** Convert relaxed JSON syntax into strict JSON text. */
+export const transform: typeof transformSource = transformSource;
 
-function stringify(value: unknown): string {
-  return stringifyValue(value);
-}
+/** Serialize an RJSON value with deterministic object-key ordering. */
+export const stringify: typeof stringifySource = stringifySource;
 
-export type { ParseOptions } from "./parser-types";
-export { parse, stringify, transform };
+export type { ParseOptions, RevivedValue, Reviver } from "./parser-types";
+export type { Rjson } from "./stringify";

@@ -1,11 +1,20 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import {
+  isJSONObject,
+  type LanguageModelV4FunctionTool,
+  type LanguageModelV4StreamPart,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
+import type {
+  ParserOptions,
+  ProtocolMetadata,
+} from "../../../../core/protocols/protocol-interface";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import {
-  createChunkedStream,
-  pipeWithTransformer,
-} from "../../../test-helpers";
+  collectTextDeltas,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
 
 const tools: LanguageModelV4FunctionTool[] = [
   {
@@ -22,307 +31,202 @@ const tools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
-// Real-world shape observed from LiquidAI LFM2: a Hermes-style JSON payload
-// inside <tool_call> tags while the Qwen3-Coder prompt is active.
 const HERMES_JSON_UNDER_QWEN = `<tool_call>
 {"name": "book_flight", "arguments": {"passenger": {"name": "Jane Doe", "age": 34}, "legs": [{"from": "ICN", "to": "NRT"}], "cabin": "economy", "seat": "12A"}}
 </tool_call>`;
 
+function runForeignStream(
+  text: string,
+  selectedTools: LanguageModelV4FunctionTool[] = tools,
+  parserOptions?: ParserOptions
+): Promise<LanguageModelV4StreamPart[]> {
+  return runProtocolTextStream({
+    chunks: [...text],
+    id: "1",
+    protocol: qwen3CoderProtocol(),
+    tools: selectedTools,
+    parserOptions,
+  });
+}
+
+function expectRejectedStream(
+  output: readonly LanguageModelV4StreamPart[],
+  errors: readonly string[],
+  expectsInputEnd: boolean
+): void {
+  expect(selectToolCalls(output)).toHaveLength(0);
+  if (expectsInputEnd) {
+    expect(output.some((part) => part.type === "tool-input-end")).toBe(true);
+  }
+  expect(errors.length).toBeGreaterThan(0);
+}
+
+function payloadTools(): LanguageModelV4FunctionTool[] {
+  return [
+    {
+      type: "function",
+      name: "book_flight",
+      inputSchema: {
+        type: "object",
+        properties: { payload: { type: "string" } },
+      },
+    },
+  ];
+}
+
+interface ClosedArgumentScenario {
+  readonly name: string;
+  readonly parameterName: string;
+}
+
+interface RedactionScenario {
+  readonly forbidden: string;
+  readonly name: string;
+  readonly parameter: string;
+}
+
+interface NestedSensitiveScenario {
+  readonly forbidden: string;
+  readonly name: string;
+  readonly nestedMarkup: string;
+}
+
+interface RawFallbackScenario {
+  readonly name: string;
+  readonly raw: string;
+}
+
 describe("qwen3CoderProtocol foreign-format salvage", () => {
   it("salvages a Hermes-style JSON payload inside tool_call tags (stream)", async () => {
-    const p = qwen3CoderProtocol();
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(HERMES_JSON_UNDER_QWEN),
-        p.createStreamParser({ tools })
-      )
-    );
-
-    const call = out.find((part) => part.type === "tool-call");
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
+    const out = await runForeignStream(HERMES_JSON_UNDER_QWEN);
+    const [call] = selectToolCalls(out);
+    if (call === undefined) {
+      throw new TypeError("Expected tool-call stream part");
     }
     expect(call.toolName).toBe("book_flight");
     const input = JSON.parse(call.input);
+    if (!isJSONObject(input)) {
+      throw new TypeError("Expected tool input to be a JSON object");
+    }
     expect(input.passenger).toEqual({ name: "Jane Doe", age: 34 });
     expect(input.legs).toEqual([{ from: "ICN", to: "NRT" }]);
     expect(input.seat).toBeUndefined();
-
-    const toolInputDeltas = out
-      .filter((part) => part.type === "tool-input-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
-    expect(toolInputDeltas).not.toContain("seat");
-
-    const text = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
-    expect(text).toBe("");
+    const { deltas } = selectToolInputTimeline(out);
+    expect(deltas.map((part) => part.delta).join("")).not.toContain("seat");
+    expect(collectTextDeltas(out)).toBe("");
   });
 
   it("still drops prose-only tool_call blocks with onError", async () => {
     const errors: string[] = [];
-    const p = qwen3CoderProtocol();
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream("<tool_call>\nsome prose, not a call\n"),
-        p.createStreamParser({
-          tools,
-          options: { onError: (m) => errors.push(m) },
-        })
-      )
+    const out = await runForeignStream(
+      "<tool_call>\nsome prose, not a call\n",
+      tools,
+      { onError: (message) => errors.push(message) }
     );
-
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(errors.length).toBeGreaterThan(0);
+    expectRejectedStream(out, errors, false);
   });
 
-  it("fails closed without throwing on prototype-sensitive XML args", async () => {
-    const errors: string[] = [];
-    const p = qwen3CoderProtocol();
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(
-          '<tool_call>\n<function=book_flight>\n<parameter=constructor>{"polluted":true}</parameter>\n</function>\n</tool_call>'
-        ),
-        p.createStreamParser({
-          tools,
-          options: { onError: (message) => errors.push(message) },
-        })
-      )
-    );
+  for (const scenario of [
+    {
+      name: "fails closed without throwing on prototype-sensitive XML args",
+      parameterName: "constructor",
+    },
+    {
+      name: "fails closed without throwing on __proto__ XML args",
+      parameterName: "__proto__",
+    },
+  ] satisfies readonly ClosedArgumentScenario[]) {
+    it(scenario.name, async () => {
+      const { parameterName } = scenario;
+      const errors: string[] = [];
+      const text = `<tool_call>\n<function=book_flight>\n<parameter=${parameterName}>{"polluted":true}</parameter>\n</function>\n</tool_call>`;
+      const out = await runForeignStream(text, tools, {
+        onError: (message) => errors.push(message),
+      });
+      expectRejectedStream(out, errors, true);
+    });
+  }
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
-    expect(errors.length).toBeGreaterThan(0);
-  });
+  for (const scenario of [
+    {
+      name: "redacts raw fallback for prototype-sensitive parameter name attributes",
+      parameter: 'name="constructor"',
+      forbidden: "constructor",
+    },
+    {
+      name: "redacts raw fallback for entity-encoded prototype-sensitive parameter name attributes",
+      parameter: 'name="&#99;onstructor"',
+      forbidden: "&#99;onstructor",
+    },
+  ] satisfies readonly RedactionScenario[]) {
+    it(scenario.name, async () => {
+      const { forbidden, parameter } = scenario;
+      const errors: [string, ProtocolMetadata | undefined][] = [];
+      const text = `<tool_call>\n<function=book_flight>\n<param ${parameter}>{"polluted":true}</param>\n</function>\n</tool_call>`;
+      const out = await runForeignStream(text, tools, {
+        emitRawToolCallTextOnError: true,
+        onError: (message, metadata) => errors.push([message, metadata]),
+      });
+      expect(selectToolCalls(out)).toHaveLength(0);
+      expect(collectTextDeltas(out)).toBe("");
+      expect(errors.length).toBeGreaterThan(0);
+      const metadataText = JSON.stringify(errors);
+      expect(metadataText).toContain("[redacted sensitive tool call]");
+      expect(metadataText).not.toContain(forbidden);
+      expect(metadataText).not.toContain("<tool_call>");
+    });
+  }
 
-  it("fails closed without throwing on __proto__ XML args", async () => {
-    const errors: string[] = [];
-    const p = qwen3CoderProtocol();
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(
-          '<tool_call>\n<function=book_flight>\n<parameter=__proto__>{"polluted":true}</parameter>\n</function>\n</tool_call>'
-        ),
-        p.createStreamParser({
-          tools,
-          options: { onError: (message) => errors.push(message) },
-        })
-      )
-    );
+  for (const scenario of [
+    {
+      name: "fails closed on prototype-sensitive XML child tags embedded inside string arg values",
+      nestedMarkup: "<prototype>x</prototype>",
+      forbidden: "prototype",
+    },
+    {
+      name: "fails closed on unquoted-name prototype-sensitive XML child params embedded inside string arg values",
+      nestedMarkup: '<parameter name=constructor>{"polluted":true}</parameter>',
+      forbidden: "constructor",
+    },
+  ] satisfies readonly NestedSensitiveScenario[]) {
+    it(scenario.name, async () => {
+      const { forbidden, nestedMarkup } = scenario;
+      const errors: string[] = [];
+      const text = `<tool_call>\n<function=book_flight>\n<parameter=payload>${nestedMarkup}</parameter>\n</function>\n</tool_call>`;
+      const out = await runForeignStream(text, payloadTools(), {
+        onError: (message) => errors.push(message),
+      });
+      expect(selectToolCalls(out)).toHaveLength(0);
+      expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
+      const { deltas } = selectToolInputTimeline(out);
+      expect(deltas.map((part) => part.delta).join("")).not.toContain(
+        forbidden
+      );
+      expect(errors.length).toBeGreaterThan(0);
+    });
+  }
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
-    expect(errors.length).toBeGreaterThan(0);
-  });
-
-  it("redacts raw fallback for prototype-sensitive parameter name attributes", async () => {
-    const errors: [string, Record<string, unknown> | undefined][] = [];
-    const p = qwen3CoderProtocol();
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(
-          '<tool_call>\n<function=book_flight>\n<param name="constructor">{"polluted":true}</param>\n</function>\n</tool_call>'
-        ),
-        p.createStreamParser({
-          tools,
-          options: {
-            emitRawToolCallTextOnError: true,
-            onError: (message, metadata) => errors.push([message, metadata]),
-          },
-        })
-      )
-    );
-
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(
-      out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => (part as { delta: string }).delta)
-        .join("")
-    ).toBe("");
-    expect(errors.length).toBeGreaterThan(0);
-    const metadataText = JSON.stringify(errors);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain("constructor");
-    expect(metadataText).not.toContain("<tool_call>");
-  });
-
-  it("redacts raw fallback for entity-encoded prototype-sensitive parameter name attributes", async () => {
-    const errors: [string, Record<string, unknown> | undefined][] = [];
-    const p = qwen3CoderProtocol();
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(
-          '<tool_call>\n<function=book_flight>\n<param name="&#99;onstructor">{"polluted":true}</param>\n</function>\n</tool_call>'
-        ),
-        p.createStreamParser({
-          tools,
-          options: {
-            emitRawToolCallTextOnError: true,
-            onError: (message, metadata) => errors.push([message, metadata]),
-          },
-        })
-      )
-    );
-
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(
-      out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => (part as { delta: string }).delta)
-        .join("")
-    ).toBe("");
-    expect(errors.length).toBeGreaterThan(0);
-    const metadataText = JSON.stringify(errors);
-    expect(metadataText).toContain("[redacted sensitive tool call]");
-    expect(metadataText).not.toContain("&#99;onstructor");
-    expect(metadataText).not.toContain("<tool_call>");
-  });
-
-  it("fails closed on prototype-sensitive XML child tags embedded inside string arg values", async () => {
-    const errors: string[] = [];
-    const p = qwen3CoderProtocol();
-    const toolsWithPayload: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "book_flight",
-        inputSchema: {
-          type: "object",
-          properties: {
-            payload: { type: "string" },
-          },
-        },
-      },
-    ];
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(
-          "<tool_call>\n<function=book_flight>\n<parameter=payload><prototype>x</prototype></parameter>\n</function>\n</tool_call>"
-        ),
-        p.createStreamParser({
-          tools: toolsWithPayload,
-          options: { onError: (message) => errors.push(message) },
-        })
-      )
-    );
-
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
-    expect(
-      out
-        .filter((part) => part.type === "tool-input-delta")
-        .map((part) => (part as { delta: string }).delta)
-        .join("")
-    ).not.toContain("prototype");
-    expect(errors.length).toBeGreaterThan(0);
-  });
-
-  it("fails closed on unquoted-name prototype-sensitive XML child params embedded inside string arg values", async () => {
-    const errors: string[] = [];
-    const p = qwen3CoderProtocol();
-    const toolsWithPayload: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "book_flight",
-        inputSchema: {
-          type: "object",
-          properties: {
-            payload: { type: "string" },
-          },
-        },
-      },
-    ];
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(
-          '<tool_call>\n<function=book_flight>\n<parameter=payload><parameter name=constructor>{"polluted":true}</parameter></parameter>\n</function>\n</tool_call>'
-        ),
-        p.createStreamParser({
-          tools: toolsWithPayload,
-          options: { onError: (message) => errors.push(message) },
-        })
-      )
-    );
-
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
-    expect(
-      out
-        .filter((part) => part.type === "tool-input-delta")
-        .map((part) => (part as { delta: string }).delta)
-        .join("")
-    ).not.toContain("constructor");
-    expect(errors.length).toBeGreaterThan(0);
-  });
-
-  it("emits raw text instead of salvaging XML calls mixed with trailing prose", async () => {
-    const p = qwen3CoderProtocol();
-    const raw =
-      '<tool_call name="book_flight"><cabin>economy</cabin>\nvisible prose';
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(raw),
-        p.createStreamParser({
-          tools,
-          options: { emitRawToolCallTextOnError: true },
-        })
-      )
-    );
-
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(
-      out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => (part as { delta: string }).delta)
-        .join("")
-    ).toBe(raw);
-  });
-
-  it("emits raw text instead of salvaging prose-only named unfinished blocks", async () => {
-    const p = qwen3CoderProtocol();
-    const raw = '<tool_call name="book_flight">visible prose only';
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(raw),
-        p.createStreamParser({
-          tools,
-          options: { emitRawToolCallTextOnError: true },
-        })
-      )
-    );
-
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(
-      out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => (part as { delta: string }).delta)
-        .join("")
-    ).toBe(raw);
-  });
-
-  it("emits raw text instead of salvaging XML calls mixed with leading prose", async () => {
-    const p = qwen3CoderProtocol();
-    const raw =
-      '<tool_call name="book_flight">visible prose\n<cabin>economy</cabin>';
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(raw),
-        p.createStreamParser({
-          tools,
-          options: { emitRawToolCallTextOnError: true },
-        })
-      )
-    );
-
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(
-      out
-        .filter((part) => part.type === "text-delta")
-        .map((part) => (part as { delta: string }).delta)
-        .join("")
-    ).toBe(raw);
-  });
+  for (const scenario of [
+    {
+      name: "emits raw text instead of salvaging XML calls mixed with trailing prose",
+      raw: '<tool_call name="book_flight"><cabin>economy</cabin>\nvisible prose',
+    },
+    {
+      name: "emits raw text instead of salvaging prose-only named unfinished blocks",
+      raw: '<tool_call name="book_flight">visible prose only',
+    },
+    {
+      name: "emits raw text instead of salvaging XML calls mixed with leading prose",
+      raw: '<tool_call name="book_flight">visible prose\n<cabin>economy</cabin>',
+    },
+  ] satisfies readonly RawFallbackScenario[]) {
+    it(scenario.name, async () => {
+      const { raw } = scenario;
+      const out = await runForeignStream(raw, tools, {
+        emitRawToolCallTextOnError: true,
+      });
+      expect(selectToolCalls(out)).toHaveLength(0);
+      expect(collectTextDeltas(out)).toBe(raw);
+    });
+  }
 });

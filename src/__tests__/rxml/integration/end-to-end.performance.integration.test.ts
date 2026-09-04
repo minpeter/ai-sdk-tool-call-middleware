@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import type { RxmlValue } from "../../../rxml/builders/stringify";
 import { parse } from "../../../rxml/parse";
+
+type RxmlRecord = Readonly<Record<string, RxmlValue>>;
+
+function isRxmlRecord(value: RxmlValue): value is RxmlRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 describe("robust-xml integration", () => {
   describe("performance characteristics", () => {
@@ -32,12 +39,17 @@ describe("robust-xml integration", () => {
       if (process.env.VITEST_PERF_CHECK === "1") {
         expect(durationMs).toBeLessThan(1000);
       }
-      const { data } = result as unknown as {
-        data: Array<{ value: number; active: boolean }>;
-      };
+      const data: RxmlValue = result.data;
+      if (!Array.isArray(data)) {
+        expect.fail("parsed data was not an array");
+      }
       expect(data).toHaveLength(100);
-      expect(typeof data[0].value).toBe("number");
-      expect(typeof data[0].active).toBe("boolean");
+      const [firstRecord] = data;
+      if (!isRxmlRecord(firstRecord)) {
+        expect.fail("first parsed record was not an object");
+      }
+      expect(typeof firstRecord.value).toBe("number");
+      expect(typeof firstRecord.active).toBe("boolean");
     });
   });
 });

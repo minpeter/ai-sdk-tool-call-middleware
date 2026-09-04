@@ -31,6 +31,8 @@
   Follows the license of the original code.
 */
 
+import type { JSONValue } from "@ai-sdk/provider";
+
 import type { Token } from "./lexer";
 import { parseArray, parseObject } from "./parser-collections";
 import { endChecks, raiseUnexpected, skipPunctuation } from "./parser-state";
@@ -40,10 +42,10 @@ export function parseAny(
   tokens: Token[],
   state: ParseState,
   end = false
-): unknown {
+): JSONValue | undefined {
   // Skip any leading punctuation (useful for recovery in tolerant mode)
   const token = skipPunctuation(tokens, state);
-  let ret: unknown; // Variable to hold the parsed result
+  let ret: JSONValue | undefined; // Variable to hold the parsed result
 
   // Check for premature end of file
   if (token.type === "eof") {
@@ -68,10 +70,26 @@ export function parseAny(
       ret = parseArray(tokens, state);
       break;
     case "string": // String literal
+      if (typeof token.value === "string") {
+        ret = token.value;
+        break;
+      }
+      raiseUnexpected(state, token, "string value");
+      return;
     case "number": // Number literal
+      if (typeof token.value === "number") {
+        ret = token.value;
+        break;
+      }
+      raiseUnexpected(state, token, "number value");
+      return;
     case "atom": // Keyword literal (true, false, null)
-      ret = token.value;
-      break;
+      if (token.value === null || typeof token.value === "boolean") {
+        ret = token.value;
+        break;
+      }
+      raiseUnexpected(state, token, "true, false or null");
+      return;
     default:
       // Unexpected token type to start a value
       raiseUnexpected(state, token, "json value");
@@ -86,8 +104,6 @@ export function parseAny(
 
   // If this is the top-level call (end === true)
   if (end) {
-    // Apply the top-level reviver function (key is empty string)
-    ret = state.reviver ? state.reviver("", ret) : ret;
     // Perform final checks for trailing tokens or accumulated warnings
     endChecks(tokens, state, ret);
   }

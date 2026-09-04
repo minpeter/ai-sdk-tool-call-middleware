@@ -1,7 +1,9 @@
-import type {
-  LanguageModelV4Content,
-  LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
+import {
+  isJSONValue,
+  type JSONValue,
+  type LanguageModelV4Content,
+  type LanguageModelV4FunctionTool,
+  type LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 
 export const glm5Tools: LanguageModelV4FunctionTool[] = [
@@ -96,8 +98,16 @@ export const glm5Tools: LanguageModelV4FunctionTool[] = [
 ];
 
 export interface NormalizedToolCall {
-  input: unknown;
+  input: JSONValue;
   toolName: string;
+}
+
+function parseToolCallInput(input: string): JSONValue {
+  const parsed = JSON.parse(input);
+  if (!isJSONValue(parsed)) {
+    throw new TypeError("Expected tool-call input to be a JSON value");
+  }
+  return parsed;
 }
 
 export function normalizeContentToolCalls(
@@ -109,7 +119,7 @@ export function normalizeContentToolCalls(
         part.type === "tool-call"
     )
     .map((part) => ({
-      input: JSON.parse(part.input) as unknown,
+      input: parseToolCallInput(part.input),
       toolName: part.toolName,
     }));
 }
@@ -125,7 +135,7 @@ export function normalizeStreamToolCalls(
         part.type === "tool-call"
     )
     .map((part) => ({
-      input: JSON.parse(part.input) as unknown,
+      input: parseToolCallInput(part.input),
       toolName: part.toolName,
     }));
 }
@@ -133,7 +143,7 @@ export function normalizeStreamToolCalls(
 export function toolCallInput(
   parts: LanguageModelV4Content[],
   index = 0
-): unknown {
+): JSONValue {
   const calls = normalizeContentToolCalls(parts);
   const call = calls[index];
   if (!call) {

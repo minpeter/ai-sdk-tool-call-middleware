@@ -1,11 +1,11 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import {
+  expectGeneratedMorphInput,
+  morphArrayTool,
+} from "../heuristic-test-harness";
 
 describe("XML Protocol Heuristic Parsing", () => {
-  const protocol = morphXmlProtocol();
-
   describe("Number conversion accuracy", () => {
     it("should handle floating point precision correctly", () => {
       const text = `<test_precision>
@@ -15,34 +15,16 @@ describe("XML Protocol Heuristic Parsing", () => {
           <item>3.1415926535897932</item>
         </values>
       </test_precision>`;
+      const tools = [morphArrayTool("test_precision", "values", "number")];
 
-      const tools: LanguageModelV4FunctionTool[] = [
-        {
-          type: "function",
-          name: "test_precision",
-          inputSchema: {
-            type: "object",
-            properties: {
-              values: {
-                type: "array",
-                items: { type: "number" },
-              },
-            },
-          },
-        },
-      ];
+      const input = expectGeneratedMorphInput<{ values: number[] }>(
+        text,
+        tools
+      );
 
-      const result = protocol.parseGeneratedText({ text, tools });
-
-      expect(result).toHaveLength(1);
-      expect(result[0].type).toBe("tool-call");
-
-      if (result[0].type === "tool-call") {
-        const input = JSON.parse(result[0].input);
-        expect(input.values[0]).toBeCloseTo(1.234_567_89);
-        expect(input.values[1]).toBeCloseTo(2.0);
-        expect(input.values[2]).toBeCloseTo(Math.PI);
-      }
+      expect(input.values[0]).toBeCloseTo(1.234_567_89);
+      expect(input.values[1]).toBeCloseTo(2.0);
+      expect(input.values[2]).toBeCloseTo(Math.PI);
     });
 
     it("should handle scientific notation", () => {
@@ -53,34 +35,13 @@ describe("XML Protocol Heuristic Parsing", () => {
           <item>-9.87e-10</item>
         </data>
       </scientific_values>`;
+      const tools = [morphArrayTool("scientific_values", "data", "number")];
 
-      const tools: LanguageModelV4FunctionTool[] = [
-        {
-          type: "function",
-          name: "scientific_values",
-          inputSchema: {
-            type: "object",
-            properties: {
-              data: {
-                type: "array",
-                items: { type: "number" },
-              },
-            },
-          },
-        },
-      ];
+      const input = expectGeneratedMorphInput<{ data: number[] }>(text, tools);
 
-      const result = protocol.parseGeneratedText({ text, tools });
-
-      expect(result).toHaveLength(1);
-      expect(result[0].type).toBe("tool-call");
-
-      if (result[0].type === "tool-call") {
-        const input = JSON.parse(result[0].input);
-        expect(input.data[0]).toBeCloseTo(0.000_123);
-        expect(input.data[1]).toBeCloseTo(567);
-        expect(input.data[2]).toBeCloseTo(-0.000_000_000_987);
-      }
+      expect(input.data[0]).toBeCloseTo(0.000_123);
+      expect(input.data[1]).toBeCloseTo(567);
+      expect(input.data[2]).toBeCloseTo(-0.000_000_000_987);
     });
   });
 });

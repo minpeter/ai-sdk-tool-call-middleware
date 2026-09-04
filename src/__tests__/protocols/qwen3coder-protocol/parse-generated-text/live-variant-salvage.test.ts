@@ -1,39 +1,45 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import type {
+  JSONSchema7,
+  JSONValue,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import {
-  createChunkedStream,
-  pipeWithTransformer,
-} from "../../../test-helpers";
+  collectTextDeltas,
+  requireToolCall,
+  runProtocolTextStream,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
 
 // Malformed-but-recoverable shapes captured verbatim from live models
 // (Qwen2.5-7B, GLM-4.7, Llama 3.1 8B) running under the Qwen3Coder prompt.
 
-const writeFileTools: LanguageModelV4FunctionTool[] = [
-  {
-    type: "function" as const,
-    name: "write_file",
-    description: "Write a file.",
-    inputSchema: {
-      type: "object",
-      properties: { path: { type: "string" }, content: { type: "string" } },
-      required: ["path", "content"],
-    },
-  },
-];
+function stringPropertyTool(
+  name: string,
+  description: string,
+  required: readonly string[]
+): LanguageModelV4FunctionTool {
+  const properties: Record<string, JSONSchema7> = Object.fromEntries(
+    required.map((property) => [property, { type: "string" }])
+  );
+  return {
+    type: "function",
+    name,
+    description,
+    inputSchema: { type: "object", properties, required: [...required] },
+  };
+}
 
-const sendMessageTools: LanguageModelV4FunctionTool[] = [
-  {
-    type: "function" as const,
-    name: "send_message",
-    description: "Send a chat message.",
-    inputSchema: {
-      type: "object",
-      properties: { recipient: { type: "string" }, body: { type: "string" } },
-      required: ["recipient", "body"],
-    },
-  },
+const writeFileTools = [
+  stringPropertyTool("write_file", "Write a file.", ["path", "content"]),
+];
+const sendMessageTools = [
+  stringPropertyTool("send_message", "Send a chat message.", [
+    "recipient",
+    "body",
+  ]),
 ];
 
 // Qwen2.5-7B: parameters emitted as bare schema-property tags instead of
@@ -91,13 +97,44 @@ function toChunks(text: string, size: number): string[] {
   return chunks;
 }
 
+function streamVariant(
+  text: string,
+  chunkSize: number,
+  tools: LanguageModelV4FunctionTool[]
+) {
+  return runProtocolTextStream({
+    protocol: qwen3CoderProtocol(),
+    tools,
+    chunks: toChunks(text, chunkSize),
+    id: "fixture",
+  });
+}
+
+function requireGeneratedCall(parts: LanguageModelV4Content[]) {
+  const call = parts.find((part) => part.type === "tool-call");
+  if (call?.type !== "tool-call") {
+    throw new Error("Expected tool-call part");
+  }
+  return call;
+}
+
+function joinedToolInput(
+  parts: Awaited<ReturnType<typeof streamVariant>>,
+  toolCallId: string
+): string {
+  return selectToolInputTimeline(parts)
+    .deltas.filter((part) => part.id === toolCallId)
+    .map((part) => part.delta)
+    .join("");
+}
+
 const cases = [
   {
     name: "schema-property parameter tags (Qwen2.5)",
     text: SCHEMA_PROPERTY_TAGS_OUTPUT,
     tools: writeFileTools,
     toolName: "write_file",
-    expectInput: (input: Record<string, unknown>) => {
+    expectInput: (input: Record<string, JSONValue>) => {
       expect(input.path).toBe("fizzbuzz.py");
       expect(input.content).toContain("def fizzbuzz(n):");
       expect(input.content).toContain('"""doc"""');
@@ -108,7 +145,7 @@ const cases = [
     text: MISSING_LT_OUTPUT,
     tools: sendMessageTools,
     toolName: "send_message",
-    expectInput: (input: Record<string, unknown>) => {
+    expectInput: (input: Record<string, JSONValue>) => {
       expect(input).toEqual({
         recipient: "민석",
         body: "안녕하세요! 오늘 회의는 3시입니다 🚀 <중요>",
@@ -120,7 +157,7 @@ const cases = [
     text: BARE_NAME_OUTPUT,
     tools: writeFileTools,
     toolName: "write_file",
-    expectInput: (input: Record<string, unknown>) => {
+    expectInput: (input: Record<string, JSONValue>) => {
       expect(input.path).toBe("fizzbuzz.py");
       expect(input.content).toContain("def fizzbuzz(n):");
     },
@@ -130,7 +167,7 @@ const cases = [
     text: NAME_AS_TEXT_OUTPUT,
     tools: sendMessageTools,
     toolName: "send_message",
-    expectInput: (input: Record<string, unknown>) => {
+    expectInput: (input: Record<string, JSONValue>) => {
       expect(input).toEqual({
         recipient: "민석",
         body: "안녕하세요! 오늘 회의는 3시입니다 🚀 <중요>",
@@ -158,34 +195,20 @@ describe("qwen3CoderProtocol live-variant salvage", () => {
 
     for (const chunkSize of [1, 7]) {
       it(`recovers ${testCase.name} when streamed with chunk size ${chunkSize}`, async () => {
-        const p = qwen3CoderProtocol();
-        const out = await convertReadableStreamToArray(
-          pipeWithTransformer(
-            createChunkedStream(toChunks(testCase.text, chunkSize)),
-            p.createStreamParser({ tools: testCase.tools })
-          )
+        const out = await streamVariant(
+          testCase.text,
+          chunkSize,
+          testCase.tools
         );
 
-        const call = out.find((part) => part.type === "tool-call");
-        if (call?.type !== "tool-call") {
-          throw new Error("Expected streamed tool-call part");
-        }
+        const call = requireToolCall(out);
         expect(call.toolName).toBe(testCase.toolName);
         testCase.expectInput(JSON.parse(call.input));
 
-        const joinedDeltas = out
-          .filter(
-            (part) =>
-              part.type === "tool-input-delta" && part.id === call.toolCallId
-          )
-          .map((part) => (part as { delta: string }).delta)
-          .join("");
+        const joinedDeltas = joinedToolInput(out, call.toolCallId);
         expect(joinedDeltas).toBe(call.input);
 
-        const leakedText = out
-          .filter((part) => part.type === "text-delta")
-          .map((part) => (part as { delta: string }).delta)
-          .join("");
+        const leakedText = collectTextDeltas(out);
         expect(leakedText).not.toContain("<tool_call");
         expect(leakedText).not.toContain("<parameter");
       });
@@ -193,52 +216,22 @@ describe("qwen3CoderProtocol live-variant salvage", () => {
   }
 
   it("streamed progress deltas never leak closing-tag fragments", async () => {
-    const p = qwen3CoderProtocol();
     const text =
       "<tool_call>\n<function=write_file>\n<parameter=path>\n/src\n</parameter>\n</function>\n</tool_call>";
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(toChunks(text, 1)),
-        p.createStreamParser({ tools: writeFileTools })
-      )
-    );
-    const call = out.find((part) => part.type === "tool-call");
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected streamed tool-call part");
-    }
-    const joinedDeltas = out
-      .filter(
-        (part) =>
-          part.type === "tool-input-delta" && part.id === call.toolCallId
-      )
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const out = await streamVariant(text, 1, writeFileTools);
+    const call = requireToolCall(out);
+    const joinedDeltas = joinedToolInput(out, call.toolCallId);
     expect(joinedDeltas).toBe(call.input);
     expect(joinedDeltas).not.toContain("</parameter");
     expect(JSON.parse(call.input)).toEqual({ path: "/src" });
   });
 
   it("holds back a split surrogate pair from progress deltas", async () => {
-    const p = qwen3CoderProtocol();
     const text =
       "<tool_call>\n<function=send_message>\n<parameter=recipient>\n민석\n</parameter>\n<parameter=body>\ngo 🚀 now\n</parameter>\n</function>\n</tool_call>";
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(
-        createChunkedStream(toChunks(text, 1)),
-        p.createStreamParser({ tools: sendMessageTools })
-      )
-    );
-    const call = out.find((part) => part.type === "tool-call");
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected streamed tool-call part");
-    }
-    const joinedDeltas = out
-      .filter(
-        (part) =>
-          part.type === "tool-input-delta" && part.id === call.toolCallId
-      )
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const out = await streamVariant(text, 1, sendMessageTools);
+    const call = requireToolCall(out);
+    const joinedDeltas = joinedToolInput(out, call.toolCallId);
     expect(joinedDeltas).toBe(call.input);
     expect(JSON.parse(call.input)).toEqual({
       recipient: "민석",
@@ -251,7 +244,7 @@ describe("qwen3CoderProtocol value-element wrapper salvage", () => {
   it("unwraps a literal <value> element around a parameter value", () => {
     const tools: LanguageModelV4FunctionTool[] = [
       {
-        type: "function" as const,
+        type: "function",
         name: "set_alarm",
         description: "Set an alarm.",
         inputSchema: {
@@ -266,10 +259,8 @@ describe("qwen3CoderProtocol value-element wrapper salvage", () => {
       text: "<tool_call>\n<function=set_alarm>\n<parameter=volume>\n<value>0.8</value>\n</parameter>\n</function>\n</tool_call>",
       tools,
     });
-    const call = out.find((part) => part.type === "tool-call");
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
-    expect(JSON.parse(call.input)).toEqual({ volume: 0.8 });
+    expect(JSON.parse(requireGeneratedCall(out).input)).toEqual({
+      volume: 0.8,
+    });
   });
 });

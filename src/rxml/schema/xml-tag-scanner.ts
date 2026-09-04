@@ -6,30 +6,6 @@
 import { isNameChar, isNameStartChar, skipQuoted } from "../utils/helpers";
 
 /**
- * Helper to skip DOCTYPE declarations
- */
-function skipDoctype(xmlContent: string, i: number, len: number): number {
-  const gt = xmlContent.indexOf(">", i + 1);
-  return gt === -1 ? len : gt + 1;
-}
-
-/**
- * Helper to skip comments
- */
-function skipComment(xmlContent: string, i: number, len: number): number {
-  const close = xmlContent.indexOf("-->", i + 4);
-  return close === -1 ? len : close + 3;
-}
-
-/**
- * Helper to skip CDATA sections
- */
-function skipCdata(xmlContent: string, i: number, len: number): number {
-  const close = xmlContent.indexOf("]]>", i + 9);
-  return close === -1 ? len : close + 3;
-}
-
-/**
  * Helper to skip processing instructions
  */
 function skipProcessingInstruction(
@@ -53,16 +29,6 @@ export function skipSpecialConstruct(
   const ch = xmlContent[i];
 
   if (ch === "!") {
-    if (xmlContent.startsWith("!DOCTYPE", i + 1)) {
-      return skipDoctype(xmlContent, i, len);
-    }
-    if (xmlContent.startsWith("!--", i + 1)) {
-      return skipComment(xmlContent, i, len);
-    }
-    if (xmlContent.startsWith("![CDATA[", i + 1)) {
-      return skipCdata(xmlContent, i, len);
-    }
-    // Other declarations
     const gt = xmlContent.indexOf(">", i + 1);
     return gt === -1 ? len : gt + 1;
   }
@@ -123,6 +89,61 @@ export function skipToTagEnd(
   }
 
   return { pos: k, isSelfClosing };
+}
+
+export interface XmlOpeningTag {
+  readonly depth: number;
+  readonly isSelfClosing: boolean;
+  readonly name: string;
+  readonly tagEnd: number;
+}
+
+export type XmlOpeningTagDecision = "continue" | "stop" | number;
+
+export function walkXmlOpeningTags(
+  xmlContent: string,
+  visit: (tag: XmlOpeningTag) => XmlOpeningTagDecision
+): void {
+  const len = xmlContent.length;
+  let position = 0;
+  let depth = 0;
+
+  while (position < len) {
+    const lessThan = xmlContent.indexOf("<", position);
+    if (lessThan === -1 || lessThan + 1 >= len) {
+      return;
+    }
+    const tagStart = lessThan + 1;
+    const specialPosition = skipSpecialConstruct(xmlContent, tagStart, len);
+    if (specialPosition !== -1) {
+      position = specialPosition;
+      continue;
+    }
+    if (xmlContent[tagStart] === "/") {
+      const tagEnd = xmlContent.indexOf(">", tagStart + 1);
+      position = tagEnd === -1 ? len : tagEnd + 1;
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+
+    const tagName = parseTagName(xmlContent, tagStart, len);
+    const tagEnd = skipToTagEnd(xmlContent, tagName.pos, len);
+    const decision = visit({
+      depth,
+      isSelfClosing: tagEnd.isSelfClosing,
+      name: tagName.name,
+      tagEnd: tagEnd.pos,
+    });
+    if (decision === "stop") {
+      return;
+    }
+    if (typeof decision === "number") {
+      position = decision;
+      continue;
+    }
+    position = tagEnd.pos + 1;
+    depth += tagEnd.isSelfClosing ? 0 : 1;
+  }
 }
 
 /**

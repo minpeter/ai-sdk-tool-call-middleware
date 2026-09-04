@@ -13,25 +13,6 @@ import {
 import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 import { coerceToolCallInput } from "./tool-call-coercion";
 
-/**
- * First text content part of a forced-tool-choice generation. Providers may
- * emit reasoning (or other) parts before the JSON text even under
- * `responseFormat: json`, so the whole content array is scanned instead of
- * only inspecting `content[0]`.
- */
-export function findFirstNonEmptyTextContent(
-  content: LanguageModelV4Content[] | undefined
-): string | undefined {
-  const textParts = content?.filter(
-    (item): item is Extract<LanguageModelV4Content, { type: "text" }> =>
-      item.type === "text"
-  );
-  return (
-    textParts?.find((part) => part.text.trim().length > 0)?.text ??
-    textParts?.[0]?.text
-  );
-}
-
 function isJsonObject(value: JSONValue): value is JSONObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -48,6 +29,10 @@ function isJsonObjectText(text: string): boolean {
   }
 }
 
+/**
+ * Select JSON text from forced-tool-choice output. Providers may emit
+ * reasoning or empty text before the payload, so every text part is checked.
+ */
 export function findToolChoiceTextContent(
   content: LanguageModelV4Content[] | undefined
 ): string | undefined {
@@ -58,7 +43,9 @@ export function findToolChoiceTextContent(
   return (
     textParts?.find(
       (part) => part.text.trim().length > 0 && isJsonObjectText(part.text)
-    )?.text ?? findFirstNonEmptyTextContent(content)
+    )?.text ??
+    textParts?.find((part) => part.text.trim().length > 0)?.text ??
+    textParts?.[0]?.text
   );
 }
 

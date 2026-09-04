@@ -1,42 +1,27 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4Middleware,
   LanguageModelV4Prompt,
 } from "@ai-sdk/provider";
-import { wrapLanguageModel } from "ai";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { kExaone236BToolMiddleware } from "../../preconfigured-middleware";
+import {
+  captureProviderBody,
+  edgeProbeTools,
+} from "../entry/provider-capture.shared";
 
 const { FRIENDLI_API_KEY } = process.env;
 const FRIENDLI_BASE_URL = "https://api.friendli.ai/serverless/v1";
 const MODEL_ID = "LGAI-EXAONE/K-EXAONE-236B-A23B";
 
 const capturedBodySchema = z.object({
-  messages: z.array(z.record(z.string(), z.unknown())),
-  tools: z.array(z.record(z.string(), z.unknown())).optional(),
+  messages: z.array(z.record(z.string(), z.json())),
+  tools: z.array(z.record(z.string(), z.json())).optional(),
 });
 const renderResponseSchema = z.object({ text: z.string() });
 
-const tools = [
-  {
-    type: "function",
-    name: "edge_probe",
-    description: "Probe exact JSON rendering.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        zed: { type: "number", minimum: 1e-7, maximum: 1e21 },
-        alpha: { type: "integer" },
-        raw: { type: "string" },
-      },
-      required: ["zed"],
-      additionalProperties: false,
-    },
-    strict: true,
-  },
-] satisfies LanguageModelV4FunctionTool[];
+const tools = edgeProbeTools();
 
 const multiTools = [
   {
@@ -90,56 +75,17 @@ interface CaptureOptions {
   readonly tools?: readonly LanguageModelV4FunctionTool[];
 }
 
-async function captureProviderBody(
-  options: CaptureOptions
-): Promise<z.infer<typeof capturedBodySchema>> {
-  let body: unknown;
-  const provider = createOpenAICompatible({
+function captureFriendliBody(options: CaptureOptions) {
+  return captureProviderBody({
     name: "friendli-capture",
     apiKey: "capture-only",
     baseURL: "https://capture.invalid/v1",
-    fetch: (_input, init) => {
-      if (typeof init?.body !== "string") {
-        throw new TypeError("Expected a JSON request body");
-      }
-      body = JSON.parse(init.body);
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            id: "capture",
-            created: 0,
-            model: MODEL_ID,
-            choices: [
-              {
-                index: 0,
-                finish_reason: "stop",
-                message: { role: "assistant", content: "done" },
-              },
-            ],
-            usage: {
-              prompt_tokens: 1,
-              completion_tokens: 1,
-              total_tokens: 2,
-            },
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }
-        )
-      );
-    },
-  });
-  const rawModel = provider.chatModel(MODEL_ID);
-  const model = options.middleware
-    ? wrapLanguageModel({ model: rawModel, middleware: options.middleware })
-    : rawModel;
-
-  await model.doGenerate({
+    modelId: MODEL_ID,
+    middleware: options.middleware,
     prompt: options.prompt,
-    tools: [...(options.tools ?? tools)],
+    tools: options.tools ?? tools,
+    parseBody: (source) => capturedBodySchema.parse(JSON.parse(source)),
   });
-  return capturedBodySchema.parse(body);
 }
 
 async function renderFriendli(options: {
@@ -341,11 +287,11 @@ describeLive("K-EXAONE-236B Friendli render benchmark", () => {
   it.each(benchmarkScenarios)(
     "$id preserves the native declaration before the Hermes guide",
     async (scenario) => {
-      const nativeBody = await captureProviderBody({
+      const nativeBody = await captureFriendliBody({
         prompt: scenario.prompt,
         tools: scenario.tools,
       });
-      const middlewareBody = await captureProviderBody({
+      const middlewareBody = await captureFriendliBody({
         middleware: kExaone236BToolMiddleware,
         prompt: scenario.prompt,
         tools: scenario.tools,

@@ -1,22 +1,28 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONValue,
+  LanguageModelV4,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4Prompt,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { hermesToolMiddleware } from "../../preconfigured-middleware";
 import { requireTransformParams } from "../test-helpers";
 
-const model = {
-  specificationVersion: "v4",
-  provider: "test",
-  modelId: "test",
-  supportedUrls: {},
-  doGenerate: () => {
-    throw new Error("unused");
-  },
-  doStream: () => {
-    throw new Error("unused");
-  },
-} satisfies import("@ai-sdk/provider").LanguageModelV4;
+function signatureModel(): LanguageModelV4 {
+  const unused = () => {
+    throw new TypeError("Signature model is never executed");
+  };
+  return {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "hermes-signature",
+    supportedUrls: {},
+    doGenerate: unused,
+    doStream: unused,
+  };
+}
 
-const REGEX_TOOL_CALL = /<tool_call>/;
+const TOOL_CALL_TAG = /<tool_call>/;
 
 const tools: LanguageModelV4FunctionTool[] = [
   {
@@ -30,180 +36,87 @@ const tools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
+function signaturePrompt(input: JSONValue | undefined): LanguageModelV4Prompt {
+  return [
+    {
+      role: "user",
+      content: [{ type: "text", text: "What's the weather?" }],
+    },
+    {
+      role: "assistant",
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: "tc1",
+          toolName: "get_weather",
+          input,
+        },
+      ],
+    },
+    {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolName: "get_weather",
+          toolCallId: "tc1",
+          output: { type: "json", value: { temperature: 25 } },
+        },
+      ],
+    },
+  ];
+}
+
+async function transformedAssistantText(
+  prompt: LanguageModelV4Prompt,
+  toolDefinitions: LanguageModelV4FunctionTool[]
+): Promise<string> {
+  const transform = requireTransformParams(
+    hermesToolMiddleware.transformParams
+  );
+  const out = await transform({
+    type: "generate",
+    model: signatureModel(),
+    params: { prompt, tools: toolDefinitions },
+  });
+  const assistant = out.prompt.find((message) => message.role === "assistant");
+  expect(assistant).toBeTruthy();
+  if (assistant?.role !== "assistant") {
+    throw new TypeError("Assistant message not found");
+  }
+  expect(Array.isArray(assistant.content)).toBe(true);
+  return assistant.content
+    .filter((content) => content.type === "text")
+    .map((content) => content.text)
+    .join("");
+}
+
+const singleInputCases = [
+  {
+    name: "preserves tool-call signature when input is undefined",
+    input: undefined,
+  },
+  {
+    name: "preserves tool-call signature when input is empty string",
+    input: "",
+  },
+  { name: "preserves tool-call signature when input is null", input: null },
+] satisfies readonly {
+  readonly input: JSONValue | undefined;
+  readonly name: string;
+}[];
+
 describe("transformParams hermes tool-call signature regression", () => {
-  it("preserves tool-call signature when input is undefined", async () => {
-    const transformParams = requireTransformParams(
-      hermesToolMiddleware.transformParams
-    );
-
-    const out = await transformParams({
-      type: "generate",
-      model,
-      params: {
-        prompt: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "What's the weather?" }],
-          },
-          {
-            role: "assistant",
-            content: [
-              {
-                type: "tool-call",
-                toolCallId: "tc1",
-                toolName: "get_weather",
-                input: undefined,
-              },
-            ],
-          },
-          {
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolName: "get_weather",
-                toolCallId: "tc1",
-                output: { type: "json", value: { temperature: 25 } },
-              },
-            ],
-          },
-        ],
-        tools,
-      },
+  for (const testCase of singleInputCases) {
+    it(testCase.name, async () => {
+      const text = await transformedAssistantText(
+        signaturePrompt(testCase.input),
+        tools
+      );
+      expect(text).toMatch(TOOL_CALL_TAG);
+      expect(text).toContain("get_weather");
     });
-
-    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
-    expect(assistantMsg).toBeTruthy();
-    if (!assistantMsg) {
-      throw new Error("assistant message not found");
-    }
-
-    const assistantContent = assistantMsg.content;
-    expect(Array.isArray(assistantContent)).toBe(true);
-    const assistantText = assistantContent
-      .filter((c) => c.type === "text")
-      .map((c) => c.text ?? "")
-      .join("");
-
-    expect(assistantText).toMatch(REGEX_TOOL_CALL);
-    expect(assistantText).toContain("get_weather");
-  });
-
-  it("preserves tool-call signature when input is empty string", async () => {
-    const transformParams = requireTransformParams(
-      hermesToolMiddleware.transformParams
-    );
-
-    const out = await transformParams({
-      type: "generate",
-      model,
-      params: {
-        prompt: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "What's the weather?" }],
-          },
-          {
-            role: "assistant",
-            content: [
-              {
-                type: "tool-call",
-                toolCallId: "tc1",
-                toolName: "get_weather",
-                input: "",
-              },
-            ],
-          },
-          {
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolName: "get_weather",
-                toolCallId: "tc1",
-                output: { type: "json", value: { temperature: 25 } },
-              },
-            ],
-          },
-        ],
-        tools,
-      },
-    });
-
-    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
-    expect(assistantMsg).toBeTruthy();
-    if (!assistantMsg) {
-      throw new Error("assistant message not found");
-    }
-
-    const assistantContent = assistantMsg.content;
-    expect(Array.isArray(assistantContent)).toBe(true);
-    const assistantText = assistantContent
-      .filter((c) => c.type === "text")
-      .map((c) => c.text ?? "")
-      .join("");
-
-    expect(assistantText).toMatch(REGEX_TOOL_CALL);
-    expect(assistantText).toContain("get_weather");
-  });
-
-  it("preserves tool-call signature when input is null", async () => {
-    const transformParams = requireTransformParams(
-      hermesToolMiddleware.transformParams
-    );
-
-    const out = await transformParams({
-      type: "generate",
-      model,
-      params: {
-        prompt: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "What's the weather?" }],
-          },
-          {
-            role: "assistant",
-            content: [
-              {
-                type: "tool-call",
-                toolCallId: "tc1",
-                toolName: "get_weather",
-                input: null,
-              },
-            ],
-          },
-          {
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolName: "get_weather",
-                toolCallId: "tc1",
-                output: { type: "json", value: { temperature: 25 } },
-              },
-            ],
-          },
-        ],
-        tools,
-      },
-    });
-
-    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
-    expect(assistantMsg).toBeTruthy();
-    if (!assistantMsg) {
-      throw new Error("assistant message not found");
-    }
-
-    const assistantContent = assistantMsg.content;
-    expect(Array.isArray(assistantContent)).toBe(true);
-    const assistantText = assistantContent
-      .filter((c) => c.type === "text")
-      .map((c) => c.text ?? "")
-      .join("");
-
-    expect(assistantText).toMatch(REGEX_TOOL_CALL);
-    expect(assistantText).toContain("get_weather");
-  });
+  }
 
   it("preserves signatures for multiple tool calls with mixed input types", async () => {
     const multiTools: LanguageModelV4FunctionTool[] = [
@@ -218,74 +131,49 @@ describe("transformParams hermes tool-call signature regression", () => {
         },
       },
     ];
-
-    const transformParams = requireTransformParams(
-      hermesToolMiddleware.transformParams
-    );
-
-    const out = await transformParams({
-      type: "generate",
-      model,
-      params: {
-        prompt: [
+    const prompt: LanguageModelV4Prompt = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Weather and time?" }],
+      },
+      {
+        role: "assistant",
+        content: [
           {
-            role: "user",
-            content: [{ type: "text", text: "Weather and time?" }],
+            type: "tool-call",
+            toolCallId: "tc1",
+            toolName: "get_weather",
+            input: JSON.stringify({ city: "Seoul" }),
           },
           {
-            role: "assistant",
-            content: [
-              {
-                type: "tool-call",
-                toolCallId: "tc1",
-                toolName: "get_weather",
-                input: JSON.stringify({ city: "Seoul" }),
-              },
-              {
-                type: "tool-call",
-                toolCallId: "tc2",
-                toolName: "get_time",
-                input: undefined,
-              },
-            ],
-          },
-          {
-            role: "tool",
-            content: [
-              {
-                type: "tool-result",
-                toolName: "get_weather",
-                toolCallId: "tc1",
-                output: { type: "json", value: { temperature: 25 } },
-              },
-              {
-                type: "tool-result",
-                toolName: "get_time",
-                toolCallId: "tc2",
-                output: { type: "json", value: { time: "10:00 AM" } },
-              },
-            ],
+            type: "tool-call",
+            toolCallId: "tc2",
+            toolName: "get_time",
+            input: undefined,
           },
         ],
-        tools: multiTools,
       },
-    });
-
-    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
-    expect(assistantMsg).toBeTruthy();
-    if (!assistantMsg) {
-      throw new Error("assistant message not found");
-    }
-
-    const assistantContent = assistantMsg.content;
-    expect(Array.isArray(assistantContent)).toBe(true);
-    const assistantText = assistantContent
-      .filter((c) => c.type === "text")
-      .map((c) => c.text ?? "")
-      .join("");
-
-    expect(assistantText).toContain("get_weather");
-    expect(assistantText).toContain("get_time");
-    expect(assistantText).toMatch(REGEX_TOOL_CALL);
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolName: "get_weather",
+            toolCallId: "tc1",
+            output: { type: "json", value: { temperature: 25 } },
+          },
+          {
+            type: "tool-result",
+            toolName: "get_time",
+            toolCallId: "tc2",
+            output: { type: "json", value: { time: "10:00 AM" } },
+          },
+        ],
+      },
+    ];
+    const text = await transformedAssistantText(prompt, multiTools);
+    expect(text).toContain("get_weather");
+    expect(text).toContain("get_time");
+    expect(text).toMatch(TOOL_CALL_TAG);
   });
 });

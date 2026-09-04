@@ -200,12 +200,20 @@ function stringLeafHasPrototypeSensitiveArgumentKey(text: string): boolean {
   return toolCallTextHasPrototypeSensitiveKey(text);
 }
 
-export function hasPrototypeSensitiveStructuralKey(value: RxmlValue): boolean {
+type StringLeafPolicy = (value: string) => boolean;
+
+function hasPrototypeSensitiveValue(
+  value: RxmlValue,
+  stringLeafPolicy: StringLeafPolicy
+): boolean {
   const seen = new Set<object>();
   const stack: RxmlValue[] = [value];
 
   while (stack.length > 0) {
     const current = stack.pop();
+    if (typeof current === "string" && stringLeafPolicy(current)) {
+      return true;
+    }
     if (enqueueArrayItems(current, seen, stack)) {
       continue;
     }
@@ -226,36 +234,15 @@ export function hasPrototypeSensitiveStructuralKey(value: RxmlValue): boolean {
   return false;
 }
 
+export function hasPrototypeSensitiveStructuralKey(value: RxmlValue): boolean {
+  return hasPrototypeSensitiveValue(value, () => false);
+}
+
 function hasPrototypeSensitiveArgumentValue(value: RxmlValue): boolean {
-  const seen = new Set<object>();
-  const stack: RxmlValue[] = [value];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (typeof current === "string") {
-      if (stringLeafHasPrototypeSensitiveArgumentKey(current)) {
-        return true;
-      }
-      continue;
-    }
-    if (enqueueArrayItems(current, seen, stack)) {
-      continue;
-    }
-    if (!isRecord(current)) {
-      continue;
-    }
-    if (!markUnseen(current, seen)) {
-      continue;
-    }
-    if (hasUnsafePrototype(current)) {
-      return true;
-    }
-    if (enqueueRecordOwnValues(current, stack)) {
-      return true;
-    }
-  }
-
-  return false;
+  return hasPrototypeSensitiveValue(
+    value,
+    stringLeafHasPrototypeSensitiveArgumentKey
+  );
 }
 
 export function toolCallInputHasPrototypeSensitiveKey(

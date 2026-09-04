@@ -1,4 +1,5 @@
 import type {
+  JSONValue,
   LanguageModelV4FunctionTool,
   LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
@@ -39,7 +40,7 @@ export const hermesProtocol = ({
   },
 
   formatToolCall(toolCall: LanguageModelV4ToolCall) {
-    let args: unknown = {};
+    let args: JSONValue = {};
     if (toolCall.input != null) {
       try {
         args = JSON.parse(toolCall.input);

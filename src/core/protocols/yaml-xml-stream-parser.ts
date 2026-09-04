@@ -3,15 +3,16 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { generateToolCallId } from "../utils/id";
-import {
-  createFlushTextHandler,
-  extractToolNames,
-} from "../utils/protocol-utils";
+import { extractToolNames } from "../utils/protocol-utils";
 import {
   findEarliestToolTag,
   findPotentialPartialToolTagStart,
 } from "../utils/xml-tool-tag-scanner";
 import type { ParserOptions } from "./protocol-interface";
+import {
+  createProtocolSemanticChunkTransform,
+  createProtocolTextLifecycle,
+} from "./protocol-stream-shared";
 import { findForeignBlockHoldStart } from "./yaml-xml-foreign-recovery";
 import {
   salvageForeignBlockAtFinish,
@@ -40,19 +41,8 @@ export function createYamlXmlStreamParser({
     hasEmittedStart: boolean;
     pendingToolInputParts: LanguageModelV4StreamPart[];
   } | null = null;
-  let currentTextId: string | null = null;
-  let hasEmittedTextStart = false;
-
-  const flushText = createFlushTextHandler(
-    () => currentTextId,
-    (newId: string | null) => {
-      currentTextId = newId;
-    },
-    () => hasEmittedTextStart,
-    (value: boolean) => {
-      hasEmittedTextStart = value;
-    }
-  );
+  const textLifecycle = createProtocolTextLifecycle();
+  const { flushText } = textLifecycle;
 
   const lifecycleState = {
     get buffer() {
@@ -234,45 +224,9 @@ export function createYamlXmlStreamParser({
     flushText(controller);
   };
 
-  return new TransformStream<
-    LanguageModelV4StreamPart,
-    LanguageModelV4StreamPart
-  >({
-    transform(chunk, controller) {
-      if (chunk.type === "finish") {
-        handleFinishChunk(controller);
-        controller.enqueue(chunk);
-        return;
-      }
-
-      // The parser re-segments text under its own synthetic ids (tool-call
-      // markup is excised), so the provider's original text-start/text-end
-      // envelopes are dropped instead of producing empty duplicate blocks.
-      if (chunk.type === "text-start" || chunk.type === "text-end") {
-        return;
-      }
-
-      // Raw provider chunks are observational side-channel events. With
-      // `includeRawChunks`, providers commonly interleave one before every
-      // semantic text-delta. Do not let those events force a buffered
-      // partial tag (for example `<write` + `_file>`) out as plain text.
-      if (chunk.type === "raw") {
-        controller.enqueue(chunk);
-        return;
-      }
-
-      if (chunk.type !== "text-delta") {
-        if (!currentToolCall && buffer) {
-          flushText(controller, buffer);
-          buffer = "";
-        }
-        controller.enqueue(chunk);
-        return;
-      }
-
-      const textContent = chunk.delta ?? "";
-      buffer += textContent;
-      processBuffer(controller);
+  return createProtocolSemanticChunkTransform({
+    finish(controller) {
+      handleFinishChunk(controller);
     },
     flush(controller) {
       if (currentToolCall) {
@@ -280,14 +234,22 @@ export function createYamlXmlStreamParser({
       } else if (buffer) {
         salvageForeignBlockAtFinish(foreignRecoveryContext, controller);
       }
-      if (currentTextId && hasEmittedTextStart) {
-        controller.enqueue({
-          type: "text-end",
-          id: currentTextId,
-        });
-        hasEmittedTextStart = false;
-        currentTextId = null;
+      textLifecycle.close(controller);
+    },
+    passthrough(controller, chunk) {
+      if (!currentToolCall && buffer) {
+        flushText(controller, buffer);
+        buffer = "";
       }
+      controller.enqueue(chunk);
+    },
+    // Raw side-channel events must not flush a partial semantic tag.
+    raw(controller, chunk) {
+      controller.enqueue(chunk);
+    },
+    textDelta(controller, delta) {
+      buffer += delta;
+      processBuffer(controller);
     },
   });
 }

@@ -1,9 +1,4 @@
-import {
-  findMatchingCloseTag,
-  parseTagName,
-  skipSpecialConstruct,
-  skipToTagEnd,
-} from "./xml-tag-scanner";
+import { findMatchingCloseTag, walkXmlOpeningTags } from "./xml-tag-scanner";
 
 function processOpeningTag(options: {
   xmlContent: string;
@@ -33,18 +28,6 @@ function processOpeningTag(options: {
 }
 
 /**
- * Helper to handle closing tag in findAllInnerRanges
- */
-function handleClosingTagInFindAll(
-  xmlContent: string,
-  i: number,
-  len: number
-): number {
-  const gt = xmlContent.indexOf(">", i + 1);
-  return gt === -1 ? len : gt + 1;
-}
-
-/**
  * Find all inner content ranges for a given tag name at any depth.
  * Returns ranges for the inner content between <tagName ...> and </tagName>.
  */
@@ -56,54 +39,20 @@ export function findAllInnerRanges(
   const target = tagName;
   const ranges: Array<{ start: number; end: number }> = [];
 
-  let i = 0;
-
-  while (i < len) {
-    const lt = xmlContent.indexOf("<", i);
-    if (lt === -1 || lt + 1 >= len) {
-      break;
+  walkXmlOpeningTags(xmlContent, (tag) => {
+    if (tag.name !== target) {
+      return "continue";
     }
-    i = lt + 1;
-
-    const ch = xmlContent[i];
-    const specialPos = skipSpecialConstruct(xmlContent, i, len);
-    if (specialPos !== -1) {
-      i = specialPos;
-      continue;
-    }
-
-    if (ch === "/") {
-      i = handleClosingTagInFindAll(xmlContent, i, len);
-      continue;
-    }
-
-    // Opening tag
-    const tagInfo = parseTagName(xmlContent, i, len);
-    const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
-    const tagEnd = tagEndInfo.pos;
-    const { isSelfClosing } = tagEndInfo;
-
-    if (tagInfo.name !== target) {
-      // Advance over this tag
-      i = tagEnd + 1;
-      continue;
-    }
-
-    // Found a target start tag
-    const nextPos = processOpeningTag({
+    const nextPosition = processOpeningTag({
       xmlContent,
-      tagEnd,
-      isSelfClosing,
+      tagEnd: tag.tagEnd,
+      isSelfClosing: tag.isSelfClosing,
       target,
       len,
       ranges,
     });
-    if (nextPos === -1) {
-      // Unmatched tag, stop to avoid infinite loops
-      break;
-    }
-    i = nextPos;
-  }
+    return nextPosition === -1 ? "stop" : nextPosition;
+  });
 
   return ranges;
 }
@@ -132,22 +81,6 @@ function findTopLevelTargetRange(options: {
 }
 
 /**
- * Helper to handle closing tag in findFirstTopLevelRange
- */
-function handleClosingTagInFindFirst(
-  xmlContent: string,
-  i: number,
-  len: number,
-  depth: number
-): { newPos: number; newDepth: number } {
-  const gt = xmlContent.indexOf(">", i + 1);
-  return {
-    newPos: gt === -1 ? len : gt + 1,
-    newDepth: Math.max(0, depth - 1),
-  };
-}
-
-/**
  * Find the first top-level range for a tag
  */
 export function findFirstTopLevelRange(
@@ -157,47 +90,21 @@ export function findFirstTopLevelRange(
   const len = xmlContent.length;
   const target = tagName;
 
-  let i = 0;
-  let depth = 0;
-
-  while (i < len) {
-    const lt = xmlContent.indexOf("<", i);
-    if (lt === -1 || lt + 1 >= len) {
-      return;
+  let range: { start: number; end: number } | undefined;
+  walkXmlOpeningTags(xmlContent, (tag) => {
+    if (tag.depth !== 0 || tag.name !== target) {
+      return "continue";
     }
-    i = lt + 1;
-
-    const ch = xmlContent[i];
-    const specialPos = skipSpecialConstruct(xmlContent, i, len);
-    if (specialPos !== -1) {
-      i = specialPos;
-      continue;
-    }
-
-    if (ch === "/") {
-      const result = handleClosingTagInFindFirst(xmlContent, i, len, depth);
-      i = result.newPos;
-      depth = result.newDepth;
-      continue;
-    }
-
-    const tagInfo = parseTagName(xmlContent, i, len);
-    const tagEndInfo = skipToTagEnd(xmlContent, tagInfo.pos, len);
-    const tagEnd = tagEndInfo.pos;
-    const { isSelfClosing } = tagEndInfo;
-
-    if (depth === 0 && tagInfo.name === target) {
-      return findTopLevelTargetRange({
-        xmlContent,
-        tagEnd,
-        isSelfClosing,
-        target,
-        len,
-      });
-    }
-    i = tagEnd + 1;
-    depth += isSelfClosing ? 0 : 1;
-  }
+    range = findTopLevelTargetRange({
+      xmlContent,
+      tagEnd: tag.tagEnd,
+      isSelfClosing: tag.isSelfClosing,
+      target,
+      len,
+    });
+    return "stop";
+  });
+  return range;
 }
 
 /**

@@ -182,143 +182,106 @@ describe("tool-call coercion combinator and draft-07 regression coverage", () =>
     expect(input).toBe('{"query":"status:open","admin":true}');
   });
 
-  it("selects a single anyOf branch instead of merging mixed branch keys", () => {
-    const input = coerceToolCallInput(
-      "route",
-      { city: "Seoul", latitude: 37.5, stray: "drop-me" },
-      [
+  for (const scenario of [
+    {
+      name: "selects a single anyOf branch instead of merging mixed branch keys",
+      keyword: "anyOf",
+    },
+    {
+      name: "selects a single oneOf branch instead of merging mixed branch keys",
+      keyword: "oneOf",
+    },
+  ] satisfies readonly { name: string; keyword: "anyOf" | "oneOf" }[]) {
+    it(scenario.name, () => {
+      const branches: JSONSchema7[] = [
         {
-          type: "function",
-          name: "route",
-          inputSchema: {
-            type: "object",
-            anyOf: [
-              {
-                properties: {
-                  city: { type: "string" },
-                },
-                required: ["city"],
-              },
-              {
-                properties: {
-                  latitude: { type: "number" },
-                  longitude: { type: "number" },
-                },
-                required: ["latitude", "longitude"],
-              },
-            ],
-          },
+          properties: { city: { type: "string" } },
+          required: ["city"],
         },
-      ]
-    );
-
-    expect(input).toBe('{"city":"Seoul"}');
-  });
-
-  it("selects a single oneOf branch instead of merging mixed branch keys", () => {
-    const input = coerceToolCallInput(
-      "route",
-      { city: "Seoul", latitude: 37.5, stray: "drop-me" },
-      [
         {
-          type: "function",
-          name: "route",
-          inputSchema: {
-            type: "object",
-            oneOf: [
-              {
-                properties: {
-                  city: { type: "string" },
-                },
-                required: ["city"],
-              },
-              {
-                properties: {
-                  latitude: { type: "number" },
-                  longitude: { type: "number" },
-                },
-                required: ["latitude", "longitude"],
-              },
-            ],
+          properties: {
+            latitude: { type: "number" },
+            longitude: { type: "number" },
           },
+          required: ["latitude", "longitude"],
         },
-      ]
-    );
+      ];
+      const schema: JSONSchema7 = { type: "object" };
+      schema[scenario.keyword] = branches;
+      const input = coerceToolCallInput(
+        "route",
+        { city: "Seoul", latitude: 37.5, stray: "drop-me" },
+        [{ type: "function", name: "route", inputSchema: schema }]
+      );
 
-    expect(input).toBe('{"city":"Seoul"}');
-  });
+      expect(input).toBe('{"city":"Seoul"}');
+    });
+  }
 
-  it("selects anyOf branches by const discriminators before dropping mixed keys", () => {
-    const input = coerceToolCallInput(
-      "route",
-      { kind: "count", countOnly: 3, textOnly: "drop-me" },
-      [
-        {
-          type: "function",
-          name: "route",
-          inputSchema: {
-            type: "object",
-            anyOf: [
-              {
-                properties: {
-                  kind: { const: "text" },
-                  textOnly: { type: "string" },
-                },
-                required: ["kind", "textOnly"],
-                additionalProperties: false,
-              },
-              {
-                properties: {
-                  kind: { const: "count" },
-                  countOnly: { type: "number" },
-                },
-                required: ["kind", "countOnly"],
-                additionalProperties: false,
-              },
-            ],
+  const discriminatorScenarios: readonly {
+    name: string;
+    schema: JSONSchema7;
+  }[] = [
+    {
+      name: "selects anyOf branches by const discriminators before dropping mixed keys",
+      schema: {
+        type: "object",
+        anyOf: [
+          {
+            properties: {
+              kind: { const: "text" },
+              textOnly: { type: "string" },
+            },
+            required: ["kind", "textOnly"],
+            additionalProperties: false,
           },
-        },
-      ]
-    );
-
-    expect(input).toBe('{"kind":"count","countOnly":3}');
-  });
-
-  it("selects oneOf branches by enum discriminators before dropping mixed keys", () => {
-    const input = coerceToolCallInput(
-      "route",
-      { kind: "count", countOnly: 3, textOnly: "drop-me" },
-      [
-        {
-          type: "function",
-          name: "route",
-          inputSchema: {
-            type: "object",
-            oneOf: [
-              {
-                properties: {
-                  kind: { enum: ["text"] },
-                  textOnly: { type: "string" },
-                },
-                required: ["kind", "textOnly"],
-                additionalProperties: false,
-              },
-              {
-                properties: {
-                  kind: { enum: ["count"] },
-                  countOnly: { type: "number" },
-                },
-                required: ["kind", "countOnly"],
-                additionalProperties: false,
-              },
-            ],
+          {
+            properties: {
+              kind: { const: "count" },
+              countOnly: { type: "number" },
+            },
+            required: ["kind", "countOnly"],
+            additionalProperties: false,
           },
-        },
-      ]
-    );
+        ],
+      } satisfies JSONSchema7,
+    },
+    {
+      name: "selects oneOf branches by enum discriminators before dropping mixed keys",
+      schema: {
+        type: "object",
+        oneOf: [
+          {
+            properties: {
+              kind: { enum: ["text"] },
+              textOnly: { type: "string" },
+            },
+            required: ["kind", "textOnly"],
+            additionalProperties: false,
+          },
+          {
+            properties: {
+              kind: { enum: ["count"] },
+              countOnly: { type: "number" },
+            },
+            required: ["kind", "countOnly"],
+            additionalProperties: false,
+          },
+        ],
+      } satisfies JSONSchema7,
+    },
+  ];
+  for (const scenario of discriminatorScenarios) {
+    it(scenario.name, () => {
+      const input = coerceToolCallInput(
+        "route",
+        { kind: "count", countOnly: 3, textOnly: "drop-me" },
+        [{ type: "function", name: "route", inputSchema: scenario.schema }]
+      );
 
-    expect(input).toBe('{"kind":"count","countOnly":3}');
-  });
+      expect(input).toBe('{"kind":"count","countOnly":3}');
+    });
+  }
 
   it("fails closed on cyclic provider-native object inputs", () => {
     const input: JSONObject = { city: "Seoul" };

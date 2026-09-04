@@ -1,4 +1,4 @@
-import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
+import type { JSONValue, LanguageModelV4ToolCall } from "@ai-sdk/provider";
 import YAML from "yaml";
 import {
   extractToolNames,
@@ -25,7 +25,7 @@ export const yamlXmlProtocol = (
   },
 
   formatToolCall(toolCall: LanguageModelV4ToolCall): string {
-    let args: unknown = {};
+    let args: JSONValue = {};
     if (toolCall.input != null) {
       try {
         args = JSON.parse(toolCall.input);

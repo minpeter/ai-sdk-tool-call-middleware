@@ -1,16 +1,14 @@
 import type {
-  JSONSchema7Definition,
+  JSONValue,
+  LanguageModelV4Content,
   LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../core/protocols/hermes-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../test-helpers";
+  createObjectTool,
+  runProtocolTextStream,
+} from "../shared/duplicate-harness";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -24,29 +22,13 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 // calls — normalized to `{ toolName, input }` with the input re-parsed so the
 // random tool-call ids do not matter — are equal.
 
-function makeTool(
-  name: string,
-  properties: Record<string, JSONSchema7Definition>,
-  additionalProperties?: boolean
-): LanguageModelV4FunctionTool {
-  return {
-    type: "function",
-    name,
-    inputSchema: {
-      type: "object",
-      properties,
-      ...(additionalProperties === undefined ? {} : { additionalProperties }),
-    },
-  };
-}
-
 interface NormalizedToolCall {
-  input: unknown;
-  toolName: string;
+  readonly input: JSONValue;
+  readonly toolName: string;
 }
 
 function normalize(input: string, toolName: string): NormalizedToolCall {
-  let parsed: unknown = input;
+  let parsed: JSONValue = input;
   try {
     parsed = JSON.parse(input);
   } catch {
@@ -62,41 +44,38 @@ function nonStreamingToolCalls(
   const protocol = hermesProtocol();
   return protocol
     .parseGeneratedText({ text, tools })
-    .filter((c) => c.type === "tool-call")
-    .map((c) => normalize((c as { input: string }).input, c.toolName));
+    .filter(
+      (part): part is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
+        part.type === "tool-call"
+    )
+    .map((part) => normalize(part.input, part.toolName));
 }
 
 async function streamingToolCalls(
   text: string,
   tools: LanguageModelV4FunctionTool[]
 ): Promise<NormalizedToolCall[]> {
-  const protocol = hermesProtocol();
-  const transformer = protocol.createStreamParser({ tools });
-  const rs = new ReadableStream<LanguageModelV4StreamPart>({
-    start(ctrl) {
-      ctrl.enqueue({ type: "text-delta", id: "1", delta: text });
-      ctrl.enqueue({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-      });
-      ctrl.close();
-    },
+  const out = await runProtocolTextStream({
+    chunks: [text],
+    id: "1",
+    protocol: hermesProtocol(),
+    tools,
   });
-  const out = await convertReadableStreamToArray(
-    pipeWithTransformer(rs, transformer)
-  );
   return out
-    .filter((c) => c.type === "tool-call")
-    .map((c) => normalize((c as { input: string }).input, c.toolName));
+    .filter((part) => part.type === "tool-call")
+    .map((part) => normalize(part.input, part.toolName));
 }
 
-const writeTool = makeTool("write", {
+const writeTool = createObjectTool("write", {
   path: { type: "string" },
   content: { type: "string" },
 });
 
-const strictTool = makeTool("search", { query: { type: "string" } }, false);
+const strictTool = createObjectTool(
+  "search",
+  { query: { type: "string" } },
+  false
+);
 
 const cases: Array<{
   name: string;

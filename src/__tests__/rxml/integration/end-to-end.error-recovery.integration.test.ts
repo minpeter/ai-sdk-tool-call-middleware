@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { parseWithoutSchema } from "../../../rxml/core/parser";
+import type { RXMLNode } from "../../../rxml/core/types";
 import { RXMLParseError } from "../../../rxml/errors/types";
+
+const isRXMLNode = (value: RXMLNode | string | undefined): value is RXMLNode =>
+  typeof value === "object";
 
 describe("robust-xml integration", () => {
   describe("error handling and recovery", () => {
@@ -16,11 +20,13 @@ describe("robust-xml integration", () => {
         parseWithoutSchema(invalidXml);
         expect.fail("Should have thrown an error");
       } catch (error) {
+        if (!(error instanceof RXMLParseError)) {
+          throw error;
+        }
         expect(error).toBeInstanceOf(RXMLParseError);
-        const err = error as RXMLParseError;
-        expect(err.message).toContain("Unexpected close tag");
-        expect(err.line).toBeGreaterThan(0);
-        expect(err.column).toBeGreaterThan(0);
+        expect(error.message).toContain("Unexpected close tag");
+        expect(error.line).toBeGreaterThan(0);
+        expect(error.column).toBeGreaterThan(0);
       }
     });
 
@@ -38,13 +44,20 @@ describe("robust-xml integration", () => {
       const result = parseWithoutSchema(edgeCaseXml);
       expect(result).toHaveLength(1);
 
-      const root = result[0] as any;
+      const [root] = result;
+      if (!isRXMLNode(root)) {
+        expect.fail("root was not an XML node");
+      }
       expect(root.tagName).toBe("root");
       expect(root.children).toHaveLength(5);
 
       const cdataNode = root.children.find(
-        (child: any) => child.tagName === "with_cdata"
+        (child): child is RXMLNode =>
+          isRXMLNode(child) && child.tagName === "with_cdata"
       );
+      if (!cdataNode) {
+        expect.fail("with_cdata node was not found");
+      }
       expect(cdataNode.children[0]).toBe("<script>alert('test')</script>");
     });
 
@@ -57,10 +70,18 @@ describe("robust-xml integration", () => {
       const result = parseWithoutSchema(largeXml);
       expect(result).toHaveLength(1);
 
-      const root = result[0] as any;
+      const [root] = result;
+      if (!isRXMLNode(root)) {
+        expect.fail("root was not an XML node");
+      }
+      const [firstChild] = root.children;
+      const lastChild = root.children.at(-1);
+      if (!(isRXMLNode(firstChild) && isRXMLNode(lastChild))) {
+        expect.fail("root children were not XML nodes");
+      }
       expect(root.children).toHaveLength(1000);
-      expect(root.children[0].attributes.id).toBe("0");
-      expect(root.children[999].attributes.id).toBe("999");
+      expect(firstChild.attributes.id).toBe("0");
+      expect(lastChild.attributes.id).toBe("999");
     });
   });
 });

@@ -2,15 +2,16 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 import type { ParserOptions } from "../../../../core/protocols/protocol-interface";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { stopFinishReason, zeroUsage } from "../../../test-helpers";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  collectProtocolStream,
+  collectTextDeltas,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
 
 const tools: LanguageModelV4FunctionTool[] = [
   {
@@ -39,34 +40,18 @@ const finishPart = {
 
 function parseParts(
   parts: readonly LanguageModelV4StreamPart[],
-  options?: ParserOptions
+  parserOptions?: ParserOptions
 ): Promise<LanguageModelV4StreamPart[]> {
-  const stream = new ReadableStream<LanguageModelV4StreamPart>({
-    start(controller) {
-      for (const part of parts) {
-        controller.enqueue(part);
-      }
-      controller.close();
-    },
+  return collectProtocolStream({
+    parts,
+    protocol: qwen3CoderProtocol(),
+    tools,
+    parserOptions,
   });
-  return convertReadableStreamToArray(
-    pipeWithTransformer(
-      stream,
-      qwen3CoderProtocol().createStreamParser({ tools, options })
-    )
-  );
 }
 
-function textOf(parts: readonly LanguageModelV4StreamPart[]): string {
-  return parts
-    .filter((part) => part.type === "text-delta")
-    .map((part) => part.delta)
-    .join("");
-}
-
-function callsOf(parts: readonly LanguageModelV4StreamPart[]) {
-  return parts.filter((part) => part.type === "tool-call");
-}
+const textOf = collectTextDeltas;
+const callsOf = selectToolCalls;
 
 describe("qwen3CoderProtocol stream parser lifecycle coverage", () => {
   it("preserves raw and non-text events while dropping provider text envelopes", async () => {
@@ -92,6 +77,40 @@ describe("qwen3CoderProtocol stream parser lifecycle coverage", () => {
       output.findIndex((part) => part.type === "text-delta")
     );
     expect(textOf(output)).toBe("<tool_ca");
+    expect(output.at(-1)).toEqual(finishPart);
+  });
+
+  it("emits the complete lifecycle for a salvaged JSON call", async () => {
+    const input =
+      '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul"}}';
+
+    const output = await parseParts([
+      { type: "text-delta", id: "1", delta: input },
+      finishPart,
+    ]);
+    const [call] = callsOf(output);
+    if (call === undefined) {
+      throw new TypeError("Expected a salvaged tool call");
+    }
+    const timeline = selectToolInputTimeline(output);
+
+    expect(timeline.starts).toEqual([
+      {
+        type: "tool-input-start",
+        id: call.toolCallId,
+        toolName: "get_weather",
+      },
+    ]);
+    expect(timeline.deltas).toEqual([
+      {
+        type: "tool-input-delta",
+        id: call.toolCallId,
+        delta: '{"city":"Seoul"}',
+      },
+    ]);
+    expect(timeline.ends).toEqual([
+      { type: "tool-input-end", id: call.toolCallId },
+    ]);
     expect(output.at(-1)).toEqual(finishPart);
   });
 
@@ -221,53 +240,45 @@ describe("qwen3CoderProtocol stream parser lifecycle coverage", () => {
     );
   });
 
-  it("finishes a deferred explicit call while handling finish", async () => {
-    // Given
-    const content = "x".repeat(5000);
+  for (const scenario of [
+    {
+      name: "finishes a deferred explicit call while handling finish",
+      prefix: "<tool_call>",
+      suffix: "</tool_call>",
+    },
+    {
+      name: "finishes a deferred implicit call without trailing remainder",
+      prefix: "",
+      suffix: "",
+    },
+  ] satisfies readonly { name: string; prefix: string; suffix: string }[]) {
+    it(scenario.name, async () => {
+      const { prefix, suffix } = scenario;
+      // Given
+      const content = "x".repeat(5000);
 
-    // When
-    const output = await parseParts([
-      {
-        type: "text-delta",
-        id: "1",
-        delta: `<tool_call><function=write_file><parameter=content>${content}`,
-      },
-      {
-        type: "text-delta",
-        id: "1",
-        delta: "</parameter>< / function ></tool_call>",
-      },
-      finishPart,
-    ]);
+      // When
+      const output = await parseParts([
+        {
+          type: "text-delta",
+          id: "1",
+          delta: `${prefix}<function=write_file><parameter=content>${content}`,
+        },
+        {
+          type: "text-delta",
+          id: "1",
+          delta: `</parameter>< / function >${suffix}`,
+        },
+        finishPart,
+      ]);
 
-    // Then
-    expect(callsOf(output)).toHaveLength(1);
-    expect(JSON.parse(callsOf(output)[0]?.input ?? "{}")).toEqual({ content });
-  });
-
-  it("finishes a deferred implicit call without trailing remainder", async () => {
-    // Given
-    const content = "x".repeat(5000);
-
-    // When
-    const output = await parseParts([
-      {
-        type: "text-delta",
-        id: "1",
-        delta: `<function=write_file><parameter=content>${content}`,
-      },
-      {
-        type: "text-delta",
-        id: "1",
-        delta: "</parameter>< / function >",
-      },
-      finishPart,
-    ]);
-
-    // Then
-    expect(callsOf(output)).toHaveLength(1);
-    expect(JSON.parse(callsOf(output)[0]?.input ?? "{}")).toEqual({ content });
-  });
+      // Then
+      expect(callsOf(output)).toHaveLength(1);
+      expect(JSON.parse(callsOf(output)[0]?.input ?? "{}")).toEqual({
+        content,
+      });
+    });
+  }
 
   it("finishes deferred implicit and explicit calls at the finish boundary", async () => {
     // Given

@@ -11,6 +11,7 @@ import { getDeclaredPropertySchema } from "./tool-call-object-property-schema";
 import {
   collectPatternPropertyNames,
   hasDeclaredPatternProperties,
+  isRxmlRecord,
   unsafeFalsePatternMayMatchKey,
 } from "./tool-call-pattern-properties";
 import {
@@ -20,18 +21,6 @@ import {
 import { selectSchemaVariant } from "./tool-call-schema-variant";
 
 const SELECTIVE_JSON_SCHEMA_COMBINATORS = ["anyOf", "oneOf"] as const;
-
-function isToolInputSchema(
-  schema: ToolInputSchemaDefinition | undefined
-): schema is ToolInputSchema {
-  return typeof schema === "object" && isSchemaRecord(schema);
-}
-
-function isRxmlRecord(
-  value: RxmlValue
-): value is Readonly<Record<string, RxmlValue>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function unwrapToolCallSchema(
   schema: ToolInputSchemaDefinition
@@ -83,9 +72,7 @@ function hasStrictAdditionalProperties(
   schema: ToolInputSchemaDefinition
 ): boolean {
   const unwrapped = unwrapToolCallSchema(schema);
-  return (
-    isToolInputSchema(unwrapped) && unwrapped.additionalProperties === false
-  );
+  return isSchemaRecord(unwrapped) && unwrapped.additionalProperties === false;
 }
 
 function collectAllOfDeclaredPropertyNames(
@@ -123,7 +110,7 @@ function collectStrictAllOfDeniedPropertyNames(
   }
   for (const variant of schema.allOf) {
     const unwrapped = unwrapToolCallSchema(variant);
-    if (!isToolInputSchema(unwrapped) || seen.has(unwrapped)) {
+    if (!isSchemaRecord(unwrapped) || seen.has(unwrapped)) {
       continue;
     }
     const nextSeen = new Set(seen);
@@ -177,7 +164,7 @@ function collectDeclaredToolInputPropertyNames(
   seen: Set<object>
 ): Set<string> | null {
   const unwrapped = unwrapToolCallSchema(schema);
-  if (!isToolInputSchema(unwrapped) || seen.has(unwrapped)) {
+  if (!isSchemaRecord(unwrapped) || seen.has(unwrapped)) {
     return null;
   }
   seen.add(unwrapped);
@@ -215,7 +202,7 @@ function collectDeclaredToolInputPropertyNames(
   }
   if (
     (unwrapped.additionalProperties === true ||
-      isToolInputSchema(unwrapped.additionalProperties)) &&
+      isSchemaRecord(unwrapped.additionalProperties)) &&
     isRxmlRecord(value)
   ) {
     for (const key of Object.keys(value)) {

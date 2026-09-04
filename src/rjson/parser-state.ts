@@ -31,8 +31,16 @@
   Follows the license of the original code.
 */
 
+import type { JSONObject, JSONValue } from "@ai-sdk/provider";
+
 import type { Token, TokenType } from "./lexer";
-import type { ParseState, ParseWarning } from "./parser-types";
+import type { ParseState } from "./parser-types";
+
+export function hasValue<Value>(
+  value: Value
+): value is Exclude<Value, undefined> {
+  return value !== undefined;
+}
 
 export function popToken(tokens: Token[], state: ParseState): Token {
   const token = tokens[state.pos];
@@ -79,9 +87,7 @@ export function skipColon(tokens: Token[], state: ParseState): void {
       // This allows the parser to potentially recover
       state.pos -= 1;
     } else {
-      const err = new SyntaxError(message);
-      (err as { line?: number }).line = colon.line;
-      throw err;
+      throw Object.assign(new SyntaxError(message), { line: colon.line });
     }
   }
 }
@@ -121,9 +127,7 @@ export function skipPunctuation(
         token = popToken(tokens, state); // Continue skipping
       } else {
         // In strict mode, throw an error
-        const err = new SyntaxError(message);
-        (err as { line?: number }).line = token.line;
-        throw err;
+        throw Object.assign(new SyntaxError(message), { line: token.line });
       }
     } else {
       // If it's not punctuation, EOF, or a specifically valid token,
@@ -146,9 +150,7 @@ export function raiseError(
       line: token.line,
     });
   } else {
-    const err = new SyntaxError(message);
-    (err as { line?: number }).line = token.line;
-    throw err;
+    throw Object.assign(new SyntaxError(message), { line: token.line });
   }
 }
 
@@ -172,7 +174,7 @@ export function raiseUnexpected(
 // :: parseState -> {} -> parseToken -> undefined
 export function checkDuplicates(
   state: ParseState,
-  obj: { [key: string]: unknown },
+  obj: JSONObject,
   token: Token
 ): void {
   // We assume token.type is 'string' here based on where it's called in parsePair
@@ -189,9 +191,9 @@ export function checkDuplicates(
 }
 
 function defineObjectProperty(
-  obj: Record<string, unknown>,
+  obj: JSONObject,
   propertyKey: string,
-  value: unknown
+  value: JSONValue
 ): void {
   Object.defineProperty(obj, propertyKey, {
     configurable: true,
@@ -201,19 +203,14 @@ function defineObjectProperty(
   });
 }
 
-// Appends a key-value pair to an object, applying the reviver function if present
-// :: parseState -> any -> any -> any -> undefined
+// Appends the raw final value for a key. Revivers run after parsing completes.
 export function appendPair(
-  state: ParseState,
-  obj: { [objKey: string]: unknown },
+  obj: JSONObject,
   key: string,
-  value: unknown
+  value: JSONValue | undefined
 ): void {
-  // Apply reviver function if it exists
-  const finalValue = state.reviver ? state.reviver(key, value) : value;
-  // The reviver can return undefined to omit the key/value pair
-  if (finalValue !== undefined) {
-    defineObjectProperty(obj, key, finalValue);
+  if (hasValue(value)) {
+    defineObjectProperty(obj, key, value);
   }
 }
 
@@ -222,7 +219,7 @@ export function appendPair(
 export function endChecks(
   tokens: Token[],
   state: ParseState,
-  ret: unknown
+  ret: JSONValue | undefined
 ): void {
   // Check if there are unparsed tokens remaining
   if (state.pos < tokens.length) {
@@ -246,16 +243,11 @@ export function endChecks(
       state.warnings.length === 1
         ? state.warnings[0].message // Single warning message
         : `${state.warnings.length} parse warnings`; // Multiple warnings summary
-    const err = new SyntaxError(message);
-    // Attach details to the error object
-    (err as { line?: number; warnings?: ParseWarning[]; obj?: unknown }).line =
-      state.warnings[0].line; // Line of the first warning
-    (
-      err as { line?: number; warnings?: ParseWarning[]; obj?: unknown }
-    ).warnings = state.warnings; // Array of all warnings
-    (err as { line?: number; warnings?: ParseWarning[]; obj?: unknown }).obj =
-      ret; // The partially parsed object (might be useful)
-    throw err;
+    throw Object.assign(new SyntaxError(message), {
+      line: state.warnings[0].line,
+      obj: ret,
+      warnings: state.warnings,
+    });
   }
 }
 

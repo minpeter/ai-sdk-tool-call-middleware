@@ -2,45 +2,55 @@ import { describe, expect, it, vi } from "vitest";
 import { glm5Protocol } from "../../../core/protocols/glm5-protocol";
 import { glm5Tools, normalizeContentToolCalls, toolCallInput } from "./shared";
 
+function assertMalformedGeneratedCall(
+  text: string,
+  assertNoSegments = false
+): void {
+  const onError = vi.fn();
+  const protocol = glm5Protocol();
+  const output = protocol.parseGeneratedText({
+    text,
+    tools: glm5Tools,
+    options: { onError },
+  });
+  expect(normalizeContentToolCalls(output)).toEqual([]);
+  if (assertNoSegments) {
+    expect(
+      protocol.extractToolCallSegments?.({ text, tools: glm5Tools })
+    ).toEqual([]);
+  }
+  expect(onError).toHaveBeenCalledWith(
+    "Could not parse GLM-5.2 tool call.",
+    expect.objectContaining({ dropReason: "malformed-glm5-tool-call" })
+  );
+}
+
+function assertLiteralStringCall(message: string): void {
+  const output = glm5Protocol().parseGeneratedText({
+    text: `<tool_call>echo<arg_key>message</arg_key><arg_value>${message}</arg_value></tool_call>`,
+    tools: glm5Tools,
+  });
+  expect(toolCallInput(output)).toEqual({ message });
+  expect(output.filter((part) => part.type === "text")).toEqual([]);
+}
+
 describe("parse-generated-text.test split 3", () => {
   it("rejects a duplicate argument instead of selecting either value", () => {
-    const onError = vi.fn();
-    const output = glm5Protocol().parseGeneratedText({
-      text: [
+    assertMalformedGeneratedCall(
+      [
         "<tool_call>echo",
         "<arg_key>message</arg_key><arg_value>first</arg_value>",
         "<arg_key>message</arg_key><arg_value>second</arg_value>",
         "</tool_call>",
-      ].join(""),
-      tools: glm5Tools,
-      options: { onError },
-    });
-
-    expect(normalizeContentToolCalls(output)).toEqual([]);
-    expect(onError).toHaveBeenCalledWith(
-      "Could not parse GLM-5.2 tool call.",
-      expect.objectContaining({
-        dropReason: "malformed-glm5-tool-call",
-      })
+      ].join("")
     );
   });
 
   it.each(["__proto__", "prototype", "constructor"])(
     "rejects the entire call containing prototype-sensitive key %s",
     (key) => {
-      const onError = vi.fn();
-      const output = glm5Protocol().parseGeneratedText({
-        text: `<tool_call>open_action<arg_key>${key}</arg_key><arg_value>unsafe</arg_value></tool_call>`,
-        tools: glm5Tools,
-        options: { onError },
-      });
-
-      expect(normalizeContentToolCalls(output)).toEqual([]);
-      expect(onError).toHaveBeenCalledWith(
-        "Could not parse GLM-5.2 tool call.",
-        expect.objectContaining({
-          dropReason: "malformed-glm5-tool-call",
-        })
+      assertMalformedGeneratedCall(
+        `<tool_call>open_action<arg_key>${key}</arg_key><arg_value>unsafe</arg_value></tool_call>`
       );
       expect(Object.prototype).not.toHaveProperty("polluted");
     }
@@ -54,48 +64,20 @@ describe("parse-generated-text.test split 3", () => {
   ])(
     "rejects closed-schema prototype-sensitive key spelling %s instead of dropping it as unknown",
     (key) => {
-      const onError = vi.fn();
       const text = `<tool_call>echo<arg_key>${key}</arg_key><arg_value>{}</arg_value></tool_call>`;
-      const protocol = glm5Protocol();
-      const output = protocol.parseGeneratedText({
-        text,
-        tools: glm5Tools,
-        options: { onError },
-      });
-
-      expect(normalizeContentToolCalls(output)).toEqual([]);
-      expect(
-        protocol.extractToolCallSegments?.({ text, tools: glm5Tools })
-      ).toEqual([]);
-      expect(onError).toHaveBeenCalledWith(
-        "Could not parse GLM-5.2 tool call.",
-        expect.objectContaining({
-          dropReason: "malformed-glm5-tool-call",
-        })
-      );
+      assertMalformedGeneratedCall(text, true);
       expect(Object.prototype).not.toHaveProperty("polluted");
     }
   );
 
   it("rejects a call whose structured value contains a prototype-sensitive key", () => {
-    const onError = vi.fn();
-    const output = glm5Protocol().parseGeneratedText({
-      text: [
+    assertMalformedGeneratedCall(
+      [
         "<tool_call>typed_action",
         "<arg_key>config</arg_key>",
         '<arg_value>{"__proto__":{"polluted":true}}</arg_value>',
         "</tool_call>",
-      ].join(""),
-      tools: glm5Tools,
-      options: { onError },
-    });
-
-    expect(normalizeContentToolCalls(output)).toEqual([]);
-    expect(onError).toHaveBeenCalledWith(
-      "Could not parse GLM-5.2 tool call.",
-      expect.objectContaining({
-        dropReason: "malformed-glm5-tool-call",
-      })
+      ].join("")
     );
     expect(Object.prototype).not.toHaveProperty("polluted");
   });
@@ -186,13 +168,7 @@ describe("parse-generated-text.test split 3", () => {
 
   it("does not terminate a call at a raw </tool_call> inside a string value", () => {
     const message = "before </tool_call> literal after";
-    const output = glm5Protocol().parseGeneratedText({
-      text: `<tool_call>echo<arg_key>message</arg_key><arg_value>${message}</arg_value></tool_call>`,
-      tools: glm5Tools,
-    });
-
-    expect(toolCallInput(output)).toEqual({ message });
-    expect(output.filter((part) => part.type === "text")).toEqual([]);
+    assertLiteralStringCall(message);
   });
 
   it.each([
@@ -202,13 +178,7 @@ describe("parse-generated-text.test split 3", () => {
   ])(
     "does not confuse a raw opening tool marker with a nested call: %s",
     (message) => {
-      const output = glm5Protocol().parseGeneratedText({
-        text: `<tool_call>echo<arg_key>message</arg_key><arg_value>${message}</arg_value></tool_call>`,
-        tools: glm5Tools,
-      });
-
-      expect(toolCallInput(output)).toEqual({ message });
-      expect(output.filter((part) => part.type === "text")).toEqual([]);
+      assertLiteralStringCall(message);
     }
   );
 

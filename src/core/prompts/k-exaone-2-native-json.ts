@@ -1,9 +1,6 @@
-import type { JSONObject, JSONValue } from "@ai-sdk/provider";
-import {
-  decodeKExaone2HistoryKey,
-  isKExaone2HistoryNumber,
-} from "./k-exaone-2-lossless-json";
-import type { KExaone2HistoryNumber } from "./k-exaone-2-lossless-json-tokens";
+import type { JSONValue } from "@ai-sdk/provider";
+import { decodeKExaone2HistoryKey } from "./k-exaone-2-lossless-json";
+import { KExaone2HistoryNumber } from "./k-exaone-2-lossless-json-tokens";
 import {
   K_EXAONE_2_MAX_NESTING_DEPTH,
   K_EXAONE_2_MAX_SERIALIZATION_WORK_ITEMS,
@@ -22,7 +19,17 @@ const SIGNED_64_BIT_LOWER_BOUND = -(2 ** 63);
 const UNSIGNED_64_BIT_LIMIT = 2 ** 64;
 
 type JsonContext = "history" | "schema";
-type KExaone2Value = JSONValue | KExaone2HistoryNumber;
+export type KExaone2Value =
+  | null
+  | string
+  | number
+  | boolean
+  | KExaone2HistoryNumber
+  | readonly KExaone2Value[]
+  | { readonly [key: string]: KExaone2Value | undefined };
+interface KExaone2Object {
+  readonly [key: string]: KExaone2Value | undefined;
+}
 type SerializationTask =
   | {
       readonly kind: "value";
@@ -32,22 +39,32 @@ type SerializationTask =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "leave"; readonly container: object };
 
-function isMapping(value: KExaone2Value | undefined): value is JSONObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isKExaone2Array(
+  value: KExaone2Value | undefined
+): value is readonly KExaone2Value[] {
+  return Array.isArray(value);
+}
+
+function isMapping(value: KExaone2Value | undefined): value is KExaone2Object {
+  return typeof value === "object" && value !== null && !isKExaone2Array(value);
 }
 
 function compareByCodePoint(left: string, right: string): number {
-  const leftCharacters = Array.from(left);
-  const rightCharacters = Array.from(right);
-  const length = Math.min(leftCharacters.length, rightCharacters.length);
+  const leftCodePoints = Array.from(left, (character) =>
+    Number(character.codePointAt(0))
+  );
+  const rightCodePoints = Array.from(right, (character) =>
+    Number(character.codePointAt(0))
+  );
+  const length = Math.min(leftCodePoints.length, rightCodePoints.length);
   for (let index = 0; index < length; index += 1) {
-    const leftCodePoint = leftCharacters[index]?.codePointAt(0) ?? -1;
-    const rightCodePoint = rightCharacters[index]?.codePointAt(0) ?? -1;
-    if (leftCodePoint !== rightCodePoint) {
-      return leftCodePoint - rightCodePoint;
+    const difference =
+      Number(leftCodePoints[index]) - Number(rightCodePoints[index]);
+    if (difference !== 0) {
+      return difference;
     }
   }
-  return leftCharacters.length - rightCharacters.length;
+  return leftCodePoints.length - rightCodePoints.length;
 }
 
 function stringifyPythonExponent(value: number): string {
@@ -121,18 +138,18 @@ interface ContainerTaskOptions {
   readonly depth: number;
   readonly remainingValues: number;
   readonly tasks: SerializationTask[];
-  readonly value: JSONObject | JSONValue[];
+  readonly value: KExaone2Object | readonly KExaone2Value[];
 }
 
 function pushArrayTasks(
-  options: ContainerTaskOptions & { readonly value: JSONValue[] }
+  options: ContainerTaskOptions & { readonly value: readonly KExaone2Value[] }
 ): number {
   const { tasks, value, depth, remainingValues } = options;
   const { length } = value;
   if (length > remainingValues) {
     throw new KExaone2SerializationError("size");
   }
-  const values: JSONValue[] = [];
+  const values: Array<KExaone2Value | undefined> = [];
   for (let index = 0; index < length; index += 1) {
     values.push(value[index]);
   }
@@ -148,14 +165,14 @@ function pushArrayTasks(
 }
 
 function pushObjectTasks(
-  options: ContainerTaskOptions & { readonly value: JSONObject }
+  options: ContainerTaskOptions & { readonly value: KExaone2Object }
 ): number {
   const { tasks, value, depth, context, remainingValues } = options;
   const objectKeys = Object.keys(value);
   if (objectKeys.length > remainingValues) {
     throw new KExaone2SerializationError("size");
   }
-  const entries: Array<readonly [string, JSONValue]> = [];
+  const entries: Array<readonly [string, KExaone2Value]> = [];
   for (const key of objectKeys) {
     const property = value[key];
     if (
@@ -173,15 +190,11 @@ function pushObjectTasks(
   }
 
   tasks.push({ kind: "text", text: "}" });
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (entry === undefined) {
-      continue;
-    }
-    const [key, property] = entry;
+  entries.reverse();
+  for (const [index, [key, property]] of entries.entries()) {
     tasks.push({ kind: "value", value: property, depth: depth + 1 });
     tasks.push({ kind: "text", text: `${JSON.stringify(key)}: ` });
-    if (index > 0) {
+    if (index < entries.length - 1) {
       tasks.push({ kind: "text", text: ", " });
     }
   }
@@ -192,7 +205,7 @@ function pushObjectTasks(
 function pushContainerTasks(options: ContainerTaskOptions): number {
   const { tasks, value } = options;
   tasks.push({ kind: "leave", container: value });
-  return Array.isArray(value)
+  return isKExaone2Array(value)
     ? pushArrayTasks({ ...options, value })
     : pushObjectTasks({ ...options, value });
 }
@@ -212,12 +225,7 @@ function stringifyWithContext(
   const tasks: SerializationTask[] = [{ kind: "value", value, depth: 0 }];
   let scheduledWorkItems = 1;
 
-  while (tasks.length > 0) {
-    const task = tasks.pop();
-    if (task === undefined) {
-      continue;
-    }
-
+  for (let task = tasks.pop(); task !== undefined; task = tasks.pop()) {
     if (task.kind === "text") {
       chunks.push(task.text);
       continue;
@@ -228,11 +236,15 @@ function stringifyWithContext(
     }
 
     const { value: currentValue } = task;
-    if (context === "history" && isKExaone2HistoryNumber(currentValue)) {
+    if (
+      context === "history" &&
+      currentValue !== undefined &&
+      currentValue instanceof KExaone2HistoryNumber
+    ) {
       chunks.push(stringifyLosslessHistoryNumber(currentValue));
       continue;
     }
-    if (Array.isArray(currentValue) || isMapping(currentValue)) {
+    if (isKExaone2Array(currentValue) || isMapping(currentValue)) {
       if (task.depth >= K_EXAONE_2_MAX_NESTING_DEPTH) {
         throw new KExaone2SerializationError("depth");
       }

@@ -1,3 +1,4 @@
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -11,11 +12,14 @@ describe("morphXmlProtocol parseGeneratedText without onError", () => {
     const p = morphXmlProtocol();
     // Use malformed XML that will cause parsing to fail
     const text = "<a><x>1</x>"; // Missing closing </a> tag
-    const result = p.parseGeneratedText({
-      text,
-      tools: [{ name: "a" } as any] as any,
-      options: undefined as any,
-    });
+    const tools: LanguageModelV4FunctionTool[] = [
+      {
+        type: "function",
+        name: "a",
+        inputSchema: { type: "object" },
+      },
+    ];
+    const result = p.parseGeneratedText({ text, tools, options: undefined });
 
     expect(warnSpy).not.toHaveBeenCalled();
     expect(result).toEqual([{ type: "text", text }]);

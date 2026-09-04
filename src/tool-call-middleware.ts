@@ -1,17 +1,12 @@
 import type {
   LanguageModelV4CallOptions,
-  LanguageModelV4FunctionTool,
   LanguageModelV4Middleware,
 } from "@ai-sdk/provider";
-import type { ToolResultPart } from "@ai-sdk/provider-utils";
-import type { ToolResponsePromptTemplateResult } from "./core/prompts/shared/tool-role-to-user-message";
-import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
-import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
+import { isProtocolFactory } from "./core/protocols/protocol-interface";
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
 import { wrapStream as wrapStreamHandler } from "./stream-handler";
 import {
-  type ToolCallHistoryMode,
-  type ToolSystemPromptPlacement,
+  type ToolCallTransformSettings,
   transformParams,
 } from "./transform-handler";
 
@@ -22,25 +17,8 @@ export function createToolMiddleware({
   placement = "last",
   historyMode = "converted-text",
   suppressToolSystemPromptForForcedChoice = false,
-}: {
-  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
-  toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
-  toolResponsePromptTemplate?: (
-    toolResult: ToolResultPart
-  ) => ToolResponsePromptTemplateResult;
-  placement?: ToolSystemPromptPlacement;
-  historyMode?: ToolCallHistoryMode;
-  /**
-   * Omit the protocol-specific tool catalog when `toolChoice` is `required` or
-   * selects a fixed tool. The forced-choice handlers request JSON through
-   * `responseFormat`, so protocols that instruct a different output grammar
-   * can opt out of issuing contradictory system instructions.
-   */
-  suppressToolSystemPromptForForcedChoice?: boolean;
-}): LanguageModelV4Middleware {
-  const resolvedProtocol = isTCMProtocolFactory(protocol)
-    ? protocol()
-    : protocol;
+}: ToolCallTransformSettings): LanguageModelV4Middleware {
+  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
   return {
     specificationVersion: "v4",

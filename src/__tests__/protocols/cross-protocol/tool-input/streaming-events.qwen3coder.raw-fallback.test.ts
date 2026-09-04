@@ -1,7 +1,21 @@
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
-import { runProtocolTextDeltaStream } from "./streaming-events.shared";
+import {
+  collectTextDeltas,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
+
+function expectNoToolEvents(parts: readonly LanguageModelV4StreamPart[]): void {
+  const { starts, deltas, ends } = selectToolInputTimeline(parts);
+  expect(selectToolCalls(parts)).toHaveLength(0);
+  expect(starts).toHaveLength(0);
+  expect(deltas).toHaveLength(0);
+  expect(ends).toHaveLength(0);
+}
 
 describe("cross-protocol tool-input streaming events: qwen3coder", () => {
   const protocol = qwen3CoderProtocol();
@@ -10,11 +24,12 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     chunks: string[],
     emitRawToolCallTextOnError = false
   ) {
-    return runProtocolTextDeltaStream({
+    return runProtocolTextStream({
+      chunks,
+      id: "fixture",
+      parserOptions: { emitRawToolCallTextOnError },
       protocol,
       tools: [],
-      chunks,
-      options: { emitRawToolCallTextOnError },
     });
   }
 
@@ -23,15 +38,9 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
       "<tool_call><function><parameter=x>1</parameter></tool_call>AFTER",
     ]);
 
-    const textOut = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const textOut = collectTextDeltas(out);
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-start")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expectNoToolEvents(out);
     expect(textOut).toContain("AFTER");
     expect(textOut).not.toContain("<tool_call>");
   });
@@ -41,15 +50,9 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
       "<tool_call><function><parameter=x>1</parameter></tool_call>AFTER";
     const out = await runQwenRawFallbackStream([input], true);
 
-    const textOut = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const textOut = collectTextDeltas(out);
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-start")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expectNoToolEvents(out);
     expect(textOut).toBe(input);
   });
 
@@ -59,15 +62,9 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
       true
     );
 
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const leakedText = collectTextDeltas(out);
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-start")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expectNoToolEvents(out);
     expect(leakedText).toContain("<tool_call");
     expect(leakedText).toContain("<function=get_weather");
   });
@@ -82,15 +79,9 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
       true
     );
 
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const leakedText = collectTextDeltas(out);
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-start")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expectNoToolEvents(out);
     expect(leakedText).toContain("before ");
     expect(leakedText).toContain(
       "<tool_call><parameter=x>1</parameter></tool_call>"
@@ -104,25 +95,20 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
       true
     );
 
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const leakedText = collectTextDeltas(out);
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-start")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expectNoToolEvents(out);
     expect(leakedText).toContain("<function><parameter=x>1</parameter>");
   });
 
   it("Qwen3CoderToolParser reports structured drop metadata for unfinished named tool_call at finish", async () => {
     const onError = vi.fn();
-    await runProtocolTextDeltaStream({
+    await runProtocolTextStream({
+      chunks: ["<tool_call><function=get_weather"],
+      id: "fixture",
+      parserOptions: { onError },
       protocol,
       tools: [],
-      chunks: ["<tool_call><function=get_weather"],
-      options: { onError },
     });
 
     expect(onError).toHaveBeenCalledTimes(1);
@@ -141,12 +127,9 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
       "<tool_call><function=get_weather",
     ]);
 
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const leakedText = collectTextDeltas(out);
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expect(selectToolCalls(out)).toHaveLength(0);
     expect(leakedText).not.toContain("<tool_call");
   });
 });

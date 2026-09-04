@@ -1,5 +1,4 @@
 import type {
-  JSONObject,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
@@ -10,6 +9,10 @@ import { morphXmlProtocol } from "../../../core/protocols/morph-xml-protocol";
 import type { TCMCoreProtocol } from "../../../core/protocols/protocol-interface";
 import { qwen3CoderProtocol } from "../../../core/protocols/qwen3coder-protocol";
 import { yamlXmlProtocol } from "../../../core/protocols/yaml-xml-protocol";
+import {
+  parseToolCallObject,
+  runGeneratedJsonRepair,
+} from "../shared/duplicate-harness";
 
 const weatherTools: LanguageModelV4FunctionTool[] = [
   {
@@ -137,6 +140,29 @@ city: Seoul
   </function>
 </tool_call>`,
   },
+];
+
+const sanitizedWeatherCases: readonly (readonly [
+  string,
+  TCMCoreProtocol,
+  string,
+])[] = [
+  ...protocolCases.map(
+    ({ name, protocol, text }) =>
+      [
+        `'${name}' parseGeneratedText drops schema-unknown top-level args and emits the tool call`,
+        protocol,
+        text,
+      ] as const
+  ),
+  ...reorderedArgsProtocolCases.map(
+    ({ name, protocol, text }) =>
+      [
+        `'${name}' parseGeneratedText keeps declared args when optional args precede required args`,
+        protocol,
+        text,
+      ] as const
+  ),
 ];
 
 const emptyPropertiesProtocolCases: readonly ProtocolCase[] = [
@@ -276,52 +302,41 @@ function extractSingleToolCall(
   return call;
 }
 
+function parseSanitizedToolCall(
+  protocol: TCMCoreProtocol,
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+) {
+  const parts = runGeneratedJsonRepair({
+    protocol,
+    text,
+    tools,
+    parserOptions: {},
+  });
+  const toolCall = extractSingleToolCall(parts);
+  return { input: parseToolCallObject(toolCall), toolCall };
+}
+
 describe("cross-protocol tool arg sanitization", () => {
-  it.each(protocolCases)(
-    "$name parseGeneratedText drops schema-unknown top-level args and emits the tool call",
-    ({ protocol, text }) => {
-      const parts = protocol.parseGeneratedText({
-        text,
-        tools: weatherTools,
-        options: {},
-      });
+  it.each(sanitizedWeatherCases)("%s", (_name, protocol, text) => {
+    const { input, toolCall } = parseSanitizedToolCall(
+      protocol,
+      text,
+      weatherTools
+    );
 
-      const toolCall = extractSingleToolCall(parts);
-      const input = JSON.parse(toolCall.input) as JSONObject;
-
-      expect(toolCall.toolName).toBe("get_weather");
-      expect(input).toEqual({ city: "Seoul", unit: "celsius" });
-    }
-  );
-
-  it.each(reorderedArgsProtocolCases)(
-    "$name parseGeneratedText keeps declared args when optional args precede required args",
-    ({ protocol, text }) => {
-      const parts = protocol.parseGeneratedText({
-        text,
-        tools: weatherTools,
-        options: {},
-      });
-
-      const toolCall = extractSingleToolCall(parts);
-      const input = JSON.parse(toolCall.input) as JSONObject;
-
-      expect(toolCall.toolName).toBe("get_weather");
-      expect(input).toEqual({ city: "Seoul", unit: "celsius" });
-    }
-  );
+    expect(toolCall.toolName).toBe("get_weather");
+    expect(input).toEqual({ city: "Seoul", unit: "celsius" });
+  });
 
   it.each(emptyPropertiesProtocolCases)(
     "$name parseGeneratedText drops args for empty properties schemas",
     ({ protocol, text }) => {
-      const parts = protocol.parseGeneratedText({
+      const { input, toolCall } = parseSanitizedToolCall(
+        protocol,
         text,
-        tools: pingTools,
-        options: {},
-      });
-
-      const toolCall = extractSingleToolCall(parts);
-      const input = JSON.parse(toolCall.input) as JSONObject;
+        pingTools
+      );
 
       expect(toolCall.toolName).toBe("ping");
       expect(input).toEqual({});
@@ -331,14 +346,11 @@ describe("cross-protocol tool arg sanitization", () => {
   it.each(patternPropertiesProtocolCases)(
     "$name parseGeneratedText drops non-matching patternProperties-only args",
     ({ protocol, text }) => {
-      const parts = protocol.parseGeneratedText({
+      const { input, toolCall } = parseSanitizedToolCall(
+        protocol,
         text,
-        tools: metadataTools,
-        options: {},
-      });
-
-      const toolCall = extractSingleToolCall(parts);
-      const input = JSON.parse(toolCall.input) as JSONObject;
+        metadataTools
+      );
 
       expect(toolCall.toolName).toBe("metadata");
       expect(input).toEqual({ "x-count": 3 });
@@ -348,14 +360,11 @@ describe("cross-protocol tool arg sanitization", () => {
   it.each(unsafeAdditionalPropertiesProtocolCases)(
     "$name parseGeneratedText preserves safe additionalProperties true args with unsafe false patterns",
     ({ protocol, text }) => {
-      const parts = protocol.parseGeneratedText({
+      const { input, toolCall } = parseSanitizedToolCall(
+        protocol,
         text,
-        tools: unsafeAdditionalPropertiesTools,
-        options: {},
-      });
-
-      const toolCall = extractSingleToolCall(parts);
-      const input = JSON.parse(toolCall.input) as JSONObject;
+        unsafeAdditionalPropertiesTools
+      );
 
       expect(toolCall.toolName).toBe("metadata_extra");
       expect(input).toEqual({ safe: "ok" });

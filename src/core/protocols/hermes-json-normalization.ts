@@ -12,13 +12,11 @@ interface ParsedToolCallRecord extends JSONObject {
   name: string;
 }
 
-export function canonicalizeToolInput(
-  argumentsValue: JSONValue | undefined
-): string {
+function canonicalizeToolInput(argumentsValue: JSONValue | undefined): string {
   return JSON.stringify(argumentsValue ?? {});
 }
 
-export function stringifyParsedToolInput(args: JSONValue | undefined): string {
+function stringifyParsedToolInput(args: JSONValue | undefined): string {
   return args === null ? "null" : canonicalizeToolInput(args);
 }
 

@@ -4,9 +4,15 @@ import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import { stopFinishReason, zeroUsage } from "../../../test-helpers";
 import {
+  parseToolCallObject,
+  requireToolCall,
+} from "../../shared/duplicate-harness";
+import {
   assertCanonicalAiSdkEventOrder,
   assertCoreAiSdkEventCoverage,
+  extractTextDeltas,
   extractToolInputTimeline,
+  findToolCall,
   runProtocolTextDeltaStream,
 } from "./streaming-events.shared";
 
@@ -26,12 +32,7 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     const out = await runHermesJsonStream(fixture.progressiveChunks);
 
     const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      toolName: string;
-      input: string;
-    };
+    const toolCall = findToolCall(out);
 
     expect(starts).toHaveLength(1);
     expect(deltas.length).toBeGreaterThan(0);
@@ -107,11 +108,7 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     await done;
 
     const { starts, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      input: string;
-    };
+    const toolCall = findToolCall(out);
     expect(starts).toHaveLength(1);
     expect(ends).toHaveLength(1);
     expect(toolCall.toolCallId).toBe(starts[0].id);
@@ -121,18 +118,15 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
   it("json protocol force-completes tool input at finish when closing tag is missing", async () => {
     const out = await runHermesJsonStream(fixture.finishReconcileChunks);
 
-    const { starts, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      input: string;
-    };
+    const timeline = extractToolInputTimeline(out);
+    const toolCall = findToolCall(out);
+    const parsed = parseToolCallObject(toolCall);
 
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
     expect(toolCall).toBeTruthy();
-    expect(toolCall.toolCallId).toBe(starts[0].id);
-    expect(JSON.parse(toolCall.input)).toEqual({
+    expect(timeline.starts).toHaveLength(1);
+    expect(toolCall.toolCallId).toBe(timeline.starts[0].id);
+    expect(timeline.ends).toHaveLength(1);
+    expect(parsed).toEqual({
       location: "Busan",
       unit: "celsius",
     });
@@ -144,21 +138,13 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
       "</tool_",
     ]);
 
-    const toolCall = out.find((part) => part.type === "tool-call") as
-      | {
-          type: "tool-call";
-          toolName: string;
-          input: string;
-        }
-      | undefined;
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const toolCall = requireToolCall(out);
+    const leakedText = extractTextDeltas(out);
+    const parsed = parseToolCallObject(toolCall);
 
     expect(toolCall).toBeTruthy();
-    expect(toolCall?.toolName).toBe("get_weather");
-    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({
+    expect(toolCall.toolName).toBe("get_weather");
+    expect(parsed).toEqual({
       location: "Busan",
       unit: "celsius",
     });
@@ -166,45 +152,41 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     expect(leakedText).not.toContain("</tool_");
   });
 
-  it("json protocol rejects streamed arguments:null for object schemas", async () => {
-    const onError = vi.fn();
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
+  const rejectedNullCases = [
+    {
+      name: "json protocol rejects streamed arguments:null for object schemas",
       chunks: [
         '<tool_call>{"name":"get_weather","arguments":null',
         "}</tool_call>",
       ],
-      options: { onError },
-    });
-
-    const { starts, deltas, ends } = extractToolInputTimeline(out);
-    expect(starts).toHaveLength(0);
-    expect(deltas).toHaveLength(0);
-    expect(ends).toHaveLength(0);
-    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
-  });
-
-  it("json protocol rejects split null arguments for object schemas", async () => {
-    const onError = vi.fn();
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
+    },
+    {
+      name: "json protocol rejects split null arguments for object schemas",
       chunks: [
         '<tool_call>{"name":"get_weather","arguments":n',
         "ull}</tool_call>",
       ],
-      options: { onError },
-    });
+    },
+  ];
 
-    const { starts, deltas, ends } = extractToolInputTimeline(out);
-    expect(starts).toHaveLength(0);
-    expect(deltas).toHaveLength(0);
-    expect(ends).toHaveLength(0);
-    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
-    expect(onError).toHaveBeenCalled();
-  });
+  for (const testCase of rejectedNullCases) {
+    it(testCase.name, async () => {
+      const onError = vi.fn();
+      const out = await runProtocolTextDeltaStream({
+        protocol,
+        tools: fixture.tools,
+        chunks: testCase.chunks,
+        options: { onError },
+      });
+
+      const { starts, deltas, ends } = extractToolInputTimeline(out);
+      expect(starts).toHaveLength(0);
+      expect(deltas).toHaveLength(0);
+      expect(ends).toHaveLength(0);
+      expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
+      expect(onError).toHaveBeenCalled();
+    });
+  }
 
   it("json protocol canonicalizes pretty-printed arguments progress before emitting deltas", async () => {
     const out = await runHermesJsonStream([
@@ -213,11 +195,7 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     ]);
 
     const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      input: string;
-    };
+    const toolCall = findToolCall(out);
 
     expect(starts).toHaveLength(1);
     expect(ends).toHaveLength(1);
@@ -234,10 +212,7 @@ describe("cross-protocol tool-input streaming events: hermes json", () => {
     ]);
 
     const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const leakedText = extractTextDeltas(out);
 
     expect(starts).toHaveLength(0);
     expect(ends).toHaveLength(0);

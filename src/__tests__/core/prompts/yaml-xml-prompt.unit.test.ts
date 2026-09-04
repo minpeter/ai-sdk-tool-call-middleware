@@ -1,35 +1,14 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import YAML from "yaml";
 import { yamlXmlSystemPromptTemplate } from "../../../core/prompts/yaml-xml-prompt";
+import {
+  stringInputExampleTool,
+  weatherInputExampleTool,
+} from "./shared/prompt-duplicate-fixtures";
 
 describe("yamlXmlSystemPromptTemplate", () => {
   it("renders Input Examples from tool.inputExamples", () => {
-    const prompt = yamlXmlSystemPromptTemplate([
-      {
-        type: "function",
-        name: "get_weather",
-        description: "Get weather by city",
-        inputSchema: {
-          type: "object",
-          properties: {
-            city: { type: "string" },
-            unit: { type: "string" },
-          },
-          required: ["city"],
-        },
-        inputExamples: [
-          {
-            input: {
-              city: "Seoul",
-              unit: "celsius",
-            },
-          },
-        ],
-      } satisfies LanguageModelV4FunctionTool & {
-        inputExamples: Array<{ input: unknown }>;
-      },
-    ]);
+    const prompt = yamlXmlSystemPromptTemplate([weatherInputExampleTool]);
 
     expect(prompt).toContain("# Input Examples");
     expect(prompt).toContain("Tool: get_weather");
@@ -40,20 +19,7 @@ describe("yamlXmlSystemPromptTemplate", () => {
 
   it("escapes XML special characters in YAML input examples", () => {
     const prompt = yamlXmlSystemPromptTemplate([
-      {
-        type: "function",
-        name: "write_file",
-        inputSchema: {
-          type: "object",
-          properties: {
-            content: { type: "string" },
-          },
-          required: ["content"],
-        },
-        inputExamples: [{ input: { content: "<tag> & value" } }],
-      } satisfies LanguageModelV4FunctionTool & {
-        inputExamples: Array<{ input: unknown }>;
-      },
+      stringInputExampleTool("write_file", "content", "<tag> & value"),
     ]);
 
     expect(prompt).toContain("&lt;tag> &amp; value");
@@ -66,20 +32,7 @@ describe("yamlXmlSystemPromptTemplate", () => {
 
     try {
       const prompt = yamlXmlSystemPromptTemplate([
-        {
-          type: "function",
-          name: "write_file",
-          inputSchema: {
-            type: "object",
-            properties: {
-              content: { type: "string" },
-            },
-            required: ["content"],
-          },
-          inputExamples: [{ input: { content: "x" } }],
-        } satisfies LanguageModelV4FunctionTool & {
-          inputExamples: Array<{ input: unknown }>;
-        },
+        stringInputExampleTool("write_file", "content", "x"),
       ]);
 
       expect(prompt).toContain('{"content":"x"}');
@@ -90,20 +43,7 @@ describe("yamlXmlSystemPromptTemplate", () => {
 
   it("uses safe fallback tag when tool name is not a valid XML tag", () => {
     const prompt = yamlXmlSystemPromptTemplate([
-      {
-        type: "function",
-        name: "1invalid_name",
-        inputSchema: {
-          type: "object",
-          properties: {
-            value: { type: "string" },
-          },
-          required: ["value"],
-        },
-        inputExamples: [{ input: { value: "ok" } }],
-      } satisfies LanguageModelV4FunctionTool & {
-        inputExamples: Array<{ input: unknown }>;
-      },
+      stringInputExampleTool("1invalid_name", "value", "ok"),
     ]);
 
     expect(prompt).toContain("<tool>");

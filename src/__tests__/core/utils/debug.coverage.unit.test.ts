@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProtocolMetadataValue } from "../../../core/protocols/protocol-interface";
 import {
   getDebugLevel,
   logParsedSummary,
@@ -202,8 +203,8 @@ describe("debug utility branch coverage", () => {
     // Given
     process.env.DEBUG_PARSER_MW = "parse";
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const error: Record<string, unknown> = {};
-    error.self = error;
+    const error: ProtocolMetadataValue = {};
+    Object.defineProperty(error, "self", { enumerable: true, value: error });
 
     // When
     logParseFailure({ phase: "stream", reason: "E_PARSE", error });

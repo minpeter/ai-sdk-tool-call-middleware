@@ -33,17 +33,35 @@
 
 import type { Token, TokenType } from "./lexer";
 
-export interface ParseWarning {
-  line: number;
-  message: string;
+interface ParseWarning {
+  readonly line: number;
+  readonly message: string;
 }
 
-// Type for the state object used during parsing
+interface RevivedObject<Extension> {
+  [key: string]: RevivedValue<Extension> | undefined;
+}
+
+type RevivedArray<Extension> = RevivedValue<Extension>[];
+
+export type RevivedValue<Extension> =
+  | null
+  | string
+  | number
+  | boolean
+  | RevivedObject<Extension>
+  | RevivedArray<Extension>
+  | Extension;
+
+export type Reviver<Extension> = (
+  key: string,
+  value: RevivedValue<Extension>
+) => RevivedValue<Extension> | undefined;
+
+// Mutable parser cursor and warning accumulator.
 export interface ParseState {
   duplicate: boolean; // true = allow duplicate keys (use last value), false = reject duplicate keys with error
   pos: number; // Current position in the token array
-  reviver?: (key: string, value: unknown) => unknown; // Optional JSON reviver function
-  // Options passed to the parser
   tolerant: boolean;
   warnings: ParseWarning[];
 }
@@ -51,19 +69,19 @@ export interface ParseState {
 /**
  * Options for configuring JSON parsing behavior
  */
-export interface ParseOptions {
+export interface ParseOptions<Extension = never> {
   /**
    * Allow duplicate object keys in JSON.
    * - true: Allow duplicates (uses last value, like native JSON.parse)
    * - false: Reject duplicates with error (enforces JSON specification)
    * @default false
    */
-  duplicate?: boolean;
+  readonly duplicate?: boolean;
   /**
    * Enable relaxed JSON syntax parsing (unquoted keys, single quotes, trailing commas, comments)
    * @default true
    */
-  relaxed?: boolean;
+  readonly relaxed?: boolean;
 
   /**
    * Optional reviver function to transform parsed values (same as JSON.parse reviver)
@@ -71,29 +89,38 @@ export interface ParseOptions {
    * @param value - The parsed value
    * @returns The transformed value
    */
-  reviver?: (key: string, value: unknown) => unknown;
+  readonly reviver?: Reviver<Extension>;
 
   /**
    * Continue parsing when encountering recoverable errors, collecting warnings.
    * In strict mode (false), throws immediately on first error.
    * @default false
    */
-  tolerant?: boolean;
+  readonly tolerant?: boolean;
 
   /**
    * Collect parsing warnings instead of throwing immediately. Implies tolerant mode.
-   * At the end of parsing, if warnings exist, throws with warning details.
+   * After parsing a value, collected warnings throw with warning details.
    * @default false
    */
-  warnings?: boolean;
+  readonly warnings?: boolean;
 }
+
+export type ParseOptionsWithoutReviver = Omit<ParseOptions, "reviver"> & {
+  readonly reviver?: never;
+};
+
+export type PresentParseOptions<Extension> = ParseOptions<Extension> & {
+  readonly tolerant?: false;
+  readonly warnings?: false;
+};
 
 // Type for options specific to the parseMany function
 export interface ParseManyOpts<T> {
-  elementName: string; // Name of the expected element for error messages
-  elementParser: (tokens: Token[], state: ParseState, obj: T) => void; // Function to parse an element/pair
-  endSymbol: TokenType; // The token type that marks the end of the structure (']' or '}')
-  skip: TokenType[]; // Token types to skip initially
+  readonly elementName: string; // Name of the expected element for error messages
+  readonly elementParser: (tokens: Token[], state: ParseState, obj: T) => void; // Function to parse an element/pair
+  readonly endSymbol: TokenType; // The token type that marks the end of the structure (']' or '}')
+  readonly skip: TokenType[]; // Token types to skip initially
 }
 
 // --- Parser Helper Functions ---

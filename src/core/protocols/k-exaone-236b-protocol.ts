@@ -1,16 +1,17 @@
 import {
   isJSONValue,
   type JSONValue,
+  type LanguageModelV4FunctionTool,
   type LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import { z } from "zod";
 import {
   decodeKExaone2HistoryKey,
-  isKExaone2HistoryNumber,
   parseKExaone2LosslessJson,
 } from "../prompts/k-exaone-2-lossless-json";
 import { KExaone2HistoryNumber } from "../prompts/k-exaone-2-lossless-json-tokens";
 import {
+  type KExaone2Value,
   stringifyKExaone2CompactJson,
   stringifyKExaone2NativeJson,
 } from "../prompts/k-exaone-2-native-json";
@@ -20,17 +21,16 @@ import { normalizeInvalidJsonEscapes } from "./hermes-json-repair";
 import { hermesProtocol } from "./hermes-protocol";
 import { extractStreamingToolCallProgress } from "./hermes-streaming-progress";
 import { parseKExaoneToolCallInput } from "./k-exaone-tool-call-input";
-import type { TCMProtocol } from "./protocol-interface";
+import type {
+  ResolvedProtocolToolCall,
+  TCMProtocol,
+} from "./protocol-interface";
 
 const TRAILING_COMMA_REGEX = /,(\s*[}\]])/g;
 const ARGUMENTS_FIELD_REGEX = /([,{]\s*)(["'])arguments\2\s*:/;
 const PARAMETERS_FIELD_REGEX = /([,{]\s*)(["'])parameters\2\s*:/;
 
-type KExaone236BJsonValue =
-  | JSONValue
-  | KExaone2HistoryNumber
-  | KExaone236BJsonValue[]
-  | { readonly [key: string]: KExaone236BJsonValue };
+type KExaone236BJsonValue = KExaone2Value;
 
 const kExaone236BJsonValueSchema: z.ZodType<KExaone236BJsonValue> = z.lazy(() =>
   z.union([
@@ -106,7 +106,7 @@ function stringifyKExaone236BJson(
       .join(separator)}]`;
   }
   if (typeof value === "object" && value !== null) {
-    if (isKExaone2HistoryNumber(value)) {
+    if (value instanceof KExaone2HistoryNumber) {
       return compact
         ? stringifyKExaone2CompactJson(value)
         : stringifyKExaone2NativeJson(value);
@@ -129,7 +129,10 @@ function overlayLosslessNumbers(
   rawValue: KExaone236BJsonValue | undefined,
   validatedValue: JSONValue | undefined
 ): string {
-  if (isKExaone2HistoryNumber(rawValue) && typeof validatedValue === "number") {
+  if (
+    rawValue instanceof KExaone2HistoryNumber &&
+    typeof validatedValue === "number"
+  ) {
     return stringifyKExaone236BJson(rawValue, true);
   }
   if (Array.isArray(rawValue) && Array.isArray(validatedValue)) {
@@ -172,8 +175,8 @@ function overlayLosslessNumbers(
 
 function resolveKExaone236BToolCall(
   toolCallJson: string,
-  tools: Parameters<typeof resolveToolCall>[1]
-): ReturnType<typeof resolveToolCall> {
+  tools: LanguageModelV4FunctionTool[]
+): ResolvedProtocolToolCall {
   const canonicalToolCallJson = canonicalizeParametersAlias(toolCallJson);
   const normalizedToolCallJson = normalizeRelaxedJsonQuotes(
     normalizeJsonStringCtrl(canonicalToolCallJson)
@@ -228,5 +231,3 @@ export const kExaone236BProtocol = (): TCMProtocol => {
     formatToolCall: formatKExaone236BToolCall,
   };
 };
-
-export const KExaone236BToolParser = kExaone236BProtocol;

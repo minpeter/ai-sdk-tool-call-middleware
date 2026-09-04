@@ -2,6 +2,7 @@ import { isJSONObject, type JSONObject } from "@ai-sdk/provider";
 import {
   isSchemaDefinition,
   isSchemaRecord,
+  type ToolInputSchema,
   type ToolInputSchemaCandidate,
   type ToolInputSchemaDefinition,
 } from "../../schema/tool-input-schema";
@@ -50,53 +51,43 @@ function parseSchema(schema: ToolInputSchemaCandidate): ParsedSchema {
   return isSchemaDefinition(schema) ? schema : undefined;
 }
 
+function isRxmlRecord(
+  value: RxmlValue
+): value is Readonly<Record<string, RxmlValue>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 interface DecodeTraversal {
   readonly decodedContainers: Map<object, RxmlValue>;
   readonly stack: DecodeTask[];
 }
 
 function assignDecoded(task: DecodeTask, value: RxmlValue): void {
-  switch (task.kind) {
-    case "array":
-      task.target[task.key] = value;
-      return;
-    case "object":
-      task.target[task.key] = value;
-      return;
-    default: {
-      const unreachable: never = task;
-      throw new TypeError(`Unhandled decode task: ${String(unreachable)}`);
-    }
+  if (task.kind === "array") {
+    task.target[task.key] = value;
+  } else {
+    task.target[task.key] = value;
   }
 }
 
 function scheduleArrayDecode(
-  task: DecodeTask,
-  traversal: DecodeTraversal
-): boolean {
-  if (!Array.isArray(task.value)) {
-    return false;
-  }
+  task: DecodeTask & { readonly value: readonly RxmlValue[] },
+  traversal: DecodeTraversal,
+  schema: ToolInputSchema
+): void {
   const existing = traversal.decodedContainers.get(task.value);
   if (existing !== undefined) {
     assignDecoded(task, existing);
-    return true;
+    return;
   }
   const output = Array.from<RxmlValue>({ length: task.value.length });
   traversal.decodedContainers.set(task.value, output);
   assignDecoded(task, output);
-  const unwrapped = unwrapJsonSchema(task.schema);
-  const schemaObject =
-    typeof unwrapped === "object" && isSchemaRecord(unwrapped)
-      ? unwrapped
-      : undefined;
   for (let index = task.value.length - 1; index >= 0; index -= 1) {
-    const prefixSchema = schemaObject?.prefixItems?.[index];
+    const prefixSchema = schema.prefixItems?.[index];
     const itemSchema =
       prefixSchema ??
-      (Array.isArray(schemaObject?.items)
-        ? schemaObject.items[index]
-        : schemaObject?.items);
+      (Array.isArray(schema.items) ? schema.items[index] : schema.items);
     traversal.stack.push({
       key: index,
       kind: "array",
@@ -105,35 +96,22 @@ function scheduleArrayDecode(
       value: task.value[index],
     });
   }
-  return true;
 }
 
 function scheduleObjectDecode(
-  task: DecodeTask,
+  task: DecodeTask & { readonly value: Readonly<Record<string, RxmlValue>> },
   traversal: DecodeTraversal
-): boolean {
-  if (
-    typeof task.value !== "object" ||
-    task.value === null ||
-    Array.isArray(task.value)
-  ) {
-    return false;
-  }
+): void {
   const existing = traversal.decodedContainers.get(task.value);
   if (existing !== undefined) {
     assignDecoded(task, existing);
-    return true;
+    return;
   }
   const output: Record<string, RxmlValue> = Object.create(null);
   traversal.decodedContainers.set(task.value, output);
   assignDecoded(task, output);
   const entries = Object.entries(task.value);
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (entry === undefined) {
-      continue;
-    }
-    const [key, value] = entry;
+  for (const [key, value] of entries.reverse()) {
     traversal.stack.push({
       key,
       kind: "object",
@@ -142,9 +120,16 @@ function scheduleObjectDecode(
       value,
     });
   }
-  return true;
 }
 
+function deepDecodeStringsBySchema(
+  input: JSONObject,
+  schema: ParsedSchema
+): JSONObject;
+function deepDecodeStringsBySchema(
+  input: RxmlValue,
+  schema: ParsedSchema
+): RxmlValue;
 function deepDecodeStringsBySchema(
   input: RxmlValue,
   schema: ParsedSchema
@@ -158,10 +143,7 @@ function deepDecodeStringsBySchema(
   };
 
   while (traversal.stack.length > 0) {
-    const task = traversal.stack.pop();
-    if (task === undefined) {
-      break;
-    }
+    const [task] = traversal.stack.splice(-1, 1);
     if (task.value == null || task.schema == null) {
       assignDecoded(task, task.value);
       continue;
@@ -170,11 +152,18 @@ function deepDecodeStringsBySchema(
       assignDecoded(task, unescapeXml(task.value));
       continue;
     }
-    const schemaType = getSchemaType(task.schema);
+    const unwrapped = unwrapJsonSchema(task.schema);
+    const schemaType = getSchemaType(unwrapped);
     if (
-      (schemaType === "array" && scheduleArrayDecode(task, traversal)) ||
-      (schemaType === "object" && scheduleObjectDecode(task, traversal))
+      schemaType === "array" &&
+      Array.isArray(task.value) &&
+      isSchemaRecord(unwrapped)
     ) {
+      scheduleArrayDecode({ ...task, value: task.value }, traversal, unwrapped);
+      continue;
+    }
+    if (schemaType === "object" && isRxmlRecord(task.value)) {
+      scheduleObjectDecode({ ...task, value: task.value }, traversal);
       continue;
     }
     assignDecoded(task, task.value);
@@ -208,14 +197,7 @@ function parseWrappedNodes(
 function coerceAndDecode(input: JSONObject, schema: ParsedSchema): JSONObject {
   try {
     const coerced = coerceDomBySchema(input, schema);
-    if (!isJSONObject(coerced)) {
-      throw new TypeError("RXML schema coercion returned a non-object value");
-    }
-    const decoded = deepDecodeStringsBySchema(coerced, schema);
-    if (!isJSONObject(decoded)) {
-      throw new TypeError("RXML schema decoding returned a non-object value");
-    }
-    return decoded;
+    return deepDecodeStringsBySchema(coerced, schema);
   } catch (error) {
     const normalizedError =
       error instanceof Error

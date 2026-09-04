@@ -20,6 +20,7 @@ const PROTOTYPE_SENSITIVE_XML_KEYS = new Set([
 
 type ParsedSchema = ToolInputSchemaDefinition | undefined;
 type RxmlRecord = Record<string, RxmlValue>;
+type RxmlContent = string | RxmlRecord;
 
 function isRxmlRecord(value: RxmlValue): value is RxmlRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -52,7 +53,7 @@ function getNodeValue(
   schema: ParsedSchema,
   tagName: string,
   textNodeName: string
-): RxmlValue {
+): RxmlContent {
   if (children.length === 0) {
     return "";
   }
@@ -67,10 +68,10 @@ function getNodeValue(
 }
 
 function addAttributesToValue(
-  value: RxmlValue,
+  value: RxmlContent,
   attributes: Record<string, string | null>,
   textNodeName: string
-): RxmlValue {
+): RxmlContent {
   if (Object.keys(attributes).length === 0) {
     return value;
   }
@@ -82,10 +83,6 @@ function addAttributesToValue(
       valueResult[`@_${attrName}`] = attrValue;
     }
     return valueResult;
-  }
-
-  if (!isRxmlRecord(value)) {
-    return value;
   }
 
   const valueResult: RxmlRecord = Object.create(null);
@@ -139,8 +136,8 @@ function processChildElement(
   child: RXMLNode,
   schema: ParsedSchema,
   textNodeName: string
-): RxmlValue {
-  let childValue: RxmlValue;
+): RxmlContent {
+  let childValue: RxmlContent;
 
   if (child.children.length === 0) {
     childValue = "";
@@ -164,7 +161,7 @@ function combineContent(
   textContent: string[],
   elements: RxmlRecord,
   textNodeName: string
-): RxmlValue {
+): RxmlContent {
   const hasText = textContent.length > 0;
   const hasElements = Object.keys(elements).length > 0;
 
@@ -177,14 +174,14 @@ function combineContent(
   if (hasText) {
     return textContent.join("").trim();
   }
-  return hasElements ? elements : "";
+  return elements;
 }
 
 function processComplexContent(
   children: (RXMLNode | string)[],
   schema: ParsedSchema,
   textNodeName: string
-): RxmlValue {
+): RxmlContent {
   const textContent: string[] = [];
   const elements: RxmlRecord = Object.create(null);
 

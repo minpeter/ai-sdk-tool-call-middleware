@@ -16,11 +16,40 @@ export const findStreamingLinePrefixedToolCall =
   findStreamingLinePrefixedToolCallImpl;
 export const findToolCalls = findToolCallsImpl;
 
+interface ToolCallRange {
+  readonly endIndex: number;
+  readonly startIndex: number;
+}
+
+interface RootRepairOptions<Match extends ToolCallRange> {
+  readonly findCalls: (text: string, toolNames: string[]) => Match[];
+  readonly parseText: string;
+  readonly toolCalls: Match[];
+  readonly toolNames: string[];
+}
+
+export function findToolCallsWithRootRepair<Match extends ToolCallRange>(
+  options: RootRepairOptions<Match>
+): { readonly parseText: string; readonly toolCalls: Match[] } {
+  const { findCalls, parseText, toolCalls, toolNames } = options;
+  if (toolCalls.length > 0) {
+    return { parseText, toolCalls };
+  }
+  const repaired = tryRepairXmlSelfClosingRootWithBody(parseText, toolNames);
+  if (repaired === null) {
+    return { parseText, toolCalls };
+  }
+  const repairedCalls = findCalls(repaired, toolNames);
+  return repairedCalls.length > 0
+    ? { parseText: repaired, toolCalls: repairedCalls }
+    : { parseText, toolCalls };
+}
+
 export function findToolCallsWithFallbacks(
   text: string,
   tools: LanguageModelV4FunctionTool[]
 ): { parseText: string; toolCalls: ReturnType<typeof findToolCalls> } {
-  let parseText = text;
+  const parseText = text;
   const toolNames = extractToolNames(tools);
   let toolCalls = findToolCalls(parseText, toolNames);
   const linePrefixedCalls = findLinePrefixedToolCalls(parseText, tools);
@@ -44,16 +73,10 @@ export function findToolCallsWithFallbacks(
     }
   }
 
-  if (toolCalls.length === 0) {
-    const repaired = tryRepairXmlSelfClosingRootWithBody(parseText, toolNames);
-    if (repaired) {
-      const repairedCalls = findToolCalls(repaired, toolNames);
-      if (repairedCalls.length > 0) {
-        parseText = repaired;
-        toolCalls = repairedCalls;
-      }
-    }
-  }
-
-  return { parseText, toolCalls };
+  return findToolCallsWithRootRepair({
+    findCalls: findToolCalls,
+    parseText,
+    toolCalls,
+    toolNames,
+  });
 }

@@ -1,20 +1,13 @@
-import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
-import { processXMLStream } from "../../../rxml/core/stream";
-import type { RXMLNode } from "../../../rxml/core/types";
 import {
   CHUNK_SIZE,
+  collectStreamElements,
   createChunkedStream,
+  createManualChunkStream,
+  requireNode,
   testXmlSamples,
 } from "./stream-chunked.shared";
-
-function requireNode(node: RXMLNode | string | undefined): RXMLNode {
-  if (typeof node === "object") {
-    return node;
-  }
-  throw new TypeError("Expected streamed XML node");
-}
 
 describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
   describe("Real-world LLM streaming patterns", () => {
@@ -35,12 +28,9 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
 
 The search has been initiated successfully.`;
 
-      const stream = createChunkedStream(llmResponse, CHUNK_SIZE);
-      const results: (RXMLNode | string)[] = [];
-
-      for await (const element of processXMLStream(stream)) {
-        results.push(element);
-      }
+      const results = await collectStreamElements(
+        createChunkedStream(llmResponse, CHUNK_SIZE)
+      );
 
       const toolCall = requireNode(
         results.find(
@@ -71,12 +61,9 @@ The search has been initiated successfully.`;
       const chunkSizes = [3, 5, 7, 10, 15];
 
       for (const chunkSize of chunkSizes) {
-        const stream = createChunkedStream(xml, chunkSize);
-        const results: (RXMLNode | string)[] = [];
-
-        for await (const element of processXMLStream(stream)) {
-          results.push(element);
-        }
+        const results = await collectStreamElements(
+          createChunkedStream(xml, chunkSize)
+        );
 
         expect(results).toHaveLength(5);
         const toolCall = requireNode(results[0]);
@@ -89,19 +76,15 @@ The search has been initiated successfully.`;
 
     it("should handle very small chunks (single character)", async () => {
       const xml = "<tool><name>test</name></tool>";
-      const stream = createChunkedStream(xml, 1);
-
-      const results: (RXMLNode | string)[] = [];
-      for await (const element of processXMLStream(stream)) {
-        results.push(element);
-      }
+      const results = await collectStreamElements(createChunkedStream(xml, 1));
 
       expect(results).toHaveLength(2);
-      const toolElement = requireNode(results[0]);
-      const nameElement = requireNode(results[1]);
+      const toolElement = requireNode(results.at(0));
       expect(toolElement.tagName).toBe("tool");
+      const nameElement = requireNode(results.at(1));
       expect(nameElement.tagName).toBe("name");
-      expect(nameElement.children[0]).toBe("test");
+      const [nameText] = nameElement.children;
+      expect(nameText).toBe("test");
     });
 
     it("should handle rapid streaming simulation", async () => {
@@ -112,24 +95,9 @@ The search has been initiated successfully.`;
         chunks.push(xml.slice(i, i + CHUNK_SIZE));
       }
 
-      const rapidStream = new Readable({
-        read() {
-          const chunk = chunks.shift();
-          if (chunk) {
-            this.push(chunk);
-          } else {
-            this.push(null);
-          }
-        },
-      });
-
-      const results: (RXMLNode | string)[] = [];
+      const rapidStream = createManualChunkStream(chunks);
       const startTime = Date.now();
-
-      for await (const element of processXMLStream(rapidStream)) {
-        results.push(element);
-      }
-
+      const results = await collectStreamElements(rapidStream);
       const endTime = Date.now();
 
       expect(results.length).toBeGreaterThan(0);

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { glm5Protocol } from "../../../core/protocols/glm5-protocol";
+import type { ParserOptions } from "../../../core/protocols/protocol-interface";
 import { glm5Tools } from "./shared";
 
 const echoCall =
@@ -87,19 +88,29 @@ describe("GLM-5 protocol segment extraction", () => {
   });
 });
 
+type OnError = NonNullable<ParserOptions["onError"]>;
+
+function parseFailedGeneratedCall(
+  text: string,
+  onError: OnError,
+  recoverIncompleteToolCalls = true
+) {
+  return glm5Protocol({ recoverIncompleteToolCalls }).parseGeneratedText({
+    text,
+    tools: glm5Tools,
+    options: { emitRawToolCallTextOnError: true, onError },
+  });
+}
+
 describe("GLM-5 generated-text failure handling", () => {
   it("reports and preserves a safe nested incomplete call when requested", () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const text =
       "<tool_call>echo<arg_key>message</arg_key><arg_value>bad<tool_call>ping";
 
-    expect(
-      glm5Protocol().parseGeneratedText({
-        text,
-        tools: glm5Tools,
-        options: { emitRawToolCallTextOnError: true, onError },
-      })
-    ).toEqual([{ type: "text", text }]);
+    expect(parseFailedGeneratedCall(text, onError)).toEqual([
+      { type: "text", text },
+    ]);
     expect(onError).toHaveBeenCalledWith(
       "Could not parse GLM-5.2 tool call.",
       expect.objectContaining({ dropReason: "malformed-glm5-tool-call" })
@@ -107,45 +118,33 @@ describe("GLM-5 generated-text failure handling", () => {
   });
 
   it("preserves a safe incomplete call when recovery is disabled", () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const text =
       "<tool_call>echo<arg_key>message</arg_key><arg_value>unfinished";
 
-    expect(
-      glm5Protocol({ recoverIncompleteToolCalls: false }).parseGeneratedText({
-        text,
-        tools: glm5Tools,
-        options: { emitRawToolCallTextOnError: true, onError },
-      })
-    ).toEqual([{ type: "text", text }]);
+    expect(parseFailedGeneratedCall(text, onError, false)).toEqual([
+      { type: "text", text },
+    ]);
     expect(onError).toHaveBeenCalledTimes(1);
   });
 
   it("reports a structurally closed call for an unknown tool", () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const text = "<tool_call>unknown</tool_call>";
 
-    expect(
-      glm5Protocol().parseGeneratedText({
-        text,
-        tools: glm5Tools,
-        options: { emitRawToolCallTextOnError: true, onError },
-      })
-    ).toEqual([{ type: "text", text }]);
+    expect(parseFailedGeneratedCall(text, onError)).toEqual([
+      { type: "text", text },
+    ]);
     expect(onError).toHaveBeenCalledTimes(1);
   });
 
   it("reports an unrecoverable terminal call body", () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const text = "<tool_call>%%%";
 
-    expect(
-      glm5Protocol().parseGeneratedText({
-        text,
-        tools: glm5Tools,
-        options: { emitRawToolCallTextOnError: true, onError },
-      })
-    ).toEqual([{ type: "text", text }]);
+    expect(parseFailedGeneratedCall(text, onError)).toEqual([
+      { type: "text", text },
+    ]);
     expect(onError).toHaveBeenCalledTimes(1);
   });
 });

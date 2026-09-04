@@ -1,4 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import { pythonLiteralToJson } from "./glm5-reference-decoder-helpers";
 
 /**
  * Small, dependency-free reproductions of pinned deployment-reference parser
@@ -77,7 +78,6 @@ const ARG_VALUE_CLOSE = "</arg_value>";
 const INTEGER_PATTERN = /^[-+]?\d+$/u;
 const NUMBER_PATTERN = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/iu;
 const TOOL_NAME_PATTERN = /^[^\s<]+/u;
-const PYTHON_KEYWORD_PATTERN = /^(True|False|None)\b/u;
 const WHITESPACE_PATTERN = /\s/u;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -95,49 +95,103 @@ function toolDescriptors(
   }));
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: JSON Schema combinators require explicit recursive branches.
-function schemaTypes(schema: Record<string, unknown>): Set<string> {
-  const output = new Set<string>();
-  const { type } = schema;
-  if (typeof type === "string") {
-    output.add(type);
-  } else if (Array.isArray(type)) {
-    for (const item of type) {
-      if (typeof item === "string") {
-        output.add(item);
-      }
+type SchemaRecord = NonNullable<ReturnType<typeof asRecord>>;
+type SchemaCombinator = "allOf" | "anyOf" | "oneOf";
+
+function addDeclaredSchemaTypes(
+  output: Set<string>,
+  declaredType: SchemaRecord[string]
+): void {
+  if (typeof declaredType === "string") {
+    output.add(declaredType);
+    return;
+  }
+  if (!Array.isArray(declaredType)) {
+    return;
+  }
+  for (const item of declaredType) {
+    if (typeof item === "string") {
+      output.add(item);
     }
   }
-  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
-    const branches = schema[key];
-    if (!Array.isArray(branches)) {
+}
+
+function addCombinedSchemaTypes(
+  output: Set<string>,
+  schema: SchemaRecord,
+  key: SchemaCombinator
+): void {
+  const branches = schema[key];
+  if (!Array.isArray(branches)) {
+    return;
+  }
+  for (const branch of branches) {
+    const record = asRecord(branch);
+    if (!record) {
       continue;
     }
-    for (const branch of branches) {
-      const record = asRecord(branch);
-      if (record) {
-        for (const branchType of schemaTypes(record)) {
-          output.add(branchType);
-        }
-      }
+    for (const branchType of schemaTypes(record)) {
+      output.add(branchType);
     }
   }
-  if (output.size === 0) {
-    if (asRecord(schema.properties)) {
-      output.add("object");
-    } else if (asRecord(schema.items)) {
-      output.add("array");
-    }
+}
+
+function schemaTypes(schema: SchemaRecord): Set<string> {
+  const output = new Set<string>();
+  addDeclaredSchemaTypes(output, schema.type);
+  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+    addCombinedSchemaTypes(output, schema, key);
+  }
+  if (output.size > 0) {
+    return output;
+  }
+  if (asRecord(schema.properties)) {
+    output.add("object");
+  } else if (asRecord(schema.items)) {
+    output.add("array");
   }
   return output;
 }
 
 function parseJsonContainer(value: string): unknown {
   try {
-    return JSON.parse(value) as unknown;
+    return JSON.parse(value);
   } catch {
     return value;
   }
+}
+
+interface ParsedValue {
+  readonly parsed: ReturnType<typeof parseJsonContainer>;
+  readonly parsedSuccessfully: boolean;
+}
+
+function parseJsonCandidate(value: string): ParsedValue {
+  const parsed = parseJsonContainer(value);
+  return { parsed, parsedSuccessfully: parsed !== value };
+}
+
+function parseEscapedJsonCandidate(rawValue: string): ParsedValue {
+  const wrapped = asRecord(parseJsonContainer(`{"tmp":"${rawValue}"}`));
+  const unescaped = wrapped?.tmp;
+  return unescaped === undefined
+    ? { parsed: rawValue, parsedSuccessfully: false }
+    : parseJsonCandidate(String(unescaped));
+}
+
+function parseSglangRawValue(rawValue: string): ParsedValue {
+  const direct = parseJsonCandidate(rawValue);
+  if (direct.parsedSuccessfully) {
+    return direct;
+  }
+  const escaped = parseEscapedJsonCandidate(rawValue);
+  if (escaped.parsedSuccessfully) {
+    return escaped;
+  }
+  const jsonish = pythonLiteralToJson(rawValue.trim());
+  return jsonish === null
+    ? { parsed: rawValue, parsedSuccessfully: false }
+    : parseJsonCandidate(jsonish);
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: the pinned reference has ordered scalar coercion fallbacks.
@@ -269,93 +323,11 @@ function vllmRustBody(
   return { arguments: arguments_, name };
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: this bounded scanner mirrors ast.literal_eval-compatible quoting without executing code.
-function pythonLiteralToJson(input: string): string | null {
-  let output = "";
-  let quote: "'" | '"' | null = null;
-  let escaped = false;
-  for (let index = 0; index < input.length; index += 1) {
-    const character = input.charAt(index);
-    if (quote !== null) {
-      if (escaped) {
-        if (quote === "'" && character === "'") {
-          output += "'";
-        } else if (character === '"') {
-          output += '\\"';
-        } else {
-          output += `\\${character}`;
-        }
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (character === quote) {
-        output += '"';
-        quote = null;
-      } else if (character === '"') {
-        output += '\\"';
-      } else {
-        output += character;
-      }
-      continue;
-    }
-    if (character === "'" || character === '"') {
-      quote = character;
-      output += '"';
-      continue;
-    }
-    const suffix = input.slice(index);
-    const keyword = PYTHON_KEYWORD_PATTERN.exec(suffix)?.[1];
-    if (keyword) {
-      const replacements: Record<string, string> = {
-        False: "false",
-        None: "null",
-        True: "true",
-      };
-      output += replacements[keyword] ?? keyword;
-      index += keyword.length - 1;
-      continue;
-    }
-    if (character === "(" || character === ")") {
-      output += character === "(" ? "[" : "]";
-    } else {
-      output += character;
-    }
-  }
-  return quote === null && !escaped ? output : null;
-}
-
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: ordered JSON, escaped JSON, Python literal, and string fallbacks mirror the pinned detector.
 function sglangParseValue(rawValue: string, schema: unknown): unknown {
-  let parsed: unknown;
-  let parsedSuccessfully = false;
-  try {
-    parsed = JSON.parse(rawValue) as unknown;
-    parsedSuccessfully = true;
-  } catch {
-    try {
-      const unescaped = JSON.parse(`{"tmp":"${rawValue}"}`) as {
-        tmp: string;
-      };
-      parsed = JSON.parse(unescaped.tmp) as unknown;
-      parsedSuccessfully = true;
-    } catch {
-      const jsonish = pythonLiteralToJson(rawValue.trim());
-      if (jsonish === null) {
-        parsed = rawValue;
-      } else {
-        try {
-          parsed = JSON.parse(jsonish) as unknown;
-          parsedSuccessfully = true;
-        } catch {
-          parsed = rawValue;
-        }
-      }
-    }
-  }
-  if (!parsedSuccessfully) {
-    parsed = String(rawValue);
-  }
-
+  const candidate = parseSglangRawValue(rawValue);
+  const parsed = candidate.parsedSuccessfully
+    ? candidate.parsed
+    : String(rawValue);
   const schemaRecord = asRecord(schema);
   const types = schemaRecord ? schemaTypes(schemaRecord) : new Set<string>();
   if (types.size === 1 && types.has("string")) {

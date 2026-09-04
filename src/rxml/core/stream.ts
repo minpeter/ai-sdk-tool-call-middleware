@@ -152,6 +152,14 @@ class XMLTransformStream extends Transform {
     return result.tagInfo;
   }
 
+  private parseElement(elementEnd: number): void {
+    const elementXml = this.buffer.slice(0, elementEnd);
+    const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
+    const node = tokenizer.parseNode();
+    this.emitElementAndChildren(node);
+    this.buffer = this.buffer.slice(elementEnd);
+  }
+
   private tryProcessSelfClosingTag(tagInfo: {
     openTagEnd: number;
     tagName: string;
@@ -162,12 +170,8 @@ class XMLTransformStream extends Transform {
     }
 
     const elementEnd = tagInfo.openTagEnd + 1;
-    const elementXml = this.buffer.slice(0, elementEnd);
     try {
-      const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
-      const node = tokenizer.parseNode();
-      this.emitElementAndChildren(node);
-      this.buffer = this.buffer.slice(elementEnd);
+      this.parseElement(elementEnd);
       return true;
     } catch {
       this.buffer = this.buffer.slice(1);
@@ -193,12 +197,8 @@ class XMLTransformStream extends Transform {
       return false;
     }
 
-    const elementXml = this.buffer.slice(0, elementEnd);
     try {
-      const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
-      const node = tokenizer.parseNode();
-      this.emitElementAndChildren(node);
-      this.buffer = this.buffer.slice(elementEnd);
+      this.parseElement(elementEnd);
       return true;
     } catch (error) {
       this.emit(
@@ -331,10 +331,8 @@ export async function* processXMLStream(
     }
 
     if (queue.length > 0) {
-      const item = queue.shift();
-      if (item !== undefined) {
-        yield item;
-      }
+      yield queue[0];
+      queue.shift();
       continue;
     }
 

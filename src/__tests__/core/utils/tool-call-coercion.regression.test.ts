@@ -3,6 +3,39 @@ import { describe, expect, it } from "vitest";
 import { toolCallTextHasPrototypeSensitiveKey } from "../../../core/utils/prototype-sensitive-keys";
 import { coerceToolCallInput } from "../../../core/utils/tool-call-coercion";
 
+function coerceUnsafePattern(
+  additionalProperties: JSONSchema7["additionalProperties"]
+): string | undefined {
+  return coerceToolCallInput("metadata", { safe: "1", aaaa: "2" }, [
+    {
+      type: "function",
+      name: "metadata",
+      inputSchema: {
+        type: "object",
+        patternProperties: { "^(a+)+$": false },
+        additionalProperties,
+      },
+    },
+  ]);
+}
+
+function tupleStepsSchema(keyword: "items" | "prefixItems"): JSONSchema7 {
+  const schema: JSONSchema7 = { type: "array" };
+  Object.assign(schema, {
+    [keyword]: [
+      {
+        type: "object",
+        properties: { action: { type: "string" } },
+      },
+      {
+        type: "object",
+        properties: { label: { type: "string" } },
+      },
+    ],
+  });
+  return schema;
+}
+
 describe("tool-call coercion regression coverage", () => {
   it.each(["__proto__foo", "constructorName", "prototypeValue"])(
     "preserves a safe key that only begins with a sensitive label: %s",
@@ -128,21 +161,7 @@ describe("tool-call coercion regression coverage", () => {
   });
 
   it("coerces additionalProperties schema keys with unsafe false patterns", () => {
-    const input = coerceToolCallInput("metadata", { safe: "1", aaaa: "2" }, [
-      {
-        type: "function",
-        name: "metadata",
-        inputSchema: {
-          type: "object",
-          patternProperties: {
-            "^(a+)+$": false,
-          },
-          additionalProperties: { type: "number" },
-        },
-      },
-    ]);
-
-    expect(input).toBe('{"safe":1}');
+    expect(coerceUnsafePattern({ type: "number" })).toBe('{"safe":1}');
   });
 
   it("preserves strict key normalization before dropping schema-unknown keys", () => {
@@ -235,21 +254,7 @@ describe("tool-call coercion regression coverage", () => {
   });
 
   it("preserves additionalProperties true keys with unsafe false patterns", () => {
-    const input = coerceToolCallInput("metadata", { safe: "1", aaaa: "2" }, [
-      {
-        type: "function",
-        name: "metadata",
-        inputSchema: {
-          type: "object",
-          patternProperties: {
-            "^(a+)+$": false,
-          },
-          additionalProperties: true,
-        },
-      },
-    ]);
-
-    expect(input).toBe('{"safe":"1"}');
+    expect(coerceUnsafePattern(true)).toBe('{"safe":"1"}');
   });
 
   it("drops keys denied by safe false patterns before additionalProperties true", () => {
@@ -460,93 +465,41 @@ describe("tool-call coercion regression coverage", () => {
     );
   });
 
-  it("drops unknown keys from tuple prefixItems object schemas", () => {
-    const stepsSchema: JSONSchema7 = { type: "array" };
-    Object.assign(stepsSchema, {
-      prefixItems: [
+  for (const scenario of [
+    {
+      name: "drops unknown keys from tuple prefixItems object schemas",
+      keyword: "prefixItems",
+    },
+    {
+      name: "drops unknown keys from draft-07 tuple items object schemas",
+      keyword: "items",
+    },
+  ] satisfies readonly { name: string; keyword: "items" | "prefixItems" }[]) {
+    it(scenario.name, () => {
+      const stepsSchema = tupleStepsSchema(scenario.keyword);
+      const input = coerceToolCallInput(
+        "batch",
         {
-          type: "object",
-          properties: {
-            action: { type: "string" },
-          },
+          steps: [
+            { action: "open", extra: "drop-me" },
+            { label: "review", secret: true },
+          ],
         },
-        {
-          type: "object",
-          properties: {
-            label: { type: "string" },
-          },
-        },
-      ],
-    });
-
-    const input = coerceToolCallInput(
-      "batch",
-      {
-        steps: [
-          { action: "open", extra: "drop-me" },
-          { label: "review", secret: true },
-        ],
-      },
-      [
-        {
-          type: "function",
-          name: "batch",
-          inputSchema: {
-            type: "object",
-            properties: {
-              steps: stepsSchema,
+        [
+          {
+            type: "function",
+            name: "batch",
+            inputSchema: {
+              type: "object",
+              properties: { steps: stepsSchema },
             },
           },
-        },
-      ]
-    );
+        ]
+      );
 
-    expect(input).toBe('{"steps":[{"action":"open"},{"label":"review"}]}');
-  });
-
-  it("drops unknown keys from draft-07 tuple items object schemas", () => {
-    const stepsSchema: JSONSchema7 = { type: "array" };
-    Object.assign(stepsSchema, {
-      items: [
-        {
-          type: "object",
-          properties: {
-            action: { type: "string" },
-          },
-        },
-        {
-          type: "object",
-          properties: {
-            label: { type: "string" },
-          },
-        },
-      ],
+      expect(input).toBe('{"steps":[{"action":"open"},{"label":"review"}]}');
     });
-
-    const input = coerceToolCallInput(
-      "batch",
-      {
-        steps: [
-          { action: "open", extra: "drop-me" },
-          { label: "review", secret: true },
-        ],
-      },
-      [
-        {
-          type: "function",
-          name: "batch",
-          inputSchema: {
-            type: "object",
-            properties: {
-              steps: stepsSchema,
-            },
-          },
-        },
-      ]
-    );
-
-    expect(input).toBe('{"steps":[{"action":"open"},{"label":"review"}]}');
-  });
+  }
 
   it("does not apply trailing items schemas to prefixItems entries", () => {
     const stepsSchema: JSONSchema7 = {

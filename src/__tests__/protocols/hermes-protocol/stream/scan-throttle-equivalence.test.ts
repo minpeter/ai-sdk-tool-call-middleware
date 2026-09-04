@@ -1,86 +1,78 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
+import {
+  isJSONObject,
+  type JSONValue,
+  type LanguageModelV4FunctionTool,
+  type LanguageModelV4StreamPart,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  collectTextDeltas,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
 
 const boundaryScanWork = vi.hoisted(() => ({ characters: 0 }));
 
+async function instrumentBoundaryScanner(
+  importOriginal: () => Promise<
+    typeof import("../../../../core/protocols/hermes-call-boundary")
+  >
+) {
+  const actual = await importOriginal();
+  const instrumented = (
+    ...parameters: Parameters<
+      typeof actual.findToolCallBoundaryOutsideRjsonSyntax
+    >
+  ) => {
+    boundaryScanWork.characters += parameters[0].length;
+    return actual.findToolCallBoundaryOutsideRjsonSyntax(...parameters);
+  };
+  return { ...actual, findToolCallBoundaryOutsideRjsonSyntax: instrumented };
+}
+
 vi.mock(
   "../../../../core/protocols/hermes-call-boundary",
-  async (importOriginal) => {
-    const actual =
-      await importOriginal<
-        typeof import("../../../../core/protocols/hermes-call-boundary")
-      >();
-    return {
-      ...actual,
-      findToolCallBoundaryOutsideRjsonSyntax: (
-        ...args: Parameters<
-          typeof actual.findToolCallBoundaryOutsideRjsonSyntax
-        >
-      ) => {
-        boundaryScanWork.characters += args[0].length;
-        return actual.findToolCallBoundaryOutsideRjsonSyntax(...args);
-      },
-    };
-  }
+  instrumentBoundaryScanner
 );
 
-const tools = [
-  {
-    type: "function",
-    name: "write_file",
-    description: "write a file",
-    inputSchema: {
-      type: "object",
-      properties: {
-        path: { type: "string" },
-        content: { type: "string" },
-      },
-      required: ["path", "content"],
-    },
+const writeFileTool: LanguageModelV4FunctionTool = {
+  type: "function",
+  name: "write_file",
+  description: "write a file",
+  inputSchema: {
+    type: "object",
+    properties: { path: { type: "string" }, content: { type: "string" } },
+    required: ["path", "content"],
   },
-  {
-    type: "function",
-    name: "get_weather",
-    description: "get weather",
-    inputSchema: {
-      type: "object",
-      properties: { city: { type: "string" } },
-      required: ["city"],
-    },
+};
+const weatherTool: LanguageModelV4FunctionTool = {
+  type: "function",
+  name: "get_weather",
+  description: "get weather",
+  inputSchema: {
+    type: "object",
+    properties: { city: { type: "string" } },
+    required: ["city"],
   },
-] as any;
+};
+const tools = [writeFileTool, weatherTool];
 
 function streamInChunks(
   text: string,
   chunkSize: number
 ): Promise<LanguageModelV4StreamPart[]> {
-  const protocol = hermesProtocol();
-  const transformer = protocol.createStreamParser({ tools });
-  const rs = new ReadableStream<LanguageModelV4StreamPart>({
-    start(ctrl) {
-      for (let pos = 0; pos < text.length; pos += chunkSize) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: text.slice(pos, pos + chunkSize),
-        });
-      }
-      ctrl.enqueue({
-        type: "finish",
-        finishReason: stopFinishReason,
-        usage: zeroUsage,
-      });
-      ctrl.close();
-    },
+  const chunks: string[] = [];
+  for (let position = 0; position < text.length; position += chunkSize) {
+    chunks.push(text.slice(position, position + chunkSize));
+  }
+  return runProtocolTextStream({
+    protocol: hermesProtocol(),
+    tools,
+    chunks,
+    id: "1",
   });
-  return convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
 }
 
 function summarize(parts: LanguageModelV4StreamPart[]): {
@@ -88,33 +80,66 @@ function summarize(parts: LanguageModelV4StreamPart[]): {
   concatenatedDeltas: string;
   text: string;
 } {
-  const toolCalls: { toolName: string; input: string }[] = [];
-  let concatenatedDeltas = "";
-  let text = "";
-  for (const part of parts) {
-    if (part.type === "tool-call") {
-      toolCalls.push({ toolName: part.toolName, input: part.input });
-    } else if (part.type === "tool-input-delta") {
-      concatenatedDeltas += part.delta;
-    } else if (part.type === "text-delta") {
-      text += part.delta;
-    }
-  }
-  return { toolCalls, concatenatedDeltas, text };
+  return {
+    toolCalls: selectToolCalls(parts).map(({ toolName, input }) => ({
+      toolName,
+      input,
+    })),
+    concatenatedDeltas: selectToolInputTimeline(parts)
+      .deltas.map(({ delta }) => delta)
+      .join(""),
+    text: collectTextDeltas(parts),
+  };
 }
 
 function largeBody(lines: number): string {
-  return Array.from(
-    { length: lines },
-    (_, i) => `line ${i}: const value_${i} = compute(${i});`
-  ).join("\n");
+  const body: string[] = [];
+  for (let index = 0; index < lines; index += 1) {
+    body.push(`line ${index}: const value_${index} = compute(${index});`);
+  }
+  return body.join("\n");
 }
 
-function hermesCall(toolName: string, args: unknown): string {
+function parseInputContent(input: string): JSONValue {
+  const parsed: JSONValue = JSON.parse(input);
+  if (!isJSONObject(parsed) || parsed.content === undefined) {
+    throw new TypeError("Expected tool-call input content");
+  }
+  return parsed.content;
+}
+
+function hermesCall(toolName: string, args: JSONValue): string {
   return `<tool_call>\n${JSON.stringify({ name: toolName, arguments: args })}\n</tool_call>`;
 }
 
 const scalingChunkSize = 30;
+
+async function baselineSummary(text: string, expectedCalls?: number) {
+  const whole = summarize(await streamInChunks(text, text.length));
+  if (expectedCalls !== undefined) {
+    expect(whole.toolCalls).toHaveLength(expectedCalls);
+  }
+  return whole;
+}
+
+interface ChunkEquivalence {
+  readonly chunkSizes: readonly number[];
+  readonly compareText: boolean;
+  readonly text: string;
+  readonly whole: ReturnType<typeof summarize>;
+}
+
+async function expectChunkEquivalence(
+  options: ChunkEquivalence
+): Promise<void> {
+  for (const chunkSize of options.chunkSizes) {
+    const chunked = summarize(await streamInChunks(options.text, chunkSize));
+    expect(chunked.toolCalls).toEqual(options.whole.toolCalls);
+    if (options.compareText) {
+      expect(chunked.text.trim()).toBe(options.whole.text.trim());
+    }
+  }
+}
 
 function naiveEveryChunkRescanCharacters(textLength: number): number {
   let characters = 0;
@@ -138,13 +163,13 @@ describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
       content: largeBody(500), // ~20KB
     });
 
-    const whole = summarize(await streamInChunks(text, text.length));
-    expect(whole.toolCalls).toHaveLength(1);
-
-    for (const chunkSize of [7, 30, 301]) {
-      const chunked = summarize(await streamInChunks(text, chunkSize));
-      expect(chunked.toolCalls).toEqual(whole.toolCalls);
-    }
+    const whole = await baselineSummary(text, 1);
+    await expectChunkEquivalence({
+      text,
+      whole,
+      chunkSizes: [7, 30, 301],
+      compareText: false,
+    });
   });
 
   it("handles trailing text and a second tool call after a large one", async () => {
@@ -153,14 +178,13 @@ describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
       content: largeBody(400),
     })}\nplain trailing text\n${hermesCall("get_weather", { city: "Seoul" })}`;
 
-    const whole = summarize(await streamInChunks(text, text.length));
-    expect(whole.toolCalls).toHaveLength(2);
-
-    for (const chunkSize of [13, 64]) {
-      const chunked = summarize(await streamInChunks(text, chunkSize));
-      expect(chunked.toolCalls).toEqual(whole.toolCalls);
-      expect(chunked.text.trim()).toBe(whole.text.trim());
-    }
+    const whole = await baselineSummary(text, 2);
+    await expectChunkEquivalence({
+      text,
+      whole,
+      chunkSizes: [13, 64],
+      compareText: true,
+    });
   });
 
   it("completes a call whose end tag arrives right at stream end", async () => {
@@ -171,12 +195,13 @@ describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
       content: largeBody(400),
     });
 
-    const whole = summarize(await streamInChunks(text, text.length));
+    const whole = await baselineSummary(text);
     for (const chunkSize of [3, 17]) {
       const chunked = summarize(await streamInChunks(text, chunkSize));
       expect(chunked.toolCalls).toEqual(whole.toolCalls);
-      const parsed = JSON.parse(chunked.toolCalls[0].input);
-      expect(parsed.content).toContain("line 399:");
+      expect(parseInputContent(chunked.toolCalls[0].input)).toContain(
+        "line 399:"
+      );
     }
   });
 
@@ -187,13 +212,13 @@ describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
     const content = `${largeBody(200)}\nfake tag: </tool_call> inside string\n${largeBody(200)}`;
     const text = hermesCall("write_file", { path: "a.ts", content });
 
-    const whole = summarize(await streamInChunks(text, text.length));
-    expect(whole.toolCalls).toHaveLength(1);
+    const whole = await baselineSummary(text, 1);
 
     const chunked = summarize(await streamInChunks(text, 23));
     expect(chunked.toolCalls).toEqual(whole.toolCalls);
-    const parsed = JSON.parse(chunked.toolCalls[0].input);
-    expect(parsed.content).toContain("fake tag: </tool_call> inside string");
+    expect(parseInputContent(chunked.toolCalls[0].input)).toContain(
+      "fake tag: </tool_call> inside string"
+    );
   });
 
   it("recovers an unclosed large call at finish identically for any chunking", async () => {
@@ -203,12 +228,13 @@ describe("hermes scan-throttle equivalence (deferral active above 4KB)", () => {
     });
     const text = `<tool_call>\n${body}`; // missing </tool_call>
 
-    const whole = summarize(await streamInChunks(text, text.length));
-    for (const chunkSize of [11, 47]) {
-      const chunked = summarize(await streamInChunks(text, chunkSize));
-      expect(chunked.toolCalls).toEqual(whole.toolCalls);
-      expect(chunked.text.trim()).toBe(whole.text.trim());
-    }
+    const whole = await baselineSummary(text);
+    await expectChunkEquivalence({
+      text,
+      whole,
+      chunkSizes: [11, 47],
+      compareText: true,
+    });
   });
 });
 
@@ -238,7 +264,10 @@ describe("hermes large streamed tool call scaling", () => {
 
       const { toolCalls } = summarize(parts);
       expect(toolCalls).toHaveLength(1);
-      const parsed = JSON.parse(toolCalls[0].input);
+      const parsed: JSONValue = JSON.parse(toolCalls[0].input);
+      if (!isJSONObject(parsed)) {
+        throw new TypeError("Expected tool-call input to be a JSON object");
+      }
       expect(parsed.content).toContain(`line ${lines - 1}:`);
 
       const naiveCharacters = naiveEveryChunkRescanCharacters(text.length);

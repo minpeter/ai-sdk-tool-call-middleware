@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { RxmlValue } from "../../../rxml/builders/stringify";
 import {
   applyHeuristicPipeline,
   createIntermediateCall,
@@ -6,6 +7,29 @@ import {
   type PipelineConfig,
   type ToolCallHeuristic,
 } from "../../../rxml/heuristics";
+
+function passiveHeuristic(
+  id: string,
+  phase: ToolCallHeuristic["phase"]
+): ToolCallHeuristic {
+  return {
+    id,
+    phase,
+    applies: () => true,
+    run: () => ({}),
+  };
+}
+
+const addTransformed: ToolCallHeuristic["run"] = (call) => {
+  if (
+    typeof call.parsed !== "object" ||
+    call.parsed === null ||
+    Array.isArray(call.parsed)
+  ) {
+    return {};
+  }
+  return { parsed: { ...call.parsed, transformed: true } };
+};
 
 describe("heuristic-engine", () => {
   describe("createIntermediateCall", () => {
@@ -25,24 +49,9 @@ describe("heuristic-engine", () => {
 
   describe("mergePipelineConfigs", () => {
     it("merges multiple pipeline configs", () => {
-      const h1: ToolCallHeuristic = {
-        id: "h1",
-        phase: "pre-parse",
-        applies: () => true,
-        run: () => ({}),
-      };
-      const h2: ToolCallHeuristic = {
-        id: "h2",
-        phase: "fallback-reparse",
-        applies: () => true,
-        run: () => ({}),
-      };
-      const h3: ToolCallHeuristic = {
-        id: "h3",
-        phase: "post-parse",
-        applies: () => true,
-        run: () => ({}),
-      };
+      const h1 = passiveHeuristic("h1", "pre-parse");
+      const h2 = passiveHeuristic("h2", "fallback-reparse");
+      const h3 = passiveHeuristic("h3", "post-parse");
 
       const config1: PipelineConfig = { preParse: [h1] };
       const config2: PipelineConfig = { fallbackReparse: [h2] };
@@ -59,18 +68,8 @@ describe("heuristic-engine", () => {
     });
 
     it("concatenates heuristics from same phase", () => {
-      const h1: ToolCallHeuristic = {
-        id: "h1",
-        phase: "pre-parse",
-        applies: () => true,
-        run: () => ({}),
-      };
-      const h2: ToolCallHeuristic = {
-        id: "h2",
-        phase: "pre-parse",
-        applies: () => true,
-        run: () => ({}),
-      };
+      const h1 = passiveHeuristic("h1", "pre-parse");
+      const h2 = passiveHeuristic("h2", "pre-parse");
 
       const config1: PipelineConfig = { preParse: [h1] };
       const config2: PipelineConfig = { preParse: [h2] };
@@ -92,7 +91,7 @@ describe("heuristic-engine", () => {
   });
 
   describe("applyHeuristicPipeline", () => {
-    const mockParse = vi.fn((xml: string, _schema: unknown) => {
+    const mockParse = vi.fn((xml: string): RxmlValue => {
       if (xml.includes("invalid")) {
         throw new Error("Parse error");
       }
@@ -162,9 +161,7 @@ describe("heuristic-engine", () => {
         id: "transform",
         phase: "post-parse",
         applies: (call) => call.parsed !== null,
-        run: (call) => ({
-          parsed: { ...(call.parsed as object), transformed: true },
-        }),
+        run: addTransformed,
       };
 
       const ctx = createIntermediateCall("tool", "<valid>data</valid>", {});

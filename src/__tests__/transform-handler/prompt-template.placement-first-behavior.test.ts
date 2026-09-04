@@ -1,3 +1,4 @@
+import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
@@ -5,6 +6,7 @@ import { createOperationTools } from "../fixtures/function-tools";
 import { requireTransformParams } from "../test-helpers";
 
 describe("placement first behavior", () => {
+  const model = new MockLanguageModelV4();
   const tools = createOperationTools("d");
 
   it("placement=first prepends system message before user when no system exists", async () => {
@@ -16,6 +18,8 @@ describe("placement first behavior", () => {
 
     const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           {
@@ -25,7 +29,7 @@ describe("placement first behavior", () => {
         ],
         tools,
       },
-    } as any);
+    });
 
     expect(out.prompt[0].role).toBe("system");
     expect(String(out.prompt[0].content)).toContain("TOOLS:");

@@ -1,4 +1,8 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import {
+  isJSONObject,
+  type JSONValue,
+  type LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,6 +12,41 @@ import {
   jsonSchemaToPythonType,
   renderToolDefinition,
 } from "../../../core/prompts/hermes-prompt";
+import {
+  canonicalFileToolResult,
+  imageUrlToolResult,
+  weatherInputExampleTool,
+} from "./shared/prompt-duplicate-fixtures";
+
+interface RenderedToolDefinition {
+  readonly function: {
+    readonly description: string;
+    readonly name: string;
+    readonly parameters: JSONValue;
+  };
+  readonly type: string;
+}
+
+function parseRenderedToolDefinition(rendered: string): RenderedToolDefinition {
+  const parsed = JSON.parse(rendered);
+  if (!isJSONObject(parsed) || Array.isArray(parsed)) {
+    throw new TypeError("Expected a rendered tool definition object");
+  }
+  const { function: renderedFunction, type } = parsed;
+  if (!isJSONObject(renderedFunction) || Array.isArray(renderedFunction)) {
+    throw new TypeError("Expected a rendered function definition object");
+  }
+  const { description, name, parameters } = renderedFunction;
+  if (
+    typeof type !== "string" ||
+    typeof name !== "string" ||
+    typeof description !== "string" ||
+    parameters === undefined
+  ) {
+    throw new TypeError("Expected a complete rendered tool definition");
+  }
+  return { type, function: { name, description, parameters } };
+}
 
 describe("jsonSchemaToPythonType", () => {
   it('maps "string" to "str"', () => {
@@ -87,6 +126,33 @@ describe("jsonSchemaToPythonType", () => {
   });
 });
 
+const schemaPreservationCases: readonly {
+  readonly name: string;
+  readonly tool: LanguageModelV4FunctionTool;
+}[] = [
+  {
+    name: "preserves the original schema when properties is empty",
+    tool: {
+      type: "function",
+      name: "no_params_tool",
+      description: "No params",
+      inputSchema: { type: "object", properties: {} },
+    },
+  },
+  {
+    name: "preserves schemas without properties (e.g. additionalProperties)",
+    tool: {
+      type: "function",
+      name: "dynamic_payload",
+      description: "Accepts dynamic object values",
+      inputSchema: {
+        type: "object",
+        additionalProperties: { type: "string" },
+      },
+    },
+  },
+];
+
 describe("renderToolDefinition", () => {
   it("renders tool with description and parameters", () => {
     const tool: LanguageModelV4FunctionTool = {
@@ -125,41 +191,14 @@ describe("renderToolDefinition", () => {
     expect(result).toContain('"type": "function"');
   });
 
-  it("preserves the original schema when properties is empty", () => {
-    const tool: LanguageModelV4FunctionTool = {
-      type: "function",
-      name: "no_params_tool",
-      description: "No params",
-      inputSchema: {
-        type: "object",
-        properties: {},
-      },
-    };
-
-    const parsed = JSON.parse(renderToolDefinition(tool)) as {
-      function: { parameters: unknown };
-    };
-
-    expect(parsed.function.parameters).toEqual(tool.inputSchema);
-  });
-
-  it("preserves schemas without properties (e.g. additionalProperties)", () => {
-    const tool: LanguageModelV4FunctionTool = {
-      type: "function",
-      name: "dynamic_payload",
-      description: "Accepts dynamic object values",
-      inputSchema: {
-        type: "object",
-        additionalProperties: { type: "string" },
-      },
-    };
-
-    const parsed = JSON.parse(renderToolDefinition(tool)) as {
-      function: { parameters: unknown };
-    };
-
-    expect(parsed.function.parameters).toEqual(tool.inputSchema);
-  });
+  for (const scenario of schemaPreservationCases) {
+    it(scenario.name, () => {
+      const parsed = parseRenderedToolDefinition(
+        renderToolDefinition(scenario.tool)
+      );
+      expect(parsed.function.parameters).toEqual(scenario.tool.inputSchema);
+    });
+  }
 
   it("escapes tool names safely when serializing", () => {
     const tool: LanguageModelV4FunctionTool = {
@@ -174,9 +213,7 @@ describe("renderToolDefinition", () => {
       },
     };
 
-    const parsed = JSON.parse(renderToolDefinition(tool)) as {
-      function: { name: string };
-    };
+    const parsed = parseRenderedToolDefinition(renderToolDefinition(tool));
 
     expect(parsed.function.name).toBe('bad"name\\tool');
   });
@@ -195,9 +232,7 @@ describe("renderToolDefinition", () => {
       },
     };
 
-    const parsed = JSON.parse(renderToolDefinition(tool)) as {
-      function: { description: string };
-    };
+    const parsed = parseRenderedToolDefinition(renderToolDefinition(tool));
 
     expect(parsed.function.description).toContain(
       "first(str): First value\n        second(int): Second value"
@@ -244,14 +279,7 @@ describe("renderToolDefinition", () => {
       },
     };
 
-    const parsed = JSON.parse(renderToolDefinition(tool)) as {
-      type: string;
-      function: {
-        name: string;
-        description: string;
-        parameters: unknown;
-      };
-    };
+    const parsed = parseRenderedToolDefinition(renderToolDefinition(tool));
 
     expect(parsed.type).toBe("function");
     expect(parsed.function.name).toBe("analyze_data");
@@ -331,22 +359,7 @@ describe("formatToolResponseAsHermes", () => {
   });
 
   it("emits real file parts for canonical file content by default", () => {
-    const result = formatToolResponseAsHermes({
-      type: "tool-result",
-      toolCallId: "tc1",
-      toolName: "screenshot",
-      output: {
-        type: "content",
-        value: [
-          { type: "text", text: "Screenshot captured" },
-          {
-            type: "file",
-            data: { type: "data", data: "base64..." },
-            mediaType: "image/png",
-          },
-        ],
-      },
-    } satisfies ToolResultPart);
+    const result = formatToolResponseAsHermes(canonicalFileToolResult);
 
     expect(result).toEqual([
       {
@@ -365,22 +378,7 @@ describe("formatToolResponseAsHermes", () => {
     const formatter = createHermesToolResponseFormatter({
       mediaStrategy: { mode: "placeholder" },
     });
-    const result = formatter({
-      type: "tool-result",
-      toolCallId: "tc1",
-      toolName: "screenshot",
-      output: {
-        type: "content",
-        value: [
-          { type: "text", text: "Screenshot captured" },
-          {
-            type: "file",
-            data: { type: "data", data: "base64..." },
-            mediaType: "image/png",
-          },
-        ],
-      },
-    } satisfies ToolResultPart);
+    const result = formatter(canonicalFileToolResult);
 
     expect(result).toContain("Screenshot captured");
     expect(result).toContain("[Image: image/png]");
@@ -404,15 +402,7 @@ describe("formatToolResponseAsHermes", () => {
       },
     });
 
-    const result = formatter({
-      type: "tool-result",
-      toolCallId: "tc1",
-      toolName: "vision",
-      output: {
-        type: "content",
-        value: [{ type: "image-url", url: "https://example.com/a.png" }],
-      },
-    } satisfies ToolResultPart);
+    const result = formatter(imageUrlToolResult);
 
     expect(result).toContain('"type":"image-url"');
     expect(result).toContain('"url":"https://example.com/a.png"');
@@ -436,31 +426,7 @@ describe("hermesSystemPromptTemplate", () => {
   });
 
   it("renders Input Examples from tool.inputExamples", () => {
-    const rendered = hermesSystemPromptTemplate([
-      {
-        type: "function",
-        name: "get_weather",
-        description: "Get weather by city",
-        inputSchema: {
-          type: "object",
-          properties: {
-            city: { type: "string" },
-            unit: { type: "string" },
-          },
-          required: ["city"],
-        },
-        inputExamples: [
-          {
-            input: {
-              city: "Seoul",
-              unit: "celsius",
-            },
-          },
-        ],
-      } satisfies LanguageModelV4FunctionTool & {
-        inputExamples: Array<{ input: unknown }>;
-      },
-    ]);
+    const rendered = hermesSystemPromptTemplate([weatherInputExampleTool]);
 
     expect(rendered).toContain("# Input Examples");
     expect(rendered).toContain("Tool: get_weather");

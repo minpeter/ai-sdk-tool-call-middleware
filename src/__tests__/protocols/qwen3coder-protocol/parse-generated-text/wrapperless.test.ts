@@ -1,65 +1,62 @@
+import type { JSONValue, LanguageModelV4Content } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import { emptyFunctionTools } from "../../../fixtures/function-tools";
+import { runGeneratedJsonRepair } from "../../shared/duplicate-harness";
+
+type ParsedCall = Extract<LanguageModelV4Content, { type: "tool-call" }>;
+
+function parseWrapperless(text: string): LanguageModelV4Content[] {
+  return runGeneratedJsonRepair({
+    text,
+    tools: emptyFunctionTools,
+    protocol: qwen3CoderProtocol(),
+  });
+}
+
+function toolCalls(parts: LanguageModelV4Content[]): ParsedCall[] {
+  return parts.filter((part): part is ParsedCall => part.type === "tool-call");
+}
+
+function assertCall(
+  call: ParsedCall | undefined,
+  toolName: string,
+  expected: JSONValue
+): void {
+  if (!call) {
+    throw new Error("Expected tool-call part");
+  }
+  expect(call.toolName).toBe(toolName);
+  expect(JSON.parse(call.input)).toEqual(expected);
+}
 
 describe("qwen3CoderProtocol", () => {
-  const tools = emptyFunctionTools;
-
   it("parses wrapperless <function> before an incomplete <tool_call>", () => {
-    const p = qwen3CoderProtocol();
-    const text = "<function=alpha><parameter=x>1</parameter><tool_call";
-
-    const out = p.parseGeneratedText({ text, tools });
-    const calls = out.filter((part) => part.type === "tool-call");
+    const out = parseWrapperless(
+      "<function=alpha><parameter=x>1</parameter><tool_call"
+    );
+    const calls = toolCalls(out);
     expect(calls).toHaveLength(1);
-    const [call] = calls;
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
-    expect(call.toolName).toBe("alpha");
-    expect(JSON.parse(call.input)).toEqual({ x: "1" });
-
+    assertCall(calls[0], "alpha", { x: "1" });
     const texts = out.filter((part) => part.type === "text");
     expect(texts).toHaveLength(1);
-    const [textPart] = texts;
-    if (textPart?.type !== "text") {
-      throw new Error("Expected text part");
-    }
-    expect(textPart.text).toBe("<tool_call");
+    expect(texts[0]?.text).toBe("<tool_call");
   });
 
   it("parses <function> blocks even when <tool_call> wrapper is missing", () => {
-    const p = qwen3CoderProtocol();
-    const text = [
-      "before ",
-      "<function=alpha><parameter=x>1</parameter></function>",
-      " after",
-    ].join("");
-
-    const out = p.parseGeneratedText({ text, tools });
+    const out = parseWrapperless(
+      "before <function=alpha><parameter=x>1</parameter></function> after"
+    );
     expect(out).toHaveLength(3);
     expect(out[0]).toEqual({ type: "text", text: "before " });
     expect(out[2]).toEqual({ type: "text", text: " after" });
-
-    const [, call] = out;
-    if (call.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
-    expect(call.toolName).toBe("alpha");
-    expect(JSON.parse(call.input)).toEqual({ x: "1" });
+    assertCall(toolCalls(out)[0], "alpha", { x: "1" });
   });
 
   it("parses wrapperless <function> calls even when wrapped <tool_call> blocks are present", () => {
-    const p = qwen3CoderProtocol();
-    const text = [
-      "before ",
-      "<function=beta><parameter=y>2</parameter></function>",
-      " middle ",
-      "<tool_call><function=alpha><parameter=x>1</parameter></function></tool_call>",
-      " after",
-    ].join("");
-
-    const out = p.parseGeneratedText({ text, tools });
+    const out = parseWrapperless(
+      "before <function=beta><parameter=y>2</parameter></function> middle <tool_call><function=alpha><parameter=x>1</parameter></function></tool_call> after"
+    );
     expect(out.map((part) => part.type)).toEqual([
       "text",
       "tool-call",
@@ -67,68 +64,38 @@ describe("qwen3CoderProtocol", () => {
       "tool-call",
       "text",
     ]);
-
-    const calls = out.filter((part) => part.type === "tool-call");
+    const calls = toolCalls(out);
     expect(calls).toHaveLength(2);
-    const [first] = calls;
-    const [, second] = calls;
-    if (first?.type !== "tool-call" || second?.type !== "tool-call") {
-      throw new Error("Expected tool-call parts");
-    }
-
-    expect(first.toolName).toBe("beta");
-    expect(JSON.parse(first.input)).toEqual({ y: "2" });
-    expect(second.toolName).toBe("alpha");
-    expect(JSON.parse(second.input)).toEqual({ x: "1" });
+    assertCall(calls[0], "beta", { y: "2" });
+    assertCall(calls[1], "alpha", { x: "1" });
   });
 
   it("parses wrapperless prefix before trailing incomplete <tool_call> recovery", () => {
-    const p = qwen3CoderProtocol();
-    const text =
-      "<function=alpha><parameter=x>1</parameter></function> between <tool_call><parameter=y>2";
-
-    const out = p.parseGeneratedText({ text, tools });
-    const calls = out.filter((part) => part.type === "tool-call");
+    const out = parseWrapperless(
+      "<function=alpha><parameter=x>1</parameter></function> between <tool_call><parameter=y>2"
+    );
+    const calls = toolCalls(out);
     expect(calls).toHaveLength(1);
-    const [call] = calls;
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
-    expect(call.toolName).toBe("alpha");
-    expect(JSON.parse(call.input)).toEqual({ x: "1" });
-
-    const rejoinedText = out
+    assertCall(calls[0], "alpha", { x: "1" });
+    const text = out
       .filter((part) => part.type === "text")
       .map((part) => part.text)
       .join("");
-    expect(rejoinedText).toContain(" between ");
-    expect(rejoinedText).toContain("<tool_call><parameter=y>2");
+    expect(text).toContain(" between ");
+    expect(text).toContain("<tool_call><parameter=y>2");
   });
 
   it("ignores stray leading </tool_call> close tags before a <function> block", () => {
-    const p = qwen3CoderProtocol();
-    const text = [
-      "before ",
-      "</tool_call>\n",
-      "<function=alpha><parameter=x>1</parameter></function>",
-      " after",
-    ].join("");
-
-    const out = p.parseGeneratedText({ text, tools });
-    const rejoinedText = out
+    const out = parseWrapperless(
+      "before </tool_call>\n<function=alpha><parameter=x>1</parameter></function> after"
+    );
+    const text = out
       .filter((part) => part.type === "text")
       .map((part) => part.text)
       .join("");
-
-    expect(rejoinedText).toContain("before ");
-    expect(rejoinedText).toContain(" after");
-    expect(rejoinedText).not.toContain("</tool_call>");
-
-    const call = out.find((part) => part.type === "tool-call");
-    if (call?.type !== "tool-call") {
-      throw new Error("Expected tool-call part");
-    }
-    expect(call.toolName).toBe("alpha");
-    expect(JSON.parse(call.input)).toEqual({ x: "1" });
+    expect(text).toContain("before ");
+    expect(text).toContain(" after");
+    expect(text).not.toContain("</tool_call>");
+    assertCall(toolCalls(out)[0], "alpha", { x: "1" });
   });
 });

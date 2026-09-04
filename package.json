@@ -9,6 +9,9 @@
   "license": "Apache-2.0",
   "sideEffects": false,
   "type": "module",
+  "imports": {
+    "#benchmark/analyze-output": "./benchmarks/glm-5.2-tool-calling/src/analyze-output.ts"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -128,5 +131,21 @@
       "shell-quote": "^1.8.4",
       "vite": "^8.2.2"
     }
+  },
+  "knip": {
+    "entry": [
+      "examples/parser-core/src/*.ts",
+      "examples/rxml-core/src/*.ts",
+      "benchmarks/glm-5.2-tool-calling/src/analyze.ts",
+      "benchmarks/glm-5.2-tool-calling/src/audit-live-glm5-parser-failures.ts",
+      "benchmarks/glm-5.2-tool-calling/src/openai-compat-bridge-vakra.ts",
+      "benchmarks/glm-5.2-tool-calling/src/pilot-mcpmark-offline.ts",
+      "benchmarks/glm-5.2-tool-calling/src/replay-provider-capture.ts",
+      "benchmarks/glm-5.2-tool-calling/src/run-ace.ts",
+      "benchmarks/glm-5.2-tool-calling/src/run-mcpmark.ts",
+      "benchmarks/glm-5.2-tool-calling/src/run.ts",
+      "benchmarks/glm-5.2-tool-calling/tau2/run-bridge.mjs",
+      "benchmarks/glm-5.2-tool-calling/src/tau2-bridge.ts"
+    ]
   }
 }

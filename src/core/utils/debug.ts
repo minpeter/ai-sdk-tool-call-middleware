@@ -101,6 +101,22 @@ function safeDebugText(value: ProtocolError): string {
   return safeToolCallMetadataText(safeStringify(value));
 }
 
+function safeSdkDebugText(
+  value:
+    | LanguageModelV4Content
+    | LanguageModelV4StreamPart
+    | readonly LanguageModelV4ToolCallPart[]
+    | string
+): string {
+  try {
+    const serialized =
+      typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    return safeToolCallMetadataText(`\n${serialized}`);
+  } catch {
+    return safeToolCallMetadataText(String(value));
+  }
+}
+
 function formatSanitizedError(error: RxmlValue | Error): string {
   if (typeof error === "string") {
     return `\n${error}`;
@@ -162,14 +178,14 @@ export function logParseFailure({
 
 export function logRawChunk(part: LanguageModelV4StreamPart | string) {
   // Raw provider stream/generate output
-  console.log(cGray("[debug:mw:raw]"), cYellow(safeDebugText(part)));
+  console.log(cGray("[debug:mw:raw]"), cYellow(safeSdkDebugText(part)));
 }
 
 export function logParsedChunk(
   part: LanguageModelV4Content | LanguageModelV4StreamPart
 ) {
   // Normalized middleware output
-  console.log(cGray("[debug:mw:out]"), cCyan(safeDebugText(part)));
+  console.log(cGray("[debug:mw:out]"), cCyan(safeSdkDebugText(part)));
 }
 
 function getHighlightStyle(): "inverse" | "underline" | "bold" | "bg" {
@@ -237,7 +253,7 @@ export function logParsedSummary({
   }
 
   if (toolCalls.length > 0) {
-    const styledSummary = safeDebugText(toolCalls)
+    const styledSummary = safeSdkDebugText(toolCalls)
       .split(LINE_SPLIT_REGEX)
       .map((line) => (line.length ? cBgBlue(line) : line))
       .join("\n");

@@ -11,78 +11,73 @@ import {
 import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
 import { transformParams } from "../../transform-handler";
 
+function morphFixture(): {
+  readonly prompt: LanguageModelV4Prompt;
+  readonly tools: LanguageModelV4FunctionTool[];
+} {
+  const tools: LanguageModelV4FunctionTool[] = [
+    {
+      name: "get_weather",
+      description: "Get weather by city",
+      type: "function",
+      inputSchema: {
+        properties: { city: { type: "string" } },
+        required: ["city"],
+        type: "object",
+      },
+    },
+  ];
+  const prompt: LanguageModelV4Prompt = [
+    {
+      content: [{ text: "오늘 서울 날씨 알려줘", type: "text" }],
+      role: "user",
+    },
+    {
+      content: [
+        {
+          input: '{"city":"Seoul"}',
+          toolCallId: "tc-weather",
+          toolName: "get_weather",
+          type: "tool-call",
+        },
+      ],
+      role: "assistant",
+    },
+    {
+      content: [
+        {
+          output: {
+            type: "json",
+            value: { city: "Seoul", temperature: 21 },
+          },
+          toolCallId: "tc-weather",
+          toolName: "get_weather",
+          type: "tool-result",
+        },
+      ],
+      role: "tool",
+    },
+  ];
+  return { prompt, tools };
+}
+
 describe("transformParams morph-xml outer-layer transform", () => {
   it("transforms tools + messages into the expected prompt message array", () => {
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "get_weather",
-        description: "Get weather by city",
-        inputSchema: {
-          type: "object",
-          properties: {
-            city: { type: "string" },
-          },
-          required: ["city"],
-        },
-      },
-    ];
-
-    const inputPrompt: LanguageModelV4Prompt = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "오늘 서울 날씨 알려줘" }],
-      },
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "tc-weather",
-            toolName: "get_weather",
-            input: JSON.stringify({ city: "Seoul" }),
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "tc-weather",
-            toolName: "get_weather",
-            output: {
-              type: "json",
-              value: {
-                city: "Seoul",
-                temperature: 21,
-              },
-            },
-          },
-        ],
-      },
-    ];
-
+    const fixture = morphFixture();
     const transformed = transformParams({
       protocol: morphXmlProtocol({}),
       placement: "first",
       toolSystemPromptTemplate: morphXmlSystemPromptTemplate,
       toolResponsePromptTemplate: morphFormatToolResponseAsXml,
-      params: {
-        prompt: inputPrompt,
-        tools,
-      },
+      params: fixture,
     });
 
     const expectedPrompt: LanguageModelV4Prompt = [
       {
         role: "system",
-        content: morphXmlSystemPromptTemplate(tools),
+        content: morphXmlSystemPromptTemplate(fixture.tools),
       },
-      {
-        role: "user",
-        content: [{ type: "text", text: "오늘 서울 날씨 알려줘" }],
-      },
+      fixture.prompt[0],
       {
         role: "assistant",
         content: [
@@ -111,8 +106,13 @@ describe("transformParams morph-xml outer-layer transform", () => {
       },
     ];
 
-    expect(transformed.prompt).toEqual(expectedPrompt);
-    expect(transformed.tools).toEqual([]);
-    expect(transformed.toolChoice).toBeUndefined();
+    const {
+      prompt: actualPrompt,
+      tools: remainingTools,
+      toolChoice,
+    } = transformed;
+    expect(actualPrompt).toEqual(expectedPrompt);
+    expect(remainingTools).toEqual([]);
+    expect(toolChoice).toBeUndefined();
   });
 });

@@ -1,3 +1,14 @@
+import type { RxmlValue } from "../builders/stringify";
+
+type RxmlObject = Exclude<
+  RxmlValue,
+  string | number | boolean | null | undefined | readonly RxmlValue[]
+>;
+
+function isRxmlObject(value: RxmlValue): value is RxmlObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function restorePlaceholderString(
   value: string,
   placeholderMap: Map<string, string>
@@ -10,11 +21,11 @@ function restorePlaceholderString(
 }
 
 function restorePlaceholdersInObject(
-  object: Record<string, unknown>,
+  object: RxmlObject,
   textNodeName: string,
-  restorer: (value: unknown) => unknown
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+  restorer: (value: RxmlValue) => RxmlValue
+): RxmlObject {
+  const result: Record<string, RxmlValue> = {};
   for (const [key, value] of Object.entries(object)) {
     const restored = restorer(value);
     result[key] =
@@ -28,8 +39,8 @@ function restorePlaceholdersInObject(
 export function createPlaceholderRestorer(
   placeholderMap: Map<string, string>,
   textNodeName: string
-): (value: unknown) => unknown {
-  const restore = (value: unknown): unknown => {
+): (value: RxmlValue) => RxmlValue {
+  const restore = (value: RxmlValue): RxmlValue => {
     if (value == null) {
       return value;
     }
@@ -39,12 +50,8 @@ export function createPlaceholderRestorer(
     if (Array.isArray(value)) {
       return value.map(restore);
     }
-    if (typeof value === "object") {
-      return restorePlaceholdersInObject(
-        value as Record<string, unknown>,
-        textNodeName,
-        restore
-      );
+    if (isRxmlObject(value)) {
+      return restorePlaceholdersInObject(value, textNodeName, restore);
     }
     return value;
   };

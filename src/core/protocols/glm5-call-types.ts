@@ -1,3 +1,5 @@
+import type { JSONObject } from "@ai-sdk/provider";
+
 export type Glm5StringBoundaryNormalization = "layout" | "preserve";
 
 export interface Glm5ProtocolOptions {
@@ -23,7 +25,7 @@ export interface ResolvedGlm5ProtocolOptions {
 }
 
 export interface ParsedGlm5Call {
-  args: Record<string, unknown>;
+  args: JSONObject;
   rawToolName: string;
   recoveries: string[];
   toolName: string;

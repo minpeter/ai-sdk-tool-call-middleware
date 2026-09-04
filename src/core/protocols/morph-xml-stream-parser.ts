@@ -1,20 +1,15 @@
-import {
-  isJSONObject,
-  type LanguageModelV4FunctionTool,
-  type LanguageModelV4StreamPart,
+import type {
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { parse } from "../../rxml";
 import { generateToolCallId } from "../utils/id";
 import {
-  createFlushTextHandler,
   extractToolNames,
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import {
-  emitFailedBufferedToolInputLifecycle,
-  emitFinalizedBufferedToolInputLifecycle,
-  isPrototypeSensitiveToolCallInputError,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
@@ -43,6 +38,11 @@ import {
   findStreamingLinePrefixedToolCall,
 } from "./morph-xml-tool-call-finder";
 import type { ParserOptions } from "./protocol-interface";
+import {
+  createProtocolSemanticChunkTransform,
+  createProtocolTextLifecycle,
+  finalizeBufferedToolInput,
+} from "./protocol-stream-shared";
 
 export function createMorphXmlStreamParser(params: {
   readonly tools: LanguageModelV4FunctionTool[];
@@ -53,19 +53,8 @@ export function createMorphXmlStreamParser(params: {
   const toolNames = extractToolNames(tools);
   let buffer = "";
   let currentToolCall: StreamingToolCallState | null = null;
-  let currentTextId: string | null = null;
-  let hasEmittedTextStart = false;
-
-  const flushText = createFlushTextHandler(
-    () => currentTextId,
-    (newId: string | null) => {
-      currentTextId = newId;
-    },
-    () => hasEmittedTextStart,
-    (value: boolean) => {
-      hasEmittedTextStart = value;
-    }
-  );
+  const textLifecycle = createProtocolTextLifecycle();
+  const { flushText } = textLifecycle;
 
   const emitToolInputStart = (
     controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
@@ -318,61 +307,38 @@ export function createMorphXmlStreamParser(params: {
       onError: options?.onError ?? parseOptions.onError,
     };
 
-    const toolSchema = getToolSchema(tools, currentToolCall.name);
-    flushText(controller);
-    try {
-      if (hasNonWhitespaceTopLevelText(unclosedContent)) {
-        throw new Error(
-          "Cannot reconcile unclosed XML tool call with top-level plain text."
-        );
-      }
-      const parsedResult = parse(unclosedContent, toolSchema, parseConfig);
-      if (!isJSONObject(parsedResult)) {
-        throw new Error("XML tool call arguments must be an object");
-      }
-      const finalInput = stringifyToolInputWithSchema({
-        toolName: currentToolCall.name,
-        args: parsedResult,
-        tools,
-      });
-      emitFinalizedBufferedToolInputLifecycle({
-        bufferedParts: currentToolCall.pendingToolInputParts,
-        controller,
-        id: currentToolCall.toolCallId,
-        state: currentToolCall,
-        toolName: currentToolCall.name,
-        finalInput,
-        onMismatch: options?.onError,
-      });
-    } catch (error) {
-      const caughtError =
-        error instanceof Error ? error : new Error(String(error));
-      const unfinishedContent = `<${currentToolCall.name}>${unclosedContent}`;
-      const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
-      emitFailedBufferedToolInputLifecycle({
-        bufferedParts: currentToolCall.pendingToolInputParts,
-        controller,
-        id: currentToolCall.toolCallId,
-        emitRawToolCallTextOnError: emitRawFallback,
-        endInputOnError: currentToolCall.hasEmittedStart,
-        hideBufferedInputOnError:
-          isPrototypeSensitiveToolCallInputError(caughtError),
-        rawToolCallText: unfinishedContent,
-        emitRawText: (rawText) => {
-          flushText(controller, rawText);
-        },
-      });
-      options?.onError?.(
-        "Could not complete streaming XML tool call at finish.",
-        {
-          toolCall: safeToolCallMetadataText(unfinishedContent),
-          toolCallId: currentToolCall.toolCallId,
-          toolName: currentToolCall.name,
-          dropReason: "unfinished-tool-call",
-          error: safeToolCallMetadataError(caughtError, unfinishedContent),
+    const callState = currentToolCall;
+    const toolSchema = getToolSchema(tools, callState.name);
+    const unfinishedContent = `<${callState.name}>${unclosedContent}`;
+    finalizeBufferedToolInput({
+      controller,
+      emitRawToolCallTextOnError: shouldEmitRawToolCallTextOnError(options),
+      flushText,
+      onMismatch: options?.onError,
+      parseInput: () => {
+        if (hasNonWhitespaceTopLevelText(unclosedContent)) {
+          throw new Error(
+            "Cannot reconcile unclosed XML tool call with top-level plain text."
+          );
         }
-      );
-    }
+        return parse(unclosedContent, toolSchema, parseConfig);
+      },
+      rawToolCallText: unfinishedContent,
+      state: callState,
+      tools,
+      onFailure(caughtError) {
+        options?.onError?.(
+          "Could not complete streaming XML tool call at finish.",
+          {
+            toolCall: safeToolCallMetadataText(unfinishedContent),
+            toolCallId: callState.toolCallId,
+            toolName: callState.name,
+            dropReason: "unfinished-tool-call",
+            error: safeToolCallMetadataError(caughtError, unfinishedContent),
+          }
+        );
+      },
+    });
 
     buffer = "";
     currentToolCall = null;
@@ -413,15 +379,6 @@ export function createMorphXmlStreamParser(params: {
     }
   };
 
-  const handleFinishChunk = (
-    chunk: Extract<LanguageModelV4StreamPart, { type: "finish" }>,
-    controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
-  ) => {
-    finishPendingInput(controller);
-    flushText(controller);
-    controller.enqueue(chunk);
-  };
-
   const handleNonTextChunk = (
     chunk: Exclude<LanguageModelV4StreamPart, { type: "text-delta" }>,
     controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
@@ -439,45 +396,21 @@ export function createMorphXmlStreamParser(params: {
     controller.enqueue(chunk);
   };
 
-  const closeOpenTextSegment = (
-    controller: TransformStreamDefaultController<LanguageModelV4StreamPart>
-  ) => {
-    if (!(currentTextId && hasEmittedTextStart)) {
-      return;
-    }
-    controller.enqueue({
-      type: "text-end",
-      id: currentTextId,
-    });
-    hasEmittedTextStart = false;
-    currentTextId = null;
-  };
-
-  return new TransformStream({
-    transform(chunk, controller) {
-      if (chunk.type === "finish") {
-        handleFinishChunk(chunk, controller);
-        return;
-      }
-
-      // The parser re-segments text under its own synthetic ids (tool-call
-      // markup is excised), so the provider's original text-start/text-end
-      // envelopes are dropped instead of producing empty duplicate blocks.
-      if (chunk.type === "text-start" || chunk.type === "text-end") {
-        return;
-      }
-
-      if (chunk.type !== "text-delta") {
-        handleNonTextChunk(chunk, controller);
-        return;
-      }
-
-      buffer += chunk.delta ?? "";
-      processBuffer(controller);
+  return createProtocolSemanticChunkTransform({
+    finish(controller) {
+      finishPendingInput(controller);
+      flushText(controller);
     },
     flush(controller) {
       finishPendingInput(controller);
-      closeOpenTextSegment(controller);
+      textLifecycle.close(controller);
+    },
+    passthrough(controller, chunk) {
+      handleNonTextChunk(chunk, controller);
+    },
+    textDelta(controller, delta) {
+      buffer += delta;
+      processBuffer(controller);
     },
   });
 }

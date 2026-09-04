@@ -1,4 +1,7 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4FunctionTool,
+  LanguageModelV4StreamPart,
+} from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
@@ -23,8 +26,8 @@ import {
 describe("Random chunk boundary fuzzing", () => {
   interface FuzzCase {
     expectedText?: string;
-    expectedTextContains?: string[];
-    expectedTextNotContains?: string[];
+    expectedTextContains?: readonly string[];
+    expectedTextNotContains?: readonly string[];
     expectedTools: ReturnType<typeof extractToolCalls>;
     input: string;
     name: string;
@@ -53,25 +56,27 @@ describe("Random chunk boundary fuzzing", () => {
     }
   }
 
-  function describeFuzzSuite(
-    suiteName: string,
-    createProtocol: () =>
+  interface FuzzSuite {
+    readonly createProtocol: () =>
       | ReturnType<typeof hermesProtocol>
       | ReturnType<typeof morphXmlProtocol>
-      | ReturnType<typeof qwen3CoderProtocol>,
-    tools: Parameters<
-      ReturnType<typeof createProtocol>["createStreamParser"]
-    >[0]["tools"],
-    testCases: FuzzCase[]
-  ) {
-    describe(suiteName, () => {
-      for (const testCase of testCases) {
+      | ReturnType<typeof qwen3CoderProtocol>;
+    readonly name: string;
+    readonly testCases: readonly FuzzCase[];
+    readonly tools: LanguageModelV4FunctionTool[];
+  }
+
+  function describeFuzzSuite(suite: FuzzSuite) {
+    describe(suite.name, () => {
+      for (const testCase of suite.testCases) {
         describe(testCase.name, () => {
           it.each(Array.from({ length: FUZZ_ITERATIONS }, (_, i) => i))(
             "produces consistent results with random split seed %i",
             async (seed) => {
-              const protocol = createProtocol();
-              const transformer = protocol.createStreamParser({ tools });
+              const protocol = suite.createProtocol();
+              const transformer = protocol.createStreamParser({
+                tools: suite.tools,
+              });
               const chunks = randomChunkSplit(testCase.input, 1, 8, seed);
               const stream = createChunkedStream(chunks);
 
@@ -87,22 +92,22 @@ describe("Random chunk boundary fuzzing", () => {
     });
   }
 
-  describeFuzzSuite(
-    "hermesProtocol",
-    hermesProtocol,
-    [],
-    hermesProtocolTestCases
-  );
-  describeFuzzSuite(
-    "morphXmlProtocol",
-    morphXmlProtocol,
-    morphXmlTools,
-    xmlTestCases
-  );
-  describeFuzzSuite(
-    "qwen3CoderProtocol",
-    qwen3CoderProtocol,
-    [],
-    qwen3CoderProtocolTestCases
-  );
+  describeFuzzSuite({
+    name: "hermesProtocol",
+    createProtocol: hermesProtocol,
+    tools: [],
+    testCases: hermesProtocolTestCases,
+  });
+  describeFuzzSuite({
+    name: "morphXmlProtocol",
+    createProtocol: morphXmlProtocol,
+    tools: morphXmlTools,
+    testCases: xmlTestCases,
+  });
+  describeFuzzSuite({
+    name: "qwen3CoderProtocol",
+    createProtocol: qwen3CoderProtocol,
+    tools: [],
+    testCases: qwen3CoderProtocolTestCases,
+  });
 });

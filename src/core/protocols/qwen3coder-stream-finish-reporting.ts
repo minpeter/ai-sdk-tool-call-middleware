@@ -3,7 +3,7 @@ import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-
 import { safeToolCallMetadataText } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import {
-  enqueueToolInputEndAndCall,
+  enqueueCompleteToolCallLifecycle,
   shouldEmitRawToolCallTextOnError,
 } from "../utils/tool-input-streaming";
 import type { ParserOptions } from "./protocol-interface";
@@ -62,20 +62,7 @@ export function createQwenStreamFinishReporting({
       return false;
     }
     for (const call of calls) {
-      controller.enqueue({
-        type: "tool-input-start",
-        id: call.toolCallId,
-        toolName: call.toolName,
-      });
-      if (call.input.length > 0) {
-        controller.enqueue({
-          type: "tool-input-delta",
-          id: call.toolCallId,
-          delta: call.input,
-        });
-      }
-      controller.enqueue({ type: "tool-input-end", id: call.toolCallId });
-      controller.enqueue(call);
+      enqueueCompleteToolCallLifecycle({ controller, call });
     }
     return true;
   };
@@ -105,23 +92,9 @@ export function createQwenStreamFinishReporting({
       return false;
     }
     for (const call of serializedCalls) {
-      controller.enqueue({
-        type: "tool-input-start",
-        id: call.toolCallId,
-        toolName: call.toolName,
-      });
-      if (call.input.length > 0) {
-        controller.enqueue({
-          type: "tool-input-delta",
-          id: call.toolCallId,
-          delta: call.input,
-        });
-      }
-      enqueueToolInputEndAndCall({
+      enqueueCompleteToolCallLifecycle({
         controller,
-        id: call.toolCallId,
-        toolName: call.toolName,
-        input: call.input,
+        call: { type: "tool-call", ...call },
       });
     }
     return true;

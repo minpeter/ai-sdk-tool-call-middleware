@@ -1,50 +1,34 @@
-import type { ParserOptions } from "../protocols/protocol-interface";
-
-export type ProviderBoundaryValue =
-  | object
-  | CallableFunction
-  | string
-  | number
-  | bigint
-  | boolean
-  | symbol
-  | null
-  | undefined;
-
-export type ProviderBoundaryRecord = Record<string, ProviderBoundaryValue>;
+import type {
+  ParserOptions,
+  ProtocolMetadataJsonValue,
+} from "../protocols/protocol-interface";
 
 export type OnErrorFn = NonNullable<ParserOptions["onError"]>;
 
-export type OnErrorValue =
+export type ProviderBoundaryValue =
+  | ProtocolMetadataJsonValue
   | OnErrorFn
-  | Exclude<ProviderBoundaryValue, null | undefined | false>;
+  | symbol;
 
-function isProviderBoundaryRecord<Value>(
-  value: Value
-): value is Value & ProviderBoundaryRecord {
+export interface ProviderBoundaryRecord {
+  readonly [key: string]: ProviderBoundaryValue;
+}
+
+interface ProviderOnErrorOptions {
+  readonly toolCallMiddleware?: {
+    readonly onError?: OnErrorFn;
+  };
+}
+
+function isProviderBoundaryRecord(
+  value: ProviderOnErrorOptions | ProviderBoundaryRecord | ProviderBoundaryValue
+): value is ProviderBoundaryRecord {
   return typeof value === "object" && value !== null;
 }
 
 export function extractOnErrorOption(
-  providerOptions?:
-    | {
-        readonly toolCallMiddleware?: {
-          readonly onError?: OnErrorFn;
-          readonly toolChoice?: { readonly type: string };
-        };
-      }
-    | {
-        readonly toolCallMiddleware?: {
-          readonly toolChoice?: { readonly type: string };
-        };
-      }
-): { readonly onError: OnErrorFn } | undefined;
-export function extractOnErrorOption<ProviderOptions>(
-  providerOptions?: ProviderOptions
-): { readonly onError: OnErrorValue } | undefined;
-export function extractOnErrorOption<ProviderOptions>(
-  providerOptions?: ProviderOptions
-): { readonly onError: OnErrorValue } | undefined {
+  providerOptions?: ProviderOnErrorOptions | ProviderBoundaryValue
+): { readonly onError: OnErrorFn } | undefined {
   if (!isProviderBoundaryRecord(providerOptions)) {
     return;
   }
@@ -53,5 +37,5 @@ export function extractOnErrorOption<ProviderOptions>(
     return;
   }
   const { onError } = middlewareOptions;
-  return onError ? { onError } : undefined;
+  return typeof onError === "function" ? { onError } : undefined;
 }

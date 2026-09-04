@@ -1,4 +1,8 @@
-import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONObject,
+  JSONValue,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { morphFormatToolResponseAsXml } from "../core/prompts/morph-xml-prompt";
 import {
   renderInputExamplesSection,
@@ -12,14 +16,16 @@ import { createToolMiddleware, morphXmlProtocol } from "../index";
 import { stringify } from "../rxml";
 import { escapeXmlMinimalText } from "../rxml/utils/helpers";
 
-function hasInvalidXmlKeys(value: unknown): boolean {
+function hasInvalidXmlKeys(value: JSONValue): boolean {
   if (Array.isArray(value)) {
     return value.some((entry) => hasInvalidXmlKeys(entry));
   }
 
   if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>).some(
-      ([key, nested]) => !isValidXmlTagName(key) || hasInvalidXmlKeys(nested)
+    return Object.entries(value).some(
+      ([key, nested]) =>
+        !isValidXmlTagName(key) ||
+        (nested !== undefined && hasInvalidXmlKeys(nested))
     );
   }
 
@@ -142,7 +148,10 @@ function renderSijawaraInputExamples(
   });
 }
 
-function renderSijawaraInputExample(toolName: string, input: unknown): string {
+function renderSijawaraInputExample(
+  toolName: string,
+  input: JSONObject
+): string {
   const safeToolName = toSafeXmlTagName(toolName);
 
   if (hasInvalidXmlKeys(input)) {
@@ -152,13 +161,16 @@ function renderSijawaraInputExample(toolName: string, input: unknown): string {
   }
 
   try {
-    return stringify(safeToolName, input as JSONValue, {
+    return stringify(safeToolName, input, {
       suppressEmptyNode: false,
       format: true,
       minimalEscaping: true,
     });
   } catch (error) {
-    const fallbackContent = safeStringifyInputExample(input, error);
+    const fallbackContent = safeStringifyInputExample(
+      input,
+      error instanceof Error ? error : undefined
+    );
     const escapedFallback = escapeXmlMinimalText(fallbackContent);
     return `<${safeToolName}>${escapedFallback}</${safeToolName}>`;
   }

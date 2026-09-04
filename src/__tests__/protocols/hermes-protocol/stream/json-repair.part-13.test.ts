@@ -1,143 +1,79 @@
 import type {
-  JSONValue,
+  JSONSchema7,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import type { ParserOptions } from "../../../../core/protocols/protocol-interface";
+import { stopFinishReason, zeroUsage } from "../../../test-helpers";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  requireToolCall,
+  runProtocolTextStream,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
 
-// Intentionally accepts malformed schemas so tests can exercise runtime rejection.
-function makeSchemaTool(
-  name: string,
-  inputSchema: JSONValue
-): LanguageModelV4FunctionTool {
-  return {
-    type: "function",
-    name,
-    inputSchema: inputSchema as LanguageModelV4FunctionTool["inputSchema"],
+type HermesError = NonNullable<ParserOptions["onError"]>;
+
+function patternTool(pattern: string): LanguageModelV4FunctionTool {
+  const inputSchema: JSONSchema7 = {
+    type: "object",
+    properties: { content: { type: "string" } },
+    patternProperties: { [pattern]: false },
+    additionalProperties: true,
   };
+  return { type: "function", name: "write", inputSchema };
 }
 
-function hasStringToolCallId(
-  value: JSONValue
-): value is { readonly toolCallId: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "toolCallId" in value &&
-    typeof value.toolCallId === "string"
-  );
+function repairPattern(
+  pattern: string,
+  blockedProperty: string,
+  onError: HermesError
+): Promise<LanguageModelV4StreamPart[]> {
+  const argumentsValue = { content: "ok", [blockedProperty]: "blocked" };
+  return runProtocolTextStream({
+    chunks: [
+      `<tool_call>${JSON.stringify({ name: "write", arguments: argumentsValue })}</tool_call>`,
+    ],
+    id: "1",
+    parserOptions: { onError },
+    protocol: hermesProtocol(),
+    tools: [patternTool(pattern)],
+  });
+}
+
+function expectBlockedKeyRemoved(
+  output: LanguageModelV4StreamPart[],
+  onError: HermesError
+): void {
+  const tool = output.find((part) => part.type === "tool-call");
+  expect(tool).toBeTruthy();
+  expect(JSON.parse(requireToolCall(output).input)).toEqual({ content: "ok" });
+  const timeline = selectToolInputTimeline(output);
+  expect(timeline.starts.length > 0).toBe(true);
+  expect(timeline.deltas.length > 0).toBe(true);
+  expect(timeline.ends.length > 0).toBe(true);
+  expect(onError).not.toHaveBeenCalled();
 }
 
 describe("json-repair.test split 13", () => {
   it("drops unsafe false patternProperties that may match key substrings", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("write", {
-        type: "object",
-        properties: {
-          content: { type: "string" },
-        },
-        patternProperties: {
-          "(secret+)+": false,
-        },
-        additionalProperties: true,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"write","arguments":{"content":"ok","x-secret":"blocked"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const tool = out.find((c) => c.type === "tool-call");
-    expect(tool).toBeTruthy();
-    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
-      content: "ok",
-    });
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
-    expect(onError).not.toHaveBeenCalled();
+    const onError = vi.fn<HermesError>();
+    const out = await repairPattern("(secret+)+", "x-secret", onError);
+
+    expectBlockedKeyRemoved(out, onError);
   });
 
   it("drops unsafe false patternProperties that may match unanchored suffixes", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("write", {
-        type: "object",
-        properties: {
-          content: { type: "string" },
-        },
-        patternProperties: {
-          "(a+)+$": false,
-        },
-        additionalProperties: true,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"write","arguments":{"content":"ok","ba":"blocked"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const tool = out.find((c) => c.type === "tool-call");
-    expect(tool).toBeTruthy();
-    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
-      content: "ok",
-    });
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
-    expect(onError).not.toHaveBeenCalled();
+    const onError = vi.fn<HermesError>();
+    const out = await repairPattern("(a+)+$", "ba", onError);
+
+    expectBlockedKeyRemoved(out, onError);
   });
 
   it("does not emit stale speculative tool-calls after later invalid chunks", async () => {
-    const onError = vi.fn();
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
+    const onError = vi.fn<HermesError>();
+    const transformer = hermesProtocol().createStreamParser({
       tools: [],
       options: { onError },
     });
@@ -181,15 +117,15 @@ describe("json-repair.test split 13", () => {
     await writer.close();
     await done;
 
-    const start = out.find((c) => c.type === "tool-input-start");
-    expect(out.find((c) => c.type === "tool-call")).toBeUndefined();
+    const start = out.find((part) => part.type === "tool-input-start");
+    expect(out.find((part) => part.type === "tool-call")).toBeUndefined();
     expect(start).toBeTruthy();
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
+    expect(out.some((part) => part.type === "tool-input-delta")).toBe(true);
+    expect(out.some((part) => part.type === "tool-input-end")).toBe(true);
     expect(onError).toHaveBeenCalled();
     const metadata = onError.mock.calls[0]?.[1];
-    expect(hasStringToolCallId(metadata)).toBe(true);
-    if (!hasStringToolCallId(metadata)) {
+    expect(typeof metadata?.toolCallId).toBe("string");
+    if (typeof metadata?.toolCallId !== "string") {
       throw new Error("Expected onError metadata with a toolCallId");
     }
     expect(metadata.toolCallId).toBe(
@@ -198,51 +134,9 @@ describe("json-repair.test split 13", () => {
   });
 
   it("drops keys that may match unsafe false patterns with escaped range endpoints", async () => {
-    const onError = vi.fn();
-    const tools = [
-      makeSchemaTool("write", {
-        type: "object",
-        properties: {
-          content: { type: "string" },
-        },
-        patternProperties: {
-          "^([a-\\x7a]+)+$": false,
-        },
-        additionalProperties: true,
-      }),
-    ];
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({
-      tools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta:
-            '<tool_call>{"name":"write","arguments":{"content":"ok","m":"blocked"}}</tool_call>',
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const tool = out.find((c) => c.type === "tool-call");
-    expect(tool).toBeTruthy();
-    expect(tool?.type === "tool-call" ? JSON.parse(tool.input) : null).toEqual({
-      content: "ok",
-    });
-    expect(out.some((c) => c.type === "tool-input-start")).toBe(true);
-    expect(out.some((c) => c.type === "tool-input-delta")).toBe(true);
-    expect(out.some((c) => c.type === "tool-input-end")).toBe(true);
-    expect(onError).not.toHaveBeenCalled();
+    const onError = vi.fn<HermesError>();
+    const out = await repairPattern("^([a-\\x7a]+)+$", "m", onError);
+
+    expectBlockedKeyRemoved(out, onError);
   });
 });

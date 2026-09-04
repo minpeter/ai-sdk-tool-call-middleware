@@ -3,16 +3,16 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-export const PROVIDER_CAPTURE_FORMAT_VERSION = 1;
+const PROVIDER_CAPTURE_FORMAT_VERSION = 1;
 
-export interface CapturedFunctionTool {
+interface CapturedFunctionTool {
   description?: string;
   inputSchema: unknown;
   name: string;
   originalName?: string;
 }
 
-export interface ProviderCaptureContext {
+interface ProviderCaptureContext {
   arm: string;
   attempt: number;
   caseId?: string;
@@ -34,7 +34,7 @@ export interface ProviderCaptureContext {
   turn?: number;
 }
 
-export interface ProviderCaptureRecord {
+interface ProviderCaptureRecord {
   capturedAt: string;
   captureId: string;
   context: ProviderCaptureContext;
@@ -204,10 +204,6 @@ function sanitizeUrl(input: RequestInfo | URL): string {
   return url.toString();
 }
 
-export function credentialFreeUrl(input: string): string {
-  return sanitizeUrl(input);
-}
-
 function sanitizedHeaders(
   input: HeadersInit | undefined,
   allowlist: ReadonlySet<string>
@@ -245,14 +241,6 @@ function requestBody(init: RequestInit | undefined): string | null {
     return body.toString();
   }
   return `[${body.constructor.name}]`;
-}
-
-export function captureArmsFromEnv(value?: string): ReadonlySet<string> {
-  const arms = (value ?? "native,glm5")
-    .split(",")
-    .map((arm) => arm.trim())
-    .filter(Boolean);
-  return new Set(arms);
 }
 
 export class ProviderCapture {

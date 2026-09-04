@@ -1,12 +1,10 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { logParseFailure } from "../utils/debug";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
-import { generateId, generateToolCallId } from "../utils/id";
+import { generateToolCallId } from "../utils/id";
 import {
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { shouldEmitRawToolCallTextOnError } from "../utils/tool-input-streaming";
 import { isArgumentKeyPolicyError } from "./hermes-argument-key-policy";
 import { findToolCallBoundaryOutsideRjsonSyntax } from "./hermes-call-boundary";
@@ -14,7 +12,9 @@ import { recoverKnownToolCallsFromText } from "./hermes-call-parsing";
 import {
   closeTextBlock,
   closeToolInput,
+  emitRawTextLifecycle,
   emitResolvedToolCall,
+  emitTextDelta,
   recoverCompleteKnownCallBeforeNestedStart,
 } from "./hermes-stream-lifecycle";
 import {
@@ -32,20 +32,8 @@ export function publishText(
   if (state.isInsideToolCall) {
     closeTextBlock(state, controller);
     state.currentToolCallJson += text;
-  } else if (text.length > 0) {
-    if (!state.currentTextId) {
-      state.currentTextId = generateId();
-      controller.enqueue({
-        type: "text-start",
-        id: state.currentTextId,
-      } as LanguageModelV4StreamPart);
-      state.hasEmittedTextStart = true;
-    }
-    controller.enqueue({
-      type: "text-delta",
-      id: state.currentTextId,
-      delta: text,
-    } as LanguageModelV4StreamPart);
+  } else {
+    emitTextDelta(state, controller, text);
   }
 }
 
@@ -100,25 +88,7 @@ function emitToolCall(context: TagProcessingContext) {
     snippet: errorContent,
     error: finalError,
   });
-  if (
-    shouldEmitRawFallback &&
-    !toolCallTextHasPrototypeSensitiveKey(errorContent)
-  ) {
-    const errorId = generateId();
-    controller.enqueue({
-      type: "text-start",
-      id: errorId,
-    } as LanguageModelV4StreamPart);
-    controller.enqueue({
-      type: "text-delta",
-      id: errorId,
-      delta: errorContent,
-    } as LanguageModelV4StreamPart);
-    controller.enqueue({
-      type: "text-end",
-      id: errorId,
-    } as LanguageModelV4StreamPart);
-  }
+  emitRawTextLifecycle(controller, errorContent, shouldEmitRawFallback);
   closeToolInput(state, controller);
   options?.onError?.(
     shouldEmitRawFallback
@@ -145,6 +115,33 @@ export function processTagMatch(context: TagProcessingContext) {
     state.isInsideToolCall = true;
     state.activeToolInput = null;
   }
+}
+
+function resumeAtNestedToolCall(options: {
+  jsonSoFar: string;
+  nestedStartIndex: number;
+  startIndex: number;
+  state: StreamState;
+  tagLength: number;
+  toolCallEnd: string;
+  toolCallStart: string;
+}): number | null {
+  const {
+    jsonSoFar,
+    nestedStartIndex,
+    startIndex,
+    state,
+    tagLength,
+    toolCallEnd,
+    toolCallStart,
+  } = options;
+  state.currentToolCallJson = "";
+  state.isInsideToolCall = false;
+  state.buffer =
+    jsonSoFar.slice(nestedStartIndex) +
+    toolCallEnd +
+    state.buffer.slice(startIndex + tagLength);
+  return getPotentialStartIndex(state.buffer, toolCallStart);
 }
 
 function recoverNestedStreamingToolCall(options: {
@@ -186,13 +183,15 @@ function recoverNestedStreamingToolCall(options: {
       recoveredCall.toolName,
       recoveredCall.input
     );
-    state.currentToolCallJson = "";
-    state.isInsideToolCall = false;
-    state.buffer =
-      jsonSoFar.slice(nestedStartIndex) +
-      toolCallEnd +
-      state.buffer.slice(startIndex + tag.length);
-    return getPotentialStartIndex(state.buffer, toolCallStart);
+    return resumeAtNestedToolCall({
+      state,
+      jsonSoFar,
+      nestedStartIndex,
+      startIndex,
+      tagLength: tag.length,
+      toolCallStart,
+      toolCallEnd,
+    });
   }
 
   logParseFailure({
@@ -200,25 +199,7 @@ function recoverNestedStreamingToolCall(options: {
     reason: "Abandoning malformed streaming tool call before nested start tag",
     snippet: droppedToolCall,
   });
-  if (
-    shouldEmitRawFallback &&
-    !toolCallTextHasPrototypeSensitiveKey(droppedToolCall)
-  ) {
-    const errorId = generateId();
-    controller.enqueue({
-      type: "text-start",
-      id: errorId,
-    } as LanguageModelV4StreamPart);
-    controller.enqueue({
-      type: "text-delta",
-      id: errorId,
-      delta: droppedToolCall,
-    } as LanguageModelV4StreamPart);
-    controller.enqueue({
-      type: "text-end",
-      id: errorId,
-    } as LanguageModelV4StreamPart);
-  }
+  emitRawTextLifecycle(controller, droppedToolCall, shouldEmitRawFallback);
   closeToolInput(state, controller);
   parserOptions?.onError?.(
     shouldEmitRawFallback
@@ -231,13 +212,15 @@ function recoverNestedStreamingToolCall(options: {
       dropReason: "malformed-nested-tool-call",
     }
   );
-  state.currentToolCallJson = "";
-  state.isInsideToolCall = false;
-  state.buffer =
-    jsonSoFar.slice(nestedStartIndex) +
-    toolCallEnd +
-    state.buffer.slice(startIndex + tag.length);
-  return getPotentialStartIndex(state.buffer, toolCallStart);
+  return resumeAtNestedToolCall({
+    state,
+    jsonSoFar,
+    nestedStartIndex,
+    startIndex,
+    tagLength: tag.length,
+    toolCallStart,
+    toolCallEnd,
+  });
 }
 
 export function processInsideToolCallBoundary(

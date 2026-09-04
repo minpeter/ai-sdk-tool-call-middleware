@@ -1,3 +1,5 @@
+import { findQuantifierEnd } from "./safe-pattern-atoms";
+
 interface RegexGroupState {
   hasAlternation: boolean;
   hasQuantifier: boolean;
@@ -7,25 +9,6 @@ interface RegexRiskScanState {
   escaped: boolean;
   readonly groups: RegexGroupState[];
   inCharClass: boolean;
-}
-
-function quantifierEnd(pattern: string, index: number): number | null {
-  const char = pattern.charAt(index);
-  if (char === "*" || char === "+" || char === "?") {
-    return index;
-  }
-  if (char !== "{") {
-    return null;
-  }
-  let cursor = index + 1;
-  while (cursor < pattern.length && pattern.charAt(cursor) !== "}") {
-    const part = pattern.charAt(cursor);
-    if (!(part === "," || (part >= "0" && part <= "9"))) {
-      return null;
-    }
-    cursor += 1;
-  }
-  return cursor < pattern.length ? cursor : null;
 }
 
 function groupPrefixEnd(pattern: string, groupStart: number): number | null {
@@ -83,7 +66,7 @@ function closeGroup(
   groups: RegexGroupState[]
 ): { readonly nextIndex: number; readonly risk: boolean } {
   const group = groups.pop();
-  const end = quantifierEnd(pattern, index + 1);
+  const end = findQuantifierEnd(pattern, index + 1);
   if (!(group && end != null)) {
     return { nextIndex: index, risk: false };
   }
@@ -124,7 +107,7 @@ export function hasNestedQuantifierRisk(pattern: string): boolean {
       currentGroup.hasAlternation = true;
       continue;
     }
-    const end = quantifierEnd(pattern, index);
+    const end = findQuantifierEnd(pattern, index);
     if (end != null) {
       markParentGroupQuantified(state.groups);
       index = end;

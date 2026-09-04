@@ -8,13 +8,7 @@ import { compileSafePatternPropertyRegex } from "../../schema-coerce";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
 import { unsafeDeniedPatternMayMatchKey } from "./unsafe-pattern";
 
-function isToolInputSchema(
-  schema: ToolInputSchemaDefinition | undefined
-): schema is ToolInputSchema {
-  return typeof schema === "object" && isSchemaRecord(schema);
-}
-
-function isRxmlRecord(
+export function isRxmlRecord(
   value: RxmlValue
 ): value is Readonly<Record<string, RxmlValue>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -23,15 +17,16 @@ function isRxmlRecord(
 export function hasDeclaredPatternProperties(
   schema: ToolInputSchemaDefinition
 ): boolean {
-  return isToolInputSchema(schema) && schema.patternProperties !== undefined;
+  return isSchemaRecord(schema) && schema.patternProperties !== undefined;
 }
 
-export function hasUnsafeFalsePatternProperties(
+function collectUnsafeFalsePatterns(
   schema: ToolInputSchemaDefinition
-): boolean {
-  if (!(isToolInputSchema(schema) && schema.patternProperties)) {
-    return false;
+): string[] {
+  if (!(isSchemaRecord(schema) && schema.patternProperties)) {
+    return [];
   }
+  const patterns: string[] = [];
   for (const [pattern, propertySchema] of Object.entries(
     schema.patternProperties
   )) {
@@ -39,31 +34,25 @@ export function hasUnsafeFalsePatternProperties(
       propertySchema === false &&
       compileSafePatternPropertyRegex(pattern) === null
     ) {
-      return true;
+      patterns.push(pattern);
     }
   }
-  return false;
+  return patterns;
+}
+
+export function hasUnsafeFalsePatternProperties(
+  schema: ToolInputSchemaDefinition
+): boolean {
+  return collectUnsafeFalsePatterns(schema).length > 0;
 }
 
 export function unsafeFalsePatternMayMatchKey(
   schema: ToolInputSchemaDefinition,
   key: string
 ): boolean {
-  if (!(isToolInputSchema(schema) && schema.patternProperties)) {
-    return false;
-  }
-  for (const [pattern, propertySchema] of Object.entries(
-    schema.patternProperties
-  )) {
-    if (
-      propertySchema === false &&
-      compileSafePatternPropertyRegex(pattern) === null &&
-      unsafeDeniedPatternMayMatchKey(pattern, key)
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return collectUnsafeFalsePatterns(schema).some((pattern) =>
+    unsafeDeniedPatternMayMatchKey(pattern, key)
+  );
 }
 
 function collectMatchingPatternSchemas(
@@ -91,7 +80,7 @@ export function collectPatternPropertyNames(
   value: RxmlValue
 ): Set<string> {
   const names = new Set<string>();
-  if (!(isToolInputSchema(schema) && isRxmlRecord(value))) {
+  if (!(isSchemaRecord(schema) && isRxmlRecord(value))) {
     return names;
   }
   for (const key of Object.keys(value)) {
@@ -106,7 +95,7 @@ export function getPatternPropertySchema(
   schema: ToolInputSchemaDefinition,
   key: string
 ): ToolInputSchemaDefinition | undefined {
-  if (!isToolInputSchema(schema)) {
+  if (!isSchemaRecord(schema)) {
     return;
   }
   const schemas = collectMatchingPatternSchemas(schema, key);

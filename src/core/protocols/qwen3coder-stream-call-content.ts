@@ -1,4 +1,5 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
+import type { Qwen3CoderToolParserParamTagParseResult } from "./qwen3coder-param-tag-types";
 
 export type QwenRawArguments = Record<string, string | string[]>;
 
@@ -15,26 +16,63 @@ export interface QwenStreamCallState {
   toolName: string | null;
 }
 
-type QwenParamTagParseResult =
-  | {
-      kind: "match";
-      start: number;
-      end: number;
-      name: string;
-      value: string;
-    }
-  | {
-      kind: "partial";
-      start: number;
-      openEnd: number | null;
-      name?: string;
-      value?: string;
-    }
-  | {
-      kind: "skip";
-      start: number;
-      end: number;
-    };
+type ParseParamTagAt = (
+  text: string,
+  lowerText: string,
+  startIndex: number,
+  options?: {
+    readonly allowEndOfString?: boolean;
+    readonly callEndTagNameLower?: string | null;
+  }
+) => Qwen3CoderToolParserParamTagParseResult | null;
+
+type MergeParamValue = (
+  args: QwenRawArguments,
+  name: string,
+  value: string
+) => void;
+
+type EmitToolInputDelta = () => void;
+
+interface ToolInputStartOperation {
+  readonly maybeEmitToolInputStart: EmitToolInputDelta;
+}
+
+interface ToolInputDeltaOperations extends ToolInputStartOperation {
+  readonly maybeEmitToolInputProgress: EmitToolInputDelta;
+}
+
+interface ParamTagOperations {
+  readonly mergeParamValue: MergeParamValue;
+  readonly parseParamTagAt: ParseParamTagAt;
+}
+
+interface ConsumeSingleParamTagOptions extends ParamTagOperations {
+  readonly allowEndOfString: boolean;
+  readonly callState: QwenStreamCallState;
+  readonly lastKept: number;
+  readonly lower: string;
+  readonly lt: number;
+  readonly work: string;
+}
+
+interface ConsumeParamTagsOptions
+  extends ParamTagOperations,
+    ToolInputStartOperation {
+  readonly allowEndOfString: boolean;
+  readonly callState: QwenStreamCallState;
+  readonly work: string;
+}
+
+interface ParseCallContentOptions
+  extends ParamTagOperations,
+    ToolInputDeltaOperations {
+  readonly allowEndOfString: boolean;
+  readonly callState: QwenStreamCallState;
+  readonly content: string;
+  readonly nameTagRe: RegExp;
+  readonly normalizeXmlTextValue: (value: string) => string;
+}
 
 function consumeToolNameTag(options: {
   callState: QwenStreamCallState;
@@ -66,28 +104,7 @@ function consumeToolNameTag(options: {
   return nextWork;
 }
 
-function consumeSingleParamTag(options: {
-  allowEndOfString: boolean;
-  callState: QwenStreamCallState;
-  lastKept: number;
-  lower: string;
-  lt: number;
-  work: string;
-  parseParamTagAt: (
-    text: string,
-    lowerText: string,
-    startIndex: number,
-    options?: {
-      allowEndOfString?: boolean;
-      callEndTagNameLower?: string | null;
-    }
-  ) => QwenParamTagParseResult | null;
-  mergeParamValue: (
-    args: QwenRawArguments,
-    name: string,
-    value: string
-  ) => void;
-}): {
+function consumeSingleParamTag(options: ConsumeSingleParamTagOptions): {
   keepSlice?: string;
   nextIndex: number;
   nextLastKept: number;
@@ -145,26 +162,7 @@ function consumeSingleParamTag(options: {
   };
 }
 
-function consumeParamTags(options: {
-  callState: QwenStreamCallState;
-  work: string;
-  allowEndOfString: boolean;
-  parseParamTagAt: (
-    text: string,
-    lowerText: string,
-    startIndex: number,
-    options?: {
-      allowEndOfString?: boolean;
-      callEndTagNameLower?: string | null;
-    }
-  ) => QwenParamTagParseResult | null;
-  mergeParamValue: (
-    args: QwenRawArguments,
-    name: string,
-    value: string
-  ) => void;
-  maybeEmitToolInputStart: () => void;
-}): string {
+function consumeParamTags(options: ConsumeParamTagsOptions): string {
   const lower = options.work.toLowerCase();
   let index = 0;
   let lastKept = 0;
@@ -207,29 +205,7 @@ function consumeParamTags(options: {
   return pieces.join("");
 }
 
-export function parseCallContent(options: {
-  callState: QwenStreamCallState;
-  content: string;
-  allowEndOfString: boolean;
-  nameTagRe: RegExp;
-  normalizeXmlTextValue: (value: string) => string;
-  parseParamTagAt: (
-    text: string,
-    lowerText: string,
-    startIndex: number,
-    options?: {
-      allowEndOfString?: boolean;
-      callEndTagNameLower?: string | null;
-    }
-  ) => QwenParamTagParseResult | null;
-  mergeParamValue: (
-    args: QwenRawArguments,
-    name: string,
-    value: string
-  ) => void;
-  maybeEmitToolInputStart: () => void;
-  maybeEmitToolInputProgress: () => void;
-}): string {
+export function parseCallContent(options: ParseCallContentOptions): string {
   let work = options.content;
   work = consumeToolNameTag({
     callState: options.callState,

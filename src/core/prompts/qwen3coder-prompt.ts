@@ -11,8 +11,7 @@ import {
   escapeXmlMinimalText,
 } from "../../rxml/utils/helpers";
 import {
-  isSchemaRecord,
-  type ToolInputSchema,
+  normalizeToolInputSchema,
   type ToolInputSchemaCandidate,
 } from "../../schema/tool-input-schema";
 import {
@@ -46,9 +45,6 @@ function isSequence(value: JSONValue | undefined): value is JSONValue[] {
 }
 
 function toJinjaString(value: JSONValue | undefined): string {
-  if (value === undefined) {
-    return "";
-  }
   if (value === null) {
     return "None";
   }
@@ -107,29 +103,10 @@ function renderExtraKeys(
   return out;
 }
 
-function normalizeInputSchema(
-  inputSchema: LanguageModelV4FunctionTool["inputSchema"] | string
-): ToolInputSchema | string {
-  if (typeof inputSchema !== "string") {
-    return isSchemaRecord(inputSchema)
-      ? inputSchema
-      : JSON.stringify(inputSchema);
-  }
-
-  try {
-    const parsed: ToolInputSchemaCandidate = JSON.parse(inputSchema);
-    return typeof parsed === "object" && isSchemaRecord(parsed)
-      ? parsed
-      : inputSchema;
-  } catch {
-    return inputSchema;
-  }
-}
-
 function copyInputSchemaToJSONObject(
   inputSchema: LanguageModelV4FunctionTool["inputSchema"] | string
 ): JSONObject {
-  const normalized = normalizeInputSchema(inputSchema);
+  const normalized = normalizeToolInputSchema(inputSchema);
   if (typeof normalized === "string") {
     return {};
   }

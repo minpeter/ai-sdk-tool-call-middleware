@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { processXMLStream } from "../../../rxml/core/stream";
+import type { RXMLNode } from "../../../rxml/core/types";
 import {
   CHUNK_SIZE,
   createChunkedStream,
@@ -15,7 +16,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         CHUNK_SIZE
       );
       const startTime = Date.now();
-      const results: any[] = [];
+      const results: (RXMLNode | string)[] = [];
 
       for await (const element of processXMLStream(stream)) {
         results.push(element);
@@ -26,8 +27,14 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
       expect(results.length).toBeGreaterThan(0);
       expect(endTime - startTime).toBeLessThan(5000);
 
-      const dataElement = results.find((r) => r.tagName === "data");
+      const dataElement = results.find(
+        (result): result is RXMLNode =>
+          typeof result !== "string" && result.tagName === "data"
+      );
       expect(dataElement).toBeDefined();
+      if (dataElement === undefined) {
+        throw new TypeError("Expected a data element");
+      }
       expect(dataElement.children[0]).toHaveLength(500);
     });
 
@@ -36,16 +43,23 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         testXmlSamples.nestedStructure,
         CHUNK_SIZE
       );
-      const results: any[] = [];
+      const results: (RXMLNode | string)[] = [];
 
       for await (const element of processXMLStream(stream)) {
         results.push(element);
       }
 
-      const userElement = results.find((r) => r.tagName === "user");
-      const profileElement = results.find((r) => r.tagName === "profile");
+      const userElement = results.find(
+        (result): result is RXMLNode =>
+          typeof result !== "string" && result.tagName === "user"
+      );
+      const profileElement = results.find(
+        (result): result is RXMLNode =>
+          typeof result !== "string" && result.tagName === "profile"
+      );
       const preferencesElement = results.find(
-        (r) => r.tagName === "preferences"
+        (result): result is RXMLNode =>
+          typeof result !== "string" && result.tagName === "preferences"
       );
 
       expect(userElement).toBeDefined();
@@ -53,9 +67,15 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
       expect(preferencesElement).toBeDefined();
 
       const nameElement = results.find(
-        (r) => r.tagName === "name" && r.children[0] === "John Doe"
+        (result): result is RXMLNode =>
+          typeof result !== "string" &&
+          result.tagName === "name" &&
+          result.children[0] === "John Doe"
       );
       expect(nameElement).toBeDefined();
+      if (nameElement === undefined) {
+        throw new TypeError("Expected a name element");
+      }
       expect(nameElement.children[0]).toBe("John Doe");
     });
   });
