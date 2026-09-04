@@ -28,7 +28,7 @@ export type Rjson = JSONValue | RjsonObject | RjsonArray | undefined;
  * // Returns: '{"key":null}'
  * ```
  */
-export function stringify(value: Rjson): string {
+export function stringify<Value>(value: Value): string {
   if (
     typeof value === "string" ||
     typeof value === "number" ||
@@ -52,7 +52,7 @@ export function stringify(value: Rjson): string {
 
   const keys = Object.keys(value).sort();
   const pairs = keys.map(
-    (key) => `${JSON.stringify(key)}:${stringify(value[key])}`
+    (key) => `${JSON.stringify(key)}:${stringify(Reflect.get(value, key))}`
   );
   return `{${pairs.join(",")}}`;
 }

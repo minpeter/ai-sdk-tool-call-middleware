@@ -6,6 +6,7 @@ import {
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { coerceBySchema } from "../../schema-coerce";
+import { applyStrictRequiredKeyRename } from "../../schema-coerce/strict-object-key-rename";
 
 interface KeyNormalizationCase {
   readonly expected: JSONObject;
@@ -120,6 +121,27 @@ describe("Coercion Heuristic Handling", () => {
 
       const result = coerceObject(input, schema);
       expect(result).toEqual({ targetLanguage: "es" });
+    });
+
+    it("reads accessor-backed source keys once while renaming", () => {
+      let reads = 0;
+      const input = {
+        get target_language(): string {
+          reads += 1;
+          return reads === 1 ? "first" : "second";
+        },
+      };
+      const schema: JSONSchema7 = {
+        type: "object",
+        properties: { targetLanguage: { type: "string" } },
+        required: ["targetLanguage"],
+        additionalProperties: false,
+      };
+
+      const result = applyStrictRequiredKeyRename(input, schema);
+
+      expect(reads).toBe(1);
+      expect(result).toEqual({ targetLanguage: "first" });
     });
 
     it("renames camelCase key into required snake_case key", () => {

@@ -144,10 +144,8 @@ function applyRequiredKeyRename(
   input: { readonly [key: string]: RxmlValue },
   schemaInfo: StrictObjectSchemaInfo,
   keysMatch: (targetKey: string, sourceKey: string) => boolean,
-  valueMatches: (
-    value: RxmlValue,
-    schema: JSONSchema7Definition
-  ) => boolean = () => true
+  schemaMatches: (schema: JSONSchema7Definition) => boolean = () => true,
+  valueMatches: (value: RxmlValue) => boolean = () => true
 ): Record<string, RxmlValue> | null {
   const { missingRequired, unexpectedKeys } = computeMissingAndUnexpectedKeys(
     input,
@@ -161,12 +159,15 @@ function applyRequiredKeyRename(
   if (!Object.hasOwn(schemaInfo.properties, targetKey)) {
     return null;
   }
+  const targetSchema = schemaInfo.properties[targetKey];
+  if (!schemaMatches(targetSchema)) {
+    return null;
+  }
   const sourceKey = findSingleMatchingUnexpectedKey(unexpectedKeys, (key) =>
     keysMatch(targetKey, key)
   );
   if (
     sourceKey === null ||
-    !valueMatches(input[sourceKey], schemaInfo.properties[targetKey]) ||
     !Object.hasOwn(input, sourceKey) ||
     Object.hasOwn(input, targetKey)
   ) {
@@ -174,6 +175,9 @@ function applyRequiredKeyRename(
   }
 
   const output: Record<string, RxmlValue> = { ...input };
+  if (!valueMatches(output[sourceKey])) {
+    return null;
+  }
   output[targetKey] = output[sourceKey];
   delete output[sourceKey];
   return output;
@@ -187,7 +191,8 @@ function applySingularPluralRequiredKeyRename(
     input,
     schemaInfo,
     isSingularPluralPair,
-    (value, schema) => getSchemaType(schema) === "array" && Array.isArray(value)
+    (schema) => getSchemaType(schema) === "array",
+    Array.isArray
   );
 }
 

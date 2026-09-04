@@ -205,6 +205,71 @@ describe("relaxed-json", () => {
         });
       });
 
+      it("binds an object property reviver to its holder like JSON.parse", () => {
+        function readSibling(
+          this: Record<string, JSONValue>,
+          key: string,
+          value: JSONValue
+        ): JSONValue {
+          return key === "a" ? this.b : value;
+        }
+        const text = '{"a":1,"b":2}';
+
+        expect(parse(text, readSibling)).toEqual(JSON.parse(text, readSibling));
+        expect(parse(text, readSibling)).toEqual({ a: 2, b: 2 });
+      });
+
+      it("binds an array element reviver to its holder like JSON.parse", () => {
+        function readNextElement(
+          this: JSONValue[],
+          key: string,
+          value: JSONValue
+        ): JSONValue {
+          return key === "0" ? this[1] : value;
+        }
+        const text = "[1,2]";
+
+        expect(parse(text, readNextElement)).toEqual(
+          JSON.parse(text, readNextElement)
+        );
+      });
+
+      it("binds the root reviver to a wrapper like JSON.parse", () => {
+        const holderKeys: string[][] = [];
+        function inspectRoot(
+          this: Record<string, JSONValue>,
+          key: string,
+          value: JSONValue
+        ): JSONValue {
+          if (key === "") {
+            holderKeys.push(Object.keys(this));
+          }
+          return value;
+        }
+
+        expect(parse("1", inspectRoot)).toEqual(JSON.parse("1", inspectRoot));
+        expect(holderKeys).toEqual([[""], [""]]);
+      });
+
+      it("visits only the final duplicate value with a holder like JSON.parse", () => {
+        function readSibling(
+          this: Record<string, JSONValue>,
+          key: string,
+          value: JSONValue
+        ): JSONValue {
+          return key === "a" ? this.b : value;
+        }
+        const text = '{"a":0,"a":1,"b":2}';
+
+        expect(
+          parse(text, {
+            duplicate: true,
+            relaxed: false,
+            reviver: readSibling,
+          })
+        ).toEqual(JSON.parse(text, readSibling));
+      });
+
       it("should check for duplicate keys when duplicate is false", () => {
         expect(() =>
           parse('{"key": 1, "key": 2}', { duplicate: false, tolerant: false })

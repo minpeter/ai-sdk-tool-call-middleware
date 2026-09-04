@@ -49,7 +49,30 @@ type JsonReviver<Output extends JSONValue | undefined> = (
   value: JSONValue
 ) => Output;
 
-type ValueFactory<Output> = () => Output;
+type FunctionWithNoParameters<Factory extends (...args: never[]) => void> =
+  Factory & (Parameters<Factory> extends [] ? Factory : never);
+
+type ParseConfiguration = Omit<ParseOptions<never>, "reviver">;
+
+type FactoryOptionResult<Tolerant, Warnings, Output> = true extends
+  | Tolerant
+  | Warnings
+  ? Output | undefined
+  : Output;
+
+type ParseOptionsExtension<Options> =
+  Options extends ParseOptions<infer Extension> ? Extension : never;
+
+type GeneralParseOptionResult<Options> = Options extends {
+  readonly reviver: Reviver<ParseOptionsExtension<Options>>;
+}
+  ? RevivedValue<ParseOptionsExtension<Options>> | undefined
+  : ParseOptionResult<Options, JSONValue>;
+
+type CheckedParseOptions<Options> =
+  Options extends ParseOptions<ParseOptionsExtension<Options>>
+    ? Options
+    : never;
 
 type PresentRecursiveReviver<Extension> = (
   key: string,
@@ -126,61 +149,51 @@ function parseWithCustomParser<Extension>(
   return parseAny(tokens, state, true);
 }
 
-function reviveArray<Extension>(
-  value: JSONValue[],
-  reviver: Reviver<Extension>
-): RevivedValue<Extension>[] {
-  const result: RevivedValue<Extension>[] = [];
-  for (let index = 0; index < value.length; index += 1) {
-    const element = value[index];
-    if (element === undefined) {
-      result.length += 1;
-      continue;
-    }
-    const revived = reviveValue(String(index), element, reviver);
-    if (revived === undefined) {
-      result.length += 1;
-    } else {
-      result[index] = revived;
-    }
+function setRevivedProperty<Extension>(
+  holder: object,
+  key: string,
+  revived: RevivedValue<Extension> | undefined
+): void {
+  if (revived === undefined) {
+    Reflect.deleteProperty(holder, key);
+    return;
   }
-  return result;
-}
-
-function reviveObject<Extension>(
-  value: { [key: string]: JSONValue | undefined },
-  reviver: Reviver<Extension>
-): { [key: string]: RevivedValue<Extension> | undefined } {
-  const result: { [key: string]: RevivedValue<Extension> | undefined } = {};
-  for (const [key, property] of Object.entries(value)) {
-    if (property === undefined) {
-      continue;
-    }
-    const revived = reviveValue(key, property, reviver);
-    if (revived !== undefined) {
-      Object.defineProperty(result, key, {
-        configurable: true,
-        enumerable: true,
-        value: revived,
-        writable: true,
-      });
-    }
-  }
-  return result;
+  Object.defineProperty(holder, key, {
+    configurable: true,
+    enumerable: true,
+    value: revived,
+    writable: true,
+  });
 }
 
 function reviveValue<Extension>(
+  holder: object,
   key: string,
-  value: JSONValue,
   reviver: Reviver<Extension>
 ): RevivedValue<Extension> | undefined {
+  const value: RevivedValue<Extension> | undefined = Reflect.get(holder, key);
+
   if (Array.isArray(value)) {
-    return reviver(key, reviveArray(value, reviver));
+    const { length } = value;
+    for (let index = 0; index < length; index += 1) {
+      const elementKey = String(index);
+      setRevivedProperty(
+        value,
+        elementKey,
+        reviveValue(value, elementKey, reviver)
+      );
+    }
+  } else if (typeof value === "object" && value !== null) {
+    for (const propertyKey of Object.keys(value)) {
+      setRevivedProperty(
+        value,
+        propertyKey,
+        reviveValue(value, propertyKey, reviver)
+      );
+    }
   }
-  if (typeof value === "object" && value !== null) {
-    return reviver(key, reviveObject(value, reviver));
-  }
-  return reviver(key, value);
+
+  return Reflect.apply(reviver, holder, [key, value]);
 }
 
 // --- Main Parse Function ---
@@ -220,7 +233,10 @@ function parse<Output extends JSONValue | undefined>(
   text: string,
   reviver: JsonReviver<Output>
 ): Output;
-function parse<Output>(text: string, reviver: ValueFactory<Output>): Output;
+function parse<Factory extends (...args: never[]) => void>(
+  text: string,
+  reviver: FunctionWithNoParameters<Factory>
+): ReturnType<Factory>;
 function parse<Extension>(
   text: string,
   reviver: PresentRecursiveReviver<Extension>
@@ -237,20 +253,28 @@ function parse<Options extends ParseOptionsWithoutReviver>(
   text: string,
   options: Options
 ): ParseOptionResult<Options, JSONValue>;
+function parse<
+  Factory extends (...args: never[]) => void,
+  Tolerant extends boolean | undefined = undefined,
+  Warnings extends boolean | undefined = undefined,
+>(
+  text: string,
+  options: ParseConfiguration & {
+    readonly reviver: FunctionWithNoParameters<Factory>;
+    readonly tolerant?: Tolerant;
+    readonly warnings?: Warnings;
+  }
+): FactoryOptionResult<Tolerant, Warnings, ReturnType<Factory>>;
 function parse<Extension = never>(
   text: string,
   options: Omit<ParseOptions<NoInfer<Extension>>, "reviver"> & {
     readonly reviver: Reviver<NoInfer<Extension>>;
   }
 ): RevivedValue<Extension> | undefined;
-function parse<Output, Options extends Omit<ParseOptions<Output>, "reviver">>(
+function parse<Options>(
   text: string,
-  options: Options & { readonly reviver: ValueFactory<Output> }
-): ParseOptionResult<Options, Output>;
-function parse<Extension = never>(
-  text: string,
-  options: ParseOptions<Extension>
-): RevivedValue<Extension> | undefined;
+  options: Options & CheckedParseOptions<Options>
+): GeneralParseOptionResult<Options>;
 
 function parse<Output>(
   text: string,
@@ -261,7 +285,7 @@ function parse<Output>(
   if (parsed === undefined || options.reviver === undefined) {
     return parsed;
   }
-  return reviveValue("", parsed, options.reviver);
+  return reviveValue({ "": parsed }, "", options.reviver);
 }
 
 export { parse };

@@ -5,6 +5,8 @@ import { type Rjson, stringify } from "../../rjson/index";
 describe("relaxed-json", () => {
   describe("stringify", () => {
     it("accepts the complete recursive RJSON value contract", () => {
+      expectTypeOf(stringify).parameter(0).toBeUnknown();
+
       const value = {
         array: [1, undefined, { nested: undefined }],
       } satisfies Rjson;
@@ -75,11 +77,9 @@ describe("relaxed-json", () => {
         sym: Symbol("test"),
       };
 
-      expect(Reflect.apply(stringify, undefined, [value.fn])).toBe("null");
-      expect(Reflect.apply(stringify, undefined, [value.sym])).toBe("null");
-      expect(Reflect.apply(stringify, undefined, [value])).toBe(
-        '{"fn":null,"sym":null}'
-      );
+      expect(stringify(value.fn)).toBe("null");
+      expect(stringify(value.sym)).toBe("null");
+      expect(stringify(value)).toBe('{"fn":null,"sym":null}');
     });
   });
 });

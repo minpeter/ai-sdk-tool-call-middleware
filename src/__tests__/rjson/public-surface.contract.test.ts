@@ -2,8 +2,8 @@ import type { JSONValue } from "@ai-sdk/provider";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
-  parse,
   type ParseOptions,
+  parse,
   type RevivedValue,
   type Reviver,
   stringify,
@@ -89,7 +89,7 @@ describe("RJSON public surface", () => {
   });
 
   it("accepts a predeclared ParseOptions<Extension> witness variable", () => {
-    const options: ParseOptions<Date> = {
+    const options: ParseOptions<Date> & { readonly reviver: Reviver<Date> } = {
       reviver: (_key, value: RevivedValue<Date>) =>
         typeof value === "string" ? new Date(`${value}T00:00:00Z`) : value,
     };
@@ -100,6 +100,50 @@ describe("RJSON public surface", () => {
     expectTypeOf(revived).not.toBeUnknown();
     expectTypeOf(revived).toEqualTypeOf<RevivedValue<Date> | undefined>();
     expect(revived).toEqual({ value: new Date("2026-09-04T00:00:00Z") });
+  });
+
+  it("rejects parameterized callbacks from the value-factory overloads", () => {
+    const mixedReviver = (_key = "", value = 0) =>
+      typeof value === "number" ? new Date(0) : value;
+
+    // @ts-expect-error A factory must declare no parameters, including optional ones.
+    parse("null", mixedReviver);
+    // @ts-expect-error The options-form factory has the same zero-parameter rule.
+    parse("null", { reviver: mixedReviver });
+  });
+
+  it("infers factory output only for callbacks with no parameters", () => {
+    const direct = parse("null", () => new Date(0));
+    const options = parse("null", { reviver: () => new Date(0) });
+
+    expectTypeOf(direct).toEqualTypeOf<Date>();
+    expectTypeOf(options).toEqualTypeOf<Date>();
+  });
+
+  it("derives options results from whether a reviver is present", () => {
+    const withReviver = {
+      reviver: (_key: string, value: RevivedValue<Date>) => value,
+    } satisfies ParseOptions<Date>;
+    const broadWithoutReviver: ParseOptions<Date> = { relaxed: false };
+    const withoutReviver: ParseOptions<Date> & {
+      readonly relaxed: false;
+      readonly reviver?: never;
+      readonly tolerant?: false;
+      readonly warnings?: false;
+    } = { relaxed: false };
+    const tolerantWithoutReviver = {
+      tolerant: true,
+    } satisfies ParseOptions<Date>;
+
+    const revived = parse("null", withReviver);
+    const broadParsed = parse("null", broadWithoutReviver);
+    const parsed = parse("null", withoutReviver);
+    const tolerant = parse("null", tolerantWithoutReviver);
+
+    expectTypeOf(revived).toEqualTypeOf<RevivedValue<Date> | undefined>();
+    expectTypeOf(broadParsed).toEqualTypeOf<JSONValue | undefined>();
+    expectTypeOf(parsed).toEqualTypeOf<JSONValue>();
+    expectTypeOf(tolerant).toEqualTypeOf<JSONValue | undefined>();
   });
 
   it("preserves exact unconditional callback outputs", () => {
