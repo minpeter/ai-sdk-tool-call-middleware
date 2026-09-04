@@ -51,8 +51,12 @@ export function stringify(
 
     return result;
   } catch (error) {
+    const normalizedError =
+      error instanceof Error
+        ? error
+        : new Error(String(error), { cause: error });
     // biome-ignore lint/style/useErrorCause: RXML errors carry the original error via their positional cause parameter.
-    throw new RXMLStringifyError("Failed to stringify XML", error);
+    throw new RXMLStringifyError("Failed to stringify XML", normalizedError);
   }
 }
 

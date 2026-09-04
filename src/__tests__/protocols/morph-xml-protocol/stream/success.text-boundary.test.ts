@@ -152,7 +152,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
     // Count text-delta events to ensure content is preserved
     const textDeltas = out
       .filter((e) => e.type === "text-delta")
-      .map((e) => (e as any).delta);
+      .map((e) => e.delta);
     const fullText = textDeltas.join("");
 
     expect(fullText).toContain("Start");
@@ -206,7 +206,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
 
     // Text deltas may be emitted for empty segments between tools (for proper text boundaries)
     // The important thing is that no XML tags are exposed
-    const fullText = textDeltas.map((e) => (e as any).delta).join("");
+    const fullText = textDeltas.map((e) => e.delta).join("");
     expect(fullText).not.toContain("<tool_a>");
     expect(fullText).not.toContain("<tool_b>");
   });
@@ -250,7 +250,7 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
     const toolCalls = out.filter((e) => e.type === "tool-call");
     const textDeltas = out
       .filter((e) => e.type === "text-delta")
-      .map((e) => (e as any).delta);
+      .map((e) => e.delta);
     const fullText = textDeltas.join("");
 
     // Both tool calls should be parsed
@@ -297,14 +297,17 @@ describe("morphXmlProtocol streaming text boundary behavior", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const toolCall = out.find((e) => e.type === "tool-call") as any;
+    const toolCall = out.find((e) => e.type === "tool-call");
     const textDeltas = out
       .filter((e) => e.type === "text-delta")
-      .map((e) => (e as any).delta);
+      .map((e) => e.delta);
     const fullText = textDeltas.join("");
 
     // Tool call should be parsed
     expect(toolCall).toBeDefined();
+    if (toolCall?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
     expect(toolCall.toolName).toBe("empty_tool");
     const parsed = JSON.parse(toolCall.input);
     expect(parsed).toEqual({});

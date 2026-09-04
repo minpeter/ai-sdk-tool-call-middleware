@@ -87,7 +87,7 @@ function emitYamlToolCallFailure(
   context: YamlXmlLifecycleContext,
   controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
   failure: {
-    readonly error?: unknown;
+    readonly error?: Error;
     readonly original: string;
     readonly toolCallId: string;
     readonly toolName: string;
@@ -153,8 +153,10 @@ export function processYamlToolCallEnd(
       tools: context.tools,
     });
   } catch (error) {
+    const caughtError =
+      error instanceof Error ? error : new Error(String(error));
     emitYamlToolCallFailure(context, controller, {
-      error,
+      error: caughtError,
       original,
       toolName,
       toolCallId,
@@ -164,7 +166,7 @@ export function processYamlToolCallEnd(
       toolName,
       toolCallId,
       dropReason: "malformed-tool-call-body",
-      error: safeToolCallMetadataError(error, original),
+      error: safeToolCallMetadataError(caughtError, original),
     });
     return;
   }
@@ -234,8 +236,10 @@ export function finalizeUnclosedYamlToolCall(
       tools: context.tools,
     });
   } catch (error) {
+    const caughtError =
+      error instanceof Error ? error : new Error(String(error));
     emitYamlToolCallFailure(context, controller, {
-      error,
+      error: caughtError,
       original: unfinishedContent,
       toolName,
       toolCallId,
@@ -247,7 +251,7 @@ export function finalizeUnclosedYamlToolCall(
         toolCallId,
         toolName,
         dropReason: "malformed-tool-call-body",
-        error: safeToolCallMetadataError(error, unfinishedContent),
+        error: safeToolCallMetadataError(caughtError, unfinishedContent),
       }
     );
     context.state.buffer = "";

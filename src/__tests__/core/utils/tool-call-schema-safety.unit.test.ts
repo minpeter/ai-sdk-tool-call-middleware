@@ -1,16 +1,23 @@
 import { describe, expect, it } from "vitest";
-
 import { hasPrototypeSensitiveStructuralKey } from "../../../core/utils/prototype-sensitive-keys";
 import { getArrayItemSchema } from "../../../core/utils/tool-call-array-schema";
 import { getDeclaredPropertySchema } from "../../../core/utils/tool-call-object-property-schema";
 import { getPatternPropertySchema } from "../../../core/utils/tool-call-pattern-properties";
 import { toolCallInputHasSchemaAwarePrototypeSensitiveValue } from "../../../core/utils/tool-call-schema-aware-prototype";
+import type {
+  ToolInputSchema,
+  ToolInputSchemaCandidate,
+} from "../../../schema/tool-input-schema";
+import { unwrapJsonSchema } from "../../../schema-coerce";
 
 describe("tool-call schema safety", () => {
   it("rejects a nested structured prototype-sensitive key", () => {
     // Given
     const value = { metadata: { constructor: { polluted: true } } };
-    const schema = { type: "object", additionalProperties: true };
+    const schema = {
+      type: "object",
+      additionalProperties: true,
+    } satisfies ToolInputSchema;
 
     // When
     const sensitive = toolCallInputHasSchemaAwarePrototypeSensitiveValue(
@@ -28,7 +35,7 @@ describe("tool-call schema safety", () => {
     const schema = {
       type: "object",
       properties: { label: { type: "string" } },
-    };
+    } satisfies ToolInputSchema;
 
     // When
     const sensitive = toolCallInputHasSchemaAwarePrototypeSensitiveValue(
@@ -51,7 +58,7 @@ describe("tool-call schema safety", () => {
           properties: { label: { type: "string" } },
         },
       ],
-    };
+    } satisfies ToolInputSchema;
 
     // When
     const sensitive = toolCallInputHasSchemaAwarePrototypeSensitiveValue(
@@ -68,7 +75,7 @@ describe("tool-call schema safety", () => {
     const schema = {
       type: "object",
       patternProperties: { "^safe-": { type: "string" } },
-    };
+    } satisfies ToolInputSchema;
     const safeValue = { "safe-label": '{"constructor":"ordinary"}' };
     const unsafeValue = { label: '{"constructor":"ordinary"}' };
 
@@ -90,7 +97,7 @@ describe("tool-call schema safety", () => {
         "^safe-": { type: "string" },
         label$: { minLength: 1 },
       },
-    };
+    } satisfies ToolInputSchema;
 
     // When
     const propertySchema = getPatternPropertySchema(schema, "safe-label");
@@ -103,8 +110,10 @@ describe("tool-call schema safety", () => {
 
   it("preserves false schemas for object and array resolution", () => {
     // Given
-    const objectSchema = { properties: { denied: false } };
-    const arraySchema = { items: false };
+    const objectSchema = {
+      properties: { denied: false },
+    } satisfies ToolInputSchema;
+    const arraySchema = { items: false } satisfies ToolInputSchema;
 
     // When
     const propertySchema = getDeclaredPropertySchema(
@@ -122,14 +131,16 @@ describe("tool-call schema safety", () => {
 
   it("handles malformed schemas without marking safe input as sensitive", () => {
     // Given
-    const malformedSchema = "not-a-schema";
+    const malformedSchema: ToolInputSchemaCandidate = "not-a-schema";
     const value = { label: "ordinary text" };
 
     // When
-    const itemSchema = getArrayItemSchema(malformedSchema, 0);
+    const schema = unwrapJsonSchema(malformedSchema);
+    const itemSchema =
+      schema === undefined ? undefined : getArrayItemSchema(schema, 0);
     const sensitive = toolCallInputHasSchemaAwarePrototypeSensitiveValue(
       value,
-      malformedSchema
+      schema
     );
 
     // Then

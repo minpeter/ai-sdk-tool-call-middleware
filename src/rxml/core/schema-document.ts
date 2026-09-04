@@ -1,24 +1,23 @@
-import type { SchemaBoundaryValue } from "../../core/utils/tool-call-object-schema";
+import type { JSONSchema7 } from "@ai-sdk/provider";
 import { unwrapJsonSchema } from "../../schema-coerce";
+import type { RxmlValue } from "../builders/stringify";
 import { findFirstTopLevelRange } from "../schema/extraction";
 
 const TAG_NAME_END_REGEX = /[\s/>]/;
 const WHITESPACE_REGEX = /\s/;
 
-type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
-
-function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+type ParsedSchema = JSONSchema7 | boolean | undefined;
+interface RxmlRecord {
+  readonly [key: string]: RxmlValue;
 }
 
-function getSchemaProperties<Schema>(
-  schema: Schema
-): SchemaBoundaryRecord | undefined {
+function getSchemaProperties(schema: ParsedSchema): JSONSchema7["properties"] {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped)) {
+  if (!unwrapped || typeof unwrapped !== "object") {
     return;
   }
-  return isRecord(unwrapped.properties) ? unwrapped.properties : undefined;
+  const { properties } = unwrapped;
+  return properties && typeof properties === "object" ? properties : undefined;
 }
 
 function skipLeadingConstruct(
@@ -86,7 +85,7 @@ function fullRootEnd(xml: string, rootName: string, innerEnd: number): number {
 
 export function normalizeDocumentRoot(
   xmlInner: string,
-  schema: unknown
+  schema: ParsedSchema
 ): string {
   const xml = xmlInner.trim();
   if (!(xml.startsWith("<") && xml.endsWith(">"))) {
@@ -110,16 +109,17 @@ export function normalizeDocumentRoot(
 }
 
 export function unwrapUnexpectedRoot(
-  args: Record<string, unknown>,
-  schema: unknown
-): Record<string, unknown> {
+  args: RxmlRecord,
+  schema: ParsedSchema
+): RxmlValue {
   const keys = Object.keys(args);
   if (keys.length !== 1) {
     return args;
   }
   const [rootKey] = keys;
   const schemaProperties = getSchemaProperties(schema);
-  return !schemaProperties || Object.hasOwn(schemaProperties, rootKey)
-    ? args
-    : (args[rootKey] as Record<string, unknown>);
+  if (!schemaProperties || Object.hasOwn(schemaProperties, rootKey)) {
+    return args;
+  }
+  return args[rootKey];
 }

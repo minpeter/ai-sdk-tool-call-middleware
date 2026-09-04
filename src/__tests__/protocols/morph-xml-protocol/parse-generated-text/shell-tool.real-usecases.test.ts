@@ -1,3 +1,4 @@
+import type { JSONObject, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -43,7 +44,7 @@ describe("morphXmlProtocol - shell tool", () => {
         additionalProperties: false,
       },
     },
-  ] as any;
+  ] satisfies LanguageModelV4FunctionTool[];
 
   it("[malformed closing tag handling] parses shell call with extra stray </command> and produces correct arguments", () => {
     const p = morphXmlProtocol();
@@ -63,11 +64,14 @@ describe("morphXmlProtocol - shell tool", () => {
 
     const out = p.parseGeneratedText({ text, tools, options: {} });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
     expect(tc.toolName).toBe("shell");
 
-    const input = JSON.parse(tc.input);
+    const input: JSONObject = JSON.parse(tc.input);
 
     expect(input.command).toEqual(["ls", "app", "components", "shared"]);
     expect(input.justification).toBe(
@@ -76,11 +80,13 @@ describe("morphXmlProtocol - shell tool", () => {
     expect(input.timeout_ms).toBe(5000);
     expect(input.with_escalated_permissions).toBe(false);
 
-    expect(typeof input.workdir).toBe("string");
-    expect(input.workdir.includes("/Users/minpeter/github.com/minpeter/")).toBe(
-      true
-    );
-    expect(input.workdir.includes("minpeter.v2")).toBe(true);
+    const { workdir } = input;
+    expect(typeof workdir).toBe("string");
+    if (typeof workdir !== "string") {
+      throw new TypeError("Expected workdir to be a string");
+    }
+    expect(workdir.includes("/Users/minpeter/github.com/minpeter/")).toBe(true);
+    expect(workdir.includes("minpeter.v2")).toBe(true);
   });
 
   it("[excessive tag call] case where justification tag appears excessively", () => {
@@ -93,11 +99,14 @@ describe("morphXmlProtocol - shell tool", () => {
 
     const out = p.parseGeneratedText({ text, tools, options: {} });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
     expect(tc.toolName).toBe("shell");
 
-    const input = JSON.parse(tc.input);
+    const input: JSONObject = JSON.parse(tc.input);
 
     expect(input.command).toEqual(["git", "log", "-10"]);
     expect(input.justification).toBe(
@@ -119,8 +128,11 @@ describe("morphXmlProtocol - shell tool", () => {
 
     const out = p.parseGeneratedText({ text, tools, options: {} });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
     expect(tc.toolName).toBe("shell");
   });
 });

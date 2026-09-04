@@ -23,8 +23,11 @@ describe("hermesProtocol options", () => {
       tools: [],
     });
 
-    const toolCall = out.find((part) => part.type === "tool-call") as any;
+    const toolCall = out.find((part) => part.type === "tool-call");
     expect(toolCall).toBeTruthy();
+    if (toolCall?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(toolCall.toolName).toBe("ok");
     expect(JSON.parse(toolCall.input)).toEqual({});
   });
@@ -37,9 +40,12 @@ describe("hermesProtocol options", () => {
 
     const text = 'name{name:"ok",arguments:{}}END';
     const out = protocol.parseGeneratedText({ text, tools: [] });
-    const toolCall = out.find((part) => part.type === "tool-call") as any;
+    const toolCall = out.find((part) => part.type === "tool-call");
 
     expect(toolCall).toBeTruthy();
+    if (toolCall?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(toolCall.toolName).toBe("ok");
     expect(JSON.parse(toolCall.input)).toEqual({});
     expect(protocol.extractToolCallSegments?.({ text, tools: [] })).toEqual([
@@ -55,9 +61,12 @@ describe("hermesProtocol options", () => {
 
     const text = 'name:{name:"ok",arguments:{name:{a:1}}}END';
     const out = protocol.parseGeneratedText({ text, tools: [] });
-    const toolCall = out.find((part) => part.type === "tool-call") as any;
+    const toolCall = out.find((part) => part.type === "tool-call");
 
     expect(toolCall).toBeTruthy();
+    if (toolCall?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(toolCall.toolName).toBe("ok");
     expect(JSON.parse(toolCall.input)).toEqual({ name: { a: 1 } });
     expect(protocol.extractToolCallSegments?.({ text, tools: [] })).toEqual([
@@ -73,9 +82,12 @@ describe("hermesProtocol options", () => {
 
     const text = 'name:{name:"ok",arguments:{x:1,name:{a:1}}}END';
     const out = protocol.parseGeneratedText({ text, tools: [] });
-    const toolCall = out.find((part) => part.type === "tool-call") as any;
+    const toolCall = out.find((part) => part.type === "tool-call");
 
     expect(toolCall).toBeTruthy();
+    if (toolCall?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(toolCall.toolName).toBe("ok");
     expect(JSON.parse(toolCall.input)).toEqual({ x: 1, name: { a: 1 } });
   });
@@ -88,9 +100,12 @@ describe("hermesProtocol options", () => {
 
     const text = 'name:{name:"ok",arguments:{x:1, name:{a:1}}}END';
     const out = protocol.parseGeneratedText({ text, tools: [] });
-    const toolCall = out.find((part) => part.type === "tool-call") as any;
+    const toolCall = out.find((part) => part.type === "tool-call");
 
     expect(toolCall).toBeTruthy();
+    if (toolCall?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(toolCall.toolName).toBe("ok");
     expect(JSON.parse(toolCall.input)).toEqual({ x: 1, name: { a: 1 } });
   });

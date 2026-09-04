@@ -1,7 +1,17 @@
+import type {
+  LanguageModelV4,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4ProviderTool,
+  LanguageModelV4StreamResult,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
-import { requireTransformParams } from "../test-helpers";
+import {
+  requireTransformParams,
+  stopFinishReason,
+  zeroUsage,
+} from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -26,6 +36,29 @@ const _REGEX_GET_WEATHER_TAG = /<get_weather>/;
 const _REGEX_TOOL_CALL_WORD = /tool_call/;
 
 describe("createToolMiddleware transformParams error branches", () => {
+  const generateResult = {
+    content: [],
+    finishReason: stopFinishReason,
+    usage: zeroUsage,
+    warnings: [],
+  } satisfies LanguageModelV4GenerateResult;
+  const streamResult = {
+    stream: new ReadableStream(),
+  } satisfies LanguageModelV4StreamResult;
+  const model: LanguageModelV4 = {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "test",
+    supportedUrls: {},
+    doGenerate: async () => generateResult,
+    doStream: async () => streamResult,
+  };
+  const providerTool = {
+    type: "provider",
+    id: "test.x",
+    name: "x",
+    args: {},
+  } satisfies LanguageModelV4ProviderTool;
   const mw = createToolMiddleware({
     protocol: hermesProtocol,
     toolSystemPromptTemplate: (t) => `T:${t}`,
@@ -35,12 +68,14 @@ describe("createToolMiddleware transformParams error branches", () => {
     const transformParams = requireTransformParams(mw.transformParams);
     await expect(
       transformParams({
+        type: "generate",
         params: {
           prompt: [],
           tools: [],
           toolChoice: { type: "tool", toolName: "missing" },
         },
-      } as any)
+        model,
+      })
     ).rejects.toThrow(REGEX_NOT_FOUND);
   });
 
@@ -48,12 +83,14 @@ describe("createToolMiddleware transformParams error branches", () => {
     const transformParams = requireTransformParams(mw.transformParams);
     await expect(
       transformParams({
+        type: "generate",
         params: {
           prompt: [],
-          tools: [{ type: "provider-defined", id: "x" } as any],
+          tools: [providerTool],
           toolChoice: { type: "tool", toolName: "x" },
         },
-      } as any)
+        model,
+      })
     ).rejects.toThrow(REGEX_PROVIDER_DEFINED);
   });
 
@@ -61,8 +98,10 @@ describe("createToolMiddleware transformParams error branches", () => {
     const transformParams = requireTransformParams(mw.transformParams);
     await expect(
       transformParams({
+        type: "generate",
         params: { prompt: [], tools: [], toolChoice: { type: "required" } },
-      } as any)
+        model,
+      })
     ).rejects.toThrow(REGEX_REQUIRED_NO_TOOLS);
   });
 
@@ -70,12 +109,14 @@ describe("createToolMiddleware transformParams error branches", () => {
     const transformParams = requireTransformParams(mw.transformParams);
     await expect(
       transformParams({
+        type: "generate",
         params: {
           prompt: [],
-          tools: [{ type: "provider-defined", id: "x" } as any],
+          tools: [providerTool],
           toolChoice: { type: "required" },
         },
-      } as any)
+        model,
+      })
     ).rejects.toThrow(REGEX_REQUIRED_NO_FUNCTION_TOOLS);
   });
 });

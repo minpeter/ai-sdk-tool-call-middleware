@@ -1,26 +1,35 @@
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { compileSafePatternPropertyRegex } from "../../schema-coerce";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
-import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 import { unsafeDeniedPatternMayMatchKey } from "./unsafe-pattern";
 
-type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
+function isToolInputSchema(
+  schema: ToolInputSchemaDefinition | undefined
+): schema is ToolInputSchema {
+  return typeof schema === "object" && isSchemaRecord(schema);
+}
 
-function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
+function isRxmlRecord(
+  value: RxmlValue
+): value is Readonly<Record<string, RxmlValue>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function hasDeclaredPatternProperties<Schema>(schema: Schema): boolean {
-  return (
-    isRecord(schema) &&
-    Object.hasOwn(schema, "patternProperties") &&
-    isRecord(schema.patternProperties)
-  );
+export function hasDeclaredPatternProperties(
+  schema: ToolInputSchemaDefinition
+): boolean {
+  return isToolInputSchema(schema) && schema.patternProperties !== undefined;
 }
 
-export function hasUnsafeFalsePatternProperties<Schema>(
-  schema: Schema
+export function hasUnsafeFalsePatternProperties(
+  schema: ToolInputSchemaDefinition
 ): boolean {
-  if (!(isRecord(schema) && isRecord(schema.patternProperties))) {
+  if (!(isToolInputSchema(schema) && schema.patternProperties)) {
     return false;
   }
   for (const [pattern, propertySchema] of Object.entries(
@@ -36,11 +45,11 @@ export function hasUnsafeFalsePatternProperties<Schema>(
   return false;
 }
 
-export function unsafeFalsePatternMayMatchKey<Schema>(
-  schema: Schema,
+export function unsafeFalsePatternMayMatchKey(
+  schema: ToolInputSchemaDefinition,
   key: string
 ): boolean {
-  if (!(isRecord(schema) && isRecord(schema.patternProperties))) {
+  if (!(isToolInputSchema(schema) && schema.patternProperties)) {
     return false;
   }
   for (const [pattern, propertySchema] of Object.entries(
@@ -58,17 +67,14 @@ export function unsafeFalsePatternMayMatchKey<Schema>(
 }
 
 function collectMatchingPatternSchemas(
-  schema: SchemaBoundaryRecord,
+  schema: ToolInputSchema,
   key: string
-): SchemaBoundaryValue[] {
-  if (
-    isPrototypeSensitiveArgumentKey(key) ||
-    !isRecord(schema.patternProperties)
-  ) {
+): ToolInputSchemaDefinition[] {
+  if (isPrototypeSensitiveArgumentKey(key) || !schema.patternProperties) {
     return [];
   }
 
-  const schemas: SchemaBoundaryValue[] = [];
+  const schemas: ToolInputSchemaDefinition[] = [];
   for (const [pattern, propertySchema] of Object.entries(
     schema.patternProperties
   )) {
@@ -80,12 +86,12 @@ function collectMatchingPatternSchemas(
   return schemas;
 }
 
-export function collectPatternPropertyNames<Schema, Value>(
-  schema: Schema,
-  value: Value
+export function collectPatternPropertyNames(
+  schema: ToolInputSchemaDefinition,
+  value: RxmlValue
 ): Set<string> {
   const names = new Set<string>();
-  if (!(isRecord(schema) && isRecord(value))) {
+  if (!(isToolInputSchema(schema) && isRxmlRecord(value))) {
     return names;
   }
   for (const key of Object.keys(value)) {
@@ -96,11 +102,11 @@ export function collectPatternPropertyNames<Schema, Value>(
   return names;
 }
 
-export function getPatternPropertySchema<Schema>(
-  schema: Schema,
+export function getPatternPropertySchema(
+  schema: ToolInputSchemaDefinition,
   key: string
-): SchemaBoundaryValue {
-  if (!isRecord(schema)) {
+): ToolInputSchemaDefinition | undefined {
+  if (!isToolInputSchema(schema)) {
     return;
   }
   const schemas = collectMatchingPatternSchemas(schema, key);

@@ -11,8 +11,11 @@ describe("parseGeneratedText control character normalization", () => {
     const p = hermesProtocol();
     const text = `<tool_call>{"name":"edit","arguments":{"content":"line1\nline2"}}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(tool.toolName).toBe("edit");
     expect(JSON.parse(tool.input).content).toBe("line1\nline2");
   });
@@ -21,8 +24,11 @@ describe("parseGeneratedText control character normalization", () => {
     const p = hermesProtocol();
     const text = `<tool_call>{"name":"edit","arguments":{"content":"col1\tcol2"}}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).content).toBe("col1\tcol2");
   });
 
@@ -30,8 +36,11 @@ describe("parseGeneratedText control character normalization", () => {
     const p = hermesProtocol();
     const text = `<tool_call>{"name":"edit","arguments":{"content":"line1\r\nline2"}}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).content).toBe("line1\r\nline2");
   });
 
@@ -39,8 +48,11 @@ describe("parseGeneratedText control character normalization", () => {
     const p = hermesProtocol();
     const text = `<tool_call>{"name":"edit","arguments":{"content":"a\nb\tc\rd"}}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).content).toBe("a\nb\tc\rd");
   });
 
@@ -50,8 +62,11 @@ describe("parseGeneratedText control character normalization", () => {
     // which is a valid JSON escape for a newline character.
     const text = `<tool_call>{"name":"edit","arguments":{"content":"line1\\nline2"}}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     // \\n in JSON source decodes to a newline character
     expect(JSON.parse(tool.input).content).toBe("line1\nline2");
   });
@@ -60,8 +75,11 @@ describe("parseGeneratedText control character normalization", () => {
     const p = hermesProtocol();
     const text = `<tool_call>{\n  "name": "bash",\n  "arguments": {\n    "command": "ls"\n  }\n}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(tool.toolName).toBe("bash");
     expect(JSON.parse(tool.input).command).toBe("ls");
   });
@@ -73,8 +91,11 @@ describe("parseGeneratedText control character normalization", () => {
     // The raw newline after it must be normalized to \\n.
     const text = `<tool_call>{"name":"edit","arguments":{"content":"say \\"hello\\"\nthere"}}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).content).toBe('say "hello"\nthere');
   });
 
@@ -85,8 +106,11 @@ describe("parseGeneratedText control character normalization", () => {
     // The raw newline that follows is a new raw character, not part of an escape.
     const text = `<tool_call>{"name":"edit","arguments":{"content":"path\\\\\\\\\nline2"}}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).content).toBe("path\\\\\nline2");
   });
 
@@ -96,8 +120,11 @@ describe("parseGeneratedText control character normalization", () => {
     const json = '{"name":"edit","arguments":{"content":"foo\\\nbar"}}';
     const text = `<tool_call>${json}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(tool.toolName).toBe("edit");
     expect(JSON.parse(tool.input).content).toBe("foo\nbar");
   });
@@ -107,8 +134,11 @@ describe("parseGeneratedText control character normalization", () => {
     const json = '{"name":"edit","arguments":{"content":"foo\\\tbar"}}';
     const text = `<tool_call>${json}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).content).toBe("foo\tbar");
   });
 
@@ -118,8 +148,11 @@ describe("parseGeneratedText control character normalization", () => {
     // \\\" in JSON = literal backslash + literal quote
     const text = `<tool_call>{"name":"edit","arguments":{"content":"a\\\\\\"b"}}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).content).toBe('a\\"b');
   });
   it("preserves relaxed single-quoted strings containing double quotes", () => {
@@ -129,8 +162,11 @@ describe("parseGeneratedText control character normalization", () => {
   arguments: {}
 }</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(tool.toolName).toBe('echo "hi"');
     expect(JSON.parse(tool.input)).toEqual({});
   });
@@ -140,8 +176,11 @@ describe("parseGeneratedText control character normalization", () => {
     const text = `<tool_call>{name:'edit',arguments:{content:'line1
 line2'}}</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).content).toBe("line1\nline2");
   });
   it("does not treat apostrophes in relaxed line comments as strings", () => {
@@ -152,8 +191,11 @@ line2'}}</tool_call>`;
   extra: 1
 }</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(tool.toolName).toBe("edit");
   });
   it("skips relaxed comments in slow-path normalization", () => {
@@ -167,8 +209,11 @@ line2"
   extra: 1
 }</tool_call>`;
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).content).toBe("line1\nline2");
   });
   it("treats carriage returns as relaxed line-comment terminators", () => {
@@ -176,8 +221,11 @@ line2"
     const text =
       '<tool_call>{name:"edit", // it\'s comment\rarguments:{content:"line1\rline2"}}</tool_call>';
     const out = p.parseGeneratedText({ text, tools: [] });
-    const tool = out.find((x) => x.type === "tool-call") as any;
+    const tool = out.find((x) => x.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).content).toBe("line1\rline2");
   });
 });

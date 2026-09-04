@@ -1,6 +1,7 @@
-import type {
-  LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
+import {
+  isJSONObject,
+  type LanguageModelV4FunctionTool,
+  type LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { parse } from "../../rxml";
 import { generateToolCallId } from "../utils/id";
@@ -18,6 +19,7 @@ import {
   stringifyToolInputWithSchema,
 } from "../utils/tool-input-streaming";
 import { hasNonWhitespaceTopLevelText } from "./morph-xml-progress-analysis";
+import type { MorphXmlProtocolOptions } from "./morph-xml-protocol";
 import {
   emitMorphToolInputProgressDelta,
   foldInertRegionIntoStreamingValue,
@@ -45,7 +47,7 @@ import type { ParserOptions } from "./protocol-interface";
 export function createMorphXmlStreamParser(params: {
   readonly tools: LanguageModelV4FunctionTool[];
   readonly options?: ParserOptions;
-  readonly parseOptions: Record<string, unknown>;
+  readonly parseOptions: NonNullable<MorphXmlProtocolOptions["parseOptions"]>;
 }): TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart> {
   const { tools, options, parseOptions } = params;
   const toolNames = extractToolNames(tools);
@@ -313,10 +315,7 @@ export function createMorphXmlStreamParser(params: {
     });
     const parseConfig = {
       ...parseOptions,
-      onError:
-        options?.onError ??
-        (parseOptions as { onError?: ParserOptions["onError"] } | undefined)
-          ?.onError,
+      onError: options?.onError ?? parseOptions.onError,
     };
 
     const toolSchema = getToolSchema(tools, currentToolCall.name);
@@ -328,6 +327,9 @@ export function createMorphXmlStreamParser(params: {
         );
       }
       const parsedResult = parse(unclosedContent, toolSchema, parseConfig);
+      if (!isJSONObject(parsedResult)) {
+        throw new Error("XML tool call arguments must be an object");
+      }
       const finalInput = stringifyToolInputWithSchema({
         toolName: currentToolCall.name,
         args: parsedResult,
@@ -343,6 +345,8 @@ export function createMorphXmlStreamParser(params: {
         onMismatch: options?.onError,
       });
     } catch (error) {
+      const caughtError =
+        error instanceof Error ? error : new Error(String(error));
       const unfinishedContent = `<${currentToolCall.name}>${unclosedContent}`;
       const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
       emitFailedBufferedToolInputLifecycle({
@@ -351,7 +355,8 @@ export function createMorphXmlStreamParser(params: {
         id: currentToolCall.toolCallId,
         emitRawToolCallTextOnError: emitRawFallback,
         endInputOnError: currentToolCall.hasEmittedStart,
-        hideBufferedInputOnError: isPrototypeSensitiveToolCallInputError(error),
+        hideBufferedInputOnError:
+          isPrototypeSensitiveToolCallInputError(caughtError),
         rawToolCallText: unfinishedContent,
         emitRawText: (rawText) => {
           flushText(controller, rawText);
@@ -364,7 +369,7 @@ export function createMorphXmlStreamParser(params: {
           toolCallId: currentToolCall.toolCallId,
           toolName: currentToolCall.name,
           dropReason: "unfinished-tool-call",
-          error: safeToolCallMetadataError(error, unfinishedContent),
+          error: safeToolCallMetadataError(caughtError, unfinishedContent),
         }
       );
     }

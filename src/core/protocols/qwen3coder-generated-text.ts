@@ -1,4 +1,5 @@
 import type {
+  JSONObject,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
@@ -38,7 +39,7 @@ export function parseQwen3CoderGeneratedText({
   const processedElements: LanguageModelV4Content[] = [];
 
   const emitToolCalls = (
-    calls: Array<{ toolName: string; args: Record<string, unknown> }>
+    calls: Array<{ toolName: string; args: JSONObject }>
   ) => {
     for (const call of calls) {
       processedElements.push({
@@ -58,7 +59,7 @@ export function parseQwen3CoderGeneratedText({
     raw: string,
     message: string,
     toolName: string | null | undefined,
-    error?: unknown
+    error?: Error
   ) => {
     options?.onError?.(message, {
       toolCall: safeToolCallMetadataText(raw),
@@ -76,14 +77,16 @@ export function parseQwen3CoderGeneratedText({
   };
 
   const tryEmitToolCalls = (
-    calls: Array<{ toolName: string; args: Record<string, unknown> }>,
+    calls: Array<{ toolName: string; args: JSONObject }>,
     fallbackText: string,
     message: string
   ): boolean => {
     try {
       emitToolCalls(calls);
       return true;
-    } catch (error) {
+    } catch (caught) {
+      const error =
+        caught instanceof Error ? caught : new Error(String(caught));
       emitToolCallParseFailureAsText(
         fallbackText,
         message,

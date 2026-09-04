@@ -1,6 +1,7 @@
 import type {
+  LanguageModelV4CallOptions,
   LanguageModelV4FunctionTool,
-  LanguageModelV4Prompt,
+  LanguageModelV4Middleware,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,28 +10,18 @@ import {
   uiTarsToolMiddleware,
 } from "../../community";
 
-function requireTransformParams(value: unknown): (args: {
-  params: {
-    prompt: LanguageModelV4Prompt;
-    tools: LanguageModelV4FunctionTool[];
-  };
-}) =>
-  | Promise<{ prompt: LanguageModelV4Prompt }>
-  | { prompt: LanguageModelV4Prompt } {
-  if (typeof value !== "function") {
+function requireTransformParams(
+  value: LanguageModelV4Middleware["transformParams"]
+): (options: {
+  params: LanguageModelV4CallOptions;
+}) => PromiseLike<LanguageModelV4CallOptions> {
+  if (!value) {
     throw new Error("transformParams is required for middleware");
   }
 
-  return value as (args: {
-    params: {
-      prompt: LanguageModelV4Prompt;
-      tools: LanguageModelV4FunctionTool[];
-    };
-  }) =>
-    | Promise<{ prompt: LanguageModelV4Prompt }>
-    | {
-        prompt: LanguageModelV4Prompt;
-      };
+  return value as (options: {
+    params: LanguageModelV4CallOptions;
+  }) => PromiseLike<LanguageModelV4CallOptions>;
 }
 
 describe("community middleware prompt templates", () => {
@@ -59,8 +50,6 @@ describe("community middleware prompt templates", () => {
             },
           },
         ],
-      } satisfies LanguageModelV4FunctionTool & {
-        inputExamples: Array<{ input: unknown }>;
       },
     ];
 
@@ -100,8 +89,6 @@ describe("community middleware prompt templates", () => {
             },
           },
         ],
-      } satisfies LanguageModelV4FunctionTool & {
-        inputExamples: Array<{ input: unknown }>;
       },
     ];
 
@@ -141,8 +128,6 @@ describe("community middleware prompt templates", () => {
             },
           },
         ],
-      } satisfies LanguageModelV4FunctionTool & {
-        inputExamples: Array<{ input: unknown }>;
       },
     ];
 
@@ -182,8 +167,6 @@ describe("community middleware prompt templates", () => {
             },
           },
         ],
-      } satisfies LanguageModelV4FunctionTool & {
-        inputExamples: Array<{ input: unknown }>;
       },
     ];
 

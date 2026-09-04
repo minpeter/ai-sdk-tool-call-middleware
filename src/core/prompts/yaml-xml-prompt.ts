@@ -1,4 +1,4 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type { JSONObject, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import YAML from "yaml";
 import { escapeXmlMinimalText } from "../../rxml/utils/helpers";
@@ -7,6 +7,7 @@ import {
   renderInputExamplesSection,
   safeStringifyInputExample,
 } from "./shared/input-examples";
+import type { ToolResponsePromptTemplateResult } from "./shared/tool-result-user-content";
 import { toSafeXmlTagName } from "./shared/xml-tag-name";
 
 export function yamlXmlSystemPromptTemplate(
@@ -65,7 +66,10 @@ unit: celsius
   return `${basePrompt}\n\n${inputExamplesText}`;
 }
 
-function renderYamlXmlInputExample(toolName: string, input: unknown): string {
+function renderYamlXmlInputExample(
+  toolName: string,
+  input: JSONObject
+): string {
   const safeToolName = toSafeXmlTagName(toolName);
   let yamlBody = "null";
 
@@ -82,6 +86,6 @@ function renderYamlXmlInputExample(toolName: string, input: unknown): string {
 
 export function formatToolResponseAsYaml(
   toolResult: ToolResultPart
-): ReturnType<typeof morphFormatToolResponseAsXml> {
+): ToolResponsePromptTemplateResult {
   return morphFormatToolResponseAsXml(toolResult);
 }

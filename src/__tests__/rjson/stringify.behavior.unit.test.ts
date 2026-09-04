@@ -24,8 +24,8 @@ describe("relaxed-json", () => {
     });
 
     it("should handle undefined as null", () => {
-      expect(stringify(undefined as any)).toBe("null");
-      expect(stringify({ key: undefined } as any)).toBe('{"key":null}');
+      expect(stringify(undefined)).toBe("null");
+      expect(stringify({ key: undefined })).toBe('{"key":null}');
     });
 
     it("should handle nested structures", () => {
@@ -58,18 +58,18 @@ describe("relaxed-json", () => {
 
     it("should handle functions and symbols as null", () => {
       expect(
-        stringify((() => {
+        stringify(() => {
           /* empty */
-        }) as any)
+        })
       ).toBe("null");
-      expect(stringify(Symbol("test") as any)).toBe("null");
+      expect(stringify(Symbol("test"))).toBe("null");
       expect(
         stringify({
           fn: () => {
             /* empty */
           },
           sym: Symbol("test"),
-        } as any)
+        })
       ).toBe('{"fn":null,"sym":null}');
     });
   });

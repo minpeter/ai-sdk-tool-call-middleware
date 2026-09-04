@@ -3,6 +3,19 @@ import { describe, expect, it } from "vitest";
 import { hermesToolMiddleware } from "../../preconfigured-middleware";
 import { requireTransformParams } from "../test-helpers";
 
+const model = {
+  specificationVersion: "v4",
+  provider: "test",
+  modelId: "test",
+  supportedUrls: {},
+  doGenerate: () => {
+    throw new Error("unused");
+  },
+  doStream: () => {
+    throw new Error("unused");
+  },
+} satisfies import("@ai-sdk/provider").LanguageModelV4;
+
 const REGEX_TOOL_CALL = /<tool_call>/;
 
 const tools: LanguageModelV4FunctionTool[] = [
@@ -24,6 +37,8 @@ describe("transformParams hermes tool-call signature regression", () => {
     );
 
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           {
@@ -38,7 +53,7 @@ describe("transformParams hermes tool-call signature regression", () => {
                 toolCallId: "tc1",
                 toolName: "get_weather",
                 input: undefined,
-              } as any,
+              },
             ],
           },
           {
@@ -48,23 +63,24 @@ describe("transformParams hermes tool-call signature regression", () => {
                 type: "tool-result",
                 toolName: "get_weather",
                 toolCallId: "tc1",
-                output: { temperature: 25 },
+                output: { type: "json", value: { temperature: 25 } },
               },
             ],
           },
         ],
         tools,
       },
-    } as any);
+    });
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     expect(assistantMsg).toBeTruthy();
+    if (!assistantMsg) {
+      throw new Error("assistant message not found");
+    }
 
-    const assistantContent = assistantMsg?.content;
+    const assistantContent = assistantMsg.content;
     expect(Array.isArray(assistantContent)).toBe(true);
-    const assistantText = (
-      assistantContent as { type: string; text?: string }[]
-    )
+    const assistantText = assistantContent
       .filter((c) => c.type === "text")
       .map((c) => c.text ?? "")
       .join("");
@@ -79,6 +95,8 @@ describe("transformParams hermes tool-call signature regression", () => {
     );
 
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           {
@@ -93,7 +111,7 @@ describe("transformParams hermes tool-call signature regression", () => {
                 toolCallId: "tc1",
                 toolName: "get_weather",
                 input: "",
-              } as any,
+              },
             ],
           },
           {
@@ -103,23 +121,24 @@ describe("transformParams hermes tool-call signature regression", () => {
                 type: "tool-result",
                 toolName: "get_weather",
                 toolCallId: "tc1",
-                output: { temperature: 25 },
+                output: { type: "json", value: { temperature: 25 } },
               },
             ],
           },
         ],
         tools,
       },
-    } as any);
+    });
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     expect(assistantMsg).toBeTruthy();
+    if (!assistantMsg) {
+      throw new Error("assistant message not found");
+    }
 
-    const assistantContent = assistantMsg?.content;
+    const assistantContent = assistantMsg.content;
     expect(Array.isArray(assistantContent)).toBe(true);
-    const assistantText = (
-      assistantContent as { type: string; text?: string }[]
-    )
+    const assistantText = assistantContent
       .filter((c) => c.type === "text")
       .map((c) => c.text ?? "")
       .join("");
@@ -134,6 +153,8 @@ describe("transformParams hermes tool-call signature regression", () => {
     );
 
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           {
@@ -148,7 +169,7 @@ describe("transformParams hermes tool-call signature regression", () => {
                 toolCallId: "tc1",
                 toolName: "get_weather",
                 input: null,
-              } as any,
+              },
             ],
           },
           {
@@ -158,23 +179,24 @@ describe("transformParams hermes tool-call signature regression", () => {
                 type: "tool-result",
                 toolName: "get_weather",
                 toolCallId: "tc1",
-                output: { temperature: 25 },
+                output: { type: "json", value: { temperature: 25 } },
               },
             ],
           },
         ],
         tools,
       },
-    } as any);
+    });
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     expect(assistantMsg).toBeTruthy();
+    if (!assistantMsg) {
+      throw new Error("assistant message not found");
+    }
 
-    const assistantContent = assistantMsg?.content;
+    const assistantContent = assistantMsg.content;
     expect(Array.isArray(assistantContent)).toBe(true);
-    const assistantText = (
-      assistantContent as { type: string; text?: string }[]
-    )
+    const assistantText = assistantContent
       .filter((c) => c.type === "text")
       .map((c) => c.text ?? "")
       .join("");
@@ -202,6 +224,8 @@ describe("transformParams hermes tool-call signature regression", () => {
     );
 
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           {
@@ -216,13 +240,13 @@ describe("transformParams hermes tool-call signature regression", () => {
                 toolCallId: "tc1",
                 toolName: "get_weather",
                 input: JSON.stringify({ city: "Seoul" }),
-              } as any,
+              },
               {
                 type: "tool-call",
                 toolCallId: "tc2",
                 toolName: "get_time",
                 input: undefined,
-              } as any,
+              },
             ],
           },
           {
@@ -232,29 +256,30 @@ describe("transformParams hermes tool-call signature regression", () => {
                 type: "tool-result",
                 toolName: "get_weather",
                 toolCallId: "tc1",
-                output: { temperature: 25 },
+                output: { type: "json", value: { temperature: 25 } },
               },
               {
                 type: "tool-result",
                 toolName: "get_time",
                 toolCallId: "tc2",
-                output: { time: "10:00 AM" },
+                output: { type: "json", value: { time: "10:00 AM" } },
               },
             ],
           },
         ],
         tools: multiTools,
       },
-    } as any);
+    });
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     expect(assistantMsg).toBeTruthy();
+    if (!assistantMsg) {
+      throw new Error("assistant message not found");
+    }
 
-    const assistantContent = assistantMsg?.content;
+    const assistantContent = assistantMsg.content;
     expect(Array.isArray(assistantContent)).toBe(true);
-    const assistantText = (
-      assistantContent as { type: string; text?: string }[]
-    )
+    const assistantText = assistantContent
       .filter((c) => c.type === "text")
       .map((c) => c.text ?? "")
       .join("");

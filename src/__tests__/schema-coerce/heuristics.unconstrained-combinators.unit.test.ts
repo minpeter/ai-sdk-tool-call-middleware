@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type {
+  ToolInputSchema,
+  ToolInputSchemaCandidate,
+} from "../../schema/tool-input-schema";
 import { coerceBySchema } from "../../schema-coerce";
 
 describe("Coercion Heuristic Handling", () => {
@@ -18,9 +22,9 @@ describe("Coercion Heuristic Handling", () => {
             },
           ],
         },
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([{ wrapper: { id: "1" } }]);
     });
 
@@ -39,9 +43,9 @@ describe("Coercion Heuristic Handling", () => {
             },
           ],
         },
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([{ wrapper: { id: "1" } }]);
     });
 
@@ -60,9 +64,9 @@ describe("Coercion Heuristic Handling", () => {
             },
           ],
         },
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([{ wrapper: { name: "test" } }]);
     });
 
@@ -74,9 +78,9 @@ describe("Coercion Heuristic Handling", () => {
         items: {
           allOf: [{}, { type: "object" }],
         },
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([{ wrapper: { value: "42" } }]);
     });
 
@@ -99,21 +103,22 @@ describe("Coercion Heuristic Handling", () => {
             },
           ],
         },
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([{ id: "1" }]);
     });
 
     it("should not unwrap when items schema is unconstrained (null)", () => {
       const input = { wrapper: { id: "1" } };
 
-      const schema = {
+      const itemsSchema: ToolInputSchemaCandidate = null;
+      const schema: ToolInputSchemaCandidate = {
         type: "array",
-        items: null,
+        items: itemsSchema,
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([{ wrapper: { id: "1" } }]);
     });
 
@@ -123,9 +128,9 @@ describe("Coercion Heuristic Handling", () => {
       const schema = {
         type: "array",
         items: {},
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([{ wrapper: { id: "1" } }]);
     });
 
@@ -135,9 +140,9 @@ describe("Coercion Heuristic Handling", () => {
       const schema = {
         type: "array",
         items: true,
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([{ wrapper: { id: "1" } }]);
     });
   });

@@ -1,12 +1,11 @@
-import type {
-  LanguageModelV4Content,
-  LanguageModelV4FunctionTool,
+import {
+  isJSONValue,
+  type JSONObject,
+  type JSONValue,
+  type LanguageModelV4Content,
+  type LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
-import type {
-  OnErrorFn,
-  ProviderBoundaryRecord,
-  ProviderBoundaryValue,
-} from "./on-error";
+import type { OnErrorFn } from "./on-error";
 import {
   REDACTED_SENSITIVE_TOOL_CALL_TEXT,
   safeToolCallMetadataText,
@@ -33,14 +32,19 @@ export function findFirstNonEmptyTextContent(
   );
 }
 
+function isJsonObject(value: JSONValue): value is JSONObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isJsonObjectText(text: string): boolean {
   try {
-    const parsed: ProviderBoundaryValue = JSON.parse(text);
-    return Boolean(
-      parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    );
-  } catch {
-    return false;
+    const parsed = JSON.parse(text);
+    return isJSONValue(parsed) && isJsonObject(parsed);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return false;
+    }
+    throw error;
   }
 }
 
@@ -73,13 +77,7 @@ interface ResolveToolChoiceSelectionOptions {
   tools: LanguageModelV4FunctionTool[];
 }
 
-function isProviderBoundaryRecord<Value>(
-  value: Value
-): value is Value & ProviderBoundaryRecord {
-  return typeof value === "object" && value !== null;
-}
-
-function ensureNonEmptyToolName(name: ProviderBoundaryValue): string {
+function ensureNonEmptyToolName(name: JSONValue | undefined): string {
   if (typeof name !== "string") {
     return "unknown";
   }
@@ -87,7 +85,7 @@ function ensureNonEmptyToolName(name: ProviderBoundaryValue): string {
   return trimmed.length > 0 ? trimmed : "unknown";
 }
 
-function safeStringify(value: ProviderBoundaryValue): string {
+function safeStringify(value: JSONValue | undefined): string {
   try {
     return JSON.stringify(value ?? {});
   } catch {
@@ -96,8 +94,8 @@ function safeStringify(value: ProviderBoundaryValue): string {
 }
 
 function safeToolChoiceMetadataValue(
-  value: ProviderBoundaryValue
-): ProviderBoundaryValue {
+  value: JSONValue | undefined
+): JSONValue | undefined {
   if (typeof value === "string") {
     return safeToolCallMetadataText(value);
   }
@@ -112,9 +110,13 @@ export function parseToolChoicePayload({
   onError,
   errorMessage,
 }: ParseToolChoiceOptions): { toolName: string; input: string } {
-  let parsed: ProviderBoundaryValue;
+  let parsed: JSONValue;
   try {
-    parsed = JSON.parse(text);
+    const candidate = JSON.parse(text);
+    if (!isJSONValue(candidate)) {
+      throw new SyntaxError("toolChoice payload is not JSON data");
+    }
+    parsed = candidate;
   } catch (error) {
     onError?.(errorMessage, {
       text: safeToolCallMetadataText(text),
@@ -123,7 +125,7 @@ export function parseToolChoicePayload({
     return { toolName: "unknown", input: "{}" };
   }
 
-  if (!isProviderBoundaryRecord(parsed) || Array.isArray(parsed)) {
+  if (!isJsonObject(parsed)) {
     onError?.("toolChoice JSON payload must be an object", {
       parsedType: typeof parsed,
       parsed: safeToolChoiceMetadataValue(parsed),
@@ -205,12 +207,12 @@ export function resolveToolChoiceSelection({
       expectedToolName,
       toolName: parsed.toolName,
     });
-    let originalArguments: ProviderBoundaryValue;
+    let originalArguments: JSONValue | undefined;
     try {
-      const originalPayload: ProviderBoundaryValue = JSON.parse(text);
+      const originalPayload = JSON.parse(text);
       if (
-        isProviderBoundaryRecord(originalPayload) &&
-        !Array.isArray(originalPayload) &&
+        isJSONValue(originalPayload) &&
+        isJsonObject(originalPayload) &&
         Object.hasOwn(originalPayload, "arguments")
       ) {
         originalArguments = originalPayload.arguments;

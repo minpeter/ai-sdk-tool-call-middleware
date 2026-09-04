@@ -6,10 +6,24 @@ import {
   kExaone2ToolMiddleware,
   morphXmlToolMiddleware,
 } from "../../index";
+import { requireTransformParams } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
+
+const model = {
+  specificationVersion: "v4",
+  provider: "test",
+  modelId: "test",
+  supportedUrls: {},
+  doGenerate: () => {
+    throw new Error("unused");
+  },
+  doStream: () => {
+    throw new Error("unused");
+  },
+} satisfies import("@ai-sdk/provider").LanguageModelV4;
 
 const REGEX_GET_WEATHER = /get_weather/;
 const REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
@@ -27,10 +41,14 @@ describe("preconfigured middleware prompt templates", () => {
   ];
 
   it("kExaone2ToolMiddleware injects the native K-EXAONE-2.0 tools section", async () => {
-    const transformParams = kExaone2ToolMiddleware.transformParams as any;
+    const transformParams = requireTransformParams(
+      kExaone2ToolMiddleware.transformParams
+    );
     const out = await transformParams({
+      type: "generate",
+      model,
       params: { prompt: [], tools },
-    } as any);
+    });
 
     const [system] = out.prompt;
     expect(system.role).toBe("system");
@@ -42,13 +60,17 @@ describe("preconfigured middleware prompt templates", () => {
   });
 
   it("kExaone2ToolMiddleware places tools before existing system content", async () => {
-    const transformParams = kExaone2ToolMiddleware.transformParams as any;
+    const transformParams = requireTransformParams(
+      kExaone2ToolMiddleware.transformParams
+    );
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [{ role: "system", content: "SYSTEM_SENTINEL" }],
         tools,
       },
-    } as any);
+    });
 
     const [system] = out.prompt;
     const text = String(system.content);
@@ -58,8 +80,12 @@ describe("preconfigured middleware prompt templates", () => {
   });
 
   it("kExaone2ToolMiddleware replays native tool-call history bytes", async () => {
-    const transformParams = kExaone2ToolMiddleware.transformParams as any;
+    const transformParams = requireTransformParams(
+      kExaone2ToolMiddleware.transformParams
+    );
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           {
@@ -78,14 +104,24 @@ describe("preconfigured middleware prompt templates", () => {
         ],
         tools,
       },
-    } as any);
+    });
 
     const assistant = out.prompt.find(
-      (message: { role: string }) => message.role === "assistant"
+      (message) => message.role === "assistant"
     );
+    if (!assistant) {
+      throw new Error("assistant message not found");
+    }
     const text = assistant.content
-      .filter((part: { type: string }) => part.type === "text")
-      .map((part: { text: string }) => part.text)
+      .filter(
+        (
+          part
+        ): part is Extract<
+          import("@ai-sdk/provider").LanguageModelV4Content,
+          { type: "text" }
+        > => part.type === "text"
+      )
+      .map((part) => part.text)
       .join("");
 
     expect(text).toContain(
@@ -96,10 +132,14 @@ describe("preconfigured middleware prompt templates", () => {
   });
 
   it("hermesToolMiddleware template appears in system prompt", async () => {
-    const transformParams = hermesToolMiddleware.transformParams as any;
+    const transformParams = requireTransformParams(
+      hermesToolMiddleware.transformParams
+    );
     const out = await transformParams({
+      type: "generate",
+      model,
       params: { prompt: [], tools },
-    } as any);
+    });
 
     const [system] = out.prompt;
     expect(system.role).toBe("system");
@@ -110,10 +150,14 @@ describe("preconfigured middleware prompt templates", () => {
   });
 
   it("morphXmlToolMiddleware template appears in system prompt", async () => {
-    const transformParams = morphXmlToolMiddleware.transformParams as any;
+    const transformParams = requireTransformParams(
+      morphXmlToolMiddleware.transformParams
+    );
     const out = await transformParams({
+      type: "generate",
+      model,
       params: { prompt: [], tools },
-    } as any);
+    });
 
     const [system] = out.prompt;
     expect(system.role).toBe("system");
@@ -124,11 +168,18 @@ describe("preconfigured middleware prompt templates", () => {
   });
 
   it("glm5ToolMiddleware prepends a standalone official tools turn", async () => {
-    const transformParams = glm5ToolMiddleware.transformParams as any;
-    const existingSystem = { role: "system", content: "Application rules" };
+    const transformParams = requireTransformParams(
+      glm5ToolMiddleware.transformParams
+    );
+    const existingSystem = {
+      role: "system" as const,
+      content: "Application rules",
+    };
     const out = await transformParams({
+      type: "generate",
+      model,
       params: { prompt: [existingSystem], tools },
-    } as any);
+    });
 
     expect(out.prompt).toHaveLength(2);
     expect(out.prompt[0].role).toBe("system");

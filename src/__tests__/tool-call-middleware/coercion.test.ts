@@ -1,9 +1,17 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamPart,
+  LanguageModelV4StreamResult,
+  LanguageModelV4ToolCall,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
 import { originalToolsSchema } from "../../core/utils/provider-options";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -19,9 +27,30 @@ const dummyProtocol: TCMCoreProtocol = {
       toolCallId: "id",
       toolName: tools[0]?.name ?? "calc",
       input: JSON.stringify({ a: "10", b: "false" }),
-    } as any,
+    } satisfies LanguageModelV4ToolCall,
   ],
-  createStreamParser: () => new TransformStream(),
+  createStreamParser: () =>
+    new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>(),
+};
+
+const generateResult = {
+  content: [{ type: "text", text: "" }],
+  finishReason: stopFinishReason,
+  usage: zeroUsage,
+  warnings: [],
+} satisfies LanguageModelV4GenerateResult;
+
+const streamResult = {
+  stream: new ReadableStream<LanguageModelV4StreamPart>(),
+} satisfies LanguageModelV4StreamResult;
+
+const model: LanguageModelV4 = {
+  specificationVersion: "v4",
+  provider: "test",
+  modelId: "test",
+  supportedUrls: {},
+  doGenerate: async () => generateResult,
+  doStream: async () => streamResult,
 };
 
 describe("tool-call-middleware coercion (utils)", () => {
@@ -49,9 +78,10 @@ describe("tool-call-middleware coercion (utils)", () => {
       throw new Error("wrapGenerate is not defined");
     }
     const result = await middleware.wrapGenerate({
-      doGenerate: async () =>
-        ({ content: [{ type: "text", text: "" }] }) as any,
+      doGenerate: async () => generateResult,
+      doStream: async () => streamResult,
       params: {
+        prompt: [],
         tools,
         providerOptions: {
           // INFO: Since this test does not go through the transform handler
@@ -61,12 +91,14 @@ describe("tool-call-middleware coercion (utils)", () => {
           },
         },
       },
-    } as any);
+      model,
+    });
 
-    const tc = (result.content as any[]).find(
-      (p: any) => p.type === "tool-call"
-    );
-    expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({ a: 10, b: false });
+    const toolCall = result.content.find((part) => part.type === "tool-call");
+    expect(toolCall).toBeTruthy();
+    if (!toolCall) {
+      throw new Error("Expected a tool call");
+    }
+    expect(JSON.parse(toolCall.input)).toEqual({ a: 10, b: false });
   });
 });

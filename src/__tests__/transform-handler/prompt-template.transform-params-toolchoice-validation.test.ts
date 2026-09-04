@@ -1,7 +1,25 @@
+import type {
+  LanguageModelV4CallOptions,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4Middleware,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
-import { requireTransformParams } from "../test-helpers";
+
+function requireTransformParams(
+  value: LanguageModelV4Middleware["transformParams"]
+): (options: {
+  params: LanguageModelV4CallOptions;
+}) => PromiseLike<LanguageModelV4CallOptions> {
+  if (!value) {
+    throw new Error("transformParams is required for middleware");
+  }
+
+  return value as (options: {
+    params: LanguageModelV4CallOptions;
+  }) => PromiseLike<LanguageModelV4CallOptions>;
+}
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -32,7 +50,7 @@ describe("transformParams toolChoice validation", () => {
       protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "TOOL PROMPT",
     });
-    const tools = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -46,8 +64,8 @@ describe("transformParams toolChoice validation", () => {
         prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
         tools,
         toolChoice: { type: "none" },
-      },
-    } as any);
+      } satisfies LanguageModelV4CallOptions,
+    });
 
     // No tool definitions are forwarded and no tool system prompt is added.
     expect(result.tools).toEqual([]);
@@ -55,11 +73,11 @@ describe("transformParams toolChoice validation", () => {
     expect(result.prompt).toEqual([
       { role: "user", content: [{ type: "text", text: "hi" }] },
     ]);
+    expect(result.providerOptions?.toolCallMiddleware?.toolChoice).toEqual({
+      type: "none",
+    });
     expect(
-      (result.providerOptions as any).toolCallMiddleware.toolChoice
-    ).toEqual({ type: "none" });
-    expect(
-      (result.providerOptions as any).toolCallMiddleware.originalTools
+      result.providerOptions?.toolCallMiddleware?.originalTools
     ).toBeUndefined();
   });
 
@@ -68,7 +86,7 @@ describe("transformParams toolChoice validation", () => {
       protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "",
     });
-    const tools = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "t1",
@@ -82,12 +100,13 @@ describe("transformParams toolChoice validation", () => {
         prompt: [],
         tools,
         toolChoice: { type: "tool", toolName: "t1" },
-      },
-    } as any);
+      } satisfies LanguageModelV4CallOptions,
+    });
     expect(result.responseFormat).toMatchObject({ type: "json", name: "t1" });
-    expect(
-      (result.providerOptions as any).toolCallMiddleware.toolChoice
-    ).toEqual({ type: "tool", toolName: "t1" });
+    expect(result.providerOptions?.toolCallMiddleware?.toolChoice).toEqual({
+      type: "tool",
+      toolName: "t1",
+    });
   });
 
   it("transformParams required builds if/then/else schema", async () => {
@@ -95,7 +114,7 @@ describe("transformParams toolChoice validation", () => {
       protocol: hermesProtocol,
       toolSystemPromptTemplate: () => "",
     });
-    const tools = [
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "a",
@@ -111,11 +130,15 @@ describe("transformParams toolChoice validation", () => {
     ];
     const transformParams = requireTransformParams(mw.transformParams);
     const result = await transformParams({
-      params: { prompt: [], tools, toolChoice: { type: "required" } },
-    } as any);
+      params: {
+        prompt: [],
+        tools,
+        toolChoice: { type: "required" },
+      } satisfies LanguageModelV4CallOptions,
+    });
     expect(result.responseFormat).toMatchObject({ type: "json" });
-    expect(
-      (result.providerOptions as any).toolCallMiddleware.toolChoice
-    ).toEqual({ type: "required" });
+    expect(result.providerOptions?.toolCallMiddleware?.toolChoice).toEqual({
+      type: "required",
+    });
   });
 });

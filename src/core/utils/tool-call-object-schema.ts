@@ -1,3 +1,10 @@
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isSchemaDefinition,
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { unwrapJsonSchema } from "../../schema-coerce";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
 import { getDeclaredPropertySchema } from "./tool-call-object-property-schema";
@@ -14,38 +21,36 @@ import { selectSchemaVariant } from "./tool-call-schema-variant";
 
 const SELECTIVE_JSON_SCHEMA_COMBINATORS = ["anyOf", "oneOf"] as const;
 
-export type SchemaBoundaryValue =
-  | object
-  | CallableFunction
-  | string
-  | number
-  | bigint
-  | boolean
-  | symbol
-  | null
-  | undefined;
+function isToolInputSchema(
+  schema: ToolInputSchemaDefinition | undefined
+): schema is ToolInputSchema {
+  return typeof schema === "object" && isSchemaRecord(schema);
+}
 
-type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
-
-function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
+function isRxmlRecord(
+  value: RxmlValue
+): value is Readonly<Record<string, RxmlValue>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function addSafePropertyName(
-  names: Set<string>,
-  key: SchemaBoundaryValue
-): void {
+function unwrapToolCallSchema(
+  schema: ToolInputSchemaDefinition
+): ToolInputSchemaDefinition | undefined {
+  return unwrapJsonSchema(schema);
+}
+
+function addSafePropertyName(names: Set<string>, key: RxmlValue): void {
   if (typeof key === "string" && !isPrototypeSensitiveArgumentKey(key)) {
     names.add(key);
   }
 }
 
 function collectDirectDeclaredPropertyNames(
-  schema: SchemaBoundaryRecord
+  schema: ToolInputSchema
 ): Set<string> {
   const names = new Set<string>();
   const falsePropertyNames = collectFalsePropertyNames(schema);
-  if (Object.hasOwn(schema, "properties") && isRecord(schema.properties)) {
+  if (Object.hasOwn(schema, "properties") && schema.properties) {
     for (const [key, propertySchema] of Object.entries(schema.properties)) {
       if (propertySchema !== false) {
         addSafePropertyName(names, key);
@@ -74,14 +79,18 @@ function removeNames(target: Set<string>, source: Set<string>): void {
   }
 }
 
-function hasStrictAdditionalProperties(schema: SchemaBoundaryValue): boolean {
-  const unwrapped = unwrapJsonSchema(schema);
-  return isRecord(unwrapped) && unwrapped.additionalProperties === false;
+function hasStrictAdditionalProperties(
+  schema: ToolInputSchemaDefinition
+): boolean {
+  const unwrapped = unwrapToolCallSchema(schema);
+  return (
+    isToolInputSchema(unwrapped) && unwrapped.additionalProperties === false
+  );
 }
 
-function collectAllOfDeclaredPropertyNames<Value>(
-  schema: SchemaBoundaryRecord,
-  value: Value,
+function collectAllOfDeclaredPropertyNames(
+  schema: ToolInputSchema,
+  value: RxmlValue,
   seen: Set<object>
 ): Set<string> | null {
   const names = new Set<string>();
@@ -103,18 +112,18 @@ function collectAllOfDeclaredPropertyNames<Value>(
   return found ? names : null;
 }
 
-function collectStrictAllOfDeniedPropertyNames<Value>(
-  schema: SchemaBoundaryRecord,
-  value: Value,
+function collectStrictAllOfDeniedPropertyNames(
+  schema: ToolInputSchema,
+  value: RxmlValue,
   seen: Set<object>
 ): Set<string> {
   const names = new Set<string>();
-  if (!(Array.isArray(schema.allOf) && isRecord(value))) {
+  if (!(Array.isArray(schema.allOf) && isRxmlRecord(value))) {
     return names;
   }
   for (const variant of schema.allOf) {
-    const unwrapped = unwrapJsonSchema(variant);
-    if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+    const unwrapped = unwrapToolCallSchema(variant);
+    if (!isToolInputSchema(unwrapped) || seen.has(unwrapped)) {
       continue;
     }
     const nextSeen = new Set(seen);
@@ -137,15 +146,18 @@ function collectStrictAllOfDeniedPropertyNames<Value>(
   return names;
 }
 
-function collectSelectedVariantDeclaredPropertyNames<Value>(
-  schema: SchemaBoundaryRecord,
-  value: Value,
+function collectSelectedVariantDeclaredPropertyNames(
+  schema: ToolInputSchema,
+  value: RxmlValue,
   seen: Set<object>
 ): Set<string> | null {
   const names = new Set<string>();
   let found = false;
   for (const combinator of SELECTIVE_JSON_SCHEMA_COMBINATORS) {
     const variant = selectSchemaVariant(schema[combinator], value, seen);
+    if (!isSchemaDefinition(variant)) {
+      continue;
+    }
     const nestedNames = collectDeclaredToolInputPropertyNames(
       variant,
       value,
@@ -159,20 +171,21 @@ function collectSelectedVariantDeclaredPropertyNames<Value>(
   return found ? names : null;
 }
 
-function collectDeclaredToolInputPropertyNames<Schema, Value>(
-  schema: Schema,
-  value: Value,
+function collectDeclaredToolInputPropertyNames(
+  schema: ToolInputSchemaDefinition,
+  value: RxmlValue,
   seen: Set<object>
 ): Set<string> | null {
-  const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+  const unwrapped = unwrapToolCallSchema(schema);
+  if (!isToolInputSchema(unwrapped) || seen.has(unwrapped)) {
     return null;
   }
   seen.add(unwrapped);
 
   const names = collectDirectDeclaredPropertyNames(unwrapped);
   const hasDirectProperties =
-    Object.hasOwn(unwrapped, "properties") && isRecord(unwrapped.properties);
+    Object.hasOwn(unwrapped, "properties") &&
+    unwrapped.properties !== undefined;
   const hasAdditionalPropertiesPolicy = Object.hasOwn(
     unwrapped,
     "additionalProperties"
@@ -202,8 +215,8 @@ function collectDeclaredToolInputPropertyNames<Schema, Value>(
   }
   if (
     (unwrapped.additionalProperties === true ||
-      isRecord(unwrapped.additionalProperties)) &&
-    isRecord(value)
+      isToolInputSchema(unwrapped.additionalProperties)) &&
+    isRxmlRecord(value)
   ) {
     for (const key of Object.keys(value)) {
       if (!unsafeFalsePatternMayMatchKey(unwrapped, key)) {
@@ -223,17 +236,17 @@ function collectDeclaredToolInputPropertyNames<Schema, Value>(
   return names;
 }
 
-export function getToolInputPropertyNames<Schema, Value>(
-  schema: Schema,
-  value: Value
+export function getToolInputPropertyNames(
+  schema: ToolInputSchemaDefinition,
+  value: RxmlValue
 ): Set<string> | null {
   return collectDeclaredToolInputPropertyNames(schema, value, new Set());
 }
 
-export function getToolInputPropertySchema<Schema, Value>(
-  schema: Schema,
+export function getToolInputPropertySchema(
+  schema: ToolInputSchemaDefinition,
   key: string,
-  value: Value
-): SchemaBoundaryValue {
+  value: RxmlValue
+): ToolInputSchemaDefinition | undefined {
   return getDeclaredPropertySchema(schema, key, value, new Set());
 }

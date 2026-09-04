@@ -50,7 +50,12 @@ class XMLTransformStream extends Transform {
       this.processBuffer();
       callback();
     } catch (error) {
-      callback(new RXMLStreamError("Transform error", error));
+      callback(
+        new RXMLStreamError(
+          "Transform error",
+          error instanceof Error ? error : new Error(String(error))
+        )
+      );
     }
   }
 
@@ -69,7 +74,12 @@ class XMLTransformStream extends Transform {
       }
       callback();
     } catch (error) {
-      callback(new RXMLStreamError("Flush error", error));
+      callback(
+        new RXMLStreamError(
+          "Flush error",
+          error instanceof Error ? error : new Error(String(error))
+        )
+      );
     }
   }
 
@@ -190,8 +200,14 @@ class XMLTransformStream extends Transform {
       this.emitElementAndChildren(node);
       this.buffer = this.buffer.slice(elementEnd);
       return true;
-    } catch (e) {
-      this.emit("error", new RXMLStreamError("Parse error", e as Error));
+    } catch (error) {
+      this.emit(
+        "error",
+        new RXMLStreamError(
+          "Parse error",
+          error instanceof Error ? error : new Error(String(error))
+        )
+      );
       return false;
     }
   }

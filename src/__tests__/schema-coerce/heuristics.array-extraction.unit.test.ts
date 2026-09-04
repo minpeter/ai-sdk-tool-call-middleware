@@ -1,3 +1,4 @@
+import type { JSONObject, JSONSchema7, JSONValue } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { coerceBySchema } from "../../schema-coerce";
 
@@ -8,15 +9,15 @@ describe("Coercion Heuristic Handling", () => {
         number: ["3", "5", "7"],
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "number" },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([3, 5, 7]);
-      const arr = result as any[];
-      expect(arr.every((item: any) => typeof item === "number")).toBe(true);
+      const arr = result;
+      expect(arr.every((item) => typeof item === "number")).toBe(true);
     });
 
     it("should extract string array from single key object", () => {
@@ -24,15 +25,15 @@ describe("Coercion Heuristic Handling", () => {
         color: ["red", "green", "blue"],
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual(["red", "green", "blue"]);
-      const arr = result as any[];
-      expect(arr.every((item: any) => typeof item === "string")).toBe(true);
+      const arr = result;
+      expect(arr.every((item) => typeof item === "string")).toBe(true);
     });
 
     it("should handle mixed type single key extraction", () => {
@@ -40,12 +41,12 @@ describe("Coercion Heuristic Handling", () => {
         value: ["123", "hello", "45.67", "true"],
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual(["123", "hello", "45.67", "true"]);
     });
 
@@ -56,12 +57,12 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual(["legal@corp.com"]);
     });
 
@@ -72,12 +73,12 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "integer" },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([42]);
     });
 
@@ -88,36 +89,36 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([{ value: { nested: "x" } }]);
     });
 
     it("should unwrap wrapped primitive objects inside arrays", () => {
       const input = [{ element: "legal@corp.com" }];
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual(["legal@corp.com"]);
     });
 
     it("should unwrap wrapped primitive objects for tags array", () => {
       const input = [{ tag: "refund" }];
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual(["refund"]);
     });
 
@@ -126,7 +127,7 @@ describe("Coercion Heuristic Handling", () => {
       const singleItem = { user: { name: "Alice" } };
       const multiItems = { user: [{ name: "Alice" }, { name: "Bob" }] };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -135,8 +136,8 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const singleResult = coerceBySchema(singleItem, schema) as any[];
-      const multiResult = coerceBySchema(multiItems, schema) as any[];
+      const singleResult = coerceBySchema(singleItem, schema) as JSONValue[];
+      const multiResult = coerceBySchema(multiItems, schema) as JSONValue[];
 
       // Single element: [{ name: "Alice" }]
       expect(singleResult).toEqual([{ name: "Alice" }]);
@@ -147,7 +148,7 @@ describe("Coercion Heuristic Handling", () => {
     it("should not unwrap single key objects when items schema expects that key", () => {
       const input = { user: { name: "Alice" } };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -161,14 +162,14 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([{ user: { name: "Alice" } }]);
     });
 
     it("should not unwrap single key objects when items schema allows additionalProperties", () => {
       const input = { foo: { bar: "1" } };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -179,28 +180,28 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([{ foo: { bar: "1" } }]);
     });
 
     it("should not unwrap single key objects when items schema has implicit additionalProperties", () => {
       const input = { user: { name: "Alice" } };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([{ user: { name: "Alice" } }]);
     });
 
     it("should not unwrap single key objects when items schema uses patternProperties", () => {
       const input = { foo: { bar: "1" } };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -213,14 +214,14 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([{ foo: { bar: "1" } }]);
     });
 
     it("should unwrap single key objects when patternProperties do not match and additionalProperties is false", () => {
       const input = { wrapper: { "x-id": "1" } };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -231,14 +232,14 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([{ "x-id": "1" }]);
     });
 
     it("should unwrap single key objects when patternProperties explicitly disallow the key", () => {
       const input = { wrapper: { id: "1" } };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -249,14 +250,14 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([{ id: "1" }]);
     });
 
     it("should unwrap single key objects when allOf disallows the wrapper key", () => {
       const input = { wrapper: { id: "1" } };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           allOf: [
@@ -278,7 +279,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([{ id: "1" }]);
     });
 
@@ -289,7 +290,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           wrapper: {
@@ -306,7 +307,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result.wrapper).toEqual([{ id: "1", value: "test" }]);
     });
 
@@ -316,13 +317,13 @@ describe("Coercion Heuristic Handling", () => {
         color: ["red", "blue"],
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "string" },
       };
 
       // Should wrap in array when multiple keys exist (can't extract)
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual(input);

@@ -3,7 +3,17 @@
  * Modular, reusable versions of normalization/repair logic from morph-xml-protocol.
  */
 
+import {
+  isJSONObject,
+  type JSONObject,
+  type JSONValue,
+} from "@ai-sdk/provider";
 import { escapeRegExp } from "../../core/utils/regex";
+import {
+  isSchemaRecord,
+  type ToolInputSchemaCandidate,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { unwrapJsonSchema } from "../../schema-coerce";
 import { parse } from "../core/parser";
 import type {
@@ -22,6 +32,19 @@ const NAME_CHAR_RE = /[A-Za-z0-9_:-]/;
 const NAME_START_CHAR_RE = /[A-Za-z_:]/;
 const STEP_TAG_RE = /<step>([\s\S]*?)<\/step>/i;
 const STATUS_TAG_RE = /<status>([\s\S]*?)<\/status>/i;
+
+function isToolInputSchemaCandidate(
+  value: IntermediateCall["schema"]
+): value is ToolInputSchemaCandidate {
+  return (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "object"
+  );
+}
 
 export const normalizeCloseTagsHeuristic: ToolCallHeuristic = {
   id: "normalize-close-tags",
@@ -53,7 +76,9 @@ export const balanceTagsHeuristic: ToolCallHeuristic = {
   id: "balance-tags",
   phase: "fallback-reparse",
   applies: (ctx: IntermediateCall): boolean => {
-    const original = (ctx.meta?.originalContent as string) || ctx.rawSegment;
+    const originalContent = ctx.meta?.originalContent;
+    const original =
+      typeof originalContent === "string" ? originalContent : ctx.rawSegment;
     const normalized = original.replace(MALFORMED_CLOSE_RE_G, "</$1>");
     const balanced = balanceTags(original);
     const hasMalformedClose = MALFORMED_CLOSE_RE.test(original);
@@ -68,7 +93,9 @@ export const balanceTagsHeuristic: ToolCallHeuristic = {
     return balanced !== normalized;
   },
   run: (ctx: IntermediateCall): HeuristicResult => {
-    const original = (ctx.meta?.originalContent as string) || ctx.rawSegment;
+    const originalContent = ctx.meta?.originalContent;
+    const original =
+      typeof originalContent === "string" ? originalContent : ctx.rawSegment;
     const balanced = balanceTags(original);
     const escaped = escapeInvalidLt(balanced);
     return { rawSegment: escaped, reparse: true };
@@ -79,9 +106,12 @@ export const dedupeShellStringTagsHeuristic: ToolCallHeuristic = {
   id: "dedupe-shell-string-tags",
   phase: "fallback-reparse",
   applies: (ctx: IntermediateCall): boolean =>
+    isToolInputSchemaCandidate(ctx.schema) &&
     shouldDeduplicateStringTags(ctx.schema),
   run: (ctx: IntermediateCall): HeuristicResult => {
-    const names = getStringPropertyNames(ctx.schema);
+    const names = isToolInputSchemaCandidate(ctx.schema)
+      ? getStringPropertyNames(ctx.schema)
+      : [];
     let deduped = ctx.rawSegment;
     for (const key of names) {
       deduped = dedupeSingleTag(deduped, key);
@@ -97,9 +127,16 @@ export const repairAgainstSchemaHeuristic: ToolCallHeuristic = {
   id: "repair-against-schema",
   phase: "post-parse",
   applies: (ctx: IntermediateCall): boolean =>
-    ctx.parsed !== null && typeof ctx.parsed === "object",
+    isJSONObject(ctx.parsed) &&
+    !Array.isArray(ctx.parsed) &&
+    isToolInputSchemaCandidate(ctx.schema),
   run: (ctx: IntermediateCall): HeuristicResult => {
-    const repaired = repairParsedAgainstSchema(ctx.parsed, ctx.schema);
+    const repaired =
+      isJSONObject(ctx.parsed) &&
+      !Array.isArray(ctx.parsed) &&
+      isToolInputSchemaCandidate(ctx.schema)
+        ? repairParsedAgainstSchema(ctx.parsed, ctx.schema)
+        : ctx.parsed;
     if (repaired !== ctx.parsed) {
       return { parsed: repaired };
     }
@@ -273,37 +310,38 @@ function handleOpeningTagSegment(
  * Returns undefined if schema is invalid or has no properties.
  */
 function extractSchemaProperties(
-  schema: unknown
-): Record<string, unknown> | undefined {
+  schema: ToolInputSchemaCandidate
+): Record<string, ToolInputSchemaDefinition> | undefined {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!unwrapped || typeof unwrapped !== "object") {
-    return;
-  }
-  return (unwrapped as { properties?: Record<string, unknown> }).properties;
+  return typeof unwrapped === "object" && isSchemaRecord(unwrapped)
+    ? unwrapped.properties
+    : undefined;
 }
 
-function shouldDeduplicateStringTags(schema: unknown): boolean {
-  const props = extractSchemaProperties(schema);
-  if (!props) {
-    return false;
-  }
-  const commandRaw = props.command;
-  if (!commandRaw) {
-    return false;
-  }
-  const command = unwrapJsonSchema(commandRaw) as { type?: string } | undefined;
-  return command?.type === "array";
+function shouldDeduplicateStringTags(
+  schema: ToolInputSchemaCandidate
+): boolean {
+  const command = unwrapJsonSchema(extractSchemaProperties(schema)?.command);
+  return (
+    typeof command === "object" &&
+    isSchemaRecord(command) &&
+    command.type === "array"
+  );
 }
 
-function getStringPropertyNames(schema: unknown): string[] {
-  const props = extractSchemaProperties(schema);
-  if (!props) {
+function getStringPropertyNames(schema: ToolInputSchemaCandidate): string[] {
+  const properties = extractSchemaProperties(schema);
+  if (!properties) {
     return [];
   }
   const names: string[] = [];
-  for (const key of Object.keys(props)) {
-    const prop = unwrapJsonSchema(props[key]) as { type?: string } | undefined;
-    if (prop?.type === "string") {
+  for (const key of Object.keys(properties)) {
+    const property = unwrapJsonSchema(properties[key]);
+    if (
+      typeof property === "object" &&
+      isSchemaRecord(property) &&
+      property.type === "string"
+    ) {
       names.push(key);
     }
   }
@@ -332,86 +370,93 @@ function dedupeSingleTag(xml: string, key: string): string {
   return result;
 }
 
-function repairParsedAgainstSchema(input: unknown, schema: unknown): unknown {
-  if (!input || typeof input !== "object") {
+function repairParsedAgainstSchema(
+  input: JSONValue,
+  schema: ToolInputSchemaCandidate
+): JSONValue;
+function repairParsedAgainstSchema(
+  input: undefined,
+  schema: ToolInputSchemaCandidate
+): undefined;
+function repairParsedAgainstSchema(
+  input: JSONValue | undefined,
+  schema: ToolInputSchemaCandidate
+): JSONValue | undefined {
+  if (!isJSONObject(input) || Array.isArray(input)) {
     return input;
   }
   const properties = extractSchemaProperties(schema);
   if (!properties) {
     return input;
   }
-  applySchemaProps(input as Record<string, unknown>, properties);
+  applySchemaProps(input, properties);
   return input;
 }
 
-interface PropSchema {
-  items?: unknown;
-  type?: string;
-}
-
 function applySchemaProps(
-  obj: Record<string, unknown>,
-  properties: Record<string, unknown>
+  object: JSONObject,
+  properties: Record<string, ToolInputSchemaDefinition>
 ): void {
-  for (const key of Object.keys(obj)) {
-    const propSchema = properties[key];
-    if (!propSchema) {
+  for (const key of Object.keys(object)) {
+    const property = unwrapJsonSchema(properties[key]);
+    if (typeof property !== "object" || !isSchemaRecord(property)) {
       continue;
     }
-    const prop = unwrapJsonSchema(propSchema) as PropSchema | undefined;
-    if (prop?.type === "array" && prop.items) {
-      const itemSchema = unwrapJsonSchema(prop.items);
-      obj[key] = coerceArrayItems(obj[key], itemSchema);
+    if (property.type === "array" && !Array.isArray(property.items)) {
+      const itemSchema = unwrapJsonSchema(property.items);
+      object[key] = coerceArrayItems(object[key], itemSchema);
       continue;
     }
-    if (prop?.type === "object") {
-      const val = obj[key];
-      if (val && typeof val === "object") {
-        obj[key] = repairParsedAgainstSchema(val, prop);
-      }
+    if (property.type === "object") {
+      const value = object[key];
+      object[key] =
+        value === undefined
+          ? undefined
+          : repairParsedAgainstSchema(value, property);
     }
   }
 }
 
 function coerceArrayItems(
-  val: unknown,
-  itemSchema: unknown
-): unknown[] | unknown {
-  if (!Array.isArray(val)) {
-    return val;
+  value: JSONValue | undefined,
+  itemSchema: ToolInputSchemaDefinition | undefined
+): JSONValue | undefined {
+  if (!Array.isArray(value)) {
+    return value;
   }
-  return val.map((v) => coerceArrayItem(v, itemSchema));
+  return value.map((item) => coerceArrayItem(item, itemSchema));
 }
 
-function coerceArrayItem(v: unknown, itemSchema: unknown): unknown {
-  const itemType = (itemSchema as { type?: string })?.type;
-  if (typeof v === "string" && itemType === "object") {
-    const parsed = tryParseStringToSchemaObject(v, itemSchema);
+function coerceArrayItem(
+  value: JSONValue,
+  itemSchema: ToolInputSchemaDefinition | undefined
+): JSONValue {
+  const unwrapped = unwrapJsonSchema(itemSchema);
+  const itemIsObject =
+    typeof unwrapped === "object" &&
+    isSchemaRecord(unwrapped) &&
+    unwrapped.type === "object";
+  if (typeof value === "string" && itemIsObject) {
+    const parsed = tryParseStringToSchemaObject(value, unwrapped);
     if (parsed !== null) {
       return parsed;
     }
     const fallback = extractStepStatusFromString(
-      v.replace(MALFORMED_CLOSE_RE_G, "</$1>")
+      value.replace(MALFORMED_CLOSE_RE_G, "</$1>")
     );
-    if (fallback) {
-      return fallback;
-    }
-    return v;
+    return fallback ?? value;
   }
-  if (v && typeof v === "object" && itemType === "object") {
-    return repairParsedAgainstSchema(v, itemSchema);
-  }
-  return v;
+  return itemIsObject ? repairParsedAgainstSchema(value, unwrapped) : value;
 }
 
 function tryParseStringToSchemaObject(
   xml: string,
-  itemSchema: unknown
-): unknown | null {
+  itemSchema: ToolInputSchemaDefinition
+): JSONObject | null {
   try {
     const normalized = xml.replace(MALFORMED_CLOSE_RE_G, "</$1>");
     const fixed = parse(normalized, itemSchema, { noChildNodes: [] });
-    return typeof fixed === "string" ? null : (fixed as unknown);
+    return isJSONObject(fixed) && !Array.isArray(fixed) ? fixed : null;
   } catch {
     return null;
   }

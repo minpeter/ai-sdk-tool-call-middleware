@@ -1,22 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { XMLTokenizer } from "../../../rxml/core/tokenizer";
+import type { RXMLNode } from "../../../rxml/core/types";
 import { RXMLParseError } from "../../../rxml/errors/types";
 
 const WHITESPACE_ONLY_REGEX = /^\s+$/;
 
 describe("XMLTokenizer", () => {
-  const isNode = (
-    value: unknown
-  ): value is {
-    tagName: string;
-    attributes: Record<string, unknown>;
-    children: unknown[];
-  } =>
-    typeof value === "object" &&
-    value !== null &&
-    "tagName" in (value as Record<string, unknown>) &&
-    "children" in (value as Record<string, unknown>);
+  const isNode = (value: RXMLNode | string | undefined): value is RXMLNode =>
+    typeof value === "object";
   describe("basic parsing", () => {
     it("parses simple elements", () => {
       const tokenizer = new XMLTokenizer("<item>test</item>");
@@ -261,9 +253,12 @@ describe("XMLTokenizer", () => {
         expect.fail("Should have thrown an error");
       } catch (error) {
         expect(error).toBeInstanceOf(RXMLParseError);
-        const err = error as RXMLParseError;
-        expect(err.line).toBeDefined();
-        expect(err.column).toBeDefined();
+        if (error instanceof RXMLParseError) {
+          expect(error.line).toBeDefined();
+          expect(error.column).toBeDefined();
+        } else {
+          throw error;
+        }
       }
     });
   });
@@ -304,9 +299,15 @@ describe("XMLTokenizer", () => {
       );
       const result = tokenizer.parseNode();
 
-      const br = result.children.find((child: any) => child.tagName === "br");
-      const img = result.children.find((child: any) => child.tagName === "img");
-      const p = result.children.find((child: any) => child.tagName === "p");
+      const br = result.children.find(
+        (child) => isNode(child) && child.tagName === "br"
+      );
+      const img = result.children.find(
+        (child) => isNode(child) && child.tagName === "img"
+      );
+      const p = result.children.find(
+        (child) => isNode(child) && child.tagName === "p"
+      );
 
       if (isNode(br)) {
         expect(br.children).toEqual([]);
@@ -334,7 +335,7 @@ describe("XMLTokenizer", () => {
       );
       const result = tokenizer.parseNode();
       const custom = result.children.find(
-        (child: any) => child.tagName === "custom"
+        (child) => isNode(child) && child.tagName === "custom"
       );
       if (isNode(custom)) {
         expect(custom.children).toEqual([]);

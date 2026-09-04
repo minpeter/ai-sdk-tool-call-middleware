@@ -1,4 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import { isJSONObject, type JSONObject } from "@ai-sdk/provider";
 import { unescapeXml } from "../../rxml/utils/helpers";
 import { safeToolCallMetadataText } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
@@ -31,8 +32,9 @@ export function findToolCalls(
 
 export function parseYamlContentForStreamProgress(
   yamlContent: string
-): Record<string, unknown> | null {
-  return parseYamlContentForStreamProgressImpl(yamlContent);
+): JSONObject | null {
+  const parsed = parseYamlContentForStreamProgressImpl(yamlContent);
+  return isJSONObject(parsed) ? parsed : null;
 }
 
 type YamlParseFailure =
@@ -40,7 +42,7 @@ type YamlParseFailure =
   | { kind: "yaml-non-mapping" };
 
 type YamlParseResult =
-  | { ok: true; value: Record<string, unknown> }
+  | { ok: true; value: JSONObject }
   | { ok: false; failure: YamlParseFailure };
 
 // A YAML block scalar is not prefix-stable while it is streaming: indentation
@@ -50,9 +52,9 @@ type YamlParseResult =
 export const YAML_BLOCK_SCALAR_HEADER_RE =
   /^(?:[^\r\n]*:\s*|[ \t]*-\s*)[|>][1-9+-]{0,2}(?:[ \t]+#.*)?\r?$/m;
 
-function yamlFailureCause(failure: YamlParseFailure): Record<string, unknown> {
+function yamlFailureCause(failure: YamlParseFailure): JSONObject {
   if (failure.kind === "yaml-parse-error") {
-    return { kind: "yaml-parse-error", errors: failure.errors };
+    return { kind: "yaml-parse-error", errors: [...failure.errors] };
   }
   return { kind: "yaml-non-mapping" };
 }
@@ -60,14 +62,14 @@ function yamlFailureCause(failure: YamlParseFailure): Record<string, unknown> {
 export function safeYamlFailureCause(
   failure: YamlParseFailure,
   rawToolCallText: string
-): Record<string, unknown> {
+): JSONObject {
   if (!toolCallTextHasPrototypeSensitiveKey(rawToolCallText)) {
     return yamlFailureCause(failure);
   }
   if (failure.kind === "yaml-parse-error") {
     return {
       kind: "yaml-parse-error",
-      errors: [safeToolCallMetadataText(rawToolCallText)],
+      errors: [safeToolCallMetadataText(rawToolCallText) ?? ""],
     };
   }
   return { kind: "yaml-non-mapping" };
@@ -92,11 +94,7 @@ const PROTOTYPE_SENSITIVE_PARAM_KEYS = new Set([
   "prototype",
 ]);
 
-function mergeXmlChildArg(
-  args: Record<string, unknown>,
-  key: string,
-  value: string
-): void {
+function mergeXmlChildArg(args: JSONObject, key: string, value: string): void {
   const existing = args[key];
   if (existing === undefined) {
     args[key] = value;
@@ -115,9 +113,7 @@ function mergeXmlChildArg(
  * (`<unit>celsius`), and declines on anything else so genuine YAML failures
  * keep their normal error handling.
  */
-function parseXmlChildrenAsArgs(
-  content: string
-): Record<string, unknown> | null {
+function parseXmlChildrenAsArgs(content: string): JSONObject | null {
   const lines = content
     .split("\n")
     .map((line) => line.trim())
@@ -126,7 +122,7 @@ function parseXmlChildrenAsArgs(
     return null;
   }
 
-  const args: Record<string, unknown> = {};
+  const args: JSONObject = {};
   for (const line of lines) {
     const match =
       XML_CHILD_CLOSED_LINE_REGEX.exec(line) ??
@@ -153,12 +149,13 @@ export function buildSchemaPropNameSet(
     return null;
   }
   const tool = tools.find((t) => t.name === toolName);
-  const properties = (
-    tool?.inputSchema as
-      | { properties?: Record<string, unknown> }
-      | null
-      | undefined
-  )?.properties;
+  const inputSchema = tool?.inputSchema;
+  const properties =
+    inputSchema &&
+    typeof inputSchema === "object" &&
+    "properties" in inputSchema
+      ? inputSchema.properties
+      : undefined;
   if (!properties || typeof properties !== "object") {
     return null;
   }
@@ -182,13 +179,13 @@ const LINE_SPLIT_RE = /\r?\n/;
 function parseSchemaKeyedRawStrings(
   content: string,
   schemaPropNames: Set<string> | null
-): Record<string, unknown> | null {
+): JSONObject | null {
   if (!schemaPropNames || schemaPropNames.size === 0) {
     return null;
   }
 
   const lines = content.split(LINE_SPLIT_RE);
-  const args: Record<string, unknown> = {};
+  const args: JSONObject = {};
   let currentKey: string | null = null;
   let currentLines: string[] = [];
   let matchedKeys = 0;
@@ -247,6 +244,13 @@ export function parseYamlContent(
     if (salvaged) {
       return { ok: true, value: salvaged };
     }
+    return { ok: false, failure: { kind: "yaml-non-mapping" } };
+  }
+
+  if (parsed.value === null || Array.isArray(parsed.value)) {
+    return { ok: false, failure: { kind: "yaml-non-mapping" } };
+  }
+  if (!isJSONObject(parsed.value)) {
     return { ok: false, failure: { kind: "yaml-non-mapping" } };
   }
 

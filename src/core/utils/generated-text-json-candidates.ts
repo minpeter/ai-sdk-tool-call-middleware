@@ -1,4 +1,11 @@
+import { isJSONValue, type JSONObject, type JSONValue } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import type {
+  ToolInputSchema,
+  ToolInputSchemaCandidate,
+} from "../../schema/tool-input-schema";
+import { isSchemaRecord } from "../../schema/tool-input-schema";
 import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 
 export interface JsonCandidate {
@@ -13,19 +20,29 @@ interface JsonScanState {
   inString: boolean;
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export function isRecord(value: RxmlValue): value is JSONObject;
+export function isRecord(
+  value: ToolInputSchemaCandidate
+): value is ToolInputSchema;
+export function isRecord(value: ToolInputSchemaCandidate): boolean {
+  return typeof value === "object" && isSchemaRecord(value);
 }
 
-export function containsPrototypeSensitiveKey(value: unknown): boolean {
+export function containsPrototypeSensitiveKey(value: RxmlValue): boolean {
   return toolCallInputHasPrototypeSensitiveKey(value);
 }
 
-export function parseJsonCandidate(candidateText: string): unknown {
+export function parseJsonCandidate(
+  candidateText: string
+): JSONValue | undefined {
   try {
-    return parseRJSON(candidateText);
-  } catch {
-    // swallow parse failures and return undefined
+    const parsed = parseRJSON(candidateText);
+    return isJSONValue(parsed) ? parsed : undefined;
+  } catch (error) {
+    if (error instanceof Error) {
+      return;
+    }
+    throw error;
   }
 }
 

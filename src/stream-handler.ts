@@ -1,4 +1,5 @@
 import type {
+  LanguageModelV2Usage,
   LanguageModelV4,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
@@ -14,6 +15,7 @@ import {
   shouldRewriteFinishReasonToToolCalls,
 } from "./core/utils/finish-reason";
 import { generateToolCallId } from "./core/utils/id";
+import type { OnErrorFn } from "./core/utils/on-error";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   decodeOriginalToolsForMiddleware,
@@ -35,7 +37,7 @@ import {
  * are dropped in transformParams and surfaced here as spec warnings.
  */
 function droppedProviderToolWarnings(
-  providerOptions: unknown
+  providerOptions: ToolCallMiddlewareProviderOptions | undefined
 ): SharedV4Warning[] {
   return getDroppedProviderTools(providerOptions).map(
     (name): SharedV4Warning => ({
@@ -216,7 +218,7 @@ export async function toolChoiceStream({
   expectedToolName?: string;
   tools?: LanguageModelV4FunctionTool[];
   options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    onError?: OnErrorFn;
   };
   extraWarnings?: SharedV4Warning[];
 }) {
@@ -308,23 +310,26 @@ const ZERO_USAGE: LanguageModelV4Usage = {
   },
 };
 
-function normalizeUsage(usage: unknown): LanguageModelV4Usage {
-  if (!usage || typeof usage !== "object") {
+function isCurrentUsage(
+  usage: LanguageModelV2Usage | LanguageModelV4Usage
+): usage is LanguageModelV4Usage {
+  return (
+    typeof usage.inputTokens === "object" &&
+    typeof usage.outputTokens === "object"
+  );
+}
+
+function normalizeUsage(
+  usage: LanguageModelV2Usage | LanguageModelV4Usage | undefined
+): LanguageModelV4Usage {
+  if (!usage) {
     return ZERO_USAGE;
   }
-
-  const usageRecord = usage as Record<string, unknown>;
-  const input = usageRecord.inputTokens;
-  const output = usageRecord.outputTokens;
-  if (
-    input &&
-    typeof input === "object" &&
-    output &&
-    typeof output === "object"
-  ) {
-    return usage as LanguageModelV4Usage;
+  if (isCurrentUsage(usage)) {
+    return usage;
   }
 
+  const { inputTokens: input, outputTokens: output } = usage;
   if (typeof input === "number" && typeof output === "number") {
     return {
       inputTokens: {

@@ -1,3 +1,4 @@
+import type { JSONObject, JSONSchema7 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { coerceBySchema } from "../../schema-coerce";
 
@@ -16,7 +17,7 @@ describe("Coercion Heuristic Handling", () => {
         limit: "50",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           table: { type: "string" },
@@ -39,7 +40,7 @@ describe("Coercion Heuristic Handling", () => {
         additionalProperties: false,
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({
         table: "orders",
         filters: [
@@ -60,7 +61,7 @@ describe("Coercion Heuristic Handling", () => {
         formality: "casual",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           text: { type: "string" },
@@ -71,7 +72,7 @@ describe("Coercion Heuristic Handling", () => {
         additionalProperties: false,
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({
         text: "Let's ship this today.",
         targetLanguage: "fr",
@@ -87,7 +88,7 @@ describe("Coercion Heuristic Handling", () => {
         extra: "drop later",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           text: { type: "string" },
@@ -98,7 +99,7 @@ describe("Coercion Heuristic Handling", () => {
         additionalProperties: false,
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({
         text: "Let's ship this today.",
         targetLanguage: "fr",
@@ -112,7 +113,7 @@ describe("Coercion Heuristic Handling", () => {
         _target_language: "es",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           targetLanguage: { type: "string" },
@@ -121,7 +122,7 @@ describe("Coercion Heuristic Handling", () => {
         additionalProperties: false,
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({
         targetLanguage: "es",
       });
@@ -132,7 +133,7 @@ describe("Coercion Heuristic Handling", () => {
         targetLanguage: "ko",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           target_language: { type: "string" },
@@ -141,7 +142,7 @@ describe("Coercion Heuristic Handling", () => {
         additionalProperties: false,
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({
         target_language: "ko",
       });
@@ -153,7 +154,7 @@ describe("Coercion Heuristic Handling", () => {
         target_language: "fr",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           text: { type: "string" },
@@ -163,7 +164,7 @@ describe("Coercion Heuristic Handling", () => {
         additionalProperties: true,
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({
         text: "hello",
         target_language: "fr",
@@ -177,7 +178,7 @@ describe("Coercion Heuristic Handling", () => {
         includeForecast: "true",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           city: { type: "string" },
@@ -188,7 +189,7 @@ describe("Coercion Heuristic Handling", () => {
         additionalProperties: false,
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({
         location: "Seoul",
         unit: "celsius",
@@ -201,7 +202,7 @@ describe("Coercion Heuristic Handling", () => {
         filter: ["paid"],
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           filters: { type: "string" },
@@ -210,7 +211,7 @@ describe("Coercion Heuristic Handling", () => {
         additionalProperties: false,
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({
         filter: ["paid"],
       });
@@ -228,7 +229,7 @@ describe("Coercion Heuristic Handling", () => {
         extra: "drop later",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           filters: {
@@ -249,7 +250,7 @@ describe("Coercion Heuristic Handling", () => {
         additionalProperties: false,
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({
         filters: [
           {

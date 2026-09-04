@@ -1,3 +1,10 @@
+import {
+  isJSONObject,
+  isJSONValue,
+  type JSONObject,
+  type JSONSchema7,
+  type JSONValue,
+} from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import {
   coerceBySchema,
@@ -18,24 +25,24 @@ const BARE_CODE_REFERENCE_RE =
   /^[A-Za-z_$][\w$]*(?:(?:\.[A-Za-z_$][\w$]*)|(?:\[(?:\d+|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\])|(?:\(\)))*$/;
 const PROTOTYPE_REFERENCE_SEGMENT_RE =
   /(?:^|\.)(?:__proto__|constructor|prototype)(?=$|[.(])/;
+type Glm5Schema = JSONSchema7 | undefined;
+
 const STRICT_JSON_OPTIONS = {
   duplicate: false,
   relaxed: false,
   tolerant: false,
 } as const;
 
-function isExplicitlyOpenObjectSchema(schema: unknown): boolean {
+function isExplicitlyOpenObjectSchema(schema: Glm5Schema): boolean {
   const unwrapped = unwrapJsonSchema(schema);
   return (
     getSchemaType(unwrapped) === "object" &&
-    typeof unwrapped === "object" &&
-    unwrapped !== null &&
-    !Array.isArray(unwrapped) &&
-    (unwrapped as Record<string, unknown>).additionalProperties === true
+    isJSONObject(unwrapped) &&
+    unwrapped.additionalProperties === true
   );
 }
 
-function isSafeBareObjectReference(value: string, schema: unknown): boolean {
+function isSafeBareObjectReference(value: string, schema: Glm5Schema): boolean {
   const candidate = value.trim();
   return (
     candidate.length > 0 &&
@@ -47,8 +54,9 @@ function isSafeBareObjectReference(value: string, schema: unknown): boolean {
   );
 }
 
-export function createGlm5Args(): Record<string, unknown> {
-  return Object.create(null) as Record<string, unknown>;
+export function createGlm5Args(): JSONObject {
+  const args: JSONObject = Object.create(null);
+  return args;
 }
 
 function removeTrailingHighSurrogate(value: string): string {
@@ -73,7 +81,7 @@ export function normalizeGlm5StringValue(options: {
 }
 
 export function isIncrementallyStreamableGlm5StringSchema(
-  schema: unknown
+  schema: Glm5Schema
 ): boolean {
   if (getSchemaType(schema) !== "string") {
     return false;
@@ -82,14 +90,16 @@ export function isIncrementallyStreamableGlm5StringSchema(
   if (!unwrapped || typeof unwrapped !== "object" || Array.isArray(unwrapped)) {
     return true;
   }
-  const record = unwrapped as Record<string, unknown>;
-  return !(Object.hasOwn(record, "const") || Array.isArray(record.enum));
+  if (!isJSONObject(unwrapped)) {
+    return true;
+  }
+  return !(Object.hasOwn(unwrapped, "const") || Array.isArray(unwrapped.enum));
 }
 
 export function safeAssignGlm5Arg(
-  args: Record<string, unknown>,
+  args: JSONObject,
   key: string,
-  value: unknown,
+  value: JSONValue,
   recoveries: string[]
 ): boolean {
   if (isPrototypeSensitiveArgumentKey(key)) {
@@ -98,6 +108,10 @@ export function safeAssignGlm5Arg(
   }
   if (Object.hasOwn(args, key)) {
     recoveries.push("rejected-duplicate-key");
+    return false;
+  }
+  if (!isJSONValue(value)) {
+    recoveries.push("rejected-non-json-value");
     return false;
   }
   if (hasPrototypeSensitiveStructuralKey(value)) {
@@ -109,16 +123,26 @@ export function safeAssignGlm5Arg(
 }
 
 type ParsedGlm5Value =
-  | { ok: true; recovery?: "recovered-opaque-object-reference"; value: unknown }
+  | {
+      ok: true;
+      recovery?: "recovered-opaque-object-reference";
+      value: JSONValue;
+    }
   | { ok: false };
 
 function parseStructuredGlm5Value(
   value: string,
-  propertySchema: unknown
+  propertySchema: Glm5Schema
 ): ParsedGlm5Value {
   try {
     const parsed = parseRJSON(value, STRICT_JSON_OPTIONS);
+    if (!isJSONValue(parsed)) {
+      return { ok: false };
+    }
     const coerced = coerceBySchema(parsed, propertySchema);
+    if (!isJSONValue(coerced)) {
+      return { ok: false };
+    }
     return toolCallInputHasSchemaAwarePrototypeSensitiveValue(
       coerced,
       propertySchema
@@ -132,7 +156,7 @@ function parseStructuredGlm5Value(
 
 export function parseCompletedGlm5Value(
   rawValue: string,
-  propertySchema: unknown,
+  propertySchema: Glm5Schema,
   normalization: Glm5StringBoundaryNormalization,
   recoverOpaqueObjectReferences: boolean
 ): ParsedGlm5Value {
@@ -144,6 +168,9 @@ export function parseCompletedGlm5Value(
   const schemaType = getSchemaType(propertySchema);
   if (schemaType === "string") {
     const value = coerceBySchema(normalized, propertySchema);
+    if (!isJSONValue(value)) {
+      return { ok: false };
+    }
     return toolCallInputHasSchemaAwarePrototypeSensitiveValue(
       value,
       propertySchema
@@ -184,6 +211,9 @@ export function parseCompletedGlm5Value(
     return parseStructuredGlm5Value(trimmed, propertySchema);
   }
   const value = coerceBySchema(normalized, propertySchema);
+  if (!isJSONValue(value)) {
+    return { ok: false };
+  }
   return toolCallInputHasSchemaAwarePrototypeSensitiveValue(
     value,
     propertySchema

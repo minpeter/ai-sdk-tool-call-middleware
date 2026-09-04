@@ -3,6 +3,7 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
+import type { RxmlValue } from "../../rxml/builders/stringify";
 import { generateId } from "./id";
 import {
   toolCallInputHasPrototypeSensitiveKey,
@@ -36,6 +37,10 @@ export function addTextSegment(
   }
 }
 
+export function safeToolCallMetadataText(text: string): string;
+export function safeToolCallMetadataText(
+  text: string | null | undefined
+): string | null | undefined;
 export function safeToolCallMetadataText(
   text: string | null | undefined
 ): string | null | undefined {
@@ -47,7 +52,7 @@ export function safeToolCallMetadataText(
     : text;
 }
 
-function errorCause(error: Error): unknown {
+function errorCause(error: Error): RxmlValue | Error {
   const descriptor = Object.getOwnPropertyDescriptor(error, "cause");
   return descriptor && "value" in descriptor ? descriptor.value : undefined;
 }
@@ -79,7 +84,9 @@ function errorHasPrototypeSensitiveDetails(error: Error): boolean {
   return cause != null && toolCallInputHasPrototypeSensitiveKey(cause);
 }
 
-export function safeToolCallMetadataValue(value: unknown): unknown {
+export function safeToolCallMetadataValue(
+  value: RxmlValue | Error
+): RxmlValue | Error {
   if (typeof value === "string") {
     return toolCallInputHasPrototypeSensitiveKey(value)
       ? REDACTED_SENSITIVE_TOOL_CALL_TEXT
@@ -96,9 +103,9 @@ export function safeToolCallMetadataValue(value: unknown): unknown {
 }
 
 export function safeToolCallMetadataError(
-  error: unknown,
+  error: RxmlValue | Error,
   sourceText?: string | null
-): unknown {
+): RxmlValue | Error {
   if (
     typeof sourceText === "string" &&
     toolCallTextHasPrototypeSensitiveKey(sourceText)

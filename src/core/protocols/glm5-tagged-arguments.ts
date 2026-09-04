@@ -1,3 +1,9 @@
+import type { JSONObject, JSONValue } from "@ai-sdk/provider";
+import {
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { toolCallInputHasSchemaAwarePrototypeSensitiveValue } from "../utils/tool-call-coercion";
 import { getToolInputPropertySchema } from "../utils/tool-call-object-schema";
 import type { ResolvedGlm5ProtocolOptions } from "./glm5-call-types";
@@ -33,11 +39,19 @@ type TaggedArgumentSearch =
 
 type TaggedArgumentValue =
   | { kind: "rejected" | "skipped" }
-  | { kind: "value"; value: unknown };
+  | { kind: "value"; value: JSONValue };
 
 interface ParsedGlm5TaggedArguments {
   consumedUntil: number;
   hasPartialValue: boolean;
+}
+
+function schemaObject(
+  schema: ToolInputSchemaDefinition | undefined
+): ToolInputSchema | undefined {
+  return typeof schema === "object" && isSchemaRecord(schema)
+    ? schema
+    : undefined;
 }
 
 function findNextTaggedArgument(options: {
@@ -125,12 +139,18 @@ function findNextTaggedArgument(options: {
 
 function parseTaggedArgumentValue(options: {
   argument: TaggedArgument;
-  propertySchema: unknown;
+  propertySchema: ToolInputSchemaDefinition | undefined;
   protocolOptions: ResolvedGlm5ProtocolOptions;
   recoveries: string[];
 }): TaggedArgumentValue {
+  if (options.propertySchema === false) {
+    return options.argument.valueIsComplete
+      ? { kind: "rejected" }
+      : { kind: "skipped" };
+  }
+  const propertySchema = schemaObject(options.propertySchema);
   if (!options.argument.valueIsComplete) {
-    if (!isIncrementallyStreamableGlm5StringSchema(options.propertySchema)) {
+    if (!isIncrementallyStreamableGlm5StringSchema(propertySchema)) {
       return { kind: "skipped" };
     }
     const value = normalizeGlm5StringValue({
@@ -140,7 +160,7 @@ function parseTaggedArgumentValue(options: {
     });
     return toolCallInputHasSchemaAwarePrototypeSensitiveValue(
       value,
-      options.propertySchema
+      propertySchema
     )
       ? { kind: "skipped" }
       : { kind: "value", value };
@@ -148,7 +168,7 @@ function parseTaggedArgumentValue(options: {
 
   const parsed = parseCompletedGlm5Value(
     options.argument.rawValue,
-    options.propertySchema,
+    propertySchema,
     options.protocolOptions.stringBoundaryNormalization,
     options.protocolOptions.recoverOpaqueObjectReferences
   );
@@ -162,20 +182,23 @@ function parseTaggedArgumentValue(options: {
 }
 
 function assignTaggedArgument(options: {
-  args: Record<string, unknown>;
+  args: JSONObject;
   argument: TaggedArgument;
   protocolOptions: ResolvedGlm5ProtocolOptions;
   recoveries: string[];
-  schema: unknown;
+  schema: ToolInputSchemaDefinition | undefined;
 }): "assigned" | "rejected" | "skipped" {
-  if (isPrototypeSensitiveRawArgumentKey(options.argument.rawKey)) {
+  if (
+    isPrototypeSensitiveRawArgumentKey(options.argument.rawKey) ||
+    options.schema === false
+  ) {
     return "rejected";
   }
   const resolvedKey = resolveArgumentName({
     args: options.args,
     rawName: options.argument.rawKey,
     recoverNames: options.protocolOptions.recoverNames,
-    schema: options.schema,
+    schema: schemaObject(options.schema),
   });
   if (!resolvedKey) {
     options.recoveries.push("dropped-unknown-argument-key");
@@ -185,7 +208,7 @@ function assignTaggedArgument(options: {
     options.recoveries.push("recovered-argument-key");
   }
   const propertySchema = getToolInputPropertySchema(
-    options.schema,
+    options.schema ?? true,
     resolvedKey.value,
     options.args
   );
@@ -209,13 +232,13 @@ function assignTaggedArgument(options: {
 }
 
 export function parseGlm5TaggedArguments(options: {
-  args: Record<string, unknown>;
+  args: JSONObject;
   argsStart: number;
   body: string;
   complete: boolean;
   protocolOptions: ResolvedGlm5ProtocolOptions;
   recoveries: string[];
-  schema: unknown;
+  schema: ToolInputSchemaDefinition | undefined;
   tags: Glm5StructuralTag[];
 }): ParsedGlm5TaggedArguments | null {
   let hasPartialValue = false;

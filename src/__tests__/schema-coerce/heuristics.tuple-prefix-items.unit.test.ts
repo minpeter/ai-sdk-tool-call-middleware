@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ToolInputSchema } from "../../schema/tool-input-schema";
 import { coerceBySchema } from "../../schema-coerce";
 
 describe("Coercion Heuristic Handling", () => {
@@ -15,10 +16,13 @@ describe("Coercion Heuristic Handling", () => {
           { type: "string" },
           { type: "boolean" },
         ],
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([10.5, "hello", true]);
+      if (!Array.isArray(result)) {
+        throw new TypeError("Expected tuple coercion to produce an array");
+      }
       expect(typeof result[0]).toBe("number");
       expect(typeof result[1]).toBe("string");
       expect(typeof result[2]).toBe("boolean");
@@ -38,10 +42,13 @@ describe("Coercion Heuristic Handling", () => {
           { type: "string" },
           { type: "number" },
         ],
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([123, "hello", 45.67]);
+      if (!Array.isArray(result)) {
+        throw new TypeError("Expected tuple coercion to produce an array");
+      }
       expect(typeof result[0]).toBe("number");
       expect(typeof result[1]).toBe("string");
       expect(typeof result[2]).toBe("number");
@@ -55,10 +62,13 @@ describe("Coercion Heuristic Handling", () => {
       const schema = {
         type: "array",
         prefixItems: [{ type: "number" }],
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual([123]);
+      if (!Array.isArray(result)) {
+        throw new TypeError("Expected tuple coercion to produce an array");
+      }
       expect(typeof result[0]).toBe("number");
     });
 
@@ -71,11 +81,14 @@ describe("Coercion Heuristic Handling", () => {
         type: "array",
         prefixItems: [{ type: "number" }, { type: "number" }],
         items: { type: "string" }, // fallback for extra items
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
-      expect(result).toEqual(["10", "20", "30", "40"]); // All converted as strings due to fallback
-      expect(result.every((item: any) => typeof item === "string")).toBe(true);
+      const result = coerceBySchema(input, schema);
+      expect(result).toEqual(["10", "20", "30", "40"]); // Fallback keeps every value string-typed
+      if (!Array.isArray(result)) {
+        throw new TypeError("Expected tuple coercion to produce an array");
+      }
+      expect(result.every((item) => typeof item === "string")).toBe(true);
     });
   });
 });

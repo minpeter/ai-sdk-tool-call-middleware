@@ -62,7 +62,10 @@ function processToolCallMatch(
         toolName: tc.toolName,
         toolCallId: generateToolCallId(),
         dropReason: "malformed-tool-call-body",
-        error: safeToolCallMetadataError(error, originalText),
+        error: safeToolCallMetadataError(
+          error instanceof Error ? error : new Error(String(error)),
+          originalText
+        ),
       });
       if (!toolCallTextHasPrototypeSensitiveKey(originalText)) {
         processedElements.push({ type: "text", text: originalText });

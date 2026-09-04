@@ -1,6 +1,8 @@
+import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import type { ToolInputSchema } from "../../../../schema/tool-input-schema";
 
 // Test data constants
 const TEST_COORDS = [3, 4, 5];
@@ -14,7 +16,9 @@ vi.spyOn(console, "warn").mockImplementation(() => {
 describe("morphXmlProtocol parseGeneratedText coercion", () => {
   it("coerces string numbers/booleans to primitives using simple object schema", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "calc",
@@ -29,7 +33,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           },
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text: "<calc><a>10</a><b>5</b><c>true</c><d>ok</d></calc>",
@@ -37,14 +41,20 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({ a: 10, b: 5, c: true, d: "ok" });
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({ a: 10, b: 5, c: true, d: "ok" });
   });
 
   it("coerces using jsonSchema-wrapped schema", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "calc",
@@ -59,7 +69,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           },
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text: "<calc><x>3.14</x><y>false</y></calc>",
@@ -67,21 +77,27 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({ x: 3.14, y: false });
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({ x: 3.14, y: false });
   });
 
   it("applies heuristic coercion when schema missing but values are numeric/boolean strings", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "calc",
         description: "",
         inputSchema: { type: "object" },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text: "<calc><n>42</n><t>true</t><s>hello</s></calc>",
@@ -89,14 +105,20 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({ n: 42, t: true, s: "hello" });
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({ n: 42, t: true, s: "hello" });
   });
 
   it("coerces array from JSON string and CSV/newline to number[]", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "calc",
@@ -110,7 +132,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           },
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text:
@@ -123,9 +145,13 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({
       coords: TEST_COORDS,
       a1: TEST_ARRAY_1,
       a2: TEST_ARRAY_2,
@@ -134,7 +160,9 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
 
   it("coerces array from XML item shape to typed array", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "player",
@@ -147,7 +175,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           },
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text:
@@ -159,9 +187,13 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({
       stats_fields: ["points", "assists"],
       nums: TEST_ARRAY_1,
     });
@@ -169,7 +201,9 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
 
   it("coerces object from JSON-like string (single quotes) and nested objects", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "realestate",
@@ -191,7 +225,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           },
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text:
@@ -203,9 +237,13 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({
       budget: { min: 300_000, max: 400_000 },
       gradeDict: { math: 90, science: 75 },
     });
@@ -213,7 +251,9 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
 
   it("recursively coerces nested arrays of objects", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "nested",
@@ -231,7 +271,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           },
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text:
@@ -242,9 +282,13 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({
       items: [
         { a: 1, b: true },
         { a: 2, b: false },
@@ -254,7 +298,9 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
 
   it("handles booleans (case-insensitive) and numbers with scientific notation", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "calc",
@@ -268,7 +314,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           },
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text: "<calc><t>TRUE</t><f>false</f><n>1.23e3</n></calc>",
@@ -276,21 +322,27 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({ t: true, f: false, n: 1230 });
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({ t: true, f: false, n: 1230 });
   });
 
   it("preserves strings when schema says string even if numeric-like", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "s",
         description: "",
         inputSchema: { type: "object", properties: { s: { type: "string" } } },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text: "<s><s>10</s></s>",
@@ -298,14 +350,20 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({ s: "10" });
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({ s: "10" });
   });
 
   it("handles empty array/object inputs", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "empty",
@@ -318,7 +376,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           },
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text: "<empty><arr>   </arr><obj>{}</obj></empty>",
@@ -326,14 +384,20 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({ arr: [], obj: {} });
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({ arr: [], obj: {} });
   });
 
   it("preserves wrapper key for unconstrained array items", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "wrap",
@@ -345,7 +409,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           },
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text:
@@ -358,16 +422,22 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({
       arr: [{ user: { name: "A" } }],
     });
   });
 
   it("coerces array items when item-wrapped contains object strings", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "wrap",
@@ -385,7 +455,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           },
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text:
@@ -399,14 +469,20 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
-    expect(JSON.parse(tc.input)).toEqual({ arr: [{ min: 1 }, { min: 2 }] });
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({ arr: [{ min: 1 }, { min: 2 }] });
   });
 
   it("handles multiline JSON strings in object properties", () => {
     const p = morphXmlProtocol();
-    const tools = [
+    const tools: (Omit<LanguageModelV4FunctionTool, "inputSchema"> & {
+      inputSchema: ToolInputSchema;
+    })[] = [
       {
         type: "function",
         name: "calculate_average",
@@ -423,7 +499,7 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
           required: ["gradeDict"],
         },
       },
-    ] as any;
+    ];
 
     const out = p.parseGeneratedText({
       text: `<calculate_average><gradeDict>{\n  "math": 90,\n  "science": 75,\n  "history": 82,\n  "music": 89\n}</gradeDict></calculate_average>`,
@@ -431,10 +507,14 @@ describe("morphXmlProtocol parseGeneratedText coercion", () => {
       options: {},
     });
 
-    const tc = out.find((part) => (part as any).type === "tool-call") as any;
+    const tc = out.find((part) => part.type === "tool-call");
     expect(tc).toBeTruthy();
+    if (tc?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
     expect(tc.toolName).toBe("calculate_average");
-    expect(JSON.parse(tc.input)).toEqual({
+    const parsed: JSONValue = JSON.parse(tc.input);
+    expect(parsed).toEqual({
       gradeDict: { math: 90, science: 75, history: 82, music: 89 },
     });
   });

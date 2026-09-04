@@ -2,7 +2,6 @@ import {
   isJSONObject,
   isJSONValue,
   type JSONObject,
-  type JSONSchema7,
   type JSONValue,
   type LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
@@ -10,6 +9,11 @@ import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import dedent from "dedent";
 import { stringify } from "../../rxml";
 import { escapeXmlMinimalText } from "../../rxml/utils/helpers";
+import {
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaCandidate,
+} from "../../schema/tool-input-schema";
 import {
   renderInputExamplesSection,
   safeStringifyInputExample,
@@ -120,14 +124,16 @@ function renderInputExamplesForXmlPrompt(
 }
 
 function normalizeSchema(
-  schema: JSONSchema7 | boolean | string | undefined
-): JSONSchema7 | boolean | undefined {
+  schema: LanguageModelV4FunctionTool["inputSchema"] | string | undefined
+): ToolInputSchemaCandidate {
   if (typeof schema === "string") {
     try {
-      const parsed = JSON.parse(schema);
-      return isJSONObject(parsed) ? parsed : { type: "string", const: schema };
+      const parsed: ToolInputSchemaCandidate = JSON.parse(schema);
+      return typeof parsed === "object" && isSchemaRecord(parsed)
+        ? parsed
+        : ({ type: "string", const: schema } satisfies ToolInputSchema);
     } catch {
-      return { type: "string", const: schema };
+      return { type: "string", const: schema } satisfies ToolInputSchema;
     }
   }
 
@@ -135,7 +141,7 @@ function normalizeSchema(
 }
 
 function renderParametersSummary(
-  schema: JSONSchema7 | boolean | undefined,
+  schema: ToolInputSchemaCandidate,
   indentLevel: number
 ): string[] {
   const indent = INDENT.repeat(indentLevel);
@@ -152,11 +158,11 @@ function renderParametersSummary(
     return [`${indent}(no valid parameters)`];
   }
 
-  if (typeof schema !== "object") {
+  if (typeof schema !== "object" || !isSchemaRecord(schema)) {
     return [`${indent}- value (${String(schema)})`];
   }
 
-  const schemaType: NonNullable<JSONSchema7["type"]>[] = [];
+  const schemaType: NonNullable<ToolInputSchema["type"]>[] = [];
 
   if (Array.isArray(schema.type)) {
     schemaType.push(...schema.type);
@@ -200,7 +206,7 @@ function renderPropertySummaryLine({
 }: {
   indent: string;
   propName: string;
-  propSchema: JSONSchema7 | boolean | undefined;
+  propSchema: ToolInputSchemaCandidate;
   required: boolean;
 }): string {
   const typeLabel = summarizeType(propSchema);
@@ -211,10 +217,12 @@ function renderPropertySummaryLine({
   return `${indent}- ${propName} (${typeLabel}, ${requiredLabel})${extraText}`;
 }
 
-function collectPropertyExtras(
-  propSchema: JSONSchema7 | boolean | undefined
-): string[] {
-  if (!propSchema || typeof propSchema !== "object") {
+function collectPropertyExtras(propSchema: ToolInputSchemaCandidate): string[] {
+  if (
+    !propSchema ||
+    typeof propSchema !== "object" ||
+    !isSchemaRecord(propSchema)
+  ) {
     return [];
   }
 
@@ -235,7 +243,7 @@ function collectPropertyExtras(
   return extras;
 }
 
-function inferSchemaBaseType(schema: JSONSchema7): string {
+function inferSchemaBaseType(schema: ToolInputSchema): string {
   const schemaType = schema.type;
 
   if (Array.isArray(schemaType) && schemaType.length) {
@@ -246,7 +254,7 @@ function inferSchemaBaseType(schema: JSONSchema7): string {
   }
   if (schema.enum) {
     const inferred: string[] = Array.from(
-      new Set(schema.enum.map((value: JSONValue) => typeof value))
+      new Set(schema.enum.map((value) => typeof value))
     );
     if (inferred.length === 1) {
       return inferred[0] ?? "";
@@ -259,7 +267,7 @@ function inferSchemaBaseType(schema: JSONSchema7): string {
   return "any";
 }
 
-function summarizeType(schema: JSONSchema7 | boolean | undefined): string {
+function summarizeType(schema: ToolInputSchemaCandidate): string {
   if (schema === undefined || schema === null) {
     return "unknown";
   }
@@ -272,7 +280,7 @@ function summarizeType(schema: JSONSchema7 | boolean | undefined): string {
     return "never";
   }
 
-  if (typeof schema !== "object") {
+  if (typeof schema !== "object" || !isSchemaRecord(schema)) {
     return String(schema);
   }
 
@@ -280,9 +288,7 @@ function summarizeType(schema: JSONSchema7 | boolean | undefined): string {
 
   if (baseType === "array" && schema.items) {
     const itemType = Array.isArray(schema.items)
-      ? schema.items
-          .map((item: JSONSchema7 | boolean) => summarizeType(item))
-          .join(" | ")
+      ? schema.items.map((item) => summarizeType(item)).join(" | ")
       : summarizeType(schema.items);
     return `array<${itemType}>`;
   }
@@ -297,7 +303,9 @@ function summarizeType(schema: JSONSchema7 | boolean | undefined): string {
 const ENUM_MAX_INLINE = 6;
 const ENUM_PREVIEW_LIMIT = 5;
 
-function formatEnumForSummary(values: JSONValue[]): string {
+function formatEnumForSummary(
+  values: NonNullable<ToolInputSchema["enum"]>
+): string {
   if (values.length <= ENUM_MAX_INLINE) {
     return formatValue(values);
   }
@@ -308,7 +316,7 @@ function formatEnumForSummary(values: JSONValue[]): string {
   return `[${preview.join(", ")}, ... (${values.length} total)]`;
 }
 
-function formatValue(value: JSONValue): string {
+function formatValue(value: ToolInputSchema["const"]): string {
   if (typeof value === "string") {
     return JSON.stringify(value);
   }
@@ -325,15 +333,21 @@ function formatValue(value: JSONValue): string {
     return `[${value.map(formatValue).join(", ")}]`;
   }
 
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? "null";
 }
 
-function stringifySchema(schema: JSONSchema7 | boolean | undefined): string {
+function stringifySchema(schema: ToolInputSchemaCandidate): string {
   if (schema === undefined) {
     return "null";
   }
+  if (typeof schema !== "object" || schema === null) {
+    return JSON.stringify(schema) ?? "null";
+  }
 
-  return JSON.stringify(stripSchemaKeys(schema));
+  const copied: ToolInputSchemaCandidate = JSON.parse(JSON.stringify(schema));
+  return isJSONObject(copied)
+    ? JSON.stringify(stripSchemaKeys(copied))
+    : (JSON.stringify(schema) ?? "null");
 }
 
 function stripSchemaKeys(value: JSONValue): JSONValue;

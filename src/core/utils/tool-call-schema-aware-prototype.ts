@@ -1,27 +1,33 @@
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isSchemaRecord,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
 import {
   hasPrototypeSensitiveStructuralKey,
   toolCallInputHasPrototypeSensitiveKey,
 } from "./prototype-sensitive-keys";
-import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 import { getToolInputPropertySchema } from "./tool-call-object-schema";
 
 const SAFE_PROTOTYPE_LABEL_SCALAR_RE =
   /^\s*(?:constructor|prototype)\s*:\s*(?![[{"'])(?![^\r\n]*\b[A-Za-z0-9_.-]+\s*:)[^\r\n]+$/i;
 const MAX_SCHEMA_AWARE_PROTOTYPE_TRAVERSAL_WORK = 100_000;
 
-type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
-
-interface SchemaAwarePrototypeTraversalFrame<Value, Schema> {
-  readonly schema: Schema | SchemaBoundaryValue;
-  readonly value: Value | SchemaBoundaryValue;
+interface SchemaAwarePrototypeTraversalFrame {
+  readonly schema: ToolInputSchemaDefinition | undefined;
+  readonly value: RxmlValue;
 }
 
-function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
+type TraversalAction = "sensitive" | "skip" | "visit";
+
+function isRxmlRecord(
+  value: RxmlValue
+): value is Readonly<Record<string, RxmlValue>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseJsonDocumentString(value: string): object | null {
+function parseJsonDocumentString(value: string): RxmlValue | null {
   const trimmed = value.trim();
   if (
     !(
@@ -32,14 +38,14 @@ function parseJsonDocumentString(value: string): object | null {
     return null;
   }
   try {
-    const parsed: SchemaBoundaryValue = JSON.parse(trimmed);
+    const parsed: RxmlValue = JSON.parse(trimmed);
     return typeof parsed === "object" && parsed !== null ? parsed : null;
   } catch {
     return null;
   }
 }
 
-function jsonDocumentEntryIsUnsafe<Value>(key: string, value: Value): boolean {
+function jsonDocumentEntryIsUnsafe(key: string, value: RxmlValue): boolean {
   if (key === "__proto__") {
     return true;
   }
@@ -54,15 +60,15 @@ function jsonDocumentEntryIsUnsafe<Value>(key: string, value: Value): boolean {
   );
 }
 
-function jsonDocumentHasUnsafeStructuredValue(value: object): boolean {
-  const stack: SchemaBoundaryValue[] = [value];
+function jsonDocumentHasUnsafeStructuredValue(value: RxmlValue): boolean {
+  const stack: RxmlValue[] = [value];
   while (stack.length > 0) {
     const current = stack.pop();
     if (Array.isArray(current)) {
       stack.push(...current);
       continue;
     }
-    if (!isRecord(current)) {
+    if (!isRxmlRecord(current)) {
       continue;
     }
     for (const [key, item] of Object.entries(current)) {
@@ -82,12 +88,12 @@ function isSafeJsonDocumentString(value: string): boolean {
   return parsed !== null && !jsonDocumentHasUnsafeStructuredValue(parsed);
 }
 
-function arrayItemSchema<Schema>(
-  schema: Schema | SchemaBoundaryValue,
+function arrayItemSchema(
+  schema: ToolInputSchemaDefinition | undefined,
   index: number
-): SchemaBoundaryValue {
+): ToolInputSchemaDefinition | undefined {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped)) {
+  if (!(typeof unwrapped === "object" && isSchemaRecord(unwrapped))) {
     return;
   }
   if (
@@ -96,12 +102,12 @@ function arrayItemSchema<Schema>(
   ) {
     return unwrapped.prefixItems[index];
   }
-  return unwrapped.items;
+  return Array.isArray(unwrapped.items) ? undefined : unwrapped.items;
 }
 
-function schemaAwareStringIsPrototypeSensitive<Schema>(
+function schemaAwareStringIsPrototypeSensitive(
   value: string,
-  schema: Schema | SchemaBoundaryValue
+  schema: ToolInputSchemaDefinition | undefined
 ): boolean {
   if (
     getSchemaType(schema) === "string" &&
@@ -113,64 +119,80 @@ function schemaAwareStringIsPrototypeSensitive<Schema>(
   return toolCallInputHasPrototypeSensitiveKey(value);
 }
 
-export function toolCallInputHasSchemaAwarePrototypeSensitiveValue<
-  Schema,
-  Value,
->(value: Value, schema: Schema): boolean {
+function traversalAction(
+  frame: SchemaAwarePrototypeTraversalFrame,
+  seen: Set<object>
+): TraversalAction {
+  if (typeof frame.value === "string") {
+    return schemaAwareStringIsPrototypeSensitive(frame.value, frame.schema)
+      ? "sensitive"
+      : "skip";
+  }
+  return frame.value !== null &&
+    typeof frame.value === "object" &&
+    !seen.has(frame.value)
+    ? "visit"
+    : "skip";
+}
+
+function enqueueChildren(
+  stack: SchemaAwarePrototypeTraversalFrame[],
+  frame: SchemaAwarePrototypeTraversalFrame
+): void {
+  if (Array.isArray(frame.value)) {
+    for (const [index, item] of frame.value.entries()) {
+      stack.push({ schema: arrayItemSchema(frame.schema, index), value: item });
+    }
+    return;
+  }
+  if (!isRxmlRecord(frame.value)) {
+    return;
+  }
+  for (const [key, item] of Object.entries(frame.value)) {
+    stack.push({
+      schema: getToolInputPropertySchema(
+        frame.schema ?? true,
+        key,
+        frame.value
+      ),
+      value: item,
+    });
+  }
+}
+
+export function toolCallInputHasSchemaAwarePrototypeSensitiveValue(
+  value: RxmlValue,
+  schema: ToolInputSchemaDefinition | undefined
+): boolean {
   if (hasPrototypeSensitiveStructuralKey(value)) {
     return true;
   }
-
   const seen = new Set<object>();
-  const stack: SchemaAwarePrototypeTraversalFrame<Value, Schema>[] = [
-    { schema, value },
-  ];
+  const stack: SchemaAwarePrototypeTraversalFrame[] = [{ schema, value }];
   for (let work = 0; stack.length > 0; work += 1) {
     if (work >= MAX_SCHEMA_AWARE_PROTOTYPE_TRAVERSAL_WORK) {
       return true;
     }
-    const current = stack.pop();
-    if (!current) {
+    const frame = stack.pop();
+    if (frame === undefined) {
       continue;
     }
-    if (typeof current.value === "string") {
-      if (
-        schemaAwareStringIsPrototypeSensitive(current.value, current.schema)
-      ) {
-        return true;
-      }
-      continue;
-    }
-    if (
-      current.value === null ||
-      typeof current.value !== "object" ||
-      seen.has(current.value)
-    ) {
-      continue;
-    }
-    seen.add(current.value);
-
-    const children = Array.isArray(current.value)
-      ? Array.from(current.value.entries(), ([index, item]) => ({
-          schema: arrayItemSchema(current.schema, index),
-          value: item,
-        }))
-      : Object.entries(current.value).map(([key, item]) => ({
-          schema: getToolInputPropertySchema(
-            current.schema,
-            key,
-            current.value
-          ),
-          value: item,
-        }));
-    if (
-      stack.length + children.length >
-      MAX_SCHEMA_AWARE_PROTOTYPE_TRAVERSAL_WORK
-    ) {
+    const action = traversalAction(frame, seen);
+    if (action === "sensitive") {
       return true;
     }
-    stack.push(...children);
+    if (
+      action === "skip" ||
+      typeof frame.value !== "object" ||
+      frame.value === null
+    ) {
+      continue;
+    }
+    seen.add(frame.value);
+    enqueueChildren(stack, frame);
+    if (stack.length > MAX_SCHEMA_AWARE_PROTOTYPE_TRAVERSAL_WORK) {
+      return true;
+    }
   }
-
   return false;
 }

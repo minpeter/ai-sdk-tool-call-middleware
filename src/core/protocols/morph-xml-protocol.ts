@@ -1,11 +1,20 @@
-import type {
-  LanguageModelV4Content,
-  LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
-  LanguageModelV4ToolCall,
+import {
+  isJSONObject,
+  type LanguageModelV4Content,
+  type LanguageModelV4FunctionTool,
+  type LanguageModelV4StreamPart,
+  type LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
-import { parse, stringify } from "../../rxml";
+import {
+  parse,
+  type ParseOptions as RxmlParseOptions,
+  stringify,
+} from "../../rxml";
 import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isSchemaDefinition,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { recoverToolCallFromJsonCandidatesWithStatus } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
 import {
@@ -39,25 +48,24 @@ import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 const XML_PROGRESS_TAG_NAME_REGEX = /^[A-Za-z_][\w.:-]*/;
 
 export interface MorphXmlProtocolOptions {
-  parseOptions?: {
-    repair?: boolean;
-    maxReparses?: number;
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-    noChildNodes?: string[];
-    [key: string]: unknown;
-  };
+  parseOptions?: RxmlParseOptions;
 }
+
+type MorphXmlParseOptions = NonNullable<
+  MorphXmlProtocolOptions["parseOptions"]
+>;
 
 export function getToolSchema(
   tools: LanguageModelV4FunctionTool[],
   toolName: string
-) {
-  return tools.find((t) => t.name === toolName)?.inputSchema;
+): ToolInputSchemaDefinition | undefined {
+  const inputSchema = tools.find((tool) => tool.name === toolName)?.inputSchema;
+  return isSchemaDefinition(inputSchema) ? inputSchema : undefined;
 }
 
 interface ProcessToolCallParams {
   options?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
+  parseOptions?: MorphXmlParseOptions;
   processedElements: LanguageModelV4Content[];
   text: string;
   toolCall: {
@@ -70,7 +78,7 @@ interface ProcessToolCallParams {
 }
 
 export function allowPlainTextBodyFallback(
-  parseOptions?: Record<string, unknown>
+  parseOptions?: MorphXmlParseOptions
 ): boolean {
   return parseOptions?.repair !== false;
 }
@@ -82,10 +90,7 @@ function processToolCall(params: ProcessToolCallParams): void {
 
   const parseConfig = {
     ...(parseOptions ?? {}),
-    onError:
-      options?.onError ??
-      (parseOptions as { onError?: ParserOptions["onError"] } | undefined)
-        ?.onError,
+    onError: options?.onError ?? parseOptions?.onError,
   };
 
   try {
@@ -93,6 +98,9 @@ function processToolCall(params: ProcessToolCallParams): void {
       (allowPlainTextBodyFallback(parseOptions)
         ? plainTextBodyFallback(toolCall.content, toolSchema)
         : null) ?? parse(toolCall.content, toolSchema, parseConfig);
+    if (!isJSONObject(parsed)) {
+      throw new Error("XML tool call arguments must be an object");
+    }
     processedElements.push({
       type: "tool-call",
       toolCallId: generateToolCallId(),
@@ -104,12 +112,14 @@ function processToolCall(params: ProcessToolCallParams): void {
       }),
     });
   } catch (error) {
+    const caughtError =
+      error instanceof Error ? error : new Error(String(error));
     const originalCallText = text.slice(toolCall.startIndex, toolCall.endIndex);
     options?.onError?.(
       `Could not process XML tool call: ${toolCall.toolName}`,
       {
         toolCall: safeToolCallMetadataText(originalCallText),
-        error: safeToolCallMetadataError(error, originalCallText),
+        error: safeToolCallMetadataError(caughtError, originalCallText),
         toolName: toolCall.toolName,
         toolCallId: generateToolCallId(),
         dropReason: "malformed-tool-call-body",
@@ -127,7 +137,7 @@ interface HandleStreamingToolCallEndParams {
   currentToolCall: StreamingToolCallState;
   flushText: FlushTextFn;
   options?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
+  parseOptions?: MorphXmlParseOptions;
   toolContent: string;
   tools: LanguageModelV4FunctionTool[];
 }
@@ -147,10 +157,7 @@ export function handleStreamingToolCallEnd(
   const toolSchema = getToolSchema(tools, currentToolCall.name);
   const parseConfig = {
     ...(parseOptions ?? {}),
-    onError:
-      options?.onError ??
-      (parseOptions as { onError?: ParserOptions["onError"] } | undefined)
-        ?.onError,
+    onError: options?.onError ?? parseOptions?.onError,
   };
 
   flushText(ctrl);
@@ -159,6 +166,9 @@ export function handleStreamingToolCallEnd(
       (allowPlainTextBodyFallback(parseOptions)
         ? plainTextBodyFallback(toolContent, toolSchema)
         : null) ?? parse(toolContent, toolSchema, parseConfig);
+    if (!isJSONObject(parsedResult)) {
+      throw new Error("XML tool call arguments must be an object");
+    }
     const finalInput = stringifyToolInputWithSchema({
       toolName: currentToolCall.name,
       args: parsedResult,
@@ -174,6 +184,8 @@ export function handleStreamingToolCallEnd(
       onMismatch: options?.onError,
     });
   } catch (error) {
+    const caughtError =
+      error instanceof Error ? error : new Error(String(error));
     const original = `<${currentToolCall.name}>${toolContent}</${currentToolCall.name}>`;
     const emitRawFallback = shouldEmitRawToolCallTextOnError(options);
     emitFailedBufferedToolInputLifecycle({
@@ -182,7 +194,8 @@ export function handleStreamingToolCallEnd(
       id: currentToolCall.toolCallId,
       emitRawToolCallTextOnError: emitRawFallback,
       endInputOnError: currentToolCall.hasEmittedStart,
-      hideBufferedInputOnError: isPrototypeSensitiveToolCallInputError(error),
+      hideBufferedInputOnError:
+        isPrototypeSensitiveToolCallInputError(caughtError),
       rawToolCallText: original,
       emitRawText: (rawText) => {
         flushText(ctrl, rawText);
@@ -190,7 +203,7 @@ export function handleStreamingToolCallEnd(
     });
     options?.onError?.("Could not process streaming XML tool call", {
       toolCall: safeToolCallMetadataText(original),
-      error: safeToolCallMetadataError(error, original),
+      error: safeToolCallMetadataError(caughtError, original),
       toolName: currentToolCall.name,
       toolCallId: currentToolCall.toolCallId,
       dropReason: "malformed-tool-call-body",

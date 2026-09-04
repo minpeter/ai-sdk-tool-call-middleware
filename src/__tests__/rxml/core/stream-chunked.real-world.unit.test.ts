@@ -2,11 +2,19 @@ import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 import { processXMLStream } from "../../../rxml/core/stream";
+import type { RXMLNode } from "../../../rxml/core/types";
 import {
   CHUNK_SIZE,
   createChunkedStream,
   testXmlSamples,
 } from "./stream-chunked.shared";
+
+function requireNode(node: RXMLNode | string | undefined): RXMLNode {
+  if (typeof node === "object") {
+    return node;
+  }
+  throw new TypeError("Expected streamed XML node");
+}
 
 describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
   describe("Real-world LLM streaming patterns", () => {
@@ -28,19 +36,33 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
 The search has been initiated successfully.`;
 
       const stream = createChunkedStream(llmResponse, CHUNK_SIZE);
-      const results: any[] = [];
+      const results: (RXMLNode | string)[] = [];
 
       for await (const element of processXMLStream(stream)) {
         results.push(element);
       }
 
-      const toolCall = results.find((r) => r.tagName === "tool_call");
+      const toolCall = requireNode(
+        results.find(
+          (element) =>
+            typeof element === "object" && element.tagName === "tool_call"
+        )
+      );
       expect(toolCall).toBeDefined();
 
-      const nameElement = results.find((r) => r.tagName === "name");
+      const nameElement = requireNode(
+        results.find(
+          (element) => typeof element === "object" && element.tagName === "name"
+        )
+      );
       expect(nameElement.children[0]).toBe("search_database");
 
-      const filtersElement = results.find((r) => r.tagName === "filters");
+      const filtersElement = requireNode(
+        results.find(
+          (element) =>
+            typeof element === "object" && element.tagName === "filters"
+        )
+      );
       expect(filtersElement).toBeDefined();
     });
 
@@ -50,16 +72,18 @@ The search has been initiated successfully.`;
 
       for (const chunkSize of chunkSizes) {
         const stream = createChunkedStream(xml, chunkSize);
-        const results: any[] = [];
+        const results: (RXMLNode | string)[] = [];
 
         for await (const element of processXMLStream(stream)) {
           results.push(element);
         }
 
         expect(results).toHaveLength(5);
-        expect(results[0].tagName).toBe("tool_call");
-        expect(results[1].tagName).toBe("name");
-        expect(results[1].children[0]).toBe("get_weather");
+        const toolCall = requireNode(results[0]);
+        const nameElement = requireNode(results[1]);
+        expect(toolCall.tagName).toBe("tool_call");
+        expect(nameElement.tagName).toBe("name");
+        expect(nameElement.children[0]).toBe("get_weather");
       }
     });
 
@@ -67,15 +91,17 @@ The search has been initiated successfully.`;
       const xml = "<tool><name>test</name></tool>";
       const stream = createChunkedStream(xml, 1);
 
-      const results: any[] = [];
+      const results: (RXMLNode | string)[] = [];
       for await (const element of processXMLStream(stream)) {
         results.push(element);
       }
 
       expect(results).toHaveLength(2);
-      expect(results[0].tagName).toBe("tool");
-      expect(results[1].tagName).toBe("name");
-      expect(results[1].children[0]).toBe("test");
+      const toolElement = requireNode(results[0]);
+      const nameElement = requireNode(results[1]);
+      expect(toolElement.tagName).toBe("tool");
+      expect(nameElement.tagName).toBe("name");
+      expect(nameElement.children[0]).toBe("test");
     });
 
     it("should handle rapid streaming simulation", async () => {
@@ -97,7 +123,7 @@ The search has been initiated successfully.`;
         },
       });
 
-      const results: any[] = [];
+      const results: (RXMLNode | string)[] = [];
       const startTime = Date.now();
 
       for await (const element of processXMLStream(rapidStream)) {
@@ -109,7 +135,12 @@ The search has been initiated successfully.`;
       expect(results.length).toBeGreaterThan(0);
       expect(endTime - startTime).toBeLessThan(1000);
 
-      const toolCall = results.find((r) => r.tagName === "tool_call");
+      const toolCall = requireNode(
+        results.find(
+          (element) =>
+            typeof element === "object" && element.tagName === "tool_call"
+        )
+      );
       expect(toolCall.attributes.id).toBe("call_1");
     });
   });

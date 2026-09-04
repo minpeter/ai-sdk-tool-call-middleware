@@ -1,3 +1,4 @@
+import type { JSONObject, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -7,14 +8,14 @@ vi.spyOn(console, "warn").mockImplementation(() => {
 });
 
 describe("morphXmlProtocol parseGeneratedText branch fallback and line-prefix behavior", () => {
-  const tools = [
+  const tools: LanguageModelV4FunctionTool[] = [
     {
       type: "function",
       name: "a",
       description: "",
       inputSchema: { type: "object" },
     },
-  ] as any;
+  ];
 
   it("returns original text when tools list is empty", () => {
     const p = morphXmlProtocol();
@@ -39,7 +40,7 @@ describe("morphXmlProtocol parseGeneratedText branch fallback and line-prefix be
     const p = morphXmlProtocol();
     const text = "<a><x>ok</x></ a>";
     const out = p.parseGeneratedText({ text, tools, options: {} });
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toBeTruthy();
   });
 
@@ -57,7 +58,7 @@ describe("morphXmlProtocol parseGeneratedText branch fallback and line-prefix be
 
   it("treats HTML-void tag names like <input> as normal XML nodes", () => {
     const p = morphXmlProtocol();
-    const localTools = [
+    const localTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "with_input",
@@ -70,18 +71,21 @@ describe("morphXmlProtocol parseGeneratedText branch fallback and line-prefix be
           required: ["input"],
         },
       },
-    ] as any;
+    ];
     const text = "<with_input><input>hello</input></with_input>";
     const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toBeTruthy();
-    const args = JSON.parse(tool.input);
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const args: JSONObject = JSON.parse(tool.input);
     expect(args.input).toBe("hello");
   });
 
   it("parses line-prefixed tool name followed by XML body", () => {
     const p = morphXmlProtocol();
-    const localTools = [
+    const localTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -94,19 +98,22 @@ describe("morphXmlProtocol parseGeneratedText branch fallback and line-prefix be
           },
         },
       },
-    ] as any;
+    ];
     const text = "get_weather\n<city>Seoul</city>\n<unit>celsius</unit>";
     const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toBeTruthy();
-    const args = JSON.parse(tool.input);
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const args: JSONObject = JSON.parse(tool.input);
     expect(args.city).toBe("Seoul");
     expect(args.unit).toBe("celsius");
   });
 
   it("parses line-prefixed tool name with colon separator", () => {
     const p = morphXmlProtocol();
-    const localTools = [
+    const localTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -118,17 +125,20 @@ describe("morphXmlProtocol parseGeneratedText branch fallback and line-prefix be
           },
         },
       },
-    ] as any;
+    ];
     const text = "get_weather:\n<city>Busan</city>";
     const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
     expect(JSON.parse(tool.input)).toEqual({ city: "Busan" });
   });
 
   it("preserves trailing text after line-prefixed XML fallback payload", () => {
     const p = morphXmlProtocol();
-    const localTools = [
+    const localTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -140,30 +150,31 @@ describe("morphXmlProtocol parseGeneratedText branch fallback and line-prefix be
           },
         },
       },
-    ] as any;
+    ];
     const text = "get_weather\n<city>Seoul</city>\nThanks";
     const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
 
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
     expect(JSON.parse(tool.input)).toEqual({ city: "Seoul" });
 
-    const trailing = out
-      .filter((c) => c.type === "text")
-      .map((c: any) => c.text);
+    const trailing = out.filter((c) => c.type === "text").map((c) => c.text);
     expect(trailing.join("")).toContain("Thanks");
   });
 
   it("does not treat line-prefixed tool name without XML body as tool-call", () => {
     const p = morphXmlProtocol();
-    const localTools = [
+    const localTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
         description: "",
         inputSchema: { type: "object" },
       },
-    ] as any;
+    ];
     const text = "get_weather\nI can help with weather details.";
     const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
     expect(out).toEqual([{ type: "text", text }]);
@@ -171,7 +182,7 @@ describe("morphXmlProtocol parseGeneratedText branch fallback and line-prefix be
 
   it("repairs malformed self-closing root with body-style payload", () => {
     const p = morphXmlProtocol();
-    const localTools = [
+    const localTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "get_weather",
@@ -184,13 +195,16 @@ describe("morphXmlProtocol parseGeneratedText branch fallback and line-prefix be
           },
         },
       },
-    ] as any;
+    ];
     const text =
       "<get_weather\n  <city>Seoul</city>\n  <unit>celsius</unit>\n/>";
     const out = p.parseGeneratedText({ text, tools: localTools, options: {} });
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toBeTruthy();
-    const args = JSON.parse(tool.input);
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const args: JSONObject = JSON.parse(tool.input);
     expect(args.city).toBe("Seoul");
     expect(args.unit).toBe("celsius");
   });

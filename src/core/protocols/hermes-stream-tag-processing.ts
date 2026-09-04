@@ -80,7 +80,10 @@ function emitToolCall(context: TagProcessingContext) {
     }
   }
 
-  const finalError = resolved.error;
+  const finalError =
+    resolved.error instanceof Error
+      ? resolved.error
+      : new Error(String(resolved.error));
   const activeToolCallId = state.activeToolInput?.id;
   const activeToolName = state.activeToolInput?.toolName;
 

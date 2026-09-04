@@ -1,4 +1,4 @@
-import type { JSONValue, LanguageModelV4TextPart } from "@ai-sdk/provider";
+import { isJSONValue, type JSONValue } from "@ai-sdk/provider";
 import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import { toTextPart } from "./text-part";
 import {
@@ -21,11 +21,66 @@ export type {
 } from "./tool-result-media-strategy";
 export type { ToolResponseUserContentPart } from "./tool-result-user-content";
 
+type ToolResultContentPart = Extract<
+  ToolResultOutput,
+  { type: "content" }
+>["value"][number];
+
+interface LegacyMediaPart {
+  readonly mediaType: string;
+  readonly type: "media";
+}
+
+type PlaceholderContentPart = ToolResultContentPart | LegacyMediaPart;
+
+function hasContentType(value: object): value is { readonly type: string } {
+  return typeof value === "object" && value !== null && "type" in value;
+}
+
+function isToolResultContentPart(
+  value: object
+): value is ToolResultContentPart {
+  if (!hasContentType(value)) {
+    return false;
+  }
+  switch (value.type) {
+    case "text":
+    case "file":
+    case "file-data":
+    case "file-url":
+    case "file-id":
+    case "file-reference":
+    case "image-data":
+    case "image-url":
+    case "image-file-id":
+    case "image-file-reference":
+    case "custom":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isPlaceholderContentPart(
+  value: object
+): value is PlaceholderContentPart {
+  return (
+    isToolResultContentPart(value) ||
+    (hasContentType(value) &&
+      value.type === "media" &&
+      "mediaType" in value &&
+      typeof value.mediaType === "string")
+  );
+}
+
 function shouldPassRawContent(
-  contentParts: unknown[],
+  contentParts: readonly object[],
   strategy?: ToolResponseMediaStrategy
 ): boolean {
-  if (getMediaMode(strategy) !== "auto") {
+  if (
+    getMediaMode(strategy) !== "auto" ||
+    !contentParts.every(isPlaceholderContentPart)
+  ) {
     return false;
   }
 
@@ -71,14 +126,23 @@ export function unwrapToolResult(
     case "error-json":
       return `[Error: ${JSON.stringify(result.value)}]`;
     case "content": {
-      const parts = result.value as unknown[];
-      if (shouldPassRawContent(parts, mediaStrategy)) {
-        return parts as JSONValue;
+      const parts = result.value;
+      if (shouldPassRawContent(parts, mediaStrategy) && isJSONValue(parts)) {
+        return parts;
       }
 
       // model mode is handled by normalizeToolResultForUserContent; string
       // serializers always degrade media to placeholders here.
-      return parts.map(formatContentPartPlaceholder).join("\n");
+      if (parts.every(isPlaceholderContentPart)) {
+        return parts.map(formatContentPartPlaceholder).join("\n");
+      }
+      return parts
+        .map((part) =>
+          isPlaceholderContentPart(part)
+            ? formatContentPartPlaceholder(part)
+            : "[Unknown content]"
+        )
+        .join("\n");
     }
     default: {
       const _exhaustive: never = result;
@@ -92,13 +156,19 @@ export function normalizeToolResultForUserContent(
   mediaStrategy?: ToolResponseMediaStrategy
 ): ToolResponseUserContentPart[] {
   if (result.type === "content" && getMediaMode(mediaStrategy) === "model") {
-    return (result.value as unknown[]).map(toModelContentPart);
+    const parts: readonly object[] = result.value;
+    if (parts.every(isToolResultContentPart)) {
+      return parts.map(toModelContentPart);
+    }
+    return parts.map((part) =>
+      isToolResultContentPart(part)
+        ? toModelContentPart(part)
+        : toTextPart("[Unknown content]")
+    );
   }
 
   const unwrapped = unwrapToolResult(result, mediaStrategy);
-  const { providerOptions } = result as {
-    providerOptions?: LanguageModelV4TextPart["providerOptions"];
-  };
-
+  const providerOptions =
+    "providerOptions" in result ? result.providerOptions : undefined;
   return [toTextPart(stringifyJsonValue(unwrapped), providerOptions)];
 }

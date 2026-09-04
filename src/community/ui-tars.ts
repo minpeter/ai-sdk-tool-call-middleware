@@ -1,4 +1,8 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONObject,
+  JSONValue,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { morphFormatToolResponseAsXml } from "../core/prompts/morph-xml-prompt";
 import {
   renderInputExamplesSection,
@@ -144,36 +148,30 @@ function renderUiTarsInputExamples(
   });
 }
 
-function renderUiTarsInputExample(toolName: string, input: unknown): string {
+function renderUiTarsInputExample(toolName: string, input: JSONObject): string {
   const parameterBlocks = renderUiTarsParameters(input);
   return `<tool_call>\n<function=${escapeXmlMinimalAttr(toolName, '"')}>${parameterBlocks}\n</function>\n</tool_call>`;
 }
 
-function renderUiTarsParameters(input: unknown): string {
-  if (isRecord(input)) {
-    const lines = Object.entries(input).map(([key, value]) => {
-      const content = renderUiTarsParameterValue(value);
-      return `<parameter=${escapeXmlMinimalAttr(key, '"')}>\n${content}\n</parameter>`;
-    });
+function renderUiTarsParameters(input: JSONObject): string {
+  const lines = Object.entries(input).map(([key, value]) => {
+    const content = renderUiTarsParameterValue(value);
+    return `<parameter=${escapeXmlMinimalAttr(key, '"')}>\n${content}\n</parameter>`;
+  });
 
-    if (lines.length > 0) {
-      return `\n${lines.join("\n")}`;
-    }
+  if (lines.length > 0) {
+    return `\n${lines.join("\n")}`;
   }
 
   const fallback = renderUiTarsParameterValue(input);
   return `\n<parameter=input>\n${fallback}\n</parameter>`;
 }
 
-function renderUiTarsParameterValue(value: unknown): string {
+function renderUiTarsParameterValue(value: JSONValue | undefined): string {
   if (typeof value === "string") {
     return escapeXmlMinimalText(value);
   }
 
   const serialized = safeStringifyInputExample(value);
   return escapeXmlMinimalText(serialized);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

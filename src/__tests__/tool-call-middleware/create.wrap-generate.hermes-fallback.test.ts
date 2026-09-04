@@ -1,4 +1,9 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamResult,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
@@ -6,8 +11,34 @@ import { originalToolsSchema } from "../../core/utils/provider-options";
 import { createToolMiddleware } from "../../tool-call-middleware";
 
 describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
-  const mockToolSystemPromptTemplate = (tools: unknown[]) =>
+  const mockToolSystemPromptTemplate = (tools: LanguageModelV4FunctionTool[]) =>
     `You have tools: ${JSON.stringify(tools)}`;
+  const fallbackGenerated = {
+    content: [],
+    finishReason: { unified: "stop", raw: "stop" },
+    usage: {
+      inputTokens: {
+        total: 0,
+        noCache: undefined,
+        cacheRead: undefined,
+        cacheWrite: undefined,
+      },
+      outputTokens: { total: 0, text: undefined, reasoning: undefined },
+    },
+    warnings: [],
+  } satisfies LanguageModelV4GenerateResult;
+  const fallbackStream = {
+    stream: new ReadableStream(),
+  } satisfies LanguageModelV4StreamResult;
+  const doStream = vi.fn(async () => fallbackStream);
+  const model: LanguageModelV4 = {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "test",
+    supportedUrls: {},
+    doGenerate: async () => fallbackGenerated,
+    doStream: async () => fallbackStream,
+  };
 
   const createJsonMiddleware = () =>
     createToolMiddleware({
@@ -40,10 +71,14 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
           text: '{"name":"get_weather","arguments":{"city":"Seoul","unit":"celsius"}}',
         },
       ],
-    });
+      finishReason: fallbackGenerated.finishReason,
+      usage: fallbackGenerated.usage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
     const result = await middleware.wrapGenerate?.({
       doGenerate,
+      doStream,
       params: {
         prompt: [],
         tools,
@@ -53,11 +88,10 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
           },
         },
       },
-    } as any);
+      model,
+    });
 
-    const toolCall = result?.content.find(
-      (part: unknown) => (part as { type?: string }).type === "tool-call"
-    ) as { toolName: string; input: string } | undefined;
+    const toolCall = result?.content.find((part) => part.type === "tool-call");
 
     expect(toolCall).toBeTruthy();
     expect(toolCall?.toolName).toBe("get_weather");
@@ -91,10 +125,14 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
           text: '{"city":"Seoul","mood":"sunny"}',
         },
       ],
-    });
+      finishReason: fallbackGenerated.finishReason,
+      usage: fallbackGenerated.usage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
     const result = await middleware.wrapGenerate?.({
       doGenerate,
+      doStream,
       params: {
         prompt: [],
         tools,
@@ -104,11 +142,10 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
           },
         },
       },
-    } as any);
+      model,
+    });
 
-    const toolCall = result?.content.find(
-      (part: unknown) => (part as { type?: string }).type === "tool-call"
-    ) as { toolName: string; input: string } | undefined;
+    const toolCall = result?.content.find((part) => part.type === "tool-call");
 
     expect(toolCall).toBeTruthy();
     expect(toolCall?.toolName).toBe("get_weather");
@@ -146,10 +183,14 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
           ].join("\n"),
         },
       ],
-    });
+      finishReason: fallbackGenerated.finishReason,
+      usage: fallbackGenerated.usage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
     const result = await middleware.wrapGenerate?.({
       doGenerate,
+      doStream,
       params: {
         prompt: [],
         tools,
@@ -159,14 +200,15 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
           },
         },
       },
-    } as any);
+      model,
+    });
 
     expect(result?.content).toHaveLength(3);
 
-    const [before, toolCall, after] = (result?.content ?? []) as Array<
-      | { type: "text"; text: string }
-      | { type: "tool-call"; toolName: string; input: string }
-    >;
+    const [before, toolCall, after] = result?.content ?? [];
+    if (!(before && toolCall && after)) {
+      throw new Error("expected before, tool-call, and after content");
+    }
 
     expect(before).toEqual({ type: "text", text: "Before\n" });
     expect(toolCall).toMatchObject({
@@ -202,10 +244,14 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
     ];
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"city":"Busan","unit":"celsius"}' }],
-    });
+      finishReason: fallbackGenerated.finishReason,
+      usage: fallbackGenerated.usage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
     const result = await middleware.wrapGenerate?.({
       doGenerate,
+      doStream,
       params: {
         prompt: [],
         tools,
@@ -215,11 +261,10 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
           },
         },
       },
-    } as any);
+      model,
+    });
 
-    const toolCall = result?.content.find(
-      (part: unknown) => (part as { type?: string }).type === "tool-call"
-    ) as { toolName: string; input: string } | undefined;
+    const toolCall = result?.content.find((part) => part.type === "tool-call");
     expect(toolCall).toBeTruthy();
     expect(toolCall?.toolName).toBe("get_weather");
     expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({
@@ -247,10 +292,14 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
     ];
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"foo":"bar"}' }],
-    });
+      finishReason: fallbackGenerated.finishReason,
+      usage: fallbackGenerated.usage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
     const result = await middleware.wrapGenerate?.({
       doGenerate,
+      doStream,
       params: {
         prompt: [],
         tools,
@@ -260,7 +309,8 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
           },
         },
       },
-    } as any);
+      model,
+    });
 
     expect(result?.content).toEqual([{ type: "text", text: '{"foo":"bar"}' }]);
   });

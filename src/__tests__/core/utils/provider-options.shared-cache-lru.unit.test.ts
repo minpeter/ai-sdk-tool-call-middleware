@@ -1,4 +1,7 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONSchema7,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,12 +11,12 @@ import {
 
 function tool(
   name: string,
-  inputSchema: unknown = { type: "object" }
+  inputSchema: JSONSchema7 = { type: "object" }
 ): LanguageModelV4FunctionTool {
   return {
     type: "function",
     name,
-    inputSchema: inputSchema as LanguageModelV4FunctionTool["inputSchema"],
+    inputSchema,
   };
 }
 
@@ -112,13 +115,9 @@ describe("shared original-tools exact-entry LRU", () => {
   it("keeps undefined schemas uncached and reports every decode", () => {
     const onError = vi.fn();
     for (let repetition = 0; repetition < 2; repetition += 1) {
-      const encoded = encodeOriginalTools([
-        {
-          type: "function",
-          name: "lru-invalid-undefined",
-          inputSchema: undefined as never,
-        },
-      ]);
+      const toolWithoutSchema = tool("lru-invalid-undefined");
+      Reflect.deleteProperty(toolWithoutSchema, "inputSchema");
+      const encoded = encodeOriginalTools([toolWithoutSchema]);
       expect(encoded).toEqual([
         { name: "lru-invalid-undefined", inputSchema: undefined },
       ]);
@@ -133,8 +132,13 @@ describe("shared original-tools exact-entry LRU", () => {
   });
 
   it("preserves null-schema output and exact reuse", () => {
-    const first = decode(encodeOriginalTools([tool("lru-null-schema", null)]));
-    const second = decode(encodeOriginalTools([tool("lru-null-schema", null)]));
+    const firstTool = tool("lru-null-schema");
+    const secondTool = tool("lru-null-schema");
+    Object.defineProperty(firstTool, "inputSchema", { value: null });
+    Object.defineProperty(secondTool, "inputSchema", { value: null });
+
+    const first = decode(encodeOriginalTools([firstTool]));
+    const second = decode(encodeOriginalTools([secondTool]));
 
     expect(second).toBe(first);
     expect(second[0]?.inputSchema).toBeNull();
@@ -143,19 +147,27 @@ describe("shared original-tools exact-entry LRU", () => {
   it.each([
     {
       label: "cyclic",
-      schema: (() => {
-        const value: Record<string, unknown> = {};
-        value.self = value;
-        return value;
-      })(),
+      createTool: () => {
+        const inputSchema: JSONSchema7 = { type: "object" };
+        inputSchema.properties = { self: inputSchema };
+        return tool("lru-serialization-error", inputSchema);
+      },
     },
-    { label: "BigInt", schema: { value: BigInt(1) } },
+    {
+      label: "BigInt",
+      createTool: () => {
+        const malformedTool = tool("lru-serialization-error");
+        Object.defineProperty(malformedTool.inputSchema, "value", {
+          enumerable: true,
+          value: BigInt(1),
+        });
+        return malformedTool;
+      },
+    },
   ])(
     "preserves the JSON serialization exception for $label input",
-    ({ schema }) => {
-      expect(() =>
-        encodeOriginalTools([tool("lru-serialization-error", schema)])
-      ).toThrow(TypeError);
+    ({ createTool }) => {
+      expect(() => encodeOriginalTools([createTool()])).toThrow(TypeError);
     }
   );
 
@@ -185,23 +197,20 @@ describe("shared original-tools exact-entry LRU", () => {
 
   it("preserves native map getter and Proxy observations", () => {
     const events: string[] = [];
-    const schema = new Proxy(
-      { type: "object" },
-      {
-        get(target, key, receiver) {
-          events.push(`schema:get:${String(key)}`);
-          return Reflect.get(target, key, receiver);
-        },
-        getOwnPropertyDescriptor(target, key) {
-          events.push(`schema:gopd:${String(key)}`);
-          return Reflect.getOwnPropertyDescriptor(target, key);
-        },
-        ownKeys(target) {
-          events.push("schema:ownKeys");
-          return Reflect.ownKeys(target);
-        },
-      }
-    );
+    const schema = new Proxy({ type: "object" } satisfies JSONSchema7, {
+      get(target, key, receiver) {
+        events.push(`schema:get:${String(key)}`);
+        return Reflect.get(target, key, receiver);
+      },
+      getOwnPropertyDescriptor(target, key) {
+        events.push(`schema:gopd:${String(key)}`);
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+      ownKeys(target) {
+        events.push("schema:ownKeys");
+        return Reflect.ownKeys(target);
+      },
+    });
     const observedTool = new Proxy(tool("lru-proxy", schema), {
       get(target, key, receiver) {
         events.push(`tool:get:${String(key)}`);
@@ -254,12 +263,14 @@ describe("shared original-tools exact-entry LRU", () => {
           },
         }
       );
-      return {
-        map() {
+      const catalog: LanguageModelV4FunctionTool[] = [];
+      Object.defineProperty(catalog, "map", {
+        value() {
           events.push("tools:map");
           return encoded;
         },
-      } as unknown as LanguageModelV4FunctionTool[];
+      });
+      return catalog;
     };
 
     const first = decode(encodeOriginalTools(makeCatalog()));
@@ -277,20 +288,23 @@ describe("shared original-tools exact-entry LRU", () => {
     const name = "lru-species-iterator-failure";
     decode(encodeOriginalTools([tool(name)]));
 
-    function ProxyArraySpecies(length: number) {
-      return new Proxy(new Array(length), {
-        get(target, key, receiver) {
-          events.push(`encoded:get:${String(key)}`);
-          if (key === Symbol.iterator) {
-            throw new TypeError("synthetic encoded iterator failure");
-          }
-          return Reflect.get(target, key, receiver);
-        },
-      });
-    }
+    const proxyArraySpecies = new Proxy(Array, {
+      construct(target, args, newTarget) {
+        const encoded = Reflect.construct(target, args, newTarget);
+        return new Proxy(encoded, {
+          get(arrayTarget, key, receiver) {
+            events.push(`encoded:get:${String(key)}`);
+            if (key === Symbol.iterator) {
+              throw new TypeError("synthetic encoded iterator failure");
+            }
+            return Reflect.get(arrayTarget, key, receiver);
+          },
+        });
+      },
+    });
     class SpeciesCatalog extends Array<LanguageModelV4FunctionTool> {
-      static override get [Symbol.species](): ArrayConstructor {
-        return ProxyArraySpecies as unknown as ArrayConstructor;
+      static override get [Symbol.species]() {
+        return proxyArraySpecies;
       }
     }
     const catalog = new SpeciesCatalog();
@@ -326,10 +340,10 @@ describe("shared original-tools exact-entry LRU", () => {
   });
 
   it("preserves the non-callable map TypeError", () => {
-    const catalog = [] as unknown as { map: number };
-    catalog.map = 42;
-    expect(() =>
-      encodeOriginalTools(catalog as unknown as LanguageModelV4FunctionTool[])
-    ).toThrow(new TypeError("tools?.map is not a function"));
+    const catalog: LanguageModelV4FunctionTool[] = [];
+    Object.defineProperty(catalog, "map", { value: 42 });
+    expect(() => encodeOriginalTools(catalog)).toThrow(
+      new TypeError("tools?.map is not a function")
+    );
   });
 });

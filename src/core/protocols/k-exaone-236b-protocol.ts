@@ -1,9 +1,15 @@
-import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
+import {
+  isJSONValue,
+  type JSONValue,
+  type LanguageModelV4ToolCall,
+} from "@ai-sdk/provider";
+import { z } from "zod";
 import {
   decodeKExaone2HistoryKey,
   isKExaone2HistoryNumber,
   parseKExaone2LosslessJson,
 } from "../prompts/k-exaone-2-lossless-json";
+import { KExaone2HistoryNumber } from "../prompts/k-exaone-2-lossless-json-tokens";
 import {
   stringifyKExaone2CompactJson,
   stringifyKExaone2NativeJson,
@@ -19,6 +25,24 @@ import type { TCMProtocol } from "./protocol-interface";
 const TRAILING_COMMA_REGEX = /,(\s*[}\]])/g;
 const ARGUMENTS_FIELD_REGEX = /([,{]\s*)(["'])arguments\2\s*:/;
 const PARAMETERS_FIELD_REGEX = /([,{]\s*)(["'])parameters\2\s*:/;
+
+type KExaone236BJsonValue =
+  | JSONValue
+  | KExaone2HistoryNumber
+  | KExaone236BJsonValue[]
+  | { readonly [key: string]: KExaone236BJsonValue };
+
+const kExaone236BJsonValueSchema: z.ZodType<KExaone236BJsonValue> = z.lazy(() =>
+  z.union([
+    z.null(),
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.instanceof(KExaone2HistoryNumber),
+    z.array(kExaone236BJsonValueSchema),
+    z.record(z.string(), kExaone236BJsonValueSchema),
+  ])
+);
 
 function normalizeRelaxedJsonQuotes(text: string): string {
   let normalized = "";
@@ -68,17 +92,50 @@ function canonicalizeParametersAlias(toolCallJson: string): string {
   return normalizedEnvelope.replace(PARAMETERS_FIELD_REGEX, '$1"arguments":');
 }
 
+function stringifyKExaone236BJson(
+  value: KExaone236BJsonValue | undefined,
+  compact: boolean
+): string {
+  if (value === undefined) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    const separator = compact ? "," : ", ";
+    return `[${value
+      .map((item) => stringifyKExaone236BJson(item, compact))
+      .join(separator)}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    if (isKExaone2HistoryNumber(value)) {
+      return compact
+        ? stringifyKExaone2CompactJson(value)
+        : stringifyKExaone2NativeJson(value);
+    }
+    const comma = compact ? "," : ", ";
+    const colon = compact ? ":" : ": ";
+    return `{${Object.entries(value)
+      .map(
+        ([key, property]) =>
+          `${JSON.stringify(decodeKExaone2HistoryKey(key))}${colon}${stringifyKExaone236BJson(property, compact)}`
+      )
+      .join(comma)}}`;
+  }
+  return compact
+    ? stringifyKExaone2CompactJson(value)
+    : stringifyKExaone2NativeJson(value);
+}
+
 function overlayLosslessNumbers(
-  rawValue: unknown,
-  validatedValue: unknown
-): unknown {
+  rawValue: KExaone236BJsonValue | undefined,
+  validatedValue: JSONValue | undefined
+): string {
   if (isKExaone2HistoryNumber(rawValue) && typeof validatedValue === "number") {
-    return rawValue;
+    return stringifyKExaone236BJson(rawValue, true);
   }
   if (Array.isArray(rawValue) && Array.isArray(validatedValue)) {
-    return validatedValue.map((value, index) =>
-      overlayLosslessNumbers(rawValue[index], value)
-    );
+    return `[${validatedValue
+      .map((value, index) => overlayLosslessNumbers(rawValue[index], value))
+      .join(",")}]`;
   }
   if (
     typeof rawValue === "object" &&
@@ -94,22 +151,23 @@ function overlayLosslessNumbers(
         value,
       ])
     );
-    return Object.fromEntries(
-      Object.entries(validatedValue).map(([key, value]) => [
-        key,
-        overlayLosslessNumbers(
-          rawEntries.get(key) ??
-            [...rawEntries.entries()].find(
-              ([rawKey]) =>
-                rawKey.replaceAll("_", "").toLowerCase() ===
-                key.replaceAll("_", "").toLowerCase()
-            )?.[1],
-          value
-        ),
-      ])
-    );
+    return `{${Object.entries(validatedValue)
+      .filter((entry): entry is [string, JSONValue] => entry[1] !== undefined)
+      .map(
+        ([key, value]) =>
+          `${JSON.stringify(key)}:${overlayLosslessNumbers(
+            rawEntries.get(key) ??
+              [...rawEntries.entries()].find(
+                ([rawKey]) =>
+                  rawKey.replaceAll("_", "").toLowerCase() ===
+                  key.replaceAll("_", "").toLowerCase()
+              )?.[1],
+            value
+          )}`
+      )
+      .join(",")}}`;
   }
-  return validatedValue;
+  return stringifyKExaone236BJson(validatedValue, true);
 }
 
 function resolveKExaone236BToolCall(
@@ -129,19 +187,22 @@ function resolveKExaone236BToolCall(
     if (!(progress.argumentsComplete && progress.argumentsText)) {
       return validated;
     }
-    const validatedInput = JSON.parse(validated.input) as unknown;
+    const validatedInput = JSON.parse(validated.input);
+    if (!isJSONValue(validatedInput)) {
+      return validated;
+    }
     const normalizedArguments = normalizeRelaxedJsonQuotes(
       normalizeInvalidJsonEscapes(
         normalizeJsonStringCtrl(progress.argumentsText)
       )
     ).replace(TRAILING_COMMA_REGEX, "$1");
-    const losslessInput = parseKExaone2LosslessJson(normalizedArguments);
+    const losslessInput = kExaone236BJsonValueSchema.parse(
+      parseKExaone2LosslessJson(normalizedArguments)
+    );
     return {
       ok: true,
       toolName: validated.toolName,
-      input: stringifyKExaone2CompactJson(
-        overlayLosslessNumbers(losslessInput, validatedInput)
-      ),
+      input: overlayLosslessNumbers(losslessInput, validatedInput),
     };
   } catch {
     return validated;
@@ -149,10 +210,12 @@ function resolveKExaone236BToolCall(
 }
 
 function formatKExaone236BToolCall(toolCall: LanguageModelV4ToolCall): string {
-  return `<tool_call>${stringifyKExaone2NativeJson({
-    name: toolCall.toolName,
-    arguments: parseKExaoneToolCallInput(toolCall.input),
-  })}</tool_call>`;
+  const name = stringifyKExaone236BJson(toolCall.toolName, false);
+  const args = stringifyKExaone236BJson(
+    kExaone236BJsonValueSchema.parse(parseKExaoneToolCallInput(toolCall.input)),
+    false
+  );
+  return `<tool_call>{"name": ${name}, "arguments": ${args}}</tool_call>`;
 }
 
 export const kExaone236BProtocol = (): TCMProtocol => {

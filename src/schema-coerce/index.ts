@@ -1,3 +1,10 @@
+import type { JSONValue } from "@ai-sdk/provider";
+import type { RxmlValue } from "../rxml/builders/stringify";
+import type {
+  ToolInputSchema,
+  ToolInputSchemaCandidate,
+  ToolInputSchemaDefinition,
+} from "../schema/tool-input-schema";
 import {
   parseLooseStructuredString,
   parseXmlChildrenValue,
@@ -17,15 +24,21 @@ import {
   getStrictObjectSchemaInfo,
 } from "./strict-object-key-rename";
 
-export function unwrapJsonSchema(schema: unknown): unknown {
+export function unwrapJsonSchema(
+  schema: ToolInputSchemaCandidate
+): ToolInputSchemaDefinition | undefined {
   return unwrapSchema(schema);
 }
 
-export function getSchemaType(schema: unknown): string | undefined {
+export function getSchemaType(
+  schema: ToolInputSchemaCandidate
+): string | undefined {
   return getUnwrappedSchemaType(schema);
 }
 
-export function schemaIsUnconstrained(schema: unknown): boolean {
+export function schemaIsUnconstrained(
+  schema: ToolInputSchemaCandidate
+): boolean {
   return isSchemaUnconstrained(schema);
 }
 
@@ -44,13 +57,19 @@ const HAS_WHITESPACE_REGEX = /\s/;
 const SINGLE_QUOTE = "'";
 const DOUBLE_QUOTE = '"';
 
+function isRxmlObject(
+  value: RxmlValue
+): value is { readonly [key: string]: RxmlValue } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function coerceValueForKey(
-  value: unknown,
+  value: RxmlValue,
   key: string,
-  unwrapped: Record<string, unknown>
-): unknown {
-  const schemas: unknown[] = [];
-  const props = unwrapped.properties as Record<string, unknown> | undefined;
+  unwrapped: ToolInputSchema
+): RxmlValue {
+  const schemas: ToolInputSchemaDefinition[] = [];
+  const props = unwrapped.properties;
   if (props && Object.hasOwn(props, key)) {
     schemas.push(props[key]);
   }
@@ -91,7 +110,7 @@ function coerceValueForKey(
 /**
  * Coerce string value without schema information
  */
-function coerceStringWithoutSchema(value: string): unknown {
+function coerceStringWithoutSchema(value: string): RxmlValue {
   const s = value.trim();
   const lower = s.toLowerCase();
   if (lower === "true") {
@@ -113,10 +132,12 @@ function coerceStringWithoutSchema(value: string): unknown {
     (s.startsWith("[") && s.endsWith("]"))
   ) {
     try {
-      const parsed = JSON.parse(s);
+      const parsed: JSONValue = JSON.parse(s);
       return coerceBySchema(parsed, undefined);
-    } catch {
-      // If parsing fails, return original value
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) {
+        throw error;
+      }
     }
   }
   return value;
@@ -124,11 +145,11 @@ function coerceStringWithoutSchema(value: string): unknown {
 
 function coerceStringToObject(
   s: string,
-  unwrapped: Record<string, unknown>
-): unknown {
+  unwrapped: ToolInputSchema
+): RxmlValue {
   const parsed = parseLooseStructuredString(s);
-  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-    return coerceObjectToObject(parsed as Record<string, unknown>, unwrapped);
+  if (isRxmlObject(parsed)) {
+    return coerceObjectToObject(parsed, unwrapped);
   }
 
   const xmlChildren = parseXmlChildrenValue(s);
@@ -142,16 +163,15 @@ function coerceStringToObject(
 /**
  * Coerce string to array using schema
  */
-function coerceStringToArray(
-  s: string,
-  unwrapped: Record<string, unknown>
-): unknown {
-  const prefixItems = Array.isArray(unwrapped.prefixItems)
-    ? (unwrapped.prefixItems as unknown[])
-    : undefined;
-  const itemsSchema = unwrapped.items as unknown;
+function coerceStringToArray(s: string, unwrapped: ToolInputSchema): RxmlValue {
+  const prefixItems =
+    unwrapped.prefixItems ??
+    (Array.isArray(unwrapped.items) ? unwrapped.items : undefined);
+  const itemsSchema = Array.isArray(unwrapped.items)
+    ? unwrapped.additionalItems
+    : unwrapped.items;
 
-  const coerceArrayItems = (arr: unknown[]): unknown => {
+  const coerceArrayItems = (arr: readonly RxmlValue[]): RxmlValue[] => {
     if (prefixItems && arr.length === prefixItems.length) {
       return arr.map((v, i) => coerceBySchema(v, prefixItems[i]));
     }
@@ -159,7 +179,7 @@ function coerceStringToArray(
   };
 
   try {
-    const arr = JSON.parse(s);
+    const arr: JSONValue = JSON.parse(s);
     if (Array.isArray(arr)) {
       return coerceArrayItems(arr);
     }
@@ -184,11 +204,11 @@ function coerceStringToArray(
 }
 
 function coerceObjectToObject(
-  value: Record<string, unknown>,
-  unwrapped: Record<string, unknown>
-): Record<string, unknown> {
+  value: { readonly [key: string]: RxmlValue },
+  unwrapped: ToolInputSchema
+): Record<string, RxmlValue> {
   const normalizedInput = applyStrictRequiredKeyRename(value, unwrapped);
-  const out = Object.create(null) as Record<string, unknown>;
+  const out: Record<string, RxmlValue> = Object.create(null);
   for (const [k, v] of Object.entries(normalizedInput)) {
     out[k] = coerceValueForKey(v, k, unwrapped);
   }
@@ -199,10 +219,10 @@ function coerceObjectToObject(
  * Coerce array to array using schema
  */
 function coerceArrayToArray(
-  value: unknown[],
-  prefixItems: unknown[] | undefined,
-  itemsSchema: unknown
-): unknown[] {
+  value: readonly RxmlValue[],
+  prefixItems: readonly ToolInputSchemaDefinition[] | undefined,
+  itemsSchema: ToolInputSchemaDefinition | undefined
+): RxmlValue[] {
   if (prefixItems && value.length === prefixItems.length) {
     return value.map((v, i) => coerceBySchema(v, prefixItems[i]));
   }
@@ -221,7 +241,7 @@ function isPrimitiveSchemaType(
 }
 
 function isPrimitiveMatchForSchemaType(
-  value: unknown,
+  value: RxmlValue,
   schemaType: "string" | "number" | "integer" | "boolean"
 ): boolean {
   if (schemaType === "string") {
@@ -241,9 +261,9 @@ function isPrimitiveMatchForSchemaType(
 }
 
 function coercePrimitiveWrappedObject(
-  value: Record<string, unknown>,
-  itemsSchema: unknown
-): unknown {
+  value: { readonly [key: string]: RxmlValue },
+  itemsSchema: ToolInputSchemaDefinition | undefined
+): RxmlValue {
   const schemaType = getSchemaType(itemsSchema);
   if (!isPrimitiveSchemaType(schemaType)) {
     return null;
@@ -281,10 +301,10 @@ function coercePrimitiveWrappedObject(
  * - all values must be arrays with identical length >= 2
  */
 function coerceParallelArraysObjectToArray(
-  maybe: Record<string, unknown>,
-  prefixItems: unknown[] | undefined,
-  itemsSchema: unknown
-): unknown[] | null {
+  maybe: { readonly [key: string]: RxmlValue },
+  prefixItems: readonly ToolInputSchemaDefinition[] | undefined,
+  itemsSchema: ToolInputSchemaDefinition | undefined
+): RxmlValue[] | null {
   if (prefixItems && prefixItems.length > 0) {
     return null;
   }
@@ -297,7 +317,7 @@ function coerceParallelArraysObjectToArray(
   ) {
     return null;
   }
-  const itemSchema = unwrappedItems as Record<string, unknown>;
+  const itemSchema = unwrappedItems;
   if (getSchemaType(itemSchema) !== "object") {
     return null;
   }
@@ -313,13 +333,17 @@ function coerceParallelArraysObjectToArray(
   ) {
     return null;
   }
-  const propertyMap = properties as Record<string, unknown>;
+  const propertyMap = properties;
 
   const entries = Object.entries(maybe);
   if (entries.length < 2) {
     return null;
   }
-  if (!entries.every(([, value]) => Array.isArray(value))) {
+  if (
+    !entries.every((entry): entry is [string, RxmlValue[]] =>
+      Array.isArray(entry[1])
+    )
+  ) {
     return null;
   }
   if (!entries.every(([key]) => Object.hasOwn(propertyMap, key))) {
@@ -334,9 +358,7 @@ function coerceParallelArraysObjectToArray(
     return null;
   }
 
-  const lengths = [
-    ...new Set(entries.map(([, value]) => (value as unknown[]).length)),
-  ];
+  const lengths = [...new Set(entries.map(([, value]) => value.length))];
   if (lengths.length !== 1) {
     return null;
   }
@@ -345,11 +367,11 @@ function coerceParallelArraysObjectToArray(
     return null;
   }
 
-  const zipped: Record<string, unknown>[] = [];
+  const zipped: Record<string, RxmlValue>[] = [];
   for (let index = 0; index < length; index += 1) {
-    const item = Object.create(null) as Record<string, unknown>;
+    const item: Record<string, RxmlValue> = Object.create(null);
     for (const [key, value] of entries) {
-      item[key] = (value as unknown[])[index];
+      item[key] = value[index];
     }
     zipped.push(item);
   }
@@ -358,15 +380,15 @@ function coerceParallelArraysObjectToArray(
 }
 
 function coerceSingleKeyObjectToArray(
-  singleValue: unknown,
-  itemsSchema: unknown
-): unknown[] | null {
+  singleValue: RxmlValue,
+  itemsSchema: ToolInputSchemaDefinition | undefined
+): RxmlValue[] | null {
   if (Array.isArray(singleValue)) {
     return singleValue.map((v) => coerceBySchema(v, itemsSchema));
   }
-  if (singleValue && typeof singleValue === "object") {
+  if (isRxmlObject(singleValue)) {
     const primitiveWrapped = coercePrimitiveWrappedObject(
-      singleValue as Record<string, unknown>,
+      singleValue,
       itemsSchema
     );
     if (primitiveWrapped !== null) {
@@ -381,12 +403,12 @@ function coerceSingleKeyObjectToArray(
  * Coerce object to array using schema
  */
 function coerceObjectToArray(
-  maybe: Record<string, unknown>,
-  prefixItems: unknown[] | undefined,
-  itemsSchema: unknown
-): unknown {
+  maybe: { readonly [key: string]: RxmlValue },
+  prefixItems: readonly ToolInputSchemaDefinition[] | undefined,
+  itemsSchema: ToolInputSchemaDefinition | undefined
+): RxmlValue {
   if (Object.hasOwn(maybe, "item")) {
-    const items = maybe.item as unknown;
+    const items = maybe.item;
     const arr = Array.isArray(items) ? items : [items];
     return coerceArrayToArray(arr, prefixItems, itemsSchema);
   }
@@ -435,14 +457,12 @@ function coerceObjectToArray(
  * Coerce primitive to array using schema
  */
 function coercePrimitiveToArray(
-  value: unknown,
-  prefixItems: unknown[] | undefined,
-  itemsSchema: unknown
-): unknown[] {
-  if (prefixItems && prefixItems.length > 0) {
-    return [coerceBySchema(value, prefixItems[0])];
-  }
-  return [coerceBySchema(value, itemsSchema)];
+  value: RxmlValue,
+  prefixItems: readonly ToolInputSchemaDefinition[] | undefined,
+  itemsSchema: ToolInputSchemaDefinition | undefined
+): RxmlValue[] {
+  const schema = prefixItems?.length ? prefixItems[0] : itemsSchema;
+  return [coerceBySchema(value, schema)];
 }
 
 /**
@@ -451,7 +471,7 @@ function coercePrimitiveToArray(
 function coerceStringToPrimitive(
   s: string,
   schemaType: string | undefined
-): unknown {
+): RxmlValue {
   if (schemaType === "boolean") {
     const lower = s.toLowerCase();
     if (lower === "true") {
@@ -474,19 +494,18 @@ function coerceStringToPrimitive(
 }
 
 function coercePrimitiveToString(
-  value: unknown,
+  value: RxmlValue,
   schemaType: string | undefined
 ): string | null {
   if (schemaType !== "string") {
     return null;
   }
   if (typeof value === "boolean") {
-    return value ? "true" : "false";
-  }
-  if (typeof value === "number" && Number.isFinite(value)) {
     return String(value);
   }
-  return null;
+  return typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : null;
 }
 
 /**
@@ -502,16 +521,18 @@ function coercePrimitiveToString(
  */
 function coerceStringByEnumWhitespace(
   rawValue: string,
-  unwrapped: Record<string, unknown>
+  unwrapped: ToolInputSchema
 ): string | null {
   const enumValues = unwrapped.enum;
   if (!Array.isArray(enumValues) || enumValues.length === 0) {
     return null;
   }
-  if (!enumValues.every((item) => typeof item === "string")) {
+  const normalizedEnumValues = enumValues.filter(
+    (item): item is string => typeof item === "string"
+  );
+  if (normalizedEnumValues.length !== enumValues.length) {
     return null;
   }
-  const normalizedEnumValues = enumValues as string[];
   if (normalizedEnumValues.includes(rawValue)) {
     return null;
   }
@@ -559,15 +580,12 @@ function unwrapMatchingQuotes(value: string): string | null {
   return value.slice(1, -1);
 }
 
+/** Called only after coerceBySchema narrows schemaType to a primitive type. */
 function coerceObjectToPrimitive(
-  value: Record<string, unknown>,
-  schemaType: string | undefined,
-  fullSchema?: Record<string, unknown>
-): unknown {
-  if (!isPrimitiveSchemaType(schemaType)) {
-    return null;
-  }
-
+  value: { readonly [key: string]: RxmlValue },
+  schemaType: "string" | "number" | "integer" | "boolean",
+  fullSchema: ToolInputSchema
+): RxmlValue {
   const keys = Object.keys(value);
   if (keys.length !== 1) {
     return null;
@@ -578,29 +596,26 @@ function coerceObjectToPrimitive(
     return null;
   }
 
-  const coerced = coerceBySchema(
-    singleValue,
-    fullSchema ?? { type: schemaType }
-  );
+  const coerced = coerceBySchema(singleValue, fullSchema);
   return isPrimitiveMatchForSchemaType(coerced, schemaType) ? coerced : null;
 }
 
 function coerceStringValue(
   value: string,
   schemaType: string | undefined,
-  u: Record<string, unknown>
-): unknown {
+  schema: ToolInputSchema
+): RxmlValue {
   const s = value.trim();
 
   if (schemaType === "object") {
-    const result = coerceStringToObject(s, u);
+    const result = coerceStringToObject(s, schema);
     if (result !== null) {
       return result;
     }
   }
 
   if (schemaType === "array") {
-    const result = coerceStringToArray(s, u);
+    const result = coerceStringToArray(s, schema);
     if (result !== null) {
       return result;
     }
@@ -611,7 +626,7 @@ function coerceStringValue(
     return primitiveResult;
   }
 
-  const enumWhitespaceCanonical = coerceStringByEnumWhitespace(s, u);
+  const enumWhitespaceCanonical = coerceStringByEnumWhitespace(s, schema);
   if (enumWhitespaceCanonical !== null) {
     return enumWhitespaceCanonical;
   }
@@ -620,20 +635,16 @@ function coerceStringValue(
 }
 
 function coerceArrayValue(
-  value: unknown,
-  prefixItems: unknown[] | undefined,
-  itemsSchema: unknown
-): unknown {
+  value: RxmlValue,
+  prefixItems: readonly ToolInputSchemaDefinition[] | undefined,
+  itemsSchema: ToolInputSchemaDefinition | undefined
+): RxmlValue {
   if (Array.isArray(value)) {
     return coerceArrayToArray(value, prefixItems, itemsSchema);
   }
 
-  if (value && typeof value === "object") {
-    const result = coerceObjectToArray(
-      value as Record<string, unknown>,
-      prefixItems,
-      itemsSchema
-    );
+  if (isRxmlObject(value)) {
+    const result = coerceObjectToArray(value, prefixItems, itemsSchema);
     if (result !== null) {
       return result;
     }
@@ -645,22 +656,14 @@ function coerceArrayValue(
     return [coerceBySchema(value, itemsSchema)];
   }
 
-  if (
-    value == null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return coercePrimitiveToArray(value, prefixItems, itemsSchema);
-  }
-
-  return [value];
+  // Arrays and objects returned above; every remaining RxmlValue is a scalar.
+  return coercePrimitiveToArray(value, prefixItems, itemsSchema);
 }
 
 function coerceByStrictAllOfObjectSchemas(
-  value: unknown,
-  allOf: unknown
-): unknown {
+  value: RxmlValue,
+  allOf: readonly ToolInputSchemaDefinition[] | undefined
+): RxmlValue {
   if (!Array.isArray(allOf)) {
     return value;
   }
@@ -671,7 +674,7 @@ function coerceByStrictAllOfObjectSchemas(
       unwrapped &&
       typeof unwrapped === "object" &&
       !Array.isArray(unwrapped) &&
-      getStrictObjectSchemaInfo(unwrapped as Record<string, unknown>)
+      getStrictObjectSchemaInfo(unwrapped)
     ) {
       output = coerceBySchema(output, subSchema);
     }
@@ -679,7 +682,10 @@ function coerceByStrictAllOfObjectSchemas(
   return output;
 }
 
-export function coerceBySchema(value: unknown, schema?: unknown): unknown {
+export function coerceBySchema(
+  value: RxmlValue,
+  schema?: ToolInputSchemaCandidate
+): RxmlValue {
   const unwrapped = unwrapJsonSchema(schema);
   if (!unwrapped || typeof unwrapped !== "object") {
     if (typeof value === "string") {
@@ -689,19 +695,21 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
   }
 
   const schemaType = getSchemaType(unwrapped);
-  const u = unwrapped as Record<string, unknown>;
-  const valueAfterAllOf = coerceByStrictAllOfObjectSchemas(value, u.allOf);
+  const valueAfterAllOf = coerceByStrictAllOfObjectSchemas(
+    value,
+    unwrapped.allOf
+  );
   if (
     valueAfterAllOf === null &&
-    Array.isArray(u.type) &&
-    u.type.includes("null")
+    Array.isArray(unwrapped.type) &&
+    unwrapped.type.includes("null")
   ) {
     return valueAfterAllOf;
   }
 
   // Handle string values
   if (typeof valueAfterAllOf === "string") {
-    return coerceStringValue(valueAfterAllOf, schemaType, u);
+    return coerceStringValue(valueAfterAllOf, schemaType, unwrapped);
   }
 
   // Coerce primitive scalars to string when schema explicitly expects a string.
@@ -711,26 +719,16 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
   }
 
   // Handle object to object coercion
-  if (
-    schemaType === "object" &&
-    valueAfterAllOf &&
-    typeof valueAfterAllOf === "object" &&
-    !Array.isArray(valueAfterAllOf)
-  ) {
-    return coerceObjectToObject(valueAfterAllOf as Record<string, unknown>, u);
+  if (schemaType === "object" && isRxmlObject(valueAfterAllOf)) {
+    return coerceObjectToObject(valueAfterAllOf, unwrapped);
   }
 
   // Handle object wrappers when schema expects a primitive value.
-  if (
-    valueAfterAllOf &&
-    typeof valueAfterAllOf === "object" &&
-    !Array.isArray(valueAfterAllOf) &&
-    isPrimitiveSchemaType(schemaType)
-  ) {
+  if (isRxmlObject(valueAfterAllOf) && isPrimitiveSchemaType(schemaType)) {
     const primitiveResult = coerceObjectToPrimitive(
-      valueAfterAllOf as Record<string, unknown>,
+      valueAfterAllOf,
       schemaType,
-      u
+      unwrapped
     );
     if (primitiveResult !== null) {
       return primitiveResult;
@@ -739,10 +737,12 @@ export function coerceBySchema(value: unknown, schema?: unknown): unknown {
 
   // Handle array coercion
   if (schemaType === "array") {
-    const prefixItems = Array.isArray(u.prefixItems)
-      ? (u.prefixItems as unknown[])
-      : undefined;
-    const itemsSchema = u.items as unknown;
+    const prefixItems =
+      unwrapped.prefixItems ??
+      (Array.isArray(unwrapped.items) ? unwrapped.items : undefined);
+    const itemsSchema = Array.isArray(unwrapped.items)
+      ? unwrapped.additionalItems
+      : unwrapped.items;
 
     return coerceArrayValue(valueAfterAllOf, prefixItems, itemsSchema);
   }

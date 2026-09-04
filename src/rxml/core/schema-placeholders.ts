@@ -1,3 +1,4 @@
+import type { JSONSchema7 } from "@ai-sdk/provider";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
 import { RXMLDuplicateStringTagError } from "../errors/types";
 import {
@@ -12,15 +13,15 @@ export interface ShieldedXml {
   readonly originals: Map<string, string>;
 }
 
-export function getTopLevelStringProps(schema: unknown): Set<string> {
+export function getTopLevelStringProps(
+  schema: JSONSchema7 | boolean | undefined
+): Set<string> {
   const result = new Set<string>();
   const unwrapped = unwrapJsonSchema(schema);
   if (!(unwrapped && typeof unwrapped === "object")) {
     return result;
   }
-  const properties = (unwrapped as Record<string, unknown>).properties as
-    | Record<string, unknown>
-    | undefined;
+  const { properties } = unwrapped;
   if (!properties || typeof properties !== "object") {
     return result;
   }
@@ -127,9 +128,11 @@ export function shieldStringContent(
     }
     return { content, originals };
   } catch (error) {
+    const normalizedError =
+      error instanceof Error ? error : new Error(String(error));
     options.onError?.(
       "RXML: Failed to replace string placeholders, falling back to original XML.",
-      { error }
+      { error: normalizedError }
     );
     return { content: xml, originals };
   }

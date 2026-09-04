@@ -1,13 +1,39 @@
+import type {
+  LanguageModelV4,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamResult,
+} from "@ai-sdk/provider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { wrapGenerate } from "../../generate-handler";
 import { createToolMiddleware } from "../../tool-call-middleware";
+import { stopFinishReason, zeroUsage } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
 describe("createToolMiddleware branches", () => {
+  const generateResult = {
+    content: [],
+    finishReason: stopFinishReason,
+    usage: zeroUsage,
+    warnings: [],
+  } satisfies LanguageModelV4GenerateResult;
+  const streamResult = {
+    stream: new ReadableStream(),
+  } satisfies LanguageModelV4StreamResult;
+  const fallbackDoStream = vi.fn(async () => streamResult);
+  const model: LanguageModelV4 = {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "test",
+    supportedUrls: {},
+    doGenerate: async () => generateResult,
+    doStream: async () => streamResult,
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -18,19 +44,24 @@ describe("createToolMiddleware branches", () => {
     });
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"name":"n","arguments":{}}' }],
-    });
+      finishReason: stopFinishReason,
+      usage: zeroUsage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
     if (!mw.wrapGenerate) {
       throw new Error("wrapGenerate is not defined");
     }
     const result = await mw.wrapGenerate({
       doGenerate,
+      doStream: fallbackDoStream,
       params: {
         prompt: [],
         providerOptions: {
           toolCallMiddleware: { toolChoice: { type: "required" } },
         },
       },
-    } as any);
+      model,
+    });
     expect(result.content[0]).toMatchObject({
       type: "tool-call",
       toolName: "n",
@@ -57,13 +88,18 @@ describe("createToolMiddleware branches", () => {
       }),
       doGenerate: vi.fn().mockResolvedValue({
         content: [{ type: "text", text: '{"name":"n","arguments":{}}' }],
-      }),
+        finishReason: stopFinishReason,
+        usage: zeroUsage,
+        warnings: [],
+      } satisfies LanguageModelV4GenerateResult),
       params: {
+        prompt: [],
         providerOptions: {
           toolCallMiddleware: { toolChoice: { type: "required" } },
         },
       },
-    } as any);
+      model,
+    });
     expect(result.stream).toBeDefined();
   });
 
@@ -84,8 +120,13 @@ describe("createToolMiddleware branches", () => {
             text: '{"name":"calc","arguments":{"a":"10","b":"false"}}',
           },
         ],
-      }),
+        finishReason: stopFinishReason,
+        usage: zeroUsage,
+        warnings: [],
+      } satisfies LanguageModelV4GenerateResult),
+      doStream: fallbackDoStream,
       params: {
+        prompt: [],
         providerOptions: {
           toolCallMiddleware: {
             toolChoice: { type: "required" },
@@ -99,7 +140,8 @@ describe("createToolMiddleware branches", () => {
           },
         },
       },
-    } as any);
+      model,
+    });
     expect(result.content[0]).toMatchObject({
       type: "tool-call",
       toolName: "calc",
@@ -126,21 +168,22 @@ describe("createToolMiddleware branches", () => {
       }),
       doGenerate: vi.fn().mockResolvedValue({
         content: [{ type: "text", text: '{"name":"x","arguments":{}}' }],
-      }),
+        finishReason: stopFinishReason,
+        usage: zeroUsage,
+        warnings: [],
+      } satisfies LanguageModelV4GenerateResult),
       params: {
+        prompt: [],
         providerOptions: {
           toolCallMiddleware: { toolChoice: { type: "tool", toolName: "x" } },
         },
       },
-    } as any);
+      model,
+    });
     expect(result.stream).toBeDefined();
   });
 
   it("wrapGenerate does not throw when originalTools contains malformed schema JSON", async () => {
-    const mw = createToolMiddleware({
-      protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
-    });
     const onError = vi.fn();
     const doGenerate = vi.fn().mockResolvedValue({
       content: [
@@ -149,15 +192,15 @@ describe("createToolMiddleware branches", () => {
           text: '<tool_call>{"name":"n","arguments":{"x":"1"}}</tool_call>',
         },
       ],
-    });
+      finishReason: stopFinishReason,
+      usage: zeroUsage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
-    if (!mw.wrapGenerate) {
-      throw new Error("wrapGenerate is not defined");
-    }
-    const result = await mw.wrapGenerate({
+    const result = await wrapGenerate({
+      protocol: hermesProtocol(),
       doGenerate,
       params: {
-        prompt: [],
         providerOptions: {
           toolCallMiddleware: {
             originalTools: [{ name: "n", inputSchema: "{" }],
@@ -165,11 +208,9 @@ describe("createToolMiddleware branches", () => {
           },
         },
       },
-    } as any);
+    });
 
     expect(onError).toHaveBeenCalled();
-    expect(result.content.some((part: any) => part.type === "tool-call")).toBe(
-      true
-    );
+    expect(result.content.some((part) => part.type === "tool-call")).toBe(true);
   });
 });

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
-
 import { getArrayItemSchema } from "../../../core/utils/tool-call-array-schema";
 import { getDeclaredPropertySchema } from "../../../core/utils/tool-call-object-property-schema";
 import {
   collectPatternPropertyNames,
   getPatternPropertySchema,
 } from "../../../core/utils/tool-call-pattern-properties";
+import type {
+  ToolInputSchema,
+  ToolInputSchemaCandidate,
+} from "../../../schema/tool-input-schema";
+import { unwrapJsonSchema } from "../../../schema-coerce";
 
 describe("tool-call schema resolution", () => {
   it("selects prefixItems before homogeneous items by index", () => {
@@ -13,7 +17,7 @@ describe("tool-call schema resolution", () => {
     const schema = {
       prefixItems: [{ type: "string" }],
       items: { type: "number" },
-    };
+    } satisfies ToolInputSchema;
 
     // When
     const prefixSchema = getArrayItemSchema(schema, 0);
@@ -28,7 +32,7 @@ describe("tool-call schema resolution", () => {
     // Given
     const schema = {
       allOf: [{ items: { type: "string" } }, { items: { minLength: 1 } }],
-    };
+    } satisfies ToolInputSchema;
 
     // When
     const itemSchema = getArrayItemSchema(schema, 0);
@@ -44,7 +48,7 @@ describe("tool-call schema resolution", () => {
     const schema = {
       properties: { label: { type: "string" } },
       allOf: [{ properties: { label: { minLength: 1 } } }],
-    };
+    } satisfies ToolInputSchema;
 
     // When
     const propertySchema = getDeclaredPropertySchema(
@@ -62,7 +66,7 @@ describe("tool-call schema resolution", () => {
 
   it("resolves a property from the selected anyOf branch", () => {
     // Given
-    const schema = {
+    const schema: ToolInputSchema = {
       anyOf: [
         {
           properties: {
@@ -70,16 +74,16 @@ describe("tool-call schema resolution", () => {
             firstValue: { type: "string" },
           },
           required: ["kind", "firstValue"],
-        },
+        } satisfies ToolInputSchema,
         {
           properties: {
             kind: { const: "second" },
             secondValue: { type: "number" },
           },
           required: ["kind", "secondValue"],
-        },
+        } satisfies ToolInputSchema,
       ],
-    };
+    } satisfies ToolInputSchema;
     const value = { kind: "second", secondValue: 2 };
 
     // When
@@ -101,7 +105,7 @@ describe("tool-call schema resolution", () => {
         "^x-": { type: "string" },
         "-count$": { type: "number" },
       },
-    };
+    } satisfies ToolInputSchema;
     const value = { "x-label": "ok", "item-count": 2, other: true };
 
     // When
@@ -118,7 +122,7 @@ describe("tool-call schema resolution", () => {
         "^x-": { type: "string" },
         "-label$": { minLength: 1 },
       },
-    };
+    } satisfies ToolInputSchema;
 
     // When
     const propertySchema = getPatternPropertySchema(schema, "x-label");
@@ -131,9 +135,13 @@ describe("tool-call schema resolution", () => {
 
   it("preserves false schemas across array object and pattern resolution", () => {
     // Given
-    const arraySchema = { items: false };
-    const objectSchema = { properties: { denied: false } };
-    const patternSchema = { patternProperties: { "^denied$": false } };
+    const arraySchema = { items: false } satisfies ToolInputSchema;
+    const objectSchema = {
+      properties: { denied: false },
+    } satisfies ToolInputSchema;
+    const patternSchema = {
+      patternProperties: { "^denied$": false },
+    } satisfies ToolInputSchema;
 
     // When
     const item = getArrayItemSchema(arraySchema, 0);
@@ -153,16 +161,16 @@ describe("tool-call schema resolution", () => {
 
   it("returns undefined for malformed schema inputs", () => {
     // Given
-    const malformedSchema = "not-a-schema";
+    const malformedSchema: ToolInputSchemaCandidate = "not-a-schema";
 
     // When
-    const item = getArrayItemSchema(malformedSchema, 0);
-    const property = getDeclaredPropertySchema(
-      malformedSchema,
-      "label",
-      "value",
-      new Set()
-    );
+    const schema = unwrapJsonSchema(malformedSchema);
+    const item =
+      schema === undefined ? undefined : getArrayItemSchema(schema, 0);
+    const property =
+      schema === undefined
+        ? undefined
+        : getDeclaredPropertySchema(schema, "label", "value", new Set());
 
     // Then
     expect(item).toBeUndefined();

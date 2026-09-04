@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-
 import { getToolInputPropertyNames } from "../../../core/utils/tool-call-object-schema";
 import { collectSchemaSelectionPropertyNames } from "../../../core/utils/tool-call-schema-property-names";
 import { sanitizeToolCallArgsBySchema } from "../../../core/utils/tool-call-schema-sanitization";
+import type {
+  ToolInputSchema,
+  ToolInputSchemaCandidate,
+} from "../../../schema/tool-input-schema";
+import { unwrapJsonSchema } from "../../../schema-coerce";
 
 describe("tool-call schema foundation", () => {
   it("drops undeclared properties when sanitizing a strict object", () => {
@@ -11,7 +15,7 @@ describe("tool-call schema foundation", () => {
       type: "object",
       properties: { kept: { type: "string" } },
       additionalProperties: false,
-    };
+    } satisfies ToolInputSchema;
     const value = { kept: "value", dropped: "extra" };
 
     // When
@@ -30,7 +34,7 @@ describe("tool-call schema foundation", () => {
         properties: { kept: { type: "string" } },
         additionalProperties: false,
       },
-    };
+    } satisfies ToolInputSchema;
     const value = [{ kept: "value", dropped: "extra" }];
 
     // When
@@ -63,7 +67,7 @@ describe("tool-call schema foundation", () => {
           additionalProperties: false,
         },
       ],
-    };
+    } satisfies ToolInputSchema;
     const value = {
       kind: "second",
       secondValue: "value",
@@ -83,7 +87,7 @@ describe("tool-call schema foundation", () => {
       type: "object",
       properties: { declared: { type: "string" } },
       required: ["declared", "requiredOnly"],
-    };
+    } satisfies ToolInputSchema;
 
     // When
     const names = getToolInputPropertyNames(schema, {});
@@ -94,11 +98,15 @@ describe("tool-call schema foundation", () => {
 
   it("returns the input by identity for a malformed schema", () => {
     // Given
-    const schema = "malformed";
+    const malformedSchema: ToolInputSchemaCandidate = "malformed";
     const value = { untouched: true };
 
     // When
-    const sanitized = sanitizeToolCallArgsBySchema(value, schema);
+    const schema = unwrapJsonSchema(malformedSchema);
+    const sanitized =
+      schema === undefined
+        ? value
+        : sanitizeToolCallArgsBySchema(value, schema);
 
     // Then
     expect(sanitized).toBe(value);
@@ -112,7 +120,7 @@ describe("tool-call schema foundation", () => {
         constructor: true,
         prototype: true,
       },
-    };
+    } satisfies ToolInputSchema;
 
     // When
     const names = collectSchemaSelectionPropertyNames(schema);

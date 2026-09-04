@@ -1,4 +1,6 @@
 import type {
+  JSONObject,
+  JSONValue,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
@@ -44,14 +46,17 @@ describe("morphXmlProtocol streaming success core path", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     const text = out
       .filter((c) => c.type === "text-delta")
-      .map((c) => (c as any).delta)
+      .map((c) => c.delta)
       .join("");
 
     expect(tool?.toolName).toBe("calc");
-    const parsed = JSON.parse(tool.input);
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tool.input);
     expect(parsed).toEqual({ a: 1, b: 2 }); // In the case of XML, type casting should automatically convert to numbers.
     expect(text).toContain("pre ");
     expect(text).toContain(" post");
@@ -104,15 +109,18 @@ describe("morphXmlProtocol streaming success core path", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     const textParts = out
       .filter((c) => c.type === "text-delta")
-      .map((c) => (c as any).delta);
+      .map((c) => c.delta);
     const fullText = textParts.join("");
 
     // Verify tool call was parsed correctly
     expect(tool?.toolName).toBe("get_weather");
-    const parsed = JSON.parse(tool.input);
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tool.input);
     expect(parsed).toEqual({ city: "New York" });
 
     // Verify nested XML tags are NOT in the output text
@@ -173,16 +181,23 @@ describe("morphXmlProtocol streaming success core path", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const toolCalls = out.filter((c) => c.type === "tool-call") as any[];
+    const toolCalls = out.filter((c) => c.type === "tool-call");
     const textParts = out
       .filter((c) => c.type === "text-delta")
-      .map((c) => (c as any).delta);
+      .map((c) => c.delta);
     const fullText = textParts.join("");
 
     // Verify both tool calls were parsed
     expect(toolCalls).toHaveLength(2);
-    expect(toolCalls[0].toolName).toBe("get_location");
-    expect(toolCalls[1].toolName).toBe("get_weather");
+    const [locationCall, weatherCall] = toolCalls;
+    if (
+      locationCall?.type !== "tool-call" ||
+      weatherCall?.type !== "tool-call"
+    ) {
+      throw new TypeError("Expected two tool-call parts");
+    }
+    expect(locationCall.toolName).toBe("get_location");
+    expect(weatherCall.toolName).toBe("get_weather");
 
     // Verify no XML tags in output
     expect(fullText).not.toContain("<get_location>");
@@ -242,15 +257,18 @@ describe("morphXmlProtocol streaming success core path", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     const textParts = out
       .filter((c) => c.type === "text-delta")
-      .map((c) => (c as any).delta);
+      .map((c) => c.delta);
     const fullText = textParts.join("");
 
     // Verify tool call parsed correctly
     expect(tool?.toolName).toBe("send_email");
-    const parsed = JSON.parse(tool.input);
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tool.input);
     expect(parsed).toEqual({
       to: "user@example.com",
       subject: "Hello World",
@@ -310,15 +328,18 @@ describe("morphXmlProtocol streaming success core path", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     const textParts = out
       .filter((c) => c.type === "text-delta")
-      .map((c) => (c as any).delta);
+      .map((c) => c.delta);
     const fullText = textParts.join("");
 
     // Verify tool call parsed correctly
     expect(tool?.toolName).toBe("calculate");
-    const parsed = JSON.parse(tool.input);
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONValue = JSON.parse(tool.input);
     expect(parsed).toEqual({ operation: "add", x: 10, y: 20 });
 
     // Verify no XML tags in output
@@ -380,15 +401,18 @@ describe("morphXmlProtocol streaming success core path", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     const textParts = out
       .filter((c) => c.type === "text-delta")
-      .map((c) => (c as any).delta);
+      .map((c) => c.delta);
     const fullText = textParts.join("");
 
     // Verify tool call parsed correctly
     expect(tool?.toolName).toBe("send_messages");
-    const parsed = JSON.parse(tool.input);
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected tool-call part");
+    }
+    const parsed: JSONObject = JSON.parse(tool.input);
     expect(parsed.recipient).toEqual(["alice@example.com", "bob@example.com"]);
     expect(parsed.message).toBe("Hello!");
 

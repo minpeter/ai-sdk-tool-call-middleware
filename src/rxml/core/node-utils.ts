@@ -1,8 +1,9 @@
+import type { RxmlValue } from "../builders/stringify";
 import type { RXMLNode } from "./types";
 
-function buildNodeValue(child: RXMLNode): unknown {
+function buildNodeValue(child: RXMLNode): RxmlValue {
   const kids = simplify(child.children);
-  let nodeValue: unknown = kids;
+  let nodeValue: RxmlValue = kids;
 
   // Add attributes if present
   if (Object.keys(child.attributes).length) {
@@ -15,8 +16,7 @@ function buildNodeValue(child: RXMLNode): unknown {
         nodeValue = { _attributes: child.attributes, value: kids };
       }
     } else if (typeof kids === "object" && kids !== null) {
-      (kids as Record<string, unknown>)._attributes = child.attributes;
-      nodeValue = kids;
+      nodeValue = { ...kids, _attributes: child.attributes };
     } else {
       nodeValue = { _attributes: child.attributes };
     }
@@ -28,7 +28,7 @@ function buildNodeValue(child: RXMLNode): unknown {
 /**
  * Simplify parsed XML structure (similar to TXML's simplify)
  */
-export function simplify(children: (RXMLNode | string)[]): unknown {
+export function simplify(children: (RXMLNode | string)[]): RxmlValue {
   if (!children.length) {
     return "";
   }
@@ -37,7 +37,7 @@ export function simplify(children: (RXMLNode | string)[]): unknown {
     return children[0];
   }
 
-  const out: Record<string, unknown> = {};
+  const out: Record<string, RxmlValue> = {};
 
   // Map each object
   for (const child of children) {
@@ -45,12 +45,13 @@ export function simplify(children: (RXMLNode | string)[]): unknown {
       continue;
     }
 
-    if (!out[child.tagName]) {
-      out[child.tagName] = [];
-    }
-
+    const existing = out[child.tagName];
     const nodeValue = buildNodeValue(child);
-    (out[child.tagName] as unknown[]).push(nodeValue);
+    if (Array.isArray(existing)) {
+      existing.push(nodeValue);
+    } else {
+      out[child.tagName] = [nodeValue];
+    }
   }
 
   // Flatten single-item arrays

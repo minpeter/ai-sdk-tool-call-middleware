@@ -3,6 +3,19 @@ import { describe, expect, it } from "vitest";
 import { morphXmlToolMiddleware } from "../../preconfigured-middleware";
 import { requireTransformParams } from "../test-helpers";
 
+const model = {
+  specificationVersion: "v4",
+  provider: "test",
+  modelId: "test",
+  supportedUrls: {},
+  doGenerate: () => {
+    throw new Error("unused");
+  },
+  doStream: () => {
+    throw new Error("unused");
+  },
+} satisfies import("@ai-sdk/provider").LanguageModelV4;
+
 const REGEX_GET_WEATHER_TAG = /<get_weather[>/]/;
 const REGEX_EDIT_FILE_TAG = /<edit_file>/;
 
@@ -25,6 +38,8 @@ describe("transformParams morph-xml tool-call signature regression", () => {
     );
 
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           {
@@ -39,7 +54,7 @@ describe("transformParams morph-xml tool-call signature regression", () => {
                 toolCallId: "tc1",
                 toolName: "get_weather",
                 input: undefined,
-              } as any,
+              },
             ],
           },
           {
@@ -49,25 +64,26 @@ describe("transformParams morph-xml tool-call signature regression", () => {
                 type: "tool-result",
                 toolName: "get_weather",
                 toolCallId: "tc1",
-                output: { temperature: 25 },
+                output: { type: "json", value: { temperature: 25 } },
               },
             ],
           },
         ],
         tools: weatherTools,
       },
-    } as any);
+    });
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     expect(assistantMsg).toBeTruthy();
+    if (!assistantMsg) {
+      throw new Error("assistant message not found");
+    }
 
-    const assistantContent = assistantMsg?.content;
+    const assistantContent = assistantMsg.content;
     expect(Array.isArray(assistantContent)).toBe(true);
-    const assistantText = (
-      assistantContent as { type: string; text?: string }[]
-    )
+    const assistantText = assistantContent
       .filter((c) => c.type === "text")
-      .map((c) => c.text ?? "")
+      .map((c) => c.text)
       .join("");
 
     expect(assistantText).toMatch(REGEX_GET_WEATHER_TAG);
@@ -79,6 +95,8 @@ describe("transformParams morph-xml tool-call signature regression", () => {
     );
 
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           {
@@ -98,7 +116,7 @@ describe("transformParams morph-xml tool-call signature regression", () => {
                   new_str: "bar",
                   replace_all: false,
                 },
-              } as any,
+              },
             ],
           },
           {
@@ -108,7 +126,7 @@ describe("transformParams morph-xml tool-call signature regression", () => {
                 type: "tool-result",
                 toolName: "edit_file",
                 toolCallId: "tc1",
-                output: { success: true },
+                output: { type: "json", value: { success: true } },
               },
             ],
           },
@@ -130,18 +148,19 @@ describe("transformParams morph-xml tool-call signature regression", () => {
           },
         ],
       },
-    } as any);
+    });
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     expect(assistantMsg).toBeTruthy();
+    if (!assistantMsg) {
+      throw new Error("assistant message not found");
+    }
 
-    const assistantContent = assistantMsg?.content;
+    const assistantContent = assistantMsg.content;
     expect(Array.isArray(assistantContent)).toBe(true);
-    const assistantText = (
-      assistantContent as { type: string; text?: string }[]
-    )
+    const assistantText = assistantContent
       .filter((c) => c.type === "text")
-      .map((c) => c.text ?? "")
+      .map((c) => c.text)
       .join("");
 
     expect(assistantText).toMatch(REGEX_EDIT_FILE_TAG);

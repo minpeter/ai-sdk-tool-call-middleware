@@ -1,3 +1,8 @@
+import {
+  isJSONObject,
+  type JSONObject,
+  type JSONValue,
+} from "@ai-sdk/provider";
 import YAML from "yaml";
 
 const LEADING_WHITESPACE_RE = /^(\s*)/;
@@ -43,7 +48,7 @@ export function normalizeYamlContent(yamlContent: string): {
 }
 
 export function parseYamlDocumentAsMapping(normalized: string): {
-  value: Record<string, unknown> | null;
+  value: JSONObject | null;
   errors: string[];
 } {
   try {
@@ -54,10 +59,10 @@ export function parseYamlDocumentAsMapping(normalized: string): {
     if (result === null) {
       return { value: {}, errors };
     }
-    if (typeof result !== "object" || Array.isArray(result)) {
+    if (!isJSONObject(result)) {
       return { value: null, errors };
     }
-    return { value: result as Record<string, unknown>, errors };
+    return { value: result, errors };
   } catch (error) {
     return {
       value: null,
@@ -213,41 +218,38 @@ function hasUnstableProgressTail(normalized: string): boolean {
   );
 }
 
-function trimTrailingNewlineInUnknown(value: unknown): unknown {
+function trimTrailingNewlineInJson(value: JSONValue): JSONValue {
   if (typeof value === "string") {
-    if (value.endsWith("\n")) {
-      return value.slice(0, -1);
-    }
-    return value;
+    return value.endsWith("\n") ? value.slice(0, -1) : value;
   }
-
   if (Array.isArray(value)) {
-    return value.map((item) => trimTrailingNewlineInUnknown(item));
+    return value.map(trimTrailingNewlineInJson);
   }
-
-  if (value && typeof value === "object") {
+  if (isJSONObject(value)) {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+      Object.entries(value).map(([key, item]) => [
         key,
-        trimTrailingNewlineInUnknown(item),
+        item === undefined ? undefined : trimTrailingNewlineInJson(item),
       ])
     );
   }
-
   return value;
 }
 
-function stabilizeParsedValueForStreamProgress<T>(value: T, source: string): T {
+function stabilizeParsedValueForStreamProgress(
+  value: JSONValue,
+  source: string
+): JSONValue {
   if (source.endsWith("\n")) {
     return value;
   }
 
-  return trimTrailingNewlineInUnknown(value) as T;
+  return trimTrailingNewlineInJson(value);
 }
 
 export function parseYamlContentForStreamProgress(
   yamlContent: string
-): Record<string, unknown> | null {
+): JSONObject | null {
   const { normalized, nonEmptyLines } = normalizeYamlContent(yamlContent);
   if (nonEmptyLines.length === 0) {
     return {};
@@ -260,7 +262,11 @@ export function parseYamlContentForStreamProgress(
       if (candidate.trim().length === 0 && normalized.trim().length > 0) {
         return null;
       }
-      return stabilizeParsedValueForStreamProgress(parsed.value, candidate);
+      const stabilized = stabilizeParsedValueForStreamProgress(
+        parsed.value,
+        candidate
+      );
+      return isJSONObject(stabilized) ? stabilized : null;
     }
 
     const truncated = dropLastMeaningfulLine(candidate);

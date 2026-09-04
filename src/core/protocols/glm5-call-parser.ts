@@ -1,4 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import { isSchemaDefinition } from "../../schema/tool-input-schema";
 import { getToolInputPropertyNames } from "../utils/tool-call-object-schema";
 import type {
   Glm5CallSnapshot,
@@ -96,10 +97,11 @@ export function parseGlm5CallBody(options: {
     return null;
   }
 
-  const tool = options.tools.find(
-    (candidate) => candidate.name === resolvedName.value
-  );
-  const schema = tool?.inputSchema;
+  const schema =
+    [
+      options.tools.find((tool) => tool.name === resolvedName.value)
+        ?.inputSchema,
+    ].find(isSchemaDefinition) ?? {};
   const args = createGlm5Args();
   const recoveries = resolvedName.recovered ? ["recovered-tool-name"] : [];
   const parsedArguments = parseGlm5TaggedArguments({

@@ -1,15 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type RxmlValue,
   stringify,
   stringifyNode,
   stringifyNodes,
   toContentString,
 } from "../../../rxml/builders/stringify";
 import { parseWithoutSchema } from "../../../rxml/core/parser";
+import type { RXMLNode } from "../../../rxml/core/types";
 
 const XML_DECLARATION_REGEX = /^<\?xml version="1\.0" encoding="UTF-8"\?>/;
 const XML_START_REGEX = /^<\?xml/;
+
+function requireNode(node: RXMLNode | string | undefined): RXMLNode {
+  if (typeof node === "object") {
+    return node;
+  }
+  throw new TypeError("Expected parsed XML node");
+}
 
 describe("stringify", () => {
   describe("basic stringify", () => {
@@ -383,7 +392,7 @@ describe("stringify", () => {
   describe("stringifyNode", () => {
     it("stringifies individual nodes", () => {
       const parsed = parseWithoutSchema('<item id="1">content</item>');
-      const node = parsed[0] as any;
+      const node = requireNode(parsed[0]);
       const result = stringifyNode(node);
 
       expect(result).toBe('<item id="1">content</item>\n');
@@ -391,7 +400,7 @@ describe("stringify", () => {
 
     it("handles self-closing nodes", () => {
       const parsed = parseWithoutSchema('<item id="1"/>');
-      const node = parsed[0] as any;
+      const node = requireNode(parsed[0]);
       const result = stringifyNode(node);
 
       expect(result).toBe('<item id="1"/>\n');
@@ -399,7 +408,7 @@ describe("stringify", () => {
 
     it("formats with custom depth", () => {
       const parsed = parseWithoutSchema("<item>content</item>");
-      const node = parsed[0] as any;
+      const node = requireNode(parsed[0]);
       const result = stringifyNode(node, 2, true);
 
       expect(result).toContain("    <item>"); // 2 levels of indentation
@@ -444,14 +453,14 @@ describe("stringify", () => {
         // Force an error by passing invalid data to internal functions
         stringify("root", { circular: {} });
         // Add circular reference
-        (stringify as any).circular = stringify as any;
+        Object.assign(stringify, { circular: stringify });
       }).not.toThrow(); // Our implementation should handle this gracefully
     });
 
     it("handles very large objects", () => {
-      const largeObject = {};
+      const largeObject: Record<string, RxmlValue> = {};
       for (let i = 0; i < 1000; i += 1) {
-        (largeObject as any)[`item${i}`] = `value${i}`;
+        largeObject[`item${i}`] = `value${i}`;
       }
 
       expect(() => stringify("root", largeObject)).not.toThrow();

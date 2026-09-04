@@ -42,7 +42,7 @@ export class XMLTokenizer {
       const { line, column } = getLineColumn(this.xmlString, this.pos);
       throw new RXMLParseError(
         `Unexpected close tag at line ${line}, column ${column}. Expected </${tagName}>, found </${closeTag}>`,
-        undefined,
+        new Error(`Expected </${tagName}>, found </${closeTag}>`),
         line,
         column
       );
@@ -65,7 +65,7 @@ export class XMLTokenizer {
       const { line, column } = getLineColumn(this.xmlString, this.pos - 1);
       throw new RXMLParseError(
         `Unclosed tag at line ${line}, column ${column}. Expected closing tag </${tagName}>`,
-        undefined,
+        new Error(`Expected closing tag </${tagName}>`),
         line,
         column
       );

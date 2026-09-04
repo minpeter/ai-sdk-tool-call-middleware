@@ -1,5 +1,10 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { parse } from "../../rxml";
+import {
+  isJSONObject,
+  type JSONObject,
+  type LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
+import { type ParseOptions, parse } from "../../rxml";
+import type { ToolInputSchemaDefinition } from "../../schema/tool-input-schema";
 import { stringifyToolInputWithSchema } from "../utils/tool-input-streaming";
 import {
   analyzeXmlFragmentForProgress,
@@ -14,8 +19,8 @@ import {
 
 function isStableXmlProgressCandidate(options: {
   candidate: string;
-  parsed: unknown;
-  toolSchema: unknown;
+  parsed: JSONObject;
+  toolSchema: ToolInputSchemaDefinition | undefined;
 }): boolean {
   const { candidate, parsed, toolSchema } = options;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -32,7 +37,7 @@ function isStableXmlProgressCandidate(options: {
     return false;
   }
 
-  const parsedObject = parsed as Record<string, unknown>;
+  const parsedObject = parsed;
   const uniqueTopLevelTags = new Set(structure.topLevelTagNames);
   for (const tagName of uniqueTopLevelTags) {
     if (!schemaProperties.has(tagName)) {
@@ -80,7 +85,7 @@ export interface XmlStreamProgressResult {
    * `bodyStart` is the offset in toolContent where the raw value begins.
    */
   trailingValueStreaming: {
-    argsBase: Record<string, unknown>;
+    argsBase: JSONObject;
     bodyStart: number;
   } | null;
 }
@@ -88,8 +93,8 @@ export interface XmlStreamProgressResult {
 export function parseXmlContentForStreamProgress(params: {
   toolContent: string;
   toolName: string;
-  toolSchema: unknown;
-  parseOptions?: Record<string, unknown>;
+  toolSchema: ToolInputSchemaDefinition | undefined;
+  parseOptions?: ParseOptions;
   tools: LanguageModelV4FunctionTool[];
 }): string | null {
   return parseXmlContentForStreamProgressWithMeta(params).fullInput;
@@ -97,9 +102,9 @@ export function parseXmlContentForStreamProgress(params: {
 
 function resolveTrailingStringTagProgress(options: {
   toolContent: string;
-  toolSchema: unknown;
-  tryParse: (content: string) => unknown | null;
-  tryStringify: (args: unknown) => string | null;
+  toolSchema: ToolInputSchemaDefinition | undefined;
+  tryParse: (content: string) => JSONObject | null;
+  tryStringify: (args: JSONObject) => string | null;
 }): XmlStreamProgressResult | null {
   const { toolContent, toolSchema, tryParse, tryStringify } = options;
   const stringPropertyNames = getObjectSchemaStringPropertyNames(toolSchema);
@@ -125,15 +130,14 @@ function resolveTrailingStringTagProgress(options: {
   }
   const canStreamValue =
     emptyRepair !== null &&
-    typeof parsedRepaired === "object" &&
-    !Array.isArray(parsedRepaired) &&
+    isJSONObject(parsedRepaired) &&
     isStrictStringSchemaProperty(toolSchema, trailingStringTag);
   return {
     fullInput: tryStringify(parsedRepaired),
     trailingStringTag,
     trailingValueStreaming: canStreamValue
       ? {
-          argsBase: parsedRepaired as Record<string, unknown>,
+          argsBase: parsedRepaired,
           bodyStart: emptyRepair.bodyStart,
         }
       : null,
@@ -149,22 +153,23 @@ export function parseXmlContentForStreamProgressWithMeta({
 }: {
   toolContent: string;
   toolName: string;
-  toolSchema: unknown;
-  parseOptions?: Record<string, unknown>;
+  toolSchema: ToolInputSchemaDefinition | undefined;
+  parseOptions?: ParseOptions;
   tools: LanguageModelV4FunctionTool[];
 }): XmlStreamProgressResult {
-  const tryParse = (content: string): unknown | null => {
+  const tryParse = (content: string): JSONObject | null => {
     try {
-      return parse(content, toolSchema, {
+      const parsed = parse(content, toolSchema, {
         ...(parseOptions ?? {}),
         repair: false,
         onError: undefined,
       });
+      return isJSONObject(parsed) ? parsed : null;
     } catch {
       return null;
     }
   };
-  const tryStringify = (args: unknown): string | null => {
+  const tryStringify = (args: JSONObject): string | null => {
     try {
       return stringifyToolInputWithSchema({
         toolName,

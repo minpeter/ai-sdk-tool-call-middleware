@@ -1,12 +1,31 @@
+import type {
+  LanguageModelV4CallOptions,
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { formatToolResponseAsHermes } from "../../core/prompts/hermes-prompt";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import type { ToolInputSchema } from "../../schema/tool-input-schema";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
+
+const model = {
+  specificationVersion: "v4",
+  provider: "test",
+  modelId: "test",
+  supportedUrls: {},
+  doGenerate: () => {
+    throw new Error("unused");
+  },
+  doStream: () => {
+    throw new Error("unused");
+  },
+} satisfies import("@ai-sdk/provider").LanguageModelV4;
 
 // Regex constants for performance
 const _REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
@@ -52,7 +71,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
               input: "{}",
             },
             { type: "text", text: "aside" },
-            { foo: "bar" } as any,
+            { type: "custom", kind: "test.part" },
           ],
         },
         {
@@ -62,9 +81,14 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
               type: "tool-result",
               toolName: "t1",
               toolCallId: "tc1",
-              output: { ok: true },
+              output: { type: "json", value: { ok: true } },
             },
-            { toolName: "t1", toolCallId: "tc1", output: { alt: 1 } } as any,
+            {
+              type: "tool-result",
+              toolName: "t1",
+              toolCallId: "tc1",
+              output: { type: "json", value: { alt: 1 } },
+            },
           ],
         },
       ],
@@ -73,14 +97,14 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
           type: "function" as const,
           name: "t1",
           description: "desc",
-          inputSchema: { type: "object" },
-        },
-      ],
+          inputSchema: { type: "object" } satisfies ToolInputSchema,
+        } satisfies LanguageModelV4FunctionTool,
+      ] satisfies LanguageModelV4FunctionTool[],
       providerOptions: { toolCallMiddleware: { existing: true } },
-    };
+    } satisfies LanguageModelV4CallOptions;
 
     const transformParams = requireTransformParams(mw.transformParams);
-    const out = await transformParams({ params } as any);
+    const out = await transformParams({ type: "generate", model, params });
     expect(out.prompt[0].role).toBe("system");
     // Assistant remains assistant with formatted tool call text
     const assistantMsg = out.prompt.find((m) => m.role === "assistant");
@@ -89,7 +113,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       throw new Error("assistant message not found");
     }
     const assistantText = assistantMsg.content
-      .map((c) => (c.type === "text" ? (c as any).text : ""))
+      .map((c) => (c.type === "text" ? c.text : ""))
       .join("");
     expect(assistantText).toMatch(REGEX_TOOL_CALL_TAG);
 
@@ -98,9 +122,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     expect(userMsgs.length).toBe(2);
     const userCombined = userMsgs
       .map((u) =>
-        u.content
-          .map((c) => (c.type === "text" ? (c as any).text : ""))
-          .join("")
+        u.content.map((c) => (c.type === "text" ? c.text : "")).join("")
       )
       .join("\n");
     expect(userCombined).toContain("hello");
@@ -108,15 +130,17 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
 
     // tools cleared; originalTools propagated into providerOptions
     expect(out.tools).toEqual([]);
-    const { originalTools } = (out.providerOptions as any).toolCallMiddleware;
-    expect(originalTools).toEqual([
+    const middlewareOptions = out.providerOptions?.toolCallMiddleware;
+    expect(middlewareOptions).toMatchObject({ existing: true });
+    if (!middlewareOptions) {
+      throw new Error("tool middleware options not found");
+    }
+    expect(middlewareOptions.originalTools).toEqual([
       {
         name: "t1",
         inputSchema: JSON.stringify({ type: "object" }),
       },
     ]);
-    // existing provider option preserved
-    expect((out.providerOptions as any).toolCallMiddleware.existing).toBe(true);
   });
 
   it("condenses multiple text parts in a single user message into one", async () => {
@@ -134,13 +158,21 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     };
 
     const transformParams = requireTransformParams(mw.transformParams);
-    const out = await transformParams({ params } as any);
+    const out = await transformParams({ type: "generate", model, params });
     const userMsgs = out.prompt.filter((m) => m.role === "user");
     expect(userMsgs).toHaveLength(1);
-    const onlyText = userMsgs[0].content.every((c: any) => c.type === "text");
+    const [onlyUser] = userMsgs;
+    if (!onlyUser) {
+      throw new Error("user message not found");
+    }
+    const onlyText = onlyUser.content.every((c) => c.type === "text");
     expect(onlyText).toBe(true);
-    expect(userMsgs[0].content).toHaveLength(1);
-    expect((userMsgs[0].content[0] as any).text).toBe("line1\nline2");
+    expect(onlyUser.content).toHaveLength(1);
+    const [firstPart] = onlyUser.content;
+    if (firstPart?.type !== "text") {
+      throw new Error("text part not found");
+    }
+    expect(firstPart.text).toBe("line1\nline2");
   });
 
   it("preserves assistant reasoning parts and formats tool-call", async () => {
@@ -157,8 +189,8 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
             },
             {
               type: "reasoning" as const,
-              content: [{ type: "text", text: "thinking..." }],
-            } as any,
+              text: "thinking...",
+            },
           ],
         },
       ],
@@ -167,34 +199,33 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
           type: "function" as const,
           name: "t1",
           description: "desc",
-          inputSchema: { type: "object" },
-        },
-      ],
+          inputSchema: { type: "object" } satisfies ToolInputSchema,
+        } satisfies LanguageModelV4FunctionTool,
+      ] satisfies LanguageModelV4FunctionTool[],
     };
 
     const transformParams = requireTransformParams(mw.transformParams);
-    const out = await transformParams({ params } as any);
+    const out = await transformParams({ type: "generate", model, params });
     const assistant = out.prompt.find((m) => m.role === "assistant");
     if (!assistant) {
       throw new Error("assistant message not found");
     }
-    const assistantAny = assistant as any;
     // Should contain both formatted tool_call text and original reasoning block
-    const hasReasoning = assistantAny.content.some(
-      (c: any) => c.type === "reasoning"
-    );
+    const hasReasoning = assistant.content.some((c) => c.type === "reasoning");
     expect(hasReasoning).toBe(true);
-    const assistantText = assistantAny.content
-      .filter((c: any) => c.type === "text")
-      .map((c: any) => c.text)
+    const assistantText = assistant.content
+      .filter(
+        (c): c is Extract<LanguageModelV4Content, { type: "text" }> =>
+          c.type === "text"
+      )
+      .map((c) => c.text)
       .join("\n");
     expect(assistantText).toMatch(REGEX_TOOL_CALL_TAG);
     // Ensure the reasoning's inner text remains
-    const reasoning = assistantAny.content.find(
-      (c: any) => c.type === "reasoning"
-    );
-    expect(
-      (reasoning as any).content?.map((p: any) => p.text).join("")
-    ).toContain("thinking...");
+    const reasoning = assistant.content.find((c) => c.type === "reasoning");
+    if (reasoning?.type !== "reasoning") {
+      throw new Error("reasoning part not found");
+    }
+    expect(reasoning.text).toContain("thinking...");
   });
 });

@@ -1,21 +1,26 @@
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isSchemaDefinition,
+  type ToolInputSchemaCandidate,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { getArrayItemSchema } from "./tool-call-array-schema";
-import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 import {
   getToolInputPropertyNames,
   getToolInputPropertySchema,
 } from "./tool-call-object-schema";
 
-type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
+type RxmlRecord = Record<string, RxmlValue>;
 
-function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
+function isRecord(value: RxmlValue): value is RxmlRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function sanitizeToolCallArrayBySchema<Schema>(
-  values: readonly SchemaBoundaryValue[],
-  schema: Schema,
+function sanitizeToolCallArrayBySchema(
+  values: readonly RxmlValue[],
+  schema: ToolInputSchemaDefinition,
   seen: WeakSet<object>
-): SchemaBoundaryValue[] {
+): RxmlValue[] {
   return values.flatMap((value, index) => {
     const itemSchema = getArrayItemSchema(schema, index);
     if (itemSchema === false) {
@@ -28,34 +33,33 @@ function sanitizeToolCallArrayBySchema<Schema>(
   });
 }
 
-function sanitizeToolCallObjectBySchema<Schema>(
-  value: SchemaBoundaryRecord,
-  schema: Schema,
+function sanitizeToolCallObjectBySchema(
+  value: RxmlRecord,
+  schema: ToolInputSchemaDefinition,
   propertyNames: Set<string>,
   seen: WeakSet<object>
-): SchemaBoundaryRecord {
-  const sanitized: SchemaBoundaryRecord = Object.create(null);
+): RxmlRecord {
+  const sanitized: RxmlRecord = Object.create(null);
   for (const [key, nestedValue] of Object.entries(value)) {
     if (propertyNames.has(key)) {
       const propertySchema = getToolInputPropertySchema(schema, key, value);
       if (propertySchema === false) {
         continue;
       }
-      sanitized[key] = sanitizeToolCallValueBySchema(
-        nestedValue,
-        propertySchema,
-        seen
-      );
+      sanitized[key] =
+        propertySchema === undefined
+          ? nestedValue
+          : sanitizeToolCallValueBySchema(nestedValue, propertySchema, seen);
     }
   }
   return sanitized;
 }
 
-function sanitizeToolCallValueBySchema<Value, Schema>(
-  value: Value,
-  schema: Schema,
+function sanitizeToolCallValueBySchema(
+  value: RxmlValue,
+  schema: ToolInputSchemaDefinition,
   seen: WeakSet<object>
-): Value | SchemaBoundaryValue {
+): RxmlValue {
   if (Array.isArray(value)) {
     if (seen.has(value)) {
       return value;
@@ -75,9 +79,11 @@ function sanitizeToolCallValueBySchema<Value, Schema>(
   return sanitizeToolCallObjectBySchema(value, schema, propertyNames, seen);
 }
 
-export function sanitizeToolCallArgsBySchema<Args, Schema>(
-  args: Args,
-  schema: Schema
-): Args | SchemaBoundaryValue {
-  return sanitizeToolCallValueBySchema(args, schema, new WeakSet());
+export function sanitizeToolCallArgsBySchema(
+  args: RxmlValue,
+  schema: ToolInputSchemaCandidate
+): RxmlValue {
+  return isSchemaDefinition(schema)
+    ? sanitizeToolCallValueBySchema(args, schema, new WeakSet())
+    : args;
 }

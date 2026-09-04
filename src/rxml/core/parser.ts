@@ -1,3 +1,5 @@
+import type { JSONObject } from "@ai-sdk/provider";
+import type { ToolInputSchemaCandidate } from "../../schema/tool-input-schema";
 import {
   parseWithoutSchema as parseFragment,
   parseNode as parseSingleNode,
@@ -11,9 +13,9 @@ export const simplify = simplifyNodes;
 
 export function parse(
   xmlInner: string,
-  schema: unknown,
+  schema: ToolInputSchemaCandidate,
   options: ParseOptions = {}
-): Record<string, unknown> {
+): JSONObject {
   return parseWithSchema(xmlInner, schema, options);
 }
 

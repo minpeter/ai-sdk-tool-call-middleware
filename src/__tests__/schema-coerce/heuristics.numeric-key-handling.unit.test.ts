@@ -1,3 +1,4 @@
+import type { JSONSchema7, JSONValue } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { coerceBySchema } from "../../schema-coerce";
 
@@ -10,12 +11,12 @@ describe("Coercion Heuristic Handling", () => {
         "2": "third",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual(["first", "second", "third"]);
     });
 
@@ -26,15 +27,15 @@ describe("Coercion Heuristic Handling", () => {
         "2": "15.8",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "number" },
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([10.5, 20.3, 15.8]);
-      const arr = result as any[];
-      expect(arr.every((item: any) => typeof item === "number")).toBe(true);
+      const arr = result;
+      expect(arr.every((item) => typeof item === "number")).toBe(true);
     });
 
     it("should handle non-consecutive numeric keys", () => {
@@ -44,13 +45,13 @@ describe("Coercion Heuristic Handling", () => {
         "5": "sixth",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "string" },
       };
 
       // Non-consecutive keys should still be converted but maintain order
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual(["first", "third", "sixth"]);
     });
 
@@ -60,13 +61,13 @@ describe("Coercion Heuristic Handling", () => {
         name: "test",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "string" },
       };
 
       // Mixed keys should be wrapped in array
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual(input);

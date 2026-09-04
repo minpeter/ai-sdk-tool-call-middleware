@@ -1,4 +1,4 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type { JSONObject, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { generateToolCallId } from "../utils/id";
 import { stringifyToolInputWithSchema } from "../utils/tool-input-streaming";
 import { extractQwen3CoderToolNameFromMarkup } from "./qwen3coder-call-parsing";
@@ -12,7 +12,7 @@ import {
 import { getAttributeValue } from "./qwen3coder-param-tag-parsing";
 
 interface ParsedQwenToolCall {
-  args: Record<string, unknown>;
+  args: JSONObject;
   toolName: string;
 }
 
@@ -51,13 +51,7 @@ function isValueTagName(
     return false;
   }
   const tool = tools.find((candidate) => candidate.name === toolName);
-  const properties = (
-    tool?.inputSchema as
-      | { properties?: Record<string, unknown> }
-      | null
-      | undefined
-  )?.properties;
-  return Object.keys(properties ?? {}).some(
+  return Object.keys(tool?.inputSchema.properties ?? {}).some(
     (property) => property.toLowerCase() === normalized
   );
 }

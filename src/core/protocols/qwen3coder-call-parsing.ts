@@ -1,6 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { unescapeXml } from "../../rxml/utils/helpers";
-
 import {
   buildSchemaParamNameMap,
   CALL_BLOCK_RE,
@@ -23,6 +22,7 @@ import {
   parseQwen3CoderToolParserParamTagAt,
   toSupportedCallEndTagName,
 } from "./qwen3coder-param-tag-parsing";
+import type { QwenRawArguments } from "./qwen3coder-stream-call-content";
 
 /**
  * Qwen3Coder call payload parsing and tool-name salvage.
@@ -113,7 +113,7 @@ function extractToolCallInnerXml(segment: string): {
 }
 
 export function mergeParamValue(
-  args: Record<string, unknown>,
+  args: QwenRawArguments,
   key: string,
   value: string
 ): void {
@@ -130,9 +130,9 @@ export function mergeParamValue(
 }
 
 export function mergeArgsWithPartialParam(
-  args: Record<string, unknown>,
+  args: QwenRawArguments,
   partialParam: { name: string; value: string } | null
-): Record<string, unknown> {
+): QwenRawArguments {
   if (!partialParam) {
     return args;
   }
@@ -164,8 +164,8 @@ function extractParameters(
     callEndTagNameLower?: string | null;
     schemaParamNames?: Map<string, string> | null;
   }
-): Record<string, unknown> {
-  const args = Object.create(null) as Record<string, unknown>;
+): QwenRawArguments {
+  const args: QwenRawArguments = {};
 
   const lower = xml.toLowerCase();
   let index = 0;
@@ -205,7 +205,7 @@ export function parseSingleFunctionCallXml(
   xml: string,
   fallbackToolName: string | null,
   tools: LanguageModelV4FunctionTool[]
-): { toolName: string; args: Record<string, unknown> } | null {
+): { toolName: string; args: QwenRawArguments } | null {
   const openingTag = getOpeningTag(xml);
   const toolNameAttr = openingTag
     ? getAttributeValue(openingTag, "name")
@@ -394,8 +394,8 @@ function parseQwen3CoderToolParserCallBlocks(
   blocks: string[],
   outerNameAttr: string | null,
   tools: LanguageModelV4FunctionTool[]
-): Array<{ toolName: string; args: Record<string, unknown> }> | null {
-  const calls: Array<{ toolName: string; args: Record<string, unknown> }> = [];
+): Array<{ toolName: string; args: QwenRawArguments }> | null {
+  const calls: Array<{ toolName: string; args: QwenRawArguments }> = [];
   for (const block of blocks) {
     const parsed = parseSingleFunctionCallXml(block, outerNameAttr, tools);
     if (!parsed) {
@@ -410,10 +410,7 @@ function parseQwen3CoderToolParserClosedMatches(
   inner: string,
   outerNameAttr: string | null,
   tools: LanguageModelV4FunctionTool[]
-):
-  | Array<{ toolName: string; args: Record<string, unknown> }>
-  | null
-  | undefined {
+): Array<{ toolName: string; args: QwenRawArguments }> | null | undefined {
   const callBlockMatches = Array.from(inner.matchAll(CALL_BLOCK_RE));
   if (callBlockMatches.length === 0) {
     return;
@@ -514,7 +511,7 @@ export function extractQwen3CoderToolNameFromMarkup(
 export function parseQwen3CoderToolParserToolCallSegment(
   segment: string,
   tools: LanguageModelV4FunctionTool[]
-): Array<{ toolName: string; args: Record<string, unknown> }> | null {
+): Array<{ toolName: string; args: QwenRawArguments }> | null {
   const extracted = extractToolCallInnerXml(segment);
   if (!extracted) {
     return null;

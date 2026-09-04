@@ -1,3 +1,9 @@
+import {
+  isJSONObject,
+  isJSONValue,
+  type JSONObject,
+  type JSONValue,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { parse } from "../../rjson/index";
@@ -48,10 +54,18 @@ describe("relaxed-json", () => {
       });
 
       it("preserves __proto__ as an own data property", () => {
-        const parsed = parse(
+        const parsedValue = parse(
           '{"__proto__":{"polluted":"top"},"safe":{"__proto__":{"polluted":"nested"}}}'
-        ) as Record<string, unknown>;
-        const nested = parsed.safe as Record<string, unknown>;
+        );
+        if (!isJSONObject(parsedValue)) {
+          throw new TypeError("Expected parsed JSON object");
+        }
+        const parsed: JSONObject = parsedValue;
+        const nestedValue: JSONValue | undefined = parsed.safe;
+        if (!isJSONObject(nestedValue)) {
+          throw new TypeError("Expected nested JSON object");
+        }
+        const nested: JSONObject = nestedValue;
 
         expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
         expect(Object.hasOwn(parsed, "__proto__")).toBe(true);
@@ -64,7 +78,7 @@ describe("relaxed-json", () => {
           Object.getOwnPropertyDescriptor(nested, "__proto__")?.value
         ).toEqual({ polluted: "nested" });
         expect(
-          (Object.prototype as Record<string, unknown>).polluted
+          Object.getOwnPropertyDescriptor(Object.prototype, "polluted")
         ).toBeUndefined();
       });
     });
@@ -166,23 +180,27 @@ describe("relaxed-json", () => {
 
     describe("options", () => {
       it("should support reviver function", () => {
-        const reviver = (_key: string, value: any) => {
-          if (typeof value === "number") {
-            return value * 2;
-          }
-          return value;
-        };
-        expect(parse('{"a": 1, "b": 2}', reviver)).toEqual({ a: 2, b: 4 });
+        expect(
+          parse('{"a": 1, "b": 2}', (_key, value) => {
+            if (typeof value === "number") {
+              return value * 2;
+            }
+            return value;
+          })
+        ).toEqual({ a: 2, b: 4 });
       });
 
       it("should support reviver in options object", () => {
-        const reviver = (_key: string, value: any) => {
-          if (typeof value === "string") {
-            return value.toUpperCase();
-          }
-          return value;
-        };
-        expect(parse('{"key": "value"}', { reviver })).toEqual({
+        expect(
+          parse('{"key": "value"}', {
+            reviver: (_key, value) => {
+              if (typeof value === "string") {
+                return value.toUpperCase();
+              }
+              return value;
+            },
+          })
+        ).toEqual({
           key: "VALUE",
         });
       });
@@ -240,7 +258,11 @@ describe("relaxed-json", () => {
 
       it("should handle large arrays", () => {
         const largeArray = `[${new Array(1000).fill("1").join(",")}]`;
-        const result = parse(largeArray) as number[];
+        const parsed = parse(largeArray);
+        if (!(isJSONValue(parsed) && Array.isArray(parsed))) {
+          throw new TypeError("Expected parsed JSON array");
+        }
+        const result: JSONValue[] = parsed;
         expect(result).toHaveLength(1000);
         expect(result[0]).toBe(1);
       });

@@ -1,3 +1,4 @@
+import type { JSONObject, JSONValue } from "@ai-sdk/provider";
 import {
   decodeKExaone2HistoryKey,
   isKExaone2HistoryNumber,
@@ -13,26 +14,25 @@ const JSON_EXPONENT_RE = /e([+-])(\d+)$/;
 const HISTORY_INTEGER_RE = /^-?(?:0|[1-9]\d*)$/;
 const MAX_UNSIGNED_64_BIT_INTEGER = BigInt("18446744073709551615");
 const MIN_SIGNED_64_BIT_INTEGER = BigInt("-9223372036854775808");
-// Friendli's renderer canonicalizes schema numbers through Python-style JSON,
-// while replayed arguments retain signed/unsigned 64-bit integers before
-// falling back to float notation. These are separate byte-level contracts.
+// Friendli's renderer canonicalizes schema numbers through Python-style JSON;
+// replayed arguments retain 64-bit integers before falling back to float notation.
 const PYTHON_SCIENTIFIC_NOTATION_THRESHOLD = 1e16;
 const SCHEMA_LARGE_DECIMAL_THRESHOLD = 1e15;
 const SIGNED_64_BIT_LOWER_BOUND = -(2 ** 63);
 const UNSIGNED_64_BIT_LIMIT = 2 ** 64;
 
-type Mapping = Record<string, unknown>;
-type NativeJsonContext = "history" | "schema";
+type JsonContext = "history" | "schema";
+type KExaone2Value = JSONValue | KExaone2HistoryNumber;
 type SerializationTask =
   | {
       readonly kind: "value";
-      readonly value: unknown;
+      readonly value: KExaone2Value | undefined;
       readonly depth: number;
     }
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "leave"; readonly container: object };
 
-function isMapping(value: unknown): value is Mapping {
+function isMapping(value: KExaone2Value | undefined): value is JSONObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -60,10 +60,7 @@ function stringifyPythonExponent(value: number): string {
     );
 }
 
-function stringifyNativeNumber(
-  value: number,
-  context: NativeJsonContext
-): string {
+function stringifyNativeNumber(value: number, context: JsonContext): string {
   if (value !== 0 && Math.abs(value) < 0.0001 && Number.isFinite(value)) {
     return stringifyPythonExponent(value);
   }
@@ -120,22 +117,22 @@ function stringifyLosslessHistoryNumber(value: KExaone2HistoryNumber): string {
 }
 
 interface ContainerTaskOptions {
-  readonly context: NativeJsonContext;
+  readonly context: JsonContext;
   readonly depth: number;
   readonly remainingValues: number;
   readonly tasks: SerializationTask[];
-  readonly value: Mapping | unknown[];
+  readonly value: JSONObject | JSONValue[];
 }
 
 function pushArrayTasks(
-  options: ContainerTaskOptions & { readonly value: unknown[] }
+  options: ContainerTaskOptions & { readonly value: JSONValue[] }
 ): number {
   const { tasks, value, depth, remainingValues } = options;
   const { length } = value;
   if (length > remainingValues) {
     throw new KExaone2SerializationError("size");
   }
-  const values: unknown[] = [];
+  const values: JSONValue[] = [];
   for (let index = 0; index < length; index += 1) {
     values.push(value[index]);
   }
@@ -151,14 +148,14 @@ function pushArrayTasks(
 }
 
 function pushObjectTasks(
-  options: ContainerTaskOptions & { readonly value: Mapping }
+  options: ContainerTaskOptions & { readonly value: JSONObject }
 ): number {
   const { tasks, value, depth, context, remainingValues } = options;
   const objectKeys = Object.keys(value);
   if (objectKeys.length > remainingValues) {
     throw new KExaone2SerializationError("size");
   }
-  const entries: Array<readonly [string, unknown]> = [];
+  const entries: Array<readonly [string, JSONValue]> = [];
   for (const key of objectKeys) {
     const property = value[key];
     if (
@@ -200,18 +197,15 @@ function pushContainerTasks(options: ContainerTaskOptions): number {
     : pushObjectTasks({ ...options, value });
 }
 
-function stringifyPrimitive(
-  value: unknown,
-  context: NativeJsonContext
-): string {
+function stringifyValue(value: KExaone2Value | undefined, mode: JsonContext) {
   return typeof value === "number"
-    ? stringifyNativeNumber(value, context)
+    ? stringifyNativeNumber(value, mode)
     : (JSON.stringify(value) ?? "null");
 }
 
 function stringifyWithContext(
-  value: unknown,
-  context: NativeJsonContext
+  value: KExaone2Value,
+  context: JsonContext
 ): string {
   const activeContainers = new WeakSet<object>();
   const chunks: string[] = [];
@@ -258,23 +252,23 @@ function stringifyWithContext(
       continue;
     }
 
-    chunks.push(stringifyPrimitive(currentValue, context));
+    chunks.push(stringifyValue(currentValue, context));
   }
 
   return chunks.join("");
 }
 
-export function stringifyKExaone2NativeJson(value: unknown): string {
+export function stringifyKExaone2NativeJson(value: KExaone2Value): string {
   return stringifyWithContext(value, "history");
 }
 
-export function stringifyKExaone2CompactJson(value: unknown): string {
+export function stringifyKExaone2CompactJson(value: KExaone2Value): string {
   return stringifyKExaone2NativeJson(value).replace(
     /("(?:[^"\\]|\\.)*"|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)|\s+/g,
     "$1"
   );
 }
 
-export function stringifyKExaone2NativeSchemaJson(value: unknown): string {
+export function stringifyKExaone2NativeSchemaJson(value: JSONValue): string {
   return stringifyWithContext(value, "schema");
 }

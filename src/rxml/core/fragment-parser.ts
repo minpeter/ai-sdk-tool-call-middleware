@@ -51,22 +51,26 @@ export function parseWithoutSchema(
     const tokenizer = new XMLTokenizer(xmlString, options);
     return tokenizer.parseChildren();
   } catch (error) {
+    const normalizedError =
+      error instanceof Error
+        ? error
+        : new Error(String(error), { cause: error });
     // Check if this is a specific type of error that should be re-thrown
-    if (shouldRethrowParseError(error, xmlString)) {
+    if (shouldRethrowParseError(normalizedError, xmlString)) {
       // Preserve the original error message and line/column information
       // biome-ignore lint/style/useErrorCause: RXML errors carry the original error via their positional cause parameter.
       throw new RXMLParseError(
-        error.message,
-        error.cause,
-        error.line,
-        error.column
+        normalizedError.message,
+        normalizedError,
+        normalizedError.line,
+        normalizedError.column
       );
     }
 
     // For other types of malformed XML, try to be more tolerant and return partial results
-    if (options.onError) {
-      options.onError("Failed to parse XML without schema", { error });
-    }
+    options.onError?.("Failed to parse XML without schema", {
+      error: normalizedError,
+    });
 
     // Try to extract any valid XML elements that we can parse
     try {
@@ -94,8 +98,12 @@ export function parseNode(
     const tokenizer = new XMLTokenizer(xmlString, options);
     return tokenizer.parseNode();
   } catch (error) {
+    const normalizedError =
+      error instanceof Error
+        ? error
+        : new Error(String(error), { cause: error });
     // biome-ignore lint/style/useErrorCause: RXML errors carry the original error via their positional cause parameter.
-    throw new RXMLParseError("Failed to parse XML node", error);
+    throw new RXMLParseError("Failed to parse XML node", normalizedError);
   }
 }
 

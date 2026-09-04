@@ -8,6 +8,19 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
+const model = {
+  specificationVersion: "v4",
+  provider: "test",
+  modelId: "test",
+  supportedUrls: {},
+  doGenerate: () => {
+    throw new Error("unused");
+  },
+  doStream: () => {
+    throw new Error("unused");
+  },
+} satisfies import("@ai-sdk/provider").LanguageModelV4;
+
 // Regex constants for performance
 const _REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
 const _REGEX_TOOL_CALL_FENCE = /```tool_call/;
@@ -37,11 +50,13 @@ describe("placement last behaviour (default)", () => {
     const transformParams = requireTransformParams(mw.transformParams);
 
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [{ role: "user", content: [{ type: "text", text: "A" }] }],
         tools: [],
       },
-    } as any);
+    });
 
     expect(out.prompt).toEqual([
       { role: "user", content: [{ type: "text", text: "A" }] },
@@ -57,6 +72,8 @@ describe("placement last behaviour (default)", () => {
     const tools = createOperationTools();
     const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           { role: "user", content: [{ type: "text", text: "A" }] },
@@ -64,16 +81,16 @@ describe("placement last behaviour (default)", () => {
         ],
         tools,
       },
-    } as any);
+    });
     const last = out.prompt.at(-1);
     expect(last?.role).toBe("system");
     expect(String(last?.content)).toContain("SYS:");
     // users merged regardless of placement
-    const userMsgs = out.prompt.filter((m: any) => m.role === "user");
+    const userMsgs = out.prompt.filter((m) => m.role === "user");
     expect(userMsgs).toHaveLength(1);
-    const mergedText = (userMsgs[0].content as any[])
-      .filter((c: any) => c.type === "text")
-      .map((c: any) => c.text)
+    const mergedText = userMsgs[0].content
+      .filter((c) => c.type === "text")
+      .map((c) => c.text)
       .join("");
     expect(mergedText).toContain("A");
     expect(mergedText).toContain("B");
@@ -89,6 +106,8 @@ describe("placement last behaviour (default)", () => {
     const transformParams = requireTransformParams(mw.transformParams);
 
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           { role: "user", content: [{ type: "text", text: "hello" }] },
@@ -97,8 +116,8 @@ describe("placement last behaviour (default)", () => {
         ],
         tools,
       },
-    } as any);
-    const systems = out.prompt.filter((m: any) => m.role === "system");
+    });
+    const systems = out.prompt.filter((m) => m.role === "system");
     expect(systems).toHaveLength(1);
     const [system] = systems;
     const text = String(system.content);

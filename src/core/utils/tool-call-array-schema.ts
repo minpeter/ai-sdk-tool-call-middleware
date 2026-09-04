@@ -1,18 +1,22 @@
+import {
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { unwrapJsonSchema } from "../../schema-coerce";
-import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 
-type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
-
-function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isToolInputSchema(
+  schema: ToolInputSchemaDefinition | undefined
+): schema is ToolInputSchema {
+  return typeof schema === "object" && isSchemaRecord(schema);
 }
 
 function collectArrayItemSchemasForVariants(
-  variants: SchemaBoundaryValue,
+  variants: readonly ToolInputSchemaDefinition[] | undefined,
   index: number,
   seen: Set<object>
-): SchemaBoundaryValue[] {
-  const itemSchemas: SchemaBoundaryValue[] = [];
+): ToolInputSchemaDefinition[] {
+  const itemSchemas: ToolInputSchemaDefinition[] = [];
   if (!Array.isArray(variants)) {
     return itemSchemas;
   }
@@ -26,11 +30,11 @@ function collectArrayItemSchemasForVariants(
 }
 
 function collectArrayItemSchemasFromCombinators(
-  schema: SchemaBoundaryRecord,
+  schema: ToolInputSchema,
   index: number,
   seen: Set<object>
-): SchemaBoundaryValue[] {
-  const itemSchemas: SchemaBoundaryValue[] = [];
+): ToolInputSchemaDefinition[] {
+  const itemSchemas: ToolInputSchemaDefinition[] = [];
   itemSchemas.push(
     ...collectArrayItemSchemasForVariants(schema.allOf, index, seen)
   );
@@ -56,10 +60,10 @@ function collectArrayItemSchemasFromCombinators(
 }
 
 function collectDirectArrayItemSchemas(
-  schema: SchemaBoundaryRecord,
+  schema: ToolInputSchema,
   index: number
-): SchemaBoundaryValue[] {
-  const schemas: SchemaBoundaryValue[] = [];
+): ToolInputSchemaDefinition[] {
+  const schemas: ToolInputSchemaDefinition[] = [];
   const prefixItems = Array.isArray(schema.prefixItems)
     ? schema.prefixItems
     : null;
@@ -84,13 +88,13 @@ function collectDirectArrayItemSchemas(
   return schemas;
 }
 
-export function getArrayItemSchema<Schema>(
-  schema: Schema,
+export function getArrayItemSchema(
+  schema: ToolInputSchemaDefinition,
   index: number,
   seen = new Set<object>()
-): SchemaBoundaryValue {
+): ToolInputSchemaDefinition | undefined {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+  if (!isToolInputSchema(unwrapped) || seen.has(unwrapped)) {
     return;
   }
   seen.add(unwrapped);

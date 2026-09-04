@@ -1,4 +1,8 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamPart,
+} from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test } from "vitest";
 import { createToolMiddleware } from "../../tool-call-middleware";
@@ -10,6 +14,20 @@ describe("createToolMiddleware wrapStream protocol compliance integration", () =
     protocol: dummyProtocol,
     toolSystemPromptTemplate: () => "",
   });
+  const generateResult = {
+    content: [],
+    finishReason: stopFinishReason,
+    usage: zeroUsage,
+    warnings: [],
+  } satisfies LanguageModelV4GenerateResult;
+  const model: LanguageModelV4 = {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "test",
+    supportedUrls: {},
+    doGenerate: async () => generateResult,
+    doStream: async () => ({ stream: new ReadableStream() }),
+  };
 
   const runMiddleware = (stream: ReadableStream<LanguageModelV4StreamPart>) => {
     const mockDoStream = () => Promise.resolve({ stream });
@@ -17,20 +35,26 @@ describe("createToolMiddleware wrapStream protocol compliance integration", () =
       throw new Error("wrapStream is not defined");
     }
     return middleware.wrapStream({
+      doGenerate: async () => generateResult,
       doStream: mockDoStream,
-      params: {},
-    } as any);
+      params: { prompt: [] },
+      model,
+    });
   };
 
   test("should produce compliant start/delta/end pattern for text", async () => {
     const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
-        controller.enqueue({ type: "text-delta", delta: "Hello world" } as any);
+        controller.enqueue({
+          type: "text-delta",
+          id: "text-1",
+          delta: "Hello world",
+        });
         controller.enqueue({
           type: "finish",
           finishReason: stopFinishReason,
           usage: mockUsage(1, 1),
-        } as any);
+        });
         controller.close();
       },
     });
@@ -40,21 +64,28 @@ describe("createToolMiddleware wrapStream protocol compliance integration", () =
 
     const MINIMUM_EXPECTED_CHUNKS = 3;
     expect(chunks.length).toBeGreaterThanOrEqual(MINIMUM_EXPECTED_CHUNKS);
-    expect(chunks[0].type).toBe("text-start");
-    const { id } = chunks[0] as any;
-    expect(chunks[1]).toEqual({ type: "text-delta", id, delta: "Hello world" });
-    expect(chunks[2]).toEqual({ type: "text-end", id });
+    const [firstChunk] = chunks;
+    expect(firstChunk?.type).toBe("text-start");
+    if (firstChunk?.type !== "text-start") {
+      throw new Error("expected a text-start chunk");
+    }
+    expect(chunks[1]).toEqual({
+      type: "text-delta",
+      id: firstChunk.id,
+      delta: "Hello world",
+    });
+    expect(chunks[2]).toEqual({ type: "text-end", id: firstChunk.id });
   });
 
   test("handles empty text chunks correctly", async () => {
     const mockStream = new ReadableStream<LanguageModelV4StreamPart>({
       start(controller) {
-        controller.enqueue({ type: "text-delta", delta: "" } as any);
+        controller.enqueue({ type: "text-delta", id: "text-1", delta: "" });
         controller.enqueue({
           type: "finish",
           finishReason: stopFinishReason,
           usage: zeroUsage,
-        } as any);
+        });
         controller.close();
       },
     });

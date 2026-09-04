@@ -1,16 +1,18 @@
 import type {
-  JSONSchema7,
-  JSONSchema7Definition,
-  JSONValue,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import type {
+  ToolInputSchema,
+  ToolInputSchemaCandidate,
+  ToolInputSchemaDefinition,
+} from "../../../../schema/tool-input-schema";
 
 function makeTool(
   name: string,
-  properties: Record<string, JSONSchema7Definition>,
+  properties: Record<string, ToolInputSchemaDefinition>,
   additionalProperties?: boolean
 ): LanguageModelV4FunctionTool {
   return {
@@ -20,20 +22,26 @@ function makeTool(
       type: "object",
       properties,
       ...(additionalProperties === undefined ? {} : { additionalProperties }),
-    },
+    } satisfies ToolInputSchema,
   };
 }
 
-// Intentionally accepts malformed schemas so tests can exercise runtime rejection.
+// Intentionally crosses the public tool boundary with malformed schemas.
 function makeSchemaTool(
   name: string,
-  inputSchema: JSONValue
+  inputSchema: ToolInputSchemaCandidate
 ): LanguageModelV4FunctionTool {
-  return {
+  const tool: LanguageModelV4FunctionTool = {
     type: "function",
     name,
-    inputSchema: inputSchema as LanguageModelV4FunctionTool["inputSchema"],
+    inputSchema: {} satisfies ToolInputSchema,
   };
+  Object.defineProperty(tool, "inputSchema", {
+    configurable: true,
+    enumerable: true,
+    value: inputSchema,
+  });
+  return tool;
 }
 
 type ToolCallContent = Extract<LanguageModelV4Content, { type: "tool-call" }>;
@@ -224,7 +232,7 @@ describe("json-repair.test split 4", () => {
     // Live-cyclic tool schema: additionalProperties references the schema
     // object itself. Combined with a deeply nested value this would overflow
     // the schema-shape validator (uncaught RangeError) without the depth guard.
-    const recursiveSchema: JSONSchema7 = { type: "object" };
+    const recursiveSchema: ToolInputSchema = { type: "object" };
     recursiveSchema.additionalProperties = recursiveSchema;
     const tool = makeSchemaTool("deep", recursiveSchema);
     let deepArgs = "{}";

@@ -1,4 +1,5 @@
 import type {
+  JSONObject,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
@@ -286,7 +287,7 @@ describe("cross-protocol tool arg sanitization", () => {
       });
 
       const toolCall = extractSingleToolCall(parts);
-      const input: unknown = JSON.parse(toolCall.input);
+      const input = JSON.parse(toolCall.input) as JSONObject;
 
       expect(toolCall.toolName).toBe("get_weather");
       expect(input).toEqual({ city: "Seoul", unit: "celsius" });
@@ -303,7 +304,7 @@ describe("cross-protocol tool arg sanitization", () => {
       });
 
       const toolCall = extractSingleToolCall(parts);
-      const input: unknown = JSON.parse(toolCall.input);
+      const input = JSON.parse(toolCall.input) as JSONObject;
 
       expect(toolCall.toolName).toBe("get_weather");
       expect(input).toEqual({ city: "Seoul", unit: "celsius" });
@@ -320,7 +321,7 @@ describe("cross-protocol tool arg sanitization", () => {
       });
 
       const toolCall = extractSingleToolCall(parts);
-      const input: unknown = JSON.parse(toolCall.input);
+      const input = JSON.parse(toolCall.input) as JSONObject;
 
       expect(toolCall.toolName).toBe("ping");
       expect(input).toEqual({});
@@ -337,7 +338,7 @@ describe("cross-protocol tool arg sanitization", () => {
       });
 
       const toolCall = extractSingleToolCall(parts);
-      const input: unknown = JSON.parse(toolCall.input);
+      const input = JSON.parse(toolCall.input) as JSONObject;
 
       expect(toolCall.toolName).toBe("metadata");
       expect(input).toEqual({ "x-count": 3 });
@@ -354,7 +355,7 @@ describe("cross-protocol tool arg sanitization", () => {
       });
 
       const toolCall = extractSingleToolCall(parts);
-      const input: unknown = JSON.parse(toolCall.input);
+      const input = JSON.parse(toolCall.input) as JSONObject;
 
       expect(toolCall.toolName).toBe("metadata_extra");
       expect(input).toEqual({ safe: "ok" });

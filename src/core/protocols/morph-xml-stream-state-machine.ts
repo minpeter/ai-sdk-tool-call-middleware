@@ -1,9 +1,11 @@
 import type {
+  JSONObject,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { escapeRegExp } from "../utils/regex";
 import { findEarliestToolTag } from "../utils/xml-tool-tag-scanner";
+import type { MorphXmlProtocolOptions } from "./morph-xml-protocol";
 import type { ParserOptions } from "./protocol-interface";
 
 export interface StreamingToolCallState {
@@ -55,7 +57,7 @@ export interface StreamingToolCallState {
    * is built (capped bursts keep total stringify work bounded).
    */
   streamingValue: string;
-  streamingValueArgsBase: Record<string, unknown> | null;
+  streamingValueArgsBase: JSONObject | null;
   streamingValueBodyStart: number | null;
   streamingValueNextEmitLength: number;
   toolCallId: string;
@@ -102,6 +104,9 @@ export interface LinePrefixedToolCall {
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
+type MorphXmlParseOptions = NonNullable<
+  MorphXmlProtocolOptions["parseOptions"]
+>;
 
 // Module-level cache keyed by tool name, mirroring selfClosingTagCache in
 // xml-tool-tag-scanner.ts. The keyspace is bounded by the set of tool names
@@ -188,7 +193,7 @@ type HandleStreamingToolCallEnd = (params: {
   currentToolCall: StreamingToolCallState;
   flushText: FlushTextFn;
   options?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
+  parseOptions?: MorphXmlParseOptions;
   toolContent: string;
   tools: LanguageModelV4FunctionTool[];
 }) => void;
@@ -205,7 +210,7 @@ interface ProcessToolCallInBufferParams {
   flushText: FlushTextFn;
   handleStreamingToolCallEnd: HandleStreamingToolCallEnd;
   options?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
+  parseOptions?: MorphXmlParseOptions;
   setBuffer: (buffer: string) => void;
   tools: LanguageModelV4FunctionTool[];
 }
@@ -300,7 +305,7 @@ interface ProcessNoToolCallInBufferParams {
   flushText: FlushTextFn;
   handleStreamingToolCallEnd: HandleStreamingToolCallEnd;
   options?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
+  parseOptions?: MorphXmlParseOptions;
   setBuffer: (buffer: string) => void;
   toolNames: string[];
   tools: LanguageModelV4FunctionTool[];
@@ -317,7 +322,7 @@ function processLinePrefixedToolCall(options: {
   handleStreamingToolCallEnd: HandleStreamingToolCallEnd;
   linePrefixedCall: LinePrefixedToolCall;
   parserOptions?: ParserOptions;
-  parseOptions?: Record<string, unknown>;
+  parseOptions?: MorphXmlParseOptions;
   setBuffer: (buffer: string) => void;
   tools: LanguageModelV4FunctionTool[];
 }): {
@@ -499,7 +504,7 @@ export function createProcessBufferHandler(options: {
   parserOptions: ParserOptions | undefined;
   toolNames: string[];
   flushText: FlushTextFn;
-  parseOptions: Record<string, unknown> | undefined;
+  parseOptions: MorphXmlParseOptions | undefined;
   emitToolInputProgress: (
     controller: StreamController,
     currentToolCall: StreamingToolCallState,

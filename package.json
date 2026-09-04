@@ -93,6 +93,7 @@
     "@changesets/cli": "3.0.1",
     "@stryker-mutator/core": "10.0.0",
     "@stryker-mutator/vitest-runner": "10.0.0",
+    "@types/json-schema": "^7.0.15",
     "@types/node": "^26.4.0",
     "@vitest/coverage-v8": "^4.1.11",
     "ai": "7.0.83",

@@ -1,10 +1,33 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4ToolCall,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import {
   recoverToolCallFromJsonCandidates,
   recoverToolCallFromJsonCandidatesWithStatus,
 } from "../../../core/utils/generated-text-json-recovery";
+
+function findToolCall(
+  content: LanguageModelV4Content[] | null | undefined
+): LanguageModelV4ToolCall {
+  const call = content?.find((part) => part.type === "tool-call");
+  if (call?.type !== "tool-call") {
+    throw new Error("Expected a recovered tool call");
+  }
+  return call;
+}
+
+function findToolCalls(
+  content: LanguageModelV4Content[] | null | undefined
+): LanguageModelV4ToolCall[] {
+  if (!content) {
+    throw new Error("Expected recovered content");
+  }
+  return content.filter((part) => part.type === "tool-call");
+}
 
 const tools: LanguageModelV4FunctionTool[] = [
   {
@@ -54,9 +77,7 @@ describe("recoverToolCallFromJsonCandidates", () => {
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
     expect(recovered).not.toBeNull();
-    const calls = recovered?.filter(
-      (part) => part.type === "tool-call"
-    ) as any[];
+    const calls = findToolCalls(recovered);
 
     expect(calls).toHaveLength(2);
     expect(calls[0].toolName).toBe("calc");
@@ -83,9 +104,7 @@ describe("recoverToolCallFromJsonCandidates", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const calls = recovered?.filter(
-      (part) => part.type === "tool-call"
-    ) as any[];
+    const calls = findToolCalls(recovered);
     expect(calls).toHaveLength(3);
     expect(calls.map((c) => JSON.parse(c.input).city)).toEqual([
       "Seoul",
@@ -101,9 +120,7 @@ describe("recoverToolCallFromJsonCandidates", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const calls = recovered?.filter(
-      (part) => part.type === "tool-call"
-    ) as any[];
+    const calls = findToolCalls(recovered);
     expect(calls).toHaveLength(2);
     expect(recovered?.some((part) => part.type === "text")).toBe(false);
   });
@@ -123,7 +140,7 @@ describe("recoverToolCallFromJsonCandidates", () => {
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
     expect(recovered).not.toBeNull();
-    const tool = recovered?.find((part) => part.type === "tool-call") as any;
+    const tool = findToolCall(recovered);
 
     expect(tool.toolName).toBe("calc");
     expect(JSON.parse(tool.input)).toEqual({ a: 3 });
@@ -142,7 +159,7 @@ describe("recoverToolCallFromJsonCandidates", () => {
     const recovered = recoverToolCallFromJsonCandidates(text, [tools[1]]);
 
     expect(recovered).not.toBeNull();
-    const tool = recovered?.find((part) => part.type === "tool-call") as any;
+    const tool = findToolCall(recovered);
     expect(tool.toolName).toBe("get_weather");
     expect(JSON.parse(tool.input)).toEqual({ city: "Seoul" });
   });
@@ -164,7 +181,7 @@ describe("recoverToolCallFromJsonCandidates", () => {
     ]);
 
     expect(recovered).not.toBeNull();
-    const tool = recovered?.find((part) => part.type === "tool-call") as any;
+    const tool = findToolCall(recovered);
     expect(tool.toolName).toBe("get_weather");
     expect(JSON.parse(tool.input)).toEqual({ city: "Seoul" });
   });
@@ -186,7 +203,7 @@ describe("recoverToolCallFromJsonCandidates orphan markup trim", () => {
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
     expect(recovered).not.toBeNull();
-    const tool = recovered?.find((part) => part.type === "tool-call") as any;
+    const tool = findToolCall(recovered);
     expect(tool.toolName).toBe("get_weather");
 
     const textOut = recovered
@@ -380,7 +397,7 @@ describe("recoverToolCallFromJsonCandidates envelope variants", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    const call = findToolCall(recovered);
     expect(call).toBeDefined();
     expect(call.toolName).toBe("get_weather");
     expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
@@ -392,7 +409,7 @@ describe("recoverToolCallFromJsonCandidates envelope variants", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    const call = findToolCall(recovered);
     expect(call).toBeDefined();
     expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
   });
@@ -403,9 +420,7 @@ describe("recoverToolCallFromJsonCandidates envelope variants", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const calls = recovered?.filter(
-      (part) => part.type === "tool-call"
-    ) as any[];
+    const calls = findToolCalls(recovered);
     expect(calls).toHaveLength(2);
     expect(recovered?.some((part) => part.type === "text")).toBe(false);
   });
@@ -425,7 +440,7 @@ describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    const call = findToolCall(recovered);
     expect(call).toBeDefined();
     expect(call.toolName).toBe("get_weather");
     expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
@@ -437,7 +452,7 @@ describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    const call = findToolCall(recovered);
     expect(call).toBeDefined();
     expect(call.toolName).toBe("get_weather");
     expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
@@ -449,7 +464,7 @@ describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    const call = findToolCall(recovered);
     expect(call).toBeDefined();
     expect(call.toolName).toBe("get_weather");
     expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
@@ -550,7 +565,7 @@ describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    const call = findToolCall(recovered);
     expect(call).toBeDefined();
     expect(call.toolName).toBe("get_weather");
     expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
@@ -562,9 +577,7 @@ describe("recoverToolCallFromJsonCandidates cross-format blocks", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const calls = recovered?.filter(
-      (part) => part.type === "tool-call"
-    ) as any[];
+    const calls = findToolCalls(recovered);
     expect(calls).toHaveLength(2);
     expect(calls.map((c) => JSON.parse(c.input).city)).toEqual([
       "Seoul",
@@ -586,7 +599,7 @@ describe("recoverToolCallFromJsonCandidates namespaced close tags", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    const call = findToolCall(recovered);
     expect(call).toBeDefined();
     expect(call.toolName).toBe("get_weather");
     expect(JSON.parse(call.input)).toEqual({ city: "Seoul" });
@@ -597,7 +610,7 @@ describe("recoverToolCallFromJsonCandidates namespaced close tags", () => {
 
     const recovered = recoverToolCallFromJsonCandidates(text, tools);
 
-    const call = recovered?.find((part) => part.type === "tool-call") as any;
+    const call = findToolCall(recovered);
     expect(call).toBeDefined();
     expect(call.toolName).toBe("get_weather");
   });

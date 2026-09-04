@@ -1,10 +1,12 @@
 import {
+  isJSONObject,
   isJSONValue,
   type JSONValue,
   type LanguageModelV4FunctionTool,
   type LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
+import type { RxmlValue } from "../../rxml/builders/stringify";
 import { logParseFailure } from "../utils/debug";
 import { generateId, generateToolCallId } from "../utils/id";
 import { safeToolCallMetadataText } from "../utils/protocol-utils";
@@ -40,7 +42,7 @@ import type {
   ProtocolToolCallResolver,
 } from "./protocol-interface";
 
-function canonicalizeToolInputFallback<T>(args: T): string {
+function canonicalizeToolInputFallback(args: RxmlValue): string {
   return JSON.stringify(args ?? {});
 }
 
@@ -231,27 +233,20 @@ export function closeTextBlock(
   }
 }
 
-function isStrictToolCallArray(value: unknown): boolean {
+function isStrictToolCallArray(value: JSONValue): boolean {
   return (
     Array.isArray(value) &&
     value.length >= 2 &&
     !toolCallInputHasPrototypeSensitiveKey(value) &&
-    value.every((item) => {
-      if (typeof item !== "object" || item === null || Array.isArray(item)) {
-        return false;
-      }
-      const record = item as Record<string, unknown>;
-      const args = record.arguments;
-      return (
-        Object.hasOwn(record, "name") &&
-        typeof record.name === "string" &&
-        record.name.trim().length > 0 &&
-        Object.hasOwn(record, "arguments") &&
-        typeof args === "object" &&
-        args !== null &&
-        !Array.isArray(args)
-      );
-    })
+    value.every(
+      (item) =>
+        isJSONObject(item) &&
+        Object.hasOwn(item, "name") &&
+        typeof item.name === "string" &&
+        item.name.trim().length > 0 &&
+        Object.hasOwn(item, "arguments") &&
+        isJSONObject(item.arguments)
+    )
   );
 }
 
@@ -268,28 +263,22 @@ export function recoverCompleteKnownCallBeforeNestedStart(
   resolver: ProtocolToolCallResolver = resolveToolCall
 ): { input: string; toolName: string } | null {
   const candidate = text.trim();
-  let parsed: unknown;
+  let parsed: JSONValue;
   try {
-    parsed = JSON.parse(candidate);
+    const candidateValue = JSON.parse(candidate);
+    if (!isJSONValue(candidateValue)) {
+      return null;
+    }
+    parsed = candidateValue;
   } catch {
     return null;
   }
   if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    Array.isArray(parsed) ||
-    !Object.hasOwn(parsed, "name") ||
-    typeof (parsed as Record<string, unknown>).name !== "string" ||
-    !Object.hasOwn(parsed, "arguments")
-  ) {
-    return null;
-  }
-  const record = parsed as Record<string, unknown>;
-  if (
-    typeof record.arguments !== "object" ||
-    record.arguments === null ||
-    Array.isArray(record.arguments) ||
-    !tools.some((tool) => tool.name === record.name)
+    !(isJSONObject(parsed) && Object.hasOwn(parsed, "name")) ||
+    typeof parsed.name !== "string" ||
+    !Object.hasOwn(parsed, "arguments") ||
+    !isJSONObject(parsed.arguments) ||
+    !tools.some((tool) => tool.name === parsed.name)
   ) {
     return null;
   }
@@ -338,7 +327,8 @@ export function recoverCompleteCallArrayBeforePartialEnd(
     return { matchedArrayShape: false, recoveredCalls: null };
   }
   try {
-    if (!isStrictToolCallArray(JSON.parse(candidate))) {
+    const parsed = JSON.parse(candidate);
+    if (!(isJSONValue(parsed) && isStrictToolCallArray(parsed))) {
       return { matchedArrayShape: true, recoveredCalls: null };
     }
   } catch {

@@ -4,6 +4,7 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4GenerateResult,
   LanguageModelV4StreamResult,
+  LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
@@ -43,6 +44,24 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
       },
     },
   ];
+  const fallbackGenerated = {
+    content: [],
+    finishReason: stopFinishReason,
+    usage: zeroUsage,
+    warnings: [],
+  } satisfies LanguageModelV4GenerateResult;
+  const fallbackStream = {
+    stream: new ReadableStream(),
+  } satisfies LanguageModelV4StreamResult;
+  const doStream = vi.fn(async () => fallbackStream);
+  const model: LanguageModelV4 = {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "test",
+    supportedUrls: {},
+    doGenerate: async () => fallbackGenerated,
+    doStream: async () => fallbackStream,
+  };
 
   function generateWithProtocol(
     protocol: TCMCoreProtocol,
@@ -51,8 +70,9 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   ) {
     const middleware = createToolMiddleware({
       protocol,
-      toolSystemPromptTemplate: (promptToolDefs: unknown[]) =>
-        `You have tools: ${JSON.stringify(promptToolDefs)}`,
+      toolSystemPromptTemplate: (
+        promptToolDefs: LanguageModelV4FunctionTool[]
+      ) => `You have tools: ${JSON.stringify(promptToolDefs)}`,
     });
     const generated = {
       content: [{ type: "text", text }],
@@ -60,11 +80,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
       usage: zeroUsage,
       warnings: [],
     } satisfies LanguageModelV4GenerateResult;
-    const streamResult = {
-      stream: new ReadableStream(),
-    } satisfies LanguageModelV4StreamResult;
     const doGenerate = vi.fn(async () => generated);
-    const doStream = vi.fn(async () => streamResult);
     const params = {
       prompt: [],
       tools: toolDefs,
@@ -74,15 +90,6 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
         },
       },
     } satisfies LanguageModelV4CallOptions;
-    const model: LanguageModelV4 = {
-      specificationVersion: "v4",
-      provider: "test",
-      modelId: "test",
-      supportedUrls: {},
-      doGenerate,
-      doStream,
-    };
-
     const { wrapGenerate } = middleware;
     if (!wrapGenerate) {
       return;
@@ -93,7 +100,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   it("does not leak prototype-sensitive Hermes tool-call text on generated-text fallback", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
+      toolSystemPromptTemplate: (toolDefs: LanguageModelV4FunctionTool[]) =>
         `You have tools: ${JSON.stringify(toolDefs)}`,
     });
     const doGenerate = vi.fn().mockResolvedValue({
@@ -103,10 +110,14 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
           text: '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}}}</tool_call>',
         },
       ],
-    });
+      finishReason: stopFinishReason,
+      usage: zeroUsage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
     const result = await middleware.wrapGenerate?.({
       doGenerate,
+      doStream,
       params: {
         prompt: [],
         tools,
@@ -116,7 +127,8 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
           },
         },
       },
-    } as any);
+      model,
+    });
 
     expect(result?.content).toEqual([]);
   });
@@ -171,7 +183,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   it("redacts debugSummary originalText for prototype-sensitive generated tool-call text", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
+      toolSystemPromptTemplate: (toolDefs: LanguageModelV4FunctionTool[]) =>
         `You have tools: ${JSON.stringify(toolDefs)}`,
     });
     const debugSummary: { originalText?: string; toolCalls?: string } = {};
@@ -182,10 +194,14 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
           text: '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}}}</tool_call>',
         },
       ],
-    });
+      finishReason: stopFinishReason,
+      usage: zeroUsage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
     await middleware.wrapGenerate?.({
       doGenerate,
+      doStream,
       params: {
         prompt: [],
         tools,
@@ -196,7 +212,8 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
           },
         },
       },
-    } as any);
+      model,
+    });
 
     expect(debugSummary.originalText).toBe("[redacted sensitive tool call]");
     expect(JSON.stringify(debugSummary)).not.toContain("constructor");
@@ -206,7 +223,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   it("redacts debugSummary provider-executed tool inputs while preserving pass-through content", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
+      toolSystemPromptTemplate: (toolDefs: LanguageModelV4FunctionTool[]) =>
         `You have tools: ${JSON.stringify(toolDefs)}`,
     });
     const debugSummary: { originalText?: string; toolCalls?: string } = {};
@@ -216,14 +233,17 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
       toolName: "web_search",
       providerExecuted: true,
       input: '{"constructor":{"polluted":true}}',
-    };
+    } satisfies LanguageModelV4ToolCall;
     const doGenerate = vi.fn().mockResolvedValue({
       content: [providerExecutedCall],
-      finishReason: { raw: "stop", unified: "stop" },
-    });
+      finishReason: stopFinishReason,
+      usage: zeroUsage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
     const result = await middleware.wrapGenerate?.({
       doGenerate,
+      doStream,
       params: {
         prompt: [],
         tools,
@@ -234,7 +254,8 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
           },
         },
       },
-    } as any);
+      model,
+    });
 
     expect(result?.content).toEqual([providerExecutedCall]);
     expect(debugSummary.toolCalls).toContain("[redacted sensitive tool call]");
@@ -245,7 +266,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   it("does not leak prototype-sensitive bare JSON recovery candidates", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
+      toolSystemPromptTemplate: (toolDefs: LanguageModelV4FunctionTool[]) =>
         `You have tools: ${JSON.stringify(toolDefs)}`,
     });
     const doGenerate = vi.fn().mockResolvedValue({
@@ -255,10 +276,14 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
           text: '{"name":"get_weather","arguments":{"city":"Seoul","\\u0063onstructor":{"polluted":true}}}',
         },
       ],
-    });
+      finishReason: stopFinishReason,
+      usage: zeroUsage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
     const result = await middleware.wrapGenerate?.({
       doGenerate,
+      doStream,
       params: {
         prompt: [],
         tools,
@@ -268,7 +293,8 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
           },
         },
       },
-    } as any);
+      model,
+    });
 
     expect(result?.content).toEqual([]);
   });
@@ -276,7 +302,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   it("preserves surrounding generated text around dropped sensitive JSON candidates", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
+      toolSystemPromptTemplate: (toolDefs: LanguageModelV4FunctionTool[]) =>
         `You have tools: ${JSON.stringify(toolDefs)}`,
     });
     const doGenerate = vi.fn().mockResolvedValue({
@@ -286,10 +312,14 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
           text: 'Before {"name":"get_weather","arguments":{"city":"Seoul","constructor":{"polluted":true}}} after',
         },
       ],
-    });
+      finishReason: stopFinishReason,
+      usage: zeroUsage,
+      warnings: [],
+    } satisfies LanguageModelV4GenerateResult);
 
     const result = await middleware.wrapGenerate?.({
       doGenerate,
+      doStream,
       params: {
         prompt: [],
         tools,
@@ -299,7 +329,8 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
           },
         },
       },
-    } as any);
+      model,
+    });
 
     expect(result?.content).toEqual([
       { type: "text", text: "Before " },

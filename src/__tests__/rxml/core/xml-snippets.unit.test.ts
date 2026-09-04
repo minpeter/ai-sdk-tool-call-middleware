@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { XMLTokenizer } from "../../../rxml/core/tokenizer";
+import type { RXMLNode } from "../../../rxml/core/types";
 import { parse } from "../../../rxml/parse";
 
 describe("XML snippets coverage", () => {
@@ -29,7 +30,7 @@ describe("XML snippets coverage", () => {
       expect(doctype).toBeTruthy();
       // Ensure catalog element exists
       const catalog = nodes.find(
-        (n) => typeof n === "object" && (n as any).tagName === "catalog"
+        (n) => typeof n === "object" && (n as RXMLNode).tagName === "catalog"
       );
       expect(catalog).toBeTruthy();
     });
@@ -57,7 +58,7 @@ describe("XML snippets coverage", () => {
       );
       expect(doctype).toBeTruthy();
       const catalog = nodes.find(
-        (n) => typeof n === "object" && (n as any).tagName === "catalog"
+        (n) => typeof n === "object" && (n as RXMLNode).tagName === "catalog"
       );
       expect(catalog).toBeTruthy();
     });
@@ -67,7 +68,7 @@ describe("XML snippets coverage", () => {
     it("keeps meta/title/generator and raw entity reference in text", () => {
       const titleNode = new XMLTokenizer(
         "<title>Sample Catalog &company;</title>"
-      ).parseNode() as any;
+      ).parseNode() as RXMLNode;
       expect(titleNode.tagName).toBe("title");
       expect(titleNode.children[0]).toContain("Sample Catalog");
       // Entity is left as raw text in our tokenizer
@@ -75,7 +76,7 @@ describe("XML snippets coverage", () => {
 
       const genNode = new XMLTokenizer(
         "<generator>GPT-5</generator>"
-      ).parseNode() as any;
+      ).parseNode() as RXMLNode;
       expect(genNode.tagName).toBe("generator");
       expect(genNode.children[0]).toBe("GPT-5");
     });
@@ -94,13 +95,13 @@ describe("XML snippets coverage", () => {
 
       const node = new XMLTokenizer(xml)
         .parseChildren()
-        .find((n) => typeof n === "object") as any;
+        .find((n) => typeof n === "object") as RXMLNode;
       expect(node.tagName).toBe("product");
       expect(node.attributes.id).toBe("p1");
       expect(node.attributes.sku).toBe("A-001");
       const name = node.children.find(
-        (c: any) => typeof c === "object" && c.tagName === "name"
-      ) as any;
+        (c) => typeof c === "object" && c.tagName === "name"
+      ) as RXMLNode;
       expect(name.children[0]).toBe("Premium Widget");
     });
   });
@@ -133,7 +134,7 @@ describe("XML snippets coverage", () => {
       ].join("");
       const node = new XMLTokenizer(xml)
         .parseChildren()
-        .find((n) => typeof n === "object") as any;
+        .find((n) => typeof n === "object") as RXMLNode;
       expect(node.tagName).toBe("media");
       expect(node.children).toEqual([]);
       expect(node.attributes.type).toBe("image");
@@ -154,11 +155,11 @@ describe("XML snippets coverage", () => {
       ].join("");
       const node = new XMLTokenizer(xml)
         .parseChildren()
-        .find((n) => typeof n === "object") as any;
+        .find((n) => typeof n === "object") as RXMLNode;
       expect(node.tagName).toBe("related");
       const ref = node.children.find(
-        (c: any) => typeof c === "object" && c.tagName === "ref"
-      ) as any;
+        (c) => typeof c === "object" && c.tagName === "ref"
+      ) as RXMLNode;
       expect(ref).toBeTruthy();
       expect(ref.children).toEqual([]);
       expect(ref.attributes.target).toBe("p2");
@@ -182,7 +183,7 @@ describe("XML snippets coverage", () => {
           catalog: z.string().optional(),
         })
       );
-      const result = parse(xml, schema) as any;
+      const result = parse(xml, schema) as { catalog: string };
       expect(result).toHaveProperty("catalog");
       expect(result.catalog).toBe("");
     });
@@ -195,7 +196,9 @@ describe("XML snippets coverage", () => {
           meta: z.object({ title: z.string(), generator: z.string() }),
         })
       );
-      const result = parse(xml, schema, { noChildNodes: [] }) as any;
+      const result = parse(xml, schema, { noChildNodes: [] }) as {
+        meta: { title: string; generator: string };
+      };
       expect(result.meta.title).toContain("Sample Catalog");
       expect(result.meta.title).toContain("&company;");
       expect(result.meta.generator).toBe("GPT-5");
@@ -215,7 +218,7 @@ describe("XML snippets coverage", () => {
           product: z.object({ name: z.string() }),
         })
       );
-      const result = parse(xml, schema) as any;
+      const result = parse(xml, schema) as { product: { name: string } };
       expect(result.product.name).toBe("Premium Widget");
     });
 
@@ -227,7 +230,10 @@ describe("XML snippets coverage", () => {
       const schema = z.toJSONSchema(
         z.object({ description: z.string(), feature: z.string() })
       );
-      const result = parse(xml, schema) as any;
+      const result = parse(xml, schema) as {
+        description: string;
+        feature: string;
+      };
       expect(result.description).toContain('"version"');
       expect(result.description).toContain("<tags are safe>");
       expect(result.feature).toContain('<script>alert("Hello!");</script>');
@@ -241,7 +247,7 @@ describe("XML snippets coverage", () => {
         '<related>\n  <ref target="p2"/>\n</related>',
       ].join("");
       const schema = z.toJSONSchema(z.object({ related: z.string() }));
-      const result = parse(xml, schema) as any;
+      const result = parse(xml, schema) as { related: string };
       expect(result.related).toContain('<ref target="p2"/>');
     });
   });

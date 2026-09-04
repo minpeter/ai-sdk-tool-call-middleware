@@ -2,12 +2,15 @@ import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import type { ParserOptions } from "../../../../core/protocols/protocol-interface";
 import {
   mockUsage,
   pipeWithTransformer,
   stopFinishReason,
   zeroUsage,
 } from "../../../test-helpers";
+
+type OnError = NonNullable<ParserOptions["onError"]>;
 
 describe("hermesProtocol streaming parsing and error policy", () => {
   it("parses normal tool_call blocks into tool-call events", async () => {
@@ -33,7 +36,10 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(tool.toolName).toBe("x");
     expect(JSON.parse(tool.input)).toEqual({ a: 1 });
   });
@@ -59,12 +65,15 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(tool.toolName).toBe("y");
   });
 
   it("on parse error suppresses raw fallback text by default and calls onError", async () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
@@ -90,7 +99,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     );
     const text = out
       .filter((c) => c.type === "text-delta")
-      .map((c) => (c as any).delta)
+      .map((c) => c.delta)
       .join("");
     expect(text).not.toContain("<tool_call>");
     expect(text).not.toContain("</tool_call>");
@@ -100,7 +109,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   });
 
   it("on parse error emits raw fallback text when explicitly enabled", async () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
@@ -126,7 +135,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     );
     const text = out
       .filter((c) => c.type === "text-delta")
-      .map((c) => (c as any).delta)
+      .map((c) => c.delta)
       .join("");
     expect(text).toContain("<tool_call>{bad}</tool_call>");
     expect(out.some((c) => c.type === "text-start")).toBe(true);
@@ -173,7 +182,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     });
     const text = out
       .filter((c) => c.type === "text-delta")
-      .map((c: any) => c.delta)
+      .map((c) => c.delta)
       .join("");
     expect(text).toContain("before ");
     expect(out.find((c) => c.type === "finish")).toBeTruthy();
@@ -206,7 +215,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   });
 
   it("emits original text on malformed JSON when raw fallback is enabled", async () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
@@ -232,7 +241,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     );
     const text = out
       .filter((c) => c.type === "text-delta")
-      .map((c: any) => c.delta)
+      .map((c) => c.delta)
       .join("");
     expect(text).toContain("<tool_call>{invalid}</tool_call>");
     expect(onError).toHaveBeenCalled();
@@ -264,7 +273,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     );
     const text = out
       .filter((c) => c.type === "text-delta")
-      .map((c: any) => c.delta)
+      .map((c) => c.delta)
       .join("");
     expect(text).toContain('<tool_call>{"name":"c"');
   });
@@ -292,14 +301,14 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     );
     const text = out
       .filter((c) => c.type === "text-delta")
-      .map((c: any) => c.delta)
+      .map((c) => c.delta)
       .join("");
     expect(text).not.toContain("<tool_call>");
     expect(out.some((c) => c.type === "tool-call")).toBe(false);
   });
 
   it("passes toolName, toolCallId, and dropReason in onError when tool call is dropped at finish", async () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
@@ -323,6 +332,9 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
     expect(onError).toHaveBeenCalledTimes(1);
     const [message, metadata] = onError.mock.calls[0];
+    if (metadata === undefined) {
+      throw new TypeError("Expected error metadata");
+    }
     // Default (emitRawToolCallTextOnError=false) — no "emitting original text"
     // suffix in the error message.
     expect(message).toContain(
@@ -341,7 +353,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   });
 
   it("emits the raw tool-call text and flags message when emitRawToolCallTextOnError is true", async () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
@@ -368,6 +380,9 @@ describe("hermesProtocol streaming parsing and error policy", () => {
 
     expect(onError).toHaveBeenCalledTimes(1);
     const [message, metadata] = onError.mock.calls[0];
+    if (metadata === undefined) {
+      throw new TypeError("Expected error metadata");
+    }
     // emitRawToolCallTextOnError=true path — message notes the raw emission.
     expect(message).toContain("emitting original text");
     // metadata shape still includes toolCallId, toolName, and dropReason.
@@ -381,13 +396,13 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     // The raw text should also appear in the output stream.
     const textOutput = out
       .filter((c) => c.type === "text-delta")
-      .map((c: any) => c.delta)
+      .map((c) => c.delta)
       .join("");
     expect(textOutput).toContain("<tool_call>");
   });
 
   it("passes truncated toolName in onError when name value is cut mid-string", async () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
@@ -411,6 +426,9 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
     expect(onError).toHaveBeenCalledTimes(1);
     const [, metadata] = onError.mock.calls[0];
+    if (metadata === undefined) {
+      throw new TypeError("Expected error metadata");
+    }
     // extractTopLevelStringProperty requires closing quote, so truncated name returns undefined
     expect(metadata.toolName).toBeUndefined();
     expect(metadata.dropReason).toBe("unfinished-tool-call");
@@ -421,7 +439,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   });
 
   it("passes undefined toolName in onError when only arguments are present", async () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
@@ -445,6 +463,9 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
     expect(onError).toHaveBeenCalledTimes(1);
     const [, metadata] = onError.mock.calls[0];
+    if (metadata === undefined) {
+      throw new TypeError("Expected error metadata");
+    }
     expect(metadata.toolName).toBeUndefined();
     expect(metadata.dropReason).toBe("unfinished-tool-call");
     expect(typeof metadata.toolCallId).toBe("string");
@@ -452,7 +473,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   });
 
   it("passes undefined toolName in onError when name is not parseable", async () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
@@ -476,6 +497,9 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
     expect(onError).toHaveBeenCalledTimes(1);
     const [, metadata] = onError.mock.calls[0];
+    if (metadata === undefined) {
+      throw new TypeError("Expected error metadata");
+    }
     expect(metadata.toolName).toBeUndefined();
     expect(metadata.dropReason).toBe("unfinished-tool-call");
     expect(typeof metadata.toolCallId).toBe("string");
@@ -522,14 +546,17 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     const out = await convertReadableStreamToArray(
       pipeWithTransformer(rs, transformer)
     );
-    const tool = out.find((c) => c.type === "tool-call") as any;
+    const tool = out.find((c) => c.type === "tool-call");
     expect(tool).toBeTruthy();
+    if (tool?.type !== "tool-call") {
+      throw new TypeError("Expected a tool-call part");
+    }
     expect(JSON.parse(tool.input).location).toBe("NY");
     expect(tool.toolName).toBe("d");
   });
 
   it("passes toolName, toolCallId, and malformed-tool-call-body dropReason in onError when a complete tool_call block has invalid JSON body", async () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
@@ -554,6 +581,9 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
     expect(onError).toHaveBeenCalledTimes(1);
     const [message, metadata] = onError.mock.calls[0];
+    if (metadata === undefined) {
+      throw new TypeError("Expected error metadata");
+    }
     expect(message).toContain("Could not process streaming JSON tool call");
     expect(message).not.toContain("emitting original text");
     expect(metadata).toMatchObject({
@@ -568,7 +598,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
   });
 
   it("emits the raw tool-call text and keeps structured metadata when emitRawToolCallTextOnError is true and JSON body is invalid", async () => {
-    const onError = vi.fn();
+    const onError = vi.fn<OnError>();
     const protocol = hermesProtocol();
     const transformer = protocol.createStreamParser({
       tools: [],
@@ -595,6 +625,9 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     );
     expect(onError).toHaveBeenCalledTimes(1);
     const [message, metadata] = onError.mock.calls[0];
+    if (metadata === undefined) {
+      throw new TypeError("Expected error metadata");
+    }
     expect(message).toContain("emitting original text");
     expect(metadata).toMatchObject({
       toolName: "bash",
@@ -604,7 +637,7 @@ describe("hermesProtocol streaming parsing and error policy", () => {
     expect((metadata.toolCallId as string).length).toBeGreaterThan(0);
     const textOutput = out
       .filter((c) => c.type === "text-delta")
-      .map((c: any) => c.delta)
+      .map((c) => c.delta)
       .join("");
     expect(textOutput).toContain("<tool_call>");
     expect(textOutput).toContain("</tool_call>");

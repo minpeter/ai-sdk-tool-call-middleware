@@ -1,4 +1,9 @@
 import { unescapeXml } from "../../rxml/utils/helpers";
+import {
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { unwrapJsonSchema } from "../../schema-coerce";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
@@ -287,9 +292,9 @@ const objectSchemaPropertyNamesCache = new WeakMap<
 >();
 
 export function getObjectSchemaPropertyNames(
-  schema: unknown
+  schema: ToolInputSchemaDefinition | undefined
 ): Set<string> | null {
-  if (!schema || typeof schema !== "object") {
+  if (typeof schema !== "object" || !isSchemaRecord(schema)) {
     return null;
   }
   const cached = objectSchemaPropertyNamesCache.get(schema);
@@ -301,12 +306,10 @@ export function getObjectSchemaPropertyNames(
   return result;
 }
 
-function computeObjectSchemaPropertyNames(schema: object): Set<string> | null {
-  const schemaObject = schema as {
-    type?: unknown;
-    properties?: unknown;
-  };
-  const typeValue = schemaObject.type;
+function computeObjectSchemaPropertyNames(
+  schema: ToolInputSchema
+): Set<string> | null {
+  const typeValue = schema.type;
   if (typeValue != null) {
     const isObjectType =
       typeValue === "object" ||
@@ -315,84 +318,81 @@ function computeObjectSchemaPropertyNames(schema: object): Set<string> | null {
       return null;
     }
   }
-  if (!schemaObject.properties || typeof schemaObject.properties !== "object") {
+  if (!schema.properties) {
     return new Set<string>();
   }
 
-  return new Set(
-    Object.keys(schemaObject.properties as Record<string, unknown>)
-  );
+  return new Set(Object.keys(schema.properties));
 }
 
 const schemaAllowsArrayTypeCache = new WeakMap<object, boolean>();
+const schemaAllowsStringTypeCache = new WeakMap<object, boolean>();
 
-export function schemaAllowsArrayType(schema: unknown): boolean {
-  if (schema && typeof schema === "object") {
-    const cached = schemaAllowsArrayTypeCache.get(schema);
+function schemaAllowsType(
+  schema: ToolInputSchemaDefinition | undefined,
+  expectedType: "array" | "string",
+  cache: WeakMap<object, boolean>
+): boolean {
+  if (schema !== null && typeof schema === "object") {
+    const cached = cache.get(schema);
     if (cached !== undefined) {
       return cached;
     }
-    const result = computeSchemaAllowsArrayType(schema);
-    schemaAllowsArrayTypeCache.set(schema, result);
-    return result;
-  }
-  return computeSchemaAllowsArrayType(schema);
-}
-
-function computeSchemaAllowsArrayType(schema: unknown): boolean {
-  const normalizedSchema = unwrapJsonSchema(schema);
-  if (!normalizedSchema || typeof normalizedSchema !== "object") {
-    return false;
   }
 
-  const schemaRecord = normalizedSchema as Record<string, unknown>;
-  const typeValue = schemaRecord.type;
-  if (typeValue === "array") {
-    return true;
-  }
-  if (Array.isArray(typeValue) && typeValue.includes("array")) {
-    return true;
-  }
-
-  const unions = [schemaRecord.anyOf, schemaRecord.oneOf, schemaRecord.allOf];
-  for (const union of unions) {
-    if (!Array.isArray(union)) {
+  const pending: ToolInputSchemaDefinition[] =
+    schema === undefined ? [] : [schema];
+  const seen = new Set<object>();
+  let cursor = 0;
+  let result = false;
+  while (cursor < pending.length) {
+    const normalizedSchema = unwrapJsonSchema(pending[cursor]);
+    cursor += 1;
+    if (
+      typeof normalizedSchema !== "object" ||
+      !isSchemaRecord(normalizedSchema) ||
+      seen.has(normalizedSchema)
+    ) {
       continue;
     }
-    if (union.some((entry) => schemaAllowsArrayType(entry))) {
-      return true;
+    seen.add(normalizedSchema);
+
+    const typeValue = normalizedSchema.type;
+    if (
+      typeValue === expectedType ||
+      (Array.isArray(typeValue) && typeValue.includes(expectedType))
+    ) {
+      result = true;
+      break;
+    }
+
+    for (const union of [
+      normalizedSchema.anyOf,
+      normalizedSchema.oneOf,
+      normalizedSchema.allOf,
+    ]) {
+      if (Array.isArray(union)) {
+        pending.push(...union);
+      }
     }
   }
 
-  return false;
+  if (schema !== null && typeof schema === "object") {
+    cache.set(schema, result);
+  }
+  return result;
 }
 
-function schemaAllowsStringType(schema: unknown): boolean {
-  const normalizedSchema = unwrapJsonSchema(schema);
-  if (!normalizedSchema || typeof normalizedSchema !== "object") {
-    return false;
-  }
+export function schemaAllowsArrayType(
+  schema: ToolInputSchemaDefinition | undefined
+): boolean {
+  return schemaAllowsType(schema, "array", schemaAllowsArrayTypeCache);
+}
 
-  const schemaRecord = normalizedSchema as Record<string, unknown>;
-  const typeValue = schemaRecord.type;
-  if (typeValue === "string") {
-    return true;
-  }
-  if (Array.isArray(typeValue) && typeValue.includes("string")) {
-    return true;
-  }
-
-  const unions = [schemaRecord.anyOf, schemaRecord.oneOf, schemaRecord.allOf];
-  for (const union of unions) {
-    if (!Array.isArray(union)) {
-      continue;
-    }
-    if (union.some((entry) => schemaAllowsStringType(entry))) {
-      return true;
-    }
-  }
-
-  return false;
+function schemaAllowsStringType(
+  schema: ToolInputSchemaDefinition | undefined
+): boolean {
+  return schemaAllowsType(schema, "string", schemaAllowsStringTypeCache);
 }
 
 const objectSchemaStringPropertyNamesCache = new WeakMap<
@@ -401,7 +401,7 @@ const objectSchemaStringPropertyNamesCache = new WeakMap<
 >();
 
 export function getObjectSchemaStringPropertyNames(
-  schema: unknown
+  schema: ToolInputSchemaDefinition | undefined
 ): Set<string> | null {
   if (schema && typeof schema === "object") {
     const cached = objectSchemaStringPropertyNamesCache.get(schema);
@@ -416,7 +416,7 @@ export function getObjectSchemaStringPropertyNames(
 }
 
 function computeObjectSchemaStringPropertyNames(
-  schema: unknown
+  schema: ToolInputSchemaDefinition | undefined
 ): Set<string> | null {
   const propertyNames = getObjectSchemaPropertyNames(schema);
   if (!propertyNames) {
@@ -426,20 +426,21 @@ function computeObjectSchemaStringPropertyNames(
   const out = new Set<string>();
   for (const name of propertyNames) {
     const property = getSchemaObjectProperty(schema, name);
-    if (schemaAllowsStringType(property)) {
+    if (schemaAllowsStringType(property ?? undefined)) {
       out.add(name);
     }
   }
   return out;
 }
 
-function getRequiredMessageStringProperty(schema: unknown): string | null {
-  if (!schema || typeof schema !== "object") {
+function getRequiredMessageStringProperty(
+  schema: ToolInputSchemaDefinition | undefined
+): string | null {
+  if (typeof schema !== "object" || !isSchemaRecord(schema)) {
     return null;
   }
 
-  const schemaRecord = schema as Record<string, unknown>;
-  const { required } = schemaRecord;
+  const { required } = schema;
   if (
     !(
       Array.isArray(required) &&
@@ -451,25 +452,32 @@ function getRequiredMessageStringProperty(schema: unknown): string | null {
   }
 
   const messageProperty = getSchemaObjectProperty(schema, "message");
-  return schemaAllowsStringType(messageProperty) ? "message" : null;
+  return schemaAllowsStringType(messageProperty ?? undefined)
+    ? "message"
+    : null;
 }
 
-function getOptionalMessageStringProperty(schema: unknown): string | null {
-  if (!schema || typeof schema !== "object") {
+function getOptionalMessageStringProperty(
+  schema: ToolInputSchemaDefinition | undefined
+): string | null {
+  if (typeof schema !== "object" || !isSchemaRecord(schema)) {
     return null;
   }
 
-  const schemaRecord = schema as Record<string, unknown>;
-  const { required } = schemaRecord;
+  const { required } = schema;
   if (Array.isArray(required) && required.length > 0) {
     return null;
   }
 
   const messageProperty = getSchemaObjectProperty(schema, "message");
-  return schemaAllowsStringType(messageProperty) ? "message" : null;
+  return schemaAllowsStringType(messageProperty ?? undefined)
+    ? "message"
+    : null;
 }
 
-function getFallbackStringPropertyName(schema: unknown): string | null {
+function getFallbackStringPropertyName(
+  schema: ToolInputSchemaDefinition | undefined
+): string | null {
   return (
     getRequiredMessageStringProperty(schema) ??
     getOptionalMessageStringProperty(schema)
@@ -528,7 +536,7 @@ function stripXmlTagsFromTextBody(text: string): string {
 
 export function plainTextBodyFallback(
   toolContent: string,
-  toolSchema: unknown
+  toolSchema: ToolInputSchemaDefinition | undefined
 ): Record<string, string> | null {
   const normalizedSchema = unwrapJsonSchema(toolSchema);
   const propertyName = getFallbackStringPropertyName(normalizedSchema);
@@ -643,14 +651,14 @@ export function buildEmptyTrailingStringTagProgressContent(options: {
  * string (e.g. "12" must not become the number 12 once complete).
  */
 export function isStrictStringSchemaProperty(
-  toolSchema: unknown,
+  toolSchema: ToolInputSchemaDefinition | undefined,
   name: string
 ): boolean {
   const property = unwrapJsonSchema(getSchemaObjectProperty(toolSchema, name));
-  if (!property || typeof property !== "object") {
+  if (typeof property !== "object" || !isSchemaRecord(property)) {
     return false;
   }
-  const typeValue = (property as Record<string, unknown>).type;
+  const typeValue = property.type;
   return (
     typeValue === "string" ||
     (Array.isArray(typeValue) &&
@@ -660,20 +668,19 @@ export function isStrictStringSchemaProperty(
 }
 
 export function getSchemaObjectProperty(
-  schema: unknown,
+  schema: ToolInputSchemaDefinition | undefined,
   propertyName: string
-): unknown | null {
-  if (!schema || typeof schema !== "object") {
+): ToolInputSchemaDefinition | null {
+  if (typeof schema !== "object" || !isSchemaRecord(schema)) {
     return null;
   }
 
-  const schemaObject = schema as Record<string, unknown>;
-  const { properties } = schemaObject;
-  if (!properties || typeof properties !== "object") {
+  const { properties } = schema;
+  if (!properties) {
     return null;
   }
 
-  const property = (properties as Record<string, unknown>)[propertyName];
+  const property = properties[propertyName];
   if (!property) {
     return null;
   }

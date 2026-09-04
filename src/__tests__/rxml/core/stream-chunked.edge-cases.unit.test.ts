@@ -2,11 +2,19 @@ import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
 import { processXMLStream } from "../../../rxml/core/stream";
+import type { RXMLNode } from "../../../rxml/core/types";
 import {
   CHUNK_SIZE,
   createChunkedStream,
   testXmlSamples,
 } from "./stream-chunked.shared";
+
+function requireNode(node: RXMLNode | string | undefined): RXMLNode {
+  if (typeof node === "object") {
+    return node;
+  }
+  throw new TypeError("Expected streamed XML node");
+}
 
 describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
   describe("Edge cases with chunking", () => {
@@ -24,15 +32,17 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         },
       });
 
-      const results: any[] = [];
+      const results: (RXMLNode | string)[] = [];
       for await (const element of processXMLStream(stream)) {
         results.push(element);
       }
 
       expect(results).toHaveLength(2);
-      expect(results[0].tagName).toBe("tool");
-      expect(results[1].tagName).toBe("name");
-      expect(results[1].children[0]).toBe("test");
+      const toolElement = requireNode(results[0]);
+      const nameElement = requireNode(results[1]);
+      expect(toolElement.tagName).toBe("tool");
+      expect(nameElement.tagName).toBe("name");
+      expect(nameElement.children[0]).toBe("test");
     });
 
     it("should handle attribute boundaries split across chunks", async () => {
@@ -58,7 +68,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         },
       });
 
-      const results: any[] = [];
+      const results: (RXMLNode | string)[] = [];
       for await (const element of processXMLStream(stream)) {
         results.push(element);
       }
@@ -76,13 +86,17 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
 
     it("should handle CDATA sections split across chunks", async () => {
       const stream = createChunkedStream(testXmlSamples.withCdata, CHUNK_SIZE);
-      const results: any[] = [];
+      const results: (RXMLNode | string)[] = [];
 
       for await (const element of processXMLStream(stream)) {
         results.push(element);
       }
 
-      const codeElement = results.find((r) => r.tagName === "code");
+      const codeElement = requireNode(
+        results.find(
+          (element) => typeof element === "object" && element.tagName === "code"
+        )
+      );
       expect(codeElement).toBeDefined();
       expect(codeElement.children[0]).toContain("def hello_world():");
       expect(codeElement.children[0]).toContain('print("Hello, World!")');
@@ -93,7 +107,7 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
         testXmlSamples.withComments,
         CHUNK_SIZE
       );
-      const results: any[] = [];
+      const results: (RXMLNode | string)[] = [];
 
       for await (const element of processXMLStream(stream, 0, {
         keepComments: true,

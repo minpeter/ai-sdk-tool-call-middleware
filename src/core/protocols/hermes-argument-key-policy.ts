@@ -1,4 +1,9 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONObject,
+  JSONSchema7,
+  JSONValue,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import {
   coerceBySchema,
   compileSafePatternPropertyRegex,
@@ -17,12 +22,13 @@ import {
   skipJsonComment,
   skipJsonWhitespace,
 } from "./hermes-json-object-key-scanner";
+import type { ResolvedProtocolToolCall } from "./protocol-interface";
 
 export interface ArgumentKeyPolicy {
   knownKeys: Set<string>;
   rejectAll: boolean;
   rejectNonRecordArguments: boolean;
-  schema: unknown;
+  schema: JSONSchema7 | boolean;
   unsafeConstrainedPatterns: string[];
 }
 
@@ -33,11 +39,27 @@ export class ArgumentKeyPolicyError extends Error {
   }
 }
 
-export function isArgumentKeyPolicyError(error: unknown): boolean {
+export function isArgumentKeyPolicyError(
+  error: Extract<ResolvedProtocolToolCall, { ok: false }>["error"]
+): boolean {
   return error instanceof ArgumentKeyPolicyError;
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
+function isJsonObject(
+  value: JSONValue | object | undefined
+): value is JSONObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSchemaObject(
+  value: JSONSchema7 | boolean | object | undefined
+): value is JSONSchema7 {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isSchemaMap(
+  value: object | undefined
+): value is Record<string, JSONSchema7 | boolean> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -49,9 +71,9 @@ function addNames(target: Set<string>, source: Set<string>): void {
 
 function addDirectArgumentKnownKeys(
   keys: Set<string>,
-  schema: Record<string, unknown>
+  schema: JSONSchema7
 ): void {
-  if (isRecord(schema.properties)) {
+  if (isSchemaMap(schema.properties)) {
     for (const [key, propertySchema] of Object.entries(schema.properties)) {
       if (propertySchema !== false) {
         keys.add(key);
@@ -69,7 +91,7 @@ function addDirectArgumentKnownKeys(
 
 function addCombinatorArgumentKnownKeys(
   keys: Set<string>,
-  schema: Record<string, unknown>,
+  schema: JSONSchema7,
   seen: Set<object>
 ): void {
   for (const combinator of ["allOf", "anyOf", "oneOf"] as const) {
@@ -86,12 +108,12 @@ function addCombinatorArgumentKnownKeys(
 }
 
 function collectArgumentKnownKeys(
-  schema: unknown,
+  schema: JSONSchema7 | boolean | undefined,
   seen = new Set<object>()
 ): Set<string> {
   const unwrapped = unwrapJsonSchema(schema);
   const keys = new Set<string>();
-  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+  if (!isSchemaObject(unwrapped) || seen.has(unwrapped)) {
     return keys;
   }
   seen.add(unwrapped);
@@ -101,14 +123,14 @@ function collectArgumentKnownKeys(
 }
 
 function schemaRejectsNonRecordArguments(
-  schema: unknown,
+  schema: JSONSchema7 | boolean | undefined,
   seen = new Set<object>()
 ): boolean {
   const unwrapped = unwrapJsonSchema(schema);
   if (unwrapped === false) {
     return true;
   }
-  if (!isRecord(unwrapped)) {
+  if (!isSchemaObject(unwrapped)) {
     return false;
   }
   if (seen.has(unwrapped)) {
@@ -117,8 +139,8 @@ function schemaRejectsNonRecordArguments(
   seen.add(unwrapped);
   if (
     getSchemaType(unwrapped) === "object" ||
-    isRecord(unwrapped.properties) ||
-    isRecord(unwrapped.patternProperties) ||
+    isSchemaMap(unwrapped.properties) ||
+    isSchemaMap(unwrapped.patternProperties) ||
     Array.isArray(unwrapped.required) ||
     Object.hasOwn(unwrapped, "additionalProperties")
   ) {
@@ -127,7 +149,7 @@ function schemaRejectsNonRecordArguments(
 
   const allOf = Array.isArray(unwrapped.allOf) ? unwrapped.allOf : undefined;
   if (
-    allOf?.some((subSchema) =>
+    allOf?.some((subSchema: JSONSchema7 | boolean) =>
       schemaRejectsNonRecordArguments(subSchema, new Set(seen))
     )
   ) {
@@ -138,7 +160,7 @@ function schemaRejectsNonRecordArguments(
   if (
     anyOf &&
     anyOf.length > 0 &&
-    anyOf.every((subSchema) =>
+    anyOf.every((subSchema: JSONSchema7 | boolean) =>
       schemaRejectsNonRecordArguments(subSchema, new Set(seen))
     )
   ) {
@@ -149,7 +171,7 @@ function schemaRejectsNonRecordArguments(
   return (
     oneOf !== undefined &&
     oneOf.length > 0 &&
-    oneOf.every((subSchema) =>
+    oneOf.every((subSchema: JSONSchema7 | boolean) =>
       schemaRejectsNonRecordArguments(subSchema, new Set(seen))
     )
   );
@@ -170,11 +192,11 @@ export function extractArgumentKeyPolicy(
       unsafeConstrainedPatterns: [],
     };
   }
-  if (!isRecord(schema)) {
+  if (!isSchemaObject(schema)) {
     return;
   }
   const unsafeConstrainedPatterns: string[] = [];
-  if (isRecord(schema.patternProperties)) {
+  if (isSchemaMap(schema.patternProperties)) {
     for (const [pattern, patternSchema] of Object.entries(
       schema.patternProperties
     )) {
@@ -197,9 +219,9 @@ export function extractArgumentKeyPolicy(
 }
 
 export function applyArgumentKeyPolicy(
-  args: Record<string, unknown>,
+  args: JSONObject,
   keyPolicy?: ArgumentKeyPolicy
-): Record<string, unknown> | null {
+): JSONObject | null {
   if (keyPolicy?.rejectAll) {
     return null;
   }
@@ -216,7 +238,7 @@ export function applyArgumentKeyPolicy(
     return null;
   }
   const coercedPolicyArgs = coerceArgsForKeyPolicy(args, keyPolicy);
-  if (!isRecord(coercedPolicyArgs)) {
+  if (!isJsonObject(coercedPolicyArgs)) {
     return null;
   }
   if (toolCallInputHasPrototypeSensitiveKey(coercedPolicyArgs)) {
@@ -231,7 +253,7 @@ export function applyArgumentKeyPolicy(
   const policyArgs = keyPolicy
     ? sanitizeArgsByArgumentKeyPolicy(coercedPolicyArgs, keyPolicy)
     : coercedPolicyArgs;
-  if (!isRecord(policyArgs)) {
+  if (!isJsonObject(policyArgs)) {
     return null;
   }
   if (toolCallInputHasPrototypeSensitiveKey(policyArgs)) {
@@ -253,26 +275,26 @@ export function applyArgumentKeyPolicy(
 }
 
 function coerceArgsForKeyPolicy(
-  args: Record<string, unknown>,
+  args: JSONObject,
   keyPolicy?: ArgumentKeyPolicy
-): unknown {
+) {
   return keyPolicy ? coerceBySchema(args, keyPolicy.schema) : args;
 }
 
 function sanitizeArgsByArgumentKeyPolicy(
-  args: Record<string, unknown>,
+  args: JSONObject,
   keyPolicy: ArgumentKeyPolicy
-): Record<string, unknown> {
+): JSONObject {
   const sanitized = sanitizeToolCallArgsBySchema(args, keyPolicy.schema);
-  return isRecord(sanitized) ? sanitized : args;
+  return isJsonObject(sanitized) ? sanitized : args;
 }
 
 function topLevelOneOfHasConflictingDeclaredKeys(
-  args: Record<string, unknown>,
-  schema: unknown
+  args: JSONObject,
+  schema: JSONSchema7 | boolean
 ): boolean {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!(isRecord(unwrapped) && Array.isArray(unwrapped.oneOf))) {
+  if (!(isSchemaObject(unwrapped) && Array.isArray(unwrapped.oneOf))) {
     return false;
   }
 
@@ -280,10 +302,10 @@ function topLevelOneOfHasConflictingDeclaredKeys(
     return false;
   }
 
-  const branchNames = unwrapped.oneOf.map((variant) => {
+  const branchNames = unwrapped.oneOf.map((variant: JSONSchema7 | boolean) => {
     const names = collectSchemaSelectionPropertyNames(variant);
     const branchSchema = unwrapJsonSchema(variant);
-    if (isRecord(branchSchema)) {
+    if (isSchemaObject(branchSchema)) {
       addNames(names, collectPatternPropertyNames(branchSchema, args));
     }
     return names;
@@ -308,8 +330,8 @@ function topLevelOneOfHasConflictingDeclaredKeys(
 }
 
 function oneOfHasSingleLiteralDiscriminatorMatch(
-  args: Record<string, unknown>,
-  variants: unknown[]
+  args: JSONObject,
+  variants: NonNullable<JSONSchema7["oneOf"]>
 ): boolean {
   let matches = 0;
   for (const variant of variants) {
@@ -321,11 +343,11 @@ function oneOfHasSingleLiteralDiscriminatorMatch(
 }
 
 function variantHasLiteralDiscriminatorMatch(
-  variant: unknown,
-  args: Record<string, unknown>
+  variant: JSONSchema7 | boolean,
+  args: JSONObject
 ): boolean {
   const unwrapped = unwrapJsonSchema(variant);
-  if (!(isRecord(unwrapped) && isRecord(unwrapped.properties))) {
+  if (!(isSchemaObject(unwrapped) && isSchemaMap(unwrapped.properties))) {
     return false;
   }
   let sawMatch = false;
@@ -345,11 +367,11 @@ function variantHasLiteralDiscriminatorMatch(
 }
 
 function propertySchemaLiteralMatch(
-  schema: unknown,
-  value: unknown
+  schema: JSONSchema7 | boolean,
+  value: JSONValue | undefined
 ): boolean | undefined {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped)) {
+  if (!isSchemaObject(unwrapped)) {
     return;
   }
   if (Object.hasOwn(unwrapped, "const")) {
@@ -357,7 +379,7 @@ function propertySchemaLiteralMatch(
   }
   if (Array.isArray(unwrapped.enum)) {
     return unwrapped.enum.some(
-      (entry) => JSON.stringify(entry) === JSON.stringify(value)
+      (entry: JSONValue) => JSON.stringify(entry) === JSON.stringify(value)
     );
   }
 }
@@ -369,35 +391,28 @@ function shouldValidateArgumentSchemaKeyShape(
     return true;
   }
   const schema = unwrapJsonSchema(keyPolicy.schema);
-  if (!isRecord(schema)) {
+  if (!isSchemaObject(schema)) {
     return true;
   }
   return (
-    isRecord(schema.patternProperties) ||
+    isSchemaMap(schema.patternProperties) ||
     schemaHasTopLevelCombinator(schema, new Set())
   );
 }
 
-function schemaWithoutPatternProperties(
-  schema: Record<string, unknown>
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(schema)) {
-    if (key !== "patternProperties") {
-      out[key] = value;
-    }
-  }
+function schemaWithoutPatternProperties(schema: JSONSchema7): JSONSchema7 {
+  const { patternProperties: _patternProperties, ...out } = schema;
   return out;
 }
 
 function schemaForArgumentSchemaKeyShapeValidation(
   keyPolicy: ArgumentKeyPolicy
-): unknown {
+): JSONSchema7 | boolean {
   const schema = unwrapJsonSchema(keyPolicy.schema);
   if (
-    isRecord(schema) &&
+    isSchemaObject(schema) &&
     schema.additionalProperties === true &&
-    isRecord(schema.patternProperties)
+    isSchemaMap(schema.patternProperties)
   ) {
     return schemaWithoutPatternProperties(schema);
   }
@@ -405,7 +420,7 @@ function schemaForArgumentSchemaKeyShapeValidation(
 }
 
 function keysMatchUnsafeConstrainedPattern(
-  args: Record<string, unknown>,
+  args: JSONObject,
   keyPolicy: ArgumentKeyPolicy
 ): boolean {
   return Object.keys(args).some((key) =>
@@ -416,11 +431,11 @@ function keysMatchUnsafeConstrainedPattern(
 }
 
 function schemaHasTopLevelCombinator(
-  schema: unknown,
+  schema: JSONSchema7 | boolean,
   seen: Set<object>
 ): boolean {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+  if (!isSchemaObject(unwrapped) || seen.has(unwrapped)) {
     return false;
   }
   seen.add(unwrapped);
@@ -437,9 +452,11 @@ const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
   "prototype",
 ]);
 
-export function containsPrototypeSensitiveArgumentKey(value: unknown): boolean {
+export function containsPrototypeSensitiveArgumentKey(
+  value: JSONValue
+): boolean {
   const seen = new Set<object>();
-  const stack: unknown[] = [value];
+  const stack: (JSONValue | undefined)[] = [value];
 
   while (stack.length > 0) {
     const current = stack.pop();
@@ -453,7 +470,7 @@ export function containsPrototypeSensitiveArgumentKey(value: unknown): boolean {
       }
       continue;
     }
-    if (!isRecord(current)) {
+    if (!isJsonObject(current)) {
       continue;
     }
     if (seen.has(current)) {

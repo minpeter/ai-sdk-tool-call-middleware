@@ -1,4 +1,8 @@
-import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
+import {
+  isJSONValue,
+  type JSONValue,
+  type LanguageModelV4ToolCall,
+} from "@ai-sdk/provider";
 import {
   decodeKExaone2HistoryKey,
   isKExaone2HistoryNumber,
@@ -21,13 +25,39 @@ import { createQwen3CoderStreamParser } from "./qwen3coder-stream-parser";
  * Parse/stream reuses qwen3coder; formatToolCall is K-EXAONE-2.0-specific.
  * Reasoning stays provider-native (for Friendli, use `parse_reasoning: true`).
  */
-function renderParameterValue(value: unknown): string {
-  return typeof value === "string" ? value : stringifyKExaone2NativeJson(value);
+function isKExaone2Value(value: JSONValue | object): value is JSONValue {
+  if (isKExaone2HistoryNumber(value) || isJSONValue(value)) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every(isKExaone2Value);
+  }
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  return Object.values(value).every(
+    (entry) => entry === undefined || isKExaone2Value(entry)
+  );
+}
+
+function renderParameterValue(value: JSONValue | object): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  return stringifyKExaone2NativeJson(isKExaone2Value(value) ? value : null);
 }
 
 function formatKExaone2ToolCall(toolCall: LanguageModelV4ToolCall): string {
-  const input = parseKExaoneToolCallInput(toolCall.input);
-  const entries: [string, unknown][] =
+  const parsedInput = parseKExaoneToolCallInput(toolCall.input);
+  const input =
+    parsedInput === null ||
+    typeof parsedInput === "string" ||
+    typeof parsedInput === "number" ||
+    typeof parsedInput === "boolean" ||
+    typeof parsedInput === "object"
+      ? parsedInput
+      : null;
+  const entries: [string, JSONValue | object][] =
     typeof input === "object" &&
     input !== null &&
     !Array.isArray(input) &&

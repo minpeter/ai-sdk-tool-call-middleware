@@ -1,3 +1,4 @@
+import type { JSONObject, JSONSchema7 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { coerceBySchema } from "../../schema-coerce";
 
@@ -6,12 +7,12 @@ describe("Coercion Heuristic Handling", () => {
     it("should coerce additionalProperties values using schema", () => {
       const input = { a: "1", b: "2" };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         additionalProperties: { type: "number" },
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({ a: 1, b: 2 });
       expect(typeof result.a).toBe("number");
       expect(typeof result.b).toBe("number");
@@ -20,7 +21,7 @@ describe("Coercion Heuristic Handling", () => {
     it("should apply patternProperties before additionalProperties", () => {
       const input = { foo: "1", bar: "2" };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         patternProperties: {
           "^f": { type: "number" },
@@ -28,7 +29,7 @@ describe("Coercion Heuristic Handling", () => {
         additionalProperties: { type: "string" },
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({ foo: 1, bar: "2" });
       expect(typeof result.foo).toBe("number");
       expect(typeof result.bar).toBe("string");
@@ -37,23 +38,23 @@ describe("Coercion Heuristic Handling", () => {
     it("should coerce values from stringified objects using additionalProperties", () => {
       const input = '{"a":"1","b":"2"}';
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         additionalProperties: { type: "number" },
       };
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({ a: 1, b: 2 });
     });
 
     it("should not mutate output prototypes from parsed __proto__ properties", () => {
       const input = JSON.parse(
         '{"__proto__":{"polluted":true},"a":"1"}'
-      ) as Record<string, unknown>;
+      ) as JSONObject;
       const result = coerceBySchema(input, {
         type: "object",
         additionalProperties: true,
-      }) as Record<string, unknown>;
+      }) as JSONObject;
 
       expect(Object.getPrototypeOf(result)).toBeNull();
       expect(
@@ -67,7 +68,7 @@ describe("Coercion Heuristic Handling", () => {
       // both schemas are applied sequentially (properties first, then patternProperties)
       const input = { foo: "123" };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           foo: { type: "string" },
@@ -78,7 +79,7 @@ describe("Coercion Heuristic Handling", () => {
       };
 
       // "123" -> coerced as string (properties) -> coerced as number (patternProperties)
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({ foo: 123 });
       expect(typeof result.foo).toBe("number");
     });
@@ -88,7 +89,7 @@ describe("Coercion Heuristic Handling", () => {
       // the final result depends on the order of application
       const input = { foo: "hello" };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           foo: { type: "string" },
@@ -99,7 +100,7 @@ describe("Coercion Heuristic Handling", () => {
       };
 
       // "hello" -> string (properties) -> can't coerce to number, stays as "hello"
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema) as JSONObject;
       expect(result).toEqual({ foo: "hello" });
       expect(typeof result.foo).toBe("string");
     });

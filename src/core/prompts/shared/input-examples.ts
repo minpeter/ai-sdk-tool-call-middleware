@@ -1,27 +1,17 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONObject,
+  JSONValue,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 
 interface ToolInputExample {
-  input: unknown;
+  input: JSONObject;
 }
 
 function getToolInputExamples(
   tool: LanguageModelV4FunctionTool
 ): ToolInputExample[] {
-  const { inputExamples } = tool as LanguageModelV4FunctionTool & {
-    inputExamples?: Array<{ input: unknown }>;
-  };
-
-  if (!Array.isArray(inputExamples)) {
-    return [];
-  }
-
-  return inputExamples.filter(
-    (example) =>
-      typeof example === "object" &&
-      example !== null &&
-      "input" in example &&
-      example.input !== undefined
-  );
+  return tool.inputExamples ?? [];
 }
 
 export function safeStringifyInputExample(
@@ -46,18 +36,20 @@ export function safeStringifyInputExample(
   }
 }
 
-export function stringifyInputExampleAsJsonLiteral(input: unknown): string {
+export function stringifyInputExampleAsJsonLiteral(input: JSONValue): string {
   try {
     const serialized = JSON.stringify(input);
     return serialized ?? "null";
   } catch (error) {
-    const fallbackText = safeStringifyInputExample(input, error);
+    const normalizedError =
+      error instanceof Error ? error : new Error(String(error));
+    const fallbackText = safeStringifyInputExample(input, normalizedError);
     return JSON.stringify(fallbackText);
   }
 }
 
 interface RenderInputExamplesSectionOptions {
-  renderExample: (toolName: string, input: unknown) => string;
+  renderExample: (toolName: string, input: JSONObject) => string;
   tools: LanguageModelV4FunctionTool[];
 }
 

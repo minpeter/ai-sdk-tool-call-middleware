@@ -1,5 +1,8 @@
 import {
+  isJSONObject,
   isJSONValue,
+  type JSONObject,
+  type JSONValue,
   type LanguageModelV4Content,
   type LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
@@ -23,7 +26,6 @@ import {
   extractArgumentKeyPolicy,
   hasPrototypeSensitiveKeyInJsonLikeObject,
   isArgumentKeyPolicyError,
-  isRecord,
 } from "./hermes-argument-key-policy";
 import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
 import {
@@ -50,9 +52,7 @@ import type {
  * repair, argument-body recovery, key-policy coercion, and boundary-safe
  * string handling for `<tool_call>` JSON payloads.
  */
-function tryParseDoubleEncodedArguments(
-  args: string
-): Record<string, unknown> | null {
+function tryParseDoubleEncodedArguments(args: string): JSONObject | null {
   if (!args.trimStart().startsWith("{")) {
     return null;
   }
@@ -63,7 +63,8 @@ function tryParseDoubleEncodedArguments(
     const parsed = parseRJSON(
       normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(args))
     );
-    return isRecord(parsed) && !containsPrototypeSensitiveArgumentKey(parsed)
+    return isJSONObject(parsed) &&
+      !containsPrototypeSensitiveArgumentKey(parsed)
       ? parsed
       : null;
   } catch {
@@ -73,10 +74,10 @@ function tryParseDoubleEncodedArguments(
 
 function applyNonRecordArgumentPolicy(
   toolName: string,
-  args: Exclude<unknown, Record<string, unknown>>,
+  args: Exclude<JSONValue, JSONObject>,
   tools: LanguageModelV4FunctionTool[],
   keyPolicy: ArgumentKeyPolicy | undefined
-): { args: unknown } | null {
+): { args: JSONValue } | null {
   if (args === null) {
     return topLevelNullArgumentMatchesToolSchema(toolName, tools)
       ? { args }
@@ -95,7 +96,7 @@ function applyNonRecordArgumentPolicy(
     const unwrapped = tryParseDoubleEncodedArguments(args);
     if (unwrapped) {
       const unwrappedPolicyArgs = applyArgumentKeyPolicy(unwrapped, keyPolicy);
-      if (unwrappedPolicyArgs !== null) {
+      if (unwrappedPolicyArgs !== null && isJSONObject(unwrappedPolicyArgs)) {
         return { args: unwrappedPolicyArgs };
       }
     }
@@ -108,15 +109,18 @@ function applyNonRecordArgumentPolicy(
 
 export function applyToolArgumentKeyPolicy(
   toolName: string,
-  args: unknown,
+  args: JSONValue | undefined,
   tools: LanguageModelV4FunctionTool[]
-): { args: unknown } | null {
+): { args: JSONValue } | null {
   const keyPolicy = extractArgumentKeyPolicy(tools, toolName);
   if (keyPolicy?.rejectAll) {
     return null;
   }
   const normalizedArgs = args === undefined ? {} : args;
-  if (!isRecord(normalizedArgs)) {
+  if (!isJSONValue(normalizedArgs)) {
+    return null;
+  }
+  if (!isJSONObject(normalizedArgs)) {
     return applyNonRecordArgumentPolicy(
       toolName,
       normalizedArgs,
@@ -125,7 +129,9 @@ export function applyToolArgumentKeyPolicy(
     );
   }
   const policyArgs = applyArgumentKeyPolicy(normalizedArgs, keyPolicy);
-  return policyArgs === null ? null : { args: policyArgs };
+  return policyArgs !== null && isJSONObject(policyArgs)
+    ? { args: policyArgs }
+    : null;
 }
 
 /**
@@ -255,9 +261,13 @@ function normalizeRecoveredToolCall(
   input: string,
   tools: LanguageModelV4FunctionTool[]
 ): Extract<ResolvedProtocolToolCall, { ok: true }> | null {
-  let parsedArgs: unknown;
+  let parsedArgs: JSONValue;
   try {
-    parsedArgs = JSON.parse(input);
+    const parsed = JSON.parse(input);
+    if (!isJSONValue(parsed)) {
+      return null;
+    }
+    parsedArgs = parsed;
   } catch {
     return null;
   }
@@ -351,13 +361,21 @@ export function processToolCallJson(
     phase: "generated-text",
     reason: "Failed to parse tool call JSON segment",
     snippet: fullMatch,
-    error: resolved.error,
+    error:
+      resolved.error instanceof Error
+        ? resolved.error
+        : new Error(String(resolved.error)),
   });
   options?.onError?.(
     "Could not process JSON tool call, keeping original text.",
     {
       toolCall: safeToolCallMetadataText(fullMatch),
-      error: safeToolCallMetadataError(resolved.error, fullMatch),
+      error: safeToolCallMetadataError(
+        resolved.error instanceof Error
+          ? resolved.error
+          : new Error(String(resolved.error)),
+        fullMatch
+      ),
       toolName: salvagedToolName,
       toolCallId: salvagedToolCallId,
       dropReason: "malformed-tool-call-body",

@@ -1,22 +1,29 @@
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isSchemaDefinition,
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { unwrapJsonSchema } from "../../schema-coerce";
-import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 import { getPatternPropertySchema } from "./tool-call-pattern-properties";
 import { selectSchemaVariant } from "./tool-call-schema-variant";
 
 const SELECTIVE_JSON_SCHEMA_COMBINATORS = ["anyOf", "oneOf"] as const;
-type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
 
-function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function isToolInputSchema(
+  schema: ToolInputSchemaDefinition | undefined
+): schema is ToolInputSchema {
+  return typeof schema === "object" && isSchemaRecord(schema);
 }
 
-function collectAllOfPropertySchemas<Value>(
-  schema: SchemaBoundaryRecord,
+function collectAllOfPropertySchemas(
+  schema: ToolInputSchema,
   key: string,
-  value: Value,
+  value: RxmlValue,
   seen: Set<object>
-): SchemaBoundaryValue[] {
-  const propertySchemas: SchemaBoundaryValue[] = [];
+): ToolInputSchemaDefinition[] {
+  const propertySchemas: ToolInputSchemaDefinition[] = [];
   if (!Array.isArray(schema.allOf)) {
     return propertySchemas;
   }
@@ -34,15 +41,18 @@ function collectAllOfPropertySchemas<Value>(
   return propertySchemas;
 }
 
-function collectSelectedVariantPropertySchemas<Value>(
-  schema: SchemaBoundaryRecord,
+function collectSelectedVariantPropertySchemas(
+  schema: ToolInputSchema,
   key: string,
-  value: Value,
+  value: RxmlValue,
   seen: Set<object>
-): SchemaBoundaryValue[] {
-  const propertySchemas: SchemaBoundaryValue[] = [];
+): ToolInputSchemaDefinition[] {
+  const propertySchemas: ToolInputSchemaDefinition[] = [];
   for (const combinator of SELECTIVE_JSON_SCHEMA_COMBINATORS) {
     const variant = selectSchemaVariant(schema[combinator], value, seen);
+    if (!isSchemaDefinition(variant)) {
+      continue;
+    }
     const propertySchema = getDeclaredPropertySchema(
       variant,
       key,
@@ -56,14 +66,14 @@ function collectSelectedVariantPropertySchemas<Value>(
   return propertySchemas;
 }
 
-export function getDeclaredPropertySchema<Schema, Value>(
-  schema: Schema,
+export function getDeclaredPropertySchema(
+  schema: ToolInputSchemaDefinition,
   key: string,
-  value: Value,
+  value: RxmlValue,
   seen: Set<object>
-): SchemaBoundaryValue {
+): ToolInputSchemaDefinition | undefined {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+  if (!isToolInputSchema(unwrapped) || seen.has(unwrapped)) {
     return;
   }
   seen.add(unwrapped);
@@ -72,10 +82,7 @@ export function getDeclaredPropertySchema<Schema, Value>(
     ...collectAllOfPropertySchemas(unwrapped, key, value, seen),
     ...collectSelectedVariantPropertySchemas(unwrapped, key, value, seen),
   ];
-  if (
-    isRecord(unwrapped.properties) &&
-    Object.hasOwn(unwrapped.properties, key)
-  ) {
+  if (unwrapped.properties && Object.hasOwn(unwrapped.properties, key)) {
     propertySchemas.unshift(unwrapped.properties[key]);
   }
   const patternSchema = getPatternPropertySchema(unwrapped, key);
@@ -87,7 +94,7 @@ export function getDeclaredPropertySchema<Schema, Value>(
   }
   if (
     propertySchemas.length === 0 &&
-    isRecord(unwrapped.additionalProperties)
+    isToolInputSchema(unwrapped.additionalProperties)
   ) {
     return unwrapped.additionalProperties;
   }

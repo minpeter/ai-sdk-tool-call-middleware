@@ -9,6 +9,19 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
+const model = {
+  specificationVersion: "v4",
+  provider: "test",
+  modelId: "test",
+  supportedUrls: {},
+  doGenerate: () => {
+    throw new Error("unused");
+  },
+  doStream: () => {
+    throw new Error("unused");
+  },
+} satisfies import("@ai-sdk/provider").LanguageModelV4;
+
 // Regex constants for performance
 const _REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
 const _REGEX_TOOL_CALL_FENCE = /```tool_call/;
@@ -33,6 +46,8 @@ describe("non-stream assistant->user merge formatting with object input", () => 
     const mw = hermesToolMiddleware;
     const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           { role: "user", content: [{ type: "text", text: "q" }] },
@@ -44,7 +59,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
                 toolCallId: "tc1",
                 toolName: "get_weather",
                 input: JSON.stringify({ city: "Seoul" }),
-              } as any,
+              },
             ],
           },
           {
@@ -54,7 +69,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
                 type: "tool-result",
                 toolName: "get_weather",
                 toolCallId: "tc1",
-                output: { ok: true },
+                output: { type: "json", value: { ok: true } },
               },
             ],
           },
@@ -68,21 +83,21 @@ describe("non-stream assistant->user merge formatting with object input", () => 
           },
         ],
       },
-    } as any);
+    });
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     if (!assistantMsg) {
       throw new Error("assistant message not found");
     }
-    const assistantText = (assistantMsg.content as any[])
-      .map((c: any) => (c.type === "text" ? c.text : ""))
+    const assistantText = assistantMsg.content
+      .map((c) => (c.type === "text" ? c.text : ""))
       .join("");
     expect(assistantText).toMatch(REGEX_TOOL_CALL_TAG);
 
-    const userMsgs = out.prompt.filter((m: any) => m.role === "user");
+    const userMsgs = out.prompt.filter((m) => m.role === "user");
     const userCombined = userMsgs
-      .map((u: any) =>
-        u.content.map((c: any) => (c.type === "text" ? c.text : "")).join("")
+      .map((u) =>
+        u.content.map((c) => (c.type === "text" ? c.text : "")).join("")
       )
       .join("\n");
     expect(userCombined).toMatch(REGEX_TOOL_RESPONSE_TAG);
@@ -92,6 +107,8 @@ describe("non-stream assistant->user merge formatting with object input", () => 
     const mw = morphXmlToolMiddleware;
     const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [
           { role: "user", content: [{ type: "text", text: "q" }] },
@@ -103,7 +120,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
                 toolCallId: "tc1",
                 toolName: "get_weather",
                 input: JSON.stringify({ city: "Seoul" }),
-              } as any,
+              },
             ],
           },
           {
@@ -113,7 +130,7 @@ describe("non-stream assistant->user merge formatting with object input", () => 
                 type: "tool-result",
                 toolName: "get_weather",
                 toolCallId: "tc1",
-                output: { ok: true },
+                output: { type: "json", value: { ok: true } },
               },
             ],
           },
@@ -127,21 +144,21 @@ describe("non-stream assistant->user merge formatting with object input", () => 
           },
         ],
       },
-    } as any);
+    });
 
-    const assistantMsg = out.prompt.find((m: any) => m.role === "assistant");
+    const assistantMsg = out.prompt.find((m) => m.role === "assistant");
     if (!assistantMsg) {
       throw new Error("assistant message not found");
     }
-    const assistantText = (assistantMsg.content as any[])
-      .map((c: any) => (c.type === "text" ? c.text : ""))
+    const assistantText = assistantMsg.content
+      .map((c) => (c.type === "text" ? c.text : ""))
       .join("");
     expect(assistantText).toMatch(REGEX_GET_WEATHER_TAG);
 
-    const userMsgs = out.prompt.filter((m: any) => m.role === "user");
+    const userMsgs = out.prompt.filter((m) => m.role === "user");
     const userCombined = userMsgs
-      .map((u: any) =>
-        u.content.map((c: any) => (c.type === "text" ? c.text : "")).join("")
+      .map((u) =>
+        u.content.map((c) => (c.type === "text" ? c.text : "")).join("")
       )
       .join("\n");
     expect(userCombined).toMatch(REGEX_TOOL_RESPONSE_TAG);

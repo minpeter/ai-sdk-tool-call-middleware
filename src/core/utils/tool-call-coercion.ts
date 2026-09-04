@@ -1,8 +1,15 @@
 import type {
+  JSONObject,
+  JSONValue,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import type {
+  ToolInputSchemaCandidate,
+  ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { coerceBySchema, unwrapJsonSchema } from "../../schema-coerce";
 import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 import { toolCallInputHasSchemaAwarePrototypeSensitiveValue as inputHasSchemaAwarePrototypeSensitiveValue } from "./tool-call-schema-aware-prototype";
@@ -13,26 +20,84 @@ type ToolCallLike = Extract<
   { type: "tool-call" }
 >;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+type JsonValueFrame =
+  | {
+      readonly allowUndefined: boolean;
+      readonly leaving: false;
+      readonly value: RxmlValue;
+    }
+  | { readonly leaving: true; readonly value: object };
+
+function isJsonPrimitive(
+  value: RxmlValue
+): value is string | number | boolean | null {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  );
+}
+
+function isJsonValueBoundary(value: RxmlValue): value is JSONValue {
+  const active = new Set<object>();
+  const stack: JsonValueFrame[] = [
+    { allowUndefined: false, leaving: false, value },
+  ];
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (frame === undefined) {
+      continue;
+    }
+    if (frame.leaving) {
+      active.delete(frame.value);
+      continue;
+    }
+    const current = frame.value;
+    if (isJsonPrimitive(current)) {
+      continue;
+    }
+    if (current === undefined && frame.allowUndefined) {
+      continue;
+    }
+    if (typeof current !== "object" || active.has(current)) {
+      return false;
+    }
+    active.add(current);
+    stack.push({ leaving: true, value: current });
+    const allowUndefined = !Array.isArray(current);
+    for (const child of Object.values(current)) {
+      stack.push({ allowUndefined, leaving: false, value: child });
+    }
+  }
+  return true;
+}
+
+function isJsonObjectBoundary(value: RxmlValue): value is JSONObject {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    isJsonValueBoundary(value)
+  );
 }
 
 export function toolCallInputHasSchemaAwarePrototypeSensitiveValue(
-  value: unknown,
-  schema: unknown
+  value: RxmlValue,
+  schema: ToolInputSchemaDefinition | undefined
 ): boolean {
   return inputHasSchemaAwarePrototypeSensitiveValue(value, schema);
 }
 
-function schemaAllowsNull(schema: unknown, seen = new Set<object>()): boolean {
+function schemaAllowsNull(
+  schema: ToolInputSchemaCandidate,
+  seen = new Set<object>()
+): boolean {
   const unwrapped = unwrapJsonSchema(schema);
   if (unwrapped === true) {
     return true;
   }
-  if (unwrapped === false || !unwrapped || typeof unwrapped !== "object") {
-    return false;
-  }
-  if (Array.isArray(unwrapped)) {
+  if (unwrapped === undefined || typeof unwrapped === "boolean") {
     return false;
   }
   if (seen.has(unwrapped)) {
@@ -40,8 +105,7 @@ function schemaAllowsNull(schema: unknown, seen = new Set<object>()): boolean {
   }
   seen.add(unwrapped);
 
-  const record = unwrapped as Record<string, unknown>;
-  const schemaType = record.type;
+  const schemaType = unwrapped.type;
   if (schemaType === "null") {
     return true;
   }
@@ -49,22 +113,30 @@ function schemaAllowsNull(schema: unknown, seen = new Set<object>()): boolean {
     return true;
   }
 
-  const allOf = Array.isArray(record.allOf) ? record.allOf : undefined;
+  const { allOf, anyOf, oneOf } = unwrapped;
   if (
     allOf?.length &&
-    allOf.every((item) => schemaAllowsNull(item, new Set(seen)))
+    allOf.every((item: ToolInputSchemaDefinition) =>
+      schemaAllowsNull(item, new Set(seen))
+    )
   ) {
     return true;
   }
-  const anyOf = Array.isArray(record.anyOf) ? record.anyOf : undefined;
-  if (anyOf?.some((item) => schemaAllowsNull(item, new Set(seen)))) {
+  if (
+    anyOf?.some((item: ToolInputSchemaDefinition) =>
+      schemaAllowsNull(item, new Set(seen))
+    )
+  ) {
     return true;
   }
-  const oneOf = Array.isArray(record.oneOf) ? record.oneOf : undefined;
-  return oneOf?.some((item) => schemaAllowsNull(item, new Set(seen))) === true;
+  return (
+    oneOf?.some((item: ToolInputSchemaDefinition) =>
+      schemaAllowsNull(item, new Set(seen))
+    ) === true
+  );
 }
 
-function stringifyToolArgs(value: unknown): string | undefined {
+function stringifyToolArgs(value: JSONValue): string | undefined {
   try {
     return JSON.stringify(value);
   } catch (error) {
@@ -75,27 +147,35 @@ function stringifyToolArgs(value: unknown): string | undefined {
   }
 }
 
-export function coerceToolCallInput(
-  toolName: string,
-  input: unknown,
-  tools: LanguageModelV4FunctionTool[]
-): string | undefined {
-  let args: unknown = {};
-  if (typeof input === "string") {
-    try {
-      args = JSON.parse(input);
-    } catch {
+function parseToolCallInput(input: RxmlValue): JSONValue | undefined {
+  if (typeof input !== "string") {
+    return isJsonValueBoundary(input) ? input : undefined;
+  }
+  try {
+    const parsed = JSON.parse(input);
+    return isJsonValueBoundary(parsed) ? parsed : undefined;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
       return;
     }
-  } else if (input === null) {
-    args = null;
-  } else if (input && typeof input === "object") {
-    args = input;
-  } else {
+    throw error;
+  }
+}
+
+export function coerceToolCallInput(
+  toolName: string,
+  input: RxmlValue,
+  tools: LanguageModelV4FunctionTool[]
+): string | undefined {
+  const args = parseToolCallInput(input);
+  if (args === undefined) {
     return;
   }
 
-  const schema = tools.find((t) => t.name === toolName)?.inputSchema;
+  const schemaCandidate: ToolInputSchemaCandidate = tools.find(
+    (tool) => tool.name === toolName
+  )?.inputSchema;
+  const schema = unwrapJsonSchema(schemaCandidate);
   if (args === null) {
     return schemaAllowsNull(schema) ? "null" : undefined;
   }
@@ -106,8 +186,17 @@ export function coerceToolCallInput(
   if (coerced === null) {
     return schemaAllowsNull(schema) ? "null" : undefined;
   }
-  const sanitized = sanitizeToolCallArgsBySchema(coerced ?? {}, schema);
-  if (toolCallInputHasSchemaAwarePrototypeSensitiveValue(sanitized, schema)) {
+  const valueToSanitize: JSONValue = isJsonValueBoundary(coerced)
+    ? coerced
+    : {};
+  const sanitized =
+    schema === undefined
+      ? valueToSanitize
+      : sanitizeToolCallArgsBySchema(valueToSanitize, schema);
+  if (
+    !isJsonValueBoundary(sanitized) ||
+    toolCallInputHasSchemaAwarePrototypeSensitiveValue(sanitized, schema)
+  ) {
     return;
   }
   return stringifyToolArgs(sanitized);
@@ -128,7 +217,7 @@ export function coerceToolCallPart<T extends ToolCallLike>(
         input: "{}",
       };
     }
-    if (isRecord(part.input)) {
+    if (isJsonObjectBoundary(part.input)) {
       return {
         ...part,
         input: "{}",

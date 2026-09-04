@@ -1,10 +1,11 @@
+import type { JSONObject, JSONSchema7 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { coerceBySchema } from "../../schema-coerce";
 
 // Live-model variants: nested object parameters delivered as strings
 // (JSON, Python-literal dicts, XML children) instead of structured values.
-const schema = {
+const schema: JSONSchema7 = {
   type: "object",
   properties: {
     passenger: {
@@ -35,7 +36,7 @@ describe("coerceBySchema loose structured strings", () => {
         passenger: "{'name': 'Jane Doe', 'age': 34, 'frequentFlyer': True}",
       },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(out.passenger).toEqual({
       name: "Jane Doe",
@@ -48,7 +49,7 @@ describe("coerceBySchema loose structured strings", () => {
     const out = coerceBySchema(
       { legs: "[{'from': 'ICN', 'to': 'NRT'}]" },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(out.legs).toEqual([{ from: "ICN", to: "NRT" }]);
   });
@@ -57,7 +58,7 @@ describe("coerceBySchema loose structured strings", () => {
     const out = coerceBySchema(
       { passenger: "<name>Jane Doe</name>\n<age>34</age>" },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(out.passenger).toEqual({ name: "Jane Doe", age: 34 });
   });
@@ -66,7 +67,7 @@ describe("coerceBySchema loose structured strings", () => {
     const out = coerceBySchema(
       { passenger: "{'__proto__': {'polluted': True}}" },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     // Not coerced into an object — the raw string is preserved.
     expect(typeof out.passenger).toBe("string");
@@ -78,7 +79,7 @@ describe("coerceBySchema loose structured strings", () => {
         passenger: `{"name":"notes mention 'constructor': and '__proto__': labels","age":34}`,
       },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(out.passenger).toEqual({
       name: "notes mention 'constructor': and '__proto__': labels",
@@ -92,7 +93,7 @@ describe("coerceBySchema loose structured strings", () => {
         passenger: `{'name': "notes mention '__proto__': and 'constructor': labels", 'age': 34}`,
       },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(out.passenger).toEqual({
       name: "notes mention '__proto__': and 'constructor': labels",
@@ -107,7 +108,7 @@ describe("coerceBySchema loose structured strings", () => {
           '{"\\u005f\\u005fproto\\u005f\\u005f":{"polluted":true},"name":"Jane Doe"}',
       },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(typeof out.passenger).toBe("string");
   });
@@ -116,7 +117,7 @@ describe("coerceBySchema loose structured strings", () => {
     const out = coerceBySchema(
       { passenger: "{constructor: {'polluted': True}, name: 'Jane Doe'}" },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(typeof out.passenger).toBe("string");
   });
@@ -130,7 +131,7 @@ describe("coerceBySchema loose structured strings", () => {
           tags: { type: "array", items: { type: "string" } },
         },
       }
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(out.tags).toEqual(["a", "b", "c"]);
   });
@@ -141,7 +142,7 @@ describe("coerceBySchema Python literal handling (review fixes)", () => {
     const out = coerceBySchema(
       { passenger: "{'name': None, 'age': 34}" },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(out.passenger).toEqual({ name: null, age: 34 });
   });
@@ -150,7 +151,7 @@ describe("coerceBySchema Python literal handling (review fixes)", () => {
     const out = coerceBySchema(
       { passenger: "{'name': 'True story of None', 'age': 34}" },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(out.passenger).toEqual({ name: "True story of None", age: 34 });
   });
@@ -159,7 +160,7 @@ describe("coerceBySchema Python literal handling (review fixes)", () => {
     const out = coerceBySchema(
       { passenger: "<name>Tom &amp; Jerry</name>\n<age>34</age>" },
       schema
-    ) as Record<string, unknown>;
+    ) as JSONObject;
 
     expect(out.passenger).toEqual({ name: "Tom & Jerry", age: 34 });
   });

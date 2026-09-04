@@ -1,11 +1,14 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONSchema7Definition,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-
 import {
   coerceToolCallInput,
   coerceToolCallPart,
   toolCallInputHasSchemaAwarePrototypeSensitiveValue,
 } from "../../../core/utils/tool-call-coercion";
+import type { RxmlValue } from "../../../rxml/builders/stringify";
 
 describe("tool-call coercion utils", () => {
   const weatherTools: LanguageModelV4FunctionTool[] = [
@@ -112,8 +115,8 @@ describe("tool-call coercion utils", () => {
   });
 
   it("handles deeply nested object and array input without exhausting the call stack", () => {
-    let input: unknown = "constructor: ordinary prose";
-    let schema: unknown = { type: "string" };
+    let input: RxmlValue = "constructor: ordinary prose";
+    let schema: JSONSchema7Definition = { type: "string" };
     for (let depth = 0; depth < 5000; depth += 1) {
       if (depth % 2 === 0) {
         input = { value: input };

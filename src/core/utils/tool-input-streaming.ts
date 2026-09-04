@@ -2,6 +2,8 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import type { OnErrorFn } from "./on-error";
 import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 import {
   type EmittedToolInputState,
@@ -24,7 +26,7 @@ interface RawFallbackOptions {
   emitRawToolCallTextOnError?: boolean;
 }
 
-type OnMismatch = (message: string, metadata?: Record<string, unknown>) => void;
+type OnMismatch = OnErrorFn;
 
 export class PrototypeSensitiveToolCallInputError extends Error {
   readonly name = "PrototypeSensitiveToolCallInputError";
@@ -35,16 +37,16 @@ export class PrototypeSensitiveToolCallInputError extends Error {
 }
 
 export function isPrototypeSensitiveToolCallInputError(
-  error: unknown
+  error: Error
 ): error is PrototypeSensitiveToolCallInputError {
   return error instanceof PrototypeSensitiveToolCallInputError;
 }
 
 export function stringifyToolInputWithSchema(options: {
   toolName: string;
-  args: unknown;
+  args: RxmlValue;
   tools: LanguageModelV4FunctionTool[];
-  fallback?: (args: unknown) => string;
+  fallback?: (args: RxmlValue) => string;
 }): string {
   const schema = options.tools.find(
     (tool) => tool.name === options.toolName

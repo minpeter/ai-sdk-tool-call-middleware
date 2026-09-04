@@ -1,4 +1,6 @@
+import type { JSONSchema7 } from "@ai-sdk/provider";
 import { getSchemaType } from "../../schema-coerce";
+import type { RxmlValue } from "../builders/stringify";
 import { RXMLDuplicateStringTagError } from "../errors/types";
 import {
   getPropertySchema,
@@ -11,20 +13,31 @@ import type { ParseOptions } from "./types";
 const DIGIT_KEY_REGEX = /^\d+$/;
 const NUMERIC_STRING_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
+type RxmlRecord = Record<string, RxmlValue>;
+type ParsedSchema = JSONSchema7 | boolean | undefined;
+
 type Resolution =
   | { readonly handled: false }
-  | { readonly handled: true; readonly value: unknown };
+  | { readonly handled: true; readonly value: RxmlValue };
 
 interface PropertyContext {
   readonly duplicateKeys: ReadonlySet<string>;
   readonly options: ParseOptions;
   readonly originalContent: ReadonlyMap<string, string>;
-  readonly schema: unknown;
+  readonly schema: ParsedSchema;
   readonly textNodeName: string;
   readonly xml: string;
 }
 
-function tryConvertToNumber(value: unknown): unknown {
+function isRxmlArray(value: RxmlValue): value is readonly RxmlValue[] {
+  return Array.isArray(value);
+}
+
+function isRxmlRecord(value: RxmlValue): value is RxmlRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function tryConvertToNumber(value: RxmlValue): RxmlValue {
   if (typeof value !== "string") {
     return value;
   }
@@ -36,17 +49,17 @@ function tryConvertToNumber(value: unknown): unknown {
   return Number.isFinite(number) ? number : trimmed;
 }
 
-function processItemValue(item: unknown, textNodeName: string): unknown {
+function processItemValue(item: RxmlValue, textNodeName: string): RxmlValue {
   const current =
-    item && typeof item === "object" && Object.hasOwn(item, textNodeName)
-      ? (item as Record<string, unknown>)[textNodeName]
+    isRxmlRecord(item) && Object.hasOwn(item, textNodeName)
+      ? item[textNodeName]
       : item;
   const trimmed = typeof current === "string" ? current.trim() : current;
   return tryConvertToNumber(trimmed);
 }
 
-function processItemWrapper(value: unknown, textNodeName: string): unknown {
-  if (Array.isArray(value)) {
+function processItemWrapper(value: RxmlValue, textNodeName: string): RxmlValue {
+  if (isRxmlArray(value)) {
     return value.map((item) => processItemValue(item, textNodeName));
   }
   const trimmed = typeof value === "string" ? value.trim() : value;
@@ -55,10 +68,10 @@ function processItemWrapper(value: unknown, textNodeName: string): unknown {
 
 function resolveDuplicateString(
   key: string,
-  value: unknown,
+  value: RxmlValue,
   context: PropertyContext
 ): Resolution {
-  if (!(context.duplicateKeys.has(key) && Array.isArray(value))) {
+  if (!(context.duplicateKeys.has(key) && isRxmlArray(value))) {
     return { handled: false };
   }
   const [firstValue] = value;
@@ -75,18 +88,16 @@ function resolveDuplicateString(
 }
 
 function placeholderKey(
-  value: unknown,
+  value: RxmlValue,
   textNodeName: string
 ): string | undefined {
   if (typeof value === "string" && value.startsWith("__RXML_PLACEHOLDER_")) {
     return value;
   }
-  if (
-    !(value && typeof value === "object" && Object.hasOwn(value, textNodeName))
-  ) {
+  if (!(isRxmlRecord(value) && Object.hasOwn(value, textNodeName))) {
     return;
   }
-  const text = (value as Record<string, unknown>)[textNodeName];
+  const text = value[textNodeName];
   return typeof text === "string" && text.startsWith("__RXML_PLACEHOLDER_")
     ? text
     : undefined;
@@ -94,10 +105,10 @@ function placeholderKey(
 
 function resolveScalarString(
   key: string,
-  value: unknown,
+  value: RxmlValue,
   context: PropertyContext
 ): Resolution {
-  if (Array.isArray(value)) {
+  if (isRxmlArray(value)) {
     return { handled: false };
   }
   const keyForPlaceholder = placeholderKey(value, context.textNodeName);
@@ -113,9 +124,9 @@ function resolveScalarString(
     : { handled: false };
 }
 
-function stringFromItem(item: unknown, textNodeName: string): string {
-  if (item && typeof item === "object" && Object.hasOwn(item, textNodeName)) {
-    const text = (item as Record<string, unknown>)[textNodeName];
+function stringFromItem(item: RxmlValue, textNodeName: string): string {
+  if (isRxmlRecord(item) && Object.hasOwn(item, textNodeName)) {
+    const text = item[textNodeName];
     return typeof text === "string" ? text : String(text);
   }
   return typeof item === "string" ? item : String(item);
@@ -123,9 +134,9 @@ function stringFromItem(item: unknown, textNodeName: string): string {
 
 function processStringArray(
   key: string,
-  value: unknown[],
+  value: readonly RxmlValue[],
   context: PropertyContext
-): unknown {
+): RxmlValue {
   const mapped = value.map((item) =>
     stringFromItem(item, context.textNodeName)
   );
@@ -144,17 +155,19 @@ function processStringArray(
   return mapped[0] ?? "";
 }
 
-function processObject(value: object, textNodeName: string): unknown {
-  if (Object.hasOwn(value, textNodeName)) {
-    return (value as Record<string, unknown>)[textNodeName];
+function processObject(
+  objectValue: RxmlRecord,
+  textNodeName: string
+): RxmlValue {
+  if (Object.hasOwn(objectValue, textNodeName)) {
+    return objectValue[textNodeName];
   }
-  const objectValue = value as Record<string, unknown>;
   const keys = Object.keys(objectValue);
   if (keys.length === 1 && keys[0] === "item") {
     return processItemWrapper(objectValue.item, textNodeName);
   }
   if (!(keys.length > 0 && keys.every((key) => DIGIT_KEY_REGEX.test(key)))) {
-    return value;
+    return objectValue;
   }
   const indices = keys
     .map((key) => Number.parseInt(key, 10))
@@ -162,14 +175,14 @@ function processObject(value: object, textNodeName: string): unknown {
   return indices[0] === 0 &&
     indices.every((index, position) => index === position)
     ? processIndexedTuple(objectValue, textNodeName)
-    : value;
+    : objectValue;
 }
 
 function processProperty(
   key: string,
-  value: unknown,
+  value: RxmlValue,
   context: PropertyContext
-): unknown {
+): RxmlValue {
   const propertySchema = getPropertySchema(context.schema, key);
   const propertyType = getSchemaType(propertySchema);
   if (propertyType === "string") {
@@ -182,23 +195,22 @@ function processProperty(
       return scalar.value;
     }
   }
-  if (Array.isArray(value)) {
+  if (isRxmlArray(value)) {
     return propertyType === "string"
       ? processStringArray(key, value, context)
       : processArrayContent(value, propertySchema, context.textNodeName);
   }
-  const processed =
-    value && typeof value === "object"
-      ? processObject(value, context.textNodeName)
-      : value;
+  const processed = isRxmlRecord(value)
+    ? processObject(value, context.textNodeName)
+    : value;
   return typeof processed === "string" ? processed.trim() : processed;
 }
 
 export function processParsedProperties(
-  parsed: Record<string, unknown>,
+  parsed: RxmlRecord,
   context: PropertyContext
-): Record<string, unknown> {
-  const result = Object.create(null) as Record<string, unknown>;
+): RxmlRecord {
+  const result: RxmlRecord = Object.create(null);
   for (const key of Object.keys(parsed)) {
     result[key] = processProperty(key, parsed[key], context);
   }
@@ -206,7 +218,7 @@ export function processParsedProperties(
 }
 
 export function backfillStringProperties(
-  args: Record<string, unknown>,
+  args: RxmlRecord,
   stringProperties: ReadonlySet<string>,
   xml: string
 ): void {

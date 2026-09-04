@@ -1,9 +1,20 @@
-import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import {
+  isJSONObject,
+  isJSONValue,
+  type JSONObject,
+  type JSONValue,
+  type LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
   escapeXmlMinimalAttr,
   escapeXmlMinimalText,
 } from "../../rxml/utils/helpers";
+import {
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaCandidate,
+} from "../../schema/tool-input-schema";
 import {
   renderInputExamplesSection,
   safeStringifyInputExample,
@@ -18,25 +29,23 @@ const QWEN3CODER_TOOL_HEADER =
 const QWEN3CODER_TOOL_CALL_INSTRUCTIONS =
   "\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\n</IMPORTANT>";
 
-type Mapping = Record<string, unknown>;
-
-interface Qwen3CoderToolShape extends Mapping {
-  description?: unknown;
-  name?: unknown;
-  parameters?: unknown;
+interface Qwen3CoderToolShape extends JSONObject {
+  readonly description?: string;
+  readonly name: string;
+  readonly parameters: JSONValue;
 }
 
 const XML_PROMPT_TAG_NAME_RE = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 
-function isMapping(value: unknown): value is Mapping {
+function isMapping(value: JSONValue | undefined): value is JSONObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isSequence(value: unknown): value is unknown[] {
+function isSequence(value: JSONValue | undefined): value is JSONValue[] {
   return Array.isArray(value);
 }
 
-function toJinjaString(value: unknown): string {
+function toJinjaString(value: JSONValue | undefined): string {
   if (value === undefined) {
     return "";
   }
@@ -49,15 +58,15 @@ function toJinjaString(value: unknown): string {
   return String(value);
 }
 
-function toJinjaTrimmedString(value: unknown): string {
+function toJinjaTrimmedString(value: JSONValue | undefined): string {
   return toJinjaString(value).trim();
 }
 
-function toEscapedXmlText(value: unknown): string {
+function toEscapedXmlText(value: JSONValue | undefined): string {
   return escapeXmlMinimalText(toJinjaString(value));
 }
 
-function toEscapedTrimmedXmlText(value: unknown): string {
+function toEscapedTrimmedXmlText(value: JSONValue | undefined): string {
   return escapeXmlMinimalText(toJinjaTrimmedString(value));
 }
 
@@ -73,7 +82,7 @@ function renderXmlPromptField(key: string, escapedValue: string): string {
 }
 
 function renderExtraKeys(
-  jsonDict: unknown,
+  jsonDict: JSONValue | undefined,
   handledKeys: readonly string[]
 ): string {
   if (!isMapping(jsonDict)) {
@@ -98,16 +107,36 @@ function renderExtraKeys(
   return out;
 }
 
-function normalizeInputSchema(inputSchema: unknown): unknown {
+function normalizeInputSchema(
+  inputSchema: LanguageModelV4FunctionTool["inputSchema"] | string
+): ToolInputSchema | string {
   if (typeof inputSchema !== "string") {
-    return inputSchema;
+    return isSchemaRecord(inputSchema)
+      ? inputSchema
+      : JSON.stringify(inputSchema);
   }
 
   try {
-    return JSON.parse(inputSchema) as unknown;
+    const parsed: ToolInputSchemaCandidate = JSON.parse(inputSchema);
+    return typeof parsed === "object" && isSchemaRecord(parsed)
+      ? parsed
+      : inputSchema;
   } catch {
     return inputSchema;
   }
+}
+
+function copyInputSchemaToJSONObject(
+  inputSchema: LanguageModelV4FunctionTool["inputSchema"] | string
+): JSONObject {
+  const normalized = normalizeInputSchema(inputSchema);
+  if (typeof normalized === "string") {
+    return {};
+  }
+  const copied: ToolInputSchemaCandidate = JSON.parse(
+    JSON.stringify(normalized)
+  );
+  return isJSONObject(copied) && !Array.isArray(copied) ? copied : {};
 }
 
 function normalizeTool(
@@ -116,14 +145,15 @@ function normalizeTool(
   return {
     name: rawTool.name,
     description: rawTool.description,
-    parameters: normalizeInputSchema(rawTool.inputSchema),
+    parameters: copyInputSchemaToJSONObject(rawTool.inputSchema),
   };
 }
 
-function renderParameter(paramName: string, paramFieldsRaw: unknown): string {
-  const paramFields = isMapping(paramFieldsRaw)
-    ? (paramFieldsRaw as Mapping)
-    : undefined;
+function renderParameter(
+  paramName: string,
+  paramFieldsRaw: JSONValue | undefined
+): string {
+  const paramFields = isMapping(paramFieldsRaw) ? paramFieldsRaw : undefined;
 
   let out = "\n<parameter>";
   out += `\n<name>${toEscapedXmlText(paramName)}</name>`;
@@ -151,9 +181,9 @@ function renderTool(tool: Qwen3CoderToolShape): string {
   out += "\n<parameters>";
 
   const { parameters } = tool;
-  if (isMapping(parameters) && isMapping((parameters as Mapping).properties)) {
+  if (isMapping(parameters) && isMapping(parameters.properties)) {
     for (const [paramName, paramFieldsRaw] of Object.entries(
-      (parameters as Mapping).properties as Mapping
+      parameters.properties
     )) {
       out += renderParameter(paramName, paramFieldsRaw);
     }
@@ -182,7 +212,11 @@ export function qwen3coderSystemPromptTemplate(
 
   const inputExamplesText = renderInputExamplesSection({
     tools,
-    renderExample: renderQwen3CoderInputExample,
+    renderExample: (toolName, input) =>
+      renderQwen3CoderInputExample(
+        toolName,
+        isJSONValue(input) ? input : String(input)
+      ),
   });
 
   if (inputExamplesText.length > 0) {
@@ -194,13 +228,13 @@ export function qwen3coderSystemPromptTemplate(
 
 function renderQwen3CoderInputExample(
   toolName: string,
-  input: unknown
+  input: JSONValue
 ): string {
   const parameterBlocks = renderQwen3CoderParameters(input);
   return `<tool_call>\n<function=${escapeXmlMinimalAttr(toolName, '"')}>${parameterBlocks}\n</function>\n</tool_call>`;
 }
 
-function renderQwen3CoderParameters(input: unknown): string {
+function renderQwen3CoderParameters(input: JSONValue): string {
   if (isMapping(input)) {
     const lines = Object.entries(input).map(([key, value]) => {
       const content = renderQwen3CoderParameterValue(value);
@@ -216,7 +250,7 @@ function renderQwen3CoderParameters(input: unknown): string {
   return `\n<parameter=input>\n${fallback}\n</parameter>`;
 }
 
-function renderQwen3CoderParameterValue(value: unknown): string {
+function renderQwen3CoderParameterValue(value: JSONValue | undefined): string {
   if (typeof value === "string") {
     return escapeXmlMinimalText(value);
   }

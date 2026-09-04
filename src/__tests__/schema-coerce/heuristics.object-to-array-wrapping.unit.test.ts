@@ -1,3 +1,4 @@
+import type { JSONObject, JSONSchema7, JSONValue } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { coerceBySchema } from "../../schema-coerce";
 
@@ -11,7 +12,7 @@ describe("Coercion Heuristic Handling", () => {
         priority: "medium",
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -24,7 +25,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -45,7 +46,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           todos: {
@@ -63,10 +64,11 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any;
-      expect(Array.isArray(result.todos)).toBe(true);
-      expect(result.todos).toHaveLength(1);
-      expect(result.todos[0]).toEqual({
+      const result = coerceBySchema(input, schema) as JSONObject;
+      const todos = result.todos as JSONValue[];
+      expect(Array.isArray(todos)).toBe(true);
+      expect(todos).toHaveLength(1);
+      expect(todos[0]).toEqual({
         id: "1",
         content: "test",
         status: "completed",
@@ -77,7 +79,7 @@ describe("Coercion Heuristic Handling", () => {
     it("should preserve array when schema expects array and input is already array", () => {
       const input = [{ id: "1" }, { id: "2" }];
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -87,7 +89,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(2);
     });
@@ -100,7 +102,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -116,7 +118,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual(input);
@@ -129,7 +131,7 @@ describe("Coercion Heuristic Handling", () => {
         value: ["paid", "100"],
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -143,7 +145,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([
         { field: "status", op: "=", value: "paid" },
         { field: "amount", op: ">", value: "100" },
@@ -156,7 +158,7 @@ describe("Coercion Heuristic Handling", () => {
         op: ["=", ">"],
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: {
           type: "object",
@@ -168,7 +170,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       expect(result).toEqual([{ field: ["status", "amount"], op: ["=", ">"] }]);
     });
   });

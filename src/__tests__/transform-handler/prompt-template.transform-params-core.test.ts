@@ -1,7 +1,26 @@
+import type {
+  LanguageModelV4CallOptions,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4Middleware,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import type { ToolInputSchema } from "../../schema/tool-input-schema";
 import { createToolMiddleware } from "../../tool-call-middleware";
-import { requireTransformParams } from "../test-helpers";
+
+function requireTransformParams(
+  value: LanguageModelV4Middleware["transformParams"]
+): (options: {
+  params: LanguageModelV4CallOptions;
+}) => PromiseLike<LanguageModelV4CallOptions> {
+  if (!value) {
+    throw new Error("transformParams is required for middleware");
+  }
+
+  return value as (options: {
+    params: LanguageModelV4CallOptions;
+  }) => PromiseLike<LanguageModelV4CallOptions>;
+}
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -51,13 +70,15 @@ describe("transformParams", () => {
             properties: {
               name: { type: "string" },
             },
-          },
-        },
-      ],
+          } satisfies ToolInputSchema,
+        } satisfies LanguageModelV4FunctionTool,
+      ] satisfies LanguageModelV4FunctionTool[],
     };
 
     const transformParams = requireTransformParams(middleware.transformParams);
-    const result = await transformParams({ params } as any);
+    const result = await transformParams({
+      params: params satisfies LanguageModelV4CallOptions,
+    });
     expect(result.prompt).toBeDefined();
     expect(result.tools).toEqual([]);
     expect(result.toolChoice).toBeUndefined();
@@ -84,8 +105,8 @@ describe("transformParams", () => {
             existing: true,
           },
         },
-      },
-    } as any);
+      } satisfies LanguageModelV4CallOptions,
+    });
 
     expect(result.prompt).toHaveLength(2);
     expect(result.prompt[0]).toEqual({
@@ -97,11 +118,9 @@ describe("transformParams", () => {
       content: "SYSTEM: no tools",
     });
     expect(result.tools).toEqual([]);
-    expect(
-      (result.providerOptions as any).toolCallMiddleware.originalTools
-    ).toEqual([]);
-    expect((result.providerOptions as any).toolCallMiddleware.existing).toBe(
-      true
+    expect(result.providerOptions?.toolCallMiddleware?.originalTools).toEqual(
+      []
     );
+    expect(result.providerOptions?.toolCallMiddleware?.existing).toBe(true);
   });
 });

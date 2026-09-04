@@ -1,8 +1,26 @@
+import type {
+  LanguageModelV4CallOptions,
+  LanguageModelV4Middleware,
+  LanguageModelV4TextPart,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { formatToolResponseAsHermes } from "../../core/prompts/hermes-prompt";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
-import { requireTransformParams } from "../test-helpers";
+
+function requireTransformParams(
+  value: LanguageModelV4Middleware["transformParams"]
+): (options: {
+  params: LanguageModelV4CallOptions;
+}) => PromiseLike<LanguageModelV4CallOptions> {
+  if (!value) {
+    throw new Error("transformParams is required for middleware");
+  }
+
+  return value as (options: {
+    params: LanguageModelV4CallOptions;
+  }) => PromiseLike<LanguageModelV4CallOptions>;
+}
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
@@ -43,15 +61,20 @@ describe("transformParams merges adjacent user messages", () => {
           { role: "user", content: [{ type: "text", text: "second" }] },
         ],
         tools: [],
-      },
-    } as any);
+      } satisfies LanguageModelV4CallOptions,
+    });
 
     // After inserting system, the merged user should be at index 1
     const user = out.prompt.find((m) => m.role === "user");
     if (!user) {
       throw new Error("user message not found");
     }
-    const text = user.content.map((c: any) => c.text).join("");
+    const text = user.content
+      .filter(
+        (content): content is LanguageModelV4TextPart => content.type === "text"
+      )
+      .map((content) => content.text)
+      .join("");
     expect(text).toBe("first\nsecond");
   });
 
@@ -107,15 +130,26 @@ describe("transformParams merges adjacent user messages", () => {
             inputSchema: { type: "object" },
           },
         ],
-      },
-    } as any);
+      } satisfies LanguageModelV4CallOptions,
+    });
 
     const userMsgs = out.prompt.filter((m) => m.role === "user");
     expect(userMsgs).toHaveLength(1);
-    const user = userMsgs[0] as any;
+    const [user] = userMsgs;
+    if (user?.role !== "user") {
+      throw new Error("user message not found");
+    }
     // Single text content only
-    expect(user.content.filter((c: any) => c.type === "text")).toHaveLength(1);
-    const text = user.content[0].text as string;
+    expect(
+      user.content.filter(
+        (content): content is LanguageModelV4TextPart => content.type === "text"
+      )
+    ).toHaveLength(1);
+    const [textPart] = user.content;
+    if (textPart?.type !== "text") {
+      throw new Error("text content not found");
+    }
+    const { text } = textPart;
     // Contains two tool_response blocks
     expect((text.match(/<tool_response>/g) || []).length).toBe(2);
     expect(user.content.length).toBe(1);

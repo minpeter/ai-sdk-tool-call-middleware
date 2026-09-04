@@ -130,14 +130,6 @@ export function createQwen3CoderStreamParser({
   };
 
   const startToolCallIfPresent = () => {
-    if (toolCall) {
-      return;
-    }
-
-    if (implicitCall) {
-      return;
-    }
-
     const lower = buffer.toLowerCase();
     const startIndex = getPotentialStartIndex(lower, toolCallStartPrefixLower);
     if (startIndex == null || startIndex !== 0) {
@@ -173,10 +165,6 @@ export function createQwen3CoderStreamParser({
   };
 
   const startImplicitCallIfPresent = (controller: StreamController) => {
-    if (toolCall || implicitCall) {
-      return;
-    }
-
     const match = QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_TAG_RE.exec(buffer);
     const startIndex = match?.index ?? -1;
     const openTag = match?.[0] ?? "";
@@ -252,10 +240,6 @@ export function createQwen3CoderStreamParser({
 
   const drainStarts = (controller: StreamController) => {
     while (true) {
-      if (toolCall || implicitCall) {
-        return;
-      }
-
       const before = buffer;
       startToolCallIfPresent();
       if (toolCall) {
@@ -448,7 +432,7 @@ export function createQwen3CoderStreamParser({
     if (!result.ok && openTag) {
       reportUnfinishedImplicitCallAtFinish(
         controller,
-        callState.raw || openTag + callState.buffer,
+        callState.raw,
         callState
       );
     }

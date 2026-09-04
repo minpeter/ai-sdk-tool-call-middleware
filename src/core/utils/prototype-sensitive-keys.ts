@@ -1,9 +1,10 @@
+import { isJSONValue } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
+import type { RxmlValue } from "../../rxml/builders/stringify";
 import {
   decodeJsonUnicodeEscapes,
   decodeStructuredTextEscapes,
 } from "./structured-text-escapes";
-import type { SchemaBoundaryValue } from "./tool-call-object-schema";
 
 const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
   "__proto__",
@@ -28,21 +29,21 @@ const YAML_MAPPING_KEY_TEXT_REGEX =
 const YAML_MAPPING_KEY_TEXT_GLOBAL_REGEX =
   /(?:^|\n)\s*(?:"[^"\r\n]+"|'[^'\r\n]+'|[A-Za-z0-9_][A-Za-z0-9_.-]*)\s*:/g;
 
-type SchemaBoundaryRecord = Record<string, SchemaBoundaryValue>;
+type RxmlRecord = Readonly<Record<string, RxmlValue>>;
 
 type JsonParseResult =
-  | { readonly ok: true; readonly value: SchemaBoundaryValue }
+  | { readonly ok: true; readonly value: RxmlValue }
   | { readonly ok: false };
 
 type RelaxedJsonParseResult =
   | {
       readonly ok: true;
       readonly sawPrototypeSensitiveKey: boolean;
-      readonly value: SchemaBoundaryValue;
+      readonly value: RxmlValue;
     }
   | { readonly ok: false; readonly sawPrototypeSensitiveKey: boolean };
 
-function isRecord<Value>(value: Value): value is Value & SchemaBoundaryRecord {
+function isRecord(value: RxmlValue): value is RxmlRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -54,10 +55,10 @@ function markUnseen(value: object, seen: Set<object>): boolean {
   return true;
 }
 
-function enqueueArrayItems<Value>(
-  value: Value,
+function enqueueArrayItems(
+  value: RxmlValue,
   seen: Set<object>,
-  stack: SchemaBoundaryValue[]
+  stack: RxmlValue[]
 ): boolean {
   if (!Array.isArray(value)) {
     return false;
@@ -68,14 +69,14 @@ function enqueueArrayItems<Value>(
   return true;
 }
 
-function hasUnsafePrototype(record: SchemaBoundaryRecord): boolean {
+function hasUnsafePrototype(record: RxmlRecord): boolean {
   const prototype = Object.getPrototypeOf(record);
   return prototype !== null && prototype !== Object.prototype;
 }
 
 function enqueueRecordOwnValues(
-  record: SchemaBoundaryRecord,
-  stack: SchemaBoundaryValue[]
+  record: RxmlRecord,
+  stack: RxmlValue[]
 ): boolean {
   for (const key of Object.getOwnPropertyNames(record)) {
     if (
@@ -92,28 +93,10 @@ function enqueueRecordOwnValues(
   return false;
 }
 
-function toSchemaBoundaryValue<Value>(value: Value): SchemaBoundaryValue {
-  if (value === null) {
-    return null;
-  }
-  switch (typeof value) {
-    case "object":
-    case "function":
-    case "string":
-    case "number":
-    case "bigint":
-    case "boolean":
-    case "symbol":
-    case "undefined":
-      return value;
-    default:
-      return;
-  }
-}
-
 function parseJsonText(text: string): JsonParseResult {
   try {
-    return { ok: true, value: toSchemaBoundaryValue(JSON.parse(text)) };
+    const value: RxmlValue = JSON.parse(text);
+    return { ok: true, value };
   } catch (error) {
     if (error instanceof SyntaxError) {
       return { ok: false };
@@ -135,11 +118,9 @@ function parseRelaxedJsonText(text: string): RelaxedJsonParseResult {
         return value;
       },
     });
-    return {
-      ok: true,
-      sawPrototypeSensitiveKey,
-      value: toSchemaBoundaryValue(parsed),
-    };
+    return isJSONValue(parsed)
+      ? { ok: true, sawPrototypeSensitiveKey, value: parsed }
+      : { ok: false, sawPrototypeSensitiveKey };
   } catch (error) {
     if (error instanceof Error) {
       return { ok: false, sawPrototypeSensitiveKey };
@@ -219,11 +200,9 @@ function stringLeafHasPrototypeSensitiveArgumentKey(text: string): boolean {
   return toolCallTextHasPrototypeSensitiveKey(text);
 }
 
-export function hasPrototypeSensitiveStructuralKey<Value>(
-  value: Value
-): boolean {
+export function hasPrototypeSensitiveStructuralKey(value: RxmlValue): boolean {
   const seen = new Set<object>();
-  const stack: SchemaBoundaryValue[] = [toSchemaBoundaryValue(value)];
+  const stack: RxmlValue[] = [value];
 
   while (stack.length > 0) {
     const current = stack.pop();
@@ -247,9 +226,9 @@ export function hasPrototypeSensitiveStructuralKey<Value>(
   return false;
 }
 
-function hasPrototypeSensitiveArgumentValue<Value>(value: Value): boolean {
+function hasPrototypeSensitiveArgumentValue(value: RxmlValue): boolean {
   const seen = new Set<object>();
-  const stack: SchemaBoundaryValue[] = [toSchemaBoundaryValue(value)];
+  const stack: RxmlValue[] = [value];
 
   while (stack.length > 0) {
     const current = stack.pop();
@@ -279,8 +258,8 @@ function hasPrototypeSensitiveArgumentValue<Value>(value: Value): boolean {
   return false;
 }
 
-export function toolCallInputHasPrototypeSensitiveKey<Input>(
-  input: Input
+export function toolCallInputHasPrototypeSensitiveKey(
+  input: RxmlValue
 ): boolean {
   if (typeof input !== "string") {
     return hasPrototypeSensitiveArgumentValue(input);
