@@ -58,6 +58,20 @@ type CheckedParseOptions<Options> =
     ? Options
     : never;
 
+interface NotFunction {
+  readonly apply?: never;
+  readonly call?: never;
+}
+
+type JsonInputReviver = (
+  key: string,
+  value: JSONValue | undefined
+) => JSONValue | bigint | object | symbol | undefined;
+
+type InferredReviverResult<Callback extends JsonInputReviver> =
+  | RevivedValue<Exclude<ReturnType<Callback>, JSONValue | undefined>>
+  | undefined;
+
 type RecursiveReviver<Extension> = (
   key: string,
   value: RevivedValue<NoInfer<Extension>> | undefined
@@ -162,7 +176,10 @@ function reviveValue<Extension>(
         reviveValue(value, elementKey, reviver)
       );
     }
-  } else if (typeof value === "object" && value !== null) {
+  } else if (
+    typeof value === "function" ||
+    (typeof value === "object" && value !== null)
+  ) {
     for (const propertyKey of Object.keys(value)) {
       setRevivedProperty(
         value,
@@ -208,28 +225,37 @@ function reviveValue<Extension>(
  * parse('malformed json', { tolerant: true, warnings: true })
  * ```
  */
-// Zero-argument callbacks are still invoked as revivers with (key, value), so
-// inferring an exact factory ReturnType would be unsound for overloaded or rest
-// callables. All callbacks therefore use the recursive reviver domain.
+// Explicitly typed revivers retain their recursive input domain. The following
+// fallback contextually types inline callbacks with JSON input, then derives
+// their extension covariantly from non-JSON return members.
 function parse<Extension = never>(
   text: string,
   optsOrReviver:
     | RecursiveReviver<Extension>
-    | (Omit<ParseOptions<NoInfer<Extension>>, "reviver"> & {
-        readonly reviver: Reviver<NoInfer<Extension>>;
+    | (Omit<ParseOptions<Extension>, "reviver"> & {
+        readonly reviver: Reviver<Extension>;
       })
 ): RevivedValue<Extension> | undefined;
+function parse<Callback extends JsonInputReviver>(
+  text: string,
+  optsOrReviver:
+    | Callback
+    | (Omit<ParseOptions<never>, "reviver"> & {
+        readonly reviver: Callback;
+      })
+): InferredReviverResult<Callback>;
 function parse(
   text: string,
-  options?: PresentParseOptions<never> & { readonly reviver?: never }
+  options?: NotFunction &
+    PresentParseOptions<never> & { readonly reviver?: never }
 ): JSONValue;
 function parse<Options extends ParseOptionsWithoutReviver>(
   text: string,
-  options: Options
+  options: NotFunction & Options
 ): ParseOptionResult<Options, JSONValue>;
 function parse<Options>(
   text: string,
-  options: Options & CheckedParseOptions<Options>
+  options: NotFunction & Options & CheckedParseOptions<Options>
 ): GeneralParseOptionResult<Options>;
 
 function parse<Output>(

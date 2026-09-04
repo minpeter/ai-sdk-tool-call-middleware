@@ -49,5 +49,11 @@ export const transform: typeof transformSource = transformSource;
 /** Serialize an RJSON value with deterministic object-key ordering. */
 export const stringify: typeof stringifySource = stringifySource;
 
-export type { ParseOptions, RevivedValue, Reviver } from "./parser-types";
+export type {
+  ParseOptions,
+  RevivedArray,
+  RevivedObject,
+  RevivedValue,
+  Reviver,
+} from "./parser-types";
 export type { Rjson } from "./stringify";

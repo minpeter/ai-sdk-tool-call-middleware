@@ -38,11 +38,11 @@ interface ParseWarning {
   readonly message: string;
 }
 
-interface RevivedObject<Extension> {
+export interface RevivedObject<Extension> {
   [key: string]: RevivedValue<Extension> | undefined;
 }
 
-type RevivedArray<Extension> = RevivedValue<Extension>[];
+export type RevivedArray<Extension> = RevivedValue<Extension>[];
 
 export type RevivedValue<Extension> =
   | null

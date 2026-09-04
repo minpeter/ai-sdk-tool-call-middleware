@@ -64,6 +64,24 @@ export const entrypointSizes = [parser, community, rjson, rxml, schemaCoerce]
 `;
   await writeFile(join(temporaryDirectory, "consumer.ts"), source);
 
+  const declarationSource = `
+import {
+  parse,
+  type ParseOptions,
+  type Reviver,
+} from "@ai-sdk-tool/parser/rjson";
+
+type DateOptions = ParseOptions<Date> & { readonly reviver: Reviver<Date> };
+type UrlOptions = ParseOptions<URL> & { readonly reviver: Reviver<URL> };
+
+export const parseWithUnionOptions = (options: DateOptions | UrlOptions) =>
+  parse("null", options);
+`;
+  await writeFile(
+    join(temporaryDirectory, "declaration-consumer.ts"),
+    declarationSource
+  );
+
   const sharedCompilerOptions = {
     strict: true,
     noEmit: true,
@@ -96,6 +114,27 @@ export const entrypointSizes = [parser, community, rjson, rxml, schemaCoerce]
           moduleResolution: "Bundler",
         },
         files: ["consumer.ts"],
+      },
+      null,
+      2
+    )}\n`
+  );
+  await writeFile(
+    join(temporaryDirectory, "tsconfig.declarations.json"),
+    `${JSON.stringify(
+      {
+        compilerOptions: {
+          declaration: true,
+          emitDeclarationOnly: true,
+          module: "NodeNext",
+          moduleResolution: "NodeNext",
+          outDir: "declarations",
+          skipLibCheck: false,
+          strict: true,
+          target: "ES2022",
+          types: ["node"],
+        },
+        files: ["declaration-consumer.ts"],
       },
       null,
       2
@@ -143,6 +182,7 @@ void (async () => {
   run("pnpm", ["install", "--ignore-scripts"]);
   run("pnpm", ["exec", "tsc", "-p", "tsconfig.nodenext.json"]);
   run("pnpm", ["exec", "tsc", "-p", "tsconfig.bundler.json"]);
+  run("pnpm", ["exec", "tsc", "-p", "tsconfig.declarations.json"]);
   run("node", ["runtime.mjs"]);
   run("node", ["commonjs.cjs"]);
 } finally {

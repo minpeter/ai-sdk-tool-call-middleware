@@ -91,6 +91,43 @@ describe("RJSON public surface", () => {
     expect(revived).toEqual({ value: new Date("2026-09-04T00:00:00Z") });
   });
 
+  it("infers Date from an unannotated inline mixed reviver", () => {
+    const direct = parse('{"date":"2026-01-01"}', (_key, value) =>
+      typeof value === "string" ? new Date(`${value}T00:00:00Z`) : value
+    );
+    const inOptions = parse('{"date":"2026-01-01"}', {
+      reviver: (_key, value) =>
+        typeof value === "string" ? new Date(`${value}T00:00:00Z`) : value,
+    });
+
+    expectTypeOf(direct).not.toBeAny();
+    expectTypeOf(direct).not.toBeUnknown();
+    expectTypeOf(direct).toEqualTypeOf<RevivedValue<Date> | undefined>();
+    expectTypeOf(inOptions).toEqualTypeOf<RevivedValue<Date> | undefined>();
+    expect(direct).toEqual({ date: new Date("2026-01-01T00:00:00Z") });
+    expect(inOptions).toEqual(direct);
+  });
+
+  it("accepts compatible inline callback unions with a shared input domain", () => {
+    const reviveDate = (_key: string, value: JSONValue | undefined) =>
+      typeof value === "string" ? new Date(`${value}T00:00:00Z`) : value;
+    const preserve = (_key: string, value: JSONValue | undefined) => value;
+    const selectCallback = (selectFirst: boolean) =>
+      selectFirst ? reviveDate : preserve;
+    const callback = selectCallback(true);
+
+    const direct = parse('{"date":"2026-01-01"}', callback);
+    const inOptions = parse('{"date":"2026-01-01"}', {
+      reviver: callback,
+    });
+
+    const results: ReadonlyArray<RevivedValue<Date> | undefined> = [
+      direct,
+      inOptions,
+    ];
+    expect(results).toHaveLength(2);
+  });
+
   it("accepts a predeclared ParseOptions<Extension> witness variable", () => {
     const options: ParseOptions<Date> & { readonly reviver: Reviver<Date> } = {
       reviver: reviveIsoDate,
@@ -163,6 +200,30 @@ describe("RJSON public surface", () => {
     expectTypeOf(parsed).toEqualTypeOf<JSONValue>();
     expectTypeOf(tolerant).toEqualTypeOf<JSONValue | undefined>();
     expect(jsonOnly).toBeInstanceOf(Date);
+  });
+
+  it("never treats option-shaped callable unions as options objects", () => {
+    const selectCallback = (selectFirst: boolean) => {
+      const relaxed = Object.assign(() => new Date(0), {
+        relaxed: true as const,
+      });
+      const warnings = Object.assign(() => new Date(0), {
+        warnings: false as const,
+      });
+      return selectFirst ? relaxed : warnings;
+    };
+
+    const revived = parse("null", selectCallback(true));
+    const strictJson = parse("null", { relaxed: false });
+    const tolerantJson = parse("null", { tolerant: true });
+
+    // @ts-expect-error Callable options-shaped unions return their reviver domain.
+    const staticallyJson: JSONValue = parse("null", selectCallback(true));
+
+    expectTypeOf(revived).toEqualTypeOf<RevivedValue<Date> | undefined>();
+    expectTypeOf(strictJson).toEqualTypeOf<JSONValue>();
+    expectTypeOf(tolerantJson).toEqualTypeOf<JSONValue | undefined>();
+    expect(staticallyJson).toBeInstanceOf(Date);
   });
 
   it("preserves unconditional callback outputs in the recursive domain", () => {

@@ -6,7 +6,7 @@ import {
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { parse } from "../../rjson/index";
+import { parse, type RevivedValue } from "../../rjson/index";
 
 const DUPLICATE_KEY_REGEX = /Duplicate key: key/;
 const PARSE_WARNINGS_REGEX = /parse warnings/;
@@ -272,6 +272,41 @@ describe("relaxed-json", () => {
         expect(revived).toEqual(native);
         expect(rjsonValues).toEqual([undefined]);
         expect(rjsonValues).toEqual(nativeValues);
+      });
+
+      it("recursively visits a callable replacement like JSON.parse", () => {
+        type CallableReplacement = (() => string) & { child: number };
+        type CallableValue = RevivedValue<CallableReplacement> | undefined;
+
+        const createReviver = (calls: string[]) =>
+          function replaceLaterSibling(
+            this: Record<string, CallableValue>,
+            key: string,
+            value: CallableValue
+          ): CallableValue {
+            calls.push(key);
+            if (key === "a") {
+              this.b = Object.assign(() => "replacement", { child: 1 });
+            }
+            return key === "child" && typeof value === "number"
+              ? value + 1
+              : value;
+          };
+        const text = '{"a":1,"b":2}';
+        const rjsonCalls: string[] = [];
+        const nativeCalls: string[] = [];
+
+        const revived = parse(text, createReviver(rjsonCalls));
+        const native = JSON.parse(text, createReviver(nativeCalls));
+
+        expect(rjsonCalls).toEqual(["a", "child", "b", ""]);
+        expect(rjsonCalls).toEqual(nativeCalls);
+        expect((revived as { b: CallableReplacement }).b.child).toBe(
+          (native as { b: CallableReplacement }).b.child
+        );
+        expect((revived as { b: CallableReplacement }).b()).toBe(
+          (native as { b: CallableReplacement }).b()
+        );
       });
 
       it("preserves reviver-created array holes like JSON.parse", () => {
