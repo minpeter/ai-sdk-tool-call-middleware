@@ -91,15 +91,24 @@ describe("RJSON public surface", () => {
     expect(revived).toEqual({ value: new Date("2026-09-04T00:00:00Z") });
   });
 
-  it("infers Date from an unannotated inline mixed reviver", () => {
-    const direct = parse('{"date":"2026-01-01"}', (_key, value) =>
-      typeof value === "string" ? new Date(`${value}T00:00:00Z`) : value
+  it("uses an explicit recursive witness for inline mixed revivers", () => {
+    // @ts-expect-error Extension-producing callbacks need a recursive witness.
+    const unannotated = parse('{"date":"2026-01-01"}', (_key, value) =>
+      typeof value === "string" ? new Date(value) : value
     );
-    const inOptions = parse('{"date":"2026-01-01"}', {
+    // @ts-expect-error Options callbacks need the same recursive witness.
+    const unannotatedOptions = parse('{"date":"2026-01-01"}', {
       reviver: (_key, value) =>
-        typeof value === "string" ? new Date(`${value}T00:00:00Z`) : value,
+        typeof value === "string" ? new Date(value) : value,
     });
 
+    const reviver: Reviver<Date> = (_key, value) =>
+      typeof value === "string" ? new Date(`${value}T00:00:00Z`) : value;
+    const direct = parse('{"date":"2026-01-01"}', reviver);
+    const inOptions = parse('{"date":"2026-01-01"}', { reviver });
+
+    expect(unannotated).toEqual({ date: new Date("2026-01-01") });
+    expect(unannotatedOptions).toEqual(unannotated);
     expectTypeOf(direct).not.toBeAny();
     expectTypeOf(direct).not.toBeUnknown();
     expectTypeOf(direct).toEqualTypeOf<RevivedValue<Date> | undefined>();
@@ -109,9 +118,9 @@ describe("RJSON public surface", () => {
   });
 
   it("accepts compatible inline callback unions with a shared input domain", () => {
-    const reviveDate = (_key: string, value: JSONValue | undefined) =>
+    const reviveDate: Reviver<Date> = (_key, value) =>
       typeof value === "string" ? new Date(`${value}T00:00:00Z`) : value;
-    const preserve = (_key: string, value: JSONValue | undefined) => value;
+    const preserve: Reviver<Date> = (_key, value) => value;
     const selectCallback = (selectFirst: boolean) =>
       selectFirst ? reviveDate : preserve;
     const callback = selectCallback(true);
@@ -166,6 +175,74 @@ describe("RJSON public surface", () => {
     expect(emptyRestResult).toEqual(new Date(0));
   });
 
+  it("widens raw overloaded callbacks until a reviver witness erases overloads", () => {
+    function reversedOverload(
+      _key: string,
+      _value: RevivedValue<bigint> | undefined
+    ): bigint;
+    function reversedOverload(): null;
+    function reversedOverload(
+      key?: string,
+      _value?: RevivedValue<bigint>
+    ): bigint | null {
+      return key === undefined ? null : BigInt(1);
+    }
+
+    const conservative = parse("null", reversedOverload);
+    const conservativeOptions = parse("null", { reviver: reversedOverload });
+    // @ts-expect-error An overloaded callback cannot produce a JSON-only result.
+    const direct: JSONValue | undefined = parse("null", reversedOverload);
+    // @ts-expect-error Options do not make a raw overload JSON-only.
+    const optionsDirect: JSONValue | undefined = parse("null", {
+      reviver: reversedOverload,
+    });
+
+    const witnessed: Reviver<bigint> = reversedOverload;
+    const revived = parse("null", witnessed);
+
+    expectTypeOf(conservative).toEqualTypeOf<
+      RevivedValue<object | bigint | symbol> | undefined
+    >();
+    expectTypeOf(conservativeOptions).toEqualTypeOf<
+      RevivedValue<object | bigint | symbol> | undefined
+    >();
+    expectTypeOf(revived).toEqualTypeOf<RevivedValue<bigint> | undefined>();
+    expect(direct).toBe(BigInt(1));
+    expect(optionsDirect).toBe(BigInt(1));
+    expect(revived).toBe(BigInt(1));
+  });
+
+  it("discriminates option candidates by callability and constructability", () => {
+    const witnessed: Reviver<bigint> = () => BigInt(1);
+    const callable = Object.assign(witnessed, { reviver: witnessed });
+    const revived = parse("null", callable);
+
+    // @ts-expect-error A callable with .reviver uses the callback result domain.
+    const jsonOnly: JSONValue | undefined = parse("null", callable);
+
+    class OptionsShapedClass {
+      static readonly relaxed = false;
+      static readonly reviver: Reviver<Date> = () => new Date(0);
+      readonly marker = true;
+    }
+
+    expect(() => {
+      // @ts-expect-error Constructable values are not parser options.
+      parse("null", OptionsShapedClass);
+    }).toThrow(TypeError);
+
+    const optionsWithOptionalCall: {
+      readonly call?: () => void;
+      readonly relaxed: false;
+    } = { relaxed: false };
+    const parsed = parse("null", optionsWithOptionalCall);
+
+    expectTypeOf(revived).toEqualTypeOf<RevivedValue<bigint> | undefined>();
+    expectTypeOf(parsed).toEqualTypeOf<JSONValue>();
+    expect(jsonOnly).toBe(BigInt(1));
+    expect(parsed).toBeNull();
+  });
+
   it("derives options results from whether a reviver is present", () => {
     const withReviver = {
       reviver: (_key: string, value: RevivedValue<Date> | undefined) => value,
@@ -204,12 +281,14 @@ describe("RJSON public surface", () => {
 
   it("never treats option-shaped callable unions as options objects", () => {
     const selectCallback = (selectFirst: boolean) => {
-      const relaxed = Object.assign(() => new Date(0), {
-        relaxed: true as const,
-      });
-      const warnings = Object.assign(() => new Date(0), {
-        warnings: false as const,
-      });
+      const relaxed = Object.assign(
+        ((_key, _value) => new Date(0)) satisfies Reviver<Date>,
+        { relaxed: true as const }
+      );
+      const warnings = Object.assign(
+        ((_key, _value) => new Date(0)) satisfies Reviver<Date>,
+        { warnings: false as const }
+      );
       return selectFirst ? relaxed : warnings;
     };
 
@@ -232,10 +311,14 @@ describe("RJSON public surface", () => {
     const symbol = Symbol("revived");
     const bigint = BigInt(1);
 
-    const revivedDate = parse("null", () => date);
-    const revivedFunction = parse("null", () => function_);
-    const revivedSymbol = parse("null", () => symbol);
-    const revivedBigint = parse("null", () => bigint);
+    const dateReviver: Reviver<Date> = () => date;
+    const functionReviver: Reviver<() => string> = () => function_;
+    const symbolReviver: Reviver<symbol> = () => symbol;
+    const bigintReviver: Reviver<bigint> = () => bigint;
+    const revivedDate = parse("null", dateReviver);
+    const revivedFunction = parse("null", functionReviver);
+    const revivedSymbol = parse("null", symbolReviver);
+    const revivedBigint = parse("null", bigintReviver);
 
     expectTypeOf(revivedDate).toEqualTypeOf<RevivedValue<Date> | undefined>();
     expectTypeOf(revivedFunction).toEqualTypeOf<

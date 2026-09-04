@@ -58,24 +58,44 @@ type CheckedParseOptions<Options> =
     ? Options
     : never;
 
-interface NotFunction {
-  readonly apply?: never;
-  readonly call?: never;
-}
+type NonInvocable<Candidate> = Candidate extends (
+  ...args: never[]
+) => ReturnType<CallableFunction["call"]>
+  ? never
+  : Candidate extends abstract new (
+        ...args: never[]
+      ) => object
+    ? never
+    : Candidate;
 
 type JsonInputReviver = (
   key: string,
   value: JSONValue | undefined
-) => JSONValue | bigint | object | symbol | undefined;
+) => JSONValue | undefined;
 
-type InferredReviverResult<Callback extends JsonInputReviver> =
-  | RevivedValue<Exclude<ReturnType<Callback>, JSONValue | undefined>>
-  | undefined;
+type HasMultipleCallSignatures<Callback> = Callback extends (
+  ...args: infer FinalArgs
+) => infer FinalResult
+  ? ((...args: FinalArgs) => FinalResult) extends Callback
+    ? false
+    : true
+  : false;
 
 type RecursiveReviver<Extension> = (
   key: string,
   value: RevivedValue<NoInfer<Extension>> | undefined
 ) => RevivedValue<Extension> | undefined;
+
+type ConservativeExtension = object | bigint | symbol;
+type ConservativeRevivedValue = RevivedValue<ConservativeExtension> | undefined;
+
+type OptionsReviverResult<Options, Extension> = Options extends {
+  readonly reviver: infer Callback;
+}
+  ? HasMultipleCallSignatures<Callback> extends true
+    ? ConservativeRevivedValue
+    : RevivedValue<Extension> | undefined
+  : RevivedValue<Extension> | undefined;
 
 type ParseOptionResult<Options, Output> = Options extends {
   readonly tolerant?: false;
@@ -225,37 +245,52 @@ function reviveValue<Extension>(
  * parse('malformed json', { tolerant: true, warnings: true })
  * ```
  */
-// Explicitly typed revivers retain their recursive input domain. The following
-// fallback contextually types inline callbacks with JSON input, then derives
-// their extension covariantly from non-JSON return members.
-function parse<Extension = never>(
-  text: string,
-  optsOrReviver:
-    | RecursiveReviver<Extension>
-    | (Omit<ParseOptions<Extension>, "reviver"> & {
-        readonly reviver: Reviver<Extension>;
-      })
-): RevivedValue<Extension> | undefined;
+// JSON-only callbacks keep an ergonomic contextual type. A callback that can
+// introduce an extension must carry a Reviver<Extension> witness so its input
+// includes values already produced for children. Overloaded callback types are
+// conservatively widened until such a witness erases their extra signatures.
 function parse<Callback extends JsonInputReviver>(
   text: string,
-  optsOrReviver:
-    | Callback
-    | (Omit<ParseOptions<never>, "reviver"> & {
-        readonly reviver: Callback;
-      })
-): InferredReviverResult<Callback>;
-function parse(
+  reviver: Callback
+): HasMultipleCallSignatures<Callback> extends true
+  ? ConservativeRevivedValue
+  : JSONValue | undefined;
+function parse<Extension = never>(
   text: string,
-  options?: NotFunction &
-    PresentParseOptions<never> & { readonly reviver?: never }
-): JSONValue;
+  reviver: RecursiveReviver<Extension>
+): RevivedValue<Extension> | undefined;
+function parse<
+  Extension = never,
+  Options extends Omit<ParseOptions<Extension>, "reviver"> & {
+    readonly reviver: Reviver<Extension>;
+  } = Omit<ParseOptions<Extension>, "reviver"> & {
+    readonly reviver: Reviver<Extension>;
+  },
+>(
+  text: string,
+  options: NonInvocable<Options>
+): OptionsReviverResult<Options, Extension>;
+function parse<
+  Callback extends JsonInputReviver,
+  Options extends Omit<ParseOptions<never>, "reviver"> & {
+    readonly reviver: Callback;
+  },
+>(
+  text: string,
+  options: NonInvocable<Options>
+): HasMultipleCallSignatures<Callback> extends true
+  ? ConservativeRevivedValue
+  : JSONValue | undefined;
+function parse<
+  Options extends PresentParseOptions<never> & { readonly reviver?: never },
+>(text: string, options?: NonInvocable<Options>): JSONValue;
 function parse<Options extends ParseOptionsWithoutReviver>(
   text: string,
-  options: NotFunction & Options
+  options: NonInvocable<Options>
 ): ParseOptionResult<Options, JSONValue>;
 function parse<Options>(
   text: string,
-  options: NotFunction & Options & CheckedParseOptions<Options>
+  options: NonInvocable<Options & CheckedParseOptions<Options>>
 ): GeneralParseOptionResult<Options>;
 
 function parse<Output>(

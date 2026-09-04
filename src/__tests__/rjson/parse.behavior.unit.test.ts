@@ -6,7 +6,7 @@ import {
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { parse, type RevivedValue } from "../../rjson/index";
+import { parse, type RevivedValue, type Reviver } from "../../rjson/index";
 
 const DUPLICATE_KEY_REGEX = /Duplicate key: key/;
 const PARSE_WARNINGS_REGEX = /parse warnings/;
@@ -278,7 +278,7 @@ describe("relaxed-json", () => {
         type CallableReplacement = (() => string) & { child: number };
         type CallableValue = RevivedValue<CallableReplacement> | undefined;
 
-        const createReviver = (calls: string[]) =>
+        const createReviver = (calls: string[]): Reviver<CallableReplacement> =>
           function replaceLaterSibling(
             this: Record<string, CallableValue>,
             key: string,
