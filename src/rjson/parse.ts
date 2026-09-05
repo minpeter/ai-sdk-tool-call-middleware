@@ -76,7 +76,8 @@ type JsonInputReviver = (
 type HasMultipleCallSignatures<Callback> = Callback extends (
   ...args: infer FinalArgs
 ) => infer FinalResult
-  ? ((...args: FinalArgs) => FinalResult) extends Callback
+  ? ((...args: FinalArgs) => FinalResult) &
+      Pick<Callback, keyof Callback> extends Callback
     ? false
     : true
   : false;
@@ -86,16 +87,21 @@ type RecursiveReviver<Extension> = (
   value: RevivedValue<NoInfer<Extension>> | undefined
 ) => RevivedValue<Extension> | undefined;
 
+type Callable = (...args: never[]) => ReturnType<CallableFunction["call"]>;
+
 type ConservativeExtension = object | bigint | symbol;
 type ConservativeRevivedValue = RevivedValue<ConservativeExtension> | undefined;
 
-type OptionsReviverResult<Options, Extension> = Options extends {
+type RawReviverResult<Callback, Extension> =
+  HasMultipleCallSignatures<Callback> extends true
+    ? ConservativeRevivedValue
+    : RevivedValue<Extension> | undefined;
+
+type OptionsReviver<Options> = Options extends {
   readonly reviver: infer Callback;
 }
-  ? HasMultipleCallSignatures<Callback> extends true
-    ? ConservativeRevivedValue
-    : RevivedValue<Extension> | undefined
-  : RevivedValue<Extension> | undefined;
+  ? Callback
+  : never;
 
 type ParseOptionResult<Options, Output> = Options extends {
   readonly tolerant?: false;
@@ -255,21 +261,25 @@ function parse<Callback extends JsonInputReviver>(
 ): HasMultipleCallSignatures<Callback> extends true
   ? ConservativeRevivedValue
   : JSONValue | undefined;
-function parse<Extension = never>(
-  text: string,
-  reviver: RecursiveReviver<Extension>
-): RevivedValue<Extension> | undefined;
 function parse<
   Extension = never,
-  Options extends Omit<ParseOptions<Extension>, "reviver"> & {
-    readonly reviver: Reviver<Extension>;
-  } = Omit<ParseOptions<Extension>, "reviver"> & {
-    readonly reviver: Reviver<Extension>;
+  Callback extends Callable = RecursiveReviver<Extension>,
+>(
+  text: string,
+  reviver: RecursiveReviver<Extension> & Callback
+): RawReviverResult<Callback, Extension>;
+function parse<
+  Extension = never,
+  Options extends object = Omit<ParseOptions<Extension>, "reviver"> & {
+    readonly reviver: RecursiveReviver<Extension>;
   },
 >(
   text: string,
-  options: NonInvocable<Options>
-): OptionsReviverResult<Options, Extension>;
+  options: NonInvocable<Options> &
+    Omit<ParseOptions<Extension>, "reviver"> & {
+      readonly reviver: RecursiveReviver<Extension>;
+    }
+): RawReviverResult<OptionsReviver<Options>, Extension>;
 function parse<
   Callback extends JsonInputReviver,
   Options extends Omit<ParseOptions<never>, "reviver"> & {

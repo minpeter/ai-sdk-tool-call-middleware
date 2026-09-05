@@ -212,6 +212,53 @@ describe("RJSON public surface", () => {
     expect(revived).toBe(BigInt(1));
   });
 
+  it("widens extension-only overloads until a reviver witness erases overloads", () => {
+    function extensionOnlyOverload(
+      _key: string,
+      _value: RevivedValue<bigint> | undefined
+    ): bigint;
+    function extensionOnlyOverload(): Date;
+    function extensionOnlyOverload(
+      key?: string,
+      _value?: RevivedValue<bigint>
+    ): bigint | Date {
+      return key === undefined ? new Date(0) : BigInt(1);
+    }
+
+    const directInferred = parse("null", extensionOnlyOverload);
+    const optionsInferred = parse("null", {
+      reviver: extensionOnlyOverload,
+    });
+    const directConservative:
+      | RevivedValue<object | bigint | symbol>
+      | undefined = directInferred;
+    const optionsConservative:
+      | RevivedValue<object | bigint | symbol>
+      | undefined = optionsInferred;
+
+    // @ts-expect-error A raw overload cannot claim its final signature's Date.
+    const directClaimsDate: RevivedValue<Date> | undefined = directInferred;
+    // @ts-expect-error Options preserve the raw overload instead of its final signature.
+    const optionsClaimDate: RevivedValue<Date> | undefined = optionsInferred;
+
+    const witnessed: Reviver<bigint> = extensionOnlyOverload;
+    const directWitnessed = parse("null", witnessed);
+    const optionsWitnessed = parse("null", { reviver: witnessed });
+
+    expectTypeOf(directWitnessed).toEqualTypeOf<
+      RevivedValue<bigint> | undefined
+    >();
+    expectTypeOf(optionsWitnessed).toEqualTypeOf<
+      RevivedValue<bigint> | undefined
+    >();
+    expect(directConservative).toBe(BigInt(1));
+    expect(optionsConservative).toBe(BigInt(1));
+    expect(directClaimsDate).toBe(BigInt(1));
+    expect(optionsClaimDate).toBe(BigInt(1));
+    expect(directWitnessed).toBe(BigInt(1));
+    expect(optionsWitnessed).toBe(BigInt(1));
+  });
+
   it("discriminates option candidates by callability and constructability", () => {
     const witnessed: Reviver<bigint> = () => BigInt(1);
     const callable = Object.assign(witnessed, { reviver: witnessed });
