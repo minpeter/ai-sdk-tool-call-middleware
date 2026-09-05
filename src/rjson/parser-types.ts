@@ -62,8 +62,36 @@ export type Reviver<Extension> = ((
   readonly [reviverWitness]?: (extension: Extension) => Extension;
 };
 
-export type IsReviverWitness<Callback> =
-  typeof reviverWitness extends keyof Callback ? true : false;
+type SameCallSignature<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends <
+    Value,
+  >() => Value extends Right ? 1 : 2
+    ? true
+    : false;
+
+type HasMultipleCallSignatures<Callback> = Callback extends {
+  (...args: infer FirstArgs): infer FirstResult;
+  (...args: infer SecondArgs): infer SecondResult;
+}
+  ? SameCallSignature<
+      [FirstArgs, FirstResult],
+      [SecondArgs, SecondResult]
+    > extends true
+    ? false
+    : true
+  : false;
+
+// The private key prevents accidental witness construction, while the broad
+// symbol guard prevents symbol-indexed metadata from matching it. Reflected
+// keys also cannot preserve extra call signatures. Deliberate reflection can
+// still cast to Reviver and erase those signatures; this remains a trust assertion.
+export type IsReviverWitness<Callback> = symbol extends keyof Callback
+  ? false
+  : typeof reviverWitness extends keyof Callback
+    ? HasMultipleCallSignatures<Callback> extends true
+      ? false
+      : true
+    : false;
 
 // Mutable parser cursor and warning accumulator.
 export interface ParseState {

@@ -202,6 +202,72 @@ describe("RJSON public surface", () => {
     expect(optionsJson).toBe(BigInt(2));
   });
 
+  it("rejects broad symbol metadata as a reviver witness", () => {
+    function ordered(_key: string, _value: null): null | bigint;
+    function ordered(_key: string, _value: JSONValue | undefined): null;
+    function ordered(
+      _key: string,
+      value: JSONValue | undefined
+    ): null | bigint {
+      return value === null ? BigInt(2) : null;
+    }
+
+    const metadataKey: symbol = Symbol("metadata");
+    const rawCallback = Object.assign(ordered, { [metadataKey]: undefined });
+    const reflectedMetadata: Pick<Reviver<never>, keyof Reviver<never>> = {
+      [metadataKey]: undefined,
+    };
+    const reflectedCallback = Object.assign(ordered, reflectedMetadata);
+
+    const direct = parse("null", rawCallback);
+    const inOptions = parse("null", { reviver: rawCallback });
+    const reflectedDirect = parse("null", reflectedCallback);
+    const reflectedInOptions = parse("null", {
+      reviver: reflectedCallback,
+    });
+
+    // @ts-expect-error Broad symbol metadata is not a JSON-only witness.
+    const directJson: JSONValue | undefined = direct;
+    // @ts-expect-error Options preserve the broad symbol metadata.
+    const optionsJson: JSONValue | undefined = inOptions;
+    // @ts-expect-error Reflecting the private key cannot override a broad symbol key.
+    const reflectedDirectJson: JSONValue | undefined = reflectedDirect;
+    // @ts-expect-error Reflected options remain conservative too.
+    const reflectedOptionsJson: JSONValue | undefined = reflectedInOptions;
+
+    const jsonReviver: Reviver<never> = (_key, value) => value;
+    const bigintReviver: Reviver<bigint> = () => BigInt(3);
+    const preciseJsonDirect = parse("null", jsonReviver);
+    const preciseJsonOptions = parse("null", { reviver: jsonReviver });
+    const preciseBigintDirect = parse("null", bigintReviver);
+    const preciseBigintOptions = parse("null", { reviver: bigintReviver });
+
+    expectTypeOf(direct).toEqualTypeOf<
+      RevivedValue<object | bigint | symbol> | undefined
+    >();
+    expectTypeOf(inOptions).toEqualTypeOf<typeof direct>();
+    expectTypeOf(reflectedDirect).toEqualTypeOf<typeof direct>();
+    expectTypeOf(reflectedInOptions).toEqualTypeOf<typeof direct>();
+    expectTypeOf(preciseJsonDirect).toEqualTypeOf<JSONValue | undefined>();
+    expectTypeOf(preciseJsonOptions).toEqualTypeOf<JSONValue | undefined>();
+    expectTypeOf(preciseBigintDirect).toEqualTypeOf<
+      RevivedValue<bigint> | undefined
+    >();
+    expectTypeOf(preciseBigintOptions).toEqualTypeOf<
+      RevivedValue<bigint> | undefined
+    >();
+    expect([
+      directJson,
+      optionsJson,
+      reflectedDirectJson,
+      reflectedOptionsJson,
+    ]).toEqual([BigInt(2), BigInt(2), BigInt(2), BigInt(2)]);
+    expect(preciseJsonDirect).toBeNull();
+    expect(preciseJsonOptions).toBeNull();
+    expect(preciseBigintDirect).toBe(BigInt(3));
+    expect(preciseBigintOptions).toBe(BigInt(3));
+  });
+
   it("requires a witness for generic and hybrid callbacks", () => {
     function identity<Value>(_key: string, value: Value): Value {
       return value;

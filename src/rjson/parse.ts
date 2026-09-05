@@ -246,10 +246,11 @@ function reviveValue<Extension>(
 // Raw callbacks always return the conservative runtime domain. Precise
 // inference requires an explicit, monomorphic Reviver<Extension> witness, such
 // as an annotated variable or parameter; Reviver<never> is the JSON-only
-// witness. This deliberately avoids structural signature inspection because
-// TypeScript assignability cannot distinguish overloads, generics, or callable
-// and constructable hybrids. Assigning one of those values to Reviver first
-// erases the extra signatures and supplies the explicit witness.
+// witness. This deliberately avoids deriving precision from structural call
+// signatures because TypeScript assignability cannot reliably classify
+// overloads, generics, or callable and constructable hybrids. Assigning one of
+// those values to Reviver first erases the extra signatures and supplies the
+// explicit witness.
 function parse<Callback extends JsonInputReviver>(
   text: string,
   reviver: Callback
