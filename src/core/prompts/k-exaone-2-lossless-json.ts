@@ -1,4 +1,5 @@
 import { parse } from "../../rjson/parse";
+import { defineReviver } from "../../rjson/parser-types";
 import {
   createKExaone2JsonSyntaxError,
   encodeKExaone2JsonString,
@@ -235,10 +236,10 @@ export function parseKExaone2LosslessJson(input: string): KExaone2Value {
     throw new KExaone2SerializationError("input-size");
   }
   const rewritten = rewriteLosslessJson(input);
-  const parsed = parse<KExaone2HistoryNumber>(rewritten, {
+  const parsed = parse(rewritten, {
     duplicate: true,
     relaxed: false,
-    reviver: (_key, value) => {
+    reviver: defineReviver<KExaone2HistoryNumber>((_key, value) => {
       if (typeof value !== "string") {
         return value;
       }
@@ -250,7 +251,7 @@ export function parseKExaone2LosslessJson(input: string): KExaone2Value {
       return value.startsWith(K_EXAONE_2_HISTORY_STRING_PREFIX)
         ? value.slice(K_EXAONE_2_HISTORY_STRING_PREFIX.length)
         : value;
-    },
+    }),
   });
   if (parsed === undefined) {
     throw createKExaone2JsonSyntaxError();

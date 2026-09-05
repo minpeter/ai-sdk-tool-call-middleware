@@ -27,6 +27,7 @@
 
 import { transform as transformSource } from "./lexer";
 import { parse as parseSource } from "./parse";
+import { defineReviver as defineReviverSource } from "./parser-types";
 import { stringify as stringifySource } from "./stringify";
 
 /**
@@ -46,6 +47,9 @@ export const parse: typeof parseSource = parseSource;
 /** Convert relaxed JSON syntax into strict JSON text. */
 export const transform: typeof transformSource = transformSource;
 
+/** Create an opaque reviver witness for precise parse result inference. */
+export const defineReviver: typeof defineReviverSource = defineReviverSource;
+
 /** Serialize an RJSON value with deterministic object-key ordering. */
 export const stringify: typeof stringifySource = stringifySource;
 
@@ -55,5 +59,6 @@ export type {
   RevivedObject,
   RevivedValue,
   Reviver,
+  ReviverWitness,
 } from "./parser-types";
 export type { Rjson } from "./stringify";

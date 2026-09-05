@@ -53,45 +53,38 @@ export type RevivedValue<Extension> =
   | RevivedArray<Extension>
   | Extension;
 
-declare const reviverWitness: unique symbol;
-
-export type Reviver<Extension> = ((
+export type Reviver<Extension> = (
   key: string,
   value: RevivedValue<Extension> | undefined
-) => RevivedValue<Extension> | undefined) & {
-  readonly [reviverWitness]?: (extension: Extension) => Extension;
-};
+) => RevivedValue<Extension> | undefined;
 
-type SameCallSignature<Left, Right> =
-  (<Value>() => Value extends Left ? 1 : 2) extends <
-    Value,
-  >() => Value extends Right ? 1 : 2
-    ? true
-    : false;
+declare const reviverBrand: unique symbol;
 
-type HasMultipleCallSignatures<Callback> = Callback extends {
-  (...args: infer FirstArgs): infer FirstResult;
-  (...args: infer SecondArgs): infer SecondResult;
+type ReviverBrandTag<Extension> = (extension: Extension) => Extension;
+
+/**
+ * An opaque reviver created by {@link defineReviver}.
+ *
+ * Unlike a plain `Reviver`, this witness opts into precise extension-aware
+ * inference from `parse`. Its required private brand is invariant in
+ * `Extension` and cannot be supplied by ordinary callback annotations.
+ */
+export interface ReviverWitness<Extension> extends Reviver<Extension> {
+  readonly [reviverBrand]: ReviverBrandTag<Extension>;
 }
-  ? SameCallSignature<
-      [FirstArgs, FirstResult],
-      [SecondArgs, SecondResult]
-    > extends true
-    ? false
-    : true
-  : false;
 
-// The private key prevents accidental witness construction, while the broad
-// symbol guard prevents symbol-indexed metadata from matching it. Reflected
-// keys also cannot preserve extra call signatures. Deliberate reflection can
-// still cast to Reviver and erase those signatures; this remains a trust assertion.
-export type IsReviverWitness<Callback> = symbol extends keyof Callback
-  ? false
-  : typeof reviverWitness extends keyof Callback
-    ? HasMultipleCallSignatures<Callback> extends true
-      ? false
-      : true
-    : false;
+/**
+ * Create an opaque reviver witness for precise `parse` result inference.
+ *
+ * This cast is the trust root for the private compile-time brand. The brand has
+ * no runtime representation; parameter checking ensures `fn` accepts and
+ * returns exactly the recursive domain declared by `Extension`.
+ */
+export function defineReviver<Extension>(
+  fn: Reviver<Extension>
+): ReviverWitness<Extension> {
+  return fn as ReviverWitness<Extension>;
+}
 
 // Mutable parser cursor and warning accumulator.
 export interface ParseState {
