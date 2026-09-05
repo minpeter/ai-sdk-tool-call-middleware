@@ -18,10 +18,7 @@ import type {
   ToolResponseUserContentPart,
 } from "./tool-result-user-content";
 
-export type {
-  ToolResponsePromptTemplateResult,
-  ToolResponseUserContentPart,
-} from "./tool-result-user-content";
+export type { ToolResponsePromptTemplateResult } from "./tool-result-user-content";
 
 function formatApprovalResponse(part: ToolApprovalResponse): string {
   const status = part.approved ? "Approved" : "Denied";

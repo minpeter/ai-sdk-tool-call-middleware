@@ -1,15 +1,8 @@
 import { createHash } from "node:crypto";
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModelV4Middleware } from "@ai-sdk/provider";
-import { jsonSchema, type ToolSet, wrapLanguageModel } from "ai";
+import { wrapLanguageModel } from "ai";
 import {
   sijawaraConciseXmlToolMiddleware,
   sijawaraDetailedXmlToolMiddleware,
@@ -22,19 +15,27 @@ import {
   qwen3CoderToolMiddleware,
   yamlXmlToolMiddleware,
 } from "../../../src/preconfigured-middleware";
-import { benchmarkTransport, runBenchmarkModel } from "./benchmark-model-call";
+import { benchmarkTransport } from "./benchmark-model-call";
 import {
   assertPairedResumeSymmetry,
   hasNativeGlm5Pair,
   pairedArmBatches,
 } from "./paired-scheduling";
 import {
-  type CapturedFunctionTool,
   captureArmsFromEnv,
   credentialFreeUrl,
-  credentialSafeError,
   ProviderCapture,
 } from "./provider-capture";
+import {
+  type AceCase,
+  type Arm,
+  type ArmId,
+  type Category,
+  executeAceJobs,
+  type Job,
+  type Language,
+  type RunResult,
+} from "./run-ace-execution";
 import {
   assertGitRevision,
   assertResumeFingerprint,
@@ -90,24 +91,6 @@ const CATEGORIES = [
   "normal_atom_object_deep",
   "normal_atom_object_short",
 ] as const;
-
-type Language = (typeof LANGUAGES)[number];
-type Category = (typeof CATEGORIES)[number];
-type ArmId =
-  | "native"
-  | "glm5"
-  | "hermes"
-  | "morphXml"
-  | "yamlXml"
-  | "qwen3Coder"
-  | "sijawaraDetailed"
-  | "sijawaraConcise"
-  | "uiTars";
-
-interface Arm {
-  id: ArmId;
-  middleware?: LanguageModelV4Middleware;
-}
 
 const ALL_ARMS: readonly Arm[] = [
   { id: "native" },
@@ -181,83 +164,12 @@ const ORACLE_INVALID_CASES = [
   },
 ] as const satisfies readonly OracleInvalidCase[];
 
-interface AceFunction {
-  _arguments?: Record<string, unknown>;
-  arguments?: Record<string, unknown>;
-  description?: string;
-  name: string;
-  parameters?: Record<string, unknown>;
-}
-
-interface AceCase {
-  category: Category;
-  function: AceFunction[];
-  id: string;
-  language: Language;
-  profile?: string;
-  question: string;
-  time?: string;
-}
-
-interface NameMap {
-  original: string;
-  safe: string;
-}
-
-interface RunResult {
-  arm: ArmId;
-  attempts: number;
-  calls: Array<{ arguments: unknown; name: string }>;
-  caseId: string;
-  category: Category;
-  error?: string;
-  finishReason?: string;
-  language: Language;
-  latencyMs: number;
-  model: string;
-  nameMap: NameMap[];
-  parserErrors: string[];
-  rawCaptureIds: string[];
-  rawFinishReason?: string;
-  text: string;
-  textLeak: boolean;
-  transport: "generate" | "stream";
-  transportOk: boolean;
-  usage?: {
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-  };
-}
-
-interface Job {
-  arm: Arm;
-  testCase: AceCase;
-}
-
 const provider = createOpenAICompatible({
   apiKey: API_KEY,
   baseURL: BASE_URL,
   name: "freerouter",
   fetch: RAW_CAPTURE.fetch,
 });
-
-const COMMON_INSTRUCTION =
-  "You are a precise function-calling assistant. Follow the user request exactly. " +
-  "Call only relevant tools, and do not invent a tool call when none applies.";
-const LEAK_PATTERNS = [
-  "<tool_call",
-  "</tool_call",
-  "<function=",
-  "</function>",
-  "<tools>",
-  "[TOOL_CALLS]",
-  "<|tool_call",
-];
-const FUNCTION_NAME_UNSAFE_PATTERN = /[^a-zA-Z0-9_-]/g;
-const FUNCTION_NAME_LEADING_UNDERSCORE_PATTERN = /^_+/;
-const RETRYABLE_ERROR_PATTERN =
-  /(?:429|5\d\d|aborted|bad gateway|credit limit|fetch failed|gateway timeout|internal server error|rate limit|service unavailable|suspended|temporarily unavailable|timeout)/i;
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -360,275 +272,11 @@ function loadCases(language: Language, category: Category): AceCase[] {
     .map((row) => ({ ...row, category, language }));
 }
 
-function safeFunctionNames(functions: AceFunction[]): NameMap[] {
-  const used = new Set<string>();
-  return functions.map(({ name }, index) => {
-    const stem =
-      name
-        .replace(FUNCTION_NAME_UNSAFE_PATTERN, "_")
-        .replace(FUNCTION_NAME_LEADING_UNDERSCORE_PATTERN, "")
-        .slice(0, 56) || `function_${index}`;
-    let safe = stem;
-    let suffix = 2;
-    while (used.has(safe)) {
-      safe = `${stem.slice(0, 52)}_${suffix}`;
-      suffix += 1;
-    }
-    used.add(safe);
-    return { original: name, safe };
-  });
-}
-
-function normalizeType(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(normalizeType);
-  }
-  const mapping: Record<string, string | undefined> = {
-    bool: "boolean",
-    dict: "object",
-    float: "number",
-    list: "array",
-  };
-  return typeof value === "string" && value in mapping ? mapping[value] : value;
-}
-
-function normalizeSchema(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(normalizeSchema);
-  }
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-  const schema = value as Record<string, unknown>;
-  const result: Record<string, unknown> = { ...schema };
-  result.unit = undefined;
-  if (schema.type !== undefined) {
-    result.type = normalizeType(schema.type);
-  }
-  if (
-    schema.properties &&
-    typeof schema.properties === "object" &&
-    !Array.isArray(schema.properties)
-  ) {
-    result.properties = Object.fromEntries(
-      Object.entries(schema.properties).map(([key, child]) => [
-        key,
-        normalizeSchema(child),
-      ])
-    );
-  }
-  if (Array.isArray(schema.items)) {
-    result.items = schema.items.map(normalizeSchema);
-  } else if (schema.items && typeof schema.items === "object") {
-    result.items = normalizeSchema(schema.items);
-  }
-  if (
-    schema.additionalProperties &&
-    typeof schema.additionalProperties === "object"
-  ) {
-    result.additionalProperties = normalizeSchema(schema.additionalProperties);
-  }
-  for (const keyword of ["allOf", "anyOf", "oneOf", "prefixItems"]) {
-    const alternatives = schema[keyword];
-    if (Array.isArray(alternatives)) {
-      result[keyword] = alternatives.map(normalizeSchema);
-    }
-  }
-  if (result.type === "array" && result.items === undefined) {
-    result.items = {};
-  }
-  if (result.type === "object" && result.properties === undefined) {
-    result.additionalProperties = true;
-  }
-  return result;
-}
-
-function makeTools(testCase: AceCase, nameMap: NameMap[]): ToolSet {
-  return Object.fromEntries(
-    testCase.function.map((definition, index) => {
-      const schema = definition.parameters ??
-        definition.arguments ??
-        definition._arguments ?? { properties: {}, type: "object" };
-      return [
-        nameMap[index].safe,
-        {
-          description: definition.description,
-          inputSchema: jsonSchema(
-            normalizeSchema(schema) as Record<string, unknown>
-          ),
-        },
-      ];
-    })
-  );
-}
-
-function capturedTools(
-  testCase: AceCase,
-  nameMap: NameMap[]
-): CapturedFunctionTool[] {
-  return testCase.function.map((definition, index) => {
-    const schema = definition.parameters ??
-      definition.arguments ??
-      definition._arguments ?? { properties: {}, type: "object" };
-    return {
-      description: definition.description,
-      inputSchema: normalizeSchema(schema),
-      name: nameMap[index].safe,
-      originalName: nameMap[index].original,
-    };
-  });
-}
-
 function makeModel(arm: Arm) {
   const model = provider(MODEL);
   return arm.middleware
     ? wrapLanguageModel({ middleware: arm.middleware, model })
     : model;
-}
-
-function makeInstructions(testCase: AceCase): string {
-  const context = [
-    testCase.time?.trim() ? `Time context:\n${testCase.time.trim()}` : "",
-    testCase.profile?.trim()
-      ? `Character profile:\n${testCase.profile.trim()}`
-      : "",
-  ].filter(Boolean);
-  return [COMMON_INSTRUCTION, ...context].join("\n\n");
-}
-
-function collectParserErrors(errors: string[]) {
-  return {
-    toolCallMiddleware: {
-      onError: (message: string, metadata?: Record<string, unknown>) => {
-        errors.push(
-          `${message}${metadata ? ` ${JSON.stringify(metadata).slice(0, 500)}` : ""}`
-        );
-      },
-    },
-  };
-}
-
-function normalizeError(error: unknown): string {
-  return credentialSafeError(error, [API_KEY]);
-}
-
-function retryable(error: string): boolean {
-  return RETRYABLE_ERROR_PATTERN.test(error);
-}
-
-function hasTextLeak(text: string, nameMap: NameMap[]): boolean {
-  return (
-    LEAK_PATTERNS.some((pattern) => text.includes(pattern)) ||
-    nameMap.some(({ original, safe }) =>
-      [`<${original}`, `</${original}`, `<${safe}`, `</${safe}`].some((tag) =>
-        text.includes(tag)
-      )
-    )
-  );
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
-}
-
-async function runOne(testCase: AceCase, arm: Arm): Promise<RunResult> {
-  const start = Date.now();
-  const nameMap = safeFunctionNames(testCase.function);
-  const reverseNames = new Map(
-    nameMap.map(({ original, safe }) => [safe, original])
-  );
-  const rawCaptureIds: string[] = [];
-  const tools = makeTools(testCase, nameMap);
-  const captureTools = capturedTools(testCase, nameMap);
-  for (let attempt = 1; ; attempt += 1) {
-    const parserErrors: string[] = [];
-    try {
-      const result = await RAW_CAPTURE.run(
-        {
-          arm: arm.id,
-          attempt,
-          caseId: testCase.id,
-          category: testCase.category,
-          jobKey: `${testCase.language}\u0000${testCase.category}\u0000${testCase.id}\u0000${arm.id}`,
-          language: testCase.language,
-          suite: "ace",
-          tools: captureTools,
-          transport: TRANSPORT,
-          trial: 0,
-        },
-        rawCaptureIds,
-        () =>
-          runBenchmarkModel(
-            {
-              abortSignal: AbortSignal.timeout(TIMEOUT_MS),
-              instructions: makeInstructions(testCase),
-              maxOutputTokens: 1024,
-              maxRetries: 0,
-              model: makeModel(arm),
-              prompt: testCase.question,
-              providerOptions: arm.middleware
-                ? (collectParserErrors(parserErrors) as never)
-                : undefined,
-              temperature: 0,
-              toolChoice: "auto",
-              tools,
-            },
-            TRANSPORT
-          )
-      );
-      return {
-        arm: arm.id,
-        attempts: attempt,
-        calls: result.toolCalls.map((call) => ({
-          arguments: call.input,
-          name: reverseNames.get(call.toolName) ?? call.toolName,
-        })),
-        caseId: testCase.id,
-        category: testCase.category,
-        finishReason: result.finishReason,
-        language: testCase.language,
-        latencyMs: Date.now() - start,
-        model: MODEL,
-        nameMap,
-        parserErrors,
-        rawCaptureIds,
-        rawFinishReason: result.rawFinishReason,
-        text: result.text.slice(0, 4000),
-        textLeak: hasTextLeak(result.text, nameMap),
-        transportOk: true,
-        transport: TRANSPORT,
-        usage: {
-          inputTokens: result.usage.inputTokens,
-          outputTokens: result.usage.outputTokens,
-          totalTokens: result.usage.totalTokens,
-        },
-      };
-    } catch (error) {
-      const detail = normalizeError(error);
-      if (attempt <= PROVIDER_RETRIES && retryable(detail)) {
-        await delay(1500 * attempt);
-        continue;
-      }
-      return {
-        arm: arm.id,
-        attempts: attempt,
-        calls: [],
-        caseId: testCase.id,
-        category: testCase.category,
-        error: detail,
-        language: testCase.language,
-        latencyMs: Date.now() - start,
-        model: MODEL,
-        nameMap,
-        parserErrors,
-        rawCaptureIds,
-        text: "",
-        textLeak: false,
-        transportOk: false,
-        transport: TRANSPORT,
-      };
-    }
-  }
 }
 
 function jobKey(
@@ -841,41 +489,20 @@ async function main(): Promise<void> {
     `Running ${pendingJobs} ACE jobs in ${jobBatches.length} worker batches from ${cases.length} cases ` +
       `(${completed.size}/${expectedJobKeys.size} already complete, concurrency=${CONCURRENCY})`
   );
-  let cursor = 0;
-  let finished = completed.size;
-  const startedAt = Date.now();
-  await Promise.all(
-    Array.from(
-      { length: Math.min(CONCURRENCY, Math.max(1, jobBatches.length)) },
-      async () => {
-        while (cursor < jobBatches.length) {
-          const batch = jobBatches[cursor];
-          cursor += 1;
-          for (const job of batch) {
-            const result = await runOne(job.testCase, job.arm);
-            appendFileSync(OUT, `${JSON.stringify(result)}\n`);
-            finished += 1;
-            if (
-              !result.transportOk ||
-              result.parserErrors.length > 0 ||
-              result.textLeak ||
-              finished % 25 === 0
-            ) {
-              const rate =
-                finished / Math.max((Date.now() - startedAt) / 1000, 0.001);
-              console.log(
-                `[${finished}/${expectedJobKeys.size}] ${result.arm} ` +
-                  `${result.language}/${result.category}/${result.caseId} ` +
-                  `${result.transportOk ? "ok" : "ERROR"} ${result.latencyMs}ms ` +
-                  `calls=${result.calls.length} rate=${rate.toFixed(2)}/s` +
-                  (result.error ? ` ${result.error.slice(0, 180)}` : "")
-              );
-            }
-          }
-        }
-      }
-    )
-  );
+  await executeAceJobs({
+    batches: jobBatches,
+    benchmarkTransport: TRANSPORT,
+    capture: RAW_CAPTURE,
+    initialCompletedJobs: completed.size,
+    modelForArm: makeModel,
+    modelId: MODEL,
+    outputPath: OUT,
+    requestTimeoutMs: TIMEOUT_MS,
+    retryLimit: PROVIDER_RETRIES,
+    secretApiKey: API_KEY,
+    totalJobs: expectedJobKeys.size,
+    workerConcurrency: CONCURRENCY,
+  });
   await RAW_CAPTURE.flush();
   console.log(`Completed ACE run -> ${OUT}`);
 }

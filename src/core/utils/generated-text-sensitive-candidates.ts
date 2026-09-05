@@ -1,4 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import { findJsonObjectEnd } from "./generated-text-json-candidates";
 import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 import { decodeStructuredTextEscapes } from "./structured-text-escapes";
 
@@ -8,55 +9,12 @@ export interface SensitiveToolCallDropSpan {
   startIndex: number;
 }
 
-interface JsonScanState {
-  depth: number;
-  escaping: boolean;
-  inString: boolean;
-}
-
 const TOOL_CALL_OPEN_REGEX = /<tool_call\b[^>]*>/gi;
 const TOOL_CALL_OPEN_AFTER_REGEX = /<tool_call\b[^>]*>/i;
 const TOOL_CALL_CLOSE_REGEX = /<\/tool_call\s*>/i;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function scanJsonChar(state: JsonScanState, char: string): JsonScanState {
-  if (state.inString) {
-    if (state.escaping) {
-      return { ...state, escaping: false };
-    }
-    if (char === "\\") {
-      return { ...state, escaping: true };
-    }
-    if (char === '"') {
-      return { ...state, inString: false };
-    }
-    return state;
-  }
-  if (char === '"') {
-    return { ...state, inString: true };
-  }
-  if (char === "{") {
-    return { ...state, depth: state.depth + 1 };
-  }
-  if (char === "}") {
-    return { ...state, depth: Math.max(0, state.depth - 1) };
-  }
-  return state;
-}
-
-function findJsonObjectEnd(text: string, startIndex: number): number | null {
-  let state: JsonScanState = { depth: 0, escaping: false, inString: false };
-  for (let index = startIndex; index < text.length; index += 1) {
-    const char = text[index];
-    state = scanJsonChar(state, char);
-    if (!state.inString && char === "}" && state.depth === 0) {
-      return index + 1;
-    }
-  }
-  return null;
 }
 
 function hasKnownJsonToolReference(text: string, toolNames: string[]): boolean {

@@ -1,4 +1,8 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONObject,
+  JSONValue,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import { stringifyKExaone2NativeSchemaJson } from "../../../core/prompts/k-exaone-2-native-json";
@@ -7,18 +11,20 @@ import {
   kExaone2SystemPromptTemplate,
 } from "../../../core/prompts/k-exaone-2-prompt";
 
-const tools: LanguageModelV4FunctionTool[] = [
-  {
-    type: "function",
-    name: "get_weather",
-    description: "Get weather by city",
-    inputSchema: JSON.stringify({
-      type: "object",
-      properties: { city: { type: "string" } },
-      required: ["city"],
-    }) as unknown as LanguageModelV4FunctionTool["inputSchema"],
-  },
-];
+const weatherTool: LanguageModelV4FunctionTool = {
+  type: "function",
+  name: "get_weather",
+  description: "Get weather by city",
+  inputSchema: {},
+};
+Object.defineProperty(weatherTool, "inputSchema", {
+  value: JSON.stringify({
+    type: "object",
+    properties: { city: { type: "string" } },
+    required: ["city"],
+  }),
+});
+const tools = [weatherTool];
 
 function expectControlledSerializationFailure(run: () => void): void {
   try {
@@ -125,7 +131,7 @@ describe("kExaone2SystemPromptTemplate", () => {
       {
         ...tools[0],
         inputExamples: [{ input: { city: "Seoul" } }],
-      } as LanguageModelV4FunctionTool,
+      } satisfies LanguageModelV4FunctionTool,
     ]);
 
     expect(withExamples).toBe(withoutExamples);
@@ -142,7 +148,7 @@ describe("kExaone2SystemPromptTemplate", () => {
             },
           },
         ],
-      } as LanguageModelV4FunctionTool,
+      } satisfies LanguageModelV4FunctionTool,
     ]);
 
     expect(prompt).toBe(kExaone2SystemPromptTemplate(tools));
@@ -150,7 +156,7 @@ describe("kExaone2SystemPromptTemplate", () => {
   });
 
   it("fails closed on excessively deep tool schemas", () => {
-    let schema: Record<string, unknown> = { type: "null" };
+    let schema: JSONObject = { type: "null" };
     for (let depth = 0; depth < 2500; depth += 1) {
       schema = {
         type: "object",
@@ -170,7 +176,7 @@ describe("kExaone2SystemPromptTemplate", () => {
   });
 
   it("fails closed on cyclic tool schemas", () => {
-    const schema: Record<string, unknown> = { type: "object" };
+    const schema: JSONObject = { type: "object" };
     schema.properties = { self: schema };
 
     expectControlledSerializationFailure(() =>
@@ -279,7 +285,7 @@ describe("kExaone2SystemPromptTemplate", () => {
   });
 
   it("enforces the schema depth limit at 256 containers", () => {
-    let allowed: unknown = null;
+    let allowed: JSONValue = null;
     for (let depth = 0; depth < 256; depth += 1) {
       allowed = [allowed];
     }

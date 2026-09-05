@@ -9,6 +9,12 @@ import {
 // Constants
 const EXPECTED_TAG_COUNT = 3;
 
+function expectTopLevelInner(xml: string, inner: string): void {
+  const range = findFirstTopLevelRange(xml, "content");
+  expect(range).toBeDefined();
+  expect(xml.slice(range?.start ?? 0, range?.end ?? 0)).toBe(inner);
+}
+
 describe("rxml schema extraction utilities", () => {
   describe("extractRawInner", () => {
     it("returns inner text for simple tag", () => {
@@ -48,42 +54,37 @@ describe("rxml schema extraction utilities", () => {
   describe("findFirstTopLevelRange", () => {
     it("returns start/end for simple tag and slices to inner", () => {
       const inner = "Hello";
-      const xml = `<content>${inner}</content>`;
-      const r = findFirstTopLevelRange(xml, "content");
-      expect(r).toBeDefined();
-      expect(xml.slice(r?.start ?? 0, r?.end ?? 0)).toBe(inner);
+      expectTopLevelInner(`<content>${inner}</content>`, inner);
     });
 
     it("returns empty range for self-closing tag", () => {
       const xml = "<content/>";
-      const r = findFirstTopLevelRange(xml, "content");
-      expect(r).toBeDefined();
-      expect(r?.start).toBe(r?.end);
-      expect(xml.slice(r?.start ?? 0, r?.end ?? 0)).toBe("");
+      const range = findFirstTopLevelRange(xml, "content");
+      expect(range).toBeDefined();
+      expect(range?.start).toBe(range?.end);
+      expect(xml.slice(range?.start ?? 0, range?.end ?? 0)).toBe("");
     });
 
     it("ignores nested occurrence and selects top-level sibling occurrence", () => {
       const xml =
         "<outer><content>nested</content></outer><content>top</content>";
-      const r = findFirstTopLevelRange(xml, "content");
-      expect(r).toBeDefined();
-      expect(xml.slice(r?.start ?? 0, r?.end ?? 0)).toBe("top");
+      expectTopLevelInner(xml, "top");
     });
 
     it("handles attributes with quotes and '>'", () => {
       const inner = "X";
-      const xml = `<content data=">" note='a > b'>${inner}</content>`;
-      const r = findFirstTopLevelRange(xml, "content");
-      expect(r).toBeDefined();
-      expect(xml.slice(r?.start ?? 0, r?.end ?? 0)).toBe(inner);
+      expectTopLevelInner(
+        `<content data=">" note='a > b'>${inner}</content>`,
+        inner
+      );
     });
 
     it("skips comments, CDATA, and processing instructions while searching", () => {
       const inner = "Y";
-      const xml = `<!-- c --><![CDATA[ z ]]><?pi?> <content>${inner}</content>`;
-      const r = findFirstTopLevelRange(xml, "content");
-      expect(r).toBeDefined();
-      expect(xml.slice(r?.start ?? 0, r?.end ?? 0)).toBe(inner);
+      expectTopLevelInner(
+        `<!-- c --><![CDATA[ z ]]><?pi?> <content>${inner}</content>`,
+        inner
+      );
     });
   });
 

@@ -1,99 +1,42 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
 import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
-
-function joinTextDeltas(parts: LanguageModelV4StreamPart[]): string {
-  const deltas: string[] = [];
-  for (const part of parts) {
-    if (part.type !== "text-delta") {
-      continue;
-    }
-    const { delta } = part as unknown as { delta?: unknown };
-    if (typeof delta === "string") {
-      deltas.push(delta);
-    }
-  }
-  return deltas.join("");
-}
-
-type ToolCallPart = LanguageModelV4StreamPart & {
-  type: "tool-call";
-  toolName: string;
-  input: string;
-};
-
-function isToolCallPart(part: LanguageModelV4StreamPart): part is ToolCallPart {
-  if (part.type !== "tool-call") {
-    return false;
-  }
-  const maybe = part as unknown as { toolName?: unknown; input?: unknown };
-  return typeof maybe.toolName === "string" && typeof maybe.input === "string";
-}
+  collectTextDeltas,
+  runProtocolTextStream,
+  selectToolCalls,
+} from "../../shared/duplicate-harness";
 
 describe("hermesProtocol partial tag handling", () => {
   it("breaks inner loop when only partial start tag suffix present and publishes buffer", async () => {
-    const protocol = hermesProtocol();
-    const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({ type: "text-delta", id: "1", delta: "before <tool_c" });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
+    const out = await runProtocolTextStream({
+      protocol: hermesProtocol(),
+      tools: [],
+      chunks: ["before <tool_c"],
+      id: "1",
     });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const text = joinTextDeltas(out);
+    const text = collectTextDeltas(out);
     expect(text).toContain("before <tool_c");
-    expect(out.some((c) => c.type === "tool-call")).toBe(false);
+    expect(out.some((part) => part.type === "tool-call")).toBe(false);
   });
 
   it("keeps the longest overlapping start-tag suffix across chunks", async () => {
     const toolCallStart = "ababax";
     const toolCallEnd = "ENDTAG";
-    const protocol = hermesProtocol({ toolCallStart, toolCallEnd });
-    const transformer = protocol.createStreamParser({ tools: [] });
-
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({ type: "text-delta", id: "1", delta: "before|ababa" });
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: `x{"name":"t","arguments":{"value":1}}${toolCallEnd}|after`,
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
+    const out = await runProtocolTextStream({
+      protocol: hermesProtocol({ toolCallStart, toolCallEnd }),
+      tools: [],
+      chunks: [
+        "before|ababa",
+        `x{"name":"t","arguments":{"value":1}}${toolCallEnd}|after`,
+      ],
+      id: "1",
     });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-
-    const text = joinTextDeltas(out);
-
+    const text = collectTextDeltas(out);
     expect(text).toBe("before||after");
     expect(text).not.toContain("ababa");
     expect(text).not.toContain(toolCallStart);
-
-    const toolCalls = out.filter(isToolCallPart);
+    const toolCalls = selectToolCalls(out);
     expect(toolCalls).toHaveLength(1);
     expect(toolCalls[0]).toMatchObject({
       type: "tool-call",

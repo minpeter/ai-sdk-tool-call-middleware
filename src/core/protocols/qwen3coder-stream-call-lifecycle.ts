@@ -242,6 +242,8 @@ export function createQwenStreamCallLifecycle({
         args: callState.args,
       });
     } catch (error) {
+      const caughtError =
+        error instanceof Error ? error : new Error(String(error));
       const shouldEmitRaw = shouldEmitRawToolCallTextOnError(options);
       emitFailedBufferedToolInputLifecycle({
         bufferedParts: callState.pendingToolInputParts,
@@ -249,7 +251,8 @@ export function createQwenStreamCallLifecycle({
         id: callState.toolCallId,
         emitRawToolCallTextOnError: shouldEmitRaw,
         endInputOnError: callState.hasEmittedStart,
-        hideBufferedInputOnError: isPrototypeSensitiveToolCallInputError(error),
+        hideBufferedInputOnError:
+          isPrototypeSensitiveToolCallInputError(caughtError),
         rawToolCallText,
         emitRawText: (rawText) => {
           flushText(controller, rawText);
@@ -264,7 +267,7 @@ export function createQwenStreamCallLifecycle({
           toolCall: safeToolCallMetadataText(rawToolCallText),
           toolName: resolvedToolName,
           dropReason: "malformed-tool-call-body",
-          error: safeToolCallMetadataError(error, rawToolCallText),
+          error: safeToolCallMetadataError(caughtError, rawToolCallText),
         }
       );
       return false;

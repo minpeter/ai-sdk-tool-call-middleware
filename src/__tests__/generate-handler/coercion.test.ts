@@ -1,4 +1,7 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4FunctionTool,
+  LanguageModelV4GenerateResult,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
@@ -13,13 +16,49 @@ const passthroughProtocol: TCMCoreProtocol = {
   createStreamParser: () => new TransformStream(),
 };
 
-function generateContent(content: unknown[]) {
-  return {
-    content,
+interface GenerateToolCallIngress {
+  readonly input: string | null;
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly type: "tool-call";
+}
+
+function generateContent(
+  content: readonly GenerateToolCallIngress[]
+): LanguageModelV4GenerateResult {
+  if (content.length === 0 || content.some(({ input }) => input !== null)) {
+    throw new TypeError("Expected malformed generate content with null input");
+  }
+
+  const result: LanguageModelV4GenerateResult = {
+    content: [],
     finishReason: stopFinishReason,
     usage: zeroUsage,
     warnings: [],
   };
+  Object.defineProperty(result, "content", {
+    enumerable: true,
+    value: content,
+  });
+  return result;
+}
+
+function runMalformedGenerate(
+  tools: LanguageModelV4FunctionTool[],
+  toolCall: GenerateToolCallIngress
+): Promise<LanguageModelV4GenerateResult> {
+  const doGenerate = vi.fn().mockResolvedValue(generateContent([toolCall]));
+  return wrapGenerate({
+    protocol: passthroughProtocol,
+    doGenerate,
+    params: {
+      providerOptions: {
+        toolCallMiddleware: {
+          originalTools: originalToolsSchema.encode(tools),
+        },
+      },
+    },
+  });
 }
 
 describe("wrapGenerate tool-call coercion", () => {
@@ -34,27 +73,16 @@ describe("wrapGenerate tool-call coercion", () => {
         },
       },
     ];
-    const malformedToolCall = {
+    const malformedToolCall: GenerateToolCallIngress = {
       type: "tool-call",
       toolCallId: "id",
       toolName: "calc",
       input: null,
     };
-    const doGenerate = vi
-      .fn()
-      .mockResolvedValue(generateContent([malformedToolCall]));
-
-    const result = await wrapGenerate({
-      protocol: passthroughProtocol,
-      doGenerate,
-      params: {
-        providerOptions: {
-          toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
-          },
-        },
-      },
-    });
+    expect(() =>
+      generateContent([{ ...malformedToolCall, input: "{}" }])
+    ).toThrow(TypeError);
+    const result = await runMalformedGenerate(tools, malformedToolCall);
 
     expect(result.content[0]).toBe(malformedToolCall);
   });
@@ -70,27 +98,11 @@ describe("wrapGenerate tool-call coercion", () => {
         },
       },
     ];
-    const doGenerate = vi.fn().mockResolvedValue(
-      generateContent([
-        {
-          type: "tool-call",
-          toolCallId: "id",
-          toolName: "calc",
-          input: null,
-        },
-      ])
-    );
-
-    const result = await wrapGenerate({
-      protocol: passthroughProtocol,
-      doGenerate,
-      params: {
-        providerOptions: {
-          toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
-          },
-        },
-      },
+    const result = await runMalformedGenerate(tools, {
+      type: "tool-call",
+      toolCallId: "id",
+      toolName: "calc",
+      input: null,
     });
 
     expect(result.content[0]).toMatchObject({

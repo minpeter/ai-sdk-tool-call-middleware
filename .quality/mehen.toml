@@ -1,0 +1,5 @@
+[thresholds]
+"cyclomatic.max" = 21
+"cognitive.max" = 21
+"halstead.difficulty" = 79.99999999999999
+"loc.ploc" = 499

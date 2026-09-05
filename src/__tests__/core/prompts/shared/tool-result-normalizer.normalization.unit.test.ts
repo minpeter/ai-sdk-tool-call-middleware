@@ -1,3 +1,4 @@
+import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
   normalizeToolResultForUserContent,
@@ -485,10 +486,29 @@ describe("normalizeToolResultForUserContent", () => {
 });
 
 describe("canonical v4 file content parts", () => {
-  const contentWith = (part: unknown) =>
-    ({ type: "content", value: [part] }) as Parameters<
-      typeof unwrapToolResult
-    >[0];
+  type ToolResultContentPart = Extract<
+    ToolResultOutput,
+    { type: "content" }
+  >["value"][number];
+  interface BoundaryFilePart {
+    data:
+      | { type: "data"; data?: string }
+      | { type: "nope" }
+      | { type: "url"; url: string | URL };
+    filename?: string;
+    mediaType?: string;
+    type: "file";
+  }
+  interface ContentFixture {
+    type: "content";
+    value: (ToolResultContentPart | BoundaryFilePart)[];
+  }
+  type ToolResultContentFixture = ToolResultOutput & ContentFixture;
+
+  const contentWith = (
+    ...value: ContentFixture["value"]
+  ): ToolResultContentFixture =>
+    ({ type: "content", value }) as ToolResultContentFixture;
 
   it("renders a placeholder for inline file data", () => {
     expect(
@@ -563,17 +583,16 @@ describe("canonical v4 file content parts", () => {
 
   it("mixes file placeholders with text parts", () => {
     expect(
-      unwrapToolResult({
-        type: "content",
-        value: [
+      unwrapToolResult(
+        contentWith(
           { type: "text", text: "see attachment" },
           {
             type: "file",
             data: { type: "data", data: "aGVsbG8=" },
             mediaType: "image/jpeg",
-          },
-        ],
-      } as Parameters<typeof unwrapToolResult>[0])
+          }
+        )
+      )
     ).toBe("see attachment\n[Image: image/jpeg]");
   });
 
@@ -583,14 +602,10 @@ describe("canonical v4 file content parts", () => {
       data: { type: "data", data: "aGVsbG8=" },
       mediaType: "image/png",
       filename: "cat.png",
-    };
-    const out = normalizeToolResultForUserContent(
-      {
-        type: "content",
-        value: [filePart],
-      } as Parameters<typeof normalizeToolResultForUserContent>[0],
-      { mode: "model" }
-    );
+    } satisfies ToolResultContentPart;
+    const out = normalizeToolResultForUserContent(contentWith(filePart), {
+      mode: "model",
+    });
 
     expect(out).toEqual([filePart]);
   });
@@ -598,16 +613,13 @@ describe("canonical v4 file content parts", () => {
   it("normalizes string urls on canonical file parts to URL objects", () => {
     // JSON-deserialized tool results often carry url as a string; repair to URL
     // is intentional so model mode can still forward http(s) file parts.
-    const out = normalizeToolResultForUserContent({
-      type: "content",
-      value: [
-        {
-          type: "file",
-          data: { type: "url", url: "https://example.com/cat.png" },
-          mediaType: "image/png",
-        },
-      ],
-    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+    const out = normalizeToolResultForUserContent(
+      contentWith({
+        type: "file",
+        data: { type: "url", url: "https://example.com/cat.png" },
+        mediaType: "image/png",
+      })
+    );
 
     expect(out).toEqual([
       {
@@ -619,9 +631,8 @@ describe("canonical v4 file content parts", () => {
   });
 
   it("rejects non-http(s) file urls as placeholders", () => {
-    const out = normalizeToolResultForUserContent({
-      type: "content",
-      value: [
+    const out = normalizeToolResultForUserContent(
+      contentWith(
         {
           type: "file",
           data: { type: "url", url: new URL("file:///etc/passwd") },
@@ -636,9 +647,9 @@ describe("canonical v4 file content parts", () => {
           type: "file",
           data: { type: "url", url: "ftp://files.example.com/a.png" },
           mediaType: "image/png",
-        },
-      ],
-    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+        }
+      )
+    );
 
     expect(out).toEqual([
       { type: "text", text: "[File URL: file:///etc/passwd]" },
@@ -648,16 +659,13 @@ describe("canonical v4 file content parts", () => {
   });
 
   it("falls back to placeholders for unknown file data tags", () => {
-    const out = normalizeToolResultForUserContent({
-      type: "content",
-      value: [
-        {
-          type: "file",
-          data: { type: "nope" },
-          mediaType: "image/png",
-        },
-      ],
-    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+    const out = normalizeToolResultForUserContent(
+      contentWith({
+        type: "file",
+        data: { type: "nope" },
+        mediaType: "image/png",
+      })
+    );
 
     expect(out).toEqual([
       {
@@ -668,17 +676,14 @@ describe("canonical v4 file content parts", () => {
   });
 
   it("falls back to placeholders when tagged data payload is missing", () => {
-    const out = normalizeToolResultForUserContent({
-      type: "content",
-      value: [
-        {
-          type: "file",
-          data: { type: "data" },
-          mediaType: "application/pdf",
-          filename: "report.pdf",
-        },
-      ],
-    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+    const out = normalizeToolResultForUserContent(
+      contentWith({
+        type: "file",
+        data: { type: "data" },
+        mediaType: "application/pdf",
+        filename: "report.pdf",
+      })
+    );
 
     expect(out).toEqual([
       {
@@ -689,15 +694,12 @@ describe("canonical v4 file content parts", () => {
   });
 
   it("falls back to placeholders when mediaType is missing", () => {
-    const out = normalizeToolResultForUserContent({
-      type: "content",
-      value: [
-        {
-          type: "file",
-          data: { type: "data", data: "aGVsbG8=" },
-        },
-      ],
-    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+    const out = normalizeToolResultForUserContent(
+      contentWith({
+        type: "file",
+        data: { type: "data", data: "aGVsbG8=" },
+      })
+    );
 
     expect(out).toEqual([
       {
@@ -708,9 +710,8 @@ describe("canonical v4 file content parts", () => {
   });
 
   it("passes reference and text tagged file parts through", () => {
-    const out = normalizeToolResultForUserContent({
-      type: "content",
-      value: [
+    const out = normalizeToolResultForUserContent(
+      contentWith(
         {
           type: "file",
           data: { type: "reference", reference: { openai: "file-123" } },
@@ -720,9 +721,9 @@ describe("canonical v4 file content parts", () => {
           type: "file",
           data: { type: "text", text: "inline doc" },
           mediaType: "text/plain",
-        },
-      ],
-    } as unknown as Parameters<typeof normalizeToolResultForUserContent>[0]);
+        }
+      )
+    );
 
     expect(out).toEqual([
       {

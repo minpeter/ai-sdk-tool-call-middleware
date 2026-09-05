@@ -66,10 +66,10 @@ describe("GLM-5.2 official-template prompt", () => {
   });
 
   it("normalizes a serialized input schema without adding wrapper fields", () => {
-    const tool = {
-      ...weatherTool,
-      inputSchema: JSON.stringify(weatherTool.inputSchema),
-    } as unknown as LanguageModelV4FunctionTool;
+    const tool: LanguageModelV4FunctionTool = { ...weatherTool };
+    Object.defineProperty(tool, "inputSchema", {
+      value: JSON.stringify(weatherTool.inputSchema),
+    });
 
     expect(JSON.parse(renderGlm5ToolDefinition(tool))).toEqual({
       name: "get_weather",

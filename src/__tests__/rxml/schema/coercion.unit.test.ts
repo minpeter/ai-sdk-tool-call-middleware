@@ -9,6 +9,11 @@ import {
   processArrayContent,
   processIndexedTuple,
 } from "../../../rxml/schema/coercion";
+import type {
+  ToolInputSchema,
+  ToolInputSchemaCandidate,
+} from "../../../schema/tool-input-schema";
+import { unwrapJsonSchema } from "../../../schema-coerce";
 
 describe("schema coercion", () => {
   describe("getPropertySchema", () => {
@@ -19,7 +24,7 @@ describe("schema coercion", () => {
           name: { type: "string" },
           age: { type: "number" },
         },
-      };
+      } satisfies ToolInputSchema;
 
       expect(getPropertySchema(schema, "name")).toEqual({ type: "string" });
       expect(getPropertySchema(schema, "age")).toEqual({ type: "number" });
@@ -34,15 +39,23 @@ describe("schema coercion", () => {
             value: { type: "string" },
           },
         },
-      };
+      } satisfies ToolInputSchema;
 
       expect(getPropertySchema(schema, "value")).toEqual({ type: "string" });
     });
 
     it("handles invalid schemas gracefully", () => {
-      expect(getPropertySchema(null, "test")).toBeUndefined();
-      expect(getPropertySchema("invalid", "test")).toBeUndefined();
-      expect(getPropertySchema({}, "test")).toBeUndefined();
+      const nullSchema: ToolInputSchemaCandidate = null;
+      const stringSchema: ToolInputSchemaCandidate = "invalid";
+      const emptySchema = {} satisfies ToolInputSchema;
+
+      expect(
+        getPropertySchema(unwrapJsonSchema(nullSchema), "test")
+      ).toBeUndefined();
+      expect(
+        getPropertySchema(unwrapJsonSchema(stringSchema), "test")
+      ).toBeUndefined();
+      expect(getPropertySchema(emptySchema, "test")).toBeUndefined();
     });
   });
 
@@ -56,7 +69,7 @@ describe("schema coercion", () => {
           description: { type: "string" },
           active: { type: "boolean" },
         },
-      };
+      } satisfies ToolInputSchema;
 
       const stringProps = getStringTypedProperties(schema);
       expect(stringProps.has("name")).toBe(true);
@@ -66,7 +79,9 @@ describe("schema coercion", () => {
     });
 
     it("handles schemas without properties", () => {
-      const stringProps = getStringTypedProperties({ type: "object" });
+      const stringProps = getStringTypedProperties({
+        type: "object",
+      } satisfies ToolInputSchema);
       expect(stringProps.size).toBe(0);
     });
 
@@ -78,7 +93,7 @@ describe("schema coercion", () => {
             text: { type: "string" },
           },
         },
-      };
+      } satisfies ToolInputSchema;
 
       const stringProps = getStringTypedProperties(schema);
       expect(stringProps.has("text")).toBe(true);
@@ -88,7 +103,7 @@ describe("schema coercion", () => {
   describe("domToObject", () => {
     it("converts simple DOM to object", () => {
       const nodes = parseWithoutSchema("<name>John</name><age>30</age>");
-      const result = domToObject(nodes, {});
+      const result = domToObject(nodes, {} satisfies ToolInputSchema);
 
       expect(result).toEqual({
         name: "John",
@@ -98,7 +113,7 @@ describe("schema coercion", () => {
 
     it("handles empty elements", () => {
       const nodes = parseWithoutSchema("<empty></empty><selfClosed/>");
-      const result = domToObject(nodes, {});
+      const result = domToObject(nodes, {} satisfies ToolInputSchema);
 
       expect(result).toEqual({
         empty: "",
@@ -110,7 +125,7 @@ describe("schema coercion", () => {
       const nodes = parseWithoutSchema(
         '<item id="1" type="test">content</item>'
       );
-      const result = domToObject(nodes, {});
+      const result = domToObject(nodes, {} satisfies ToolInputSchema);
 
       expect(result.item).toEqual({
         "#text": "content",
@@ -121,7 +136,7 @@ describe("schema coercion", () => {
 
     it("handles multiple elements with same tag name", () => {
       const nodes = parseWithoutSchema("<item>first</item><item>second</item>");
-      const result = domToObject(nodes, {});
+      const result = domToObject(nodes, {} satisfies ToolInputSchema);
 
       expect(result.item).toEqual(["first", "second"]);
     });
@@ -130,7 +145,7 @@ describe("schema coercion", () => {
       const nodes = parseWithoutSchema(
         "<user><name>John</name><details><age>30</age></details></user>"
       );
-      const result = domToObject(nodes, {});
+      const result = domToObject(nodes, {} satisfies ToolInputSchema);
 
       expect(result.user).toMatchObject({
         name: "John",
@@ -145,7 +160,9 @@ describe("schema coercion", () => {
         "<__proto__><polluted>true</polluted></__proto__>"
       );
 
-      expect(() => domToObject(nodes, {})).toThrow("Prototype-sensitive");
+      expect(() => domToObject(nodes, {} satisfies ToolInputSchema)).toThrow(
+        "Prototype-sensitive"
+      );
     });
 
     it("rejects prototype-sensitive nested element names", () => {
@@ -153,12 +170,14 @@ describe("schema coercion", () => {
         "<user><name>John</name><__proto__><polluted>true</polluted></__proto__></user>"
       );
 
-      expect(() => domToObject(nodes, {})).toThrow("Prototype-sensitive");
+      expect(() => domToObject(nodes, {} satisfies ToolInputSchema)).toThrow(
+        "Prototype-sensitive"
+      );
     });
 
     it("uses custom textNodeName", () => {
       const nodes = parseWithoutSchema('<item id="1">content</item>');
-      const result = domToObject(nodes, {}, "_text");
+      const result = domToObject(nodes, {} satisfies ToolInputSchema, "_text");
 
       expect(result.item).toEqual({
         _text: "content",
@@ -174,7 +193,7 @@ describe("schema coercion", () => {
         { "#text": "  second  " },
         "third",
       ];
-      const schema = { type: "string" };
+      const schema = { type: "string" } satisfies ToolInputSchema;
 
       const result = processArrayContent(value, schema, "#text");
       expect(result).toEqual(["first", "second", "third"]);
@@ -182,7 +201,7 @@ describe("schema coercion", () => {
 
     it("processes non-string arrays", () => {
       const value = [{ "#text": "  1  " }, { "#text": "  2  " }, "3"];
-      const schema = { type: "number" };
+      const schema = { type: "number" } satisfies ToolInputSchema;
 
       const result = processArrayContent(value, schema, "#text");
       expect(result).toEqual(["1", "2", "3"]);
@@ -190,7 +209,11 @@ describe("schema coercion", () => {
 
     it("handles non-array values", () => {
       const value = "test";
-      const result = processArrayContent(value, {}, "#text");
+      const result = processArrayContent(
+        value,
+        {} satisfies ToolInputSchema,
+        "#text"
+      );
       expect(result).toBe("test");
     });
   });
@@ -264,7 +287,7 @@ describe("schema coercion", () => {
           age: { type: "number" },
           active: { type: "boolean" },
         },
-      };
+      } satisfies ToolInputSchema;
 
       const result = coerceDomBySchema(domObject, schema);
       expect(result).toEqual({
@@ -291,7 +314,7 @@ describe("schema coercion", () => {
             items: { type: "boolean" },
           },
         },
-      };
+      } satisfies ToolInputSchema;
 
       const result = coerceDomBySchema(domObject, schema);
       expect(result).toEqual({
@@ -329,7 +352,7 @@ describe("schema coercion", () => {
             },
           },
         },
-      };
+      } satisfies ToolInputSchema;
 
       const result = coerceDomBySchema(domObject, schema);
       expect(result).toEqual({
@@ -351,7 +374,7 @@ describe("schema coercion", () => {
         properties: {
           value: { type: "number" },
         },
-      };
+      } satisfies ToolInputSchema;
 
       // This should not throw because the base coercion handles it gracefully
       // But if there were a genuine coercion error, it would be wrapped
@@ -371,7 +394,7 @@ describe("schema coercion", () => {
       const xml =
         "<data><items><item>1</item><item>2</item></items><metadata><count>2</count><valid>true</valid></metadata></data>";
       const nodes = parseWithoutSchema(xml);
-      const domObject = domToObject(nodes, {});
+      const domObject = domToObject(nodes, {} satisfies ToolInputSchema);
 
       const schema = {
         type: "object",
@@ -393,7 +416,7 @@ describe("schema coercion", () => {
             },
           },
         },
-      };
+      } satisfies ToolInputSchema;
 
       const result = coerceDomBySchema(domObject, schema);
       expect(result).toEqual({
@@ -411,7 +434,7 @@ describe("schema coercion", () => {
       const xml =
         "<numbers><item>1</item><item>2</item><item>3</item></numbers>";
       const nodes = parseWithoutSchema(xml);
-      const domObject = domToObject(nodes, {});
+      const domObject = domToObject(nodes, {} satisfies ToolInputSchema);
 
       const schema = {
         type: "object",
@@ -421,7 +444,7 @@ describe("schema coercion", () => {
             items: { type: "number" },
           },
         },
-      };
+      } satisfies ToolInputSchema;
 
       const result = coerceDomBySchema(domObject, schema);
       expect(result.numbers).toEqual([1, 2, 3]);

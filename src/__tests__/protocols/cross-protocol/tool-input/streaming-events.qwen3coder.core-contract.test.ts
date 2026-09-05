@@ -1,52 +1,67 @@
+import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import {
+  collectTextDeltas,
+  requireToolCall,
+  runStreamingEventCase,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
+import {
   assertCanonicalAiSdkEventOrder,
   assertCoreAiSdkEventCoverage,
-  extractToolInputTimeline,
-  runProtocolTextDeltaStream,
 } from "./streaming-events.shared";
+
+function expectReconciledCall(
+  out: readonly LanguageModelV4StreamPart[],
+  expectedToolName: string
+) {
+  const timeline = selectToolInputTimeline(out);
+  const toolCall = requireToolCall(out);
+  expect(timeline.starts).toHaveLength(1);
+  expect(timeline.deltas.length).toBeGreaterThan(0);
+  expect(timeline.ends).toHaveLength(1);
+  expect(timeline.starts[0]?.id).toBe(timeline.ends[0]?.id);
+  expect(toolCall.toolCallId).toBe(timeline.starts[0]?.id);
+  expect(toolCall.toolName).toBe(expectedToolName);
+  expect(timeline.deltas.map((delta) => delta.delta).join("")).toBe(
+    toolCall.input
+  );
+  return { timeline, toolCall };
+}
+
+const progressiveChunks = [
+  "Before ",
+  "<tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
+  "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call>",
+  " After",
+];
 
 describe("cross-protocol tool-input streaming events: qwen3coder", () => {
   const fixture = toolInputStreamFixtures.json;
   const protocol = qwen3CoderProtocol();
 
-  it("Qwen3CoderToolParser streams tool input deltas and emits matching tool-call id", async () => {
-    const out = await runProtocolTextDeltaStream({
+  function runQwenStream(chunks: readonly string[], useFixtureTools = true) {
+    return runStreamingEventCase({
       protocol,
-      tools: fixture.tools,
-      chunks: [
-        "Before ",
-        "<tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
-        "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call>",
-        " After",
-      ],
+      tools: useFixtureTools ? fixture.tools : [],
+      chunks,
+      id: "fixture",
     });
+  }
 
-    const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      toolName: string;
-      input: string;
-    };
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+  it("Qwen3CoderToolParser streams tool input deltas and emits matching tool-call id", async () => {
+    const out = await runQwenStream(progressiveChunks);
+    const { timeline, toolCall } = expectReconciledCall(out, "get_weather");
+    const leakedText = collectTextDeltas(out);
 
-    expect(starts).toHaveLength(1);
-    expect(deltas.length).toBeGreaterThan(0);
-    expect(ends).toHaveLength(1);
-    expect(starts[0].toolName).toBe("get_weather");
-    expect(starts[0].id).toBe(ends[0].id);
-    expect(toolCall.toolCallId).toBe(starts[0].id);
-    expect(toolCall.toolName).toBe("get_weather");
+    expect(timeline.starts[0]?.toolName).toBe("get_weather");
     expect(toolCall.input).toBe('{"location":"Seoul","unit":"celsius"}');
-    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
-    expect(deltas.some((delta) => delta.delta.includes("<"))).toBe(false);
+    expect(timeline.deltas.some((delta) => delta.delta.includes("<"))).toBe(
+      false
+    );
     expect(leakedText).toContain("Before");
     expect(leakedText).toContain("After");
     expect(leakedText).not.toContain("<tool_call");
@@ -54,82 +69,34 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
   });
 
   it("Qwen3CoderToolParser preserves canonical order for all emitted AI SDK stream events", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: [
-        "Before ",
-        "<tool_call>\n  <function=get_weather>\n    <parameter=location>Seo",
-        "ul</parameter>\n    <parameter=unit>celsius</parameter>\n  </function>\n</tool_call>",
-        " After",
-      ],
-    });
-
+    const out = await runQwenStream(progressiveChunks);
     assertCanonicalAiSdkEventOrder(out);
     assertCoreAiSdkEventCoverage(out);
   });
 
   it("Qwen3CoderToolParser preserves non-contiguous repeated parameters in streams", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: [],
-      chunks: [
+    const out = await runQwenStream(
+      [
         "<tool_call>\n  <function=alpha>\n    <parameter=a>1</parameter>\n    <parameter=b>2</parameter>\n    <parameter=a>3</parameter>\n  </function>\n</tool_call>",
       ],
-    });
+      false
+    );
+    const { toolCall } = expectReconciledCall(out, "alpha");
 
-    const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as {
-      type: "tool-call";
-      toolCallId: string;
-      toolName: string;
-      input: string;
-    };
-
-    expect(starts).toHaveLength(1);
-    expect(deltas.length).toBeGreaterThan(0);
-    expect(ends).toHaveLength(1);
-    expect(starts[0].id).toBe(ends[0].id);
-    expect(toolCall.toolCallId).toBe(starts[0].id);
-    expect(toolCall.toolName).toBe("alpha");
     expect(JSON.parse(toolCall.input)).toEqual({ a: ["1", "3"], b: "2" });
-    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 
   it("Qwen3CoderToolParser streams tool calls when <tool_call> wrapper is missing", async () => {
-    const out = await runProtocolTextDeltaStream({
-      protocol,
-      tools: fixture.tools,
-      chunks: [
-        "Before ",
-        "<function=get_weather><parameter=location>Seoul</parameter><parameter=unit>celsius</parameter></function>",
-        " After",
-      ],
-    });
+    const out = await runQwenStream([
+      "Before ",
+      "<function=get_weather><parameter=location>Seoul</parameter><parameter=unit>celsius</parameter></function>",
+      " After",
+    ]);
+    const { toolCall } = expectReconciledCall(out, "get_weather");
+    const leakedText = collectTextDeltas(out);
 
-    const { starts, deltas, ends } = extractToolInputTimeline(out);
-    const toolCall = out.find((part) => part.type === "tool-call") as
-      | {
-          type: "tool-call";
-          toolCallId: string;
-          toolName: string;
-          input: string;
-        }
-      | undefined;
-
-    const leakedText = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
-
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
     expect(toolCall).toBeTruthy();
-    expect(starts[0].id).toBe(ends[0].id);
-    expect(toolCall?.toolCallId).toBe(starts[0].id);
-    expect(toolCall?.toolName).toBe("get_weather");
-    expect(toolCall?.input).toBe('{"location":"Seoul","unit":"celsius"}');
-    expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall?.input);
+    expect(toolCall.input).toBe('{"location":"Seoul","unit":"celsius"}');
     expect(leakedText).toContain("Before");
     expect(leakedText).toContain("After");
     expect(leakedText).not.toContain("<function");

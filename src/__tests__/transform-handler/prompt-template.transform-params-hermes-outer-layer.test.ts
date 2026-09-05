@@ -11,56 +11,56 @@ import {
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { transformParams } from "../../transform-handler";
 
+function hermesWeatherTool(): LanguageModelV4FunctionTool {
+  return {
+    name: "get_weather",
+    type: "function",
+    description: "Get weather by city",
+    inputSchema: {
+      required: ["city"],
+      properties: { city: { type: "string" } },
+      type: "object",
+    },
+  };
+}
+
+const userMessage: LanguageModelV4Prompt[number] = {
+  role: "user",
+  content: [{ type: "text", text: "오늘 서울 날씨 알려줘" }],
+};
+const assistantCall: LanguageModelV4Prompt[number] = {
+  role: "assistant",
+  content: [
+    {
+      type: "tool-call",
+      toolCallId: "tc-weather",
+      toolName: "get_weather",
+      input: JSON.stringify({ city: "Seoul" }),
+    },
+  ],
+};
+const weatherResult: LanguageModelV4Prompt[number] = {
+  role: "tool",
+  content: [
+    {
+      type: "tool-result",
+      toolCallId: "tc-weather",
+      toolName: "get_weather",
+      output: {
+        type: "json",
+        value: { city: "Seoul", temperature: 21 },
+      },
+    },
+  ],
+};
+
 describe("transformParams hermes outer-layer transform", () => {
   it("transforms tools + messages into the expected prompt message array", () => {
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "get_weather",
-        description: "Get weather by city",
-        inputSchema: {
-          type: "object",
-          properties: {
-            city: { type: "string" },
-          },
-          required: ["city"],
-        },
-      },
-    ];
-
+    const tools = [hermesWeatherTool()];
     const inputPrompt: LanguageModelV4Prompt = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "오늘 서울 날씨 알려줘" }],
-      },
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "tc-weather",
-            toolName: "get_weather",
-            input: JSON.stringify({ city: "Seoul" }),
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "tc-weather",
-            toolName: "get_weather",
-            output: {
-              type: "json",
-              value: {
-                city: "Seoul",
-                temperature: 21,
-              },
-            },
-          },
-        ],
-      },
+      userMessage,
+      assistantCall,
+      weatherResult,
     ];
 
     const transformed = transformParams({
@@ -68,21 +68,12 @@ describe("transformParams hermes outer-layer transform", () => {
       placement: "first",
       toolSystemPromptTemplate: hermesSystemPromptTemplate,
       toolResponsePromptTemplate: formatToolResponseAsHermes,
-      params: {
-        prompt: inputPrompt,
-        tools,
-      },
+      params: { prompt: inputPrompt, tools },
     });
 
     const expectedPrompt: LanguageModelV4Prompt = [
-      {
-        role: "system",
-        content: hermesSystemPromptTemplate(tools),
-      },
-      {
-        role: "user",
-        content: [{ type: "text", text: "오늘 서울 날씨 알려줘" }],
-      },
+      { role: "system", content: hermesSystemPromptTemplate(tools) },
+      userMessage,
       {
         role: "assistant",
         content: [

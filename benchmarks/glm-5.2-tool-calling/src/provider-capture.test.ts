@@ -43,6 +43,41 @@ function captureContext(transport: "generate" | "stream") {
   } satisfies ProviderCaptureContext;
 }
 
+function createTemporaryDirectory(prefix: string): string {
+  const directory = mkdtempSync(join(tmpdir(), prefix));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+function renderSvgChart(chartsDirectory: string): boolean {
+  try {
+    execFileSync(
+      "python3",
+      [
+        "benchmarks/glm-5.2-tool-calling/render_svg_charts.py",
+        "--chart-dir",
+        chartsDirectory,
+      ],
+      { cwd: process.cwd(), stdio: "pipe" }
+    );
+    return true;
+  } catch (error) {
+    const stderr =
+      error && typeof error === "object" && "stderr" in error
+        ? String(error.stderr ?? "")
+        : "";
+    const message = error instanceof Error ? error.message : String(error);
+    const converterUnavailable =
+      MISSING_SVG_PNG_CONVERTER_RE.test(stderr) ||
+      MISSING_SVG_PNG_CONVERTER_RE.test(message);
+    if (!converterUnavailable) {
+      throw error;
+    }
+    // Soft-fail: CI runners often lack SVG→PNG converters.
+    return false;
+  }
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { force: true, recursive: true });
@@ -60,8 +95,7 @@ describe("provider capture", () => {
   ] as const)(
     "captures raw %s responses without transport credentials",
     async (transport, contentType, responseBody) => {
-      const directory = mkdtempSync(join(tmpdir(), "glm5-capture-"));
-      temporaryDirectories.push(directory);
+      const directory = createTemporaryDirectory("glm5-capture-");
       const output = join(directory, "provider-raw.jsonl");
       const fetchImpl: typeof fetch = async () =>
         new Response(responseBody, {
@@ -121,8 +155,7 @@ describe("provider capture", () => {
   );
 
   it("redacts credential material from transport errors", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "glm5-capture-error-"));
-    temporaryDirectories.push(directory);
+    const directory = createTemporaryDirectory("glm5-capture-error-");
     const output = join(directory, "provider-raw.jsonl");
     const fetchImpl: typeof fetch = () =>
       Promise.reject(
@@ -154,8 +187,7 @@ describe("provider capture", () => {
   });
 
   it("redacts exact runtime credentials reflected in provider bodies", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "glm5-capture-reflection-"));
-    temporaryDirectories.push(directory);
+    const directory = createTemporaryDirectory("glm5-capture-reflection-");
     const output = join(directory, "provider-raw.jsonl");
     const capture = new ProviderCapture({
       arms: new Set(["glm5"]),
@@ -178,8 +210,7 @@ describe("provider capture", () => {
   });
 
   it("rejects capture IDs linked to a different benchmark job", () => {
-    const directory = mkdtempSync(join(tmpdir(), "glm5-capture-linkage-"));
-    temporaryDirectories.push(directory);
+    const directory = createTemporaryDirectory("glm5-capture-linkage-");
     const capture = join(directory, "provider-raw.jsonl");
     const result = join(directory, "raw.jsonl");
     writeFileSync(
@@ -237,8 +268,7 @@ describe("provider capture", () => {
   });
 
   it("refuses a linked resume when the prior capture artifact is missing", () => {
-    const directory = mkdtempSync(join(tmpdir(), "glm5-capture-resume-"));
-    temporaryDirectories.push(directory);
+    const directory = createTemporaryDirectory("glm5-capture-resume-");
     const capture = new ProviderCapture({
       arms: new Set(["glm5"]),
       enabled: true,
@@ -301,8 +331,7 @@ describe("paired scheduling", () => {
 
 describe("resume integrity", () => {
   it("uses canonical fingerprints and refuses configuration drift", () => {
-    const directory = mkdtempSync(join(tmpdir(), "glm5-resume-"));
-    temporaryDirectories.push(directory);
+    const directory = createTemporaryDirectory("glm5-resume-");
     const outputPath = join(directory, "raw.jsonl");
     const metaPath = join(directory, "run-meta.json");
     const expected = configurationFingerprint({
@@ -331,8 +360,7 @@ describe("resume integrity", () => {
   });
 
   it("changes the source fingerprint when implementation bytes change", () => {
-    const directory = mkdtempSync(join(tmpdir(), "glm5-source-fingerprint-"));
-    temporaryDirectories.push(directory);
+    const directory = createTemporaryDirectory("glm5-source-fingerprint-");
     const source = join(directory, "runner.ts");
     writeFileSync(source, "export const revision = 1;\n");
     const before = sourceTreeFingerprint({ paths: [source], root: directory });
@@ -348,8 +376,7 @@ describe("resume integrity", () => {
 
 describe("paired analysis denominators", () => {
   it("uses end-to-end strict outcomes for BFCL McNemar and preserves conditional semantics", () => {
-    const directory = mkdtempSync(join(tmpdir(), "glm5-bfcl-analysis-"));
-    temporaryDirectories.push(directory);
+    const directory = createTemporaryDirectory("glm5-bfcl-analysis-");
     const scored = join(directory, "scored.jsonl");
     const base = {
       attempts: 1,
@@ -448,45 +475,21 @@ describe("paired analysis denominators", () => {
   });
 
   it("renders a single SVG chart to PNG when a converter is available", () => {
-    const chartsDir = mkdtempSync(join(tmpdir(), "glm5-chart-render-"));
-    temporaryDirectories.push(chartsDir);
+    const chartsDir = createTemporaryDirectory("glm5-chart-render-");
     writeFileSync(
       join(chartsDir, "single.svg"),
       '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#000"/></svg>'
     );
 
-    try {
-      execFileSync(
-        "python3",
-        [
-          "benchmarks/glm-5.2-tool-calling/render_svg_charts.py",
-          "--chart-dir",
-          chartsDir,
-        ],
-        { cwd: process.cwd(), stdio: "pipe" }
-      );
+    if (renderSvgChart(chartsDir)) {
       expect(
         readFileSync(join(chartsDir, "single.png")).length
       ).toBeGreaterThan(0);
-    } catch (error) {
-      const stderr =
-        error && typeof error === "object" && "stderr" in error
-          ? String((error as { stderr?: Buffer | string }).stderr ?? "")
-          : "";
-      const message = error instanceof Error ? error.message : String(error);
-      const missingConverter =
-        MISSING_SVG_PNG_CONVERTER_RE.test(stderr) ||
-        MISSING_SVG_PNG_CONVERTER_RE.test(message);
-      if (!missingConverter) {
-        throw error;
-      }
-      // Soft-fail: CI runners often lack SVG→PNG converters.
     }
   });
 
   it("includes registered and unregistered observed arms in BFCL analysis", () => {
-    const directory = mkdtempSync(join(tmpdir(), "glm5-bfcl-arms-"));
-    temporaryDirectories.push(directory);
+    const directory = createTemporaryDirectory("glm5-bfcl-arms-");
     const scored = join(directory, "scored.jsonl");
     const arms = ["native", "glm5", "experimentalArm", "legacyText"];
     const rows = arms.map((arm) => ({
@@ -541,8 +544,7 @@ describe("paired analysis denominators", () => {
   });
 
   it("uses oracle-valid end-to-end strict outcomes for ACE McNemar", () => {
-    const directory = mkdtempSync(join(tmpdir(), "glm5-ace-analysis-"));
-    temporaryDirectories.push(directory);
+    const directory = createTemporaryDirectory("glm5-ace-analysis-");
     const scored = join(directory, "scored.jsonl");
     const base = {
       benchmarkItemValid: true,

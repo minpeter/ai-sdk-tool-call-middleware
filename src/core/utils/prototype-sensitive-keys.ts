@@ -1,4 +1,6 @@
+import { isJSONValue } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
+import type { RxmlValue } from "../../rxml/builders/stringify";
 import {
   decodeJsonUnicodeEscapes,
   decodeStructuredTextEscapes,
@@ -27,19 +29,21 @@ const YAML_MAPPING_KEY_TEXT_REGEX =
 const YAML_MAPPING_KEY_TEXT_GLOBAL_REGEX =
   /(?:^|\n)\s*(?:"[^"\r\n]+"|'[^'\r\n]+'|[A-Za-z0-9_][A-Za-z0-9_.-]*)\s*:/g;
 
+type RxmlRecord = Readonly<Record<string, RxmlValue>>;
+
 type JsonParseResult =
-  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: true; readonly value: RxmlValue }
   | { readonly ok: false };
 
 type RelaxedJsonParseResult =
   | {
       readonly ok: true;
       readonly sawPrototypeSensitiveKey: boolean;
-      readonly value: unknown;
+      readonly value: RxmlValue;
     }
   | { readonly ok: false; readonly sawPrototypeSensitiveKey: boolean };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: RxmlValue): value is RxmlRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -52,9 +56,9 @@ function markUnseen(value: object, seen: Set<object>): boolean {
 }
 
 function enqueueArrayItems(
-  value: unknown,
+  value: RxmlValue,
   seen: Set<object>,
-  stack: unknown[]
+  stack: RxmlValue[]
 ): boolean {
   if (!Array.isArray(value)) {
     return false;
@@ -65,14 +69,14 @@ function enqueueArrayItems(
   return true;
 }
 
-function hasUnsafePrototype(record: Record<string, unknown>): boolean {
+function hasUnsafePrototype(record: RxmlRecord): boolean {
   const prototype = Object.getPrototypeOf(record);
   return prototype !== null && prototype !== Object.prototype;
 }
 
 function enqueueRecordOwnValues(
-  record: Record<string, unknown>,
-  stack: unknown[]
+  record: RxmlRecord,
+  stack: RxmlValue[]
 ): boolean {
   for (const key of Object.getOwnPropertyNames(record)) {
     if (
@@ -91,7 +95,8 @@ function enqueueRecordOwnValues(
 
 function parseJsonText(text: string): JsonParseResult {
   try {
-    return { ok: true, value: JSON.parse(text) };
+    const value: RxmlValue = JSON.parse(text);
+    return { ok: true, value };
   } catch (error) {
     if (error instanceof SyntaxError) {
       return { ok: false };
@@ -113,7 +118,9 @@ function parseRelaxedJsonText(text: string): RelaxedJsonParseResult {
         return value;
       },
     });
-    return { ok: true, sawPrototypeSensitiveKey, value: parsed };
+    return isJSONValue(parsed)
+      ? { ok: true, sawPrototypeSensitiveKey, value: parsed }
+      : { ok: false, sawPrototypeSensitiveKey };
   } catch (error) {
     if (error instanceof Error) {
       return { ok: false, sawPrototypeSensitiveKey };
@@ -193,43 +200,19 @@ function stringLeafHasPrototypeSensitiveArgumentKey(text: string): boolean {
   return toolCallTextHasPrototypeSensitiveKey(text);
 }
 
-export function hasPrototypeSensitiveStructuralKey(value: unknown): boolean {
+type StringLeafPolicy = (value: string) => boolean;
+
+function hasPrototypeSensitiveValue(
+  value: RxmlValue,
+  stringLeafPolicy: StringLeafPolicy
+): boolean {
   const seen = new Set<object>();
-  const stack: unknown[] = [value];
+  const stack: RxmlValue[] = [value];
 
   while (stack.length > 0) {
     const current = stack.pop();
-    if (enqueueArrayItems(current, seen, stack)) {
-      continue;
-    }
-    if (!isRecord(current)) {
-      continue;
-    }
-    if (!markUnseen(current, seen)) {
-      continue;
-    }
-    if (hasUnsafePrototype(current)) {
+    if (typeof current === "string" && stringLeafPolicy(current)) {
       return true;
-    }
-    if (enqueueRecordOwnValues(current, stack)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function hasPrototypeSensitiveArgumentValue(value: unknown): boolean {
-  const seen = new Set<object>();
-  const stack: unknown[] = [value];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (typeof current === "string") {
-      if (stringLeafHasPrototypeSensitiveArgumentKey(current)) {
-        return true;
-      }
-      continue;
     }
     if (enqueueArrayItems(current, seen, stack)) {
       continue;
@@ -251,7 +234,20 @@ function hasPrototypeSensitiveArgumentValue(value: unknown): boolean {
   return false;
 }
 
-export function toolCallInputHasPrototypeSensitiveKey(input: unknown): boolean {
+export function hasPrototypeSensitiveStructuralKey(value: RxmlValue): boolean {
+  return hasPrototypeSensitiveValue(value, () => false);
+}
+
+function hasPrototypeSensitiveArgumentValue(value: RxmlValue): boolean {
+  return hasPrototypeSensitiveValue(
+    value,
+    stringLeafHasPrototypeSensitiveArgumentKey
+  );
+}
+
+export function toolCallInputHasPrototypeSensitiveKey(
+  input: RxmlValue
+): boolean {
   if (typeof input !== "string") {
     return hasPrototypeSensitiveArgumentValue(input);
   }

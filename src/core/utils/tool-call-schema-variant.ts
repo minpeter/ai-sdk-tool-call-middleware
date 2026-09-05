@@ -1,198 +1,136 @@
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { unwrapJsonSchema } from "../../schema-coerce";
 import {
   collectPatternPropertyNames,
   getPatternPropertySchema,
 } from "./tool-call-pattern-properties";
+import {
+  createCombinatorGroups,
+  isSchemaValueRecord,
+  runSchemaMatch,
+  type SchemaMatchEvaluation,
+  type SchemaMatchOperand,
+  type SchemaMatchRequest,
+  schemaValueMatchesConstAndEnum,
+  schemaValueMatchesExplicitType,
+  unwrapSchemaMatchRequest,
+} from "./tool-call-schema-match-engine";
 import { collectSchemaSelectionPropertyNames } from "./tool-call-schema-property-names";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+type VariantMatchRequest = SchemaMatchRequest<undefined>;
 
-function jsonTypeMatches(schemaType: string, value: unknown): boolean {
-  if (schemaType === "object") {
-    return isRecord(value);
-  }
-  if (schemaType === "array") {
-    return Array.isArray(value);
-  }
-  if (schemaType === "string") {
-    return typeof value === "string";
-  }
-  if (schemaType === "number") {
-    return typeof value === "number" && Number.isFinite(value);
-  }
-  if (schemaType === "integer") {
-    return typeof value === "number" && Number.isInteger(value);
-  }
-  if (schemaType === "boolean") {
-    return typeof value === "boolean";
-  }
-  if (schemaType === "null") {
-    return value === null;
-  }
-  return true;
-}
-
-function schemaTypeMatches(schemaType: unknown, value: unknown): boolean {
-  if (typeof schemaType === "string") {
-    return jsonTypeMatches(schemaType, value);
-  }
-  if (!Array.isArray(schemaType)) {
-    return true;
-  }
-  return schemaType.some(
-    (entry) => typeof entry === "string" && jsonTypeMatches(entry, value)
-  );
-}
-
-function requiredPropertiesArePresent(
-  schema: Record<string, unknown>,
-  value: unknown
-): boolean {
-  if (!Array.isArray(schema.required)) {
-    return true;
-  }
-  if (!isRecord(value)) {
+function directSchemaMatch(schema: ToolInputSchema, value: RxmlValue): boolean {
+  if (
+    !(
+      schemaValueMatchesExplicitType(schema, value) &&
+      schemaValueMatchesConstAndEnum(schema, value)
+    )
+  ) {
     return false;
   }
-  return schema.required.every(
-    (key) => typeof key !== "string" || Object.hasOwn(value, key)
+  return !(
+    Array.isArray(schema.required) &&
+    (!isSchemaValueRecord(value) ||
+      schema.required.some((key) => !Object.hasOwn(value, key)))
   );
 }
 
-function literalMatches(expected: unknown, value: unknown): boolean {
-  return JSON.stringify(expected) === JSON.stringify(value);
-}
-
-function constMatches(
-  schema: Record<string, unknown>,
-  value: unknown
-): boolean {
-  if (!Object.hasOwn(schema, "const")) {
-    return true;
-  }
-  return literalMatches(schema.const, value);
-}
-
-function enumMatches(schema: Record<string, unknown>, value: unknown): boolean {
-  if (!Array.isArray(schema.enum)) {
-    return true;
-  }
-  return schema.enum.some((entry) => literalMatches(entry, value));
-}
-
-function declaredPropertiesAcceptValues(
-  schema: Record<string, unknown>,
-  value: unknown,
+function propertyRequests(
+  schema: ToolInputSchema,
+  value: Readonly<Record<string, RxmlValue>>,
   seen: Set<object>
-): boolean {
-  if (!isRecord(value)) {
-    return true;
-  }
-  if (isRecord(schema.properties)) {
-    for (const [key, propertySchema] of Object.entries(schema.properties)) {
-      if (!Object.hasOwn(value, key)) {
-        continue;
-      }
-      if (propertySchema === false) {
-        return false;
-      }
-      if (!schemaAcceptsValue(propertySchema, value[key], new Set(seen))) {
-        return false;
-      }
+): VariantMatchRequest[] | null {
+  const requests: VariantMatchRequest[] = [];
+  for (const [key, propertySchema] of Object.entries(schema.properties ?? {})) {
+    if (!Object.hasOwn(value, key)) {
+      continue;
     }
+    if (propertySchema === false) {
+      return null;
+    }
+    requests.push({
+      context: undefined,
+      schema: propertySchema,
+      seen: new Set(seen),
+      value: value[key],
+    });
   }
-  for (const key of collectPatternPropertyNames(schema, value)) {
+  for (const key of Object.keys(value)) {
     const propertySchema = getPatternPropertySchema(schema, key);
-    if (
-      propertySchema !== undefined &&
-      !schemaAcceptsValue(propertySchema, value[key], new Set(seen))
-    ) {
-      return false;
+    if (propertySchema !== undefined) {
+      requests.push({
+        context: undefined,
+        schema: propertySchema,
+        seen: new Set(seen),
+        value: value[key],
+      });
     }
   }
-  return true;
+  return requests;
 }
 
-function schemaAcceptsAllOf(
-  schema: Record<string, unknown>,
-  value: unknown,
-  seen: Set<object>
-): boolean {
-  if (!Array.isArray(schema.allOf)) {
-    return true;
+function evaluateVariantRequest(
+  request: VariantMatchRequest
+): SchemaMatchEvaluation<undefined> {
+  const schema = unwrapSchemaMatchRequest(request);
+  if (schema === false) {
+    return { kind: "result", value: false };
   }
-  return schema.allOf.every((variant) =>
-    schemaAcceptsValue(variant, value, new Set(seen))
+  if (
+    schema === true ||
+    schema === undefined ||
+    !isSchemaRecord(schema) ||
+    request.seen.has(schema)
+  ) {
+    return { kind: "result", value: true };
+  }
+  if (!directSchemaMatch(schema, request.value)) {
+    return { kind: "result", value: false };
+  }
+  const seen = new Set(request.seen);
+  seen.add(schema);
+  const operands: SchemaMatchOperand<undefined>[] = createCombinatorGroups(
+    schema,
+    request,
+    undefined,
+    seen
   );
-}
-
-function schemaAcceptsAnyOf(
-  schema: Record<string, unknown>,
-  value: unknown,
-  seen: Set<object>
-): boolean {
-  if (!Array.isArray(schema.anyOf)) {
-    return true;
-  }
-  return schema.anyOf.some((variant) =>
-    schemaAcceptsValue(variant, value, new Set(seen))
-  );
-}
-
-function schemaAcceptsOneOf(
-  schema: Record<string, unknown>,
-  value: unknown,
-  seen: Set<object>
-): boolean {
-  if (!Array.isArray(schema.oneOf)) {
-    return true;
-  }
-  let matches = 0;
-  for (const variant of schema.oneOf) {
-    if (schemaAcceptsValue(variant, value, new Set(seen))) {
-      matches += 1;
+  if (isSchemaValueRecord(request.value)) {
+    const nested = propertyRequests(schema, request.value, seen);
+    if (nested === null) {
+      return { kind: "result", value: false };
     }
+    operands.push(...nested);
   }
-  return matches === 1;
+  return { kind: "operands", value: operands };
 }
 
 function schemaAcceptsValue(
-  schema: unknown,
-  value: unknown,
+  schema: ToolInputSchemaDefinition,
+  value: RxmlValue,
   seen: Set<object>
 ): boolean {
-  const unwrapped = unwrapJsonSchema(schema);
-  if (unwrapped === false) {
-    return false;
-  }
-  if (unwrapped === true || !isRecord(unwrapped)) {
-    return true;
-  }
-  if (seen.has(unwrapped)) {
-    return true;
-  }
-  seen.add(unwrapped);
-  return (
-    schemaTypeMatches(unwrapped.type, value) &&
-    constMatches(unwrapped, value) &&
-    enumMatches(unwrapped, value) &&
-    requiredPropertiesArePresent(unwrapped, value) &&
-    declaredPropertiesAcceptValues(unwrapped, value, seen) &&
-    schemaAcceptsAllOf(unwrapped, value, seen) &&
-    schemaAcceptsAnyOf(unwrapped, value, seen) &&
-    schemaAcceptsOneOf(unwrapped, value, seen)
+  return runSchemaMatch(
+    { context: undefined, schema, seen, value },
+    evaluateVariantRequest
   );
 }
 
-function schemaSelectionScore(schema: unknown, value: unknown): number {
-  if (!isRecord(value)) {
+function schemaSelectionScore(
+  schema: ToolInputSchemaDefinition,
+  value: RxmlValue
+): number {
+  if (!isSchemaValueRecord(value)) {
     return 0;
   }
   const names = collectSchemaSelectionPropertyNames(schema);
   const unwrapped = unwrapJsonSchema(schema);
-  if (isRecord(unwrapped)) {
+  if (typeof unwrapped === "object" && isSchemaRecord(unwrapped)) {
     for (const name of collectPatternPropertyNames(unwrapped, value)) {
       names.add(name);
     }
@@ -203,7 +141,11 @@ function schemaSelectionScore(schema: unknown, value: unknown): number {
       score += 2;
     }
   }
-  if (isRecord(unwrapped) && unwrapped.additionalProperties === false) {
+  if (
+    typeof unwrapped === "object" &&
+    isSchemaRecord(unwrapped) &&
+    unwrapped.additionalProperties === false
+  ) {
     for (const key of Object.keys(value)) {
       if (!names.has(key)) {
         score -= 1;
@@ -214,15 +156,14 @@ function schemaSelectionScore(schema: unknown, value: unknown): number {
 }
 
 export function selectSchemaVariant(
-  variants: unknown,
-  value: unknown,
+  variants: readonly ToolInputSchemaDefinition[] | undefined,
+  value: RxmlValue,
   seen: Set<object>
-): unknown {
-  if (!Array.isArray(variants)) {
+): ToolInputSchemaDefinition | undefined {
+  if (!variants) {
     return;
   }
-
-  let bestVariant: unknown;
+  let bestVariant: ToolInputSchemaDefinition | undefined;
   let bestScore = 0;
   for (const variant of variants) {
     if (!schemaAcceptsValue(variant, value, new Set(seen))) {
@@ -237,7 +178,6 @@ export function selectSchemaVariant(
   if (bestVariant !== undefined) {
     return bestVariant;
   }
-
   for (const variant of variants) {
     const score = schemaSelectionScore(variant, value);
     if (score > bestScore) {

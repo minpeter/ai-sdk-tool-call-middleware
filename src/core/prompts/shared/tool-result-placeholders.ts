@@ -1,42 +1,42 @@
+import type { SharedV4ProviderReference } from "@ai-sdk/provider";
+import type { ToolResultOutput } from "@ai-sdk/provider-utils";
 import {
   getMediaKindFromMediaType,
   type ToolResponseMediaType,
 } from "./tool-result-media-strategy";
 
-function isMapping(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+type ToolResultContentPart = Extract<
+  ToolResultOutput,
+  { type: "content" }
+>["value"][number];
+type CanonicalFilePart = Extract<ToolResultContentPart, { type: "file" }>;
+interface LegacyMediaPart {
+  readonly mediaType: string;
+  readonly type: "media";
 }
+type PlaceholderContentPart = ToolResultContentPart | LegacyMediaPart;
 
 function formatIdPlaceholder(
   label: "Image ID" | "File ID",
-  fileId: unknown
+  fileId: string | SharedV4ProviderReference
 ): string {
   const displayId =
     typeof fileId === "string" ? fileId : JSON.stringify(fileId);
   return `[${label}: ${displayId}]`;
 }
 
-interface TaggedFileData {
-  data?: unknown;
-  reference?: unknown;
-  text?: string;
-  type?: string;
-  url?: unknown;
-}
-
 /**
  * Placeholder for the canonical v4 `type: 'file'` content part whose `data`
  * is a tagged union (`data` / `url` / `reference` / `text`).
  */
-function formatTaggedFilePartPlaceholder(contentPart: {
-  data?: unknown;
-  mediaType?: string;
-  filename?: string;
-}): string {
-  const fileData = isMapping(contentPart.data)
-    ? (contentPart.data as TaggedFileData)
-    : undefined;
-  const mediaType = contentPart.mediaType ?? "application/octet-stream";
+function formatTaggedFilePartPlaceholder(
+  contentPart: CanonicalFilePart
+): string {
+  const fileData = contentPart.data;
+  const mediaType =
+    typeof contentPart.mediaType === "string"
+      ? contentPart.mediaType
+      : "application/octet-stream";
   const isImage = getMediaKindFromMediaType(mediaType) === "image";
 
   switch (fileData?.type) {
@@ -51,12 +51,12 @@ function formatTaggedFilePartPlaceholder(contentPart: {
       );
     case "text":
       // Inline text documents are readable content; surface the text itself.
-      return fileData.text ?? "";
+      return typeof fileData.text === "string" ? fileData.text : "";
     default: {
       if (isImage) {
         return `[Image: ${mediaType}]`;
       }
-      if (contentPart.filename) {
+      if (typeof contentPart.filename === "string" && contentPart.filename) {
         return `[File: ${contentPart.filename} (${mediaType})]`;
       }
       return `[File: ${mediaType}]`;
@@ -64,53 +64,35 @@ function formatTaggedFilePartPlaceholder(contentPart: {
   }
 }
 
-export function formatContentPartPlaceholder(part: unknown): string {
-  const contentPart = part as { type?: string };
-  switch (contentPart.type) {
+export function formatContentPartPlaceholder(
+  part: PlaceholderContentPart
+): string {
+  switch (part.type) {
     case "text":
-      return (contentPart as { text?: string }).text ?? "";
+      return typeof part.text === "string" ? part.text : "";
     case "file":
-      return formatTaggedFilePartPlaceholder(
-        contentPart as { data?: unknown; mediaType?: string; filename?: string }
-      );
+      return formatTaggedFilePartPlaceholder(part);
     case "image-data":
-      return `[Image: ${(contentPart as { mediaType?: string }).mediaType}]`;
+      return `[Image: ${String(part.mediaType)}]`;
     case "image-url":
-      return `[Image URL: ${(contentPart as { url?: string }).url}]`;
-    case "image-file-id": {
-      const { fileId } = contentPart as { fileId?: unknown };
-      return formatIdPlaceholder("Image ID", fileId);
-    }
-    case "image-file-reference": {
-      const { providerReference } = contentPart as {
-        providerReference?: unknown;
-      };
-      return formatIdPlaceholder("Image ID", providerReference);
-    }
-    case "file-data": {
-      const filePart = contentPart as {
-        filename?: string;
-        mediaType?: string;
-      };
-      if (filePart.filename) {
-        return `[File: ${filePart.filename} (${filePart.mediaType})]`;
+      return `[Image URL: ${String(part.url)}]`;
+    case "image-file-id":
+      return formatIdPlaceholder("Image ID", part.fileId);
+    case "image-file-reference":
+      return formatIdPlaceholder("Image ID", part.providerReference);
+    case "file-data":
+      if (typeof part.filename === "string" && part.filename) {
+        return `[File: ${part.filename} (${String(part.mediaType)})]`;
       }
-      return `[File: ${filePart.mediaType}]`;
-    }
+      return `[File: ${String(part.mediaType)}]`;
     case "file-url":
-      return `[File URL: ${(contentPart as { url?: string }).url}]`;
-    case "file-id": {
-      const { fileId } = contentPart as { fileId?: unknown };
-      return formatIdPlaceholder("File ID", fileId);
-    }
-    case "file-reference": {
-      const { providerReference } = contentPart as {
-        providerReference?: unknown;
-      };
-      return formatIdPlaceholder("File ID", providerReference);
-    }
+      return `[File URL: ${String(part.url)}]`;
+    case "file-id":
+      return formatIdPlaceholder("File ID", part.fileId);
+    case "file-reference":
+      return formatIdPlaceholder("File ID", part.providerReference);
     case "media":
-      return `[Media: ${(contentPart as { mediaType?: string }).mediaType}]`;
+      return `[Media: ${String(part.mediaType)}]`;
     case "custom":
       return "[Custom content]";
     default:
@@ -118,14 +100,14 @@ export function formatContentPartPlaceholder(part: unknown): string {
   }
 }
 
-const IMAGE_PART_TYPES = new Set([
+const IMAGE_PART_TYPES = new Set<PlaceholderContentPart["type"]>([
   "image-data",
   "image-url",
   "image-file-id",
   "image-file-reference",
 ]);
 
-const FILE_LIKE_PART_TYPES = new Set([
+const FILE_LIKE_PART_TYPES = new Set<PlaceholderContentPart["type"]>([
   "file",
   "file-data",
   "file-url",
@@ -135,25 +117,17 @@ const FILE_LIKE_PART_TYPES = new Set([
 ]);
 
 export function getContentPartMediaKind(
-  part: unknown
+  part: PlaceholderContentPart
 ): ToolResponseMediaType | null {
-  const contentPart = isMapping(part) ? part : undefined;
-  const type = contentPart?.type;
-  if (typeof type !== "string") {
-    return null;
-  }
-
-  if (IMAGE_PART_TYPES.has(type)) {
+  if (IMAGE_PART_TYPES.has(part.type)) {
     return "image";
   }
 
-  if (!FILE_LIKE_PART_TYPES.has(type)) {
+  if (!FILE_LIKE_PART_TYPES.has(part.type)) {
     return null;
   }
 
-  const mediaType = contentPart?.mediaType;
-  if (typeof mediaType === "string") {
-    return getMediaKindFromMediaType(mediaType);
-  }
-  return "file";
+  return "mediaType" in part && typeof part.mediaType === "string"
+    ? getMediaKindFromMediaType(part.mediaType)
+    : "file";
 }

@@ -1,4 +1,5 @@
 import type {
+  JSONObject,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
@@ -22,7 +23,6 @@ import {
   stripLeadingToolCallCloseTags,
   stripTrailingToolCallCloseTags,
   TOOL_CALL_BLOCK_RE,
-  TOOL_CALL_CLOSE_RE,
 } from "./qwen3coder-call-syntax";
 import { emitTextWithSensitiveStandaloneParamDrops } from "./qwen3coder-sensitive-standalone-param";
 
@@ -38,7 +38,7 @@ export function parseQwen3CoderGeneratedText({
   const processedElements: LanguageModelV4Content[] = [];
 
   const emitToolCalls = (
-    calls: Array<{ toolName: string; args: Record<string, unknown> }>
+    calls: Array<{ toolName: string; args: JSONObject }>
   ) => {
     for (const call of calls) {
       processedElements.push({
@@ -58,7 +58,7 @@ export function parseQwen3CoderGeneratedText({
     raw: string,
     message: string,
     toolName: string | null | undefined,
-    error?: unknown
+    error?: Error
   ) => {
     options?.onError?.(message, {
       toolCall: safeToolCallMetadataText(raw),
@@ -76,14 +76,16 @@ export function parseQwen3CoderGeneratedText({
   };
 
   const tryEmitToolCalls = (
-    calls: Array<{ toolName: string; args: Record<string, unknown> }>,
+    calls: Array<{ toolName: string; args: JSONObject }>,
     fallbackText: string,
     message: string
   ): boolean => {
     try {
       emitToolCalls(calls);
       return true;
-    } catch (error) {
+    } catch (caught) {
+      const error =
+        caught instanceof Error ? caught : new Error(String(caught));
       emitToolCallParseFailureAsText(
         fallbackText,
         message,
@@ -95,9 +97,6 @@ export function parseQwen3CoderGeneratedText({
   };
 
   const pushText = (value: string) => {
-    if (value.length === 0) {
-      return;
-    }
     processedElements.push({ type: "text", text: value });
   };
 
@@ -172,10 +171,7 @@ export function parseQwen3CoderGeneratedText({
   ): boolean => {
     let index = 0;
     for (let i = 0; i < starts.length; i += 1) {
-      const startIndex = starts[i] ?? -1;
-      if (startIndex < 0) {
-        continue;
-      }
+      const startIndex = Number(starts[i]);
       const endIndex = starts[i + 1] ?? sourceText.length;
 
       const leadingText = sourceText.slice(index, startIndex);
@@ -215,12 +211,8 @@ export function parseQwen3CoderGeneratedText({
   ): boolean => {
     let index = 0;
     for (const match of matches) {
-      const [full] = match;
-      const startIndex = match.index ?? -1;
-      if (!full || startIndex < 0) {
-        continue;
-      }
-
+      const full = String(match[0]);
+      const startIndex = Number(match.index);
       const leadingText = sourceText.slice(index, startIndex);
       pushRecoveredTrailingText(leadingText, leadingText);
 
@@ -294,10 +286,7 @@ export function parseQwen3CoderGeneratedText({
 
     pushTextOrParseWrapperlessCalls(remainder.slice(0, trailingIndex));
     const trailing = remainder.slice(trailingIndex);
-    const synthetic = TOOL_CALL_CLOSE_RE.test(trailing)
-      ? trailing
-      : `${trailing}</tool_call>`;
-    tryEmitToolCallSegment(synthetic, trailing);
+    tryEmitToolCallSegment(`${trailing}</tool_call>`, trailing);
   };
 
   const tryParseCompleteToolCallBlocks = (): boolean => {
@@ -308,12 +297,8 @@ export function parseQwen3CoderGeneratedText({
 
     let index = 0;
     for (const match of matches) {
-      const [full] = match;
-      const startIndex = match.index ?? -1;
-      if (!full || startIndex < 0) {
-        continue;
-      }
-
+      const full = String(match[0]);
+      const startIndex = Number(match.index);
       pushTextOrParseWrapperlessCalls(text.slice(index, startIndex));
       tryEmitToolCallSegment(full);
       index = startIndex + full.length;
@@ -332,41 +317,12 @@ export function parseQwen3CoderGeneratedText({
 
     pushTextOrParseWrapperlessCalls(text.slice(0, startIndex));
     const trailing = text.slice(startIndex);
-    const synthetic = TOOL_CALL_CLOSE_RE.test(trailing)
-      ? trailing
-      : `${trailing}</tool_call>`;
-    tryEmitToolCallSegment(synthetic, trailing);
+    tryEmitToolCallSegment(`${trailing}</tool_call>`, trailing);
     return true;
   };
 
   const tryParseCallBlocksWithoutWrapper = (): boolean =>
     tryParseCallBlocksWithoutWrapperText(text);
-
-  const tryParseSingleFunctionCall = (): boolean => {
-    const lowerText = text.toLowerCase();
-    const startIndex = lowerText.indexOf("<function");
-    if (startIndex === -1) {
-      return false;
-    }
-
-    const leadingText = stripTrailingToolCallCloseTags(
-      text.slice(0, startIndex)
-    );
-    pushRecoveredTrailingText(leadingText, leadingText);
-    const trailing = stripLeadingToolCallCloseTags(text.slice(startIndex));
-    const parsed = parseSingleFunctionCallXml(trailing, null, tools);
-    if (!parsed) {
-      emitWrapperlessCallParseFailureAsText(trailing);
-      return true;
-    }
-
-    tryEmitToolCalls(
-      [parsed],
-      trailing,
-      "Could not process Qwen3CoderToolParser <function> call; keeping original text."
-    );
-    return true;
-  };
 
   if (tryParseCompleteToolCallBlocks()) {
     return processedElements;
@@ -375,9 +331,6 @@ export function parseQwen3CoderGeneratedText({
     return processedElements;
   }
   if (tryParseCallBlocksWithoutWrapper()) {
-    return processedElements;
-  }
-  if (tryParseSingleFunctionCall()) {
     return processedElements;
   }
 

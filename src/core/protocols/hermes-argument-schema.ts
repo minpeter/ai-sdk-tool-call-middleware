@@ -1,44 +1,51 @@
+import type { JSONArray, JSONObject, JSONValue } from "@ai-sdk/provider";
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isCycleSafeJsonValue,
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import {
   compileSafePatternPropertyRegex,
   getSchemaType,
   schemaIsUnconstrained,
-  unwrapJsonSchema,
 } from "../../schema-coerce";
+import {
+  createCombinatorGroups,
+  isSchemaValueRecord,
+  runSchemaMatch,
+  type SchemaMatchEvaluation,
+  type SchemaMatchOperand,
+  type SchemaMatchRequest,
+  schemaValueMatchesConstAndEnum,
+  schemaValueMatchesExplicitType,
+  unwrapSchemaMatchRequest,
+} from "../utils/tool-call-schema-match-engine";
 import { unsafeDeniedPatternMayMatchKey } from "../utils/unsafe-pattern";
 
-/**
- * Maximum recursion depth when validating a parsed argument value against a
- * tool's JSON schema. This is far above any realistic tool-argument nesting,
- * so legitimate inputs are always fully validated; beyond it we fail closed
- * (treat the value as non-matching) so a recursive/cyclic `inputSchema`
- * combined with a deeply nested value cannot overflow the stack. The caller
- * then routes the tool call to its `onError` / original-text fallback instead
- * of throwing an uncaught `RangeError`.
- */
 const MAX_ARGUMENT_SHAPE_DEPTH = 256;
-
-interface PatternSchemaMatches {
-  schemas: unknown[];
-  unsafeDeniedPatterns: string[];
+type ArgumentValue = JSONValue | undefined;
+type JsonContainer = JSONArray | JSONObject;
+type PatternProperties = NonNullable<ToolInputSchema["patternProperties"]>;
+interface MatchContext {
+  readonly depth: number;
+  readonly enforceValueKinds: boolean;
 }
-
+type HermesRequest = SchemaMatchRequest<MatchContext>;
 interface CompiledPatternSchema {
-  pattern: string;
-  regex: RegExp | null;
-  schema: unknown;
+  readonly pattern: string;
+  readonly regex: RegExp | null;
+  readonly schema: ToolInputSchemaDefinition;
 }
 
 const patternSchemaCache = new WeakMap<
-  Record<string, unknown>,
+  PatternProperties,
   CompiledPatternSchema[]
 >();
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function getCompiledPatternSchemas(
-  patternProperties: Record<string, unknown>
+function compiledPatterns(
+  patternProperties: PatternProperties
 ): CompiledPatternSchema[] {
   const cached = patternSchemaCache.get(patternProperties);
   if (cached) {
@@ -55,42 +62,44 @@ function getCompiledPatternSchemas(
   return compiled;
 }
 
-function getPatternSchemaMatches(
-  patternProperties: unknown,
+function matchingPatternSchemas(
+  patternProperties: PatternProperties | undefined,
   key: string
-): PatternSchemaMatches {
-  if (!isRecord(patternProperties)) {
-    return { schemas: [], unsafeDeniedPatterns: [] };
+): ToolInputSchemaDefinition[] | null {
+  if (!patternProperties) {
+    return [];
   }
-  const schemas: unknown[] = [];
-  const unsafeDeniedPatterns: string[] = [];
-  for (const { pattern, regex, schema } of getCompiledPatternSchemas(
+  const schemas: ToolInputSchemaDefinition[] = [];
+  for (const { pattern, regex, schema } of compiledPatterns(
     patternProperties
   )) {
-    if (!regex) {
-      if (schema === false || !schemaIsUnconstrained(schema)) {
-        unsafeDeniedPatterns.push(pattern);
+    if (regex?.test(key)) {
+      if (schema === false) {
+        return null;
       }
-      continue;
-    }
-    if (regex.test(key)) {
       schemas.push(schema);
+    } else if (
+      regex === null &&
+      (schema === false || !schemaIsUnconstrained(schema)) &&
+      unsafeDeniedPatternMayMatchKey(pattern, key)
+    ) {
+      return null;
     }
   }
-  return { schemas, unsafeDeniedPatterns };
+  return schemas;
 }
 
-function isObjectSchema(schema: Record<string, unknown>): boolean {
+function isObjectSchema(schema: ToolInputSchema): boolean {
   return (
     getSchemaType(schema) === "object" ||
-    isRecord(schema.properties) ||
-    isRecord(schema.patternProperties) ||
+    schema.properties !== undefined ||
+    schema.patternProperties !== undefined ||
     Array.isArray(schema.required) ||
     Object.hasOwn(schema, "additionalProperties")
   );
 }
 
-function isArraySchema(schema: Record<string, unknown>): boolean {
+function isArraySchema(schema: ToolInputSchema): boolean {
   return (
     getSchemaType(schema) === "array" ||
     Array.isArray(schema.prefixItems) ||
@@ -98,334 +107,190 @@ function isArraySchema(schema: Record<string, unknown>): boolean {
   );
 }
 
-function explicitSchemaTypes(schema: Record<string, unknown>): string[] {
-  const schemaType = schema.type;
-  if (typeof schemaType === "string") {
-    return [schemaType];
-  }
-  if (!Array.isArray(schemaType)) {
-    return [];
-  }
-  return schemaType.filter((type): type is string => typeof type === "string");
-}
-
-function valueMatchesSchemaType(value: unknown, schemaType: string): boolean {
-  switch (schemaType) {
-    case "array":
-      return Array.isArray(value);
-    case "boolean":
-      return typeof value === "boolean";
-    case "integer":
-      return typeof value === "number" && Number.isInteger(value);
-    case "null":
-      return value === null;
-    case "number":
-      return typeof value === "number" && Number.isFinite(value);
-    case "object":
-      return isRecord(value);
-    case "string":
-      return typeof value === "string";
-    default:
-      return true;
-  }
-}
-
-function jsonValuesEqual(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) {
-    return true;
-  }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return (
-      Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((item, index) => jsonValuesEqual(item, right[index]))
-    );
-  }
-  if (!(isRecord(left) && isRecord(right))) {
+function valueKindMatches(schema: ToolInputSchema, value: RxmlValue): boolean {
+  if (!schemaValueMatchesConstAndEnum(schema, value)) {
     return false;
   }
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every(
-      (key) =>
-        Object.hasOwn(right, key) && jsonValuesEqual(left[key], right[key])
-    )
-  );
-}
-
-function valueMatchesSchemaKind(
-  value: unknown,
-  schema: Record<string, unknown>
-): boolean {
-  if (Object.hasOwn(schema, "const") && !jsonValuesEqual(value, schema.const)) {
-    return false;
-  }
-  if (
-    Array.isArray(schema.enum) &&
-    !schema.enum.some((allowed) => jsonValuesEqual(value, allowed))
-  ) {
-    return false;
-  }
-  const schemaTypes = explicitSchemaTypes(schema);
-  if (schemaTypes.length > 0) {
-    return schemaTypes.some((schemaType) =>
-      valueMatchesSchemaType(value, schemaType)
-    );
-  }
-  if (value === null) {
-    return true;
+  if (schema.type !== undefined) {
+    return schemaValueMatchesExplicitType(schema, value);
   }
   if (isObjectSchema(schema)) {
-    return isRecord(value);
+    return isSchemaValueRecord(value);
   }
-  if (isArraySchema(schema)) {
-    return Array.isArray(value);
-  }
-  return true;
+  return !isArraySchema(schema) || Array.isArray(value);
 }
 
-function getPropertySchema(
-  schema: Record<string, unknown>,
-  key: string
-): unknown | undefined {
-  const { properties } = schema;
-  if (!(isRecord(properties) && Object.hasOwn(properties, key))) {
-    return;
-  }
-  return properties[key];
+function childRequest(
+  request: HermesRequest,
+  schema: ToolInputSchemaDefinition,
+  value: RxmlValue
+): HermesRequest {
+  return {
+    context: {
+      depth: request.context.depth + 1,
+      enforceValueKinds: request.context.enforceValueKinds,
+    },
+    schema,
+    seen: new Set(request.seen),
+    value,
+  };
 }
 
-function requiredKeys(schema: Record<string, unknown>): string[] {
-  return Array.isArray(schema.required)
-    ? schema.required.filter(
-        (key): key is string => typeof key === "string" && key.length > 0
-      )
-    : [];
-}
-
-function objectMatchesSchemaKeyShape(
-  value: Record<string, unknown>,
-  schema: Record<string, unknown>,
-  seen: Set<object>,
-  enforceValueKinds: boolean,
-  depth: number
-): boolean {
-  if (requiredKeys(schema).some((key) => !Object.hasOwn(value, key))) {
-    return false;
+function objectOperands(
+  value: Readonly<Record<string, RxmlValue>>,
+  schema: ToolInputSchema,
+  request: HermesRequest
+): HermesRequest[] | null {
+  if (
+    schema.required?.some((key) => key.length > 0 && !Object.hasOwn(value, key))
+  ) {
+    return null;
   }
-
+  const requests: HermesRequest[] = [];
   for (const [key, nestedValue] of Object.entries(value)) {
-    const propertySchema = getPropertySchema(schema, key);
+    const propertySchema = schema.properties?.[key];
     if (propertySchema === false) {
-      return false;
+      return null;
     }
-
-    const patternMatches = getPatternSchemaMatches(
-      schema.patternProperties,
-      key
-    );
-    const patternSchemas = patternMatches.schemas;
-    if (patternSchemas.some((patternSchema) => patternSchema === false)) {
-      return false;
+    const patterns = matchingPatternSchemas(schema.patternProperties, key);
+    if (patterns === null) {
+      return null;
     }
-    if (
-      patternMatches.unsafeDeniedPatterns.some((pattern) =>
-        unsafeDeniedPatternMayMatchKey(pattern, key)
-      )
-    ) {
-      return false;
-    }
-
-    const schemasToValidate = [
+    const schemas = [
       ...(propertySchema === undefined ? [] : [propertySchema]),
-      ...patternSchemas.filter((patternSchema) => patternSchema !== false),
+      ...patterns,
     ];
-    if (schemasToValidate.length > 0) {
-      if (
-        !schemasToValidate.every((nestedSchema) =>
-          argumentValueMatchesSchemaKeyShape(
-            nestedValue,
-            nestedSchema,
-            new Set(seen),
-            enforceValueKinds,
-            depth + 1
-          )
-        )
-      ) {
-        return false;
+    if (schemas.length === 0) {
+      if (schema.additionalProperties === false) {
+        return null;
       }
-      continue;
+      if (
+        typeof schema.additionalProperties === "object" &&
+        isSchemaRecord(schema.additionalProperties)
+      ) {
+        schemas.push(schema.additionalProperties);
+      }
     }
-
-    const additionalSchema = schema.additionalProperties;
-    if (additionalSchema === false) {
-      return false;
-    }
-    if (
-      isRecord(additionalSchema) &&
-      !argumentValueMatchesSchemaKeyShape(
-        nestedValue,
-        additionalSchema,
-        new Set(seen),
-        enforceValueKinds,
-        depth + 1
-      )
-    ) {
-      return false;
+    for (const nestedSchema of schemas) {
+      requests.push(childRequest(request, nestedSchema, nestedValue));
     }
   }
-
-  return true;
+  return requests;
 }
 
-function arrayMatchesSchemaKeyShape(
-  value: unknown[],
-  schema: Record<string, unknown>,
-  seen: Set<object>,
-  enforceValueKinds: boolean,
-  depth: number
-): boolean {
-  let tupleItems: unknown[] | undefined;
+function arrayOperands(
+  value: readonly RxmlValue[],
+  schema: ToolInputSchema,
+  request: HermesRequest
+): HermesRequest[] | null {
+  let tupleItems: readonly ToolInputSchemaDefinition[] | undefined;
   if (Array.isArray(schema.prefixItems)) {
     tupleItems = schema.prefixItems;
   } else if (Array.isArray(schema.items)) {
     tupleItems = schema.items;
   }
-  if (tupleItems) {
-    return value.every((item, index) => {
-      const itemSchema =
-        tupleItems[index] ??
-        (Array.isArray(schema.items) ? schema.additionalItems : schema.items);
-      if (itemSchema === false) {
-        return false;
-      }
-      return argumentValueMatchesSchemaKeyShape(
-        item,
-        itemSchema,
-        new Set(seen),
-        enforceValueKinds,
-        depth + 1
-      );
-    });
+  const requests: HermesRequest[] = [];
+  for (const [index, item] of value.entries()) {
+    const itemSchema = tupleItems
+      ? (tupleItems[index] ??
+        (Array.isArray(schema.items) ? schema.additionalItems : schema.items))
+      : schema.items;
+    if (itemSchema === false) {
+      return null;
+    }
+    if (itemSchema !== undefined && !Array.isArray(itemSchema)) {
+      requests.push(childRequest(request, itemSchema, item));
+    }
   }
-  return value.every((item) =>
-    argumentValueMatchesSchemaKeyShape(
-      item,
-      schema.items,
-      new Set(seen),
-      enforceValueKinds,
-      depth + 1
-    )
-  );
+  return requests;
 }
 
-function schemaCombinatorsMatch(
-  value: unknown,
-  schema: Record<string, unknown>,
-  seen: Set<object>,
-  depth: number
-): boolean {
-  const branchSeen = () => {
-    const nextSeen = new Set(seen);
-    if (isRecord(value) || Array.isArray(value)) {
-      nextSeen.delete(value);
-    }
-    return nextSeen;
+function nestedOperands(
+  schema: ToolInputSchema,
+  request: HermesRequest
+): SchemaMatchOperand<MatchContext>[] | null {
+  const branchSeen = new Set(request.seen);
+  if (typeof request.value === "object" && request.value !== null) {
+    branchSeen.delete(request.value);
+  }
+  const branchContext = {
+    depth: request.context.depth + 1,
+    enforceValueKinds: true,
   };
-  const branchMatches = (subSchema: unknown) => {
-    const unwrapped = unwrapJsonSchema(subSchema);
-    if (isRecord(unwrapped) && !valueMatchesSchemaKind(value, unwrapped)) {
-      return false;
+  const operands: SchemaMatchOperand<MatchContext>[] = createCombinatorGroups(
+    schema,
+    request,
+    branchContext,
+    branchSeen
+  );
+  const explicitNull =
+    request.value === null &&
+    (schema.type === "null" ||
+      (Array.isArray(schema.type) && schema.type.includes("null")));
+  if (explicitNull) {
+    return operands;
+  }
+  let nested: HermesRequest[] | null = [];
+  if (isObjectSchema(schema)) {
+    nested = isSchemaValueRecord(request.value)
+      ? objectOperands(request.value, schema, request)
+      : null;
+  } else if (isArraySchema(schema)) {
+    nested = Array.isArray(request.value)
+      ? arrayOperands(request.value, schema, request)
+      : null;
+  }
+  return nested === null ? null : [...operands, ...nested];
+}
+
+function evaluateHermesRequest(
+  request: HermesRequest
+): SchemaMatchEvaluation<MatchContext> {
+  if (request.context.depth > MAX_ARGUMENT_SHAPE_DEPTH) {
+    return { kind: "result", value: false };
+  }
+  const schema = unwrapSchemaMatchRequest(request);
+  if (schema === false) {
+    return { kind: "result", value: false };
+  }
+  if (schema === true || schema === undefined) {
+    return { kind: "result", value: true };
+  }
+  if (
+    request.context.enforceValueKinds &&
+    !valueKindMatches(schema, request.value)
+  ) {
+    return { kind: "result", value: false };
+  }
+  if (typeof request.value === "object" && request.value !== null) {
+    if (request.seen.has(request.value)) {
+      return { kind: "result", value: true };
     }
-    return argumentValueMatchesSchemaKeyShape(
-      value,
-      subSchema,
-      branchSeen(),
-      true,
-      depth + 1
-    );
-  };
-  const allOf = Array.isArray(schema.allOf) ? schema.allOf : undefined;
-  if (allOf && !allOf.every((subSchema) => branchMatches(subSchema))) {
-    return false;
+    request.seen.add(request.value);
   }
-
-  const anyOf = Array.isArray(schema.anyOf) ? schema.anyOf : undefined;
-  if (anyOf && !anyOf.some((subSchema) => branchMatches(subSchema))) {
-    return false;
-  }
-
-  const oneOf = Array.isArray(schema.oneOf) ? schema.oneOf : undefined;
-  if (oneOf) {
-    const matchCount = oneOf.filter((subSchema) =>
-      branchMatches(subSchema)
-    ).length;
-    if (matchCount !== 1) {
-      return false;
-    }
-  }
-
-  return true;
+  const operands = nestedOperands(schema, request);
+  return operands === null
+    ? { kind: "result", value: false }
+    : { kind: "operands", value: operands };
 }
 
 export function argumentValueMatchesSchemaKeyShape(
-  value: unknown,
-  schema: unknown,
-  seen = new Set<object>(),
+  value: ArgumentValue,
+  schema: ToolInputSchemaDefinition,
+  seen = new Set<JsonContainer>(),
   enforceValueKinds = false,
   depth = 0
 ): boolean {
-  if (depth > MAX_ARGUMENT_SHAPE_DEPTH) {
+  if (!isCycleSafeJsonValue(value)) {
     return false;
   }
-  const unwrapped = unwrapJsonSchema(schema);
-  if (unwrapped === false) {
-    return false;
-  }
-  if (!isRecord(unwrapped)) {
-    return true;
-  }
-  if (enforceValueKinds && !valueMatchesSchemaKind(value, unwrapped)) {
-    return false;
-  }
-  if (isRecord(value) || Array.isArray(value)) {
-    if (seen.has(value)) {
-      return true;
-    }
-    seen.add(value);
-  }
-  if (!schemaCombinatorsMatch(value, unwrapped, seen, depth)) {
-    return false;
-  }
-  if (value === null && explicitSchemaTypes(unwrapped).includes("null")) {
-    return true;
-  }
-  if (isObjectSchema(unwrapped) && !isRecord(value)) {
-    return false;
-  }
-  if (isArraySchema(unwrapped) && !Array.isArray(value)) {
-    return false;
-  }
-  if (Array.isArray(value)) {
-    return arrayMatchesSchemaKeyShape(
-      value,
-      unwrapped,
+  return runSchemaMatch(
+    {
+      context: { depth, enforceValueKinds },
+      schema,
       seen,
-      enforceValueKinds,
-      depth
-    );
-  }
-  if (isRecord(value) && isObjectSchema(unwrapped)) {
-    return objectMatchesSchemaKeyShape(
       value,
-      unwrapped,
-      seen,
-      enforceValueKinds,
-      depth
-    );
-  }
-  return true;
+    },
+    evaluateHermesRequest
+  );
 }

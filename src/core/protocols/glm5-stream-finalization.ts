@@ -26,7 +26,7 @@ type MarkCallFailed = (
   controller: StreamController,
   call: ActiveGlm5Call,
   raw: string,
-  error?: unknown
+  error?: Error
 ) => void;
 
 interface Glm5StreamFinalizationOptions {
@@ -61,42 +61,63 @@ export function createGlm5CallFinalizer({
   protocolOptions,
   tools,
 }: Glm5StreamFinalizationOptions): FinalizeGlm5Call {
-  const finalizeExecutableCall = (
+  const failExecutableCall = (
     controller: StreamController,
     call: ActiveGlm5Call,
-    incomplete: boolean,
-    raw: string
+    raw: string,
+    error?: Error
   ) => {
-    if (call.failed) {
-      emitRawFallback(controller, raw);
-      return;
-    }
+    markCallFailed(controller, call, raw, error);
+    emitRawFallback(controller, raw);
+  };
 
-    let snapshot: ReturnType<typeof parseGlm5CallBody>;
+  const parseFinalSnapshot = (
+    controller: StreamController,
+    call: ActiveGlm5Call,
+    raw: string
+  ): ReturnType<typeof parseGlm5CallBody> | undefined => {
     try {
-      snapshot = parseGlm5CallBody({
+      return parseGlm5CallBody({
         body: materializeGlm5StreamBody(call.body),
         complete: true,
         protocolOptions,
         tools,
       });
-    } catch (error) {
-      markCallFailed(controller, call, raw, error);
-      emitRawFallback(controller, raw);
-      return;
+    } catch (caught) {
+      const error =
+        caught instanceof Error ? caught : new Error(String(caught));
+      failExecutableCall(controller, call, raw, error);
     }
-    if (!snapshot) {
-      markCallFailed(controller, call, raw);
-      emitRawFallback(controller, raw);
-      return;
-    }
-    ensureToolInputStarted(controller, call, snapshot.toolName);
-    if (!(call.id && call.toolName === snapshot.toolName)) {
-      markCallFailed(controller, call, raw);
-      emitRawFallback(controller, raw);
-      return;
-    }
+  };
 
+  const reportRecoveryCodes = (
+    call: ActiveGlm5Call,
+    snapshot: NonNullable<ReturnType<typeof parseGlm5CallBody>>,
+    incomplete: boolean,
+    raw: string
+  ) => {
+    const recoveryCodes = [
+      ...snapshot.recoveries,
+      ...(incomplete ? ["recovered-missing-tool-call-close"] : []),
+    ];
+    if (recoveryCodes.length > 0) {
+      options?.onError?.("Recovered malformed streaming GLM-5.2 tool call.", {
+        recoveryCodes,
+        toolCall: safeToolCallMetadataText(raw),
+        toolCallId: call.id,
+        toolName: snapshot.toolName,
+      });
+    }
+  };
+
+  const finalizeMatchedSnapshot = (
+    controller: StreamController,
+    call: ActiveGlm5Call,
+    id: string,
+    snapshot: NonNullable<ReturnType<typeof parseGlm5CallBody>>,
+    incomplete: boolean,
+    raw: string
+  ) => {
     try {
       const finalInput = stringifyGlm5CallInput(snapshot, tools);
       if (!finalInput.startsWith(call.emittedInput)) {
@@ -118,7 +139,7 @@ export function createGlm5CallFinalizer({
       if (finalInput === call.emittedInput) {
         enqueueToolInputEndAndCall({
           controller,
-          id: call.id,
+          id,
           input: finalInput,
           toolName: snapshot.toolName,
         });
@@ -127,28 +148,52 @@ export function createGlm5CallFinalizer({
         emitFinalizedToolInputLifecycle({
           controller,
           finalInput,
-          id: call.id,
+          id,
           state: call,
           toolName: snapshot.toolName,
         });
         call.inputEnded = true;
       }
-      const recoveryCodes = [
-        ...snapshot.recoveries,
-        ...(incomplete ? ["recovered-missing-tool-call-close"] : []),
-      ];
-      if (recoveryCodes.length > 0) {
-        options?.onError?.("Recovered malformed streaming GLM-5.2 tool call.", {
-          recoveryCodes,
-          toolCall: safeToolCallMetadataText(raw),
-          toolCallId: call.id,
-          toolName: snapshot.toolName,
-        });
-      }
-    } catch (error) {
-      markCallFailed(controller, call, raw, error);
-      emitRawFallback(controller, raw);
+      reportRecoveryCodes(call, snapshot, incomplete, raw);
+    } catch (caught) {
+      const error =
+        caught instanceof Error ? caught : new Error(String(caught));
+      failExecutableCall(controller, call, raw, error);
     }
+  };
+
+  const finalizeExecutableCall = (
+    controller: StreamController,
+    call: ActiveGlm5Call,
+    incomplete: boolean,
+    raw: string
+  ) => {
+    if (call.failed) {
+      emitRawFallback(controller, raw);
+      return;
+    }
+
+    const snapshot = parseFinalSnapshot(controller, call, raw);
+    if (snapshot === undefined) {
+      return;
+    }
+    if (!snapshot) {
+      failExecutableCall(controller, call, raw);
+      return;
+    }
+    ensureToolInputStarted(controller, call, snapshot.toolName);
+    if (!(call.id && call.toolName === snapshot.toolName)) {
+      failExecutableCall(controller, call, raw);
+      return;
+    }
+    finalizeMatchedSnapshot(
+      controller,
+      call,
+      call.id,
+      snapshot,
+      incomplete,
+      raw
+    );
   };
 
   return (controller, call, closeTag, incomplete) => {

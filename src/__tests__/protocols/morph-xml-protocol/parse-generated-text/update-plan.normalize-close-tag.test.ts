@@ -1,6 +1,8 @@
+import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { isStrictJSONObject } from "../../../test-helpers";
 
 vi.spyOn(console, "warn").mockImplementation(() => {
   // suppress console warnings in tests
@@ -40,9 +42,12 @@ describe("morphXmlProtocol parseGeneratedText: lenient close tag normalization",
         additionalProperties: true,
       },
     },
-  ] as any;
+  ] satisfies LanguageModelV4FunctionTool[];
 
   it("parses tool-call even when a closing tag is split across lines (e.g. </\n  step>)", () => {
+    expect(isStrictJSONObject([])).toBe(false);
+    expect(isStrictJSONObject({})).toBe(true);
+
     const p = morphXmlProtocol();
 
     const text = `<update_plan><explanation>Using apply_patch to create AGENTS.md file with repository guidelines</explanation><plan><step><step>Analyze project
@@ -51,27 +56,48 @@ describe("morphXmlProtocol parseGeneratedText: lenient close tag normalization",
 
     const out = p.parseGeneratedText({ text, tools, options: {} });
 
-    const toolParts = out.filter((c) => (c as any).type === "tool-call");
+    const toolParts = out.filter((part) => part.type === "tool-call");
     expect(toolParts.length).toBe(1);
 
-    const tc = toolParts[0] as any;
-    expect(tc.toolName).toBe("update_plan");
+    const [toolCall] = toolParts;
+    if (toolCall === undefined) {
+      throw new TypeError("Expected one tool-call part");
+    }
+    expect(toolCall.toolName).toBe("update_plan");
 
-    const args = JSON.parse(tc.input as string);
+    const parsedArgs: JSONValue = JSON.parse(toolCall.input);
+    if (!isStrictJSONObject(parsedArgs)) {
+      throw new TypeError("Expected tool-call input to be a JSON object");
+    }
 
-    expect(typeof args.explanation).toBe("string");
-    expect(args.explanation).toContain("AGENTS.md");
+    const { explanation, plan } = parsedArgs;
+    expect(typeof explanation).toBe("string");
+    if (typeof explanation !== "string") {
+      throw new TypeError("Expected an explanation string");
+    }
+    expect(explanation).toContain("AGENTS.md");
 
-    expect(args.plan).toBeTruthy();
-    expect(Array.isArray(args.plan.step)).toBe(true);
-    expect(args.plan.step.length).toBe(2);
+    expect(plan).toBeTruthy();
+    if (!isStrictJSONObject(plan)) {
+      throw new TypeError("Expected a plan object");
+    }
+    expect(Array.isArray(plan.step)).toBe(true);
+    const steps = plan.step;
+    if (!Array.isArray(steps)) {
+      throw new TypeError("Expected an array of plan steps");
+    }
+    expect(steps.length).toBe(2);
 
-    expect(args.plan.step[0].status).toBe("completed");
-    expect(args.plan.step[0].step).toContain("Analyze project");
-    expect(args.plan.step[0].step).toContain("configuration files");
+    const [firstStep, secondStep] = steps;
+    if (!(isStrictJSONObject(firstStep) && isStrictJSONObject(secondStep))) {
+      throw new TypeError("Expected object-valued plan steps");
+    }
+    expect(firstStep.status).toBe("completed");
+    expect(firstStep.step).toContain("Analyze project");
+    expect(firstStep.step).toContain("configuration files");
 
-    expect(args.plan.step[1].status).toBe("in_progress");
-    expect(args.plan.step[1].step).toContain(
+    expect(secondStep.status).toBe("in_progress");
+    expect(secondStep.step).toContain(
       "Create AGENTS.md file using apply_patch with comprehensive content"
     );
   });

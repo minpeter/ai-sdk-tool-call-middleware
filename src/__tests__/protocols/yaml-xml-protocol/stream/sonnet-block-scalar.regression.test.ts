@@ -1,8 +1,11 @@
 import type {
+  JSONObject,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
+import { parseJSON } from "@ai-sdk/provider-utils";
 import { describe, expect, it, vi } from "vitest";
+import type { ParserOptions } from "../../../../core/protocols/protocol-interface";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import {
   createInterleavedStream,
@@ -146,7 +149,7 @@ const EDGE_FIXTURES = [
     name: "CRLF and blank lines",
     text: "<write_file>\r\npath: windows.py\r\ncontent: |-\r\n  alpha\r\n\r\n  omega\r\n</write_file>",
     tools: [writeFileTool],
-    assertInput(input: Record<string, unknown>) {
+    assertInput(input: JSONObject) {
       expect(input).toEqual({
         path: "windows.py",
         content: "alpha\n\nomega",
@@ -157,7 +160,7 @@ const EDGE_FIXTURES = [
     name: "block scalars nested in sequences",
     text: "<save_list>\nitems:\n  - |-\n    alpha\n      indented\n  - >+\n    beta\n    gamma\n\n</save_list>",
     tools: [saveListTool],
-    assertInput(input: Record<string, unknown>) {
+    assertInput(input: JSONObject) {
       expect(input).toEqual({
         items: ["alpha\n  indented", "beta gamma\n\n"],
       });
@@ -179,7 +182,20 @@ function interleaveRawEvents(chunks: readonly string[]) {
   ]);
 }
 
-function expectOneConsistentCall(parts: LanguageModelV4StreamPart[]) {
+function runSonnetChunks(
+  chunks: readonly string[],
+  tools: LanguageModelV4FunctionTool[],
+  onError: NonNullable<ParserOptions["onError"]>
+) {
+  return runProtocolStreamParser({
+    protocol: yamlXmlProtocol(),
+    tools,
+    parserOptions: { onError },
+    stream: createInterleavedStream(interleaveRawEvents(chunks)),
+  });
+}
+
+async function expectOneConsistentCall(parts: LanguageModelV4StreamPart[]) {
   const timeline = extractToolInputTimeline(parts);
   const calls = parts.filter((part) => part.type === "tool-call");
 
@@ -197,23 +213,44 @@ function expectOneConsistentCall(parts: LanguageModelV4StreamPart[]) {
     true
   );
   expect(timeline.deltas.map((delta) => delta.delta).join("")).toBe(call.input);
-  expect(() => JSON.parse(call.input)).not.toThrow();
-  return JSON.parse(call.input) as Record<string, unknown>;
+  const input = await parseJSON({ text: call.input });
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw new TypeError("Expected tool input to be a JSON object");
+  }
+  return input;
+}
+
+async function splitScalarInput(
+  text: string,
+  split: number,
+  onError: NonNullable<ParserOptions["onError"]>
+): Promise<JSONObject> {
+  const parts = await runSonnetChunks(
+    [text.slice(0, split), text.slice(split)],
+    [writeFileTool],
+    onError
+  );
+  return expectOneConsistentCall(parts);
+}
+
+function expectScalarContent(input: JSONObject, expectedPath?: string): void {
+  if (expectedPath !== undefined) {
+    expect(input.path).toBe(expectedPath);
+  }
+  expect(input.content).toContain("alpha 🧪");
+  expect(input.content).toContain("omega");
 }
 
 describe("yamlXmlProtocol Sonnet block-scalar streaming regression", () => {
   it("replays the exact Sonnet 4.5 chunk sequence without tag leakage or delta mismatch", async () => {
     const onError = vi.fn();
-    const parts = await runProtocolStreamParser({
-      protocol: yamlXmlProtocol(),
-      tools: [writeFileTool],
-      parserOptions: { onError },
-      stream: createInterleavedStream(
-        interleaveRawEvents(SONNET_45_TEXT_DELTAS)
-      ),
-    });
+    const parts = await runSonnetChunks(
+      SONNET_45_TEXT_DELTAS,
+      [writeFileTool],
+      onError
+    );
 
-    const input = expectOneConsistentCall(parts);
+    const input = await expectOneConsistentCall(parts);
     expect(onError).not.toHaveBeenCalled();
     expect(input.path).toBe("fizzbuzz.py");
     expect(input.content).toContain("classic interview question");
@@ -235,20 +272,9 @@ describe("yamlXmlProtocol Sonnet block-scalar streaming regression", () => {
     "keeps YAML block-scalar header $header consistent at split $split",
     async ({ header, split, text }) => {
       const onError = vi.fn();
-      const parts = await runProtocolStreamParser({
-        protocol: yamlXmlProtocol(),
-        tools: [writeFileTool],
-        parserOptions: { onError },
-        stream: createInterleavedStream(
-          interleaveRawEvents([text.slice(0, split), text.slice(split)])
-        ),
-      });
-
-      const input = expectOneConsistentCall(parts);
+      const input = await splitScalarInput(text, split, onError);
       expect(onError, `${header} split at ${split}`).not.toHaveBeenCalled();
-      expect(input.path).toBe("example.py");
-      expect(input.content).toContain("alpha 🧪");
-      expect(input.content).toContain("omega");
+      expectScalarContent(input, "example.py");
     }
   );
 
@@ -256,19 +282,9 @@ describe("yamlXmlProtocol Sonnet block-scalar streaming regression", () => {
     "keeps multiline scalar $body consistent at split $split",
     async ({ body, split, text }) => {
       const onError = vi.fn();
-      const parts = await runProtocolStreamParser({
-        protocol: yamlXmlProtocol(),
-        tools: [writeFileTool],
-        parserOptions: { onError },
-        stream: createInterleavedStream(
-          interleaveRawEvents([text.slice(0, split), text.slice(split)])
-        ),
-      });
-
-      const input = expectOneConsistentCall(parts);
+      const input = await splitScalarInput(text, split, onError);
       expect(onError, `split at ${split}: ${body}`).not.toHaveBeenCalled();
-      expect(input.content).toContain("alpha 🧪");
-      expect(input.content).toContain("omega");
+      expectScalarContent(input);
     }
   );
 
@@ -277,16 +293,14 @@ describe("yamlXmlProtocol Sonnet block-scalar streaming regression", () => {
     async (body) => {
       const text = `<write_file>\npath: example.py\n${body}\n</write_file>`;
       const onError = vi.fn();
-      const characterParts = await runProtocolStreamParser({
-        protocol: yamlXmlProtocol(),
-        tools: [writeFileTool],
-        parserOptions: { onError },
-        stream: createInterleavedStream(interleaveRawEvents([...text])),
-      });
-      const characterInput = expectOneConsistentCall(characterParts);
+      const characterParts = await runSonnetChunks(
+        [...text],
+        [writeFileTool],
+        onError
+      );
+      const characterInput = await expectOneConsistentCall(characterParts);
       expect(onError).not.toHaveBeenCalled();
-      expect(characterInput.content).toContain("alpha 🧪");
-      expect(characterInput.content).toContain("omega");
+      expectScalarContent(characterInput);
     }
   );
 
@@ -294,19 +308,13 @@ describe("yamlXmlProtocol Sonnet block-scalar streaming regression", () => {
     "keeps $fixture.name consistent at split $split",
     async ({ fixture, split }) => {
       const onError = vi.fn();
-      const parts = await runProtocolStreamParser({
-        protocol: yamlXmlProtocol(),
-        tools: fixture.tools,
-        parserOptions: { onError },
-        stream: createInterleavedStream(
-          interleaveRawEvents([
-            fixture.text.slice(0, split),
-            fixture.text.slice(split),
-          ])
-        ),
-      });
+      const parts = await runSonnetChunks(
+        [fixture.text.slice(0, split), fixture.text.slice(split)],
+        fixture.tools,
+        onError
+      );
 
-      const input = expectOneConsistentCall(parts);
+      const input = await expectOneConsistentCall(parts);
       expect(onError, `split at ${split}`).not.toHaveBeenCalled();
       fixture.assertInput(input);
     }

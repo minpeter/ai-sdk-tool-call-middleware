@@ -1,3 +1,4 @@
+import type { JSONObject, JSONSchema7, JSONValue } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { coerceBySchema } from "../../schema-coerce";
 
@@ -7,18 +8,17 @@ describe("Coercion Heuristic Handling", () => {
       const largeArray = Array.from({ length: 1000 }, (_, i) => i.toString());
       const input = { item: largeArray };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "array",
         items: { type: "number" },
       };
 
       const start = Date.now();
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema) as JSONValue[];
       const durationMs = Date.now() - start;
 
-      const arr = result as any[];
-      expect(arr).toHaveLength(1000);
-      expect(arr.every((item: any) => typeof item === "number")).toBe(true);
+      expect(result).toHaveLength(1000);
+      expect(result.every((item) => typeof item === "number")).toBe(true);
       if (process.env.VITEST_PERF_CHECK === "1") {
         expect(durationMs).toBeLessThan(100);
       }
@@ -35,7 +35,7 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const schema = {
+      const schema: JSONSchema7 = {
         type: "object",
         properties: {
           level1: {
@@ -55,8 +55,10 @@ describe("Coercion Heuristic Handling", () => {
         },
       };
 
-      const result = coerceBySchema(input, schema) as any;
-      expect(result.level1.level2.level3).toEqual([1, 2, 3]);
+      const result = coerceBySchema(input, schema) as JSONObject;
+      const level1 = result.level1 as JSONObject;
+      const level2 = level1.level2 as JSONObject;
+      expect(level2.level3).toEqual([1, 2, 3]);
     });
   });
 });

@@ -1,6 +1,43 @@
 import { Readable } from "node:stream";
 
+import type { ParseOptions } from "../../../rxml";
+import { processXMLStream } from "../../../rxml/core/stream";
+import type { RXMLNode } from "../../../rxml/core/types";
+
 export const CHUNK_SIZE = 7;
+
+export function requireNode(value: RXMLNode | string | undefined): RXMLNode {
+  if (typeof value === "object") {
+    return value;
+  }
+  throw new TypeError("Expected streamed XML node");
+}
+
+export function createManualChunkStream(chunks: readonly string[]): Readable {
+  let index = 0;
+  return new Readable({
+    read() {
+      const chunk = chunks[index];
+      index += 1;
+      this.push(chunk ?? null);
+    },
+  });
+}
+
+export async function collectStreamElements(
+  stream: Readable,
+  parseOptions?: ParseOptions
+): Promise<(RXMLNode | string)[]> {
+  const elements: (RXMLNode | string)[] = [];
+  const parsed =
+    parseOptions === undefined
+      ? processXMLStream(stream)
+      : processXMLStream(stream, 0, parseOptions);
+  for await (const element of parsed) {
+    elements.push(element);
+  }
+  return elements;
+}
 
 /**
  * Simulates LLM token-based streaming by splitting text into fixed-size chunks
@@ -8,7 +45,7 @@ export const CHUNK_SIZE = 7;
 export function createChunkedStream(
   text: string,
   chunkSize: number = CHUNK_SIZE,
-  _parseOptions?: any
+  _parseOptions?: ParseOptions
 ): Readable {
   let position = 0;
 

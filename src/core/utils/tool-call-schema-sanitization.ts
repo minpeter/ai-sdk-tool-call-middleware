@@ -1,18 +1,26 @@
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isSchemaDefinition,
+  type ToolInputSchemaCandidate,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { getArrayItemSchema } from "./tool-call-array-schema";
 import {
   getToolInputPropertyNames,
   getToolInputPropertySchema,
 } from "./tool-call-object-schema";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type RxmlRecord = Record<string, RxmlValue>;
+
+function isRecord(value: RxmlValue): value is RxmlRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function sanitizeToolCallArrayBySchema(
-  values: readonly unknown[],
-  schema: unknown,
+  values: readonly RxmlValue[],
+  schema: ToolInputSchemaDefinition,
   seen: WeakSet<object>
-): unknown[] {
+): RxmlValue[] {
   return values.flatMap((value, index) => {
     const itemSchema = getArrayItemSchema(schema, index);
     if (itemSchema === false) {
@@ -26,33 +34,32 @@ function sanitizeToolCallArrayBySchema(
 }
 
 function sanitizeToolCallObjectBySchema(
-  value: Record<string, unknown>,
-  schema: unknown,
+  value: RxmlRecord,
+  schema: ToolInputSchemaDefinition,
   propertyNames: Set<string>,
   seen: WeakSet<object>
-): Record<string, unknown> {
-  const sanitized = Object.create(null) as Record<string, unknown>;
+): RxmlRecord {
+  const sanitized: RxmlRecord = Object.create(null);
   for (const [key, nestedValue] of Object.entries(value)) {
     if (propertyNames.has(key)) {
       const propertySchema = getToolInputPropertySchema(schema, key, value);
       if (propertySchema === false) {
         continue;
       }
-      sanitized[key] = sanitizeToolCallValueBySchema(
-        nestedValue,
-        propertySchema,
-        seen
-      );
+      sanitized[key] =
+        propertySchema === undefined
+          ? nestedValue
+          : sanitizeToolCallValueBySchema(nestedValue, propertySchema, seen);
     }
   }
   return sanitized;
 }
 
 function sanitizeToolCallValueBySchema(
-  value: unknown,
-  schema: unknown,
+  value: RxmlValue,
+  schema: ToolInputSchemaDefinition,
   seen: WeakSet<object>
-): unknown {
+): RxmlValue {
   if (Array.isArray(value)) {
     if (seen.has(value)) {
       return value;
@@ -73,8 +80,10 @@ function sanitizeToolCallValueBySchema(
 }
 
 export function sanitizeToolCallArgsBySchema(
-  args: unknown,
-  schema: unknown
-): unknown {
-  return sanitizeToolCallValueBySchema(args, schema, new WeakSet());
+  args: RxmlValue,
+  schema: ToolInputSchemaCandidate
+): RxmlValue {
+  return isSchemaDefinition(schema)
+    ? sanitizeToolCallValueBySchema(args, schema, new WeakSet())
+    : args;
 }

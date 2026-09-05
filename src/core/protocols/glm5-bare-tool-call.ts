@@ -1,4 +1,8 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONObject,
+  JSONValue,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import { parseLooseStructuredString } from "../../schema-coerce/loose-structured-string";
 import {
@@ -14,7 +18,7 @@ const JSON_NUMBER_RE = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
 interface ParsedValue {
   ok: true;
-  value: unknown;
+  value: JSONValue;
 }
 
 const INVALID_VALUE = { ok: false } as const;
@@ -138,7 +142,7 @@ export function parseGlm5AnchoredBareToolCall(options: {
     return null;
   }
 
-  const args = Object.create(null) as Record<string, unknown>;
+  const args: JSONObject = Object.create(null);
   for (const argument of scanned) {
     if (
       isPrototypeSensitiveArgumentKey(argument.key) ||

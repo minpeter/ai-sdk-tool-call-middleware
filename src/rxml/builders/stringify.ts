@@ -3,20 +3,25 @@
  * Replaces the fast-xml-parser XMLBuilder with a native implementation
  */
 
-import type { RXMLNode, StringifyOptions } from "../core/types";
+import type { StringifyOptions } from "../core/types";
 import { RXMLStringifyError } from "../errors/types";
 import {
   escapeXml,
   escapeXmlMinimalAttr,
   escapeXmlMinimalText,
 } from "../utils/helpers";
+import {
+  stringifyNodes as stringifyNodesValue,
+  stringifyNode as stringifyNodeValue,
+  toContentString as toContentStringValue,
+} from "./stringify-nodes";
 
 /**
  * Stringify an object to XML
  */
 export function stringify(
   rootTag: string,
-  obj: unknown,
+  obj: RxmlValue,
   options: StringifyOptions = {}
 ): string {
   try {
@@ -46,10 +51,29 @@ export function stringify(
 
     return result;
   } catch (error) {
+    const normalizedError =
+      error instanceof Error
+        ? error
+        : new Error(String(error), { cause: error });
     // biome-ignore lint/style/useErrorCause: RXML errors carry the original error via their positional cause parameter.
-    throw new RXMLStringifyError("Failed to stringify XML", error);
+    throw new RXMLStringifyError("Failed to stringify XML", normalizedError);
   }
 }
+
+export type RxmlValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | readonly RxmlValue[]
+  | RxmlRecord;
+
+interface RxmlRecord {
+  readonly [key: string]: RxmlValue;
+}
+
+type StringifyRecord = Record<string, RxmlValue>;
 
 interface StringifyContext {
   depth: number;
@@ -89,15 +113,8 @@ function createTextElement(
   return `${indent}<${tagName}>${content}</${tagName}>${newline}`;
 }
 
-/**
- * Check if value is a primitive type
- */
-function isPrimitive(value: unknown): boolean {
-  return (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  );
+function isRxmlRecord(value: RxmlValue): value is RxmlRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 interface FormatOptions {
@@ -110,7 +127,7 @@ interface FormatOptions {
  */
 function stringifyPrimitive(
   tagName: string,
-  value: unknown,
+  value: string | number | boolean,
   context: StringifyContext,
   format: FormatOptions
 ): string {
@@ -129,7 +146,7 @@ function stringifyPrimitive(
  */
 function stringifyArray(
   tagName: string,
-  value: unknown[],
+  value: readonly RxmlValue[],
   context: StringifyContext
 ): string {
   let result = "";
@@ -144,7 +161,7 @@ function stringifyArray(
  */
 function stringifyValue(
   tagName: string,
-  value: unknown,
+  value: RxmlValue,
   context: StringifyContext
 ): string {
   const { format, suppressEmptyNode, minimalEscaping } = context;
@@ -158,7 +175,11 @@ function stringifyValue(
     return createSelfClosingTag(tagName, indent, newline);
   }
 
-  if (isPrimitive(value)) {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
     return stringifyPrimitive(tagName, value, context, { indent, newline });
   }
 
@@ -166,8 +187,8 @@ function stringifyValue(
     return stringifyArray(tagName, value, context);
   }
 
-  if (typeof value === "object") {
-    return stringifyObject(tagName, value as Record<string, unknown>, context);
+  if (isRxmlRecord(value)) {
+    return stringifyObject(tagName, value, context);
   }
 
   // Fallback for other types
@@ -179,17 +200,17 @@ function stringifyValue(
 }
 
 interface ObjectParts {
-  attributes: Record<string, unknown>;
-  elements: Record<string, unknown>;
+  attributes: StringifyRecord;
+  elements: StringifyRecord;
   textContent: string | undefined;
 }
 
 /**
  * Extract attributes, elements, and text content from an object
  */
-function extractObjectParts(obj: Record<string, unknown>): ObjectParts {
-  const attributes: Record<string, unknown> = {};
-  const elements: Record<string, unknown> = {};
+function extractObjectParts(obj: RxmlRecord): ObjectParts {
+  const attributes: StringifyRecord = {};
+  const elements: StringifyRecord = {};
   let textContent: string | undefined;
 
   for (const [key, value] of Object.entries(obj)) {
@@ -199,7 +220,7 @@ function extractObjectParts(obj: Record<string, unknown>): ObjectParts {
       textContent = String(value);
     } else if (key === "_attributes") {
       if (typeof value === "object" && value !== null) {
-        Object.assign(attributes, value as Record<string, unknown>);
+        Object.assign(attributes, value);
       }
     } else {
       elements[key] = value;
@@ -214,7 +235,7 @@ function extractObjectParts(obj: Record<string, unknown>): ObjectParts {
  */
 function formatAttribute(
   attrName: string,
-  attrValue: unknown,
+  attrValue: RxmlValue,
   minimalEscaping: boolean,
   strictBooleanAttributes: boolean
 ): string {
@@ -249,7 +270,7 @@ function formatAttribute(
  */
 function buildOpeningTag(
   tagName: string,
-  attributes: Record<string, unknown>,
+  attributes: StringifyRecord,
   context: StringifyContext
 ): string {
   let openTag = `<${tagName}`;
@@ -337,7 +358,7 @@ function stringifyComplexContent(
  */
 function stringifyObject(
   tagName: string,
-  obj: Record<string, unknown>,
+  obj: RxmlRecord,
   context: StringifyContext
 ): string {
   const { depth, format, suppressEmptyNode } = context;
@@ -382,206 +403,6 @@ function stringifyObject(
   });
 }
 
-/**
- * Stringify parsed XML nodes back to XML string
- */
-export function stringifyNodes(
-  nodes: (RXMLNode | string)[],
-  format = true,
-  options: Pick<
-    StringifyOptions,
-    "strictBooleanAttributes" | "minimalEscaping"
-  > = {}
-): string {
-  let result = "";
-
-  for (const node of nodes) {
-    if (typeof node === "string") {
-      result += node;
-    } else {
-      result += stringifyNode(node, 0, format, options);
-    }
-  }
-
-  return result;
-}
-
-interface NodeStringifyOptions {
-  indent: string;
-  minimalEscaping: boolean;
-  newline: string;
-  strictBooleanAttributes: boolean;
-}
-
-/**
- * Format a single node attribute
- */
-function formatNodeAttribute(
-  attrName: string,
-  attrValue: string | null,
-  minimalEscaping: boolean,
-  strictBooleanAttributes: boolean
-): string {
-  if (attrValue === null) {
-    if (strictBooleanAttributes) {
-      return ` ${attrName}="${attrName}"`;
-    }
-    return ` ${attrName}`;
-  }
-
-  if (attrValue.indexOf('"') === -1) {
-    const escaped = minimalEscaping
-      ? escapeXmlMinimalAttr(attrValue, '"')
-      : escapeXml(attrValue);
-    return ` ${attrName}="${escaped}"`;
-  }
-
-  const escaped = minimalEscaping
-    ? escapeXmlMinimalAttr(attrValue, "'")
-    : escapeXml(attrValue);
-  return ` ${attrName}='${escaped}'`;
-}
-
-/**
- * Build opening tag with attributes
- */
-function buildNodeOpeningTag(
-  node: RXMLNode,
-  opts: NodeStringifyOptions
-): string {
-  let result = `${opts.indent}<${node.tagName}`;
-
-  for (const [attrName, attrValue] of Object.entries(node.attributes)) {
-    result += formatNodeAttribute(
-      attrName,
-      attrValue,
-      opts.minimalEscaping,
-      opts.strictBooleanAttributes
-    );
-  }
-
-  return result;
-}
-
-/**
- * Stringify node children
- */
-function stringifyNodeChildren(options: {
-  children: (RXMLNode | string)[];
-  depth: number;
-  format: boolean;
-  stringifyOptions: Pick<
-    StringifyOptions,
-    "strictBooleanAttributes" | "minimalEscaping"
-  >;
-  minimalEscaping: boolean;
-  newline: string;
-}): { content: string; hasElementChildren: boolean } {
-  const {
-    children,
-    depth,
-    format,
-    stringifyOptions,
-    minimalEscaping,
-    newline,
-  } = options;
-  let content = "";
-  let hasElementChildren = false;
-
-  for (const child of children) {
-    if (typeof child === "string") {
-      content += minimalEscaping
-        ? escapeXmlMinimalText(child)
-        : escapeXml(child);
-    } else {
-      if (!hasElementChildren && format) {
-        content += newline;
-        hasElementChildren = true;
-      }
-      content += stringifyNode(child, depth + 1, format, stringifyOptions);
-    }
-  }
-
-  return { content, hasElementChildren };
-}
-
-/**
- * Stringify a single XML node
- */
-export function stringifyNode(
-  node: RXMLNode,
-  depth = 0,
-  format = true,
-  options: Pick<
-    StringifyOptions,
-    "strictBooleanAttributes" | "minimalEscaping"
-  > = {}
-): string {
-  const indent = format ? "  ".repeat(depth) : "";
-  const newline = format ? "\n" : "";
-  const minimalEscaping = options.minimalEscaping ?? false;
-  const strictBooleanAttributes = options.strictBooleanAttributes ?? false;
-
-  const opts: NodeStringifyOptions = {
-    minimalEscaping,
-    strictBooleanAttributes,
-    indent,
-    newline,
-  };
-
-  let result = buildNodeOpeningTag(node, opts);
-
-  // Handle processing instructions
-  if (node.tagName[0] === "?") {
-    return `${result}?>${newline}`;
-  }
-
-  // Handle self-closing tags
-  if (node.children.length === 0) {
-    return `${result}/>${newline}`;
-  }
-
-  result += ">";
-
-  // Handle children
-  const { content, hasElementChildren } = stringifyNodeChildren({
-    children: node.children,
-    depth,
-    format,
-    stringifyOptions: options,
-    minimalEscaping,
-    newline,
-  });
-
-  result += content;
-
-  if (hasElementChildren && format) {
-    result += indent;
-  }
-
-  result += `</${node.tagName}>`;
-
-  if (format) {
-    result += newline;
-  }
-
-  return result;
-}
-
-/**
- * Convert content to a string representation (similar to TXML's toContentString)
- */
-export function toContentString(nodes: (RXMLNode | string)[]): string {
-  let result = "";
-
-  for (const node of nodes) {
-    if (typeof node === "string") {
-      result += ` ${node}`;
-    } else {
-      result += ` ${toContentString(node.children)}`;
-    }
-    result = result.trim();
-  }
-
-  return result;
-}
+export const stringifyNode = stringifyNodeValue;
+export const stringifyNodes = stringifyNodesValue;
+export const toContentString = toContentStringValue;

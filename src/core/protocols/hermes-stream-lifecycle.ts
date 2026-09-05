@@ -1,8 +1,12 @@
-import type {
-  LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
+import {
+  isJSONObject,
+  isJSONValue,
+  type JSONValue,
+  type LanguageModelV4FunctionTool,
+  type LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
+import type { RxmlValue } from "../../rxml/builders/stringify";
 import { logParseFailure } from "../utils/debug";
 import { generateId, generateToolCallId } from "../utils/id";
 import { safeToolCallMetadataText } from "../utils/protocol-utils";
@@ -21,7 +25,6 @@ import {
   resolveToolCall,
 } from "./hermes-call-parsing";
 import {
-  canonicalizeToolInput,
   isParsedToolCallRecord,
   normalizeJsonStringCtrl,
 } from "./hermes-json-normalization";
@@ -38,6 +41,10 @@ import type {
   ParserOptions,
   ProtocolToolCallResolver,
 } from "./protocol-interface";
+
+function canonicalizeToolInputFallback(args: RxmlValue): string {
+  return JSON.stringify(args ?? {});
+}
 
 function emitStreamingToolInputProgress(options: {
   state: StreamState;
@@ -73,7 +80,9 @@ function emitStreamingToolInputProgress(options: {
     const parsedToolCall = parseRJSON(
       normalizeInvalidJsonEscapes(normalizeJsonStringCtrl(toolCallJson))
     );
-    if (!isParsedToolCallRecord(parsedToolCall)) {
+    if (
+      !(isJSONValue(parsedToolCall) && isParsedToolCallRecord(parsedToolCall))
+    ) {
       return false;
     }
     if (hasPrototypeSensitiveKeyInJsonLikeObject(toolCallJson)) {
@@ -91,7 +100,7 @@ function emitStreamingToolInputProgress(options: {
       toolName: parsedToolCall.name,
       args: policyArguments.args,
       tools,
-      fallback: canonicalizeToolInput,
+      fallback: canonicalizeToolInputFallback,
     });
     ensureToolInputStart(state, controller, parsedToolCall.name);
     emitToolInputDelta(state, controller, input);
@@ -139,7 +148,7 @@ export function closeToolInput(
   controller.enqueue({
     type: "tool-input-end",
     id: state.activeToolInput.id,
-  } as LanguageModelV4StreamPart);
+  });
   state.activeToolInput = null;
 }
 
@@ -165,13 +174,13 @@ export function emitResolvedToolCall(
     toolCallId,
     toolName,
     input,
-  } as LanguageModelV4StreamPart);
+  });
 }
 
 export function emitToolCallFromParsed(
   state: StreamState,
   controller: StreamController,
-  parsedToolCall: { name: string; arguments: unknown },
+  parsedToolCall: { name: string; arguments: JSONValue | undefined },
   tools: LanguageModelV4FunctionTool[]
 ) {
   closeTextBlock(state, controller);
@@ -183,30 +192,51 @@ export function emitToolCallFromParsed(
     toolName,
     args: parsedToolCall.arguments,
     tools,
-    fallback: canonicalizeToolInput,
+    fallback: canonicalizeToolInputFallback,
   });
   emitResolvedToolCall(state, controller, toolName, input);
+}
+
+export function emitTextDelta(
+  state: StreamState,
+  controller: StreamController,
+  text: string
+): void {
+  if (text.length === 0) {
+    return;
+  }
+  if (!state.currentTextId) {
+    state.currentTextId = generateId();
+    controller.enqueue({ type: "text-start", id: state.currentTextId });
+    state.hasEmittedTextStart = true;
+  }
+  controller.enqueue({
+    type: "text-delta",
+    id: state.currentTextId,
+    delta: text,
+  });
+}
+
+export function emitRawTextLifecycle(
+  controller: StreamController,
+  text: string,
+  enabled: boolean
+): boolean {
+  if (!(enabled && !toolCallTextHasPrototypeSensitiveKey(text))) {
+    return false;
+  }
+  const id = generateId();
+  controller.enqueue({ type: "text-start", id });
+  controller.enqueue({ type: "text-delta", id, delta: text });
+  controller.enqueue({ type: "text-end", id });
+  return true;
 }
 
 export function flushBuffer(state: StreamState, controller: StreamController) {
   if (state.buffer.length === 0) {
     return;
   }
-
-  if (!state.currentTextId) {
-    state.currentTextId = generateId();
-    controller.enqueue({
-      type: "text-start",
-      id: state.currentTextId,
-    } as LanguageModelV4StreamPart);
-    state.hasEmittedTextStart = true;
-  }
-
-  controller.enqueue({
-    type: "text-delta",
-    id: state.currentTextId,
-    delta: state.buffer,
-  } as LanguageModelV4StreamPart);
+  emitTextDelta(state, controller, state.buffer);
   state.buffer = "";
 }
 
@@ -218,33 +248,26 @@ export function closeTextBlock(
     controller.enqueue({
       type: "text-end",
       id: state.currentTextId,
-    } as LanguageModelV4StreamPart);
+    });
     state.currentTextId = null;
     state.hasEmittedTextStart = false;
   }
 }
 
-function isStrictToolCallArray(value: unknown): boolean {
+function isStrictToolCallArray(value: JSONValue): boolean {
   return (
     Array.isArray(value) &&
     value.length >= 2 &&
     !toolCallInputHasPrototypeSensitiveKey(value) &&
-    value.every((item) => {
-      if (typeof item !== "object" || item === null || Array.isArray(item)) {
-        return false;
-      }
-      const record = item as Record<string, unknown>;
-      const args = record.arguments;
-      return (
-        Object.hasOwn(record, "name") &&
-        typeof record.name === "string" &&
-        record.name.trim().length > 0 &&
-        Object.hasOwn(record, "arguments") &&
-        typeof args === "object" &&
-        args !== null &&
-        !Array.isArray(args)
-      );
-    })
+    value.every(
+      (item) =>
+        isJSONObject(item) &&
+        Object.hasOwn(item, "name") &&
+        typeof item.name === "string" &&
+        item.name.trim().length > 0 &&
+        Object.hasOwn(item, "arguments") &&
+        isJSONObject(item.arguments)
+    )
   );
 }
 
@@ -261,28 +284,22 @@ export function recoverCompleteKnownCallBeforeNestedStart(
   resolver: ProtocolToolCallResolver = resolveToolCall
 ): { input: string; toolName: string } | null {
   const candidate = text.trim();
-  let parsed: unknown;
+  let parsed: JSONValue;
   try {
-    parsed = JSON.parse(candidate);
+    const candidateValue = JSON.parse(candidate);
+    if (!isJSONValue(candidateValue)) {
+      return null;
+    }
+    parsed = candidateValue;
   } catch {
     return null;
   }
   if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    Array.isArray(parsed) ||
-    !Object.hasOwn(parsed, "name") ||
-    typeof (parsed as Record<string, unknown>).name !== "string" ||
-    !Object.hasOwn(parsed, "arguments")
-  ) {
-    return null;
-  }
-  const record = parsed as Record<string, unknown>;
-  if (
-    typeof record.arguments !== "object" ||
-    record.arguments === null ||
-    Array.isArray(record.arguments) ||
-    !tools.some((tool) => tool.name === record.name)
+    !(isJSONObject(parsed) && Object.hasOwn(parsed, "name")) ||
+    typeof parsed.name !== "string" ||
+    !Object.hasOwn(parsed, "arguments") ||
+    !isJSONObject(parsed.arguments) ||
+    !tools.some((tool) => tool.name === parsed.name)
   ) {
     return null;
   }
@@ -331,7 +348,8 @@ export function recoverCompleteCallArrayBeforePartialEnd(
     return { matchedArrayShape: false, recoveredCalls: null };
   }
   try {
-    if (!isStrictToolCallArray(JSON.parse(candidate))) {
+    const parsed = JSON.parse(candidate);
+    if (!(isJSONValue(parsed) && isStrictToolCallArray(parsed))) {
       return { matchedArrayShape: true, recoveredCalls: null };
     }
   } catch {
@@ -451,25 +469,7 @@ function emitIncompleteToolCall(
     snippet: errorContent,
   });
 
-  if (
-    shouldEmitRawFallback &&
-    !toolCallTextHasPrototypeSensitiveKey(errorContent)
-  ) {
-    const errorId = generateId();
-    controller.enqueue({
-      type: "text-start",
-      id: errorId,
-    } as LanguageModelV4StreamPart);
-    controller.enqueue({
-      type: "text-delta",
-      id: errorId,
-      delta: errorContent,
-    } as LanguageModelV4StreamPart);
-    controller.enqueue({
-      type: "text-end",
-      id: errorId,
-    } as LanguageModelV4StreamPart);
-  }
+  emitRawTextLifecycle(controller, errorContent, shouldEmitRawFallback);
   // Capture structured tool-call context before closeToolInput clears
   // state.activeToolInput. If streaming already identified the name/id we use
   // them directly; otherwise fall back to re-scanning the raw JSON for the name

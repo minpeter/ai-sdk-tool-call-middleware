@@ -1,8 +1,44 @@
+import { isJSONObject } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { XMLTokenizer } from "../../../rxml/core/tokenizer";
+import type { RXMLNode } from "../../../rxml/core/types";
 import { parse } from "../../../rxml/parse";
+
+interface DoctypeSnippetResult {
+  readonly element: RXMLNode;
+  readonly hasCatalogDoctype: boolean;
+  readonly nodes: readonly (RXMLNode | string)[];
+}
+
+function requireNode(
+  value: RXMLNode | string | undefined,
+  tagName: string
+): RXMLNode {
+  if (!(typeof value === "object" && value.tagName === tagName)) {
+    throw new TypeError(`Expected ${tagName} XML node`);
+  }
+  return value;
+}
+
+function parseDoctypeSnippet(xml: string): DoctypeSnippetResult {
+  const nodes = new XMLTokenizer(xml).parseChildren();
+  const element = nodes.find(
+    (node): node is RXMLNode =>
+      typeof node === "object" && node.tagName === "catalog"
+  );
+  if (element === undefined) {
+    throw new TypeError("Expected catalog XML node");
+  }
+  return {
+    nodes,
+    element,
+    hasCatalogDoctype: nodes.some(
+      (node) => typeof node === "string" && node.startsWith("!DOCTYPE catalog")
+    ),
+  };
+}
 
 describe("XML snippets coverage", () => {
   describe("1. declaration + DOCTYPE basic", () => {
@@ -18,20 +54,12 @@ describe("XML snippets coverage", () => {
         "<catalog/>",
       ].join("");
 
-      const t = new XMLTokenizer(xml);
-      const nodes = t.parseChildren();
+      const { element, hasCatalogDoctype, nodes } = parseDoctypeSnippet(xml);
       // Expect PI first and DOCTYPE preserved as raw string token
       expect(nodes[0]).toMatchObject({ tagName: "?xml" });
-      const doctype = nodes.find(
-        (n) =>
-          typeof n === "string" && (n as string).startsWith("!DOCTYPE catalog")
-      );
-      expect(doctype).toBeTruthy();
+      expect(hasCatalogDoctype).toBe(true);
       // Ensure catalog element exists
-      const catalog = nodes.find(
-        (n) => typeof n === "object" && (n as any).tagName === "catalog"
-      );
-      expect(catalog).toBeTruthy();
+      expect(element).toBeTruthy();
     });
   });
 
@@ -49,17 +77,9 @@ describe("XML snippets coverage", () => {
         "<catalog></catalog>",
       ].join("");
 
-      const t = new XMLTokenizer(xml);
-      const nodes = t.parseChildren();
-      const doctype = nodes.find(
-        (n) =>
-          typeof n === "string" && (n as string).startsWith("!DOCTYPE catalog")
-      );
-      expect(doctype).toBeTruthy();
-      const catalog = nodes.find(
-        (n) => typeof n === "object" && (n as any).tagName === "catalog"
-      );
-      expect(catalog).toBeTruthy();
+      const { element, hasCatalogDoctype } = parseDoctypeSnippet(xml);
+      expect(hasCatalogDoctype).toBe(true);
+      expect(element).toBeTruthy();
     });
   });
 
@@ -67,7 +87,7 @@ describe("XML snippets coverage", () => {
     it("keeps meta/title/generator and raw entity reference in text", () => {
       const titleNode = new XMLTokenizer(
         "<title>Sample Catalog &company;</title>"
-      ).parseNode() as any;
+      ).parseNode();
       expect(titleNode.tagName).toBe("title");
       expect(titleNode.children[0]).toContain("Sample Catalog");
       // Entity is left as raw text in our tokenizer
@@ -75,7 +95,7 @@ describe("XML snippets coverage", () => {
 
       const genNode = new XMLTokenizer(
         "<generator>GPT-5</generator>"
-      ).parseNode() as any;
+      ).parseNode();
       expect(genNode.tagName).toBe("generator");
       expect(genNode.children[0]).toBe("GPT-5");
     });
@@ -92,15 +112,21 @@ describe("XML snippets coverage", () => {
         "</product>",
       ].join("");
 
-      const node = new XMLTokenizer(xml)
-        .parseChildren()
-        .find((n) => typeof n === "object") as any;
+      const node = requireNode(
+        new XMLTokenizer(xml)
+          .parseChildren()
+          .find((item) => typeof item === "object"),
+        "product"
+      );
       expect(node.tagName).toBe("product");
       expect(node.attributes.id).toBe("p1");
       expect(node.attributes.sku).toBe("A-001");
-      const name = node.children.find(
-        (c: any) => typeof c === "object" && c.tagName === "name"
-      ) as any;
+      const name = requireNode(
+        node.children.find(
+          (child) => typeof child === "object" && child.tagName === "name"
+        ),
+        "name"
+      );
       expect(name.children[0]).toBe("Premium Widget");
     });
   });
@@ -131,9 +157,12 @@ describe("XML snippets coverage", () => {
         "]>",
         '<media type="image" src="logoPNG" notation="png"/>',
       ].join("");
-      const node = new XMLTokenizer(xml)
-        .parseChildren()
-        .find((n) => typeof n === "object") as any;
+      const node = requireNode(
+        new XMLTokenizer(xml)
+          .parseChildren()
+          .find((item) => typeof item === "object"),
+        "media"
+      );
       expect(node.tagName).toBe("media");
       expect(node.children).toEqual([]);
       expect(node.attributes.type).toBe("image");
@@ -152,13 +181,19 @@ describe("XML snippets coverage", () => {
         "]>",
         '<related>\n  <ref target="p2"/>\n</related>',
       ].join("");
-      const node = new XMLTokenizer(xml)
-        .parseChildren()
-        .find((n) => typeof n === "object") as any;
+      const node = requireNode(
+        new XMLTokenizer(xml)
+          .parseChildren()
+          .find((item) => typeof item === "object"),
+        "related"
+      );
       expect(node.tagName).toBe("related");
-      const ref = node.children.find(
-        (c: any) => typeof c === "object" && c.tagName === "ref"
-      ) as any;
+      const ref = requireNode(
+        node.children.find(
+          (child) => typeof child === "object" && child.tagName === "ref"
+        ),
+        "ref"
+      );
       expect(ref).toBeTruthy();
       expect(ref.children).toEqual([]);
       expect(ref.attributes.target).toBe("p2");
@@ -182,7 +217,7 @@ describe("XML snippets coverage", () => {
           catalog: z.string().optional(),
         })
       );
-      const result = parse(xml, schema) as any;
+      const result = parse(xml, schema);
       expect(result).toHaveProperty("catalog");
       expect(result.catalog).toBe("");
     });
@@ -195,10 +230,14 @@ describe("XML snippets coverage", () => {
           meta: z.object({ title: z.string(), generator: z.string() }),
         })
       );
-      const result = parse(xml, schema, { noChildNodes: [] }) as any;
-      expect(result.meta.title).toContain("Sample Catalog");
-      expect(result.meta.title).toContain("&company;");
-      expect(result.meta.generator).toBe("GPT-5");
+      const result = parse(xml, schema, { noChildNodes: [] });
+      const { meta } = result;
+      if (!isJSONObject(meta)) {
+        throw new TypeError("Expected parsed meta object");
+      }
+      expect(meta.title).toContain("Sample Catalog");
+      expect(meta.title).toContain("&company;");
+      expect(meta.generator).toBe("GPT-5");
     });
 
     it("parses product name content (snippet 4)", () => {
@@ -215,8 +254,12 @@ describe("XML snippets coverage", () => {
           product: z.object({ name: z.string() }),
         })
       );
-      const result = parse(xml, schema) as any;
-      expect(result.product.name).toBe("Premium Widget");
+      const result = parse(xml, schema);
+      const { product } = result;
+      if (!isJSONObject(product)) {
+        throw new TypeError("Expected parsed product object");
+      }
+      expect(product.name).toBe("Premium Widget");
     });
 
     it("parses CDATA as raw strings (snippet 5)", () => {
@@ -227,7 +270,7 @@ describe("XML snippets coverage", () => {
       const schema = z.toJSONSchema(
         z.object({ description: z.string(), feature: z.string() })
       );
-      const result = parse(xml, schema) as any;
+      const result = parse(xml, schema);
       expect(result.description).toContain('"version"');
       expect(result.description).toContain("<tags are safe>");
       expect(result.feature).toContain('<script>alert("Hello!");</script>');
@@ -241,7 +284,7 @@ describe("XML snippets coverage", () => {
         '<related>\n  <ref target="p2"/>\n</related>',
       ].join("");
       const schema = z.toJSONSchema(z.object({ related: z.string() }));
-      const result = parse(xml, schema) as any;
+      const result = parse(xml, schema);
       expect(result.related).toContain('<ref target="p2"/>');
     });
   });

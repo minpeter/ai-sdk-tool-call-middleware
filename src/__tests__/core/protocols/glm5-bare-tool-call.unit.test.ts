@@ -1,4 +1,9 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import {
+  isJSONObject,
+  type JSONObject,
+  type JSONValue,
+  type LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { parseGlm5AnchoredBareToolCall } from "../../../core/protocols/glm5-bare-tool-call";
 
@@ -67,6 +72,11 @@ function parse(text: string) {
   return parseGlm5AnchoredBareToolCall({ text, tools });
 }
 
+function parseObjectInput(input: string | undefined): JSONObject | null {
+  const value: JSONValue = JSON.parse(input ?? "null");
+  return isJSONObject(value) ? value : null;
+}
+
 describe("GLM 5 anchored bare text fallback", () => {
   it("parses the ACE corporate innovation fixture", () => {
     const result = parse(
@@ -74,7 +84,7 @@ describe("GLM 5 anchored bare text fallback", () => {
     );
 
     expect(result?.toolName).toBe("corporate_innovation_culture");
-    expect(JSON.parse(result?.input ?? "null")).toEqual({
+    expect(parseObjectInput(result?.input)).toEqual({
       industry: "金融科技",
       total_employees: 500,
     });
@@ -96,7 +106,7 @@ describe("GLM 5 anchored bare text fallback", () => {
       'inspect_payload(label="left,right=[x](y)=done", count="2")'
     );
 
-    expect(JSON.parse(result?.input ?? "null")).toEqual({
+    expect(parseObjectInput(result?.input)).toEqual({
       label: "left,right=[x](y)=done",
       count: 2,
     });
@@ -107,7 +117,7 @@ describe("GLM 5 anchored bare text fallback", () => {
       "inspect_payload(enabled=True, metadata={'ready': False, note: 'True story, None'}, tags=['alpha', 'beta'], optional=None)"
     );
 
-    expect(JSON.parse(result?.input ?? "null")).toEqual({
+    expect(parseObjectInput(result?.input)).toEqual({
       enabled: true,
       metadata: { ready: false, note: "True story, None" },
       tags: ["alpha", "beta"],
@@ -169,7 +179,7 @@ describe("GLM 5 anchored bare text fallback", () => {
   ])("rejects prototype-sensitive argument structure: %s", (text) => {
     expect(parse(text)).toBeNull();
     expect(
-      (Object.prototype as Record<string, unknown>).polluted
+      Object.getOwnPropertyDescriptor(Object.prototype, "polluted")
     ).toBeUndefined();
   });
 

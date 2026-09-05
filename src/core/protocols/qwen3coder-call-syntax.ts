@@ -77,12 +77,7 @@ export function buildSchemaParamNameMap(
     return null;
   }
   const tool = tools.find((t) => t.name === toolName);
-  const properties = (
-    tool?.inputSchema as
-      | { properties?: Record<string, unknown> }
-      | null
-      | undefined
-  )?.properties;
+  const properties = tool?.inputSchema.properties;
   if (!properties || typeof properties !== "object") {
     return null;
   }

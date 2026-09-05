@@ -1,41 +1,24 @@
-import type {
-  LanguageModelV4FunctionTool,
-  LanguageModelV4StreamPart,
-} from "@ai-sdk/provider";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../../core/protocols/hermes-protocol";
 import {
-  createInterleavedStream,
-  extractToolInputTimeline,
-  runProtocolStreamParser,
-} from "../cross-protocol/tool-input/streaming-events.shared";
+  createObjectTool,
+  parseToolCallObject,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../shared/duplicate-harness";
+
+function requiredPathTool(name: string): LanguageModelV4FunctionTool {
+  return createObjectTool(name, { path: { type: "string" } }, false, ["path"]);
+}
 
 const tools: LanguageModelV4FunctionTool[] = [
-  {
-    type: "function",
-    name: "list_dir",
-    inputSchema: {
-      type: "object",
-      properties: { path: { type: "string" } },
-      required: ["path"],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "read_file",
-    inputSchema: {
-      type: "object",
-      properties: { path: { type: "string" } },
-      required: ["path"],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "reject_all",
-    inputSchema: false as never,
-  },
+  requiredPathTool("list_dir"),
+  requiredPathTool("read_file"),
+  createObjectTool("reject_all", { requiredValue: { type: "string" } }, false, [
+    "requiredValue",
+  ]),
 ];
 
 const NEMOTRON_MISSING_FIRST_CLOSE =
@@ -49,29 +32,27 @@ function generatedCalls(text: string) {
 }
 
 async function streamedParts(chunks: readonly string[], onError = vi.fn()) {
-  const textParts: LanguageModelV4StreamPart[] = chunks.map((delta) => ({
-    type: "text-delta",
+  const parts = await runProtocolTextStream({
+    chunks,
     id: "fixture-text",
-    delta,
-  }));
-  const parts = await runProtocolStreamParser({
+    parserOptions: { onError },
     protocol: hermesProtocol(),
     tools,
-    parserOptions: { onError },
-    stream: createInterleavedStream(textParts),
   });
   return { onError, parts };
 }
 
-function expectBothCalls(parts: LanguageModelV4StreamPart[]) {
-  const calls = parts.filter((part) => part.type === "tool-call");
+function expectBothCalls(
+  parts: Awaited<ReturnType<typeof runProtocolTextStream>>
+): void {
+  const calls = selectToolCalls(parts);
   expect(calls.map((call) => call.toolName)).toEqual(["list_dir", "read_file"]);
-  expect(calls.map((call) => JSON.parse(call.input))).toEqual([
+  expect(calls.map(parseToolCallObject)).toEqual([
     { path: "/src" },
     { path: "/src/main.ts" },
   ]);
 
-  const timeline = extractToolInputTimeline(parts);
+  const timeline = selectToolInputTimeline(parts);
   expect(timeline.starts).toHaveLength(2);
   expect(timeline.ends).toHaveLength(2);
   expect(new Set(calls.map((call) => call.toolCallId)).size).toBe(2);
@@ -144,10 +125,8 @@ describe("Hermes implicit close before a nested tool-call start", () => {
       "read_file",
     ]);
     const { parts } = await streamedParts([text]);
-    expect(
-      parts
-        .filter((part) => part.type === "tool-call")
-        .map((call) => call.toolName)
-    ).toEqual(["read_file"]);
+    expect(selectToolCalls(parts).map((call) => call.toolName)).toEqual([
+      "read_file",
+    ]);
   });
 });

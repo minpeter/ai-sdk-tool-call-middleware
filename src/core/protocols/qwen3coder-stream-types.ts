@@ -4,7 +4,7 @@ import type { QwenStreamCallState } from "./qwen3coder-stream-call-content";
 export type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;
 export type StreamingCallState = QwenStreamCallState;
-export type ToolCallMode = "unknown" | "single" | "multi";
+type ToolCallMode = "unknown" | "single" | "multi";
 
 export interface ToolCallContainerState {
   activeCall: StreamingCallState | null;

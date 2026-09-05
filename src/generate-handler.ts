@@ -67,7 +67,7 @@ function logDebugSummary(
  */
 function appendDroppedProviderToolWarnings(
   warnings: SharedV4Warning[] | undefined,
-  providerOptions: unknown
+  providerOptions: ToolCallMiddlewareProviderOptions | undefined
 ): SharedV4Warning[] {
   const dropped = getDroppedProviderTools(providerOptions);
   if (dropped.length === 0) {
@@ -190,9 +190,9 @@ function parseTextContent(options: {
     ...getToolCallMiddlewareOptions(providerOptions),
   };
 
-  let evaluatedParser: unknown;
-  let evaluatedText: unknown;
-  let evaluatedRecoveryText: unknown;
+  let evaluatedParser: TCMCoreProtocol["parseGeneratedText"] | undefined;
+  let evaluatedText = "";
+  let evaluatedRecoveryText = "";
   let synthesizedPlainText: LanguageModelV4Content[] | undefined;
   let recoveryTextIsMaterialized = false;
   if (debugLevel === "off") {
@@ -201,7 +201,8 @@ function parseTextContent(options: {
     // that already-materialized callable is an exact built-in parser closure.
     evaluatedParser = protocol.parseGeneratedText;
     evaluatedText = contentItem.text;
-    const fastPaths = (parserOptions as Record<string, unknown>).debugSummary
+    const debugSummary = providerOptions?.toolCallMiddleware?.debugSummary;
+    const fastPaths = debugSummary
       ? undefined
       : glm5FastPathsForParser(evaluatedParser);
     if (
@@ -246,7 +247,7 @@ function parseTextContent(options: {
   }
 
   const recoveryText = recoveryTextIsMaterialized
-    ? (evaluatedRecoveryText as string)
+    ? evaluatedRecoveryText
     : contentItem.text;
   if (protocol.allowsGeneratedTextJsonRecovery?.(recoveryText) === false) {
     return parsedByProtocol;

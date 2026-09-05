@@ -1,9 +1,17 @@
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isSchemaDefinition,
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { unwrapJsonSchema } from "../../schema-coerce";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
 import { getDeclaredPropertySchema } from "./tool-call-object-property-schema";
 import {
   collectPatternPropertyNames,
   hasDeclaredPatternProperties,
+  isRxmlRecord,
   unsafeFalsePatternMayMatchKey,
 } from "./tool-call-pattern-properties";
 import {
@@ -14,22 +22,24 @@ import { selectSchemaVariant } from "./tool-call-schema-variant";
 
 const SELECTIVE_JSON_SCHEMA_COMBINATORS = ["anyOf", "oneOf"] as const;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function unwrapToolCallSchema(
+  schema: ToolInputSchemaDefinition
+): ToolInputSchemaDefinition | undefined {
+  return unwrapJsonSchema(schema);
 }
 
-function addSafePropertyName(names: Set<string>, key: unknown): void {
+function addSafePropertyName(names: Set<string>, key: RxmlValue): void {
   if (typeof key === "string" && !isPrototypeSensitiveArgumentKey(key)) {
     names.add(key);
   }
 }
 
 function collectDirectDeclaredPropertyNames(
-  schema: Record<string, unknown>
+  schema: ToolInputSchema
 ): Set<string> {
   const names = new Set<string>();
   const falsePropertyNames = collectFalsePropertyNames(schema);
-  if (Object.hasOwn(schema, "properties") && isRecord(schema.properties)) {
+  if (Object.hasOwn(schema, "properties") && schema.properties) {
     for (const [key, propertySchema] of Object.entries(schema.properties)) {
       if (propertySchema !== false) {
         addSafePropertyName(names, key);
@@ -58,14 +68,16 @@ function removeNames(target: Set<string>, source: Set<string>): void {
   }
 }
 
-function hasStrictAdditionalProperties(schema: unknown): boolean {
-  const unwrapped = unwrapJsonSchema(schema);
-  return isRecord(unwrapped) && unwrapped.additionalProperties === false;
+function hasStrictAdditionalProperties(
+  schema: ToolInputSchemaDefinition
+): boolean {
+  const unwrapped = unwrapToolCallSchema(schema);
+  return isSchemaRecord(unwrapped) && unwrapped.additionalProperties === false;
 }
 
 function collectAllOfDeclaredPropertyNames(
-  schema: Record<string, unknown>,
-  value: unknown,
+  schema: ToolInputSchema,
+  value: RxmlValue,
   seen: Set<object>
 ): Set<string> | null {
   const names = new Set<string>();
@@ -88,17 +100,17 @@ function collectAllOfDeclaredPropertyNames(
 }
 
 function collectStrictAllOfDeniedPropertyNames(
-  schema: Record<string, unknown>,
-  value: unknown,
+  schema: ToolInputSchema,
+  value: RxmlValue,
   seen: Set<object>
 ): Set<string> {
   const names = new Set<string>();
-  if (!(Array.isArray(schema.allOf) && isRecord(value))) {
+  if (!(Array.isArray(schema.allOf) && isRxmlRecord(value))) {
     return names;
   }
   for (const variant of schema.allOf) {
-    const unwrapped = unwrapJsonSchema(variant);
-    if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+    const unwrapped = unwrapToolCallSchema(variant);
+    if (!isSchemaRecord(unwrapped) || seen.has(unwrapped)) {
       continue;
     }
     const nextSeen = new Set(seen);
@@ -122,14 +134,17 @@ function collectStrictAllOfDeniedPropertyNames(
 }
 
 function collectSelectedVariantDeclaredPropertyNames(
-  schema: Record<string, unknown>,
-  value: unknown,
+  schema: ToolInputSchema,
+  value: RxmlValue,
   seen: Set<object>
 ): Set<string> | null {
   const names = new Set<string>();
   let found = false;
   for (const combinator of SELECTIVE_JSON_SCHEMA_COMBINATORS) {
     const variant = selectSchemaVariant(schema[combinator], value, seen);
+    if (!isSchemaDefinition(variant)) {
+      continue;
+    }
     const nestedNames = collectDeclaredToolInputPropertyNames(
       variant,
       value,
@@ -144,19 +159,20 @@ function collectSelectedVariantDeclaredPropertyNames(
 }
 
 function collectDeclaredToolInputPropertyNames(
-  schema: unknown,
-  value: unknown,
+  schema: ToolInputSchemaDefinition,
+  value: RxmlValue,
   seen: Set<object>
 ): Set<string> | null {
-  const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+  const unwrapped = unwrapToolCallSchema(schema);
+  if (!isSchemaRecord(unwrapped) || seen.has(unwrapped)) {
     return null;
   }
   seen.add(unwrapped);
 
   const names = collectDirectDeclaredPropertyNames(unwrapped);
   const hasDirectProperties =
-    Object.hasOwn(unwrapped, "properties") && isRecord(unwrapped.properties);
+    Object.hasOwn(unwrapped, "properties") &&
+    unwrapped.properties !== undefined;
   const hasAdditionalPropertiesPolicy = Object.hasOwn(
     unwrapped,
     "additionalProperties"
@@ -174,19 +190,20 @@ function collectDeclaredToolInputPropertyNames(
   if (selectedVariantNames) {
     addNames(names, selectedVariantNames);
   }
-  if (
-    hasDirectProperties ||
-    hasAdditionalPropertiesPolicy ||
-    declaredPatternProperties ||
-    allOfNames ||
-    selectedVariantNames
-  ) {
+  const hasPropertySelectionPolicy = [
+    hasDirectProperties,
+    hasAdditionalPropertiesPolicy,
+    declaredPatternProperties,
+    allOfNames,
+    selectedVariantNames,
+  ].some(Boolean);
+  if (hasPropertySelectionPolicy) {
     addNames(names, collectPatternPropertyNames(unwrapped, value));
   }
   if (
     (unwrapped.additionalProperties === true ||
-      isRecord(unwrapped.additionalProperties)) &&
-    isRecord(value)
+      isSchemaRecord(unwrapped.additionalProperties)) &&
+    isRxmlRecord(value)
   ) {
     for (const key of Object.keys(value)) {
       if (!unsafeFalsePatternMayMatchKey(unwrapped, key)) {
@@ -200,30 +217,23 @@ function collectDeclaredToolInputPropertyNames(
     collectStrictAllOfDeniedPropertyNames(unwrapped, value, new Set(seen))
   );
 
-  if (
-    names.size === 0 &&
-    !hasDirectProperties &&
-    !hasAdditionalPropertiesPolicy &&
-    !declaredPatternProperties &&
-    !allOfNames &&
-    !selectedVariantNames
-  ) {
+  if (names.size === 0 && !hasPropertySelectionPolicy) {
     return null;
   }
   return names;
 }
 
 export function getToolInputPropertyNames(
-  schema: unknown,
-  value: unknown
+  schema: ToolInputSchemaDefinition,
+  value: RxmlValue
 ): Set<string> | null {
   return collectDeclaredToolInputPropertyNames(schema, value, new Set());
 }
 
 export function getToolInputPropertySchema(
-  schema: unknown,
+  schema: ToolInputSchemaDefinition,
   key: string,
-  value: unknown
-): unknown {
+  value: RxmlValue
+): ToolInputSchemaDefinition | undefined {
   return getDeclaredPropertySchema(schema, key, value, new Set());
 }

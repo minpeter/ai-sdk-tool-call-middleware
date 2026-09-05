@@ -1,3 +1,10 @@
+import type {
+  LanguageModelV4Content,
+  LanguageModelV4StreamPart,
+  LanguageModelV4ToolCallPart,
+} from "@ai-sdk/provider";
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import type { ResolvedProtocolToolCall } from "../protocols/protocol-interface";
 import {
   safeToolCallMetadataError,
   safeToolCallMetadataText,
@@ -80,7 +87,9 @@ const cBold = color(ANSI_BOLD);
 
 const MAX_SNIPPET_LENGTH = 800;
 
-function safeStringify(value: unknown): string {
+type ProtocolError = Extract<ResolvedProtocolToolCall, { ok: false }>["error"];
+
+function safeStringify(value: ProtocolError): string {
   try {
     return `\n${typeof value === "string" ? value : JSON.stringify(value, null, 2)}`;
   } catch {
@@ -88,20 +97,48 @@ function safeStringify(value: unknown): string {
   }
 }
 
-function safeDebugText(value: unknown): string {
-  return safeToolCallMetadataText(safeStringify(value)) ?? "";
+function safeDebugText(value: ProtocolError): string {
+  return safeToolCallMetadataText(safeStringify(value));
 }
 
-function formatError(error: unknown): string {
-  const safeError = safeToolCallMetadataError(error);
-  if (typeof safeError === "string") {
-    return `\n${safeError}`;
+function safeSdkDebugText(
+  value:
+    | LanguageModelV4Content
+    | LanguageModelV4StreamPart
+    | readonly LanguageModelV4ToolCallPart[]
+    | string
+): string {
+  try {
+    const serialized =
+      typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    return safeToolCallMetadataText(`\n${serialized}`);
+  } catch {
+    return safeToolCallMetadataText(String(value));
   }
-  if (safeError instanceof Error) {
-    const stack = safeError.stack ? `\n${safeError.stack}` : "";
-    return `\n${safeError.name}: ${safeError.message}${stack}`;
+}
+
+function formatSanitizedError(error: RxmlValue | Error): string {
+  if (typeof error === "string") {
+    return `\n${error}`;
   }
-  return safeStringify(safeError);
+  if (error instanceof Error) {
+    const stack = error.stack ? `\n${error.stack}` : "";
+    return `\n${error.name}: ${error.message}${stack}`;
+  }
+  return safeStringify(error);
+}
+
+function formatError(error: ProtocolError): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    !(error instanceof Error)
+  ) {
+    return safeToolCallMetadataText(safeStringify(error));
+  }
+  const normalizedInput =
+    error instanceof Error ? error : new Error(String(error));
+  return formatSanitizedError(safeToolCallMetadataError(normalizedInput));
 }
 
 function truncateSnippet(snippet: string): string {
@@ -120,7 +157,7 @@ export function logParseFailure({
   phase: "generated-text" | "stream" | string;
   reason: string;
   snippet?: string;
-  error?: unknown;
+  error?: ProtocolError;
 }) {
   if (getDebugLevel() !== "parse") {
     return;
@@ -139,14 +176,16 @@ export function logParseFailure({
   }
 }
 
-export function logRawChunk(part: unknown) {
+export function logRawChunk(part: LanguageModelV4StreamPart | string) {
   // Raw provider stream/generate output
-  console.log(cGray("[debug:mw:raw]"), cYellow(safeDebugText(part)));
+  console.log(cGray("[debug:mw:raw]"), cYellow(safeSdkDebugText(part)));
 }
 
-export function logParsedChunk(part: unknown) {
+export function logParsedChunk(
+  part: LanguageModelV4Content | LanguageModelV4StreamPart
+) {
   // Normalized middleware output
-  console.log(cGray("[debug:mw:out]"), cCyan(safeDebugText(part)));
+  console.log(cGray("[debug:mw:out]"), cCyan(safeSdkDebugText(part)));
 }
 
 function getHighlightStyle(): "inverse" | "underline" | "bold" | "bg" {
@@ -177,53 +216,36 @@ function getHighlightStyle(): "inverse" | "underline" | "bold" | "bg" {
 }
 
 function getHighlightFunction(style: "inverse" | "underline" | "bold" | "bg") {
-  if (style === "inverse") {
-    return cInverse;
-  }
-  if (style === "underline") {
-    return cUnderline;
-  }
-  if (style === "bold") {
-    return cBold;
-  }
-  if (style === "bg") {
-    return cBgGreen;
-  }
-  return cYellow;
+  return {
+    inverse: cInverse,
+    underline: cUnderline,
+    bold: cBold,
+    bg: cBgGreen,
+  }[style];
 }
 
 function renderHighlightedText(
   originalText: string,
-  style: "inverse" | "underline" | "bold" | "bg",
   highlight: (text: string) => string
 ) {
-  if (
-    style === "bg" ||
-    style === "inverse" ||
-    style === "underline" ||
-    style === "bold"
-  ) {
-    return originalText
-      .split(LINE_SPLIT_REGEX)
-      .map((line) => (line.length ? highlight(line) : line))
-      .join("\n");
-  }
-  return highlight(originalText);
+  return originalText
+    .split(LINE_SPLIT_REGEX)
+    .map((line) => (line.length ? highlight(line) : line))
+    .join("\n");
 }
 
 export function logParsedSummary({
   toolCalls,
   originalText,
 }: {
-  toolCalls: unknown[];
+  toolCalls: LanguageModelV4ToolCallPart[];
   originalText: string;
 }) {
   if (originalText) {
     const style = getHighlightStyle();
     const highlight = getHighlightFunction(style);
     const rendered = renderHighlightedText(
-      safeToolCallMetadataText(originalText) ?? "",
-      style,
+      safeToolCallMetadataText(originalText),
       highlight
     );
 
@@ -231,7 +253,7 @@ export function logParsedSummary({
   }
 
   if (toolCalls.length > 0) {
-    const styledSummary = safeDebugText(toolCalls)
+    const styledSummary = safeSdkDebugText(toolCalls)
       .split(LINE_SPLIT_REGEX)
       .map((line) => (line.length ? cBgBlue(line) : line))
       .join("\n");

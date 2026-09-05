@@ -1,4 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import { isSchemaDefinition } from "../../schema/tool-input-schema";
 import { getToolInputPropertyNames } from "../utils/tool-call-object-schema";
 import type {
   Glm5CallSnapshot,
@@ -25,10 +26,37 @@ interface Glm5CallBodyOptions {
   tools: LanguageModelV4FunctionTool[];
 }
 
+interface StrayArgValueCloseCandidate {
+  readonly argsStart: number;
+  readonly body: string;
+  readonly complete: boolean;
+  readonly declaredArgumentNames: ReadonlySet<string> | null;
+  readonly tags: NonNullable<ReturnType<typeof scanGlm5StructuralTags>>;
+}
+
 function isRejectedGlm5Call(options: Glm5CallBodyOptions): boolean {
   return (
     options.body.length > MAX_GLM5_CALL_BODY_LENGTH ||
     hasNestedDeclaredGlm5ToolCall(options)
+  );
+}
+
+function isStrayEmptyArgValueClose({
+  argsStart,
+  body,
+  complete,
+  declaredArgumentNames,
+  tags,
+}: StrayArgValueCloseCandidate): boolean {
+  const [onlyTag] = tags;
+  return (
+    complete &&
+    tags.length === 1 &&
+    onlyTag?.name === "arg_value" &&
+    onlyTag.closing &&
+    declaredArgumentNames?.size === 0 &&
+    body.slice(argsStart, onlyTag.start).trim().length === 0 &&
+    body.slice(onlyTag.end).trim().length === 0
   );
 }
 
@@ -69,10 +97,11 @@ export function parseGlm5CallBody(options: {
     return null;
   }
 
-  const tool = options.tools.find(
-    (candidate) => candidate.name === resolvedName.value
-  );
-  const schema = tool?.inputSchema;
+  const schema =
+    [
+      options.tools.find((tool) => tool.name === resolvedName.value)
+        ?.inputSchema,
+    ].find(isSchemaDefinition) ?? {};
   const args = createGlm5Args();
   const recoveries = resolvedName.recovered ? ["recovered-tool-name"] : [];
   const parsedArguments = parseGlm5TaggedArguments({
@@ -91,17 +120,15 @@ export function parseGlm5CallBody(options: {
   const { hasPartialValue } = parsedArguments;
   let { consumedUntil } = parsedArguments;
 
-  const [onlyTag] = tags;
   const declaredArgumentNames = getToolInputPropertyNames(schema, args);
   if (
-    options.complete &&
-    tags.length === 1 &&
-    onlyTag?.name === "arg_value" &&
-    onlyTag.closing &&
-    declaredArgumentNames?.size === 0 &&
-    options.body.slice(extractedName.argsStart, onlyTag.start).trim().length ===
-      0 &&
-    options.body.slice(onlyTag.end).trim().length === 0
+    isStrayEmptyArgValueClose({
+      argsStart: extractedName.argsStart,
+      body: options.body,
+      complete: options.complete,
+      declaredArgumentNames,
+      tags,
+    })
   ) {
     consumedUntil = options.body.length;
     recoveries.push("recovered-stray-empty-arg-value-close");

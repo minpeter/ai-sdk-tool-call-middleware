@@ -1,50 +1,41 @@
-import type {
-  LanguageModelV4Content,
-  LanguageModelV4FunctionTool,
+import {
+  isJSONObject,
+  type JSONObject,
+  type LanguageModelV4Content,
+  type LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
-import YAML from "yaml";
-import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
 import type { ProtocolToolCallResolver } from "../protocols/protocol-interface";
+import {
+  extractFunctionBlockCallSpans,
+  extractSensitiveFunctionBlockDropSpans,
+  extractSensitiveYamlToolCallBlockDropSpans,
+  extractYamlToolCallBlockSpans,
+} from "./generated-text-block-recovery";
 import {
   containsPrototypeSensitiveKey,
   extractJsonLikeCandidates,
-  isRecord,
   type JsonCandidate,
   parseJsonCandidate,
 } from "./generated-text-json-candidates";
-import {
-  findQwenCallCloseTag,
-  isSelfClosingTag,
-  QWEN_CALL_BLOCK_OPEN_REGEX,
-  readFunctionBlockParams,
-  readQwenCallToolName,
-} from "./generated-text-qwen-markup";
 import { extractSensitiveIncompleteToolCallDropSpans } from "./generated-text-sensitive-candidates";
+import {
+  type DroppedSensitiveSpan,
+  hasArgumentsEnvelope,
+  hasNameEnvelope,
+  isLikelyArgumentsShapeForTool,
+  type RecoveredCallSpan,
+  readToolArgsField,
+  readToolNameField,
+  TOOL_NAME_KEYS,
+  type ToolCallCandidate,
+  toToolCallCandidate,
+} from "./generated-text-tool-candidates";
 import { generateToolCallId } from "./id";
 import {
   hasPrototypeSensitiveStructuralKey,
   toolCallInputHasPrototypeSensitiveKey,
   toolCallTextHasPrototypeSensitiveKey,
 } from "./prototype-sensitive-keys";
-import { coerceToolCallInput } from "./tool-call-coercion";
-
-interface ToolCallCandidate {
-  input: string;
-  toolName: string;
-}
-
-/** A recovered call with the span of source text it consumes. */
-interface RecoveredCallSpan {
-  endIndex: number;
-  payload: ToolCallCandidate;
-  startIndex: number;
-}
-
-interface DroppedSensitiveSpan {
-  dropReason: "prototype-sensitive-tool-candidate";
-  endIndex: number;
-  startIndex: number;
-}
 
 type RecoverySpan = DroppedSensitiveSpan | RecoveredCallSpan;
 
@@ -60,15 +51,6 @@ function toToolCallPart(candidate: ToolCallCandidate): LanguageModelV4Content {
     toolName: candidate.toolName,
     input: candidate.input,
   };
-}
-
-function toToolCallCandidate(
-  toolName: string,
-  args: unknown,
-  tools: LanguageModelV4FunctionTool[]
-): ToolCallCandidate | null {
-  const input = coerceToolCallInput(toolName, args, tools);
-  return input === undefined ? null : { toolName, input };
 }
 
 const ORPHAN_TAG_BEFORE_CALL_REGEX = /(?:<\/?tool_call>\s*)+$/;
@@ -108,50 +90,8 @@ function pushRecoveredTextSegment(
  * gpt-oss emits function/parameters). Resolved names are validated against
  * the declared tools, so aliases cannot misfire on arbitrary JSON.
  */
-const TOOL_NAME_KEYS = ["name", "tool", "function"] as const;
-const TOOL_ARGS_KEYS = ["arguments", "parameters"] as const;
-
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function readToolNameField(payload: Record<string, unknown>): string | null {
-  for (const key of TOOL_NAME_KEYS) {
-    if (!Object.hasOwn(payload, key)) {
-      continue;
-    }
-    const value = payload[key];
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return null;
-}
-
-function readToolArgsField(payload: Record<string, unknown>): unknown {
-  for (const key of TOOL_ARGS_KEYS) {
-    if (Object.hasOwn(payload, key)) {
-      return payload[key];
-    }
-  }
-  return {};
-}
-
-function hasNameEnvelope(payload: Record<string, unknown>): boolean {
-  return TOOL_NAME_KEYS.some(
-    (key) =>
-      Object.hasOwn(payload, key) &&
-      typeof payload[key] === "string" &&
-      (payload[key] as string).length > 0
-  );
-}
-
-function hasArgumentsEnvelope(payload: Record<string, unknown>): boolean {
-  return TOOL_ARGS_KEYS.some(
-    (key) =>
-      Object.hasOwn(payload, key) &&
-      (typeof payload[key] === "string" || isRecord(payload[key]))
-  );
 }
 
 function textHasKnownToolReference(
@@ -181,13 +121,9 @@ function textHasKnownToolReference(
 }
 
 function parseAsToolPayload(
-  payload: unknown,
+  payload: JSONObject,
   tools: LanguageModelV4FunctionTool[]
 ): ToolCallCandidate | null {
-  if (!isRecord(payload)) {
-    return null;
-  }
-
   const toolName = readToolNameField(payload);
   if (!toolName) {
     return null;
@@ -206,55 +142,22 @@ function parseAsToolPayload(
     !toolCallTextHasPrototypeSensitiveKey(rawArgs)
   ) {
     const unwrapped = parseJsonCandidate(rawArgs);
-    if (isRecord(unwrapped)) {
+    if (isJSONObject(unwrapped)) {
       rawArgs = unwrapped;
     }
   }
-  if (!isRecord(rawArgs) || containsPrototypeSensitiveKey(rawArgs)) {
+  if (!isJSONObject(rawArgs) || containsPrototypeSensitiveKey(rawArgs)) {
     return null;
   }
 
   return toToolCallCandidate(toolName, rawArgs, tools);
 }
 
-function isLikelyArgumentsShapeForTool(
-  args: Record<string, unknown>,
-  tool: LanguageModelV4FunctionTool
-): boolean {
-  const unwrapped = unwrapJsonSchema(tool.inputSchema);
-  if (!isRecord(unwrapped)) {
-    return false;
-  }
-  if (getSchemaType(unwrapped) !== "object") {
-    return false;
-  }
-
-  const { properties } = unwrapped;
-  if (!isRecord(properties)) {
-    return false;
-  }
-
-  const keys = Object.keys(args);
-  if (keys.length === 0) {
-    return false;
-  }
-
-  const knownKeys = keys.filter((key) => Object.hasOwn(properties, key));
-  if (knownKeys.length === 0) {
-    return false;
-  }
-
-  return true;
-}
-
 function parseAsArgumentsOnly(
-  payload: unknown,
+  payload: JSONObject,
   tools: LanguageModelV4FunctionTool[]
 ): ToolCallCandidate | null {
   if (tools.length !== 1) {
-    return null;
-  }
-  if (!isRecord(payload)) {
     return null;
   }
   if (hasNameEnvelope(payload) || hasArgumentsEnvelope(payload)) {
@@ -273,13 +176,9 @@ function parseAsArgumentsOnly(
 }
 
 function looksLikeKnownToolCandidate(
-  payload: unknown,
+  payload: JSONObject,
   tools: LanguageModelV4FunctionTool[]
 ): boolean {
-  if (!isRecord(payload)) {
-    return false;
-  }
-
   const toolName = readToolNameField(payload);
   if (toolName && tools.some((tool) => tool.name === toolName)) {
     return true;
@@ -303,17 +202,18 @@ function isSensitiveRejectedJsonCandidate(
 ): boolean {
   const rawSensitive = toolCallTextHasPrototypeSensitiveKey(candidate.text);
   const parsed = parseJsonCandidate(candidate.text);
-  const knownToolCandidate = looksLikeKnownToolCandidate(parsed, tools);
+  const parsedObject = isJSONObject(parsed) ? parsed : null;
+  const knownToolCandidate =
+    parsedObject !== null && looksLikeKnownToolCandidate(parsedObject, tools);
   const structuralSensitive =
-    parsed !== undefined && hasPrototypeSensitiveStructuralKey(parsed);
+    parsedObject !== null && hasPrototypeSensitiveStructuralKey(parsedObject);
+  const parsedArguments =
+    parsedObject === null ? undefined : readToolArgsField(parsedObject);
   const stringArgumentsSensitive =
-    isRecord(parsed) &&
-    typeof readToolArgsField(parsed) === "string" &&
-    toolCallTextHasPrototypeSensitiveKey(readToolArgsField(parsed) as string);
+    typeof parsedArguments === "string" &&
+    toolCallTextHasPrototypeSensitiveKey(parsedArguments);
   const inputSensitive =
-    knownToolCandidate &&
-    parsed !== undefined &&
-    toolCallInputHasPrototypeSensitiveKey(parsed);
+    knownToolCandidate && toolCallInputHasPrototypeSensitiveKey(parsedObject);
 
   if (
     !(
@@ -342,7 +242,7 @@ function resolveCandidatePayload(
     return null;
   }
   const parsed = parseJsonCandidate(candidate.text);
-  if (parsed === undefined) {
+  if (!isJSONObject(parsed)) {
     return null;
   }
   if (hasPrototypeSensitiveStructuralKey(parsed)) {
@@ -351,7 +251,6 @@ function resolveCandidatePayload(
   if (
     resolver &&
     looksLikeKnownToolCandidate(parsed, tools) &&
-    isRecord(parsed) &&
     Object.hasOwn(parsed, "arguments")
   ) {
     const resolved = resolver(candidate.text, tools);
@@ -366,266 +265,6 @@ function resolveCandidatePayload(
 
 function isRecoveredSpan(span: RecoverySpan): span is RecoveredCallSpan {
   return "payload" in span;
-}
-
-/**
- * Recover Qwen3-Coder-style `<function=name><parameter=key>value` blocks for
- * known tools regardless of the active protocol. Some models emit this
- * format no matter what the prompt asks for (observed live on Step 3.5 Flash
- * under the Hermes prompt).
- */
-function extractFunctionBlockCallSpans(
-  text: string,
-  tools: LanguageModelV4FunctionTool[]
-): RecoveredCallSpan[] {
-  const spans: RecoveredCallSpan[] = [];
-  const opens = [...text.matchAll(QWEN_CALL_BLOCK_OPEN_REGEX)];
-
-  for (let index = 0; index < opens.length; index += 1) {
-    const open = opens[index];
-    const tagName = (open[1] ?? "").toLowerCase();
-    const openTag = open[0] ?? "";
-    const bodyStart = open.index + open[0].length;
-    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
-    const selfClosing = isSelfClosingTag(openTag);
-    const close = selfClosing
-      ? null
-      : findQwenCallCloseTag(text, bodyStart, tagName, nextOpenIndex);
-    const bodyEnd = close?.start ?? nextOpenIndex;
-    const body = selfClosing ? "" : text.slice(bodyStart, bodyEnd);
-    const toolName = readQwenCallToolName(openTag, body);
-    if (!(toolName && tools.some((tool) => tool.name === toolName))) {
-      continue;
-    }
-
-    const params = readFunctionBlockParams(body);
-    if (!params) {
-      continue;
-    }
-
-    const endIndex = selfClosing
-      ? open.index + openTag.length
-      : (close?.end ?? nextOpenIndex);
-    const payload = toToolCallCandidate(toolName, params, tools);
-    if (payload) {
-      spans.push({
-        startIndex: open.index,
-        endIndex,
-        payload,
-      });
-    }
-  }
-
-  return spans;
-}
-
-function extractSensitiveFunctionBlockDropSpans(
-  text: string,
-  tools: LanguageModelV4FunctionTool[]
-): DroppedSensitiveSpan[] {
-  if (!toolCallTextHasPrototypeSensitiveKey(text)) {
-    return [];
-  }
-
-  const spans: DroppedSensitiveSpan[] = [];
-  const opens = [...text.matchAll(QWEN_CALL_BLOCK_OPEN_REGEX)];
-
-  for (let index = 0; index < opens.length; index += 1) {
-    const open = opens[index];
-    const tagName = (open[1] ?? "").toLowerCase();
-    const openTag = open[0] ?? "";
-    const bodyStart = open.index + open[0].length;
-    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
-    const selfClosing = isSelfClosingTag(openTag);
-    const close = selfClosing
-      ? null
-      : findQwenCallCloseTag(text, bodyStart, tagName, nextOpenIndex);
-    const bodyEnd = close?.start ?? nextOpenIndex;
-    const body = selfClosing ? "" : text.slice(bodyStart, bodyEnd);
-    const toolName = readQwenCallToolName(openTag, body);
-    if (!(toolName && tools.some((tool) => tool.name === toolName))) {
-      continue;
-    }
-
-    const endIndex = selfClosing
-      ? open.index + openTag.length
-      : (close?.end ?? nextOpenIndex);
-    const rawBlock = text.slice(open.index, endIndex);
-    if (toolCallTextHasPrototypeSensitiveKey(rawBlock)) {
-      spans.push({
-        startIndex: open.index,
-        endIndex,
-        dropReason: "prototype-sensitive-tool-candidate",
-      });
-    }
-  }
-
-  return spans;
-}
-
-const TOOL_CALL_BLOCK_OPEN_REGEX = /<tool_call\s*>/gi;
-// Colon included for namespaced garbage closes like `</functions:get_weather>`.
-const CLOSING_TAG_REGEX = /<\/\s*([A-Za-z_][\w.:-]*)\s*>/;
-
-function parseYamlBlockMapping(body: string): Record<string, unknown> | null {
-  let parsed: unknown;
-  try {
-    parsed = YAML.parse(body);
-  } catch {
-    return null;
-  }
-  if (!isRecord(parsed) || containsPrototypeSensitiveKey(parsed)) {
-    return null;
-  }
-  return parsed;
-}
-
-function parseYamlBlockMappingUnsafe(
-  body: string
-): Record<string, unknown> | null {
-  let parsed: unknown;
-  try {
-    parsed = YAML.parse(body);
-  } catch {
-    return null;
-  }
-  return isRecord(parsed) ? parsed : null;
-}
-
-function resolveYamlBlockPayload(
-  mapping: Record<string, unknown>,
-  closeTagName: string | null,
-  tools: LanguageModelV4FunctionTool[]
-): ToolCallCandidate | null {
-  // Envelope form: `name: get_weather\narguments:\n  city: Seoul`.
-  const envelopeName = readToolNameField(mapping);
-  if (envelopeName && tools.some((tool) => tool.name === envelopeName)) {
-    const rawArgs = readToolArgsField(mapping);
-    const args = rawArgs === undefined || rawArgs === null ? {} : rawArgs;
-    if (isRecord(args) && !containsPrototypeSensitiveKey(args)) {
-      return toToolCallCandidate(envelopeName, args, tools);
-    }
-    return null;
-  }
-
-  // Bare-args form closed by a tag carrying the tool name:
-  // `<tool_call>\ncity: Seoul\n</get_weather>` (possibly namespaced, e.g.
-  // `</functions:get_weather>`).
-  if (closeTagName) {
-    const candidates = [closeTagName, closeTagName.split(":").at(-1) ?? ""];
-    const matched = candidates.find((name) =>
-      tools.some((tool) => tool.name === name)
-    );
-    if (matched) {
-      return toToolCallCandidate(matched, mapping, tools);
-    }
-  }
-
-  // Bare-args form with a single tool whose schema matches.
-  if (tools.length === 1 && isLikelyArgumentsShapeForTool(mapping, tools[0])) {
-    return toToolCallCandidate(tools[0].name, mapping, tools);
-  }
-
-  return null;
-}
-
-/**
- * Recover `<tool_call>` blocks whose body is a YAML mapping instead of JSON
- * (observed live on IBM Granite 4.0, which emits this shape under every
- * prompt format, closing with an arbitrary tag such as `</weather>` or the
- * tool name).
- */
-function extractYamlToolCallBlockSpans(
-  text: string,
-  tools: LanguageModelV4FunctionTool[]
-): RecoveredCallSpan[] {
-  const spans: RecoveredCallSpan[] = [];
-
-  TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = 0;
-  let match = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
-  while (match) {
-    const bodyStart = match.index + match[0].length;
-    TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = bodyStart;
-    const nextOpen = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
-    const blockEnd = nextOpen == null ? text.length : nextOpen.index;
-
-    let body = text.slice(bodyStart, blockEnd);
-    let endIndex = blockEnd;
-    let closeTagName: string | null = null;
-
-    // The close tag is unreliable in this shape — the first closing tag in
-    // the block (e.g. `</weather>`, `</tool_call>`, `</get_weather>`)
-    // terminates the body and may carry the tool name.
-    const closeMatch = CLOSING_TAG_REGEX.exec(body);
-    if (closeMatch) {
-      closeTagName = closeMatch[1] ?? null;
-      endIndex = bodyStart + closeMatch.index + closeMatch[0].length;
-      body = body.slice(0, closeMatch.index);
-    }
-
-    const mapping = parseYamlBlockMapping(body);
-    const payload = mapping
-      ? resolveYamlBlockPayload(mapping, closeTagName, tools)
-      : null;
-    if (payload) {
-      spans.push({ startIndex: match.index, endIndex, payload });
-    }
-
-    match = nextOpen;
-  }
-
-  return spans;
-}
-
-function extractSensitiveYamlToolCallBlockDropSpans(
-  text: string,
-  tools: LanguageModelV4FunctionTool[]
-): DroppedSensitiveSpan[] {
-  const spans: DroppedSensitiveSpan[] = [];
-
-  TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = 0;
-  let match = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
-  while (match) {
-    const bodyStart = match.index + match[0].length;
-    TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = bodyStart;
-    const nextOpen = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
-    const blockEnd = nextOpen == null ? text.length : nextOpen.index;
-
-    let body = text.slice(bodyStart, blockEnd);
-    let endIndex = blockEnd;
-    let closeTagName: string | null = null;
-
-    const closeMatch = CLOSING_TAG_REGEX.exec(body);
-    if (closeMatch) {
-      closeTagName = closeMatch[1] ?? null;
-      endIndex = bodyStart + closeMatch.index + closeMatch[0].length;
-      body = body.slice(0, closeMatch.index);
-    }
-
-    const mapping = parseYamlBlockMappingUnsafe(body);
-    if (mapping && containsPrototypeSensitiveKey(mapping)) {
-      const envelopeName = readToolNameField(mapping);
-      const closeName = closeTagName?.split(":").at(-1) ?? "";
-      const knownEnvelope =
-        envelopeName !== null &&
-        tools.some((tool) => tool.name === envelopeName);
-      const knownClose =
-        closeName.length > 0 && tools.some((tool) => tool.name === closeName);
-      const likelySingleToolArgs =
-        tools.length === 1 && isLikelyArgumentsShapeForTool(mapping, tools[0]);
-      if (knownEnvelope || knownClose || likelySingleToolArgs) {
-        spans.push({
-          startIndex: match.index,
-          endIndex,
-          dropReason: "prototype-sensitive-tool-candidate",
-        });
-      }
-    }
-
-    match = nextOpen;
-  }
-
-  return spans;
 }
 
 /**

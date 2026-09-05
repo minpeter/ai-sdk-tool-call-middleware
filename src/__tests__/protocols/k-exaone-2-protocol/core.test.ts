@@ -31,16 +31,22 @@ const tools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
+const controlledFailureAssertions: ReadonlyArray<(error: Error) => void> = [
+  (error) => expect(error).toBeInstanceOf(Error),
+  (error) => expect(error).not.toBeInstanceOf(RangeError),
+  (error) => expect(error.name).toBe("KExaone2SerializationError"),
+];
+
 function expectControlledSerializationFailure(run: () => void): void {
   try {
     run();
   } catch (error) {
-    expect(error).toBeInstanceOf(Error);
-    expect(error).not.toBeInstanceOf(RangeError);
     if (!(error instanceof Error)) {
       throw error;
     }
-    expect(error.name).toBe("KExaone2SerializationError");
+    for (const assertFailure of controlledFailureAssertions) {
+      assertFailure(error);
+    }
     return;
   }
   throw new Error("Expected serialization to fail");
@@ -184,8 +190,9 @@ describe("kExaone2Protocol", () => {
       input,
     });
 
-    expect(formatted).toContain(`<parameter=input>\n${input}\n</parameter>`);
-    expect(formatted).not.toContain("<parameter=value>");
+    expect(formatted).toBe(
+      `<tool_call>\n<function=echo>\n<parameter=input>\n${input}\n</parameter>\n</function>\n</tool_call>`
+    );
   });
 
   it("enforces the history depth limit at 256 containers", () => {

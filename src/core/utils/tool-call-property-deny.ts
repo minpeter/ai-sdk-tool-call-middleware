@@ -1,13 +1,14 @@
+import {
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { unwrapJsonSchema } from "../../schema-coerce";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function addName(names: Set<string>, key: unknown): void {
-  if (typeof key === "string") {
-    names.add(key);
-  }
+function isToolInputSchema(
+  schema: ToolInputSchemaDefinition | undefined
+): schema is ToolInputSchema {
+  return typeof schema === "object" && isSchemaRecord(schema);
 }
 
 function addNames(target: Set<string>, source: Set<string>): void {
@@ -17,13 +18,13 @@ function addNames(target: Set<string>, source: Set<string>): void {
 }
 
 export function collectFalsePropertyNames(
-  schema: Record<string, unknown>
+  schema: ToolInputSchema
 ): Set<string> {
   const names = new Set<string>();
-  if (Object.hasOwn(schema, "properties") && isRecord(schema.properties)) {
+  if (Object.hasOwn(schema, "properties") && schema.properties) {
     for (const [key, propertySchema] of Object.entries(schema.properties)) {
       if (propertySchema === false) {
-        addName(names, key);
+        names.add(key);
       }
     }
   }
@@ -31,11 +32,11 @@ export function collectFalsePropertyNames(
 }
 
 function collectDeniedPropertyNames(
-  schema: unknown,
+  schema: ToolInputSchemaDefinition,
   seen: Set<object>
 ): Set<string> {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped) || seen.has(unwrapped)) {
+  if (!isToolInputSchema(unwrapped) || seen.has(unwrapped)) {
     return new Set();
   }
   seen.add(unwrapped);
@@ -43,7 +44,7 @@ function collectDeniedPropertyNames(
 }
 
 export function collectAllOfDeniedPropertyNames(
-  schema: Record<string, unknown>,
+  schema: ToolInputSchema,
   seen: Set<object>
 ): Set<string> {
   const names = collectFalsePropertyNames(schema);

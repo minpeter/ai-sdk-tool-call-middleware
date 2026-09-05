@@ -4,43 +4,39 @@ import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 
 describe("morphXmlProtocol pipeline repair toggle integration", () => {
+  const weatherSchema: LanguageModelV4FunctionTool["inputSchema"] = {
+    properties: { location: { type: "string" } },
+    type: "object",
+  };
   const simpleTools: LanguageModelV4FunctionTool[] = [
-    {
-      type: "function",
-      name: "get_weather",
-      inputSchema: {
-        type: "object",
-        properties: {
-          location: { type: "string" },
-        },
-      },
-    },
+    { name: "get_weather", inputSchema: weatherSchema, type: "function" },
   ];
 
-  it("does not repair malformed XML when repair=false", () => {
-    const protocol = morphXmlProtocol({
+  function parseWithoutRepair(text: string) {
+    return morphXmlProtocol({
       parseOptions: { repair: false },
-    });
-    const text = "<get_weather><location>Seoul</get_weather>";
+    }).parseGeneratedText({ text, tools: simpleTools });
+  }
 
-    const result = protocol.parseGeneratedText({ text, tools: simpleTools });
+  it("does not repair malformed XML when repair=false", () => {
+    const result = parseWithoutRepair(
+      "<get_weather><location>Seoul</get_weather>"
+    );
 
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("text");
   });
 
   it("still parses valid XML when repair=false", () => {
-    const protocol = morphXmlProtocol({
-      parseOptions: { repair: false },
-    });
-    const text = "<get_weather><location>Seoul</location></get_weather>";
-
-    const result = protocol.parseGeneratedText({ text, tools: simpleTools });
+    const result = parseWithoutRepair(
+      "<get_weather><location>Seoul</location></get_weather>"
+    );
 
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("tool-call");
-    if (result[0].type === "tool-call") {
-      expect(JSON.parse(result[0].input)).toEqual({ location: "Seoul" });
+    const [validPart] = result;
+    expect(validPart.type).toBe("tool-call");
+    if (validPart.type === "tool-call") {
+      expect(JSON.parse(validPart.input)).toEqual({ location: "Seoul" });
     }
   });
 });

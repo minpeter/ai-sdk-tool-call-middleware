@@ -1,110 +1,48 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
+import type { ParserOptions } from "../../../../core/protocols/protocol-interface";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+  collectTextDeltas,
+  parseToolCallObject,
+  requireToolCall,
+  runProtocolTextStream,
+} from "../../shared/duplicate-harness";
 import { basicTools } from "../parse-generated-text/shared";
+
+const malformedClosedCall = "<get_weather>\n[invalid: yaml:\n</get_weather>";
+
+function runErrorStream(text: string, options?: ParserOptions) {
+  return runProtocolTextStream({
+    protocol: yamlXmlProtocol(),
+    tools: basicTools,
+    id: "1",
+    chunks: [text],
+    parserOptions: options,
+  });
+}
 
 describe("yamlXmlProtocol streaming error policy", () => {
   it("should suppress raw tool markup on YAML parse error by default", async () => {
     const onError = vi.fn();
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: basicTools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: "<get_weather>\n[invalid: yaml:\n</get_weather>",
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const textDeltas = out
-      .filter((c) => c.type === "text-delta")
-      .map((c) => (c as { delta?: string }).delta ?? "")
-      .join("");
-
-    expect(textDeltas).not.toContain("<get_weather>");
-    expect(textDeltas).not.toContain("</get_weather>");
+    const out = await runErrorStream(malformedClosedCall, { onError });
+    const text = collectTextDeltas(out);
+    expect(text).not.toContain("<get_weather>");
+    expect(text).not.toContain("</get_weather>");
     expect(onError).toHaveBeenCalled();
   });
 
   it("should allow raw fallback text when explicitly enabled", async () => {
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: basicTools,
-      options: { emitRawToolCallTextOnError: true },
+    const out = await runErrorStream(malformedClosedCall, {
+      emitRawToolCallTextOnError: true,
     });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: "<get_weather>\n[invalid: yaml:\n</get_weather>",
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const textDeltas = out
-      .filter((c) => c.type === "text-delta")
-      .map((c) => (c as { delta?: string }).delta ?? "")
-      .join("");
-
-    expect(textDeltas).toContain("<get_weather>");
-    expect(textDeltas).toContain("</get_weather>");
+    const text = collectTextDeltas(out);
+    expect(text).toContain("<get_weather>");
+    expect(text).toContain("</get_weather>");
   });
 
   it("passes structured drop metadata when unclosed YAML tool call is not parseable at finish", async () => {
     const onError = vi.fn();
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({
-      tools: basicTools,
-      options: { onError },
-    });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: "<get_weather>\n[invalid: yaml:",
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-
-    await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
-
+    await runErrorStream("<get_weather>\n[invalid: yaml:", { onError });
     const finishErrorCall = onError.mock.calls.find(([message]) =>
       String(message).includes("Could not complete streaming YAML tool call")
     );
@@ -119,33 +57,9 @@ describe("yamlXmlProtocol streaming error policy", () => {
   });
 
   it("should force-complete incomplete tool call on finish when parseable", async () => {
-    const protocol = yamlXmlProtocol();
-    const transformer = protocol.createStreamParser({ tools: basicTools });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({
-          type: "text-delta",
-          id: "1",
-          delta: "<get_weather>\nlocation: Incomplete",
-        });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
-    });
-
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const toolCalls = out.filter((c) => c.type === "tool-call");
-    expect(toolCalls).toHaveLength(1);
-    expect((toolCalls[0] as { toolName: string }).toolName).toBe("get_weather");
-    const args = JSON.parse((toolCalls[0] as { input: string }).input);
-    expect(args).toEqual({
-      location: "Incomplete",
-    });
+    const out = await runErrorStream("<get_weather>\nlocation: Incomplete");
+    const toolCall = requireToolCall(out);
+    expect(toolCall.toolName).toBe("get_weather");
+    expect(parseToolCallObject(toolCall)).toEqual({ location: "Incomplete" });
   });
 });

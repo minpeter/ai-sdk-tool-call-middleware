@@ -5,17 +5,22 @@ import type {
 import { generateToolCallId } from "../utils/id";
 import { emitToolInputProgressDelta } from "../utils/tool-input-streaming";
 import {
+  collectPreviousSignificantChars,
   consumeExistingJsonString,
   consumeJsonObjectDepth,
   isUnquotedRjsonKeyStart,
   type JsonDepthScanState,
   parseQuotedObjectKey,
   parseUnquotedObjectKey,
-  previousSignificantChar,
   readStrictJsonPropertyCandidate,
   skipJsonComment,
   skipJsonWhitespace,
 } from "./hermes-json-object-key-scanner";
+import {
+  consumeJsonQuotedScanChar,
+  findQuotedKeyEnd,
+  type JsonQuotedScanState,
+} from "./hermes-json-significant-char-index";
 import type {
   ParserOptions,
   ProtocolToolCallResolver,
@@ -68,9 +73,60 @@ export interface TagProcessingContext {
   tools: LanguageModelV4FunctionTool[];
 }
 
-const WHITESPACE_JSON_REGEX = /\s/;
+const JSON_PRIMITIVE_END_RE = /[,\s}]/;
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Streaming JSON key/value scanning requires explicit string-depth state tracking.
+interface RelaxedPropertyScanState extends JsonQuotedScanState {
+  depth: number;
+}
+
+function readRelaxedPropertyValueStart(
+  text: string,
+  index: number,
+  property: string,
+  previousSignificant: string
+): { nextIndex: number; valueStart?: number } | null | undefined {
+  const char = text.charAt(index);
+  if (
+    char !== '"' &&
+    char !== "'" &&
+    !(isUnquotedRjsonKeyStart(char) && ["{", ","].includes(previousSignificant))
+  ) {
+    return;
+  }
+  const parsedKey =
+    char === '"' || char === "'"
+      ? parseQuotedObjectKey(text, index)
+      : parseUnquotedObjectKey(text, index);
+  if (parsedKey === null) {
+    return null;
+  }
+  let valueStart = skipJsonWhitespace(text, parsedKey.end + 1);
+  if (valueStart >= text.length || text.charAt(valueStart) !== ":") {
+    return { nextIndex: parsedKey.end };
+  }
+  valueStart = skipJsonWhitespace(text, valueStart + 1);
+  return parsedKey.key === property
+    ? { nextIndex: valueStart - 1, valueStart }
+    : { nextIndex: valueStart - 1 };
+}
+
+function consumeRelaxedPropertyStructure(
+  state: RelaxedPropertyScanState,
+  char: string
+): boolean {
+  if (char === "{" || char === "}") {
+    state.depth = Math.max(0, state.depth + (char === "{" ? 1 : -1));
+    return true;
+  }
+  if (state.depth === 1) {
+    return false;
+  }
+  if (char === '"' || char === "'") {
+    state.quoteChar = char;
+  }
+  return true;
+}
+
 function findTopLevelPropertyValueStart(
   text: string,
   property: string
@@ -79,83 +135,43 @@ function findTopLevelPropertyValueStart(
   if (objectStart >= text.length || text.charAt(objectStart) !== "{") {
     return null;
   }
-
-  let depth = 0;
-  let quoteChar: string | null = null;
-  let escaping = false;
+  const state: RelaxedPropertyScanState = {
+    depth: 0,
+    quoteChar: null,
+    escaping: false,
+  };
+  const previousByIndex = collectPreviousSignificantChars(text);
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
-
-    if (quoteChar) {
-      if (escaping) {
-        escaping = false;
-        continue;
-      }
-      if (char === "\\") {
-        escaping = true;
-        continue;
-      }
-      if (char === quoteChar) {
-        quoteChar = null;
-      }
+    if (consumeJsonQuotedScanChar(state, char)) {
       continue;
     }
-
     const commentEnd = skipJsonComment(text, index);
     if (commentEnd !== null) {
       index = commentEnd;
       continue;
     }
-
-    if (char === "{") {
-      depth += 1;
+    if (consumeRelaxedPropertyStructure(state, char)) {
       continue;
     }
-    if (char === "}") {
-      depth = Math.max(0, depth - 1);
-      continue;
-    }
-
-    if (depth !== 1) {
-      if (char === '"' || char === "'") {
-        quoteChar = char;
-      }
-      continue;
-    }
-
-    let parsedKey: { key: string; end: number } | null = null;
-    if (char === '"' || char === "'") {
-      parsedKey = parseQuotedObjectKey(text, index);
-    } else {
-      if (!isUnquotedRjsonKeyStart(char)) {
-        continue;
-      }
-      const previous = previousSignificantChar(text, index);
-      if (previous !== "{" && previous !== ",") {
-        continue;
-      }
-      parsedKey = parseUnquotedObjectKey(text, index);
-    }
-
-    if (!parsedKey) {
+    const candidate = readRelaxedPropertyValueStart(
+      text,
+      index,
+      property,
+      previousByIndex[index] ?? ""
+    );
+    if (candidate === null) {
       return null;
     }
-
-    let valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
-    if (valueCursor >= text.length || text.charAt(valueCursor) !== ":") {
-      index = parsedKey.end;
+    if (candidate === undefined) {
       continue;
     }
-
-    valueCursor = skipJsonWhitespace(text, valueCursor + 1);
-    if (parsedKey.key === property) {
-      return valueCursor < text.length ? valueCursor : null;
+    if (candidate.valueStart !== undefined) {
+      return candidate.valueStart < text.length ? candidate.valueStart : null;
     }
-
-    index = valueCursor - 1;
+    index = candidate.nextIndex;
   }
-
   return null;
 }
 
@@ -207,155 +223,112 @@ export function findStrictTopLevelJsonPropertyValueStart(
   return null;
 }
 
+function extractJsonStringAt(
+  text: string,
+  valueStart: number | null
+): string | undefined {
+  if (valueStart == null || text.charAt(valueStart) !== '"') {
+    return;
+  }
+  const valueEnd = findQuotedKeyEnd(text, valueStart, '"');
+  return valueEnd === null ? undefined : text.slice(valueStart + 1, valueEnd);
+}
+
 function extractTopLevelStringProperty(
   text: string,
   property: string
 ): string | undefined {
-  const valueStart = findTopLevelPropertyValueStart(text, property);
-  if (valueStart == null || valueStart >= text.length) {
-    return;
-  }
-  if (text.charAt(valueStart) !== '"') {
-    return;
-  }
-
-  let valueEnd = valueStart + 1;
-  let escaped = false;
-  while (valueEnd < text.length) {
-    const char = text.charAt(valueEnd);
-    if (escaped) {
-      escaped = false;
-    } else if (char === "\\") {
-      escaped = true;
-    } else if (char === '"') {
-      return text.slice(valueStart + 1, valueEnd);
-    }
-    valueEnd += 1;
-  }
+  return extractJsonStringAt(
+    text,
+    findTopLevelPropertyValueStart(text, property)
+  );
 }
 
 export function extractStrictTopLevelStringProperty(
   text: string,
   property: string
 ): string | undefined {
-  const valueStart = findStrictTopLevelJsonPropertyValueStart(text, property);
-  if (valueStart == null || valueStart >= text.length) {
-    return;
-  }
-  if (text.charAt(valueStart) !== '"') {
-    return;
-  }
-
-  let valueEnd = valueStart + 1;
-  let escaped = false;
-  while (valueEnd < text.length) {
-    const char = text.charAt(valueEnd);
-    if (escaped) {
-      escaped = false;
-    } else if (char === "\\") {
-      escaped = true;
-    } else if (char === '"') {
-      return text.slice(valueStart + 1, valueEnd);
-    }
-    valueEnd += 1;
-  }
+  return extractJsonStringAt(
+    text,
+    findStrictTopLevelJsonPropertyValueStart(text, property)
+  );
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Streaming JSON value slicing must handle nested arrays/objects and escaped strings.
+interface JsonValueSlice {
+  readonly complete: boolean;
+  readonly text: string;
+}
+
+function extractJsonContainerSlice(
+  text: string,
+  valueStart: number
+): JsonValueSlice {
+  const stack = [text.charAt(valueStart)];
+  const stringState: JsonDepthScanState = {
+    depth: 0,
+    inString: false,
+    escaping: false,
+  };
+  for (let index = valueStart + 1; index < text.length; index += 1) {
+    const char = text.charAt(index);
+    if (consumeExistingJsonString(stringState, char)) {
+      continue;
+    }
+    if (char === '"') {
+      stringState.inString = true;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      stack.push(char);
+      continue;
+    }
+    const open = stack.at(-1);
+    if ((open === "{" && char === "}") || (open === "[" && char === "]")) {
+      stack.pop();
+      if (stack.length === 0) {
+        return { text: text.slice(valueStart, index + 1), complete: true };
+      }
+    }
+  }
+  return { text: text.slice(valueStart), complete: false };
+}
+
+function extractJsonQuotedSlice(
+  text: string,
+  valueStart: number
+): JsonValueSlice {
+  const valueEnd = findQuotedKeyEnd(text, valueStart, '"');
+  return valueEnd === null
+    ? { text: text.slice(valueStart), complete: false }
+    : { text: text.slice(valueStart, valueEnd + 1), complete: true };
+}
+
+function extractJsonPrimitiveSlice(
+  text: string,
+  valueStart: number
+): JsonValueSlice {
+  const relativeEnd = text.slice(valueStart).search(JSON_PRIMITIVE_END_RE);
+  const valueEnd = relativeEnd === -1 ? text.length : valueStart + relativeEnd;
+  return {
+    text: text.slice(valueStart, valueEnd),
+    complete: valueEnd < text.length,
+  };
+}
+
 function extractJsonValueSlice(
   text: string,
   valueStart: number
-): {
-  text: string;
-  complete: boolean;
-} | null {
+): JsonValueSlice | null {
   if (valueStart >= text.length) {
     return null;
   }
-
   const first = text.charAt(valueStart);
   if (first === "{" || first === "[") {
-    const stack: string[] = [first];
-    let inString = false;
-    let escaped = false;
-
-    for (let index = valueStart + 1; index < text.length; index += 1) {
-      const char = text.charAt(index);
-      if (inString) {
-        if (escaped) {
-          escaped = false;
-        } else if (char === "\\") {
-          escaped = true;
-        } else if (char === '"') {
-          inString = false;
-        }
-        continue;
-      }
-
-      if (char === '"') {
-        inString = true;
-        continue;
-      }
-
-      if (char === "{" || char === "[") {
-        stack.push(char);
-        continue;
-      }
-
-      if (char === "}" || char === "]") {
-        const open = stack.at(-1);
-        if ((open === "{" && char === "}") || (open === "[" && char === "]")) {
-          stack.pop();
-          if (stack.length === 0) {
-            return {
-              text: text.slice(valueStart, index + 1),
-              complete: true,
-            };
-          }
-        }
-      }
-    }
-
-    return {
-      text: text.slice(valueStart),
-      complete: false,
-    };
+    return extractJsonContainerSlice(text, valueStart);
   }
-
-  if (first === '"') {
-    let escaped = false;
-    for (let index = valueStart + 1; index < text.length; index += 1) {
-      const char = text.charAt(index);
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        return {
-          text: text.slice(valueStart, index + 1),
-          complete: true,
-        };
-      }
-    }
-    return {
-      text: text.slice(valueStart),
-      complete: false,
-    };
-  }
-
-  let index = valueStart;
-  while (index < text.length) {
-    const char = text.charAt(index);
-    if (char === "," || char === "}" || WHITESPACE_JSON_REGEX.test(char)) {
-      break;
-    }
-    index += 1;
-  }
-
-  return {
-    text: text.slice(valueStart, index),
-    complete: index < text.length,
-  };
+  return first === '"'
+    ? extractJsonQuotedSlice(text, valueStart)
+    : extractJsonPrimitiveSlice(text, valueStart);
 }
 
 export function extractStreamingToolCallProgress(toolCallJson: string): {

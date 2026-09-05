@@ -1,4 +1,9 @@
-import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import {
+  isJSONValue,
+  type JSONObject,
+  type JSONValue,
+  type LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { stringifyKExaone2NativeSchemaJson } from "./k-exaone-2-native-json";
 import { formatToolResponseWithMedia } from "./shared/tool-response-with-media";
@@ -17,13 +22,24 @@ value1
 </function>
 </tool_call>`;
 
-function normalizeInputSchema(inputSchema: unknown): unknown {
+function isSchemaObject(
+  value: LanguageModelV4FunctionTool["inputSchema"] | string
+): value is LanguageModelV4FunctionTool["inputSchema"] & JSONObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeInputSchema(
+  inputSchema: LanguageModelV4FunctionTool["inputSchema"] | string
+): JSONValue {
   if (typeof inputSchema !== "string") {
-    return inputSchema;
+    return isSchemaObject(inputSchema) || isJSONValue(inputSchema)
+      ? inputSchema
+      : null;
   }
 
   try {
-    return JSON.parse(inputSchema) as unknown;
+    const parsed = JSON.parse(inputSchema);
+    return isJSONValue(parsed) ? parsed : inputSchema;
   } catch {
     return inputSchema;
   }

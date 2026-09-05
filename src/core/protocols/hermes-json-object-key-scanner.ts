@@ -1,41 +1,49 @@
-const HEX_WORD_RE = /^[0-9A-Fa-f]{4}$/;
+import {
+  consumeJsonDepthClose as consumeNormalizedJsonDepthClose,
+  consumeJsonDepthOpen as consumeNormalizedJsonDepthOpen,
+  consumeJsonObjectDepth as consumeNormalizedJsonObjectDepth,
+  consumeExistingJsonString as consumeNormalizedJsonString,
+  consumeJsonStringScanChar as consumeNormalizedJsonStringScanChar,
+  type JsonDepthScanState as NormalizationJsonDepthScanState,
+} from "./hermes-json-normalization";
+import {
+  collectPreviousSignificantChars as buildPreviousSignificantCharIndex,
+  consumeJsonQuotedScanChar,
+  skipJsonComment as findJsonCommentEnd,
+  findQuotedKeyEnd,
+  type JsonQuotedScanState,
+} from "./hermes-json-significant-char-index";
+
 const WHITESPACE_CHAR_RE = /\s/;
-const WHITESPACE_JSON_REGEX = /\s/;
+const QUOTE_RE = /^["']$/;
+const SINGLE_QUOTED_KEY_ESCAPE_RE = /\\(?:u([0-9A-Fa-f]{4})|(.))/gs;
+const RJSON_KEY_START_RE = /^[$A-Z_a-z]$/;
+const RJSON_KEY_CHAR_RE = /^[-$0-9A-Z_a-z]$/;
+const JSON_DEPTH_OPEN_CHARS = new Set(["{", "["]);
+const JSON_DEPTH_CLOSE_CHARS = new Set(["}", "]"]);
 
 export function skipJsonWhitespace(text: string, fromIndex: number): number {
   let index = fromIndex;
-  while (index < text.length) {
-    const code = text.charCodeAt(index);
-    // Fast path for ASCII whitespace: /\s/ matches \t \n \v \f \r and space.
-    if ((code >= 9 && code <= 13) || code === 32) {
-      index += 1;
-      continue;
-    }
-    // Non-ASCII whitespace (NBSP, unicode spaces, ...) still matches /\s/.
-    if (code > 127 && WHITESPACE_JSON_REGEX.test(text[index])) {
-      index += 1;
-      continue;
-    }
-    break;
+  while (index < text.length && WHITESPACE_CHAR_RE.test(text.charAt(index))) {
+    index += 1;
   }
   return index;
 }
 
+export function collectPreviousSignificantChars(text: string): string[] {
+  return buildPreviousSignificantCharIndex(text);
+}
+
+export function skipJsonComment(text: string, index: number): number | null {
+  return findJsonCommentEnd(text, index);
+}
+
 export function isUnquotedRjsonKeyStart(char: string): boolean {
-  return (
-    char === "_" ||
-    char === "$" ||
-    (char >= "A" && char <= "Z") ||
-    (char >= "a" && char <= "z")
-  );
+  return RJSON_KEY_START_RE.test(char);
 }
 
 function isUnquotedRjsonKeyChar(char: string): boolean {
-  return (
-    isUnquotedRjsonKeyStart(char) ||
-    (char >= "0" && char <= "9") ||
-    char === "-"
-  );
+  return RJSON_KEY_CHAR_RE.test(char);
 }
 
 export function parseQuotedObjectKey(
@@ -46,59 +54,36 @@ export function parseQuotedObjectKey(
   end: number;
 } | null {
   const quote = text.charAt(keyStart);
-  let index = keyStart + 1;
-  let escaped = false;
-  while (index < text.length) {
-    const char = text.charAt(index);
-    if (escaped) {
-      escaped = false;
-    } else if (char === "\\") {
-      escaped = true;
-    } else if (char === quote) {
-      if (quote === '"') {
-        try {
-          return {
-            key: JSON.parse(text.slice(keyStart, index + 1)),
-            end: index,
-          };
-        } catch {
-          return null;
-        }
-      }
-      return {
-        key: parseSingleQuotedObjectKey(text.slice(keyStart + 1, index)),
-        end: index,
-      };
-    }
-    index += 1;
+  const end = findQuotedKeyEnd(text, keyStart, quote);
+  if (end === null) {
+    return null;
   }
-  return null;
+  if (quote !== '"') {
+    return {
+      key: parseSingleQuotedObjectKey(text.slice(keyStart + 1, end)),
+      end,
+    };
+  }
+  try {
+    return { key: JSON.parse(text.slice(keyStart, end + 1)), end };
+  } catch {
+    return null;
+  }
+}
+
+function decodeSingleQuotedKeyEscape(
+  _match: string,
+  unicode: string | undefined,
+  escaped: string | undefined
+): string {
+  if (unicode !== undefined) {
+    return String.fromCharCode(Number.parseInt(unicode, 16));
+  }
+  return SINGLE_QUOTED_KEY_ESCAPES.get(escaped ?? "") ?? escaped ?? "";
 }
 
 function parseSingleQuotedObjectKey(body: string): string {
-  let result = "";
-  for (let index = 0; index < body.length; index += 1) {
-    const char = body.charAt(index);
-    if (char !== "\\" || index === body.length - 1) {
-      result += char;
-      continue;
-    }
-
-    const escaped = body.charAt(index + 1);
-    if (escaped === "u") {
-      const hex = body.slice(index + 2, index + 6);
-      if (HEX_WORD_RE.test(hex)) {
-        result += String.fromCharCode(Number.parseInt(hex, 16));
-        index += 5;
-        continue;
-      }
-    }
-
-    const decoded = SINGLE_QUOTED_KEY_ESCAPES.get(escaped);
-    result += decoded ?? escaped;
-    index += 1;
-  }
-  return result;
+  return body.replace(SINGLE_QUOTED_KEY_ESCAPE_RE, decodeSingleQuotedKeyEscape);
 }
 
 const SINGLE_QUOTED_KEY_ESCAPES = new Map<string, string>([
@@ -130,111 +115,41 @@ export function parseUnquotedObjectKey(
   return { key: text.slice(keyStart, index), end: index - 1 };
 }
 
-export function previousSignificantChar(text: string, index: number): string {
-  let cursor = index - 1;
-  while (cursor >= 0) {
-    while (cursor >= 0 && WHITESPACE_CHAR_RE.test(text.charAt(cursor))) {
-      cursor -= 1;
-    }
-    if (cursor < 0) {
-      return "";
-    }
-    if (text.charAt(cursor) === "/" && text.charAt(cursor - 1) === "*") {
-      const commentStart = text.lastIndexOf("/*", cursor - 2);
-      if (commentStart === -1) {
-        return "/";
-      }
-      cursor = commentStart - 1;
-      continue;
-    }
-    const lineStart = text.lastIndexOf("\n", cursor) + 1;
-    const lineCommentStart = findLineCommentStartBefore(
-      text,
-      lineStart,
-      cursor
-    );
-    if (lineCommentStart >= lineStart) {
-      cursor = lineCommentStart - 1;
-      continue;
-    }
-    return text.charAt(cursor);
-  }
-  return "";
+export type JsonDepthScanState = NormalizationJsonDepthScanState;
+
+export function consumeExistingJsonString(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  return consumeNormalizedJsonString(state, char);
 }
 
-function findLineCommentStartBefore(
-  text: string,
-  lineStart: number,
-  cursor: number
-): number {
-  const state: QuotedScanState = { escaping: false, quoteChar: null };
-  let lastCommentStart = -1;
-  let index = lineStart;
-  while (index < cursor) {
-    const char = text.charAt(index);
-    if (consumeQuotedScanChar(state, char)) {
-      index += 1;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      state.quoteChar = char;
-      index += 1;
-      continue;
-    }
-    if (char === "/" && text.charAt(index + 1) === "*") {
-      const blockEnd = text.indexOf("*/", index + 2);
-      if (blockEnd === -1 || blockEnd > cursor) {
-        return lastCommentStart;
-      }
-      index = blockEnd + 2;
-      continue;
-    }
-    if (
-      char === "/" &&
-      text.charAt(index + 1) === "/" &&
-      startsRjsonComment(text, index, lineStart)
-    ) {
-      lastCommentStart = index;
-      index += 2;
-      continue;
-    }
-    index += 1;
-  }
-  return lastCommentStart;
+export function consumeJsonStringScanChar(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  return consumeNormalizedJsonStringScanChar(state, char);
 }
 
-export function skipJsonComment(text: string, index: number): number | null {
-  if (text.charAt(index) !== "/") {
-    return null;
-  }
-  const next = text.charAt(index + 1);
-  if (next === "/") {
-    const lf = text.indexOf("\n", index + 2);
-    const cr = text.indexOf("\r", index + 2);
-    let end = Math.min(lf, cr);
-    if (lf === -1) {
-      end = cr;
-    } else if (cr === -1) {
-      end = lf;
-    }
-    return end === -1 ? text.length - 1 : end - 1;
-  }
-  if (next === "*") {
-    const end = text.indexOf("*/", index + 2);
-    return end === -1 ? text.length - 1 : end + 1;
-  }
-  return null;
+export function consumeJsonDepthOpen(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  return consumeNormalizedJsonDepthOpen(state, char);
 }
 
-interface QuotedScanState {
-  escaping: boolean;
-  quoteChar: string | null;
+export function consumeJsonDepthClose(
+  state: JsonDepthScanState,
+  char: string
+): "top-level-close" | "nested-close" | "none" {
+  return consumeNormalizedJsonDepthClose(state, char);
 }
 
-export interface JsonDepthScanState {
-  depth: number;
-  escaping: boolean;
-  inString: boolean;
+export function consumeJsonObjectDepth(
+  state: JsonDepthScanState,
+  char: string
+): boolean {
+  return consumeNormalizedJsonObjectDepth(state, char);
 }
 
 /**
@@ -242,50 +157,10 @@ export interface JsonDepthScanState {
  * Keeps recursive parsers/stringifiers from stack-overflowing on pathological
  * input; matches MAX_ARGUMENT_SHAPE_DEPTH / bare-call nesting limits.
  */
-export const MAX_TOOL_CALL_JSON_NESTING_DEPTH = 256;
+const MAX_TOOL_CALL_JSON_NESTING_DEPTH = 256;
 
-interface NestingScanState {
+interface NestingScanState extends JsonQuotedScanState {
   depth: number;
-  escaping: boolean;
-  quote: '"' | "'" | null;
-}
-
-/** Advance past a string literal character; returns true while still inside. */
-function consumeNestingStringChar(
-  state: NestingScanState,
-  char: string
-): boolean {
-  if (state.quote === null) {
-    return false;
-  }
-  if (state.escaping) {
-    state.escaping = false;
-  } else if (char === "\\") {
-    state.escaping = true;
-  } else if (char === state.quote) {
-    state.quote = null;
-  }
-  return true;
-}
-
-/**
- * Skip line (`//`) or block comments. Returns next index to scan, or -1 when
- * the comment runs to EOF (caller should treat nesting as within limit).
- */
-function skipNestingComment(text: string, index: number): number | null {
-  if (text.charAt(index) !== "/") {
-    return null;
-  }
-  const next = text.charAt(index + 1);
-  if (next === "/") {
-    const lineEnd = text.indexOf("\n", index + 2);
-    return lineEnd === -1 ? -1 : lineEnd;
-  }
-  if (next === "*") {
-    const blockEnd = text.indexOf("*/", index + 2);
-    return blockEnd === -1 ? -1 : blockEnd + 1;
-  }
-  return null;
 }
 
 /** Apply `{`/`[`/`}`/`]` to nesting depth; true when maxDepth is exceeded. */
@@ -294,11 +169,11 @@ function applyNestingDepthChar(
   char: string,
   maxDepth: number
 ): boolean {
-  if (char === "{" || char === "[") {
+  if (JSON_DEPTH_OPEN_CHARS.has(char)) {
     state.depth += 1;
     return state.depth > maxDepth;
   }
-  if ((char === "}" || char === "]") && state.depth > 0) {
+  if (JSON_DEPTH_CLOSE_CHARS.has(char) && state.depth > 0) {
     state.depth -= 1;
   }
   return false;
@@ -313,29 +188,26 @@ export function exceedsToolCallJsonNestingDepth(
   text: string,
   maxDepth: number = MAX_TOOL_CALL_JSON_NESTING_DEPTH
 ): boolean {
-  const state: NestingScanState = { depth: 0, escaping: false, quote: null };
+  const state: NestingScanState = {
+    depth: 0,
+    escaping: false,
+    quoteChar: null,
+  };
 
   for (let index = 0; index < text.length; index += 1) {
     const char = text.charAt(index);
-
-    if (consumeNestingStringChar(state, char)) {
+    if (consumeJsonQuotedScanChar(state, char)) {
       continue;
     }
-
-    if (char === '"' || char === "'") {
-      state.quote = char;
+    if (QUOTE_RE.test(char)) {
+      state.quoteChar = char;
       continue;
     }
-
-    const commentIndex = skipNestingComment(text, index);
-    if (commentIndex !== null) {
-      if (commentIndex === -1) {
-        return false;
-      }
-      index = commentIndex;
+    const commentEnd = skipJsonComment(text, index);
+    if (commentEnd !== null) {
+      index = commentEnd;
       continue;
     }
-
     if (applyNestingDepthChar(state, char, maxDepth)) {
       return true;
     }
@@ -345,86 +217,29 @@ export function exceedsToolCallJsonNestingDepth(
 }
 
 interface ObjectKeyCandidate {
-  key?: string;
-  nextIndex: number;
+  readonly keys: readonly string[];
+  readonly nextIndex: number;
+}
+
+function advanceObjectKeyDepth(
+  state: { depth: number },
+  char: string
+): "closed" | "changed" | "unchanged" {
+  if (char === "{") {
+    state.depth += 1;
+    return "changed";
+  }
+  if (char !== "}") {
+    return "unchanged";
+  }
+  state.depth -= 1;
+  return state.depth === 0 ? "closed" : "changed";
 }
 
 interface StrictJsonPropertyCandidate {
   key?: string;
   nextIndex: number;
   valueStart?: number;
-}
-
-function consumeQuotedScanChar(state: QuotedScanState, char: string): boolean {
-  if (!state.quoteChar) {
-    return false;
-  }
-  if (state.escaping) {
-    state.escaping = false;
-  } else if (char === "\\") {
-    state.escaping = true;
-  } else if (char === state.quoteChar) {
-    state.quoteChar = null;
-  }
-  return true;
-}
-
-function objectKeyDepthTransition(
-  state: { depth: number },
-  char: string
-): "closed" | "changed" | "none" {
-  if (char === "{") {
-    state.depth += 1;
-    return "changed";
-  }
-  if (char === "}") {
-    state.depth -= 1;
-    return state.depth === 0 ? "closed" : "changed";
-  }
-  return "none";
-}
-
-function shouldCollectObjectKey(
-  depth: number,
-  includeNested: boolean
-): boolean {
-  return depth >= 1 && (includeNested || depth === 1);
-}
-
-function readUnquotedObjectKeyCandidate(
-  text: string,
-  index: number,
-  char: string
-): ObjectKeyCandidate | null | undefined {
-  if (!isUnquotedRjsonKeyStart(char)) {
-    return;
-  }
-  const previous = previousSignificantChar(text, index);
-  if (!(previous === "{" || previous === ",")) {
-    return;
-  }
-  const parsedKey = parseUnquotedObjectKey(text, index);
-  if (!parsedKey) {
-    return null;
-  }
-  const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
-  return text.charAt(valueCursor) === ":"
-    ? { key: parsedKey.key, nextIndex: valueCursor }
-    : undefined;
-}
-
-function readQuotedObjectKeyCandidate(
-  text: string,
-  index: number
-): ObjectKeyCandidate | null {
-  const parsedKey = parseQuotedObjectKey(text, index);
-  if (!parsedKey) {
-    return null;
-  }
-  const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
-  return text.charAt(valueCursor) === ":"
-    ? { key: parsedKey.key, nextIndex: valueCursor }
-    : { nextIndex: parsedKey.end };
 }
 
 export function readStrictJsonPropertyCandidate(
@@ -447,113 +262,40 @@ export function readStrictJsonPropertyCandidate(
   };
 }
 
+function shouldCollectObjectKey(
+  depth: number,
+  includeNested: boolean
+): boolean {
+  return depth >= 1 && (includeNested || depth === 1);
+}
+
 function readObjectKeyCandidate(
   text: string,
   index: number,
-  char: string
+  previousSignificant: string
 ): ObjectKeyCandidate | null | undefined {
-  return char === '"' || char === "'"
-    ? readQuotedObjectKeyCandidate(text, index)
-    : readUnquotedObjectKeyCandidate(text, index, char);
-}
-
-function appendObjectKeyCandidate(
-  keys: string[],
-  text: string,
-  index: number,
-  char: string
-): { invalid: boolean; nextIndex: number } {
-  const candidate = readObjectKeyCandidate(text, index, char);
-  if (candidate === null) {
-    return { invalid: true, nextIndex: index };
+  const char = text.charAt(index);
+  const quoted = char === '"' || char === "'";
+  if (
+    !(
+      quoted ||
+      (isUnquotedRjsonKeyStart(char) &&
+        ["{", ","].includes(previousSignificant))
+    )
+  ) {
+    return;
   }
-  if (candidate?.key) {
-    keys.push(candidate.key);
+  const parsedKey = quoted
+    ? parseQuotedObjectKey(text, index)
+    : parseUnquotedObjectKey(text, index);
+  if (parsedKey === null) {
+    return null;
   }
-  return {
-    invalid: false,
-    nextIndex: candidate?.nextIndex ?? index,
-  };
-}
-
-export function consumeJsonStringScanChar(
-  state: JsonDepthScanState,
-  char: string
-): boolean {
-  if (state.escaping) {
-    state.escaping = false;
-    return true;
+  const valueCursor = skipJsonWhitespace(text, parsedKey.end + 1);
+  if (text.charAt(valueCursor) === ":") {
+    return { keys: [parsedKey.key], nextIndex: valueCursor };
   }
-  if (state.inString) {
-    if (char === "\\") {
-      state.escaping = true;
-    } else if (char === '"') {
-      state.inString = false;
-    }
-    return true;
-  }
-  if (char === '"') {
-    state.inString = true;
-    return true;
-  }
-  return false;
-}
-
-export function consumeJsonDepthOpen(
-  state: JsonDepthScanState,
-  char: string
-): boolean {
-  if (!(char === "{" || char === "[")) {
-    return false;
-  }
-  state.depth += 1;
-  return true;
-}
-
-export function consumeJsonDepthClose(
-  state: JsonDepthScanState,
-  char: string
-): "top-level-close" | "nested-close" | "none" {
-  if (!(char === "}" || char === "]")) {
-    return "none";
-  }
-  if (state.depth > 0) {
-    state.depth -= 1;
-    return "nested-close";
-  }
-  return "top-level-close";
-}
-
-export function consumeExistingJsonString(
-  state: JsonDepthScanState,
-  char: string
-): boolean {
-  if (!state.inString) {
-    return false;
-  }
-  if (state.escaping) {
-    state.escaping = false;
-  } else if (char === "\\") {
-    state.escaping = true;
-  } else if (char === '"') {
-    state.inString = false;
-  }
-  return true;
-}
-
-export function consumeJsonObjectDepth(
-  state: JsonDepthScanState,
-  char: string
-): boolean {
-  if (char === "{") {
-    state.depth += 1;
-    return true;
-  }
-  if (char === "}") {
-    state.depth = Math.max(0, state.depth - 1);
-    return true;
-  }
-  return false;
+  return quoted ? { keys: [], nextIndex: parsedKey.end } : undefined;
 }
 
 export function collectObjectKeys(
@@ -566,13 +308,17 @@ export function collectObjectKeys(
   }
 
   const keys: string[] = [];
-  const quoteState: QuotedScanState = { escaping: false, quoteChar: null };
+  const quoteState: JsonQuotedScanState = {
+    escaping: false,
+    quoteChar: null,
+  };
   const depthState = { depth: 0 };
+  const previousByIndex = collectPreviousSignificantChars(text);
 
   for (let index = objectStart; index < text.length; index += 1) {
     const char = text.charAt(index);
 
-    if (consumeQuotedScanChar(quoteState, char)) {
+    if (consumeJsonQuotedScanChar(quoteState, char)) {
       continue;
     }
 
@@ -582,7 +328,7 @@ export function collectObjectKeys(
       continue;
     }
 
-    const depthTransition = objectKeyDepthTransition(depthState, char);
+    const depthTransition = advanceObjectKeyDepth(depthState, char);
     if (depthTransition === "closed") {
       return keys;
     }
@@ -590,26 +336,21 @@ export function collectObjectKeys(
       continue;
     }
     if (!shouldCollectObjectKey(depthState.depth, includeNested)) {
-      if (char === '"' || char === "'") {
-        quoteState.quoteChar = char;
-      }
+      quoteState.quoteChar = QUOTE_RE.test(char) ? char : null;
       continue;
     }
 
-    const candidate = appendObjectKeyCandidate(keys, text, index, char);
-    if (candidate.invalid) {
+    const candidate = readObjectKeyCandidate(
+      text,
+      index,
+      previousByIndex[index] ?? ""
+    );
+    if (candidate === null) {
       return null;
     }
-    index = candidate.nextIndex;
+    keys.push(...(candidate?.keys ?? []));
+    index = candidate?.nextIndex ?? index;
   }
 
   return null;
 }
-
-/**
- * Unwrap the double-encoded arguments variant some models emit
- * (`"arguments": "{\"city\": \"Seoul\"}"` — the OpenAI native wire shape,
- * observed live on IBM Granite 4.0). Returns the parsed record, or null when
- * the string is not a safe JSON object.
- */
-import { startsRjsonComment } from "./hermes-call-boundary";

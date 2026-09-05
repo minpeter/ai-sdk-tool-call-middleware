@@ -1,8 +1,10 @@
 import type {
-  LanguageModelV4,
+  LanguageModelV2Usage,
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
+  LanguageModelV4GenerateResult,
   LanguageModelV4StreamPart,
+  LanguageModelV4StreamResult,
   LanguageModelV4Usage,
   SharedV4Warning,
 } from "@ai-sdk/provider";
@@ -14,6 +16,7 @@ import {
   shouldRewriteFinishReasonToToolCalls,
 } from "./core/utils/finish-reason";
 import { generateToolCallId } from "./core/utils/id";
+import type { OnErrorFn } from "./core/utils/on-error";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   decodeOriginalToolsForMiddleware,
@@ -35,7 +38,7 @@ import {
  * are dropped in transformParams and surfaced here as spec warnings.
  */
 function droppedProviderToolWarnings(
-  providerOptions: unknown
+  providerOptions: ToolCallMiddlewareProviderOptions | undefined
 ): SharedV4Warning[] {
   return getDroppedProviderTools(providerOptions).map(
     (name): SharedV4Warning => ({
@@ -54,8 +57,8 @@ export async function wrapStream({
   params,
 }: {
   protocol: TCMCoreProtocol;
-  doStream: () => ReturnType<LanguageModelV4["doStream"]>;
-  doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
+  doStream: () => PromiseLike<LanguageModelV4StreamResult>;
+  doGenerate: () => PromiseLike<LanguageModelV4GenerateResult>;
   params: {
     providerOptions?: ToolCallMiddlewareProviderOptions;
   };
@@ -212,11 +215,11 @@ export async function toolChoiceStream({
   options,
   extraWarnings = [],
 }: {
-  doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
+  doGenerate: () => PromiseLike<LanguageModelV4GenerateResult>;
   expectedToolName?: string;
   tools?: LanguageModelV4FunctionTool[];
   options?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
+    onError?: OnErrorFn;
   };
   extraWarnings?: SharedV4Warning[];
 }) {
@@ -308,23 +311,26 @@ const ZERO_USAGE: LanguageModelV4Usage = {
   },
 };
 
-function normalizeUsage(usage: unknown): LanguageModelV4Usage {
-  if (!usage || typeof usage !== "object") {
+function isCurrentUsage(
+  usage: LanguageModelV2Usage | LanguageModelV4Usage
+): usage is LanguageModelV4Usage {
+  return (
+    typeof usage.inputTokens === "object" &&
+    typeof usage.outputTokens === "object"
+  );
+}
+
+function normalizeUsage(
+  usage: LanguageModelV2Usage | LanguageModelV4Usage | undefined
+): LanguageModelV4Usage {
+  if (!usage) {
     return ZERO_USAGE;
   }
-
-  const usageRecord = usage as Record<string, unknown>;
-  const input = usageRecord.inputTokens;
-  const output = usageRecord.outputTokens;
-  if (
-    input &&
-    typeof input === "object" &&
-    output &&
-    typeof output === "object"
-  ) {
-    return usage as LanguageModelV4Usage;
+  if (isCurrentUsage(usage)) {
+    return usage;
   }
 
+  const { inputTokens: input, outputTokens: output } = usage;
   if (typeof input === "number" && typeof output === "number") {
     return {
       inputTokens: {

@@ -1,9 +1,10 @@
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 
 describe("morphXmlProtocol.extractToolCallSegments ordering", () => {
-  const tools = [
+  const tools: LanguageModelV4FunctionTool[] = [
     {
       type: "function",
       name: "alpha",
@@ -32,7 +33,7 @@ describe("morphXmlProtocol.extractToolCallSegments ordering", () => {
     if (!p.extractToolCallSegments) {
       throw new Error("extractToolCallSegments is not defined");
     }
-    const segments = p.extractToolCallSegments({ text, tools: tools as any });
+    const segments = p.extractToolCallSegments({ text, tools });
 
     expect(segments).toEqual([
       "<beta><x>1</x></beta>",

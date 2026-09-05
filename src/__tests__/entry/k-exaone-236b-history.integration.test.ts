@@ -1,63 +1,52 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { wrapLanguageModel } from "ai";
+import {
+  isJSONObject,
+  isJSONValue,
+  type JSONArray,
+  type JSONObject,
+  type JSONValue,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { kExaone236BToolMiddleware } from "../../preconfigured-middleware";
+import { captureProviderBody } from "./provider-capture.shared";
+
+type KExaoneRequestBody = JSONObject & {
+  readonly messages: JSONArray;
+};
+
+function isKExaoneRequestBody(value: JSONValue): value is KExaoneRequestBody {
+  return isJSONObject(value) && Array.isArray(value.messages);
+}
+
+function parseKExaoneRequestBody(source: string): KExaoneRequestBody {
+  const value = JSON.parse(source);
+  if (!(isJSONValue(value) && isKExaoneRequestBody(value))) {
+    throw new TypeError("Expected a K-EXAONE request body");
+  }
+  return value;
+}
 
 describe("kExaone236BToolMiddleware history branches", () => {
   it("preserves null assistant text and error-text tool results without reasoning", async () => {
     // Given
-    let capturedBody: unknown;
-    const provider = createOpenAICompatible({
+    const toolCallId = "call-1";
+    const toolName = "edge_probe";
+
+    // When
+    const capturedBody = await captureProviderBody({
       name: "friendli-capture",
       apiKey: "test-key",
       baseURL: "https://capture.invalid/v1",
-      fetch: (_input, init) => {
-        if (typeof init?.body !== "string") {
-          throw new TypeError("Expected a JSON request body");
-        }
-        capturedBody = JSON.parse(init.body);
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: "response-1",
-              created: 0,
-              model: "probe-model",
-              choices: [
-                {
-                  index: 0,
-                  finish_reason: "stop",
-                  message: { role: "assistant", content: "done" },
-                },
-              ],
-              usage: {
-                prompt_tokens: 1,
-                completion_tokens: 1,
-                total_tokens: 2,
-              },
-            }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            }
-          )
-        );
-      },
-    });
-    const model = wrapLanguageModel({
-      model: provider.chatModel("probe-model"),
+      modelId: "probe-model",
       middleware: kExaone236BToolMiddleware,
-    });
-
-    // When
-    await model.doGenerate({
+      parseBody: parseKExaoneRequestBody,
       prompt: [
         {
           role: "assistant",
           content: [
             {
               type: "tool-call",
-              toolCallId: "call-1",
-              toolName: "edge_probe",
+              toolCallId,
+              toolName,
               input: { value: 1 },
             },
           ],
@@ -67,8 +56,8 @@ describe("kExaone236BToolMiddleware history branches", () => {
           content: [
             {
               type: "tool-result",
-              toolCallId: "call-1",
-              toolName: "edge_probe",
+              toolCallId,
+              toolName,
               output: { type: "error-text", value: "FAILED" },
             },
           ],
@@ -81,7 +70,7 @@ describe("kExaone236BToolMiddleware history branches", () => {
       tools: [
         {
           type: "function",
-          name: "edge_probe",
+          name: toolName,
           inputSchema: {
             type: "object",
             properties: { value: { type: "number" } },

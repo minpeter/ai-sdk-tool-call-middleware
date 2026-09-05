@@ -1,10 +1,11 @@
-import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
-import { processXMLStream } from "../../../rxml/core/stream";
 import {
   CHUNK_SIZE,
+  collectStreamElements,
   createChunkedStream,
+  createManualChunkStream,
+  requireNode,
   testXmlSamples,
 } from "./stream-chunked.shared";
 
@@ -27,20 +28,31 @@ describe("RXML Chunked Streaming (LLM Token Simulation)", () => {
 
 The search has been initiated successfully.`;
 
-      const stream = createChunkedStream(llmResponse, CHUNK_SIZE);
-      const results: any[] = [];
+      const results = await collectStreamElements(
+        createChunkedStream(llmResponse, CHUNK_SIZE)
+      );
 
-      for await (const element of processXMLStream(stream)) {
-        results.push(element);
-      }
-
-      const toolCall = results.find((r) => r.tagName === "tool_call");
+      const toolCall = requireNode(
+        results.find(
+          (element) =>
+            typeof element === "object" && element.tagName === "tool_call"
+        )
+      );
       expect(toolCall).toBeDefined();
 
-      const nameElement = results.find((r) => r.tagName === "name");
+      const nameElement = requireNode(
+        results.find(
+          (element) => typeof element === "object" && element.tagName === "name"
+        )
+      );
       expect(nameElement.children[0]).toBe("search_database");
 
-      const filtersElement = results.find((r) => r.tagName === "filters");
+      const filtersElement = requireNode(
+        results.find(
+          (element) =>
+            typeof element === "object" && element.tagName === "filters"
+        )
+      );
       expect(filtersElement).toBeDefined();
     });
 
@@ -49,33 +61,30 @@ The search has been initiated successfully.`;
       const chunkSizes = [3, 5, 7, 10, 15];
 
       for (const chunkSize of chunkSizes) {
-        const stream = createChunkedStream(xml, chunkSize);
-        const results: any[] = [];
-
-        for await (const element of processXMLStream(stream)) {
-          results.push(element);
-        }
+        const results = await collectStreamElements(
+          createChunkedStream(xml, chunkSize)
+        );
 
         expect(results).toHaveLength(5);
-        expect(results[0].tagName).toBe("tool_call");
-        expect(results[1].tagName).toBe("name");
-        expect(results[1].children[0]).toBe("get_weather");
+        const toolCall = requireNode(results[0]);
+        const nameElement = requireNode(results[1]);
+        expect(toolCall.tagName).toBe("tool_call");
+        expect(nameElement.tagName).toBe("name");
+        expect(nameElement.children[0]).toBe("get_weather");
       }
     });
 
     it("should handle very small chunks (single character)", async () => {
       const xml = "<tool><name>test</name></tool>";
-      const stream = createChunkedStream(xml, 1);
-
-      const results: any[] = [];
-      for await (const element of processXMLStream(stream)) {
-        results.push(element);
-      }
+      const results = await collectStreamElements(createChunkedStream(xml, 1));
 
       expect(results).toHaveLength(2);
-      expect(results[0].tagName).toBe("tool");
-      expect(results[1].tagName).toBe("name");
-      expect(results[1].children[0]).toBe("test");
+      const toolElement = requireNode(results.at(0));
+      expect(toolElement.tagName).toBe("tool");
+      const nameElement = requireNode(results.at(1));
+      expect(nameElement.tagName).toBe("name");
+      const [nameText] = nameElement.children;
+      expect(nameText).toBe("test");
     });
 
     it("should handle rapid streaming simulation", async () => {
@@ -86,30 +95,20 @@ The search has been initiated successfully.`;
         chunks.push(xml.slice(i, i + CHUNK_SIZE));
       }
 
-      const rapidStream = new Readable({
-        read() {
-          const chunk = chunks.shift();
-          if (chunk) {
-            this.push(chunk);
-          } else {
-            this.push(null);
-          }
-        },
-      });
-
-      const results: any[] = [];
+      const rapidStream = createManualChunkStream(chunks);
       const startTime = Date.now();
-
-      for await (const element of processXMLStream(rapidStream)) {
-        results.push(element);
-      }
-
+      const results = await collectStreamElements(rapidStream);
       const endTime = Date.now();
 
       expect(results.length).toBeGreaterThan(0);
       expect(endTime - startTime).toBeLessThan(1000);
 
-      const toolCall = results.find((r) => r.tagName === "tool_call");
+      const toolCall = requireNode(
+        results.find(
+          (element) =>
+            typeof element === "object" && element.tagName === "tool_call"
+        )
+      );
       expect(toolCall.attributes.id).toBe("call_1");
     });
   });

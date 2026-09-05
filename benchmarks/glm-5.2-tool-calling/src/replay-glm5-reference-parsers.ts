@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
@@ -19,27 +19,34 @@ import {
 } from "./glm5-reference-corpus";
 import {
   decodeWithGlm5Reference,
-  GLM5_REFERENCE_DECODER_SOURCES,
   type Glm5DecodedCall,
-  type Glm5ReferenceDecodeResult,
 } from "./glm5-reference-decoders";
 import type {
   CapturedFunctionTool,
   ProviderCaptureRecord,
 } from "./provider-capture";
+import {
+  evaluateSyntheticResult,
+  type NaturalReplayDetail,
+  type NaturalReplaySection,
+  type NaturalSuite,
+  type NaturalTransport,
+  naturalAcceptanceSummary,
+  normalizeDecodeResult,
+  PARSER_ARMS,
+  type ParserArm,
+  type ScoredReplayRow,
+  type SyntheticReplayDetail,
+  strictSummary,
+  type UnifiedDecodeResult,
+  writeNaturalReplayArtifacts,
+  writeReferenceReplayReports,
+} from "./replay-glm5-reference-evaluation";
 import { parseCapturedSseChunks } from "./replay-provider-capture-core";
 
 const SOURCE_ARM = "glm5";
-const CSV_ESCAPE_PATTERN = /[",\n\r]/u;
 const ISO_TIMESTAMP_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
-const PARSER_ARMS = [
-  "vllmReference",
-  "sglangReference",
-  "productionGenerate",
-  "productionStream",
-  "vllmPythonReference",
-] as const;
 const BENCHMARK_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_RESULTS_ROOT = join(BENCHMARK_ROOT, "results");
 const DEFAULT_BFCL_CAPTURE = join(
@@ -73,10 +80,6 @@ const DEFAULT_SSE_RAW = join(
   "raw.jsonl"
 );
 
-type NaturalSuite = "ace" | "bfcl";
-type NaturalTransport = "generate" | "stream";
-type ParserArm = (typeof PARSER_ARMS)[number];
-
 interface SourceRawRow {
   arm: string;
   calls?: unknown;
@@ -104,67 +107,6 @@ interface ExtractedCaptureContent {
   text: string;
 }
 
-interface UnifiedDecodeResult {
-  accepted: boolean;
-  calls: Glm5DecodedCall[];
-  errors: string[];
-  parser: ParserArm;
-  recoveries: string[];
-  text: string;
-}
-
-interface NaturalReplayDetail {
-  captureId: string;
-  caseId: string;
-  category: string;
-  contentSha256: string;
-  corpus: "natural-canonical-capture";
-  expectedToolAction: boolean;
-  language?: string;
-  parserResults: Record<
-    ParserArm,
-    UnifiedDecodeResult & {
-      exactVsProductionGenerate: boolean;
-      falsePositive: boolean;
-    }
-  >;
-  productionParity: {
-    allChunkStrategiesInvariant: boolean;
-    capturedOrWholeVsGenerate: boolean;
-    fixedOneVsGenerate: boolean;
-    fixedSevenVsGenerate: boolean;
-    seededVsGenerate: boolean;
-  };
-  responseSha256: string;
-  suite: NaturalSuite;
-  transport: NaturalTransport;
-  trial: number;
-}
-
-interface SyntheticParserResult extends UnifiedDecodeResult {
-  actionCorrect: boolean;
-  exact: boolean;
-  falseNegative: boolean;
-  falsePositive: boolean;
-}
-
-export interface SyntheticReplayDetail {
-  caseId: string;
-  corpus: "synthetic-official-template-derived";
-  expectedCalls: Glm5DecodedCall[];
-  family: string;
-  note: string;
-  parserResults: Record<ParserArm, SyntheticParserResult>;
-  productionParity: {
-    allChunkStrategiesInvariant: boolean;
-    fixedOneVsGenerate: boolean;
-    fixedSevenVsGenerate: boolean;
-    seededVsGenerate: boolean;
-    wholeVsGenerate: boolean;
-  };
-  text: string;
-}
-
 export interface ReferenceReplayOptions {
   aceCapture: string;
   aceRaw: string;
@@ -178,11 +120,6 @@ export interface ReferenceReplayOptions {
   score: boolean;
   sseCapture: string;
   sseRaw: string;
-}
-
-interface ScoredRow extends SourceRawRow {
-  protocolValid?: boolean;
-  strictCorrect?: boolean;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -200,10 +137,6 @@ function loadJsonl<T>(path: string): T[] {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as T);
-}
-
-function writeJsonl(path: string, rows: readonly unknown[]): void {
-  writeFileSync(path, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
 }
 
 function contentText(value: unknown): string {
@@ -248,8 +181,7 @@ export function extractCapturedCanonicalContent(
     return { chunks, errors, text: chunks.join("") };
   }
   try {
-    const payload = JSON.parse(response.body) as unknown;
-    const text = payloadText(payload, "generate");
+    const text = payloadText(JSON.parse(response.body), "generate");
     return { chunks: [text], errors, text };
   } catch (error) {
     errors.push(
@@ -268,20 +200,6 @@ function providerTools(
     name: tool.name,
     type: "function",
   }));
-}
-
-function withParserName(
-  parser: ParserArm,
-  result: Glm5ReferenceDecodeResult | Glm5ProductionDecodeResult
-): UnifiedDecodeResult {
-  return {
-    accepted: result.accepted,
-    calls: result.calls,
-    errors: result.errors,
-    parser,
-    recoveries: "recoveries" in result ? result.recoveries : [],
-    text: result.text,
-  };
 }
 
 function originalCalls(
@@ -431,23 +349,23 @@ async function replayNaturalInput(input: NaturalInput): Promise<{
       `${input.suite}\0${input.transport}\0${source.caseId}`
     );
     const results: Record<ParserArm, UnifiedDecodeResult> = {
-      productionGenerate: withParserName(
+      productionGenerate: normalizeDecodeResult(
         "productionGenerate",
         productionGenerate
       ),
-      productionStream: withParserName(
+      productionStream: normalizeDecodeResult(
         "productionStream",
         streams.capturedOrWhole
       ),
-      sglangReference: withParserName(
+      sglangReference: normalizeDecodeResult(
         "sglangReference",
         decodeWithGlm5Reference("sglang", extracted.text, tools)
       ),
-      vllmReference: withParserName(
+      vllmReference: normalizeDecodeResult(
         "vllmReference",
         decodeWithGlm5Reference("vllm", extracted.text, tools)
       ),
-      vllmPythonReference: withParserName(
+      vllmPythonReference: normalizeDecodeResult(
         "vllmPythonReference",
         decodeWithGlm5Reference("vllm-python", extracted.text, tools)
       ),
@@ -504,24 +422,7 @@ async function replayNaturalInput(input: NaturalInput): Promise<{
   return { details, rawRows };
 }
 
-function syntheticResult(
-  parser: ParserArm,
-  result: Glm5ReferenceDecodeResult | Glm5ProductionDecodeResult,
-  expectedCalls: readonly Glm5DecodedCall[]
-): SyntheticParserResult {
-  const normalized = withParserName(parser, result);
-  const expectedAction = expectedCalls.length > 0;
-  const exact = callsExactlyEqual(normalized.calls, expectedCalls);
-  return {
-    ...normalized,
-    actionCorrect: normalized.accepted === expectedAction,
-    exact,
-    falseNegative: expectedAction && !exact,
-    falsePositive: normalized.accepted && !exact,
-  };
-}
-
-export async function evaluateSyntheticCorpusCase(
+async function evaluateSyntheticCorpusCase(
   testCase: Glm5ReferenceCorpusCase
 ): Promise<SyntheticReplayDetail> {
   const generate = decodeProductionGlm5Generate(
@@ -535,17 +436,17 @@ export async function evaluateSyntheticCorpusCase(
     `synthetic\0${testCase.id}`
   );
   const parserResults: SyntheticReplayDetail["parserResults"] = {
-    productionGenerate: syntheticResult(
+    productionGenerate: evaluateSyntheticResult(
       "productionGenerate",
       generate,
       testCase.expectedCalls
     ),
-    productionStream: syntheticResult(
+    productionStream: evaluateSyntheticResult(
       "productionStream",
       streams.capturedOrWhole,
       testCase.expectedCalls
     ),
-    sglangReference: syntheticResult(
+    sglangReference: evaluateSyntheticResult(
       "sglangReference",
       decodeWithGlm5Reference(
         "sglang",
@@ -554,7 +455,7 @@ export async function evaluateSyntheticCorpusCase(
       ),
       testCase.expectedCalls
     ),
-    vllmReference: syntheticResult(
+    vllmReference: evaluateSyntheticResult(
       "vllmReference",
       decodeWithGlm5Reference(
         "vllm",
@@ -563,7 +464,7 @@ export async function evaluateSyntheticCorpusCase(
       ),
       testCase.expectedCalls
     ),
-    vllmPythonReference: syntheticResult(
+    vllmPythonReference: evaluateSyntheticResult(
       "vllmPythonReference",
       decodeWithGlm5Reference(
         "vllm-python",
@@ -603,51 +504,6 @@ async function evaluateSyntheticCorpus(): Promise<SyntheticReplayDetail[]> {
   return output;
 }
 
-function csvCell(value: unknown): string {
-  const text = String(value ?? "");
-  return CSV_ESCAPE_PATTERN.test(text)
-    ? `"${text.replaceAll('"', '""')}"`
-    : text;
-}
-
-function toCsv(headers: readonly string[], rows: readonly unknown[][]): string {
-  return `${[
-    headers.map(csvCell).join(","),
-    ...rows.map((row) => row.map(csvCell).join(",")),
-  ].join("\n")}\n`;
-}
-
-function syntheticSummary(details: readonly SyntheticReplayDetail[]) {
-  return Object.fromEntries(
-    PARSER_ARMS.map((parser) => {
-      const rows = details.map((detail) => detail.parserResults[parser]);
-      const exactTruePositive = rows.filter(
-        (row, index) => details[index]?.expectedCalls.length && row.exact
-      ).length;
-      const falsePositive = rows.filter((row) => row.falsePositive).length;
-      const expectedPositive = details.filter(
-        (detail) => detail.expectedCalls.length > 0
-      ).length;
-      return [
-        parser,
-        {
-          actionCorrect: rows.filter((row) => row.actionCorrect).length,
-          exactCorrect: rows.filter((row) => row.exact).length,
-          exactPrecision:
-            exactTruePositive + falsePositive === 0
-              ? 1
-              : exactTruePositive / (exactTruePositive + falsePositive),
-          exactRecall:
-            expectedPositive === 0 ? 1 : exactTruePositive / expectedPositive,
-          falseNegative: rows.filter((row) => row.falseNegative).length,
-          falsePositive,
-          total: rows.length,
-        },
-      ];
-    })
-  );
-}
-
 function scoreRawFile(options: {
   aceRoot?: string;
   bfclRoot?: string;
@@ -669,80 +525,6 @@ function scoreRawFile(options: {
     options.python,
     [script, "--raw", options.raw, "--out", options.out, rootFlag, root],
     { encoding: "utf8", stdio: "pipe" }
-  );
-}
-
-function strictSummary(scoredRows: readonly ScoredRow[]) {
-  const byParser = Object.fromEntries(
-    PARSER_ARMS.map((parser) => {
-      const rows = scoredRows.filter((row) => row.arm === parser);
-      const correct = rows.filter((row) => row.strictCorrect).length;
-      return [
-        parser,
-        {
-          accuracy: rows.length === 0 ? null : correct / rows.length,
-          correct,
-          protocolValid: rows.filter((row) => row.protocolValid).length,
-          total: rows.length,
-        },
-      ];
-    })
-  );
-  const baselineRows = new Map(
-    scoredRows
-      .filter((row) => row.arm === "productionGenerate")
-      .map((row) => [
-        `${row.language ?? ""}\0${row.category}\0${row.caseId}\0${row.trial}`,
-        Boolean(row.strictCorrect),
-      ])
-  );
-  const pairwiseVsProductionGenerate = Object.fromEntries(
-    PARSER_ARMS.filter((parser) => parser !== "productionGenerate").map(
-      (parser) => {
-        let wins = 0;
-        let losses = 0;
-        let ties = 0;
-        for (const row of scoredRows.filter((item) => item.arm === parser)) {
-          const baseline = baselineRows.get(
-            `${row.language ?? ""}\0${row.category}\0${row.caseId}\0${row.trial}`
-          );
-          if (
-            baseline === undefined ||
-            baseline === Boolean(row.strictCorrect)
-          ) {
-            ties += 1;
-          } else if (row.strictCorrect) {
-            wins += 1;
-          } else {
-            losses += 1;
-          }
-        }
-        return [parser, { losses, ties, wins }];
-      }
-    )
-  );
-  return { byParser, pairwiseVsProductionGenerate };
-}
-
-function naturalAcceptanceSummary(details: readonly NaturalReplayDetail[]) {
-  return Object.fromEntries(
-    PARSER_ARMS.map((parser) => {
-      const rows = details.map((detail) => detail.parserResults[parser]);
-      return [
-        parser,
-        {
-          accepted: rows.filter((row) => row.accepted).length,
-          exactVsProductionGenerate: rows.filter(
-            (row) => row.exactVsProductionGenerate
-          ).length,
-          falsePositive: rows.filter((row) => row.falsePositive).length,
-          parserErrorRows: rows.filter((row) => row.errors.length > 0).length,
-          parserRecoveryRows: rows.filter((row) => row.recoveries.length > 0)
-            .length,
-          total: rows.length,
-        },
-      ];
-    })
   );
 }
 
@@ -770,7 +552,7 @@ export async function runReferenceParserReplay(
       transport: "stream",
     },
   ];
-  const naturalSections: Record<string, unknown> = {};
+  const naturalSections: Record<string, NaturalReplaySection> = {};
   const allNaturalDetails: NaturalReplayDetail[] = [];
   for (const input of inputs) {
     for (const path of [input.capturePath, input.rawPath]) {
@@ -782,12 +564,14 @@ export async function runReferenceParserReplay(
     }
     const replay = await replayNaturalInput(input);
     const stem = `natural-${input.suite}-${input.transport}`;
-    const rawPath = join(options.outDir, `${stem}.raw.jsonl`);
-    const detailPath = join(options.outDir, `${stem}.details.jsonl`);
-    writeJsonl(rawPath, replay.rawRows);
-    writeJsonl(detailPath, replay.details);
+    const { detailPath, rawPath } = writeNaturalReplayArtifacts({
+      details: replay.details,
+      outDir: options.outDir,
+      rawRows: replay.rawRows,
+      stem,
+    });
     allNaturalDetails.push(...replay.details);
-    const section: Record<string, unknown> = {
+    const section: NaturalReplaySection = {
       acceptance: naturalAcceptanceSummary(replay.details),
       cases: replay.details.length,
       detailPath,
@@ -803,156 +587,19 @@ export async function runReferenceParserReplay(
         raw: rawPath,
         suite: input.suite,
       });
-      const scoredRows = loadJsonl<ScoredRow>(scoredPath);
       section.scoredPath = scoredPath;
-      section.strict = strictSummary(scoredRows);
+      section.strict = strictSummary(loadJsonl<ScoredReplayRow>(scoredPath));
     }
     naturalSections[`${input.suite}-${input.transport}`] = section;
   }
 
-  const syntheticDetails = await evaluateSyntheticCorpus();
-  const syntheticMetrics = syntheticSummary(syntheticDetails);
-  writeJsonl(join(options.outDir, "synthetic-corpus.jsonl"), syntheticDetails);
-  writeFileSync(
-    join(options.outDir, "synthetic-parser-summary.csv"),
-    toCsv(
-      [
-        "parser",
-        "total",
-        "action_correct",
-        "exact_correct",
-        "false_positive",
-        "false_negative",
-        "exact_precision",
-        "exact_recall",
-      ],
-      PARSER_ARMS.map((parser) => {
-        const metric = syntheticMetrics[parser] as Record<string, unknown>;
-        return [
-          parser,
-          metric.total,
-          metric.actionCorrect,
-          metric.exactCorrect,
-          metric.falsePositive,
-          metric.falseNegative,
-          metric.exactPrecision,
-          metric.exactRecall,
-        ];
-      })
-    )
-  );
-  writeFileSync(
-    join(options.outDir, "natural-parser-summary.csv"),
-    toCsv(
-      [
-        "suite",
-        "transport",
-        "parser",
-        "total",
-        "accepted",
-        "exact_vs_production_generate",
-        "false_positive",
-        "parser_error_rows",
-        "parser_recovery_rows",
-        "strict_correct",
-        "strict_total",
-        "strict_accuracy",
-        "protocol_valid",
-      ],
-      Object.entries(naturalSections).flatMap(([sectionName, section]) => {
-        const [suite, transport] = sectionName.split("-");
-        const { acceptance, strict } = section as {
-          acceptance: Record<string, unknown>;
-          strict?: {
-            byParser: Record<string, Record<string, unknown>>;
-          };
-        };
-        return PARSER_ARMS.map((parser) => {
-          const metric = acceptance[parser] as Record<string, unknown>;
-          const strictMetric = strict?.byParser[parser];
-          return [
-            suite,
-            transport,
-            parser,
-            metric.total,
-            metric.accepted,
-            metric.exactVsProductionGenerate,
-            metric.falsePositive,
-            metric.parserErrorRows,
-            metric.parserRecoveryRows,
-            strictMetric?.correct ?? "",
-            strictMetric?.total ?? "",
-            strictMetric?.accuracy ?? "",
-            strictMetric?.protocolValid ?? "",
-          ];
-        });
-      })
-    )
-  );
-  writeFileSync(
-    join(options.outDir, "natural-pairwise-summary.csv"),
-    toCsv(
-      ["suite", "transport", "candidate", "baseline", "wins", "losses", "ties"],
-      Object.entries(naturalSections).flatMap(([sectionName, section]) => {
-        const [suite, transport] = sectionName.split("-");
-        const { strict } = section as {
-          strict?: {
-            pairwiseVsProductionGenerate: Record<
-              string,
-              Record<string, unknown>
-            >;
-          };
-        };
-        if (!strict) {
-          return [];
-        }
-        return Object.entries(strict.pairwiseVsProductionGenerate).map(
-          ([candidate, metric]) => [
-            suite,
-            transport,
-            candidate,
-            "productionGenerate",
-            metric.wins,
-            metric.losses,
-            metric.ties,
-          ]
-        );
-      })
-    )
-  );
-
-  const summary = {
-    artifactVersion: 1,
-    caveat:
-      "vLLM and SGLang are pinned deployment-reference reproductions; this does not identify the FreeRouter backend parser.",
-    diagnosticPolicy: {
-      fatal:
-        "Decoder failures and invalid finalized JSON are written to parserErrors and invalidate protocol-strict scoring.",
-      recovery:
-        "Successful `Recovered malformed...` callbacks are preserved in parserRecoveries and do not invalidate an otherwise oracle-correct call.",
-    },
-    generatedAt: options.generatedAt ?? new Date().toISOString(),
-    natural: naturalSections,
-    naturalProductionChunkInvariant: allNaturalDetails.filter(
-      (detail) => detail.productionParity.allChunkStrategiesInvariant
-    ).length,
-    naturalTotal: allNaturalDetails.length,
-    providerCalls: 0,
-    referenceSources: GLM5_REFERENCE_DECODER_SOURCES,
-    synthetic: {
-      cases: syntheticDetails.length,
-      corpus: "official-template-derived-labeled-conformance-and-corruption",
-      metrics: syntheticMetrics,
-      productionChunkInvariant: syntheticDetails.filter(
-        (detail) => detail.productionParity.allChunkStrategiesInvariant
-      ).length,
-    },
-  };
-  writeFileSync(
-    join(options.outDir, "summary.json"),
-    `${JSON.stringify(summary, null, 2)}\n`
-  );
-  return summary;
+  return writeReferenceReplayReports({
+    allNaturalDetails,
+    ...(options.generatedAt ? { generatedAt: options.generatedAt } : {}),
+    naturalSections,
+    outDir: options.outDir,
+    syntheticDetails: await evaluateSyntheticCorpus(),
+  });
 }
 
 function argumentValue(args: string[], name: string): string | undefined {

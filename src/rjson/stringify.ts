@@ -1,75 +1,58 @@
-// --- Stringify Function (Basic Implementation) ---
-// Note: This is a basic, non-configurable stringifier, mainly for potential internal use or testing.
-// It doesn't handle replacer/space arguments like JSON.stringify.
+import type { JSONValue } from "@ai-sdk/provider";
 
-// Helper for stringifying object pairs
-// :: any -> string -> ... -> string
-function stringifyPair(
-  obj: { [objKey: string]: unknown },
-  key: string
-): string {
-  // Stringify key and value, then join with colon
-  // Recursively calls stringify for the value
-  return `${JSON.stringify(key)}:${stringify(obj[key])}`;
+interface RjsonObject {
+  readonly [key: string]: Rjson;
 }
 
+type RjsonArray = Rjson[];
+
+/** A value supported by the RJSON stringifier. */
+export type Rjson = JSONValue | RjsonObject | RjsonArray | undefined;
+
 /**
- * Convert JavaScript value to JSON string with sorted object keys
+ * Convert an RJSON value to a JSON string with sorted object keys.
  *
- * Similar to JSON.stringify but with consistent key ordering (sorted alphabetically).
- * Handles undefined values by converting them to null.
+ * Unlike `JSON.stringify`, `undefined` is serialized as `null`, including in
+ * object properties. Object keys are sorted alphabetically for deterministic
+ * output.
  *
- * @param obj - The value to convert to JSON string
- * @returns A JSON string representation
+ * @param value - The RJSON value to serialize
+ * @returns The deterministic JSON representation
  *
  * @example
  * ```typescript
- * stringify({z: 1, a: 2, m: 3})
- * // Returns: '{"a":2,"m":3,"z":1}' (keys sorted)
+ * stringify({ z: 1, a: 2, m: 3 })
+ * // Returns: '{"a":2,"m":3,"z":1}'
  *
- * stringify({key: undefined})
- * // Returns: '{"key":null}' (undefined becomes null)
+ * stringify({ key: undefined })
+ * // Returns: '{"key":null}'
  * ```
  */
-export function stringify(obj: unknown): string {
-  const type = typeof obj;
-
-  // Handle primitives directly using JSON.stringify (handles escaping etc.)
+export function stringify<Value>(value: Value): string {
   if (
-    type === "string" ||
-    type === "number" ||
-    type === "boolean" ||
-    obj === null
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value === null
   ) {
-    return JSON.stringify(obj);
+    return JSON.stringify(value);
   }
 
-  // Handle undefined (represented as null in this basic version, JSON.stringify omits in objects/returns undefined at top level)
-  if (type === "undefined") {
+  if (value === undefined) {
     return "null";
   }
 
-  // Handle arrays
-  if (Array.isArray(obj)) {
-    // Recursively stringify each element and join with commas
-    const elements = obj.map(stringify).join(",");
-    return `[${elements}]`;
+  if (typeof value !== "object") {
+    return "null";
   }
 
-  // Handle objects
-  // Check if it's a non-null object (using constructor check is less robust than typeof + null check)
-  if (type === "object") {
-    // Already checked for null and Array above
-    // Get keys, sort them for consistent output (optional, but good practice)
-    const keys = Object.keys(obj as object);
-    keys.sort();
-    // Stringify each key-value pair and join with commas
-    const pairs = keys
-      .map((key) => stringifyPair(obj as { [objKey: string]: unknown }, key))
-      .join(",");
-    return `{${pairs}}`;
+  if (Array.isArray(value)) {
+    return `[${value.map(stringify).join(",")}]`;
   }
 
-  // Fallback for unsupported types (like functions, symbols) - represent as null
-  return "null";
+  const keys = Object.keys(value).sort();
+  const pairs = keys.map(
+    (key) => `${JSON.stringify(key)}:${stringify(Reflect.get(value, key))}`
+  );
+  return `{${pairs.join(",")}}`;
 }

@@ -4,35 +4,32 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import type { ProtocolMetadata } from "../../../../core/protocols/protocol-interface";
+import { stopFinishReason, zeroUsage } from "../../../test-helpers";
+import { assertCanonicalAiSdkEventOrder } from "../../cross-protocol/tool-input/streaming-events.shared";
 import {
-  assertCanonicalAiSdkEventOrder,
-  createInterleavedStream,
-  extractTextDeltas,
-  extractToolInputTimeline,
-  runProtocolStreamParser,
-} from "../../cross-protocol/tool-input/streaming-events.shared";
+  collectProtocolStream,
+  collectTextDeltas,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
+
+function pathTool(name: string): LanguageModelV4FunctionTool {
+  return {
+    type: "function",
+    name,
+    inputSchema: {
+      type: "object",
+      properties: { path: { type: "string" } },
+      required: ["path"],
+      additionalProperties: false,
+    },
+  };
+}
 
 const tools: LanguageModelV4FunctionTool[] = [
-  {
-    type: "function",
-    name: "list_dir",
-    inputSchema: {
-      type: "object",
-      properties: { path: { type: "string" } },
-      required: ["path"],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: "function",
-    name: "read_file",
-    inputSchema: {
-      type: "object",
-      properties: { path: { type: "string" } },
-      required: ["path"],
-      additionalProperties: false,
-    },
-  },
+  pathTool("list_dir"),
+  pathTool("read_file"),
   {
     type: "function",
     name: "write_file",
@@ -70,41 +67,54 @@ function interleavedParts(chunks: readonly string[]) {
   ]);
 }
 
-async function streamedParts(options: {
-  chunks: readonly string[];
-  onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  withRaw?: boolean;
+function streamedParts(options: {
+  readonly chunks: readonly string[];
+  readonly onError?: (message: string, metadata?: ProtocolMetadata) => void;
+  readonly withRaw?: boolean;
 }) {
   const textParts: LanguageModelV4StreamPart[] = options.chunks.map(
     (delta) => ({ type: "text-delta", id: "fixture-text", delta })
   );
-  return await runProtocolStreamParser({
+  const parts = options.withRaw ? interleavedParts(options.chunks) : textParts;
+  parts.push({
+    type: "finish",
+    finishReason: stopFinishReason,
+    usage: zeroUsage,
+  });
+  return collectProtocolStream({
     protocol: morphXmlProtocol(),
     tools,
     parserOptions: { onError: options.onError },
-    stream: createInterleavedStream(
-      options.withRaw ? interleavedParts(options.chunks) : textParts
-    ),
+    parts,
   });
 }
 
-function expectBothCalls(parts: LanguageModelV4StreamPart[]) {
-  const calls = parts.filter((part) => part.type === "tool-call");
+function expectBothCalls(parts: readonly LanguageModelV4StreamPart[]): void {
+  const calls = selectToolCalls(parts);
   expect(calls.map((call) => call.toolName)).toEqual(["list_dir", "read_file"]);
   expect(calls.map((call) => JSON.parse(call.input))).toEqual([
     { path: "/src" },
     { path: "/src/main.ts" },
   ]);
 
-  const timeline = extractToolInputTimeline(parts);
+  const timeline = selectToolInputTimeline(parts);
   expect(timeline.starts.map((part) => part.toolName)).toEqual([
     "list_dir",
     "read_file",
   ]);
   expect(timeline.ends).toHaveLength(2);
   expect(new Set(calls.map((call) => call.toolCallId)).size).toBe(2);
-  expect(extractTextDeltas(parts)).not.toContain("</read_file>");
-  assertCanonicalAiSdkEventOrder(parts);
+  expect(collectTextDeltas(parts)).not.toContain("</read_file>");
+  assertCanonicalAiSdkEventOrder([...parts]);
+}
+
+async function expectStreamAndGeneratedCalls(text: string): Promise<void> {
+  const parts = await streamedParts({ chunks: Array.from(text) });
+  expectBothCalls(parts);
+  expect(generatedCalls(text).map((call) => call.toolName)).toEqual([
+    "list_dir",
+    "read_file",
+  ]);
 }
 
 describe("MorphXML streaming line-prefixed tool calls", () => {
@@ -117,14 +127,10 @@ describe("MorphXML streaming line-prefixed tool calls", () => {
 
   it("matches generated-text recovery for both Devstral calls", () => {
     const calls = generatedCalls(DEVSTRAL_LINE_PREFIXED_CALLS);
-    expect(calls.map((call) => call.toolName)).toEqual([
-      "list_dir",
-      "read_file",
-    ]);
-    expect(calls.map((call) => JSON.parse(call.input))).toEqual([
-      { path: "/src" },
-      { path: "/src/main.ts" },
-    ]);
+    const names = calls.map(({ toolName }) => toolName);
+    const inputs = calls.map(({ input }) => JSON.parse(input));
+    expect(names).toEqual(["list_dir", "read_file"]);
+    expect(inputs).toEqual([{ path: "/src" }, { path: "/src/main.ts" }]);
   });
 
   it("is invariant across every two-chunk boundary", async () => {
@@ -169,12 +175,7 @@ describe("MorphXML streaming line-prefixed tool calls", () => {
         "<read_file><path>/src/main.ts</path></read_file>",
     },
   ])("recovers a line-prefixed call before $label", async ({ text }) => {
-    const parts = await streamedParts({ chunks: Array.from(text) });
-    expectBothCalls(parts);
-    expect(generatedCalls(text).map((call) => call.toolName)).toEqual([
-      "list_dir",
-      "read_file",
-    ]);
+    await expectStreamAndGeneratedCalls(text);
   });
 
   it("recovers a line-prefixed call after a normal first call", async () => {
@@ -183,12 +184,7 @@ describe("MorphXML streaming line-prefixed tool calls", () => {
       "read_file\n" +
       "<path>/src/main.ts</path>\n" +
       "</read_file>";
-    const parts = await streamedParts({ chunks: Array.from(text) });
-    expectBothCalls(parts);
-    expect(generatedCalls(text).map((call) => call.toolName)).toEqual([
-      "list_dir",
-      "read_file",
-    ]);
+    await expectStreamAndGeneratedCalls(text);
   });
 
   it("finalizes a single line-prefixed call only when the stream finishes", async () => {
@@ -200,7 +196,7 @@ describe("MorphXML streaming line-prefixed tool calls", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].toolName).toBe("list_dir");
     expect(JSON.parse(calls[0].input)).toEqual({ path: "/src" });
-    expect(extractTextDeltas(parts)).not.toContain(text);
+    expect(collectTextDeltas(parts)).not.toContain(text);
   });
 
   it("preserves trailing prose after a completed line-prefixed call", async () => {
@@ -212,7 +208,7 @@ describe("MorphXML streaming line-prefixed tool calls", () => {
         .filter((part) => part.type === "tool-call")
         .map((part) => part.toolName)
     ).toEqual(["list_dir"]);
-    expect(extractTextDeltas(parts)).toContain("Done.");
+    expect(collectTextDeltas(parts)).toContain("Done.");
   });
 
   it("preserves a parameter whose name matches another tool", async () => {
@@ -246,7 +242,7 @@ describe("MorphXML streaming line-prefixed tool calls", () => {
   ])("preserves non-call text without inventing a call: %s", async (text) => {
     const parts = await streamedParts({ chunks: Array.from(text) });
     expect(parts.some((part) => part.type === "tool-call")).toBe(false);
-    expect(extractTextDeltas(parts)).toBe(text);
+    expect(collectTextDeltas(parts)).toBe(text);
   });
 
   it("rejects a prototype-sensitive first call and continues to the next call", async () => {

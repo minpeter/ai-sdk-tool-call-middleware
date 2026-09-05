@@ -9,6 +9,9 @@
   "license": "Apache-2.0",
   "sideEffects": false,
   "type": "module",
+  "imports": {
+    "#benchmark/analyze-output": "./benchmarks/glm-5.2-tool-calling/src/analyze-output.ts"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -67,6 +70,12 @@
     "clean": "rimraf dist *.tsbuildinfo",
     "fmt": "run-p fmt:*",
     "fmt:biome": "biome check --write",
+    "mutation": "node scripts/quality/run-mutation.mjs",
+    "quality:dead-code": "knip",
+    "quality:duplicates": "jscpd src --format typescript,tsx --pattern '**/*.{ts,tsx,mts,cts}' --ignore '**/__tests__/fixtures/**,**/__snapshots__/**,**/*.snap.*' --min-lines 5 --min-tokens 50 --exit-code 1 --no-tips",
+    "quality:metrics": "node scripts/quality/run-metrics.mjs",
+    "quality:metrics:test": "node --test scripts/quality/run-metrics.test.mjs",
+    "quality:types": "node scripts/quality/run-types.mjs",
     "test": "vitest run",
     "test:benchmarks": "vitest run --config vitest.benchmarks.config.ts",
     "test:package-consumers": "node scripts/test-package-consumers.mjs",
@@ -82,11 +91,18 @@
     "@ai-sdk/provider": "4.0.8",
     "@ai-sdk/provider-utils": "5.0.32",
     "@arethetypeswrong/cli": "^0.18.2",
+    "@ast-grep/cli": "^0.45.3",
     "@biomejs/biome": "2.5.11",
     "@changesets/cli": "3.0.1",
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/vitest-runner": "10.0.0",
+    "@types/json-schema": "^7.0.15",
     "@types/node": "^26.4.0",
     "@vitest/coverage-v8": "^4.1.11",
     "ai": "7.0.83",
+    "jscpd": "^5.1.2",
+    "knip": "^6.34.0",
+    "mehen": "^1.10.0",
     "npm-run-all": "^4.1.5",
     "rimraf": "^6.1.3",
     "tsdown": "^0.22.14",
@@ -115,5 +131,21 @@
       "shell-quote": "^1.8.4",
       "vite": "^8.2.2"
     }
+  },
+  "knip": {
+    "entry": [
+      "examples/parser-core/src/*.ts",
+      "examples/rxml-core/src/*.ts",
+      "benchmarks/glm-5.2-tool-calling/src/analyze.ts",
+      "benchmarks/glm-5.2-tool-calling/src/audit-live-glm5-parser-failures.ts",
+      "benchmarks/glm-5.2-tool-calling/src/openai-compat-bridge-vakra.ts",
+      "benchmarks/glm-5.2-tool-calling/src/pilot-mcpmark-offline.ts",
+      "benchmarks/glm-5.2-tool-calling/src/replay-provider-capture.ts",
+      "benchmarks/glm-5.2-tool-calling/src/run-ace.ts",
+      "benchmarks/glm-5.2-tool-calling/src/run-mcpmark.ts",
+      "benchmarks/glm-5.2-tool-calling/src/run.ts",
+      "benchmarks/glm-5.2-tool-calling/tau2/run-bridge.mjs",
+      "benchmarks/glm-5.2-tool-calling/src/tau2-bridge.ts"
+    ]
   }
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ToolInputSchema } from "../../schema/tool-input-schema";
 import { coerceBySchema } from "../../schema-coerce";
 
 describe("Coercion Heuristic Handling", () => {
@@ -25,9 +26,9 @@ describe("Coercion Heuristic Handling", () => {
         },
         required: ["op"],
         additionalProperties: false,
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any;
+      const result = coerceBySchema(input, schema);
       expect(result).toEqual({ op: "true" });
     });
   });

@@ -1,18 +1,20 @@
-import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
+import {
+  isJSONObject,
+  type JSONObject,
+  type JSONValue,
+  type LanguageModelV4ToolCall,
+} from "@ai-sdk/provider";
 
-function parseToolCallInput(input: unknown): unknown {
-  if (typeof input !== "string") {
-    return input;
-  }
+function parseToolCallInput(input: string): JSONObject | null {
   try {
-    const parsed: unknown = JSON.parse(input);
-    return parsed;
+    const parsed = JSON.parse(input);
+    return isJSONObject(parsed) ? parsed : null;
   } catch {
     return {};
   }
 }
 
-function formatArgumentValue(value: unknown): string {
+function formatArgumentValue(value: JSONValue | undefined): string {
   if (typeof value === "string") {
     return value;
   }
@@ -23,7 +25,7 @@ function formatArgumentValue(value: unknown): string {
 export function formatGlm5ToolCall(toolCall: LanguageModelV4ToolCall): string {
   const parsed = parseToolCallInput(toolCall.input);
   let output = `<tool_call>${toolCall.toolName}`;
-  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+  if (parsed) {
     for (const [key, value] of Object.entries(parsed)) {
       output += `<arg_key>${key}</arg_key><arg_value>${formatArgumentValue(value)}</arg_value>`;
     }

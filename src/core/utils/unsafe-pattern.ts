@@ -22,10 +22,8 @@ function pushCharacterClassRange(
   ranges: CharacterClassRange[],
   start: string,
   end: string
-) {
-  if (start.length === 1 && end.length === 1) {
-    ranges.push({ start, end });
-  }
+): void {
+  ranges.push({ start, end });
 }
 
 function pushLiteralRun(hints: PatternCharacterHints, run: string): string {

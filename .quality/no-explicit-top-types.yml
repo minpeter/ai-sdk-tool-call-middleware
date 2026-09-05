@@ -1,0 +1,7 @@
+id: no-explicit-top-types
+language: TypeScript
+severity: error
+message: Explicit any/unknown type annotation is forbidden.
+rule:
+  kind: predefined_type
+  regex: ^(?:any|unknown)$

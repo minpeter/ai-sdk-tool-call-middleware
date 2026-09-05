@@ -1,4 +1,7 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4Content,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 
@@ -17,6 +20,16 @@ const tools: LanguageModelV4FunctionTool[] = [
     },
   },
 ];
+
+function expectDroppedWithoutRawText(output: LanguageModelV4Content[]): void {
+  expect(output.some((part) => part.type === "tool-call")).toBe(false);
+  expect(
+    output
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("")
+  ).toBe("");
+}
 
 const weatherTools: LanguageModelV4FunctionTool[] = [
   {
@@ -53,7 +66,10 @@ describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
     });
     const toolCallId = metadata?.toolCallId;
     expect(typeof toolCallId).toBe("string");
-    expect((toolCallId as string).length).toBeGreaterThan(0);
+    if (typeof toolCallId !== "string") {
+      throw new Error("expected tool call ID");
+    }
+    expect(toolCallId.length).toBeGreaterThan(0);
     expect(metadata?.toolCall).toContain("<write_file>");
     expect(metadata?.toolCall).toContain("</write_file>");
   });
@@ -70,13 +86,7 @@ describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
       options: { onError },
     });
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(
-      out
-        .filter((part) => part.type === "text")
-        .map((part) => part.text)
-        .join("")
-    ).toBe("");
+    expectDroppedWithoutRawText(out);
     expect(onError).toHaveBeenCalled();
   });
 
@@ -84,36 +94,39 @@ describe("morphXmlProtocol parseGeneratedText onError metadata", () => {
     "constructor: ordinary prose",
     "prototype: ordinary prose",
     "constructor: true",
-  ] as const)("preserves schema-valid string element value %s", (contents) => {
-    const onError = vi.fn();
-    const protocol = morphXmlProtocol();
-    const text = `<write_file><file_path>a</file_path><contents>${contents}</contents></write_file>`;
+  ] satisfies readonly string[])(
+    "preserves schema-valid string element value %s",
+    (contents) => {
+      const onError = vi.fn();
+      const protocol = morphXmlProtocol();
+      const text = `<write_file><file_path>a</file_path><contents>${contents}</contents></write_file>`;
 
-    const out = protocol.parseGeneratedText({
-      text,
-      tools,
-      options: { onError },
-    });
-    const tool = out.find((part) => part.type === "tool-call");
+      const out = protocol.parseGeneratedText({
+        text,
+        tools,
+        options: { onError },
+      });
+      const tool = out.find((part) => part.type === "tool-call");
 
-    expect(tool?.type).toBe("tool-call");
-    if (tool?.type !== "tool-call") {
-      throw new Error("expected tool call");
+      expect(tool?.type).toBe("tool-call");
+      if (tool?.type !== "tool-call") {
+        throw new Error("expected tool call");
+      }
+      expect(tool.toolName).toBe("write_file");
+      expect(JSON.parse(tool.input)).toEqual({
+        file_path: "a",
+        contents,
+      });
+      expect(onError).not.toHaveBeenCalled();
     }
-    expect(tool.toolName).toBe("write_file");
-    expect(JSON.parse(tool.input)).toEqual({
-      file_path: "a",
-      contents,
-    });
-    expect(onError).not.toHaveBeenCalled();
-  });
+  );
 
   it.each([
     "constructor: true\nsecret: sentinel-secret",
     'constructor: true\n"secret": sentinel-secret',
     "constructor: true\n1secret: sentinel-secret",
     "<![CDATA[constructor: true\nsecret: sentinel-secret]]>",
-  ] as const)(
+  ] satisfies readonly string[])(
     "drops XML-wrapped YAML-like sensitive fallback without leaking raw text for %s",
     (contents) => {
       const onError = vi.fn();

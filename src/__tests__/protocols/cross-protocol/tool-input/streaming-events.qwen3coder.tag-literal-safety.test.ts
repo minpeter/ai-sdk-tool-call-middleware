@@ -1,92 +1,78 @@
 import { describe, expect, it } from "vitest";
 
 import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
-import { runProtocolTextDeltaStream } from "./streaming-events.shared";
+import {
+  collectTextDeltas,
+  observeObjectDeltas,
+  parseToolCallObject,
+  runProtocolTextStream,
+  selectToolCalls,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
+
+const protocol = qwen3CoderProtocol();
+
+async function expectAlphaQuery(
+  chunks: readonly string[],
+  query: string
+): Promise<void> {
+  const observation = await observeObjectDeltas({
+    chunks,
+    id: "fixture",
+    protocol,
+    tools: [],
+  });
+
+  expect(observation.toolCall).toBeTruthy();
+  expect(observation.toolCall.toolName).toBe("alpha");
+  expect(parseToolCallObject(observation.toolCall)).toEqual({ query });
+}
 
 describe("cross-protocol tool-input streaming events: qwen3coder", () => {
-  const protocol = qwen3CoderProtocol();
-
-  function runQwenTagSafetyStream(chunks: string[]) {
-    return runProtocolTextDeltaStream({ protocol, tools: [], chunks });
-  }
-
   it("Qwen3CoderToolParser does not truncate parameter values containing </toolbox> pseudo-tags", async () => {
-    const out = await runQwenTagSafetyStream([
-      "<tool_call><function=alpha><parameter=query>How to close </toolbox> tag</function></tool_call>",
-    ]);
-
-    const toolCall = out.find((part) => part.type === "tool-call") as
-      | {
-          type: "tool-call";
-          toolName: string;
-          input: string;
-        }
-      | undefined;
-
-    expect(toolCall).toBeTruthy();
-    expect(toolCall?.toolName).toBe("alpha");
-    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({
-      query: "How to close </toolbox> tag",
-    });
+    await expectAlphaQuery(
+      [
+        "<tool_call><function=alpha><parameter=query>How to close </toolbox> tag</function></tool_call>",
+      ],
+      "How to close </toolbox> tag"
+    );
   });
 
   it("Qwen3CoderToolParser keeps </tool> text when parsing a <function> call", async () => {
-    const out = await runQwenTagSafetyStream([
-      "<tool_call><function=alpha><parameter=query>How to use </tool> tag</function></tool_call>",
-    ]);
-
-    const toolCall = out.find((part) => part.type === "tool-call") as
-      | {
-          type: "tool-call";
-          toolName: string;
-          input: string;
-        }
-      | undefined;
-
-    expect(toolCall).toBeTruthy();
-    expect(toolCall?.toolName).toBe("alpha");
-    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({
-      query: "How to use </tool> tag",
-    });
+    await expectAlphaQuery(
+      [
+        "<tool_call><function=alpha><parameter=query>How to use </tool> tag</function></tool_call>",
+      ],
+      "How to use </tool> tag"
+    );
   });
 
   it("Qwen3CoderToolParser does not treat chunk-terminal </call prefix as a completed boundary", async () => {
-    const out = await runQwenTagSafetyStream([
-      "<tool_call><call=alpha><parameter=query>How to use </call",
-      "out> tag</call></tool_call>",
-    ]);
-
-    const toolCall = out.find((part) => part.type === "tool-call") as
-      | {
-          type: "tool-call";
-          toolName: string;
-          input: string;
-        }
-      | undefined;
-
-    expect(toolCall).toBeTruthy();
-    expect(toolCall?.toolName).toBe("alpha");
-    expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({
-      query: "How to use </callout> tag",
-    });
+    await expectAlphaQuery(
+      [
+        "<tool_call><call=alpha><parameter=query>How to use </call",
+        "out> tag</call></tool_call>",
+      ],
+      "How to use </callout> tag"
+    );
   });
 
   it("Qwen3CoderToolParser keeps implicit-call-like tags without tool identifier as text", async () => {
     const input = "before <function>docs</function> after";
-    const out = await runQwenTagSafetyStream([
-      "before <function>docs",
-      "</function> after",
-    ]);
+    const out = await runProtocolTextStream({
+      chunks: ["before <function>docs", "</function> after"],
+      id: "fixture",
+      protocol,
+      tools: [],
+    });
 
-    const textOut = out
-      .filter((part) => part.type === "text-delta")
-      .map((part) => (part as { delta: string }).delta)
-      .join("");
+    const textOut = collectTextDeltas(out);
+    const { starts, deltas, ends } = selectToolInputTimeline(out);
 
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-start")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-delta")).toBe(false);
-    expect(out.some((part) => part.type === "tool-input-end")).toBe(false);
+    expect(selectToolCalls(out)).toHaveLength(0);
+    expect(starts).toHaveLength(0);
+    expect(deltas).toHaveLength(0);
+    expect(ends).toHaveLength(0);
     expect(textOut).toBe(input);
   });
 });

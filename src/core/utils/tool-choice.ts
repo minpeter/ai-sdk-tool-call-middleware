@@ -1,6 +1,9 @@
-import type {
-  LanguageModelV4Content,
-  LanguageModelV4FunctionTool,
+import {
+  isJSONValue,
+  type JSONObject,
+  type JSONValue,
+  type LanguageModelV4Content,
+  type LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import type { OnErrorFn } from "./on-error";
 import {
@@ -10,36 +13,26 @@ import {
 import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 import { coerceToolCallInput } from "./tool-call-coercion";
 
-/**
- * First text content part of a forced-tool-choice generation. Providers may
- * emit reasoning (or other) parts before the JSON text even under
- * `responseFormat: json`, so the whole content array is scanned instead of
- * only inspecting `content[0]`.
- */
-export function findFirstNonEmptyTextContent(
-  content: LanguageModelV4Content[] | undefined
-): string | undefined {
-  const textParts = content?.filter(
-    (item): item is Extract<LanguageModelV4Content, { type: "text" }> =>
-      item.type === "text"
-  );
-  return (
-    textParts?.find((part) => part.text.trim().length > 0)?.text ??
-    textParts?.[0]?.text
-  );
+function isJsonObject(value: JSONValue): value is JSONObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isJsonObjectText(text: string): boolean {
   try {
-    const parsed: unknown = JSON.parse(text);
-    return Boolean(
-      parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    );
-  } catch {
-    return false;
+    const parsed = JSON.parse(text);
+    return isJSONValue(parsed) && isJsonObject(parsed);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return false;
+    }
+    throw error;
   }
 }
 
+/**
+ * Select JSON text from forced-tool-choice output. Providers may emit
+ * reasoning or empty text before the payload, so every text part is checked.
+ */
 export function findToolChoiceTextContent(
   content: LanguageModelV4Content[] | undefined
 ): string | undefined {
@@ -50,7 +43,9 @@ export function findToolChoiceTextContent(
   return (
     textParts?.find(
       (part) => part.text.trim().length > 0 && isJsonObjectText(part.text)
-    )?.text ?? findFirstNonEmptyTextContent(content)
+    )?.text ??
+    textParts?.find((part) => part.text.trim().length > 0)?.text ??
+    textParts?.[0]?.text
   );
 }
 
@@ -69,7 +64,7 @@ interface ResolveToolChoiceSelectionOptions {
   tools: LanguageModelV4FunctionTool[];
 }
 
-function ensureNonEmptyToolName(name: unknown): string {
+function ensureNonEmptyToolName(name: JSONValue | undefined): string {
   if (typeof name !== "string") {
     return "unknown";
   }
@@ -77,7 +72,7 @@ function ensureNonEmptyToolName(name: unknown): string {
   return trimmed.length > 0 ? trimmed : "unknown";
 }
 
-function safeStringify(value: unknown): string {
+function safeStringify(value: JSONValue | undefined): string {
   try {
     return JSON.stringify(value ?? {});
   } catch {
@@ -85,7 +80,9 @@ function safeStringify(value: unknown): string {
   }
 }
 
-function safeToolChoiceMetadataValue(value: unknown): unknown {
+function safeToolChoiceMetadataValue(
+  value: JSONValue | undefined
+): JSONValue | undefined {
   if (typeof value === "string") {
     return safeToolCallMetadataText(value);
   }
@@ -100,9 +97,13 @@ export function parseToolChoicePayload({
   onError,
   errorMessage,
 }: ParseToolChoiceOptions): { toolName: string; input: string } {
-  let parsed: unknown;
+  let parsed: JSONValue;
   try {
-    parsed = JSON.parse(text);
+    const candidate = JSON.parse(text);
+    if (!isJSONValue(candidate)) {
+      throw new SyntaxError("toolChoice payload is not JSON data");
+    }
+    parsed = candidate;
   } catch (error) {
     onError?.(errorMessage, {
       text: safeToolCallMetadataText(text),
@@ -111,7 +112,7 @@ export function parseToolChoicePayload({
     return { toolName: "unknown", input: "{}" };
   }
 
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isJsonObject(parsed)) {
     onError?.("toolChoice JSON payload must be an object", {
       parsedType: typeof parsed,
       parsed: safeToolChoiceMetadataValue(parsed),
@@ -119,7 +120,7 @@ export function parseToolChoicePayload({
     return { toolName: "unknown", input: "{}" };
   }
 
-  const payload = parsed as Record<string, unknown>;
+  const payload = parsed;
   const toolName = ensureNonEmptyToolName(payload.name);
   if (toolCallInputHasPrototypeSensitiveKey(payload)) {
     onError?.("toolChoice payload rejected for sensitive keys", {
@@ -193,17 +194,15 @@ export function resolveToolChoiceSelection({
       expectedToolName,
       toolName: parsed.toolName,
     });
-    let originalArguments: unknown;
+    let originalArguments: JSONValue | undefined;
     try {
-      const originalPayload = JSON.parse(text) as unknown;
+      const originalPayload = JSON.parse(text);
       if (
-        typeof originalPayload === "object" &&
-        originalPayload !== null &&
-        !Array.isArray(originalPayload) &&
+        isJSONValue(originalPayload) &&
+        isJsonObject(originalPayload) &&
         Object.hasOwn(originalPayload, "arguments")
       ) {
-        originalArguments = (originalPayload as Record<string, unknown>)
-          .arguments;
+        originalArguments = originalPayload.arguments;
       }
     } catch {
       originalArguments = undefined;

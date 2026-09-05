@@ -9,19 +9,23 @@
  * 3. post-parse: Object repair/coercion after successful parse
  */
 
+import type { JSONObject } from "@ai-sdk/provider";
+import type { ToolInputSchemaCandidate } from "../../schema/tool-input-schema";
+import type { RxmlValue } from "../builders/stringify";
+
 type HeuristicPhase = "pre-parse" | "fallback-reparse" | "post-parse";
 
 export interface IntermediateCall {
-  errors: unknown[];
-  meta?: Record<string, unknown>;
-  parsed: unknown | null;
+  errors: Error[];
+  meta?: JSONObject;
+  parsed: RxmlValue | null;
   rawSegment: string;
-  schema: unknown;
+  schema: ToolInputSchemaCandidate;
   toolName: string;
 }
 
 export interface HeuristicResult {
-  parsed?: unknown;
+  parsed?: RxmlValue;
   rawSegment?: string;
   reparse?: boolean;
   stop?: boolean;
@@ -43,28 +47,8 @@ export interface PipelineConfig {
 
 interface HeuristicEngineOptions {
   maxReparses?: number;
-  onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  parse: (xml: string, schema: unknown) => unknown;
-}
-
-function applyRawSegmentUpdate(
-  current: IntermediateCall,
-  result: HeuristicResult
-): IntermediateCall {
-  if (result.rawSegment !== undefined) {
-    return { ...current, rawSegment: result.rawSegment };
-  }
-  return current;
-}
-
-function applyParsedUpdate(
-  current: IntermediateCall,
-  result: HeuristicResult
-): IntermediateCall {
-  if (result.parsed !== undefined) {
-    return { ...current, parsed: result.parsed };
-  }
-  return current;
+  onError?: (message: string, metadata?: JSONObject) => void;
+  parse: (xml: string, schema: ToolInputSchemaCandidate) => RxmlValue;
 }
 
 function applyWarningsUpdate(
@@ -73,7 +57,11 @@ function applyWarningsUpdate(
 ): IntermediateCall {
   if (result.warnings && result.warnings.length > 0) {
     const meta = current.meta ?? {};
-    const existingWarnings = (meta.warnings as string[] | undefined) ?? [];
+    const existingWarnings = Array.isArray(meta.warnings)
+      ? meta.warnings.filter(
+          (warning): warning is string => typeof warning === "string"
+        )
+      : [];
     return {
       ...current,
       meta: { ...meta, warnings: [...existingWarnings, ...result.warnings] },
@@ -82,12 +70,53 @@ function applyWarningsUpdate(
   return current;
 }
 
+interface RxmlValueFrame {
+  readonly leaving: boolean;
+  readonly value: RxmlValue;
+}
+
+function isRxmlValue(value: RxmlValue): boolean {
+  const active = new Set<object>();
+  const stack: RxmlValueFrame[] = [{ leaving: false, value }];
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (frame === undefined) {
+      continue;
+    }
+    const current = frame.value;
+    if (frame.leaving) {
+      if (typeof current === "object" && current !== null) {
+        active.delete(current);
+      }
+      continue;
+    }
+    if (
+      current === null ||
+      current === undefined ||
+      typeof current === "string" ||
+      typeof current === "number" ||
+      typeof current === "boolean"
+    ) {
+      continue;
+    }
+    if (typeof current !== "object" || active.has(current)) {
+      return false;
+    }
+    active.add(current);
+    stack.push({ leaving: true, value: current });
+    for (const child of Object.values(current)) {
+      stack.push({ leaving: false, value: child });
+    }
+  }
+  return true;
+}
+
 function attemptReparse(
   current: IntermediateCall,
   result: HeuristicResult,
   reparseCount: number,
   maxReparses: number,
-  parse: (xml: string, schema: unknown) => unknown
+  parse: HeuristicEngineOptions["parse"]
 ): { state: IntermediateCall; newCount: number } {
   if (
     !result.reparse ||
@@ -99,13 +128,22 @@ function attemptReparse(
 
   try {
     const reparsed = parse(result.rawSegment, current.schema);
+    if (!isRxmlValue(reparsed)) {
+      throw new TypeError("RXML parser returned a non-RXML value");
+    }
     return {
       state: { ...current, parsed: reparsed, errors: [] },
       newCount: reparseCount + 1,
     };
   } catch (error) {
     return {
-      state: { ...current, errors: [...current.errors, error] },
+      state: {
+        ...current,
+        errors: [
+          ...current.errors,
+          error instanceof Error ? error : new Error(String(error)),
+        ],
+      },
       newCount: reparseCount + 1,
     };
   }
@@ -127,8 +165,12 @@ function executePhase(
 
     const result = heuristic.run(current);
 
-    current = applyRawSegmentUpdate(current, result);
-    current = applyParsedUpdate(current, result);
+    if (result.rawSegment !== undefined) {
+      current = { ...current, rawSegment: result.rawSegment };
+    }
+    if (result.parsed !== undefined) {
+      current = { ...current, parsed: result.parsed };
+    }
     current = applyWarningsUpdate(current, result);
 
     const reparseResult = attemptReparse(
@@ -163,9 +205,15 @@ export function applyHeuristicPipeline(
   if (current.parsed === null && current.errors.length === 0) {
     try {
       const parsed = options.parse(current.rawSegment, current.schema);
+      if (!isRxmlValue(parsed)) {
+        throw new TypeError("RXML parser returned a non-RXML value");
+      }
       current = { ...current, parsed, errors: [] };
     } catch (error) {
-      current = { ...current, errors: [error] };
+      current = {
+        ...current,
+        errors: [error instanceof Error ? error : new Error(String(error))],
+      };
     }
   }
 
@@ -191,7 +239,7 @@ export function applyHeuristicPipeline(
 export function createIntermediateCall(
   toolName: string,
   rawSegment: string,
-  schema: unknown
+  schema: ToolInputSchemaCandidate
 ): IntermediateCall {
   return {
     toolName,

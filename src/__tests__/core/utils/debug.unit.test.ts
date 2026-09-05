@@ -10,6 +10,17 @@ import { REDACTED_SENSITIVE_TOOL_CALL_TEXT } from "../../../core/utils/protocol-
 describe("debug logging", () => {
   const previousDebug = process.env.DEBUG_PARSER_MW;
 
+  function expectRedactedOutput(
+    log: ReturnType<typeof vi.spyOn>,
+    forbidden: readonly string[]
+  ): void {
+    const output = log.mock.calls.flat().join("\n");
+    expect(output).toContain(REDACTED_SENSITIVE_TOOL_CALL_TEXT);
+    for (const value of forbidden) {
+      expect(output).not.toContain(value);
+    }
+  }
+
   afterEach(() => {
     if (previousDebug === undefined) {
       delete process.env.DEBUG_PARSER_MW;
@@ -63,10 +74,7 @@ describe("debug logging", () => {
       error,
     });
 
-    const output = log.mock.calls.flat().join("\n");
-    expect(output).toContain(REDACTED_SENSITIVE_TOOL_CALL_TEXT);
-    expect(output).not.toContain("constructor");
-    expect(output).not.toContain("secret");
+    expectRedactedOutput(log, ["constructor", "secret"]);
   });
 
   it("redacts prototype-sensitive normalized output chunks", () => {
@@ -80,10 +88,7 @@ describe("debug logging", () => {
       input: '{"constructor":{"polluted":true}}',
     });
 
-    const output = log.mock.calls.flat().join("\n");
-    expect(output).toContain(REDACTED_SENSITIVE_TOOL_CALL_TEXT);
-    expect(output).not.toContain("constructor");
-    expect(output).not.toContain("polluted");
+    expectRedactedOutput(log, ["constructor", "polluted"]);
   });
 
   it("redacts prototype-sensitive parsed summaries", () => {

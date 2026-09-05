@@ -1,22 +1,39 @@
+import {
+  isSchemaDefinition,
+  isSchemaRecord,
+  type ToolInputSchema,
+  type ToolInputSchemaCandidate,
+  type ToolInputSchemaDefinition,
+} from "../schema/tool-input-schema";
 import { getPatternSchemasForKey } from "./safe-pattern-regex";
 
-export function unwrapJsonSchema(schema: unknown): unknown {
-  if (!schema || typeof schema !== "object") {
-    return schema;
+export function unwrapJsonSchema(
+  schema: ToolInputSchemaCandidate
+): ToolInputSchemaDefinition | undefined {
+  let current = isSchemaDefinition(schema) ? schema : undefined;
+  const seen = new Set<object>();
+  while (typeof current === "object" && isSchemaRecord(current)) {
+    if (seen.has(current)) {
+      return current;
+    }
+    seen.add(current);
+    const wrapped = current.jsonSchema;
+    if (wrapped === undefined) {
+      return current;
+    }
+    current = wrapped;
   }
-  const s = schema as Record<string, unknown>;
-  if ("jsonSchema" in s) {
-    return unwrapJsonSchema(s.jsonSchema);
-  }
-  return schema;
+  return current;
 }
 
-export function getSchemaType(schema: unknown): string | undefined {
+export function getSchemaType(
+  schema: ToolInputSchemaCandidate
+): string | undefined {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!unwrapped || typeof unwrapped !== "object") {
+  if (typeof unwrapped !== "object" || !isSchemaRecord(unwrapped)) {
     return;
   }
-  const t: unknown = (unwrapped as Record<string, unknown>).type;
+  const t = unwrapped.type;
   if (typeof t === "string") {
     return t;
   }
@@ -28,22 +45,18 @@ export function getSchemaType(schema: unknown): string | undefined {
       "number",
       "integer",
       "string",
-    ];
+    ] as const;
     for (const p of preferred) {
       if (t.includes(p)) {
         return p;
       }
     }
   }
-  const s = unwrapped as Record<string, unknown>;
-  if (s && typeof s === "object" && (s.properties || s.additionalProperties)) {
+  const s = unwrapped;
+  if (s.properties || s.additionalProperties) {
     return "object";
   }
-  if (
-    s &&
-    typeof s === "object" &&
-    (s.items || (s as Record<string, unknown>).prefixItems)
-  ) {
+  if (s.items || s.prefixItems) {
     return "array";
   }
 }
@@ -67,7 +80,7 @@ export function getSchemaType(schema: unknown): string | undefined {
  * 3. Strict oneOf validation would require runtime value inspection, not just schema analysis
  */
 function schemaAllowsPropertyViaCombinators(
-  s: Record<string, unknown>,
+  s: ToolInputSchema,
   key: string,
   depth: number
 ): boolean {
@@ -108,17 +121,14 @@ function schemaAllowsPropertyViaCombinators(
   return anyOfAllows && oneOfAllows && allOfAllows;
 }
 
-function schemaHasPropertyDirectly(
-  s: Record<string, unknown>,
-  key: string
-): boolean {
+function schemaHasPropertyDirectly(s: ToolInputSchema, key: string): boolean {
   const props = s.properties;
   if (
     props &&
     typeof props === "object" &&
     !Array.isArray(props) &&
     Object.hasOwn(props, key) &&
-    (props as Record<string, unknown>)[key] !== false
+    props[key] !== false
   ) {
     return true;
   }
@@ -149,7 +159,7 @@ function schemaHasPropertyDirectly(
  * @param s - The schema object to check
  * @returns `true` if the schema allows additional properties, `false` otherwise
  */
-function schemaHasPropertyViaAdditional(s: Record<string, unknown>): boolean {
+function schemaHasPropertyViaAdditional(s: ToolInputSchema): boolean {
   const additional = s.additionalProperties;
   if (
     additional === true ||
@@ -175,7 +185,7 @@ function schemaHasPropertyViaAdditional(s: Record<string, unknown>): boolean {
 }
 
 function schemaDisallowsPropertyDirectly(
-  s: Record<string, unknown>,
+  s: ToolInputSchema,
   key: string
 ): boolean {
   const props = s.properties;
@@ -184,7 +194,7 @@ function schemaDisallowsPropertyDirectly(
     typeof props === "object" &&
     !Array.isArray(props) &&
     Object.hasOwn(props, key) &&
-    (props as Record<string, unknown>)[key] === false
+    props[key] === false
   ) {
     return true;
   }
@@ -211,7 +221,7 @@ function schemaDisallowsPropertyDirectly(
  * wrapper key than to incorrectly remove it and lose data.
  */
 export function schemaHasProperty(
-  schema: unknown,
+  schema: ToolInputSchemaCandidate,
   key: string,
   depth = 0
 ): boolean {
@@ -223,10 +233,10 @@ export function schemaHasProperty(
   if (schemaIsUnconstrained(unwrapped)) {
     return true;
   }
-  if (!unwrapped || typeof unwrapped !== "object") {
+  if (typeof unwrapped !== "object" || !isSchemaRecord(unwrapped)) {
     return false;
   }
-  const s = unwrapped as Record<string, unknown>;
+  const s = unwrapped;
 
   if (schemaDisallowsPropertyDirectly(s, key)) {
     return false;
@@ -240,7 +250,9 @@ export function schemaHasProperty(
   return schemaAllowsPropertyViaCombinators(s, key, depth);
 }
 
-export function schemaIsUnconstrained(schema: unknown): boolean {
+export function schemaIsUnconstrained(
+  schema: ToolInputSchemaCandidate
+): boolean {
   const unwrapped = unwrapJsonSchema(schema);
   if (unwrapped == null || unwrapped === true) {
     return true;

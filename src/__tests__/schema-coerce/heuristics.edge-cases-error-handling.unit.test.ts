@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import type { ToolInputSchema } from "../../schema/tool-input-schema";
 import { coerceBySchema } from "../../schema-coerce";
+
+interface CircularInput {
+  readonly item: CircularInput[];
+  readonly [key: string]: RxmlValue;
+}
 
 describe("Coercion Heuristic Handling", () => {
   describe("Edge cases and error handling", () => {
@@ -9,10 +16,13 @@ describe("Coercion Heuristic Handling", () => {
       const schema = {
         type: "array",
         items: { type: "string" },
-      };
+      } satisfies ToolInputSchema;
 
-      const result = coerceBySchema(input, schema) as any[];
+      const result = coerceBySchema(input, schema);
       expect(Array.isArray(result)).toBe(true);
+      if (!Array.isArray(result)) {
+        throw new TypeError("array schema coercion did not return an array");
+      }
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({});
     });
@@ -59,13 +69,13 @@ describe("Coercion Heuristic Handling", () => {
     });
 
     it("should handle circular references safely", () => {
-      const input: any = { item: [] };
+      const input: CircularInput = { item: [] };
       input.item.push(input); // Create circular reference
 
       const schema = {
         type: "array",
         items: { type: "object" },
-      };
+      } satisfies ToolInputSchema;
 
       // Should not throw an error
       expect(() => coerceBySchema(input, schema)).not.toThrow();

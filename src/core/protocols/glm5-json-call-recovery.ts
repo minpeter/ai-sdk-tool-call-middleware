@@ -1,4 +1,8 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import {
+  isJSONObject,
+  type JSONObject,
+  type LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import { hasPrototypeSensitiveStructuralKey } from "../utils/prototype-sensitive-keys";
 import { toolCallInputHasSchemaAwarePrototypeSensitiveValue } from "../utils/tool-call-coercion";
@@ -8,7 +12,6 @@ import type {
   ResolvedGlm5ProtocolOptions,
 } from "./glm5-call-types";
 import { resolveGlm5ToolName } from "./glm5-name-resolution";
-import { safeAssignGlm5Arg } from "./glm5-value-parsing";
 
 const STRICT_JSON_OPTIONS = {
   duplicate: false,
@@ -16,22 +19,17 @@ const STRICT_JSON_OPTIONS = {
   tolerant: false,
 } as const;
 
-function parseJsonFallback(value: string): Record<string, unknown> | null {
+function parseJsonFallback(value: string): JSONObject | null {
   const trimmed = value.trim();
   if (!(trimmed.startsWith("{") && trimmed.endsWith("}"))) {
     return null;
   }
   try {
     const parsed = parseRJSON(trimmed, STRICT_JSON_OPTIONS);
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed) ||
-      hasPrototypeSensitiveStructuralKey(parsed)
-    ) {
+    if (!isJSONObject(parsed) || hasPrototypeSensitiveStructuralKey(parsed)) {
       return null;
     }
-    return parsed as Record<string, unknown>;
+    return parsed;
   } catch {
     return null;
   }
@@ -59,7 +57,7 @@ export function parseJsonGlm5CallBody(options: {
     return null;
   }
   const rawArgs = parsed.arguments ?? parsed.input ?? {};
-  if (!rawArgs || typeof rawArgs !== "object" || Array.isArray(rawArgs)) {
+  if (!isJSONObject(rawArgs)) {
     return null;
   }
   const schema = options.tools.find(
@@ -69,7 +67,7 @@ export function parseJsonGlm5CallBody(options: {
     return null;
   }
   return {
-    args: rawArgs as Record<string, unknown>,
+    args: rawArgs,
     hasPartialValue: false,
     rawToolName: rawName,
     recoveries: [
@@ -81,11 +79,11 @@ export function parseJsonGlm5CallBody(options: {
 }
 
 export function appendJsonFallbackGlm5Args(options: {
-  args: Record<string, unknown>;
+  args: JSONObject;
   body: string;
   from: number;
   recoveries: string[];
-  schema: unknown;
+  schema: LanguageModelV4FunctionTool["inputSchema"];
 }): "appended" | "none" | "rejected" {
   const parsed = parseJsonFallback(options.body.slice(options.from));
   if (!parsed) {
@@ -102,9 +100,11 @@ export function appendJsonFallbackGlm5Args(options: {
     ) {
       return "rejected";
     }
-    if (!safeAssignGlm5Arg(options.args, key, value, options.recoveries)) {
+    if (Object.hasOwn(options.args, key)) {
+      options.recoveries.push("rejected-duplicate-key");
       return "rejected";
     }
+    options.args[key] = value;
   }
   options.recoveries.push("recovered-json-arguments-body");
   return "appended";

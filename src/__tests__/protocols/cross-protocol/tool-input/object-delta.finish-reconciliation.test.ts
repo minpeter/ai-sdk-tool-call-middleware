@@ -3,40 +3,15 @@ import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
 import {
-  extractTextDeltas,
-  extractToolInputDeltas,
-  findToolCall,
-  runProtocolTextDeltaStream,
-} from "./streaming-events.shared";
-
-const _nestedTool: LanguageModelV4FunctionTool = {
-  type: "function",
-  name: "plan_trip",
-  description: "Build travel plan payload",
-  inputSchema: {
-    type: "object",
-    properties: {
-      location: { type: "string" },
-      options: {
-        type: "object",
-        properties: {
-          unit: { type: "string" },
-          include_hourly: { type: "string" },
-        },
-      },
-      days: {
-        type: "array",
-        items: { type: "string" },
-      },
-    },
-    required: ["location"],
-  },
-};
+  collectTextDeltas,
+  observeObjectDeltas,
+  runProtocolTextStream,
+  selectToolInputTimeline,
+} from "../../shared/duplicate-harness";
 
 const weatherTool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "get_weather",
-  description: "Get weather",
   inputSchema: {
     type: "object",
     properties: {
@@ -47,20 +22,9 @@ const weatherTool: LanguageModelV4FunctionTool = {
   },
 };
 
-const _permissiveObjectTool: LanguageModelV4FunctionTool = {
-  type: "function",
-  name: "shape_shift",
-  description: "Permissive schema for streaming stability checks",
-  inputSchema: {
-    type: "object",
-    properties: {},
-  },
-};
-
 const strictNameTool: LanguageModelV4FunctionTool = {
   type: "function",
   name: "bad_tool",
-  description: "Strict tool for malformed stream edge tests",
   inputSchema: {
     type: "object",
     properties: {
@@ -70,57 +34,20 @@ const strictNameTool: LanguageModelV4FunctionTool = {
   },
 };
 
-const _writeMarkdownTool: LanguageModelV4FunctionTool = {
-  type: "function",
-  name: "write_markdown_file",
-  description: "Write markdown file",
-  inputSchema: {
-    type: "object",
-    properties: {
-      file_path: { type: "string" },
-      content: { type: "string" },
-    },
-    required: ["file_path", "content"],
-  },
-};
-
-const _mathSumTool: LanguageModelV4FunctionTool = {
-  type: "function",
-  name: "math_sum",
-  description: "Sum numbers",
-  inputSchema: {
-    type: "object",
-    properties: {
-      numbers: {
-        type: "array",
-        items: { type: "number" },
-      },
-    },
-    required: ["numbers"],
-  },
-};
-
-const _mathSumWithUnitTool: LanguageModelV4FunctionTool = {
-  type: "function",
-  name: "math_sum_with_unit",
-  description: "Sum numbers with unit",
-  inputSchema: {
-    type: "object",
-    properties: {
-      numbers: {
-        type: "array",
-        items: { type: "number" },
-      },
-      unit: { type: "string" },
-    },
-    required: ["numbers", "unit"],
-  },
-};
+function expectClosedWithoutToolCall(
+  out: Awaited<ReturnType<typeof runProtocolTextStream>>
+): void {
+  const { starts, ends } = selectToolInputTimeline(out);
+  expect(starts).toHaveLength(1);
+  expect(ends).toHaveLength(1);
+  expect(out.some((part) => part.type === "tool-call")).toBe(false);
+}
 
 describe("XML/YAML finish reconciliation policy", () => {
   it("xml/yaml finish reconciliation emits final suffix so joined deltas equal final tool input", async () => {
-    const [xmlOut, yamlOut] = await Promise.all([
-      runProtocolTextDeltaStream({
+    const [xml, yaml] = await Promise.all([
+      observeObjectDeltas({
+        id: "xml-finish-reconciliation",
         protocol: morphXmlProtocol(),
         tools: [weatherTool],
         chunks: [
@@ -128,17 +55,18 @@ describe("XML/YAML finish reconciliation policy", () => {
           "an</location>\n<unit>celsius</unit>\n",
         ],
       }),
-      runProtocolTextDeltaStream({
+      observeObjectDeltas({
+        id: "yaml-finish-reconciliation",
         protocol: yamlXmlProtocol(),
         tools: [weatherTool],
         chunks: ["<get_weather>\nlocation: Busan\nunit: celsius\n"],
       }),
     ]);
 
-    const xmlCall = findToolCall(xmlOut);
-    const yamlCall = findToolCall(yamlOut);
-    const xmlJoined = extractToolInputDeltas(xmlOut).join("");
-    const yamlJoined = extractToolInputDeltas(yamlOut).join("");
+    const xmlCall = xml.toolCall;
+    const yamlCall = yaml.toolCall;
+    const xmlJoined = xml.joinedInput;
+    const yamlJoined = yaml.joinedInput;
 
     expect(xmlJoined).toBe(xmlCall.input);
     expect(yamlJoined).toBe(yamlCall.input);
@@ -153,56 +81,42 @@ describe("XML/YAML finish reconciliation policy", () => {
   });
 
   it("xml finish on unclosed malformed tool call closes stream without raw fallback by default", async () => {
-    const out = await runProtocolTextDeltaStream({
+    const out = await runProtocolTextStream({
+      id: "xml-malformed-default",
       protocol: morphXmlProtocol(),
       tools: [strictNameTool],
       chunks: ["<bad_tool><name>first</name><name>second</name>"],
     });
 
-    const starts = out.filter((part) => part.type === "tool-input-start");
-    const ends = out.filter((part) => part.type === "tool-input-end");
-    const text = extractTextDeltas(out);
-
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(text).not.toContain("<bad_tool>");
+    expectClosedWithoutToolCall(out);
+    expect(collectTextDeltas(out)).not.toContain("<bad_tool>");
   });
 
   it("xml finish on unclosed malformed tool call can emit raw fallback when enabled", async () => {
-    const out = await runProtocolTextDeltaStream({
+    const out = await runProtocolTextStream({
+      id: "xml-malformed-raw",
       protocol: morphXmlProtocol(),
       tools: [strictNameTool],
+      parserOptions: { emitRawToolCallTextOnError: true },
       chunks: ["<bad_tool><name>first</name><name>second</name>"],
-      options: { emitRawToolCallTextOnError: true },
     });
 
-    const starts = out.filter((part) => part.type === "tool-input-start");
-    const ends = out.filter((part) => part.type === "tool-input-end");
-    const text = extractTextDeltas(out);
-
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
+    expectClosedWithoutToolCall(out);
+    const text = collectTextDeltas(out);
     expect(text).toContain("<bad_tool>");
     expect(text).toContain("<name>first</name>");
   });
 
   it("yaml finish on malformed unclosed tool call can emit raw fallback when enabled", async () => {
-    const out = await runProtocolTextDeltaStream({
+    const out = await runProtocolTextStream({
+      id: "yaml-malformed-raw",
       protocol: yamlXmlProtocol(),
       tools: [weatherTool],
+      parserOptions: { emitRawToolCallTextOnError: true },
       chunks: ["<get_weather>\n["],
-      options: { emitRawToolCallTextOnError: true },
     });
 
-    const starts = out.filter((part) => part.type === "tool-input-start");
-    const ends = out.filter((part) => part.type === "tool-input-end");
-    const text = extractTextDeltas(out);
-
-    expect(starts).toHaveLength(1);
-    expect(ends).toHaveLength(1);
-    expect(out.some((part) => part.type === "tool-call")).toBe(false);
-    expect(text).toContain("<get_weather>");
+    expectClosedWithoutToolCall(out);
+    expect(collectTextDeltas(out)).toContain("<get_weather>");
   });
 });

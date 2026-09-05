@@ -1,11 +1,19 @@
+import type { ToolInputSchemaCandidate } from "../../schema/tool-input-schema";
 import { unwrapJsonSchema } from "../../schema-coerce";
 import { collectFalsePropertyNames } from "./tool-call-property-deny";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type SchemaBoundaryRecord = Readonly<Record<string, ToolInputSchemaCandidate>>;
+
+function isRecord(
+  value: ToolInputSchemaCandidate
+): value is SchemaBoundaryRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function addDeclaredProperties(names: Set<string>, properties: unknown): void {
+function addDeclaredProperties(
+  names: Set<string>,
+  properties: ToolInputSchemaCandidate
+): void {
   if (!isRecord(properties)) {
     return;
   }
@@ -18,7 +26,7 @@ function addDeclaredProperties(names: Set<string>, properties: unknown): void {
 
 function addRequiredProperties(
   names: Set<string>,
-  required: unknown,
+  required: ToolInputSchemaCandidate,
   falsePropertyNames: Set<string>
 ): void {
   if (!Array.isArray(required)) {
@@ -31,7 +39,10 @@ function addRequiredProperties(
   }
 }
 
-function addAllOfPropertyNames(names: Set<string>, variants: unknown): void {
+function addAllOfPropertyNames(
+  names: Set<string>,
+  variants: ToolInputSchemaCandidate
+): void {
   if (!Array.isArray(variants)) {
     return;
   }
@@ -43,10 +54,12 @@ function addAllOfPropertyNames(names: Set<string>, variants: unknown): void {
 }
 
 export function collectSchemaSelectionPropertyNames(
-  schema: unknown
+  schema: ToolInputSchemaCandidate
 ): Set<string> {
   const names = new Set<string>();
-  const unwrapped = unwrapJsonSchema(schema);
+  const unwrapped = unwrapJsonSchema(
+    typeof schema === "boolean" || isRecord(schema) ? schema : undefined
+  );
   if (!isRecord(unwrapped)) {
     return names;
   }

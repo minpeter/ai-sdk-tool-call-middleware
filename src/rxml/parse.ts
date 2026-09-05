@@ -1,3 +1,8 @@
+import { isJSONObject, type JSONObject } from "@ai-sdk/provider";
+import {
+  isSchemaDefinition,
+  type ToolInputSchemaCandidate,
+} from "../schema/tool-input-schema";
 import { parse as parseCore } from "./core/parser";
 import type { ParseOptions } from "./core/types";
 import { RXMLParseError } from "./errors/types";
@@ -9,11 +14,13 @@ import {
 
 export function parse(
   xml: string,
-  schema: unknown,
+  schema: ToolInputSchemaCandidate,
   options: ParseOptions = {}
-): Record<string, unknown> {
+): JSONObject {
+  const parsedSchema = isSchemaDefinition(schema) ? schema : undefined;
+
   if (!options.repair) {
-    return parseCore(xml, schema, options);
+    return parseCore(xml, parsedSchema, options);
   }
 
   const baseOptions: ParseOptions = {
@@ -21,17 +28,22 @@ export function parse(
     repair: false,
   };
 
-  const ctx = createIntermediateCall("", xml, schema);
+  const ctx = createIntermediateCall("", xml, parsedSchema);
   const result = applyHeuristicPipeline(ctx, defaultPipelineConfig, {
-    parse: (raw, s) => parseCore(raw, s, baseOptions),
+    parse: (raw) => parseCore(raw, parsedSchema, baseOptions),
     onError: options.onError,
     maxReparses: options.maxReparses,
   });
 
-  if (result.parsed !== null) {
-    return result.parsed as Record<string, unknown>;
+  if (isJSONObject(result.parsed) && !Array.isArray(result.parsed)) {
+    return result.parsed;
   }
 
   const [error] = result.errors;
-  throw new RXMLParseError("Failed to parse XML with repair heuristics", error);
+  const normalizedError =
+    error instanceof Error ? error : new Error(String(error), { cause: error });
+  throw new RXMLParseError(
+    "Failed to parse XML with repair heuristics",
+    normalizedError
+  );
 }

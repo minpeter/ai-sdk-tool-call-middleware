@@ -1,6 +1,12 @@
+import {
+  isJSONObject,
+  isJSONValue,
+  type JSONObject,
+  type JSONValue,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { parse } from "../../rjson/index";
+import { defineReviver, parse, type RevivedValue } from "../../rjson/index";
 
 const DUPLICATE_KEY_REGEX = /Duplicate key: key/;
 const PARSE_WARNINGS_REGEX = /parse warnings/;
@@ -48,10 +54,18 @@ describe("relaxed-json", () => {
       });
 
       it("preserves __proto__ as an own data property", () => {
-        const parsed = parse(
+        const parsedValue = parse(
           '{"__proto__":{"polluted":"top"},"safe":{"__proto__":{"polluted":"nested"}}}'
-        ) as Record<string, unknown>;
-        const nested = parsed.safe as Record<string, unknown>;
+        );
+        if (!isJSONObject(parsedValue)) {
+          throw new TypeError("Expected parsed JSON object");
+        }
+        const parsed: JSONObject = parsedValue;
+        const nestedValue: JSONValue | undefined = parsed.safe;
+        if (!isJSONObject(nestedValue)) {
+          throw new TypeError("Expected nested JSON object");
+        }
+        const nested: JSONObject = nestedValue;
 
         expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype);
         expect(Object.hasOwn(parsed, "__proto__")).toBe(true);
@@ -64,7 +78,7 @@ describe("relaxed-json", () => {
           Object.getOwnPropertyDescriptor(nested, "__proto__")?.value
         ).toEqual({ polluted: "nested" });
         expect(
-          (Object.prototype as Record<string, unknown>).polluted
+          Object.getOwnPropertyDescriptor(Object.prototype, "polluted")
         ).toBeUndefined();
       });
     });
@@ -166,25 +180,257 @@ describe("relaxed-json", () => {
 
     describe("options", () => {
       it("should support reviver function", () => {
-        const reviver = (_key: string, value: any) => {
-          if (typeof value === "number") {
-            return value * 2;
-          }
-          return value;
-        };
-        expect(parse('{"a": 1, "b": 2}', reviver)).toEqual({ a: 2, b: 4 });
+        expect(
+          parse('{"a": 1, "b": 2}', (_key, value) => {
+            if (typeof value === "number") {
+              return value * 2;
+            }
+            return value;
+          })
+        ).toEqual({ a: 2, b: 4 });
       });
 
       it("should support reviver in options object", () => {
-        const reviver = (_key: string, value: any) => {
-          if (typeof value === "string") {
-            return value.toUpperCase();
-          }
-          return value;
-        };
-        expect(parse('{"key": "value"}', { reviver })).toEqual({
+        expect(
+          parse('{"key": "value"}', {
+            reviver: (_key, value) => {
+              if (typeof value === "string") {
+                return value.toUpperCase();
+              }
+              return value;
+            },
+          })
+        ).toEqual({
           key: "VALUE",
         });
+      });
+
+      it("binds an object property reviver to its holder like JSON.parse", () => {
+        function readSibling(
+          this: Record<string, JSONValue>,
+          key: string,
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
+          return key === "a" ? this.b : value;
+        }
+        const text = '{"a":1,"b":2}';
+
+        expect(parse(text, readSibling)).toEqual(JSON.parse(text, readSibling));
+        expect(parse(text, readSibling)).toEqual({ a: 2, b: 2 });
+      });
+
+      it("binds an array element reviver to its holder like JSON.parse", () => {
+        function readNextElement(
+          this: JSONValue[],
+          key: string,
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
+          return key === "0" ? this[1] : value;
+        }
+        const text = "[1,2]";
+
+        expect(parse(text, readNextElement)).toEqual(
+          JSON.parse(text, readNextElement)
+        );
+      });
+
+      it("preserves reviver deletion like JSON.parse", () => {
+        function deleteProperty(
+          key: string,
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
+          return key === "a" ? undefined : value;
+        }
+        const text = '{"a":1,"b":2}';
+
+        expect(parse(text, deleteProperty)).toEqual(
+          JSON.parse(text, deleteProperty)
+        );
+      });
+
+      it("passes undefined when an earlier callback deletes a later sibling", () => {
+        const text = '{"a":1,"b":2}';
+        const rjsonValues: Array<JSONValue | undefined> = [];
+        const nativeValues: Array<JSONValue | undefined> = [];
+        const createReviver = (values: Array<JSONValue | undefined>) =>
+          function deleteLaterSibling(
+            this: Record<string, JSONValue | undefined>,
+            key: string,
+            value: JSONValue | undefined
+          ): JSONValue | undefined {
+            if (key === "a") {
+              Reflect.deleteProperty(this, "b");
+            } else if (key === "b") {
+              values.push(value);
+            }
+            return value;
+          };
+
+        const revived = parse(text, createReviver(rjsonValues));
+        const native = JSON.parse(text, createReviver(nativeValues));
+
+        expect(revived).toEqual(native);
+        expect(rjsonValues).toEqual([undefined]);
+        expect(rjsonValues).toEqual(nativeValues);
+      });
+
+      it("recursively visits a callable replacement like JSON.parse", () => {
+        type CallableReplacement = (() => string) & { child: number };
+        type CallableValue = RevivedValue<CallableReplacement> | undefined;
+
+        const createReviver = (calls: string[]) =>
+          defineReviver<CallableReplacement>(function replaceLaterSibling(
+            this: Record<string, CallableValue>,
+            key: string,
+            value: CallableValue
+          ): CallableValue {
+            calls.push(key);
+            if (key === "a") {
+              this.b = Object.assign(() => "replacement", { child: 1 });
+            }
+            return key === "child" && typeof value === "number"
+              ? value + 1
+              : value;
+          });
+        const text = '{"a":1,"b":2}';
+        const rjsonCalls: string[] = [];
+        const nativeCalls: string[] = [];
+
+        const revived = parse(text, createReviver(rjsonCalls));
+        const native = JSON.parse(text, createReviver(nativeCalls));
+
+        expect(rjsonCalls).toEqual(["a", "child", "b", ""]);
+        expect(rjsonCalls).toEqual(nativeCalls);
+        expect((revived as { b: CallableReplacement }).b.child).toBe(
+          (native as { b: CallableReplacement }).b.child
+        );
+        expect((revived as { b: CallableReplacement }).b()).toBe(
+          (native as { b: CallableReplacement }).b()
+        );
+      });
+
+      it("preserves reviver-created array holes like JSON.parse", () => {
+        function deleteElement(
+          key: string,
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
+          return key === "0" ? undefined : value;
+        }
+        const text = "[1,2]";
+        const revived = parse(text, deleteElement);
+
+        expect(revived).toEqual(JSON.parse(text, deleteElement));
+        if (!Array.isArray(revived)) {
+          throw new TypeError("Expected revived JSON array");
+        }
+        expect(Object.hasOwn(revived, 0)).toBe(false);
+      });
+
+      it("binds the root reviver to a wrapper like JSON.parse", () => {
+        const holderKeys: string[][] = [];
+        function inspectRoot(
+          this: Record<string, JSONValue>,
+          key: string,
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
+          if (key === "") {
+            holderKeys.push(Object.keys(this));
+          }
+          return value;
+        }
+
+        expect(parse("1", inspectRoot)).toEqual(JSON.parse("1", inspectRoot));
+        expect(holderKeys).toEqual([[""], [""]]);
+      });
+
+      it("ignores property recreation after a reviver freezes its holder", () => {
+        function freezeHolder(
+          this: Record<string, JSONValue>,
+          key: string,
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
+          if (key === "a") {
+            Object.freeze(this);
+          }
+          return value;
+        }
+        const text = '{"a":1,"b":2}';
+
+        expect(parse(text, freezeHolder)).toEqual(
+          JSON.parse(text, freezeHolder)
+        );
+        expect(parse(text, freezeHolder)).toEqual({ a: 1, b: 2 });
+      });
+
+      it("keeps a sibling made non-configurable by an earlier callback", () => {
+        function lockSibling(
+          this: Record<string, JSONValue>,
+          key: string,
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
+          if (key === "a") {
+            Object.defineProperty(this, "b", {
+              configurable: false,
+              enumerable: true,
+              value: 7,
+            });
+          }
+          return key === "b" ? 9 : value;
+        }
+        const text = '{"a":1,"b":2}';
+
+        expect(parse(text, lockSibling)).toEqual(JSON.parse(text, lockSibling));
+        expect(parse(text, lockSibling)).toEqual({ a: 1, b: 7 });
+      });
+
+      it("matches native reviver context.source for numeric primitives", () => {
+        const text = '{"amount":1.2300e+4}';
+        const collectSources =
+          (sources: Array<string | undefined>) =>
+          (
+            key: string,
+            value: JSONValue | undefined,
+            context?: { readonly source: string }
+          ): JSONValue | undefined => {
+            if (key === "amount") {
+              sources.push(context?.source);
+            }
+            return value;
+          };
+        const rjsonSources: Array<string | undefined> = [];
+        const nativeSources: Array<string | undefined> = [];
+
+        const revived = parse(text, {
+          duplicate: true,
+          relaxed: false,
+          reviver: collectSources(rjsonSources),
+          tolerant: false,
+          warnings: false,
+        });
+        const native = JSON.parse(text, collectSources(nativeSources));
+
+        expect(revived).toEqual(native);
+        expect(rjsonSources).toEqual(nativeSources);
+        expect(rjsonSources).toEqual(["1.2300e+4"]);
+      });
+
+      it("visits only the final duplicate value with a holder like JSON.parse", () => {
+        function readSibling(
+          this: Record<string, JSONValue>,
+          key: string,
+          value: JSONValue | undefined
+        ): JSONValue | undefined {
+          return key === "a" ? this.b : value;
+        }
+        const text = '{"a":0,"a":1,"b":2}';
+
+        expect(
+          parse(text, {
+            duplicate: true,
+            relaxed: false,
+            reviver: readSibling,
+          })
+        ).toEqual(JSON.parse(text, readSibling));
       });
 
       it("should check for duplicate keys when duplicate is false", () => {
@@ -240,7 +486,11 @@ describe("relaxed-json", () => {
 
       it("should handle large arrays", () => {
         const largeArray = `[${new Array(1000).fill("1").join(",")}]`;
-        const result = parse(largeArray) as number[];
+        const parsed = parse(largeArray);
+        if (!(isJSONValue(parsed) && Array.isArray(parsed))) {
+          throw new TypeError("Expected parsed JSON array");
+        }
+        const result: JSONValue[] = parsed;
         expect(result).toHaveLength(1000);
         expect(result[0]).toBe(1);
       });

@@ -1,6 +1,12 @@
+import type {
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4Content,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { formatToolResponseAsHermes } from "../../core/prompts/hermes-prompt";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { formatToolResponseAsHermes as renderHermesToolResponse } from "../../core/prompts/hermes-prompt";
+import { hermesProtocol as createHermesProtocol } from "../../core/protocols/hermes-protocol";
+import type { ToolInputSchema } from "../../schema/tool-input-schema";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
 
@@ -8,42 +14,39 @@ vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-// Regex constants for performance
-const _REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
-const _REGEX_TOOL_CALL_FENCE = /```tool_call/;
-const _REGEX_TOOL_RESPONSE_FENCE = /```tool_response/;
-const _REGEX_GET_WEATHER = /get_weather/;
-const _REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
-const _REGEX_MAY_CALL_FUNCTIONS = /You may call one or more functions/;
-const _REGEX_TOOLS_TAG = /<tools>/;
-const _REGEX_NONE = /none/;
-const _REGEX_NOT_FOUND = /not found/;
-const _REGEX_PROVIDER_DEFINED = /Provider-defined tools/;
-const _REGEX_REQUIRED_NO_TOOLS =
-  /Tool choice type 'required' is set, but no tools are provided/;
-const _REGEX_REQUIRED_NO_FUNCTION_TOOLS = /no function tools are provided/;
+const model: LanguageModelV4 = {
+  modelId: "test",
+  provider: "test",
+  supportedUrls: {},
+  specificationVersion: "v4",
+  doStream() {
+    throw new Error("unused");
+  },
+  doGenerate() {
+    throw new Error("unused");
+  },
+};
+
 const REGEX_TOOL_CALL_TAG = /<tool_call>/;
 const REGEX_TOOL_RESPONSE_TAG = /<tool_response>/;
-const _REGEX_GET_WEATHER_TAG = /<get_weather>/;
-const _REGEX_TOOL_CALL_WORD = /tool_call/;
 
 describe("transformParams convertToolPrompt mapping and merge", () => {
   const mw = createToolMiddleware({
-    protocol: hermesProtocol,
+    protocol: createHermesProtocol,
     placement: "first",
     toolSystemPromptTemplate: (t) => `TOOLS:${t}`,
-    toolResponsePromptTemplate: formatToolResponseAsHermes,
+    toolResponsePromptTemplate: renderHermesToolResponse,
   });
 
   it("converts assistant tool-call and tool role messages, merges adjacent user texts, and preserves providerOptions", async () => {
-    const params = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [
         {
-          role: "user" as const,
-          content: [{ type: "text" as const, text: "hello" }],
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
         },
         {
-          role: "assistant" as const,
+          role: "assistant",
           content: [
             {
               type: "tool-call",
@@ -52,35 +55,40 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
               input: "{}",
             },
             { type: "text", text: "aside" },
-            { foo: "bar" } as any,
+            { type: "custom", kind: "test.part" },
           ],
         },
         {
-          role: "tool" as const,
+          role: "tool",
           content: [
             {
               type: "tool-result",
               toolName: "t1",
               toolCallId: "tc1",
-              output: { ok: true },
+              output: { type: "json", value: { ok: true } },
             },
-            { toolName: "t1", toolCallId: "tc1", output: { alt: 1 } } as any,
+            {
+              type: "tool-result",
+              toolName: "t1",
+              toolCallId: "tc1",
+              output: { type: "json", value: { alt: 1 } },
+            },
           ],
         },
       ],
       tools: [
         {
-          type: "function" as const,
+          type: "function",
           name: "t1",
           description: "desc",
-          inputSchema: { type: "object" },
+          inputSchema: { type: "object" } satisfies ToolInputSchema,
         },
       ],
       providerOptions: { toolCallMiddleware: { existing: true } },
     };
 
     const transformParams = requireTransformParams(mw.transformParams);
-    const out = await transformParams({ params } as any);
+    const out = await transformParams({ type: "generate", model, params });
     expect(out.prompt[0].role).toBe("system");
     // Assistant remains assistant with formatted tool call text
     const assistantMsg = out.prompt.find((m) => m.role === "assistant");
@@ -89,7 +97,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
       throw new Error("assistant message not found");
     }
     const assistantText = assistantMsg.content
-      .map((c) => (c.type === "text" ? (c as any).text : ""))
+      .map((c) => (c.type === "text" ? c.text : ""))
       .join("");
     expect(assistantText).toMatch(REGEX_TOOL_CALL_TAG);
 
@@ -98,9 +106,7 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     expect(userMsgs.length).toBe(2);
     const userCombined = userMsgs
       .map((u) =>
-        u.content
-          .map((c) => (c.type === "text" ? (c as any).text : ""))
-          .join("")
+        u.content.map((c) => (c.type === "text" ? c.text : "")).join("")
       )
       .join("\n");
     expect(userCombined).toContain("hello");
@@ -108,25 +114,27 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
 
     // tools cleared; originalTools propagated into providerOptions
     expect(out.tools).toEqual([]);
-    const { originalTools } = (out.providerOptions as any).toolCallMiddleware;
-    expect(originalTools).toEqual([
+    const middlewareOptions = out.providerOptions?.toolCallMiddleware;
+    expect(middlewareOptions).toMatchObject({ existing: true });
+    if (!middlewareOptions) {
+      throw new Error("tool middleware options not found");
+    }
+    expect(middlewareOptions.originalTools).toEqual([
       {
         name: "t1",
         inputSchema: JSON.stringify({ type: "object" }),
       },
     ]);
-    // existing provider option preserved
-    expect((out.providerOptions as any).toolCallMiddleware.existing).toBe(true);
   });
 
   it("condenses multiple text parts in a single user message into one", async () => {
-    const params = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [
         {
-          role: "user" as const,
+          role: "user",
           content: [
-            { type: "text" as const, text: "line1" },
-            { type: "text" as const, text: "line2" },
+            { type: "text", text: "line1" },
+            { type: "text", text: "line2" },
           ],
         },
       ],
@@ -134,67 +142,74 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
     };
 
     const transformParams = requireTransformParams(mw.transformParams);
-    const out = await transformParams({ params } as any);
+    const out = await transformParams({ type: "generate", model, params });
     const userMsgs = out.prompt.filter((m) => m.role === "user");
     expect(userMsgs).toHaveLength(1);
-    const onlyText = userMsgs[0].content.every((c: any) => c.type === "text");
+    const [onlyUser] = userMsgs;
+    if (!onlyUser) {
+      throw new Error("user message not found");
+    }
+    const onlyText = onlyUser.content.every((c) => c.type === "text");
     expect(onlyText).toBe(true);
-    expect(userMsgs[0].content).toHaveLength(1);
-    expect((userMsgs[0].content[0] as any).text).toBe("line1\nline2");
+    expect(onlyUser.content).toHaveLength(1);
+    const [firstPart] = onlyUser.content;
+    if (firstPart?.type !== "text") {
+      throw new Error("text part not found");
+    }
+    expect(firstPart.text).toBe("line1\nline2");
   });
 
   it("preserves assistant reasoning parts and formats tool-call", async () => {
-    const params = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [
         {
-          role: "assistant" as const,
+          role: "assistant",
           content: [
             {
-              type: "tool-call" as const,
+              type: "tool-call",
               toolCallId: "tc1",
               toolName: "t1",
               input: "{}",
             },
             {
-              type: "reasoning" as const,
-              content: [{ type: "text", text: "thinking..." }],
-            } as any,
+              type: "reasoning",
+              text: "thinking...",
+            },
           ],
         },
       ],
       tools: [
         {
-          type: "function" as const,
+          type: "function",
           name: "t1",
           description: "desc",
-          inputSchema: { type: "object" },
+          inputSchema: { type: "object" } satisfies ToolInputSchema,
         },
       ],
     };
 
     const transformParams = requireTransformParams(mw.transformParams);
-    const out = await transformParams({ params } as any);
+    const out = await transformParams({ type: "generate", model, params });
     const assistant = out.prompt.find((m) => m.role === "assistant");
     if (!assistant) {
       throw new Error("assistant message not found");
     }
-    const assistantAny = assistant as any;
     // Should contain both formatted tool_call text and original reasoning block
-    const hasReasoning = assistantAny.content.some(
-      (c: any) => c.type === "reasoning"
-    );
+    const hasReasoning = assistant.content.some((c) => c.type === "reasoning");
     expect(hasReasoning).toBe(true);
-    const assistantText = assistantAny.content
-      .filter((c: any) => c.type === "text")
-      .map((c: any) => c.text)
+    const assistantText = assistant.content
+      .filter(
+        (c): c is Extract<LanguageModelV4Content, { type: "text" }> =>
+          c.type === "text"
+      )
+      .map((c) => c.text)
       .join("\n");
     expect(assistantText).toMatch(REGEX_TOOL_CALL_TAG);
     // Ensure the reasoning's inner text remains
-    const reasoning = assistantAny.content.find(
-      (c: any) => c.type === "reasoning"
-    );
-    expect(
-      (reasoning as any).content?.map((p: any) => p.text).join("")
-    ).toContain("thinking...");
+    const reasoning = assistant.content.find((c) => c.type === "reasoning");
+    if (reasoning?.type !== "reasoning") {
+      throw new Error("reasoning part not found");
+    }
+    expect(reasoning.text).toContain("thinking...");
   });
 });

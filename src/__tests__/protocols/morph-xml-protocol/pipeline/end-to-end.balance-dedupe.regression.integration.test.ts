@@ -51,10 +51,10 @@ describe("morphXmlProtocol pipeline balance-dedupe regression integration", () =
     const result = protocol.parseGeneratedText({ text, tools: shellTools });
 
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("tool-call");
-    if (result[0].type === "tool-call") {
-      const input = JSON.parse(result[0].input);
-      expect(input.description).toBe("Show all");
+    const [part] = result;
+    expect(part.type).toBe("tool-call");
+    if (part.type === "tool-call") {
+      expect(JSON.parse(part.input).description).toBe("Show all");
     }
   });
 });

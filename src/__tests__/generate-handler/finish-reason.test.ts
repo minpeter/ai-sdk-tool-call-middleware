@@ -1,4 +1,8 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4FinishReason,
+  LanguageModelV4FunctionTool,
+  LanguageModelV4GenerateResult,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
 import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
@@ -44,13 +48,27 @@ function makeParams() {
   };
 }
 
-function makeResult(text: string, finishReason: unknown) {
+function makeResult(
+  text: string,
+  finishReason: LanguageModelV4FinishReason
+): LanguageModelV4GenerateResult {
   return {
     content: [{ type: "text", text }],
     finishReason,
     usage: zeroUsage,
     warnings: [],
   };
+}
+
+function runWrappedResult(
+  text: string,
+  finishReason: LanguageModelV4FinishReason
+) {
+  return wrapGenerate({
+    protocol: toolCallProtocol,
+    doGenerate: vi.fn().mockResolvedValue(makeResult(text, finishReason)),
+    params: makeParams(),
+  });
 }
 
 describe("wrapGenerate finishReason parity with streaming", () => {
@@ -75,15 +93,7 @@ describe("wrapGenerate finishReason parity with streaming", () => {
   });
 
   it("rewrites stop to tool-calls when a tool call was parsed", async () => {
-    const doGenerate = vi
-      .fn()
-      .mockResolvedValue(makeResult("CALL", mockFinishReason("stop")));
-
-    const result = await wrapGenerate({
-      protocol: toolCallProtocol,
-      doGenerate,
-      params: makeParams(),
-    });
+    const result = await runWrappedResult("CALL", mockFinishReason("stop"));
 
     expect(result.content[0]).toMatchObject({ type: "tool-call" });
     expect(result.finishReason).toEqual({
@@ -93,14 +103,9 @@ describe("wrapGenerate finishReason parity with streaming", () => {
   });
 
   it("rewrites other to tool-calls when a tool call was parsed", async () => {
-    const doGenerate = vi
-      .fn()
-      .mockResolvedValue(makeResult("CALL", { unified: "other", raw: "eos" }));
-
-    const result = await wrapGenerate({
-      protocol: toolCallProtocol,
-      doGenerate,
-      params: makeParams(),
+    const result = await runWrappedResult("CALL", {
+      unified: "other",
+      raw: "eos",
     });
 
     expect(result.finishReason).toEqual({
@@ -110,15 +115,7 @@ describe("wrapGenerate finishReason parity with streaming", () => {
   });
 
   it("preserves meaningful finish reasons such as length", async () => {
-    const doGenerate = vi
-      .fn()
-      .mockResolvedValue(makeResult("CALL", mockFinishReason("length")));
-
-    const result = await wrapGenerate({
-      protocol: toolCallProtocol,
-      doGenerate,
-      params: makeParams(),
-    });
+    const result = await runWrappedResult("CALL", mockFinishReason("length"));
 
     expect(result.content[0]).toMatchObject({ type: "tool-call" });
     expect(result.finishReason).toEqual(mockFinishReason("length"));

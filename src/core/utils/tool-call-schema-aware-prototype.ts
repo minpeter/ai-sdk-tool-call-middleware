@@ -1,3 +1,8 @@
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import {
+  isSchemaRecord,
+  type ToolInputSchemaDefinition,
+} from "../../schema/tool-input-schema";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
 import {
   hasPrototypeSensitiveStructuralKey,
@@ -10,15 +15,19 @@ const SAFE_PROTOTYPE_LABEL_SCALAR_RE =
 const MAX_SCHEMA_AWARE_PROTOTYPE_TRAVERSAL_WORK = 100_000;
 
 interface SchemaAwarePrototypeTraversalFrame {
-  readonly schema: unknown;
-  readonly value: unknown;
+  readonly schema: ToolInputSchemaDefinition | undefined;
+  readonly value: RxmlValue;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type TraversalAction = "sensitive" | "skip" | "visit";
+
+function isRxmlRecord(
+  value: RxmlValue
+): value is Readonly<Record<string, RxmlValue>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseJsonDocumentString(value: string): object | null {
+function parseJsonDocumentString(value: string): RxmlValue | null {
   const trimmed = value.trim();
   if (
     !(
@@ -29,14 +38,14 @@ function parseJsonDocumentString(value: string): object | null {
     return null;
   }
   try {
-    const parsed: unknown = JSON.parse(trimmed);
+    const parsed: RxmlValue = JSON.parse(trimmed);
     return typeof parsed === "object" && parsed !== null ? parsed : null;
   } catch {
     return null;
   }
 }
 
-function jsonDocumentEntryIsUnsafe(key: string, value: unknown): boolean {
+function jsonDocumentEntryIsUnsafe(key: string, value: RxmlValue): boolean {
   if (key === "__proto__") {
     return true;
   }
@@ -51,15 +60,15 @@ function jsonDocumentEntryIsUnsafe(key: string, value: unknown): boolean {
   );
 }
 
-function jsonDocumentHasUnsafeStructuredValue(value: object): boolean {
-  const stack: unknown[] = [value];
+function jsonDocumentHasUnsafeStructuredValue(value: RxmlValue): boolean {
+  const stack: RxmlValue[] = [value];
   while (stack.length > 0) {
     const current = stack.pop();
     if (Array.isArray(current)) {
       stack.push(...current);
       continue;
     }
-    if (!isRecord(current)) {
+    if (!isRxmlRecord(current)) {
       continue;
     }
     for (const [key, item] of Object.entries(current)) {
@@ -79,9 +88,12 @@ function isSafeJsonDocumentString(value: string): boolean {
   return parsed !== null && !jsonDocumentHasUnsafeStructuredValue(parsed);
 }
 
-function arrayItemSchema(schema: unknown, index: number): unknown {
+function arrayItemSchema(
+  schema: ToolInputSchemaDefinition | undefined,
+  index: number
+): ToolInputSchemaDefinition | undefined {
   const unwrapped = unwrapJsonSchema(schema);
-  if (!isRecord(unwrapped)) {
+  if (!(typeof unwrapped === "object" && isSchemaRecord(unwrapped))) {
     return;
   }
   if (
@@ -90,12 +102,12 @@ function arrayItemSchema(schema: unknown, index: number): unknown {
   ) {
     return unwrapped.prefixItems[index];
   }
-  return unwrapped.items;
+  return Array.isArray(unwrapped.items) ? undefined : unwrapped.items;
 }
 
 function schemaAwareStringIsPrototypeSensitive(
   value: string,
-  schema: unknown
+  schema: ToolInputSchemaDefinition | undefined
 ): boolean {
   if (
     getSchemaType(schema) === "string" &&
@@ -107,62 +119,80 @@ function schemaAwareStringIsPrototypeSensitive(
   return toolCallInputHasPrototypeSensitiveKey(value);
 }
 
+function traversalAction(
+  frame: SchemaAwarePrototypeTraversalFrame,
+  seen: Set<object>
+): TraversalAction {
+  if (typeof frame.value === "string") {
+    return schemaAwareStringIsPrototypeSensitive(frame.value, frame.schema)
+      ? "sensitive"
+      : "skip";
+  }
+  return frame.value !== null &&
+    typeof frame.value === "object" &&
+    !seen.has(frame.value)
+    ? "visit"
+    : "skip";
+}
+
+function enqueueChildren(
+  stack: SchemaAwarePrototypeTraversalFrame[],
+  frame: SchemaAwarePrototypeTraversalFrame
+): void {
+  if (Array.isArray(frame.value)) {
+    for (const [index, item] of frame.value.entries()) {
+      stack.push({ schema: arrayItemSchema(frame.schema, index), value: item });
+    }
+    return;
+  }
+  if (!isRxmlRecord(frame.value)) {
+    return;
+  }
+  for (const [key, item] of Object.entries(frame.value)) {
+    stack.push({
+      schema: getToolInputPropertySchema(
+        frame.schema ?? true,
+        key,
+        frame.value
+      ),
+      value: item,
+    });
+  }
+}
+
 export function toolCallInputHasSchemaAwarePrototypeSensitiveValue(
-  value: unknown,
-  schema: unknown
+  value: RxmlValue,
+  schema: ToolInputSchemaDefinition | undefined
 ): boolean {
   if (hasPrototypeSensitiveStructuralKey(value)) {
     return true;
   }
-
   const seen = new Set<object>();
   const stack: SchemaAwarePrototypeTraversalFrame[] = [{ schema, value }];
   for (let work = 0; stack.length > 0; work += 1) {
     if (work >= MAX_SCHEMA_AWARE_PROTOTYPE_TRAVERSAL_WORK) {
       return true;
     }
-    const current = stack.pop();
-    if (!current) {
+    const frame = stack.pop();
+    if (frame === undefined) {
       continue;
     }
-    if (typeof current.value === "string") {
-      if (
-        schemaAwareStringIsPrototypeSensitive(current.value, current.schema)
-      ) {
-        return true;
-      }
-      continue;
-    }
-    if (
-      current.value === null ||
-      typeof current.value !== "object" ||
-      seen.has(current.value)
-    ) {
-      continue;
-    }
-    seen.add(current.value);
-
-    const children = Array.isArray(current.value)
-      ? Array.from(current.value.entries(), ([index, item]) => ({
-          schema: arrayItemSchema(current.schema, index),
-          value: item,
-        }))
-      : Object.entries(current.value).map(([key, item]) => ({
-          schema: getToolInputPropertySchema(
-            current.schema,
-            key,
-            current.value
-          ),
-          value: item,
-        }));
-    if (
-      stack.length + children.length >
-      MAX_SCHEMA_AWARE_PROTOTYPE_TRAVERSAL_WORK
-    ) {
+    const action = traversalAction(frame, seen);
+    if (action === "sensitive") {
       return true;
     }
-    stack.push(...children);
+    if (
+      action === "skip" ||
+      typeof frame.value !== "object" ||
+      frame.value === null
+    ) {
+      continue;
+    }
+    seen.add(frame.value);
+    enqueueChildren(stack, frame);
+    if (stack.length > MAX_SCHEMA_AWARE_PROTOTYPE_TRAVERSAL_WORK) {
+      return true;
+    }
   }
-
   return false;
 }

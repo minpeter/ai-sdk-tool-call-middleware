@@ -1,6 +1,11 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
+import type {
+  JSONObject,
+  JSONValue,
+  LanguageModelV4StreamPart,
+} from "@ai-sdk/provider";
 
 import type { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { isStrictJSONObject } from "../../../test-helpers";
 
 type MorphXmlTools = Parameters<
   ReturnType<typeof morphXmlProtocol>["createStreamParser"]
@@ -37,21 +42,19 @@ export function charByCharSplit(text: string): string[] {
 
 export function extractToolCalls(
   output: LanguageModelV4StreamPart[]
-): Array<{ toolName: string; input: unknown }> {
+): Array<{ toolName: string; input: JSONObject }> {
   return output
     .filter(
-      (
-        c
-      ): c is LanguageModelV4StreamPart & {
-        type: "tool-call";
-        toolName: string;
-        input: string;
-      } => c.type === "tool-call"
+      (c): c is Extract<LanguageModelV4StreamPart, { type: "tool-call" }> =>
+        c.type === "tool-call"
     )
-    .map((c) => ({
-      toolName: c.toolName,
-      input: JSON.parse(c.input),
-    }));
+    .map((c) => {
+      const input: JSONValue = JSON.parse(c.input);
+      if (!isStrictJSONObject(input)) {
+        throw new TypeError("Expected tool-call input to be a JSON object");
+      }
+      return { toolName: c.toolName, input };
+    });
 }
 
 export function extractText(output: LanguageModelV4StreamPart[]): string {

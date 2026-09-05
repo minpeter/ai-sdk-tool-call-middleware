@@ -11,7 +11,11 @@
  * Named after Qwen3-Coder, matching vLLM's `qwen3_coder` tool parser name.
  * The wrapper-less OpenHands original shape is covered by `uiTarsXmlProtocol`.
  */
-import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
+import {
+  isJSONValue,
+  type JSONValue,
+  type LanguageModelV4ToolCall,
+} from "@ai-sdk/provider";
 import {
   escapeXmlMinimalAttr,
   escapeXmlMinimalText,
@@ -23,18 +27,19 @@ import { parseQwen3CoderGeneratedText } from "./qwen3coder-generated-text";
 
 import { createQwen3CoderStreamParser } from "./qwen3coder-stream-parser";
 
-function parseToolCallInput(input: string | null | undefined): unknown {
+function parseToolCallInput(input: string | null | undefined): JSONValue {
   if (input == null) {
     return {};
   }
   try {
-    return JSON.parse(input);
+    const parsed = JSON.parse(input);
+    return isJSONValue(parsed) ? parsed : input;
   } catch {
     return input;
   }
 }
 
-function toQwen3CoderToolParserParamText(value: unknown): string {
+function toQwen3CoderToolParserParamText(value: JSONValue | undefined): string {
   if (typeof value === "string") {
     return value;
   }
@@ -56,14 +61,17 @@ function toQwen3CoderToolParserParamText(value: unknown): string {
 function appendQwen3CoderToolParserParameter(
   lines: string[],
   key: string,
-  value: unknown
+  value: JSONValue | undefined
 ): void {
   const nameAttr = escapeXmlMinimalAttr(key, '"');
   const text = escapeXmlMinimalText(toQwen3CoderToolParserParamText(value));
   lines.push(`    <parameter="${nameAttr}">${text}</parameter>`);
 }
 
-function appendQwen3CoderToolParserArgs(lines: string[], args: unknown): void {
+function appendQwen3CoderToolParserArgs(
+  lines: string[],
+  args: JSONValue
+): void {
   if (args && typeof args === "object" && !Array.isArray(args)) {
     for (const [key, value] of Object.entries(args)) {
       if (Array.isArray(value)) {
@@ -113,7 +121,3 @@ export const qwen3CoderProtocol = (): TCMProtocol => ({
     return createQwen3CoderStreamParser(params);
   },
 });
-
-export const uiTarsXmlProtocol = qwen3CoderProtocol;
-
-export const Qwen3CoderToolParser = qwen3CoderProtocol;

@@ -1,10 +1,31 @@
 import type {
+  JSONObject,
+  JSONSchema7,
+  JSONValue,
   LanguageModelV4FunctionTool,
   LanguageModelV4ProviderTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { createDynamicIfThenElseSchema } from "../../../core/utils/dynamic-tool-schema";
+
+interface ToolConditionFixture {
+  readonly properties: {
+    readonly name: {
+      readonly const: JSONValue;
+    };
+  };
+}
+
+interface DynamicToolSchemaFixture {
+  readonly else?: DynamicToolSchemaFixture;
+  readonly if: ToolConditionFixture;
+  readonly then: {
+    readonly properties: {
+      readonly arguments?: JSONSchema7;
+    };
+  };
+}
 
 describe("createDynamicIfThenElseSchema", () => {
   it("should create schema for single tool", () => {
@@ -88,15 +109,15 @@ describe("createDynamicIfThenElseSchema", () => {
     expect(schema.else).toBeDefined();
 
     // Check first tool condition (last in array due to reverse loop)
-    const firstCondition = schema.if as any;
-    expect(firstCondition.properties.name.const).toBe("tool1");
+    const conditionalSchema = schema as DynamicToolSchemaFixture;
+    expect(conditionalSchema.if.properties.name.const).toBe("tool1");
 
     // Check nested else conditions
-    const secondCondition = (schema.else as any).if;
-    expect(secondCondition.properties.name.const).toBe("tool2");
+    const secondCondition = conditionalSchema.else?.if;
+    expect(secondCondition?.properties.name.const).toBe("tool2");
 
-    const thirdCondition = ((schema.else as any).else as any).if;
-    expect(thirdCondition.properties.name.const).toBe("tool3");
+    const thirdCondition = conditionalSchema.else?.else?.if;
+    expect(thirdCondition?.properties.name.const).toBe("tool3");
   });
 
   it("should throw error for provider tools", () => {
@@ -105,7 +126,7 @@ describe("createDynamicIfThenElseSchema", () => {
         type: "provider" as const,
         id: "provider.tool" as const,
         name: "provider-tool",
-        args: {} as Record<string, unknown>,
+        args: {} satisfies JSONObject,
       } satisfies LanguageModelV4ProviderTool,
     ];
 
@@ -153,8 +174,8 @@ describe("createDynamicIfThenElseSchema", () => {
 
     const schema = createDynamicIfThenElseSchema(tools);
 
-    const thenClause = schema.then as any;
-    expect(thenClause.properties.arguments).toEqual(complexSchema);
+    const conditionalSchema = schema as DynamicToolSchemaFixture;
+    expect(conditionalSchema.then.properties.arguments).toEqual(complexSchema);
   });
 
   it("should create schema with correct order for tools", () => {
@@ -185,25 +206,24 @@ describe("createDynamicIfThenElseSchema", () => {
 
     // The if-then-else chain should process tools in reverse order
     // (first tool first due to the loop implementation)
-    const firstIf = schema.if as any;
-    expect(firstIf.properties.name.const).toBe("alpha");
+    const conditionalSchema = schema as DynamicToolSchemaFixture;
+    expect(conditionalSchema.if.properties.name.const).toBe("alpha");
   });
 
   it("should handle tools with no input schema", () => {
-    const tools: LanguageModelV4FunctionTool[] = [
-      {
-        type: "function",
-        name: "noArgsTool",
-        inputSchema: undefined as any, // Tool with no arguments
-      },
-    ];
+    const tool: LanguageModelV4FunctionTool = {
+      type: "function",
+      name: "noArgsTool",
+      inputSchema: {},
+    };
+    Reflect.deleteProperty(tool, "inputSchema");
 
-    const schema = createDynamicIfThenElseSchema(tools);
+    const schema = createDynamicIfThenElseSchema([tool]);
 
     expect(schema).toBeDefined();
     expect(schema.then).toBeDefined();
-    const thenClause = schema.then as any;
-    expect(thenClause.properties.arguments).toBeUndefined();
+    const conditionalSchema = schema as DynamicToolSchemaFixture;
+    expect(conditionalSchema.then.properties.arguments).toBeUndefined();
   });
 
   it("should handle mixed tool types correctly", () => {
@@ -217,7 +237,7 @@ describe("createDynamicIfThenElseSchema", () => {
         type: "provider" as const,
         id: "provider.tool" as const,
         name: "providerTool",
-        args: {} as Record<string, unknown>,
+        args: {} satisfies JSONObject,
       },
     ] as (LanguageModelV4FunctionTool | LanguageModelV4ProviderTool)[];
 

@@ -1,10 +1,13 @@
 import type { LanguageModelV4Prompt } from "@ai-sdk/provider";
+import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import { glm5SystemPromptTemplate } from "../../core/prompts/glm5-prompt";
 import { glm5Protocol } from "../../core/protocols/glm5-protocol";
 import { glm5ToolMiddleware } from "../../preconfigured-middleware";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
+
+const model = new MockLanguageModelV4();
 
 const tools = [
   {
@@ -21,7 +24,57 @@ const tools = [
       required: ["city"],
     },
   },
-];
+] satisfies Parameters<typeof glm5SystemPromptTemplate>[0];
+
+function customGlmMiddleware() {
+  return createToolMiddleware({
+    historyMode: "provider-native",
+    placement: "standalone-first",
+    protocol: glm5Protocol,
+    toolSystemPromptTemplate: glm5SystemPromptTemplate,
+  });
+}
+
+function nativeHistory(
+  toolName: "get_weather" | "ping"
+): LanguageModelV4Prompt {
+  return [
+    {
+      role: "assistant",
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: "tc-1",
+          toolName,
+          input: toolName === "ping" ? {} : { city: "Seoul" },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "tc-1",
+          toolName,
+          output: {
+            type: "text",
+            value: toolName === "ping" ? "pong" : "sunny",
+          },
+        },
+      ],
+    },
+  ];
+}
+
+function expectNativeHistoryIdentity(
+  resultPrompt: LanguageModelV4Prompt,
+  history: LanguageModelV4Prompt
+): void {
+  expect(resultPrompt).toEqual(history);
+  expect(resultPrompt[0]).toBe(history[0]);
+  expect(resultPrompt[1]).toBe(history[1]);
+}
 
 describe("GLM-5.2 chat-template alignment", () => {
   it("prepends a standalone tools system turn and preserves provider-native tool history", async () => {
@@ -70,19 +123,16 @@ describe("GLM-5.2 chat-template alignment", () => {
       },
     ];
 
-    const middleware = createToolMiddleware({
-      historyMode: "provider-native",
-      placement: "standalone-first",
-      protocol: glm5Protocol,
-      toolSystemPromptTemplate: glm5SystemPromptTemplate,
-    });
+    const middleware = customGlmMiddleware();
     const transformParams = requireTransformParams(middleware.transformParams);
     const result = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: originalPrompt,
         tools,
       },
-    } as never);
+    });
 
     expect(result.prompt).toHaveLength(originalPrompt.length + 1);
     expect(result.prompt[0]).toMatchObject({
@@ -111,41 +161,15 @@ describe("GLM-5.2 chat-template alignment", () => {
   });
 
   it("retains provider-native history when toolChoice is none", async () => {
-    const nativeHistory: LanguageModelV4Prompt = [
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "tc-1",
-            toolName: "ping",
-            input: {},
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "tc-1",
-            toolName: "ping",
-            output: { type: "text", value: "pong" },
-          },
-        ],
-      },
-    ];
-    const middleware = createToolMiddleware({
-      historyMode: "provider-native",
-      placement: "standalone-first",
-      protocol: glm5Protocol,
-      toolSystemPromptTemplate: glm5SystemPromptTemplate,
-    });
+    const history = nativeHistory("ping");
+    const middleware = customGlmMiddleware();
     const transformParams = requireTransformParams(middleware.transformParams);
 
     const result = await transformParams({
+      type: "generate",
+      model,
       params: {
-        prompt: nativeHistory,
+        prompt: history,
         toolChoice: { type: "none" },
         tools: [
           {
@@ -155,11 +179,9 @@ describe("GLM-5.2 chat-template alignment", () => {
           },
         ],
       },
-    } as never);
+    });
 
-    expect(result.prompt).toEqual(nativeHistory);
-    expect(result.prompt[0]).toBe(nativeHistory[0]);
-    expect(result.prompt[1]).toBe(nativeHistory[1]);
+    expectNativeHistoryIdentity(result.prompt, history);
     expect(result.tools).toEqual([]);
     expect(result.toolChoice).toBeUndefined();
   });
@@ -176,52 +198,28 @@ describe("GLM-5.2 chat-template alignment", () => {
   ])(
     "uses only the JSON response format for $label without conflicting GLM XML instructions",
     async ({ toolChoice }) => {
-      const nativeHistory: LanguageModelV4Prompt = [
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "tool-call",
-              toolCallId: "tc-1",
-              toolName: "get_weather",
-              input: { city: "Seoul" },
-            },
-          ],
-        },
-        {
-          role: "tool",
-          content: [
-            {
-              type: "tool-result",
-              toolCallId: "tc-1",
-              toolName: "get_weather",
-              output: { type: "text", value: "sunny" },
-            },
-          ],
-        },
-      ];
+      const history = nativeHistory("get_weather");
       const transformParams = requireTransformParams(
         glm5ToolMiddleware.transformParams
       );
 
       const result = await transformParams({
+        type: "generate",
+        model,
         params: {
-          prompt: nativeHistory,
+          prompt: history,
           toolChoice,
           tools,
         },
-      } as never);
+      });
 
-      expect(result.prompt).toEqual(nativeHistory);
-      expect(result.prompt[0]).toBe(nativeHistory[0]);
-      expect(result.prompt[1]).toBe(nativeHistory[1]);
+      expectNativeHistoryIdentity(result.prompt, history);
       expect(result.tools).toEqual([]);
       expect(result.toolChoice).toBeUndefined();
       expect(result.responseFormat).toMatchObject({ type: "json" });
-      expect(
-        (result.providerOptions as Record<string, any>).toolCallMiddleware
-          .toolChoice
-      ).toEqual(toolChoice);
+      expect(result.providerOptions?.toolCallMiddleware?.toolChoice).toEqual(
+        toolChoice
+      );
       expect(
         result.prompt.some(
           (message) =>
@@ -233,21 +231,18 @@ describe("GLM-5.2 chat-template alignment", () => {
   );
 
   it("keeps the existing forced-choice prompt behavior for custom middleware by default", async () => {
-    const middleware = createToolMiddleware({
-      historyMode: "provider-native",
-      placement: "standalone-first",
-      protocol: glm5Protocol,
-      toolSystemPromptTemplate: glm5SystemPromptTemplate,
-    });
+    const middleware = customGlmMiddleware();
     const transformParams = requireTransformParams(middleware.transformParams);
 
     const result = await transformParams({
+      type: "generate",
+      model,
       params: {
         prompt: [],
         toolChoice: { type: "required" },
         tools,
       },
-    } as never);
+    });
 
     expect(result.prompt).toHaveLength(1);
     expect(result.prompt[0]).toMatchObject({ role: "system" });

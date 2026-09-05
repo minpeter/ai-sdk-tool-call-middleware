@@ -44,8 +44,8 @@ export function readQwenCallToolName(
 
 export function readFunctionBlockParams(
   body: string
-): Record<string, unknown> | null {
-  const params: Record<string, unknown> = {};
+): Record<string, string> | null {
+  const params: Record<string, string> = {};
   QWEN_PARAM_OPEN_REGEX.lastIndex = 0;
   let match = QWEN_PARAM_OPEN_REGEX.exec(body);
   while (match) {

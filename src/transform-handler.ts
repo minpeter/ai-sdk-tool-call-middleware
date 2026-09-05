@@ -1,10 +1,11 @@
 import type {
-  JSONSchema7,
+  LanguageModelV4CallOptions,
   LanguageModelV4Content,
   LanguageModelV4FilePart,
   LanguageModelV4FunctionTool,
   LanguageModelV4Message,
   LanguageModelV4Prompt,
+  LanguageModelV4ProviderTool,
   LanguageModelV4ReasoningPart,
   LanguageModelV4TextPart,
   LanguageModelV4ToolCallPart,
@@ -16,14 +17,19 @@ import {
   type ToolResponsePromptTemplateResult,
   toolRoleContentToUserTextMessage,
 } from "./core/prompts/shared/tool-role-to-user-message";
-import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
-import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
+import type {
+  ParserOptions,
+  TCMCoreProtocol,
+} from "./core/protocols/protocol-interface";
+import { isProtocolFactory } from "./core/protocols/protocol-interface";
 import { createDynamicIfThenElseSchema } from "./core/utils/dynamic-tool-schema";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
   mergeToolCallMiddlewareOptions,
   originalToolsSchema,
+  type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
+import type { ToolInputSchema } from "./schema/tool-input-schema";
 
 /**
  * Controls how historical assistant tool calls and tool results are encoded.
@@ -36,6 +42,33 @@ export type ToolCallHistoryMode = "converted-text" | "provider-native";
  * `standalone-first` prepends a new system turn without merging existing turns.
  */
 export type ToolSystemPromptPlacement = "first" | "last" | "standalone-first";
+
+export interface ToolCallTransformSettings {
+  readonly historyMode?: ToolCallHistoryMode;
+  readonly placement?: ToolSystemPromptPlacement;
+  readonly protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
+  /**
+   * Omit the protocol-specific tool catalog when `toolChoice` is `required` or
+   * selects a fixed tool. The forced-choice handlers request JSON through
+   * `responseFormat`, so protocols that instruct a different output grammar
+   * can opt out of issuing contradictory system instructions.
+   */
+  readonly suppressToolSystemPromptForForcedChoice?: boolean;
+  readonly toolResponsePromptTemplate?: (
+    toolResult: ToolResultPart
+  ) => ToolResponsePromptTemplateResult;
+  readonly toolSystemPromptTemplate: (
+    tools: LanguageModelV4FunctionTool[]
+  ) => string;
+}
+
+type TransformCallOptions = Omit<
+  LanguageModelV4CallOptions,
+  "providerOptions"
+> & {
+  providerOptions?: LanguageModelV4CallOptions["providerOptions"] &
+    ToolCallMiddlewareProviderOptions;
+};
 
 /**
  * Build the final prompt by placing or merging the rendered system prompt.
@@ -61,32 +94,23 @@ function buildFinalPrompt(
 
   const systemIndex = processedPrompt.findIndex((m) => m.role === "system");
   if (systemIndex !== -1) {
-    const existing = processedPrompt[systemIndex].content as unknown;
-    let existingText = "";
-    if (typeof existing === "string") {
-      existingText = existing;
-    } else if (Array.isArray(existing)) {
-      existingText = (existing as { type?: string; text?: string }[])
-        .map((p) => (p?.type === "text" ? (p.text ?? "") : ""))
-        .filter(Boolean)
-        .join("\n");
-    } else {
-      existingText = String(existing ?? "");
-    }
+    const existingMessage = processedPrompt[systemIndex];
+    const existingText =
+      existingMessage?.role === "system" ? existingMessage.content : "";
 
     const mergedContent =
       placement === "first"
         ? `${systemPrompt}\n\n${existingText}`
         : `${existingText}\n\n${systemPrompt}`;
 
-    return processedPrompt.map((m, idx) =>
-      idx === systemIndex
+    return processedPrompt.map((message, index) =>
+      index === systemIndex && message.role === "system"
         ? {
-            ...m,
+            ...message,
             content: mergedContent,
           }
-        : m
-    ) as LanguageModelV4Prompt;
+        : message
+    );
   }
   if (placement === "first") {
     return [
@@ -111,29 +135,18 @@ function buildFinalPrompt(
  * Build base return parameters with middleware options
  */
 function buildBaseReturnParams(
-  params: {
-    prompt?: LanguageModelV4Prompt;
-    tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
-    providerOptions?: unknown;
-    toolChoice?: { type: string; toolName?: string };
-  },
+  params: TransformCallOptions,
   finalPrompt: LanguageModelV4Prompt,
   functionTools: LanguageModelV4FunctionTool[]
-) {
+): LanguageModelV4CallOptions {
   const droppedProviderTools = (params.tools ?? [])
-    .filter((t) => t.type !== "function")
-    .map((t) => {
-      const named = t as { name?: unknown; id?: unknown };
-      if (typeof named.name === "string") {
-        return named.name;
-      }
-      return typeof named.id === "string" ? named.id : "unknown";
-    });
+    .filter((tool) => tool.type === "provider")
+    .map((tool) => tool.name);
 
   return {
     ...params,
     prompt: finalPrompt,
-    tools: [] as never[],
+    tools: [],
     toolChoice: undefined,
     providerOptions: mergeToolCallMiddlewareOptions(params.providerOptions, {
       originalTools: originalToolsSchema.encode(functionTools),
@@ -146,29 +159,25 @@ function buildBaseReturnParams(
  * Find provider-defined tool matching the selected tool name
  */
 function findProviderDefinedTool(
-  tools: Array<LanguageModelV4FunctionTool | { type: string }>,
+  tools: Array<LanguageModelV4FunctionTool | LanguageModelV4ProviderTool>,
   selectedToolName: string
 ) {
-  return tools.find((t) => {
-    if (t.type === "function") {
-      return false;
-    }
-    const anyTool = t as unknown as { id?: string; name?: string };
-    return anyTool.id === selectedToolName || anyTool.name === selectedToolName;
-  });
+  return tools.find(
+    (tool) =>
+      tool.type === "provider" &&
+      (tool.id === selectedToolName || tool.name === selectedToolName)
+  );
 }
 
 /**
  * Handle tool choice type 'tool'
  */
 function handleToolChoiceTool(
-  params: {
-    tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
-    toolChoice?: { type: string; toolName?: string };
-  },
-  baseReturnParams: ReturnType<typeof buildBaseReturnParams>
-) {
-  const selectedToolName = params.toolChoice?.toolName;
+  params: TransformCallOptions,
+  baseReturnParams: LanguageModelV4CallOptions
+): LanguageModelV4CallOptions {
+  const selectedToolName =
+    params.toolChoice?.type === "tool" ? params.toolChoice.toolName : undefined;
   if (!selectedToolName) {
     throw new Error("Tool name is required for 'tool' toolChoice type.");
   }
@@ -185,8 +194,7 @@ function handleToolChoiceTool(
 
   const selectedTool = (params.tools ?? []).find(
     (t): t is LanguageModelV4FunctionTool =>
-      t.type === "function" &&
-      (t as LanguageModelV4FunctionTool).name === selectedToolName
+      t.type === "function" && t.name === selectedToolName
   );
 
   if (!selectedTool) {
@@ -198,7 +206,7 @@ function handleToolChoiceTool(
   return {
     ...baseReturnParams,
     responseFormat: {
-      type: "json" as const,
+      type: "json",
       schema: {
         type: "object",
         properties: {
@@ -208,7 +216,7 @@ function handleToolChoiceTool(
           arguments: selectedTool.inputSchema,
         },
         required: ["name", "arguments"],
-      } as JSONSchema7,
+      } satisfies ToolInputSchema,
       name: selectedTool.name,
       description:
         typeof selectedTool.description === "string"
@@ -226,13 +234,10 @@ function handleToolChoiceTool(
  * Handle tool choice type 'required'
  */
 function handleToolChoiceRequired(
-  params: {
-    tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
-    toolChoice?: { type: string; toolName?: string };
-  },
-  baseReturnParams: ReturnType<typeof buildBaseReturnParams>,
+  params: TransformCallOptions,
+  baseReturnParams: LanguageModelV4CallOptions,
   functionTools: LanguageModelV4FunctionTool[]
-) {
+): LanguageModelV4CallOptions {
   if (!params.tools || params.tools.length === 0) {
     throw new Error(
       "Tool choice type 'required' is set, but no tools are provided in params.tools."
@@ -247,13 +252,13 @@ function handleToolChoiceRequired(
   return {
     ...baseReturnParams,
     responseFormat: {
-      type: "json" as const,
+      type: "json",
       schema: createDynamicIfThenElseSchema(functionTools),
     },
     providerOptions: mergeToolCallMiddlewareOptions(
       baseReturnParams.providerOptions,
       {
-        toolChoice: { type: "required" as const },
+        toolChoice: { type: "required" },
       }
     ),
   };
@@ -267,29 +272,8 @@ export function transformParams({
   placement = "first",
   historyMode = "converted-text",
   suppressToolSystemPromptForForcedChoice = false,
-}: {
-  params: {
-    prompt?: LanguageModelV4Prompt;
-    tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
-    providerOptions?: {
-      toolCallMiddleware?: {
-        toolChoice?: { type: string };
-      };
-    };
-    toolChoice?: { type: string; toolName?: string };
-  };
-  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
-  toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
-  toolResponsePromptTemplate?: (
-    toolResult: ToolResultPart
-  ) => ToolResponsePromptTemplateResult;
-  placement?: ToolSystemPromptPlacement;
-  historyMode?: ToolCallHistoryMode;
-  suppressToolSystemPromptForForcedChoice?: boolean;
-}) {
-  const resolvedProtocol = isTCMProtocolFactory(protocol)
-    ? protocol()
-    : protocol;
+}: ToolCallTransformSettings & { readonly params: TransformCallOptions }) {
+  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
   const functionTools = (params.tools ?? []).filter(
     (t): t is LanguageModelV4FunctionTool => t.type === "function"
@@ -306,14 +290,7 @@ export function transformParams({
           toolSystemPromptTemplate,
         });
 
-  let normalizedPrompt: LanguageModelV4Message[];
-  if (Array.isArray(params.prompt)) {
-    normalizedPrompt = params.prompt;
-  } else if (params.prompt) {
-    normalizedPrompt = [params.prompt];
-  } else {
-    normalizedPrompt = [];
-  }
+  const normalizedPrompt = params.prompt;
   const processedPrompt =
     historyMode === "provider-native"
       ? normalizedPrompt
@@ -331,10 +308,10 @@ export function transformParams({
     return {
       ...params,
       prompt: processedPrompt,
-      tools: [] as never[],
+      tools: [],
       toolChoice: undefined,
       providerOptions: mergeToolCallMiddlewareOptions(params.providerOptions, {
-        toolChoice: { type: "none" as const },
+        toolChoice: { type: "none" },
       }),
     };
   }
@@ -367,9 +344,7 @@ export function transformParams({
 function processMessage(
   message: LanguageModelV4Prompt[number],
   resolvedProtocol: TCMCoreProtocol,
-  providerOptions?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  },
+  providerOptions?: Pick<ParserOptions, "onError">,
   toolResponsePromptTemplate?: (
     toolResult: ToolResultPart
   ) => ToolResponsePromptTemplateResult
@@ -384,7 +359,7 @@ function processMessage(
     });
 
     return {
-      role: "assistant" as const,
+      role: "assistant",
       content: condensedContent as Array<
         | LanguageModelV4TextPart
         | LanguageModelV4FilePart
@@ -416,12 +391,11 @@ function processMessage(
 /**
  * Check if all content parts are text
  */
-function isAllTextContent(content: unknown): boolean {
-  if (!Array.isArray(content)) {
-    return false;
-  }
-  return (content as { type: string }[]).every(
-    (c: { type: string }) => c?.type === "text"
+function isAllTextContent(
+  content: LanguageModelV4Message["content"]
+): content is LanguageModelV4TextPart[] {
+  return (
+    Array.isArray(content) && content.every((part) => part.type === "text")
   );
 }
 
@@ -435,19 +409,22 @@ function joinTextContent(content: { text: string }[]): string {
 /**
  * Create condensed message based on role
  */
-function createCondensedMessage(role: string, joinedText: string) {
+function createCondensedMessage(
+  role: "assistant" | "system" | "user",
+  joinedText: string
+): LanguageModelV4Message {
   if (role === "system") {
     return {
-      role: "system" as const,
+      role: "system",
       content: joinedText,
     };
   }
 
   return {
-    role: role as "assistant" | "user",
+    role,
     content: [
       {
-        type: "text" as const,
+        type: "text",
         text: joinedText,
       },
     ],
@@ -461,21 +438,19 @@ function condenseTextContent(
   processedPrompt: LanguageModelV4Prompt
 ): LanguageModelV4Prompt {
   for (let i = 0; i < processedPrompt.length; i += 1) {
-    const msg = processedPrompt[i] as unknown as {
-      role: string;
-      content: unknown;
-    };
-
-    if (!Array.isArray(msg.content)) {
+    const message = processedPrompt[i];
+    if (
+      !message ||
+      message.role === "system" ||
+      message.role === "tool" ||
+      !isAllTextContent(message.content) ||
+      message.content.length <= 1
+    ) {
       continue;
     }
 
-    const shouldCondense =
-      isAllTextContent(msg.content) && msg.content.length > 1;
-    if (shouldCondense) {
-      const joinedText = joinTextContent(msg.content as { text: string }[]);
-      processedPrompt[i] = createCondensedMessage(msg.role, joinedText);
-    }
+    const joinedText = joinTextContent(message.content);
+    processedPrompt[i] = createCondensedMessage(message.role, joinedText);
   }
   return processedPrompt;
 }
@@ -518,9 +493,7 @@ function convertToolPrompt(
   toolResponsePromptTemplate?: (
     toolResult: ToolResultPart
   ) => ToolResponsePromptTemplateResult,
-  providerOptions?: {
-    onError?: (message: string, metadata?: Record<string, unknown>) => void;
-  }
+  providerOptions?: Pick<ParserOptions, "onError">
 ): LanguageModelV4Message[] {
   let processedPrompt = prompt.map((message: LanguageModelV4Message) =>
     processMessage(
@@ -533,5 +506,5 @@ function convertToolPrompt(
 
   processedPrompt = condenseTextContent(processedPrompt);
   processedPrompt = mergeConsecutiveUserMessages(processedPrompt);
-  return processedPrompt as LanguageModelV4Prompt;
+  return processedPrompt;
 }

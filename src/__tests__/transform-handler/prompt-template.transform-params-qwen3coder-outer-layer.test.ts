@@ -11,101 +11,92 @@ import {
 import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
 import { transformParams } from "../../transform-handler";
 
-describe("transformParams qwen3coder outer-layer transform", () => {
-  it("transforms tools + messages into the expected prompt message array", () => {
-    const tools: LanguageModelV4FunctionTool[] = [
+const qwenWeatherTool: LanguageModelV4FunctionTool = {
+  inputSchema: {
+    type: "object",
+    required: ["city"],
+    properties: { city: { type: "string" } },
+  },
+  description: "Get weather by city",
+  name: "get_weather",
+  type: "function",
+};
+
+function qwenConversation(): LanguageModelV4Prompt {
+  const prompt: LanguageModelV4Prompt = [];
+  prompt.push({
+    role: "user",
+    content: [{ type: "text", text: "오늘 서울 날씨 알려줘" }],
+  });
+  prompt.push({
+    role: "assistant",
+    content: [
       {
-        type: "function",
-        name: "get_weather",
-        description: "Get weather by city",
-        inputSchema: {
-          type: "object",
-          properties: {
-            city: { type: "string" },
-          },
-          required: ["city"],
+        type: "tool-call",
+        toolName: "get_weather",
+        toolCallId: "tc-weather",
+        input: JSON.stringify({ city: "Seoul" }),
+      },
+    ],
+  });
+  prompt.push({
+    role: "tool",
+    content: [
+      {
+        type: "tool-result",
+        toolName: "get_weather",
+        toolCallId: "tc-weather",
+        output: {
+          value: { city: "Seoul", temperature: 21 },
+          type: "json",
         },
       },
-    ];
+    ],
+  });
+  return prompt;
+}
 
-    const inputPrompt: LanguageModelV4Prompt = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "오늘 서울 날씨 알려줘" }],
-      },
-      {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "tc-weather",
-            toolName: "get_weather",
-            input: JSON.stringify({ city: "Seoul" }),
-          },
-        ],
-      },
-      {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "tc-weather",
-            toolName: "get_weather",
-            output: {
-              type: "json",
-              value: {
-                city: "Seoul",
-                temperature: 21,
-              },
-            },
-          },
-        ],
-      },
-    ];
-
+describe("transformParams qwen3coder outer-layer transform", () => {
+  it("transforms tools + messages into the expected prompt message array", () => {
+    const tools = [qwenWeatherTool];
+    const inputPrompt = qwenConversation();
     const transformed = transformParams({
+      params: { tools, prompt: inputPrompt },
       protocol: qwen3CoderProtocol(),
       placement: "first",
       toolSystemPromptTemplate: qwen3coderSystemPromptTemplate,
       toolResponsePromptTemplate: formatToolResponseAsQwen3CoderXml,
-      params: {
-        prompt: inputPrompt,
-        tools,
-      },
     });
 
     const expectedPrompt: LanguageModelV4Prompt = [
       {
-        role: "system",
         content: qwen3coderSystemPromptTemplate(tools),
+        role: "system",
       },
+      inputPrompt[0],
       {
-        role: "user",
-        content: [{ type: "text", text: "오늘 서울 날씨 알려줘" }],
-      },
-      {
-        role: "assistant",
         content: [
           {
-            type: "text",
             text: `<tool_call>
   <function="get_weather">
     <parameter="city">Seoul</parameter>
   </function>
 </tool_call>`,
+            type: "text",
           },
         ],
+        role: "assistant",
       },
       {
-        role: "user",
         content: [
           {
-            type: "text",
             text: `<tool_response>
 {"city":"Seoul","temperature":21}
 </tool_response>`,
+            type: "text",
           },
         ],
+        role: "user",
       },
     ];
 

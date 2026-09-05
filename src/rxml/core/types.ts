@@ -3,16 +3,32 @@
  * Based on TXML structure but enhanced for schema-aware parsing
  */
 
-type OnErrorFn = (message: string, metadata?: Record<string, unknown>) => void;
+type RXMLErrorMetadataValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | Error
+  | readonly RXMLErrorMetadataValue[]
+  | RXMLErrorMetadata;
+
+interface RXMLErrorMetadata {
+  readonly [key: string]: RXMLErrorMetadataValue;
+}
+
+type RXMLErrorHandler = (message: string, metadata?: RXMLErrorMetadata) => void;
 
 /**
  * Represents a parsed XML node in the DOM tree
  */
 export interface RXMLNode {
   attributes: Record<string, string | null>;
-  children: (RXMLNode | string)[];
+  children: RXMLNodeChild[];
   tagName: string;
 }
+
+type RXMLNodeChild = RXMLNode | string;
 
 /**
  * Options for XML parsing
@@ -34,7 +50,7 @@ export interface ParseOptions {
   /** Array of tag names that don't have children and don't need to be closed */
   noChildNodes?: string[];
   /** Error handling callback */
-  onError?: OnErrorFn;
+  onError?: RXMLErrorHandler;
   /** Whether to parse a single node instead of children */
   parseNode?: boolean;
   /** Position to start parsing from (for streaming) */
@@ -72,7 +88,7 @@ export interface StringifyOptions {
    */
   minimalEscaping?: boolean;
   /** Error handling callback */
-  onError?: OnErrorFn;
+  onError?: RXMLErrorHandler;
   /**
    * Whether to serialize boolean-like attributes (value === null)
    * as name="name" to follow strict XML attribute rules.

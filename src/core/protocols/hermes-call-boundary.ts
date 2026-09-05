@@ -121,127 +121,183 @@ type ToolCallBoundary =
   | { kind: "end"; endIdx: number }
   | { kind: "nested"; endIdx: number; nestedStartIndex: number };
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Boundary scanning tracks relaxed JSON string/comment state and two delimiter types in one pass.
+interface BoundaryScanState {
+  blockCommentSawEndTag: boolean;
+  escaping: boolean;
+  inBlockComment: boolean;
+  inLineComment: boolean;
+  lineCommentSawEndTag: boolean;
+  nestedStartIndex: number | null;
+  quote: '"' | "'" | null;
+}
+
+interface BoundaryScanContext {
+  readonly endTag: string;
+  readonly startTag: string;
+  readonly text: string;
+}
+
+function consumeBoundaryString(
+  state: BoundaryScanState,
+  char: string
+): boolean {
+  if (state.escaping) {
+    state.escaping = false;
+    return true;
+  }
+  if (state.quote === null) {
+    return false;
+  }
+  if (char === "\\") {
+    state.escaping = true;
+  } else if (char === state.quote) {
+    state.quote = null;
+  }
+  return true;
+}
+
+function startsNestedCallAfterCommentEnd(
+  context: BoundaryScanContext,
+  index: number
+): boolean {
+  return (
+    context.text.startsWith(context.startTag, index) &&
+    context.text[
+      skipJsonWhitespace(context.text, index + context.startTag.length)
+    ] === "{"
+  );
+}
+
+function consumeLineComment(
+  state: BoundaryScanState,
+  context: BoundaryScanContext,
+  index: number
+): number {
+  const char = context.text[index];
+  if (char === "\n" || char === "\r") {
+    state.inLineComment = false;
+    state.lineCommentSawEndTag = false;
+    return index;
+  }
+  if (context.text.startsWith(context.endTag, index)) {
+    state.lineCommentSawEndTag = true;
+    return index + context.endTag.length - 1;
+  }
+  if (
+    state.lineCommentSawEndTag &&
+    startsNestedCallAfterCommentEnd(context, index)
+  ) {
+    state.nestedStartIndex = index;
+    state.inLineComment = false;
+    state.lineCommentSawEndTag = false;
+    return index + context.startTag.length - 1;
+  }
+  return index;
+}
+
+function consumeBlockComment(
+  state: BoundaryScanState,
+  context: BoundaryScanContext,
+  index: number
+): number {
+  if (context.text[index] === "*" && context.text[index + 1] === "/") {
+    state.inBlockComment = false;
+    state.blockCommentSawEndTag = false;
+    return index + 1;
+  }
+  if (context.text.startsWith(context.endTag, index)) {
+    state.blockCommentSawEndTag = true;
+    return index + context.endTag.length - 1;
+  }
+  if (
+    state.blockCommentSawEndTag &&
+    startsNestedCallAfterCommentEnd(context, index)
+  ) {
+    state.nestedStartIndex = index;
+    state.inBlockComment = false;
+    state.blockCommentSawEndTag = false;
+    return index + context.startTag.length - 1;
+  }
+  return index;
+}
+
+function enterBoundaryComment(
+  state: BoundaryScanState,
+  text: string,
+  index: number
+): boolean {
+  const next = text[index + 1];
+  state.inLineComment = next === "/";
+  state.inBlockComment = next === "*";
+  return state.inLineComment || state.inBlockComment;
+}
+
+function createToolCallBoundary(
+  state: BoundaryScanState,
+  endIdx: number
+): ToolCallBoundary {
+  return state.nestedStartIndex == null
+    ? { kind: "end", endIdx }
+    : {
+        kind: "nested",
+        endIdx,
+        nestedStartIndex: state.nestedStartIndex,
+      };
+}
+
 export function findToolCallBoundaryOutsideRjsonSyntax(
   text: string,
   scanFrom: number,
   startTag: string,
   endTag: string
 ): ToolCallBoundary | null {
-  let quote: '"' | "'" | null = null;
-  let esc = false;
-  let inLineComment = false;
-  let inBlockComment = false;
-  let lineCommentSawEndTag = false;
-  let blockCommentSawEndTag = false;
-  let nestedStartIndex: number | null = null;
+  const state: BoundaryScanState = {
+    quote: null,
+    escaping: false,
+    inLineComment: false,
+    inBlockComment: false,
+    lineCommentSawEndTag: false,
+    blockCommentSawEndTag: false,
+    nestedStartIndex: null,
+  };
+  const context = { text, startTag, endTag };
 
   for (let index = scanFrom; index < text.length; index += 1) {
-    const ch = text[index];
-
-    if (esc) {
-      esc = false;
+    const char = text[index];
+    if (consumeBoundaryString(state, char)) {
       continue;
     }
-
-    if (quote !== null) {
-      if (ch === "\\") {
-        esc = true;
-        continue;
-      }
-      if (ch === quote) {
-        quote = null;
-      }
+    if (state.inLineComment) {
+      index = consumeLineComment(state, context, index);
       continue;
     }
-
-    if (inLineComment) {
-      if (ch === "\n" || ch === "\r") {
-        inLineComment = false;
-        lineCommentSawEndTag = false;
-        continue;
-      }
-      if (text.startsWith(endTag, index)) {
-        lineCommentSawEndTag = true;
-        index += endTag.length - 1;
-        continue;
-      }
-      if (
-        lineCommentSawEndTag &&
-        text.startsWith(startTag, index) &&
-        text[skipJsonWhitespace(text, index + startTag.length)] === "{"
-      ) {
-        nestedStartIndex = index;
-        inLineComment = false;
-        lineCommentSawEndTag = false;
-        index += startTag.length - 1;
-        continue;
-      }
+    if (state.inBlockComment) {
+      index = consumeBlockComment(state, context, index);
       continue;
     }
-
-    if (inBlockComment) {
-      if (ch === "*" && text[index + 1] === "/") {
-        inBlockComment = false;
-        blockCommentSawEndTag = false;
-        index += 1;
-        continue;
-      }
-      if (text.startsWith(endTag, index)) {
-        blockCommentSawEndTag = true;
-        index += endTag.length - 1;
-        continue;
-      }
-      if (
-        blockCommentSawEndTag &&
-        text.startsWith(startTag, index) &&
-        text[skipJsonWhitespace(text, index + startTag.length)] === "{"
-      ) {
-        nestedStartIndex = index;
-        inBlockComment = false;
-        blockCommentSawEndTag = false;
-        index += startTag.length - 1;
-        continue;
-      }
-      continue;
-    }
-
-    if (startsRjsonComment(text, index, scanFrom)) {
-      if (text[index + 1] === "/") {
-        inLineComment = true;
-        lineCommentSawEndTag = false;
-        index += 1;
-        continue;
-      }
-      if (text[index + 1] === "*") {
-        inBlockComment = true;
-        blockCommentSawEndTag = false;
-        index += 1;
-        continue;
-      }
-    }
-
-    if (text.startsWith(endTag, index)) {
-      return nestedStartIndex == null
-        ? { kind: "end", endIdx: index }
-        : { kind: "nested", endIdx: index, nestedStartIndex };
-    }
-
     if (
-      nestedStartIndex == null &&
+      startsRjsonComment(text, index, scanFrom) &&
+      enterBoundaryComment(state, text, index)
+    ) {
+      index += 1;
+      continue;
+    }
+    if (text.startsWith(endTag, index)) {
+      return createToolCallBoundary(state, index);
+    }
+    if (
+      state.nestedStartIndex == null &&
       text.startsWith(startTag, index) &&
       isLikelyNestedToolCallStart(text, index, startTag)
     ) {
-      nestedStartIndex = index;
+      state.nestedStartIndex = index;
       index += startTag.length - 1;
       continue;
     }
-
-    if (ch === '"' || ch === "'") {
-      quote = ch;
+    if (char === '"' || char === "'") {
+      state.quote = char;
     }
   }
-
   return null;
 }
 

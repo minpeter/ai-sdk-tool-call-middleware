@@ -5,6 +5,7 @@
 
 import { RXMLParseError } from "../errors/types";
 import { getLineColumn, parseName, parseString } from "../utils/helpers";
+import { readSpecialContent } from "./tokenizer-special-content";
 import type { ParseOptions, RXMLNode } from "./types";
 import { CharCodes, DEFAULT_NO_CHILD_NODES } from "./types";
 
@@ -41,7 +42,7 @@ export class XMLTokenizer {
       const { line, column } = getLineColumn(this.xmlString, this.pos);
       throw new RXMLParseError(
         `Unexpected close tag at line ${line}, column ${column}. Expected </${tagName}>, found </${closeTag}>`,
-        undefined,
+        new Error(`Expected </${tagName}>, found </${closeTag}>`),
         line,
         column
       );
@@ -64,7 +65,7 @@ export class XMLTokenizer {
       const { line, column } = getLineColumn(this.xmlString, this.pos - 1);
       throw new RXMLParseError(
         `Unclosed tag at line ${line}, column ${column}. Expected closing tag </${tagName}>`,
-        undefined,
+        new Error(`Expected closing tag </${tagName}>`),
         line,
         column
       );
@@ -75,9 +76,18 @@ export class XMLTokenizer {
    * Process special content (comments, CDATA, DOCTYPE) and track if we consumed to end
    */
   private processSpecialContent(children: (RXMLNode | string)[]): boolean {
-    const prevPos = this.pos;
-    this.handleSpecialContent(children);
-    return this.pos >= this.xmlString.length && prevPos < this.xmlString.length;
+    const previousPosition = this.pos;
+    const result = readSpecialContent(
+      this.xmlString,
+      this.pos,
+      this.options.keepComments ?? false
+    );
+    children.push(...result.nodes);
+    this.pos = result.newPosition;
+    return (
+      this.pos >= this.xmlString.length &&
+      previousPosition < this.xmlString.length
+    );
   }
 
   /**
@@ -354,102 +364,6 @@ export class XMLTokenizer {
       this.pos = this.xmlString.length;
     }
     return this.xmlString.slice(start, this.pos + 1);
-  }
-
-  /**
-   * Handle comments, CDATA, and DOCTYPE declarations
-   */
-  private handleSpecialContent(children: (RXMLNode | string)[]): void {
-    if (this.xmlString.charCodeAt(this.pos + 2) === CharCodes.MINUS) {
-      // Comment
-      this.handleComment(children);
-    } else if (
-      this.xmlString.charCodeAt(this.pos + 2) ===
-        CharCodes.OPEN_CORNER_BRACKET &&
-      this.xmlString.charCodeAt(this.pos + 8) ===
-        CharCodes.OPEN_CORNER_BRACKET &&
-      this.xmlString.slice(this.pos + 3, this.pos + 8).toLowerCase() === "cdata"
-    ) {
-      // CDATA
-      this.handleCData(children);
-    } else {
-      // DOCTYPE or other declaration
-      this.handleDoctype(children);
-    }
-  }
-
-  /**
-   * Handle XML comments
-   */
-  private handleComment(children: (RXMLNode | string)[]): void {
-    const startCommentPos = this.pos;
-
-    // Find comment end
-    while (
-      this.pos !== -1 &&
-      !(
-        this.xmlString.charCodeAt(this.pos) === CharCodes.CLOSE_BRACKET &&
-        this.xmlString.charCodeAt(this.pos - 1) === CharCodes.MINUS &&
-        this.xmlString.charCodeAt(this.pos - 2) === CharCodes.MINUS
-      )
-    ) {
-      this.pos = this.xmlString.indexOf(">", this.pos + 1);
-    }
-
-    if (this.pos === -1) {
-      this.pos = this.xmlString.length;
-    }
-
-    if (this.options.keepComments) {
-      children.push(this.xmlString.slice(startCommentPos, this.pos + 1));
-    }
-
-    this.pos += 1;
-  }
-
-  /**
-   * Handle CDATA sections
-   */
-  private handleCData(children: (RXMLNode | string)[]): void {
-    const cdataEndIndex = this.xmlString.indexOf("]]>", this.pos);
-    if (cdataEndIndex === -1) {
-      // Unclosed CDATA - consume everything to the end
-      children.push(this.xmlString.slice(this.pos + 9));
-      this.pos = this.xmlString.length;
-    } else {
-      children.push(this.xmlString.slice(this.pos + 9, cdataEndIndex));
-      this.pos = cdataEndIndex + 3;
-    }
-  }
-
-  /**
-   * Handle DOCTYPE declarations
-   */
-  private handleDoctype(children: (RXMLNode | string)[]): void {
-    const startDoctype = this.pos + 1;
-    this.pos += 2;
-    let encapsulated = false;
-
-    while (
-      (this.xmlString.charCodeAt(this.pos) !== CharCodes.CLOSE_BRACKET ||
-        encapsulated) &&
-      this.xmlString[this.pos]
-    ) {
-      if (
-        this.xmlString.charCodeAt(this.pos) === CharCodes.OPEN_CORNER_BRACKET
-      ) {
-        encapsulated = true;
-      } else if (
-        encapsulated &&
-        this.xmlString.charCodeAt(this.pos) === CharCodes.CLOSE_CORNER_BRACKET
-      ) {
-        encapsulated = false;
-      }
-      this.pos += 1;
-    }
-
-    children.push(this.xmlString.slice(startDoctype, this.pos));
-    this.pos += 1;
   }
 
   /**

@@ -1,3 +1,4 @@
+import type { JSONValue } from "@ai-sdk/provider";
 import { decodeStructuredTextEscapes } from "./structured-text-escapes";
 
 const YAML_MAPPING_KEY_TEXT_REGEX =
@@ -16,11 +17,14 @@ function stringMayBecomeStructuredSensitiveInput(value: string): boolean {
   );
 }
 
-function hasStructuredStringLeaf(value: unknown): boolean {
+function hasStructuredStringLeaf(value: JSONValue): boolean {
   const seen = new Set<object>();
-  const stack: unknown[] = [value];
+  const stack: JSONValue[] = [value];
   while (stack.length > 0) {
     const current = stack.pop();
+    if (current === undefined) {
+      continue;
+    }
     if (typeof current === "string") {
       if (stringMayBecomeStructuredSensitiveInput(current)) {
         return true;
@@ -30,13 +34,15 @@ function hasStructuredStringLeaf(value: unknown): boolean {
     if (Array.isArray(current)) {
       if (!seen.has(current)) {
         seen.add(current);
-        stack.push(...current);
+        stack.push(...current.filter((child) => child !== undefined));
       }
       continue;
     }
     if (current && typeof current === "object" && !seen.has(current)) {
       seen.add(current);
-      stack.push(...Object.values(current));
+      stack.push(
+        ...Object.values(current).filter((child) => child !== undefined)
+      );
     }
   }
   return false;

@@ -1,81 +1,104 @@
+import type {
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4ProviderTool,
+  LanguageModelV4StreamResult,
+} from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
-import { requireTransformParams } from "../test-helpers";
+import {
+  requireTransformParams,
+  stopFinishReason,
+  zeroUsage,
+} from "../test-helpers";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
   generateId: vi.fn(() => "mock-id"),
 }));
 
-// Regex constants for performance
-const _REGEX_ACCESS_TO_FUNCTIONS = /You have access to functions/;
-const _REGEX_TOOL_CALL_FENCE = /```tool_call/;
-const _REGEX_TOOL_RESPONSE_FENCE = /```tool_response/;
-const _REGEX_GET_WEATHER = /get_weather/;
-const _REGEX_FUNCTION_CALLING_MODEL = /You are a function calling AI model/;
-const _REGEX_MAY_CALL_FUNCTIONS = /You may call one or more functions/;
-const _REGEX_TOOLS_TAG = /<tools>/;
-const REGEX_NOT_FOUND = /not found/;
-const REGEX_PROVIDER_DEFINED = /Provider-defined tools/;
-const REGEX_REQUIRED_NO_TOOLS =
+const notFoundError = /not found/;
+const providerDefinedError = /Provider-defined tools/;
+const requiredWithoutToolsError =
   /Tool choice type 'required' is set, but no tools are provided/;
-const REGEX_REQUIRED_NO_FUNCTION_TOOLS = /no function tools are provided/;
-const _REGEX_TOOL_CALL_TAG = /<tool_call>/;
-const _REGEX_TOOL_RESPONSE_TAG = /<tool_response>/;
-const _REGEX_GET_WEATHER_TAG = /<get_weather>/;
-const _REGEX_TOOL_CALL_WORD = /tool_call/;
+const requiredWithoutFunctionToolsError = /no function tools are provided/;
 
 describe("createToolMiddleware transformParams error branches", () => {
+  const generateResult = {
+    content: [],
+    finishReason: stopFinishReason,
+    usage: zeroUsage,
+    warnings: [],
+  } satisfies LanguageModelV4GenerateResult;
+  const streamResult = {
+    stream: new ReadableStream(),
+  } satisfies LanguageModelV4StreamResult;
+  const model: LanguageModelV4 = {
+    specificationVersion: "v4",
+    provider: "test",
+    modelId: "test",
+    supportedUrls: {},
+    doGenerate: async () => generateResult,
+    doStream: async () => streamResult,
+  };
+  const providerTool = {
+    type: "provider",
+    id: "test.x",
+    name: "x",
+    args: {},
+  } satisfies LanguageModelV4ProviderTool;
   const mw = createToolMiddleware({
     protocol: hermesProtocol,
     toolSystemPromptTemplate: (t) => `T:${t}`,
   });
 
-  it("throws when specific tool not found", async () => {
-    const transformParams = requireTransformParams(mw.transformParams);
-    await expect(
-      transformParams({
-        params: {
-          prompt: [],
-          tools: [],
-          toolChoice: { type: "tool", toolName: "missing" },
-        },
-      } as any)
-    ).rejects.toThrow(REGEX_NOT_FOUND);
-  });
+  const errorCases: readonly {
+    readonly expected: RegExp;
+    readonly name: string;
+    readonly toolChoice: LanguageModelV4CallOptions["toolChoice"];
+    readonly tools: LanguageModelV4CallOptions["tools"];
+  }[] = [
+    {
+      name: "throws when specific tool not found",
+      tools: [],
+      toolChoice: { type: "tool", toolName: "missing" },
+      expected: notFoundError,
+    },
+    {
+      name: "throws when provider-defined tool is selected",
+      tools: [providerTool],
+      toolChoice: { type: "tool", toolName: "x" },
+      expected: providerDefinedError,
+    },
+    {
+      name: "throws when required toolChoice is set but no tools are provided",
+      tools: [],
+      toolChoice: { type: "required" },
+      expected: requiredWithoutToolsError,
+    },
+    {
+      name: "throws when required toolChoice is set but tools are provider-defined only",
+      tools: [providerTool],
+      toolChoice: { type: "required" },
+      expected: requiredWithoutFunctionToolsError,
+    },
+  ];
 
-  it("throws when provider-defined tool is selected", async () => {
-    const transformParams = requireTransformParams(mw.transformParams);
-    await expect(
-      transformParams({
-        params: {
-          prompt: [],
-          tools: [{ type: "provider-defined", id: "x" } as any],
-          toolChoice: { type: "tool", toolName: "x" },
-        },
-      } as any)
-    ).rejects.toThrow(REGEX_PROVIDER_DEFINED);
-  });
-
-  it("throws when required toolChoice is set but no tools are provided", async () => {
-    const transformParams = requireTransformParams(mw.transformParams);
-    await expect(
-      transformParams({
-        params: { prompt: [], tools: [], toolChoice: { type: "required" } },
-      } as any)
-    ).rejects.toThrow(REGEX_REQUIRED_NO_TOOLS);
-  });
-
-  it("throws when required toolChoice is set but tools are provider-defined only", async () => {
-    const transformParams = requireTransformParams(mw.transformParams);
-    await expect(
-      transformParams({
-        params: {
-          prompt: [],
-          tools: [{ type: "provider-defined", id: "x" } as any],
-          toolChoice: { type: "required" },
-        },
-      } as any)
-    ).rejects.toThrow(REGEX_REQUIRED_NO_FUNCTION_TOOLS);
-  });
+  for (const testCase of errorCases) {
+    it(testCase.name, async () => {
+      const transformParams = requireTransformParams(mw.transformParams);
+      await expect(
+        transformParams({
+          type: "generate",
+          params: {
+            prompt: [],
+            tools: testCase.tools,
+            toolChoice: testCase.toolChoice,
+          },
+          model,
+        })
+      ).rejects.toThrow(testCase.expected);
+    });
+  }
 });

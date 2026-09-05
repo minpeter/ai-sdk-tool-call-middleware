@@ -1,4 +1,4 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,6 +6,10 @@ import {
   morphFormatToolResponseAsXml,
   morphXmlSystemPromptTemplate,
 } from "../../../core/prompts/morph-xml-prompt";
+import {
+  canonicalFileToolResult,
+  imageUrlToolResult,
+} from "./shared/prompt-duplicate-fixtures";
 
 describe("morphXmlSystemPromptTemplate", () => {
   it("renders Morph XML examples from inputExamples", () => {
@@ -44,20 +48,48 @@ describe("morphXmlSystemPromptTemplate", () => {
     expect(prompt).toContain("<city>Busan</city>");
   });
 
-  it("renders scalar root input examples", () => {
-    const tools = [
+  it("renders the parameters summary with type, required, and enum labels", () => {
+    const tools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
-        name: "normalize_text",
-        description: "Normalize text",
+        name: "get_weather",
         inputSchema: {
-          type: "string",
+          type: "object",
+          properties: {
+            city: { type: "string" },
+            unit: { type: "string", enum: ["celsius", "fahrenheit"] },
+            mixed: { enum: ["auto", 1] },
+          },
+          required: ["city"],
         },
-        inputExamples: [{ input: "hello world" }, { input: 42 }],
       },
-    ] as unknown as LanguageModelV4FunctionTool[];
+    ];
 
     const prompt = morphXmlSystemPromptTemplate(tools);
+
+    expect(prompt).toContain("- city (string, required)");
+    expect(prompt).toContain(
+      '- unit (string, optional) - enum: ["celsius", "fahrenheit"]'
+    );
+    expect(prompt).toContain('- mixed (any, optional) - enum: ["auto", 1]');
+  });
+
+  it("renders scalar root input examples", () => {
+    const scalarExamples: Array<{ input: JSONValue }> = [
+      { input: "hello world" },
+      { input: 42 },
+    ];
+    const scalarExampleTool: LanguageModelV4FunctionTool = {
+      type: "function",
+      name: "normalize_text",
+      description: "Normalize text",
+      inputSchema: {
+        type: "string",
+      },
+    };
+    Object.assign(scalarExampleTool, { inputExamples: scalarExamples });
+
+    const prompt = morphXmlSystemPromptTemplate([scalarExampleTool]);
 
     expect(prompt).toContain("Tool: normalize_text");
     expect(prompt).toContain("<normalize_text>hello world</normalize_text>");
@@ -170,22 +202,7 @@ describe("morphFormatToolResponseAsXml", () => {
   });
 
   it("emits real file parts for canonical file content by default", () => {
-    const result = morphFormatToolResponseAsXml({
-      type: "tool-result",
-      toolCallId: "tc1",
-      toolName: "screenshot",
-      output: {
-        type: "content",
-        value: [
-          { type: "text", text: "Screenshot captured" },
-          {
-            type: "file",
-            data: { type: "data", data: "base64..." },
-            mediaType: "image/png",
-          },
-        ],
-      },
-    } satisfies ToolResultPart);
+    const result = morphFormatToolResponseAsXml(canonicalFileToolResult);
 
     expect(result).toEqual([
       {
@@ -209,22 +226,7 @@ describe("morphFormatToolResponseAsXml", () => {
     const formatter = createMorphXmlToolResponseFormatter({
       mediaStrategy: { mode: "placeholder" },
     });
-    const result = formatter({
-      type: "tool-result",
-      toolCallId: "tc1",
-      toolName: "screenshot",
-      output: {
-        type: "content",
-        value: [
-          { type: "text", text: "Screenshot captured" },
-          {
-            type: "file",
-            data: { type: "data", data: "base64..." },
-            mediaType: "image/png",
-          },
-        ],
-      },
-    } satisfies ToolResultPart);
+    const result = formatter(canonicalFileToolResult);
 
     expect(result).toContain("Screenshot captured");
     expect(result).toContain("[Image: image/png]");
@@ -263,15 +265,7 @@ describe("morphFormatToolResponseAsXml", () => {
       },
     });
 
-    const result = formatter({
-      type: "tool-result",
-      toolCallId: "tc1",
-      toolName: "vision",
-      output: {
-        type: "content",
-        value: [{ type: "image-url", url: "https://example.com/a.png" }],
-      },
-    } satisfies ToolResultPart);
+    const result = formatter(imageUrlToolResult);
 
     expect(result).toContain("<type>image-url</type>");
     expect(result).toContain("<url>https://example.com/a.png</url>");

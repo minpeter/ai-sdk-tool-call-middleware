@@ -6,12 +6,16 @@
 import { type Readable, Transform, type TransformCallback } from "node:stream";
 
 import { RXMLStreamError } from "../errors/types";
+import {
+  findMatchingClosingTag,
+  readSpecialNode,
+  readTagInfo,
+  skipStrayClosingTag,
+  trimToNextTag,
+} from "./stream-boundaries";
+import { visitStreamElements } from "./stream-elements";
 import { XMLTokenizer } from "./tokenizer";
 import type { ParseOptions, RXMLNode } from "./types";
-
-// Regex patterns used at module level for performance
-const TAG_NAME_REGEX = /^([a-zA-Z_][\w.-]*)/;
-const WHITESPACE_REGEX = /\s/;
 
 /**
  * Transform stream for parsing XML
@@ -46,7 +50,12 @@ class XMLTransformStream extends Transform {
       this.processBuffer();
       callback();
     } catch (error) {
-      callback(new RXMLStreamError("Transform error", error));
+      callback(
+        new RXMLStreamError(
+          "Transform error",
+          error instanceof Error ? error : new Error(String(error))
+        )
+      );
     }
   }
 
@@ -65,7 +74,12 @@ class XMLTransformStream extends Transform {
       }
       callback();
     } catch (error) {
-      callback(new RXMLStreamError("Flush error", error));
+      callback(
+        new RXMLStreamError(
+          "Flush error",
+          error instanceof Error ? error : new Error(String(error))
+        )
+      );
     }
   }
 
@@ -100,96 +114,50 @@ class XMLTransformStream extends Transform {
   }
 
   private trimToNextTag(isFlush: boolean): boolean {
-    const openBracket = this.buffer.indexOf("<");
-    if (openBracket === -1) {
-      if (isFlush) {
-        this.buffer = "";
-      }
-      return false;
-    }
-
-    if (openBracket > 0) {
-      this.buffer = this.buffer.slice(openBracket);
-    }
-    return true;
+    const result = trimToNextTag(this.buffer, isFlush);
+    this.buffer = result.remainder;
+    return result.found;
   }
 
   private tryProcessSpecialNode(isFlush: boolean): boolean {
-    if (
-      !(
-        this.buffer.startsWith("<?") ||
-        this.buffer.startsWith("<!--") ||
-        this.buffer.startsWith("<![CDATA[")
-      )
-    ) {
+    const result = readSpecialNode(
+      this.buffer,
+      isFlush,
+      this.parseOptions.keepComments ?? false
+    );
+    if (result === null) {
       return false;
     }
-
-    const endMarkers: Record<string, string> = {
-      "<?": "?>",
-      "<!--": "-->",
-      "<![CDATA[": "]]>",
-    };
-
-    let endMarker = "";
-    for (const [start, end] of Object.entries(endMarkers)) {
-      if (this.buffer.startsWith(start)) {
-        endMarker = end;
-        break;
-      }
+    this.buffer = result.remainder;
+    if (result.emittedComment !== null) {
+      this.push(result.emittedComment);
     }
-
-    const endPos = endMarker ? this.buffer.indexOf(endMarker) : -1;
-    if (endPos === -1) {
-      if (isFlush) {
-        this.buffer = "";
-      }
-      return false; // Wait for more data
-    }
-
-    if (this.parseOptions.keepComments && this.buffer.startsWith("<!--")) {
-      this.push(this.buffer.slice(0, endPos + endMarker.length));
-    }
-    this.buffer = this.buffer.slice(endPos + endMarker.length);
-    return true;
+    return result.handled;
   }
 
   private trySkipStrayClosingTag(isFlush: boolean): boolean {
-    if (!this.buffer.startsWith("</")) {
+    const remainder = skipStrayClosingTag(this.buffer, isFlush);
+    if (remainder === null) {
       return false;
     }
-
-    const closeEnd = this.buffer.indexOf(">");
-    if (closeEnd === -1) {
-      if (isFlush) {
-        this.buffer = "";
-      }
-      return true;
-    }
-
-    this.buffer = this.buffer.slice(closeEnd + 1);
+    this.buffer = remainder;
     return true;
   }
 
   private extractTagInfo(
     isFlush: boolean
   ): { openTagEnd: number; tagName: string } | null {
-    const openTagEnd = this.buffer.indexOf(">");
-    if (openTagEnd === -1) {
-      if (isFlush) {
-        this.buffer = "";
-      }
-      return null;
-    }
+    const result = readTagInfo(this.buffer, isFlush);
+    this.buffer = result.remainder;
+    return result.tagInfo;
+  }
 
-    const openTagContent = this.buffer.slice(1, openTagEnd);
-    const nameMatch = openTagContent.match(TAG_NAME_REGEX);
-    if (!nameMatch) {
-      this.buffer = this.buffer.slice(1);
-      return null;
-    }
-
-    return { openTagEnd, tagName: nameMatch[1] };
+  private parseElement(elementEnd: number): void {
+    const elementXml = this.buffer.slice(0, elementEnd);
+    const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
+    const node = tokenizer.parseNode();
+    this.emitElementAndChildren(node);
+    this.buffer = this.buffer.slice(elementEnd);
   }
 
   private tryProcessSelfClosingTag(tagInfo: {
@@ -202,12 +170,8 @@ class XMLTransformStream extends Transform {
     }
 
     const elementEnd = tagInfo.openTagEnd + 1;
-    const elementXml = this.buffer.slice(0, elementEnd);
     try {
-      const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
-      const node = tokenizer.parseNode();
-      this.emitElementAndChildren(node);
-      this.buffer = this.buffer.slice(elementEnd);
+      this.parseElement(elementEnd);
       return true;
     } catch {
       this.buffer = this.buffer.slice(1);
@@ -219,7 +183,8 @@ class XMLTransformStream extends Transform {
     tagInfo: { openTagEnd: number; tagName: string },
     isFlush: boolean
   ): boolean {
-    const elementEnd = this.findMatchingClosingTag(
+    const elementEnd = findMatchingClosingTag(
+      this.buffer,
       tagInfo.tagName,
       tagInfo.openTagEnd
     );
@@ -232,104 +197,33 @@ class XMLTransformStream extends Transform {
       return false;
     }
 
-    const elementXml = this.buffer.slice(0, elementEnd);
     try {
-      const tokenizer = new XMLTokenizer(elementXml, this.parseOptions);
-      const node = tokenizer.parseNode();
-      this.emitElementAndChildren(node);
-      this.buffer = this.buffer.slice(elementEnd);
+      this.parseElement(elementEnd);
       return true;
-    } catch (e) {
-      this.emit("error", new RXMLStreamError("Parse error", e as Error));
+    } catch (error) {
+      this.emit(
+        "error",
+        new RXMLStreamError(
+          "Parse error",
+          error instanceof Error ? error : new Error(String(error))
+        )
+      );
       return false;
     }
-  }
-
-  private findMatchingClosingTag(tagName: string, openTagEnd: number): number {
-    let depth = 1;
-    let searchStart = openTagEnd + 1;
-
-    while (searchStart < this.buffer.length) {
-      const nextOpen = this.findNextOpeningTag(tagName, searchStart);
-      const nextCloseStart = this.buffer.indexOf(`</${tagName}`, searchStart);
-
-      if (nextCloseStart === -1) {
-        return -1;
-      }
-
-      if (nextOpen !== -1 && nextOpen < nextCloseStart) {
-        depth += 1;
-        searchStart = nextOpen + 1;
-      } else {
-        depth -= 1;
-        const closeAdvance = this.advancePastClosingTag(
-          tagName,
-          nextCloseStart
-        );
-        if (closeAdvance === -1) {
-          return -1;
-        }
-        searchStart = closeAdvance;
-        if (depth === 0) {
-          return searchStart;
-        }
-      }
-    }
-
-    return -1;
-  }
-
-  private findNextOpeningTag(tagName: string, searchStart: number): number {
-    let nextOpen = this.buffer.indexOf(`<${tagName}`, searchStart);
-    while (nextOpen !== -1) {
-      const after = this.buffer[nextOpen + tagName.length + 1];
-      if (
-        after === undefined ||
-        after === ">" ||
-        WHITESPACE_REGEX.test(after)
-      ) {
-        break;
-      }
-      nextOpen = this.buffer.indexOf(`<${tagName}`, nextOpen + 1);
-    }
-    return nextOpen;
-  }
-
-  private advancePastClosingTag(
-    tagName: string,
-    nextCloseStart: number
-  ): number {
-    let p = nextCloseStart + 2 + tagName.length;
-    while (p < this.buffer.length && WHITESPACE_REGEX.test(this.buffer[p])) {
-      p += 1;
-    }
-    if (this.buffer[p] !== ">") {
-      return -1;
-    }
-    return p + 1;
   }
 
   /**
    * Emit an element and recursively emit its children as separate events
    */
   private emitElementAndChildren(node: RXMLNode | string): void {
-    if (typeof node === "string") {
-      // Emit comment nodes if requested
-      if (this.parseOptions.keepComments && node.includes("<!--")) {
-        this.push(node);
+    visitStreamElements(
+      node,
+      this.parseOptions.keepComments ?? false,
+      (element) => {
+        this.push(element);
         this.emittedCount += 1;
       }
-      return;
-    }
-
-    // Emit the element itself
-    this.push(node);
-    this.emittedCount += 1;
-
-    // Recursively emit children
-    for (const child of node.children) {
-      this.emitElementAndChildren(child);
-    }
+    );
   }
 }
 
@@ -386,7 +280,7 @@ export async function* processXMLStream(
   stream: Readable,
   offset?: number | string,
   parseOptions?: ParseOptions
-): AsyncGenerator<RXMLNode | string, void, unknown> {
+): AsyncGenerator<RXMLNode | string, void, void> {
   const transformStream = createXMLStream(offset, parseOptions);
 
   let ended = false;
@@ -437,10 +331,8 @@ export async function* processXMLStream(
     }
 
     if (queue.length > 0) {
-      const item = queue.shift();
-      if (item !== undefined) {
-        yield item;
-      }
+      yield queue[0];
+      queue.shift();
       continue;
     }
 

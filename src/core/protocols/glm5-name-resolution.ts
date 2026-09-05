@@ -1,4 +1,8 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type { JSONObject, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import {
+  isSchemaDefinition,
+  type ToolInputSchemaCandidate,
+} from "../../schema/tool-input-schema";
 import { schemaHasProperty } from "../../schema-coerce/schema-introspection";
 import { isPrototypeSensitiveArgumentKey } from "../utils/prototype-sensitive-keys";
 import { decodeStructuredTextEscapes } from "../utils/structured-text-escapes";
@@ -233,16 +237,21 @@ export function resolveGlm5ToolName(
 }
 
 export function resolveArgumentName(options: {
-  args: Record<string, unknown>;
+  args: JSONObject;
   rawName: string;
-  schema: unknown;
+  schema: ToolInputSchemaCandidate;
   recoverNames: boolean;
 }): NameResolution | null {
   const rawValue = stripWrappingNameQuotes(options.rawName);
   if (!rawValue) {
     return null;
   }
-  const declared = getToolInputPropertyNames(options.schema, options.args);
+  const schema = isSchemaDefinition(options.schema)
+    ? options.schema
+    : undefined;
+  const declared = schema
+    ? getToolInputPropertyNames(schema, options.args)
+    : null;
   if (!declared || declared.size === 0) {
     return schemaHasProperty(options.schema, rawValue)
       ? { recovered: rawValue !== options.rawName, value: rawValue }

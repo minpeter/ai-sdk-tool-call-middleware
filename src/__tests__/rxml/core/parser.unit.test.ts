@@ -1,5 +1,7 @@
+import { isJSONObject, type JSONObject } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import type { RxmlValue } from "../../../rxml/builders/stringify";
 import {
   filter,
   parse,
@@ -7,6 +9,7 @@ import {
   parseWithoutSchema,
   simplify,
 } from "../../../rxml/core/parser";
+import type { RXMLNode } from "../../../rxml/core/types";
 import {
   RXMLDuplicateStringTagError,
   RXMLParseError,
@@ -18,9 +21,47 @@ import {
   validXmlSamples,
 } from "../fixtures/test-data";
 
+const isRXMLNode = (value: RXMLNode | string | undefined): value is RXMLNode =>
+  typeof value === "object";
+
+function requireRXMLNode(
+  value: RXMLNode | string | undefined,
+  failureMessage: string
+): RXMLNode {
+  if (!isRXMLNode(value)) {
+    expect.fail(failureMessage);
+  }
+  return value;
+}
+
+function parseRootWithTwoNodeChildren(
+  xml: string
+): readonly [RXMLNode, RXMLNode, RXMLNode] {
+  const [rootValue] = parseWithoutSchema(xml);
+  const root = requireRXMLNode(rootValue, "root was not an XML node");
+  const [firstValue, secondValue] = root.children;
+  const first = requireRXMLNode(firstValue, "root children were not XML nodes");
+  const second = requireRXMLNode(
+    secondValue,
+    "root children were not XML nodes"
+  );
+  return [root, first, second];
+}
+
+const isRxmlRecord = (
+  value: RxmlValue
+): value is Readonly<Record<string, RxmlValue>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const getFileWrite = (result: JSONObject): JSONObject => {
+  const fileWrite = result.file_write;
+  if (!isJSONObject(fileWrite) || Array.isArray(fileWrite)) {
+    throw new Error("parse result did not contain a file_write object");
+  }
+  return fileWrite;
+};
+
 describe("robust-xml parser", () => {
-  const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === "object" && value !== null;
   describe("parseWithoutSchema", () => {
     it("parses simple XML correctly", () => {
       const result = parseWithoutSchema(validXmlSamples.simple);
@@ -40,15 +81,23 @@ describe("robust-xml parser", () => {
 
     it("parses XML with attributes", () => {
       const result = parseWithoutSchema(validXmlSamples.withAttributes);
-      const root = result[0] as any;
+      const root = requireRXMLNode(result[0], "root was not an XML node");
+      const child = requireRXMLNode(
+        root.children[0],
+        "root child was not an XML node"
+      );
       expect(root.attributes.id).toBe("main");
-      expect(root.children[0].attributes.type).toBe("test");
+      expect(child.attributes.type).toBe("test");
     });
 
     it("handles CDATA sections", () => {
       const result = parseWithoutSchema(validXmlSamples.withCdata);
-      const root = result[0] as any;
-      expect(root.children[0].children[0]).toBe("<test>content</test>");
+      const root = requireRXMLNode(result[0], "root was not an XML node");
+      const child = requireRXMLNode(
+        root.children[0],
+        "root child was not an XML node"
+      );
+      expect(child.children[0]).toBe("<test>content</test>");
     });
 
     it("handles comments when keepComments is true", () => {
@@ -88,26 +137,33 @@ describe("robust-xml parser", () => {
     });
 
     it("handles self-closing tags", () => {
-      const result = parseWithoutSchema(validXmlSamples.selfClosing);
-      const root = result[0] as any;
+      const [root, firstChild, secondChild] = parseRootWithTwoNodeChildren(
+        validXmlSamples.selfClosing
+      );
       expect(root.children).toHaveLength(2);
-      expect(root.children[0].children).toHaveLength(0);
-      expect(root.children[1].children).toHaveLength(0);
+      expect(firstChild.children).toHaveLength(0);
+      expect(secondChild.children).toHaveLength(0);
     });
 
     it("preserves whitespace when keepWhitespace is true", () => {
       const xml = "<root>  <item>  test  </item>  </root>";
       const result = parseWithoutSchema(xml, { keepWhitespace: true });
-      const root = result[0] as any;
+      const [root] = result;
+      if (!isRXMLNode(root)) {
+        expect.fail("root was not an XML node");
+      }
       expect(root.children).toContain("  ");
     });
 
     it("trims whitespace by default", () => {
       const xml = "<root>  <item>  test  </item>  </root>";
       const result = parseWithoutSchema(xml);
-      const root = result[0] as any;
+      const [root] = result;
+      if (!isRXMLNode(root)) {
+        expect.fail("root was not an XML node");
+      }
       const textNodes = root.children.filter(
-        (child: any) => typeof child === "string"
+        (child) => typeof child === "string"
       );
       expect(textNodes).toHaveLength(0);
     });
@@ -213,13 +269,12 @@ describe("robust-xml parser", () => {
       );
 
       const result = parse(xml, schema);
-      expect(result.file_write).toBeDefined();
-      expect((result as any).file_write.path).toContain("test.c");
+      const fileWrite = getFileWrite(result);
+      expect(fileWrite).toBeDefined();
+      expect(fileWrite.path).toContain("test.c");
       // Should preserve the raw content including angle brackets without treating <stdio.h> as a tag
-      expect((result as any).file_write.content).toContain(
-        "#include <stdio.h>"
-      );
-      expect((result as any).file_write.content).toContain("int main() {");
+      expect(fileWrite.content).toContain("#include <stdio.h>");
+      expect(fileWrite.content).toContain("int main() {");
     });
 
     it("parses file_write content across multiple languages using zod schema", () => {
@@ -371,10 +426,11 @@ describe("robust-xml parser", () => {
         ].join("\n");
 
         const result = parse(xml, schema);
-        expect(result.file_write).toBeDefined();
-        expect((result as any).file_write.path).toBe(path);
+        const fileWrite = getFileWrite(result);
+        expect(fileWrite).toBeDefined();
+        expect(fileWrite.path).toBe(path);
         for (const line of content) {
-          expect((result as any).file_write.content).toContain(line);
+          expect(fileWrite.content).toContain(line);
         }
       }
     });
@@ -440,8 +496,8 @@ describe("robust-xml parser", () => {
         "<test><cc>one</cc><cc>two</cc></test>"
       );
       const simplified = simplify(parsed);
-      if (isRecord(simplified) && isRecord(simplified.test)) {
-        const { cc } = simplified.test as Record<string, unknown>;
+      if (isRxmlRecord(simplified) && isRxmlRecord(simplified.test)) {
+        const { cc } = simplified.test;
         expect(cc).toEqual(["one", "two"]);
       } else {
         expect.fail("simplified result was not an object with 'test'");
@@ -453,10 +509,9 @@ describe("robust-xml parser", () => {
         '<test><cc attr="value">content</cc></test>'
       );
       const simplified = simplify(parsed);
-      if (isRecord(simplified) && isRecord(simplified.test)) {
-        const testNode = simplified.test as Record<string, unknown>;
-        const cc = testNode.cc as unknown;
-        if (isRecord(cc)) {
+      if (isRxmlRecord(simplified) && isRxmlRecord(simplified.test)) {
+        const { cc } = simplified.test;
+        if (isRxmlRecord(cc)) {
           expect(cc._attributes).toEqual({ attr: "value" });
         } else {
           expect.fail("cc was not an object on simplified.test");
@@ -501,18 +556,22 @@ describe("robust-xml parser", () => {
 
     it("handles mixed content correctly", () => {
       const result = parseWithoutSchema(validXmlSamples.mixedContent);
-      const root = result[0] as any;
+      const [root] = result;
+      if (!isRXMLNode(root)) {
+        expect.fail("root was not an XML node");
+      }
       expect(root.children).toHaveLength(3); // "text before ", item element, " text after"
       expect(root.children[0]).toBe("text before");
       expect(root.children[2]).toBe("text after");
     });
 
     it("handles nested empty elements", () => {
-      const result = parseWithoutSchema(validXmlSamples.emptyElements);
-      const root = result[0] as any;
+      const [root, firstChild, secondChild] = parseRootWithTwoNodeChildren(
+        validXmlSamples.emptyElements
+      );
       expect(root.children).toHaveLength(2);
-      expect(root.children[0].children).toEqual([]);
-      expect(root.children[1].children).toEqual([]);
+      expect(firstChild.children).toEqual([]);
+      expect(secondChild.children).toEqual([]);
     });
   });
 });

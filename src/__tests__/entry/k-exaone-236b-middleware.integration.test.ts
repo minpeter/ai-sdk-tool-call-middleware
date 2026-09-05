@@ -1,9 +1,10 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { wrapLanguageModel } from "ai";
 import { describe, expect, it, vi } from "vitest";
 import { kExaone236BToolMiddleware } from "../../preconfigured-middleware";
 import { requireTransformParams } from "../test-helpers";
+import { parseKExaoneRequestBody } from "./k-exaone-request-body.shared";
+import { captureProviderBody } from "./provider-capture.shared";
 
 const tools = [
   {
@@ -59,50 +60,14 @@ describe("kExaone236BToolMiddleware", () => {
 
   it("emits tool_declare first and preserves native structured history", async () => {
     // Given
-    let capturedBody: unknown;
-    const provider = createOpenAICompatible({
+    // When
+    const capturedBody = await captureProviderBody({
       name: "friendli-capture",
       apiKey: "test-key",
       baseURL: "https://capture.invalid/v1",
-      fetch: (_input, init) => {
-        if (typeof init?.body !== "string") {
-          throw new TypeError("Expected a JSON request body");
-        }
-        capturedBody = JSON.parse(init.body);
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: "response-1",
-              created: 0,
-              model: "probe-model",
-              choices: [
-                {
-                  index: 0,
-                  finish_reason: "stop",
-                  message: { role: "assistant", content: "done" },
-                },
-              ],
-              usage: {
-                prompt_tokens: 1,
-                completion_tokens: 1,
-                total_tokens: 2,
-              },
-            }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            }
-          )
-        );
-      },
-    });
-    const model = wrapLanguageModel({
-      model: provider.chatModel("probe-model"),
+      modelId: "probe-model",
       middleware: kExaone236BToolMiddleware,
-    });
-
-    // When
-    await model.doGenerate({
+      parseBody: parseKExaoneRequestBody,
       prompt: [
         { role: "system", content: "SYSTEM_SENTINEL" },
         {

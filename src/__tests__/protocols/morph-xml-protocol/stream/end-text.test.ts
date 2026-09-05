@@ -1,33 +1,17 @@
-import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
-import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
-import {
-  pipeWithTransformer,
-  stopFinishReason,
-  zeroUsage,
-} from "../../../test-helpers";
+import { runProtocolTextStream } from "../../shared/duplicate-harness";
 
 describe("morphXmlProtocol streaming trailing text-end on flush", () => {
   it("emits text-end when there is open text at flush with no tags", async () => {
-    const protocol = morphXmlProtocol();
-    const transformer = protocol.createStreamParser({ tools: [] });
-    const rs = new ReadableStream<LanguageModelV4StreamPart>({
-      start(ctrl) {
-        ctrl.enqueue({ type: "text-delta", id: "1", delta: "hello" });
-        ctrl.enqueue({
-          type: "finish",
-          finishReason: stopFinishReason,
-          usage: zeroUsage,
-        });
-        ctrl.close();
-      },
+    const out = await runProtocolTextStream({
+      chunks: ["hello"],
+      id: "1",
+      protocol: morphXmlProtocol(),
+      tools: [],
     });
-    const out = await convertReadableStreamToArray(
-      pipeWithTransformer(rs, transformer)
-    );
-    const types = out.map((c) => c.type);
+    const types = out.map((part) => part.type);
+
     expect(types).toContain("text-start");
     expect(types).toContain("text-delta");
     expect(types).toContain("text-end");

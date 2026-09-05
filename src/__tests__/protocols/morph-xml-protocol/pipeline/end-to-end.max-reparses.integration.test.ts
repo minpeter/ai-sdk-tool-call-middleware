@@ -4,21 +4,15 @@ import { describe, expect, it } from "vitest";
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 
 describe("morphXmlProtocol pipeline maxReparses integration", () => {
-  const shellTools: LanguageModelV4FunctionTool[] = [
-    {
-      type: "function",
-      name: "shell",
-      inputSchema: {
-        type: "object",
-        properties: {
-          command: {
-            type: "array",
-            items: { type: "string" },
-          },
-          description: { type: "string" },
-        },
-      },
+  const shellInputSchema: LanguageModelV4FunctionTool["inputSchema"] = {
+    properties: {
+      description: { type: "string" },
+      command: { items: { type: "string" }, type: "array" },
     },
+    type: "object",
+  };
+  const shellTools: LanguageModelV4FunctionTool[] = [
+    { inputSchema: shellInputSchema, name: "shell", type: "function" },
   ];
 
   const duplicateDescription = `<shell>
@@ -52,10 +46,10 @@ describe("morphXmlProtocol pipeline maxReparses integration", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("tool-call");
-    if (result[0].type === "tool-call") {
-      const input = JSON.parse(result[0].input);
-      expect(input.description).toBe("Second");
+    const repairedPart = result.at(0);
+    expect(repairedPart?.type).toBe("tool-call");
+    if (repairedPart?.type === "tool-call") {
+      expect(JSON.parse(repairedPart.input).description).toBe("Second");
     }
   });
 });

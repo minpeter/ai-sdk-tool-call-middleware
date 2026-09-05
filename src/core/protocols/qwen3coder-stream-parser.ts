@@ -4,18 +4,19 @@ import type {
 } from "@ai-sdk/provider";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateToolCallId } from "../utils/id";
-import { createFlushTextHandler } from "../utils/protocol-utils";
 import { shouldEmitRawToolCallTextOnError } from "../utils/tool-input-streaming";
 import type { ParserOptions } from "./protocol-interface";
 import {
+  createProtocolSemanticChunkTransform,
+  createProtocolTextLifecycle,
+} from "./protocol-stream-shared";
+import {
   getPotentialTagStartIndex,
-  normalizeStreamToolCallInnerOpenVariants,
   normalizeToolCallInnerOpenVariants,
   QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE,
   QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_TAG_RE,
   QWEN3CODER_TOOL_PARSER_STREAM_NAME_OR_PARAM_SIGNAL_RE,
   QWEN3CODER_TOOL_PARSER_STREAM_SELF_CLOSING_TAG_RE,
-  QWEN3CODER_TOOL_PARSER_STREAM_TOOL_CALL_CLOSE_TAG_RE,
   stripLeadingToolCallCloseTags,
   TOOL_CALL_OPEN_RE,
 } from "./qwen3coder-call-syntax";
@@ -24,9 +25,11 @@ import {
   getShorthandValue,
 } from "./qwen3coder-param-tag-parsing";
 import { createQwenStreamCallConsumption } from "./qwen3coder-stream-call-consumption";
+import type { QwenRawArguments } from "./qwen3coder-stream-call-content";
 import { createQwenStreamCallLifecycle } from "./qwen3coder-stream-call-lifecycle";
 import { createQwenStreamFinishReporting } from "./qwen3coder-stream-finish-reporting";
 import { createQwenStreamTextRecovery } from "./qwen3coder-stream-text-recovery";
+import { createQwenStreamToolCallProcessor } from "./qwen3coder-stream-tool-call-processing";
 import type {
   StreamController,
   StreamingCallState,
@@ -59,19 +62,8 @@ export function createQwen3CoderStreamParser({
   let toolCall: ToolCallContainerState | null = null;
   let implicitCall: StreamingCallState | null = null;
   let implicitCallOpenTag: string | null = null;
-  let currentTextId: string | null = null;
-  let hasEmittedTextStart = false;
-
-  const flushText = createFlushTextHandler(
-    () => currentTextId,
-    (id) => {
-      currentTextId = id;
-    },
-    () => hasEmittedTextStart,
-    (value) => {
-      hasEmittedTextStart = value;
-    }
-  );
+  const textLifecycle = createProtocolTextLifecycle();
+  const { flushText } = textLifecycle;
 
   const { flushRecoveredBufferText, flushRecoveredTrailingText } =
     createQwenStreamTextRecovery({ flushText, options });
@@ -130,14 +122,6 @@ export function createQwen3CoderStreamParser({
   };
 
   const startToolCallIfPresent = () => {
-    if (toolCall) {
-      return;
-    }
-
-    if (implicitCall) {
-      return;
-    }
-
     const lower = buffer.toLowerCase();
     const startIndex = getPotentialStartIndex(lower, toolCallStartPrefixLower);
     if (startIndex == null || startIndex !== 0) {
@@ -173,10 +157,6 @@ export function createQwen3CoderStreamParser({
   };
 
   const startImplicitCallIfPresent = (controller: StreamController) => {
-    if (toolCall || implicitCall) {
-      return;
-    }
-
     const match = QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_TAG_RE.exec(buffer);
     const startIndex = match?.index ?? -1;
     const openTag = match?.[0] ?? "";
@@ -204,7 +184,7 @@ export function createQwen3CoderStreamParser({
       emittedInput: "",
       pendingToolInputParts: [],
       raw: openTag,
-      args: Object.create(null) as Record<string, unknown>,
+      args: Object.create(null) as QwenRawArguments,
       buffer: "",
     };
 
@@ -219,43 +199,42 @@ export function createQwen3CoderStreamParser({
     implicitCallOpenTag = openTag;
   };
 
-  const processImplicitCall = (controller: StreamController) => {
-    while (implicitCall) {
-      const callState = implicitCall;
-      const { done, remainder } = consumeCall(
-        controller,
-        callState,
-        buffer,
-        null
-      );
-      buffer = "";
-      if (!done) {
-        return;
-      }
-
-      implicitCall = null;
-      implicitCallOpenTag = null;
-      if (remainder.length > 0) {
-        buffer = remainder;
-      }
-
-      stripLeadingToolCallCloseTagsFromBuffer();
-      flushSafeTextPrefix(controller);
-      startToolCallIfPresent();
-      if (toolCall) {
-        processToolCall(controller);
-        return;
-      }
-      startImplicitCallIfPresent(controller);
+  function consumeImplicitCall(
+    controller: StreamController,
+    delta: string,
+    prependRemainder: boolean
+  ): boolean {
+    if (!implicitCall) {
+      return false;
     }
-  };
+    const { done, remainder } = consumeCall(
+      controller,
+      implicitCall,
+      delta,
+      null
+    );
+    if (!done) {
+      return false;
+    }
+    implicitCall = null;
+    implicitCallOpenTag = null;
+    if (remainder.length > 0) {
+      buffer = prependRemainder ? remainder + buffer : remainder;
+    }
+    stripLeadingToolCallCloseTagsFromBuffer();
+    flushSafeTextPrefix(controller);
+    drainStarts(controller);
+    return true;
+  }
 
-  const drainStarts = (controller: StreamController) => {
+  function processImplicitCall(controller: StreamController): void {
+    const pending = buffer;
+    buffer = "";
+    consumeImplicitCall(controller, pending, false);
+  }
+
+  function drainStarts(controller: StreamController): void {
     while (true) {
-      if (toolCall || implicitCall) {
-        return;
-      }
-
       const before = buffer;
       startToolCallIfPresent();
       if (toolCall) {
@@ -275,375 +254,182 @@ export function createQwen3CoderStreamParser({
       stripLeadingToolCallCloseTagsFromBuffer();
       flushSafeTextPrefix(controller);
     }
-  };
+  }
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Stream tool-call parsing is a nested state machine.
-  const processToolCall = (controller: StreamController) => {
-    while (toolCall) {
-      if (toolCall.mode === "unknown") {
-        const normalization = normalizeStreamToolCallInnerOpenVariants(
-          toolCall.innerBuffer,
-          tools
-        );
-        if (normalization.status === "incomplete") {
-          return;
-        }
-        if (normalization.status === "rewritten") {
-          toolCall.innerBuffer = normalization.value;
-        }
-        const callMatch = QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE.exec(
-          toolCall.innerBuffer
-        );
-        const signalMatch =
-          QWEN3CODER_TOOL_PARSER_STREAM_NAME_OR_PARAM_SIGNAL_RE.exec(
-            toolCall.innerBuffer
-          );
-        if (
-          callMatch &&
-          (!signalMatch || (callMatch.index ?? 0) < (signalMatch.index ?? 0))
-        ) {
-          toolCall.mode = "multi";
-        } else if (signalMatch) {
-          toolCall.mode = "single";
-          const activeCall: StreamingCallState = {
-            endTagName: "tool_call",
-            toolCallId: generateToolCallId(),
-            toolName: toolCall.outerNameAttr,
-            hasEmittedStart: false,
-            partialParam: null,
-            emittedInput: "",
-            pendingToolInputParts: [],
-            raw: toolCall.outerOpenTag,
-            args: Object.create(null) as Record<string, unknown>,
-            buffer: "",
-          };
-          toolCall.activeCall = activeCall;
-          if (toolCall.outerNameAttr) {
-            maybeEmitToolInputStart(controller, activeCall);
-          }
-        } else {
-          return;
-        }
-      }
-
-      if (toolCall.mode === "single") {
-        const callState = toolCall.activeCall;
-        if (!callState) {
-          return;
-        }
-
-        const { done, remainder } = consumeCall(
-          controller,
-          callState,
-          toolCall.innerBuffer,
-          toolCall.outerNameAttr
-        );
-        toolCall.innerBuffer = "";
-
-        if (!done) {
-          return;
-        }
-
-        toolCall = null;
-        if (remainder.length > 0) {
-          buffer = remainder + buffer;
-        }
-        flushSafeTextPrefix(controller);
-        startToolCallIfPresent();
-        continue;
-      }
-
-      if (toolCall.mode === "multi") {
-        if (toolCall.activeCall) {
-          const callState = toolCall.activeCall;
-          const { done, remainder } = consumeCall(
-            controller,
-            callState,
-            toolCall.innerBuffer,
-            toolCall.outerNameAttr
-          );
-          toolCall.innerBuffer = "";
-
-          if (!done) {
-            return;
-          }
-
-          toolCall.activeCall = null;
-          toolCall.innerBuffer = remainder;
-          continue;
-        }
-
-        const closeMatch =
-          QWEN3CODER_TOOL_PARSER_STREAM_TOOL_CALL_CLOSE_TAG_RE.exec(
-            toolCall.innerBuffer
-          );
-        const callOpenMatch =
-          QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_TAG_RE.exec(
-            toolCall.innerBuffer
-          );
-
-        if (!(closeMatch || callOpenMatch)) {
-          return;
-        }
-
-        const closeIndex = closeMatch?.index ?? -1;
-        const callIndex = callOpenMatch?.index ?? -1;
-        const hasClose = closeIndex !== -1;
-        const hasCall = callIndex !== -1;
-
-        const chooseClose = hasClose && (!hasCall || closeIndex < callIndex);
-        const nextIndex = chooseClose ? closeIndex : callIndex;
-        if (nextIndex > 0) {
-          toolCall.innerBuffer = toolCall.innerBuffer.slice(nextIndex);
-        }
-
-        if (chooseClose) {
-          const matchLen = closeMatch?.[0]?.length ?? 0;
-          const remainder = toolCall.innerBuffer.slice(matchLen);
-          toolCall = null;
-          if (remainder.length > 0) {
-            buffer = remainder + buffer;
-          }
-          flushSafeTextPrefix(controller);
-          startToolCallIfPresent();
-          continue;
-        }
-
-        if (!callOpenMatch) {
-          return;
-        }
-
-        const openTag = callOpenMatch[0] ?? "";
-        const callTagName = (callOpenMatch[1] ?? "").toLowerCase();
-        const rest = toolCall.innerBuffer.slice(openTag.length);
-
-        const selfClosing =
-          QWEN3CODER_TOOL_PARSER_STREAM_SELF_CLOSING_TAG_RE.test(openTag);
-        if (selfClosing) {
-          const toolNameAttr =
-            getAttributeValue(openTag, "name") ??
-            getShorthandValue(openTag) ??
-            toolCall.outerNameAttr;
-          const immediateCall: StreamingCallState = {
-            endTagName: callTagName,
-            toolCallId: generateToolCallId(),
-            toolName: toolNameAttr,
-            hasEmittedStart: false,
-            partialParam: null,
-            emittedInput: "",
-            pendingToolInputParts: [],
-            raw: openTag,
-            args: Object.create(null) as Record<string, unknown>,
-            buffer: "",
-          };
-          const ok = finalizeCall(
-            controller,
-            immediateCall,
-            toolNameAttr,
-            immediateCall.raw
-          );
-          if (ok) {
-            toolCall.emittedToolCallCount += 1;
-          }
-          toolCall.innerBuffer = rest;
-          continue;
-        }
-
-        const toolNameAttr =
-          getAttributeValue(openTag, "name") ?? getShorthandValue(openTag);
-        const newCall: StreamingCallState = {
-          endTagName: callTagName,
-          toolCallId: generateToolCallId(),
-          toolName: toolNameAttr,
-          hasEmittedStart: false,
-          partialParam: null,
-          emittedInput: "",
-          pendingToolInputParts: [],
-          raw: openTag,
-          args: Object.create(null) as Record<string, unknown>,
-          buffer: "",
-        };
-
-        if (toolNameAttr) {
-          maybeEmitToolInputStart(controller, newCall);
-        }
-
-        toolCall.activeCall = newCall;
-        toolCall.innerBuffer = rest;
-      }
-    }
-  };
+  const processToolCall = createQwenStreamToolCallProcessor({
+    consumeCall,
+    finalizeCall,
+    flushSafeTextPrefix,
+    getBuffer: () => buffer,
+    getToolCall: () => toolCall,
+    maybeEmitToolInputStart,
+    setBuffer: (value) => {
+      buffer = value;
+    },
+    setToolCall: (value) => {
+      toolCall = value;
+    },
+    startToolCallIfPresent,
+    tools,
+  });
 
   const {
     reportUnfinishedImplicitCallAtFinish,
     reportUnfinishedToolCallAtFinish,
   } = createQwenStreamFinishReporting({ flushText, options, tools });
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Stream finish reconciliation is a best-effort state machine cleanup.
-  const handleFinish = (controller: StreamController) => {
-    // Scan deferral (amortized large-buffer scanning) must not leave a
-    // pending close tag unobserved at finish: run catch-up scans so the
-    // live-path completion logic sees exactly what it would have seen
-    // without deferral.
-    disableScanDeferral();
-    if (implicitCall) {
-      const callState = implicitCall;
-      const { done, remainder } = consumeCall(controller, callState, "", null);
-      if (done) {
-        implicitCall = null;
-        implicitCallOpenTag = null;
-        if (remainder.length > 0) {
-          buffer = remainder + buffer;
-        }
-        stripLeadingToolCallCloseTagsFromBuffer();
-        flushSafeTextPrefix(controller);
-        drainStarts(controller);
-      }
+  const consumePendingImplicitCallAtFinish = (
+    controller: StreamController
+  ): void => {
+    if (!implicitCall) {
+      return;
     }
-    if (toolCall) {
-      // Process any remaining complete structures first.
-      processToolCall(controller);
+    consumeImplicitCall(controller, "", true);
+  };
 
-      if (toolCall) {
-        // Best-effort reconciliation on incomplete tool-call markup at finish.
-        if (toolCall.mode === "unknown") {
-          // The stream is over, so force malformed-opener normalization even
-          // when the live path deferred it as potentially incomplete.
-          toolCall.innerBuffer = normalizeToolCallInnerOpenVariants(
-            toolCall.innerBuffer,
-            tools
-          );
-          const callMatch =
-            QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE.exec(
-              toolCall.innerBuffer
-            );
-          const signalMatch =
-            QWEN3CODER_TOOL_PARSER_STREAM_NAME_OR_PARAM_SIGNAL_RE.exec(
-              toolCall.innerBuffer
-            );
-          if (
-            callMatch &&
-            (!signalMatch || (callMatch.index ?? 0) < (signalMatch.index ?? 0))
-          ) {
-            toolCall.mode = "multi";
-          } else if (signalMatch) {
-            toolCall.mode = "single";
-            toolCall.activeCall = {
-              endTagName: "tool_call",
-              toolCallId: generateToolCallId(),
-              toolName: toolCall.outerNameAttr,
-              hasEmittedStart: false,
-              partialParam: null,
-              emittedInput: "",
-              pendingToolInputParts: [],
-              raw: toolCall.outerOpenTag,
-              args: Object.create(null) as Record<string, unknown>,
-              buffer: "",
-            };
-          }
-        }
-
-        if (toolCall.mode === "single" && toolCall.activeCall) {
-          toolCall.activeCall.buffer += toolCall.innerBuffer;
-          toolCall.innerBuffer = "";
-          const result = finalizeCallAtFinish(
-            controller,
-            toolCall.activeCall,
-            toolCall.outerNameAttr
-          );
-          if (result.ok) {
-            toolCall.emittedToolCallCount += 1;
-          }
-          const shouldFlushTrailingText =
-            result.ok || !shouldEmitRawToolCallTextOnError(options);
-          if (shouldFlushTrailingText && result.trailingText.length > 0) {
-            flushRecoveredTrailingText(
-              controller,
-              toolCall.activeCall,
-              result.trailingText
-            );
-          }
-          if (!result.ok && toolCall.emittedToolCallCount === 0) {
-            reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
-              toolCallId: toolCall.activeCall.toolCallId,
-              ...(toolCall.activeCall.toolName
-                ? { toolName: toolCall.activeCall.toolName }
-                : {}),
-            });
-          }
-        } else if (toolCall.mode === "multi") {
-          if (toolCall.activeCall) {
-            const result = finalizeCallAtFinish(
-              controller,
-              toolCall.activeCall,
-              toolCall.outerNameAttr
-            );
-            if (result.ok) {
-              toolCall.emittedToolCallCount += 1;
-            }
-            const shouldFlushTrailingText =
-              result.ok || !shouldEmitRawToolCallTextOnError(options);
-            if (shouldFlushTrailingText && result.trailingText.length > 0) {
-              flushRecoveredTrailingText(
-                controller,
-                toolCall.activeCall,
-                result.trailingText
-              );
-            }
-            if (!result.ok && toolCall.emittedToolCallCount === 0) {
-              reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
-                toolCallId: toolCall.activeCall.toolCallId,
-                ...(toolCall.activeCall.toolName
-                  ? { toolName: toolCall.activeCall.toolName }
-                  : {}),
-              });
-            }
-            toolCall.activeCall = null;
-          } else if (toolCall.emittedToolCallCount === 0) {
-            reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
-              toolName: toolCall.outerNameAttr,
-            });
-          }
-        } else {
-          reportUnfinishedToolCallAtFinish(controller, toolCall.raw, {
-            toolName: toolCall.outerNameAttr,
-          });
-        }
-
-        toolCall = null;
-      }
+  const normalizeUnfinishedToolCall = (
+    container: ToolCallContainerState
+  ): void => {
+    if (container.mode !== "unknown") {
+      return;
     }
+    container.innerBuffer = normalizeToolCallInnerOpenVariants(
+      container.innerBuffer,
+      tools
+    );
+    const callMatch = QWEN3CODER_TOOL_PARSER_STREAM_CALL_OPEN_START_RE.exec(
+      container.innerBuffer
+    );
+    const signalMatch =
+      QWEN3CODER_TOOL_PARSER_STREAM_NAME_OR_PARAM_SIGNAL_RE.exec(
+        container.innerBuffer
+      );
+    if (callMatch && (!signalMatch || callMatch.index < signalMatch.index)) {
+      container.mode = "multi";
+      return;
+    }
+    if (!signalMatch) {
+      return;
+    }
+    container.mode = "single";
+    container.activeCall = {
+      endTagName: "tool_call",
+      toolCallId: generateToolCallId(),
+      toolName: container.outerNameAttr,
+      hasEmittedStart: false,
+      partialParam: null,
+      emittedInput: "",
+      pendingToolInputParts: [],
+      raw: container.outerOpenTag,
+      args: Object.create(null) as QwenRawArguments,
+      buffer: "",
+    };
+  };
 
-    if (implicitCall) {
-      const callState = implicitCall;
-      const openTag = implicitCallOpenTag;
-      implicitCall = null;
-      implicitCallOpenTag = null;
+  const finalizeTrackedToolCall = (
+    controller: StreamController,
+    container: ToolCallContainerState,
+    callState: StreamingCallState
+  ): void => {
+    const result = finalizeCallAtFinish(
+      controller,
+      callState,
+      container.outerNameAttr
+    );
+    if (result.ok) {
+      container.emittedToolCallCount += 1;
+    }
+    const shouldFlushTrailingText =
+      result.ok || !shouldEmitRawToolCallTextOnError(options);
+    if (shouldFlushTrailingText && result.trailingText.length > 0) {
+      flushRecoveredTrailingText(controller, callState, result.trailingText);
+    }
+    if (!result.ok && container.emittedToolCallCount === 0) {
+      reportUnfinishedToolCallAtFinish(controller, container.raw, {
+        toolCallId: callState.toolCallId,
+        ...(callState.toolName ? { toolName: callState.toolName } : {}),
+      });
+    }
+  };
 
-      const result = finalizeCallAtFinish(controller, callState, null);
-      const shouldFlushTrailingText =
-        result.ok || !shouldEmitRawToolCallTextOnError(options);
-      if (shouldFlushTrailingText && result.trailingText.length > 0) {
-        flushRecoveredTrailingText(controller, callState, result.trailingText);
-      }
-      if (!result.ok && openTag) {
-        reportUnfinishedImplicitCallAtFinish(
-          controller,
-          callState.raw || openTag + callState.buffer,
-          callState
-        );
-      }
-    } else {
+  const reconcileUnfinishedToolCall = (
+    controller: StreamController,
+    container: ToolCallContainerState
+  ): void => {
+    normalizeUnfinishedToolCall(container);
+    if (container.mode === "single" && container.activeCall) {
+      container.activeCall.buffer += container.innerBuffer;
+      container.innerBuffer = "";
+      finalizeTrackedToolCall(controller, container, container.activeCall);
+      return;
+    }
+    if (container.mode !== "multi") {
+      reportUnfinishedToolCallAtFinish(controller, container.raw, {
+        toolName: container.outerNameAttr,
+      });
+      return;
+    }
+    if (container.activeCall) {
+      finalizeTrackedToolCall(controller, container, container.activeCall);
+      container.activeCall = null;
+      return;
+    }
+    if (container.emittedToolCallCount === 0) {
+      reportUnfinishedToolCallAtFinish(controller, container.raw, {
+        toolName: container.outerNameAttr,
+      });
+    }
+  };
+
+  const finishToolCall = (controller: StreamController): void => {
+    if (!toolCall) {
+      return;
+    }
+    processToolCall(controller);
+    if (!toolCall) {
+      return;
+    }
+    const unfinishedToolCall = toolCall;
+    reconcileUnfinishedToolCall(controller, unfinishedToolCall);
+    toolCall = null;
+  };
+
+  const finishImplicitCall = (controller: StreamController): void => {
+    if (!implicitCall) {
       stripLeadingToolCallCloseTagsFromBuffer();
       flushSafeTextPrefix(controller);
       drainStarts(controller);
+      return;
     }
+    const callState = implicitCall;
+    const openTag = implicitCallOpenTag;
+    implicitCall = null;
+    implicitCallOpenTag = null;
 
+    const result = finalizeCallAtFinish(controller, callState, null);
+    const shouldFlushTrailingText =
+      result.ok || !shouldEmitRawToolCallTextOnError(options);
+    if (shouldFlushTrailingText && result.trailingText.length > 0) {
+      flushRecoveredTrailingText(controller, callState, result.trailingText);
+    }
+    if (!result.ok && openTag) {
+      reportUnfinishedImplicitCallAtFinish(
+        controller,
+        callState.raw,
+        callState
+      );
+    }
+  };
+
+  const handleFinish = (controller: StreamController): void => {
+    disableScanDeferral();
+    consumePendingImplicitCallAtFinish(controller);
+    finishToolCall(controller);
+    finishImplicitCall(controller);
     if (buffer.length > 0) {
       flushRecoveredBufferText(controller, buffer);
       buffer = "";
     }
-
     flushText(controller);
   };
 
@@ -670,24 +456,7 @@ export function createQwen3CoderStreamParser({
     }
 
     if (implicitCall) {
-      const callState = implicitCall;
-      const { done, remainder } = consumeCall(
-        controller,
-        callState,
-        delta,
-        null
-      );
-      if (!done) {
-        return;
-      }
-      implicitCall = null;
-      implicitCallOpenTag = null;
-      if (remainder.length > 0) {
-        buffer = remainder + buffer;
-      }
-      stripLeadingToolCallCloseTagsFromBuffer();
-      flushSafeTextPrefix(controller);
-      drainStarts(controller);
+      consumeImplicitCall(controller, delta, true);
       return;
     }
 
@@ -697,47 +466,24 @@ export function createQwen3CoderStreamParser({
     drainStarts(controller);
   };
 
-  const handleTransformChunk = (
-    controller: StreamController,
-    chunk: LanguageModelV4StreamPart
-  ) => {
-    if (chunk.type === "finish") {
+  return createProtocolSemanticChunkTransform({
+    finish(controller) {
       handleFinish(controller);
-      controller.enqueue(chunk);
-      return;
-    }
-    // The parser re-segments text under its own synthetic ids (tool-call
-    // markup is excised), so the provider's original text-start/text-end
-    // envelopes are dropped instead of producing empty duplicate blocks.
-    if (chunk.type === "text-start" || chunk.type === "text-end") {
-      return;
-    }
-
-    // Raw provider chunks are observational side-channel events and may be
-    // interleaved before every semantic text delta. They must not flush a
-    // partial `<tool_call>` / `<function>` prefix as recovered plain text.
-    if (chunk.type === "raw") {
-      controller.enqueue(chunk);
-      return;
-    }
-
-    if (chunk.type !== "text-delta") {
-      handlePassthroughChunk(controller, chunk);
-      return;
-    }
-    const { delta } = chunk;
-    if (!delta) {
-      return;
-    }
-    handleTextDeltaChunk(controller, delta);
-  };
-
-  return new TransformStream({
-    transform(chunk, controller) {
-      handleTransformChunk(controller, chunk);
     },
     flush(controller) {
       handleFinish(controller);
+    },
+    passthrough(controller, chunk) {
+      handlePassthroughChunk(controller, chunk);
+    },
+    // Raw side-channel events must not flush partial semantic tags.
+    raw(controller, chunk) {
+      controller.enqueue(chunk);
+    },
+    textDelta(controller, delta) {
+      if (delta) {
+        handleTextDeltaChunk(controller, delta);
+      }
     },
   });
 }

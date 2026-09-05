@@ -1,4 +1,10 @@
+import { isJSONValue, type JSONObject, type JSONValue } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
+import type { RxmlValue } from "../../rxml/builders/stringify";
+import type {
+  ToolInputSchema,
+  ToolInputSchemaCandidate,
+} from "../../schema/tool-input-schema";
 import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 
 export interface JsonCandidate {
@@ -13,19 +19,33 @@ interface JsonScanState {
   inString: boolean;
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export function isRecord(value: RxmlValue): value is JSONObject;
+export function isRecord(
+  value: ToolInputSchemaCandidate
+): value is ToolInputSchema;
+export function isRecord(value: RxmlValue | ToolInputSchemaCandidate): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === null || prototype === Object.prototype;
 }
 
-export function containsPrototypeSensitiveKey(value: unknown): boolean {
+export function containsPrototypeSensitiveKey(value: RxmlValue): boolean {
   return toolCallInputHasPrototypeSensitiveKey(value);
 }
 
-export function parseJsonCandidate(candidateText: string): unknown {
+export function parseJsonCandidate(
+  candidateText: string
+): JSONValue | undefined {
   try {
-    return parseRJSON(candidateText);
-  } catch {
-    // swallow parse failures and return undefined
+    const parsed = parseRJSON(candidateText);
+    return isJSONValue(parsed) ? parsed : undefined;
+  } catch (error) {
+    if (error instanceof Error) {
+      return;
+    }
+    throw error;
   }
 }
 
@@ -76,6 +96,21 @@ function scanJsonChar(state: JsonScanState, char: string): JsonScanState {
     return { ...state, depth: Math.max(0, state.depth - 1) };
   }
   return state;
+}
+
+export function findJsonObjectEnd(
+  text: string,
+  startIndex: number
+): number | null {
+  let state: JsonScanState = { depth: 0, escaping: false, inString: false };
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+    state = scanJsonChar(state, char);
+    if (!state.inString && char === "}" && state.depth === 0) {
+      return index + 1;
+    }
+  }
+  return null;
 }
 
 function extractBalancedJsonObjects(text: string): JsonCandidate[] {

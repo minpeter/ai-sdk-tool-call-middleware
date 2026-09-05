@@ -1,3 +1,9 @@
+import {
+  isJSONObject,
+  isJSONValue,
+  type JSONObject,
+  type JSONValue,
+} from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../rjson";
 import { unescapeXml } from "../rxml/utils/helpers";
 
@@ -22,7 +28,36 @@ const PYTHON_LITERAL_REPLACEMENTS: Record<string, string> = {
  * equivalents, quote-aware so occurrences inside string values (e.g.
  * `{'note': 'True story'}`) are never touched.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Quote-aware token replacement requires explicit string-state transitions.
+function updateQuotedState(
+  ch: string,
+  quote: '"' | "'" | null,
+  escaped: boolean
+): { quote: '"' | "'" | null; escaped: boolean } {
+  if (escaped) {
+    return { quote, escaped: false };
+  }
+  if (ch === "\\") {
+    return { quote, escaped: true };
+  }
+  if (ch === quote) {
+    return { quote: null, escaped: false };
+  }
+  return { quote, escaped };
+}
+
+function pythonLiteralReplacementAt(s: string, i: number): string | undefined {
+  const ch = s[i];
+  if (ch !== "T" && ch !== "F" && ch !== "N") {
+    return;
+  }
+  return Object.keys(PYTHON_LITERAL_REPLACEMENTS).find(
+    (token) =>
+      s.startsWith(token, i) &&
+      !IDENTIFIER_CHAR_REGEX.test(s[i - 1] ?? "") &&
+      !IDENTIFIER_CHAR_REGEX.test(s[i + token.length] ?? "")
+  );
+}
+
 function normalizePythonLiterals(s: string): string {
   let quote: '"' | "'" | null = null;
   let escaped = false;
@@ -32,13 +67,7 @@ function normalizePythonLiterals(s: string): string {
   for (let i = 0; i < s.length; i += 1) {
     const ch = s[i];
     if (quote !== null) {
-      if (escaped) {
-        escaped = false;
-      } else if (ch === "\\") {
-        escaped = true;
-      } else if (ch === quote) {
-        quote = null;
-      }
+      ({ quote, escaped } = updateQuotedState(ch, quote, escaped));
       continue;
     }
     if (ch === '"' || ch === "'") {
@@ -46,15 +75,7 @@ function normalizePythonLiterals(s: string): string {
       continue;
     }
 
-    const replacement =
-      ch === "T" || ch === "F" || ch === "N"
-        ? Object.keys(PYTHON_LITERAL_REPLACEMENTS).find(
-            (token) =>
-              s.startsWith(token, i) &&
-              !IDENTIFIER_CHAR_REGEX.test(s[i - 1] ?? "") &&
-              !IDENTIFIER_CHAR_REGEX.test(s[i + token.length] ?? "")
-          )
-        : undefined;
+    const replacement = pythonLiteralReplacementAt(s, i);
     if (replacement) {
       out ??= [];
       out.push(
@@ -73,18 +94,18 @@ function normalizePythonLiterals(s: string): string {
   return out.join("");
 }
 
-function hasPrototypeSensitiveOwnKey(value: unknown): boolean {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
+function hasPrototypeSensitiveOwnKey(value: JSONValue | undefined): boolean {
   if (Array.isArray(value)) {
     return value.some(hasPrototypeSensitiveOwnKey);
   }
-  for (const key of Object.keys(value as Record<string, unknown>)) {
+  if (!isJSONObject(value)) {
+    return false;
+  }
+  for (const [key, item] of Object.entries(value)) {
     if (COERCE_PROTOTYPE_SENSITIVE_KEYS.has(key)) {
       return true;
     }
-    if (hasPrototypeSensitiveOwnKey((value as Record<string, unknown>)[key])) {
+    if (hasPrototypeSensitiveOwnKey(item)) {
       return true;
     }
   }
@@ -96,7 +117,7 @@ function hasPrototypeSensitiveOwnKey(value: unknown): boolean {
  * then relaxed JSON (single quotes, unquoted keys), then Python-literal
  * normalization (`True`/`False`/`None` — observed live on KAT Coder Pro).
  */
-export function parseLooseStructuredString(s: string): unknown {
+export function parseLooseStructuredString(s: string): JSONValue | undefined {
   const first = s.trimStart().charAt(0);
   if (first !== "{" && first !== "[") {
     return;
@@ -106,8 +127,8 @@ export function parseLooseStructuredString(s: string): unknown {
   // `True` tokens as identifier strings before the normalized candidate ran.
   const normalized = normalizePythonLiterals(s);
   try {
-    const parsed = JSON.parse(normalized) as unknown;
-    if (!hasPrototypeSensitiveOwnKey(parsed)) {
+    const parsed = JSON.parse(normalized);
+    if (isJSONValue(parsed) && !hasPrototypeSensitiveOwnKey(parsed)) {
       return parsed;
     }
     return;
@@ -116,14 +137,18 @@ export function parseLooseStructuredString(s: string): unknown {
   }
   try {
     let foundPrototypeSensitiveKey = false;
-    const parsed = parseRJSON(normalized, (key: string, value: unknown) => {
+    const parsed = parseRJSON(normalized, (key, value) => {
       if (COERCE_PROTOTYPE_SENSITIVE_KEYS.has(key)) {
         foundPrototypeSensitiveKey = true;
         return;
       }
       return value;
     });
-    if (foundPrototypeSensitiveKey || hasPrototypeSensitiveOwnKey(parsed)) {
+    if (
+      !isJSONValue(parsed) ||
+      foundPrototypeSensitiveKey ||
+      hasPrototypeSensitiveOwnKey(parsed)
+    ) {
       return;
     }
     return parsed;
@@ -137,9 +162,7 @@ export function parseLooseStructuredString(s: string): unknown {
  * live on Cohere Command R+, which nests XML children inside an object-typed
  * parameter value). Tolerates a missing close tag on a line.
  */
-export function parseXmlChildrenValue(
-  s: string
-): Record<string, unknown> | null {
+export function parseXmlChildrenValue(s: string): JSONObject | null {
   const lines = s
     .split("\n")
     .map((line) => line.trim())
@@ -147,7 +170,7 @@ export function parseXmlChildrenValue(
   if (lines.length === 0 || !lines[0].startsWith("<")) {
     return null;
   }
-  const record = Object.create(null) as Record<string, unknown>;
+  const record: JSONObject = Object.create(null);
   for (const line of lines) {
     const match =
       XML_CHILD_VALUE_CLOSED_RE.exec(line) ??

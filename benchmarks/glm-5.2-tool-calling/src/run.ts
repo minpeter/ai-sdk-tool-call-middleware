@@ -1,20 +1,8 @@
 import { createHash } from "node:crypto";
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModelV4Middleware } from "@ai-sdk/provider";
-import {
-  jsonSchema,
-  type ModelMessage,
-  type ToolSet,
-  wrapLanguageModel,
-} from "ai";
+import { wrapLanguageModel } from "ai";
 import {
   sijawaraConciseXmlToolMiddleware,
   sijawaraDetailedXmlToolMiddleware,
@@ -27,19 +15,27 @@ import {
   qwen3CoderToolMiddleware,
   yamlXmlToolMiddleware,
 } from "../../../src/preconfigured-middleware";
-import { benchmarkTransport, runBenchmarkModel } from "./benchmark-model-call";
+import { benchmarkTransport } from "./benchmark-model-call";
 import {
   assertPairedResumeSymmetry,
   hasNativeGlm5Pair,
   pairedArmBatches,
 } from "./paired-scheduling";
 import {
-  type CapturedFunctionTool,
   captureArmsFromEnv,
   credentialFreeUrl,
-  credentialSafeError,
   ProviderCapture,
 } from "./provider-capture";
+import {
+  type Arm,
+  type ArmId,
+  type BfclCase,
+  type Category,
+  DEFAULT_CATEGORIES,
+  executeBfclJobs,
+  type Job,
+  type RunResult,
+} from "./run-bfcl-execution";
 import {
   assertGitRevision,
   assertResumeFingerprint,
@@ -88,40 +84,6 @@ const RAW_CAPTURE = new ProviderCapture({
   secretValues: [API_KEY],
 });
 
-const DEFAULT_CATEGORIES = [
-  "simple_python",
-  "multiple",
-  "parallel",
-  "parallel_multiple",
-  "simple_java",
-  "simple_javascript",
-  "irrelevance",
-  "live_simple",
-  "live_multiple",
-  "live_parallel",
-  "live_parallel_multiple",
-  "live_irrelevance",
-  "live_relevance",
-] as const;
-
-type Category = (typeof DEFAULT_CATEGORIES)[number];
-type ArmId =
-  | "native"
-  | "glm5"
-  | "hermes"
-  | "morphXml"
-  | "yamlXml"
-  | "qwen3Coder"
-  | "sijawaraDetailed"
-  | "sijawaraConcise"
-  | "uiTars";
-
-interface Arm {
-  family: "glm5-prompt-only" | "native" | "hermes" | "morph" | "yaml" | "qwen";
-  id: ArmId;
-  middleware?: LanguageModelV4Middleware;
-}
-
 const ALL_ARMS: readonly Arm[] = [
   { id: "native", family: "native" },
   {
@@ -150,90 +112,12 @@ const ALL_ARMS: readonly Arm[] = [
   { id: "uiTars", family: "qwen", middleware: uiTarsToolMiddleware },
 ];
 
-interface BfclFunction {
-  description?: string;
-  name: string;
-  parameters: Record<string, unknown>;
-}
-
-interface BfclMessage {
-  content: string;
-  role: "assistant" | "system" | "user";
-}
-
-interface BfclCase {
-  function: BfclFunction[];
-  id: string;
-  question: BfclMessage[][];
-}
-
-interface NameMap {
-  original: string;
-  safe: string;
-}
-
-interface NormalizedCall {
-  arguments: unknown;
-  name: string;
-}
-
-interface RunResult {
-  arm: ArmId;
-  attempts: number;
-  calls: NormalizedCall[];
-  caseId: string;
-  category: Category;
-  error?: string;
-  finishReason?: string;
-  latencyMs: number;
-  model: string;
-  nameMap: NameMap[];
-  parserErrors: string[];
-  rawCaptureIds: string[];
-  rawFinishReason?: string;
-  text: string;
-  textLeak: boolean;
-  transport: "generate" | "stream";
-  transportOk: boolean;
-  trial: number;
-  usage?: {
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-  };
-}
-
-interface Job {
-  arm: Arm;
-  category: Category;
-  testCase: BfclCase;
-  trial: number;
-}
-
 const provider = createOpenAICompatible({
   name: "freerouter",
   apiKey: API_KEY,
   baseURL: BASE_URL,
   fetch: RAW_CAPTURE.fetch,
 });
-
-const SYSTEM_PROMPT =
-  "You are a precise function-calling assistant. Follow the user request exactly. " +
-  "Call only relevant tools, and do not invent a tool call when none applies.";
-
-const LEAK_PATTERNS = [
-  "<tool_call",
-  "</tool_call",
-  "<function=",
-  "</function>",
-  "<tools>",
-  "[TOOL_CALLS]",
-  "<|tool_call",
-];
-const FUNCTION_NAME_UNSAFE_PATTERN = /[^a-zA-Z0-9_-]/g;
-const FUNCTION_NAME_LEADING_UNDERSCORE_PATTERN = /^_+/;
-const RETRYABLE_ERROR_PATTERN =
-  /(?:429|5\d\d|aborted|bad gateway|credit limit|fetch failed|gateway timeout|internal server error|rate limit|service unavailable|suspended|temporarily unavailable|timeout)/i;
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -311,299 +195,11 @@ function sampledCases(category: Category): BfclCase[] {
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function safeFunctionNames(functions: BfclFunction[]): NameMap[] {
-  const used = new Set<string>();
-  return functions.map(({ name }, index) => {
-    const stem =
-      name
-        .replace(FUNCTION_NAME_UNSAFE_PATTERN, "_")
-        .replace(FUNCTION_NAME_LEADING_UNDERSCORE_PATTERN, "")
-        .slice(0, 56) || `function_${index}`;
-    let safe = stem;
-    let suffix = 2;
-    while (used.has(safe)) {
-      safe = `${stem.slice(0, 52)}_${suffix}`;
-      suffix += 1;
-    }
-    used.add(safe);
-    return { original: name, safe };
-  });
-}
-
-function normalizeType(type: unknown): unknown {
-  if (Array.isArray(type)) {
-    return type.map(normalizeType);
-  }
-  const mapping: Record<string, string | undefined> = {
-    any: "string",
-    Any: "string",
-    Array: "array",
-    ArrayList: "array",
-    array: "array",
-    Bigint: "integer",
-    boolean: "boolean",
-    Boolean: "boolean",
-    bool: "boolean",
-    byte: "integer",
-    char: "string",
-    dict: "object",
-    double: "number",
-    float: "number",
-    HashMap: "object",
-    Hashtable: "object",
-    integer: "integer",
-    list: "array",
-    long: "integer",
-    number: "number",
-    object: "object",
-    Queue: "array",
-    Set: "array",
-    short: "integer",
-    Stack: "array",
-    String: "string",
-    string: "string",
-    tuple: "array",
-  };
-  return typeof type === "string" && type in mapping ? mapping[type] : type;
-}
-
-function toJsonSchema(value: unknown): unknown {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return value;
-  }
-  const schema = value as Record<string, unknown>;
-  const result: Record<string, unknown> = { ...schema };
-  result.optional = undefined;
-  if (schema.type !== undefined) {
-    result.type = normalizeType(schema.type);
-  }
-  if (
-    schema.properties !== null &&
-    typeof schema.properties === "object" &&
-    !Array.isArray(schema.properties)
-  ) {
-    result.properties = Object.fromEntries(
-      Object.entries(schema.properties).map(([name, child]) => [
-        name,
-        toJsonSchema(child),
-      ])
-    );
-  }
-  if (Array.isArray(schema.items)) {
-    result.items = schema.items.map(toJsonSchema);
-  } else if (schema.items && typeof schema.items === "object") {
-    result.items = toJsonSchema(schema.items);
-  }
-  if (
-    schema.additionalProperties &&
-    typeof schema.additionalProperties === "object"
-  ) {
-    result.additionalProperties = toJsonSchema(schema.additionalProperties);
-  }
-  for (const keyword of ["allOf", "anyOf", "oneOf", "prefixItems"]) {
-    const alternatives = schema[keyword];
-    if (Array.isArray(alternatives)) {
-      result[keyword] = alternatives.map(toJsonSchema);
-    }
-  }
-  if (result.type === "array" && result.items === undefined) {
-    result.items = {};
-  }
-  if (result.type === "object" && result.properties === undefined) {
-    result.additionalProperties = true;
-  }
-  return result;
-}
-
-function makeTools(testCase: BfclCase, nameMap: NameMap[]): ToolSet {
-  const tools: ToolSet = {};
-  for (const [index, definition] of testCase.function.entries()) {
-    const mapped = nameMap[index];
-    tools[mapped.safe] = {
-      description: definition.description,
-      inputSchema: jsonSchema(
-        toJsonSchema(definition.parameters) as Record<string, unknown>
-      ),
-    };
-  }
-  return tools;
-}
-
-function capturedTools(
-  testCase: BfclCase,
-  nameMap: NameMap[]
-): CapturedFunctionTool[] {
-  return testCase.function.map((definition, index) => ({
-    description: definition.description,
-    inputSchema: toJsonSchema(definition.parameters),
-    name: nameMap[index].safe,
-    originalName: nameMap[index].original,
-  }));
-}
-
 function makeModel(arm: Arm) {
   const model = provider(MODEL);
   return arm.middleware
     ? wrapLanguageModel({ model, middleware: arm.middleware })
     : model;
-}
-
-function makeMessages(testCase: BfclCase): ModelMessage[] {
-  const firstTurn = testCase.question[0] ?? [];
-  return firstTurn
-    .filter((message) => message.role !== "system")
-    .map((message) => ({
-      role: message.role,
-      content: message.content,
-    })) as ModelMessage[];
-}
-
-function makeInstructions(testCase: BfclCase): string {
-  const caseInstructions = (testCase.question[0] ?? [])
-    .filter((message) => message.role === "system")
-    .map((message) => message.content.trim())
-    .filter(Boolean);
-  return [SYSTEM_PROMPT, ...caseInstructions].join("\n\n");
-}
-
-function collectParserErrors(errors: string[]) {
-  return {
-    toolCallMiddleware: {
-      onError: (message: string, metadata?: Record<string, unknown>) => {
-        errors.push(
-          `${message}${metadata ? ` ${JSON.stringify(metadata).slice(0, 500)}` : ""}`
-        );
-      },
-    },
-  };
-}
-
-function normalizeError(error: unknown): string {
-  return credentialSafeError(error, [API_KEY]);
-}
-
-function retryable(error: string): boolean {
-  return RETRYABLE_ERROR_PATTERN.test(error);
-}
-
-function hasTextLeak(text: string, nameMap: NameMap[]): boolean {
-  return (
-    LEAK_PATTERNS.some((pattern) => text.includes(pattern)) ||
-    nameMap.some(({ original, safe }) =>
-      [`<${original}`, `</${original}`, `<${safe}`, `</${safe}`].some((tag) =>
-        text.includes(tag)
-      )
-    )
-  );
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
-}
-
-async function runOne(
-  testCase: BfclCase,
-  category: Category,
-  arm: Arm,
-  trial: number
-): Promise<RunResult> {
-  const start = Date.now();
-  const nameMap = safeFunctionNames(testCase.function);
-  const reverseNames = new Map(
-    nameMap.map(({ original, safe }) => [safe, original])
-  );
-  const rawCaptureIds: string[] = [];
-  const tools = makeTools(testCase, nameMap);
-  const captureTools = capturedTools(testCase, nameMap);
-
-  for (let attempt = 1; ; attempt += 1) {
-    const parserErrors: string[] = [];
-    try {
-      const result = await RAW_CAPTURE.run(
-        {
-          arm: arm.id,
-          attempt,
-          caseId: testCase.id,
-          category,
-          jobKey: `${category}\u0000${testCase.id}\u0000${arm.id}\u0000${trial}`,
-          suite: "bfcl",
-          tools: captureTools,
-          transport: TRANSPORT,
-          trial,
-        },
-        rawCaptureIds,
-        () =>
-          runBenchmarkModel(
-            {
-              abortSignal: AbortSignal.timeout(TIMEOUT_MS),
-              instructions: makeInstructions(testCase),
-              maxOutputTokens: 1024,
-              maxRetries: 0,
-              messages: makeMessages(testCase),
-              model: makeModel(arm),
-              providerOptions: arm.middleware
-                ? (collectParserErrors(parserErrors) as never)
-                : undefined,
-              temperature: 0,
-              toolChoice: "auto",
-              tools,
-            },
-            TRANSPORT
-          )
-      );
-      return {
-        arm: arm.id,
-        attempts: attempt,
-        calls: result.toolCalls.map((call) => ({
-          arguments: call.input,
-          name: reverseNames.get(call.toolName) ?? call.toolName,
-        })),
-        category,
-        caseId: testCase.id,
-        finishReason: result.finishReason,
-        latencyMs: Date.now() - start,
-        model: MODEL,
-        nameMap,
-        parserErrors,
-        rawCaptureIds,
-        rawFinishReason: result.rawFinishReason,
-        text: result.text.slice(0, 4000),
-        textLeak: hasTextLeak(result.text, nameMap),
-        transportOk: true,
-        transport: TRANSPORT,
-        trial,
-        usage: {
-          inputTokens: result.usage.inputTokens,
-          outputTokens: result.usage.outputTokens,
-          totalTokens: result.usage.totalTokens,
-        },
-      };
-    } catch (error) {
-      const detail = normalizeError(error);
-      if (attempt <= PROVIDER_RETRIES && retryable(detail)) {
-        await delay(1500 * attempt);
-        continue;
-      }
-      return {
-        arm: arm.id,
-        attempts: attempt,
-        calls: [],
-        category,
-        caseId: testCase.id,
-        error: detail,
-        latencyMs: Date.now() - start,
-        model: MODEL,
-        nameMap,
-        parserErrors,
-        rawCaptureIds,
-        text: "",
-        textLeak: false,
-        transportOk: false,
-        transport: TRANSPORT,
-        trial,
-      };
-    }
-  }
 }
 
 function jobKey(
@@ -839,45 +435,19 @@ async function main(): Promise<void> {
     `Running ${pendingJobs} jobs in ${jobBatches.length} worker batches ` +
       `(${categories.length} categories x ${arms.length} arms, concurrency=${CONCURRENCY})`
   );
-  let cursor = 0;
-  let finished = existing.length;
-  const startedAt = Date.now();
-  await Promise.all(
-    Array.from(
-      { length: Math.min(CONCURRENCY, Math.max(1, jobBatches.length)) },
-      async () => {
-        while (cursor < jobBatches.length) {
-          const index = cursor;
-          cursor += 1;
-          for (const job of jobBatches[index]) {
-            const result = await runOne(
-              job.testCase,
-              job.category,
-              job.arm,
-              job.trial
-            );
-            appendFileSync(OUT, `${JSON.stringify(result)}\n`);
-            finished += 1;
-            if (
-              !result.transportOk ||
-              result.parserErrors.length > 0 ||
-              result.textLeak ||
-              finished % 25 === 0
-            ) {
-              const elapsedSeconds = (Date.now() - startedAt) / 1000;
-              const rate = finished / Math.max(elapsedSeconds, 0.001);
-              console.log(
-                `[${finished}/${pendingJobs + existing.length}] ${result.arm} ${result.category}/${result.caseId} ` +
-                  `${result.transportOk ? "ok" : "ERROR"} ${result.latencyMs}ms ` +
-                  `calls=${result.calls.length} rate=${rate.toFixed(2)}/s` +
-                  (result.error ? ` ${result.error.slice(0, 180)}` : "")
-              );
-            }
-          }
-        }
-      }
-    )
-  );
+  await executeBfclJobs({
+    apiKey: API_KEY,
+    concurrency: CONCURRENCY,
+    existingRows: existing.length,
+    jobBatches,
+    makeModel,
+    model: MODEL,
+    output: OUT,
+    providerRetries: PROVIDER_RETRIES,
+    rawCapture: RAW_CAPTURE,
+    timeoutMs: TIMEOUT_MS,
+    transport: TRANSPORT,
+  });
   await RAW_CAPTURE.flush();
   console.log(`Completed ${pendingJobs} new jobs; raw results: ${OUT}`);
 }

@@ -1,7 +1,15 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import {
+  collectTextDeltas,
+  parseToolCallObject,
+  requireToolCall,
+  selectToolCalls,
+} from "../../shared/duplicate-harness";
+import {
+  morphArrayTool as arrayTool,
+  streamMorphText as simulateStreaming,
+} from "../heuristic-test-harness";
 
 const EXPECTED_NUMBER_1 = 1;
 const EXPECTED_NUMBER_2 = 2;
@@ -16,79 +24,22 @@ const EXPECTED_COORD_1_5 = 1.5;
 const EXPECTED_COORD_2_5 = 2.5;
 const EXPECTED_COORD_46_603354 = 46.603_354;
 const EXPECTED_COORD_1_888334 = 1.888_334;
-const CHUNK_SIZE = 10;
 
 describe("XML Protocol Heuristic Streaming", () => {
-  const protocol = morphXmlProtocol();
-
-  // Helper function to simulate streaming
-  async function simulateStreaming(text: string, tools: any[]) {
-    const streamParser = protocol.createStreamParser({ tools });
-    const chunks: any[] = [];
-
-    const readable = new ReadableStream({
-      start(controller) {
-        // Split text into smaller chunks to simulate streaming
-        const chunkSize = CHUNK_SIZE;
-        for (let i = 0; i < text.length; i += chunkSize) {
-          const chunk = text.slice(i, i + chunkSize);
-          controller.enqueue({
-            type: "text-delta" as const,
-            delta: chunk,
-          });
-        }
-        controller.close();
-      },
-    });
-
-    const transformed = readable.pipeThrough(streamParser);
-    const reader = transformed.getReader();
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-        chunks.push(value);
-      }
-    } finally {
-      reader.releaseLock();
-    }
-
-    return chunks;
-  }
-
   describe("Streaming multiple tags handling", () => {
     it("should handle streaming multiple tags conversion", async () => {
-      const text = `<math_sum>
+      const chunks = await simulateStreaming(
+        `<math_sum>
         <numbers>3</numbers>
         <numbers>5</numbers>
         <numbers>7</numbers>
-      </math_sum>`;
-
-      const tools: LanguageModelV4FunctionTool[] = [
-        {
-          type: "function",
-          name: "math_sum",
-          inputSchema: {
-            type: "object",
-            properties: {
-              numbers: {
-                type: "array",
-                items: { type: "number" },
-              },
-            },
-          },
-        },
-      ];
-
-      const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
+      </math_sum>`,
+        [arrayTool("math_sum", "numbers", "number")]
+      );
+      const toolCalls = selectToolCalls(chunks);
 
       expect(toolCalls).toHaveLength(1);
-      const input = JSON.parse(toolCalls[0].input);
-      expect(input.numbers).toEqual([
+      expect(parseToolCallObject(requireToolCall(chunks)).numbers).toEqual([
         EXPECTED_NUMBER_3,
         EXPECTED_NUMBER_5,
         EXPECTED_NUMBER_7,
@@ -98,35 +49,19 @@ describe("XML Protocol Heuristic Streaming", () => {
 
   describe("Streaming indexed tuple processing", () => {
     it("should handle streaming indexed tags conversion", async () => {
-      const text = `<set_point>
+      const chunks = await simulateStreaming(
+        `<set_point>
         <coordinates>
           <0>10.5</0>
           <1>20.3</1>
         </coordinates>
-      </set_point>`;
-
-      const tools: LanguageModelV4FunctionTool[] = [
-        {
-          type: "function",
-          name: "set_point",
-          inputSchema: {
-            type: "object",
-            properties: {
-              coordinates: {
-                type: "array",
-                items: { type: "number" },
-              },
-            },
-          },
-        },
-      ];
-
-      const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
+      </set_point>`,
+        [arrayTool("set_point", "coordinates", "number")]
+      );
+      const toolCalls = selectToolCalls(chunks);
 
       expect(toolCalls).toHaveLength(1);
-      const input = JSON.parse(toolCalls[0].input);
-      expect(input.coordinates).toEqual([
+      expect(parseToolCallObject(requireToolCall(chunks)).coordinates).toEqual([
         EXPECTED_COORD_10_5,
         EXPECTED_COORD_20_3,
       ]);
@@ -135,35 +70,19 @@ describe("XML Protocol Heuristic Streaming", () => {
 
   describe("Streaming item key pattern processing", () => {
     it("should handle streaming item array conversion", async () => {
-      const text = `<get_coordinates>
+      const chunks = await simulateStreaming(
+        `<get_coordinates>
         <position>
           <item>46.603354</item>
           <item>1.8883340</item>
         </position>
-      </get_coordinates>`;
-
-      const tools: LanguageModelV4FunctionTool[] = [
-        {
-          type: "function",
-          name: "get_coordinates",
-          inputSchema: {
-            type: "object",
-            properties: {
-              position: {
-                type: "array",
-                items: { type: "number" },
-              },
-            },
-          },
-        },
-      ];
-
-      const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
+      </get_coordinates>`,
+        [arrayTool("get_coordinates", "position", "number")]
+      );
+      const toolCalls = selectToolCalls(chunks);
 
       expect(toolCalls).toHaveLength(1);
-      const input = JSON.parse(toolCalls[0].input);
-      expect(input.position).toEqual([
+      expect(parseToolCallObject(requireToolCall(chunks)).position).toEqual([
         EXPECTED_COORD_46_603354,
         EXPECTED_COORD_1_888334,
       ]);
@@ -186,7 +105,6 @@ describe("XML Protocol Heuristic Streaming", () => {
           <tag>important</tag>
         </tags>
       </complex_data>`;
-
       const tools: LanguageModelV4FunctionTool[] = [
         {
           type: "function",
@@ -194,28 +112,17 @@ describe("XML Protocol Heuristic Streaming", () => {
           inputSchema: {
             type: "object",
             properties: {
-              coordinates: {
-                type: "array",
-                items: { type: "number" },
-              },
-              dimensions: {
-                type: "array",
-                items: { type: "number" },
-              },
-              tags: {
-                type: "array",
-                items: { type: "string" },
-              },
+              coordinates: { type: "array", items: { type: "number" } },
+              dimensions: { type: "array", items: { type: "number" } },
+              tags: { type: "array", items: { type: "string" } },
             },
           },
         },
       ];
+      const input = parseToolCallObject(
+        requireToolCall(await simulateStreaming(text, tools))
+      );
 
-      const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
-
-      expect(toolCalls).toHaveLength(1);
-      const input = JSON.parse(toolCalls[0].input);
       expect(input.coordinates).toEqual([
         EXPECTED_COORD_1_5,
         EXPECTED_COORD_2_5,
@@ -228,7 +135,8 @@ describe("XML Protocol Heuristic Streaming", () => {
     });
 
     it("should handle streaming with text content between tags", async () => {
-      const text = `Some text before
+      const chunks = await simulateStreaming(
+        `Some text before
       <process_list>
         <items>
           <item>first</item>
@@ -236,35 +144,22 @@ describe("XML Protocol Heuristic Streaming", () => {
           <item>third</item>
         </items>
       </process_list>
-      Some text after`;
-
-      const tools: LanguageModelV4FunctionTool[] = [
-        {
-          type: "function",
-          name: "process_list",
-          inputSchema: {
-            type: "object",
-            properties: {
-              items: {
-                type: "array",
-                items: { type: "string" },
-              },
-            },
-          },
-        },
-      ];
-
-      const chunks = await simulateStreaming(text, tools);
-      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
-      const textChunks = chunks.filter((chunk) => chunk.type === "text-delta");
+      Some text after`,
+        [arrayTool("process_list", "items", "string")]
+      );
+      const toolCalls = selectToolCalls(chunks);
+      const allText = collectTextDeltas(chunks);
 
       expect(toolCalls).toHaveLength(1);
-      const input = JSON.parse(toolCalls[0].input);
-      expect(input.items).toEqual(["first", "second", "third"]);
-
+      expect(parseToolCallObject(requireToolCall(chunks)).items).toEqual([
+        "first",
+        "second",
+        "third",
+      ]);
       // Should also preserve text content
-      expect(textChunks.length).toBeGreaterThan(0);
-      const allText = textChunks.map((chunk) => chunk.delta).join("");
+      expect(
+        chunks.filter((chunk) => chunk.type === "text-delta").length
+      ).toBeGreaterThan(0);
       expect(allText).toContain("Some text before");
       expect(allText).toContain("Some text after");
     });
@@ -272,92 +167,35 @@ describe("XML Protocol Heuristic Streaming", () => {
 
   describe("Streaming edge cases", () => {
     it("should handle streaming with interrupted tags", async () => {
-      const text = `<incomplete_test>
+      const chunks = await simulateStreaming(
+        `<incomplete_test>
         <values>
           <item>complete</item>
-          <item>partial`;
-
-      const tools: LanguageModelV4FunctionTool[] = [
-        {
-          type: "function",
-          name: "incomplete_test",
-          inputSchema: {
-            type: "object",
-            properties: {
-              values: {
-                type: "array",
-                items: { type: "string" },
-              },
-            },
-          },
-        },
-      ];
-
-      const chunks = await simulateStreaming(text, tools);
-
-      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
-      const textChunks = chunks.filter((chunk) => chunk.type === "text-delta");
+          <item>partial`,
+        [arrayTool("incomplete_test", "values", "string")]
+      );
 
       // The parser may force-complete parseable content at finish,
       // or preserve incomplete input as text when parsing fails.
-      expect(toolCalls.length > 0 || textChunks.length > 0).toBe(true);
+      expect(
+        selectToolCalls(chunks).length > 0 ||
+          chunks.some((chunk) => chunk.type === "text-delta")
+      ).toBe(true);
     });
 
     it("should handle streaming with very small chunks", async () => {
-      const text =
-        "<tiny_chunks><data><item>1</item><item>2</item></data></tiny_chunks>";
+      const chunks = await simulateStreaming(
+        "<tiny_chunks><data><item>1</item><item>2</item></data></tiny_chunks>",
+        [arrayTool("tiny_chunks", "data", "number")],
+        1
+      );
+      const toolCalls = selectToolCalls(chunks);
 
-      const tools: LanguageModelV4FunctionTool[] = [
-        {
-          type: "function",
-          name: "tiny_chunks",
-          inputSchema: {
-            type: "object",
-            properties: {
-              data: {
-                type: "array",
-                items: { type: "number" },
-              },
-            },
-          },
-        },
-      ];
-
-      // Simulate very small chunks (1 character each)
-      const streamParser = protocol.createStreamParser({ tools });
-      const chunks: any[] = [];
-
-      const readable = new ReadableStream({
-        start(controller) {
-          for (const char of text) {
-            controller.enqueue({
-              type: "text-delta" as const,
-              delta: char,
-            });
-          }
-          controller.close();
-        },
-      });
-
-      const transformed = readable.pipeThrough(streamParser);
-      const reader = transformed.getReader();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-          chunks.push(value);
-        }
-      } finally {
-        reader.releaseLock();
-      }
-
-      const toolCalls = chunks.filter((chunk) => chunk.type === "tool-call");
       expect(toolCalls).toHaveLength(1);
-      const input = JSON.parse(toolCalls[0].input);
-      expect(input.data).toEqual([EXPECTED_NUMBER_1, EXPECTED_NUMBER_2]);
+      expect(parseToolCallObject(requireToolCall(chunks)).data).toEqual([
+        EXPECTED_NUMBER_1,
+        EXPECTED_NUMBER_2,
+      ]);
     });
   });
 });

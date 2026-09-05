@@ -1,11 +1,26 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import {
+  isJSONObject,
+  type LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
 
-describe("XML Protocol Heuristic Parsing", () => {
-  const protocol = morphXmlProtocol();
+const complexTool: LanguageModelV4FunctionTool = {
+  type: "function",
+  name: "complex_structure",
+  inputSchema: {
+    type: "object",
+    properties: {
+      coordinates: { type: "array", items: { type: "number" } },
+      dimensions: { type: "array", items: { type: "number" } },
+      colors: { type: "array", items: { type: "string" } },
+      name: { type: "string" },
+    },
+  },
+};
 
+describe("XML Protocol Heuristic Parsing", () => {
   describe("Complex nested structures", () => {
     it("should handle complex nested heuristics", () => {
       const text = `<complex_structure>
@@ -25,44 +40,25 @@ describe("XML Protocol Heuristic Parsing", () => {
         </colors>
         <name>test</name>
       </complex_structure>`;
-
-      const tools: LanguageModelV4FunctionTool[] = [
-        {
-          type: "function",
-          name: "complex_structure",
-          inputSchema: {
-            type: "object",
-            properties: {
-              coordinates: {
-                type: "array",
-                items: { type: "number" },
-              },
-              dimensions: {
-                type: "array",
-                items: { type: "number" },
-              },
-              colors: {
-                type: "array",
-                items: { type: "string" },
-              },
-              name: { type: "string" },
-            },
-          },
-        },
-      ];
-
-      const result = protocol.parseGeneratedText({ text, tools });
+      const result = morphXmlProtocol().parseGeneratedText({
+        text,
+        tools: [complexTool],
+      });
 
       expect(result).toHaveLength(1);
-      expect(result[0].type).toBe("tool-call");
-
-      if (result[0].type === "tool-call") {
-        const input = JSON.parse(result[0].input);
-        expect(input.coordinates).toEqual([46.603_354, 1.888_334]);
-        expect(input.dimensions).toEqual([100, 200, 300]);
-        expect(input.colors).toEqual(["red", "green", "blue"]);
-        expect(input.name).toBe("test");
+      const toolCall = result.find((part) => part.type === "tool-call");
+      expect(toolCall).toBeTruthy();
+      if (toolCall?.type !== "tool-call") {
+        throw new TypeError("Expected complex tool-call part");
       }
+      const input = JSON.parse(toolCall.input);
+      if (!isJSONObject(input)) {
+        throw new TypeError("Expected complex object input");
+      }
+      expect(input.coordinates).toEqual([46.603_354, 1.888_334]);
+      expect(input.dimensions).toEqual([100, 200, 300]);
+      expect(input.colors).toEqual(["red", "green", "blue"]);
+      expect(input.name).toBe("test");
     });
   });
 });

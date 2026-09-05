@@ -1,7 +1,7 @@
-import type { ToolContent } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
 import {
   createUserContentToolResponseTemplate,
+  type ToolResponsePromptTemplateResult,
   toolRoleContentToUserTextMessage,
 } from "../../../../core/prompts/shared/tool-role-to-user-message";
 
@@ -17,11 +17,11 @@ describe("toolRoleContentToUserTextMessage", () => {
         },
         {
           type: "tool-approval-response",
-          toolCallId: "tc1",
+          approvalId: "tc1",
           approved: false,
           reason: "Not allowed",
         },
-      ] as ToolContent,
+      ],
       toolResponsePromptTemplate: () =>
         '<tool_response>\n{"temperature":21}\n</tool_response>',
     });
@@ -58,7 +58,7 @@ describe("toolRoleContentToUserTextMessage", () => {
             ],
           },
         },
-      ] as ToolContent,
+      ],
       toolResponsePromptTemplate: createUserContentToolResponseTemplate(),
     });
 
@@ -75,6 +75,18 @@ describe("toolRoleContentToUserTextMessage", () => {
   });
 
   it("does not merge adjacent text parts when providerOptions are present", () => {
+    const responseParts: ToolResponsePromptTemplateResult = [
+      {
+        type: "text",
+        text: "first",
+        providerOptions: { providerA: { mode: "x" } },
+      },
+      {
+        type: "text",
+        text: "second",
+        providerOptions: { providerA: { mode: "y" } },
+      },
+    ];
     const result = toolRoleContentToUserTextMessage({
       toolContent: [
         {
@@ -83,35 +95,10 @@ describe("toolRoleContentToUserTextMessage", () => {
           toolName: "get_weather",
           output: { type: "json", value: { temperature: 21 } },
         },
-      ] as ToolContent,
-      toolResponsePromptTemplate: () => [
-        {
-          type: "text",
-          text: "first",
-          providerOptions: { providerA: { mode: "x" } },
-        },
-        {
-          type: "text",
-          text: "second",
-          providerOptions: { providerA: { mode: "y" } },
-        },
       ],
+      toolResponsePromptTemplate: () => responseParts,
     });
 
-    expect(result).toEqual({
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "first",
-          providerOptions: { providerA: { mode: "x" } },
-        },
-        {
-          type: "text",
-          text: "second",
-          providerOptions: { providerA: { mode: "y" } },
-        },
-      ],
-    });
+    expect(result).toEqual({ role: "user", content: responseParts });
   });
 });

@@ -1,4 +1,9 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import {
+  isJSONObject,
+  type JSONSchema7Definition,
+  type LanguageModelV4Content,
+  type LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
 import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
@@ -38,11 +43,21 @@ const parseSendMessage = (
   });
   const tool = out.find((part) => part.type === "tool-call");
   expect(tool).toBeTruthy();
+  if (tool?.type !== "tool-call") {
+    throw new TypeError("Expected tool-call part");
+  }
+  const input = JSON.parse(tool.input);
+  if (!isJSONObject(input)) {
+    throw new TypeError("Expected tool-call input to be a JSON object");
+  }
   return {
-    input: JSON.parse((tool as { input: string }).input),
+    input,
     text: out
-      .filter((part) => part.type === "text")
-      .map((part) => (part as { text: string }).text)
+      .filter(
+        (part): part is Extract<LanguageModelV4Content, { type: "text" }> =>
+          part.type === "text"
+      )
+      .map((part) => part.text)
       .join(""),
   };
 };
@@ -193,22 +208,25 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
   });
 
   it("recovers message fallback from jsonSchema-wrapped schemas", () => {
-    const wrappedTools = [
+    const wrappedInputSchema: LanguageModelV4FunctionTool["inputSchema"] & {
+      readonly jsonSchema: JSONSchema7Definition;
+    } = {
+      jsonSchema: {
+        type: "object",
+        properties: {
+          message: { type: "string" },
+        },
+        required: ["message"],
+      },
+    };
+    const wrappedTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "send_message",
         description: "Send a user-visible message",
-        inputSchema: {
-          jsonSchema: {
-            type: "object",
-            properties: {
-              message: { type: "string" },
-            },
-            required: ["message"],
-          },
-        },
+        inputSchema: wrappedInputSchema,
       },
-    ] as unknown as LanguageModelV4FunctionTool[];
+    ];
 
     const { input } = parseSendMessage(
       "<send_message>Wrapped synthetic message body.</send_message>",
@@ -221,7 +239,10 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
   });
 
   it("recovers message fallback when the message property schema is wrapped", () => {
-    const wrappedMessageTools = [
+    const wrappedMessageSchema: JSONSchema7Definition & {
+      readonly jsonSchema: JSONSchema7Definition;
+    } = { jsonSchema: { type: "string" } };
+    const wrappedMessageTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "send_message",
@@ -229,12 +250,12 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
         inputSchema: {
           type: "object",
           properties: {
-            message: { jsonSchema: { type: "string" } },
+            message: wrappedMessageSchema,
           },
           required: ["message"],
         },
       },
-    ] as unknown as LanguageModelV4FunctionTool[];
+    ];
 
     const { input } = parseSendMessage(
       "<send_message>Wrapped property synthetic message.</send_message>",
@@ -247,7 +268,7 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
   });
 
   it("uses optional schema tags as text when only message is required", () => {
-    const flattenedTools = [
+    const flattenedTools: LanguageModelV4FunctionTool[] = [
       {
         type: "function",
         name: "send_message",
@@ -261,7 +282,7 @@ Here is the result.<debug/>More details are available.<LINE-BREAK />Thanks for c
           required: ["message"],
         },
       },
-    ] as LanguageModelV4FunctionTool[];
+    ];
 
     const { input } = parseSendMessage(
       "<send_message>Title <image_url>https://example.com/synthetic.png</image_url> body copy.</send_message>",

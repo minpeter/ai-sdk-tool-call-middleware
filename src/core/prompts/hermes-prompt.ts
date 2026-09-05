@@ -1,4 +1,8 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  JSONObject,
+  JSONSchema7,
+  LanguageModelV4FunctionTool,
+} from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
   renderInputExamplesSection,
@@ -41,9 +45,11 @@ export function formatToolResponseAsHermes(
 }
 
 // Maps JSON Schema type to Python type string (matches vLLM json_to_python_type macro)
-export function jsonSchemaToPythonType(
-  schema: Record<string, unknown>
-): string {
+export function jsonSchemaToPythonType(schema: JSONSchema7 | boolean): string {
+  if (typeof schema === "boolean") {
+    return "Any";
+  }
+
   const { type } = schema;
 
   if (type === "string") {
@@ -60,17 +66,17 @@ export function jsonSchemaToPythonType(
   }
 
   if (type === "array") {
-    const items = schema.items as Record<string, unknown> | undefined;
+    const { items } = schema;
     if (items) {
-      return `list[${jsonSchemaToPythonType(items)}]`;
+      return Array.isArray(items)
+        ? "list[Any]"
+        : `list[${jsonSchemaToPythonType(items)}]`;
     }
     return "list[Any]";
   }
 
   if (type === "object") {
-    const additionalProperties = schema.additionalProperties as
-      | Record<string, unknown>
-      | undefined;
+    const { additionalProperties } = schema;
     if (additionalProperties) {
       return `dict[str, ${jsonSchemaToPythonType(additionalProperties)}]`;
     }
@@ -78,7 +84,7 @@ export function jsonSchemaToPythonType(
   }
 
   if (Array.isArray(type)) {
-    return `Union[${type.map((t: string) => jsonSchemaToPythonType({ type: t })).join(",")}]`;
+    return `Union[${type.map((schemaType) => jsonSchemaToPythonType({ type: schemaType })).join(",")}]`;
   }
 
   return "Any";
@@ -87,10 +93,8 @@ export function jsonSchemaToPythonType(
 export function renderToolDefinition(
   tool: LanguageModelV4FunctionTool
 ): string {
-  const schema = tool.inputSchema as Record<string, unknown>;
-  const properties = schema.properties as
-    | Record<string, Record<string, unknown>>
-    | undefined;
+  const schema = tool.inputSchema;
+  const { properties } = schema;
 
   const paramSignature = properties
     ? Object.entries(properties)
@@ -104,7 +108,13 @@ export function renderToolDefinition(
   if (properties && Object.keys(properties).length > 0) {
     description += "    Args:\n";
     for (const [paramName, paramFields] of Object.entries(properties)) {
-      const paramDesc = (paramFields.description as string | undefined) ?? "";
+      const paramDesc =
+        typeof paramFields === "object" &&
+        paramFields !== null &&
+        "description" in paramFields &&
+        typeof paramFields.description === "string"
+          ? paramFields.description
+          : "";
       description += `        ${paramName}(${jsonSchemaToPythonType(paramFields)}): ${paramDesc.trim()}\n`;
     }
   }
@@ -139,7 +149,7 @@ For each function call return a json object with function name and arguments wit
   return `${basePrompt}\n\n${inputExamplesText}`;
 }
 
-function renderHermesInputExample(toolName: string, input: unknown): string {
+function renderHermesInputExample(toolName: string, input: JSONObject): string {
   const argumentsLiteral = stringifyInputExampleAsJsonLiteral(input);
   const nameLiteral = JSON.stringify(toolName);
   return `<tool_call>\n{"name":${nameLiteral},"arguments":${argumentsLiteral}}\n</tool_call>`;

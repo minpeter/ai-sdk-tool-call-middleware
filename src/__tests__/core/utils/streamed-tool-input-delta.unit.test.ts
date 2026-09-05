@@ -5,16 +5,11 @@ import {
   emitPrefixDelta,
   toIncompleteJsonPrefix,
 } from "../../../core/utils/streamed-tool-input-delta";
-
-function createMockController(
-  out: LanguageModelV4StreamPart[]
-): TransformStreamDefaultController<LanguageModelV4StreamPart> {
-  return {
-    enqueue(part: LanguageModelV4StreamPart) {
-      out.push(part);
-    },
-  } as unknown as TransformStreamDefaultController<LanguageModelV4StreamPart>;
-}
+import {
+  createRecordingController,
+  expectSingleToolInputDelta,
+  selectToolInputDeltas,
+} from "./tool-input-delta.shared";
 
 describe("streamed-tool-input-delta", () => {
   it("toIncompleteJsonPrefix removes trailing closers and one closing quote", () => {
@@ -38,7 +33,7 @@ describe("streamed-tool-input-delta", () => {
 
   it("emitPrefixDelta emits only monotonic suffix deltas", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const state = { emittedInput: "" };
 
     emitPrefixDelta({
@@ -61,14 +56,7 @@ describe("streamed-tool-input-delta", () => {
       candidate: '{"loc":"x',
     });
 
-    const deltas = out.filter(
-      (
-        part
-      ): part is Extract<
-        LanguageModelV4StreamPart,
-        { type: "tool-input-delta" }
-      > => part.type === "tool-input-delta"
-    );
+    const deltas = selectToolInputDeltas(out);
 
     expect(deltas.map((part) => part.delta)).toEqual([
       '{"location":"Seo',
@@ -79,7 +67,7 @@ describe("streamed-tool-input-delta", () => {
 
   it("emitFinalRemainder appends the missing suffix for the final JSON", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const state = { emittedInput: '{"location":"Seoul","unit":"ce' };
 
     emitFinalRemainder({
@@ -89,22 +77,13 @@ describe("streamed-tool-input-delta", () => {
       finalFullJson: '{"location":"Seoul","unit":"celsius"}',
     });
 
-    const deltas = out.filter(
-      (
-        part
-      ): part is Extract<
-        LanguageModelV4StreamPart,
-        { type: "tool-input-delta" }
-      > => part.type === "tool-input-delta"
-    );
-    expect(deltas).toHaveLength(1);
-    expect(deltas[0].delta).toBe('lsius"}');
+    expectSingleToolInputDelta(out, 'lsius"}');
     expect(state.emittedInput).toBe('{"location":"Seoul","unit":"celsius"}');
   });
 
   it("emitFinalRemainder does not emit when final JSON does not extend emitted prefix", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const state = { emittedInput: '{"location":"Seoul"' };
     const onMismatch = vi.fn();
 
@@ -238,7 +217,7 @@ describe("toIncompleteJsonPrefix comprehensive edge cases", () => {
 describe("emitFinalRemainder onMismatch callback", () => {
   it("calls onMismatch when final does not extend prefix", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const state = { emittedInput: '{"location":"Seoul"' };
     const onMismatch = vi.fn();
 
@@ -262,7 +241,7 @@ describe("emitFinalRemainder onMismatch callback", () => {
 
   it("does not call onMismatch when prefix is empty", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const state = { emittedInput: "" };
     const onMismatch = vi.fn();
 
@@ -279,7 +258,7 @@ describe("emitFinalRemainder onMismatch callback", () => {
 
   it("does not call onMismatch when final extends prefix", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const state = { emittedInput: '{"location":"Seoul"' };
     const onMismatch = vi.fn();
 
@@ -296,7 +275,7 @@ describe("emitFinalRemainder onMismatch callback", () => {
 
   it("does not throw when onMismatch is undefined", () => {
     const out: LanguageModelV4StreamPart[] = [];
-    const controller = createMockController(out);
+    const controller = createRecordingController(out);
     const state = { emittedInput: '{"location":"Seoul"' };
 
     expect(() =>

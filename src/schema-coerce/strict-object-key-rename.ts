@@ -1,3 +1,9 @@
+import type {
+  JSONSchema7,
+  JSONSchema7Definition,
+  JSONValue,
+} from "@ai-sdk/provider";
+import type { RxmlValue } from "../rxml/builders/stringify";
 import { getPatternSchemasForKey } from "./safe-pattern-regex";
 import { getSchemaType } from "./schema-introspection";
 
@@ -6,13 +12,13 @@ const CAMEL_BOUNDARY_REGEX = /([a-z0-9])([A-Z])/g;
 const LEADING_UNDERSCORES_REGEX = /^_+/;
 
 interface StrictObjectSchemaInfo {
-  patternProperties?: Record<string, unknown>;
-  properties: Record<string, unknown>;
-  required: string[];
+  readonly patternProperties?: Readonly<Record<string, JSONSchema7Definition>>;
+  readonly properties: Readonly<Record<string, JSONSchema7Definition>>;
+  readonly required: readonly string[];
 }
 
 export function getStrictObjectSchemaInfo(
-  unwrapped: Record<string, unknown>
+  unwrapped: JSONSchema7
 ): StrictObjectSchemaInfo | null {
   if (getSchemaType(unwrapped) !== "object") {
     return null;
@@ -30,10 +36,10 @@ export function getStrictObjectSchemaInfo(
     return null;
   }
 
-  const propertyMap = properties as Record<string, unknown>;
+  const propertyMap = properties;
   const required = Array.isArray(unwrapped.required)
     ? unwrapped.required.filter(
-        (value): value is string =>
+        (value: JSONValue): value is string =>
           typeof value === "string" && value.length > 0
       )
     : [];
@@ -43,7 +49,7 @@ export function getStrictObjectSchemaInfo(
     patternProps &&
     typeof patternProps === "object" &&
     !Array.isArray(patternProps)
-      ? (patternProps as Record<string, unknown>)
+      ? patternProps
       : undefined;
 
   return {
@@ -114,7 +120,7 @@ function isUnexpectedKey(
 }
 
 function computeMissingAndUnexpectedKeys(
-  input: Record<string, unknown>,
+  input: { readonly [key: string]: RxmlValue },
   schemaInfo: StrictObjectSchemaInfo
 ): { missingRequired: string[]; unexpectedKeys: string[] } {
   const missingRequired = schemaInfo.required.filter(
@@ -134,15 +140,17 @@ function findSingleMatchingUnexpectedKey(
   return matchingKeys.length === 1 ? (matchingKeys[0] ?? null) : null;
 }
 
-function applySingularPluralRequiredKeyRename(
-  input: Record<string, unknown>,
-  schemaInfo: StrictObjectSchemaInfo
-): Record<string, unknown> | null {
+function applyRequiredKeyRename(
+  input: { readonly [key: string]: RxmlValue },
+  schemaInfo: StrictObjectSchemaInfo,
+  keysMatch: (targetKey: string, sourceKey: string) => boolean,
+  schemaMatches: (schema: JSONSchema7Definition) => boolean = () => true,
+  valueMatches: (value: RxmlValue) => boolean = () => true
+): Record<string, RxmlValue> | null {
   const { missingRequired, unexpectedKeys } = computeMissingAndUnexpectedKeys(
     input,
     schemaInfo
   );
-
   if (missingRequired.length !== 1) {
     return null;
   }
@@ -151,65 +159,54 @@ function applySingularPluralRequiredKeyRename(
   if (!Object.hasOwn(schemaInfo.properties, targetKey)) {
     return null;
   }
+  const targetSchema = schemaInfo.properties[targetKey];
+  if (!schemaMatches(targetSchema)) {
+    return null;
+  }
   const sourceKey = findSingleMatchingUnexpectedKey(unexpectedKeys, (key) =>
-    isSingularPluralPair(targetKey, key)
+    keysMatch(targetKey, key)
   );
-  if (sourceKey === null) {
-    return null;
-  }
-  if (getSchemaType(schemaInfo.properties[targetKey]) !== "array") {
-    return null;
-  }
-  if (!Array.isArray(input[sourceKey])) {
-    return null;
-  }
-  if (!Object.hasOwn(input, sourceKey) || Object.hasOwn(input, targetKey)) {
+  if (
+    sourceKey === null ||
+    !Object.hasOwn(input, sourceKey) ||
+    Object.hasOwn(input, targetKey)
+  ) {
     return null;
   }
 
-  const output: Record<string, unknown> = { ...input };
+  const output: Record<string, RxmlValue> = { ...input };
+  if (!valueMatches(output[sourceKey])) {
+    return null;
+  }
   output[targetKey] = output[sourceKey];
   delete output[sourceKey];
   return output;
+}
+
+function applySingularPluralRequiredKeyRename(
+  input: { readonly [key: string]: RxmlValue },
+  schemaInfo: StrictObjectSchemaInfo
+): Record<string, RxmlValue> | null {
+  return applyRequiredKeyRename(
+    input,
+    schemaInfo,
+    isSingularPluralPair,
+    (schema) => getSchemaType(schema) === "array",
+    Array.isArray
+  );
 }
 
 function applyCaseStyleRequiredKeyRename(
-  input: Record<string, unknown>,
+  input: { readonly [key: string]: RxmlValue },
   schemaInfo: StrictObjectSchemaInfo
-): Record<string, unknown> | null {
-  const { missingRequired, unexpectedKeys } = computeMissingAndUnexpectedKeys(
-    input,
-    schemaInfo
-  );
-
-  if (missingRequired.length !== 1) {
-    return null;
-  }
-
-  const [targetKey] = missingRequired;
-  if (!Object.hasOwn(schemaInfo.properties, targetKey)) {
-    return null;
-  }
-  const sourceKey = findSingleMatchingUnexpectedKey(unexpectedKeys, (key) =>
-    isCaseStylePair(targetKey, key)
-  );
-  if (sourceKey === null) {
-    return null;
-  }
-  if (!Object.hasOwn(input, sourceKey) || Object.hasOwn(input, targetKey)) {
-    return null;
-  }
-
-  const output: Record<string, unknown> = { ...input };
-  output[targetKey] = output[sourceKey];
-  delete output[sourceKey];
-  return output;
+): Record<string, RxmlValue> | null {
+  return applyRequiredKeyRename(input, schemaInfo, isCaseStylePair);
 }
 
 export function applyStrictRequiredKeyRename(
-  input: Record<string, unknown>,
-  unwrapped: Record<string, unknown>
-): Record<string, unknown> {
+  input: { readonly [key: string]: RxmlValue },
+  unwrapped: JSONSchema7
+): { readonly [key: string]: RxmlValue } {
   const schemaInfo = getStrictObjectSchemaInfo(unwrapped);
   if (!schemaInfo) {
     return input;

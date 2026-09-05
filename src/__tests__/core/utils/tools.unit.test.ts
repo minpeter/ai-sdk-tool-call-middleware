@@ -31,7 +31,7 @@ describe("tools utils", () => {
         },
       })
     ).toBe(false);
-    expect(isToolChoiceActive({} as any)).toBe(false);
+    expect(isToolChoiceActive({})).toBe(false);
   });
 
   it("decodeOriginalTools falls back to permissive schema when inputSchema is malformed", () => {
@@ -54,8 +54,8 @@ describe("tools utils", () => {
     const decoded = decodeOriginalTools(
       [
         { name: "ok", inputSchema: '{"type":"object"}' },
-        { name: "", inputSchema: 1 as unknown as string },
-        null as unknown as { name: string; inputSchema: string },
+        { name: "", inputSchema: JSON.parse("1") },
+        JSON.parse("null"),
       ],
       { onError }
     );
@@ -128,7 +128,7 @@ describe("tools utils", () => {
       {
         type: "function",
         name: "bad",
-        inputSchema: undefined as never,
+        ...JSON.parse('{"name":"bad"}'),
       },
     ]);
 
@@ -154,7 +154,15 @@ describe("tools utils", () => {
     ]);
     const providerOptions = { toolCallMiddleware: { originalTools } };
     const first = decodeOriginalToolsFromProviderOptions(providerOptions);
-    (first[0]?.inputSchema as { properties?: unknown }).properties = {};
+    expect(() => {
+      const schema = first[0]?.inputSchema;
+      if (schema && typeof schema === "object") {
+        Object.freeze(schema);
+        Object.defineProperty(schema, "properties", { value: {} });
+        return;
+      }
+      throw new TypeError("Expected an object schema");
+    }).toThrow(TypeError);
 
     expect(
       decodeOriginalToolsFromProviderOptions(providerOptions)[0]?.inputSchema
