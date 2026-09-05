@@ -68,6 +68,13 @@ type ReviverBrandTag<Extension> = (extension: Extension) => Extension;
  * Unlike a plain `Reviver`, this witness opts into precise extension-aware
  * inference from `parse`. Its required private brand is invariant in
  * `Extension` and cannot be supplied by ordinary callback annotations.
+ *
+ * Threat model: the brand prevents ACCIDENTAL unsound precision (broad
+ * symbol/reflective key reconstruction is rejected by the witness check).
+ * Deliberate circumvention — e.g. `Object.assign(rawCallback, witness)` or an
+ * explicit `as` cast — transfers brands in TypeScript's structural type
+ * system by design and is equivalent to any other deliberate cast; it is
+ * outside the threat model, as with every nominal-branding pattern.
  */
 export interface ReviverWitness<Extension> extends Reviver<Extension> {
   readonly [reviverBrand]: ReviverBrandTag<Extension>;
