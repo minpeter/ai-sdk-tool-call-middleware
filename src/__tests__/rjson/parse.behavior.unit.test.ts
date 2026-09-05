@@ -383,6 +383,37 @@ describe("relaxed-json", () => {
         expect(parse(text, lockSibling)).toEqual({ a: 1, b: 7 });
       });
 
+      it("matches native reviver context.source for numeric primitives", () => {
+        const text = '{"amount":1.2300e+4}';
+        const collectSources =
+          (sources: Array<string | undefined>) =>
+          (
+            key: string,
+            value: JSONValue | undefined,
+            context?: { readonly source: string }
+          ): JSONValue | undefined => {
+            if (key === "amount") {
+              sources.push(context?.source);
+            }
+            return value;
+          };
+        const rjsonSources: Array<string | undefined> = [];
+        const nativeSources: Array<string | undefined> = [];
+
+        const revived = parse(text, {
+          duplicate: true,
+          relaxed: false,
+          reviver: collectSources(rjsonSources),
+          tolerant: false,
+          warnings: false,
+        });
+        const native = JSON.parse(text, collectSources(nativeSources));
+
+        expect(revived).toEqual(native);
+        expect(rjsonSources).toEqual(nativeSources);
+        expect(rjsonSources).toEqual(["1.2300e+4"]);
+      });
+
       it("visits only the final duplicate value with a holder like JSON.parse", () => {
         function readSibling(
           this: Record<string, JSONValue>,

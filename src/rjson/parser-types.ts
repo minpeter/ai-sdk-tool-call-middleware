@@ -53,10 +53,17 @@ export type RevivedValue<Extension> =
   | RevivedArray<Extension>
   | Extension;
 
-export type Reviver<Extension> = (
+declare const reviverWitness: unique symbol;
+
+export type Reviver<Extension> = ((
   key: string,
   value: RevivedValue<Extension> | undefined
-) => RevivedValue<Extension> | undefined;
+) => RevivedValue<Extension> | undefined) & {
+  readonly [reviverWitness]?: (extension: Extension) => Extension;
+};
+
+export type IsReviverWitness<Callback> =
+  typeof reviverWitness extends keyof Callback ? true : false;
 
 // Mutable parser cursor and warning accumulator.
 export interface ParseState {

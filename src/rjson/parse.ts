@@ -35,6 +35,7 @@ import type { JSONValue } from "@ai-sdk/provider";
 
 import { lexer, strictLexer, stripTrailingComma } from "./lexer";
 import type {
+  IsReviverWitness,
   ParseOptions,
   ParseOptionsWithoutReviver,
   ParseState,
@@ -73,29 +74,20 @@ type JsonInputReviver = (
   value: JSONValue | undefined
 ) => JSONValue | undefined;
 
-type HasMultipleCallSignatures<Callback> = Callback extends (
-  ...args: infer FinalArgs
-) => infer FinalResult
-  ? ((...args: FinalArgs) => FinalResult) &
-      Pick<Callback, keyof Callback> extends Callback
-    ? false
-    : true
-  : false;
-
-type RecursiveReviver<Extension> = (
-  key: string,
-  value: RevivedValue<NoInfer<Extension>> | undefined
-) => RevivedValue<Extension> | undefined;
+type RecursiveReviver<Extension> = Reviver<Extension>;
 
 type Callable = (...args: never[]) => ReturnType<CallableFunction["call"]>;
 
 type ConservativeExtension = object | bigint | symbol;
 type ConservativeRevivedValue = RevivedValue<ConservativeExtension> | undefined;
 
-type RawReviverResult<Callback, Extension> =
-  HasMultipleCallSignatures<Callback> extends true
-    ? ConservativeRevivedValue
-    : RevivedValue<Extension> | undefined;
+type ReviverExtension<Callback> =
+  Callback extends Reviver<infer Extension> ? Extension : never;
+
+type CallbackResult<Callback> =
+  IsReviverWitness<Callback> extends true
+    ? RevivedValue<ReviverExtension<Callback>> | undefined
+    : ConservativeRevivedValue;
 
 type OptionsReviver<Options> = Options extends {
   readonly reviver: infer Callback;
@@ -251,23 +243,44 @@ function reviveValue<Extension>(
  * parse('malformed json', { tolerant: true, warnings: true })
  * ```
  */
-// JSON-only callbacks keep an ergonomic contextual type. A callback that can
-// introduce an extension must carry a Reviver<Extension> witness so its input
-// includes values already produced for children. Overloaded callback types are
-// conservatively widened until such a witness erases their extra signatures.
+// Raw callbacks always return the conservative runtime domain. Precise
+// inference requires an explicit, monomorphic Reviver<Extension> witness, such
+// as an annotated variable or parameter; Reviver<never> is the JSON-only
+// witness. This deliberately avoids structural signature inspection because
+// TypeScript assignability cannot distinguish overloads, generics, or callable
+// and constructable hybrids. Assigning one of those values to Reviver first
+// erases the extra signatures and supplies the explicit witness.
 function parse<Callback extends JsonInputReviver>(
   text: string,
   reviver: Callback
-): HasMultipleCallSignatures<Callback> extends true
-  ? ConservativeRevivedValue
-  : JSONValue | undefined;
+): CallbackResult<Callback>;
 function parse<
   Extension = never,
   Callback extends Callable = RecursiveReviver<Extension>,
 >(
   text: string,
   reviver: RecursiveReviver<Extension> & Callback
-): RawReviverResult<Callback, Extension>;
+): CallbackResult<Callback>;
+function parse<Callback extends Callable>(
+  text: string,
+  reviver: Callback
+): CallbackResult<Callback>;
+function parse<
+  Options extends Omit<ParseOptions<never>, "reviver"> & {
+    readonly reviver: JsonInputReviver;
+  },
+>(
+  text: string,
+  options: NonInvocable<Options>
+): CallbackResult<OptionsReviver<Options>>;
+function parse<
+  Options extends Omit<ParseOptions<never>, "reviver"> & {
+    readonly reviver: Callable;
+  },
+>(
+  text: string,
+  options: NonInvocable<Options>
+): CallbackResult<OptionsReviver<Options>>;
 function parse<
   Extension = never,
   Options extends object = Omit<ParseOptions<Extension>, "reviver"> & {
@@ -279,18 +292,7 @@ function parse<
     Omit<ParseOptions<Extension>, "reviver"> & {
       readonly reviver: RecursiveReviver<Extension>;
     }
-): RawReviverResult<OptionsReviver<Options>, Extension>;
-function parse<
-  Callback extends JsonInputReviver,
-  Options extends Omit<ParseOptions<never>, "reviver"> & {
-    readonly reviver: Callback;
-  },
->(
-  text: string,
-  options: NonInvocable<Options>
-): HasMultipleCallSignatures<Callback> extends true
-  ? ConservativeRevivedValue
-  : JSONValue | undefined;
+): CallbackResult<OptionsReviver<Options>>;
 function parse<
   Options extends PresentParseOptions<never> & { readonly reviver?: never },
 >(text: string, options?: NonInvocable<Options>): JSONValue;
@@ -308,6 +310,15 @@ function parse<Output>(
   optsOrReviver?: ParseOptions<Output> | Reviver<Output>
 ): RevivedValue<Output> | undefined {
   const options = normalizeParseOptions(optsOrReviver);
+  if (
+    options.duplicate &&
+    options.relaxed === false &&
+    !options.tolerant &&
+    !options.warnings
+  ) {
+    return JSON.parse(text, options.reviver);
+  }
+
   const parsed = parseWithCustomParser(text, options);
   if (parsed === undefined || options.reviver === undefined) {
     return parsed;
