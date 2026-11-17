@@ -33,9 +33,10 @@ import {
   isToolChoiceNone,
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
+import { carryTextPartAnnotations } from "./core/utils/text-citations";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
 import {
-  findToolChoiceTextContent,
+  findToolChoiceResultText,
   resolveToolChoiceSelection,
 } from "./core/utils/tool-choice";
 
@@ -92,7 +93,7 @@ async function handleToolChoice(
   tools: LanguageModelV4FunctionTool[]
 ) {
   const result = await doGenerate();
-  const firstText = findToolChoiceTextContent(result.content);
+  const firstText = findToolChoiceResultText(result);
   const onError = extractOnErrorOption(params.providerOptions)?.onError;
 
   if (typeof firstText === "string" && getDebugLevel() === "parse") {
@@ -127,8 +128,12 @@ async function handleToolChoice(
     (part) => part.type !== "text"
   );
 
+  // `structuredOutputText` points at the text that just became the tool call;
+  // leaving it would let the SDK parse the tool input as structured output.
+  const { structuredOutputText: _consumedText, ...resultWithoutText } = result;
+
   return {
-    ...result,
+    ...resultWithoutText,
     content: [...nonTextContent, toolCall],
     warnings: appendDroppedProviderToolWarnings(
       result.warnings,
@@ -154,7 +159,7 @@ function parseContent(
         providerOptions,
         tools,
       });
-      for (const part of textParts) {
+      for (const part of carryTextPartAnnotations(contentItem, textParts)) {
         parsed.push(
           part.type === "tool-call" && !part.providerExecuted
             ? coerceToolCallPart(part, tools)

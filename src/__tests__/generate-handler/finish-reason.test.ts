@@ -139,6 +139,21 @@ describe("wrapGenerate finishReason parity with streaming", () => {
     expect(result.finishReason).toEqual(mockFinishReason("stop"));
   });
 
+  it("preserves an interrupted finish reason when a tool call was parsed", async () => {
+    const doGenerate = vi
+      .fn()
+      .mockResolvedValue(makeResult("CALL", mockFinishReason("interrupted")));
+
+    const result = await wrapGenerate({
+      protocol: toolCallProtocol,
+      doGenerate,
+      params: makeParams(),
+    });
+
+    expect(result.content[0]).toMatchObject({ type: "tool-call" });
+    expect(result.finishReason).toEqual(mockFinishReason("interrupted"));
+  });
+
   it("rewrites finishReason for forced tool choice results", async () => {
     const doGenerate = vi
       .fn()

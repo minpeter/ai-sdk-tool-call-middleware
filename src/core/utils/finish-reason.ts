@@ -1,6 +1,11 @@
 import type { LanguageModelV4FinishReason } from "@ai-sdk/provider";
 
-const TERMINAL_FINISH_REASONS = new Set(["length", "content-filter", "error"]);
+const TERMINAL_FINISH_REASONS = new Set([
+  "length",
+  "content-filter",
+  "error",
+  "interrupted",
+]);
 
 /**
  * Build a `tool-calls` finish reason while preserving the provider's raw
@@ -40,7 +45,9 @@ export function normalizeToolCallsFinishReason(
  * middleware has parsed tool calls out of the model text. `stop` is the
  * common case; `other` covers providers that report an unmapped raw finish
  * reason for plain end-of-turn. Meaningful reasons (`length`,
- * `content-filter`, `error`) are preserved.
+ * `content-filter`, `error`, `interrupted`) are preserved: the AI SDK skips
+ * tool execution for an interrupted response, so rewriting it would run a
+ * tool call parsed from incomplete output.
  */
 export function shouldRewriteFinishReasonToToolCalls(
   finishReason: unknown
@@ -55,8 +62,9 @@ export function shouldRewriteFinishReasonToToolCalls(
 /**
  * Finish reason for a forced tool choice (`required` / named tool): the
  * result is always presented as a tool call, but meaningful terminal reasons
- * (`length`, `content-filter`, `error`) are preserved so callers can detect
- * truncation or filtering instead of seeing a fabricated `tool-calls`.
+ * (`length`, `content-filter`, `error`, `interrupted`) are preserved so
+ * callers can detect truncation, filtering, or an interrupted response
+ * instead of seeing a fabricated `tool-calls`.
  */
 export function normalizeForcedToolChoiceFinishReason(
   finishReason: unknown

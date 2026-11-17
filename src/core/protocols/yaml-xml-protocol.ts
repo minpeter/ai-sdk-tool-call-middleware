@@ -14,6 +14,7 @@ import {
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
+import { isSideChannelStreamPart } from "../utils/side-channel-stream-part";
 import {
   emitBufferedToolInputProgressDelta,
   emitFailedBufferedToolInputLifecycle,
@@ -717,11 +718,11 @@ export const yamlXmlProtocol = (
           return;
         }
 
-        // Raw provider chunks are observational side-channel events. With
+        // Raw chunks and heartbeat pings are side-channel events. With
         // `includeRawChunks`, providers commonly interleave one before every
         // semantic text-delta. Do not let those events force a buffered
         // partial tag (for example `<write` + `_file>`) out as plain text.
-        if (chunk.type === "raw") {
+        if (isSideChannelStreamPart(chunk)) {
           controller.enqueue(chunk);
           return;
         }

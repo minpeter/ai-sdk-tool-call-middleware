@@ -9,6 +9,7 @@ import type { ToolResponseUserContentPart } from "./tool-result-user-content";
 
 /** Only network-fetchable schemes are forwarded as model file URL parts. */
 const ALLOWED_FILE_URL_PROTOCOLS = new Set(["http:", "https:"]);
+const AMBIGUOUS_URL_CHARACTERS = /[\\\t\r\n]/;
 
 function asPlaceholder(
   part: unknown,
@@ -50,6 +51,23 @@ function toSafeFileUrl(rawUrl: unknown): URL | null {
     return null;
   }
   return url;
+}
+
+/**
+ * `originalUrl` carries the exact URL string a provider should serialize when
+ * parsing into a `URL` would normalize it. It is only kept when it parses to
+ * the validated URL and contains no backslashes or tab/newline characters,
+ * which downstream URL parsers can interpret differently from WHATWG URLs.
+ */
+function isSameUrlSpelling(
+  originalUrl: unknown,
+  safeUrl: URL
+): originalUrl is string {
+  return (
+    typeof originalUrl === "string" &&
+    !AMBIGUOUS_URL_CHARACTERS.test(originalUrl) &&
+    parseUrl(originalUrl)?.href === safeUrl.href
+  );
 }
 
 function isMapping(value: unknown): value is Record<string, unknown> {
@@ -152,13 +170,17 @@ function normalizeCanonicalFilePart(
       });
     }
     case "url": {
-      const { url: rawUrl } = data;
+      const { url: rawUrl, originalUrl } = data;
       const safeUrl = toSafeFileUrl(rawUrl);
       if (!safeUrl) {
         return asPlaceholder(part, providerOptions);
       }
       return toValidatedFilePart({
-        data: { type: "url", url: safeUrl },
+        data: {
+          type: "url",
+          url: safeUrl,
+          ...(isSameUrlSpelling(originalUrl, safeUrl) ? { originalUrl } : {}),
+        },
         mediaType,
         filename,
         providerOptions,

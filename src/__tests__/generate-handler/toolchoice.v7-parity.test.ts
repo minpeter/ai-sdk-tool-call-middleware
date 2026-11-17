@@ -175,4 +175,84 @@ describe("wrapGenerate forced tool choice v7 parity", () => {
     expect(logged).not.toContain("constructor");
     expect(logged).not.toContain("polluted");
   });
+
+  it("preserves an interrupted finish reason so the SDK skips tool execution", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"name":"do","arguments":{"x":1}}' }],
+      finishReason: { unified: "interrupted", raw: undefined },
+      warnings: [],
+    });
+
+    const result = await wrapGenerate({
+      protocol: dummyProtocol(),
+      doGenerate,
+      params: { providerOptions: forcedChoiceProviderOptions },
+    });
+
+    expect(result.finishReason).toEqual({
+      unified: "interrupted",
+      raw: undefined,
+    });
+  });
+
+  it("parses the provider-selected structuredOutputText over earlier drafts", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        { type: "text", text: '{"name":"do","arguments":{"x":"draft"}}' },
+        { type: "text", text: '{"name":"do","arguments":{"x":"final"}}' },
+      ],
+      structuredOutputText: '{"name":"do","arguments":{"x":"final"}}',
+      finishReason: { unified: "stop", raw: "stop" },
+      warnings: [],
+    });
+
+    const result = await wrapGenerate({
+      protocol: dummyProtocol(),
+      doGenerate,
+      params: { providerOptions: forcedChoiceProviderOptions },
+    });
+
+    expect(result.content).toEqual([
+      expect.objectContaining({
+        type: "tool-call",
+        toolName: "do",
+        input: '{"x":"final"}',
+      }),
+    ]);
+    // The text became the tool call, so it must not be parsed again as
+    // structured output by the SDK.
+    expect(result).not.toHaveProperty("structuredOutputText");
+  });
+
+  it("treats an empty structuredOutputText as an explicit selection", async () => {
+    const onError = vi.fn();
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"name":"do","arguments":{"x":1}}' }],
+      structuredOutputText: "",
+      finishReason: { unified: "stop", raw: "stop" },
+      warnings: [],
+    });
+
+    const providerOptions = {
+      toolCallMiddleware: {
+        ...forcedChoiceProviderOptions.toolCallMiddleware,
+        onError,
+      },
+    };
+
+    const result = await wrapGenerate({
+      protocol: dummyProtocol(),
+      doGenerate,
+      params: { providerOptions },
+    });
+
+    expect(result.content.at(-1)).toMatchObject({
+      type: "tool-call",
+      toolName: "unknown",
+    });
+    expect(onError).toHaveBeenCalledWith(
+      "Failed to parse toolChoice JSON from generated model output",
+      { text: "", error: expect.any(String) }
+    );
+  });
 });

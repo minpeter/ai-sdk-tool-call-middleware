@@ -1,13 +1,45 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import semver from "semver";
 
 const rootDirectory = new URL("..", import.meta.url);
 const temporaryDirectory = await mkdtemp(
   join(tmpdir(), "ai-sdk-tool-parser-consumer-")
 );
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
+const { devDependencies: developedAgainst, peerDependencies } = JSON.parse(
+  await readFile(new URL("package.json", rootDirectory), "utf8")
+);
+
+function minimumPeerVersion(name) {
+  const minimum = semver.minVersion(peerDependencies[name]);
+  if (!minimum) {
+    throw new Error(
+      `No minimum version for peer ${name}: ${peerDependencies[name]}`
+    );
+  }
+  return minimum.version;
+}
+
+// The packed declarations must type-check against both ends of the supported
+// AI SDK range: the peer-dependency floor and the release this repo is
+// developed against. Checking only the floor misses declaration breakage
+// introduced by newer provider packages.
+const sdkLines = [
+  {
+    label: "peer floor",
+    "@ai-sdk/provider": minimumPeerVersion("@ai-sdk/provider"),
+    "@ai-sdk/provider-utils": minimumPeerVersion("@ai-sdk/provider-utils"),
+  },
+  {
+    label: "current",
+    "@ai-sdk/provider": developedAgainst["@ai-sdk/provider"],
+    "@ai-sdk/provider-utils": developedAgainst["@ai-sdk/provider-utils"],
+  },
+];
 
 function run(command, args, cwd = temporaryDirectory) {
   const resolvedCommand = command === "pnpm" ? pnpmCommand : command;
@@ -32,25 +64,21 @@ try {
     throw new Error("pnpm pack did not produce a tarball");
   }
 
-  const packageJson = {
+  const fixturePackageJson = (sdkLine) => ({
     name: "package-consumer-fixture",
     private: true,
     type: "module",
     dependencies: {
       "@ai-sdk-tool/parser": `file:./${tarballName}`,
-      "@ai-sdk/provider": "4.0.2",
-      "@ai-sdk/provider-utils": "5.0.6",
+      "@ai-sdk/provider": sdkLine["@ai-sdk/provider"],
+      "@ai-sdk/provider-utils": sdkLine["@ai-sdk/provider-utils"],
     },
     devDependencies: {
       "@types/json-schema": "7.0.15",
       "@types/node": "26.1.1",
       typescript: "7.0.2",
     },
-  };
-  await writeFile(
-    join(temporaryDirectory, "package.json"),
-    `${JSON.stringify(packageJson, null, 2)}\n`
-  );
+  });
 
   const source = `
 import * as parser from "@ai-sdk-tool/parser";
@@ -140,11 +168,20 @@ void (async () => {
 `;
   await writeFile(join(temporaryDirectory, "commonjs.cjs"), commonJsSource);
 
-  run("pnpm", ["install", "--ignore-scripts"]);
-  run("pnpm", ["exec", "tsc", "-p", "tsconfig.nodenext.json"]);
-  run("pnpm", ["exec", "tsc", "-p", "tsconfig.bundler.json"]);
-  run("node", ["runtime.mjs"]);
-  run("node", ["commonjs.cjs"]);
+  for (const sdkLine of sdkLines) {
+    console.log(
+      `\nConsumer check (${sdkLine.label}): @ai-sdk/provider@${sdkLine["@ai-sdk/provider"]}, @ai-sdk/provider-utils@${sdkLine["@ai-sdk/provider-utils"]}`
+    );
+    await writeFile(
+      join(temporaryDirectory, "package.json"),
+      `${JSON.stringify(fixturePackageJson(sdkLine), null, 2)}\n`
+    );
+    run("pnpm", ["install", "--ignore-scripts", "--no-frozen-lockfile"]);
+    run("pnpm", ["exec", "tsc", "-p", "tsconfig.nodenext.json"]);
+    run("pnpm", ["exec", "tsc", "-p", "tsconfig.bundler.json"]);
+    run("node", ["runtime.mjs"]);
+    run("node", ["commonjs.cjs"]);
+  }
 } finally {
   await rm(temporaryDirectory, { force: true, recursive: true });
 }

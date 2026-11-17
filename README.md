@@ -273,8 +273,12 @@ when the target endpoint supports `response_format.json_schema`.
 - `kExaone2ToolMiddleware` leaves reasoning parsing to the provider so generate and stream behave consistently. With Friendli, set `parse_reasoning: true`; provider reasoning events pass through unchanged.
 - `kExaone236BToolMiddleware` also leaves reasoning provider-native and preserves structured assistant/tool history instead of converting it to prompt text.
 - `tool-input-start.id`, `tool-input-end.id`, and final `tool-call.toolCallId` are reconciled to the same ID.
+- `raw` chunks (`includeRawChunks`) and `ping` heartbeats pass through in order without interrupting a tool call that is still being received.
+- Text `citations` are carried over after tool-call parsing. Offsets are re-anchored only when the surviving range is unambiguous; otherwise the source and cited passage are kept without offsets. If no text remains, or the stream already closed the cited block, citations are attached to an empty text block.
+- Text `providerMetadata` is retained when the entire provider block survives unchanged; it is omitted from split, merged, or detached text blocks.
+- An `interrupted` finish reason is preserved even when tool calls were parsed, so the AI SDK does not execute a tool call from an incomplete response.
 - `emitRawToolCallTextOnError` defaults to `false`; malformed tool-call markup is suppressed from `text-delta` unless explicitly enabled.
-- Text blocks that consist of a bare `{"name": ..., "arguments": ...}` payload (or a fenced ```json block) for a known tool are recovered into tool calls in both generate and stream paths, and `finishReason` is normalized to `tool-calls` whenever tool calls were parsed.
+- Text blocks that consist of a bare `{"name": ..., "arguments": ...}` payload (or a fenced ```json block) for a known tool are recovered into tool calls in both generate and stream paths. When tool calls are parsed, `stop`/`other` finish reasons become `tool-calls`; terminal reasons such as `length`, `content-filter`, `error`, and `interrupted` are preserved.
 
 Configure parser error behavior through `providerOptions.toolCallMiddleware`:
 

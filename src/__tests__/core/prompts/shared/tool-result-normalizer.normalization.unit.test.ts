@@ -411,6 +411,72 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 
+  it("keeps originalUrl when it is another spelling of the validated URL", () => {
+    const data = {
+      type: "url" as const,
+      url: new URL("https://example.com/a%20b.png"),
+      originalUrl: "https://EXAMPLE.com/a b.png",
+    };
+    const result = normalizeToolResultForUserContent({
+      type: "content",
+      value: [{ type: "file", data, mediaType: "image/png" }],
+    });
+
+    expect(result).toEqual([{ type: "file", data, mediaType: "image/png" }]);
+  });
+
+  it("drops an originalUrl that points somewhere other than the validated URL", () => {
+    const result = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: {
+            type: "url",
+            url: new URL("https://example.com/a.png"),
+            originalUrl: "file:///etc/passwd",
+          },
+          mediaType: "image/png",
+        },
+      ],
+    });
+
+    expect(result).toEqual([
+      {
+        type: "file",
+        data: { type: "url", url: new URL("https://example.com/a.png") },
+        mediaType: "image/png",
+      },
+    ]);
+  });
+
+  it.each([
+    "https://example.com\\@attacker.com/image.png",
+    "https://exa\tmple.com/image.png",
+    "https://exa\nmple.com/image.png",
+    "https://exa\rmple.com/image.png",
+  ])(
+    "drops URL spellings with parser-dependent characters: %j",
+    (originalUrl) => {
+      const url = new URL(originalUrl);
+      const result = normalizeToolResultForUserContent({
+        type: "content",
+        value: [
+          {
+            type: "file",
+            data: { type: "url", url, originalUrl },
+            mediaType: "image/png",
+          },
+        ],
+      });
+
+      expect(url.hostname).toBe("example.com");
+      expect(result).toEqual([
+        { type: "file", data: { type: "url", url }, mediaType: "image/png" },
+      ]);
+    }
+  );
+
   it("passes data-tagged file content through in model mode", () => {
     const result = normalizeToolResultForUserContent(
       {
