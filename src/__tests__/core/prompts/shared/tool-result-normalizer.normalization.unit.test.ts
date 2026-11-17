@@ -450,6 +450,33 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 
+  it.each([
+    "https://example.com\\@attacker.com/image.png",
+    "https://exa\tmple.com/image.png",
+    "https://exa\nmple.com/image.png",
+    "https://exa\rmple.com/image.png",
+  ])(
+    "drops URL spellings with parser-dependent characters: %j",
+    (originalUrl) => {
+      const url = new URL(originalUrl);
+      const result = normalizeToolResultForUserContent({
+        type: "content",
+        value: [
+          {
+            type: "file",
+            data: { type: "url", url, originalUrl },
+            mediaType: "image/png",
+          },
+        ],
+      });
+
+      expect(url.hostname).toBe("example.com");
+      expect(result).toEqual([
+        { type: "file", data: { type: "url", url }, mediaType: "image/png" },
+      ]);
+    }
+  );
+
   it("passes data-tagged file content through in model mode", () => {
     const result = normalizeToolResultForUserContent(
       {

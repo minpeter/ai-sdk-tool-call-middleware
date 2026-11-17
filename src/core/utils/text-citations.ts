@@ -2,6 +2,7 @@ import type {
   LanguageModelV4Citation,
   LanguageModelV4Content,
   LanguageModelV4StreamPart,
+  SharedV4ProviderMetadata,
 } from "@ai-sdk/provider";
 import { generateId } from "./id";
 
@@ -222,29 +223,47 @@ function remapCitationsToOutputBlock(
 }
 
 /**
- * In-band marker for a provider text block that closed with citations. It
+ * In-band marker for a provider text block that closed with annotations. It
  * travels through the protocol stream parser as a `raw` part (parsers forward
  * those in order without treating them as a content boundary) and is consumed
  * by `createCitationRestoreTransform`; it never reaches the caller.
  */
-class ClosedTextBlockCitations {
+class ClosedTextBlockAnnotations {
+  bufferedOutputId?: string;
   readonly citations: LanguageModelV4Citation[];
   readonly providerId: string;
   readonly providerText: string;
+  readonly providerMetadata: SharedV4ProviderMetadata | undefined;
 
   constructor(
     citations: LanguageModelV4Citation[],
     providerId: string,
-    providerText: string
+    providerText: string,
+    providerMetadata: SharedV4ProviderMetadata | undefined
   ) {
     this.citations = citations;
     this.providerId = providerId;
     this.providerText = providerText;
+    this.providerMetadata = providerMetadata;
   }
 }
 
 type StreamPart = LanguageModelV4StreamPart;
 type StreamController = TransformStreamDefaultController<StreamPart>;
+
+/** Remember the parser's block ID when JSON recovery has not emitted its start yet. */
+export function trackBufferedTextAnnotations(
+  part: StreamPart,
+  id: string | undefined
+) {
+  if (
+    id !== undefined &&
+    part.type === "raw" &&
+    part.rawValue instanceof ClosedTextBlockAnnotations
+  ) {
+    part.rawValue.bufferedOutputId = id;
+  }
+}
 
 function accumulateTextBlock(blocks: Map<string, string>, part: StreamPart) {
   if (part.type === "text-start") {
@@ -268,19 +287,36 @@ export function createCitationCaptureTransform(): TransformStream<
   StreamPart
 > {
   const providerBlocks = new Map<string, string>();
+  const metadata = new Map<string, SharedV4ProviderMetadata>();
   return new TransformStream<StreamPart, StreamPart>({
     transform(part, controller) {
       accumulateTextBlock(providerBlocks, part);
+      if (part.type === "text-start") {
+        metadata.delete(part.id);
+      }
+      if (
+        (part.type === "text-start" ||
+          part.type === "text-delta" ||
+          part.type === "text-end") &&
+        part.providerMetadata !== undefined
+      ) {
+        // Match the SDK: the last defined metadata on a text block wins.
+        metadata.set(part.id, part.providerMetadata);
+      }
       if (part.type === "text-end") {
         const providerText = providerBlocks.get(part.id) ?? "";
         providerBlocks.delete(part.id);
-        if (Array.isArray(part.citations) && part.citations.length > 0) {
+        const providerMetadata = metadata.get(part.id);
+        metadata.delete(part.id);
+        const citations = Array.isArray(part.citations) ? part.citations : [];
+        if (citations.length > 0 || providerMetadata !== undefined) {
           controller.enqueue({
             type: "raw",
-            rawValue: new ClosedTextBlockCitations(
-              part.citations,
+            rawValue: new ClosedTextBlockAnnotations(
+              citations,
               part.id,
-              providerText
+              providerText,
+              providerMetadata
             ),
           });
         }
@@ -302,13 +338,17 @@ export function createCitationRestoreTransform(): TransformStream<
   StreamPart
 > {
   let pending: Array<{
-    block: ClosedTextBlockCitations;
+    block: ClosedTextBlockAnnotations;
     outputIds: Set<string>;
   }> = [];
   const outputBlocks = new Map<string, string>();
 
   const publishDetached = (controller: StreamController) => {
-    if (pending.length === 0) {
+    const citations = pending.flatMap(({ block }) =>
+      block.citations.map(withoutOffsets)
+    );
+    pending = [];
+    if (citations.length === 0) {
       return;
     }
     const id = generateId();
@@ -316,61 +356,72 @@ export function createCitationRestoreTransform(): TransformStream<
     controller.enqueue({
       type: "text-end",
       id,
-      citations: pending.flatMap(({ block }) =>
-        block.citations.map(withoutOffsets)
-      ),
+      citations,
     });
-    pending = [];
+  };
+
+  const restoreAnnotations = (
+    part: Extract<StreamPart, { type: "text-end" }>
+  ): Extract<StreamPart, { type: "text-end" }> => {
+    const outputText = outputBlocks.get(part.id);
+    outputBlocks.delete(part.id);
+    if (pending.length === 0 || outputText === undefined) {
+      return part;
+    }
+    // Custom protocols may retain the original envelope or annotations.
+    const matches = ({ block, outputIds }: (typeof pending)[number]) =>
+      outputIds.has(part.id) ||
+      block.providerId === part.id ||
+      (part.citations !== undefined && block.citations === part.citations);
+    const matching = pending.filter(matches);
+    const citations = matching.flatMap(({ block }) =>
+      remapCitationsToOutputBlock(
+        block.citations,
+        block.providerText,
+        outputText
+      )
+    );
+    pending = pending.filter((capture) => !matches(capture));
+    // Metadata such as a replayable item ID describes the whole provider
+    // block. Never copy it to split, merged, or detached text.
+    const providerMetadata =
+      matching.length === 1 && matching[0].block.providerText === outputText
+        ? matching[0].block.providerMetadata
+        : undefined;
+    return {
+      ...part,
+      ...(part.citations === undefined && citations.length > 0
+        ? { citations }
+        : {}),
+      ...(part.providerMetadata === undefined && providerMetadata !== undefined
+        ? { providerMetadata }
+        : {}),
+    };
   };
 
   return new TransformStream<StreamPart, StreamPart>({
     transform(part, controller) {
       if (
         part.type === "raw" &&
-        part.rawValue instanceof ClosedTextBlockCitations
+        part.rawValue instanceof ClosedTextBlockAnnotations
       ) {
+        const outputIds = new Set(outputBlocks.keys());
+        if (part.rawValue.bufferedOutputId !== undefined) {
+          outputIds.add(part.rawValue.bufferedOutputId);
+        }
         pending.push({
           block: part.rawValue,
-          outputIds: new Set(outputBlocks.keys()),
+          outputIds,
         });
         return;
       }
 
       accumulateTextBlock(outputBlocks, part);
       if (part.type === "text-end") {
-        const outputText = outputBlocks.get(part.id);
-        outputBlocks.delete(part.id);
-        // Custom protocols may already retain the provider envelope or its
-        // citations. Consume that capture instead of publishing it again on
-        // a detached block at finish.
-        if (part.citations !== undefined) {
-          pending = pending.filter(
-            ({ block }) =>
-              block.providerId !== part.id && block.citations !== part.citations
-          );
-        }
-        if (
-          pending.length > 0 &&
-          outputText !== undefined &&
-          part.citations === undefined
-        ) {
-          const matching = pending.filter(({ outputIds }) =>
-            outputIds.has(part.id)
-          );
-          const citations = matching.flatMap(({ block }) =>
-            remapCitationsToOutputBlock(
-              block.citations,
-              block.providerText,
-              outputText
-            )
-          );
-          pending = pending.filter(({ outputIds }) => !outputIds.has(part.id));
-          if (citations.length > 0) {
-            controller.enqueue({ ...part, citations });
-            return;
-          }
-        }
-      } else if (part.type === "finish") {
+        controller.enqueue(restoreAnnotations(part));
+        return;
+      }
+      if (part.type === "finish") {
         publishDetached(controller);
       }
       controller.enqueue(part);

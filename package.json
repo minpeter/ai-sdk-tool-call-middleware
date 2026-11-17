@@ -89,6 +89,7 @@
     "ai": "7.0.173",
     "npm-run-all": "^4.1.5",
     "rimraf": "^6.1.3",
+    "semver": "7.8.5",
     "tsdown": "^0.22.14",
     "typescript": "7.0.2",
     "ultracite": "7.10.7",

@@ -45,7 +45,12 @@ const protocols: Array<{ name: string; protocol: TCMCoreProtocol }> = [
   { name: "k-exaone-236b", protocol: kExaone236BProtocol() },
 ];
 
-const sideChannelParts: LanguageModelV4StreamPart[] = [
+type SideChannelPart = Extract<
+  LanguageModelV4StreamPart,
+  { type: "ping" | "raw" }
+>;
+
+const sideChannelParts: SideChannelPart[] = [
   { type: "ping" },
   { type: "raw", rawValue: { choices: [] } },
 ];
@@ -54,16 +59,22 @@ async function runStream(options: {
   protocol: TCMCoreProtocol;
   text: string;
   chunkSize: number;
-  interleaved?: LanguageModelV4StreamPart;
+  interleaved?: SideChannelPart;
 }) {
   const { protocol, text, chunkSize, interleaved } = options;
   const parts: LanguageModelV4StreamPart[] = [
     { type: "stream-start", warnings: [] },
     { type: "text-start", id: "provider-text" },
   ];
+  const sentSideChannels: SideChannelPart[] = [];
   for (let index = 0; index < text.length; index += chunkSize) {
     if (interleaved) {
-      parts.push(interleaved);
+      const sideChannel: SideChannelPart =
+        interleaved.type === "raw"
+          ? { type: "raw", rawValue: { index, payload: interleaved.rawValue } }
+          : { type: "ping" };
+      sentSideChannels.push(sideChannel);
+      parts.push(sideChannel);
     }
     parts.push({
       type: "text-delta",
@@ -103,6 +114,8 @@ async function runStream(options: {
   const output = await convertReadableStreamToArray(stream);
 
   return {
+    output,
+    sentSideChannels,
     interleavedCount: interleaved
       ? output.filter((part) => part.type === interleaved.type).length
       : 0,
@@ -122,6 +135,55 @@ async function runStream(options: {
       finish: output.filter((part) => part.type === "finish"),
     },
   };
+}
+
+function normalizeIds(parts: LanguageModelV4StreamPart[]) {
+  const ids = new Map<string, string>();
+  const normalized = (id: string) => {
+    if (!ids.has(id)) {
+      ids.set(id, `id-${ids.size}`);
+    }
+    return ids.get(id);
+  };
+  return parts.map((part) => {
+    if (part.type === "tool-call") {
+      return { ...part, toolCallId: normalized(part.toolCallId) };
+    }
+    return "id" in part && typeof part.id === "string"
+      ? { ...part, id: normalized(part.id) }
+      : part;
+  });
+}
+
+function assertToolInputLifecycles(parts: LanguageModelV4StreamPart[]) {
+  const calls = parts.filter((part) => part.type === "tool-call");
+  for (const call of calls) {
+    const start = parts.findIndex(
+      (part) => part.type === "tool-input-start" && part.id === call.toolCallId
+    );
+    const end = parts.findIndex(
+      (part) => part.type === "tool-input-end" && part.id === call.toolCallId
+    );
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(parts.indexOf(call)).toBeGreaterThan(end);
+    const deltas = parts
+      .slice(start + 1, end)
+      .filter((part) => part.type === "tool-input-delta");
+    expect(deltas.every((part) => part.id === call.toolCallId)).toBe(true);
+    expect(deltas.map((part) => part.delta).join("")).toBe(call.input);
+  }
+  const inputIds = new Set(
+    parts
+      .filter(
+        (part) =>
+          part.type === "tool-input-start" ||
+          part.type === "tool-input-delta" ||
+          part.type === "tool-input-end"
+      )
+      .map((part) => part.id)
+  );
+  expect(inputIds).toEqual(new Set(calls.map((part) => part.toolCallId)));
 }
 
 describe("side-channel stream parts do not disturb tool-call parsing", () => {
@@ -158,6 +220,24 @@ describe("side-channel stream parts do not disturb tool-call parsing", () => {
             expect(baseline.summary.toolCalls).toHaveLength(1);
             expect(result.summary).toEqual(baseline.summary);
             expect(result.interleavedCount).toBe(result.sentInterleavedCount);
+            const sideChannels = result.output.filter(
+              (part) => part.type === interleaved.type
+            );
+            for (const [index, part] of sideChannels.entries()) {
+              expect(part).toBe(result.sentSideChannels[index]);
+              expect(result.output.indexOf(part)).toBeLessThan(
+                result.output.length - 1
+              );
+            }
+            expect(result.output.indexOf(sideChannels[0])).toBe(1);
+            expect(
+              normalizeIds(
+                result.output.filter(
+                  (part) => part.type !== "raw" && part.type !== "ping"
+                )
+              )
+            ).toEqual(normalizeIds(baseline.output));
+            assertToolInputLifecycles(result.output);
           });
         }
       }

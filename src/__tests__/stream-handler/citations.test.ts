@@ -2,6 +2,7 @@ import type {
   LanguageModelV4Citation,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
+  SharedV4ProviderMetadata,
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
@@ -84,14 +85,20 @@ async function runStream(
 function textBlock(
   id: string,
   text: string,
-  citations?: LanguageModelV4Citation[]
+  citations?: LanguageModelV4Citation[],
+  providerMetadata?: SharedV4ProviderMetadata
 ): LanguageModelV4StreamPart[] {
   return [
     { type: "text-start", id },
     ...(text.match(/[\s\S]{1,4}/g) ?? []).map(
       (delta): LanguageModelV4StreamPart => ({ type: "text-delta", id, delta })
     ),
-    { type: "text-end", id, ...(citations ? { citations } : {}) },
+    {
+      type: "text-end",
+      id,
+      ...(citations ? { citations } : {}),
+      ...(providerMetadata ? { providerMetadata } : {}),
+    },
   ];
 }
 
@@ -105,7 +112,11 @@ const finish: LanguageModelV4StreamPart = {
 function publishedBlocks(output: LanguageModelV4StreamPart[]) {
   const blocks = new Map<
     string,
-    { text: string; citations?: LanguageModelV4Citation[] }
+    {
+      text: string;
+      citations?: LanguageModelV4Citation[];
+      providerMetadata?: SharedV4ProviderMetadata;
+    }
   >();
   for (const part of output) {
     if (part.type === "text-start") {
@@ -120,6 +131,9 @@ function publishedBlocks(output: LanguageModelV4StreamPart[]) {
       if (block && part.citations) {
         block.citations = part.citations;
       }
+      if (block && part.providerMetadata) {
+        block.providerMetadata = part.providerMetadata;
+      }
     }
   }
   return [...blocks.values()];
@@ -127,6 +141,26 @@ function publishedBlocks(output: LanguageModelV4StreamPart[]) {
 
 describe("wrapStream preserves text citations", () => {
   for (const { name, protocol } of protocols) {
+    it.each([true, false])(
+      `${name}: preserves metadata on an unchanged block (citations: %s)`,
+      async (withCitations) => {
+        const text = "Seoul is sunny.";
+        const providerMetadata = { openai: { itemId: "msg_1" } };
+        const citations = withCitations
+          ? [{ source, startIndex: 0, endIndex: 5 }]
+          : undefined;
+        const output = await runStream(protocol, [
+          ...textBlock("provider-text", text, citations, providerMetadata),
+          finish,
+        ]);
+
+        expect(publishedBlocks(output)).toEqual([
+          { text, providerMetadata, ...(citations ? { citations } : {}) },
+        ]);
+        expect(output.some((part) => part.type === "raw")).toBe(false);
+      }
+    );
+
     it(`${name}: keeps citations and offsets on plain text`, async () => {
       const text = "Seoul is sunny today.";
       const citation: LanguageModelV4Citation = {
@@ -194,6 +228,11 @@ describe("wrapStream preserves text citations", () => {
       expect(output.filter((part) => part.type === "tool-call")).toHaveLength(
         1
       );
+      expect(
+        publishedBlocks(output)
+          .map((block) => block.text)
+          .join("")
+      ).toBe("Checking Seoul.\n");
       const citations = publishedBlocks(output).flatMap(
         (block) => block.citations ?? []
       );
@@ -211,6 +250,59 @@ describe("wrapStream preserves text citations", () => {
 
     expect(publishedBlocks(output)).toEqual([{ text: "Plain answer." }]);
   });
+
+  it("does not replay block metadata after tool markup has changed the text", async () => {
+    const call =
+      '<tool_call>{"name":"get_weather","arguments":{"city":"Busan"}}</tool_call>';
+    const output = await runStream(hermesProtocol(), [
+      ...textBlock("provider-text", `Seoul${call}`, undefined, {
+        openai: { itemId: "msg_1" },
+      }),
+      finish,
+    ]);
+
+    expect(publishedBlocks(output)).toEqual([{ text: "Seoul" }]);
+  });
+
+  it("preserves annotations on ordinary JSON held by tool-call recovery", async () => {
+    const text = '{"message":"Seoul"}';
+    const providerMetadata = { openai: { itemId: "msg_json" } };
+    const citations = [{ source, startIndex: 12, endIndex: 17 }];
+    const output = await runStream(hermesProtocol(), [
+      ...textBlock("provider-text", text, citations, providerMetadata),
+      finish,
+    ]);
+
+    expect(publishedBlocks(output)).toEqual([
+      { text, citations, providerMetadata },
+    ]);
+  });
+
+  it("does not attach one provider block's metadata to merged text", async () => {
+    const output = await runStream(hermesProtocol(), [
+      ...textBlock("first", "Intro. "),
+      ...textBlock("second", "Seoul", undefined, {
+        openai: { itemId: "msg_2" },
+      }),
+      finish,
+    ]);
+
+    expect(publishedBlocks(output)).toEqual([{ text: "Intro. Seoul" }]);
+  });
+
+  it.each(["text-start", "text-delta"] as const)(
+    "preserves metadata from %s",
+    async (type) => {
+      const providerMetadata = { openai: { itemId: "msg_1" } };
+      const parts = textBlock("provider-text", "Seoul").map((part) =>
+        part.type === type ? { ...part, providerMetadata } : part
+      );
+      const output = await runStream(hermesProtocol(), [...parts, finish]);
+      expect(publishedBlocks(output)).toEqual([
+        { text: "Seoul", providerMetadata },
+      ]);
+    }
+  );
 
   it("does not duplicate citations preserved by a custom protocol", async () => {
     const protocol = {

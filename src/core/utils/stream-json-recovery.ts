@@ -8,6 +8,7 @@ import {
 } from "./generated-text-json-recovery";
 import { generateId } from "./id";
 import { isSideChannelStreamPart } from "./side-channel-stream-part";
+import { trackBufferedTextAnnotations } from "./text-citations";
 
 /**
  * Maximum number of characters held back while a text block is still a
@@ -266,6 +267,7 @@ export function createStreamJsonRecoveryTransform({
       if (held && !isSideChannelStreamPart(part)) {
         flushHeld(controller, false);
       }
+      trackBufferedTextAnnotations(part, held?.id);
       controller.enqueue(part);
     },
 

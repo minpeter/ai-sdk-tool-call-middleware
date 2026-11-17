@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import semver from "semver";
 
 const rootDirectory = new URL("..", import.meta.url);
 const temporaryDirectory = await mkdtemp(
@@ -9,9 +10,19 @@ const temporaryDirectory = await mkdtemp(
 );
 const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
-const { devDependencies: developedAgainst } = JSON.parse(
+const { devDependencies: developedAgainst, peerDependencies } = JSON.parse(
   await readFile(new URL("package.json", rootDirectory), "utf8")
 );
+
+function minimumPeerVersion(name) {
+  const minimum = semver.minVersion(peerDependencies[name]);
+  if (!minimum) {
+    throw new Error(
+      `No minimum version for peer ${name}: ${peerDependencies[name]}`
+    );
+  }
+  return minimum.version;
+}
 
 // The packed declarations must type-check against both ends of the supported
 // AI SDK range: the peer-dependency floor and the release this repo is
@@ -20,8 +31,8 @@ const { devDependencies: developedAgainst } = JSON.parse(
 const sdkLines = [
   {
     label: "peer floor",
-    "@ai-sdk/provider": "4.0.0",
-    "@ai-sdk/provider-utils": "5.0.0",
+    "@ai-sdk/provider": minimumPeerVersion("@ai-sdk/provider"),
+    "@ai-sdk/provider-utils": minimumPeerVersion("@ai-sdk/provider-utils"),
   },
   {
     label: "current",

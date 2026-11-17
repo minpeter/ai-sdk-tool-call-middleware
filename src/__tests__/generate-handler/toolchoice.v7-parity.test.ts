@@ -233,17 +233,26 @@ describe("wrapGenerate forced tool choice v7 parity", () => {
       warnings: [],
     });
 
+    const providerOptions = {
+      toolCallMiddleware: {
+        ...forcedChoiceProviderOptions.toolCallMiddleware,
+        onError,
+      },
+    };
+
     const result = await wrapGenerate({
       protocol: dummyProtocol(),
       doGenerate,
-      params: {
-        providerOptions: { ...forcedChoiceProviderOptions, onError } as never,
-      },
+      params: { providerOptions },
     });
 
     expect(result.content.at(-1)).toMatchObject({
       type: "tool-call",
       toolName: "unknown",
     });
+    expect(onError).toHaveBeenCalledWith(
+      "Failed to parse toolChoice JSON from generated model output",
+      { text: "", error: expect.any(String) }
+    );
   });
 });
