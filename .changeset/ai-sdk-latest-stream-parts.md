@@ -21,7 +21,8 @@ Align with the current AI SDK v7 line (`ai@7.0.173`, `@ai-sdk/provider@4.0.38`,
   results. Offsets are re-anchored only when the surviving range is
   unambiguous. Citations for removed text or an already closed stream block
   are retained without offsets, using an empty text block when necessary.
-  Citations already preserved by custom parsers are not duplicated.
+  Citations already preserved by custom parsers are not duplicated, and an
+  empty citation array from a custom parser does not discard provider citations.
   Provider metadata on an unchanged text block is kept in both generate and
   stream results, including metadata supplied at stream start, delta, or end.
 - Keep `originalUrl` on URL file parts in tool results when it is another

@@ -175,7 +175,7 @@ export function carryTextPartAnnotations(
     const segmentCitations = perSegment[segment] ?? [];
     result[index] = {
       ...part,
-      ...(segmentCitations.length > 0 && part.citations === undefined
+      ...(segmentCitations.length > 0 && !part.citations?.length
         ? { citations: segmentCitations }
         : {}),
       ...(isUntouchedBlock &&
@@ -390,9 +390,7 @@ export function createCitationRestoreTransform(): TransformStream<
         : undefined;
     return {
       ...part,
-      ...(part.citations === undefined && citations.length > 0
-        ? { citations }
-        : {}),
+      ...(!part.citations?.length && citations.length > 0 ? { citations } : {}),
       ...(part.providerMetadata === undefined && providerMetadata !== undefined
         ? { providerMetadata }
         : {}),

@@ -304,6 +304,46 @@ describe("wrapStream preserves text citations", () => {
     }
   );
 
+  it.each(["provider-text", "custom-text"])(
+    "restores provider citations when a custom parser returns an empty array (output ID: %s)",
+    async (id) => {
+      const protocol: TCMCoreProtocol = {
+        ...hermesProtocol(),
+        createStreamParser: () =>
+          new TransformStream<
+            LanguageModelV4StreamPart,
+            LanguageModelV4StreamPart
+          >({
+            transform(part, controller) {
+              if (
+                part.type === "text-start" ||
+                part.type === "text-delta" ||
+                part.type === "text-end"
+              ) {
+                controller.enqueue({
+                  ...part,
+                  id,
+                  ...(part.type === "text-end" ? { citations: [] } : {}),
+                });
+              } else {
+                controller.enqueue(part);
+              }
+            },
+          }),
+      };
+      const text = "Seoul is sunny.";
+      const citations = [{ source, startIndex: 0, endIndex: 5 }];
+      const output = await runStream(protocol, [
+        ...textBlock("provider-text", text, citations),
+        finish,
+      ]);
+
+      expect(publishedBlocks(output)).toEqual([{ text, citations }]);
+      expect(output.some((part) => part.type === "raw")).toBe(false);
+      expect(output.at(-1)).toEqual(finish);
+    }
+  );
+
   it("does not duplicate citations preserved by a custom protocol", async () => {
     const protocol = {
       ...hermesProtocol(),

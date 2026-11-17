@@ -5,6 +5,7 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
 import { originalToolsSchema } from "../../core/utils/provider-options";
 import { wrapGenerate } from "../../generate-handler";
 import { stopFinishReason, zeroUsage } from "../test-helpers";
@@ -33,9 +34,12 @@ const source = {
   url: "https://example.com/seoul",
 } as const;
 
-async function generate(content: LanguageModelV4Content[]) {
+async function generate(
+  content: LanguageModelV4Content[],
+  protocol: TCMCoreProtocol = hermesProtocol()
+) {
   const result = await wrapGenerate({
-    protocol: hermesProtocol(),
+    protocol,
     doGenerate: vi.fn().mockResolvedValue({
       content,
       finishReason: stopFinishReason,
@@ -54,6 +58,19 @@ async function generate(content: LanguageModelV4Content[]) {
 }
 
 describe("wrapGenerate preserves text citations", () => {
+  it("restores provider citations when a custom parser returns an empty array", async () => {
+    const citations = [{ source, startIndex: 0, endIndex: 5 }];
+    const text = "Seoul is sunny.";
+    const content = await generate([{ type: "text", text, citations }], {
+      ...hermesProtocol(),
+      parseGeneratedText: ({ text: parsedText }) => [
+        { type: "text", text: parsedText, citations: [] },
+      ],
+    });
+
+    expect(content).toEqual([{ type: "text", text, citations }]);
+  });
+
   it("keeps citations and provider metadata on text without tool calls", async () => {
     const citations: LanguageModelV4Citation[] = [
       { source, startIndex: 0, endIndex: 5, citedText: "Seoul report" },
