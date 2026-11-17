@@ -52,6 +52,22 @@ function toSafeFileUrl(rawUrl: unknown): URL | null {
   return url;
 }
 
+/**
+ * `originalUrl` carries the exact URL string a provider should serialize when
+ * parsing into a `URL` would normalize it. It is only kept when it parses to
+ * the validated URL, so it cannot smuggle a different target past the
+ * protocol/host allowlist above.
+ */
+function isSameUrlSpelling(
+  originalUrl: unknown,
+  safeUrl: URL
+): originalUrl is string {
+  return (
+    typeof originalUrl === "string" &&
+    parseUrl(originalUrl)?.href === safeUrl.href
+  );
+}
+
 function isMapping(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -152,13 +168,17 @@ function normalizeCanonicalFilePart(
       });
     }
     case "url": {
-      const { url: rawUrl } = data;
+      const { url: rawUrl, originalUrl } = data;
       const safeUrl = toSafeFileUrl(rawUrl);
       if (!safeUrl) {
         return asPlaceholder(part, providerOptions);
       }
       return toValidatedFilePart({
-        data: { type: "url", url: safeUrl },
+        data: {
+          type: "url",
+          url: safeUrl,
+          ...(isSameUrlSpelling(originalUrl, safeUrl) ? { originalUrl } : {}),
+        },
         mediaType,
         filename,
         providerOptions,

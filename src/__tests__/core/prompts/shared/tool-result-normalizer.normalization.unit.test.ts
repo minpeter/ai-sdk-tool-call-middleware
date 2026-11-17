@@ -411,6 +411,45 @@ describe("normalizeToolResultForUserContent", () => {
     ]);
   });
 
+  it("keeps originalUrl when it is another spelling of the validated URL", () => {
+    const data = {
+      type: "url" as const,
+      url: new URL("https://example.com/a%20b.png"),
+      originalUrl: "https://EXAMPLE.com/a b.png",
+    };
+    const result = normalizeToolResultForUserContent({
+      type: "content",
+      value: [{ type: "file", data, mediaType: "image/png" }],
+    });
+
+    expect(result).toEqual([{ type: "file", data, mediaType: "image/png" }]);
+  });
+
+  it("drops an originalUrl that points somewhere other than the validated URL", () => {
+    const result = normalizeToolResultForUserContent({
+      type: "content",
+      value: [
+        {
+          type: "file",
+          data: {
+            type: "url",
+            url: new URL("https://example.com/a.png"),
+            originalUrl: "file:///etc/passwd",
+          },
+          mediaType: "image/png",
+        },
+      ],
+    });
+
+    expect(result).toEqual([
+      {
+        type: "file",
+        data: { type: "url", url: new URL("https://example.com/a.png") },
+        mediaType: "image/png",
+      },
+    ]);
+  });
+
   it("passes data-tagged file content through in model mode", () => {
     const result = normalizeToolResultForUserContent(
       {

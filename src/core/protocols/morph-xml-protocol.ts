@@ -15,6 +15,7 @@ import {
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
+import { isSideChannelStreamPart } from "../utils/side-channel-stream-part";
 import { shouldBufferToolInputProgress } from "../utils/tool-call-progress-buffering";
 import {
   emitBufferedToolInputProgressDelta,
@@ -871,6 +872,15 @@ export const morphXmlProtocol = (
           // markup is excised), so the provider's original text-start/text-end
           // envelopes are dropped instead of producing empty duplicate blocks.
           if (chunk.type === "text-start" || chunk.type === "text-end") {
+            return;
+          }
+
+          // Raw chunks and heartbeat pings are side-channel events that
+          // providers interleave between text deltas. They must not flush a
+          // buffered partial tool tag (for example `<get_` + `weather>`) out
+          // as plain text.
+          if (isSideChannelStreamPart(chunk)) {
+            controller.enqueue(chunk);
             return;
           }
 

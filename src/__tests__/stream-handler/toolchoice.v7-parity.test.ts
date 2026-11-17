@@ -125,4 +125,40 @@ describe("toolChoiceStream v7 parity", () => {
     const toolCall = chunks.find((c) => c.type === "tool-call");
     expect(toolCall).toMatchObject({ toolName: "unknown", input: "{}" });
   });
+
+  it("preserves an interrupted finish reason so the SDK skips tool execution", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: '{"name":"do","arguments":{"x":1}}' }],
+      finishReason: { unified: "interrupted", raw: undefined },
+      usage: mockUsage(3, 5),
+    });
+
+    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
+    const chunks = await convertReadableStreamToArray(stream);
+
+    expect(chunks.at(-1)).toMatchObject({
+      type: "finish",
+      finishReason: { unified: "interrupted", raw: undefined },
+    });
+  });
+
+  it("parses the provider-selected structuredOutputText over earlier drafts", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({
+      content: [
+        { type: "text", text: '{"name":"do","arguments":{"x":"draft"}}' },
+        { type: "text", text: '{"name":"do","arguments":{"x":"final"}}' },
+      ],
+      structuredOutputText: '{"name":"do","arguments":{"x":"final"}}',
+      usage: mockUsage(3, 5),
+    });
+
+    const { stream } = await toolChoiceStream({ doGenerate, tools: [] });
+    const chunks = await convertReadableStreamToArray(stream);
+
+    expect(chunks.at(-2)).toMatchObject({
+      type: "tool-call",
+      toolName: "do",
+      input: '{"x":"final"}',
+    });
+  });
 });

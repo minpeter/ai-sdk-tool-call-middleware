@@ -5,6 +5,7 @@ import type {
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateToolCallId } from "../utils/id";
 import { createFlushTextHandler } from "../utils/protocol-utils";
+import { isSideChannelStreamPart } from "../utils/side-channel-stream-part";
 import { shouldEmitRawToolCallTextOnError } from "../utils/tool-input-streaming";
 import type { ParserOptions } from "./protocol-interface";
 import {
@@ -713,10 +714,10 @@ export function createQwen3CoderStreamParser({
       return;
     }
 
-    // Raw provider chunks are observational side-channel events and may be
+    // Raw chunks and heartbeat pings are side-channel events and may be
     // interleaved before every semantic text delta. They must not flush a
     // partial `<tool_call>` / `<function>` prefix as recovered plain text.
-    if (chunk.type === "raw") {
+    if (isSideChannelStreamPart(chunk)) {
       controller.enqueue(chunk);
       return;
     }

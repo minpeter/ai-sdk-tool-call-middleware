@@ -45,6 +45,7 @@ export function mockFinishReason(
     | "content-filter"
     | "tool-calls"
     | "error"
+    | "interrupted"
     | "other"
 ): LanguageModelV4FinishReason {
   return { unified, raw: undefined };

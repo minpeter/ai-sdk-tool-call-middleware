@@ -7,6 +7,7 @@ import {
   type ToolCallJsonRecoveryResult,
 } from "./generated-text-json-recovery";
 import { generateId } from "./id";
+import { isSideChannelStreamPart } from "./side-channel-stream-part";
 
 /**
  * Maximum number of characters held back while a text block is still a
@@ -259,7 +260,10 @@ export function createStreamJsonRecoveryTransform({
         return;
       }
 
-      if (held) {
+      // Raw chunks and heartbeat pings carry no content, so they do not end
+      // the held block: flushing here would publish a bare-JSON tool call as
+      // text the moment a provider interleaves a keep-alive.
+      if (held && !isSideChannelStreamPart(part)) {
         flushHeld(controller, false);
       }
       controller.enqueue(part);

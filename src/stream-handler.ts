@@ -24,9 +24,13 @@ import {
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
 import { createStreamJsonRecoveryTransform } from "./core/utils/stream-json-recovery";
+import {
+  createCitationCaptureTransform,
+  createCitationRestoreTransform,
+} from "./core/utils/text-citations";
 import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
 import {
-  findToolChoiceTextContent,
+  findToolChoiceResultText,
   resolveToolChoiceSelection,
 } from "./core/utils/tool-choice";
 
@@ -110,14 +114,18 @@ export async function wrapStream({
         )
       : stream;
 
+  // Citations ride on the provider's `text-end`, which the protocol parser
+  // drops, so they are captured before parsing and restored after it.
   const coreStream = loggedStream
+    .pipeThrough(createCitationCaptureTransform())
     .pipeThrough(protocol.createStreamParser({ tools, options }))
     .pipeThrough(
       createStreamJsonRecoveryTransform({
         allowsRecovery: protocol.allowsGeneratedTextJsonRecovery,
         tools,
       })
-    );
+    )
+    .pipeThrough(createCitationRestoreTransform());
 
   let seenToolCall = false;
   let emittedExtraWarnings = extraWarnings.length === 0;
@@ -223,7 +231,7 @@ export async function toolChoiceStream({
   const normalizedTools = Array.isArray(tools) ? tools : [];
   const result = await doGenerate();
   const { toolName, input } = resolveToolChoiceSelection({
-    text: findToolChoiceTextContent(result?.content),
+    text: findToolChoiceResultText(result),
     tools: normalizedTools,
     onError: options?.onError,
     errorMessage: "Failed to parse toolChoice JSON from streamed model output",

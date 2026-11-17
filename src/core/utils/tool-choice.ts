@@ -54,6 +54,24 @@ export function findToolChoiceTextContent(
   );
 }
 
+/**
+ * Text to parse as the forced-tool-choice JSON. A provider that reports
+ * `structuredOutputText` has already selected the structured-output text
+ * (for example the final answer after earlier drafts), so it takes
+ * precedence over scanning `content`. An empty string is an explicit
+ * selection and does not fall back to the text parts.
+ */
+export function findToolChoiceResultText(
+  result:
+    | { content?: LanguageModelV4Content[]; structuredOutputText?: unknown }
+    | undefined
+): string | undefined {
+  if (typeof result?.structuredOutputText === "string") {
+    return result.structuredOutputText;
+  }
+  return findToolChoiceTextContent(result?.content);
+}
+
 interface ParseToolChoiceOptions {
   errorMessage: string;
   onError?: OnErrorFn;
