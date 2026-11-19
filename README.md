@@ -149,6 +149,50 @@ Use the preconfigured middleware exports from `src/preconfigured-middleware.ts`:
 | `kExaone2ToolMiddleware` | K-EXAONE-2.0 native tool declarations, calls, and `<tool_result>` responses |
 | `kExaone236BToolMiddleware` | Friendli K-EXAONE-236B native `tool_declare`, Hermes JSON calls, reasoning, and structured history |
 
+### LG EXAONE API and Pi (K-EXAONE 2.5)
+
+Pi's `exaone/k-exaone_v2.5` entry connects to LG AI Research's hosted
+K-EXAONE 2.5 model. The [EXAONE API](https://docs.exaone.ai/en/docs/k-exaone-2.5)
+returns structured tool calls and reasoning. In AI SDK, pass the OpenAI-compatible
+chat model directly to `generateText` or `streamText` to preserve those responses.
+Use `kExaone2ToolMiddleware` for K-EXAONE **2.0** deployments that emit text tool calls.
+
+With `EXAONE_API_KEY` set, this example streams a tool call, executes it locally,
+and sends the result back for a final answer:
+
+```ts
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { stepCountIs, streamText, tool } from "ai";
+import { z } from "zod";
+
+const exaone = createOpenAICompatible({
+  name: "exaone",
+  baseURL: "https://api.exaone.ai/v1",
+  apiKey: process.env.EXAONE_API_KEY,
+});
+
+const result = streamText({
+  model: exaone.chatModel("k-exaone_v2.5"),
+  prompt: "Call lookup_code once with city Seoul, then report the returned code.",
+  providerOptions: { exaone: { reasoning_effort: "low" } },
+  maxOutputTokens: 1024,
+  stopWhen: stepCountIs(2),
+  tools: {
+    lookup_code: tool({
+      inputSchema: z.object({ city: z.string() }),
+      execute: async ({ city }) => ({ code: city === "Seoul" ? "SEL" : null }),
+    }),
+  },
+});
+
+for await (const delta of result.textStream) {
+  process.stdout.write(delta);
+}
+```
+
+The 15-case comparison against the other presets is in
+[docs/k-exaone-2.5-middleware-comparison.md](docs/k-exaone-2.5-middleware-comparison.md).
+
 ### Friendli K-EXAONE-236B
 
 `kExaone236BToolMiddleware` is a Friendli-specific compatibility preset. It
