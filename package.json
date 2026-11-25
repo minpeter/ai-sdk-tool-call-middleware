@@ -110,11 +110,15 @@
   },
   "pnpm": {
     "overrides": {
+      "brace-expansion@1": ">=1.1.16",
+      "brace-expansion@2": ">=2.1.4",
       "esbuild": "^0.28.1",
       "js-yaml@3": "^3.15.0",
       "js-yaml@4": "^4.2.0",
-      "shell-quote": "^1.8.4",
-      "vite": "^8.2.2"
+      "launch-editor": ">=2.14.2",
+      "shell-quote": "^1.11.0",
+      "source-map-js": ">=1.2.2",
+      "vite": "^8.2.4"
     }
   }
 }

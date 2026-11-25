@@ -47,3 +47,23 @@ updates:
     commit-message:
       prefix: "dependabot:"
       include: "scope"
+
+  # Python benchmark harness dependencies (uv.lock)
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      time: "09:00"
+      timezone: "Asia/Seoul"
+    open-pull-requests-limit: 5
+    groups:
+      uv-all-updates:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "automated"
+      - "python"
+    commit-message:
+      prefix: "dependabot:"
+      include: "scope"

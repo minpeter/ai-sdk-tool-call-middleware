@@ -13,6 +13,7 @@ benchmark-test = [
 
 [tool.uv]
 default-groups = []
+override-dependencies = ["litellm>=1.95.0"]
 
 [tool.pytest.ini_options]
 addopts = ["--strict-config", "--strict-markers"]
