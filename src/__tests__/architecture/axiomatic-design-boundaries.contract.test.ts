@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseSync } from "vite";
 import { describe, expect, it } from "vitest";
 
 const SRC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -10,54 +11,6 @@ const JS_TO_TS_EXTENSION: ReadonlyArray<readonly [string, string]> = [
   [".mjs", ".mts"],
   [".cjs", ".cts"],
 ];
-const IDENT_START_RE = /[A-Za-z_$]/;
-const IDENT_PART_RE = /[A-Za-z0-9_$]/;
-const REGEX_PRECEDING_KEYWORDS = new Set([
-  "return",
-  "throw",
-  "case",
-  "in",
-  "of",
-  "typeof",
-  "void",
-  "delete",
-  "new",
-  "yield",
-  "await",
-  "else",
-  "do",
-]);
-const REGEX_PRECEDING_PUNCT = new Set([
-  "(",
-  "[",
-  "{",
-  ",",
-  ";",
-  ":",
-  "=",
-  "!",
-  "?",
-  "&",
-  "|",
-  "^",
-  "~",
-  "+",
-  "-",
-  "*",
-  "/",
-  "%",
-  "<",
-  ">",
-]);
-
-const STATEMENT_HEADER_KEYWORDS = new Set(["if", "while", "for", "with"]);
-const HEX_DIGITS_RE = /^[0-9a-fA-F]+$/;
-
-interface SourceToken {
-  canPrecedeRegex?: boolean;
-  kind: "ident" | "punct" | "string";
-  value: string;
-}
 
 function isProductionSourceFileName(name: string): boolean {
   if (
@@ -86,308 +39,109 @@ function collectSourceFiles(dir: string): string[] {
   return files;
 }
 
-function canStartRegex(prev: SourceToken | undefined): boolean {
-  if (!prev) {
-    return true;
+function readStaticStringExpression(node: unknown): string | undefined {
+  if (!node || typeof node !== "object") {
+    return undefined;
   }
-  if (prev.canPrecedeRegex) {
-    return true;
+  const record = node as Record<string, unknown>;
+  if (record.type === "Literal" && typeof record.value === "string") {
+    return record.value;
   }
-  if (prev.kind === "punct") {
-    return REGEX_PRECEDING_PUNCT.has(prev.value);
+  if (
+    record.type === "TemplateLiteral" &&
+    Array.isArray(record.expressions) &&
+    record.expressions.length === 0 &&
+    Array.isArray(record.quasis)
+  ) {
+    const firstQuasi = record.quasis[0] as
+      | { value?: { cooked?: unknown } }
+      | undefined;
+    if (typeof firstQuasi?.value?.cooked === "string") {
+      return firstQuasi.value.cooked;
+    }
   }
-  if (prev.kind === "ident") {
-    return REGEX_PRECEDING_KEYWORDS.has(prev.value);
-  }
-  return false;
+  return undefined;
 }
 
-function readJsEscape(
-  source: string,
-  backslashIndex: number
-): { nextIndex: number; value: string } {
-  const esc = source[backslashIndex + 1];
-  if (esc === undefined) {
-    return { nextIndex: backslashIndex + 1, value: "" };
-  }
-  if (esc === "\r") {
-    const skip = source[backslashIndex + 2] === "\n" ? 3 : 2;
-    return { nextIndex: backslashIndex + skip, value: "" };
-  }
-  if (esc === "\n") {
-    return { nextIndex: backslashIndex + 2, value: "" };
-  }
-  if (esc === "x") {
-    const hex = source.slice(backslashIndex + 2, backslashIndex + 4);
-    if (hex.length === 2 && HEX_DIGITS_RE.test(hex)) {
-      return {
-        nextIndex: backslashIndex + 4,
-        value: String.fromCharCode(Number.parseInt(hex, 16)),
-      };
-    }
-  }
-  if (esc === "u") {
-    if (source[backslashIndex + 2] === "{") {
-      const closeBrace = source.indexOf("}", backslashIndex + 3);
-      if (closeBrace !== -1) {
-        const hex = source.slice(backslashIndex + 3, closeBrace);
-        if (hex.length > 0 && HEX_DIGITS_RE.test(hex)) {
-          const codePoint = Number.parseInt(hex, 16);
-          if (codePoint <= 0x10_ff_ff) {
-            return {
-              nextIndex: closeBrace + 1,
-              value: String.fromCodePoint(codePoint),
-            };
-          }
-        }
-      }
-    } else {
-      const hex = source.slice(backslashIndex + 2, backslashIndex + 6);
-      if (hex.length === 4 && HEX_DIGITS_RE.test(hex)) {
-        return {
-          nextIndex: backslashIndex + 6,
-          value: String.fromCharCode(Number.parseInt(hex, 16)),
-        };
-      }
-    }
-  }
-  const simpleEscapes: Record<string, string> = {
-    b: "\b",
-    f: "\f",
-    n: "\n",
-    r: "\r",
-    t: "\t",
-    v: "\v",
-    "0": "\0",
-  };
-  return {
-    nextIndex: backslashIndex + 2,
-    value: simpleEscapes[esc] ?? esc,
-  };
-}
-
-function readQuotedString(
-  source: string,
-  startIndex: number
-): { nextIndex: number; value: string } {
-  const quote = source[startIndex];
-  let index = startIndex + 1;
-  let value = "";
-  while (index < source.length) {
-    const ch = source[index];
-    if (ch === "\\") {
-      const decoded = readJsEscape(source, index);
-      value += decoded.value;
-      index = decoded.nextIndex;
-      continue;
-    }
-    if (ch === quote) {
-      return { nextIndex: index + 1, value };
-    }
-    value += ch;
-    index += 1;
-  }
-  return { nextIndex: index, value };
-}
-
-function skipRegexLiteral(source: string, startIndex: number): number {
-  let index = startIndex + 1;
-  let inCharClass = false;
-  while (index < source.length) {
-    const ch = source[index];
-    if (ch === "\\") {
-      index += 2;
-      continue;
-    }
-    if (ch === "[") {
-      inCharClass = true;
-    } else if (ch === "]") {
-      inCharClass = false;
-    } else if (ch === "/" && !inCharClass) {
-      index += 1;
-      while (index < source.length && IDENT_PART_RE.test(source[index] ?? "")) {
-        index += 1;
-      }
-      return index;
-    } else if (ch === "\n" || ch === "\r") {
-      return index;
-    }
-    index += 1;
-  }
-  return index;
-}
-
-function readTemplateSegment(
-  source: string,
-  startIndex: number
-): { hasInterpolation: boolean; nextIndex: number; value: string } {
-  let index = startIndex;
-  let value = "";
-  while (index < source.length) {
-    const ch = source[index];
-    if (ch === "\\") {
-      const decoded = readJsEscape(source, index);
-      value += decoded.value;
-      index = decoded.nextIndex;
-      continue;
-    }
-    if (ch === "`") {
-      return { hasInterpolation: false, nextIndex: index + 1, value };
-    }
-    if (ch === "$" && source[index + 1] === "{") {
-      return { hasInterpolation: true, nextIndex: index + 2, value };
-    }
-    value += ch;
-    index += 1;
-  }
-  return { hasInterpolation: false, nextIndex: index, value };
-}
-
-function tokenizeTypeScript(source: string): SourceToken[] {
-  const tokens: SourceToken[] = [];
-  const templateBraceDepths: number[] = [];
-  const parenIsStatementCondition: boolean[] = [];
-  let braceDepth = 0;
-  let index = 0;
-
-  while (index < source.length) {
-    const ch = source[index] ?? "";
-    const next = source[index + 1] ?? "";
-
-    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
-      index += 1;
-      continue;
-    }
-    if (ch === "/" && next === "/") {
-      const newline = source.indexOf("\n", index + 2);
-      index = newline === -1 ? source.length : newline + 1;
-      continue;
-    }
-    if (ch === "/" && next === "*") {
-      const close = source.indexOf("*/", index + 2);
-      index = close === -1 ? source.length : close + 2;
-      continue;
-    }
-    if (ch === "/" && canStartRegex(tokens.at(-1))) {
-      index = skipRegexLiteral(source, index);
-      tokens.push({ kind: "string", value: "" });
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      const parsed = readQuotedString(source, index);
-      tokens.push({ kind: "string", value: parsed.value });
-      index = parsed.nextIndex;
-      continue;
-    }
-    if (ch === "`") {
-      const segment = readTemplateSegment(source, index + 1);
-      if (segment.hasInterpolation) {
-        templateBraceDepths.push(braceDepth);
-        braceDepth += 1;
-        tokens.push({ kind: "punct", value: "{" });
-      } else {
-        tokens.push({ kind: "string", value: segment.value });
-      }
-      index = segment.nextIndex;
-      continue;
-    }
-    if (ch === "(") {
-      const prev = tokens.at(-1);
-      const prevPrev = tokens.at(-2);
-      const isConditionHeader =
-        prev?.kind === "ident" &&
-        STATEMENT_HEADER_KEYWORDS.has(prev.value) &&
-        !(prevPrev?.kind === "punct" && prevPrev.value === ".");
-      parenIsStatementCondition.push(isConditionHeader);
-      tokens.push({ kind: "punct", value: "(" });
-      index += 1;
-      continue;
-    }
-    if (ch === ")") {
-      const isConditionEnd = parenIsStatementCondition.pop() ?? false;
-      tokens.push({
-        kind: "punct",
-        value: ")",
-        ...(isConditionEnd ? { canPrecedeRegex: true } : {}),
-      });
-      index += 1;
-      continue;
-    }
-    if (ch === "{") {
-      braceDepth += 1;
-      tokens.push({ kind: "punct", value: "{" });
-      index += 1;
-      continue;
-    }
-    if (ch === "}") {
-      braceDepth = Math.max(0, braceDepth - 1);
-      tokens.push({ kind: "punct", value: "}" });
-      index += 1;
-      if (
-        templateBraceDepths.length > 0 &&
-        templateBraceDepths.at(-1) === braceDepth
-      ) {
-        const segment = readTemplateSegment(source, index);
-        if (segment.hasInterpolation) {
-          braceDepth += 1;
-          tokens.push({ kind: "punct", value: "{" });
-        } else {
-          templateBraceDepths.pop();
-        }
-        index = segment.nextIndex;
-      }
-      continue;
-    }
-    if (IDENT_START_RE.test(ch)) {
-      let end = index + 1;
-      while (end < source.length && IDENT_PART_RE.test(source[end] ?? "")) {
-        end += 1;
-      }
-      tokens.push({ kind: "ident", value: source.slice(index, end) });
-      index = end;
-      continue;
-    }
-
-    tokens.push({ kind: "punct", value: ch });
-    index += 1;
+function collectRelativeSpecifiersFromSource(
+  sourceText: string,
+  fileName = "module.ts"
+): string[] {
+  const parsed = parseSync(fileName, sourceText, { lang: "ts" });
+  if (parsed.errors.length > 0) {
+    throw new Error(
+      `Failed to parse TypeScript source ${fileName}: ${parsed.errors[0]?.message}`
+    );
   }
 
-  return tokens;
-}
-
-function collectRelativeSpecifiersFromSource(sourceText: string): string[] {
-  const tokens = tokenizeTypeScript(sourceText);
   const specifiers: string[] = [];
-
-  const recordIfRelative = (token: SourceToken | undefined) => {
-    if (token?.kind === "string" && token.value.startsWith(".")) {
-      specifiers.push(token.value);
+  const recordIfRelative = (specifier: string | undefined) => {
+    if (specifier?.startsWith(".")) {
+      specifiers.push(specifier);
     }
   };
 
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = tokens[i];
-    if (token?.kind !== "ident") {
-      continue;
+  const extractNodeSpecifier = (
+    record: Record<string, unknown>
+  ): string | undefined => {
+    switch (record.type) {
+      case "ImportDeclaration":
+      case "ExportNamedDeclaration":
+      case "ExportAllDeclaration":
+      case "ImportExpression":
+        return readStaticStringExpression(record.source);
+      case "TSImportType": {
+        const directSource = readStaticStringExpression(record.source);
+        if (directSource !== undefined) {
+          return directSource;
+        }
+        const arg = record.argument as
+          | { literal?: unknown; type?: unknown }
+          | undefined;
+        return arg?.type === "TSLiteralType"
+          ? readStaticStringExpression(arg.literal)
+          : undefined;
+      }
+      case "TSExternalModuleReference":
+        return readStaticStringExpression(record.expression);
+      case "CallExpression": {
+        const callee = record.callee as
+          | { name?: unknown; type?: unknown }
+          | undefined;
+        return callee?.type === "Identifier" &&
+          callee.name === "require" &&
+          Array.isArray(record.arguments)
+          ? readStaticStringExpression(record.arguments[0])
+          : undefined;
+      }
+      default:
+        return undefined;
     }
-    const prev = tokens[i - 1];
-    if (prev?.kind === "punct" && prev.value === ".") {
-      continue;
-    }
-    const next = tokens[i + 1];
-    if (token.value === "from" && next?.kind === "string") {
-      recordIfRelative(next);
-    } else if (token.value === "import" && next?.kind === "string") {
-      recordIfRelative(next);
-    } else if (
-      (token.value === "import" || token.value === "require") &&
-      next?.kind === "punct" &&
-      next.value === "("
-    ) {
-      recordIfRelative(tokens[i + 2]);
-    }
-  }
+  };
 
+  const visitNode = (node: unknown): void => {
+    if (!node || typeof node !== "object") {
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        visitNode(item);
+      }
+      return;
+    }
+
+    const record = node as Record<string, unknown>;
+    recordIfRelative(extractNodeSpecifier(record));
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key === "type" || key === "start" || key === "end") {
+        continue;
+      }
+      visitNode(value);
+    }
+  };
+
+  visitNode(parsed.program);
   return specifiers;
 }
 
@@ -429,7 +183,10 @@ function collectEdges(
   for (const fullPath of sourceFiles) {
     const from = relative(SRC_ROOT, fullPath).replaceAll("\\", "/");
     const source = readFileSync(fullPath, "utf8");
-    for (const specifier of collectRelativeSpecifiersFromSource(source)) {
+    for (const specifier of collectRelativeSpecifiersFromSource(
+      source,
+      fullPath
+    )) {
       edges.push({ from, to: resolveRelativeImport(fullPath, specifier) });
     }
   }
@@ -779,28 +536,44 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
     expect(unresolved).toEqual([]);
   });
 
-  it("detects dynamic imports, import types, regex after if-conditions, unicode escapes, and .js/.mts/.cts specifiers while ignoring comments", () => {
+  it("detects dynamic imports, import types, regex after if/for-await/block statements, unicode and LS/PS continuations, and .js/.mts/.cts specifiers while ignoring comments", () => {
     const syntheticSource = `
       // from "./ignored-comment-import"
       const doc = 'import { x } from "./ignored-string-import"';
       export type T = import("../core/protocols/protocol-interface.js").TCMProtocol;
-      export async function load(condition: boolean, value: string) {
+      export async function load(
+        condition: boolean,
+        value: string,
+        items: AsyncIterable<string>
+      ) {
         if (condition) /"/.test(value);
+        if (condition) {
+          void value;
+        }
+        /"/.test(value);
+        for await (const item of items) /"/.test(item);
         const a = await import("../generate-handler.js");
         const b = await import("\\u002e\\u002e/stream-handler");
         const c = await import("\\x2e\\x2e/transform-handler");
         const d = await import("\\u{2e}\\u{2e}/tool-call-middleware");
-        return [a, b, c, d];
+        const e = await import("..\\${"\u2028"}/generate-handler");
+        const f = await import("..\\${"\u2029"}/stream-handler");
+        return [a, b, c, d, e, f];
       }
     `;
     const fromFile = join(SRC_ROOT, "shared/synthetic-fixture.mts");
-    const specifiers = collectRelativeSpecifiersFromSource(syntheticSource);
+    const specifiers = collectRelativeSpecifiersFromSource(
+      syntheticSource,
+      fromFile
+    );
     expect(specifiers).toEqual([
       "../core/protocols/protocol-interface.js",
       "../generate-handler.js",
       "../stream-handler",
       "../transform-handler",
       "../tool-call-middleware",
+      "../generate-handler",
+      "../stream-handler",
     ]);
 
     const resolvedTargets = specifiers.map((specifier) =>
@@ -812,6 +585,8 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
       "stream-handler.ts",
       "transform-handler.ts",
       "tool-call-middleware.ts",
+      "generate-handler.ts",
+      "stream-handler.ts",
     ]);
 
     const upwardViolations = resolvedTargets.filter(

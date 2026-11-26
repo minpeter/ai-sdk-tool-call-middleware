@@ -32,7 +32,10 @@ export function createToolMiddleware({
       const providerParams = stripToolCallMiddlewareProviderOptions(params);
       // Only invoke `model` directly when stripping actually removed
       // `toolCallMiddleware` so callers passing an instrumented thunk without
-      // middleware options are not bypassed.
+      // middleware options are not bypassed. When stripping does occur,
+      // `model.doStream`/`model.doGenerate` receives the sanitized params
+      // directly (bypassing custom wrapper thunks; under `wrapLanguageModel`,
+      // `model` already wraps any inner middlewares).
       const didStrip = providerParams !== params;
       return wrapStreamHandler({
         protocol: resolvedProtocol,

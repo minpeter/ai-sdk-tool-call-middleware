@@ -53,6 +53,33 @@ export function recordForcedToolChoiceDebugSummary(options: {
   }
 }
 
+function reportDiagnosticsError(
+  onError: OnErrorFn | undefined,
+  message: string,
+  error: unknown
+): void {
+  if (!onError) {
+    return;
+  }
+  try {
+    const maybePromise = onError(message, {
+      error: error instanceof Error ? error.message : String(error),
+    }) as unknown;
+    if (
+      maybePromise !== null &&
+      (typeof maybePromise === "object" ||
+        typeof maybePromise === "function") &&
+      typeof (maybePromise as PromiseLike<unknown>).then === "function"
+    ) {
+      Promise.resolve(maybePromise).catch(() => {
+        // Diagnostics error reporting must never trigger unhandled rejections.
+      });
+    }
+  } catch {
+    // Diagnostics error reporting must never fail a completed response.
+  }
+}
+
 export function recordParsedDebugSummary(options: {
   allText: string;
   debugSummary: ToolCallMiddlewareDebugSummary | undefined;
@@ -82,13 +109,11 @@ export function recordParsedDebugSummary(options: {
     try {
       segments = extractToolCallSegments({ text: allText, tools }) ?? [];
     } catch (error) {
-      try {
-        onError?.("Failed to extract tool call segments for debug summary.", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      } catch {
-        // Diagnostics error reporting must never fail a completed response.
-      }
+      reportDiagnosticsError(
+        onError,
+        "Failed to extract tool call segments for debug summary.",
+        error
+      );
     }
   }
   const originalText = safeToolCallMetadataText(segments.join("\n\n")) ?? "";

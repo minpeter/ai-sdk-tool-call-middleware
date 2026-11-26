@@ -548,7 +548,124 @@ describe("wrapStream debugSummary parity with wrapGenerate", () => {
     expect(streamSummary).toEqual(generateSummary);
   });
 
-  it("preserves per-ID block grouping for interleaved open stream text blocks", async () => {
+  it("suppresses unhandled rejections when an async onError callback rejects during debugSummary reporting", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandledRejection);
+
+    try {
+      const throwingProtocol: TCMProtocol = {
+        ...hermesProtocol(),
+        extractToolCallSegments() {
+          throw new Error("extractor exploded");
+        },
+      };
+      const asyncRejectingOnError = vi.fn(async () => {
+        await Promise.resolve();
+        throw new Error("async onError rejected");
+      });
+      const rawToolCall =
+        '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool_call>';
+
+      const genResult = await wrapGenerate({
+        protocol: throwingProtocol,
+        doGenerate: () =>
+          Promise.resolve({
+            content: [{ type: "text", text: rawToolCall }],
+            finishReason: { unified: "stop", raw: "stop" },
+            usage: {
+              inputTokens: {
+                total: 1,
+                noCache: undefined,
+                cacheRead: undefined,
+                cacheWrite: undefined,
+              },
+              outputTokens: {
+                total: 1,
+                text: undefined,
+                reasoning: undefined,
+              },
+            },
+            warnings: [],
+          }),
+        params: {
+          providerOptions: {
+            toolCallMiddleware: {
+              debugSummary: {},
+              onError: asyncRejectingOnError,
+              _internal: {
+                originalTools: encodeOriginalTools(weatherTools),
+              },
+            },
+          },
+        },
+      });
+      expect(genResult.content.some((part) => part.type === "tool-call")).toBe(
+        true
+      );
+
+      const { stream } = await wrapStream({
+        protocol: throwingProtocol,
+        doGenerate: () => Promise.reject(new Error("not used")),
+        doStream: () =>
+          Promise.resolve({
+            stream: new ReadableStream<LanguageModelV4StreamPart>({
+              start(controller) {
+                controller.enqueue({ type: "text-start", id: "t1" });
+                controller.enqueue({
+                  type: "text-delta",
+                  id: "t1",
+                  delta: rawToolCall,
+                });
+                controller.enqueue({ type: "text-end", id: "t1" });
+                controller.enqueue({
+                  type: "finish",
+                  finishReason: { unified: "stop", raw: "stop" },
+                  usage: {
+                    inputTokens: {
+                      total: 1,
+                      noCache: undefined,
+                      cacheRead: undefined,
+                      cacheWrite: undefined,
+                    },
+                    outputTokens: {
+                      total: 1,
+                      text: undefined,
+                      reasoning: undefined,
+                    },
+                  },
+                });
+                controller.close();
+              },
+            }),
+          }),
+        params: {
+          providerOptions: {
+            toolCallMiddleware: {
+              debugSummary: {},
+              onError: asyncRejectingOnError,
+              _internal: {
+                originalTools: encodeOriginalTools(weatherTools),
+              },
+            },
+          },
+        },
+      });
+      const parts = await drainStream(stream);
+      expect(parts.some((part) => part.type === "tool-call")).toBe(true);
+      expect(asyncRejectingOnError).toHaveBeenCalledTimes(2);
+
+      // Flush queued promise reactions so any unguarded rejection would surface.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandledRejection);
+    }
+  });
+
+  it("preserves per-ID block grouping for interleaved and reused stream text blocks", async () => {
     const observedTexts: string[] = [];
     const base = hermesProtocol();
     const protocol: TCMProtocol = {
@@ -575,6 +692,9 @@ describe("wrapStream debugSummary parity with wrapGenerate", () => {
               controller.enqueue({ type: "text-end", id: "a" });
               controller.enqueue({ type: "text-delta", id: "b", delta: "B2" });
               controller.enqueue({ type: "text-end", id: "b" });
+              controller.enqueue({ type: "text-start", id: "a" });
+              controller.enqueue({ type: "text-delta", id: "a", delta: "A3" });
+              controller.enqueue({ type: "text-end", id: "a" });
               controller.enqueue({
                 type: "finish",
                 finishReason: { unified: "stop", raw: "stop" },
@@ -609,7 +729,7 @@ describe("wrapStream debugSummary parity with wrapGenerate", () => {
     });
 
     await drainStream(stream);
-    expect(observedTexts).toEqual(["A1A2\n\nB1B2"]);
+    expect(observedTexts).toEqual(["A1A2\n\nB1B2\n\nA3"]);
   });
 
   it("clears reused debugSummary when toolChoice is none in both wrapGenerate and wrapStream", async () => {
