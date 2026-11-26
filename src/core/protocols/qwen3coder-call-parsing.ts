@@ -1,5 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { unescapeXml } from "../../rxml/utils/helpers";
+import { unescapeXml } from "../../shared/xml-escape";
 
 import {
   buildSchemaParamNameMap,

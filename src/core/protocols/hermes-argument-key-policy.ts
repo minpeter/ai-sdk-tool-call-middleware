@@ -6,6 +6,7 @@ import {
   schemaIsUnconstrained,
   unwrapJsonSchema,
 } from "../../schema-coerce";
+import { isPrototypeSensitiveKey } from "../../shared/prototype-keys";
 import { toolCallInputHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { collectPatternPropertyNames } from "../utils/tool-call-pattern-properties";
 import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
@@ -431,12 +432,6 @@ function schemaHasTopLevelCombinator(
   );
 }
 
-const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
-
 export function containsPrototypeSensitiveArgumentKey(value: unknown): boolean {
   const seen = new Set<object>();
   const stack: unknown[] = [value];
@@ -461,7 +456,7 @@ export function containsPrototypeSensitiveArgumentKey(value: unknown): boolean {
     }
     seen.add(current);
     for (const key of Object.keys(current)) {
-      if (PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)) {
+      if (isPrototypeSensitiveKey(key)) {
         return true;
       }
       stack.push(current[key]);
@@ -488,7 +483,7 @@ export function hasPrototypeSensitiveKeyInJsonLikeObject(
   if (firstBrace === -1) {
     return false;
   }
-  return (collectObjectKeys(text, firstBrace, true) ?? []).some((key) =>
-    PROTOTYPE_SENSITIVE_ARGUMENT_KEYS.has(key)
+  return (collectObjectKeys(text, firstBrace, true) ?? []).some(
+    isPrototypeSensitiveKey
   );
 }

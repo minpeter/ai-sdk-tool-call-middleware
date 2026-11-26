@@ -1,4 +1,3 @@
-import type { LanguageModelV4Middleware } from "@ai-sdk/provider";
 import { glm5SystemPromptTemplate } from "./core/prompts/glm5-prompt";
 import {
   formatToolResponseAsHermes,
@@ -8,6 +7,7 @@ import {
   formatToolResponseAsKExaone2,
   kExaone2SystemPromptTemplate,
 } from "./core/prompts/k-exaone-2-prompt";
+import { kExaone236BSystemPromptMessages } from "./core/prompts/k-exaone-236b-prompt";
 import {
   morphFormatToolResponseAsXml,
   morphXmlSystemPromptTemplate,
@@ -27,30 +27,14 @@ import { kExaone236BProtocol } from "./core/protocols/k-exaone-236b-protocol";
 import { morphXmlProtocol } from "./core/protocols/morph-xml-protocol";
 import { qwen3CoderProtocol } from "./core/protocols/qwen3coder-protocol";
 import { yamlXmlProtocol } from "./core/protocols/yaml-xml-protocol";
-import { wrapGenerate } from "./generate-handler";
-import { transformKExaone236BParams } from "./k-exaone-236b-transform";
-import { wrapStream } from "./stream-handler";
 import { createToolMiddleware } from "./tool-call-middleware";
 
-const kExaone236BProtocolInstance = kExaone236BProtocol();
-
-export const kExaone236BToolMiddleware: LanguageModelV4Middleware = {
-  specificationVersion: "v4",
-  transformParams: async ({ params }) => transformKExaone236BParams(params),
-  wrapGenerate: ({ doGenerate, params }) =>
-    wrapGenerate({
-      protocol: kExaone236BProtocolInstance,
-      doGenerate,
-      params,
-    }),
-  wrapStream: ({ doGenerate, doStream, params }) =>
-    wrapStream({
-      protocol: kExaone236BProtocolInstance,
-      doGenerate,
-      doStream,
-      params,
-    }),
-};
+export const kExaone236BToolMiddleware = createToolMiddleware({
+  protocol: kExaone236BProtocol(),
+  toolSystemPromptTemplate: () => "",
+  toolSystemPromptMessages: kExaone236BSystemPromptMessages,
+  historyMode: "provider-native",
+});
 
 export const kExaone2ToolMiddleware = createToolMiddleware({
   protocol: kExaone2Protocol(),

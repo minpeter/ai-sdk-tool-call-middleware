@@ -5,6 +5,11 @@ import type {
   LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 
+export type {
+  ProtocolToolCallResolver,
+  ResolvedProtocolToolCall,
+} from "../../shared/tool-call-resolver";
+
 /**
  * Options for parsing tool calls and handling errors
  */
@@ -17,15 +22,6 @@ export interface ParserOptions {
   emitRawToolCallTextOnError?: boolean;
   onError?: (message: string, metadata?: Record<string, unknown>) => void;
 }
-
-export type ResolvedProtocolToolCall =
-  | { ok: true; toolName: string; input: string }
-  | { ok: false; error: unknown };
-
-export type ProtocolToolCallResolver = (
-  toolCallJson: string,
-  tools: LanguageModelV4FunctionTool[]
-) => ResolvedProtocolToolCall;
 
 export interface TCMProtocol {
   /**

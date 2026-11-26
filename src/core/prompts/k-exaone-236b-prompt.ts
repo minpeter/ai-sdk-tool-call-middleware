@@ -1,4 +1,7 @@
-import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import type {
+  LanguageModelV4FunctionTool,
+  LanguageModelV4Prompt,
+} from "@ai-sdk/provider";
 import { renderKExaoneNativeTool } from "./k-exaone-2-prompt";
 
 export const K_EXAONE_236B_TOOL_CALL_FORMAT = `# Tool Call Format
@@ -15,4 +18,29 @@ export function kExaone236BToolDeclaration(
   }
 
   return `# Tools\n${tools.map(renderKExaoneNativeTool).join("\n")}\n`;
+}
+
+export function kExaone236BSystemPromptMessages(
+  tools: LanguageModelV4FunctionTool[]
+): LanguageModelV4Prompt {
+  const declaration = kExaone236BToolDeclaration(tools);
+  if (declaration.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      role: "system",
+      content: declaration,
+      providerOptions: {
+        openaiCompatible: {
+          role: "tool_declare",
+        },
+      },
+    },
+    {
+      role: "system",
+      content: K_EXAONE_236B_TOOL_CALL_FORMAT,
+    },
+  ];
 }

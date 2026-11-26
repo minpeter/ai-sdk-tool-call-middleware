@@ -1,4 +1,4 @@
-import { unescapeXml } from "../../rxml/utils/helpers";
+import { unescapeXml } from "../../shared/xml-escape";
 import { escapeRegExp } from "../utils/regex";
 import {
   CALL_SHORTHAND_VALUE_RE,

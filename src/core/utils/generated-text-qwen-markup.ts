@@ -1,4 +1,4 @@
-import { unescapeXml } from "../../rxml/utils/helpers";
+import { unescapeXml } from "../../shared/xml-escape";
 import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
 
 export const QWEN_CALL_BLOCK_OPEN_REGEX =

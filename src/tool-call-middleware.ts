@@ -2,6 +2,7 @@ import type {
   LanguageModelV4CallOptions,
   LanguageModelV4FunctionTool,
   LanguageModelV4Middleware,
+  LanguageModelV4Prompt,
 } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import type { ToolResponsePromptTemplateResult } from "./core/prompts/shared/tool-role-to-user-message";
@@ -18,6 +19,7 @@ import {
 export function createToolMiddleware({
   protocol,
   toolSystemPromptTemplate,
+  toolSystemPromptMessages,
   toolResponsePromptTemplate,
   placement = "last",
   historyMode = "converted-text",
@@ -25,6 +27,9 @@ export function createToolMiddleware({
 }: {
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
   toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
+  toolSystemPromptMessages?: (
+    tools: LanguageModelV4FunctionTool[]
+  ) => LanguageModelV4Prompt;
   toolResponsePromptTemplate?: (
     toolResult: ToolResultPart
   ) => ToolResponsePromptTemplateResult;
@@ -61,6 +66,7 @@ export function createToolMiddleware({
       transformParams({
         protocol: resolvedProtocol,
         toolSystemPromptTemplate,
+        toolSystemPromptMessages,
         toolResponsePromptTemplate,
         placement,
         historyMode,

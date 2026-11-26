@@ -2,8 +2,8 @@ import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
 import {
   decodeKExaone2HistoryKey,
   isKExaone2HistoryNumber,
-} from "../prompts/k-exaone-2-lossless-json";
-import { stringifyKExaone2NativeJson } from "../prompts/k-exaone-2-native-json";
+} from "../utils/k-exaone-2-lossless-json";
+import { stringifyKExaone2NativeJson } from "../utils/k-exaone-2-native-json";
 import { formatToolsWithPromptTemplate } from "../utils/protocol-utils";
 import { parseKExaoneToolCallInput } from "./k-exaone-tool-call-input";
 import type { TCMProtocol } from "./protocol-interface";

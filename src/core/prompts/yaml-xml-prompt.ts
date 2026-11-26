@@ -1,7 +1,7 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import YAML from "yaml";
-import { escapeXmlMinimalText } from "../../rxml/utils/helpers";
+import { escapeXmlMinimalText } from "../../shared/xml-escape";
 import { morphFormatToolResponseAsXml } from "./morph-xml-prompt";
 import {
   renderInputExamplesSection,

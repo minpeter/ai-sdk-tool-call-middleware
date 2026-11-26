@@ -15,7 +15,7 @@ import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
 import {
   escapeXmlMinimalAttr,
   escapeXmlMinimalText,
-} from "../../rxml/utils/helpers";
+} from "../../shared/xml-escape";
 import { formatToolsWithPromptTemplate } from "../utils/protocol-utils";
 import type { TCMProtocol } from "./protocol-interface";
 import { TOOL_CALL_BLOCK_RE } from "./qwen3coder-call-syntax";

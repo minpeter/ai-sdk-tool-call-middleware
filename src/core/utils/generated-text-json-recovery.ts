@@ -4,7 +4,8 @@ import type {
 } from "@ai-sdk/provider";
 import YAML from "yaml";
 import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
-import type { ProtocolToolCallResolver } from "../protocols/protocol-interface";
+import { escapeRegExp } from "../../shared/regex";
+import type { ProtocolToolCallResolver } from "../../shared/tool-call-resolver";
 import {
   containsPrototypeSensitiveKey,
   extractJsonLikeCandidates,
@@ -110,10 +111,6 @@ function pushRecoveredTextSegment(
  */
 const TOOL_NAME_KEYS = ["name", "tool", "function"] as const;
 const TOOL_ARGS_KEYS = ["arguments", "parameters"] as const;
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 function readToolNameField(payload: Record<string, unknown>): string | null {
   for (const key of TOOL_NAME_KEYS) {
@@ -723,4 +720,31 @@ export function recoverToolCallFromJsonCandidates(
     resolver
   );
   return result.kind === "recovered" ? result.content : null;
+}
+
+/**
+ * Recover foreign-format tool calls from a candidate block only when at least
+ * one known call resolves and every leftover text segment consists exclusively
+ * of allowed markup remnants (no non-markup prose).
+ */
+export function recoverMarkupOnlyForeignToolCalls(
+  text: string,
+  tools: LanguageModelV4FunctionTool[],
+  markupOnlyRegex: RegExp
+): Extract<LanguageModelV4Content, { type: "tool-call" }>[] | null {
+  const recovered = recoverToolCallFromJsonCandidates(text, tools);
+  if (!recovered) {
+    return null;
+  }
+  const calls = recovered.filter(
+    (part): part is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
+      part.type === "tool-call"
+  );
+  const hasProse = recovered.some(
+    (part) => part.type === "text" && !markupOnlyRegex.test(part.text)
+  );
+  if (calls.length === 0 || hasProse) {
+    return null;
+  }
+  return calls;
 }

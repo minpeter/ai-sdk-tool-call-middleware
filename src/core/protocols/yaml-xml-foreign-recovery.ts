@@ -2,7 +2,10 @@ import type {
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
-import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
+import {
+  recoverMarkupOnlyForeignToolCalls,
+  recoverToolCallFromJsonCandidates,
+} from "../utils/generated-text-json-recovery";
 import { addTextSegment } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
@@ -117,21 +120,11 @@ export function recoverGatedForeignCalls(
   block: string,
   tools: LanguageModelV4FunctionTool[]
 ): ForeignToolCallPart[] | null {
-  const recovered = recoverToolCallFromJsonCandidates(block, tools);
-  if (!recovered) {
-    return null;
-  }
-  const calls = recovered.filter(
-    (part): part is ForeignToolCallPart => part.type === "tool-call"
+  return recoverMarkupOnlyForeignToolCalls(
+    block,
+    tools,
+    FOREIGN_SALVAGE_MARKUP_ONLY_RE
   );
-  const hasProse = recovered.some(
-    (part) =>
-      part.type === "text" && !FOREIGN_SALVAGE_MARKUP_ONLY_RE.test(part.text)
-  );
-  if (calls.length === 0 || hasProse) {
-    return null;
-  }
-  return calls;
 }
 
 /**

@@ -3,11 +3,11 @@ import {
   decodeKExaone2HistoryKey,
   isKExaone2HistoryNumber,
   parseKExaone2LosslessJson,
-} from "../prompts/k-exaone-2-lossless-json";
+} from "../utils/k-exaone-2-lossless-json";
 import {
   stringifyKExaone2CompactJson,
   stringifyKExaone2NativeJson,
-} from "../prompts/k-exaone-2-native-json";
+} from "../utils/k-exaone-2-native-json";
 import { resolveToolCall } from "./hermes-call-parsing";
 import { normalizeJsonStringCtrl } from "./hermes-json-normalization";
 import { normalizeInvalidJsonEscapes } from "./hermes-json-repair";

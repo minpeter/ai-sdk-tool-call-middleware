@@ -3,7 +3,7 @@ import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
   escapeXmlMinimalAttr,
   escapeXmlMinimalText,
-} from "../../rxml/utils/helpers";
+} from "../../shared/xml-escape";
 import {
   renderInputExamplesSection,
   safeStringifyInputExample,

@@ -10,7 +10,7 @@ import {
 } from "../core/prompts/shared/xml-tag-name";
 import { createToolMiddleware, morphXmlProtocol } from "../index";
 import { stringify } from "../rxml";
-import { escapeXmlMinimalText } from "../rxml/utils/helpers";
+import { escapeXmlMinimalText } from "../shared/xml-escape";
 
 function hasInvalidXmlKeys(value: unknown): boolean {
   if (Array.isArray(value)) {

@@ -1,14 +1,11 @@
 import { parse as parseRJSON } from "../../rjson";
+import { PROTOTYPE_SENSITIVE_KEYS } from "../../shared/prototype-keys";
 import {
   decodeJsonUnicodeEscapes,
   decodeStructuredTextEscapes,
 } from "./structured-text-escapes";
 
-const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
+const PROTOTYPE_SENSITIVE_ARGUMENT_KEYS = PROTOTYPE_SENSITIVE_KEYS;
 const PROTOTYPE_SENSITIVE_JSON_KEY_TEXT_REGEX =
   /\\?["'](?:__proto__|constructor|prototype)\\?["']\s*:|[{,]\s*(?:__proto__|constructor|prototype)\s*:/;
 const PROTOTYPE_SENSITIVE_TEXT_REGEX =

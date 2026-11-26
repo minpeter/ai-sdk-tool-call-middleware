@@ -8,7 +8,7 @@ import { createToolMiddleware, uiTarsXmlProtocol } from "../index";
 import {
   escapeXmlMinimalAttr,
   escapeXmlMinimalText,
-} from "../rxml/utils/helpers";
+} from "../shared/xml-escape";
 
 /**
  * UI-TARS middleware using a custom protocol that handles <function=name> syntax (qwen3CoderProtocol)

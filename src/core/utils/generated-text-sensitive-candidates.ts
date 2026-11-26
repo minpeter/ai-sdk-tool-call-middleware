@@ -1,4 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import { escapeRegExp } from "../../shared/regex";
 import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
 import { decodeStructuredTextEscapes } from "./structured-text-escapes";
 
@@ -17,10 +18,6 @@ interface JsonScanState {
 const TOOL_CALL_OPEN_REGEX = /<tool_call\b[^>]*>/gi;
 const TOOL_CALL_OPEN_AFTER_REGEX = /<tool_call\b[^>]*>/i;
 const TOOL_CALL_CLOSE_REGEX = /<\/tool_call\s*>/i;
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 function scanJsonChar(state: JsonScanState, char: string): JsonScanState {
   if (state.inString) {

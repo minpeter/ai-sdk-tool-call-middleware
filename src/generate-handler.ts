@@ -5,7 +5,7 @@ import type {
   LanguageModelV4ToolCall,
   SharedV4Warning,
 } from "@ai-sdk/provider";
-import { glm5FastPathsForParser } from "./core/protocols/glm5-fast-path-registry";
+import { getProtocolGeneratedTextFastPaths } from "./core/protocols/protocol-fast-paths";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
 import {
   getDebugLevel,
@@ -208,7 +208,7 @@ function parseTextContent(options: {
     evaluatedText = contentItem.text;
     const fastPaths = (parserOptions as Record<string, unknown>).debugSummary
       ? undefined
-      : glm5FastPathsForParser(evaluatedParser);
+      : getProtocolGeneratedTextFastPaths(evaluatedParser);
     if (
       fastPaths &&
       typeof evaluatedText === "string" &&

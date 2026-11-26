@@ -1,5 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
+import { recoverMarkupOnlyForeignToolCalls } from "../utils/generated-text-json-recovery";
 import { safeToolCallMetadataText } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import {
@@ -46,19 +46,12 @@ export function createQwenStreamFinishReporting({
     controller: StreamController,
     rawToolCall: string
   ): boolean => {
-    const recovered = recoverToolCallFromJsonCandidates(rawToolCall, tools);
-    if (!recovered) {
-      return false;
-    }
-    const calls = recovered.filter(
-      (part): part is Extract<typeof part, { type: "tool-call" }> =>
-        part.type === "tool-call"
+    const calls = recoverMarkupOnlyForeignToolCalls(
+      rawToolCall,
+      tools,
+      SALVAGE_MARKUP_ONLY_TEXT_REGEX
     );
-    const hasProse = recovered.some(
-      (part) =>
-        part.type === "text" && !SALVAGE_MARKUP_ONLY_TEXT_REGEX.test(part.text)
-    );
-    if (calls.length === 0 || hasProse) {
+    if (!calls) {
       return false;
     }
     for (const call of calls) {

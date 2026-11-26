@@ -1,6 +1,7 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import YAML from "yaml";
-import { unescapeXml } from "../../rxml/utils/helpers";
+import { isPrototypeSensitiveKey } from "../../shared/prototype-keys";
+import { unescapeXml } from "../../shared/xml-escape";
 import { safeToolCallMetadataText } from "../utils/protocol-utils";
 import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
@@ -454,11 +455,6 @@ const XML_CHILD_CLOSED_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)<\/\1\s*>$/;
 // The open form requires a non-empty value so that a lone nesting tag like
 // `<passenger>` never gets misread as an empty flat parameter.
 const XML_CHILD_OPEN_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*\S[^<]*|\S)$/;
-const PROTOTYPE_SENSITIVE_PARAM_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
 
 function mergeXmlChildArg(
   args: Record<string, unknown>,
@@ -503,7 +499,7 @@ function parseXmlChildrenAsArgs(
       return null;
     }
     const [, key] = match;
-    if (PROTOTYPE_SENSITIVE_PARAM_KEYS.has(key)) {
+    if (isPrototypeSensitiveKey(key)) {
       return null;
     }
     mergeXmlChildArg(args, key, unescapeXml((match[2] ?? "").trim()));
@@ -531,7 +527,7 @@ export function buildSchemaPropNameSet(
     return null;
   }
   const names = Object.keys(properties).filter(
-    (key) => !PROTOTYPE_SENSITIVE_PARAM_KEYS.has(key)
+    (key) => !isPrototypeSensitiveKey(key)
   );
   return names.length > 0 ? new Set(names) : null;
 }

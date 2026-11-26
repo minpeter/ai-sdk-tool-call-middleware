@@ -263,6 +263,7 @@ export function transformParams({
   params,
   protocol,
   toolSystemPromptTemplate,
+  toolSystemPromptMessages,
   toolResponsePromptTemplate,
   placement = "first",
   historyMode = "converted-text",
@@ -280,6 +281,15 @@ export function transformParams({
   };
   protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
   toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
+  /**
+   * Optional structured leading system messages builder for protocols that
+   * emit multiple system turns or provider-specific role metadata (for example
+   * K-EXAONE-236B's `tool_declare` message). When provided, its messages are
+   * prepended directly instead of merging a single text `toolSystemPromptTemplate`.
+   */
+  toolSystemPromptMessages?: (
+    tools: LanguageModelV4FunctionTool[]
+  ) => LanguageModelV4Prompt;
   toolResponsePromptTemplate?: (
     toolResult: ToolResultPart
   ) => ToolResponsePromptTemplateResult;
@@ -294,17 +304,6 @@ export function transformParams({
   const functionTools = (params.tools ?? []).filter(
     (t): t is LanguageModelV4FunctionTool => t.type === "function"
   );
-
-  const forcedToolChoice =
-    params.toolChoice?.type === "tool" ||
-    params.toolChoice?.type === "required";
-  const systemPrompt =
-    suppressToolSystemPromptForForcedChoice && forcedToolChoice
-      ? ""
-      : resolvedProtocol.formatTools({
-          tools: functionTools,
-          toolSystemPromptTemplate,
-        });
 
   let normalizedPrompt: LanguageModelV4Message[];
   if (Array.isArray(params.prompt)) {
@@ -339,11 +338,26 @@ export function transformParams({
     };
   }
 
-  const finalPrompt = buildFinalPrompt(
-    systemPrompt,
-    processedPrompt,
-    placement
-  );
+  const forcedToolChoice =
+    params.toolChoice?.type === "tool" ||
+    params.toolChoice?.type === "required";
+
+  let finalPrompt: LanguageModelV4Prompt;
+  if (suppressToolSystemPromptForForcedChoice && forcedToolChoice) {
+    finalPrompt = processedPrompt;
+  } else if (toolSystemPromptMessages) {
+    const leadingMessages = toolSystemPromptMessages(functionTools);
+    finalPrompt =
+      leadingMessages.length > 0
+        ? [...leadingMessages, ...processedPrompt]
+        : processedPrompt;
+  } else {
+    const systemPrompt = resolvedProtocol.formatTools({
+      tools: functionTools,
+      toolSystemPromptTemplate,
+    });
+    finalPrompt = buildFinalPrompt(systemPrompt, processedPrompt, placement);
+  }
   const baseReturnParams = buildBaseReturnParams(
     params,
     finalPrompt,

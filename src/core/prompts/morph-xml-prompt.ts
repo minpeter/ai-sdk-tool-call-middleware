@@ -6,7 +6,7 @@ import type {
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import dedent from "dedent";
 import { stringify } from "../../rxml";
-import { escapeXmlMinimalText } from "../../rxml/utils/helpers";
+import { escapeXmlMinimalText } from "../../shared/xml-escape";
 import {
   renderInputExamplesSection,
   safeStringifyInputExample,

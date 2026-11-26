@@ -1,5 +1,5 @@
-import { unescapeXml } from "../../rxml/utils/helpers";
 import { unwrapJsonSchema } from "../../schema-coerce";
+import { unescapeXml } from "../../shared/xml-escape";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
 
