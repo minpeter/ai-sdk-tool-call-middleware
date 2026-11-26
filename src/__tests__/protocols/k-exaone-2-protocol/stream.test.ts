@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-import { kExaone2Protocol } from "../../../core/protocols/k-exaone-2-protocol";
+import { kExaone2Protocol } from "../../../core/protocols/k-exaone/k-exaone-2-protocol";
 import { createChunkedStream, pipeWithTransformer } from "../../test-helpers";
 
 const tools: LanguageModelV4FunctionTool[] = [

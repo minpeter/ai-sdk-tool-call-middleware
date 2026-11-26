@@ -4,7 +4,7 @@ import {
   renderInputExamplesSection,
   safeStringifyInputExample,
 } from "../core/prompts/shared/input-examples";
-import { createToolMiddleware, uiTarsXmlProtocol } from "../index";
+import { createToolMiddleware, qwen3CoderProtocol } from "../index";
 import {
   escapeXmlMinimalAttr,
   escapeXmlMinimalText,
@@ -15,11 +15,16 @@ import {
  * This is a modified version of https://github.com/julien-blanchon/silo/blob/6ebbc24e9dcf21e502b65b07b86a1e76169d4e8c/src/lib/middleware/uiTars.ts
  */
 export const uiTarsToolMiddleware = createToolMiddleware({
-  protocol: uiTarsXmlProtocol,
-  toolResponsePromptTemplate: morphFormatToolResponseAsXml,
-  toolSystemPromptTemplate(tools: LanguageModelV4FunctionTool[]) {
-    const toolsJson = JSON.stringify(tools);
-    const basePrompt = `You have access to callable functions (tools).
+  protocol: qwen3CoderProtocol,
+  historyStrategy: {
+    mode: "converted-text",
+    toolResponsePromptTemplate: morphFormatToolResponseAsXml,
+  },
+  promptStrategy: {
+    mode: "text",
+    template(tools: LanguageModelV4FunctionTool[]) {
+      const toolsJson = JSON.stringify(tools);
+      const basePrompt = `You have access to callable functions (tools).
 Tool list/context:
 ${toolsJson}
 
@@ -126,12 +131,13 @@ EXECUTION RULES
 - After calling a function, STOP and wait for the result
 - Do NOT add extra text before or after tool calls`;
 
-    const inputExamplesText = renderUiTarsInputExamples(tools);
-    if (inputExamplesText.length === 0) {
-      return basePrompt;
-    }
+      const inputExamplesText = renderUiTarsInputExamples(tools);
+      if (inputExamplesText.length === 0) {
+        return basePrompt;
+      }
 
-    return `${basePrompt}\n\n${inputExamplesText}`;
+      return `${basePrompt}\n\n${inputExamplesText}`;
+    },
   },
 });
 

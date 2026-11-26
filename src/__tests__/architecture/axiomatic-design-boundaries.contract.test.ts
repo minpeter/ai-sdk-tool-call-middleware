@@ -37,9 +37,11 @@ function resolveRelativeImport(fromFile: string, specifier: string): string {
   return relative(SRC_ROOT, base).replaceAll("\\", "/");
 }
 
-function collectEdges(): Array<{ from: string; to: string }> {
+function collectEdges(
+  sourceFiles: string[]
+): Array<{ from: string; to: string }> {
   const edges: Array<{ from: string; to: string }> = [];
-  for (const fullPath of collectSourceFiles(SRC_ROOT)) {
+  for (const fullPath of sourceFiles) {
     const from = relative(SRC_ROOT, fullPath).replaceAll("\\", "/");
     const source = readFileSync(fullPath, "utf8");
     for (const match of source.matchAll(RELATIVE_IMPORT_RE)) {
@@ -51,6 +53,75 @@ function collectEdges(): Array<{ from: string; to: string }> {
     }
   }
   return edges;
+}
+
+function findStronglyConnectedCycles(
+  nodes: string[],
+  edges: Array<{ from: string; to: string }>
+): string[][] {
+  const adjacency = new Map<string, string[]>();
+  for (const node of nodes) {
+    adjacency.set(node, []);
+  }
+  for (const { from, to } of edges) {
+    adjacency.get(from)?.push(to);
+  }
+
+  let nextIndex = 0;
+  const indices = new Map<string, number>();
+  const lowlink = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const cycles: string[][] = [];
+
+  const strongConnect = (node: string): void => {
+    indices.set(node, nextIndex);
+    lowlink.set(node, nextIndex);
+    nextIndex += 1;
+    stack.push(node);
+    onStack.add(node);
+
+    for (const neighbor of adjacency.get(node) ?? []) {
+      if (!indices.has(neighbor)) {
+        strongConnect(neighbor);
+        lowlink.set(
+          node,
+          Math.min(lowlink.get(node) ?? 0, lowlink.get(neighbor) ?? 0)
+        );
+      } else if (onStack.has(neighbor)) {
+        lowlink.set(
+          node,
+          Math.min(lowlink.get(node) ?? 0, indices.get(neighbor) ?? 0)
+        );
+      }
+    }
+
+    if (lowlink.get(node) === indices.get(node)) {
+      const component: string[] = [];
+      let member: string | undefined;
+      do {
+        member = stack.pop();
+        if (member !== undefined) {
+          onStack.delete(member);
+          component.push(member);
+        }
+      } while (member !== undefined && member !== node);
+
+      const hasSelfLoop =
+        component.length === 1 && (adjacency.get(node) ?? []).includes(node);
+      if (component.length > 1 || hasSelfLoop) {
+        cycles.push(component.sort());
+      }
+    }
+  };
+
+  for (const node of nodes) {
+    if (!indices.has(node)) {
+      strongConnect(node);
+    }
+  }
+
+  return cycles;
 }
 
 type LayerName =
@@ -80,6 +151,12 @@ const LAYER_RANK: Record<LayerName, number> = {
   community: 8,
 };
 
+const KNOWN_ENTRY_FILES = new Set([
+  "index.ts",
+  "preconfigured-middleware.ts",
+  "tool-call-middleware.ts",
+]);
+
 function classifyLayer(relPath: string): LayerName {
   if (relPath.startsWith("shared/")) {
     return "shared";
@@ -96,10 +173,7 @@ function classifyLayer(relPath: string): LayerName {
   if (relPath.startsWith("core/utils/")) {
     return "core/utils";
   }
-  if (
-    relPath === "core/protocols/protocol-interface.ts" ||
-    relPath === "core/protocols/protocol-fast-paths.ts"
-  ) {
+  if (relPath === "core/protocols/protocol-interface.ts") {
     return "core/protocols/contract";
   }
   if (relPath.startsWith("core/protocols/")) {
@@ -111,19 +185,49 @@ function classifyLayer(relPath: string): LayerName {
   if (
     relPath === "generate-handler.ts" ||
     relPath === "stream-handler.ts" ||
-    relPath === "transform-handler.ts" ||
-    relPath === "k-exaone-236b-transform.ts"
+    relPath === "transform-handler.ts"
   ) {
     return "handlers";
   }
   if (relPath.startsWith("community/")) {
     return "community";
   }
-  return "entry";
+  if (KNOWN_ENTRY_FILES.has(relPath)) {
+    return "entry";
+  }
+  throw new Error(
+    `Unclassified source file for architecture contract: ${relPath}`
+  );
 }
 
 describe("MIT Axiomatic Design architectural boundaries", () => {
-  const edges = collectEdges();
+  const sourceFiles = collectSourceFiles(SRC_ROOT);
+  const relSourceFiles = sourceFiles.map((fullPath) =>
+    relative(SRC_ROOT, fullPath).replaceAll("\\", "/")
+  );
+  const edges = collectEdges(sourceFiles);
+
+  it("maps every source file explicitly to a known architectural layer", () => {
+    for (const relPath of relSourceFiles) {
+      expect(() => classifyLayer(relPath)).not.toThrow();
+    }
+  });
+
+  it("keeps core/utils and core/protocols completely organized without loose implementation files", () => {
+    const looseUtils = readdirSync(join(SRC_ROOT, "core/utils"), {
+      withFileTypes: true,
+    })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name);
+    const looseProtocols = readdirSync(join(SRC_ROOT, "core/protocols"), {
+      withFileTypes: true,
+    })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name);
+
+    expect(looseUtils).toEqual([]);
+    expect(looseProtocols).toEqual(["protocol-interface.ts"]);
+  });
 
   it("keeps leaf packages (shared, rjson) completely uncoupled from other internal modules", () => {
     const violations = edges.filter(({ from, to }) => {
@@ -146,7 +250,9 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
     const rxmlViolations = edges.filter(
       ({ from, to }) =>
         classifyLayer(from) === "rxml" &&
-        !["rxml", "schema-coerce", "shared"].includes(classifyLayer(to))
+        !["rxml", "schema-coerce", "shared", "rjson"].includes(
+          classifyLayer(to)
+        )
     );
     expect(schemaCoerceViolations).toEqual([]);
     expect(rxmlViolations).toEqual([]);
@@ -175,10 +281,10 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps generate-handler and stream-handler decoupled from concrete protocol implementations", () => {
+  it("keeps generate-handler, stream-handler, and transform-handler decoupled from concrete protocol implementations", () => {
     const violations = edges.filter(
       ({ from, to }) =>
-        (from === "generate-handler.ts" || from === "stream-handler.ts") &&
+        classifyLayer(from) === "handlers" &&
         classifyLayer(to) === "core/protocols/impl"
     );
     expect(violations).toEqual([]);
@@ -195,65 +301,73 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
     expect(upwardViolations).toEqual([]);
   });
 
-  it("enforces core/utils internal subdomain boundaries (codecs, transport, security, coercion, xml, recovery)", () => {
+  it("enforces file-level acyclicity (zero strongly connected dependency cycles)", () => {
+    const cycles = findStronglyConnectedCycles(relSourceFiles, edges);
+    expect(cycles).toEqual([]);
+  });
+
+  it("enforces core/utils internal subdomain boundaries", () => {
+    const subdomainOf = (relPath: string): string | null => {
+      if (!relPath.startsWith("core/utils/")) {
+        return null;
+      }
+      return relPath.split("/")[2] ?? null;
+    };
+
+    const allowedDeps: Record<string, Set<string>> = {
+      codecs: new Set(["codecs"]),
+      security: new Set(["security"]),
+      xml: new Set(["xml", "primitives"]),
+      primitives: new Set(["primitives", "security"]),
+      coercion: new Set(["coercion", "security"]),
+      response: new Set(["response", "primitives"]),
+      diagnostics: new Set(["diagnostics", "primitives"]),
+      transport: new Set([
+        "transport",
+        "diagnostics",
+        "primitives",
+        "security",
+        "coercion",
+      ]),
+      streaming: new Set(["streaming", "security", "coercion"]),
+      recovery: new Set([
+        "recovery",
+        "primitives",
+        "security",
+        "coercion",
+        "streaming",
+        "response",
+      ]),
+    };
+
     const violations = edges.filter(({ from, to }) => {
-      if (!(from.startsWith("core/utils/") && to.startsWith("core/utils/"))) {
+      const fromSub = subdomainOf(from);
+      const toSub = subdomainOf(to);
+      if (!(fromSub && toSub)) {
         return false;
       }
-      if (from.startsWith("core/utils/codecs/")) {
-        return !to.startsWith("core/utils/codecs/");
+      const allowed = allowedDeps[fromSub];
+      if (!allowed) {
+        return true;
       }
-      if (from.startsWith("core/utils/security/")) {
-        return !to.startsWith("core/utils/security/");
-      }
-      if (from.startsWith("core/utils/transport/")) {
-        return !(
-          to.startsWith("core/utils/transport/") ||
-          to === "core/utils/on-error.ts"
-        );
-      }
-      if (from.startsWith("core/utils/xml/")) {
-        return !(
-          to.startsWith("core/utils/xml/") ||
-          to === "core/utils/regex-constants.ts"
-        );
-      }
-      if (from.startsWith("core/utils/coercion/")) {
-        return !(
-          to.startsWith("core/utils/coercion/") ||
-          to.startsWith("core/utils/security/")
-        );
-      }
-      return false;
+      return !allowed.has(toSub);
     });
     expect(violations).toEqual([]);
   });
 
-  it("restricts cross-protocol dependencies to approved protocol entrypoints only", () => {
+  it("restricts cross-protocol dependencies to approved source->target entrypoints only", () => {
     const protocolFamily = (relPath: string): string | null => {
       if (!relPath.startsWith("core/protocols/")) {
         return null;
       }
-      const name = relPath.slice("core/protocols/".length);
-      for (const family of [
-        "glm5",
-        "hermes",
-        "morph-xml",
-        "yaml-xml",
-        "qwen3coder",
-        "k-exaone",
-      ]) {
-        if (name.startsWith(family)) {
-          return family;
-        }
-      }
-      return null;
+      const parts = relPath.split("/");
+      return parts.length >= 4 ? (parts[2] ?? null) : null;
     };
 
-    const allowedCrossFamilyTargets = new Set([
-      "core/protocols/qwen3coder-protocol.ts",
-      "core/protocols/hermes-protocol.ts",
-      "core/protocols/hermes-call-parsing.ts",
+    const allowedCrossFamilyEdges = new Set([
+      "k-exaone->core/protocols/qwen3coder/protocol.ts",
+      "k-exaone->core/protocols/hermes/protocol.ts",
+      "k-exaone->core/protocols/hermes/call-parsing.ts",
     ]);
 
     const violations = edges.filter(({ from, to }) => {
@@ -262,7 +376,7 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
       if (!(fromFamily && toFamily) || fromFamily === toFamily) {
         return false;
       }
-      return !allowedCrossFamilyTargets.has(to);
+      return !allowedCrossFamilyEdges.has(`${fromFamily}->${to}`);
     });
     expect(violations).toEqual([]);
   });

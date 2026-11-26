@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import {
   assertCanonicalAiSdkEventOrder,
@@ -13,7 +13,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
   const fixture = toolInputStreamFixtures.json;
   const protocol = qwen3CoderProtocol();
 
-  it("Qwen3CoderToolParser streams tool input deltas and emits matching tool-call id", async () => {
+  it("qwen3CoderProtocol streams tool input deltas and emits matching tool-call id", async () => {
     const out = await runProtocolTextDeltaStream({
       protocol,
       tools: fixture.tools,
@@ -53,7 +53,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(leakedText).not.toContain("</tool_call");
   });
 
-  it("Qwen3CoderToolParser preserves canonical order for all emitted AI SDK stream events", async () => {
+  it("qwen3CoderProtocol preserves canonical order for all emitted AI SDK stream events", async () => {
     const out = await runProtocolTextDeltaStream({
       protocol,
       tools: fixture.tools,
@@ -69,7 +69,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     assertCoreAiSdkEventCoverage(out);
   });
 
-  it("Qwen3CoderToolParser preserves non-contiguous repeated parameters in streams", async () => {
+  it("qwen3CoderProtocol preserves non-contiguous repeated parameters in streams", async () => {
     const out = await runProtocolTextDeltaStream({
       protocol,
       tools: [],
@@ -96,7 +96,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 
-  it("Qwen3CoderToolParser streams tool calls when <tool_call> wrapper is missing", async () => {
+  it("qwen3CoderProtocol streams tool calls when <tool_call> wrapper is missing", async () => {
     const out = await runProtocolTextDeltaStream({
       protocol,
       tools: fixture.tools,

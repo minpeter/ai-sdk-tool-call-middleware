@@ -174,8 +174,8 @@ class AppWorldFullNativeTest(unittest.TestCase):
         paths = set(appworld_runner.runtime_source_paths(repo_root))
         self.assertTrue(
             {
-                Path("src/core/protocols/glm5-call-parsing.ts"),
-                Path("src/core/utils/provider-options.ts"),
+                Path("src/core/protocols/glm5/call-parsing.ts"),
+                Path("src/core/utils/transport/provider-options.ts"),
                 Path("src/generate-handler.ts"),
                 Path("src/stream-handler.ts"),
                 Path("src/transform-handler.ts"),

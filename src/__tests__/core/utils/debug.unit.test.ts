@@ -4,8 +4,8 @@ import {
   logParsedSummary,
   logParseFailure,
   logRawChunk,
-} from "../../../core/utils/debug";
-import { REDACTED_SENSITIVE_TOOL_CALL_TEXT } from "../../../core/utils/protocol-utils";
+} from "../../../core/utils/diagnostics/debug";
+import { REDACTED_SENSITIVE_TOOL_CALL_TEXT } from "../../../core/utils/primitives/protocol-utils";
 
 describe("debug logging", () => {
   const previousDebug = process.env.DEBUG_PARSER_MW;

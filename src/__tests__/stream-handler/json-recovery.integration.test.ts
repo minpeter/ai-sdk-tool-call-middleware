@@ -5,8 +5,8 @@ import type {
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { wrapStream } from "../../stream-handler";
 import { stopFinishReason, zeroUsage } from "../test-helpers";
 
@@ -64,7 +64,7 @@ describe("wrapStream bare-JSON tool call recovery", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -119,7 +119,7 @@ describe("wrapStream bare-JSON tool call recovery", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -166,7 +166,7 @@ describe("wrapStream bare-JSON tool call recovery", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -208,9 +208,7 @@ describe("wrapStream toolChoice none passthrough", () => {
       doGenerate: vi.fn(),
       params: {
         providerOptions: {
-          toolCallMiddleware: {
-            toolChoice: { type: "none" },
-          },
+          toolCallMiddleware: { _internal: { toolChoice: { type: "none" } } },
         },
       },
     });

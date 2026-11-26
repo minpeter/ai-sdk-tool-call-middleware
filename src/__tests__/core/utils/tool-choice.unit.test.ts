@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   parseToolChoicePayload,
   resolveToolChoiceSelection,
-} from "../../../core/utils/tool-choice";
+} from "../../../core/utils/transport/tool-choice";
 
 describe("tool-choice utils", () => {
   it("parses and coerces valid toolChoice payload", () => {

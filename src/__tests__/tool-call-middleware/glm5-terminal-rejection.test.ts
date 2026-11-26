@@ -4,9 +4,9 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { glm5Protocol } from "../../core/protocols/glm5-protocol";
+import { glm5Protocol } from "../../core/protocols/glm5/protocol";
 import type { ParserOptions } from "../../core/protocols/protocol-interface";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { wrapGenerate } from "../../generate-handler";
 import { wrapStream } from "../../stream-handler";
 import { stopFinishReason, zeroUsage } from "../test-helpers";
@@ -33,8 +33,8 @@ function params(parserOptions: ParserOptions = {}) {
   return {
     providerOptions: {
       toolCallMiddleware: {
-        originalTools: originalToolsSchema.encode(tools),
         ...parserOptions,
+        _internal: { originalTools: originalToolsSchema.encode(tools) },
       },
     },
   };

@@ -1,7 +1,7 @@
 import type { LanguageModelV4Prompt } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { glm5SystemPromptTemplate } from "../../core/prompts/glm5-prompt";
-import { glm5Protocol } from "../../core/protocols/glm5-protocol";
+import { glm5Protocol } from "../../core/protocols/glm5/protocol";
 import { glm5ToolMiddleware } from "../../preconfigured-middleware";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
@@ -71,10 +71,13 @@ describe("GLM-5.2 chat-template alignment", () => {
     ];
 
     const middleware = createToolMiddleware({
-      historyMode: "provider-native",
-      placement: "standalone-first",
       protocol: glm5Protocol,
-      toolSystemPromptTemplate: glm5SystemPromptTemplate,
+      promptStrategy: {
+        mode: "text",
+        template: glm5SystemPromptTemplate,
+        placement: "standalone-first",
+      },
+      historyStrategy: { mode: "provider-native" },
     });
     const transformParams = requireTransformParams(middleware.transformParams);
     const result = await transformParams({
@@ -136,10 +139,13 @@ describe("GLM-5.2 chat-template alignment", () => {
       },
     ];
     const middleware = createToolMiddleware({
-      historyMode: "provider-native",
-      placement: "standalone-first",
       protocol: glm5Protocol,
-      toolSystemPromptTemplate: glm5SystemPromptTemplate,
+      promptStrategy: {
+        mode: "text",
+        template: glm5SystemPromptTemplate,
+        placement: "standalone-first",
+      },
+      historyStrategy: { mode: "provider-native" },
     });
     const transformParams = requireTransformParams(middleware.transformParams);
 
@@ -220,7 +226,7 @@ describe("GLM-5.2 chat-template alignment", () => {
       expect(result.responseFormat).toMatchObject({ type: "json" });
       expect(
         (result.providerOptions as Record<string, any>).toolCallMiddleware
-          .toolChoice
+          ._internal.toolChoice
       ).toEqual(toolChoice);
       expect(
         result.prompt.some(
@@ -234,10 +240,13 @@ describe("GLM-5.2 chat-template alignment", () => {
 
   it("keeps the existing forced-choice prompt behavior for custom middleware by default", async () => {
     const middleware = createToolMiddleware({
-      historyMode: "provider-native",
-      placement: "standalone-first",
       protocol: glm5Protocol,
-      toolSystemPromptTemplate: glm5SystemPromptTemplate,
+      promptStrategy: {
+        mode: "text",
+        template: glm5SystemPromptTemplate,
+        placement: "standalone-first",
+      },
+      historyStrategy: { mode: "provider-native" },
     });
     const transformParams = requireTransformParams(middleware.transformParams);
 

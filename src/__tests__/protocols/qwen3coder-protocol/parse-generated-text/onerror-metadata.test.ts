@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import { emptyFunctionTools } from "../../../fixtures/function-tools";
 
 describe("qwen3CoderProtocol parseGeneratedText onError metadata", () => {
@@ -18,7 +18,7 @@ describe("qwen3CoderProtocol parseGeneratedText onError metadata", () => {
 
     const parseFail = onError.mock.calls.find(([message]) =>
       String(message).includes(
-        "Could not process Qwen3CoderToolParser XML tool call"
+        "Could not process qwen3CoderProtocol XML tool call"
       )
     );
     expect(parseFail).toBeDefined();
@@ -48,7 +48,7 @@ describe("qwen3CoderProtocol parseGeneratedText onError metadata", () => {
 
     const parseFail = onError.mock.calls.find(([message]) =>
       String(message).includes(
-        "Could not process Qwen3CoderToolParser XML tool call"
+        "Could not process qwen3CoderProtocol XML tool call"
       )
     );
     expect(parseFail).toBeDefined();

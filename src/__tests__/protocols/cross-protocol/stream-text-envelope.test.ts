@@ -4,10 +4,10 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-import { hermesProtocol } from "../../../core/protocols/hermes-protocol";
-import { morphXmlProtocol } from "../../../core/protocols/morph-xml-protocol";
-import { qwen3CoderProtocol } from "../../../core/protocols/qwen3coder-protocol";
-import { yamlXmlProtocol } from "../../../core/protocols/yaml-xml-protocol";
+import { hermesProtocol } from "../../../core/protocols/hermes/protocol";
+import { morphXmlProtocol } from "../../../core/protocols/morph-xml/protocol";
+import { qwen3CoderProtocol } from "../../../core/protocols/qwen3coder/protocol";
+import { yamlXmlProtocol } from "../../../core/protocols/yaml-xml/protocol";
 import { pipeWithTransformer } from "../../test-helpers";
 
 // Providers emit text-start/text-delta/text-end envelopes. The protocol

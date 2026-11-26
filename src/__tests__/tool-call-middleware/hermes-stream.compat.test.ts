@@ -2,7 +2,7 @@ import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
 
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { mockUsage, stopFinishReason } from "../test-helpers";
 
@@ -13,7 +13,7 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 describe("createToolMiddleware hermes stream compat", () => {
   const middleware = createToolMiddleware({
     protocol: hermesProtocol,
-    toolSystemPromptTemplate: () => "",
+    promptStrategy: { mode: "text", template: () => "" },
   });
 
   const runMiddleware = (stream: ReadableStream<LanguageModelV4StreamPart>) => {

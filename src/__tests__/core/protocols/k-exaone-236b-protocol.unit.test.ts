@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-import { kExaone236BProtocol } from "../../../core/protocols/k-exaone-236b-protocol";
+import { kExaone236BProtocol } from "../../../core/protocols/k-exaone/k-exaone-236b-protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,

@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { escapeRegExp } from "../../../shared/regex";
 import type { ProtocolToolCallResolver } from "../../../shared/tool-call-resolver";
-import { generateToolCallId } from "../id";
+import { generateToolCallId } from "../primitives/id";
 import {
   hasPrototypeSensitiveStructuralKey,
   toolCallInputHasPrototypeSensitiveKey,
@@ -23,10 +23,7 @@ import {
   RECOVERABLE_QWEN_CALL_TAGS,
 } from "./generated-text-qwen-markup";
 import { extractSensitiveIncompleteToolCallDropSpans } from "./generated-text-sensitive-candidates";
-import {
-  extractSensitiveYamlToolCallBlockDropSpans,
-  extractYamlToolCallBlockSpans,
-} from "./generated-text-yaml-markup";
+import { extractYamlToolCallSpans } from "./generated-text-yaml-markup";
 import {
   hasArgumentsEnvelope,
   hasNameEnvelope,
@@ -35,6 +32,7 @@ import {
   type RecoverySpan,
   readToolArgsField,
   readToolNameField,
+  TOOL_ARGS_KEYS,
   TOOL_NAME_KEYS,
   type ToolCallCandidate,
   toToolCallCandidate,
@@ -255,7 +253,7 @@ function resolveCandidatePayload(
     resolver &&
     looksLikeKnownToolCandidate(parsed, tools) &&
     isRecord(parsed) &&
-    Object.hasOwn(parsed, "arguments")
+    TOOL_ARGS_KEYS.some((key) => Object.hasOwn(parsed, key))
   ) {
     const resolved = resolver(candidate.text, tools);
     if (resolved.ok) {
@@ -312,8 +310,7 @@ export function recoverToolCallFromJsonCandidatesWithStatus(
   }
   spans.push(...extractFunctionBlockCallSpans(text, tools));
   spans.push(...extractSensitiveFunctionBlockDropSpans(text, tools));
-  spans.push(...extractYamlToolCallBlockSpans(text, tools));
-  spans.push(...extractSensitiveYamlToolCallBlockDropSpans(text, tools));
+  spans.push(...extractYamlToolCallSpans(text, tools));
   spans.push(...extractSensitiveIncompleteToolCallDropSpans(text, tools));
   spans.sort((a, b) =>
     a.startIndex === b.startIndex

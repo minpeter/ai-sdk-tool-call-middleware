@@ -2,7 +2,7 @@ import type {
   JSONSchema7,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
-import type { OnErrorFn } from "../on-error";
+import type { OnErrorFn } from "../diagnostics/on-error";
 
 export interface EncodedOriginalTool {
   inputSchema: string; // stringified JSONSchema7

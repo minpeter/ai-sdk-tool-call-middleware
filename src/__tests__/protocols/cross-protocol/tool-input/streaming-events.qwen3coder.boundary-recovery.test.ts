@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import {
   extractToolInputTimeline,
@@ -15,7 +15,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     return runProtocolTextDeltaStream({ protocol, tools, chunks });
   }
 
-  it("Qwen3CoderToolParser handles missing </function> inside <tool_call> during streaming", async () => {
+  it("qwen3CoderProtocol handles missing </function> inside <tool_call> during streaming", async () => {
     const out = await runQwenStream([
       "Before ",
       "<tool_call>\n  <function=get_weather>\n    <parameter=location>Seoul</parameter>\n    <parameter=unit>celsius</parameter>\n</tool_call>",
@@ -48,7 +48,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(leakedText).not.toContain("</tool_call");
   });
 
-  it("Qwen3CoderToolParser handles a missing </function> boundary followed by another function", async () => {
+  it("qwen3CoderProtocol handles a missing </function> boundary followed by another function", async () => {
     const out = await runQwenStream(
       [
         "<tool_call><function=alpha><parameter=x>1</parameter><function=beta><parameter=y>2</parameter></function></tool_call>",
@@ -76,7 +76,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(text).not.toContain("<function=beta");
   });
 
-  it("Qwen3CoderToolParser ignores stray </tool_call> before an implicit <function> call", async () => {
+  it("qwen3CoderProtocol ignores stray </tool_call> before an implicit <function> call", async () => {
     const out = await runQwenStream(
       [
         "</tool_call>\n",
@@ -103,7 +103,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(leakedText).not.toContain("</tool_call>");
   });
 
-  it("Qwen3CoderToolParser recovers missing </parameter> during streaming by using next-tag boundary", async () => {
+  it("qwen3CoderProtocol recovers missing </parameter> during streaming by using next-tag boundary", async () => {
     const out = await runQwenStream(
       [
         "<tool_call><function=alpha><parameter=a>1<parameter=b>2</parameter></function></tool_call>",
@@ -124,7 +124,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({ a: "1", b: "2" });
   });
 
-  it("Qwen3CoderToolParser recovers final missing </parameter> before </function> during streaming", async () => {
+  it("qwen3CoderProtocol recovers final missing </parameter> before </function> during streaming", async () => {
     const out = await runQwenStream(
       ["<tool_call><function=alpha><parameter=x>1</function></tool_call>"],
       []
@@ -143,7 +143,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(JSON.parse(toolCall?.input ?? "{}")).toEqual({ x: "1" });
   });
 
-  it("Qwen3CoderToolParser recovers final missing </parameter> before </call>/</tool>/</invoke> during streaming", async () => {
+  it("qwen3CoderProtocol recovers final missing </parameter> before </call>/</tool>/</invoke> during streaming", async () => {
     const out = await runQwenStream(
       [
         "<tool_call><call=alpha><parameter=x>1</call><tool=beta><parameter=y>2</tool><invoke=gamma><parameter=z>3</invoke></tool_call>",
@@ -166,7 +166,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(JSON.parse(toolCalls[2]?.input ?? "{}")).toEqual({ z: "3" });
   });
 
-  it("Qwen3CoderToolParser supports multiple function calls inside a single <tool_call> block in-order", async () => {
+  it("qwen3CoderProtocol supports multiple function calls inside a single <tool_call> block in-order", async () => {
     const out = await runQwenStream(
       [
         "prefix ",
@@ -203,7 +203,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     }
   });
 
-  it("Qwen3CoderToolParser ends active call when next <function> starts without </function>", async () => {
+  it("qwen3CoderProtocol ends active call when next <function> starts without </function>", async () => {
     const out = await runQwenStream(
       [
         "<tool_call><function=alpha><parameter=x>1</parameter><function=beta><parameter=y>2</parameter></tool_call>",
@@ -224,7 +224,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(JSON.parse(toolCalls[1]?.input ?? "{}")).toEqual({ y: "2" });
   });
 
-  it("Qwen3CoderToolParser force-completes unclosed tool block at finish when content is parseable", async () => {
+  it("qwen3CoderProtocol force-completes unclosed tool block at finish when content is parseable", async () => {
     const out = await runQwenStream([
       "<tool_call>\n  <function=get_weather>\n    <parameter=location>Busan</parameter>\n    <parameter=unit>celsius</parameter>\n",
     ]);
@@ -252,7 +252,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(leakedText).not.toContain("<tool_call");
   });
 
-  it("Qwen3CoderToolParser preserves trailing text when implicit call is force-completed at finish", async () => {
+  it("qwen3CoderProtocol preserves trailing text when implicit call is force-completed at finish", async () => {
     const out = await runQwenStream([
       "before <function=get_weather><parameter=location>Busan</parameter> after",
     ]);

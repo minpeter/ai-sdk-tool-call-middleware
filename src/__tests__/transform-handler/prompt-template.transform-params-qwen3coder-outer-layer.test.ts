@@ -8,7 +8,7 @@ import {
   formatToolResponseAsQwen3CoderXml,
   qwen3coderSystemPromptTemplate,
 } from "../../core/prompts/qwen3coder-prompt";
-import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder/protocol";
 import { transformParams } from "../../transform-handler";
 
 describe("transformParams qwen3coder outer-layer transform", () => {
@@ -65,12 +65,18 @@ describe("transformParams qwen3coder outer-layer transform", () => {
 
     const transformed = transformParams({
       protocol: qwen3CoderProtocol(),
-      placement: "first",
-      toolSystemPromptTemplate: qwen3coderSystemPromptTemplate,
-      toolResponsePromptTemplate: formatToolResponseAsQwen3CoderXml,
       params: {
         prompt: inputPrompt,
         tools,
+      },
+      promptStrategy: {
+        mode: "text",
+        template: qwen3coderSystemPromptTemplate,
+        placement: "first",
+      },
+      historyStrategy: {
+        mode: "converted-text",
+        toolResponsePromptTemplate: formatToolResponseAsQwen3CoderXml,
       },
     });
 

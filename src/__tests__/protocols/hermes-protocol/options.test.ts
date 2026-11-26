@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hermesProtocol } from "../../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../../core/protocols/hermes/protocol";
 
 describe("hermesProtocol options", () => {
   it.each(["toolCallStart", "toolCallEnd"] as const)(

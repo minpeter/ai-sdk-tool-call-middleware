@@ -8,7 +8,7 @@ import {
   formatToolResponseAsHermes,
   hermesSystemPromptTemplate,
 } from "../../core/prompts/hermes-prompt";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { transformParams } from "../../transform-handler";
 
 describe("transformParams hermes outer-layer transform", () => {
@@ -65,12 +65,18 @@ describe("transformParams hermes outer-layer transform", () => {
 
     const transformed = transformParams({
       protocol: hermesProtocol(),
-      placement: "first",
-      toolSystemPromptTemplate: hermesSystemPromptTemplate,
-      toolResponsePromptTemplate: formatToolResponseAsHermes,
       params: {
         prompt: inputPrompt,
         tools,
+      },
+      promptStrategy: {
+        mode: "text",
+        template: hermesSystemPromptTemplate,
+        placement: "first",
+      },
+      historyStrategy: {
+        mode: "converted-text",
+        toolResponsePromptTemplate: formatToolResponseAsHermes,
       },
     });
 

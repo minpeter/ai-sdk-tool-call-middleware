@@ -6,15 +6,15 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
-import { glm5Protocol } from "../../core/protocols/glm5-protocol";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
-import { kExaone2Protocol } from "../../core/protocols/k-exaone-2-protocol";
-import { kExaone236BProtocol } from "../../core/protocols/k-exaone-236b-protocol";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
-import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
-import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
-import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import { glm5Protocol } from "../../core/protocols/glm5/protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
+import { kExaone2Protocol } from "../../core/protocols/k-exaone/k-exaone-2-protocol";
+import { kExaone236BProtocol } from "../../core/protocols/k-exaone/k-exaone-236b-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml/protocol";
+import type { TCMProtocol } from "../../core/protocols/protocol-interface";
+import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder/protocol";
+import { yamlXmlProtocol } from "../../core/protocols/yaml-xml/protocol";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { wrapStream } from "../../stream-handler";
 import { stopFinishReason, zeroUsage } from "../test-helpers";
 
@@ -41,7 +41,7 @@ const source = {
   url: "https://example.com/seoul",
 } as const;
 
-const protocols: Array<{ name: string; protocol: TCMCoreProtocol }> = [
+const protocols: Array<{ name: string; protocol: TCMProtocol }> = [
   { name: "hermes", protocol: hermesProtocol() },
   { name: "morph-xml", protocol: morphXmlProtocol() },
   { name: "yaml-xml", protocol: yamlXmlProtocol() },
@@ -52,7 +52,7 @@ const protocols: Array<{ name: string; protocol: TCMCoreProtocol }> = [
 ];
 
 async function runStream(
-  protocol: TCMCoreProtocol,
+  protocol: TCMProtocol,
   parts: LanguageModelV4StreamPart[]
 ) {
   const { stream } = await wrapStream({
@@ -74,7 +74,7 @@ async function runStream(
     params: {
       providerOptions: {
         toolCallMiddleware: {
-          originalTools: originalToolsSchema.encode(tools),
+          _internal: { originalTools: originalToolsSchema.encode(tools) },
         },
       },
     },
@@ -307,7 +307,7 @@ describe("wrapStream preserves text citations", () => {
   it.each(["provider-text", "custom-text"])(
     "restores provider citations when a custom parser returns an empty array (output ID: %s)",
     async (id) => {
-      const protocol: TCMCoreProtocol = {
+      const protocol: TCMProtocol = {
         ...hermesProtocol(),
         createStreamParser: () =>
           new TransformStream<

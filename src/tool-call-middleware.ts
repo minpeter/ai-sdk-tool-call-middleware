@@ -1,51 +1,29 @@
 import type {
   LanguageModelV4CallOptions,
-  LanguageModelV4FunctionTool,
   LanguageModelV4Middleware,
-  LanguageModelV4Prompt,
 } from "@ai-sdk/provider";
-import type { ToolResultPart } from "@ai-sdk/provider-utils";
-import type { ToolResponsePromptTemplateResult } from "./core/prompts/shared/tool-role-to-user-message";
-import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
-import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
+import {
+  isProtocolFactory,
+  type TCMProtocol,
+} from "./core/protocols/protocol-interface";
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
 import { wrapStream as wrapStreamHandler } from "./stream-handler";
 import {
-  type ToolCallHistoryMode,
-  type ToolSystemPromptPlacement,
+  type ToolHistoryStrategy,
+  type ToolPromptStrategy,
   transformParams,
 } from "./transform-handler";
 
 export function createToolMiddleware({
   protocol,
-  toolSystemPromptTemplate,
-  toolSystemPromptMessages,
-  toolResponsePromptTemplate,
-  placement = "last",
-  historyMode = "converted-text",
-  suppressToolSystemPromptForForcedChoice = false,
+  promptStrategy,
+  historyStrategy = { mode: "converted-text" },
 }: {
-  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
-  toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
-  toolSystemPromptMessages?: (
-    tools: LanguageModelV4FunctionTool[]
-  ) => LanguageModelV4Prompt;
-  toolResponsePromptTemplate?: (
-    toolResult: ToolResultPart
-  ) => ToolResponsePromptTemplateResult;
-  placement?: ToolSystemPromptPlacement;
-  historyMode?: ToolCallHistoryMode;
-  /**
-   * Omit the protocol-specific tool catalog when `toolChoice` is `required` or
-   * selects a fixed tool. The forced-choice handlers request JSON through
-   * `responseFormat`, so protocols that instruct a different output grammar
-   * can opt out of issuing contradictory system instructions.
-   */
-  suppressToolSystemPromptForForcedChoice?: boolean;
+  protocol: TCMProtocol | (() => TCMProtocol);
+  promptStrategy: ToolPromptStrategy;
+  historyStrategy?: ToolHistoryStrategy;
 }): LanguageModelV4Middleware {
-  const resolvedProtocol = isTCMProtocolFactory(protocol)
-    ? protocol()
-    : protocol;
+  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
   return {
     specificationVersion: "v4",
@@ -65,12 +43,8 @@ export function createToolMiddleware({
     transformParams: async ({ params }): Promise<LanguageModelV4CallOptions> =>
       transformParams({
         protocol: resolvedProtocol,
-        toolSystemPromptTemplate,
-        toolSystemPromptMessages,
-        toolResponsePromptTemplate,
-        placement,
-        historyMode,
-        suppressToolSystemPromptForForcedChoice,
+        promptStrategy,
+        historyStrategy,
         params,
       }),
   };

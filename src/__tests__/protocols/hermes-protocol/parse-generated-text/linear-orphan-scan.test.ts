@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../../../core/protocols/hermes/protocol";
 
 const malformedUnit = "<tool_call>{\n";
 const closedMalformedUnit = "<tool_call>{}</tool_call>";

@@ -1,7 +1,7 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 import YAML from "yaml";
-import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml/protocol";
 import {
   extractTextDeltas,
   extractToolInputDeltas,

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { createOperationTools } from "../fixtures/function-tools";
 import { requireTransformParams } from "../test-helpers";
@@ -30,9 +30,8 @@ const _REGEX_TOOL_CALL_WORD = /tool_call/;
 describe("placement last behaviour (default)", () => {
   it("does not append empty system message when rendered system prompt is empty", async () => {
     const mw = createToolMiddleware({
-      placement: "last",
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+      promptStrategy: { mode: "text", template: () => "", placement: "last" },
     });
     const transformParams = requireTransformParams(mw.transformParams);
 
@@ -50,9 +49,12 @@ describe("placement last behaviour (default)", () => {
 
   it("default last: appends system at end when no system exists", async () => {
     const mw = createToolMiddleware({
-      placement: "last",
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: (t) => `SYS:${t}`,
+      promptStrategy: {
+        mode: "text",
+        template: (t) => `SYS:${t}`,
+        placement: "last",
+      },
     });
     const tools = createOperationTools();
     const transformParams = requireTransformParams(mw.transformParams);
@@ -81,9 +83,12 @@ describe("placement last behaviour (default)", () => {
 
   it("last: merges with existing system at non-zero index (keeps one system)", async () => {
     const mw = createToolMiddleware({
-      placement: "last",
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: (t) => `SYS:${t}`,
+      promptStrategy: {
+        mode: "text",
+        template: (t) => `SYS:${t}`,
+        placement: "last",
+      },
     });
     const tools = createOperationTools();
     const transformParams = requireTransformParams(mw.transformParams);

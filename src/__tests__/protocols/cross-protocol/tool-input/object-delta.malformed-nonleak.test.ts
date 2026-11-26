@@ -3,11 +3,11 @@ import type {
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
-import type { TCMCoreProtocol } from "../../../../core/protocols/protocol-interface";
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
-import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { hermesProtocol } from "../../../../core/protocols/hermes/protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
+import type { TCMProtocol } from "../../../../core/protocols/protocol-interface";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
+import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml/protocol";
 import {
   extractTextDeltas,
   extractToolInputDeltas,
@@ -51,7 +51,7 @@ const unsafeSchemaTool: LanguageModelV4FunctionTool = {
 
 interface PrototypeSensitiveStreamCase {
   readonly name: string;
-  readonly protocol: TCMCoreProtocol;
+  readonly protocol: TCMProtocol;
   readonly text: string;
 }
 

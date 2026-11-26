@@ -3,7 +3,7 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml/protocol";
 
 const tools: LanguageModelV4FunctionTool[] = [
   {

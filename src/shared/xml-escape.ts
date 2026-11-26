@@ -1,7 +1,15 @@
 const XML_ESCAPE_CANDIDATE_REGEX = /[&<>"']/;
 const XML_MINIMAL_TEXT_CANDIDATE_REGEX = /[&<>]/;
 const XML_MINIMAL_ATTR_CANDIDATE_REGEX = /[&<"']/;
-const XML_CHAR_REF_REGEX = /&#(?:x([0-9a-fA-F]+)|(\d+));/g;
+const XML_ENTITY_REGEX =
+  /&#(?:x([0-9a-fA-F]+)|(\d+));|&(lt|gt|quot|apos|amp);/g;
+const NAMED_XML_ENTITIES: Record<string, string> = {
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  quot: '"',
+};
 const MAX_XML_CODE_POINT = 0x10_ff_ff;
 
 /**
@@ -91,18 +99,26 @@ function decodeXmlCharacterReference(
 }
 
 /**
- * Unescape XML entities and numeric character references.
+ * Unescape XML entities and numeric character references in a single pass
+ * so decoded references (e.g. `&#38;lt;`) are not decoded a second time.
  */
 export function unescapeXml(text: string): string {
   // Fast path: every entity and character reference starts with '&'.
   if (!text.includes("&")) {
     return text;
   }
-  return text
-    .replace(XML_CHAR_REF_REGEX, decodeXmlCharacterReference)
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
+  return text.replace(
+    XML_ENTITY_REGEX,
+    (
+      match: string,
+      hex: string | undefined,
+      decimal: string | undefined,
+      named: string | undefined
+    ) => {
+      if (named !== undefined) {
+        return NAMED_XML_ENTITIES[named] ?? match;
+      }
+      return decodeXmlCharacterReference(match, hex, decimal);
+    }
+  );
 }

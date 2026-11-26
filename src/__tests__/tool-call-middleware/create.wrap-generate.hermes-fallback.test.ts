@@ -1,8 +1,8 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { createToolMiddleware } from "../../tool-call-middleware";
 
 describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
@@ -12,7 +12,7 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
   const createJsonMiddleware = () =>
     createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: mockToolSystemPromptTemplate,
+      promptStrategy: { mode: "text", template: mockToolSystemPromptTemplate },
     });
 
   it("recovers bare JSON tool payload when protocol parsing returns no tool-call", async () => {
@@ -49,7 +49,7 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -100,7 +100,7 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -155,7 +155,7 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -211,7 +211,7 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -256,7 +256,7 @@ describe("createToolMiddleware wrapGenerate hermes JSON fallback", () => {
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },

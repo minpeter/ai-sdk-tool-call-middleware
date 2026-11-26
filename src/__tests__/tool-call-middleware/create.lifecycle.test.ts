@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 
 describe("createToolMiddleware lifecycle", () => {
@@ -10,7 +10,7 @@ describe("createToolMiddleware lifecycle", () => {
   it("creates middleware with required v3 hooks", () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: mockToolSystemPromptTemplate,
+      promptStrategy: { mode: "text", template: mockToolSystemPromptTemplate },
     });
 
     expect(middleware).toBeDefined();

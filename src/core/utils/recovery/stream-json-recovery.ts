@@ -2,9 +2,9 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { generateId } from "../id";
+import { generateId } from "../primitives/id";
+import { trackBufferedTextAnnotations } from "../response/text-citations";
 import { isSideChannelStreamPart } from "../streaming/side-channel-stream-part";
-import { trackBufferedTextAnnotations } from "../text-citations";
 import {
   recoverToolCallFromJsonCandidatesWithStatus,
   type ToolCallJsonRecoveryResult,

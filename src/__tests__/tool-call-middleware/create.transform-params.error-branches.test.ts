@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
 
@@ -28,7 +28,7 @@ const _REGEX_TOOL_CALL_WORD = /tool_call/;
 describe("createToolMiddleware transformParams error branches", () => {
   const mw = createToolMiddleware({
     protocol: hermesProtocol,
-    toolSystemPromptTemplate: (t) => `T:${t}`,
+    promptStrategy: { mode: "text", template: (t) => `T:${t}` },
   });
 
   it("throws when specific tool not found", async () => {

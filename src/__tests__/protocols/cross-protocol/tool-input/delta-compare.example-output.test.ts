@@ -4,9 +4,9 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
-import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { hermesProtocol } from "../../../../core/protocols/hermes/protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
+import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml/protocol";
 
 const XML_CURRENT_VIEW_OBJECT_DELTA_RE =
   /[=]== XML protocol ===[\s\S]*Current view: parsed-object streaming tool input[\s\S]*tool-input-delta\(id=[^,]+, delta="\{"location":"Seoul","unit":"celsius"/;

@@ -1,6 +1,6 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import { emptyFunctionTools } from "../../../fixtures/function-tools";
 
 // Regression tests for streaming latency: text containing tag-like substrings

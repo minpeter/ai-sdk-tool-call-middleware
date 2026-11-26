@@ -1,8 +1,8 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { resolveGlm5ProtocolOptions } from "../../../core/protocols/glm5-call-parsing";
-import { glm5Protocol } from "../../../core/protocols/glm5-protocol";
-import { createGlm5StreamParser } from "../../../core/protocols/glm5-stream-parser";
+import { resolveGlm5ProtocolOptions } from "../../../core/protocols/glm5/call-parsing";
+import { glm5Protocol } from "../../../core/protocols/glm5/protocol";
+import { createGlm5StreamParser } from "../../../core/protocols/glm5/stream-parser";
 import type { ParserOptions } from "../../../core/protocols/protocol-interface";
 import { stopFinishReason, zeroUsage } from "../../test-helpers";
 import {

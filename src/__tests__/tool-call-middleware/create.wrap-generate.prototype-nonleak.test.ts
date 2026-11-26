@@ -7,11 +7,11 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
-import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
-import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml/protocol";
+import type { TCMProtocol } from "../../core/protocols/protocol-interface";
+import { yamlXmlProtocol } from "../../core/protocols/yaml-xml/protocol";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { stopFinishReason, zeroUsage } from "../test-helpers";
 
@@ -45,14 +45,17 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   ];
 
   function generateWithProtocol(
-    protocol: TCMCoreProtocol,
+    protocol: TCMProtocol,
     text: string,
     toolDefs = tools
   ) {
     const middleware = createToolMiddleware({
       protocol,
-      toolSystemPromptTemplate: (promptToolDefs: unknown[]) =>
-        `You have tools: ${JSON.stringify(promptToolDefs)}`,
+      promptStrategy: {
+        mode: "text",
+        template: (promptToolDefs: unknown[]) =>
+          `You have tools: ${JSON.stringify(promptToolDefs)}`,
+      },
     });
     const generated = {
       content: [{ type: "text", text }],
@@ -70,7 +73,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
       tools: toolDefs,
       providerOptions: {
         toolCallMiddleware: {
-          originalTools: originalToolsSchema.encode(toolDefs),
+          _internal: { originalTools: originalToolsSchema.encode(toolDefs) },
         },
       },
     } satisfies LanguageModelV4CallOptions;
@@ -93,8 +96,11 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   it("does not leak prototype-sensitive Hermes tool-call text on generated-text fallback", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
-        `You have tools: ${JSON.stringify(toolDefs)}`,
+      promptStrategy: {
+        mode: "text",
+        template: (toolDefs: unknown[]) =>
+          `You have tools: ${JSON.stringify(toolDefs)}`,
+      },
     });
     const doGenerate = vi.fn().mockResolvedValue({
       content: [
@@ -112,7 +118,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -171,8 +177,11 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   it("redacts debugSummary originalText for prototype-sensitive generated tool-call text", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
-        `You have tools: ${JSON.stringify(toolDefs)}`,
+      promptStrategy: {
+        mode: "text",
+        template: (toolDefs: unknown[]) =>
+          `You have tools: ${JSON.stringify(toolDefs)}`,
+      },
     });
     const debugSummary: { originalText?: string; toolCalls?: string } = {};
     const doGenerate = vi.fn().mockResolvedValue({
@@ -192,7 +201,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
         providerOptions: {
           toolCallMiddleware: {
             debugSummary,
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -206,8 +215,11 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   it("redacts debugSummary provider-executed tool inputs while preserving pass-through content", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
-        `You have tools: ${JSON.stringify(toolDefs)}`,
+      promptStrategy: {
+        mode: "text",
+        template: (toolDefs: unknown[]) =>
+          `You have tools: ${JSON.stringify(toolDefs)}`,
+      },
     });
     const debugSummary: { originalText?: string; toolCalls?: string } = {};
     const providerExecutedCall = {
@@ -230,7 +242,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
         providerOptions: {
           toolCallMiddleware: {
             debugSummary,
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -245,8 +257,11 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   it("does not leak prototype-sensitive bare JSON recovery candidates", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
-        `You have tools: ${JSON.stringify(toolDefs)}`,
+      promptStrategy: {
+        mode: "text",
+        template: (toolDefs: unknown[]) =>
+          `You have tools: ${JSON.stringify(toolDefs)}`,
+      },
     });
     const doGenerate = vi.fn().mockResolvedValue({
       content: [
@@ -264,7 +279,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -276,8 +291,11 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
   it("preserves surrounding generated text around dropped sensitive JSON candidates", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (toolDefs: unknown[]) =>
-        `You have tools: ${JSON.stringify(toolDefs)}`,
+      promptStrategy: {
+        mode: "text",
+        template: (toolDefs: unknown[]) =>
+          `You have tools: ${JSON.stringify(toolDefs)}`,
+      },
     });
     const doGenerate = vi.fn().mockResolvedValue({
       content: [
@@ -295,7 +313,7 @@ describe("createToolMiddleware wrapGenerate prototype-sensitive non-leak", () =>
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },

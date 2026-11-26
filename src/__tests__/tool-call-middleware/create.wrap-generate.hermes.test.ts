@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 
 describe("createToolMiddleware wrapGenerate hermes", () => {
@@ -10,7 +10,7 @@ describe("createToolMiddleware wrapGenerate hermes", () => {
   const createJsonMiddleware = () =>
     createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: mockToolSystemPromptTemplate,
+      promptStrategy: { mode: "text", template: mockToolSystemPromptTemplate },
     });
 
   it("parses tool calls from text content", async () => {

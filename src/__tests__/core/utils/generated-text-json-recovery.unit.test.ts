@@ -628,4 +628,86 @@ describe("function key alias", () => {
     expect(call.toolName).toBe("create_shipment");
     expect(JSON.parse(call.input)).toEqual({ zip: "01234" });
   });
+
+  it("invokes custom protocol resolver for parameters envelopes", () => {
+    const numericTools: LanguageModelV4FunctionTool[] = [
+      {
+        type: "function",
+        name: "set_ratio",
+        description: "Set a numeric ratio.",
+        inputSchema: {
+          type: "object",
+          properties: { ratio: { type: "number" } },
+          required: ["ratio"],
+        },
+      },
+    ];
+    let resolverCalled = false;
+    const out = recoverToolCallFromJsonCandidates(
+      '{"name":"set_ratio","parameters":{"ratio":1.0}}',
+      numericTools,
+      (_raw, _tools) => {
+        resolverCalled = true;
+        return { ok: true, toolName: "set_ratio", input: '{"ratio":1.0}' };
+      }
+    );
+    expect(resolverCalled).toBe(true);
+    const call = out?.find((part) => part.type === "tool-call");
+    expect(call).toMatchObject({
+      type: "tool-call",
+      toolName: "set_ratio",
+      input: '{"ratio":1.0}',
+    });
+  });
+});
+
+describe("YAML recovery embedded closing tags", () => {
+  const htmlTools: LanguageModelV4FunctionTool[] = [
+    {
+      type: "function",
+      name: "write_html",
+      description: "Write HTML content.",
+      inputSchema: {
+        type: "object",
+        properties: { content: { type: "string" } },
+        required: ["content"],
+      },
+    },
+  ];
+
+  it("does not truncate YAML block scalars containing closing HTML tags", () => {
+    const text = [
+      "<tool_call>",
+      "name: write_html",
+      "arguments:",
+      "  content: |",
+      "    <body>",
+      "      <p>hello</p>",
+      "    </body>",
+      "</tool_call>",
+    ].join("\n");
+
+    const recovered = recoverToolCallFromJsonCandidates(text, htmlTools);
+    const call = recovered?.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected recovered tool-call part");
+    }
+    expect(call.toolName).toBe("write_html");
+    expect(JSON.parse(call.input)).toEqual({
+      content: "<body>\n  <p>hello</p>\n</body>\n",
+    });
+  });
+
+  it("does not fail on double-quoted YAML values containing closing tags", () => {
+    const text =
+      '<tool_call>\nname: write_html\narguments:\n  content: "<p>hello</p>"\n</tool_call>';
+
+    const recovered = recoverToolCallFromJsonCandidates(text, htmlTools);
+    const call = recovered?.find((part) => part.type === "tool-call");
+    if (call?.type !== "tool-call") {
+      throw new Error("Expected recovered tool-call part");
+    }
+    expect(call.toolName).toBe("write_html");
+    expect(JSON.parse(call.input)).toEqual({ content: "<p>hello</p>" });
+  });
 });

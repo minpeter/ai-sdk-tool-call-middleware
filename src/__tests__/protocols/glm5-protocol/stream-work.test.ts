@@ -1,8 +1,8 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveGlm5ProtocolOptions } from "../../../core/protocols/glm5-call-parsing";
-import { glm5Protocol } from "../../../core/protocols/glm5-protocol";
-import { createGlm5StreamParser } from "../../../core/protocols/glm5-stream-parser";
+import { resolveGlm5ProtocolOptions } from "../../../core/protocols/glm5/call-parsing";
+import { glm5Protocol } from "../../../core/protocols/glm5/protocol";
+import { createGlm5StreamParser } from "../../../core/protocols/glm5/stream-parser";
 import { stopFinishReason, zeroUsage } from "../../test-helpers";
 import {
   assertCanonicalAiSdkEventOrder,
@@ -16,10 +16,10 @@ import { glm5Tools, normalizeStreamToolCalls } from "./shared";
 
 const bodyWork = vi.hoisted(() => ({ materializedCharacters: 0 }));
 
-vi.mock("../../../core/protocols/glm5-stream-body", async (importOriginal) => {
+vi.mock("../../../core/protocols/glm5/stream-body", async (importOriginal) => {
   const actual =
     await importOriginal<
-      typeof import("../../../core/protocols/glm5-stream-body")
+      typeof import("../../../core/protocols/glm5/stream-body")
     >();
   return {
     ...actual,

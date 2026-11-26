@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
 
 // Simple helper to find tool-call content in parsed output
 const isToolCall = (c: LanguageModelV4Content) => c.type === "tool-call";

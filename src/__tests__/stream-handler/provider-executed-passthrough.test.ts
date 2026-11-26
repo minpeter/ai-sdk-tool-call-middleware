@@ -46,7 +46,9 @@ describe("wrapStream provider-executed tool calls", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: [{ name: "op", inputSchema: '{"type":"object"}' }],
+            _internal: {
+              originalTools: [{ name: "op", inputSchema: '{"type":"object"}' }],
+            },
           },
         },
       },

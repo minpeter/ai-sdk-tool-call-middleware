@@ -5,26 +5,27 @@ import type {
   LanguageModelV4ToolCall,
   SharedV4Warning,
 } from "@ai-sdk/provider";
-import { getProtocolGeneratedTextFastPaths } from "./core/protocols/protocol-fast-paths";
-import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
+import type { TCMProtocol } from "./core/protocols/protocol-interface";
 import { coerceToolCallPart } from "./core/utils/coercion/tool-call-coercion";
 import {
   getDebugLevel,
   logParsedChunk,
-  logParsedSummary,
   logRawChunk,
-} from "./core/utils/debug";
+} from "./core/utils/diagnostics/debug";
+import {
+  recordForcedToolChoiceDebugSummary,
+  recordParsedDebugSummary,
+} from "./core/utils/diagnostics/debug-summary";
+import { extractOnErrorOption } from "./core/utils/diagnostics/on-error";
+import { generateToolCallId } from "./core/utils/primitives/id";
+import { safeToolCallMetadataText } from "./core/utils/primitives/protocol-utils";
+import { recoverToolCallFromJsonCandidatesWithStatus } from "./core/utils/recovery/generated-text-json-recovery";
 import {
   normalizeForcedToolChoiceFinishReason,
   normalizeToolCallsFinishReason,
   shouldRewriteFinishReasonToToolCalls,
-} from "./core/utils/finish-reason";
-import { generateToolCallId } from "./core/utils/id";
-import { extractOnErrorOption } from "./core/utils/on-error";
-import {
-  safeToolCallMetadataText,
-  safeToolCallMetadataValue,
-} from "./core/utils/protocol-utils";
+} from "./core/utils/response/finish-reason";
+import { carryTextPartAnnotations } from "./core/utils/response/text-citations";
 import {
   createDroppedProviderToolWarnings,
   decodeOriginalToolsForMiddleware,
@@ -33,35 +34,11 @@ import {
   isToolChoiceActive,
   isToolChoiceNone,
   type ToolCallMiddlewareProviderOptions,
-} from "./core/utils/provider-options";
-import { recoverToolCallFromJsonCandidatesWithStatus } from "./core/utils/recovery/generated-text-json-recovery";
-import { carryTextPartAnnotations } from "./core/utils/text-citations";
+} from "./core/utils/transport/provider-options";
 import {
   findToolChoiceResultText,
   resolveToolChoiceSelection,
-} from "./core/utils/tool-choice";
-
-function logDebugSummary(
-  debugSummary: { originalText?: string; toolCalls?: string } | undefined,
-  toolCall: LanguageModelV4ToolCall,
-  originText: string
-) {
-  if (debugSummary) {
-    debugSummary.originalText = originText;
-    try {
-      debugSummary.toolCalls = JSON.stringify([
-        {
-          toolName: toolCall.toolName,
-          input: safeToolCallMetadataValue(toolCall.input),
-        },
-      ]);
-    } catch {
-      // ignore
-    }
-  } else if (getDebugLevel() === "parse") {
-    logParsedSummary({ toolCalls: [toolCall], originalText: originText });
-  }
-}
+} from "./core/utils/transport/tool-choice";
 
 function appendDroppedProviderToolWarnings(
   warnings: SharedV4Warning[] | undefined,
@@ -102,8 +79,11 @@ async function handleToolChoice(
     input,
   };
 
-  const debugSummary = params.providerOptions?.toolCallMiddleware?.debugSummary;
-  logDebugSummary(debugSummary, toolCall, originText);
+  recordForcedToolChoiceDebugSummary({
+    debugSummary: params.providerOptions?.toolCallMiddleware?.debugSummary,
+    originText,
+    toolCall,
+  });
 
   // Text content is consumed by the forced tool call; every other part
   // (reasoning, files, sources) is model output the caller may still need.
@@ -128,7 +108,7 @@ async function handleToolChoice(
 
 function parseContent(
   content: LanguageModelV4Content[],
-  protocol: TCMCoreProtocol,
+  protocol: TCMProtocol,
   tools: LanguageModelV4FunctionTool[],
   providerOptions?: ToolCallMiddlewareProviderOptions
 ): LanguageModelV4Content[] {
@@ -164,84 +144,46 @@ function parseContent(
 
 function parseTextContent(options: {
   contentItem: Extract<LanguageModelV4Content, { type: "text" }>;
-  protocol: TCMCoreProtocol;
+  protocol: TCMProtocol;
   providerOptions?: ToolCallMiddlewareProviderOptions;
   tools: LanguageModelV4FunctionTool[];
 }): LanguageModelV4Content[] {
   const { contentItem, protocol, providerOptions, tools } = options;
   const debugLevel = getDebugLevel();
+  const { text } = contentItem;
   if (debugLevel === "stream") {
-    logRawChunk(safeToolCallMetadataText(contentItem.text) ?? "");
+    logRawChunk(safeToolCallMetadataText(text) ?? "");
   }
   const parserOptions = {
     ...extractOnErrorOption(providerOptions),
     ...getToolCallMiddlewareOptions(providerOptions),
   };
 
-  let evaluatedParser: unknown;
-  let evaluatedText: unknown;
-  let evaluatedRecoveryText: unknown;
-  let synthesizedPlainText: LanguageModelV4Content[] | undefined;
-  let recoveryTextIsMaterialized = false;
-  if (debugLevel === "off") {
-    // Preserve CallExpression evaluation order for every protocol: evaluate
-    // the method/getter first and its text argument second, then ask whether
-    // that already-materialized callable is an exact built-in parser closure.
-    evaluatedParser = protocol.parseGeneratedText;
-    evaluatedText = contentItem.text;
-    const fastPaths = (parserOptions as Record<string, unknown>).debugSummary
-      ? undefined
-      : getProtocolGeneratedTextFastPaths(evaluatedParser);
-    if (
-      fastPaths &&
-      typeof evaluatedText === "string" &&
-      fastPaths.isDefinitelyPlainGeneratedText(evaluatedText)
-    ) {
-      synthesizedPlainText = [{ type: "text", text: evaluatedText }];
-      evaluatedRecoveryText = contentItem.text;
-      recoveryTextIsMaterialized = true;
-      if (evaluatedRecoveryText === evaluatedText) {
-        return synthesizedPlainText;
-      }
-    }
+  if (
+    debugLevel === "off" &&
+    !providerOptions?.toolCallMiddleware?.debugSummary &&
+    typeof text === "string" &&
+    protocol.isDefinitelyPlainGeneratedText?.(text)
+  ) {
+    return [{ type: "text", text }];
   }
-  let parsedByProtocol: LanguageModelV4Content[];
-  if (synthesizedPlainText) {
-    // The exact parser would have produced this value before the second text
-    // getter. Keeping it avoids moving parser work after getter side effects
-    // when recovery observes a different second value.
-    parsedByProtocol = synthesizedPlainText;
-  } else if (debugLevel !== "off") {
-    parsedByProtocol = protocol.parseGeneratedText({
-      text: contentItem.text,
-      tools,
-      options: parserOptions,
-    });
-  } else if (typeof evaluatedParser === "function") {
-    parsedByProtocol = Reflect.apply(evaluatedParser, protocol, [
-      {
-        text: evaluatedText,
-        tools,
-        options: parserOptions,
-      },
-    ]) as LanguageModelV4Content[];
-  } else {
-    throw new TypeError("protocol.parseGeneratedText is not a function");
-  }
+
+  const parsedByProtocol = protocol.parseGeneratedText({
+    text,
+    tools,
+    options: parserOptions,
+  });
 
   if (parsedByProtocol.some((part) => part.type === "tool-call")) {
     return parsedByProtocol;
   }
 
-  const recoveryText = recoveryTextIsMaterialized
-    ? (evaluatedRecoveryText as string)
-    : contentItem.text;
-  if (protocol.allowsGeneratedTextJsonRecovery?.(recoveryText) === false) {
+  if (protocol.allowsFallbackRecovery?.(text) === false) {
     return parsedByProtocol;
   }
 
   const recoveredFromJson = recoverToolCallFromJsonCandidatesWithStatus(
-    recoveryText,
+    text,
     tools
   );
   return recoveredFromJson.kind === "none"
@@ -257,60 +199,12 @@ function logParsedContent(content: LanguageModelV4Content[]) {
   }
 }
 
-function computeDebugSummary(options: {
-  result: { content: LanguageModelV4Content[] };
-  newContent: LanguageModelV4Content[];
-  protocol: TCMCoreProtocol;
-  tools: LanguageModelV4FunctionTool[];
-  providerOptions?: ToolCallMiddlewareProviderOptions;
-}) {
-  const { result, newContent, protocol, tools, providerOptions } = options;
-  const dbg = providerOptions?.toolCallMiddleware?.debugSummary;
-  const debugLevel = getDebugLevel();
-  if (!dbg && debugLevel !== "parse") {
-    return;
-  }
-  const allText = result.content
-    .filter(
-      (c): c is Extract<LanguageModelV4Content, { type: "text" }> =>
-        c.type === "text"
-    )
-    .map((c) => c.text)
-    .join("\n\n");
-
-  const segments = protocol.extractToolCallSegments
-    ? protocol.extractToolCallSegments({ text: allText, tools })
-    : [];
-  const originalText = safeToolCallMetadataText(segments.join("\n\n")) ?? "";
-
-  const toolCalls = newContent.filter(
-    (p): p is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
-      p.type === "tool-call"
-  );
-
-  if (dbg) {
-    dbg.originalText = originalText;
-    try {
-      dbg.toolCalls = JSON.stringify(
-        toolCalls.map((tc) => ({
-          toolName: tc.toolName,
-          input: safeToolCallMetadataValue(tc.input),
-        }))
-      );
-    } catch {
-      // ignore JSON failure
-    }
-  } else if (debugLevel === "parse") {
-    logParsedSummary({ toolCalls, originalText });
-  }
-}
-
 export async function wrapGenerate({
   protocol,
   doGenerate,
   params,
 }: {
-  protocol: TCMCoreProtocol;
+  protocol: TCMProtocol;
   doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
   params: {
     providerOptions?: ToolCallMiddlewareProviderOptions;
@@ -352,12 +246,21 @@ export async function wrapGenerate({
   );
 
   logParsedContent(newContent);
-  computeDebugSummary({
-    result,
-    newContent,
-    protocol,
+  recordParsedDebugSummary({
+    allText: result.content
+      .filter(
+        (c): c is Extract<LanguageModelV4Content, { type: "text" }> =>
+          c.type === "text"
+      )
+      .map((c) => c.text)
+      .join("\n\n"),
+    debugSummary: params.providerOptions?.toolCallMiddleware?.debugSummary,
+    extractToolCallSegments: protocol.extractToolCallSegments,
+    toolCalls: newContent.filter(
+      (p): p is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
+        p.type === "tool-call"
+    ),
     tools,
-    providerOptions: params.providerOptions,
   });
 
   // Only client-executed tool calls signal that the SDK should run a tool;

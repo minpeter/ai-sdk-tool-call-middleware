@@ -1,6 +1,6 @@
 /** Local repro of live-model malformed variants, no network. */
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
-import { qwen3CoderProtocol } from "../../../src/core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../src/core/protocols/qwen3coder/protocol";
 
 const writeFileTools = [
   {

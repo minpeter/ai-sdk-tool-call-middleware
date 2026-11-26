@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDefinitelyPlainGlm5Text } from "../../../core/protocols/glm5-fast-path-registry";
+import { isDefinitelyPlainGlm5Text } from "../../../core/protocols/glm5/plain-text-fast-path";
 
 describe("GLM-5 plain-text fast-path guard", () => {
   it.each([

@@ -23,7 +23,7 @@ SPLITS = ("test_normal", "test_challenge")
 EXPECTED_APPWORLD_ADMISSION = 8
 REQUIRED_BRIDGE_TRANSIENT_RETRIES = 2
 EXPERIMENT_TAG_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?\Z")
-FINAL_PARSER_PATH = Path("src/core/protocols/glm5-call-parsing.ts")
+FINAL_PARSER_PATH = Path("src/core/protocols/glm5/call-parsing.ts")
 RUNTIME_BRIDGE_PATHS = (
     Path("benchmarks/glm-5.2-tool-calling/src/benchmark-model-call.ts"),
     Path("benchmarks/glm-5.2-tool-calling/src/openai-compat-bridge.ts"),

@@ -3,7 +3,7 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { glm5Protocol } from "../../../core/protocols/glm5-protocol";
+import { glm5Protocol } from "../../../core/protocols/glm5/protocol";
 import type { ParserOptions } from "../../../core/protocols/protocol-interface";
 import { stopFinishReason, zeroUsage } from "../../test-helpers";
 import {

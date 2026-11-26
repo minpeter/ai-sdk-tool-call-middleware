@@ -1,7 +1,7 @@
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { wrapGenerate } from "../../generate-handler";
 import { wrapStream } from "../../stream-handler";
 import { createToolMiddleware } from "../../tool-call-middleware";
@@ -26,7 +26,7 @@ describe("provider tools are dropped with a spec warning", () => {
   it("transformParams records dropped provider tool names", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: (t) => `SYS:${t}`,
+      promptStrategy: { mode: "text", template: (t) => `SYS:${t}` },
     });
     const transformParams = requireTransformParams(mw.transformParams);
     const out = await transformParams({
@@ -39,9 +39,11 @@ describe("provider tools are dropped with a spec warning", () => {
     expect(
       (
         out.providerOptions as {
-          toolCallMiddleware?: { droppedProviderTools?: string[] };
+          toolCallMiddleware?: {
+            _internal?: { droppedProviderTools?: string[] };
+          };
         }
-      ).toolCallMiddleware?.droppedProviderTools
+      ).toolCallMiddleware?._internal?.droppedProviderTools
     ).toEqual(["web_search"]);
   });
 
@@ -58,8 +60,10 @@ describe("provider tools are dropped with a spec warning", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: [{ name: "op", inputSchema: '{"type":"object"}' }],
-            droppedProviderTools: ["web_search"],
+            _internal: {
+              originalTools: [{ name: "op", inputSchema: '{"type":"object"}' }],
+              droppedProviderTools: ["web_search"],
+            },
           },
         },
       },
@@ -86,8 +90,10 @@ describe("provider tools are dropped with a spec warning", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: [{ name: "op", inputSchema: '{"type":"object"}' }],
-            droppedProviderTools: ["web_search"],
+            _internal: {
+              originalTools: [{ name: "op", inputSchema: '{"type":"object"}' }],
+              droppedProviderTools: ["web_search"],
+            },
           },
         },
       },
@@ -131,8 +137,10 @@ describe("provider tools are dropped with a spec warning", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: [{ name: "op", inputSchema: '{"type":"object"}' }],
-            droppedProviderTools: ["web_search"],
+            _internal: {
+              originalTools: [{ name: "op", inputSchema: '{"type":"object"}' }],
+              droppedProviderTools: ["web_search"],
+            },
           },
         },
       },
@@ -179,8 +187,10 @@ describe("provider tools are dropped with a spec warning", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: [{ name: "op", inputSchema: '{"type":"object"}' }],
-            droppedProviderTools: ["web_search"],
+            _internal: {
+              originalTools: [{ name: "op", inputSchema: '{"type":"object"}' }],
+              droppedProviderTools: ["web_search"],
+            },
           },
         },
       },

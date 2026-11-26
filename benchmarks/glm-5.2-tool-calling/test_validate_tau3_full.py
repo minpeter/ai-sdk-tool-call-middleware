@@ -126,7 +126,7 @@ class FullFixture:
 
     def _fingerprint(self) -> tuple[str, str]:
         parser = self._record(
-            "src/core/protocols/glm5-call-parsing.ts", b"parser-runtime\n"
+            "src/core/protocols/glm5/call-parsing.ts", b"parser-runtime\n"
         )
         bridge = self._record("bench/bridge.ts", b"bridge-runtime\n")
         runner = self._record("bench/runner.py", b"runner-runtime\n")

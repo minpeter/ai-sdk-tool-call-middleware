@@ -1,9 +1,9 @@
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { hermesProtocol } from "../../../../core/protocols/hermes/protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import {
   createChunkedStream,
   pipeWithTransformer,
@@ -115,7 +115,7 @@ describe("Single-character chunk streaming", () => {
   });
 
   describe("qwen3CoderProtocol", () => {
-    it("parses Qwen3CoderToolParser tool call when streamed char-by-char", async () => {
+    it("parses qwen3CoderProtocol tool call when streamed char-by-char", async () => {
       const input =
         "<tool_call><function=test><parameter=value>hello</parameter></function></tool_call>";
       const protocol = qwen3CoderProtocol();
@@ -131,7 +131,7 @@ describe("Single-character chunk streaming", () => {
       expect(tools).toEqual([{ toolName: "test", input: { value: "hello" } }]);
     });
 
-    it("handles text + Qwen3CoderToolParser tool call + text char-by-char", async () => {
+    it("handles text + qwen3CoderProtocol tool call + text char-by-char", async () => {
       const input =
         "Before <tool_call><function=x><parameter=a>1</parameter></function></tool_call> After";
       const protocol = qwen3CoderProtocol();
@@ -152,7 +152,7 @@ describe("Single-character chunk streaming", () => {
       expect(text).not.toContain("<tool_call>");
     });
 
-    it("handles multiple Qwen3CoderToolParser tool calls char-by-char", async () => {
+    it("handles multiple qwen3CoderProtocol tool calls char-by-char", async () => {
       const input =
         "<tool_call><function=a><parameter=n>1</parameter></function></tool_call><tool_call><function=b><parameter=n>2</parameter></function></tool_call>";
       const protocol = qwen3CoderProtocol();

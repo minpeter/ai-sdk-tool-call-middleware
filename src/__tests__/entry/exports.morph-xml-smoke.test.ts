@@ -34,7 +34,7 @@ describe("entry exports morph-xml smoke", () => {
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -86,7 +86,7 @@ describe("entry exports morph-xml smoke", () => {
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },

@@ -1,7 +1,7 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
 import { yamlXmlSystemPromptTemplate } from "../../../../core/prompts/yaml-xml-prompt";
-import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml/protocol";
 import { basicTools } from "./shared";
 
 describe("yamlXmlProtocol extractToolCallSegments", () => {

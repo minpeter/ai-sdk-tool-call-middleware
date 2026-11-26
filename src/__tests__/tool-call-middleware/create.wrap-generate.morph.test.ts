@@ -1,8 +1,8 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml/protocol";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { createToolMiddleware } from "../../tool-call-middleware";
 
 describe("createToolMiddleware wrapGenerate morph", () => {
@@ -12,7 +12,7 @@ describe("createToolMiddleware wrapGenerate morph", () => {
   it("parses XML tool calls from text content", async () => {
     const middleware = createToolMiddleware({
       protocol: morphXmlProtocol,
-      toolSystemPromptTemplate: mockToolSystemPromptTemplate,
+      promptStrategy: { mode: "text", template: mockToolSystemPromptTemplate },
     });
 
     const tools: LanguageModelV4FunctionTool[] = [
@@ -39,7 +39,7 @@ describe("createToolMiddleware wrapGenerate morph", () => {
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -59,7 +59,7 @@ describe("createToolMiddleware wrapGenerate morph", () => {
   it("does not leak sensitive YAML tool_call fallback text", async () => {
     const middleware = createToolMiddleware({
       protocol: morphXmlProtocol,
-      toolSystemPromptTemplate: mockToolSystemPromptTemplate,
+      promptStrategy: { mode: "text", template: mockToolSystemPromptTemplate },
     });
 
     const tools: LanguageModelV4FunctionTool[] = [
@@ -89,7 +89,7 @@ describe("createToolMiddleware wrapGenerate morph", () => {
         tools,
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },

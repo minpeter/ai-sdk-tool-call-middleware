@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
 
@@ -30,8 +30,11 @@ describe("createToolMiddleware transformParams positive paths", () => {
   it("transformParams injects system prompt and merges consecutive user texts", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      placement: "first",
-      toolSystemPromptTemplate: (t) => `SYS:${t}`,
+      promptStrategy: {
+        mode: "text",
+        template: (t) => `SYS:${t}`,
+        placement: "first",
+      },
     });
     const tools = [
       {

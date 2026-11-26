@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { argumentValueMatchesSchemaKeyShape } from "../../../core/protocols/hermes-argument-schema";
+import { argumentValueMatchesSchemaKeyShape } from "../../../core/protocols/hermes/argument-schema";
 
 describe("argumentValueMatchesSchemaKeyShape", () => {
   it("validates reused array item references against each item schema", () => {

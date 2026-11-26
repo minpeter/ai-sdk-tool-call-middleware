@@ -8,6 +8,7 @@ import {
   createQwen3CoderXmlToolResponseFormatter,
   createToolMiddleware,
   createUserContentToolResponseTemplate,
+  DEFAULT_TOOL_SYSTEM_PROMPT_PLACEMENT,
   formatToolResponseAsKExaone2,
   formatToolResponseAsYaml,
   getDroppedProviderTools,
@@ -17,17 +18,16 @@ import {
   hermesProtocol,
   hermesSystemPromptTemplate,
   hermesToolMiddleware,
-  KExaone236BToolParser,
   kExaone2Protocol,
   kExaone2SystemPromptTemplate,
   kExaone2ToolMiddleware,
   kExaone236BProtocol,
+  kExaone236BSystemPromptMessages,
   kExaone236BToolDeclaration,
   kExaone236BToolMiddleware,
   morphXmlSystemPromptTemplate,
   morphXmlToolMiddleware,
   qwen3coderSystemPromptTemplate,
-  transformKExaone236BParams,
   yamlXmlSystemPromptTemplate,
 } from "../../index";
 
@@ -50,15 +50,21 @@ describe("entry exports surface", () => {
 
   it("exports the complete K-EXAONE-236B surface", () => {
     expect(typeof kExaone236BProtocol).toBe("function");
-    expect(typeof KExaone236BToolParser).toBe("function");
+    expect(typeof kExaone236BSystemPromptMessages).toBe("function");
     expect(typeof kExaone236BToolDeclaration).toBe("function");
-    expect(typeof transformKExaone236BParams).toBe("function");
     expect(kExaone236BToolMiddleware).toBeDefined();
+    expect(DEFAULT_TOOL_SYSTEM_PROMPT_PLACEMENT).toBe("last");
     expect(getDroppedProviderTools).toBeTypeOf("function");
     expect(
       getDroppedProviderTools({
         toolCallMiddleware: {
-          droppedProviderTools: ["provider.one", 2, "provider.two"],
+          _internal: {
+            droppedProviderTools: [
+              "provider.one",
+              2 as unknown as string,
+              "provider.two",
+            ],
+          },
         },
       })
     ).toEqual(["provider.one", "provider.two"]);
@@ -111,11 +117,13 @@ describe("entry exports surface", () => {
     expect(typeof yamlXmlSystemPromptTemplate).toBe("function");
   });
 
-  it("creates custom middleware with v3 specification", () => {
+  it("creates custom middleware with v4 specification using orthogonal strategies", () => {
     const customMiddleware = createToolMiddleware({
       protocol: hermesProtocol(),
-      toolSystemPromptTemplate: (tools) =>
-        `Custom template: ${JSON.stringify(tools)}`,
+      promptStrategy: {
+        mode: "text",
+        template: (tools) => `Custom template: ${JSON.stringify(tools)}`,
+      },
     });
 
     expect(customMiddleware).toBeDefined();

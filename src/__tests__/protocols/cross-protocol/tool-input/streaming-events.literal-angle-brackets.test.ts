@@ -4,14 +4,11 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { hermesProtocol } from "../../../../core/protocols/hermes/protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
 import type { TCMProtocol } from "../../../../core/protocols/protocol-interface";
-import {
-  qwen3CoderProtocol,
-  uiTarsXmlProtocol,
-} from "../../../../core/protocols/qwen3coder-protocol";
-import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
+import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml/protocol";
 import { runProtocolTextDeltaStream } from "./streaming-events.shared";
 
 type DeltaJoinExpectation = "equal" | "diverges";
@@ -152,7 +149,7 @@ describe("cross-protocol tool-input streaming events: literal angle-bracket arg 
     },
     {
       name: "ui-tars-xml-alias-coverage",
-      protocol: uiTarsXmlProtocol(),
+      protocol: qwen3CoderProtocol(),
       variants: [
         {
           variantName: "entity-escaped input",
@@ -308,7 +305,7 @@ describe("cross-protocol tool-input streaming events: double-escaped entity lite
     },
     {
       name: "ui-tars-xml-alias-coverage",
-      protocol: uiTarsXmlProtocol(),
+      protocol: qwen3CoderProtocol(),
       rawModelOutput:
         "<tool_call><function=send_keys><parameter=value>&amp;lt;Ctrl+C&amp;gt;ahi, my name is pi&amp;lt;Esc&amp;gt;&amp;lt;Enter&amp;gt;</parameter></function></tool_call>",
       deltaJoinExpectation: "diverges",

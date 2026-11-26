@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { formatToolResponseAsHermes } from "../../core/prompts/hermes-prompt";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
 
@@ -30,9 +30,15 @@ const _REGEX_TOOL_CALL_WORD = /tool_call/;
 describe("transformParams convertToolPrompt mapping and merge", () => {
   const mw = createToolMiddleware({
     protocol: hermesProtocol,
-    placement: "first",
-    toolSystemPromptTemplate: (t) => `TOOLS:${t}`,
-    toolResponsePromptTemplate: formatToolResponseAsHermes,
+    promptStrategy: {
+      mode: "text",
+      template: (t) => `TOOLS:${t}`,
+      placement: "first",
+    },
+    historyStrategy: {
+      mode: "converted-text",
+      toolResponsePromptTemplate: formatToolResponseAsHermes,
+    },
   });
 
   it("converts assistant tool-call and tool role messages, merges adjacent user texts, and preserves providerOptions", async () => {
@@ -108,7 +114,8 @@ describe("transformParams convertToolPrompt mapping and merge", () => {
 
     // tools cleared; originalTools propagated into providerOptions
     expect(out.tools).toEqual([]);
-    const { originalTools } = (out.providerOptions as any).toolCallMiddleware;
+    const { originalTools } = (out.providerOptions as any).toolCallMiddleware
+      ._internal;
     expect(originalTools).toEqual([
       {
         name: "t1",

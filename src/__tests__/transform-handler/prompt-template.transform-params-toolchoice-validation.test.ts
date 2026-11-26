@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
 
@@ -30,7 +30,7 @@ describe("transformParams toolChoice validation", () => {
   it("transformParams handles toolChoice type none without tool prompt injection", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "TOOL PROMPT",
+      promptStrategy: { mode: "text", template: () => "TOOL PROMPT" },
     });
     const tools = [
       {
@@ -56,17 +56,17 @@ describe("transformParams toolChoice validation", () => {
       { role: "user", content: [{ type: "text", text: "hi" }] },
     ]);
     expect(
-      (result.providerOptions as any).toolCallMiddleware.toolChoice
+      (result.providerOptions as any).toolCallMiddleware._internal.toolChoice
     ).toEqual({ type: "none" });
     expect(
-      (result.providerOptions as any).toolCallMiddleware.originalTools
+      (result.providerOptions as any).toolCallMiddleware._internal.originalTools
     ).toBeUndefined();
   });
 
   it("transformParams validates specific tool selection and builds JSON schema", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+      promptStrategy: { mode: "text", template: () => "" },
     });
     const tools = [
       {
@@ -86,14 +86,14 @@ describe("transformParams toolChoice validation", () => {
     } as any);
     expect(result.responseFormat).toMatchObject({ type: "json", name: "t1" });
     expect(
-      (result.providerOptions as any).toolCallMiddleware.toolChoice
+      (result.providerOptions as any).toolCallMiddleware._internal.toolChoice
     ).toEqual({ type: "tool", toolName: "t1" });
   });
 
   it("transformParams required builds if/then/else schema", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+      promptStrategy: { mode: "text", template: () => "" },
     });
     const tools = [
       {
@@ -115,7 +115,7 @@ describe("transformParams toolChoice validation", () => {
     } as any);
     expect(result.responseFormat).toMatchObject({ type: "json" });
     expect(
-      (result.providerOptions as any).toolCallMiddleware.toolChoice
+      (result.providerOptions as any).toolCallMiddleware._internal.toolChoice
     ).toEqual({ type: "required" });
   });
 });

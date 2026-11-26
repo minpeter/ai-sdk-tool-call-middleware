@@ -7,7 +7,7 @@ import {
   formatToolResponseAsYaml,
   yamlXmlSystemPromptTemplate,
 } from "../../core/prompts/yaml-xml-prompt";
-import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
+import { yamlXmlProtocol } from "../../core/protocols/yaml-xml/protocol";
 import { transformParams } from "../../transform-handler";
 
 describe("transformParams yaml-xml outer-layer transform", () => {
@@ -64,12 +64,18 @@ describe("transformParams yaml-xml outer-layer transform", () => {
 
     const transformed = transformParams({
       protocol: yamlXmlProtocol({}),
-      placement: "first",
-      toolSystemPromptTemplate: yamlXmlSystemPromptTemplate,
-      toolResponsePromptTemplate: formatToolResponseAsYaml,
       params: {
         prompt: inputPrompt,
         tools,
+      },
+      promptStrategy: {
+        mode: "text",
+        template: yamlXmlSystemPromptTemplate,
+        placement: "first",
+      },
+      historyStrategy: {
+        mode: "converted-text",
+        toolResponsePromptTemplate: formatToolResponseAsYaml,
       },
     });
 

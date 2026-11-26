@@ -5,9 +5,8 @@ import {
   isRecord,
 } from "./generated-text-json-candidates";
 import {
-  type DroppedSensitiveSpan,
   isLikelyArgumentsShapeForTool,
-  type RecoveredCallSpan,
+  type RecoverySpan,
   readToolArgsField,
   readToolNameField,
   type ToolCallCandidate,
@@ -16,24 +15,19 @@ import {
 
 const TOOL_CALL_BLOCK_OPEN_REGEX = /<tool_call\s*>/gi;
 // Colon included for namespaced garbage closes like `</functions:get_weather>`.
-const CLOSING_TAG_REGEX = /<\/\s*([A-Za-z_][\w.:-]*)\s*>/;
+// Anchoring to column 0 avoids terminating on closing tags inside indented
+// YAML block scalars (`content: |\n  </body>`) or quoted inline strings.
+const LINE_START_CLOSING_TAG_REGEX =
+  /(?:^|\r?\n)<\/\s*([A-Za-z_][\w.:-]*)\s*>/g;
+const TRAILING_CLOSING_TAG_REGEX = /<\/\s*([A-Za-z_][\w.:-]*)\s*>\s*$/;
 
-function parseYamlBlockMapping(body: string): Record<string, unknown> | null {
-  let parsed: unknown;
-  try {
-    parsed = YAML.parse(body);
-  } catch {
-    return null;
-  }
-  if (!isRecord(parsed) || containsPrototypeSensitiveKey(parsed)) {
-    return null;
-  }
-  return parsed;
+interface ParsedYamlBlock {
+  closeTagName: string | null;
+  endIndex: number;
+  mapping: Record<string, unknown>;
 }
 
-function parseYamlBlockMappingUnsafe(
-  body: string
-): Record<string, unknown> | null {
+function parseYamlRecord(body: string): Record<string, unknown> | null {
   let parsed: unknown;
   try {
     parsed = YAML.parse(body);
@@ -41,6 +35,52 @@ function parseYamlBlockMappingUnsafe(
     return null;
   }
   return isRecord(parsed) ? parsed : null;
+}
+
+function parseYamlToolCallBlock(
+  rawBlock: string,
+  bodyStart: number
+): ParsedYamlBlock | null {
+  // 1. Prefer an unindented closing tag on its own line (Granite / XML wrapper
+  //    shape). Trying each line-start close tag in order skips markup inside
+  //    YAML values while preserving any trailing prose after the real close tag.
+  for (const match of rawBlock.matchAll(LINE_START_CLOSING_TAG_REGEX)) {
+    const tagStart = match.index + match[0].indexOf("</");
+    const mapping = parseYamlRecord(rawBlock.slice(0, tagStart));
+    if (mapping) {
+      return {
+        closeTagName: match[1] ?? null,
+        endIndex: bodyStart + match.index + match[0].length,
+        mapping,
+      };
+    }
+  }
+
+  // 2. Fallback for single-line blocks ending directly in a closing tag
+  //    (e.g. `<tool_call>city: Seoul</get_weather>`).
+  const trailingClose = TRAILING_CLOSING_TAG_REGEX.exec(rawBlock);
+  if (trailingClose) {
+    const mapping = parseYamlRecord(rawBlock.slice(0, trailingClose.index));
+    if (mapping) {
+      return {
+        closeTagName: trailingClose[1] ?? null,
+        endIndex: bodyStart + trailingClose.index + trailingClose[0].length,
+        mapping,
+      };
+    }
+  }
+
+  // 3. Unclosed `<tool_call>` block whose entire body is a YAML mapping.
+  const fullMapping = parseYamlRecord(rawBlock);
+  if (fullMapping) {
+    return {
+      closeTagName: null,
+      endIndex: bodyStart + rawBlock.length,
+      mapping: fullMapping,
+    };
+  }
+
+  return null;
 }
 
 function resolveYamlBlockPayload(
@@ -80,17 +120,34 @@ function resolveYamlBlockPayload(
   return null;
 }
 
+function isKnownSensitiveYamlCandidate(
+  mapping: Record<string, unknown>,
+  closeTagName: string | null,
+  tools: LanguageModelV4FunctionTool[]
+): boolean {
+  const envelopeName = readToolNameField(mapping);
+  const closeName = closeTagName?.split(":").at(-1) ?? "";
+  const knownEnvelope =
+    envelopeName !== null && tools.some((tool) => tool.name === envelopeName);
+  const knownClose =
+    closeName.length > 0 && tools.some((tool) => tool.name === closeName);
+  const likelySingleToolArgs =
+    tools.length === 1 && isLikelyArgumentsShapeForTool(mapping, tools[0]);
+  return knownEnvelope || knownClose || likelySingleToolArgs;
+}
+
 /**
  * Recover `<tool_call>` blocks whose body is a YAML mapping instead of JSON
  * (observed live on IBM Granite 4.0, which emits this shape under every
  * prompt format, closing with an arbitrary tag such as `</weather>` or the
- * tool name).
+ * tool name), and emit drop spans for prototype-sensitive known-tool blocks
+ * in a single pass.
  */
-export function extractYamlToolCallBlockSpans(
+export function extractYamlToolCallSpans(
   text: string,
   tools: LanguageModelV4FunctionTool[]
-): RecoveredCallSpan[] {
-  const spans: RecoveredCallSpan[] = [];
+): RecoverySpan[] {
+  const spans: RecoverySpan[] = [];
 
   TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = 0;
   let match = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
@@ -100,76 +157,38 @@ export function extractYamlToolCallBlockSpans(
     const nextOpen = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
     const blockEnd = nextOpen == null ? text.length : nextOpen.index;
 
-    let body = text.slice(bodyStart, blockEnd);
-    let endIndex = blockEnd;
-    let closeTagName: string | null = null;
-
-    // The close tag is unreliable in this shape — the first closing tag in
-    // the block (e.g. `</weather>`, `</tool_call>`, `</get_weather>`)
-    // terminates the body and may carry the tool name.
-    const closeMatch = CLOSING_TAG_REGEX.exec(body);
-    if (closeMatch) {
-      closeTagName = closeMatch[1] ?? null;
-      endIndex = bodyStart + closeMatch.index + closeMatch[0].length;
-      body = body.slice(0, closeMatch.index);
-    }
-
-    const mapping = parseYamlBlockMapping(body);
-    const payload = mapping
-      ? resolveYamlBlockPayload(mapping, closeTagName, tools)
-      : null;
-    if (payload) {
-      spans.push({ startIndex: match.index, endIndex, payload });
-    }
-
-    match = nextOpen;
-  }
-
-  return spans;
-}
-
-export function extractSensitiveYamlToolCallBlockDropSpans(
-  text: string,
-  tools: LanguageModelV4FunctionTool[]
-): DroppedSensitiveSpan[] {
-  const spans: DroppedSensitiveSpan[] = [];
-
-  TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = 0;
-  let match = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
-  while (match) {
-    const bodyStart = match.index + match[0].length;
-    TOOL_CALL_BLOCK_OPEN_REGEX.lastIndex = bodyStart;
-    const nextOpen = TOOL_CALL_BLOCK_OPEN_REGEX.exec(text);
-    const blockEnd = nextOpen == null ? text.length : nextOpen.index;
-
-    let body = text.slice(bodyStart, blockEnd);
-    let endIndex = blockEnd;
-    let closeTagName: string | null = null;
-
-    const closeMatch = CLOSING_TAG_REGEX.exec(body);
-    if (closeMatch) {
-      closeTagName = closeMatch[1] ?? null;
-      endIndex = bodyStart + closeMatch.index + closeMatch[0].length;
-      body = body.slice(0, closeMatch.index);
-    }
-
-    const mapping = parseYamlBlockMappingUnsafe(body);
-    if (mapping && containsPrototypeSensitiveKey(mapping)) {
-      const envelopeName = readToolNameField(mapping);
-      const closeName = closeTagName?.split(":").at(-1) ?? "";
-      const knownEnvelope =
-        envelopeName !== null &&
-        tools.some((tool) => tool.name === envelopeName);
-      const knownClose =
-        closeName.length > 0 && tools.some((tool) => tool.name === closeName);
-      const likelySingleToolArgs =
-        tools.length === 1 && isLikelyArgumentsShapeForTool(mapping, tools[0]);
-      if (knownEnvelope || knownClose || likelySingleToolArgs) {
-        spans.push({
-          startIndex: match.index,
-          endIndex,
-          dropReason: "prototype-sensitive-tool-candidate",
-        });
+    const parsed = parseYamlToolCallBlock(
+      text.slice(bodyStart, blockEnd),
+      bodyStart
+    );
+    if (parsed) {
+      if (containsPrototypeSensitiveKey(parsed.mapping)) {
+        if (
+          isKnownSensitiveYamlCandidate(
+            parsed.mapping,
+            parsed.closeTagName,
+            tools
+          )
+        ) {
+          spans.push({
+            startIndex: match.index,
+            endIndex: parsed.endIndex,
+            dropReason: "prototype-sensitive-tool-candidate",
+          });
+        }
+      } else {
+        const payload = resolveYamlBlockPayload(
+          parsed.mapping,
+          parsed.closeTagName,
+          tools
+        );
+        if (payload) {
+          spans.push({
+            startIndex: match.index,
+            endIndex: parsed.endIndex,
+            payload,
+          });
+        }
       }
     }
 

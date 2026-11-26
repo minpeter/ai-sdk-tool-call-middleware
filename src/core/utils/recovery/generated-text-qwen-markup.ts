@@ -17,11 +17,16 @@ export const RECOVERABLE_QWEN_CALL_TAGS = [
   "invoke",
 ] as const;
 
-export const QWEN_CALL_BLOCK_OPEN_REGEX =
-  /<\s*(call|function|tool|invoke)\b[^>]*>/gi;
+const QWEN_CALL_TAGS_PATTERN = RECOVERABLE_QWEN_CALL_TAGS.join("|");
+export const QWEN_CALL_BLOCK_OPEN_REGEX = new RegExp(
+  `<\\s*(${QWEN_CALL_TAGS_PATTERN})\\b[^>]*>`,
+  "gi"
+);
 const QWEN_PARAM_OPEN_REGEX = /<\s*(?:parameter|param|argument|arg)\b[^>]*>/gi;
-const QWEN_PARAM_BOUNDARY_REGEX =
-  /<\s*(?:parameter|param|argument|arg)\b|<\s*\/\s*(?:parameter|param|argument|arg|call|function|tool|invoke)\s*>/i;
+const QWEN_PARAM_BOUNDARY_REGEX = new RegExp(
+  `<\\s*(?:parameter|param|argument|arg)\\b|<\\s*\\/\\s*(?:parameter|param|argument|arg|${QWEN_CALL_TAGS_PATTERN})\\s*>`,
+  "i"
+);
 const QWEN_NAME_CHILD_REGEX =
   /<\s*(?:name|tool_name)\b[^>]*>([\s\S]*?)<\s*\/\s*(?:name|tool_name)\s*>/i;
 const SELF_CLOSING_TAG_REGEX = /\/\s*>$/;

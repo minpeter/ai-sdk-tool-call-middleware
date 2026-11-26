@@ -11,8 +11,8 @@ import {
   type StreamingToolCallDelta,
   StreamingToolCallTracker,
 } from "@ai-sdk/provider-utils";
-import { glm5Protocol } from "../../../src/core/protocols/glm5-protocol";
-import { originalToolsSchema } from "../../../src/core/utils/provider-options";
+import { glm5Protocol } from "../../../src/core/protocols/glm5/protocol";
+import { originalToolsSchema } from "../../../src/core/utils/transport/provider-options";
 import { wrapGenerate } from "../../../src/generate-handler";
 import { wrapStream } from "../../../src/stream-handler";
 import type {
@@ -419,10 +419,12 @@ function providerOptions(
 ) {
   return {
     toolCallMiddleware: {
+      _internal: {
+        originalTools: originalToolsSchema.encode(tools),
+      },
       onError(message: string, metadata?: Record<string, unknown>) {
         parserError(errors, message, metadata);
       },
-      originalTools: originalToolsSchema.encode(tools),
     },
   };
 }

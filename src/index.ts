@@ -1,7 +1,6 @@
 // biome-ignore-all lint/performance/noBarrelFile: intentional public API surface
 
-// Core Protocols (Agnostic)
-
+// Tool-response formatters, system prompt templates & media strategy
 export {
   createGlm5ToolResponseFormatter,
   formatToolResponseAsGlm5,
@@ -10,7 +9,6 @@ export {
   glm5SystemPromptTemplate,
   renderGlm5ToolDefinition,
 } from "./core/prompts/glm5-prompt";
-// Tool-response formatters + media strategy
 export {
   createHermesToolResponseFormatter,
   formatToolResponseAsHermes,
@@ -21,7 +19,10 @@ export {
   formatToolResponseAsKExaone2,
   kExaone2SystemPromptTemplate,
 } from "./core/prompts/k-exaone-2-prompt";
-export { kExaone236BToolDeclaration } from "./core/prompts/k-exaone-236b-prompt";
+export {
+  kExaone236BSystemPromptMessages,
+  kExaone236BToolDeclaration,
+} from "./core/prompts/k-exaone-236b-prompt";
 export {
   createMorphXmlToolResponseFormatter,
   morphFormatToolResponseAsXml,
@@ -48,49 +49,44 @@ export {
   formatToolResponseAsYaml,
   yamlXmlSystemPromptTemplate,
 } from "./core/prompts/yaml-xml-prompt";
+
+// Core Protocols
 export type {
   Glm5ProtocolOptions,
   Glm5StringBoundaryNormalization,
-} from "./core/protocols/glm5-call-parsing";
-export { glm5Protocol } from "./core/protocols/glm5-protocol";
-export * from "./core/protocols/hermes-protocol";
-export {
-  KExaone2ToolParser,
-  kExaone2Protocol,
-} from "./core/protocols/k-exaone-2-protocol";
-export {
-  KExaone236BToolParser,
-  kExaone236BProtocol,
-} from "./core/protocols/k-exaone-236b-protocol";
-export type { MorphXmlProtocolOptions } from "./core/protocols/morph-xml-protocol";
-export { morphXmlProtocol } from "./core/protocols/morph-xml-protocol";
+} from "./core/protocols/glm5/call-parsing";
+export { glm5Protocol } from "./core/protocols/glm5/protocol";
+export * from "./core/protocols/hermes/protocol";
+export { kExaone2Protocol } from "./core/protocols/k-exaone/k-exaone-2-protocol";
+export { kExaone236BProtocol } from "./core/protocols/k-exaone/k-exaone-236b-protocol";
+export type { MorphXmlProtocolOptions } from "./core/protocols/morph-xml/protocol";
+export { morphXmlProtocol } from "./core/protocols/morph-xml/protocol";
 export * from "./core/protocols/protocol-interface";
-export {
-  Qwen3CoderToolParser,
-  qwen3CoderProtocol,
-  uiTarsXmlProtocol,
-} from "./core/protocols/qwen3coder-protocol";
-export type { YamlXmlProtocolOptions } from "./core/protocols/yaml-xml-protocol";
-export { yamlXmlProtocol } from "./core/protocols/yaml-xml-protocol";
+export { qwen3CoderProtocol } from "./core/protocols/qwen3coder/protocol";
+export type { YamlXmlProtocolOptions } from "./core/protocols/yaml-xml/protocol";
+export { yamlXmlProtocol } from "./core/protocols/yaml-xml/protocol";
 
-// Utilities (Agnostic)
-export * from "./core/utils/debug";
-export * from "./core/utils/dynamic-tool-schema";
-export * from "./core/utils/get-potential-start-index";
-export * from "./core/utils/on-error";
-export * from "./core/utils/provider-options";
-export * from "./core/utils/regex";
-export * from "./core/utils/type-guards";
+// Utilities
+export * from "./core/utils/diagnostics/debug";
+export * from "./core/utils/diagnostics/on-error";
+export * from "./core/utils/primitives/get-potential-start-index";
+export * from "./core/utils/primitives/type-guards";
+export * from "./core/utils/transport/dynamic-tool-schema";
+export * from "./core/utils/transport/provider-options";
 export { wrapGenerate } from "./generate-handler";
-export { transformKExaone236BParams } from "./k-exaone-236b-transform";
 // Pre-configured Middleware
 export * from "./preconfigured-middleware";
 export * from "./rjson/index";
+export { escapeRegExp } from "./shared/regex";
 export { toolChoiceStream, wrapStream } from "./stream-handler";
 // Tool Call Middleware Implementation
 export { createToolMiddleware } from "./tool-call-middleware";
 export type {
-  ToolCallHistoryMode,
+  ToolHistoryStrategy,
+  ToolPromptStrategy,
   ToolSystemPromptPlacement,
 } from "./transform-handler";
-export { transformParams } from "./transform-handler";
+export {
+  DEFAULT_TOOL_SYSTEM_PROMPT_PLACEMENT,
+  transformParams,
+} from "./transform-handler";

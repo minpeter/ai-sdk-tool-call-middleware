@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
@@ -14,7 +14,7 @@ describe("createToolMiddleware branches", () => {
   it("wrapGenerate returns tool-call content when toolChoice active", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+      promptStrategy: { mode: "text", template: () => "" },
     });
     const doGenerate = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: '{"name":"n","arguments":{}}' }],
@@ -27,7 +27,9 @@ describe("createToolMiddleware branches", () => {
       params: {
         prompt: [],
         providerOptions: {
-          toolCallMiddleware: { toolChoice: { type: "required" } },
+          toolCallMiddleware: {
+            _internal: { toolChoice: { type: "required" } },
+          },
         },
       },
     } as any);
@@ -41,7 +43,7 @@ describe("createToolMiddleware branches", () => {
   it("wrapStream handles toolChoice 'required' via stream handler", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+      promptStrategy: { mode: "text", template: () => "" },
     });
 
     if (!mw.wrapStream) {
@@ -60,7 +62,9 @@ describe("createToolMiddleware branches", () => {
       }),
       params: {
         providerOptions: {
-          toolCallMiddleware: { toolChoice: { type: "required" } },
+          toolCallMiddleware: {
+            _internal: { toolChoice: { type: "required" } },
+          },
         },
       },
     } as any);
@@ -70,7 +74,7 @@ describe("createToolMiddleware branches", () => {
   it("wrapGenerate toolChoice path coerces arguments with decoded tool schema", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+      promptStrategy: { mode: "text", template: () => "" },
     });
 
     if (!mw.wrapGenerate) {
@@ -88,14 +92,16 @@ describe("createToolMiddleware branches", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            toolChoice: { type: "required" },
-            originalTools: [
-              {
-                name: "calc",
-                inputSchema:
-                  '{"type":"object","properties":{"a":{"type":"number"},"b":{"type":"boolean"}}}',
-              },
-            ],
+            _internal: {
+              toolChoice: { type: "required" },
+              originalTools: [
+                {
+                  name: "calc",
+                  inputSchema:
+                    '{"type":"object","properties":{"a":{"type":"number"},"b":{"type":"boolean"}}}',
+                },
+              ],
+            },
           },
         },
       },
@@ -110,7 +116,7 @@ describe("createToolMiddleware branches", () => {
   it("wrapStream handles toolChoice 'tool' via stream handler", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+      promptStrategy: { mode: "text", template: () => "" },
     });
 
     if (!mw.wrapStream) {
@@ -129,7 +135,9 @@ describe("createToolMiddleware branches", () => {
       }),
       params: {
         providerOptions: {
-          toolCallMiddleware: { toolChoice: { type: "tool", toolName: "x" } },
+          toolCallMiddleware: {
+            _internal: { toolChoice: { type: "tool", toolName: "x" } },
+          },
         },
       },
     } as any);
@@ -139,7 +147,7 @@ describe("createToolMiddleware branches", () => {
   it("wrapGenerate does not throw when originalTools contains malformed schema JSON", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+      promptStrategy: { mode: "text", template: () => "" },
     });
     const onError = vi.fn();
     const doGenerate = vi.fn().mockResolvedValue({
@@ -160,8 +168,8 @@ describe("createToolMiddleware branches", () => {
         prompt: [],
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: [{ name: "n", inputSchema: "{" }],
             onError,
+            _internal: { originalTools: [{ name: "n", inputSchema: "{" }] },
           },
         },
       },

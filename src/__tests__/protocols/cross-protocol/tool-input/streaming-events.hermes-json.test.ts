@@ -1,6 +1,6 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../../../core/protocols/hermes/protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import { stopFinishReason, zeroUsage } from "../../../test-helpers";
 import {

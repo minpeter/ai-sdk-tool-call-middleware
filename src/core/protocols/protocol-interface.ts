@@ -26,9 +26,9 @@ export interface ParserOptions {
 export interface TCMProtocol {
   /**
    * Return false when protocol parsing has terminally consumed this text and
-   * generic JSON recovery must not reinterpret its contents as tool calls.
+   * generic fallback recovery must not reinterpret its contents as tool calls.
    */
-  allowsGeneratedTextJsonRecovery?: (text: string) => boolean;
+  allowsFallbackRecovery?: (text: string) => boolean;
 
   createStreamParser: ({
     tools,
@@ -55,6 +55,13 @@ export interface TCMProtocol {
     toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
   }) => string;
 
+  /**
+   * Optional O(n) fast-path predicate returning true only when `text` is
+   * provably plain text containing neither protocol markup nor recoverable
+   * fallback tool-call candidates.
+   */
+  isDefinitelyPlainGeneratedText?: (text: string) => boolean;
+
   parseGeneratedText: ({
     text,
     tools,
@@ -66,12 +73,8 @@ export interface TCMProtocol {
   }) => LanguageModelV4Content[];
 }
 
-export type TCMCoreProtocol = TCMProtocol;
-
 export function isProtocolFactory(
   protocol: TCMProtocol | (() => TCMProtocol)
 ): protocol is () => TCMProtocol {
   return typeof protocol === "function";
 }
-
-export const isTCMProtocolFactory = isProtocolFactory;

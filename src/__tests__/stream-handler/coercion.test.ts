@@ -5,19 +5,16 @@ import type {
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
-import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
-import {
-  qwen3CoderProtocol,
-  uiTarsXmlProtocol,
-} from "../../core/protocols/qwen3coder-protocol";
-import { yamlXmlProtocol } from "../../core/protocols/yaml-xml-protocol";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml/protocol";
+import type { TCMProtocol } from "../../core/protocols/protocol-interface";
+import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder/protocol";
+import { yamlXmlProtocol } from "../../core/protocols/yaml-xml/protocol";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { wrapStream } from "../../stream-handler";
 import { stopFinishReason, zeroUsage } from "../test-helpers";
 
-const passthroughProtocol: TCMCoreProtocol = {
+const passthroughProtocol: TCMProtocol = {
   formatTools: ({ toolSystemPromptTemplate }) => toolSystemPromptTemplate([]),
   formatToolCall: () => "",
   parseGeneratedText: () => [],
@@ -139,7 +136,7 @@ describe("wrapStream tool-call coercion", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -199,7 +196,7 @@ describe("wrapStream tool-call coercion", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -245,7 +242,7 @@ describe("wrapStream tool-call coercion", () => {
 
   const crossProtocolCoercionScenarios: Array<{
     name: string;
-    protocol: TCMCoreProtocol;
+    protocol: TCMProtocol;
     chunks: string[];
   }> = [
     {
@@ -275,7 +272,7 @@ describe("wrapStream tool-call coercion", () => {
     },
     {
       name: "ui-tars-xml",
-      protocol: uiTarsXmlProtocol(),
+      protocol: qwen3CoderProtocol(),
       chunks: [
         "<tool_call><function=calc><parameter=a>10</parameter><parameter=b>false</parameter></function></tool_call>",
       ],
@@ -326,7 +323,7 @@ describe("wrapStream tool-call coercion", () => {
         params: {
           providerOptions: {
             toolCallMiddleware: {
-              originalTools: originalToolsSchema.encode(tools),
+              _internal: { originalTools: originalToolsSchema.encode(tools) },
             },
           },
         },
@@ -410,7 +407,7 @@ describe("wrapStream tool-call coercion", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -534,7 +531,7 @@ describe("wrapStream tool-call coercion", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -614,7 +611,7 @@ describe("wrapStream tool-call coercion", () => {
     const longContent = "single_chunk_long_content_".repeat(1000);
     const scenarios: Array<{
       name: string;
-      protocol: TCMCoreProtocol;
+      protocol: TCMProtocol;
       payload: string;
     }> = [
       {
@@ -655,7 +652,7 @@ describe("wrapStream tool-call coercion", () => {
       },
       {
         name: "ui-tars-xml",
-        protocol: uiTarsXmlProtocol(),
+        protocol: qwen3CoderProtocol(),
         payload:
           "<tool_call><function=write_markdown_file><parameter=file_path>stream-tool-input-visual-demo.md</parameter><parameter=line_count>420</parameter><parameter=content>" +
           longContent +
@@ -689,7 +686,7 @@ describe("wrapStream tool-call coercion", () => {
         params: {
           providerOptions: {
             toolCallMiddleware: {
-              originalTools: originalToolsSchema.encode(tools),
+              _internal: { originalTools: originalToolsSchema.encode(tools) },
             },
           },
         },
@@ -785,7 +782,7 @@ describe("wrapStream tool-call coercion", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -881,7 +878,7 @@ describe("wrapStream tool-call coercion", () => {
     const scenarios: Array<{
       name: string;
       payload: string;
-      protocol: TCMCoreProtocol;
+      protocol: TCMProtocol;
     }> = [
       {
         name: "hermes",
@@ -933,7 +930,7 @@ describe("wrapStream tool-call coercion", () => {
       },
       {
         name: "ui-tars-xml",
-        protocol: uiTarsXmlProtocol(),
+        protocol: qwen3CoderProtocol(),
         payload:
           "<tool_call><function=coerce_numbers><parameter=finite_int>" +
           finiteIntRaw +
@@ -971,7 +968,7 @@ describe("wrapStream tool-call coercion", () => {
         params: {
           providerOptions: {
             toolCallMiddleware: {
-              originalTools: originalToolsSchema.encode(tools),
+              _internal: { originalTools: originalToolsSchema.encode(tools) },
             },
           },
         },

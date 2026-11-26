@@ -1,6 +1,6 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { glm5Protocol } from "../../../core/protocols/glm5-protocol";
+import { glm5Protocol } from "../../../core/protocols/glm5/protocol";
 import { glm5Tools, normalizeContentToolCalls, toolCallInput } from "./shared";
 
 const typedCall = [

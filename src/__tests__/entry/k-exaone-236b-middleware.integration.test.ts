@@ -279,7 +279,9 @@ describe("kExaone236BToolMiddleware", () => {
 
     expect(transformed.tools).toEqual([]);
     expect(transformed.providerOptions).toMatchObject({
-      toolCallMiddleware: { droppedProviderTools: ["web_search"] },
+      toolCallMiddleware: {
+        _internal: { droppedProviderTools: ["web_search"] },
+      },
     });
   });
 });

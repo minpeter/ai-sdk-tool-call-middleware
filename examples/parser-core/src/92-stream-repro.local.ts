@@ -1,6 +1,6 @@
 /** Local repro: qwen3coder streaming tool-input-delta tag-fragment leak. */
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
-import { qwen3CoderProtocol } from "../../../src/core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../src/core/protocols/qwen3coder/protocol";
 
 const tools = [
   {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import { runProtocolTextDeltaStream } from "./streaming-events.shared";
 
 describe("cross-protocol tool-input streaming events: qwen3coder", () => {
@@ -18,7 +18,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     });
   }
 
-  it("Qwen3CoderToolParser preserves trailing plain text when finish-time malformed tool_call parse fails", async () => {
+  it("qwen3CoderProtocol preserves trailing plain text when finish-time malformed tool_call parse fails", async () => {
     const out = await runQwenRawFallbackStream([
       "<tool_call><function><parameter=x>1</parameter></tool_call>AFTER",
     ]);
@@ -36,7 +36,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(textOut).not.toContain("<tool_call>");
   });
 
-  it("Qwen3CoderToolParser emits malformed finish-time tool_call raw fallback once without duplicating trailing text", async () => {
+  it("qwen3CoderProtocol emits malformed finish-time tool_call raw fallback once without duplicating trailing text", async () => {
     const input =
       "<tool_call><function><parameter=x>1</parameter></tool_call>AFTER";
     const out = await runQwenRawFallbackStream([input], true);
@@ -53,7 +53,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(textOut).toBe(input);
   });
 
-  it("Qwen3CoderToolParser flushes buffered partial tool_call at finish as text when enabled", async () => {
+  it("qwen3CoderProtocol flushes buffered partial tool_call at finish as text when enabled", async () => {
     const out = await runQwenRawFallbackStream(
       ["<tool_call><function=get_weather"],
       true
@@ -72,7 +72,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(leakedText).toContain("<function=get_weather");
   });
 
-  it("Qwen3CoderToolParser emits raw malformed tool_call text when tool name is missing and raw fallback is enabled", async () => {
+  it("qwen3CoderProtocol emits raw malformed tool_call text when tool name is missing and raw fallback is enabled", async () => {
     const out = await runQwenRawFallbackStream(
       [
         "before ",
@@ -98,7 +98,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(leakedText).toContain(" after");
   });
 
-  it("Qwen3CoderToolParser emits full raw malformed implicit-call text at finish when raw fallback is enabled", async () => {
+  it("qwen3CoderProtocol emits full raw malformed implicit-call text at finish when raw fallback is enabled", async () => {
     const out = await runQwenRawFallbackStream(
       ["<function><parameter=x>1</parameter>"],
       true
@@ -116,7 +116,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(leakedText).toContain("<function><parameter=x>1</parameter>");
   });
 
-  it("Qwen3CoderToolParser reports structured drop metadata for unfinished named tool_call at finish", async () => {
+  it("qwen3CoderProtocol reports structured drop metadata for unfinished named tool_call at finish", async () => {
     const onError = vi.fn();
     await runProtocolTextDeltaStream({
       protocol,
@@ -136,7 +136,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(metadata.toolCall).toContain("<function=get_weather");
   });
 
-  it("Qwen3CoderToolParser suppresses buffered partial tool_call at finish by default", async () => {
+  it("qwen3CoderProtocol suppresses buffered partial tool_call at finish by default", async () => {
     const out = await runQwenRawFallbackStream([
       "<tool_call><function=get_weather",
     ]);

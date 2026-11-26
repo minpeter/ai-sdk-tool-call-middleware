@@ -77,10 +77,16 @@ import {
 // For text-only models, opt into placeholders:
 const textOnlyMiddleware = createToolMiddleware({
   protocol: hermesProtocol(),
-  toolSystemPromptTemplate: hermesSystemPromptTemplate,
-  toolResponsePromptTemplate: createHermesToolResponseFormatter({
-    mediaStrategy: { mode: "placeholder" },
-  }),
+  promptStrategy: {
+    mode: "text",
+    template: hermesSystemPromptTemplate,
+  },
+  historyStrategy: {
+    mode: "converted-text",
+    toolResponsePromptTemplate: createHermesToolResponseFormatter({
+      mediaStrategy: { mode: "placeholder" },
+    }),
+  },
 });
 
 // YAML XML tool *responses* reuse Morph's response formatter — use the Morph
@@ -289,8 +295,11 @@ import { createToolMiddleware, qwen3CoderProtocol } from "@ai-sdk-tool/parser";
 
 export const myToolMiddleware = createToolMiddleware({
   protocol: qwen3CoderProtocol,
-  toolSystemPromptTemplate: (tools) =>
-    `Use these tools and emit <tool_call> blocks only: ${JSON.stringify(tools)}`,
+  promptStrategy: {
+    mode: "text",
+    template: (tools) =>
+      `Use these tools and emit <tool_call> blocks only: ${JSON.stringify(tools)}`,
+  },
 });
 ```
 

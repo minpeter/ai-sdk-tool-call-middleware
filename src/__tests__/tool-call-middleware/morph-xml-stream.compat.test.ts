@@ -4,8 +4,8 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, test, vi } from "vitest";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml/protocol";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { mockUsage, stopFinishReason } from "../test-helpers";
 
@@ -25,7 +25,7 @@ describe("createToolMiddleware morphXml stream compat", () => {
 
   const middleware = createToolMiddleware({
     protocol: morphXmlProtocol,
-    toolSystemPromptTemplate: () => "",
+    promptStrategy: { mode: "text", template: () => "" },
   });
 
   const runMiddleware = (stream: ReadableStream<LanguageModelV4StreamPart>) => {
@@ -38,7 +38,7 @@ describe("createToolMiddleware morphXml stream compat", () => {
           // INFO: Since this test does not go through the transform handler
           // that normally injects this, we need to provide it manually.
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
