@@ -4,9 +4,56 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const SRC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const RELATIVE_IMPORT_RE =
-  /(?:from|import)\s+["'](\.[^"']+)["']|export\s+(?:type\s+)?(?:\*|\{[^}]*\})\s+from\s+["'](\.[^"']+)["']/g;
 const MAX_SOURCE_FILE_LOC = 600;
+const JS_TO_TS_EXTENSION: ReadonlyArray<readonly [string, string]> = [
+  [".js", ".ts"],
+  [".mjs", ".mts"],
+  [".cjs", ".cts"],
+];
+const IDENT_START_RE = /[A-Za-z_$]/;
+const IDENT_PART_RE = /[A-Za-z0-9_$]/;
+const REGEX_PRECEDING_KEYWORDS = new Set([
+  "return",
+  "throw",
+  "case",
+  "in",
+  "of",
+  "typeof",
+  "void",
+  "delete",
+  "new",
+  "yield",
+  "await",
+  "else",
+  "do",
+]);
+const REGEX_PRECEDING_PUNCT = new Set([
+  "(",
+  "[",
+  "{",
+  ",",
+  ";",
+  ":",
+  "=",
+  "!",
+  "?",
+  "&",
+  "|",
+  "^",
+  "~",
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "<",
+  ">",
+]);
+
+interface SourceToken {
+  kind: "ident" | "punct" | "string";
+  value: string;
+}
 
 function collectSourceFiles(dir: string): string[] {
   const files: string[] = [];
@@ -24,15 +71,240 @@ function collectSourceFiles(dir: string): string[] {
   return files;
 }
 
-function resolveRelativeImport(fromFile: string, specifier: string): string {
+function canStartRegex(prev: SourceToken | undefined): boolean {
+  if (!prev) {
+    return true;
+  }
+  if (prev.kind === "punct") {
+    return REGEX_PRECEDING_PUNCT.has(prev.value);
+  }
+  if (prev.kind === "ident") {
+    return REGEX_PRECEDING_KEYWORDS.has(prev.value);
+  }
+  return false;
+}
+
+function readQuotedString(
+  source: string,
+  startIndex: number
+): { nextIndex: number; value: string } {
+  const quote = source[startIndex];
+  let index = startIndex + 1;
+  let value = "";
+  while (index < source.length) {
+    const ch = source[index];
+    if (ch === "\\") {
+      value += source[index + 1] ?? "";
+      index += 2;
+      continue;
+    }
+    if (ch === quote) {
+      return { nextIndex: index + 1, value };
+    }
+    value += ch;
+    index += 1;
+  }
+  return { nextIndex: index, value };
+}
+
+function skipRegexLiteral(source: string, startIndex: number): number {
+  let index = startIndex + 1;
+  let inCharClass = false;
+  while (index < source.length) {
+    const ch = source[index];
+    if (ch === "\\") {
+      index += 2;
+      continue;
+    }
+    if (ch === "[") {
+      inCharClass = true;
+    } else if (ch === "]") {
+      inCharClass = false;
+    } else if (ch === "/" && !inCharClass) {
+      index += 1;
+      while (index < source.length && IDENT_PART_RE.test(source[index] ?? "")) {
+        index += 1;
+      }
+      return index;
+    } else if (ch === "\n" || ch === "\r") {
+      return index;
+    }
+    index += 1;
+  }
+  return index;
+}
+
+function readTemplateSegment(
+  source: string,
+  startIndex: number
+): { hasInterpolation: boolean; nextIndex: number; value: string } {
+  let index = startIndex;
+  let value = "";
+  while (index < source.length) {
+    const ch = source[index];
+    if (ch === "\\") {
+      value += source[index + 1] ?? "";
+      index += 2;
+      continue;
+    }
+    if (ch === "`") {
+      return { hasInterpolation: false, nextIndex: index + 1, value };
+    }
+    if (ch === "$" && source[index + 1] === "{") {
+      return { hasInterpolation: true, nextIndex: index + 2, value };
+    }
+    value += ch;
+    index += 1;
+  }
+  return { hasInterpolation: false, nextIndex: index, value };
+}
+
+function tokenizeTypeScript(source: string): SourceToken[] {
+  const tokens: SourceToken[] = [];
+  const templateBraceDepths: number[] = [];
+  let braceDepth = 0;
+  let index = 0;
+
+  while (index < source.length) {
+    const ch = source[index] ?? "";
+    const next = source[index + 1] ?? "";
+
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+      index += 1;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      const newline = source.indexOf("\n", index + 2);
+      index = newline === -1 ? source.length : newline + 1;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      const close = source.indexOf("*/", index + 2);
+      index = close === -1 ? source.length : close + 2;
+      continue;
+    }
+    if (ch === "/" && canStartRegex(tokens.at(-1))) {
+      index = skipRegexLiteral(source, index);
+      tokens.push({ kind: "string", value: "" });
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      const parsed = readQuotedString(source, index);
+      tokens.push({ kind: "string", value: parsed.value });
+      index = parsed.nextIndex;
+      continue;
+    }
+    if (ch === "`") {
+      const segment = readTemplateSegment(source, index + 1);
+      if (segment.hasInterpolation) {
+        templateBraceDepths.push(braceDepth);
+        braceDepth += 1;
+        tokens.push({ kind: "punct", value: "{" });
+      } else {
+        tokens.push({ kind: "string", value: segment.value });
+      }
+      index = segment.nextIndex;
+      continue;
+    }
+    if (ch === "{") {
+      braceDepth += 1;
+      tokens.push({ kind: "punct", value: "{" });
+      index += 1;
+      continue;
+    }
+    if (ch === "}") {
+      braceDepth = Math.max(0, braceDepth - 1);
+      tokens.push({ kind: "punct", value: "}" });
+      index += 1;
+      if (
+        templateBraceDepths.length > 0 &&
+        templateBraceDepths.at(-1) === braceDepth
+      ) {
+        const segment = readTemplateSegment(source, index);
+        if (segment.hasInterpolation) {
+          braceDepth += 1;
+          tokens.push({ kind: "punct", value: "{" });
+        } else {
+          templateBraceDepths.pop();
+        }
+        index = segment.nextIndex;
+      }
+      continue;
+    }
+    if (IDENT_START_RE.test(ch)) {
+      let end = index + 1;
+      while (end < source.length && IDENT_PART_RE.test(source[end] ?? "")) {
+        end += 1;
+      }
+      tokens.push({ kind: "ident", value: source.slice(index, end) });
+      index = end;
+      continue;
+    }
+
+    tokens.push({ kind: "punct", value: ch });
+    index += 1;
+  }
+
+  return tokens;
+}
+
+function collectRelativeSpecifiersFromSource(sourceText: string): string[] {
+  const tokens = tokenizeTypeScript(sourceText);
+  const specifiers: string[] = [];
+
+  const recordIfRelative = (token: SourceToken | undefined) => {
+    if (token?.kind === "string" && token.value.startsWith(".")) {
+      specifiers.push(token.value);
+    }
+  };
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (token?.kind !== "ident") {
+      continue;
+    }
+    const prev = tokens[i - 1];
+    if (prev?.kind === "punct" && prev.value === ".") {
+      continue;
+    }
+    const next = tokens[i + 1];
+    if (token.value === "from" && next?.kind === "string") {
+      recordIfRelative(next);
+    } else if (token.value === "import" && next?.kind === "string") {
+      recordIfRelative(next);
+    } else if (
+      (token.value === "import" || token.value === "require") &&
+      next?.kind === "punct" &&
+      next.value === "("
+    ) {
+      recordIfRelative(tokens[i + 2]);
+    }
+  }
+
+  return specifiers;
+}
+
+function resolveRelativeImport(
+  fromFile: string,
+  specifier: string,
+  fileExists: (path: string) => boolean = existsSync
+): string {
   const base = normalize(join(dirname(fromFile), specifier));
-  if (base.endsWith(".ts")) {
+  if (base.endsWith(".ts") || base.endsWith(".mts") || base.endsWith(".cts")) {
     return relative(SRC_ROOT, base).replaceAll("\\", "/");
   }
-  if (existsSync(`${base}.ts`)) {
+  for (const [jsExt, tsExt] of JS_TO_TS_EXTENSION) {
+    if (base.endsWith(jsExt)) {
+      const mapped = `${base.slice(0, -jsExt.length)}${tsExt}`;
+      if (fileExists(mapped)) {
+        return relative(SRC_ROOT, mapped).replaceAll("\\", "/");
+      }
+    }
+  }
+  if (fileExists(`${base}.ts`)) {
     return relative(SRC_ROOT, `${base}.ts`).replaceAll("\\", "/");
   }
-  if (existsSync(join(base, "index.ts"))) {
+  if (fileExists(join(base, "index.ts"))) {
     return relative(SRC_ROOT, join(base, "index.ts")).replaceAll("\\", "/");
   }
   return relative(SRC_ROOT, base).replaceAll("\\", "/");
@@ -45,11 +317,7 @@ function collectEdges(
   for (const fullPath of sourceFiles) {
     const from = relative(SRC_ROOT, fullPath).replaceAll("\\", "/");
     const source = readFileSync(fullPath, "utf8");
-    for (const match of source.matchAll(RELATIVE_IMPORT_RE)) {
-      const specifier = match[1] ?? match[2];
-      if (!specifier) {
-        continue;
-      }
+    for (const specifier of collectRelativeSpecifiersFromSource(source)) {
       edges.push({ from, to: resolveRelativeImport(fullPath, specifier) });
     }
   }
@@ -391,6 +659,47 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
       return !allowedCrossFamilyEdges.has(`${fromFamily}->${to}`);
     });
     expect(violations).toEqual([]);
+  });
+
+  it("resolves every relative import edge to a known production source file", () => {
+    const knownFiles = new Set(relSourceFiles);
+    const unresolved = edges.filter(({ to }) => !knownFiles.has(to));
+    expect(unresolved).toEqual([]);
+  });
+
+  it("detects dynamic imports, import types, and .js specifiers while ignoring comments", () => {
+    const syntheticSource = `
+      // from "./ignored-comment-import"
+      const doc = 'import { x } from "./ignored-string-import"';
+      export type T = import("../core/protocols/protocol-interface.js").TCMProtocol;
+      export async function load() {
+        return import("../generate-handler.js");
+      }
+    `;
+    const fromFile = join(SRC_ROOT, "shared/synthetic-fixture.ts");
+    const specifiers = collectRelativeSpecifiersFromSource(syntheticSource);
+    expect(specifiers).toEqual([
+      "../core/protocols/protocol-interface.js",
+      "../generate-handler.js",
+    ]);
+
+    const resolvedTargets = specifiers.map((specifier) =>
+      resolveRelativeImport(fromFile, specifier)
+    );
+    expect(resolvedTargets).toEqual([
+      "core/protocols/protocol-interface.ts",
+      "generate-handler.ts",
+    ]);
+
+    const upwardViolations = resolvedTargets.filter(
+      (to) =>
+        LAYER_RANK[classifyLayer(to)] >
+        LAYER_RANK[classifyLayer("shared/synthetic-fixture.ts")]
+    );
+    expect(upwardViolations).toEqual([
+      "core/protocols/protocol-interface.ts",
+      "generate-handler.ts",
+    ]);
   });
 
   it("bounds module information content by keeping every production source file at or below 600 LOC", () => {

@@ -43,7 +43,11 @@ export type {
   Glm5StringBoundaryNormalization,
 } from "./core/protocols/glm5/call-parsing";
 export { glm5Protocol } from "./core/protocols/glm5/protocol";
-export * from "./core/protocols/hermes/protocol";
+export type {
+  HermesProtocolOptions,
+  HermesToolCallResolutionHelpers,
+} from "./core/protocols/hermes/protocol";
+export { hermesProtocol } from "./core/protocols/hermes/protocol";
 export { kExaone2Protocol } from "./core/protocols/k-exaone/k-exaone-2-protocol";
 export { kExaone236BProtocol } from "./core/protocols/k-exaone/k-exaone-236b-protocol";
 export type { MorphXmlProtocolOptions } from "./core/protocols/morph-xml/protocol";
@@ -70,7 +74,23 @@ export {
 export * from "./core/utils/primitives/get-potential-start-index";
 export * from "./core/utils/primitives/type-guards";
 export * from "./core/utils/transport/dynamic-tool-schema";
-export * from "./core/utils/transport/provider-options";
+export type {
+  ToolCallMiddlewareDebugSummary,
+  ToolCallMiddlewareProviderOptions,
+  ToolCallMiddlewareUserOptions,
+} from "./core/utils/transport/provider-options";
+export {
+  decodeOriginalTools,
+  decodeOriginalToolsFromProviderOptions,
+  encodeOriginalTools,
+  extractToolNamesFromOriginalTools,
+  getDroppedProviderTools,
+  getToolCallMiddlewareOptions,
+  isToolChoiceActive,
+  isToolChoiceNone,
+  mergeToolCallMiddlewareOptions,
+  originalToolsSchema,
+} from "./core/utils/transport/provider-options";
 export { wrapGenerate } from "./generate-handler";
 // Pre-configured Middleware
 export * from "./preconfigured-middleware";

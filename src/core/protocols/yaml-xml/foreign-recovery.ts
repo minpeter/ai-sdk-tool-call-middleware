@@ -13,14 +13,6 @@ import {
 } from "../../utils/recovery/generated-text-json-recovery";
 import { toolCallTextHasPrototypeSensitiveKey } from "../../utils/security/prototype-sensitive-keys";
 
-export interface YamlXmlProtocolOptions {
-  /**
-   * Whether to include a system prompt example showing YAML multiline syntax.
-   * @default true
-   */
-  includeMultilineExample?: boolean;
-}
-
 const FOREIGN_SALVAGE_MARKUP_ONLY_RE = /^\s*(?:<[^<>\n]*>\s*)*$/;
 
 const FOREIGN_TOOL_CALL_BLOCK_RE =

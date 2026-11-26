@@ -20,6 +20,7 @@ import {
 } from "./core/utils/diagnostics/debug-summary";
 import { extractOnErrorOption } from "./core/utils/diagnostics/on-error";
 import { generateToolCallId } from "./core/utils/primitives/id";
+import { safeToolCallMetadataText } from "./core/utils/primitives/protocol-utils";
 import { createStreamJsonRecoveryTransform } from "./core/utils/recovery/stream-json-recovery";
 import {
   normalizeForcedToolChoiceFinishReason,
@@ -33,7 +34,7 @@ import {
 import {
   createDroppedProviderToolWarnings,
   decodeOriginalToolsForMiddleware,
-  getToolCallMiddlewareOptions,
+  extractToolCallParserOptions,
   getToolChoiceExpectedToolName,
   isToolChoiceActive,
   isToolChoiceNone,
@@ -44,6 +45,35 @@ import {
   findToolChoiceResultText,
   resolveToolChoiceSelection,
 } from "./core/utils/transport/tool-choice";
+
+function createRawTextBlockTracker() {
+  const blocks: string[][] = [];
+  let activeBlock: string[] | null = null;
+
+  return {
+    record(part: LanguageModelV4StreamPart): void {
+      if (part.type === "text-start") {
+        activeBlock = [];
+        blocks.push(activeBlock);
+        return;
+      }
+      if (part.type === "text-delta") {
+        if (!activeBlock) {
+          activeBlock = [];
+          blocks.push(activeBlock);
+        }
+        activeBlock.push(part.delta);
+        return;
+      }
+      if (part.type === "text-end") {
+        activeBlock = null;
+      }
+    },
+    joinBlocks(): string {
+      return blocks.map((chunks) => chunks.join("")).join("\n\n");
+    },
+  };
+}
 
 export async function wrapStream({
   protocol,
@@ -91,11 +121,8 @@ export async function wrapStream({
     params.providerOptions?.toolCallMiddleware?.debugSummary ||
       debugLevel === "parse"
   );
-  const rawTextChunks: string[] = [];
-  const options = {
-    ...onErrorOptions,
-    ...getToolCallMiddlewareOptions(params.providerOptions),
-  };
+  const rawTextTracker = createRawTextBlockTracker();
+  const options = extractToolCallParserOptions(params.providerOptions);
 
   const tappedStream =
     debugLevel === "stream" || collectSummary
@@ -108,8 +135,8 @@ export async function wrapStream({
               if (debugLevel === "stream") {
                 logRawChunk(part);
               }
-              if (collectSummary && part.type === "text-delta") {
-                rawTextChunks.push(part.delta);
+              if (collectSummary) {
+                rawTextTracker.record(part);
               }
               controller.enqueue(part);
             },
@@ -124,7 +151,8 @@ export async function wrapStream({
     .pipeThrough(protocol.createStreamParser({ tools, options }))
     .pipeThrough(
       createStreamJsonRecoveryTransform({
-        allowsRecovery: protocol.allowsFallbackRecovery,
+        allowsRecovery: (text) =>
+          protocol.allowsFallbackRecovery?.(text) ?? true,
         tools,
       })
     )
@@ -141,9 +169,11 @@ export async function wrapStream({
     }
     recordedSummary = true;
     recordParsedDebugSummary({
-      allText: rawTextChunks.join(""),
+      allText: rawTextTracker.joinBlocks(),
       debugSummary: params.providerOptions?.toolCallMiddleware?.debugSummary,
-      extractToolCallSegments: protocol.extractToolCallSegments,
+      extractToolCallSegments: (segmentParams) =>
+        protocol.extractToolCallSegments?.(segmentParams) ?? [],
+      onError: onErrorOptions?.onError,
       toolCalls: collectedToolCalls,
       tools,
     });
@@ -264,8 +294,13 @@ export async function toolChoiceStream({
 }) {
   const normalizedTools = Array.isArray(tools) ? tools : [];
   const result = await doGenerate();
+  const firstText = findToolChoiceResultText(result);
+  if (typeof firstText === "string" && getDebugLevel() === "parse") {
+    logRawChunk(safeToolCallMetadataText(firstText) ?? "");
+  }
+
   const { toolName, input, originText } = resolveToolChoiceSelection({
-    text: findToolChoiceResultText(result),
+    text: firstText,
     tools: normalizedTools,
     onError: options?.onError,
     errorMessage: "Failed to parse toolChoice JSON from streamed model output",

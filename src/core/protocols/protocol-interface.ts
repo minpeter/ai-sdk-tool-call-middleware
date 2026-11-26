@@ -59,6 +59,11 @@ export interface TCMProtocol {
    * Optional O(n) fast-path predicate returning true only when `text` is
    * provably plain text containing neither protocol markup nor recoverable
    * fallback tool-call candidates.
+   *
+   * `parseGeneratedText` always runs first (protocols may short-circuit
+   * internally with the same predicate); when `parseGeneratedText` emits no
+   * tool calls and this predicate returns true, generic fallback recovery is
+   * skipped.
    */
   isDefinitelyPlainGeneratedText?: (text: string) => boolean;
 

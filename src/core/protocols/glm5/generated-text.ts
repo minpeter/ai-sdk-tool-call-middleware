@@ -22,6 +22,7 @@ import {
   type ResolvedGlm5ProtocolOptions,
   stringifyGlm5CallInput,
 } from "./call-parsing";
+import { isDefinitelyPlainGlm5Text } from "./plain-text-fast-path";
 import {
   findGlm5ToolCallOpen,
   selectClosedGlm5Call,
@@ -77,6 +78,10 @@ export function parseGlm5GeneratedText(options: {
   text: string;
   tools: LanguageModelV4FunctionTool[];
 }): LanguageModelV4Content[] {
+  if (isDefinitelyPlainGlm5Text(options.text)) {
+    return [{ type: "text", text: options.text }];
+  }
+
   const output: LanguageModelV4Content[] = [];
   const markdownContext = createMarkdownCodeContext();
   let cursor = 0;

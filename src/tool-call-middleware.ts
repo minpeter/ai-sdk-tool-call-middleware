@@ -6,6 +6,7 @@ import {
   isProtocolFactory,
   type TCMProtocol,
 } from "./core/protocols/protocol-interface";
+import { stripToolCallMiddlewareProviderOptions } from "./core/utils/transport/provider-options";
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
 import { wrapStream as wrapStreamHandler } from "./stream-handler";
 import {
@@ -27,19 +28,32 @@ export function createToolMiddleware({
 
   return {
     specificationVersion: "v4",
-    wrapStream: ({ doStream, doGenerate, params }) =>
-      wrapStreamHandler({
+    wrapStream: ({ doStream, doGenerate, params, model }) => {
+      const providerParams = stripToolCallMiddlewareProviderOptions(params);
+      return wrapStreamHandler({
         protocol: resolvedProtocol,
-        doStream,
-        doGenerate,
+        doStream:
+          typeof model?.doStream === "function"
+            ? () => model.doStream(providerParams)
+            : doStream,
+        doGenerate:
+          typeof model?.doGenerate === "function"
+            ? () => model.doGenerate(providerParams)
+            : doGenerate,
         params,
-      }),
-    wrapGenerate: async ({ doGenerate, params }) =>
-      wrapGenerateHandler({
+      });
+    },
+    wrapGenerate: ({ doGenerate, params, model }) => {
+      const providerParams = stripToolCallMiddlewareProviderOptions(params);
+      return wrapGenerateHandler({
         protocol: resolvedProtocol,
-        doGenerate,
+        doGenerate:
+          typeof model?.doGenerate === "function"
+            ? () => model.doGenerate(providerParams)
+            : doGenerate,
         params,
-      }),
+      });
+    },
     transformParams: async ({ params }): Promise<LanguageModelV4CallOptions> =>
       transformParams({
         protocol: resolvedProtocol,

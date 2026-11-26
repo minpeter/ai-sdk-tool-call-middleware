@@ -45,7 +45,7 @@ import { extractStreamingToolCallProgress } from "./streaming-progress";
 
 /**
  * Hermes call-parsing primitives shared by the generate-path parser and the
- * streaming state machine in hermes-protocol.ts: relaxed JSON scanning and
+ * streaming state machine in `hermes/protocol.ts` and `hermes/stream-parser.ts`: relaxed JSON scanning and
  * repair, argument-body recovery, key-policy coercion, and boundary-safe
  * string handling for `<tool_call>` JSON payloads.
  */

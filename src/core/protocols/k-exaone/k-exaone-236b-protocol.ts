@@ -120,20 +120,23 @@ function overlayLosslessNumbers(
 function createKExaone236BToolCallResolver(
   helpers: HermesToolCallResolutionHelpers
 ): ProtocolToolCallResolver {
+  const {
+    extractNormalizedArgumentsJson,
+    normalizeJsonControls,
+    resolveDefault,
+  } = helpers;
+
   return (toolCallJson, tools) => {
-    const canonicalToolCallJson = canonicalizeParametersAlias(
+    const normalizedToolCallJson = canonicalizeParametersAlias(
       toolCallJson,
-      helpers.normalizeJsonControls
+      normalizeJsonControls
     );
-    const normalizedToolCallJson = normalizeRelaxedJsonQuotes(
-      helpers.normalizeJsonControls(canonicalToolCallJson)
-    ).replace(TRAILING_COMMA_REGEX, "$1");
-    const validated = helpers.resolveDefault(normalizedToolCallJson, tools);
+    const validated = resolveDefault(normalizedToolCallJson, tools);
     if (!validated.ok) {
       return validated;
     }
     try {
-      const rawArgumentsJson = helpers.extractNormalizedArgumentsJson(
+      const rawArgumentsJson = extractNormalizedArgumentsJson(
         normalizedToolCallJson
       );
       if (!rawArgumentsJson) {

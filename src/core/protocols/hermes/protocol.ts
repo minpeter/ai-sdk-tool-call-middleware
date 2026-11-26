@@ -21,25 +21,31 @@ import {
 import { createHermesStreamParser } from "./stream-parser";
 
 export interface HermesToolCallResolutionHelpers {
-  extractNormalizedArgumentsJson: (toolCallJson: string) => string | null;
-  normalizeJsonControls: (text: string) => string;
-  resolveDefault: ProtocolToolCallResolver;
+  readonly extractNormalizedArgumentsJson: (
+    toolCallJson: string
+  ) => string | null;
+  readonly normalizeJsonControls: (text: string) => string;
+  readonly resolveDefault: ProtocolToolCallResolver;
 }
 
 export interface HermesProtocolOptions {
+  /**
+   * Custom resolver for `<tool_call>` JSON payloads. When combined with
+   * `wrapToolCallResolver`, this resolver is exposed as `helpers.resolveDefault`
+   * so wrappers can compose around it.
+   */
   resolveToolCall?: ProtocolToolCallResolver;
   toolCallEnd?: string;
   toolCallStart?: string;
+  /**
+   * Factory that wraps the Hermes tool-call resolver with read-only helper
+   * primitives (`resolveDefault` delegates to `resolveToolCall` if provided,
+   * otherwise to the built-in Hermes resolver).
+   */
   wrapToolCallResolver?: (
     helpers: HermesToolCallResolutionHelpers
   ) => ProtocolToolCallResolver;
 }
-
-const DEFAULT_RESOLUTION_HELPERS: HermesToolCallResolutionHelpers = {
-  extractNormalizedArgumentsJson: extractNormalizedHermesArgumentsJson,
-  normalizeJsonControls: normalizeHermesJsonControls,
-  resolveDefault: resolveToolCall,
-};
 
 export const hermesProtocol = ({
   toolCallStart = "<tool_call>",
@@ -47,14 +53,18 @@ export const hermesProtocol = ({
   resolveToolCall: customResolver,
   wrapToolCallResolver,
 }: HermesProtocolOptions = {}): TCMProtocol => {
+  validateNonEmptyDelimiters(toolCallStart, toolCallEnd);
+
+  const baseResolver = customResolver ?? resolveToolCall;
+  const resolutionHelpers: HermesToolCallResolutionHelpers = Object.freeze({
+    extractNormalizedArgumentsJson: extractNormalizedHermesArgumentsJson,
+    normalizeJsonControls: normalizeHermesJsonControls,
+    resolveDefault: baseResolver,
+  });
   const toolCallResolver =
-    wrapToolCallResolver?.(DEFAULT_RESOLUTION_HELPERS) ??
-    customResolver ??
-    resolveToolCall;
+    wrapToolCallResolver?.(resolutionHelpers) ?? baseResolver;
 
   return {
-    ...validateNonEmptyDelimiters(toolCallStart, toolCallEnd),
-
     formatTools({
       tools,
       toolSystemPromptTemplate,

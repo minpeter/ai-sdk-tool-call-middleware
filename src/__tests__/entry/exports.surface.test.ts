@@ -96,6 +96,25 @@ describe("entry exports surface", () => {
     expect(exposedForbiddenExports).toEqual([]);
   });
 
+  it("keeps internal transport state plumbing off the package root", async () => {
+    const forbiddenInternalExports = [
+      "getMiddlewareInternalState",
+      "setMiddlewareInternalState",
+      "mergeMiddlewareInternalState",
+      "createDroppedProviderToolWarnings",
+      "getToolChoiceExpectedToolName",
+      "decodeOriginalToolsForMiddleware",
+      "extractToolCallParserOptions",
+      "stripToolCallMiddlewareProviderOptions",
+    ];
+    const packageEntry = await import("../../index");
+
+    const exposed = forbiddenInternalExports.filter(
+      (name) => name in packageEntry
+    );
+    expect(exposed).toEqual([]);
+  });
+
   it("exports hermesProtocol", () => {
     expect(hermesProtocol).toBeDefined();
   });

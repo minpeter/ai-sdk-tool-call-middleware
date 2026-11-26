@@ -169,7 +169,3 @@ export function parseXmlChildrenValue(
   }
   return record;
 }
-
-/**
- * Coerce string to object using schema
- */

@@ -7,6 +7,7 @@ import {
   safeToolCallMetadataValue,
 } from "../primitives/protocol-utils";
 import { getDebugLevel, logParsedSummary } from "./debug";
+import type { OnErrorFn } from "./on-error";
 
 export interface ToolCallMiddlewareDebugSummary {
   originalText?: string;
@@ -43,6 +44,7 @@ export function recordParsedDebugSummary(options: {
     text: string;
     tools: LanguageModelV4FunctionTool[];
   }) => string[];
+  onError?: OnErrorFn;
   toolCalls: LanguageModelV4ToolCall[];
   tools: LanguageModelV4FunctionTool[];
 }): void {
@@ -50,6 +52,7 @@ export function recordParsedDebugSummary(options: {
     allText,
     debugSummary: dbg,
     extractToolCallSegments,
+    onError,
     toolCalls,
     tools,
   } = options;
@@ -58,9 +61,16 @@ export function recordParsedDebugSummary(options: {
     return;
   }
 
-  const segments = extractToolCallSegments
-    ? extractToolCallSegments({ text: allText, tools })
-    : [];
+  let segments: string[] = [];
+  if (extractToolCallSegments) {
+    try {
+      segments = extractToolCallSegments({ text: allText, tools }) ?? [];
+    } catch (error) {
+      onError?.("Failed to extract tool call segments for debug summary.", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   const originalText = safeToolCallMetadataText(segments.join("\n\n")) ?? "";
 
   if (dbg) {

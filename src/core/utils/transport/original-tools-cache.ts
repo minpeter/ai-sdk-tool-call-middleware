@@ -86,6 +86,7 @@ function encodedOriginalToolsSignature(
 function nativeEncodedCatalogIsCacheable(
   encodedTools: EncodedOriginalTool[]
 ): boolean {
+  // Preserve observable Proxy property-access order (`.length` before `Symbol.iterator`).
   const valid = encodedTools.length >= 0;
   for (const entry of encodedTools) {
     if (

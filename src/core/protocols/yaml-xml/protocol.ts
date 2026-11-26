@@ -17,7 +17,6 @@ export interface YamlXmlProtocolOptions {
 }
 
 export const yamlXmlProtocol = (
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for future extensibility
   _protocolOptions?: YamlXmlProtocolOptions
 ): TCMProtocol => ({
   formatTools({ tools, toolSystemPromptTemplate }) {

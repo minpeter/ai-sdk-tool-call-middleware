@@ -29,7 +29,7 @@ import { carryTextPartAnnotations } from "./core/utils/response/text-citations";
 import {
   createDroppedProviderToolWarnings,
   decodeOriginalToolsForMiddleware,
-  getToolCallMiddlewareOptions,
+  extractToolCallParserOptions,
   getToolChoiceExpectedToolName,
   isToolChoiceActive,
   isToolChoiceNone,
@@ -154,19 +154,7 @@ function parseTextContent(options: {
   if (debugLevel === "stream") {
     logRawChunk(safeToolCallMetadataText(text) ?? "");
   }
-  const parserOptions = {
-    ...extractOnErrorOption(providerOptions),
-    ...getToolCallMiddlewareOptions(providerOptions),
-  };
-
-  if (
-    debugLevel === "off" &&
-    !providerOptions?.toolCallMiddleware?.debugSummary &&
-    typeof text === "string" &&
-    protocol.isDefinitelyPlainGeneratedText?.(text)
-  ) {
-    return [{ type: "text", text }];
-  }
+  const parserOptions = extractToolCallParserOptions(providerOptions);
 
   const parsedByProtocol = protocol.parseGeneratedText({
     text,
@@ -178,7 +166,11 @@ function parseTextContent(options: {
     return parsedByProtocol;
   }
 
-  if (protocol.allowsFallbackRecovery?.(text) === false) {
+  if (
+    protocol.allowsFallbackRecovery?.(text) === false ||
+    (typeof text === "string" &&
+      protocol.isDefinitelyPlainGeneratedText?.(text) === true)
+  ) {
     return parsedByProtocol;
   }
 
@@ -229,6 +221,15 @@ export async function wrapGenerate({
   const result = await doGenerate();
 
   if (result.content.length === 0) {
+    recordParsedDebugSummary({
+      allText: "",
+      debugSummary: params.providerOptions?.toolCallMiddleware?.debugSummary,
+      extractToolCallSegments: (segmentParams) =>
+        protocol.extractToolCallSegments?.(segmentParams) ?? [],
+      onError: onError?.onError,
+      toolCalls: [],
+      tools,
+    });
     return {
       ...result,
       warnings: appendDroppedProviderToolWarnings(
@@ -255,7 +256,9 @@ export async function wrapGenerate({
       .map((c) => c.text)
       .join("\n\n"),
     debugSummary: params.providerOptions?.toolCallMiddleware?.debugSummary,
-    extractToolCallSegments: protocol.extractToolCallSegments,
+    extractToolCallSegments: (segmentParams) =>
+      protocol.extractToolCallSegments?.(segmentParams) ?? [],
+    onError: onError?.onError,
     toolCalls: newContent.filter(
       (p): p is Extract<LanguageModelV4Content, { type: "tool-call" }> =>
         p.type === "tool-call"

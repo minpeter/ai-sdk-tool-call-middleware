@@ -83,6 +83,19 @@ function parseYamlToolCallBlock(
   return null;
 }
 
+function findMatchingCloseTagToolName(
+  closeTagName: string | null,
+  tools: LanguageModelV4FunctionTool[]
+): string | undefined {
+  if (!closeTagName) {
+    return undefined;
+  }
+  const candidates = [closeTagName, closeTagName.split(":").at(-1) ?? ""];
+  return candidates.find(
+    (name) => name.length > 0 && tools.some((tool) => tool.name === name)
+  );
+}
+
 function resolveYamlBlockPayload(
   mapping: Record<string, unknown>,
   closeTagName: string | null,
@@ -102,14 +115,9 @@ function resolveYamlBlockPayload(
   // Bare-args form closed by a tag carrying the tool name:
   // `<tool_call>\ncity: Seoul\n</get_weather>` (possibly namespaced, e.g.
   // `</functions:get_weather>`).
-  if (closeTagName) {
-    const candidates = [closeTagName, closeTagName.split(":").at(-1) ?? ""];
-    const matched = candidates.find((name) =>
-      tools.some((tool) => tool.name === name)
-    );
-    if (matched) {
-      return toToolCallCandidate(matched, mapping, tools);
-    }
+  const matchedCloseTagTool = findMatchingCloseTagToolName(closeTagName, tools);
+  if (matchedCloseTagTool) {
+    return toToolCallCandidate(matchedCloseTagTool, mapping, tools);
   }
 
   // Bare-args form with a single tool whose schema matches.
@@ -126,11 +134,10 @@ function isKnownSensitiveYamlCandidate(
   tools: LanguageModelV4FunctionTool[]
 ): boolean {
   const envelopeName = readToolNameField(mapping);
-  const closeName = closeTagName?.split(":").at(-1) ?? "";
   const knownEnvelope =
     envelopeName !== null && tools.some((tool) => tool.name === envelopeName);
   const knownClose =
-    closeName.length > 0 && tools.some((tool) => tool.name === closeName);
+    findMatchingCloseTagToolName(closeTagName, tools) !== undefined;
   const likelySingleToolArgs =
     tools.length === 1 && isLikelyArgumentsShapeForTool(mapping, tools[0]);
   return knownEnvelope || knownClose || likelySingleToolArgs;

@@ -4,7 +4,7 @@ import type {
   SharedV4Warning,
 } from "@ai-sdk/provider";
 import type { ToolCallMiddlewareDebugSummary } from "../diagnostics/debug-summary";
-import type { OnErrorFn } from "../diagnostics/on-error";
+import { extractOnErrorOption, type OnErrorFn } from "../diagnostics/on-error";
 import {
   type DecodeOriginalToolsOptions,
   decodeOriginalTools as decodeOriginalToolsImpl,
@@ -28,6 +28,8 @@ export interface ToolCallMiddlewareUserOptions {
  * Internal middleware transport state written by `transformParams` and consumed
  * by `wrapGenerate` / `wrapStream`. Isolated under `_internal` so user options
  * and internal pipeline metadata never share the same key space.
+ *
+ * @internal
  */
 export interface ToolCallMiddlewareInternalState {
   droppedProviderTools?: string[];
@@ -37,6 +39,7 @@ export interface ToolCallMiddlewareInternalState {
 
 export interface ToolCallMiddlewareProviderOptions {
   toolCallMiddleware?: ToolCallMiddlewareUserOptions & {
+    /** @internal */
     _internal?: ToolCallMiddlewareInternalState;
   };
 }
@@ -60,6 +63,53 @@ export function getToolCallMiddlewareOptions(
   return toolCallMiddleware;
 }
 
+/** @internal */
+export function extractToolCallParserOptions(providerOptions?: unknown): {
+  emitRawToolCallTextOnError?: boolean;
+  onError?: OnErrorFn;
+} {
+  const middlewareOptions = getToolCallMiddlewareOptions(providerOptions);
+  const onErrorOptions = extractOnErrorOption(providerOptions);
+  const parserOptions: {
+    emitRawToolCallTextOnError?: boolean;
+    onError?: OnErrorFn;
+  } = {};
+
+  if (onErrorOptions?.onError) {
+    parserOptions.onError = onErrorOptions.onError;
+  }
+  if (typeof middlewareOptions.emitRawToolCallTextOnError === "boolean") {
+    parserOptions.emitRawToolCallTextOnError =
+      middlewareOptions.emitRawToolCallTextOnError;
+  }
+
+  return parserOptions;
+}
+
+/** @internal */
+export function stripToolCallMiddlewareProviderOptions<
+  T extends { providerOptions?: unknown },
+>(params: T): T {
+  if (!isRecord(params.providerOptions)) {
+    return params;
+  }
+  if (!Object.hasOwn(params.providerOptions, "toolCallMiddleware")) {
+    return params;
+  }
+
+  const { toolCallMiddleware: _removed, ...restProviderOptions } =
+    params.providerOptions;
+
+  return {
+    ...params,
+    providerOptions:
+      Object.keys(restProviderOptions).length > 0
+        ? restProviderOptions
+        : undefined,
+  };
+}
+
+/** @internal */
 export function getMiddlewareInternalState(
   providerOptions?: unknown
 ): ToolCallMiddlewareInternalState {
@@ -84,6 +134,23 @@ export function mergeToolCallMiddlewareOptions(
   } as SharedV4ProviderOptions;
 }
 
+/**
+ * Replace `_internal` wholesale for the current request so stale internal
+ * metadata from an earlier step or reused `providerOptions` never leaks across
+ * requests.
+ *
+ * @internal
+ */
+export function setMiddlewareInternalState(
+  providerOptions: unknown,
+  state: ToolCallMiddlewareInternalState
+): SharedV4ProviderOptions {
+  return mergeToolCallMiddlewareOptions(providerOptions, {
+    _internal: { ...state },
+  });
+}
+
+/** @internal */
 export function mergeMiddlewareInternalState(
   providerOptions: unknown,
   overrides: Partial<ToolCallMiddlewareInternalState>
@@ -112,6 +179,8 @@ export function getDroppedProviderTools(providerOptions: unknown): string[] {
 /**
  * Prompt-based tool calling can only express function tools; provider tools
  * are dropped in transformParams and surfaced as spec warnings by wrap handlers.
+ *
+ * @internal
  */
 export function createDroppedProviderToolWarnings(
   providerOptions: unknown
@@ -126,6 +195,7 @@ export function createDroppedProviderToolWarnings(
   );
 }
 
+/** @internal */
 export function getToolChoiceExpectedToolName(
   providerOptions: unknown
 ): string | undefined {
@@ -153,6 +223,7 @@ export const originalToolsSchema = {
   decode: decodeOriginalTools,
 };
 
+/** @internal */
 export function decodeOriginalToolsForMiddleware(
   providerOptions: ToolCallMiddlewareProviderOptions | undefined,
   options?: DecodeOriginalToolsOptions

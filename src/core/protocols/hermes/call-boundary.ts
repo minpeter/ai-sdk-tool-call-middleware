@@ -27,14 +27,13 @@ const RJSON_NUMBER_TOKEN_REGEX = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 export function validateNonEmptyDelimiters(
   toolCallStart: string,
   toolCallEnd: string
-): Record<never, never> {
+): void {
   if (toolCallStart.length === 0) {
     throw new TypeError("hermesProtocol toolCallStart must not be empty");
   }
   if (toolCallEnd.length === 0) {
     throw new TypeError("hermesProtocol toolCallEnd must not be empty");
   }
-  return {};
 }
 
 function isRjsonIdentifierChar(ch: string | undefined): boolean {

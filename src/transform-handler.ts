@@ -25,6 +25,7 @@ import { createDynamicIfThenElseSchema } from "./core/utils/transport/dynamic-to
 import {
   mergeMiddlewareInternalState,
   originalToolsSchema,
+  setMiddlewareInternalState,
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/transport/provider-options";
 
@@ -39,8 +40,8 @@ export const DEFAULT_TOOL_SYSTEM_PROMPT_PLACEMENT: ToolSystemPromptPlacement =
 
 /**
  * Orthogonal Design Parameter for tool catalog prompt injection (DP2.1).
- * Illegal combinations (such as `placement` with multi-message builders or
- * dummy empty text templates) are unrepresentable at compile time.
+ * `placement` is exclusive to `"text"` mode so it cannot be combined with
+ * multi-message builders at compile time.
  */
 export type ToolPromptStrategy =
   | {
@@ -216,7 +217,7 @@ function buildBaseReturnParams(
     prompt: finalPrompt,
     tools: [] as never[],
     toolChoice: undefined,
-    providerOptions: mergeMiddlewareInternalState(params.providerOptions, {
+    providerOptions: setMiddlewareInternalState(params.providerOptions, {
       originalTools: originalToolsSchema.encode(functionTools),
       ...(droppedProviderTools.length > 0 ? { droppedProviderTools } : {}),
     }),
@@ -292,7 +293,12 @@ function handleToolChoiceTool(
     },
     providerOptions: mergeMiddlewareInternalState(
       baseReturnParams.providerOptions,
-      params.toolChoice ? { toolChoice: params.toolChoice } : {}
+      {
+        toolChoice: {
+          type: "tool" as const,
+          toolName: selectedTool.name,
+        },
+      }
     ),
   };
 }
@@ -381,7 +387,7 @@ export function transformParams({
       prompt: processedPrompt,
       tools: [] as never[],
       toolChoice: undefined,
-      providerOptions: mergeMiddlewareInternalState(params.providerOptions, {
+      providerOptions: setMiddlewareInternalState(params.providerOptions, {
         toolChoice: { type: "none" as const },
       }),
     };
