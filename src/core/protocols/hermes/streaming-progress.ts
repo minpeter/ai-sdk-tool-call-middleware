@@ -11,8 +11,10 @@ import type {
 import {
   consumeExistingJsonString,
   consumeJsonObjectDepth,
-  isUnquotedRjsonKeyStart,
   type JsonDepthScanState,
+} from "./json-nesting-guard";
+import {
+  isUnquotedRjsonKeyStart,
   parseQuotedObjectKey,
   parseUnquotedObjectKey,
   previousSignificantChar,

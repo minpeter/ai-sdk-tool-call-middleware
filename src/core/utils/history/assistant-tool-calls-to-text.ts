@@ -1,13 +1,19 @@
-import type { LanguageModelV4Content } from "@ai-sdk/provider";
-import type { TCMProtocol } from "../../protocols/protocol-interface";
+import type {
+  LanguageModelV4Content,
+  LanguageModelV4ToolCall,
+} from "@ai-sdk/provider";
 
 interface AssistantToolCallTextConversionOptions {
   onError?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 
+interface ToolCallFormatter {
+  formatToolCall: (toolCall: LanguageModelV4ToolCall) => string;
+}
+
 export function assistantToolCallsToTextContent(options: {
   content: LanguageModelV4Content[];
-  protocol: TCMProtocol;
+  protocol: ToolCallFormatter;
   conversionOptions?: AssistantToolCallTextConversionOptions;
 }): LanguageModelV4Content[] {
   const newContent: LanguageModelV4Content[] = [];

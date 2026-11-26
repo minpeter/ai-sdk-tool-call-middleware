@@ -9,12 +9,13 @@ import {
   stringifyKExaone2NativeJson,
 } from "../../utils/codecs/k-exaone-2-native-json";
 import {
-  extractNormalizedHermesArgumentsJson,
-  normalizeHermesJsonControls,
-  resolveToolCall,
-} from "../hermes/call-parsing";
-import { hermesProtocol } from "../hermes/protocol";
-import type { TCMProtocol } from "../protocol-interface";
+  type HermesToolCallResolutionHelpers,
+  hermesProtocol,
+} from "../hermes/protocol";
+import type {
+  ProtocolToolCallResolver,
+  TCMProtocol,
+} from "../protocol-interface";
 import { parseKExaoneToolCallInput } from "./tool-call-input";
 
 const TRAILING_COMMA_REGEX = /,(\s*[}\]])/g;
@@ -59,9 +60,12 @@ function normalizeRelaxedJsonQuotes(text: string): string {
   return normalized;
 }
 
-function canonicalizeParametersAlias(toolCallJson: string): string {
+function canonicalizeParametersAlias(
+  toolCallJson: string,
+  normalizeJsonControls: (text: string) => string
+): string {
   const normalizedEnvelope = normalizeRelaxedJsonQuotes(
-    normalizeHermesJsonControls(toolCallJson)
+    normalizeJsonControls(toolCallJson)
   ).replace(TRAILING_COMMA_REGEX, "$1");
   if (ARGUMENTS_FIELD_REGEX.test(normalizedEnvelope)) {
     return normalizedEnvelope;
@@ -113,40 +117,44 @@ function overlayLosslessNumbers(
   return validatedValue;
 }
 
-function resolveKExaone236BToolCall(
-  toolCallJson: string,
-  tools: Parameters<typeof resolveToolCall>[1]
-): ReturnType<typeof resolveToolCall> {
-  const canonicalToolCallJson = canonicalizeParametersAlias(toolCallJson);
-  const normalizedToolCallJson = normalizeRelaxedJsonQuotes(
-    normalizeHermesJsonControls(canonicalToolCallJson)
-  ).replace(TRAILING_COMMA_REGEX, "$1");
-  const validated = resolveToolCall(normalizedToolCallJson, tools);
-  if (!validated.ok) {
-    return validated;
-  }
-  try {
-    const rawArgumentsJson = extractNormalizedHermesArgumentsJson(
-      normalizedToolCallJson
+function createKExaone236BToolCallResolver(
+  helpers: HermesToolCallResolutionHelpers
+): ProtocolToolCallResolver {
+  return (toolCallJson, tools) => {
+    const canonicalToolCallJson = canonicalizeParametersAlias(
+      toolCallJson,
+      helpers.normalizeJsonControls
     );
-    if (!rawArgumentsJson) {
+    const normalizedToolCallJson = normalizeRelaxedJsonQuotes(
+      helpers.normalizeJsonControls(canonicalToolCallJson)
+    ).replace(TRAILING_COMMA_REGEX, "$1");
+    const validated = helpers.resolveDefault(normalizedToolCallJson, tools);
+    if (!validated.ok) {
       return validated;
     }
-    const validatedInput = JSON.parse(validated.input) as unknown;
-    const normalizedArguments = normalizeRelaxedJsonQuotes(
-      rawArgumentsJson
-    ).replace(TRAILING_COMMA_REGEX, "$1");
-    const losslessInput = parseKExaone2LosslessJson(normalizedArguments);
-    return {
-      ok: true,
-      toolName: validated.toolName,
-      input: stringifyKExaone2CompactJson(
-        overlayLosslessNumbers(losslessInput, validatedInput)
-      ),
-    };
-  } catch {
-    return validated;
-  }
+    try {
+      const rawArgumentsJson = helpers.extractNormalizedArgumentsJson(
+        normalizedToolCallJson
+      );
+      if (!rawArgumentsJson) {
+        return validated;
+      }
+      const validatedInput = JSON.parse(validated.input) as unknown;
+      const normalizedArguments = normalizeRelaxedJsonQuotes(
+        rawArgumentsJson
+      ).replace(TRAILING_COMMA_REGEX, "$1");
+      const losslessInput = parseKExaone2LosslessJson(normalizedArguments);
+      return {
+        ok: true,
+        toolName: validated.toolName,
+        input: stringifyKExaone2CompactJson(
+          overlayLosslessNumbers(losslessInput, validatedInput)
+        ),
+      };
+    } catch {
+      return validated;
+    }
+  };
 }
 
 function formatKExaone236BToolCall(toolCall: LanguageModelV4ToolCall): string {
@@ -158,7 +166,7 @@ function formatKExaone236BToolCall(toolCall: LanguageModelV4ToolCall): string {
 
 export const kExaone236BProtocol = (): TCMProtocol => {
   const protocol = hermesProtocol({
-    resolveToolCall: resolveKExaone236BToolCall,
+    wrapToolCallResolver: createKExaone236BToolCallResolver,
   });
 
   return {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeToolResultForUserContent,
   unwrapToolResult,
-} from "../../../../core/prompts/shared/tool-result-normalizer";
+} from "../../../../core/utils/history/tool-result-normalizer";
 
 describe("unwrapToolResult", () => {
   describe("ToolResultOutput: text type", () => {

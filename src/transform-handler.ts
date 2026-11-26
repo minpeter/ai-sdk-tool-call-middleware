@@ -11,16 +11,16 @@ import type {
   LanguageModelV4ToolResultPart,
 } from "@ai-sdk/provider";
 import type { ToolContent, ToolResultPart } from "@ai-sdk/provider-utils";
-import { assistantToolCallsToTextContent } from "./core/prompts/shared/assistant-tool-calls-to-text";
-import {
-  type ToolResponsePromptTemplateResult,
-  toolRoleContentToUserTextMessage,
-} from "./core/prompts/shared/tool-role-to-user-message";
 import {
   isProtocolFactory,
   type TCMProtocol,
 } from "./core/protocols/protocol-interface";
 import { extractOnErrorOption } from "./core/utils/diagnostics/on-error";
+import { assistantToolCallsToTextContent } from "./core/utils/history/assistant-tool-calls-to-text";
+import {
+  type ToolResponsePromptTemplateResult,
+  toolRoleContentToUserTextMessage,
+} from "./core/utils/history/tool-role-to-user-message";
 import { createDynamicIfThenElseSchema } from "./core/utils/transport/dynamic-tool-schema";
 import {
   mergeMiddlewareInternalState,

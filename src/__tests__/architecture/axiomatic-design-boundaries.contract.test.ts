@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 const SRC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const RELATIVE_IMPORT_RE =
   /(?:from|import)\s+["'](\.[^"']+)["']|export\s+(?:type\s+)?(?:\*|\{[^}]*\})\s+from\s+["'](\.[^"']+)["']/g;
+const MAX_SOURCE_FILE_LOC = 600;
 
 function collectSourceFiles(dir: string): string[] {
   const files: string[] = [];
@@ -281,11 +282,22 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps generate-handler, stream-handler, and transform-handler decoupled from concrete protocol implementations", () => {
+  it("keeps core/prompts decoupled from core/protocols (pure prompt templates)", () => {
+    const violations = edges.filter(
+      ({ from, to }) =>
+        classifyLayer(from) === "core/prompts" &&
+        (classifyLayer(to) === "core/protocols/contract" ||
+          classifyLayer(to) === "core/protocols/impl")
+    );
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps handlers decoupled from concrete protocol implementations and core/prompts", () => {
     const violations = edges.filter(
       ({ from, to }) =>
         classifyLayer(from) === "handlers" &&
-        classifyLayer(to) === "core/protocols/impl"
+        (classifyLayer(to) === "core/protocols/impl" ||
+          classifyLayer(to) === "core/prompts")
     );
     expect(violations).toEqual([]);
   });
@@ -306,7 +318,7 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
     expect(cycles).toEqual([]);
   });
 
-  it("enforces core/utils internal subdomain boundaries", () => {
+  it("enforces core/utils internal subdomain boundaries across all 11 subdomains", () => {
     const subdomainOf = (relPath: string): string | null => {
       if (!relPath.startsWith("core/utils/")) {
         return null;
@@ -316,6 +328,7 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
 
     const allowedDeps: Record<string, Set<string>> = {
       codecs: new Set(["codecs"]),
+      history: new Set(["history"]),
       security: new Set(["security"]),
       xml: new Set(["xml", "primitives"]),
       primitives: new Set(["primitives", "security"]),
@@ -355,7 +368,7 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("restricts cross-protocol dependencies to approved source->target entrypoints only", () => {
+  it("restricts cross-protocol dependencies exclusively to black-box protocol.ts entrypoints", () => {
     const protocolFamily = (relPath: string): string | null => {
       if (!relPath.startsWith("core/protocols/")) {
         return null;
@@ -367,7 +380,6 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
     const allowedCrossFamilyEdges = new Set([
       "k-exaone->core/protocols/qwen3coder/protocol.ts",
       "k-exaone->core/protocols/hermes/protocol.ts",
-      "k-exaone->core/protocols/hermes/call-parsing.ts",
     ]);
 
     const violations = edges.filter(({ from, to }) => {
@@ -379,5 +391,15 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
       return !allowedCrossFamilyEdges.has(`${fromFamily}->${to}`);
     });
     expect(violations).toEqual([]);
+  });
+
+  it("bounds module information content by keeping every production source file at or below 600 LOC", () => {
+    const oversized = sourceFiles
+      .map((fullPath) => ({
+        file: relative(SRC_ROOT, fullPath).replaceAll("\\", "/"),
+        loc: readFileSync(fullPath, "utf8").split("\n").length,
+      }))
+      .filter(({ loc }) => loc > MAX_SOURCE_FILE_LOC);
+    expect(oversized).toEqual([]);
   });
 });

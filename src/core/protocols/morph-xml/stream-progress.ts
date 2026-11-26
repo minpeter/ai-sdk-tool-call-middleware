@@ -5,12 +5,14 @@ import {
   analyzeXmlFragmentForProgress,
   buildEmptyTrailingStringTagProgressContent,
   findTrailingUnclosedStringTag,
+} from "./progress-analysis";
+import {
   getObjectSchemaPropertyNames,
   getObjectSchemaStringPropertyNames,
   getSchemaObjectProperty,
   isStrictStringSchemaProperty,
   schemaAllowsArrayType,
-} from "./progress-analysis";
+} from "./schema-introspection";
 
 function isStableXmlProgressCandidate(options: {
   candidate: string;

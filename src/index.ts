@@ -33,23 +33,10 @@ export {
   formatToolResponseAsQwen3CoderXml,
   qwen3coderSystemPromptTemplate,
 } from "./core/prompts/qwen3coder-prompt";
-export type {
-  ToolResponseMediaCapabilities,
-  ToolResponseMediaMode,
-  ToolResponseMediaStrategy,
-  ToolResponseMediaType,
-  ToolResponseUserContentPart,
-} from "./core/prompts/shared/tool-result-normalizer";
-export type { ToolResponsePromptTemplateResult } from "./core/prompts/shared/tool-result-user-content";
-export {
-  createUserContentToolResponseTemplate,
-  toolRoleContentToUserTextMessage,
-} from "./core/prompts/shared/tool-role-to-user-message";
 export {
   formatToolResponseAsYaml,
   yamlXmlSystemPromptTemplate,
 } from "./core/prompts/yaml-xml-prompt";
-
 // Core Protocols
 export type {
   Glm5ProtocolOptions,
@@ -65,10 +52,21 @@ export * from "./core/protocols/protocol-interface";
 export { qwen3CoderProtocol } from "./core/protocols/qwen3coder/protocol";
 export type { YamlXmlProtocolOptions } from "./core/protocols/yaml-xml/protocol";
 export { yamlXmlProtocol } from "./core/protocols/yaml-xml/protocol";
-
 // Utilities
 export * from "./core/utils/diagnostics/debug";
 export * from "./core/utils/diagnostics/on-error";
+export type {
+  ToolResponseMediaCapabilities,
+  ToolResponseMediaMode,
+  ToolResponseMediaStrategy,
+  ToolResponseMediaType,
+  ToolResponseUserContentPart,
+} from "./core/utils/history/tool-result-normalizer";
+export type { ToolResponsePromptTemplateResult } from "./core/utils/history/tool-result-user-content";
+export {
+  createUserContentToolResponseTemplate,
+  toolRoleContentToUserTextMessage,
+} from "./core/utils/history/tool-role-to-user-message";
 export * from "./core/utils/primitives/get-potential-start-index";
 export * from "./core/utils/primitives/type-guards";
 export * from "./core/utils/transport/dynamic-tool-schema";

@@ -12,8 +12,8 @@ import {
   consumeJsonStringScanChar,
   exceedsToolCallJsonNestingDepth,
   type JsonDepthScanState,
-  skipJsonWhitespace,
-} from "./json-object-key-scanner";
+} from "./json-nesting-guard";
+import { skipJsonWhitespace } from "./json-object-key-scanner";
 import {
   extractStrictTopLevelStringProperty,
   findStrictTopLevelJsonPropertyValueStart,

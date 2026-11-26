@@ -3,20 +3,7 @@ import YAML from "yaml";
 import { isPrototypeSensitiveKey } from "../../../shared/prototype-keys";
 import { unescapeXml } from "../../../shared/xml-escape";
 import { safeToolCallMetadataText } from "../../utils/primitives/protocol-utils";
-import {
-  NAME_CHAR_RE,
-  WHITESPACE_REGEX,
-} from "../../utils/primitives/regex-constants";
 import { toolCallTextHasPrototypeSensitiveKey } from "../../utils/security/prototype-sensitive-keys";
-import { findNextToolTag } from "../../utils/xml/xml-tool-tag-scanner";
-
-export interface YamlXmlProtocolOptions {
-  /**
-   * Whether to include a system prompt example showing YAML multiline syntax.
-   * @default true
-   */
-  includeMultilineExample?: boolean;
-}
 
 const LEADING_WHITESPACE_RE = /^(\s*)/;
 const INCOMPLETE_MAPPING_TAIL_RE = /^[^:[\]{}-][^:]*:\s*$/;
@@ -24,6 +11,17 @@ const INCOMPLETE_SEQUENCE_TAIL_RE = /^-\s*$/;
 const BLOCK_SCALAR_KEY_RE = /:\s*[|>][-+0-9]*\s*$/;
 const PLAIN_MAPPING_VALUE_RE = /^[^:[\]{}-][^:]*:\s*(.+)$/;
 const PLAIN_SEQUENCE_VALUE_RE = /^-\s+(.+)$/;
+const XML_CHILD_CLOSED_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)<\/\1\s*>$/;
+const XML_CHILD_OPEN_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*\S[^<]*|\S)$/;
+const SCHEMA_KEYED_LINE_RE = /^([A-Za-z_][\w.-]*)\s*:\s?(.*)$/;
+const LINE_SPLIT_RE = /\r?\n/;
+
+// A YAML block scalar is not prefix-stable while it is streaming: indentation
+// discovered by later lines and the final chomping decision can rewrite text
+// that was already parsed. Buffer these bodies until the closing tool tag so
+// emitted JSON deltas can never disagree with the final parse.
+export const YAML_BLOCK_SCALAR_HEADER_RE =
+  /^(?:[^\r\n]*:\s*|[ \t]*-\s*)[|>][1-9+-]{0,2}(?:[ \t]+#.*)?\r?$/m;
 
 interface LastMeaningfulLineInfo {
   indent: number;
@@ -31,6 +29,14 @@ interface LastMeaningfulLineInfo {
   raw: string;
   trimmed: string;
 }
+
+type YamlParseFailure =
+  | { kind: "yaml-parse-error"; errors: readonly string[] }
+  | { kind: "yaml-non-mapping" };
+
+type YamlParseResult =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; failure: YamlParseFailure };
 
 function normalizeYamlContent(yamlContent: string): {
   normalized: string;
@@ -233,10 +239,7 @@ function hasUnstableProgressTail(normalized: string): boolean {
 
 function trimTrailingNewlineInUnknown(value: unknown): unknown {
   if (typeof value === "string") {
-    if (value.endsWith("\n")) {
-      return value.slice(0, -1);
-    }
-    return value;
+    return value.endsWith("\n") ? value.slice(0, -1) : value;
   }
 
   if (Array.isArray(value)) {
@@ -263,165 +266,6 @@ function stabilizeParsedValueForStreamProgress<T>(value: T, source: string): T {
   return trimTrailingNewlineInUnknown(value) as T;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: XML tag parsing with nested tag tracking inherently requires complex state management
-function findClosingTagEnd(
-  text: string,
-  contentStart: number,
-  toolName: string
-): number {
-  let pos = contentStart;
-  let depth = 1;
-
-  while (pos < text.length) {
-    const ltIdx = text.indexOf("<", pos);
-    if (ltIdx === -1) {
-      break;
-    }
-
-    const next = text[ltIdx + 1];
-    if (next === "/") {
-      const gtIdx = text.indexOf(">", ltIdx);
-      if (gtIdx === -1) {
-        break;
-      }
-
-      let p = ltIdx + 2;
-      while (p < gtIdx && WHITESPACE_REGEX.test(text[p])) {
-        p += 1;
-      }
-      const nameStart = p;
-      while (p < gtIdx && NAME_CHAR_RE.test(text.charAt(p))) {
-        p += 1;
-      }
-      const name = text.slice(nameStart, p);
-
-      if (name === toolName) {
-        depth -= 1;
-        if (depth === 0) {
-          return gtIdx + 1;
-        }
-      }
-      pos = gtIdx + 1;
-    } else if (next === "!" || next === "?") {
-      const gtIdx = text.indexOf(">", ltIdx);
-      pos = gtIdx === -1 ? text.length : gtIdx + 1;
-    } else {
-      let p = ltIdx + 1;
-      while (p < text.length && WHITESPACE_REGEX.test(text[p])) {
-        p += 1;
-      }
-      const nameStart = p;
-      while (p < text.length && NAME_CHAR_RE.test(text.charAt(p))) {
-        p += 1;
-      }
-      const name = text.slice(nameStart, p);
-
-      const gtIdx = text.indexOf(">", p);
-      if (gtIdx === -1) {
-        break;
-      }
-
-      let r = gtIdx - 1;
-      while (r >= nameStart && WHITESPACE_REGEX.test(text[r])) {
-        r -= 1;
-      }
-      const selfClosing = text[r] === "/";
-
-      if (name === toolName && !selfClosing) {
-        depth += 1;
-      }
-      pos = gtIdx + 1;
-    }
-  }
-
-  return -1;
-}
-
-/**
- * Find all tool calls in the text for the given tool names.
- */
-export interface ToolCallMatch {
-  content: string;
-  endIndex: number;
-  startIndex: number;
-  toolName: string;
-}
-
-function collectToolCallsForName(
-  text: string,
-  toolName: string
-): ToolCallMatch[] {
-  const toolCalls: ToolCallMatch[] = [];
-  let searchIndex = 0;
-  const startTag = `<${toolName}>`;
-
-  while (searchIndex < text.length) {
-    const match = findNextToolTag(text, searchIndex, toolName);
-    if (match === null) {
-      break;
-    }
-
-    const { tagStart } = match;
-    const { isSelfClosing } = match;
-
-    if (isSelfClosing) {
-      const endIndex = tagStart + match.tagLength;
-      toolCalls.push({
-        toolName,
-        startIndex: tagStart,
-        endIndex,
-        content: "",
-      });
-      searchIndex = endIndex;
-      continue;
-    }
-
-    const contentStart = tagStart + startTag.length;
-    const fullTagEnd = findClosingTagEnd(text, contentStart, toolName);
-    if (fullTagEnd !== -1 && fullTagEnd > contentStart) {
-      const endTag = `</${toolName}>`;
-      const endTagStart = fullTagEnd - endTag.length;
-      const content = text.slice(contentStart, endTagStart);
-      toolCalls.push({
-        toolName,
-        startIndex: tagStart,
-        endIndex: fullTagEnd,
-        content,
-      });
-      searchIndex = fullTagEnd;
-    } else {
-      searchIndex = contentStart;
-    }
-  }
-
-  return toolCalls;
-}
-
-export function findToolCalls(
-  text: string,
-  toolNames: string[]
-): ToolCallMatch[] {
-  const toolCalls = toolNames.flatMap((toolName) =>
-    collectToolCallsForName(text, toolName)
-  );
-  return toolCalls.sort((a, b) => a.startIndex - b.startIndex);
-}
-
-type YamlParseFailure =
-  | { kind: "yaml-parse-error"; errors: readonly string[] }
-  | { kind: "yaml-non-mapping" };
-
-type YamlParseResult =
-  | { ok: true; value: Record<string, unknown> }
-  | { ok: false; failure: YamlParseFailure };
-
-// A YAML block scalar is not prefix-stable while it is streaming: indentation
-// discovered by later lines and the final chomping decision can rewrite text
-// that was already parsed. Buffer these bodies until the closing tool tag so
-// emitted JSON deltas can never disagree with the final parse.
-export const YAML_BLOCK_SCALAR_HEADER_RE =
-  /^(?:[^\r\n]*:\s*|[ \t]*-\s*)[|>][1-9+-]{0,2}(?:[ \t]+#.*)?\r?$/m;
-
 function yamlFailureCause(failure: YamlParseFailure): Record<string, unknown> {
   if (failure.kind === "yaml-parse-error") {
     return { kind: "yaml-parse-error", errors: failure.errors };
@@ -445,20 +289,6 @@ export function safeYamlFailureCause(
   return { kind: "yaml-non-mapping" };
 }
 
-/**
- * Parse YAML content from inside an XML tag.
- * Handles common LLM output issues like inconsistent indentation.
- *
- * Returns a structured result instead of calling onError directly so the
- * caller can surface a single uniform onError metadata shape
- * (`toolCall`, `toolName`, `toolCallId`, `dropReason`) with the underlying
- * helper cause attached as context.
- */
-const XML_CHILD_CLOSED_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)<\/\1\s*>$/;
-// The open form requires a non-empty value so that a lone nesting tag like
-// `<passenger>` never gets misread as an empty flat parameter.
-const XML_CHILD_OPEN_LINE_REGEX = /^<([A-Za-z_][\w.-]*)\s*>([^<]*\S[^<]*|\S)$/;
-
 function mergeXmlChildArg(
   args: Record<string, unknown>,
   key: string,
@@ -474,14 +304,6 @@ function mergeXmlChildArg(
   }
 }
 
-/**
- * Fallback for models that answer the YAML-body prompt with XML child tags
- * instead (`<city>Seoul</city>`, observed live on Amazon Nova 2 Lite —
- * effectively the morph-xml body format). Parses line-oriented
- * `<key>value</key>` pairs, tolerating a missing close tag on a line
- * (`<unit>celsius`), and declines on anything else so genuine YAML failures
- * keep their normal error handling.
- */
 function parseXmlChildrenAsArgs(
   content: string
 ): Record<string, unknown> | null {
@@ -511,7 +333,6 @@ function parseXmlChildrenAsArgs(
   return args;
 }
 
-/** Canonical property names declared in a tool's input schema. */
 export function buildSchemaPropNameSet(
   toolName: string | null | undefined,
   tools: LanguageModelV4FunctionTool[]
@@ -535,17 +356,6 @@ export function buildSchemaPropNameSet(
   return names.length > 0 ? new Set(names) : null;
 }
 
-const SCHEMA_KEYED_LINE_RE = /^([A-Za-z_][\w.-]*)\s*:\s?(.*)$/;
-const LINE_SPLIT_RE = /\r?\n/;
-
-/**
- * Schema-keyed raw-string salvage for YAML bodies that fail to parse because
- * a value is an unquoted multi-line scalar (e.g. Python docstrings starting
- * with `"""` — observed live on Mistral Small). Column-0 `key:` lines whose
- * key is a schema property start a field; everything until the next such key
- * line is taken verbatim as the value. Declines when no schema key matches or
- * when meaningful content precedes the first key.
- */
 function parseSchemaKeyedRawStrings(
   content: string,
   schemaPropNames: Set<string> | null
@@ -639,50 +449,9 @@ export function parseYamlContentForStreamProgress(
     }
 
     const truncated = dropLastMeaningfulLine(candidate);
-    if (truncated == null) {
-      return null;
-    }
-    if (truncated === candidate) {
+    if (truncated == null || truncated === candidate) {
       return null;
     }
     candidate = truncated;
   }
-}
-
-/** Whitespace and complete tag-like tokens only (salvage strictness gate). */
-
-export function stripTrailingPartialCloseTag(
-  content: string,
-  toolName: string
-): string {
-  const closeTag = `</${toolName}>`;
-  const lastLineBreakIndex = Math.max(
-    content.lastIndexOf("\n"),
-    content.lastIndexOf("\r")
-  );
-  const lineStartIndex = lastLineBreakIndex === -1 ? 0 : lastLineBreakIndex + 1;
-  const trailingLine = content.slice(lineStartIndex);
-  const trimmedTrailingLine = trailingLine.trim();
-
-  if (
-    trimmedTrailingLine.length === 0 ||
-    !trimmedTrailingLine.startsWith("</") ||
-    trimmedTrailingLine === closeTag ||
-    !closeTag.startsWith(trimmedTrailingLine)
-  ) {
-    return content;
-  }
-
-  const leadingWhitespaceLength =
-    trailingLine.length - trailingLine.trimStart().length;
-  const preservedLeadingWhitespace = trailingLine.slice(
-    0,
-    leadingWhitespaceLength
-  );
-  const contentWithoutPartial = `${content.slice(
-    0,
-    lineStartIndex
-  )}${preservedLeadingWhitespace}`;
-
-  return contentWithoutPartial.trimEnd();
 }

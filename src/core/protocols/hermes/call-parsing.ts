@@ -30,12 +30,12 @@ import {
   isRecord,
 } from "./argument-key-policy";
 import { argumentValueMatchesSchemaKeyShape } from "./argument-schema";
+import { exceedsToolCallJsonNestingDepth } from "./json-nesting-guard";
 import {
   isParsedToolCallRecord,
   normalizeJsonStringCtrl,
   stringifyResolvedToolInput,
 } from "./json-normalization";
-import { exceedsToolCallJsonNestingDepth } from "./json-object-key-scanner";
 import {
   normalizeInvalidJsonEscapes,
   repairToolCallJsonForTools,

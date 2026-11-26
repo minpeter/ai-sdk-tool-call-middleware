@@ -13,6 +13,7 @@ import {
   TOOL_CALL_CLOSE_RE,
   TOOL_CALL_OPEN_RE,
 } from "./call-syntax";
+import { parseQwen3CoderToolParserParamTagAt } from "./param-tag-parsing";
 import {
   findClosingTagEnd,
   findTagEndIndex,
@@ -20,9 +21,8 @@ import {
   getOpeningTag,
   getShorthandValue,
   normalizeXmlTextValue,
-  parseQwen3CoderToolParserParamTagAt,
   toSupportedCallEndTagName,
-} from "./param-tag-parsing";
+} from "./param-tag-primitives";
 
 /**
  * Qwen3Coder call payload parsing and tool-name salvage.

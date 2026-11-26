@@ -19,10 +19,8 @@ import {
   QWEN3CODER_TOOL_PARSER_STREAM_NAME_TAG_RE,
   sanitizePartialParamValueForProgress,
 } from "./call-syntax";
-import {
-  normalizeXmlTextValue,
-  parseQwen3CoderToolParserParamTagAt,
-} from "./param-tag-parsing";
+import { parseQwen3CoderToolParserParamTagAt } from "./param-tag-parsing";
+import { normalizeXmlTextValue } from "./param-tag-primitives";
 import { parseCallContent } from "./stream-call-content";
 import type { StreamController, StreamingCallState } from "./stream-types";
 

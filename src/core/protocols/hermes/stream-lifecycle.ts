@@ -24,12 +24,12 @@ import {
   recoverKnownToolCallsFromText,
   resolveToolCall,
 } from "./call-parsing";
+import { exceedsToolCallJsonNestingDepth } from "./json-nesting-guard";
 import {
   canonicalizeToolInput,
   isParsedToolCallRecord,
   normalizeJsonStringCtrl,
 } from "./json-normalization";
-import { exceedsToolCallJsonNestingDepth } from "./json-object-key-scanner";
 import { normalizeInvalidJsonEscapes } from "./json-repair";
 import {
   emitToolInputDelta,

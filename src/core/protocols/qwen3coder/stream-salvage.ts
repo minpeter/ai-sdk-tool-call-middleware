@@ -9,7 +9,7 @@ import {
   TOOL_CALL_CLOSE_RE,
   TOOL_CALL_OPEN_RE,
 } from "./call-syntax";
-import { getAttributeValue } from "./param-tag-parsing";
+import { getAttributeValue } from "./param-tag-primitives";
 
 interface ParsedQwenToolCall {
   args: Record<string, unknown>;
