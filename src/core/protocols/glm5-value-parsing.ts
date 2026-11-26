@@ -4,11 +4,11 @@ import {
   getSchemaType,
   unwrapJsonSchema,
 } from "../../schema-coerce";
+import { toolCallInputHasSchemaAwarePrototypeSensitiveValue } from "../utils/coercion/tool-call-coercion";
 import {
   hasPrototypeSensitiveStructuralKey,
   isPrototypeSensitiveArgumentKey,
-} from "../utils/prototype-sensitive-keys";
-import { toolCallInputHasSchemaAwarePrototypeSensitiveValue } from "../utils/tool-call-coercion";
+} from "../utils/security/prototype-sensitive-keys";
 import type { Glm5StringBoundaryNormalization } from "./glm5-call-types";
 
 const LEADING_LAYOUT_RE = /^\r?\n[ \t]*/;

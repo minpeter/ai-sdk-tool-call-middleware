@@ -1,5 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { stringifyToolInputWithSchema } from "../utils/tool-input-streaming";
+import { stringifyToolInputWithSchema } from "../utils/streaming/tool-input-streaming";
 
 export function canonicalizeToolInput(argumentsValue: unknown): string {
   return JSON.stringify(argumentsValue ?? {});

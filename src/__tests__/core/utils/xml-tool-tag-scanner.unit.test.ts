@@ -4,7 +4,7 @@ import {
   findNextToolTag,
   findSelfClosingTag,
   getSelfClosingTagPattern,
-} from "../../../core/utils/xml-tool-tag-scanner";
+} from "../../../core/utils/xml/xml-tool-tag-scanner";
 
 describe("xml-tool-tag-scanner", () => {
   it("caches self-closing tag patterns by tool name", () => {

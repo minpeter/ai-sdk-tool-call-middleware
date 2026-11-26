@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   recoverToolCallFromJsonCandidates,
   recoverToolCallFromJsonCandidatesWithStatus,
-} from "../../../core/utils/generated-text-json-recovery";
+} from "../../../core/utils/recovery/generated-text-json-recovery";
 
 const tools: LanguageModelV4FunctionTool[] = [
   {

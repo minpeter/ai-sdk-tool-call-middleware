@@ -1,4 +1,4 @@
-import { unwrapJsonSchema } from "../../schema-coerce";
+import { unwrapJsonSchema } from "../../../schema-coerce";
 import { collectFalsePropertyNames } from "./tool-call-property-deny";
 
 function isRecord(value: unknown): value is Record<string, unknown> {

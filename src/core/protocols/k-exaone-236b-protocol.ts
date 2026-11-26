@@ -3,16 +3,17 @@ import {
   decodeKExaone2HistoryKey,
   isKExaone2HistoryNumber,
   parseKExaone2LosslessJson,
-} from "../utils/k-exaone-2-lossless-json";
+} from "../utils/codecs/k-exaone-2-lossless-json";
 import {
   stringifyKExaone2CompactJson,
   stringifyKExaone2NativeJson,
-} from "../utils/k-exaone-2-native-json";
-import { resolveToolCall } from "./hermes-call-parsing";
-import { normalizeJsonStringCtrl } from "./hermes-json-normalization";
-import { normalizeInvalidJsonEscapes } from "./hermes-json-repair";
+} from "../utils/codecs/k-exaone-2-native-json";
+import {
+  extractNormalizedHermesArgumentsJson,
+  normalizeHermesJsonControls,
+  resolveToolCall,
+} from "./hermes-call-parsing";
 import { hermesProtocol } from "./hermes-protocol";
-import { extractStreamingToolCallProgress } from "./hermes-streaming-progress";
 import { parseKExaoneToolCallInput } from "./k-exaone-tool-call-input";
 import type { TCMProtocol } from "./protocol-interface";
 
@@ -60,7 +61,7 @@ function normalizeRelaxedJsonQuotes(text: string): string {
 
 function canonicalizeParametersAlias(toolCallJson: string): string {
   const normalizedEnvelope = normalizeRelaxedJsonQuotes(
-    normalizeJsonStringCtrl(toolCallJson)
+    normalizeHermesJsonControls(toolCallJson)
   ).replace(TRAILING_COMMA_REGEX, "$1");
   if (ARGUMENTS_FIELD_REGEX.test(normalizedEnvelope)) {
     return normalizedEnvelope;
@@ -118,22 +119,22 @@ function resolveKExaone236BToolCall(
 ): ReturnType<typeof resolveToolCall> {
   const canonicalToolCallJson = canonicalizeParametersAlias(toolCallJson);
   const normalizedToolCallJson = normalizeRelaxedJsonQuotes(
-    normalizeJsonStringCtrl(canonicalToolCallJson)
+    normalizeHermesJsonControls(canonicalToolCallJson)
   ).replace(TRAILING_COMMA_REGEX, "$1");
   const validated = resolveToolCall(normalizedToolCallJson, tools);
   if (!validated.ok) {
     return validated;
   }
   try {
-    const progress = extractStreamingToolCallProgress(normalizedToolCallJson);
-    if (!(progress.argumentsComplete && progress.argumentsText)) {
+    const rawArgumentsJson = extractNormalizedHermesArgumentsJson(
+      normalizedToolCallJson
+    );
+    if (!rawArgumentsJson) {
       return validated;
     }
     const validatedInput = JSON.parse(validated.input) as unknown;
     const normalizedArguments = normalizeRelaxedJsonQuotes(
-      normalizeInvalidJsonEscapes(
-        normalizeJsonStringCtrl(progress.argumentsText)
-      )
+      rawArgumentsJson
     ).replace(TRAILING_COMMA_REGEX, "$1");
     const losslessInput = parseKExaone2LosslessJson(normalizedArguments);
     return {

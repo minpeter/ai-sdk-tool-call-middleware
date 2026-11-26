@@ -7,8 +7,8 @@ import {
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
-import { stringifyToolInputWithSchema } from "../utils/tool-input-streaming";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
+import { stringifyToolInputWithSchema } from "../utils/streaming/tool-input-streaming";
 import type { ParserOptions } from "./protocol-interface";
 import {
   extractQwen3CoderToolNameFromMarkup,

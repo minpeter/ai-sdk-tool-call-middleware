@@ -2,13 +2,13 @@ import type {
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
+import { addTextSegment } from "../utils/protocol-utils";
 import {
   recoverMarkupOnlyForeignToolCalls,
   recoverToolCallFromJsonCandidates,
-} from "../utils/generated-text-json-recovery";
-import { addTextSegment } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
+} from "../utils/recovery/generated-text-json-recovery";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
 
 export interface YamlXmlProtocolOptions {
   /**

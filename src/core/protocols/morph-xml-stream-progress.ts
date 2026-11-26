@@ -1,6 +1,6 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { parse } from "../../rxml";
-import { stringifyToolInputWithSchema } from "../utils/tool-input-streaming";
+import { stringifyToolInputWithSchema } from "../utils/streaming/tool-input-streaming";
 import {
   analyzeXmlFragmentForProgress,
   buildEmptyTrailingStringTagProgressContent,

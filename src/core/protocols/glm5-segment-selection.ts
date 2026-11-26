@@ -3,7 +3,7 @@ import {
   consumeMarkdownCodeText,
   createMarkdownCodeContext,
   markdownCodeContextSuppressesToolCall,
-} from "../utils/markdown-code-context";
+} from "../utils/streaming/markdown-code-context";
 import { parseGlm5AnchoredBareToolCall } from "./glm5-bare-tool-call";
 import {
   type Glm5CallSnapshot,

@@ -1,5 +1,5 @@
-import { unwrapJsonSchema } from "../../schema-coerce";
-import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
+import { unwrapJsonSchema } from "../../../schema-coerce";
+import { isPrototypeSensitiveArgumentKey } from "../security/prototype-sensitive-keys";
 import { getDeclaredPropertySchema } from "./tool-call-object-property-schema";
 import {
   collectPatternPropertyNames,

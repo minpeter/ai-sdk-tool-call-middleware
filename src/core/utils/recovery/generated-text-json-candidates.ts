@@ -1,5 +1,5 @@
-import { parse as parseRJSON } from "../../rjson";
-import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
+import { parse as parseRJSON } from "../../../rjson";
+import { toolCallInputHasPrototypeSensitiveKey } from "../security/prototype-sensitive-keys";
 
 export interface JsonCandidate {
   endIndex: number;

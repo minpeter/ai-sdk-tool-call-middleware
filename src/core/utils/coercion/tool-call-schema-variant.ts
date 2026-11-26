@@ -1,4 +1,4 @@
-import { unwrapJsonSchema } from "../../schema-coerce";
+import { unwrapJsonSchema } from "../../../schema-coerce";
 import {
   collectPatternPropertyNames,
   getPatternPropertySchema,

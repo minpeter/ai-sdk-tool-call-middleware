@@ -3,8 +3,8 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { coerceBySchema, unwrapJsonSchema } from "../../schema-coerce";
-import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
+import { coerceBySchema, unwrapJsonSchema } from "../../../schema-coerce";
+import { toolCallInputHasPrototypeSensitiveKey } from "../security/prototype-sensitive-keys";
 import { toolCallInputHasSchemaAwarePrototypeSensitiveValue as inputHasSchemaAwarePrototypeSensitiveValue } from "./tool-call-schema-aware-prototype";
 import { sanitizeToolCallArgsBySchema } from "./tool-call-schema-sanitization";
 

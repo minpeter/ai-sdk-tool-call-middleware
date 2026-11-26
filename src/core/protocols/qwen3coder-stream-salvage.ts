@@ -1,6 +1,6 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { generateToolCallId } from "../utils/id";
-import { stringifyToolInputWithSchema } from "../utils/tool-input-streaming";
+import { stringifyToolInputWithSchema } from "../utils/streaming/tool-input-streaming";
 import { extractQwen3CoderToolNameFromMarkup } from "./qwen3coder-call-parsing";
 import {
   CALL_BLOCK_RE,

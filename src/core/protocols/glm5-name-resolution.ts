@@ -1,8 +1,8 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { schemaHasProperty } from "../../schema-coerce/schema-introspection";
-import { isPrototypeSensitiveArgumentKey } from "../utils/prototype-sensitive-keys";
-import { decodeStructuredTextEscapes } from "../utils/structured-text-escapes";
-import { getToolInputPropertyNames } from "../utils/tool-call-object-schema";
+import { getToolInputPropertyNames } from "../utils/coercion/tool-call-object-schema";
+import { isPrototypeSensitiveArgumentKey } from "../utils/security/prototype-sensitive-keys";
+import { decodeStructuredTextEscapes } from "../utils/security/structured-text-escapes";
 import type {
   NameResolution,
   ResolvedGlm5ProtocolOptions,

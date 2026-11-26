@@ -1,5 +1,5 @@
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { escapeRegExp } from "../utils/regex";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
 
 const QWEN_STANDALONE_PARAM_OPEN_RE =
   /<\s*(parameter|param|argument|arg)\b[^>]*>/gi;

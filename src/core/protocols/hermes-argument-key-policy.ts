@@ -7,11 +7,11 @@ import {
   unwrapJsonSchema,
 } from "../../schema-coerce";
 import { isPrototypeSensitiveKey } from "../../shared/prototype-keys";
-import { toolCallInputHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
-import { collectPatternPropertyNames } from "../utils/tool-call-pattern-properties";
-import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
-import { sanitizeToolCallArgsBySchema } from "../utils/tool-call-schema-sanitization";
-import { unsafeDeniedPatternMayMatchKey } from "../utils/unsafe-pattern";
+import { collectPatternPropertyNames } from "../utils/coercion/tool-call-pattern-properties";
+import { collectSchemaSelectionPropertyNames } from "../utils/coercion/tool-call-schema-property-names";
+import { sanitizeToolCallArgsBySchema } from "../utils/coercion/tool-call-schema-sanitization";
+import { toolCallInputHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
+import { unsafeDeniedPatternMayMatchKey } from "../utils/security/unsafe-pattern";
 import { argumentValueMatchesSchemaKeyShape } from "./hermes-argument-schema";
 import {
   collectObjectKeys,

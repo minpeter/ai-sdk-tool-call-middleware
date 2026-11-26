@@ -7,6 +7,7 @@ import type {
 } from "@ai-sdk/provider";
 import { getProtocolGeneratedTextFastPaths } from "./core/protocols/protocol-fast-paths";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
+import { coerceToolCallPart } from "./core/utils/coercion/tool-call-coercion";
 import {
   getDebugLevel,
   logParsedChunk,
@@ -18,7 +19,6 @@ import {
   normalizeToolCallsFinishReason,
   shouldRewriteFinishReasonToToolCalls,
 } from "./core/utils/finish-reason";
-import { recoverToolCallFromJsonCandidatesWithStatus } from "./core/utils/generated-text-json-recovery";
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
@@ -26,15 +26,16 @@ import {
   safeToolCallMetadataValue,
 } from "./core/utils/protocol-utils";
 import {
+  createDroppedProviderToolWarnings,
   decodeOriginalToolsForMiddleware,
-  getDroppedProviderTools,
   getToolCallMiddlewareOptions,
+  getToolChoiceExpectedToolName,
   isToolChoiceActive,
   isToolChoiceNone,
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
+import { recoverToolCallFromJsonCandidatesWithStatus } from "./core/utils/recovery/generated-text-json-recovery";
 import { carryTextPartAnnotations } from "./core/utils/text-citations";
-import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
 import {
   findToolChoiceResultText,
   resolveToolChoiceSelection,
@@ -62,29 +63,15 @@ function logDebugSummary(
   }
 }
 
-/**
- * Prompt-based tool calling can only express function tools; provider tools
- * are dropped in transformParams and surfaced here as spec warnings.
- */
 function appendDroppedProviderToolWarnings(
   warnings: SharedV4Warning[] | undefined,
   providerOptions: unknown
 ): SharedV4Warning[] {
-  const dropped = getDroppedProviderTools(providerOptions);
-  if (dropped.length === 0) {
+  const droppedWarnings = createDroppedProviderToolWarnings(providerOptions);
+  if (droppedWarnings.length === 0) {
     return warnings ?? [];
   }
-  return [
-    ...(warnings ?? []),
-    ...dropped.map(
-      (name): SharedV4Warning => ({
-        type: "unsupported",
-        feature: `provider tool ${name}`,
-        details:
-          "Prompt-based tool-call middleware only supports function tools; the provider tool was removed from the request.",
-      })
-    ),
-  ];
+  return [...(warnings ?? []), ...droppedWarnings];
 }
 
 async function handleToolChoice(
@@ -105,11 +92,7 @@ async function handleToolChoice(
     tools,
     onError,
     errorMessage: "Failed to parse toolChoice JSON from generated model output",
-    expectedToolName: (
-      getToolCallMiddlewareOptions(params.providerOptions).toolChoice as
-        | { toolName?: string }
-        | undefined
-    )?.toolName,
+    expectedToolName: getToolChoiceExpectedToolName(params.providerOptions),
   });
 
   const toolCall: LanguageModelV4ToolCall = {

@@ -7,7 +7,7 @@ import { generateId } from "./id";
 import {
   toolCallInputHasPrototypeSensitiveKey,
   toolCallTextHasPrototypeSensitiveKey,
-} from "./prototype-sensitive-keys";
+} from "./security/prototype-sensitive-keys";
 
 export const REDACTED_SENSITIVE_TOOL_CALL_TEXT =
   "[redacted sensitive tool call]";

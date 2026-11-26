@@ -1,11 +1,11 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { recoverMarkupOnlyForeignToolCalls } from "../utils/generated-text-json-recovery";
 import { safeToolCallMetadataText } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
+import { recoverMarkupOnlyForeignToolCalls } from "../utils/recovery/generated-text-json-recovery";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
 import {
   enqueueToolInputEndAndCall,
   shouldEmitRawToolCallTextOnError,
-} from "../utils/tool-input-streaming";
+} from "../utils/streaming/tool-input-streaming";
 import type { ParserOptions } from "./protocol-interface";
 import {
   extractShorthandToolNameFromRaw,

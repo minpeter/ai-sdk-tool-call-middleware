@@ -4,7 +4,7 @@ import {
   schemaIsUnconstrained,
   unwrapJsonSchema,
 } from "../../schema-coerce";
-import { unsafeDeniedPatternMayMatchKey } from "../utils/unsafe-pattern";
+import { unsafeDeniedPatternMayMatchKey } from "../utils/security/unsafe-pattern";
 
 /**
  * Maximum recursion depth when validating a parsed argument value against a

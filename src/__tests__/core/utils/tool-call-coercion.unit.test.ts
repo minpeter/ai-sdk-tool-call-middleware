@@ -5,7 +5,7 @@ import {
   coerceToolCallInput,
   coerceToolCallPart,
   toolCallInputHasSchemaAwarePrototypeSensitiveValue,
-} from "../../../core/utils/tool-call-coercion";
+} from "../../../core/utils/coercion/tool-call-coercion";
 
 describe("tool-call coercion utils", () => {
   const weatherTools: LanguageModelV4FunctionTool[] = [

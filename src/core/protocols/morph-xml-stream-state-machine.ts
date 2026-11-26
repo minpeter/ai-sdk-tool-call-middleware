@@ -3,7 +3,7 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { escapeRegExp } from "../utils/regex";
-import { findEarliestToolTag } from "../utils/xml-tool-tag-scanner";
+import { findEarliestToolTag } from "../utils/xml/xml-tool-tag-scanner";
 import type { ParserOptions } from "./protocol-interface";
 
 export interface StreamingToolCallState {

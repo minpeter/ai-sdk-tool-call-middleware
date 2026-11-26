@@ -1,5 +1,5 @@
-import { toolCallInputHasSchemaAwarePrototypeSensitiveValue } from "../utils/tool-call-coercion";
-import { getToolInputPropertySchema } from "../utils/tool-call-object-schema";
+import { toolCallInputHasSchemaAwarePrototypeSensitiveValue } from "../utils/coercion/tool-call-coercion";
+import { getToolInputPropertySchema } from "../utils/coercion/tool-call-object-schema";
 import type { ResolvedGlm5ProtocolOptions } from "./glm5-call-types";
 import {
   isPrototypeSensitiveRawArgumentKey,

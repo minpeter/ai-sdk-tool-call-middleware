@@ -1,5 +1,5 @@
-import { parseKExaone2LosslessJson } from "../utils/k-exaone-2-lossless-json";
-import { KExaone2SerializationError } from "../utils/k-exaone-2-serialization-error";
+import { parseKExaone2LosslessJson } from "../utils/codecs/k-exaone-2-lossless-json";
+import { KExaone2SerializationError } from "../utils/codecs/k-exaone-2-serialization-error";
 
 export function parseKExaoneToolCallInput(
   input: string | null | undefined

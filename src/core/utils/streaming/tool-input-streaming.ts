@@ -2,7 +2,11 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
+import {
+  coerceToolCallInput,
+  toolCallInputHasSchemaAwarePrototypeSensitiveValue,
+} from "../coercion/tool-call-coercion";
+import { toolCallTextHasPrototypeSensitiveKey } from "../security/prototype-sensitive-keys";
 import {
   type EmittedToolInputState,
   emitChunkedPrefixDelta,
@@ -11,10 +15,6 @@ import {
   emitFinalRemainderWithEnqueue,
   toIncompleteJsonPrefix,
 } from "./streamed-tool-input-delta";
-import {
-  coerceToolCallInput,
-  toolCallInputHasSchemaAwarePrototypeSensitiveValue,
-} from "./tool-call-coercion";
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;

@@ -1,5 +1,21 @@
-import { unescapeXml } from "../../shared/xml-escape";
-import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
+import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import { unescapeXml } from "../../../shared/xml-escape";
+import {
+  isPrototypeSensitiveArgumentKey,
+  toolCallTextHasPrototypeSensitiveKey,
+} from "../security/prototype-sensitive-keys";
+import {
+  type DroppedSensitiveSpan,
+  type RecoveredCallSpan,
+  toToolCallCandidate,
+} from "./recovery-types";
+
+export const RECOVERABLE_QWEN_CALL_TAGS = [
+  "call",
+  "function",
+  "tool",
+  "invoke",
+] as const;
 
 export const QWEN_CALL_BLOCK_OPEN_REGEX =
   /<\s*(call|function|tool|invoke)\b[^>]*>/gi;
@@ -118,4 +134,99 @@ export function findQwenCallCloseTag(
     match = tagRegex.exec(body);
   }
   return fallbackClose;
+}
+
+/**
+ * Recover Qwen3-Coder-style `<function=name><parameter=key>value` blocks for
+ * known tools regardless of the active protocol. Some models emit this
+ * format no matter what the prompt asks for (observed live on Step 3.5 Flash
+ * under the Hermes prompt).
+ */
+export function extractFunctionBlockCallSpans(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): RecoveredCallSpan[] {
+  const spans: RecoveredCallSpan[] = [];
+  const opens = [...text.matchAll(QWEN_CALL_BLOCK_OPEN_REGEX)];
+
+  for (let index = 0; index < opens.length; index += 1) {
+    const open = opens[index];
+    const tagName = (open[1] ?? "").toLowerCase();
+    const openTag = open[0] ?? "";
+    const bodyStart = open.index + open[0].length;
+    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
+    const selfClosing = isSelfClosingTag(openTag);
+    const close = selfClosing
+      ? null
+      : findQwenCallCloseTag(text, bodyStart, tagName, nextOpenIndex);
+    const bodyEnd = close?.start ?? nextOpenIndex;
+    const body = selfClosing ? "" : text.slice(bodyStart, bodyEnd);
+    const toolName = readQwenCallToolName(openTag, body);
+    if (!(toolName && tools.some((tool) => tool.name === toolName))) {
+      continue;
+    }
+
+    const params = readFunctionBlockParams(body);
+    if (!params) {
+      continue;
+    }
+
+    const endIndex = selfClosing
+      ? open.index + openTag.length
+      : (close?.end ?? nextOpenIndex);
+    const payload = toToolCallCandidate(toolName, params, tools);
+    if (payload) {
+      spans.push({
+        startIndex: open.index,
+        endIndex,
+        payload,
+      });
+    }
+  }
+
+  return spans;
+}
+
+export function extractSensitiveFunctionBlockDropSpans(
+  text: string,
+  tools: LanguageModelV4FunctionTool[]
+): DroppedSensitiveSpan[] {
+  if (!toolCallTextHasPrototypeSensitiveKey(text)) {
+    return [];
+  }
+
+  const spans: DroppedSensitiveSpan[] = [];
+  const opens = [...text.matchAll(QWEN_CALL_BLOCK_OPEN_REGEX)];
+
+  for (let index = 0; index < opens.length; index += 1) {
+    const open = opens[index];
+    const tagName = (open[1] ?? "").toLowerCase();
+    const openTag = open[0] ?? "";
+    const bodyStart = open.index + open[0].length;
+    const nextOpenIndex = opens[index + 1]?.index ?? text.length;
+    const selfClosing = isSelfClosingTag(openTag);
+    const close = selfClosing
+      ? null
+      : findQwenCallCloseTag(text, bodyStart, tagName, nextOpenIndex);
+    const bodyEnd = close?.start ?? nextOpenIndex;
+    const body = selfClosing ? "" : text.slice(bodyStart, bodyEnd);
+    const toolName = readQwenCallToolName(openTag, body);
+    if (!(toolName && tools.some((tool) => tool.name === toolName))) {
+      continue;
+    }
+
+    const endIndex = selfClosing
+      ? open.index + openTag.length
+      : (close?.end ?? nextOpenIndex);
+    const rawBlock = text.slice(open.index, endIndex);
+    if (toolCallTextHasPrototypeSensitiveKey(rawBlock)) {
+      spans.push({
+        startIndex: open.index,
+        endIndex,
+        dropReason: "prototype-sensitive-tool-candidate",
+      });
+    }
+  }
+
+  return spans;
 }

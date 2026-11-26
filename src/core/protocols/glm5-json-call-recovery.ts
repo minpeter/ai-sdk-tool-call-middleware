@@ -1,8 +1,8 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
-import { hasPrototypeSensitiveStructuralKey } from "../utils/prototype-sensitive-keys";
-import { toolCallInputHasSchemaAwarePrototypeSensitiveValue } from "../utils/tool-call-coercion";
-import { getToolInputPropertySchema } from "../utils/tool-call-object-schema";
+import { toolCallInputHasSchemaAwarePrototypeSensitiveValue } from "../utils/coercion/tool-call-coercion";
+import { getToolInputPropertySchema } from "../utils/coercion/tool-call-object-schema";
+import { hasPrototypeSensitiveStructuralKey } from "../utils/security/prototype-sensitive-keys";
 import type {
   Glm5CallSnapshot,
   ResolvedGlm5ProtocolOptions,

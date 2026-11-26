@@ -6,7 +6,7 @@ import { safeToolCallMetadataText } from "../utils/protocol-utils";
 import {
   emitFinalizedToolInputLifecycle,
   enqueueToolInputEndAndCall,
-} from "../utils/tool-input-streaming";
+} from "../utils/streaming/tool-input-streaming";
 import {
   parseGlm5CallBody,
   type ResolvedGlm5ProtocolOptions,

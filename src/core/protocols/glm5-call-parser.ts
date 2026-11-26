@@ -1,5 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { getToolInputPropertyNames } from "../utils/tool-call-object-schema";
+import { getToolInputPropertyNames } from "../utils/coercion/tool-call-object-schema";
 import type {
   Glm5CallSnapshot,
   ResolvedGlm5ProtocolOptions,

@@ -13,8 +13,8 @@ import {
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
-import { isSideChannelStreamPart } from "../utils/side-channel-stream-part";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
+import { isSideChannelStreamPart } from "../utils/streaming/side-channel-stream-part";
 import {
   emitBufferedToolInputProgressDelta,
   emitFailedBufferedToolInputLifecycle,
@@ -23,12 +23,12 @@ import {
   isPrototypeSensitiveToolCallInputError,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
-} from "../utils/tool-input-streaming";
-import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
+} from "../utils/streaming/tool-input-streaming";
+import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml/xml-root-repair";
 import {
   findEarliestToolTag,
   findPotentialPartialToolTagStart,
-} from "../utils/xml-tool-tag-scanner";
+} from "../utils/xml/xml-tool-tag-scanner";
 import type { ParserOptions, TCMCoreProtocol } from "./protocol-interface";
 
 export interface YamlXmlProtocolOptions {

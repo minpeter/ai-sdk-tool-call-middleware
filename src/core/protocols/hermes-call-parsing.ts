@@ -4,16 +4,16 @@ import type {
 } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import { logParseFailure } from "../utils/debug";
-import { recoverToolCallFromJsonCandidates } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
 import {
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
+import { recoverToolCallFromJsonCandidates } from "../utils/recovery/generated-text-json-recovery";
 import {
   toolCallInputHasPrototypeSensitiveKey,
   toolCallTextHasPrototypeSensitiveKey,
-} from "../utils/prototype-sensitive-keys";
+} from "../utils/security/prototype-sensitive-keys";
 import {
   type ArgumentKeyPolicy,
   ArgumentKeyPolicyError,
@@ -354,4 +354,25 @@ export function processToolCallJson(
     return;
   }
   processedElements.push({ type: "text", text: fullMatch });
+}
+
+/**
+ * Narrow internal adapter helpers exposed for Hermes-derived protocol variants
+ * (such as K-EXAONE-236B) so callers do not reach into Hermes's private
+ * normalization, repair, and streaming progress modules directly.
+ */
+export function normalizeHermesJsonControls(text: string): string {
+  return normalizeJsonStringCtrl(text);
+}
+
+export function extractNormalizedHermesArgumentsJson(
+  toolCallJson: string
+): string | null {
+  const progress = extractStreamingToolCallProgress(toolCallJson);
+  if (!(progress.argumentsComplete && progress.argumentsText)) {
+    return null;
+  }
+  return normalizeInvalidJsonEscapes(
+    normalizeJsonStringCtrl(progress.argumentsText)
+  );
 }

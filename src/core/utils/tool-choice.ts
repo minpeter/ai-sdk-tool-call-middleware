@@ -2,13 +2,13 @@ import type {
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
+import { coerceToolCallInput } from "./coercion/tool-call-coercion";
 import type { OnErrorFn } from "./on-error";
 import {
   REDACTED_SENSITIVE_TOOL_CALL_TEXT,
   safeToolCallMetadataText,
 } from "./protocol-utils";
-import { toolCallInputHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
-import { coerceToolCallInput } from "./tool-call-coercion";
+import { toolCallInputHasPrototypeSensitiveKey } from "./security/prototype-sensitive-keys";
 
 /**
  * First text content part of a forced-tool-choice generation. Providers may

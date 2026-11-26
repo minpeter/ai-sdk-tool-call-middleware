@@ -1,6 +1,6 @@
-import { compileSafePatternPropertyRegex } from "../../schema-coerce";
-import { isPrototypeSensitiveArgumentKey } from "./prototype-sensitive-keys";
-import { unsafeDeniedPatternMayMatchKey } from "./unsafe-pattern";
+import { compileSafePatternPropertyRegex } from "../../../schema-coerce";
+import { isPrototypeSensitiveArgumentKey } from "../security/prototype-sensitive-keys";
+import { unsafeDeniedPatternMayMatchKey } from "../security/unsafe-pattern";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

@@ -7,12 +7,12 @@ import {
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
 import {
   emitToolInputProgressDelta,
   enqueueToolInputEnd,
   shouldEmitRawToolCallTextOnError,
-} from "../utils/tool-input-streaming";
+} from "../utils/streaming/tool-input-streaming";
 import {
   parseGlm5CallBody,
   type ResolvedGlm5ProtocolOptions,

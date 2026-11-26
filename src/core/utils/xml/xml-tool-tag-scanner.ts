@@ -1,4 +1,4 @@
-import { escapeRegExp } from "./regex";
+import { escapeRegExp } from "../../../shared/regex";
 
 interface EarliestToolTag {
   index: number;

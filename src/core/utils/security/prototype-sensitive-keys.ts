@@ -1,5 +1,5 @@
-import { parse as parseRJSON } from "../../rjson";
-import { PROTOTYPE_SENSITIVE_KEYS } from "../../shared/prototype-keys";
+import { parse as parseRJSON } from "../../../rjson";
+import { PROTOTYPE_SENSITIVE_KEYS } from "../../../shared/prototype-keys";
 import {
   decodeJsonUnicodeEscapes,
   decodeStructuredTextEscapes,

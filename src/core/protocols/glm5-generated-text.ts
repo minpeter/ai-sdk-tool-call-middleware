@@ -4,17 +4,17 @@ import type {
 } from "@ai-sdk/provider";
 import { generateToolCallId } from "../utils/id";
 import {
-  consumeMarkdownCodeText,
-  createMarkdownCodeContext,
-  markdownCodeContextSuppressesToolCall,
-} from "../utils/markdown-code-context";
-import {
   addTextSegment,
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
-import { shouldEmitRawToolCallTextOnError } from "../utils/tool-input-streaming";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
+import {
+  consumeMarkdownCodeText,
+  createMarkdownCodeContext,
+  markdownCodeContextSuppressesToolCall,
+} from "../utils/streaming/markdown-code-context";
+import { shouldEmitRawToolCallTextOnError } from "../utils/streaming/tool-input-streaming";
 import { parseGlm5AnchoredBareToolCall } from "./glm5-bare-tool-call";
 import {
   parseGlm5CallBody,

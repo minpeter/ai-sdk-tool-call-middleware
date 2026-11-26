@@ -2,14 +2,11 @@ import type { LanguageModelV4ToolCall } from "@ai-sdk/provider";
 import {
   decodeKExaone2HistoryKey,
   isKExaone2HistoryNumber,
-} from "../utils/k-exaone-2-lossless-json";
-import { stringifyKExaone2NativeJson } from "../utils/k-exaone-2-native-json";
-import { formatToolsWithPromptTemplate } from "../utils/protocol-utils";
+} from "../utils/codecs/k-exaone-2-lossless-json";
+import { stringifyKExaone2NativeJson } from "../utils/codecs/k-exaone-2-native-json";
 import { parseKExaoneToolCallInput } from "./k-exaone-tool-call-input";
 import type { TCMProtocol } from "./protocol-interface";
-import { TOOL_CALL_BLOCK_RE } from "./qwen3coder-call-syntax";
-import { parseQwen3CoderGeneratedText } from "./qwen3coder-generated-text";
-import { createQwen3CoderStreamParser } from "./qwen3coder-stream-parser";
+import { qwen3CoderProtocol } from "./qwen3coder-protocol";
 
 /**
  * Format lineage (K-EXAONE-2.0 only):
@@ -18,7 +15,8 @@ import { createQwen3CoderStreamParser } from "./qwen3coder-stream-parser";
  * - Not for earlier EXAONE / K-EXAONE-236B JSON-in-`<tool_call>` templates
  * - Template: LGAI-EXAONE/K-EXAONE-2.0-750B-A37B chat_template.jinja
  *
- * Parse/stream reuses qwen3coder; formatToolCall is K-EXAONE-2.0-specific.
+ * Composes `qwen3CoderProtocol()` as a black-box parser/streamer while
+ * overriding only K-EXAONE-2.0-specific `formatToolCall`.
  * Reasoning stays provider-native (for Friendli, use `parse_reasoning: true`).
  */
 function renderParameterValue(value: unknown): string {
@@ -49,26 +47,9 @@ function formatKExaone2ToolCall(toolCall: LanguageModelV4ToolCall): string {
 }
 
 export const kExaone2Protocol = (): TCMProtocol => ({
-  formatTools({ tools, toolSystemPromptTemplate }) {
-    return formatToolsWithPromptTemplate({ tools, toolSystemPromptTemplate });
-  },
-
+  ...qwen3CoderProtocol(),
   formatToolCall(toolCall) {
     return formatKExaone2ToolCall(toolCall);
-  },
-
-  parseGeneratedText(params) {
-    return parseQwen3CoderGeneratedText(params);
-  },
-
-  extractToolCallSegments({ text }) {
-    return Array.from(text.matchAll(TOOL_CALL_BLOCK_RE))
-      .map((match) => match[0])
-      .filter((segment): segment is string => Boolean(segment));
-  },
-
-  createStreamParser(params) {
-    return createQwen3CoderStreamParser(params);
   },
 });
 

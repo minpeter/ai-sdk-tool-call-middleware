@@ -1,10 +1,10 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
+import { createFlushTextHandler } from "../utils/protocol-utils";
 import {
   consumeMarkdownCodeText,
   createMarkdownCodeContext,
   markdownCodeContextSuppressesToolCall,
-} from "../utils/markdown-code-context";
-import { createFlushTextHandler } from "../utils/protocol-utils";
+} from "../utils/streaming/markdown-code-context";
 
 type StreamController =
   TransformStreamDefaultController<LanguageModelV4StreamPart>;

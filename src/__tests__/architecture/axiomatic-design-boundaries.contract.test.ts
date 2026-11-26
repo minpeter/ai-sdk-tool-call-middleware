@@ -194,4 +194,76 @@ describe("MIT Axiomatic Design architectural boundaries", () => {
     });
     expect(upwardViolations).toEqual([]);
   });
+
+  it("enforces core/utils internal subdomain boundaries (codecs, transport, security, coercion, xml, recovery)", () => {
+    const violations = edges.filter(({ from, to }) => {
+      if (!(from.startsWith("core/utils/") && to.startsWith("core/utils/"))) {
+        return false;
+      }
+      if (from.startsWith("core/utils/codecs/")) {
+        return !to.startsWith("core/utils/codecs/");
+      }
+      if (from.startsWith("core/utils/security/")) {
+        return !to.startsWith("core/utils/security/");
+      }
+      if (from.startsWith("core/utils/transport/")) {
+        return !(
+          to.startsWith("core/utils/transport/") ||
+          to === "core/utils/on-error.ts"
+        );
+      }
+      if (from.startsWith("core/utils/xml/")) {
+        return !(
+          to.startsWith("core/utils/xml/") ||
+          to === "core/utils/regex-constants.ts"
+        );
+      }
+      if (from.startsWith("core/utils/coercion/")) {
+        return !(
+          to.startsWith("core/utils/coercion/") ||
+          to.startsWith("core/utils/security/")
+        );
+      }
+      return false;
+    });
+    expect(violations).toEqual([]);
+  });
+
+  it("restricts cross-protocol dependencies to approved protocol entrypoints only", () => {
+    const protocolFamily = (relPath: string): string | null => {
+      if (!relPath.startsWith("core/protocols/")) {
+        return null;
+      }
+      const name = relPath.slice("core/protocols/".length);
+      for (const family of [
+        "glm5",
+        "hermes",
+        "morph-xml",
+        "yaml-xml",
+        "qwen3coder",
+        "k-exaone",
+      ]) {
+        if (name.startsWith(family)) {
+          return family;
+        }
+      }
+      return null;
+    };
+
+    const allowedCrossFamilyTargets = new Set([
+      "core/protocols/qwen3coder-protocol.ts",
+      "core/protocols/hermes-protocol.ts",
+      "core/protocols/hermes-call-parsing.ts",
+    ]);
+
+    const violations = edges.filter(({ from, to }) => {
+      const fromFamily = protocolFamily(from);
+      const toFamily = protocolFamily(to);
+      if (!(fromFamily && toFamily) || fromFamily === toFamily) {
+        return false;
+      }
+      return !allowedCrossFamilyTargets.has(to);
+    });
+    expect(violations).toEqual([]);
+  });
 });

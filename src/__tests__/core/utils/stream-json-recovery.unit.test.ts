@@ -5,7 +5,7 @@ import type {
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
-import { createStreamJsonRecoveryTransform } from "../../../core/utils/stream-json-recovery";
+import { createStreamJsonRecoveryTransform } from "../../../core/utils/recovery/stream-json-recovery";
 import {
   pipeWithTransformer,
   stopFinishReason,

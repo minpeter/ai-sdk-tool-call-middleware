@@ -3,7 +3,7 @@ import {
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
 import {
   emitBufferedToolInputProgressDelta,
   emitFailedBufferedToolInputLifecycle,
@@ -11,7 +11,7 @@ import {
   isPrototypeSensitiveToolCallInputError,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
-} from "../utils/tool-input-streaming";
+} from "../utils/streaming/tool-input-streaming";
 import type { ParserOptions } from "./protocol-interface";
 import {
   mergeArgsWithPartialParam,

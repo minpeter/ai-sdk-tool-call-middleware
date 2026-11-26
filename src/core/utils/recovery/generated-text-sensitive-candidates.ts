@@ -1,7 +1,7 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { escapeRegExp } from "../../shared/regex";
-import { toolCallTextHasPrototypeSensitiveKey } from "./prototype-sensitive-keys";
-import { decodeStructuredTextEscapes } from "./structured-text-escapes";
+import { escapeRegExp } from "../../../shared/regex";
+import { toolCallTextHasPrototypeSensitiveKey } from "../security/prototype-sensitive-keys";
+import { decodeStructuredTextEscapes } from "../security/structured-text-escapes";
 
 export interface SensitiveToolCallDropSpan {
   dropReason: "prototype-sensitive-tool-candidate";

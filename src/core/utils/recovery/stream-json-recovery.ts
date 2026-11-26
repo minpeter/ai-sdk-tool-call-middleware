@@ -2,13 +2,14 @@ import type {
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
+import { generateId } from "../id";
+import { isSideChannelStreamPart } from "../streaming/side-channel-stream-part";
+import { trackBufferedTextAnnotations } from "../text-citations";
 import {
   recoverToolCallFromJsonCandidatesWithStatus,
   type ToolCallJsonRecoveryResult,
 } from "./generated-text-json-recovery";
-import { generateId } from "./id";
-import { isSideChannelStreamPart } from "./side-channel-stream-part";
-import { trackBufferedTextAnnotations } from "./text-citations";
+import { RECOVERABLE_QWEN_CALL_TAGS } from "./generated-text-qwen-markup";
 
 /**
  * Maximum number of characters held back while a text block is still a
@@ -25,7 +26,6 @@ const MAX_HELD_BLOCK_LENGTH = 10_000;
 const RECOVERABLE_FENCE_REGEX = /^```(?:json|ya?ml|xml)?\s*(?:\n|$)/i;
 const FENCE_PREFIX = "```";
 const RECOVERABLE_TOOL_CALL_TAG = "<tool_call>";
-const RECOVERABLE_QWEN_CALL_TAGS = ["call", "function", "tool", "invoke"];
 const ASCII_WHITESPACE_REGEX = /\s/;
 
 type StreamController =

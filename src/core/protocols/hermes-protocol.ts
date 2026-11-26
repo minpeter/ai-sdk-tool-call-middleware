@@ -5,7 +5,6 @@ import type {
   LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import { logParseFailure } from "../utils/debug";
-import { extractSensitiveIncompleteToolCallDropSpans } from "../utils/generated-text-sensitive-candidates";
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateId, generateToolCallId } from "../utils/id";
 import {
@@ -14,8 +13,9 @@ import {
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
-import { shouldEmitRawToolCallTextOnError } from "../utils/tool-input-streaming";
+import { extractSensitiveIncompleteToolCallDropSpans } from "../utils/recovery/generated-text-sensitive-candidates";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
+import { shouldEmitRawToolCallTextOnError } from "../utils/streaming/tool-input-streaming";
 import {
   closeTextBlock,
   closeToolInput,

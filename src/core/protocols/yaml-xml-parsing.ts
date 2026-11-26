@@ -3,9 +3,9 @@ import YAML from "yaml";
 import { isPrototypeSensitiveKey } from "../../shared/prototype-keys";
 import { unescapeXml } from "../../shared/xml-escape";
 import { safeToolCallMetadataText } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
-import { findNextToolTag } from "../utils/xml-tool-tag-scanner";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
+import { findNextToolTag } from "../utils/xml/xml-tool-tag-scanner";
 
 export interface YamlXmlProtocolOptions {
   /**

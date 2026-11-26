@@ -1,6 +1,6 @@
 import { generateToolCallId } from "../utils/id";
 import { safeToolCallMetadataText } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
 import type { ParserOptions } from "./protocol-interface";
 import {
   stripLeadingToolCallCloseTags,

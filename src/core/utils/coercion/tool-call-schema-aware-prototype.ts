@@ -1,8 +1,8 @@
-import { getSchemaType, unwrapJsonSchema } from "../../schema-coerce";
+import { getSchemaType, unwrapJsonSchema } from "../../../schema-coerce";
 import {
   hasPrototypeSensitiveStructuralKey,
   toolCallInputHasPrototypeSensitiveKey,
-} from "./prototype-sensitive-keys";
+} from "../security/prototype-sensitive-keys";
 import { getToolInputPropertySchema } from "./tool-call-object-schema";
 
 const SAFE_PROTOTYPE_LABEL_SCALAR_RE =

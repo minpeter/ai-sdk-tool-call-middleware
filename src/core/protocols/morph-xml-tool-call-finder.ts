@@ -1,10 +1,10 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
+import { collectSchemaSelectionPropertyNames } from "../utils/coercion/tool-call-schema-property-names";
 import { extractToolNames } from "../utils/protocol-utils";
 import { escapeRegExp } from "../utils/regex";
 import { NAME_CHAR_RE, WHITESPACE_REGEX } from "../utils/regex-constants";
-import { collectSchemaSelectionPropertyNames } from "../utils/tool-call-schema-property-names";
-import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml-root-repair";
-import { findNextToolTag } from "../utils/xml-tool-tag-scanner";
+import { tryRepairXmlSelfClosingRootWithBody } from "../utils/xml/xml-root-repair";
+import { findNextToolTag } from "../utils/xml/xml-tool-tag-scanner";
 import type { LinePrefixedToolCall } from "./morph-xml-stream-state-machine";
 
 function getToolSchema(

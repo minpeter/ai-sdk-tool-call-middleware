@@ -1,10 +1,10 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { toolCallTextHasPrototypeSensitiveKey } from "../../../core/utils/prototype-sensitive-keys";
 import {
   coerceToolCallInput,
   coerceToolCallPart,
-} from "../../../core/utils/tool-call-coercion";
+} from "../../../core/utils/coercion/tool-call-coercion";
+import { toolCallTextHasPrototypeSensitiveKey } from "../../../core/utils/security/prototype-sensitive-keys";
 
 describe("tool-call coercion regression coverage", () => {
   const weatherTools: LanguageModelV4FunctionTool[] = [

@@ -9,11 +9,11 @@ import { safeToolCallMetadataText } from "../utils/protocol-utils";
 import {
   toolCallInputHasPrototypeSensitiveKey,
   toolCallTextHasPrototypeSensitiveKey,
-} from "../utils/prototype-sensitive-keys";
+} from "../utils/security/prototype-sensitive-keys";
 import {
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
-} from "../utils/tool-input-streaming";
+} from "../utils/streaming/tool-input-streaming";
 import { hasPrototypeSensitiveKeyInJsonLikeObject } from "./hermes-argument-key-policy";
 import {
   applyToolArgumentKeyPolicy,

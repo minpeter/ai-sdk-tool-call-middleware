@@ -1,6 +1,6 @@
 import type { JSONValue, LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
-import { stringifyKExaone2NativeSchemaJson } from "../utils/k-exaone-2-native-json";
+import { stringifyKExaone2NativeSchemaJson } from "../utils/codecs/k-exaone-2-native-json";
 import { formatToolResponseWithMedia } from "./shared/tool-response-with-media";
 import type { ToolResponseMediaStrategy } from "./shared/tool-result-normalizer";
 import type { ToolResponsePromptTemplateResult } from "./shared/tool-result-user-content";

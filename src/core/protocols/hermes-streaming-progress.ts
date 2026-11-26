@@ -3,7 +3,7 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { generateToolCallId } from "../utils/id";
-import { emitToolInputProgressDelta } from "../utils/tool-input-streaming";
+import { emitToolInputProgressDelta } from "../utils/streaming/tool-input-streaming";
 import {
   consumeExistingJsonString,
   consumeJsonObjectDepth,

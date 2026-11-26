@@ -5,8 +5,8 @@ import type {
 import { getPotentialStartIndex } from "../utils/get-potential-start-index";
 import { generateToolCallId } from "../utils/id";
 import { createFlushTextHandler } from "../utils/protocol-utils";
-import { isSideChannelStreamPart } from "../utils/side-channel-stream-part";
-import { shouldEmitRawToolCallTextOnError } from "../utils/tool-input-streaming";
+import { isSideChannelStreamPart } from "../utils/streaming/side-channel-stream-part";
+import { shouldEmitRawToolCallTextOnError } from "../utils/streaming/tool-input-streaming";
 import type { ParserOptions } from "./protocol-interface";
 import {
   getPotentialTagStartIndex,

@@ -3,7 +3,7 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { generateToolCallId } from "../utils/id";
-import { emitFinalizedToolInputLifecycle } from "../utils/tool-input-streaming";
+import { emitFinalizedToolInputLifecycle } from "../utils/streaming/tool-input-streaming";
 import { parseGlm5AnchoredBareToolCall } from "./glm5-bare-tool-call";
 import { potentialGlm5OpenSuffixIndex } from "./glm5-stream-close-scanner";
 

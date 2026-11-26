@@ -7,6 +7,7 @@ import type {
   SharedV4Warning,
 } from "@ai-sdk/provider";
 import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
+import { coerceToolCallPart } from "./core/utils/coercion/tool-call-coercion";
 import { getDebugLevel, logParsedChunk, logRawChunk } from "./core/utils/debug";
 import {
   normalizeForcedToolChoiceFinishReason,
@@ -16,40 +17,23 @@ import {
 import { generateToolCallId } from "./core/utils/id";
 import { extractOnErrorOption } from "./core/utils/on-error";
 import {
+  createDroppedProviderToolWarnings,
   decodeOriginalToolsForMiddleware,
-  getDroppedProviderTools,
   getToolCallMiddlewareOptions,
+  getToolChoiceExpectedToolName,
   isToolChoiceActive,
   isToolChoiceNone,
   type ToolCallMiddlewareProviderOptions,
 } from "./core/utils/provider-options";
-import { createStreamJsonRecoveryTransform } from "./core/utils/stream-json-recovery";
+import { createStreamJsonRecoveryTransform } from "./core/utils/recovery/stream-json-recovery";
 import {
   createCitationCaptureTransform,
   createCitationRestoreTransform,
 } from "./core/utils/text-citations";
-import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
 import {
   findToolChoiceResultText,
   resolveToolChoiceSelection,
 } from "./core/utils/tool-choice";
-
-/**
- * Prompt-based tool calling can only express function tools; provider tools
- * are dropped in transformParams and surfaced here as spec warnings.
- */
-function droppedProviderToolWarnings(
-  providerOptions: unknown
-): SharedV4Warning[] {
-  return getDroppedProviderTools(providerOptions).map(
-    (name): SharedV4Warning => ({
-      type: "unsupported",
-      feature: `provider tool ${name}`,
-      details:
-        "Prompt-based tool-call middleware only supports function tools; the provider tool was removed from the request.",
-    })
-  );
-}
 
 export async function wrapStream({
   protocol,
@@ -76,17 +60,15 @@ export async function wrapStream({
     onErrorOptions
   );
 
-  const extraWarnings = droppedProviderToolWarnings(params.providerOptions);
+  const extraWarnings = createDroppedProviderToolWarnings(
+    params.providerOptions
+  );
 
   if (isToolChoiceActive(params)) {
     return toolChoiceStream({
       doGenerate,
       tools,
-      expectedToolName: (
-        getToolCallMiddlewareOptions(params.providerOptions).toolChoice as
-          | { toolName?: string }
-          | undefined
-      )?.toolName,
+      expectedToolName: getToolChoiceExpectedToolName(params.providerOptions),
       options: onErrorOptions,
       extraWarnings,
     });

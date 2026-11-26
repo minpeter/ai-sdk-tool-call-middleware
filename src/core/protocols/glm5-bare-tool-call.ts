@@ -1,12 +1,12 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { parse as parseRJSON } from "../../rjson";
 import { parseLooseStructuredString } from "../../schema-coerce/loose-structured-string";
+import { coerceToolCallInput } from "../utils/coercion/tool-call-coercion";
+import { getToolInputPropertyNames } from "../utils/coercion/tool-call-object-schema";
 import {
   hasPrototypeSensitiveStructuralKey,
   isPrototypeSensitiveArgumentKey,
-} from "../utils/prototype-sensitive-keys";
-import { coerceToolCallInput } from "../utils/tool-call-coercion";
-import { getToolInputPropertyNames } from "../utils/tool-call-object-schema";
+} from "../utils/security/prototype-sensitive-keys";
 import { scanBareNamedArguments } from "./glm5-bare-tool-call-tokenizer";
 
 const MAX_BARE_TOOL_CALL_LENGTH = 102_400;

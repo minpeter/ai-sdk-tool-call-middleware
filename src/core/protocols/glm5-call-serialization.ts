@@ -1,5 +1,5 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
-import { stringifyToolInputWithSchema } from "../utils/tool-input-streaming";
+import { stringifyToolInputWithSchema } from "../utils/streaming/tool-input-streaming";
 import type { ParsedGlm5Call } from "./glm5-call-types";
 
 export function stringifyGlm5CallInput(

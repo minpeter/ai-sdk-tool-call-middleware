@@ -5,7 +5,6 @@ import type {
   LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 import { parse, stringify } from "../../rxml";
-import { recoverToolCallFromJsonCandidatesWithStatus } from "../utils/generated-text-json-recovery";
 import { generateToolCallId } from "../utils/id";
 import {
   createFlushTextHandler,
@@ -14,9 +13,10 @@ import {
   safeToolCallMetadataError,
   safeToolCallMetadataText,
 } from "../utils/protocol-utils";
-import { toolCallTextHasPrototypeSensitiveKey } from "../utils/prototype-sensitive-keys";
-import { isSideChannelStreamPart } from "../utils/side-channel-stream-part";
-import { shouldBufferToolInputProgress } from "../utils/tool-call-progress-buffering";
+import { recoverToolCallFromJsonCandidatesWithStatus } from "../utils/recovery/generated-text-json-recovery";
+import { toolCallTextHasPrototypeSensitiveKey } from "../utils/security/prototype-sensitive-keys";
+import { isSideChannelStreamPart } from "../utils/streaming/side-channel-stream-part";
+import { shouldBufferToolInputProgress } from "../utils/streaming/tool-call-progress-buffering";
 import {
   emitBufferedToolInputProgressDelta,
   emitFailedBufferedToolInputLifecycle,
@@ -24,7 +24,7 @@ import {
   isPrototypeSensitiveToolCallInputError,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
-} from "../utils/tool-input-streaming";
+} from "../utils/streaming/tool-input-streaming";
 import {
   hasNonWhitespaceTopLevelText,
   plainTextBodyFallback,

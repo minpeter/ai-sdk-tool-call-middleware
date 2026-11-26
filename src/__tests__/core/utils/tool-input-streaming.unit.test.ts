@@ -11,7 +11,7 @@ import {
   enqueueToolInputEndAndCall,
   shouldEmitRawToolCallTextOnError,
   stringifyToolInputWithSchema,
-} from "../../../core/utils/tool-input-streaming";
+} from "../../../core/utils/streaming/tool-input-streaming";
 
 function createMockController(
   out: LanguageModelV4StreamPart[]
