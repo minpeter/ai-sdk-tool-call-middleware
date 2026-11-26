@@ -13,8 +13,11 @@ This package is ESM-only. Use `import` or dynamic `import()`; CommonJS
 ## Install
 
 ```bash
-# Built for AI SDK v7 (current npm `latest` is v5.x; v6.x is the upcoming major release on this branch)
+# Current stable npm `latest` line (v5.x) — built for AI SDK v7
 pnpm add @ai-sdk-tool/parser
+
+# v6 release candidate (`6.0.0-rc.x`, `rc` dist-tag) — built for AI SDK v7
+pnpm add @ai-sdk-tool/parser@rc
 ```
 
 If you still need the AI SDK v6 line, pin `v4`:
@@ -34,7 +37,7 @@ Fact-checked from this repo `CHANGELOG.md` and npm release metadata.
 | `v3.x` | `v6.x` | Legacy (not actively maintained) |
 | `v4.x` | `v6.x` | Previous AI SDK v6 line |
 | `v5.x` | `v7.x` | Current npm `latest` line |
-| `v6.x` | `v7.x` | Upcoming major release (this branch) |
+| `v6.x` (`@rc`) | `v7.x` | Release candidate (`6.0.0-rc.x`, `rc` dist-tag) |
 
 Note: there is no separate formal EOL announcement in releases/changelog for `v1`-`v3`; "legacy" here means non-current release lines.
 
@@ -137,7 +140,7 @@ Only `http:` / `https:` file URLs are forwarded as model file parts; other schem
 
 User-message images are unchanged — they pass through as-is.
 
-**Status:** `v6.x` is the upcoming major release line for AI SDK v7 (current npm `latest` is `v5.x`). Pin an exact version if you need reproducible installs.
+**Status:** `v6.x` is being released as a release candidate (`@ai-sdk-tool/parser@rc`, `6.0.0-rc.x`) for AI SDK v7 while `v5.x` remains npm `latest`. Pin an exact version if you need reproducible installs.
 
 ## Package map
 
